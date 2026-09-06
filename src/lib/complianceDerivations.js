@@ -24,15 +24,253 @@ export function daysUntilExpiry(expiryDate, today = localDateKey()) {
   return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
-export function docLabel(kind) {
-  const map = {
-    iqama: { ar: "الإقامة", en: "Iqama" },
-    work_permit: { ar: "رخصة العمل", en: "Work permit" },
-    gosi: { ar: "رقم التأمينات GOSI", en: "GOSI number" },
-    qiwa_title: { ar: "المسمى في قوى", en: "Qiwa job title" },
-    national_id: { ar: "الهوية الوطنية", en: "National ID" },
+const DOC_END_KEYS = ["expiryDate", "endDate", "validUntil", "expiresAt", "expiry"];
+const DOC_START_KEYS = ["startDate", "issueDate", "issuedAt", "validFrom", "issuedOn"];
+const DOC_KIND_ALIASES = {
+  medical_insurance: "medical",
+  medical: "medical",
+  cchi: "medical",
+  driving_license: "driving_licence",
+  driving_licence: "driving_licence",
+  driving: "driving_licence",
+  licence: "license",
+  license: "license",
+  cert: "certificate",
+  certification: "certificate",
+  certificates: "certificate",
+};
+
+const KNOWN_FILE_DOC_KINDS = new Set([
+  "iqama", "work_permit", "gosi", "qiwa_title", "national_id",
+  "passport", "medical", "certificate", "driving_licence", "license", "visa",
+]);
+
+const PROFILE_EXPIRY_FIELDS = [
+  { keys: ["idExpiry", "iqamaExpiry"], kind: "iqama" },
+  { keys: ["workPermitExpiry"], kind: "work_permit" },
+  { keys: ["passportExpiry"], kind: "passport" },
+  { keys: ["medicalInsuranceExpiry"], kind: "medical" },
+];
+
+const EMP_DOC_ARRAYS = [
+  { key: "docs", known: true },
+  { key: "certificates", known: true, defaultKind: "certificate" },
+  { key: "licenses", known: true, defaultKind: "license" },
+  { key: "licences", known: true, defaultKind: "license" },
+  { key: "visas", known: true, defaultKind: "visa" },
+  { key: "files", known: false },
+  { key: "documents", known: false },
+  { key: "hireDocs", known: false },
+  { key: "hireDocuments", known: false },
+  { key: "vaultDocs", known: false },
+  { key: "signedDocs", known: false },
+];
+
+const COMPANY_DOC_ARRAYS = [
+  "files", "companyDocs", "documents", "licenses", "licences", "visas",
+  "signedDocuments", "hireDocuments",
+];
+
+const DOC_KIND_LABELS = {
+  iqama: { ar: "الإقامة", en: "Iqama" },
+  work_permit: { ar: "رخصة العمل", en: "Work permit" },
+  gosi: { ar: "رقم التأمينات GOSI", en: "GOSI number" },
+  qiwa_title: { ar: "المسمى في قوى", en: "Qiwa job title" },
+  national_id: { ar: "الهوية الوطنية", en: "National ID" },
+  passport: { ar: "الجواز", en: "Passport" },
+  medical: { ar: "التأمين الطبي", en: "Medical insurance" },
+  certificate: { ar: "شهادة", en: "Certificate" },
+  driving_licence: { ar: "رخصة القيادة", en: "Driving licence" },
+  license: { ar: "رخصة", en: "Licence" },
+  visa: { ar: "تأشيرة", en: "Visa" },
+  fa: { ar: "الإسعافات الأولية", en: "First aid" },
+  loto: { ar: "العزل والوسم LOTO", en: "Lock-out / tag-out" },
+  wah: { ar: "العمل على ارتفاع", en: "Work at height" },
+  cs: { ar: "الأماكن المحصورة", en: "Confined space" },
+};
+
+function hasArabic(value) {
+  return /[\u0600-\u06FF]/.test(String(value || ""));
+}
+
+function isoDay(value) {
+  const m = String(value || "").trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : "";
+}
+
+function readDocEndDate(obj) {
+  if (!obj || typeof obj !== "object") return "";
+  for (const key of DOC_END_KEYS) {
+    const day = isoDay(obj[key]);
+    if (day) return day;
+  }
+  return "";
+}
+
+function readDocStartDate(obj) {
+  if (!obj || typeof obj !== "object") return "";
+  for (const key of DOC_START_KEYS) {
+    const day = isoDay(obj[key]);
+    if (day) return day;
+  }
+  return "";
+}
+
+export function normalizeDocKind(kind) {
+  const raw = String(kind || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return DOC_KIND_ALIASES[raw] || raw;
+}
+
+function pickDocTitle(extra) {
+  const name = extra?.name || extra?.title || extra?.label || extra?.fileName || extra?.number || "";
+  const ar = extra?.labelAr || extra?.nameAr || extra?.titleAr || extra?.docLabelAr
+    || (hasArabic(name) ? name : "");
+  const en = extra?.labelEn || extra?.nameEn || extra?.titleEn || extra?.docLabelEn
+    || (!hasArabic(name) ? name : "");
+  return { ar, en, raw: name };
+}
+
+/** Arabic/English label for a document kind — prefer an Arabic title over a raw English dump. */
+export function docLabel(kind, extra = {}) {
+  const title = pickDocTitle(extra);
+  const mapped = DOC_KIND_LABELS[normalizeDocKind(kind)] || DOC_KIND_LABELS[String(kind || "").toLowerCase()];
+  if (title.ar || title.en) {
+    return {
+      ar: title.ar || mapped?.ar || title.en,
+      en: title.en || mapped?.en || title.ar,
+    };
+  }
+  if (mapped) return mapped;
+  const raw = String(kind || "").trim();
+  if (hasArabic(raw)) return { ar: raw, en: raw };
+  return { ar: "وثيقة", en: raw || "Document" };
+}
+
+function resolveDocKind(doc, defaultKind) {
+  const raw = doc?.kind || doc?.type || doc?.category || doc?.code || defaultKind || "";
+  return normalizeDocKind(raw) || defaultKind || "document";
+}
+
+function shouldIncludeDatedDoc(doc, { knownCollection } = {}) {
+  if (!doc || typeof doc !== "object") return false;
+  if (String(doc.type || "").toLowerCase() === "folder") return false;
+  const end = readDocEndDate(doc);
+  if (!end) return false;
+  const start = readDocStartDate(doc);
+  const kind = resolveDocKind(doc);
+  if (knownCollection || KNOWN_FILE_DOC_KINDS.has(kind)) return true;
+  return Boolean(start && end);
+}
+
+function validityRowFromDoc(emp, doc, { defaultKind, today } = {}) {
+  const expiryDate = readDocEndDate(doc);
+  const days = daysUntilExpiry(expiryDate, today);
+  if (days == null || days > EXPIRY_WARN_DAYS) return null;
+  const kind = resolveDocKind(doc, defaultKind);
+  const label = docLabel(kind, doc);
+  return {
+    employeeId: emp?.employeeId || emp?.id || "",
+    name: emp?.name,
+    kind,
+    docLabelAr: label.ar,
+    docLabelEn: label.en,
+    expiryDate,
+    days,
   };
-  return map[kind] || { ar: kind, en: kind };
+}
+
+export function mergeValidityDocRows(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows || []) {
+    if (!row) continue;
+    const key = `${row.employeeId || ""}:${row.kind}:${row.docLabelAr || ""}:${row.expiryDate}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out.sort((a, b) => a.days - b.days);
+}
+
+/** One employee — every dated file-doc in the warn window. Shared by ministry alerts and EmpAlertsStrip. */
+export function collectEmployeeValidityDocs(emp, today = localDateKey()) {
+  const out = [];
+  if (!emp) return out;
+
+  for (const spec of EMP_DOC_ARRAYS) {
+    const list = emp[spec.key];
+    if (!Array.isArray(list)) continue;
+    for (const doc of list) {
+      if (!shouldIncludeDatedDoc(doc, { knownCollection: spec.known })) continue;
+      const row = validityRowFromDoc(emp, doc, { defaultKind: spec.defaultKind, today });
+      if (row) out.push(row);
+    }
+  }
+
+  const profile = emp.profile && typeof emp.profile === "object" ? emp.profile : {};
+  const idType = normalizeDocKind(profile.idType || emp.idType);
+  for (const field of PROFILE_EXPIRY_FIELDS) {
+    const iso = field.keys.map((k) => profile[k] ?? emp[k]).find(Boolean);
+    if (!iso) continue;
+    let kind = field.kind;
+    if (field.keys.includes("idExpiry")) {
+      if (idType === "national_id") kind = "national_id";
+      else if (idType === "iqama") kind = "iqama";
+    }
+    const expiryDate = isoDay(iso);
+    const days = daysUntilExpiry(expiryDate, today);
+    if (!expiryDate || days == null || days > EXPIRY_WARN_DAYS) continue;
+    const label = docLabel(kind);
+    out.push({
+      employeeId: emp.employeeId || emp.id || "",
+      name: emp.name,
+      kind,
+      docLabelAr: label.ar,
+      docLabelEn: label.en,
+      expiryDate,
+      days,
+    });
+  }
+
+  return mergeValidityDocRows(out);
+}
+
+function collectCompanyValidityDocs(data, today = localDateKey()) {
+  const out = [];
+  if (!data || typeof data !== "object") return out;
+  const companyName = data.name || data.companyName || "";
+  for (const key of COMPANY_DOC_ARRAYS) {
+    const list = data[key];
+    if (!Array.isArray(list)) continue;
+    for (const doc of list) {
+      if (!shouldIncludeDatedDoc(doc, { knownCollection: false })) continue;
+      const expiryDate = readDocEndDate(doc);
+      const days = daysUntilExpiry(expiryDate, today);
+      if (days == null || days > EXPIRY_WARN_DAYS) continue;
+      const kind = resolveDocKind(doc, "document");
+      const label = docLabel(kind, doc);
+      out.push({
+        employeeId: doc.employeeId || doc.ownerId || "",
+        name: doc.employeeName || doc.ownerName || companyName,
+        kind,
+        docLabelAr: label.ar,
+        docLabelEn: label.en,
+        expiryDate,
+        days,
+      });
+    }
+  }
+  return out;
+}
+
+/** Live register — employees plus company dated docs (not HSE permits, leave, or contracts). */
+export function collectRegisterValidityDocs(data, today = localDateKey()) {
+  const employees = Array.isArray(data) ? data : (data?.employees || []);
+  const company = Array.isArray(data) ? null : data;
+  return mergeValidityDocRows([
+    ...deriveExpiringDocs(employees, today),
+    ...collectCompanyValidityDocs(company, today),
+  ]);
 }
 
 function digitsId(value) {
@@ -401,23 +639,9 @@ export function checkContractTermGate(input = {}) {
 export function deriveExpiringDocs(employees, today = localDateKey()) {
   const out = [];
   for (const emp of employees || []) {
-    for (const doc of emp.docs || []) {
-      if (!doc.expiryDate) continue;
-      const days = daysUntilExpiry(doc.expiryDate, today);
-      if (days == null || days > EXPIRY_WARN_DAYS) continue;
-      const label = docLabel(doc.kind);
-      out.push({
-        employeeId: emp.employeeId,
-        name: emp.name,
-        kind: String(doc.kind),
-        docLabelAr: label.ar,
-        docLabelEn: label.en,
-        expiryDate: doc.expiryDate,
-        days,
-      });
-    }
+    out.push(...collectEmployeeValidityDocs(emp, today));
   }
-  return out.sort((a, b) => a.days - b.days);
+  return mergeValidityDocRows(out);
 }
 
 export function deriveNitaqat(employees) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Camera, Plus } from "lucide-react";
-import { ACCENT, MUTED, NAVY, CARD, SURFACE, ui } from "@/lib/platformStyles";
+import { ACCENT, BRAND, BRAND_DEEP, BRAND_SOFT, MUTED, NAVY, CARD, field, ui } from "@/lib/platformStyles";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { vehicleLabel } from "@/lib/proofVehicle";
 import { workplaceStations } from "@/lib/stationTree";
@@ -138,39 +138,70 @@ export function workProofEntityFields(form, stations) {
 }
 
 const CSS = `
-  .wp-raise-split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(260px, .85fr); gap: 18px; align-items: start; }
-  .wp-raise-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .wp-raise-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .wp-fold > summary::-webkit-details-marker { display: none; }
   .wp-fold > summary { list-style: none; }
   .wp-fold > summary::before { content: "+"; display: inline-block; width: 14px; color: #5A6B85; font-weight: 600; }
   .wp-fold[open] > summary::before { content: "−"; }
   .wp-repeat { display: grid; gap: 10px; }
-  @media (max-width: 860px) {
-    .wp-raise-split { grid-template-columns: 1fr; }
-  }
   @media (max-width: 520px) {
     .wp-raise-2 { grid-template-columns: 1fr; }
   }
 `;
 
-const box = {
-  width: "100%",
-  height: 36,
-  borderRadius: 9,
-  border: "1px solid #E2E8F0",
-  background: CARD,
-  padding: "0 11px",
-  fontSize: 13,
-  color: NAVY,
-  fontFamily: "inherit",
-  outline: "none",
-  boxSizing: "border-box",
-};
+const box = { ...field, height: 40, padding: "0 10px" };
+
+function SectionCard({ title, hint, children }) {
+  return (
+    <section
+      style={{
+        borderRadius: 16,
+        border: "1px solid var(--nv-line, #E2E8F0)",
+        background: "var(--nv-inset, var(--nv-soft, #F7F8FA))",
+        padding: 16,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+      }}
+    >
+      {(title || hint) && (
+        <div>
+          {title ? (
+            <div style={{ fontSize: 12, fontWeight: 650, color: MUTED, letterSpacing: "0.01em" }}>{title}</div>
+          ) : null}
+          {hint ? (
+            <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 4 }}>{hint}</div>
+          ) : null}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+function scopeChipStyle(active) {
+  return {
+    flex: 1,
+    minWidth: 0,
+    height: 36,
+    padding: "0 10px",
+    borderRadius: 9,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: 12,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    ...(active
+      ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND_DEEP, fontWeight: 600 }
+      : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
+  };
+}
 
 function Field({ label, required, children }) {
   return (
     <label>
-      <span style={{ display: "block", fontSize: 11, fontWeight: 600, color: MUTED, marginBottom: 5 }}>
+      <span style={{ display: "block", fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>
         {label}{required ? <span style={{ color: ACCENT, marginInlineStart: 3 }}>•</span> : null}
       </span>
       {children}
@@ -180,12 +211,12 @@ function Field({ label, required, children }) {
 
 function Fold({ title, hint, children }) {
   return (
-    <details className="wp-fold" style={{ borderTop: "1px solid #EEF2F6", paddingTop: 8, marginTop: 10 }}>
+    <details className="wp-fold" style={{ borderTop: "1px solid var(--nv-line, #E2E8F0)", paddingTop: 10, marginTop: 2 }}>
       <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: NAVY, display: "flex", alignItems: "center", gap: 6 }}>
         <span>{title}</span>
         {hint ? <span style={{ fontSize: 11, fontWeight: 500, color: MUTED }}>{hint}</span> : null}
       </summary>
-      <div className="wp-raise-2" style={{ marginTop: 8 }}>{children}</div>
+      <div className="wp-raise-2" style={{ marginTop: 10 }}>{children}</div>
     </details>
   );
 }
@@ -205,9 +236,9 @@ function PhotoSlot({ file, title, required, onFile, ar }) {
         display: "flex",
         flexDirection: "column",
         minHeight: url ? 132 : 88,
-        borderRadius: 10,
-        border: file ? `1px solid color-mix(in oklab, ${ACCENT} 28%, #fff)` : "1px dashed #D5DCE6",
-        background: file ? "color-mix(in oklab, #1E9E63 5%, #fff)" : "#F7F8FA",
+        borderRadius: 12,
+        border: file ? `1px solid ${BRAND}` : "1px dashed var(--nv-line, #D5DCE6)",
+        background: file ? BRAND_SOFT : CARD,
         cursor: "pointer",
         overflow: "hidden",
       }}
@@ -238,7 +269,7 @@ function PhotoSlot({ file, title, required, onFile, ar }) {
 function RepeatHead({ title, onRemove, canRemove, ar }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: MUTED }}>{title}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>{title}</span>
       {canRemove ? (
         <button type="button" onClick={onRemove} style={{ ...ui.btnGhost, padding: "4px 8px", fontSize: 11 }}>
           {ar ? "حذف" : "Remove"}
@@ -300,284 +331,251 @@ export default function WorkProofRaiseFields({ form, setForm, stations, headerSc
   };
 
   return (
-    <div style={{ marginTop: 12 }}>
+    <>
       <style>{CSS}</style>
-      <div className="wp-raise-split">
+      <SectionCard title={ar ? "العمل" : "Work"}>
+        <Field label={ar ? "سبب العمل" : "Reason for work"} required>
+          <input
+            required
+            value={form.workReason}
+            onChange={set("workReason")}
+            placeholder={ar ? "لماذا يُنفَّذ هذا العمل؟" : "Why is this work being done?"}
+            style={box}
+          />
+        </Field>
+        <Field label={ar ? "وصف العمل" : "Work"} required>
+          <input
+            required
+            value={form.title}
+            onChange={set("title")}
+            placeholder={ar ? "ما العمل الذي سيُنفَّذ؟" : "What work is starting?"}
+            style={box}
+          />
+        </Field>
+        <Field label={ar ? "تاريخ البداية" : "Start date"} required>
+          <PlatformDateField
+            ar={ar}
+            value={dateTimeDateKey(form.startedAt)}
+            onChange={(next) => setForm({ ...form, startedAt: spliceDateIntoDateTime(form.startedAt, next) })}
+          />
+        </Field>
+        <div className="wp-raise-2">
+          <Field label={ar ? "فرع التنفيذ" : "Executing branch"} required>
+            <select required value={form.stationId} onChange={set("stationId")} disabled={headerScope !== "all"} style={box}>
+              <option value="">{ar ? "اختر فرعًا" : "Pick a branch"}</option>
+              {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </Field>
+          <Field label={ar ? "الموقع عند الالتقاط" : "Capture location"}>
+            <select value={form.geoVerdict} onChange={set("geoVerdict")} style={box}>
+              <option value="in">{ar ? "داخل نطاق الفرع" : "Inside the branch"}</option>
+              <option value="out">{ar ? "خارج النطاق" : "Outside geofence"}</option>
+            </select>
+          </Field>
+        </div>
+        {!hidePhotos && (
+          <PhotoSlot
+            file={form.beforeFile}
+            title={ar ? "صورة قبل — عند البداية" : "Before — at start"}
+            required
+            ar={ar}
+            onFile={(file) => setForm({ ...form, beforeFile: file })}
+          />
+        )}
+      </SectionCard>
+
+      <SectionCard
+        title={ar ? "المستفيد" : "Beneficiary"}
+        hint={ar
+          ? "إذا كان العمل لفرع آخر من الشركة اختر داخل الشركة، وإذا كان لجهة خارجية اختر خارج الشركة."
+          : "Use Inside if the site is another company branch; Outside for an external client."}
+      >
         <div>
-          <Field label={ar ? "سبب العمل" : "Reason for work"} required>
-            <input
-              required
-              value={form.workReason}
-              onChange={set("workReason")}
-              placeholder={ar ? "لماذا يُنفَّذ هذا العمل؟" : "Why is this work being done?"}
-              style={{ ...box, height: 40, fontSize: 14, fontWeight: 500 }}
-            />
-          </Field>
-          <Field label={ar ? "وصف العمل" : "Work"} required>
-            <input
-              required
-              value={form.title}
-              onChange={set("title")}
-              placeholder={ar ? "ما العمل الذي سيُنفَّذ؟" : "What work is starting?"}
-              style={{ ...box, height: 40, fontSize: 14, fontWeight: 500, marginTop: 10 }}
-            />
-          </Field>
-
-          <div style={{ marginTop: 10 }}>
-            <Field label={ar ? "تاريخ البداية" : "Start date"} required>
-              <PlatformDateField
-                ar={ar}
-                value={dateTimeDateKey(form.startedAt)}
-                onChange={(next) => setForm({ ...form, startedAt: spliceDateIntoDateTime(form.startedAt, next) })}
-              />
-            </Field>
+          <span style={{ display: "block", fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6 }}>
+            {ar ? "المنشأة" : "Establishment"}
+            <span style={{ color: ACCENT, marginInlineStart: 3 }}>•</span>
+          </span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[
+              { value: "internal", title: ar ? "داخل الشركة" : "Inside the company" },
+              { value: "external", title: ar ? "خارج الشركة" : "Outside the company" },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={entityScope === option.value}
+                onClick={() => setEntityScope(option.value)}
+                style={scopeChipStyle(entityScope === option.value)}
+              >
+                {option.title}
+              </button>
+            ))}
           </div>
-          <div className="wp-raise-2" style={{ marginTop: 10 }}>
-            <Field label={ar ? "فرع التنفيذ" : "Executing branch"} required>
-              <select required value={form.stationId} onChange={set("stationId")} disabled={headerScope !== "all"} style={box}>
+        </div>
+        {entityScope === "internal" ? (
+          <div className="wp-raise-2">
+            <Field label={ar ? "فرع الشركة المستفيد" : "Beneficiary branch"} required>
+              <select
+                required
+                value={form.entityStationId || ""}
+                onChange={(event) => {
+                  const id = event.target.value;
+                  const station = workplaces.find((item) => String(item.id) === id);
+                  setForm({
+                    ...form,
+                    entityScope: "internal",
+                    entityStationId: id,
+                    entityKind: "branch",
+                    entityName: station?.name || "",
+                  });
+                }}
+                style={box}
+              >
                 <option value="">{ar ? "اختر فرعًا" : "Pick a branch"}</option>
-                {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {workplaces.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </Field>
-            <Field label={ar ? "الموقع عند الالتقاط" : "Capture location"}>
-              <select value={form.geoVerdict} onChange={set("geoVerdict")} style={box}>
-                <option value="in">{ar ? "داخل نطاق الفرع" : "Inside the branch"}</option>
-                <option value="out">{ar ? "خارج النطاق" : "Outside geofence"}</option>
-              </select>
+            <Field label={ar ? "موقع التنفيذ" : "Work site"}>
+              <input value={form.entitySite} onChange={set("entitySite")} placeholder={ar ? "المبنى / الوحدة" : "Building / unit"} style={box} />
             </Field>
           </div>
+        ) : (
+          <div className="wp-raise-2">
+            <Field label={ar ? "نوع المنشأة" : "Establishment type"} required>
+              <select required value={entityKind === "branch" ? "company" : entityKind} onChange={set("entityKind")} style={box}>
+                <option value="company">{ar ? "شركة / مؤسسة" : "Company"}</option>
+                <option value="individual">{ar ? "مؤسسة فردية" : "Sole establishment"}</option>
+              </select>
+            </Field>
+            <Field label={ar ? "الاسم الرسمي" : "Official name"} required>
+              <input required value={form.entityName} onChange={set("entityName")} placeholder={ar ? "كما في السجل أو القرار" : "As on the register"} style={box} />
+            </Field>
+            <Field label={ar ? "الرقم الوطني الموحد" : "Unified national no."}>
+              <input value={form.entityUnified} onChange={set("entityUnified")} dir="ltr" placeholder="700xxxxxxxx" style={box} />
+            </Field>
+            <Field label={ar ? "موقع التنفيذ" : "Work site"}>
+              <input value={form.entitySite} onChange={set("entitySite")} placeholder={ar ? "المبنى / الوحدة / المدينة" : "Building / unit / city"} style={box} />
+            </Field>
+          </div>
+        )}
+        <Fold
+          title={ar ? "عقد وهوية وتواصل" : "Contract, IDs & contact"}
+          hint={entityExtra ? (ar ? `${entityExtra} مُعبّأة` : `${entityExtra} filled`) : (ar ? "اختياري" : "optional")}
+        >
+          <Field label={ar ? "رقم العقد / أمر العمل" : "Contract / work order"}>
+            <input value={form.entityProject} onChange={set("entityProject")} style={box} />
+          </Field>
+          {entityScope === "external" ? (
+            <>
+              <Field label={ar ? "السجل التجاري" : "Commercial registration"}>
+                <input value={form.entityCr} onChange={set("entityCr")} dir="ltr" placeholder="10 أرقام" style={box} />
+              </Field>
+              <Field label={ar ? "رقم المنشأة في قوى" : "Qiwa establishment no."}>
+                <input value={form.entityQiwa} onChange={set("entityQiwa")} dir="ltr" placeholder="7-1104829" style={box} />
+              </Field>
+            </>
+          ) : null}
+          <Field label={ar ? "مسؤول التواصل" : "Contact"}>
+            <input value={form.entityContact} onChange={set("entityContact")} style={box} />
+          </Field>
+          <Field label={ar ? "جوال المسؤول" : "Contact phone"}>
+            <input value={form.entityPhone} onChange={set("entityPhone")} dir="ltr" placeholder="05xxxxxxxx" style={box} />
+          </Field>
+        </Fold>
+      </SectionCard>
 
-          {!hidePhotos && (
-          <div style={{ marginTop: 12 }}>
-            <PhotoSlot
-              file={form.beforeFile}
-              title={ar ? "صورة قبل — عند البداية" : "Before — at start"}
-              required
-              ar={ar}
-              onFile={(file) => setForm({ ...form, beforeFile: file })}
-            />
-          </div>
-          )}
+      <SectionCard
+        title={ar ? "المنفذون" : "Workers"}
+        hint={ar ? "يمكن إضافة أكثر من شخص لنفس الإثبات." : "Add more than one worker on the same proof."}
+      >
+        <div className="wp-repeat">
+          {people.map((person, index) => (
+            <div
+              key={`person-${index}`}
+              style={{ padding: 12, borderRadius: 12, border: "1px solid var(--nv-line, #E2E8F0)", background: CARD }}
+            >
+              <RepeatHead
+                title={ar ? `منفذ ${index + 1}` : `Worker ${index + 1}`}
+                canRemove={people.length > 1}
+                onRemove={() => setPeople(people.filter((_, i) => i !== index))}
+                ar={ar}
+              />
+              <div className="wp-raise-2">
+                <Field label={ar ? "الاسم" : "Name"} required={index === 0}>
+                  <input required={index === 0} value={person.name} onChange={patchPerson(index, "name")} style={box} />
+                </Field>
+                <Field label={ar ? "الجوال" : "Phone"}>
+                  <input value={person.phone} onChange={patchPerson(index, "phone")} dir="ltr" style={box} />
+                </Field>
+                <Field label={ar ? "رقم الهوية" : "ID number"}>
+                  <input value={person.id} onChange={patchPerson(index, "id")} dir="ltr" style={box} />
+                </Field>
+                <Field label={ar ? "المسمى" : "Title"}>
+                  <input value={person.title} onChange={patchPerson(index, "title")} style={box} />
+                </Field>
+              </div>
+            </div>
+          ))}
         </div>
-
-        <div style={{ padding: "12px 12px 10px", borderRadius: 12, background: SURFACE, border: "1px solid #EEF2F6" }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: NAVY, marginBottom: 10 }}>
-            {ar ? "المستفيد" : "Beneficiary"}
-          </div>
-          <div style={{ marginBottom: 4 }}>
-            <span style={{ display: "block", fontSize: 11, fontWeight: 600, color: MUTED, marginBottom: 5 }}>
-              {ar ? "المنشأة" : "Establishment"}
-              <span style={{ color: ACCENT, marginInlineStart: 3 }}>•</span>
-            </span>
-            <div className="wp-raise-2">
-              {[
-                {
-                  value: "internal",
-                  title: ar ? "داخل الشركة" : "Inside the company",
-                  hint: ar ? "أحد الفروع الأخرى" : "Another company branch",
-                },
-                {
-                  value: "external",
-                  title: ar ? "خارج الشركة" : "Outside the company",
-                  hint: ar ? "جهة أو عميل خارجي" : "External client or firm",
-                },
-              ].map((option) => {
-                const active = entityScope === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setEntityScope(option.value)}
-                    style={{
-                      textAlign: "start",
-                      padding: "10px 12px",
-                      borderRadius: 10,
-                      border: active ? `1px solid color-mix(in oklab, ${ACCENT} 40%, #fff)` : "1px solid #E2E8F0",
-                      background: active ? "color-mix(in oklab, #1E9E63 8%, #fff)" : CARD,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>{option.title}</div>
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{option.hint}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div style={{ fontSize: 11, color: MUTED, margin: "8px 0 10px" }}>
-            {ar
-              ? "إذا كان العمل لفرع آخر من الشركة اختر داخل الشركة، وإذا كان لجهة خارجية اختر خارج الشركة."
-              : "Use Inside if the site is another company branch; Outside for an external client."}
-          </div>
-          {entityScope === "internal" ? (
-            <div className="wp-raise-2">
-              <Field label={ar ? "فرع الشركة المستفيد" : "Beneficiary branch"} required>
-                <select
-                  required
-                  value={form.entityStationId || ""}
-                  onChange={(event) => {
-                    const id = event.target.value;
-                    const station = workplaces.find((item) => String(item.id) === id);
-                    setForm({
-                      ...form,
-                      entityScope: "internal",
-                      entityStationId: id,
-                      entityKind: "branch",
-                      entityName: station?.name || "",
-                    });
-                  }}
-                  style={box}
-                >
-                  <option value="">{ar ? "اختر فرعًا" : "Pick a branch"}</option>
-                  {workplaces.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </Field>
-              <Field label={ar ? "موقع التنفيذ" : "Work site"}>
-                <input value={form.entitySite} onChange={set("entitySite")} placeholder={ar ? "المبنى / الوحدة" : "Building / unit"} style={box} />
-              </Field>
-            </div>
-          ) : (
-            <div className="wp-raise-2">
-              <Field label={ar ? "نوع المنشأة" : "Establishment type"} required>
-                <select required value={entityKind === "branch" ? "company" : entityKind} onChange={set("entityKind")} style={box}>
-                  <option value="company">{ar ? "شركة / مؤسسة" : "Company"}</option>
-                  <option value="individual">{ar ? "مؤسسة فردية" : "Sole establishment"}</option>
-                </select>
-              </Field>
-              <Field label={ar ? "الاسم الرسمي" : "Official name"} required>
-                <input required value={form.entityName} onChange={set("entityName")} placeholder={ar ? "كما في السجل أو القرار" : "As on the register"} style={box} />
-              </Field>
-              <Field label={ar ? "الرقم الوطني الموحد" : "Unified national no."}>
-                <input value={form.entityUnified} onChange={set("entityUnified")} dir="ltr" placeholder="700xxxxxxxx" style={box} />
-              </Field>
-              <Field label={ar ? "موقع التنفيذ" : "Work site"}>
-                <input value={form.entitySite} onChange={set("entitySite")} placeholder={ar ? "المبنى / الوحدة / المدينة" : "Building / unit / city"} style={box} />
-              </Field>
-            </div>
-          )}
-          <Fold
-            title={ar ? "عقد وهوية وتواصل" : "Contract, IDs & contact"}
-            hint={entityExtra ? (ar ? `${entityExtra} مُعبّأة` : `${entityExtra} filled`) : (ar ? "اختياري" : "optional")}
+        {canAddCrewItem(people) ? (
+          <button
+            type="button"
+            onClick={() => setPeople([...people, { ...EMPTY_PERSON }])}
+            style={addBtn}
           >
-            <Field label={ar ? "رقم العقد / أمر العمل" : "Contract / work order"}>
-              <input value={form.entityProject} onChange={set("entityProject")} style={box} />
-            </Field>
-            {entityScope === "external" ? (
-              <>
-                <Field label={ar ? "السجل التجاري" : "Commercial registration"}>
-                  <input value={form.entityCr} onChange={set("entityCr")} dir="ltr" placeholder="10 أرقام" style={box} />
-                </Field>
-                <Field label={ar ? "رقم المنشأة في قوى" : "Qiwa establishment no."}>
-                  <input value={form.entityQiwa} onChange={set("entityQiwa")} dir="ltr" placeholder="7-1104829" style={box} />
-                </Field>
-              </>
-            ) : null}
-            <Field label={ar ? "مسؤول التواصل" : "Contact"}>
-              <input value={form.entityContact} onChange={set("entityContact")} style={box} />
-            </Field>
-            <Field label={ar ? "جوال المسؤول" : "Contact phone"}>
-              <input value={form.entityPhone} onChange={set("entityPhone")} dir="ltr" placeholder="05xxxxxxxx" style={box} />
-            </Field>
-          </Fold>
+            <Plus style={{ width: 14, height: 14 }} />
+            {ar ? "إضافة منفذ" : "Add worker"}
+          </button>
+        ) : null}
+      </SectionCard>
 
-          <div style={{ fontSize: 11, fontWeight: 600, color: NAVY, margin: "14px 0 8px" }}>
-            {ar ? "المنفذون" : "Workers"}
-          </div>
-          <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>
-            {ar ? "يمكن إضافة أكثر من شخص وأكثر من سيارة لنفس الإثبات." : "Add more than one worker and more than one vehicle on the same proof."}
-          </div>
-          <div className="wp-repeat">
-            {people.map((person, index) => (
-              <div
-                key={`person-${index}`}
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #EEF2F6", background: CARD }}
-              >
-                <RepeatHead
-                  title={ar ? `منفذ ${index + 1}` : `Worker ${index + 1}`}
-                  canRemove={people.length > 1}
-                  onRemove={() => setPeople(people.filter((_, i) => i !== index))}
-                  ar={ar}
-                />
-                <div className="wp-raise-2">
-                  <Field label={ar ? "الاسم" : "Name"} required={index === 0}>
-                    <input required={index === 0} value={person.name} onChange={patchPerson(index, "name")} style={box} />
-                  </Field>
-                  <Field label={ar ? "الجوال" : "Phone"}>
-                    <input value={person.phone} onChange={patchPerson(index, "phone")} dir="ltr" style={box} />
-                  </Field>
-                  <Field label={ar ? "رقم الهوية" : "ID number"}>
-                    <input value={person.id} onChange={patchPerson(index, "id")} dir="ltr" style={box} />
-                  </Field>
-                  <Field label={ar ? "المسمى" : "Title"}>
-                    <input value={person.title} onChange={patchPerson(index, "title")} style={box} />
-                  </Field>
-                </div>
-              </div>
-            ))}
-          </div>
-          {canAddCrewItem(people) ? (
-            <button
-              type="button"
-              onClick={() => setPeople([...people, { ...EMPTY_PERSON }])}
-              style={addBtn}
+      <SectionCard title={ar ? "السيارات" : "Vehicles"}>
+        <div className="wp-repeat">
+          {vehicles.map((vehicle, index) => (
+            <div
+              key={`vehicle-${index}`}
+              style={{ padding: 12, borderRadius: 12, border: "1px solid var(--nv-line, #E2E8F0)", background: CARD }}
             >
-              <Plus style={{ width: 14, height: 14 }} />
-              {ar ? "إضافة منفذ" : "Add worker"}
-            </button>
-          ) : null}
-
-          <div style={{ fontSize: 11, fontWeight: 600, color: NAVY, margin: "14px 0 8px" }}>
-            {ar ? "السيارات" : "Vehicles"}
-          </div>
-          <div className="wp-repeat">
-            {vehicles.map((vehicle, index) => (
-              <div
-                key={`vehicle-${index}`}
-                style={{ padding: 10, borderRadius: 10, border: "1px solid #EEF2F6", background: CARD }}
-              >
-                <RepeatHead
-                  title={ar ? `سيارة ${index + 1}` : `Vehicle ${index + 1}`}
-                  canRemove={vehicles.length > 1}
-                  onRemove={() => setVehicles(vehicles.filter((_, i) => i !== index))}
-                  ar={ar}
-                />
-                <div className="wp-raise-2">
-                  <Field label={ar ? "الشركة المصنعة" : "Maker"}>
-                    <input value={vehicle.maker} onChange={patchVehicle(index, "maker")} style={box} />
-                  </Field>
-                  <Field label={ar ? "الموديل" : "Model"}>
-                    <input value={vehicle.model} onChange={patchVehicle(index, "model")} style={box} />
-                  </Field>
-                  <Field label={ar ? "نوع السيارة" : "Type"}>
-                    <input value={vehicle.type} onChange={patchVehicle(index, "type")} style={box} />
-                  </Field>
-                  <Field label={ar ? "سنة الصنع" : "Year"}>
-                    <input value={vehicle.year} onChange={patchVehicle(index, "year")} dir="ltr" style={box} />
-                  </Field>
-                  <Field label={ar ? "حروف اللوحة" : "Plate letters"}>
-                    <input value={vehicle.plateLetters} onChange={patchVehicle(index, "plateLetters")} style={box} />
-                  </Field>
-                  <Field label={ar ? "أرقام اللوحة" : "Plate numbers"}>
-                    <input value={vehicle.plateNumbers} onChange={patchVehicle(index, "plateNumbers")} dir="ltr" style={box} />
-                  </Field>
-                </div>
+              <RepeatHead
+                title={ar ? `سيارة ${index + 1}` : `Vehicle ${index + 1}`}
+                canRemove={vehicles.length > 1}
+                onRemove={() => setVehicles(vehicles.filter((_, i) => i !== index))}
+                ar={ar}
+              />
+              <div className="wp-raise-2">
+                <Field label={ar ? "الشركة المصنعة" : "Maker"}>
+                  <input value={vehicle.maker} onChange={patchVehicle(index, "maker")} style={box} />
+                </Field>
+                <Field label={ar ? "الموديل" : "Model"}>
+                  <input value={vehicle.model} onChange={patchVehicle(index, "model")} style={box} />
+                </Field>
+                <Field label={ar ? "نوع السيارة" : "Type"}>
+                  <input value={vehicle.type} onChange={patchVehicle(index, "type")} style={box} />
+                </Field>
+                <Field label={ar ? "سنة الصنع" : "Year"}>
+                  <input value={vehicle.year} onChange={patchVehicle(index, "year")} dir="ltr" style={box} />
+                </Field>
+                <Field label={ar ? "حروف اللوحة" : "Plate letters"}>
+                  <input value={vehicle.plateLetters} onChange={patchVehicle(index, "plateLetters")} style={box} />
+                </Field>
+                <Field label={ar ? "أرقام اللوحة" : "Plate numbers"}>
+                  <input value={vehicle.plateNumbers} onChange={patchVehicle(index, "plateNumbers")} dir="ltr" style={box} />
+                </Field>
               </div>
-            ))}
-          </div>
-          {canAddCrewItem(vehicles) ? (
-            <button
-              type="button"
-              onClick={() => setVehicles([...vehicles, { ...EMPTY_VEHICLE }])}
-              style={addBtn}
-            >
-              <Plus style={{ width: 14, height: 14 }} />
-              {ar ? "إضافة سيارة" : "Add vehicle"}
-            </button>
-          ) : null}
+            </div>
+          ))}
         </div>
-      </div>
-    </div>
+        {canAddCrewItem(vehicles) ? (
+          <button
+            type="button"
+            onClick={() => setVehicles([...vehicles, { ...EMPTY_VEHICLE }])}
+            style={addBtn}
+          >
+            <Plus style={{ width: 14, height: 14 }} />
+            {ar ? "إضافة سيارة" : "Add vehicle"}
+          </button>
+        ) : null}
+      </SectionCard>
+    </>
   );
 }

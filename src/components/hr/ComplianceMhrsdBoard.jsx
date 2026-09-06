@@ -9,7 +9,7 @@ import { ChromeBox } from "@/components/shared/IdentityCard";
 import { visibleStations } from "@/lib/permissions";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { deriveStationReadiness, READINESS_COLOR, readinessLabel } from "@/lib/stationReadiness";
-import { nitaqatBandLabel } from "@/lib/complianceDerivations";
+import { deriveExpiringDocs, deriveNitaqat, nitaqatBandLabel } from "@/lib/complianceDerivations";
 import { printReport } from "@/lib/printReport";
 import { deriveInspectionPack } from "@/lib/inspectionPackDerivations";
 
@@ -75,10 +75,15 @@ export default function ComplianceMhrsdBoard() {
       .sort((a, b) => a.readiness.score - b.readiness.score);
   }, [register, currentUser, scope]);
 
+  const registerExpiring = useMemo(
+    () => deriveExpiringDocs(register?.employees || []),
+    [register],
+  );
+
   const load = useCallback(async () => {
     const localFallback = {
-      nitaqat: { rate: 25, band: "mid_green", saudi: 1, nonSaudi: 3, total: 4 },
-      expiring: [],
+      nitaqat: deriveNitaqat(register?.employees || []),
+      expiring: deriveExpiringDocs(register?.employees || []),
       gosiEstablishment: "",
       liveIntegrations: {
         qiwa: false,
@@ -102,7 +107,7 @@ export default function ComplianceMhrsdBoard() {
     } catch {
       setData(localFallback);
     }
-  }, [company?.id]);
+  }, [company?.id, register]);
 
   useEffect(() => {
     load();
@@ -554,17 +559,17 @@ export default function ComplianceMhrsdBoard() {
 
         <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #F1F5F9" }}>
           <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
-            {ar ? "وثائق تنتهي ≤ 60 يومًا (إقامة · رخصة · تأمينات · قوى)" : "Docs expiring ≤ 60 days (Iqama · permit · GOSI · Qiwa)"}
+            {ar ? "وثائق بتاريخ صلاحية تنتهي ≤ 60 يومًا" : "Dated documents expiring ≤ 60 days"}
           </div>
-          {(data?.expiring || []).length === 0 ? (
+          {((registerExpiring.length ? registerExpiring : data?.expiring) || []).length === 0 ? (
             <div style={{ marginTop: "8px", fontSize: "12px", color: MUTED }}>
-              {ar ? "لا تنبيهات انتهاء في النطاق الحالي — البوابة DOC_EXPIRING تُفعَّل عند الاقتراب." : "No expiry alerts in the current scope — DOC_EXPIRING gate fires when approaching."}
+              {ar ? "لا تنبيهات انتهاء في النطاق الحالي — يظهر التنبيه عند اقتراب نهاية الوثيقة." : "No expiry alerts in the current scope — an alert appears when a document nears its end date."}
             </div>
           ) : (
             <ul style={{ margin: "8px 0 0", padding: 0, listStyle: "none" }}>
-              {data.expiring.slice(0, 12).map((row) => (
+              {(registerExpiring.length ? registerExpiring : (data?.expiring || [])).slice(0, 12).map((row) => (
                 <li
-                  key={`${row.employeeId}-${row.kind}`}
+                  key={`${row.employeeId}-${row.kind}-${row.expiryDate}-${row.docLabelAr}`}
                   style={{ fontSize: "12px", color: NAVY, padding: "8px 0", borderTop: "1px solid #F1F5F9" }}
                 >
                   {row.name || row.employeeId} · {ar ? row.docLabelAr : row.docLabelEn} · {row.expiryDate} · {row.days}d

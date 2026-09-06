@@ -140,7 +140,23 @@ export function enterLocalPreview() {
         anonymousId: "a_emp",
         createdAt: now,
         leaveRequests: [],
-        profile: { satisfactionScore: 81 },
+        profile: {
+          satisfactionScore: 81,
+          nationality: "مصري",
+          idType: "iqama",
+          nationalId: "2000000001",
+          idExpiry: "2026-10-20",
+          passportExpiry: "2026-08-01",
+          medicalInsuranceExpiry: "2026-09-20",
+          hireDate: "2020-01-15",
+          birthDate: "1990-05-01",
+        },
+        certificates: [
+          { id: "cert_fa_preview", name: "الإسعافات الأولية", code: "fa", expiryDate: "2026-10-01", status: "approved" },
+        ],
+        docs: [
+          { kind: "driving_licence", number: "DL-1", expiryDate: "2026-09-30" },
+        ],
       },
       {
         id: hseId,
@@ -303,6 +319,16 @@ export function enterLocalPreview() {
       { id: "fld_hse", type: "folder", name: "السلامة", stationId: stationEast, parentId: null, createdAt: now },
       { id: "fl_1", type: "file", name: "عقد عمل — نموذج.pdf", stationId: stationNorth, parentId: "fld_contracts", createdAt: now },
       { id: "fl_2", type: "file", name: "تصريح عمل مرتفعات.pdf", stationId: stationEast, parentId: "fld_hse", createdAt: now },
+      {
+        id: "fl_municipality",
+        type: "file",
+        name: "رخصة البلدية",
+        stationId: stationNorth,
+        parentId: "fld_contracts",
+        createdAt: now,
+        validFrom: "2025-01-01",
+        validUntil: "2026-09-15",
+      },
     ],
     plans: [],
     notifications: [

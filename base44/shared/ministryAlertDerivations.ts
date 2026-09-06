@@ -1,11 +1,9 @@
 /** Server twin of src/lib/ministryAlertDerivations.js — keep in sync. */
 import {
   checkContractTermGate,
-  deriveExpiringDocs,
+  collectRegisterValidityDocs,
   deriveNitaqat,
   deriveSaudiStatus,
-  daysUntilExpiry,
-  docLabel,
   EXPIRY_WARN_DAYS,
   localDateKey,
 } from "./complianceDerivations.ts";
@@ -34,13 +32,6 @@ type AlertRow = {
   actionEn: string;
 };
 
-const PROFILE_EXPIRY = [
-  { keys: ["idExpiry", "iqamaExpiry"], kind: "iqama" },
-  { keys: ["workPermitExpiry"], kind: "work_permit" },
-  { keys: ["passportExpiry"], kind: "passport" },
-  { keys: ["medicalInsuranceExpiry"], kind: "medical" },
-];
-
 function monthKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -55,46 +46,6 @@ function getPayrollRun(data: any, month: string) {
   return (Array.isArray(list) ? list : []).find((r: any) => r && r.month === month) || null;
 }
 
-function profileExpiryRows(employees: Emp[], today: string) {
-  const out: Array<{ employeeId?: string; name?: string; kind: string; docLabelAr: string; docLabelEn: string; expiryDate: string; days: number }> = [];
-  for (const emp of employees || []) {
-    const profile = emp?.profile && typeof emp.profile === "object" ? emp.profile : {};
-    for (const field of PROFILE_EXPIRY) {
-      const iso = field.keys.map((k) => profile[k]).find(Boolean);
-      if (!iso) continue;
-      const days = daysUntilExpiry(String(iso).slice(0, 10), today);
-      if (days == null || days > EXPIRY_WARN_DAYS) continue;
-      const label = field.kind === "passport"
-        ? { ar: "الجواز", en: "Passport" }
-        : field.kind === "medical"
-          ? { ar: "التأمين الطبي", en: "Medical insurance" }
-          : docLabel(field.kind);
-      out.push({
-        employeeId: emp.employeeId || emp.id,
-        name: emp.name,
-        kind: field.kind,
-        docLabelAr: label.ar,
-        docLabelEn: label.en,
-        expiryDate: String(iso).slice(0, 10),
-        days,
-      });
-    }
-  }
-  return out;
-}
-
-function mergeExpiryRows(fromDocs: any[], fromProfile: any[]) {
-  const seen = new Set<string>();
-  const out: any[] = [];
-  for (const row of [...fromDocs, ...fromProfile]) {
-    const key = `${row.employeeId || ""}:${row.kind}:${row.expiryDate}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(row);
-  }
-  return out.sort((a, b) => a.days - b.days);
-}
-
 export function canSeeMinistryAlerts(user: any, data?: any) {
   if (!user) return false;
   if (user.role === "owner" || user.isOwner || (data?.ownerId && String(user.id) === String(data.ownerId))) return true;
@@ -105,11 +56,9 @@ export function deriveMinistryAlerts(data: any = {}, { now = new Date(), today =
   const employees: Emp[] = data?.employees || [];
   const alerts: AlertRow[] = [];
 
-  const expiries = mergeExpiryRows(deriveExpiringDocs(employees as any, today), profileExpiryRows(employees, today));
+  const expiries = collectRegisterValidityDocs(data, today);
   const expired = expiries.filter((d) => d.days < 0);
   const expiring = expiries.filter((d) => d.days >= 0);
-  const iqamaExpired = expired.filter((d) => d.kind === "iqama" || d.kind === "work_permit");
-  const iqamaExpiring = expiring.filter((d) => d.kind === "iqama" || d.kind === "work_permit");
 
   if (expired.length) {
     alerts.push({
@@ -119,26 +68,13 @@ export function deriveMinistryAlerts(data: any = {}, { now = new Date(), today =
       count: expired.length,
       to: "/app/hr",
       ruleId: "compliance.doc.expiryWarnDays",
-      textAr: `${expired.length} وثيقة نظامية منتهية — لا إسناد قبل التجديد.`,
-      textEn: `${expired.length} statutory document(s) expired — no assignment before renewal.`,
+      textAr: `${expired.length} وثيقة منتهية — لا إسناد قبل التجديد.`,
+      textEn: `${expired.length} document(s) expired — no assignment before renewal.`,
       actionAr: "الملف",
       actionEn: "File",
     });
   }
-  if (iqamaExpired.length === 0 && iqamaExpiring.length) {
-    alerts.push({
-      id: "iqama_expiring",
-      gate: "DOC_EXPIRING",
-      level: "warn",
-      count: iqamaExpiring.length,
-      to: "/app/hr",
-      ruleId: "compliance.doc.expiryWarnDays",
-      textAr: `${iqamaExpiring.length} إقامة / رخصة عمل تنتهي خلال ${EXPIRY_WARN_DAYS} يومًا.`,
-      textEn: `${iqamaExpiring.length} iqama / work-permit document(s) expire within ${EXPIRY_WARN_DAYS} days.`,
-      actionAr: "تجديد",
-      actionEn: "Renew",
-    });
-  } else if (expiring.length && !expired.length) {
+  if (expiring.length) {
     alerts.push({
       id: "doc_expiring",
       gate: "DOC_EXPIRING",

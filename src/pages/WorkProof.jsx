@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { useI18n } from "@/lib/i18n";
@@ -19,7 +18,6 @@ import {
   MUTED,
   NAVY,
   SURFACE,
-  cardShell,
   emptyState,
   BAD,
   OK,
@@ -30,6 +28,7 @@ import {
 } from "@/lib/platformStyles";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
+import ComposerModalShell from "@/components/shared/ComposerModalShell";
 import { Archive, Clock, LayoutList, Search, ShieldCheck } from "lucide-react";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -520,30 +519,17 @@ export default function WorkProof() {
     >
 
       {(raising || editingProof) && (
-      <form
-        id="wp-raise-form"
+      <ComposerModalShell
+        ar={ar}
+        title={editingProof ? (ar ? "تعديل الإثبات" : "Edit proof") : (ar ? "بدء عمل جديد" : "Start new work")}
+        hint={editingProof
+          ? (remainingEditLabel(editingProof, ar) || (ar ? "مهلة يوم واحد من الرفع." : "One day from the original raise."))
+          : (ar ? "البيانات وصورة قبل الآن — الإنهاء وصورة البعد لاحقًا. التعديل متاح ليوم واحد." : "Details and before photo now — end later. Editable for one day.")}
+        onClose={cancelForm}
         onSubmit={editingProof ? saveEdit : raise}
-        style={{ ...cardShell, padding: "16px 18px 14px" }}
+        submitLabel={editingProof ? (ar ? "حفظ التعديل" : "Save edit") : (ar ? "ابدأ العمل" : "Start work")}
+        busy={busy}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: NAVY }}>
-              {editingProof ? (ar ? "تعديل الإثبات" : "Edit proof") : (ar ? "بدء العمل" : "Start work")}
-            </div>
-            <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>
-              {editingProof
-                ? (remainingEditLabel(editingProof, ar) || (ar ? "مهلة يوم واحد من الرفع." : "One day from the original raise."))
-                : (ar ? "البيانات وصورة قبل الآن — الإنهاء وصورة البعد لاحقًا. التعديل متاح ليوم واحد." : "Details and before photo now — end later. Editable for one day.")}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={cancelForm}
-            style={{ ...ui.btnSecondary, height: 34 }}
-          >
-            {ar ? "إلغاء" : "Cancel"}
-          </button>
-        </div>
         <WorkProofRaiseFields
           form={form}
           setForm={setForm}
@@ -552,12 +538,7 @@ export default function WorkProof() {
           ar={ar}
           hidePhotos={!!editingProof}
         />
-
-        <button type="submit" disabled={busy} style={{ ...ui.btnPrimary, marginTop: 14, display: "inline-flex", alignItems: "center", gap: 8, opacity: busy ? 0.55 : 1 }}>
-          {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-          {editingProof ? (ar ? "حفظ التعديل" : "Save edit") : (ar ? "ابدأ العمل" : "Start work")}
-        </button>
-      </form>
+      </ComposerModalShell>
       )}
 
       <div style={{ position: "relative" }}>

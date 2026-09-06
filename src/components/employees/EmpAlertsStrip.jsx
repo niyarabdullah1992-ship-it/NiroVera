@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { OK, WARN, BAD } from "@/lib/platformStyles";
-import { checkContractTermGate, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
+import { checkContractTermGate, collectEmployeeValidityDocs, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { deriveProbationProgress, deriveArt55Conversion } from "@/lib/contractLawDerivations";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
@@ -30,29 +30,20 @@ function niceDate(iso, ar) {
   }
 }
 
-const EXPIRY_FIELDS = [
-  { keys: ["idExpiry", "iqamaExpiry"], ar: "انتهاء الهوية / الإقامة", en: "ID / Iqama expiry" },
-  { keys: ["workPermitExpiry"], ar: "انتهاء رخصة العمل", en: "Work permit expiry" },
-  { keys: ["passportExpiry"], ar: "انتهاء الجواز", en: "Passport expiry" },
-  { keys: ["medicalInsuranceExpiry"], ar: "انتهاء التأمين الطبي", en: "Medical insurance expiry" },
-];
-
-/** Platform emp alerts — L2648–2661 «يحتاج تجديدًا». */
+/** Platform emp alerts — L2648–2661 «يحتاج تجديدًا». Same dated-doc collector as ministry alerts. */
 export default function EmpAlertsStrip({ employee, lang = "ar" }) {
   const ar = lang === "ar";
   const profile = employee?.profile || {};
 
   const alerts = useMemo(() => {
     const rows = [];
-    for (const field of EXPIRY_FIELDS) {
-      const iso = field.keys.map((k) => profile[k]).find(Boolean);
-      if (!iso) continue;
-      const chip = expiryChip(iso, ar);
+    for (const doc of collectEmployeeValidityDocs(employee)) {
+      const chip = expiryChip(doc.expiryDate, ar);
       if (!chip) continue;
       if (chip.text === (ar ? "ساري" : "Valid")) continue;
       rows.push({
-        label: ar ? field.ar : field.en,
-        value: niceDate(iso, ar),
+        label: ar ? doc.docLabelAr : doc.docLabelEn,
+        value: niceDate(doc.expiryDate, ar),
         chipText: chip.text,
         chipStyle: chip.style,
       });

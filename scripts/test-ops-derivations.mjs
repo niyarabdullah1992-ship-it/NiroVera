@@ -16,11 +16,29 @@ import {
   isAwaitingApproval,
   deriveDailyTaskPace,
   deriveBoardDailyPace,
+  dailyPaceCopy,
   dailyPaceLabel,
   checkAutoEscalateGate,
   runOpsEscalationSweep,
   applyOpsAutoEscalate,
   riyadhHour,
+  expandTaskRecurrence,
+  checkTaskRecurrenceGate,
+  taskRecurrenceFromForm,
+  recurrenceHorizonEnd,
+  recurrenceDurationEnd,
+  taskWindowFromForm,
+  checkTaskWindowFromForm,
+  checkTaskPaceFromForm,
+  taskWindowSpanEnd,
+  applyTaskWindowSpan,
+  formPaceMode,
+  clipIsoDatesToWindow,
+  isOpsTaskDeleted,
+  isOpsTaskArchived,
+  checkDeleteOpsTaskGate,
+  applyOpsSoftDelete,
+  buildTaskAuditTimeline,
 } from "../src/lib/opsDerivations.js";
 
 // ── Points formula (High 3 · Medium 2 · Low 1) × effort (1–5) ───────────────
@@ -113,7 +131,7 @@ const sameDay = deriveDailyTaskPace({
 assert.equal(sameDay.days, 1);
 assert.equal(sameDay.todayExpected, 30);
 
-assert.equal(deriveDailyTaskPace({ targetCount: 1, dueAt: "2026-08-25", today: paceDay }).active, false);
+assert.equal(deriveDailyTaskPace({ targetCount: 1, dueAt: "2026-08-25", today: paceDay }).active, true);
 assert.equal(deriveDailyTaskPace({
   targetCount: 30,
   completedCount: 30,
@@ -126,7 +144,7 @@ const board = deriveBoardDailyPace([
   { targetCount: 30, completedCount: 0, dueAt: "2026-08-25", createdAt: "2026-08-17", status: "active" },
   { targetCount: 1, dueAt: "2026-08-25", status: "active" },
 ], paceDay);
-assert.equal(board.active, 1);
+assert.equal(board.active, 2);
 assert.equal(board.todayExpected, 4);
 assert.ok(dailyPaceLabel(pace, true).includes("4"));
 
@@ -251,6 +269,8 @@ const samePerson = checkReassignGate({
   user: manager,
   toId: "e1",
   reason: "لم يُنجز",
+  delegatedAt: "2026-09-06",
+  actingUntil: "2026-12-01",
   people: reassignPeople,
   lang: "ar",
 });
@@ -262,6 +282,8 @@ const okReassign = checkReassignGate({
   user: manager,
   toId: "e2",
   reason: "لم يُنجز في الوقت",
+  delegatedAt: "2026-09-06",
+  actingUntil: "2026-12-01",
   people: reassignPeople,
   lang: "ar",
 });
@@ -314,5 +336,340 @@ const swept = runOpsEscalationSweep([pacedTask], escData, evening, { force: true
 assert.equal(swept.escalated, 1);
 assert.equal(swept.tasks[0].escalationLevel, 1);
 assert.equal(swept.tasks[0].autoEscalated, true);
+
+// ── Recurring task expansion (weekday / N× month) ───────────────────────────
+assert.equal(recurrenceHorizonEnd("2026-09-06", "m"), "2026-09-30");
+const wednesdays = expandTaskRecurrence(
+  { kind: "weekly", weekday: 3, horizon: "m" },
+  { startAt: "2026-09-01" },
+);
+assert.deepEqual(wednesdays.map((w) => w.startAt), ["2026-09-02", "2026-09-09", "2026-09-16", "2026-09-23", "2026-09-30"]);
+assert.equal(wednesdays.every((w) => w.startAt === w.dueAt), true);
+
+const threeTuesdays = expandTaskRecurrence(
+  { kind: "monthly_weekday", weekday: 2, timesPerMonth: 3, horizon: "m" },
+  { startAt: "2026-09-01" },
+);
+assert.deepEqual(threeTuesdays.map((w) => w.startAt), ["2026-09-01", "2026-09-08", "2026-09-15"]);
+
+const yearThree = expandTaskRecurrence(
+  { kind: "monthly_weekday", weekday: 2, timesPerMonth: 3, horizon: "y" },
+  { startAt: "2026-09-01" },
+);
+assert.equal(yearThree.length, 36);
+
+const monthDates = expandTaskRecurrence(
+  { kind: "monthly_dates", monthDays: [5, 15, 25], horizon: "m" },
+  { startAt: "2026-09-06" },
+);
+assert.deepEqual(monthDates.map((w) => w.startAt), ["2026-09-15", "2026-09-25"]);
+
+const missingDay = checkTaskRecurrenceGate({ kind: "weekly", horizon: "m" }, { startAt: "2026-09-01" });
+assert.equal(missingDay.ok, false);
+assert.equal(missingDay.error, "RECURRENCE_WEEKDAY_REQUIRED");
+
+const fromForm = taskRecurrenceFromForm({
+  recurrenceKind: "monthly",
+  recurrenceDayMode: "weekday",
+  recurrenceWeekday: 3,
+  recurrenceTimes: 3,
+  recurrenceHorizon: "y",
+});
+assert.equal(fromForm.kind, "monthly_weekday");
+assert.equal(fromForm.timesPerMonth, 3);
+assert.equal(fromForm.weekday, 3);
+
+const asRange = taskRecurrenceFromForm({ recurrenceKind: "range" });
+assert.equal(asRange.kind, "once");
+assert.equal(taskRecurrenceFromForm({ recurrenceKind: "daily" }).kind, "once");
+
+const weeklyRange = expandTaskRecurrence(
+  { kind: "weekly", weekday: 3, horizon: "y" },
+  { startAt: "2026-09-01", dueAt: "2026-09-16" },
+);
+assert.deepEqual(weeklyRange.map((w) => w.startAt), ["2026-09-02", "2026-09-09", "2026-09-16"]);
+
+const yearlyWeeks = taskRecurrenceFromForm({
+  recurrenceKind: "yearly",
+  recurrenceYearSpread: "weeks",
+  recurrenceWeekday: 3,
+});
+assert.equal(yearlyWeeks.kind, "once");
+
+const yearlyMonths = taskRecurrenceFromForm({
+  recurrenceKind: "yearly",
+  recurrenceYearSpread: "months",
+  recurrenceDayMode: "weekday",
+  recurrenceWeekday: 2,
+  recurrenceTimes: 3,
+});
+assert.equal(yearlyMonths.kind, "monthly_weekday");
+assert.equal(yearlyMonths.horizon, "y");
+assert.equal(yearlyMonths.timesPerMonth, 3);
+
+const fiveTuesdays = expandTaskRecurrence(
+  { kind: "monthly_weekday", weekday: 2, timesPerMonth: 5, horizon: "m" },
+  { startAt: "2026-09-01" },
+);
+assert.deepEqual(fiveTuesdays.map((w) => w.startAt), ["2026-09-01", "2026-09-08", "2026-09-15", "2026-09-22", "2026-09-29"]);
+
+const eightTuesdays = expandTaskRecurrence(
+  { kind: "monthly_weekday", weekday: 2, timesPerMonth: 8, horizon: "m" },
+  { startAt: "2026-09-01" },
+);
+assert.equal(eightTuesdays.length, 5);
+
+const missingTimes = checkTaskRecurrenceGate(
+  { kind: "monthly_weekday", weekday: 3, horizon: "m" },
+  { startAt: "2026-09-01" },
+);
+assert.equal(missingTimes.ok, false);
+assert.equal(missingTimes.error, "RECURRENCE_TIMES_REQUIRED");
+
+const sixDates = taskRecurrenceFromForm({
+  recurrenceKind: "monthly",
+  recurrenceDayMode: "dates",
+  recurrenceTimes: 6,
+  recurrenceMonthDays: ["1", "5", "10", "15", "20", "25"],
+  recurrenceHorizon: "m",
+});
+assert.equal(sixDates.kind, "monthly_dates");
+assert.deepEqual(sixDates.monthDays, [1, 5, 10, 15, 20, 25]);
+
+assert.equal(recurrenceDurationEnd("2026-09-06", 3, 0), "2026-12-06");
+assert.equal(recurrenceDurationEnd("2026-09-06", 1, 0), "2026-10-06");
+assert.equal(recurrenceDurationEnd("2026-09-06", 0, 0), "");
+
+const dailyWin = taskWindowFromForm({
+  recurrenceKind: "daily",
+  startAt: "2026-09-01",
+  dueAt: "2026-09-10",
+});
+assert.deepEqual(dailyWin, { startAt: "2026-09-01", dueAt: "2026-09-10" });
+
+const weeklyRangeMissing = checkTaskWindowFromForm({
+  recurrenceKind: "weekly",
+  startAt: "2026-09-06",
+  dueAt: "",
+});
+assert.equal(weeklyRangeMissing.ok, false);
+assert.equal(weeklyRangeMissing.error, "RECURRENCE_RANGE_REQUIRED");
+
+const weeklyWin = taskWindowFromForm({
+  recurrenceKind: "weekly",
+  startAt: "2026-09-06",
+  dueAt: "2026-11-06",
+});
+assert.equal(weeklyWin.dueAt, "2026-11-06");
+const weeklyDur = expandTaskRecurrence(
+  { kind: "weekly", weekday: 3 },
+  weeklyWin,
+);
+assert.deepEqual(weeklyDur.map((w) => w.startAt), [
+  "2026-09-09", "2026-09-16", "2026-09-23", "2026-09-30",
+  "2026-10-07", "2026-10-14", "2026-10-21", "2026-10-28",
+  "2026-11-04",
+]);
+
+const weeklyGroup = expandTaskRecurrence(
+  { kind: "weekly", weekdays: [0, 3] },
+  { startAt: "2026-09-06", dueAt: "2026-09-20" },
+);
+assert.deepEqual(weeklyGroup.map((w) => w.startAt), [
+  "2026-09-06", "2026-09-09", "2026-09-13", "2026-09-16", "2026-09-20",
+]);
+
+const pickedDays = expandTaskRecurrence(
+  { kind: "selected_dates", dates: ["2026-09-08", "2026-09-10", "2026-09-22"] },
+  { startAt: "2026-09-06", dueAt: "2026-09-16" },
+);
+assert.deepEqual(pickedDays.map((w) => w.startAt), ["2026-09-08", "2026-09-10"]);
+
+const fromWeeklyGroup = taskRecurrenceFromForm({
+  recurrenceKind: "weekly",
+  recurrenceWeekdays: [0, 2, 4],
+});
+assert.equal(fromWeeklyGroup.kind, "once");
+
+const fromPicked = taskRecurrenceFromForm({
+  recurrenceKind: "weekly",
+  recurrenceDayMode: "dates",
+  recurrencePickedDays: ["2026-09-08", "2026-09-10"],
+});
+assert.equal(fromPicked.kind, "once");
+
+const weeklyDaysMissing = checkTaskWindowFromForm({
+  recurrenceKind: "weekly",
+  startAt: "2026-09-06",
+  dueAt: "2026-09-20",
+  recurrenceWeekdays: [],
+});
+assert.equal(weeklyDaysMissing.ok, false);
+assert.equal(weeklyDaysMissing.error, "RECURRENCE_WEEKDAY_REQUIRED");
+
+const notYetPace = deriveDailyTaskPace({
+  targetCount: 50,
+  dueAt: "2026-09-10",
+  startAt: "2026-09-07",
+  today: new Date("2026-09-06T12:00:00"),
+});
+assert.equal(notYetPace.notYet, true);
+assert.equal(notYetPace.todayExpected, 0);
+assert.equal(notYetPace.plannedShare, 13);
+assert.equal(notYetPace.days, 4);
+const notYetCopy = dailyPaceCopy(notYetPace, true);
+assert.equal(notYetCopy.kicker, "لم يحن يومه");
+assert.equal(notYetCopy.metrics[0].value, "13");
+assert.equal(notYetCopy.metrics[0].label, "حصة اليوم");
+
+const futureWeekdays = deriveDailyTaskPace({
+  targetCount: 30,
+  startAt: "2026-09-07",
+  dueAt: "2026-09-11",
+  weekdays: [0, 2, 4, 6],
+  today: new Date("2026-09-06T12:00:00"),
+});
+assert.equal(futureWeekdays.notYet, true);
+assert.equal(futureWeekdays.days, 2);
+assert.equal(futureWeekdays.todayExpected, 0);
+assert.equal(futureWeekdays.plannedShare, 15);
+const futureCopy = dailyPaceCopy(futureWeekdays, true);
+assert.equal(futureCopy.kicker, "لم يحن يومه");
+assert.equal(futureCopy.metrics[0].value, "15");
+
+const weeklyOnDay = deriveDailyTaskPace({
+  targetCount: 10,
+  startAt: "2026-09-06",
+  dueAt: "2026-09-20",
+  weekdays: [0, 3],
+  today: new Date("2026-09-06T12:00:00"),
+});
+assert.equal(weeklyOnDay.days, 5);
+assert.equal(weeklyOnDay.todayExpected, 2);
+assert.equal(weeklyOnDay.notYet, false);
+
+const weeklyOffDay = deriveDailyTaskPace({
+  targetCount: 10,
+  startAt: "2026-09-06",
+  dueAt: "2026-09-20",
+  weekdays: [0, 3],
+  today: new Date("2026-09-07T12:00:00"),
+});
+assert.equal(weeklyOffDay.offDay, true);
+assert.equal(weeklyOffDay.todayExpected, 0);
+
+assert.equal(taskWindowSpanEnd("2026-09-06", "w"), "2026-09-12");
+assert.equal(taskWindowSpanEnd("2026-09-06", "m"), "2026-10-05");
+assert.equal(taskWindowSpanEnd("2026-09-06", "y"), "2027-09-05");
+assert.deepEqual(applyTaskWindowSpan({ startAt: "2026-09-06" }, "w"), {
+  startAt: "2026-09-06",
+  dueAt: "2026-09-12",
+});
+assert.equal(formPaceMode({}), "all");
+assert.deepEqual(
+  clipIsoDatesToWindow(["2026-09-08", "2026-09-22"], "2026-09-06", "2026-09-20"),
+  ["2026-09-08"],
+);
+
+const paceWeekMissing = checkTaskPaceFromForm({
+  startAt: "2026-09-06",
+  dueAt: "2026-09-20",
+  paceMode: "weekdays",
+  paceWeekdays: [],
+});
+assert.equal(paceWeekMissing.ok, false);
+assert.equal(paceWeekMissing.error, "PACE_WEEKDAY_REQUIRED");
+
+const paceDatesMissing = checkTaskPaceFromForm({
+  startAt: "2026-09-06",
+  dueAt: "2026-09-20",
+  paceMode: "dates",
+  paceDates: ["2026-08-01"],
+});
+assert.equal(paceDatesMissing.ok, false);
+assert.equal(paceDatesMissing.error, "PACE_DAY_REQUIRED");
+
+const paceDatesOk = checkTaskPaceFromForm({
+  startAt: "2026-09-06",
+  dueAt: "2026-09-20",
+  paceMode: "dates",
+  paceDates: ["2026-09-08"],
+});
+assert.equal(paceDatesOk.ok, true);
+
+const pickedPace = deriveDailyTaskPace({
+  targetCount: 9,
+  startAt: "2026-09-06",
+  dueAt: "2026-09-20",
+  paceDates: ["2026-09-08", "2026-09-10", "2026-09-16"],
+  today: new Date("2026-09-08T12:00:00"),
+});
+assert.equal(pickedPace.days, 3);
+assert.equal(pickedPace.todayExpected, 3);
+
+const pickedOff = deriveDailyTaskPace({
+  targetCount: 9,
+  startAt: "2026-09-06",
+  dueAt: "2026-09-20",
+  paceDates: ["2026-09-08", "2026-09-10", "2026-09-16"],
+  today: new Date("2026-09-09T12:00:00"),
+});
+assert.equal(pickedOff.offDay, true);
+assert.equal(pickedOff.todayExpected, 0);
+
+const monthlyWin = taskWindowFromForm({
+  recurrenceKind: "monthly",
+  startAt: "2026-09-01",
+  recurrenceMonths: 3,
+});
+assert.equal(monthlyWin.dueAt, "2026-12-01");
+const monthlyDur = expandTaskRecurrence(
+  { kind: "monthly_weekday", weekday: 2, timesPerMonth: 2, horizon: "m" },
+  monthlyWin,
+);
+assert.deepEqual(monthlyDur.map((w) => w.startAt), [
+  "2026-09-01", "2026-09-08",
+  "2026-10-06", "2026-10-13",
+  "2026-11-03", "2026-11-10",
+  "2026-12-01",
+]);
+
+const yearAsMonths = taskWindowFromForm({
+  recurrenceKind: "monthly",
+  startAt: "2026-09-06",
+  recurrenceMonths: 12,
+});
+assert.equal(yearAsMonths.dueAt, "2027-09-06");
+
+const freshTask = {
+  id: "tk_1",
+  createdAt: new Date().toISOString(),
+  createdBy: "u1",
+  createdByName: "نورة",
+  completedCount: 0,
+  status: "active",
+};
+assert.equal(checkDeleteOpsTaskGate(freshTask, { id: "u1" }).ok, true);
+assert.equal(checkDeleteOpsTaskGate({ ...freshTask, completedCount: 1 }, { id: "u1" }).ok, false);
+const oldTask = { ...freshTask, createdAt: new Date(Date.now() - 4 * 60 * 1000).toISOString() };
+assert.equal(checkDeleteOpsTaskGate(oldTask, { id: "u1" }).error, "UNDO_WINDOW_CLOSED");
+const deleted = applyOpsSoftDelete(freshTask, { byId: "u1", byName: "نورة" });
+assert.equal(isOpsTaskDeleted(deleted), true);
+assert.equal(isOpsTaskArchived(deleted), true);
+assert.equal(deriveOpsCounts([freshTask, deleted]).total, 1);
+const timeline = buildTaskAuditTimeline({
+  ...freshTask,
+  assignmentHistory: [{
+    kind: "delegate",
+    fromName: "نورة",
+    toName: "سارة",
+    delegatedAt: "2026-09-06T09:00",
+    actingUntil: "2026-09-10T17:00",
+    reason: "إجازة",
+    at: "2026-09-06T09:00:00",
+  }],
+}, "ar");
+assert.ok(timeline.some((r) => r.type === "create"));
+assert.ok(timeline.some((r) => r.type === "delegate"));
 
 console.log("opsDerivations E2E rules: PASS");

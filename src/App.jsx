@@ -44,6 +44,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Operations = lazy(() => import('./pages/Operations'));
 const StationChat = lazy(() => import('./pages/StationChat'));
 const Complaints = lazy(() => import('./pages/Complaints'));
+const Discipline = lazy(() => import('./pages/Discipline'));
 const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'));
 const HRStructureManagement = lazy(() => import('./pages/HRStructureManagement'));
 const OrgStructure = lazy(() => import('./pages/OrgStructure'));
@@ -185,6 +186,7 @@ function AppRoutes() {
       <Route path="/app/chat" element={<RequireAuth><StationChat /></RequireAuth>} />
 
       <Route path="/app/complaints" element={<RequireAuth><Complaints /></RequireAuth>} />
+      <Route path="/app/discipline" element={<RequireAuth><Discipline /></RequireAuth>} />
       <Route path="/app/employees/:employeeId" element={<RequireAuth><EmployeeProfile /></RequireAuth>} />
       <Route path="/app/hr" element={<RequireAuth><HRStructureManagement /></RequireAuth>} />
       <Route path="/app/org" element={<RequireAuth><OrgStructure /></RequireAuth>} />

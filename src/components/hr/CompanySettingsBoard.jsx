@@ -11,6 +11,7 @@ import { toast } from "@/components/ui/use-toast";
 import { renameCompany } from "@/lib/companySettings";
 import { ACCENT, MUTED, NAVY, pageCol, ui, field, CARD, SURFACE } from "@/lib/platformStyles";
 import { ChromeBox } from "@/components/shared/IdentityCard";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import SettingsPermDelegation from "@/components/hr/SettingsPermDelegation";
 
 async function settingsApi(payload) {
@@ -232,6 +233,9 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
         <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY, display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ flex: 1 }}>{ar ? "بيانات المنشأة" : "Company record"}</span>
           {busy && <Loader2 style={{ width: 14, height: 14, color: MUTED }} className="animate-spin" />}
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <LaborArticleCite ruleId="compliance.establishment.dataUpdateDays" ar={ar} showText />
         </div>
         {canManage ? (
           <>

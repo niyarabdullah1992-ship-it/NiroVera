@@ -169,7 +169,7 @@ export default function PayrollWpsBoard({
 
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
           {[
-            { label: ar ? "مهلة الإيداع" : "Deposit deadline", value: deadline || "—", hint: late ? (ar ? "متأخر" : "Late") : (ar ? "اليوم 3 من الشهر التالي" : "Day 3 of next month"), warn: late },
+            { label: ar ? "مهلة الإيداع" : "Deposit deadline", value: deadline || "—", hint: late ? (ar ? "متأخر" : "Late") : (ar ? "30 يوماً من نهاية شهر الاستحقاق" : "30 days from end of entitlement month"), warn: late },
             { label: ar ? "صفوف جاهزة" : "Ready rows", value: `${readyCount}/${rows.length}` },
             { label: ar ? "موقوف" : "Blocked", value: String(blockedCount), warn: blockedCount > 0 },
           ].map((card) => (

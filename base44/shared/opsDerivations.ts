@@ -75,6 +75,8 @@ export type OpsTaskLike = {
   paceDayPlan?: Record<string, number> | null;
   paceDayLog?: Record<string, number> | null;
   paceBlocker?: Record<string, unknown> | null;
+  paceWeekdays?: unknown;
+  paceDates?: unknown;
   status?: string;
   completedCount?: number;
   targetCount?: number;
@@ -122,6 +124,54 @@ export function calendarDaysInclusive(fromIso: string, toIso: string) {
   return Math.round((b.getTime() - a.getTime()) / 86400000) + 1;
 }
 
+export function listMatchingPaceDays({
+  startAt,
+  dueAt,
+  weekdays,
+  dates,
+}: {
+  startAt?: string | null;
+  dueAt?: string | null;
+  weekdays?: unknown;
+  dates?: unknown;
+} = {}) {
+  const from = isoDayKey(startAt);
+  const to = isoDayKey(dueAt);
+  if (!from || !to || from > to) return [] as string[];
+  const picked = [...new Set((Array.isArray(dates) ? dates : [])
+    .map((v) => String(v || "").trim().slice(0, 10))
+    .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && v >= from && v <= to))]
+    .sort();
+  if (Array.isArray(dates) && dates.length) return picked;
+  const wanted = [...new Set((Array.isArray(weekdays) ? weekdays : [])
+    .map((n) => Math.round(Number(n)))
+    .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))];
+  const days: string[] = [];
+  let day = from;
+  while (day && day <= to) {
+    const dt = new Date(`${day}T00:00:00`);
+    if (!wanted.length || wanted.includes(dt.getDay())) days.push(day);
+    dt.setDate(dt.getDate() + 1);
+    day = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  }
+  return days;
+}
+
+export function taskPaceInput(task: OpsTaskLike | null | undefined, today?: Date) {
+  return {
+    targetCount: task?.targetCount,
+    completedCount: task?.completedCount,
+    dueAt: task?.dueAt,
+    startAt: task?.startAt || task?.createdAt,
+    paceStartAt: task?.paceStartAt,
+    paceSpreadTarget: task?.paceSpreadTarget,
+    paceDayPlan: task?.paceDayPlan,
+    weekdays: (task as { paceWeekdays?: unknown } | null | undefined)?.paceWeekdays,
+    paceDates: (task as { paceDates?: unknown } | null | undefined)?.paceDates,
+    today,
+  };
+}
+
 export type DailyTaskPace = {
   active: boolean;
   target: number;
@@ -132,8 +182,10 @@ export type DailyTaskPace = {
   even: number;
   extra: number;
   todayExpected: number;
+  plannedShare: number;
   overdue: boolean;
   notYet: boolean;
+  offDay?: boolean;
   due: string;
   start: string;
   redistributed: boolean;
@@ -141,6 +193,7 @@ export type DailyTaskPace = {
   spreadTarget: number;
   baseDone: number;
   dayPlan: Record<string, number>;
+  paceDays?: string[];
 };
 
 /** Normalize { "YYYY-MM-DD": n } day quotas. Drops empty/invalid days. */
@@ -176,6 +229,8 @@ export function deriveDailyTaskPace({
   paceStartAt,
   paceSpreadTarget,
   paceDayPlan,
+  weekdays,
+  paceDates,
   today = new Date(),
 }: {
   targetCount?: number | null;
@@ -185,6 +240,8 @@ export function deriveDailyTaskPace({
   paceStartAt?: string | null;
   paceSpreadTarget?: number | null;
   paceDayPlan?: Record<string, number> | null;
+  weekdays?: unknown;
+  paceDates?: unknown;
   today?: Date;
 } = {}): DailyTaskPace {
   const target = Math.max(0, Math.round(Number(targetCount) || 0));
@@ -210,8 +267,10 @@ export function deriveDailyTaskPace({
     even: 0,
     extra: 0,
     todayExpected: 0,
+    plannedShare: 0,
     overdue: false,
     notYet: false,
+    offDay: false,
     due: due || "",
     start: start || "",
     redistributed: false,
@@ -219,6 +278,7 @@ export function deriveDailyTaskPace({
     spreadTarget: target,
     baseDone: 0,
     dayPlan: {},
+    paceDays: [],
   };
 
   if (hasCustom) {
@@ -235,6 +295,7 @@ export function deriveDailyTaskPace({
     } else if (!notYet) {
       todayExpected = Math.min(remaining, Math.max(0, Number(plan[todayKey]) || 0));
     }
+    const plannedShare = Math.min(remaining, Math.max(0, Number(plan[firstDay]) || 0));
     return {
       active: target > 0 && planTotal > 0,
       target,
@@ -245,8 +306,10 @@ export function deriveDailyTaskPace({
       even: 0,
       extra: 0,
       todayExpected,
+      plannedShare,
       overdue,
       notYet,
+      offDay: false,
       due: effectiveDue,
       start: firstDay,
       redistributed: false,
@@ -254,6 +317,7 @@ export function deriveDailyTaskPace({
       spreadTarget: planTotal,
       baseDone: 0,
       dayPlan: plan,
+      paceDays: planEntries.map((row) => row.day),
     };
   }
 
@@ -265,31 +329,48 @@ export function deriveDailyTaskPace({
     ? Math.max(0, Math.round(Number(paceSpreadTarget != null ? paceSpreadTarget : remaining) || 0))
     : target;
   const baseDone = redistributed ? Math.max(0, target - spreadTarget) : 0;
-  const days = Math.max(1, calendarDaysInclusive(windowStart, due));
+  const filtered = (Array.isArray(paceDates) && paceDates.length) || (Array.isArray(weekdays) && weekdays.length)
+    ? listMatchingPaceDays({ startAt: windowStart, dueAt: due, weekdays, dates: paceDates })
+    : null;
+  if (filtered && !filtered.length) return empty;
+  const paceDays = filtered || [];
+  const days = Math.max(1, paceDays.length || calendarDaysInclusive(windowStart, due));
   const even = Math.floor(spreadTarget / days);
   const extra = spreadTarget % days;
   const overdue = todayKey > due;
-  const beforeStart = todayKey < windowStart;
+  const firstDay = paceDays[0] || windowStart;
+  const beforeStart = todayKey < firstDay;
+  const onDay = !paceDays.length || paceDays.includes(todayKey);
+  const offDay = !beforeStart && !overdue && !onDay;
   let todayExpected = 0;
   if (overdue) {
     todayExpected = remaining;
-  } else if (!beforeStart) {
-    const dayIndex = Math.min(days - 1, Math.max(0, calendarDaysInclusive(windowStart, todayKey) - 1));
+  } else if (!beforeStart && onDay) {
+    const dayIndex = paceDays.length
+      ? Math.max(0, paceDays.indexOf(todayKey))
+      : Math.min(days - 1, Math.max(0, calendarDaysInclusive(windowStart, todayKey) - 1));
     todayExpected = even + (dayIndex < extra ? 1 : 0);
     todayExpected = Math.min(remaining, todayExpected);
   }
+  const plannedShare = Math.min(remaining, even + (extra > 0 ? 1 : 0));
   return {
     active: true,
     target,
     done,
     remaining,
     days,
-    daysLeft: overdue ? 0 : Math.max(0, calendarDaysInclusive(todayKey, due)),
+    daysLeft: overdue
+      ? 0
+      : (paceDays.length
+        ? paceDays.filter((d) => d >= todayKey).length
+        : Math.max(0, calendarDaysInclusive(todayKey, due))),
     even,
     extra,
     todayExpected,
+    plannedShare,
     overdue,
     notYet: beforeStart,
+    offDay,
     due,
     start: windowStart,
     redistributed,
@@ -297,23 +378,40 @@ export function deriveDailyTaskPace({
     spreadTarget,
     baseDone,
     dayPlan: {},
+    paceDays,
   };
 }
 
 export function dailyPaceCopy(pace: DailyTaskPace | null | undefined, ar = true) {
   if (!pace?.active) return null;
+  const todayLabel = ar ? "حصة اليوم" : "Today's quota";
   if (pace.notYet) {
+    const share = Math.max(0, Number(pace.plannedShare) || 0);
     return {
       tone: "ok" as const,
       kicker: ar ? "لم يحن يومه" : "Its day has not come",
       metrics: [
-        { label: ar ? "اليوم" : "Today", value: "—" },
+        { label: todayLabel, value: String(share) },
         { label: ar ? "المستهدف" : "Target", value: String(pace.target) },
         { label: ar ? "الأيام" : "Days", value: String(pace.days) },
       ],
       hint: ar
-        ? "التوزيع يبدأ من تاريخ البدء حتى الاستحقاق — لا حصة لليوم قبل ذلك."
-        : "The spread runs from the start date to the due date — no quota today before then.",
+        ? "حصة اليوم من تقسيم العدد على أيام التوزيع — التنفيذ لم يحن موعده بعد."
+        : "Today's quota is the count split across spread days — work has not started yet.",
+    };
+  }
+  if (pace.offDay) {
+    return {
+      tone: "ok" as const,
+      kicker: ar ? "اليوم خارج التوزيع" : "Today is off the spread",
+      metrics: [
+        { label: todayLabel, value: "0" },
+        { label: ar ? "المستهدف" : "Target", value: String(pace.target) },
+        { label: ar ? "الأيام" : "Days", value: String(pace.days) },
+      ],
+      hint: ar
+        ? "هذا اليوم ليس من أيام التوزيع المختارة — حصة اليوم 0."
+        : "Today is not one of the selected spread days — today's quota is 0.",
     };
   }
   if (pace.remaining <= 0) {
@@ -323,7 +421,7 @@ export function dailyPaceCopy(pace: DailyTaskPace | null | undefined, ar = true)
         ? (ar ? "خطة أيام محددة" : "Custom day plan")
         : (ar ? "التوزيع على الأيام" : "Spread across days"),
       metrics: [
-        { label: ar ? "اليوم" : "Today", value: "0" },
+        { label: todayLabel, value: "0" },
         { label: ar ? "المستهدف" : "Target", value: String(pace.target) },
         { label: ar ? "الأيام" : "Days", value: String(pace.days) },
       ],
@@ -337,7 +435,7 @@ export function dailyPaceCopy(pace: DailyTaskPace | null | undefined, ar = true)
         ? (ar ? "خطة أيام — متأخر" : "Day plan — behind")
         : (ar ? "متأخر عن التوزيع" : "Behind the spread"),
       metrics: [
-        { label: ar ? "اليوم" : "Today", value: String(pace.remaining) },
+        { label: todayLabel, value: String(pace.remaining) },
         { label: ar ? "المتبقي" : "Left", value: String(pace.remaining) },
         { label: ar ? "الأيام" : "Days", value: "0" },
       ],
@@ -350,15 +448,17 @@ export function dailyPaceCopy(pace: DailyTaskPace | null | undefined, ar = true)
       ? (ar ? "خطة أيام محددة" : "Custom day plan")
       : (ar ? "التوزيع على الأيام" : "Spread across days"),
     metrics: [
-      { label: ar ? "اليوم" : "Today", value: String(pace.todayExpected) },
+      { label: todayLabel, value: String(pace.todayExpected) },
       { label: ar ? "المستهدف" : "Target", value: String(pace.target) },
       { label: ar ? "الأيام" : "Days", value: String(pace.days) },
     ],
     hint: pace.custom
       ? (ar ? "حصة الأيام المحددة في الخطة — اليوم فقط إن وُجدت له كمية" : "Quota from the custom day plan — today only if scheduled")
-      : pace.redistributed
-        ? (ar ? "أُعيد توزيع المتبقي بالتساوي من يوم إعادة الضبط" : "Remainder re-split evenly from the rebaseline day")
-        : (ar ? "يُقسَّم العدد بالتساوي من تاريخ البدء حتى الاستحقاق" : "The count is split evenly from the start date to the due date"),
+      : pace.paceDays?.length
+        ? (ar ? "يُقسَّم العدد على أيام التوزيع المختارة من تاريخ البدء حتى الاستحقاق" : "The count is split across the selected spread days from start to due")
+        : pace.redistributed
+          ? (ar ? "أُعيد توزيع المتبقي بالتساوي من يوم إعادة الضبط" : "Remainder re-split evenly from the rebaseline day")
+          : (ar ? "يُقسَّم العدد بالتساوي من تاريخ البدء حتى الاستحقاق" : "The count is split evenly from the start date to the due date"),
   };
 }
 
@@ -561,16 +661,7 @@ export function deriveBoardDailyPace(tasks: OpsTaskLike[], today = new Date()) {
   let active = 0;
   (Array.isArray(tasks) ? tasks : []).forEach((task) => {
     if (isDone(task) || isAwaitingApproval(task)) return;
-    const pace = deriveDailyTaskPace({
-      targetCount: task.targetCount,
-      completedCount: task.completedCount,
-      dueAt: task.dueAt,
-      startAt: task.startAt || task.createdAt,
-      paceStartAt: task.paceStartAt,
-      paceSpreadTarget: task.paceSpreadTarget,
-      paceDayPlan: task.paceDayPlan,
-      today,
-    });
+    const pace = deriveDailyTaskPace(taskPaceInput(task, today));
     if (!pace.active) return;
     active += 1;
     todayExpected += pace.todayExpected;
@@ -596,6 +687,512 @@ export function taskPlanHorizon(task: OpsTaskLike | null | undefined, today = ne
   return planHorizonFromDue(task?.dueAt, today);
 }
 
+/** Cap on materialized occurrences from one New-task recurrence. */
+export const TASK_RECURRENCE_MAX = 52;
+/** Max repeats inside one calendar month (days 1–31). */
+export const TASK_RECURRENCE_TIMES_MAX = 31;
+
+export function clampTimesPerMonth(raw: unknown): number | null {
+  if (raw === "" || raw == null) return null;
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.min(TASK_RECURRENCE_TIMES_MAX, n);
+}
+
+export const WEEKDAY_OPTIONS = [
+  { id: 0, ar: "الأحد", en: "Sunday" },
+  { id: 1, ar: "الاثنين", en: "Monday" },
+  { id: 2, ar: "الثلاثاء", en: "Tuesday" },
+  { id: 3, ar: "الأربعاء", en: "Wednesday" },
+  { id: 4, ar: "الخميس", en: "Thursday" },
+  { id: 5, ar: "الجمعة", en: "Friday" },
+  { id: 6, ar: "السبت", en: "Saturday" },
+] as const;
+
+export const RECURRENCE_HORIZONS = [
+  { id: "m", ar: "هذا الشهر", en: "This month" },
+  { id: "q", ar: "ثلاثة أشهر", en: "Three months" },
+  { id: "y", ar: "سنة", en: "A year" },
+] as const;
+
+export type TaskRecurrenceKind = "once" | "weekly" | "selected_dates" | "monthly_weekday" | "monthly_dates";
+
+export type TaskRecurrence = {
+  kind: TaskRecurrenceKind;
+  weekday?: number | null;
+  weekdays?: number[];
+  dates?: string[];
+  timesPerMonth?: number;
+  monthDays?: number[];
+  horizon?: "m" | "q" | "y";
+  seriesId?: string | null;
+  occurrence?: number;
+  occurrenceCount?: number;
+};
+
+function isoFromYmd(y: number, month: number, d: number) {
+  return `${y}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function dateFromIsoDay(iso: string) {
+  const key = isoDayKey(iso);
+  const m = String(key).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function addCalendarDays(iso: string, n: number) {
+  const dt = dateFromIsoDay(iso);
+  if (!dt) return "";
+  dt.setDate(dt.getDate() + n);
+  return isoFromYmd(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+}
+
+export function listIsoDaysInRange(fromIso: string, toIso: string, max = 366) {
+  const from = isoDayKey(fromIso);
+  const to = isoDayKey(toIso);
+  if (!from || !to || from > to) return [];
+  const days: string[] = [];
+  for (let day = from; day && day <= to; day = addCalendarDays(day, 1)) {
+    days.push(day);
+    if (days.length >= max) break;
+  }
+  return days;
+}
+
+export const PACE_CHIP_DAYS_MAX = 62;
+export const PACE_DATES_MAX = 366;
+
+export const TASK_WINDOW_SPANS = [
+  { id: "w", ar: "أسبوع", en: "Week" },
+  { id: "m", ar: "شهر", en: "Month" },
+  { id: "y", ar: "سنة", en: "Year" },
+] as const;
+
+export function taskWindowSpanEnd(startIso: string, span: string) {
+  const dt = dateFromIsoDay(startIso);
+  if (!dt) return "";
+  if (span === "w") dt.setDate(dt.getDate() + 6);
+  else if (span === "m") {
+    dt.setMonth(dt.getMonth() + 1);
+    dt.setDate(dt.getDate() - 1);
+  } else if (span === "y") {
+    dt.setFullYear(dt.getFullYear() + 1);
+    dt.setDate(dt.getDate() - 1);
+  } else return isoDayKey(startIso);
+  return isoFromYmd(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+}
+
+export function applyTaskWindowSpan(
+  form: Record<string, unknown> | null | undefined,
+  span: string,
+  today: Date = new Date(),
+) {
+  const start = isoDayKey(form?.startAt as string | Date | undefined) || isoDayKey(today);
+  return { startAt: start, dueAt: taskWindowSpanEnd(start, span) };
+}
+
+export function formPaceMode(form: Record<string, unknown> | null | undefined) {
+  const mode = String(form?.paceMode || "all");
+  if (mode === "weekdays" || mode === "dates") return mode;
+  return "all";
+}
+
+export function clipIsoDatesToWindow(dates: unknown, startAt: unknown, dueAt: unknown, max = PACE_DATES_MAX) {
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(startAt || "").trim()) ? String(startAt).trim().slice(0, 10) : "";
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(String(dueAt || "").trim()) ? String(dueAt).trim().slice(0, 10) : "";
+  return normalizeIsoDates(dates, max).filter((d) => (!from || d >= from) && (!to || d <= to));
+}
+
+export function formPaceInput(form: Record<string, unknown> | null | undefined, today?: Date) {
+  const mode = formPaceMode(form);
+  const weekdays = mode === "weekdays"
+    ? normalizeWeekdays(form?.paceWeekdays, form?.recurrenceWeekdays ?? form?.recurrenceWeekday)
+    : [];
+  const paceDates = mode === "dates"
+    ? clipIsoDatesToWindow(form?.paceDates || form?.recurrencePickedDays, form?.startAt, form?.dueAt)
+    : [];
+  return {
+    targetCount: form?.targetCount,
+    dueAt: form?.dueAt,
+    startAt: form?.startAt,
+    weekdays: weekdays.length ? weekdays : undefined,
+    paceDates: paceDates.length ? paceDates : undefined,
+    today,
+  };
+}
+
+export function checkTaskPaceFromForm(form: Record<string, unknown> | null | undefined) {
+  const win = checkTaskWindowFromForm({ ...form, recurrenceKind: "daily" });
+  if (!win.ok) return win;
+  const mode = formPaceMode(form);
+  if (mode === "weekdays") {
+    const days = normalizeWeekdays(form?.paceWeekdays, form?.recurrenceWeekdays ?? form?.recurrenceWeekday);
+    if (!days.length) {
+      return {
+        ...win,
+        ok: false as const,
+        error: "PACE_WEEKDAY_REQUIRED",
+        reason: "حدّد أيام الأسبوع للتوزيع.",
+        reasonEn: "Pick the weekdays for the spread.",
+      };
+    }
+  }
+  if (mode === "dates") {
+    const dates = listMatchingPaceDays({
+      startAt: win.startAt,
+      dueAt: win.dueAt,
+      dates: form?.paceDates || form?.recurrencePickedDays,
+    });
+    if (!dates.length) {
+      return {
+        ...win,
+        ok: false as const,
+        error: "PACE_DAY_REQUIRED",
+        reason: "حدّد الأيام داخل الفترة.",
+        reasonEn: "Pick the days inside the date range.",
+      };
+    }
+  }
+  return { ok: true as const, ...win };
+}
+
+export function normalizeWeekdays(raw: unknown, fallback?: unknown) {
+  const src = Array.isArray(raw)
+    ? raw
+    : (fallback != null && fallback !== "" ? [fallback] : []);
+  return [...new Set(src
+    .map((n) => Math.round(Number(n)))
+    .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))]
+    .sort((a, b) => a - b);
+}
+
+export function normalizeIsoDates(raw: unknown, max = TASK_RECURRENCE_MAX) {
+  return [...new Set((Array.isArray(raw) ? raw : [])
+    .map((v) => String(v || "").trim().slice(0, 10))
+    .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(v)))]
+    .sort()
+    .slice(0, max);
+}
+
+export const TASK_RECURRENCE_MONTHS_MAX = 24;
+export const TASK_RECURRENCE_EXTRA_DAYS_MAX = 366;
+
+export function clampDurationPart(raw: unknown, max: number) {
+  if (raw === "" || raw == null) return 0;
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(max, n);
+}
+
+export function recurrenceDurationEnd(startIso: string, months: unknown, extraDays: unknown) {
+  const dt = dateFromIsoDay(startIso);
+  if (!dt) return "";
+  const m = clampDurationPart(months, TASK_RECURRENCE_MONTHS_MAX);
+  const d = clampDurationPart(extraDays, TASK_RECURRENCE_EXTRA_DAYS_MAX);
+  if (m < 1 && d < 1) return "";
+  dt.setMonth(dt.getMonth() + m);
+  dt.setDate(dt.getDate() + d);
+  return isoFromYmd(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+}
+
+export function taskWindowFromForm(form: Record<string, unknown> | null | undefined) {
+  const kind = String(form?.recurrenceKind || "daily");
+  const startAt = String(form?.startAt || "").trim().slice(0, 10);
+  if (kind === "daily" || kind === "once" || kind === "range" || kind === "weekly") {
+    return { startAt, dueAt: String(form?.dueAt || "").trim().slice(0, 10) };
+  }
+  return {
+    startAt,
+    dueAt: startAt ? recurrenceDurationEnd(startAt, form?.recurrenceMonths, 0) : "",
+  };
+}
+
+export function checkTaskWindowFromForm(form: Record<string, unknown> | null | undefined) {
+  const kind = String(form?.recurrenceKind || "daily");
+  const win = taskWindowFromForm(form);
+  if (kind === "daily" || kind === "once" || kind === "range" || kind === "weekly") {
+    if (!win.startAt || !win.dueAt) {
+      return {
+        ok: false as const,
+        error: "RECURRENCE_RANGE_REQUIRED",
+        reason: "حدّد تاريخ البدء وتاريخ الاستحقاق.",
+        reasonEn: "Pick the start and due dates.",
+        ...win,
+      };
+    }
+    if (win.startAt > win.dueAt) {
+      return {
+        ok: false as const,
+        error: "RECURRENCE_RANGE_ORDER",
+        reason: "تاريخ البدء بعد الاستحقاق.",
+        reasonEn: "Start date is after the due date.",
+        ...win,
+      };
+    }
+    if (kind === "weekly") {
+      if (form?.recurrenceDayMode === "dates") {
+        if (!normalizeIsoDates(form?.recurrencePickedDays).length) {
+          return {
+            ok: false as const,
+            error: "RECURRENCE_DAY_REQUIRED",
+            reason: "حدّد الأيام داخل الفترة.",
+            reasonEn: "Pick the days inside the date range.",
+            ...win,
+          };
+        }
+      } else if (!normalizeWeekdays(form?.recurrenceWeekdays, form?.recurrenceWeekday).length) {
+        return {
+          ok: false as const,
+          error: "RECURRENCE_WEEKDAY_REQUIRED",
+          reason: "حدّد أيام الأسبوع للمهمة.",
+          reasonEn: "Pick the weekdays for the task.",
+          ...win,
+        };
+      }
+    }
+    return { ok: true as const, ...win };
+  }
+  if (!win.startAt) {
+    return {
+      ok: false as const,
+      error: "RECURRENCE_START_REQUIRED",
+      reason: "حدّد تاريخ البدء.",
+      reasonEn: "Pick a start date.",
+      ...win,
+    };
+  }
+  if (!win.dueAt) {
+    return {
+      ok: false as const,
+      error: "RECURRENCE_DURATION_REQUIRED",
+      reason: "اكتب مدة المهمة بالأشهر.",
+      reasonEn: "Enter the task duration in months.",
+      ...win,
+    };
+  }
+  return { ok: true as const, ...win };
+}
+
+export function recurrenceHorizonEnd(startIso: string, horizon: string) {
+  const dt = dateFromIsoDay(startIso);
+  if (!dt) return startIso;
+  if (horizon === "m") {
+    const end = new Date(dt.getFullYear(), dt.getMonth() + 1, 0);
+    return isoFromYmd(end.getFullYear(), end.getMonth() + 1, end.getDate());
+  }
+  const end = horizon === "q"
+    ? new Date(dt.getFullYear(), dt.getMonth() + 3, dt.getDate())
+    : new Date(dt.getFullYear() + 1, dt.getMonth(), dt.getDate());
+  end.setDate(end.getDate() - 1);
+  return isoFromYmd(end.getFullYear(), end.getMonth() + 1, end.getDate());
+}
+
+export function recurrenceWindowEnd(from: string, rec: { horizon?: string } | null | undefined, dueAt?: string | null) {
+  const due = dueAt != null && String(dueAt).trim() ? isoDayKey(dueAt) : "";
+  if (due && due >= from) return due;
+  return recurrenceHorizonEnd(from, rec?.horizon || "m");
+}
+
+export function normalizeTaskRecurrence(raw: unknown): TaskRecurrence {
+  if (!raw || typeof raw !== "object") return { kind: "once" };
+  const row = raw as Record<string, unknown>;
+  const kind = String(row.kind || "once") as TaskRecurrenceKind;
+  if (kind === "once" || !kind) return { kind: "once" };
+  const weekdayN = Number(row.weekday);
+  const weekday = Number.isInteger(weekdayN) && weekdayN >= 0 && weekdayN <= 6 ? weekdayN : null;
+  const weekdays = normalizeWeekdays(row.weekdays, weekday);
+  const dates = normalizeIsoDates(row.dates);
+  const timesPerMonth = clampTimesPerMonth(row.timesPerMonth) ?? undefined;
+  const monthDays = [...new Set((Array.isArray(row.monthDays) ? row.monthDays : [])
+    .map((n) => Math.round(Number(n)))
+    .filter((n) => n >= 1 && n <= 31))]
+    .sort((a, b) => a - b)
+    .slice(0, TASK_RECURRENCE_TIMES_MAX);
+  const horizon = ["m", "q", "y"].includes(String(row.horizon || ""))
+    ? String(row.horizon) as "m" | "q" | "y"
+    : "m";
+  if (kind === "weekly") return { kind: "weekly", weekday: weekdays[0] ?? null, weekdays, horizon };
+  if (kind === "selected_dates") return { kind: "selected_dates", dates, horizon };
+  if (kind === "monthly_dates") return { kind: "monthly_dates", monthDays, horizon };
+  if (kind === "monthly_weekday") return { kind: "monthly_weekday", weekday, timesPerMonth, horizon };
+  return { kind: "once" };
+}
+
+export function taskRecurrenceFromForm(form: Record<string, unknown> | null | undefined): TaskRecurrence {
+  const kind = String(form?.recurrenceKind || "daily");
+  if (kind === "daily" || kind === "once" || kind === "range" || kind === "weekly"
+    || (kind === "yearly" && form?.recurrenceYearSpread !== "months")) return { kind: "once" };
+  if (form?.recurrenceDayMode === "dates") {
+    const n = clampTimesPerMonth(form?.recurrenceTimes) || TASK_RECURRENCE_TIMES_MAX;
+    const days = (Array.isArray(form?.recurrenceMonthDays) ? form.recurrenceMonthDays : []).slice(0, n);
+    return normalizeTaskRecurrence({
+      kind: "monthly_dates",
+      monthDays: days,
+      horizon: kind === "yearly" ? "y" : (form?.recurrenceHorizon || "m"),
+    });
+  }
+  return normalizeTaskRecurrence({
+    kind: "monthly_weekday",
+    weekday: form?.recurrenceWeekday,
+    timesPerMonth: form?.recurrenceTimes,
+    horizon: kind === "yearly" ? "y" : (form?.recurrenceHorizon || "m"),
+  });
+}
+
+export function expandTaskRecurrence(
+  recurrence: unknown,
+  { startAt, dueAt, today = new Date() }: { startAt?: string | null; dueAt?: string | null; today?: Date } = {},
+) {
+  const rec = normalizeTaskRecurrence(recurrence);
+  const from = isoDayKey(startAt, today) || isoDayKey(today);
+  if (rec.kind === "once") {
+    const to = isoDayKey(dueAt, today) || from;
+    return [{ startAt: from, dueAt: to < from ? from : to }];
+  }
+  const to = recurrenceWindowEnd(from, rec, dueAt);
+  if (!to || to < from) return [];
+  const dates: string[] = [];
+  if (rec.kind === "weekly") {
+    const wanted = new Set(rec.weekdays?.length ? rec.weekdays : (rec.weekday != null ? [rec.weekday] : []));
+    if (!wanted.size) return [];
+    for (let day = from; day && day <= to; day = addCalendarDays(day, 1)) {
+      const dt = dateFromIsoDay(day);
+      if (dt && wanted.has(dt.getDay())) dates.push(day);
+      if (dates.length >= TASK_RECURRENCE_MAX) break;
+    }
+  } else if (rec.kind === "selected_dates") {
+    const wanted = new Set(rec.dates || []);
+    if (!wanted.size) return [];
+    for (const day of [...wanted].sort()) {
+      if (day < from || day > to) continue;
+      dates.push(day);
+      if (dates.length >= TASK_RECURRENCE_MAX) break;
+    }
+  } else if (rec.kind === "monthly_weekday") {
+    if (rec.weekday == null || rec.timesPerMonth == null) return [];
+    const seen: Record<string, number> = {};
+    for (let day = from; day && day <= to; day = addCalendarDays(day, 1)) {
+      const dt = dateFromIsoDay(day);
+      if (!dt || dt.getDay() !== rec.weekday) continue;
+      const ym = day.slice(0, 7);
+      seen[ym] = (seen[ym] || 0) + 1;
+      if (seen[ym] <= rec.timesPerMonth) dates.push(day);
+      if (dates.length >= TASK_RECURRENCE_MAX) break;
+    }
+  } else if (rec.kind === "monthly_dates") {
+    const wanted = new Set(rec.monthDays || []);
+    if (!wanted.size) return [];
+    for (let day = from; day && day <= to; day = addCalendarDays(day, 1)) {
+      if (wanted.has(Number(day.slice(8, 10)))) dates.push(day);
+      if (dates.length >= TASK_RECURRENCE_MAX) break;
+    }
+  }
+  return dates.map((day) => ({ startAt: day, dueAt: day }));
+}
+
+export function checkTaskRecurrenceGate(
+  recurrence: unknown,
+  opts: { startAt?: string | null; dueAt?: string | null; today?: Date } = {},
+) {
+  const rec = normalizeTaskRecurrence(recurrence);
+  if (rec.kind === "once") {
+    return { ok: true as const, windows: expandTaskRecurrence(rec, opts), recurrence: rec };
+  }
+  if (rec.kind === "weekly" && !(rec.weekdays?.length || rec.weekday != null)) {
+    return {
+      ok: false as const,
+      error: "RECURRENCE_WEEKDAY_REQUIRED",
+      reason: "حدّد أيام الأسبوع للمهمة.",
+      reasonEn: "Pick the weekdays for the task.",
+      windows: [] as { startAt: string; dueAt: string }[],
+    };
+  }
+  if (rec.kind === "monthly_weekday" && rec.weekday == null) {
+    return {
+      ok: false as const,
+      error: "RECURRENCE_WEEKDAY_REQUIRED",
+      reason: "حدّد يوم الأسبوع للمهمة المتكررة.",
+      reasonEn: "Pick a weekday for the repeating task.",
+      windows: [] as { startAt: string; dueAt: string }[],
+    };
+  }
+  if (rec.kind === "selected_dates" && !(rec.dates || []).length) {
+    return {
+      ok: false as const,
+      error: "RECURRENCE_DAY_REQUIRED",
+      reason: "حدّد الأيام داخل الفترة.",
+      reasonEn: "Pick the days inside the date range.",
+      windows: [] as { startAt: string; dueAt: string }[],
+    };
+  }
+  if (rec.kind === "monthly_weekday" && rec.timesPerMonth == null) {
+    return {
+      ok: false as const,
+      error: "RECURRENCE_TIMES_REQUIRED",
+      reason: "اكتب كم مرة في الشهر تتكرر المهمة.",
+      reasonEn: "Enter how many times per month the task repeats.",
+      windows: [] as { startAt: string; dueAt: string }[],
+    };
+  }
+  if (rec.kind === "monthly_dates" && !(rec.monthDays || []).length) {
+    return {
+      ok: false as const,
+      error: "RECURRENCE_DAY_REQUIRED",
+      reason: "حدّد أيام الشهر التي تتكرر فيها المهمة.",
+      reasonEn: "Pick the month days the task repeats on.",
+      windows: [] as { startAt: string; dueAt: string }[],
+    };
+  }
+  const windows = expandTaskRecurrence(rec, opts);
+  if (!windows.length) {
+    return {
+      ok: false as const,
+      error: "RECURRENCE_EMPTY",
+      reason: "لا مواعيد في هذه المدة من تاريخ البدء.",
+      reasonEn: "No dates fall in this window from the start date.",
+      windows,
+    };
+  }
+  return { ok: true as const, windows, recurrence: rec };
+}
+
+export function taskRecurrenceLabel(rec: unknown, ar = true) {
+  const row = normalizeTaskRecurrence(rec);
+  if (row.kind === "once") return "";
+  const meta = rec && typeof rec === "object" ? rec as TaskRecurrence : {};
+  const occ = meta.occurrence && meta.occurrenceCount
+    ? (ar ? `${meta.occurrence} من ${meta.occurrenceCount}` : `${meta.occurrence} of ${meta.occurrenceCount}`)
+    : "";
+  const tail = occ ? ` · ${occ}` : "";
+  const weekdayNames = (ids: number[]) => ids
+    .map((id) => WEEKDAY_OPTIONS.find((w) => w.id === id))
+    .filter(Boolean)
+    .map((d) => (ar ? d!.ar : d!.en));
+  if (row.kind === "weekly") {
+    const names = weekdayNames(row.weekdays?.length ? row.weekdays : (row.weekday != null ? [row.weekday] : []));
+    const joined = names.join(ar ? "، " : ", ");
+    return ar ? `كل ${joined}${tail}` : `Every ${joined}${tail}`;
+  }
+  if (row.kind === "selected_dates") {
+    const n = (row.dates || []).length;
+    return ar ? `${n} أيام محددة${tail}` : `${n} selected days${tail}`;
+  }
+  const day = WEEKDAY_OPTIONS.find((w) => w.id === row.weekday);
+  const dayName = day ? (ar ? day.ar : day.en) : "";
+  if (row.kind === "monthly_weekday") {
+    const n = row.timesPerMonth || 0;
+    return ar
+      ? (n === 1 ? `مرة في الشهر · ${dayName}${tail}` : `${n} مرات في الشهر · ${dayName}${tail}`)
+      : `${n}× a month · ${dayName}${tail}`;
+  }
+  if (row.kind === "monthly_dates") {
+    const days = (row.monthDays || []).join(ar ? "، " : ", ");
+    return ar ? `أيام ${days} من الشهر${tail}` : `Days ${days} of the month${tail}`;
+  }
+  return "";
+}
+
 export function clampEffortWeight(raw: unknown) {
   const n = Number(raw);
   if (!Number.isFinite(n)) return 1;
@@ -610,7 +1207,7 @@ export function taskPoints(priority: string | null | undefined, effortWeight: un
 
 export function isOverdue(task: OpsTaskLike, today = new Date()) {
   if (!task.dueAt) return false;
-  if (task.status === "completed" || task.approvedAt) return false;
+  if (isOpsTaskDeleted(task) || task.status === "completed" || task.approvedAt) return false;
   return dayDiffFromToday(task.dueAt, today) < 0;
 }
 
@@ -628,6 +1225,14 @@ export function isAwaitingApproval(task: OpsTaskLike) {
 
 export function isDone(task: OpsTaskLike) {
   return task.status === "completed" || !!task.approvedAt;
+}
+
+export function isOpsTaskDeleted(task?: OpsTaskLike | null) {
+  return Boolean((task as any)?.deletedAt) || task?.status === "cancelled";
+}
+
+export function isOpsTaskArchived(task?: OpsTaskLike | null) {
+  return !!task && (isOpsTaskDeleted(task) || isDone(task));
 }
 
 export function isEscalated(task: OpsTaskLike) {
@@ -878,7 +1483,7 @@ export function deriveHorizonGroups(tasks: OpsTaskLike[], today = new Date()) {
 }
 
 export function deriveOpsCounts(tasks: OpsTaskLike[], today = new Date()) {
-  const list = Array.isArray(tasks) ? tasks : [];
+  const list = (Array.isArray(tasks) ? tasks : []).filter((t) => !isOpsTaskDeleted(t));
   const done = list.filter((t) => isDone(t)).length;
   const overdue = list.filter((t) => isOverdue(t, today)).length;
   const dueToday = list.filter((t) => isDueToday(t, today)).length;
@@ -1112,6 +1717,22 @@ export function taskDelegationMeta(task: {
   };
 }
 
+function stampLabel(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) return raw.slice(0, 16).replace("T", " ");
+  return raw.slice(0, 10);
+}
+
+function formatAuditWhen(iso?: string | null) {
+  const raw = String(iso || "").trim();
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return stampLabel(raw);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export function assignmentHistoryNote(entry: AssignmentHistoryEntry | null | undefined, lang = "ar") {
   if (!entry) return "";
   const from = entry.fromName || "—";
@@ -1120,8 +1741,8 @@ export function assignmentHistoryNote(entry: AssignmentHistoryEntry | null | und
   const kind = entry.kind === "transfer"
     ? "transfer"
     : (entry.kind === "acting" ? "acting" : (entry.kind === "end" ? "end" : "delegate"));
-  const until = entry.actingUntil ? String(entry.actingUntil).slice(0, 10) : "";
-  const when = String(entry.delegatedAt || entry.transferredAt || entry.at || "").slice(0, 10);
+  const until = stampLabel(entry.actingUntil);
+  const when = stampLabel(entry.delegatedAt || entry.transferredAt || entry.at);
   const ended = String(entry.endedAt || (kind === "end" ? entry.at : "") || "").slice(0, 10);
   if (lang === "en") {
     if (kind === "end") {
@@ -1772,6 +2393,16 @@ export function cumulativePaceExpected(pace: DailyTaskPace | null | undefined, t
     }
     return Math.min(pace.target, cum);
   }
+  const paced = Array.isArray(pace.paceDays) ? pace.paceDays : [];
+  if (paced.length) {
+    let pacedCum = 0;
+    for (let i = 0; i < paced.length; i += 1) {
+      if (paced[i] > todayKey) break;
+      pacedCum += pace.even + (i < pace.extra ? 1 : 0);
+    }
+    const pacedBase = pace.redistributed ? Math.max(0, Number(pace.baseDone) || 0) : 0;
+    return Math.min(pace.target, pacedBase + pacedCum);
+  }
   const dayIndex = calendarDaysInclusive(start, todayKey) - 1;
   let cum = 0;
   for (let i = 0; i <= dayIndex; i += 1) {
@@ -1792,16 +2423,7 @@ export function checkAutoEscalateGate(
 
   const done = Number(task.completedCount) || 0;
   const target = Math.max(1, Number(task.targetCount) || 1);
-  const pace = deriveDailyTaskPace({
-    targetCount: task.targetCount,
-    completedCount: done,
-    dueAt: task.dueAt,
-    startAt: task.startAt || task.createdAt,
-    paceStartAt: task.paceStartAt,
-    paceSpreadTarget: task.paceSpreadTarget,
-    paceDayPlan: task.paceDayPlan,
-    today: now,
-  });
+  const pace = deriveDailyTaskPace(taskPaceInput(task, now));
 
   let breach = false;
   let breachReason = "";
@@ -1909,4 +2531,162 @@ export function runOpsEscalationSweep(
     return updated;
   });
   return { tasks: nextTasks, escalated, details };
+}
+
+export function canUndoOpsAction(task: OpsTaskLike | null | undefined, { now = Date.now(), windowMs = 3 * 60 * 1000 }: { now?: number; windowMs?: number } = {}) {
+  if (!task) return false;
+  const created = new Date((task as any).createdAt || (task as any).created_date || 0).getTime();
+  if (Number.isFinite(created) && now - created <= windowMs && !((task.completedCount || 0) > 0) && !task.approvedAt) {
+    return { ok: true, target: "create" as const };
+  }
+  const log = Array.isArray((task as any).actionLog) ? (task as any).actionLog : [];
+  const last = log[log.length - 1];
+  if (!last) return false;
+  const at = new Date(last.at || 0).getTime();
+  if (!Number.isFinite(at) || now - at > windowMs) return false;
+  if (["acting", "extend", "comment", "blocker", "delegate"].includes(last.type)) {
+    return { ok: true, target: last.type, entry: last };
+  }
+  return false;
+}
+
+export function applyOpsSoftDelete(task: OpsTaskLike, input: { at?: string; byId?: string | null; byName?: string } = {}) {
+  const at = input.at || new Date().toISOString();
+  const prevLog = Array.isArray((task as any).actionLog) ? (task as any).actionLog : [];
+  return {
+    ...task,
+    status: "cancelled",
+    deletedAt: at,
+    deletedBy: input.byId || null,
+    actionLog: [
+      ...prevLog,
+      {
+        id: `del_${at}`,
+        type: "undo_create",
+        at,
+        byId: input.byId || null,
+        byName: input.byName || "",
+      },
+    ],
+  };
+}
+
+export function checkDeleteOpsTaskGate(task: OpsTaskLike | null | undefined, user: any, { now = Date.now() }: { now?: number } = {}) {
+  if (!task) {
+    return { ok: false, error: "TASK_REQUIRED", reason: "المهمة غير موجودة.", reasonEn: "The task was not found." };
+  }
+  if (isOpsTaskDeleted(task)) {
+    return { ok: false, error: "ALREADY_DELETED", reason: "المهمة محذوفة أصلًا.", reasonEn: "The task is already deleted." };
+  }
+  if ((Number(task.completedCount) || 0) > 0 || task.approvedAt || isDone(task) || isAwaitingApproval(task)) {
+    return {
+      ok: false,
+      error: "PROOF_CHAIN_LOCKED",
+      reason: "بعد تسجيل إنجاز أو اعتماد لا يُحذف — سلسلة الإثبات تبقى.",
+      reasonEn: "After a completion log or approval the task cannot be deleted — the proof chain stays.",
+    };
+  }
+  const undo = canUndoOpsAction(task, { now });
+  if (!undo || undo.target !== "create") {
+    return {
+      ok: false,
+      error: "UNDO_WINDOW_CLOSED",
+      reason: "انتهت مهلة الثلاث دقائق للحذف.",
+      reasonEn: "The 3-minute delete window has closed.",
+    };
+  }
+  const uid = String(user?.id || user?.employeeId || "");
+  const creator = String((task as any).createdBy || "");
+  const manager = !!(user && (
+    user.role === "owner" || user.isOwner || user.admin
+    || ["director", "ops_manager", "pgm", "station_manager"].includes(user.role)
+  ));
+  if (uid && creator && uid !== creator && !manager) {
+    return {
+      ok: false,
+      error: "DELETE_FORBIDDEN",
+      reason: "الحذف لمن أنشأ المهمة أو للمدير خلال المهلة فقط.",
+      reasonEn: "Only the creator or a manager can delete within the window.",
+    };
+  }
+  return { ok: true, target: "create" };
+}
+
+export function buildTaskAuditTimeline(task: OpsTaskLike | null | undefined, lang = "ar") {
+  if (!task) return [];
+  const ar = lang === "ar";
+  const rows: Array<{ id: string; type: string; at: string; when: string; by: string; tone: string; text: string }> = [];
+  const createdAt = (task as any).createdAt || (task as any).created_date;
+  if (createdAt) {
+    rows.push({
+      id: "create",
+      type: "create",
+      at: createdAt,
+      when: formatAuditWhen(createdAt),
+      by: (task as any).createdByName || "",
+      tone: "#14284B",
+      text: ar
+        ? `أُنشئت المهمة${(task as any).createdByName ? ` بواسطة ${(task as any).createdByName}` : ""}`
+        : `Task created${(task as any).createdByName ? ` by ${(task as any).createdByName}` : ""}`,
+    });
+  }
+  for (const entry of (Array.isArray(task.assignmentHistory) ? task.assignmentHistory : [])) {
+    rows.push({
+      id: (entry as any).id || `hist_${entry.at || entry.delegatedAt}`,
+      type: entry.kind || "delegate",
+      at: String(entry.at || entry.delegatedAt || (entry as any).transferredAt || ""),
+      when: formatAuditWhen(entry.at || entry.delegatedAt || (entry as any).transferredAt),
+      by: entry.byName || "",
+      tone: entry.kind === "transfer" ? "#B91C1C" : "#B45309",
+      text: assignmentHistoryNote(entry, lang),
+    });
+  }
+  for (const entry of (Array.isArray((task as any).actionLog) ? (task as any).actionLog : [])) {
+    if (!entry || entry.type === "create") continue;
+    const labelMap: Record<string, string> = {
+      undo_create: ar ? "حُذفت المهمة ضمن مهلة التراجع" : "Task deleted within the undo window",
+      undo: ar ? `تُراجع إجراء: ${entry.undoneType || "—"}` : `Undid action: ${entry.undoneType || "—"}`,
+      extend: ar ? `مُدّد الموعد إلى ${entry.toDue || "—"}` : `Due extended to ${entry.toDue || "—"}`,
+      redistribute_pace: ar ? "وُزِّع المتبقي على الأيام" : "Remainder redistributed across days",
+      acting: ar ? "توكيل" : "Delegation",
+      delegate: ar ? "توكيل" : "Delegation",
+      transfer: ar ? "نقل ملكية" : "Ownership transfer",
+      comment: ar ? "تعليق" : "Comment",
+      blocker: ar ? "عائق" : "Blocker",
+    };
+    rows.push({
+      id: entry.id || `log_${entry.at}`,
+      type: entry.type,
+      at: entry.at,
+      when: formatAuditWhen(entry.at),
+      by: entry.byName || "",
+      tone: entry.type === "undo_create" ? "#DC2626" : "#64748B",
+      text: labelMap[entry.type] || entry.type,
+    });
+  }
+  if (task.approvedAt) {
+    rows.push({
+      id: "approve",
+      type: "approve",
+      at: task.approvedAt,
+      when: formatAuditWhen(task.approvedAt),
+      by: (task as any).approvedByName || "",
+      tone: "#15803D",
+      text: ar ? "اعتُمد الإنجاز" : "Completion approved",
+    });
+  }
+  if ((task as any).deletedAt) {
+    rows.push({
+      id: "deleted",
+      type: "delete",
+      at: (task as any).deletedAt,
+      when: formatAuditWhen((task as any).deletedAt),
+      by: "",
+      tone: "#DC2626",
+      text: ar ? "أُرشفت بعد الحذف" : "Archived after delete",
+    });
+  }
+  return rows
+    .filter((r) => r.at)
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 }

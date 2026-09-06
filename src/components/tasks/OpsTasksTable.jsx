@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { dayDiffFromToday, deriveDailyTaskPace, taskDelegationMeta, taskTransferMeta } from "@/lib/opsDerivations";
+import { dayDiffFromToday, deriveDailyTaskPace, taskPaceInput, taskDelegationMeta, taskTransferMeta } from "@/lib/opsDerivations";
 import OpsAssignmentRefChip from "@/components/tasks/OpsAssignmentRefChip";
 import { ACCENT, INK, MUTED, emptyState, tableHeadRow, tableShell } from "@/lib/platformStyles";
 
@@ -184,15 +184,7 @@ function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen }) {
   const doneN = Number(task.completedCount) || 0;
   const targetN = Math.max(1, Number(task.targetCount) || 1);
   const count = `${doneN}/${targetN}`;
-  const pace = deriveDailyTaskPace({
-    targetCount: task.targetCount,
-    completedCount: task.completedCount,
-    dueAt: task.dueAt,
-    startAt: task.startAt || task.createdAt,
-    paceStartAt: task.paceStartAt,
-    paceSpreadTarget: task.paceSpreadTarget,
-    paceDayPlan: task.paceDayPlan,
-  });
+  const pace = deriveDailyTaskPace(taskPaceInput(task));
   const owner = ownerName(task);
   const hasTransfer = !!taskTransferMeta(task);
   const hasDelegation = !!taskDelegationMeta(task);

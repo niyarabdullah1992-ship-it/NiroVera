@@ -36,6 +36,7 @@ import { setStationScope, getStationScope } from "@/lib/stationScopeStore";
 import { visibleStations } from "@/lib/permissions";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
 import { BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
+import MinistryAlertsBanner from "@/components/shared/MinistryAlertsBanner";
 import { THEME_CHANGE_EVENT, applyPlatformTheme, applyStoredPlatformTheme, persistPlatformTheme } from "@/lib/platformTheme";
 
 export default function Layout({ children }) {
@@ -349,8 +350,8 @@ export default function Layout({ children }) {
     "/app/payroll": {
       title: lang === "ar" ? "الرواتب" : "Payroll",
       sub: lang === "ar"
-        ? "دورة نظامية: تجهيز البنود · المادة 90 و107 · الاعتماد · حماية الأجور قبل اليوم 3"
-        : "Statutory cycle: prepare lines · Art. 90 & 107 · approve · wage protection before day 3",
+        ? "دورة نظامية: تجهيز البنود · المادة 90 و92 و93 و107 · الاعتماد · حماية الأجور خلال 30 يوماً من الاستحقاق"
+        : "Statutory cycle: prepare lines · Art. 90, 92, 93 & 107 · approve · wage protection within 30 days of entitlement",
     },
     "/app/performance": {
       title: lang === "ar" ? "الأداء" : "Performance",
@@ -403,6 +404,10 @@ export default function Layout({ children }) {
     "/app/complaints": {
       title: lang === "ar" ? "صوت الموظف" : "Employee Voice",
       sub: lang === "ar" ? "اقتراح · شكوى · بلاغ مجهول" : "Suggestion · complaint · anonymous report",
+    },
+    "/app/discipline": {
+      title: lang === "ar" ? "الجزاءات والتحقيق" : "Sanctions and investigation",
+      sub: lang === "ar" ? "مسار المواد 66–73 داخل الالتزام" : "Articles 66–73 path inside compliance",
     },
     "/app/assistant": {
       title: lang === "ar" ? "المساعد الذكي" : "AI Assistant",
@@ -1131,6 +1136,8 @@ export default function Layout({ children }) {
             </nav>
           ) : null}
         </header>
+
+        <MinistryAlertsBanner lang={lang} data={data} currentUser={currentUser} />
 
         <main className="platform-main-scroll flex-1 overflow-y-auto p-5 pb-28 md:px-[22px] md:pb-10 md:pt-5">
           <div className="powercare-interior-page mx-auto w-full max-w-[1600px]">

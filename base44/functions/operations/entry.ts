@@ -8,10 +8,14 @@ import {
   applyOpsRedistributeRemaining,
   applyOpsPaceDayLog,
   deriveDailyTaskPace,
+  taskPaceInput,
   derivePaceBlocker,
   canReassignOpsTask,
   canEndOpsDelegation,
   canReviewOpsTask,
+  applyOpsSoftDelete,
+  checkDeleteOpsTaskGate,
+  isOpsTaskDeleted,
   checkAssignGate,
   checkReassignGate,
   checkEndDelegationGate,
@@ -25,6 +29,7 @@ import {
   runOpsEscalationSweep,
   taskAssigneeId,
   taskPoints,
+  checkTaskRecurrenceGate,
   type AssignMode,
 } from "../../shared/opsDerivations.ts";
 import { checkFieldAttendanceGate, riyadhDateKey as gateDateKey } from "../../shared/attendanceGate.ts";
@@ -389,10 +394,13 @@ Deno.serve(async (req) => {
       const targetCount = Math.max(1, Number(body.targetCount) || 1);
       const dueAt = body.dueAt ? String(body.dueAt).slice(0, 10) : null;
       const startAt = body.startAt ? String(body.startAt).slice(0, 10) : null;
+      const recGate = checkTaskRecurrenceGate(body.recurrence, { startAt, dueAt });
+      if (!recGate.ok) {
+        return Response.json({ error: recGate.error, reason: recGate.reason }, { status: 400 });
+      }
+      const windows = recGate.windows;
+      const seriesId = windows.length > 1 ? crypto.randomUUID() : null;
       const planPinned = body.planPinned === true;
-      const planHorizon = planPinned && body.planHorizon
-        ? String(body.planHorizon)
-        : planHorizonFromDue(dueAt);
       const mode = body.mode === "remote" ? "remote" : "onsite";
       const steps = String(body.steps || "").split("\n").map((s: string) => s.trim()).filter(Boolean);
 
@@ -441,8 +449,19 @@ Deno.serve(async (req) => {
         return Response.json({ error: "A selected member is not an employee of this company" }, { status: 400 });
       }
 
-      const makeTask = (opts: { stationId: string | null; stationIds: string[]; ownerId: string | null; seq: number }) => {
+      const makeTask = (opts: {
+        stationId: string | null;
+        stationIds: string[];
+        ownerId: string | null;
+        seq: number;
+        startAt: string | null;
+        dueAt: string | null;
+        occurrence?: number;
+        occurrenceCount?: number;
+      }) => {
         const createdAt = new Date().toISOString();
+        const windowDue = opts.dueAt;
+        const windowStart = opts.startAt || createdAt.slice(0, 10);
         return {
           id: crypto.randomUUID(),
           companyId: auth.companyId,
@@ -452,9 +471,11 @@ Deno.serve(async (req) => {
           stationIds: opts.stationIds,
           priority,
           effortWeight,
-          dueAt,
-          startAt: startAt || createdAt.slice(0, 10),
-          planHorizon,
+          dueAt: windowDue,
+          startAt: windowStart,
+          planHorizon: planPinned && body.planHorizon
+            ? String(body.planHorizon)
+            : planHorizonFromDue(windowDue),
           planPinned,
           workKind,
           mode,
@@ -484,7 +505,29 @@ Deno.serve(async (req) => {
           approvedBy: null,
           createdAt,
           createdBy: auth.userId,
+          seriesId,
+          paceWeekdays: Array.isArray(body.paceWeekdays) ? body.paceWeekdays : [],
+          paceDates: Array.isArray(body.paceDates) ? body.paceDates : [],
+          recurrence: windows.length > 1
+            ? {
+              ...recGate.recurrence,
+              seriesId,
+              occurrence: opts.occurrence || 1,
+              occurrenceCount: opts.occurrenceCount || windows.length,
+            }
+            : null,
         };
+      };
+
+      const stampWindows = (base: { stationId: string | null; stationIds: string[]; ownerId: string | null }, seqStart: number) => {
+        return windows.map((window, index) => makeTask({
+          ...base,
+          seq: seqStart + index,
+          startAt: window.startAt,
+          dueAt: window.dueAt,
+          occurrence: index + 1,
+          occurrenceCount: windows.length,
+        }));
       };
 
       if (fanOutOne) {
@@ -511,8 +554,8 @@ Deno.serve(async (req) => {
               stationId: sid,
             }, { status: 403 });
           }
-          created.push(makeTask({ stationId: sid, stationIds: [sid], ownerId: oid, seq }));
-          seq += 1;
+          created.push(...stampWindows({ stationId: sid, stationIds: [sid], ownerId: oid }, seq));
+          seq += windows.length;
         }
         await saveTasks([...created, ...existing]);
         await audit("ops_task_create", `Created ${created.length} tasks: ${title}`, {
@@ -539,16 +582,17 @@ Deno.serve(async (req) => {
 
       const existing = await listTasksRaw();
       const seq = 4800 + existing.length + 1;
-      const task = makeTask({
+      const created = stampWindows({
         stationId,
         stationIds,
         ownerId: assignMode === "one" ? ownerId : null,
-        seq,
+      }, seq);
+      await saveTasks([...created, ...existing]);
+      await audit("ops_task_create", `Created ${created.length} task(s): ${title}`, {
+        newValue: created.map((t) => t.ref).join(", "),
       });
-      await saveTasks([task, ...existing]);
-      await audit("ops_task_create", `Created ${task.ref}: ${task.title}`, { newValue: task.ref });
       const tasks = scopeFilter(await listTasksRaw(), body.scope || null);
-      return Response.json({ task, counts: deriveOpsCounts(tasks) });
+      return Response.json({ task: created[0], tasks: created, counts: deriveOpsCounts(tasks) });
     }
 
     if (action === "logCompletion") {
@@ -583,15 +627,7 @@ Deno.serve(async (req) => {
         escalationLevel: next >= task.targetCount ? 0 : task.escalationLevel,
       }, amount, at);
       if (next < Number(updated.targetCount || task.targetCount || 1)) {
-        const pace = deriveDailyTaskPace({
-          targetCount: updated.targetCount,
-          completedCount: updated.completedCount,
-          dueAt: updated.dueAt,
-          startAt: updated.startAt || updated.createdAt,
-          paceStartAt: updated.paceStartAt as string | null | undefined,
-          paceSpreadTarget: updated.paceSpreadTarget as number | null | undefined,
-          paceDayPlan: updated.paceDayPlan as Record<string, number> | null | undefined,
-        });
+        const pace = deriveDailyTaskPace(taskPaceInput(updated));
         const blocker = derivePaceBlocker({ task: updated, pace });
         if (blocker) {
           const logged = Math.max(0, Number(blocker.logged) || 0);
@@ -789,6 +825,32 @@ Deno.serve(async (req) => {
       await saveTasks(tasks);
       await audit("ops_task_comment_deleted", `Comment removed on ${task.ref} by ${auth.name}`, { oldValue: commentId });
       return Response.json({ task, ok: true });
+    }
+
+    if (action === "delete") {
+      const tasks = await listTasksRaw();
+      const idx = tasks.findIndex((t) => t.id === body.taskId);
+      if (idx < 0) return Response.json({ error: "Task not found" }, { status: 404 });
+      const current = tasks[idx];
+      const gate = checkDeleteOpsTaskGate(current, {
+        id: auth.userId,
+        employeeId: auth.userId,
+        name: auth.name,
+        role: auth.role,
+      });
+      if (!gate.ok) {
+        return Response.json({
+          error: gate.error,
+          reason: body.lang === "en" ? (gate.reasonEn || gate.reason) : gate.reason,
+          reasonEn: gate.reasonEn,
+        }, { status: 403 });
+      }
+      const next = applyOpsSoftDelete(current, { byId: auth.userId, byName: auth.name });
+      tasks[idx] = next;
+      await saveTasks(tasks);
+      await audit("ops_task_undo_create", `Deleted ${current.ref} within the 3-minute window`, { oldValue: current.id });
+      const live = tasks.filter((t) => !isOpsTaskDeleted(t));
+      return Response.json({ ok: true, task: next, counts: deriveOpsCounts(live) });
     }
 
     if (action === "reassign") {

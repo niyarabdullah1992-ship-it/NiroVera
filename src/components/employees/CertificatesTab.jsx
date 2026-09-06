@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { addCertificate, removeCertificate, setCertificateStatus } from "@/lib/store";
 import { Loader2, Plus, Check, X, Paperclip } from "lucide-react";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
-import { MUTED, NAVY, NAVY_FILL, OK, WARN, BAD, NEUTRAL, field, CARD, SURFACE } from "@/lib/platformStyles";
+import { BORDER, MUTED, NAVY, NAVY_FILL, OK, WARN, BAD, NEUTRAL, field, CARD, SURFACE } from "@/lib/platformStyles";
 import { ChromeBox } from "@/components/shared/IdentityCard";
 
 /** Competency codes tracked on the employee file (CERT_FOR). */
@@ -95,8 +95,8 @@ export default function CertificatesTab({ employee, companyId, canEdit, canAppro
     gap: "12px",
     padding: "10px 20px",
     background: SURFACE,
-    borderTop: "1px solid #E2E8F0",
-    borderBottom: "1px solid #E2E8F0",
+    borderTop: `1px solid ${BORDER}`,
+    borderBottom: `1px solid ${BORDER}`,
     fontSize: "10px",
     letterSpacing: "0.06em",
     color: MUTED,
@@ -203,7 +203,7 @@ export default function CertificatesTab({ employee, companyId, canEdit, canAppro
                                   style={{
                                     padding: "4px 8px",
                                     borderRadius: "8px",
-                                    border: "1px solid #E2E8F0",
+                                    border: `1px solid ${BORDER}`,
                                     background: CARD,
                                     color: "#DC2626",
                                     cursor: "pointer",

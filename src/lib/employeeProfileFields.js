@@ -18,8 +18,17 @@ export const ID_TYPE_OPTIONS = [
 ];
 
 export const CONTRACT_TYPE_OPTIONS = [
-  { value: "indefinite", ar: "غير محدد المدة", en: "Indefinite", aliases: ["غير محدد المدة", "indefinite", "open", "open-ended"] },
+  { value: "indefinite", ar: "غير محدد المدة", en: "Indefinite", aliases: ["غير محدد المدة", "indefinite", "open", "open-ended", "unlimited"] },
   { value: "fixed", ar: "محدد المدة", en: "Fixed term", aliases: ["محدد المدة", "fixed", "fixed term", "definite"] },
+];
+
+export const WORK_PATTERN_OPTIONS = [
+  { value: "ordinary", ar: "دائم / عادي", en: "Permanent / ordinary", aliases: ["ordinary", "permanent", "دائم"] },
+  { value: "part_time", ar: "جزئي", en: "Part-time", aliases: ["part_time", "part-time", "جزئي"] },
+  { value: "temporary", ar: "مؤقت / عرضي", en: "Temporary / casual", aliases: ["temporary", "casual", "مؤقت"] },
+  { value: "seasonal", ar: "موسمي", en: "Seasonal", aliases: ["seasonal", "موسمي"] },
+  { value: "flexible", ar: "مرن", en: "Flexible", aliases: ["flexible", "مرن"] },
+  { value: "remote", ar: "عن بُعد", en: "Remote", aliases: ["remote", "عن بعد", "عن بُعد"] },
 ];
 
 export const GENDER_OPTIONS = [
@@ -37,6 +46,7 @@ export const MARITAL_OPTIONS = [
 const OPTION_SETS = {
   idType: ID_TYPE_OPTIONS,
   contractType: CONTRACT_TYPE_OPTIONS,
+  workPattern: WORK_PATTERN_OPTIONS,
   gender: GENDER_OPTIONS,
   marital: MARITAL_OPTIONS,
 };
@@ -83,8 +93,8 @@ export const PROFILE_GROUPS = [
     id: "identity",
     ar: "الهوية والجنسية",
     en: "Identity and nationality",
-    noteAr: "سجل الهوية الوطنية أو الإقامة وفق متطلبات وزارة الموارد البشرية والجوازات.",
-    noteEn: "National ID or Iqama record as required by MHRSD and Jawazat.",
+    noteAr: "الجنسية هي المعيار، ورقم الهوية يؤكدها: ١ مواطن، ٢ إقامة. إن اختلفا يُوقف العدّ في نطاقات.",
+    noteEn: "Nationality is the criterion; the ID number must agree (1 = citizen, 2 = iqama). A mismatch is not counted in Nitaqat.",
     fields: [
       { key: "nationality", ar: "الجنسية", en: "Nationality" },
       { key: "idType", ar: "نوع الهوية", en: "ID type", options: "idType" },
@@ -103,8 +113,9 @@ export const PROFILE_GROUPS = [
     en: "GOSI and medical cover",
     noteAr: "التسجيل في التأمينات إلزامي، والتأمين الطبي وفق مجلس الضمان الصحي.",
     noteEn: "GOSI registration is mandatory; medical insurance follows CCHI rules.",
+    ruleId: "compliance.gosi.employeeRate",
     fields: [
-      { key: "gosiNumber", ar: "رقم التأمينات الاجتماعية (GOSI)", en: "GOSI number", dir: "ltr" },
+      { key: "gosiNumber", ar: "رقم التأمينات الاجتماعية (GOSI)", en: "GOSI number", dir: "ltr", ruleId: "compliance.gosi.employeeRate" },
       { key: "medicalInsuranceNumber", ar: "رقم التأمين الطبي", en: "Medical insurance number", dir: "ltr" },
       { key: "medicalInsuranceExpiry", ar: "انتهاء التأمين الطبي", en: "Medical insurance expiry", type: "date", expiry: true },
       { key: "medicalExam", ar: "الفحص الطبي", en: "Medical exam", optional: true },
@@ -122,7 +133,9 @@ export const PROFILE_GROUPS = [
       { key: "qiwaTitle", ar: "المسمى في منصة قوى", en: "Qiwa job title" },
       { key: "department", ar: "الإدارة", en: "Department" },
       { key: "hireDate", ar: "تاريخ التعيين", en: "Hire date", type: "date" },
-      { key: "contractType", ar: "نوع العقد", en: "Contract type", options: "contractType" },
+      { key: "contractType", ar: "نوع العقد", en: "Contract type", options: "contractType", optionRuleIds: { indefinite: "contract.indefinite.cite", unlimited: "contract.indefinite.cite", fixed: "contract.fixed.cite" } },
+      { key: "workPattern", ar: "نموذج العقد", en: "Contract template", options: "workPattern", optionRuleIds: { flexible: "contract.pattern.flexible.cite", remote: "contract.pattern.remote.cite", temporary: "contract.fixed.cite", seasonal: "contract.fixed.cite" } },
+      { key: "contractRenewalCount", ar: "عدد تجديدات العقد", en: "Contract renewal count", type: "number", ruleId: "contract.fixed.continuation.cite", optional: true },
       { key: "workPermitNumber", ar: "رقم رخصة العمل", en: "Work permit number", dir: "ltr", forIqama: true },
       { key: "workPermitExpiry", ar: "انتهاء رخصة العمل", en: "Work permit expiry", type: "date", expiry: true, forIqama: true },
     ],
@@ -143,10 +156,11 @@ export const PROFILE_GROUPS = [
     id: "wps",
     ar: "حماية الأجور — الحساب البنكي",
     en: "Wage protection — bank account",
-    noteAr: "الآيبان السعودي (SA + 22 رقمًا) مطلوب لملف حماية الأجور عبر مدد.",
-    noteEn: "A Saudi IBAN (SA + 22 digits) is required for the Mudad wage-protection file.",
+    noteAr: "الآيبان السعودي (SA + 22 رقمًا) مطلوب لملف حماية الأجور عبر مدد خلال 30 يوماً من الاستحقاق.",
+    noteEn: "A Saudi IBAN (SA + 22 digits) is required for the Mudad wage-protection file within 30 days of entitlement.",
+    ruleId: "payroll.wps.deadlineDayOfMonth",
     fields: [
-      { key: "iban", ar: "الحساب البنكي (IBAN)", en: "Bank account (IBAN)", dir: "ltr" },
+      { key: "iban", ar: "الحساب البنكي (IBAN)", en: "Bank account (IBAN)", dir: "ltr", ruleId: "payroll.wps.deadlineDayOfMonth" },
     ],
   },
 ];
@@ -160,6 +174,13 @@ export function profileFieldValue(profile = {}, key, employee) {
 
 export function profileFieldOptions(field) {
   return OPTION_SETS[field?.options] || null;
+}
+
+export function profileFieldRuleId(field, value) {
+  const map = field?.optionRuleIds;
+  const selected = String(value || "").trim();
+  if (map && selected && map[selected]) return map[selected];
+  return field?.ruleId || null;
 }
 
 export function profileFieldLabel(field, idType, ar) {
@@ -193,6 +214,7 @@ export function isProfileFieldVisible(field, { profile, form, editing }) {
     return !!String(raw || "").trim();
   }
   if (!field.optional) return true;
+  if (editing) return true;
   return !!String(raw || "").trim();
 }
 

@@ -7,6 +7,7 @@ import { buildWpsFileRows, wpsRowBlockers } from "@/lib/complianceDerivations";
 import { deductionLines, sourceLabel } from "@/lib/payrollDeductions";
 import { normalizeLocalizedNumber } from "@/lib/localizedNumber";
 import { BAD, OK, CARD, SURFACE } from "@/lib/platformStyles";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 const NAVY = "#14284B";
 const MUTED = "#5A6B85";
@@ -150,13 +151,14 @@ export default function PayrollRow({ item, employee, ar, onChange, onTogglePaid,
           <ListChecks style={{ width: 13, height: 13, color: GREEN }} />
         </button>
       </td>
-      <td data-label={ar ? "سقف م.90" : "Art. 90 cap"} style={cellStyle}>
+      <td data-label={ar ? "سقف الحسم" : "Deduction cap"} style={cellStyle}>
         <span
-          style={a90.ok ? OK : BAD}
+          style={{ ...(a90.ok ? OK : BAD), display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}
           title={ar
-            ? `المادة 90: الخصم ${money(item.deductions)} من سقف ${money(a90Max)}`
-            : `Art. 90: deducted ${money(item.deductions)} of ${money(a90Max)} cap`}
+            ? `${a90.cite?.labelAr || "المادة 93"}: الخصم ${money(item.deductions)} من سقف ${money(a90Max)}`
+            : `${a90.cite?.labelEn || "Art. 93"}: deducted ${money(item.deductions)} of ${money(a90Max)} cap`}
         >
+          <LaborArticleCite cite={a90.cite} ar={ar} />
           {a90.ok
             ? (ar ? `${money(item.deductions)} / ${money(a90Max)}` : `${money(item.deductions)} / ${money(a90Max)}`)
             : (ar ? "تجاوز نصف الأجر" : "Over half the wage")}

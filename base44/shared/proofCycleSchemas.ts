@@ -47,7 +47,8 @@ export const opsAttendanceStatusSchema = opsBase.extend({
 export const opsCreateSchema = opsBase.extend({
   action: z.literal("create"),
   title: z.string().trim().min(1).max(500),
-  stationId: z.string().trim().min(1),
+  stationId: z.string().trim().min(1).optional(),
+  stationIds: z.array(z.string()).optional(),
   targetCount: z.coerce.number().int().positive().max(9999).optional(),
   effortWeight: z.coerce.number().min(0).max(10).optional(),
   priority: z.string().optional(),
@@ -55,10 +56,30 @@ export const opsCreateSchema = opsBase.extend({
   workKind: z.string().max(120).optional(),
   assignMode: z.enum(["one", "some", "all"]).optional(),
   ownerId: z.string().optional(),
+  ownersByStation: z.record(z.string()).optional(),
   memberIds: z.array(z.string()).optional(),
+  startAt: z.string().optional(),
   dueAt: z.string().optional(),
+  planPinned: z.boolean().optional(),
+  planHorizon: z.string().optional(),
   steps: z.union([z.array(z.string()), z.string()]).optional(),
-});
+  attachments: z.array(z.object({
+    url: z.string().optional(),
+    name: z.string().max(300).optional(),
+    type: z.string().max(120).optional(),
+  }).passthrough()).max(20).optional(),
+  recurrence: z.object({
+    kind: z.enum(["once", "weekly", "selected_dates", "monthly_weekday", "monthly_dates"]),
+    weekday: z.coerce.number().int().min(0).max(6).optional(),
+    weekdays: z.array(z.coerce.number().int().min(0).max(6)).max(7).optional(),
+    dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).max(52).optional(),
+    timesPerMonth: z.coerce.number().int().min(1).max(31).optional(),
+    monthDays: z.array(z.coerce.number().int().min(1).max(31)).max(31).optional(),
+    horizon: z.enum(["m", "q", "y"]).optional(),
+  }).optional(),
+  lang: z.enum(["ar", "en"]).optional(),
+  scope: z.string().nullable().optional(),
+}).passthrough();
 
 export const opsReassignSchema = opsBase.extend({
   action: z.literal("reassign"),

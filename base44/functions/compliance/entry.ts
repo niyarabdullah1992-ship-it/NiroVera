@@ -92,11 +92,12 @@ Deno.serve(async (req) => {
         const emps = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId });
         files = (emps || []).slice(0, 100).map((e: {
           employeeId?: string; id?: string; name?: string; nationality?: string; nationalId?: string;
+          profile?: { nationality?: string; nationalId?: string };
         }) => ({
           employeeId: e.employeeId || e.id,
           name: e.name,
-          saudi: String(e.nationality || "").toLowerCase().includes("saudi") || String(e.nationalId || "").startsWith("1"),
-          nationalId: e.nationalId || null,
+          nationality: e.nationality || e.profile?.nationality || null,
+          nationalId: e.nationalId || e.profile?.nationalId || null,
           docs: [],
         }));
       }

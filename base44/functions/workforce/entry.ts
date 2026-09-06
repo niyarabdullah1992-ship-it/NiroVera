@@ -7,6 +7,7 @@ import {
   deriveLeaveStats,
   isOnApprovedLeave,
   LEAVE_TYPES,
+  addCalendarDays,
 } from "../../shared/leaveDerivations.ts";
 
 const SCHEDULES_CATEGORY = "schedules";
@@ -159,7 +160,7 @@ Deno.serve(async (req) => {
       const emp = await findEmployee(employeeId);
       if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
       const req = (emp.leaveRequests || []).find((r: any) => r.id === requestId);
-      return Response.json(checkApproveLeaveGate(req));
+      return Response.json(checkApproveLeaveGate(req, { profile: emp.profile, requests: emp.leaveRequests }));
     }
 
     if (action === "submitLeave") {
@@ -172,8 +173,15 @@ Deno.serve(async (req) => {
       if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
       const type = String(body.type || "annual");
       const startDate = String(body.startDate || "").slice(0, 10);
-      const endDate = String(body.endDate || "").slice(0, 10);
-      const days = computeLeaveDays(startDate, endDate);
+      let endDate = String(body.endDate || "").slice(0, 10);
+      const requested = Number(body.days);
+      if (type === "annual" && Number.isFinite(requested) && requested >= 1 && startDate) {
+        const computedEnd = addCalendarDays(startDate, Math.max(1, Math.round(requested)) - 1);
+        if (computedEnd) endDate = computedEnd;
+      }
+      const days = Number.isFinite(requested) && requested >= 1
+        ? Math.max(1, Math.round(requested))
+        : computeLeaveDays(startDate, endDate);
       if (!startDate || !endDate || days < 1) {
         return Response.json({ error: "Invalid dates" }, { status: 400 });
       }
@@ -188,8 +196,11 @@ Deno.serve(async (req) => {
         status: "pending",
         createdAt: new Date().toISOString(),
         companyId: auth.companyId,
+        eventDate: String(body.eventDate || "").slice(0, 10) || undefined,
+        examRepeat: body.examRepeat ? true : undefined,
       };
-      const gatePreview = checkApproveLeaveGate({ ...request, status: "pending" });
+      const extras = { profile: emp.profile, requests: emp.leaveRequests };
+      const gatePreview = checkApproveLeaveGate({ ...request, status: "pending" }, extras);
       const leaveRequests = [request, ...(emp.leaveRequests || [])];
       await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
       await audit("leave_request_submitted", `Leave ${type} (${days}d) submitted for ${emp.name}`);
@@ -208,8 +219,9 @@ Deno.serve(async (req) => {
       if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
       const req = { ...leaveRequests[idx] };
 
+      const extras = { profile: emp.profile, requests: emp.leaveRequests };
       if (action === "approveLeave") {
-        const gate = checkApproveLeaveGate(req);
+        const gate = checkApproveLeaveGate(req, extras);
         if (!gate.ok) {
           return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, gate }, { status: 422 });
         }

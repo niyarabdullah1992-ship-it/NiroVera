@@ -6,9 +6,12 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import {
   checkCompleteOffboardingGate,
   checkMarkReturnedGate,
+  deriveEos,
+  deriveSettlementDeadline,
 } from "@/lib/offboardingDerivations";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { toast } from "@/components/ui/use-toast";
-import { BRAND, BRAND_DEEP, MUTED, NAVY, OK, WARN, BAD, NEUTRAL, CARD, SURFACE } from "@/lib/platformStyles";
+import { BORDER, BRAND, BRAND_DEEP, MUTED, NAVY, OK, WARN, BAD, NEUTRAL, CARD, SURFACE } from "@/lib/platformStyles";
 
 async function offboardingApi(payload) {
   const res = await base44.functions.invoke("offboarding", payload);
@@ -65,8 +68,8 @@ const fmt = (n) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigit
 
 const card = {
   background: CARD,
-  border: "1px solid #E2E8F0",
-  borderRadius: "14px",
+  border: `1px solid ${BORDER}`,
+  borderRadius: "16px",
   padding: "18px 20px",
 };
 
@@ -161,7 +164,11 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
   };
 
   const complete = async () => {
-    const gate = checkCompleteOffboardingGate(caseRow);
+    const gate = checkCompleteOffboardingGate(caseRow, {
+      contractExit: employee?.profile?.contractExit,
+      employee,
+      leaveRequests: employee?.leaveRequests,
+    });
     if (!gate.ok) {
       toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
       return;
@@ -179,7 +186,19 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
 
   if (!currentUser) return null;
 
-  const eos = caseRow?.eos;
+  const eos = caseRow
+    ? deriveEos({
+      ...caseRow,
+      contractExit: employee?.profile?.contractExit || caseRow.contractExit,
+      gender: employee?.profile?.gender,
+      profile: employee?.profile,
+    })
+    : null;
+  const settlement = deriveSettlementDeadline({
+    reason: employee?.profile?.contractExit?.reason || caseRow?.contractExit?.reason || caseRow?.exitReason,
+    lastWorkDate: employee?.profile?.contractExit?.effectiveDate || caseRow?.contractExit?.effectiveDate,
+    contractExit: employee?.profile?.contractExit || caseRow?.contractExit,
+  });
   const completed = caseRow?.status === "completed";
   const outstanding = caseRow?.outstandingCount || 0;
   const gateOpen = !!caseRow?.gateOpen;
@@ -225,7 +244,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
       borderRadius: "9px",
       background: SURFACE,
       color: MUTED,
-      border: "1px solid #E2E8F0",
+      border: `1px solid ${BORDER}`,
       fontSize: "13px",
       fontWeight: 600,
       cursor: "default",
@@ -249,7 +268,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
         marginTop: "16px",
         padding: "10px 20px",
         borderRadius: "9px",
-        background: "#E2E8F0",
+        background: BORDER,
         color: MUTED,
         border: "none",
         fontSize: "13px",
@@ -328,9 +347,14 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
           </div>
           <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.65, textWrap: "pretty" }}>
             {ar
-              ? "محسوبة وفق المادة 84 من نظام العمل السعودي على آخر أجر شامل، مضافًا إليها بدل الإجازات غير المستنفدة."
-              : "Computed under Article 84 of the Saudi Labor Law on the final total wage, plus payment for unused annual leave."}
+              ? "تُحسب المادة 84 أولاً. الفصل وفق المادة 80 بغير مكافأة. ترك العمل وفق المادة 81 يحفظ الحقوق كاملة. الاستقالة تطبّق المادة 85. المادة 87 إذا أنهت العاملة العقد خلال ستة أشهر من الزواج أو ثلاثة أشهر من الوضع. القوة القاهرة في المادة 74 تستحق المادة 84 كاملة."
+              : "Article 84 is calculated first. Article 80 dismissal is without award. Leaving under Article 81 preserves full rights. Resignation applies Article 85. Article 87 applies if a female worker ends the contract within six months of marriage or three months of childbirth. Force majeure under Article 74 is a full Article 84 award."}
           </div>
+          {eos?.citeRuleId ? (
+            <div style={{ marginTop: "10px" }}>
+              <LaborArticleCite ruleId={eos.citeRuleId} ar={ar} showText />
+            </div>
+          ) : null}
           {eos.preStart ? (
             <div style={{
               marginTop: "12px",
@@ -354,6 +378,15 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                 { label: ar ? "آخر أجر شامل (أساسي + بدلات)" : "Final wage (base + allowances)", value: fmt(eos.wage) },
                 { label: ar ? "نصف شهر × أول 5 سنوات" : "Half month × first 5 years", value: fmt(eos.firstFive) },
                 { label: ar ? "شهر كامل × ما بعد 5 سنوات" : "Full month × years beyond 5", value: fmt(eos.beyondFive) },
+                ...(eos.art80
+                  ? [{ label: ar ? "المادة 80 — بلا مكافأة" : "Article 80 — no award", value: fmt(eos.gratuity) }]
+                  : eos.art81
+                    ? [{ label: ar ? "المادة 81 — الحقوق كاملة" : "Article 81 — full rights", value: fmt(eos.gratuity) }]
+                    : eos.fraction != null && eos.fraction !== 1
+                      ? [{ label: ar ? `تطبيق المادة 85 (${Math.round(eos.fraction * 100)}٪)` : `Article 85 applied (${Math.round(eos.fraction * 100)}%)`, value: fmt(eos.gratuity) }]
+                      : eos.art87
+                        ? [{ label: ar ? "المادة 87 — المكافأة كاملة" : "Article 87 — full award", value: fmt(eos.gratuity) }]
+                        : [{ label: ar ? "مكافأة نهاية الخدمة" : "End-of-service award", value: fmt(eos.gratuity) }]),
                 {
                   label: ar ? `بدل ${eos.unusedAnnualDays} يوم إجازة غير مستنفدة` : `${eos.unusedAnnualDays} days unused annual leave`,
                   value: fmt(eos.leaveCash),
@@ -376,6 +409,42 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                   </span>
                 </div>
               ))}
+              <div style={{ marginTop: 8 }}>
+                <LaborArticleCite ruleId="eos.unusedLeave.cite" ar={ar} showText />
+              </div>
+              {eos.unlawful?.applies ? (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                    paddingBottom: "10px",
+                    borderBottom: "1px solid #F1F5F9",
+                  }}
+                  >
+                    <span style={{ fontSize: "12px", color: MUTED }}>
+                      {ar
+                        ? `تعويض المادة 77 إن ثبت الإنهاء غير المشروع — لا يُضاف إلى الإجمالي`
+                        : `Article 77 indemnity if termination is unlawful — not added to the total`}
+                    </span>
+                    <span dir="ltr" style={{ fontSize: "13px", fontWeight: 500, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right", color: NAVY }}>
+                      {fmt(eos.unlawful.amount)}
+                    </span>
+                  </div>
+                  <LaborArticleCite ruleId="eos.unlawful.cite" ar={ar} showText />
+                </div>
+              ) : null}
+              <div style={{ marginTop: 10 }}>
+                <LaborArticleCite ruleId={settlement.workerEnded ? "eos.settlement.workerDays" : "eos.settlement.employerDays"} ar={ar} showText />
+                <div style={{ fontSize: 12, color: settlement.late ? "#B45309" : MUTED, marginTop: 6, lineHeight: 1.65 }}>
+                  {settlement.pending
+                    ? (ar ? "مهلة التصفية تبدأ من آخر يوم عمل." : "The settlement window starts from the last working day.")
+                    : settlement.late
+                      ? (ar ? `تجاوزت مهلة التصفية (${settlement.due}).` : `The settlement window (${settlement.due}) has passed.`)
+                      : (ar ? `تصفية الحقوق حتى ${settlement.due} (${settlement.days} أيام).` : `Settle entitlements by ${settlement.due} (${settlement.days} days).`)}
+                </div>
+              </div>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px" }}>
                 <span style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
                   {ar ? "الإجمالي المستحق" : "Total due"}

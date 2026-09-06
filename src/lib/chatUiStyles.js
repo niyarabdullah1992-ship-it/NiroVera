@@ -1,8 +1,8 @@
 /** Shared chrome for /app/chat — same identity frame as the rest of the app. */
 import { identityFrame } from "@/components/shared/IdentityCard";
-import { ACCENT, BORDER, BRAND, BRAND_DEEP, BRAND_SOFT, CARD, MUTED, NAVY, NAVY_FILL, SURFACE, field, ui, NEUTRAL } from "@/lib/platformStyles";
+import { ACCENT, BORDER, CARD, MUTED, NAVY, NAVY_FILL, SURFACE, field, filterChip, ui, NEUTRAL } from "@/lib/platformStyles";
 
-export { ACCENT, BORDER, CARD, MUTED, NAVY, NAVY_FILL, SURFACE, field, ui, NEUTRAL };
+export { ACCENT, BORDER, CARD, MUTED, NAVY, NAVY_FILL, SURFACE, field, filterChip, ui, NEUTRAL };
 
 export const pane = {
   ...identityFrame,
@@ -36,45 +36,11 @@ export const channelBtn = (active) => ({
   textAlign: "start",
 });
 
-export const filterChip = (active) => ({
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: 32,
-  cursor: "pointer",
-  fontFamily: "inherit",
-  fontSize: 12,
-  whiteSpace: "nowrap",
-  padding: "0 12px",
-  borderRadius: 9,
-  lineHeight: 1,
-  boxSizing: "border-box",
-  ...(active
-    ? {
-        border: `1px solid ${BRAND}`,
-        background: BRAND_SOFT,
-        color: BRAND_DEEP,
-        fontWeight: 600,
-      }
-    : {
-        border: `1px solid ${BORDER}`,
-        background: CARD,
-        color: MUTED,
-      }),
-});
-
 export const tabBtn = (on) => ({
-  padding: "6px 11px",
-  borderRadius: 8,
-  border: "none",
-  background: on ? CARD : "transparent",
-  boxShadow: on ? "0 1px 2px rgba(20,40,75,.06)" : "none",
-  color: on ? NAVY : MUTED,
+  ...filterChip(on),
+  height: 28,
+  padding: "0 11px",
   fontSize: 11,
-  fontWeight: 600,
-  cursor: "pointer",
-  fontFamily: "inherit",
-  whiteSpace: "nowrap",
 });
 
 export const composerInput = {

@@ -1,5 +1,8 @@
 import React, { useMemo } from "react";
 import { OK, WARN, BAD } from "@/lib/platformStyles";
+import { checkContractTermGate, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
+import { deriveProbationProgress, deriveArt55Conversion } from "@/lib/contractLawDerivations";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 function daysTo(iso) {
   if (!iso) return null;
@@ -11,7 +14,7 @@ function expiryChip(iso, ar) {
   const d = daysTo(iso);
   if (d === null) return null;
   if (d < 0) return { text: ar ? "منتهٍ" : "Expired", style: BAD };
-  if (d <= 60) return { text: ar ? `${d} يومًا` : `${d} days`, style: WARN };
+  if (d <= EXPIRY_WARN_DAYS) return { text: ar ? `${d} يومًا` : `${d} days`, style: WARN };
   return { text: ar ? "ساري" : "Valid", style: OK };
 }
 
@@ -54,20 +57,69 @@ export default function EmpAlertsStrip({ employee, lang = "ar" }) {
         chipStyle: chip.style,
       });
     }
-    const contractEnd = profile.contract?.endDate;
-    if (contractEnd) {
-      const chip = expiryChip(contractEnd, ar);
-      if (chip && chip.text !== (ar ? "ساري" : "Valid")) {
-        rows.push({
-          label: ar ? "انتهاء العقد" : "Contract end",
-          value: niceDate(contractEnd, ar),
-          chipText: chip.text,
-          chipStyle: chip.style,
-        });
-      }
+    const term = checkContractTermGate(employee);
+    if (term.error === "CONTRACT_END_REQUIRED" || term.error === "CONTRACT_NONSAUDI_FIXED_REQUIRED") {
+      rows.push({
+        label: ar ? "العقد محدد المدة" : "Fixed-term contract",
+        value: ar ? (term.reason || "يحتاج تصحيحاً") : (term.reasonEn || "Needs correction"),
+        chipText: ar ? "موقوف" : "Blocked",
+        chipStyle: BAD,
+        ruleId: term.error === "CONTRACT_NONSAUDI_FIXED_REQUIRED" ? "contract.nonSaudi.fixed.cite" : "contract.fixed.cite",
+      });
+    } else if (term.warning === "ART55_CONVERTED") {
+      rows.push({
+        label: ar ? "المادة 55" : "Article 55",
+        value: ar ? (term.reason || "يُعد غير محدد المدة") : (term.reasonEn || "Deemed indefinite"),
+        chipText: ar ? "يُكتب في الملف" : "Written to file",
+        chipStyle: WARN,
+        ruleId: "contract.fixed.continuation.cite",
+      });
+    } else if (term.error === "CONTRACT_EXPIRED" || term.warning === "CONTRACT_EXPIRING" || term.warning === "CONTRACT_TERM_DEEMED_YEAR") {
+      const contractEnd = profile.contract?.endDate || profile.contractEndDate || term.endDate;
+      rows.push({
+        label: ar ? "انتهاء العقد" : "Contract end",
+        value: niceDate(contractEnd, ar),
+        chipText: term.error === "CONTRACT_EXPIRED"
+          ? (ar ? "منتهٍ" : "Expired")
+          : term.warning === "CONTRACT_TERM_DEEMED_YEAR"
+            ? (ar ? "سنة مفترضة" : "Deemed year")
+            : (ar ? `${term.days} يومًا` : `${term.days} days`),
+        chipStyle: term.error === "CONTRACT_EXPIRED" ? BAD : WARN,
+        ruleId: term.warning === "CONTRACT_TERM_DEEMED_YEAR" ? "contract.nonSaudi.deemedTermDays" : "contract.fixed.cite",
+      });
+    }
+    const probation = deriveProbationProgress(employee);
+    if (probation.warning === "PROBATION_ENDING" || probation.warning === "PROBATION_ENDED") {
+      rows.push({
+        label: ar ? "فترة التجربة" : "Probation",
+        value: probation.warning === "PROBATION_ENDED"
+          ? (ar ? "انتهت" : "Ended")
+          : (ar ? `${probation.remaining} يومًا` : `${probation.remaining} days`),
+        chipText: probation.warning === "PROBATION_ENDED" ? (ar ? "انتهت" : "Ended") : (ar ? "تنبيه 15 يوماً" : "15-day watch"),
+        chipStyle: probation.warning === "PROBATION_ENDED" ? BAD : WARN,
+        ruleId: "contract.probation.warnDays",
+      });
+    }
+    const art55 = deriveArt55Conversion(employee);
+    if (art55.converts && term.warning !== "ART55_CONVERTED") {
+      rows.push({
+        label: ar ? "المادة 55" : "Article 55",
+        value: ar ? (art55.reason || "يُعد غير محدد المدة") : (art55.reasonEn || "Deemed indefinite"),
+        chipText: ar ? "يُكتب في الملف" : "Written to file",
+        chipStyle: BAD,
+        ruleId: "contract.fixed.continuation.cite",
+      });
+    } else if (art55.approaching) {
+      rows.push({
+        label: ar ? "المادة 55" : "Article 55",
+        value: ar ? "اقتراب حد التجديد أو الأربع سنوات" : "Near the renewal or four-year cap",
+        chipText: ar ? "متابعة" : "Watch",
+        chipStyle: WARN,
+        ruleId: "contract.fixed.continuation.cite",
+      });
     }
     return rows;
-  }, [profile, ar]);
+  }, [employee, profile, ar]);
 
   if (!alerts.length) return null;
 
@@ -87,11 +139,14 @@ export default function EmpAlertsStrip({ employee, lang = "ar" }) {
         {alerts.map((a) => (
           <div
             key={`${a.label}-${a.value}`}
-            style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}
+            style={{ display: "flex", flexDirection: "column", gap: "6px" }}
           >
-            <span style={{ flex: "1 1 200px", fontSize: "13px", color: "#78350F" }}>{a.label}</span>
-            <span style={{ fontSize: "12px", color: "#92400E" }}>{a.value}</span>
-            <span style={a.chipStyle}>{a.chipText}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <span style={{ flex: "1 1 200px", fontSize: "13px", color: "#78350F" }}>{a.label}</span>
+              <span style={{ fontSize: "12px", color: "#92400E" }}>{a.value}</span>
+              <span style={a.chipStyle}>{a.chipText}</span>
+            </div>
+            {a.ruleId ? <LaborArticleCite ruleId={a.ruleId} ar={ar} showText /> : null}
           </div>
         ))}
       </div>

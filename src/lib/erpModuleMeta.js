@@ -21,6 +21,7 @@ const MODULE_SAUDI = {
   performance: { ar: ["مهام معتمدة", "بدون تقييم وهمي"], en: ["Approved tasks", "No vanity scores"] },
   safety: { ar: ["HSE", "إغلاق المخاطر"], en: ["HSE", "Hazard closure"] },
   complaints: { ar: ["صوت محمي", "مسار تصعيد"], en: ["Protected voice", "Escalation path"] },
+  discipline: { ar: ["مواد 66–73", "تظلم 30 يوماً"], en: ["Arts 66–73", "30-day appeal"] },
   files: { ar: ["أرشيف الشركة", "صلاحيات"], en: ["Company archive", "Permissions"] },
   assistant: { ar: ["ضمن صلاحياتك", "بيانات الشركة"], en: ["Within permissions", "Company data"] },
   settings: { ar: ["هوية الشركة", "نطاق الفروع"], en: ["Company identity", "Station scope"] },

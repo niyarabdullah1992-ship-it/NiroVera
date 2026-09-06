@@ -1,8 +1,10 @@
+import { deriveSaudiStatus, checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
+import { checkProbationGate, workPatternForcesFixed } from "@/lib/contractLawDerivations";
 import { getCompanyData, logAudit, updateCompany } from "@/lib/store";
 import { createOrgRecord } from "@/lib/orgTree";
 import { canAddStation } from "@/lib/planLimits";
 import { gradeSalaryRange, gradesForList, jobGradeLabel, orderedJobGrades } from "@/lib/jobGrades";
-import { LEAVE_TYPES } from "@/lib/leaveTypes";
+import { LEAVE_TYPES, statutoryLeaveFloor } from "@/lib/leaveTypes";
 import { listedPacks } from "@/lib/permissionPackTemplate";
 import { templateById, templateLabel } from "@/lib/permissionTemplates";
 import { rankFromScore, scorePermissions } from "@/lib/smartPositions";
@@ -29,10 +31,23 @@ export const OPEN_HIRE_EVENT = "nirovera:open-hire";
 export const HIRE_SESSION_SUGGEST_AT = 2;
 
 export const CONTRACT_TYPES = [
-  { id: "unlimited", ar: "غير محدد المدة", en: "Unlimited" },
+  { id: "indefinite", ar: "غير محدد المدة", en: "Indefinite" },
   { id: "fixed", ar: "محدد المدة", en: "Fixed term" },
   { id: "trial", ar: "فترة تجربة", en: "Probation" },
 ];
+
+export function hireContractId(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "fixed" || raw === "definite") return "fixed";
+  if (raw === "trial" || raw === "probation") return "trial";
+  return "indefinite";
+}
+
+export function fileContractType(value, { nonSaudi = false, workPattern = "" } = {}) {
+  if (nonSaudi) return "fixed";
+  if (workPatternForcesFixed(workPattern)) return "fixed";
+  return hireContractId(value) === "fixed" ? "fixed" : "indefinite";
+}
 
 export function openHireDrawer(detail = {}) {
   if (typeof window === "undefined") return;
@@ -50,15 +65,17 @@ export function contractLabel(id, ar) {
   return ar ? row.ar : row.en;
 }
 
-export function annualLeaveFromHireDate(hireDate, entitlement = LEAVE_TYPES[0]?.defaultTotal || 21) {
+export function annualLeaveFromHireDate(hireDate, entitlement) {
+  const floor = statutoryLeaveFloor("annual", { hireDate }) ?? (LEAVE_TYPES[0]?.defaultTotal || 21);
+  const cap = entitlement ?? floor;
   const key = String(hireDate || todayKey()).slice(0, 10);
   const match = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return entitlement;
+  if (!match) return cap;
   const year = Number(match[1]);
   const start = new Date(year, Number(match[2]) - 1, Number(match[3]));
   const end = new Date(year, 11, 31);
   const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
-  return Math.round((days / 365) * entitlement * 10) / 10;
+  return Math.round((days / 365) * cap * 10) / 10;
 }
 
 function packById(data, listId) {
@@ -635,11 +652,12 @@ export function createOrgSeat(companyId, input) {
   return { ok: true, seatId };
 }
 
-function missingDocKinds(nationalId) {
+function missingDocKinds(nationalId, nationality) {
   const id = String(nationalId || "").replace(/\D/g, "");
-  const saudi = id.startsWith("1");
+  const status = deriveSaudiStatus({ nationalId: id, nationality });
+  const saudi = status.countable ? status.saudi : false;
   const kinds = saudi ? ["national_id", "gosi", "qiwa_title"] : ["iqama", "work_permit", "gosi", "qiwa_title"];
-  if (!/^\d{10}$/.test(id)) kinds.unshift("national_id");
+  if (!/^\d{10}$/.test(id)) kinds.unshift(saudi ? "national_id" : "iqama");
   return [...new Set(kinds)];
 }
 
@@ -694,10 +712,43 @@ export function hireFromSeat(companyId, input) {
     const hireDate = String(input.hireDate || todayKey()).slice(0, 10);
     leaveDays = annualLeaveFromHireDate(hireDate);
     const nationalId = String(input.nationalId || "").replace(/\D/g, "");
+    const nationality = String(input.nationality || input.profile?.nationality || "").trim();
     const phone = String(input.phone || "").trim();
-    const contractType = String(input.contractType || "unlimited");
+    const hireType = hireContractId(input.contractType);
+    const workPattern = String(input.workPattern || input.profile?.workPattern || "ordinary");
+    const nonSaudi = nationalityIsSaudi(nationality) === false;
+    const contractType = fileContractType(hireType, { nonSaudi, workPattern });
+    let contractEndDate = String(input.contractEndDate || input.profile?.contractEndDate || "").slice(0, 10);
+    const termGate = checkContractTermGate({
+      contractType,
+      contractEndDate,
+      hireDate,
+      nationality,
+      nationalId,
+    });
+    if (termGate.deemed && termGate.endDate) contractEndDate = termGate.endDate;
+    if (!termGate.ok) {
+      error = termGate.error === "CONTRACT_EXPIRED" ? "CONTRACT_EXPIRED"
+        : termGate.error === "CONTRACT_NONSAUDI_FIXED_REQUIRED" ? "CONTRACT_NONSAUDI_FIXED"
+        : "CONTRACT_END";
+      return;
+    }
+    const probation = hireType === "trial" || Boolean(input.probation || input.profile?.probation);
+    const probationDays = Number(input.probationDays || input.profile?.probationDays || 0);
+    const probationGate = checkProbationGate({
+      probation,
+      probationDays,
+      hireDate,
+      probationPriorAtEmployer: input.probationPriorAtEmployer ?? input.profile?.probationPriorAtEmployer,
+      probationOtherProfession: input.probationOtherProfession ?? input.profile?.probationOtherProfession,
+      probationRehireGapMonths: input.probationRehireGapMonths ?? input.profile?.probationRehireGapMonths,
+    });
+    if (!probationGate.ok) {
+      error = probationGate.error;
+      return;
+    }
     const approver = unitOwner(data, seat.stationId, seat.approverId);
-    const missing = missingDocKinds(nationalId);
+    const missing = missingDocKinds(nationalId, nationality);
     if (missing.length) warnings.push("DOCS");
 
     employeeId = uid("emp");
@@ -716,12 +767,14 @@ export function hireFromSeat(companyId, input) {
       managedStations: extra,
       position: jobTitle,
       nationalId: nationalId || undefined,
+      nationality: nationality || undefined,
       profile: {
         position: jobTitle,
         department: pack ? templateLabel(pack, true) : (seat.list || ""),
         gradeId: seat.gradeId || null,
         hireDate,
         contractType,
+        nationality,
         nationalId,
         phone,
         baseSalary: salary || "",
@@ -738,8 +791,21 @@ export function hireFromSeat(companyId, input) {
         department: pack ? templateLabel(pack, true) : (seat.list || ""),
         gradeId: seat.gradeId || null,
         hireDate,
+        nationality,
         nationalId,
         phone,
+        contractType,
+        contractEndDate: contractType === "fixed" ? contractEndDate : "",
+        workPattern,
+        probation,
+        probationDays: probation ? probationDays : "",
+        contract: {
+          ...((input.profile && input.profile.contract) || {}),
+          type: contractType,
+          startDate: hireDate,
+          endDate: contractType === "fixed" ? contractEndDate : "",
+          workPattern,
+        },
       },
       createdAt: new Date().toISOString(),
     });

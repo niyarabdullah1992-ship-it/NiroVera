@@ -56,28 +56,28 @@ export function orgChainNext(data, ar = true) {
       en: "Add a branch under the company. One workplace tree — not stacked layers.",
     };
   }
-  if (health.vacant) {
-    return {
-      tab: "branches",
-      tone: "amber",
-      ar: `${health.vacant} بلا مدير — عيّن مديرًا أو وكالة بتاريخ. المقعد الفارغ يبقى صادقًا.`,
-      en: `${health.vacant} vacant — assign a manager or dated acting. Empty seats stay honest.`,
-    };
-  }
   if (!health.lists) {
     return {
       tab: "lists",
       tone: "amber",
-      ar: "أنشئ قائمة صلاحيات قبل التوظيف. القائمة تمنح الوصول، والدرجة لا تمنحه.",
-      en: "Create an access list before hiring. The list grants access; a grade never does.",
+      ar: "أنشئ صلاحية قبل توزيع المناصب. الموارد البشرية لا تضع موظفاً على فرع بلا قائمة ومسمّيات.",
+      en: "Create an access pack before distributing titles. HR cannot place people on a branch without a list and job titles.",
     };
   }
   if (!health.listsWithAccess) {
     return {
       tab: "lists",
       tone: "amber",
-      ar: "الحزم بلا ما يجوز فعله. افتح قائمة وعيّن الصلاحيات — وإلا التوظيف يضع شخصًا بلا مفتاح.",
-      en: "The packs grant nothing yet. Open a list and set access — otherwise hire places a person with no key.",
+      ar: "الحزمة بلا مفتاح. عيّن صلاحيات الموارد البشرية والموظفين حتى يوزَّع المنصب بسهولة.",
+      en: "The pack grants nothing yet. Set HR and employee access so titles can be distributed.",
+    };
+  }
+  if (health.vacant) {
+    return {
+      tab: "branches",
+      tone: "amber",
+      ar: `${health.vacant} بلا مدير — عيّن مديرًا أو وكالة بتاريخ. المقعد الفارغ يبقى صادقًا.`,
+      en: `${health.vacant} vacant — assign a manager or dated acting. Empty seats stay honest.`,
     };
   }
   if (health.unpublished) {

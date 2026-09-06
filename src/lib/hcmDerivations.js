@@ -293,6 +293,7 @@ export const ACTION_REASONS = {
     { id: "contract_end", ar: "انتهاء العقد", en: "Contract end" },
     { id: "mutual", ar: "إنهاء بالتراضي", en: "Mutual agreement" },
     { id: "article_80", ar: "المادة 80", en: "Article 80" },
+    { id: "article_81", ar: "المادة 81 — ترك مع حفظ الحقوق", en: "Article 81 — leaving with rights" },
     { id: "redundancy", ar: "إلغاء المنصب", en: "Position redundancy" },
     { id: "retirement", ar: "تقاعد", en: "Retirement" },
   ],

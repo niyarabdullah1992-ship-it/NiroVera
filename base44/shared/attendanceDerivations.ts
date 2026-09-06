@@ -3,13 +3,15 @@
  *  Status keys are stable IDs — never bind filters to translated labels.
  */
 
-export const GRACE_MINUTES = 10;
-export const SHIFT_HOURS = 8;
+import { ruleValue } from "./laborRules.ts";
+
+export const GRACE_MINUTES = ruleValue("hours.grace.minutes");
+export const SHIFT_HOURS = ruleValue("hours.shift.ordinaryHours");
 export const SHIFT_MINUTES = SHIFT_HOURS * 60;
-export const SETTLEMENT_WINDOW_DAYS = 45;
+export const SETTLEMENT_WINDOW_DAYS = ruleValue("hours.settlement.windowDays");
 export const DEFAULT_SHIFT_START = "07:00";
 /** Overtime premium under Labour Law Art. 107 (pay engine applies; here for visibility). */
-export const OT_PREMIUM = 1.5;
+export const OT_PREMIUM = ruleValue("hours.ot.premium");
 
 /** Stable day-band / roster status IDs. */
 export const ATT_STATUS = {

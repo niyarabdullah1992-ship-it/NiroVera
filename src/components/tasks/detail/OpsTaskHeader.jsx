@@ -1,6 +1,7 @@
 import React from "react";
 import OpsTaskDeleteWindow from "@/components/tasks/OpsTaskDeleteWindow";
 import { ACCENT, BORDER, CARD, MUTED, NAVY, OK, SURFACE, WARN } from "@/lib/platformStyles";
+import { taskRecurrenceLabel } from "@/lib/opsDerivations";
 
 const tag = { display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 8, fontSize: 11, background: SURFACE, color: MUTED, border: `1px solid ${BORDER}` };
 const neutral = { ...tag, borderRadius: 20, padding: "3px 9px", fontWeight: 500, whiteSpace: "nowrap" };
@@ -21,6 +22,7 @@ export default function OpsTaskHeader({
   canReassign, canTransfer, canEndDelegation, canManage, canDelete,
   onClose, onOpenReassign, onOpenTransfer, onEndDelegation, onSetMode, onDelete,
 }) {
+  const recLabel = taskRecurrenceLabel(task.recurrence, ar);
   const statusLabel = awaiting ? (ar ? "بانتظار الاعتماد" : "Awaiting approval") : approved ? (ar ? "مكتملة" : "Completed") : (ar ? "نشطة" : "Active");
   const pct = Math.min(100, Math.round((doneN / targetN) * 100));
   const showActions = canReassign || canTransfer || canEndDelegation || (canManage && !approved && onSetMode) || (canDelete && !approved);
@@ -33,6 +35,7 @@ export default function OpsTaskHeader({
             <span dir="ltr" style={{ fontSize: 11, color: MUTED, fontFamily: "'IBM Plex Mono',monospace" }}>{task.ref}</span>
             <span style={tag}>×{task.effortWeight || 1} {ar ? "وزن" : "weight"}</span>
             <span style={tag}>{task.mode === "remote" ? (ar ? "عن بُعد" : "Remote") : (ar ? "ميداني" : "On-site")}</span>
+            {recLabel ? <span style={tag}>{recLabel}</span> : null}
             <span style={awaiting ? WARN : approved ? OK : neutral}>{statusLabel}</span>
           </div>
         </div>

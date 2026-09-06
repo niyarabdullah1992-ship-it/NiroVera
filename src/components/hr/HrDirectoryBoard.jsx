@@ -5,6 +5,7 @@ import { matchesStationScope } from "@/hooks/useStationScope";
 import { ACCENT, MUTED, NAVY, OK, NEUTRAL, WARN, bar, ui, tableShell, statCard, CARD, SURFACE } from "@/lib/platformStyles";
 import { ChromeBox } from "@/components/shared/IdentityCard";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
+import { isSaudiForNitaqat } from "@/lib/complianceDerivations";
 
 const tableHead = {
   display: "grid",
@@ -54,10 +55,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
     (n, e) => n + (e.leaveRequests || []).filter((r) => r.status === "pending").length,
     0,
   );
-  const saudiCount = employees.filter((e) => {
-    const nat = (e.profile?.nationality || e.nationality || "").toLowerCase();
-    return /سعود|saudi/.test(nat);
-  }).length;
+  const saudiCount = employees.filter((e) => isSaudiForNitaqat(e)).length;
   const saudiPct = employees.length ? Math.round((saudiCount / employees.length) * 100) : 0;
 
   const hires = (data?.onboarding || data?.newHires || []).slice(0, 6);
@@ -97,8 +95,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
     const q = query.trim().toLowerCase();
     return employees.filter((e) => {
       if (e.role === "owner" && !e.stationId) return filter === "all" || filter === "active";
-      const nat = (e.profile?.nationality || e.nationality || "").toLowerCase();
-      const isSaudi = /سعود|saudi/.test(nat);
+      const isSaudi = isSaudiForNitaqat(e);
       if (filter === "saudi" && !isSaudi) return false;
       if (filter === "expat" && isSaudi) return false;
       if (filter === "active" && e.status === "inactive") return false;

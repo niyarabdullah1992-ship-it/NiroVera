@@ -199,7 +199,13 @@ Deno.serve(async (req) => {
       const employeeId = String(body.employeeId || "").trim();
       const data = await loadPayload();
       const row = findCase(data, employeeId);
-      const gate = checkCompleteOffboardingGate(row);
+      const employees = await base44.asServiceRole.entities.Employee.filter({
+        companyId: auth.companyId,
+        employeeId,
+      });
+      const emp = employees[0];
+      const profile = emp?.profile && typeof emp.profile === "object" ? emp.profile as Record<string, unknown> : {};
+      const gate = checkCompleteOffboardingGate(row, { contractExit: profile.contractExit as OffboardingCaseLike["contractExit"] });
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 400 });
       }
@@ -212,11 +218,6 @@ Deno.serve(async (req) => {
       await savePayload(data);
 
       // Revoke login: delete credentials + sessions (same outcome as disableEmployeeAccess).
-      const employees = await base44.asServiceRole.entities.Employee.filter({
-        companyId: auth.companyId,
-        employeeId,
-      });
-      const emp = employees[0];
       if (emp) {
         const meta = await base44.asServiceRole.entities.CompanyDataBlob.filter({
           companyId: auth.companyId,

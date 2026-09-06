@@ -1,6 +1,6 @@
 import React from "react";
 import Logo from "@/components/Logo";
-import { BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE, pageCol } from "@/lib/platformStyles";
+import { BORDER, CARD, INK, MUTED, NAVY_FILL, SURFACE, navPill, pageCol, pillCount } from "@/lib/platformStyles";
 
 /** Shared NiroVera section chrome — title, then a full-width tab bar, then body. */
 export default function PlatformStampShell({
@@ -98,7 +98,7 @@ export default function PlatformStampShell({
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: 4,
+              gap: 5,
               background: SURFACE,
               padding: "8px 12px",
               borderBottom: `1px solid ${BORDER}`,
@@ -112,24 +112,9 @@ export default function PlatformStampShell({
                   type="button"
                   onClick={() => onTool?.(value)}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 7,
-                    flex: "1 1 140px",
-                    minWidth: 120,
-                    minHeight: 38,
-                    padding: "0 10px",
-                    border: selected ? `1px solid ${BORDER}` : "1px solid transparent",
-                    borderRadius: 9,
-                    background: selected ? CARD : "transparent",
-                    color: selected ? INK : MUTED,
-                    boxShadow: selected ? "0 1px 2px rgba(20,40,75,.06)" : "none",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    textAlign: "center",
+                    ...navPill(selected),
+                    flex: "0 1 auto",
+                    minWidth: 0,
                   }}
                 >
                   {step ? (
@@ -144,35 +129,21 @@ export default function PlatformStampShell({
                         justifyContent: "center",
                         fontSize: 10,
                         fontWeight: 700,
-                        background: selected ? NAVY_FILL : "transparent",
-                        color: selected ? "#fff" : MUTED,
+                        background: selected ? "color-mix(in oklab, #fff 24%, transparent)" : "transparent",
+                        color: selected ? "inherit" : MUTED,
                         border: selected ? "none" : `1px solid ${BORDER}`,
                       }}
                     >
                       {step}
                     </span>
                   ) : Icon ? (
-                    <Icon style={{ width: 14, height: 14, color: selected ? INK : MUTED, flexShrink: 0 }} />
+                    <Icon style={{ width: 14, height: 14, color: "inherit", flexShrink: 0 }} />
                   ) : null}
                   <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {label}
                   </span>
                   {count > 0 ? (
-                    <span
-                      style={{
-                        minWidth: 16,
-                        height: 16,
-                        borderRadius: 20,
-                        background: selected ? "var(--nv-accent)" : "var(--nv-accent-soft)",
-                        color: selected ? "#fff" : "var(--nv-accent-deep)",
-                        fontSize: 9,
-                        fontWeight: 700,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        padding: "0 4px",
-                      }}
-                    >
+                    <span dir="ltr" style={pillCount(selected)}>
                       {count}
                     </span>
                   ) : null}

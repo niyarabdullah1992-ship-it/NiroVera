@@ -6,6 +6,7 @@ import { isOnApprovedLeave } from "@/lib/leaveTypes";
 import { checkPublishGates } from "@/lib/shiftDerivations";
 import { ShieldCheck } from "lucide-react";
 import { ACCENT, MUTED, NAVY, cardShell, dot } from "@/lib/platformStyles";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 async function workforce(payload) {
   const res = await base44.functions.invoke("workforce", payload);
@@ -18,8 +19,20 @@ const CHECK_NOTES = {
     en: "Computed per calendar week from the matrix itself — the heaviest week for the heaviest employee, never a monthly average.",
   },
   rest_11h: {
-    ar: "لا يُسند موظف إلى وردية تبدأ قبل مرور 11 ساعة على انتهاء وردية سابقة.",
-    en: "No one is assigned to a shift starting less than 11 hours after their previous one ends.",
+    ar: "فاصل تشغيلي 11 ساعة بين الورديات — ليست المادة 101.",
+    en: "Operational 11-hour gap between shifts — not Article 101.",
+  },
+  workplace_hours: {
+    ar: "لا يبقى العامل في مكان العمل أكثر من 12 ساعة في اليوم — المادة 101.",
+    en: "A worker may not remain at the workplace more than 12 hours a day — Art. 101.",
+  },
+  hours_ramadan: {
+    ar: "في رمضان تُخفَّض ساعات المسلمين إلى 6 يومياً أو 36 أسبوعياً — المادة 98.",
+    en: "In Ramadan, Muslim hours drop to 6 a day or 36 a week — Art. 98.",
+  },
+  rest_5h: {
+    ar: "لا يجوز تشغيل العامل أكثر من خمس ساعات متواصلة دون راحة وصلاة وطعام لا تقل عن نصف ساعة — المادة 101. والراحة ليست ساعات عمل — المادة 102.",
+    en: "A worker may not work more than five consecutive hours without a rest of at least half an hour — Art. 101. Rest periods are not working hours — Art. 102.",
   },
   weekly_rest: {
     ar: "يوم راحة كامل لكل موظف في كل أسبوع، ولا يُستبدل بأجر.",
@@ -81,7 +94,11 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
         monthIndex,
       });
       if (remote?.checks) {
-        setChecks(remote.checks);
+        const byId = Object.fromEntries((local.checks || []).map((row) => [row.id, row]));
+        setChecks(remote.checks.map((row) => ({
+          ...row,
+          article: row.article || byId[row.id]?.article,
+        })));
         setBlocked(!!remote.blocked);
         setFailed(remote.failed || null);
       }
@@ -212,9 +229,14 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
                       fontSize: "12px",
                       fontWeight: 600,
                       color: c.ok ? NAVY : "#B91C1C",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "7px",
+                      flexWrap: "wrap",
                     }}
                   >
                     {ar ? c.labelAr : c.labelEn}
+                    {c.article ? <LaborArticleCite cite={{ article: c.article }} ar={ar} /> : null}
                   </span>
                   {note && (
                     <span style={{ display: "block", fontSize: "11px", color: MUTED, lineHeight: 1.65, marginTop: "3px" }}>

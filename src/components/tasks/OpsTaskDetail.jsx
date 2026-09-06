@@ -1,5 +1,6 @@
 import React from "react";
-import { assignmentHistoryNote, deriveDailyTaskPace, taskPoints } from "@/lib/opsDerivations";
+import { deriveDailyTaskPace, taskPaceInput, taskPoints } from "@/lib/opsDerivations";
+import OpsTaskAuditTimeline from "@/components/tasks/OpsTaskAuditTimeline";
 import DailyPaceStrip from "@/components/tasks/DailyPaceStrip";
 import OpsTaskHeader from "@/components/tasks/detail/OpsTaskHeader";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
@@ -48,19 +49,13 @@ export default function OpsTaskDetail({
   const steps = Array.isArray(task.steps) ? task.steps : String(task.steps || "").split("\n").filter(Boolean);
   const attachments = Array.isArray(task.attachments) ? task.attachments : [];
   const comments = Array.isArray(task.comments) ? task.comments : [];
-  const history = Array.isArray(task.assignmentHistory) ? task.assignmentHistory : [];
   const doneN = Number(task.completedCount) || 0;
   const targetN = Math.max(1, Number(task.targetCount) || 1);
   const awaiting = task.status === "awaiting_approval" || (doneN >= targetN && !task.approvedAt && task.status !== "completed");
   const approved = task.status === "completed" || !!task.approvedAt;
   const canDelete = !!currentUserId && (String(task.createdBy || "") === String(currentUserId) || canManage);
   const onsiteBlocked = task.mode !== "remote" && checkedIn === false;
-  const pace = deriveDailyTaskPace({
-    targetCount: task.targetCount,
-    completedCount: task.completedCount,
-    dueAt: task.dueAt,
-    startAt: task.startAt || task.createdAt,
-  });
+  const pace = deriveDailyTaskPace(taskPaceInput(task));
 
   const sendComment = (text, isIssue, extra) => {
     const files = Array.isArray(extra) ? extra : [];
@@ -85,7 +80,7 @@ export default function OpsTaskDetail({
       dir={ar ? "rtl" : "ltr"}
     >
       <div
-        style={{ width: "100%", maxWidth: 640, maxHeight: "calc(100vh - 48px)", background: CARD, borderRadius: 18, boxShadow: "0 24px 60px rgba(20,40,75,.25)", overflow: "hidden", display: "flex", flexDirection: "column" }}
+        style={{ width: "100%", maxWidth: 640, maxHeight: "calc(100vh - 48px)", background: CARD, borderRadius: 18, boxShadow: "0 24px 60px rgba(20,40,75,.25)", overflow: "visible", display: "flex", flexDirection: "column" }}
         onClick={(e) => e.stopPropagation()}
       >
         <OpsTaskHeader
@@ -143,20 +138,7 @@ export default function OpsTaskDetail({
 
           <OpsTaskAttachments taskId={task.id} attachments={attachments} ar={ar} busy={busy} onAddAttachment={onAddAttachment} />
 
-          {history.length > 0 && (
-            <OpsTaskSection title={ar ? "سجل التوكيل والنقل" : "Delegation & transfer log"} count={history.length}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {history.map((entry, i) => (
-                  <div key={`${entry.at || i}-${entry.toId || i}`} style={{ fontSize: 12, color: NAVY, lineHeight: 1.65, textWrap: "pretty" }}>{assignmentHistoryNote(entry, ar ? "ar" : "en")}</div>
-                ))}
-                {task.delegation?.untilDate && (
-                  <div style={{ fontSize: 11, color: "#B45309" }}>
-                    {ar ? `توكيل ساري${task.delegation.fromDate ? ` من ${task.delegation.fromDate}` : ""} حتى ${task.delegation.untilDate}` : `Delegation active${task.delegation.fromDate ? ` from ${task.delegation.fromDate}` : ""} until ${task.delegation.untilDate}`}
-                  </div>
-                )}
-              </div>
-            </OpsTaskSection>
-          )}
+          <OpsTaskAuditTimeline task={task} ar={ar} />
 
           <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: 12, background: NAVY_FILL, color: "#fff", flexWrap: "wrap" }}>
             <div>

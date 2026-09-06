@@ -43,7 +43,7 @@ import PlatformStampShell from "@/components/shared/PlatformStampShell";
 import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
 import { erpKicker } from "@/lib/erpModuleMeta";
 import { article90MaxDeduction, isWpsLate } from "@/lib/payrollDerivations";
-import { MUTED, NEUTRAL, WARN, OK, field, ui, SURFACE } from "@/lib/platformStyles";
+import { BORDER, MUTED, NEUTRAL, WARN, OK, field, ui, SURFACE } from "@/lib/platformStyles";
 import { brandReportColor } from "@/lib/pdfTheme";
 
 const UNASSIGNED_STATION_ID = "__unassigned__";
@@ -140,19 +140,19 @@ export default function Payroll() {
     : null;
 
   const headers = ar
-    ? ["الموظف", "الأساسي", "البدلات", "مكافآت", "خصومات", "سقف م.90", "الصافي", "الحالة"]
-    : ["Employee", "Base", "Allowances", "Bonus", "Deductions", "Art. 90 cap", "Net", "Status"];
+    ? ["الموظف", "الأساسي", "البدلات", "مكافآت", "خصومات", "سقف م.93", "الصافي", "الحالة"]
+    : ["Employee", "Base", "Allowances", "Bonus", "Deductions", "Art. 93 cap", "Net", "Status"];
 
   const hints = {
     run: ar
       ? "تجهيز واعتماد المسير: الحضور يُقفل هنا. راجع الإجمالي ثم اعتمد قبل ملف مدى."
       : "Prepare and approve the run: attendance closes here. Review the total, then approve before the Mudad file.",
     lines: ar
-      ? "حضور معتمد يظهر كبند خصم هنا، ثم الصافي يدخل صف مدى. المادة 90 تمنع تجاوز نصف الأجر."
-      : "Approved attendance appears here as a deduction line, then net enters the Mudad row. Article 90 blocks anything over half the wage.",
+      ? "حضور معتمد يظهر كبند خصم هنا، ثم الصافي يدخل صف مدى. المادة 93 تمنع تجاوز نصف الأجر."
+      : "Approved attendance appears here as a deduction line, then net enters the Mudad row. Article 93 blocks anything over half the wage.",
     wps: ar
-      ? "حماية الأجور: هوية · آيبان · تطابق قوى · صافٍ موجب — ثم ملف مدى قبل اليوم الثالث."
-      : "Wage protection: ID · IBAN · Qiwa match · positive net — then the Mudad file before day 3.",
+      ? "حماية الأجور: هوية · آيبان · تطابق قوى · صافٍ موجب — ثم ملف مدى خلال 30 يوماً من الاستحقاق."
+      : "Wage protection: ID · IBAN · Qiwa match · positive net — then the Mudad file within 30 days of entitlement.",
     files: ar
       ? "قالب المبالغ من ملف الموظف. الصفوف المدفوعة لا تُمس."
       : "Amount template from the employee file. Paid rows are left untouched.",
@@ -184,7 +184,7 @@ export default function Payroll() {
           [ar ? "البدلات" : "Allowances", `${Number(item.allowances).toLocaleString("en-US")} ${item.currency}`],
           [ar ? "المكافآت" : "Bonus", `${Number(item.bonus).toLocaleString("en-US")} ${item.currency}`],
           [ar ? "الخصومات" : "Deductions", `- ${Number(item.deductions).toLocaleString("en-US")} ${item.currency}`],
-          [ar ? "سقف الخصم (المادة 90)" : "Deduction cap (Art. 90)", `${article90MaxDeduction(item).toLocaleString("en-US")} ${item.currency}`],
+          [ar ? "سقف الخصم (المادة 93)" : "Deduction cap (Art. 93)", `${article90MaxDeduction(item).toLocaleString("en-US")} ${item.currency}`],
           [ar ? "الصافي" : "Net", `${netOf(item).toLocaleString("en-US")} ${item.currency}`],
           [ar ? "حالة الدفع" : "Payment status", item.paid ? (ar ? "مدفوع" : "Paid") : (ar ? "غير مدفوع" : "Unpaid")],
         ],
@@ -288,7 +288,7 @@ export default function Payroll() {
             icon={ListChecks}
             kicker={ar ? "البنود" : "Lines"}
             title={ar ? "مراجعة الأجر التعاقدي" : "Contractual wage review"}
-            subtitle={ar ? "حضور معتمد → بند خصم → صافٍ → ملف مدى. المادة 90 تمنع تجاوز نصف الأجر." : "Approved attendance → deduction line → net → Mudad file. Article 90 blocks anything over half the wage."}
+            subtitle={ar ? "حضور معتمد → بند خصم → صافٍ → ملف مدى. المادة 93 تمنع تجاوز نصف الأجر." : "Approved attendance → deduction line → net → Mudad file. Article 93 blocks anything over half the wage."}
             meta={issueCount > 0 ? <span style={{ ...WARN, borderRadius: 8 }}>{issueCount} {ar ? "بندًا يحتاج تصحيحًا" : "lines need a fix"}</span> : null}
             bodyStyle={{ padding: 0, overflowX: "auto" }}
           >
@@ -301,7 +301,7 @@ export default function Payroll() {
                 <thead>
                   <tr>
                     {[...headers, ar ? "قسيمة" : "Payslip"].map((h) => (
-                      <th key={h} style={{ padding: "11px 12px", textAlign: "center", fontSize: 10, letterSpacing: "0.06em", color: MUTED, fontWeight: 600, borderBottom: "1px solid #E2E8F0", background: SURFACE }}>{h}</th>
+                      <th key={h} style={{ padding: "11px 12px", textAlign: "center", fontSize: 10, letterSpacing: "0.06em", color: MUTED, fontWeight: 600, borderBottom: `1px solid ${BORDER}`, background: SURFACE }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -316,9 +316,11 @@ export default function Payroll() {
                     onTogglePaid={(item, paid) => {
                       if (paid && payrollItemIssues(item).length) {
                         const issues = payrollItemIssues(item);
-                        const msg = issues.includes("ARTICLE_90_EXCEEDED")
-                          ? (ar ? "لا يمكن الدفع — مجموع الخصومات يتجاوز نصف الأجر (المادة 90)." : "Payment blocked — deductions exceed half the wage (Art. 90).")
-                          : (ar ? "لا يمكن اعتماد الدفع قبل إدخال راتب أساسي ومبالغ صحيحة وصافي موجب وعملة صالحة." : "Payment cannot be approved until base salary, valid amounts, a positive net, and a valid currency are set.");
+                        const msg = (issues.includes("ARTICLE_93_EXCEEDED") || issues.includes("ARTICLE_90_EXCEEDED"))
+                          ? (ar ? "لا يمكن الدفع — مجموع الخصومات يتجاوز نصف الأجر (المادة 93)." : "Payment blocked — deductions exceed half the wage (Art. 93).")
+                          : issues.includes("OT_ANNUAL_CAP")
+                            ? (ar ? "لا يمكن الدفع — ساعات الإضافي تتجاوز 720 ساعة في السنة (اللائحة مادة 22)." : "Payment blocked — overtime exceeds 720 hours in a year (implementing regulations Art. 22).")
+                            : (ar ? "لا يمكن اعتماد الدفع قبل إدخال راتب أساسي ومبالغ صحيحة وصافي موجب وعملة صالحة." : "Payment cannot be approved until base salary, valid amounts, a positive net, and a valid currency are set.");
                         alert(msg);
                         return;
                       }

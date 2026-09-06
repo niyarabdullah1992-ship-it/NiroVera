@@ -5,9 +5,12 @@ import {
   checkComplianceDocGate,
   checkGosiFileGate,
   checkNitaqatHireGate,
+  checkSaudiIdentityGate,
   checkWpsFileGate,
+  checkContractTermGate,
   deriveGosiMonthly,
   deriveNitaqat,
+  deriveSaudiStatus,
 } from "../src/lib/complianceDerivations.js";
 
 assert.equal(EXPIRY_WARN_DAYS, 60);
@@ -119,5 +122,126 @@ const mismatch = buildWpsFileRows([
   },
 ]);
 assert.equal(checkWpsFileGate(mismatch).error, "QIWA_MISMATCH");
+
+const citizen = deriveSaudiStatus({ nationality: "سعودي", nationalId: "1012345678" });
+assert.equal(citizen.saudi, true);
+assert.equal(citizen.countable, true);
+assert.equal(citizen.source, "nationality+id");
+assert.equal(checkSaudiIdentityGate(citizen).ok, true);
+
+const expat = deriveSaudiStatus({ nationality: "مصري", nationalId: "2012345678" });
+assert.equal(expat.saudi, false);
+assert.equal(expat.countable, true);
+
+const conflict = deriveSaudiStatus({ nationality: "سعودي", nationalId: "2012345678" });
+assert.equal(conflict.mismatch, true);
+assert.equal(conflict.saudi, false);
+assert.equal(conflict.countable, false);
+assert.equal(checkSaudiIdentityGate(conflict).error, "SAUDI_IDENTITY_MISMATCH");
+
+const conflictGate = checkComplianceDocGate({
+  employee: { employeeId: "e4", nationality: "سعودي", nationalId: "2012345678", docs: [] },
+});
+assert.equal(conflictGate.error, "SAUDI_IDENTITY_MISMATCH");
+
+const natOnly = deriveSaudiStatus({ nationality: "Saudi" });
+assert.equal(natOnly.saudi, true);
+assert.equal(natOnly.needsId, true);
+assert.equal(natOnly.source, "nationality");
+
+const idOnly = deriveSaudiStatus({ nationalId: "1012345678" });
+assert.equal(idOnly.saudi, true);
+assert.equal(idOnly.needsNationality, true);
+assert.equal(idOnly.source, "id");
+
+const nitaqatFromPair = deriveNitaqat([
+  { employeeId: "s1", nationality: "سعودي", nationalId: "1012345678" },
+  { employeeId: "x1", nationality: "هندي", nationalId: "2012345678" },
+  { employeeId: "bad", nationality: "سعودي", nationalId: "2012345678" },
+]);
+assert.equal(nitaqatFromPair.saudi, 1);
+assert.equal(nitaqatFromPair.mismatch, 1);
+assert.equal(nitaqatFromPair.total, 3);
+
+const openEnded = checkContractTermGate({ contractType: "indefinite", today: "2026-08-12" });
+assert.equal(openEnded.ok, true);
+assert.equal(openEnded.term, "indefinite");
+
+const aliasOpen = checkContractTermGate({ contractType: "unlimited", today: "2026-08-12" });
+assert.equal(aliasOpen.ok, true);
+assert.equal(aliasOpen.term, "indefinite");
+
+const trialOverlay = checkContractTermGate({ contractType: "trial", today: "2026-08-12" });
+assert.equal(trialOverlay.ok, true);
+assert.equal(trialOverlay.term, "indefinite");
+
+const fixedNoEnd = checkContractTermGate({ contractType: "fixed", today: "2026-08-12" });
+assert.equal(fixedNoEnd.ok, false);
+assert.equal(fixedNoEnd.error, "CONTRACT_END_REQUIRED");
+
+const expired = checkContractTermGate({
+  contractType: "fixed",
+  contractEndDate: "2026-01-01",
+  today: "2026-08-12",
+});
+assert.equal(expired.ok, false);
+assert.equal(expired.error, "CONTRACT_EXPIRED");
+
+const art55gate = checkContractTermGate({
+  nationality: "سعودي",
+  contractType: "fixed",
+  contractEndDate: "2026-01-01",
+  hireDate: "2025-01-01",
+  today: "2026-08-12",
+});
+assert.equal(art55gate.ok, true);
+assert.equal(art55gate.term, "indefinite");
+assert.equal(art55gate.warning, "ART55_CONVERTED");
+
+const art55midRenewal = checkContractTermGate({
+  nationality: "سعودي",
+  contractType: "fixed",
+  contractEndDate: "2026-01-01",
+  hireDate: "2024-06-01",
+  today: "2026-08-12",
+  profile: { contractType: "fixed", contractRenewalCount: 1, hireDate: "2024-06-01", nationality: "سعودي" },
+});
+assert.equal(art55midRenewal.ok, false);
+assert.equal(art55midRenewal.error, "CONTRACT_EXPIRED");
+
+const watch = checkContractTermGate({
+  employee: { profile: { contractType: "fixed", contract: { endDate: "2026-09-01" } } },
+  today: "2026-08-12",
+});
+assert.equal(watch.ok, true);
+assert.equal(watch.warning, "CONTRACT_EXPIRING");
+
+const far = checkContractTermGate({
+  contractType: "fixed",
+  contractEndDate: "2027-08-01",
+  today: "2026-08-12",
+});
+assert.equal(far.ok, true);
+assert.equal(far.warning, undefined);
+
+const nonSaudiIndefinite = checkContractTermGate({
+  nationality: "Egyptian",
+  contractType: "indefinite",
+  hireDate: "2026-01-01",
+  today: "2026-08-12",
+});
+assert.equal(nonSaudiIndefinite.ok, false);
+assert.equal(nonSaudiIndefinite.error, "CONTRACT_NONSAUDI_FIXED_REQUIRED");
+
+const deemedYear = checkContractTermGate({
+  nationality: "Indian",
+  contractType: "fixed",
+  hireDate: "2026-01-01",
+  today: "2026-08-12",
+});
+assert.equal(deemedYear.ok, true);
+assert.equal(deemedYear.warning, "CONTRACT_TERM_DEEMED_YEAR");
+assert.equal(deemedYear.endDate, "2027-01-01");
+assert.equal(deemedYear.deemed, true);
 
 console.log("complianceDerivations E2E rules: PASS");

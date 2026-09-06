@@ -1,11 +1,17 @@
 /** Client mirror of base44/shared/payrollDerivations.ts */
 
-export const SHIFT_HOURS_PER_DAY = 8;
-export const DAYS_PER_MONTH = 30;
-export const OT_RATE = 1.5;
-export const WPS_DEADLINE_DAY = 3;
-/** Article 90 — deductions may not exceed half the contractual monthly wage. */
-export const ARTICLE_90_CAP = 0.5;
+import { citeRule, ruleValue } from "./laborRules.js";
+
+export const SHIFT_HOURS_PER_DAY = ruleValue("hours.shift.ordinaryHours");
+export const DAYS_PER_MONTH = ruleValue("payroll.month.conventionDays");
+export const OT_RATE = ruleValue("hours.ot.premium");
+export const OT_ANNUAL_MAX_HOURS = ruleValue("hours.ot.annualMaxHours");
+export const WPS_FILE_WINDOW_DAYS = ruleValue("payroll.wps.fileWindowDays");
+export const WPS_DEADLINE_DAY = ruleValue("payroll.wps.deadlineDayOfMonth");
+/** Article 93 — deductions may not exceed half the contractual monthly wage. */
+export const ARTICLE_93_CAP = ruleValue("payroll.deduction.capRatio");
+/** @deprecated Use ARTICLE_93_CAP — Article 90 is payment currency/schedule, not the half-wage cap. */
+export const ARTICLE_90_CAP = ARTICLE_93_CAP;
 
 export function parseMonth(month) {
   const m = String(month || "").match(/^(\d{4})-(\d{2})$/);
@@ -25,7 +31,7 @@ export function hourlyFromBase(base) {
 
 export function overtimePay(base, overtimeHours) {
   const hours = Math.max(0, Number(overtimeHours) || 0);
-  return Math.round(hourlyFromBase(base) * OT_RATE * hours * 100) / 100;
+  return Math.round(hourlyFromBase(base) * ruleValue("hours.ot.premium") * hours * 100) / 100;
 }
 
 export function lineGross(line) {
@@ -43,26 +49,55 @@ export function contractWage(line) {
   return (Number(line.base) || 0) + (Number(line.allowances) || 0);
 }
 
-export function article90MaxDeduction(line) {
-  return Math.round(contractWage(line) * ARTICLE_90_CAP * 100) / 100;
+export function article93MaxDeduction(line) {
+  return Math.round(contractWage(line) * ruleValue("payroll.deduction.capRatio") * 100) / 100;
 }
+/** @deprecated Use article93MaxDeduction */
+export const article90MaxDeduction = article93MaxDeduction;
 
-export function checkArticle90Gate(line) {
+export function checkArticle92LoanGate(line, extraAdvance = 0) {
   const wage = contractWage(line);
-  const deductions = Number(line.deductions) || 0;
-  if (wage <= 0) return { ok: true, wage, deductions, max: 0 };
-  const max = article90MaxDeduction(line);
-  if (deductions <= max) return { ok: true, wage, deductions, max };
+  const cite = citeRule("payroll.loan.capRatio");
+  const capRatio = ruleValue("payroll.loan.capRatio");
+  const existing = (line?.deductionLines || [])
+    .filter((row) => row?.source === "advance")
+    .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const amount = Number(extraAdvance) || 0;
+  const total = existing + amount;
+  const max = Math.round(wage * capRatio * 100) / 100;
+  if (wage <= 0 || total <= max) return { ok: true, wage, total, max, cite };
   return {
     ok: false,
-    error: "ARTICLE_90_EXCEEDED",
-    reason: `مجموع الخصومات (${deductions.toLocaleString()} ر.س) يتجاوز نصف الأجر (${max.toLocaleString()} ر.س) — المادة 90 من نظام العمل.`,
-    reasonEn: `Total deductions (${deductions} SAR) exceed half the contractual wage (${max} SAR) — Labour Law Art. 90.`,
+    error: "ARTICLE_92_LOAN",
+    reason: `حسم السلفة (${total.toLocaleString()} ر.س) يتجاوز 10٪ من الأجر (${max.toLocaleString()} ر.س) — ${cite?.labelAr || "المادة 92"}.`,
+    reasonEn: `Advance recovery (${total} SAR) exceeds 10% of the wage (${max} SAR) — Labour Law ${cite?.labelEn || "Art. 92"}.`,
+    wage,
+    total,
+    max,
+    cite,
+  };
+}
+
+export function checkArticle93Gate(line) {
+  const wage = contractWage(line);
+  const deductions = Number(line.deductions) || 0;
+  const cite = citeRule("payroll.deduction.capRatio");
+  if (wage <= 0) return { ok: true, wage, deductions, max: 0, cite };
+  const max = article93MaxDeduction(line);
+  if (deductions <= max) return { ok: true, wage, deductions, max, cite };
+  return {
+    ok: false,
+    error: "ARTICLE_93_EXCEEDED",
+    reason: `مجموع الخصومات (${deductions.toLocaleString()} ر.س) يتجاوز نصف الأجر (${max.toLocaleString()} ر.س) — ${cite?.labelAr || "المادة 93"} من نظام العمل.`,
+    reasonEn: `Total deductions (${deductions} SAR) exceed half the contractual wage (${max} SAR) — Labour Law ${cite?.labelEn || "Art. 93"}.`,
     wage,
     deductions,
     max,
+    cite,
   };
 }
+/** @deprecated Use checkArticle93Gate */
+export const checkArticle90Gate = checkArticle93Gate;
 
 export function lineIssues(line) {
   const issues = [];
@@ -72,7 +107,8 @@ export function lineIssues(line) {
     if (v != null && (!Number.isFinite(Number(v)) || Number(v) < 0)) issues.push("INVALID_AMOUNTS");
   }
   if (lineNet(line) <= 0) issues.push("NET_REQUIRED");
-  if (!checkArticle90Gate(line).ok) issues.push("ARTICLE_90_EXCEEDED");
+  if (!checkArticle93Gate(line).ok) issues.push("ARTICLE_93_EXCEEDED");
+  if (Number(line.overtimeHours) > ruleValue("hours.ot.annualMaxHours")) issues.push("OT_ANNUAL_CAP");
   const currency = String(line?.currency || "SAR").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) issues.push("CURRENCY_REQUIRED");
   return [...new Set(issues)];
@@ -95,7 +131,8 @@ export function enrichLine(line) {
     net: lineNet({ ...line, overtimePay: otPay }),
     qiwaMatched: qiwaMatches(line),
     contractWage: contractWage(line),
-    article90Max: article90MaxDeduction(line),
+    article93Max: article93MaxDeduction(line),
+    article90Max: article93MaxDeduction(line),
     issues: lineIssues({ ...line, overtimePay: otPay }),
   };
 }
@@ -129,17 +166,16 @@ export function deriveRunTotals(items = []) {
     qiwaTotal: enriched.length,
     issueCount: enriched.filter((i) => i.issues.length > 0).length,
     otRule: "ARTICLE_107_150",
-    deductionCapRule: "ARTICLE_90_50",
+    deductionCapRule: "ARTICLE_93_50",
   };
 }
 
 export function wpsDeadline(month) {
   const p = parseMonth(month);
   if (!p) return null;
-  let y = p.year;
-  let m = p.month + 1;
-  if (m > 12) { m = 1; y += 1; }
-  return `${y}-${String(m).padStart(2, "0")}-${String(WPS_DEADLINE_DAY).padStart(2, "0")}`;
+  const last = new Date(p.year, p.month, 0);
+  last.setDate(last.getDate() + WPS_FILE_WINDOW_DAYS);
+  return isoLocal(last);
 }
 
 export function isWpsLate(month, now = new Date()) {
@@ -199,7 +235,7 @@ export function checkSendWpsGate(run, now = new Date()) {
 
 /**
  * Monthly wage-protection procedure used by the payroll workspace.
- * prepare → review (Art. 90 / 107) → approve → Mudad/WPS (day-3 deadline).
+ * prepare → review (Art. 92 / 93 / 107) → approve → Mudad/WPS (30 days from month-end).
  */
 export function payrollCycleState({ hasRun, heads = 0, issueCount = 0, status = "", wpsLate = false } = {}) {
   const prepared = Boolean(hasRun && heads > 0);

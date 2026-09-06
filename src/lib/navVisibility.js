@@ -23,7 +23,7 @@ const BASE = [
   "/app/manual",
 ];
 const MANAGER_EXTRA = ["/app/safety", "/app/escalation"];
-const EXEC_EXTRA = ["/app/hr", "/app/org", "/app/settings", "/app/payroll"];
+const EXEC_EXTRA = ["/app/hr", "/app/org", "/app/settings", "/app/payroll", "/app/discipline"];
 
 const PLAN_ROUTE_SECTIONS = {
   "/app/assistant": "assistant",
@@ -38,6 +38,7 @@ const PLAN_ROUTE_SECTIONS = {
   "/app/hr": "hr",
   "/app/org": "hr",
   "/app/settings": "hr",
+  "/app/discipline": "hr",
   "/app/performance": "performance",
   "/app/expenses": "expenses",
   "/app/payroll": "payroll",
@@ -81,6 +82,7 @@ export function allowedNavFor(user, data, company) {
     allowed.add("/app/hr");
     allowed.add("/app/org");
     allowed.add("/app/settings");
+    allowed.add("/app/discipline");
     if (hrPermissions.has("view_safety")) allowed.add("/app/safety");
     if (hrPermissions.has("manage_payroll")) {
       allowed.add("/app/payroll");
@@ -114,7 +116,7 @@ export function canAccessPath(pathname, user, data, company) {
     .flatMap((routes) => (Array.isArray(routes) ? routes : routes ? [routes] : []))
     .find((item) => pathname === item || pathname.startsWith(`${item}/`));
   if (smartRoute && !allowed.has(smartRoute)) return false;
-  const gated = ["/app/hr", "/app/org", "/app/settings", "/app/payroll", "/app/safety"];
+  const gated = ["/app/hr", "/app/org", "/app/settings", "/app/payroll", "/app/safety", "/app/discipline"];
   const hit = gated.find((g) => pathname === g || pathname.startsWith(`${g}/`));
   if (hit) return allowed.has(hit);
   return true;

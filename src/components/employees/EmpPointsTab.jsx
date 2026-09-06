@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { MUTED, NAVY, NAVY_FILL, OK, WARN, SURFACE, CARD } from "@/lib/platformStyles";
+import { BORDER, MUTED, NAVY, NAVY_FILL, OK, WARN, SURFACE } from "@/lib/platformStyles";
 import { ChromeBox } from "@/components/shared/IdentityCard";
 
 /**
@@ -48,8 +48,8 @@ export default function EmpPointsTab({ employee, data, lang = "ar" }) {
     gap: "12px",
     padding: "10px 20px",
     background: SURFACE,
-    borderTop: "1px solid #E2E8F0",
-    borderBottom: "1px solid #E2E8F0",
+    borderTop: `1px solid ${BORDER}`,
+    borderBottom: `1px solid ${BORDER}`,
     fontSize: "10px",
     letterSpacing: "0.06em",
     color: MUTED,

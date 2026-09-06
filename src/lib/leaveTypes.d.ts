@@ -12,6 +12,23 @@ export type EmployeeLeaveProfile = {
   leaveRequests?: LeaveRequestLike[];
 };
 
+export function usedLeaveDays(requests: LeaveRequestLike[] | undefined, key: string, onDate?: string, hireDate?: string): number;
+export function remainingLeaveDays(
+  profile: { hireDate?: string; leaveTotals?: Record<string, number> } | null | undefined,
+  requests: LeaveRequestLike[] | undefined,
+  key?: string,
+  onDate?: string,
+): number | null;
+export function sickStatutoryYearWindow(
+  requests: LeaveRequestLike[] | undefined,
+  onDate?: string,
+): { start: string; end: string };
+export function anniversaryYearWindow(
+  hireDate?: string,
+  onDate?: string,
+): { start: string; end: string } | null;
+export function accruedAnnualDaysAtExit(hireDate: string | undefined, entitlement: number, exitDate?: string): number;
+
 export function isOnApprovedLeave(
   employee: EmployeeLeaveProfile | null | undefined,
   date?: Date | string,

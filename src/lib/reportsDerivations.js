@@ -2,10 +2,12 @@
  *  Keep in sync — Reports library, timesheet (grace/8h/OT), payroll-close gates.
  */
 
-export const GRACE_MINUTES = 10;
-export const SHIFT_HOURS = 8;
+import { ruleValue } from "./laborRules.js";
+
+export const GRACE_MINUTES = ruleValue("hours.grace.minutes");
+export const SHIFT_HOURS = ruleValue("hours.shift.ordinaryHours");
 export const SHIFT_MINUTES = SHIFT_HOURS * 60;
-export const WEEKLY_HOURS_CAP = 48;
+export const WEEKLY_HOURS_CAP = ruleValue("hours.week.ordinaryMaxHours");
 export const WEEKLY_OT_CAP_HOURS = WEEKLY_HOURS_CAP - 5 * SHIFT_HOURS;
 export const DEFAULT_SHIFT_START = "07:00";
 

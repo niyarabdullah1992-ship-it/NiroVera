@@ -9,10 +9,18 @@ import {
   isProfileFieldVisible,
   profileFieldLabel,
   profileFieldOptions,
+  profileFieldRuleId,
   profileFieldValue,
+  isFixedContractType,
 } from "@/lib/employeeProfileFields";
 import MobileSelect from "@/components/mobile/MobileSelect";
-import { MUTED, NAVY, NAVY_FILL, OK, WARN, BAD, field, cardShell, CARD } from "@/lib/platformStyles";
+import { MUTED, NAVY, NAVY_FILL, OK, WARN, BAD, field, ui } from "@/lib/platformStyles";
+import { checkSaudiIdentityGate, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
+import { workPatternForcesFixed } from "@/lib/contractLawDerivations";
+import IdentityCard from "@/components/shared/IdentityCard";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import CommentFiles, { CommentAttachments } from "@/components/tasks/CommentFiles";
+import { Fingerprint, HeartPulse, Briefcase, Contact, Landmark, Layers } from "lucide-react";
 
 export { PROFILE_GROUPS };
 
@@ -26,7 +34,7 @@ function expiryChip(iso, ar) {
   const d = daysTo(iso);
   if (d === null) return null;
   if (d < 0) return { text: ar ? "منتهٍ" : "Expired", style: BAD };
-  if (d <= 60) return { text: ar ? `${d} يومًا` : `${d} days`, style: WARN };
+  if (d <= EXPIRY_WARN_DAYS) return { text: ar ? `${d} يومًا` : `${d} days`, style: WARN };
   return { text: ar ? "ساري" : "Valid", style: OK };
 }
 
@@ -42,7 +50,32 @@ function niceDate(iso, ar) {
   }
 }
 
+const GROUP_ICON = {
+  identity: Fingerprint,
+  socialInsurance: HeartPulse,
+  employment: Briefcase,
+  contact: Contact,
+  wps: Landmark,
+};
+
 const inputStyle = { ...field };
+
+function QualificationFiles({ files, canAttach, onChange, ar }) {
+  return (
+    <div style={{ marginTop: 8 }}>
+      {canAttach ? (
+        <CommentFiles files={files} setFiles={onChange} />
+      ) : (
+        <CommentAttachments files={files} />
+      )}
+      {canAttach ? (
+        <p style={{ margin: "6px 0 0", fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+          {ar ? "ارفع شهادة المؤهل أو بيان الدرجات — يُحفظ في الملف." : "Upload the qualification certificate or transcript — it is kept on the file."}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 /** Platform isTabInfo — L2669–2692, grouped to MHRSD employee-file order. */
 export default function ProfessionalInfoTab({
@@ -107,33 +140,50 @@ export default function ProfessionalInfoTab({
     allKeys.forEach((key) => {
       if (!canEditProfileKey(key, { canManage, isSelf })) delete payload[key];
     });
+    const identity = checkSaudiIdentityGate(payload);
+    if (!identity.ok) {
+      return;
+    }
+    if (workPatternForcesFixed(payload.workPattern)) {
+      payload.contractType = "fixed";
+    }
+    if (!isFixedContractType(payload.contractType) && profile.contract) {
+      payload.contract = { ...profile.contract, type: payload.contractType || "indefinite", endDate: "" };
+      payload.contractEndDate = "";
+    } else if (isFixedContractType(payload.contractType) && profile.contract) {
+      payload.contract = { ...profile.contract, type: "fixed" };
+    }
     updateEmployeeProfile(companyId, employee.id, payload);
     setEditing(false);
   };
 
-  const ghostBtn = {
-    padding: "7px 13px",
-    borderRadius: "9px",
-    border: "1px solid #E2E8F0",
-    background: CARD,
-    color: MUTED,
-    fontSize: "12px",
-    cursor: "pointer",
-    fontFamily: "inherit",
-  };
+  const identityLive = checkSaudiIdentityGate(editing ? form : profile);
 
-  const primaryBtn = {
-    ...ghostBtn,
-    background: NAVY_FILL,
-    color: "#fff",
-    border: "none",
-    fontWeight: 600,
-  };
+  const editMeta = (canFill || canEditGrade) ? (
+    editing ? (
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" onClick={() => setEditing(false)} style={ui.btnGhost}>
+          {ar ? "إلغاء" : "Cancel"}
+        </button>
+        <button type="button" onClick={save} style={{ ...ui.btnGhost, background: NAVY_FILL, color: "#fff", border: "none", fontWeight: 600 }}>
+          {t("save")}
+        </button>
+      </div>
+    ) : (
+      <button type="button" onClick={() => setEditing(true)} style={ui.btnGhost}>
+        {t("edit")}
+      </button>
+    )
+  ) : null;
 
   const gradeCard = (canEditGrade || profile.gradeId || profile.maxStations) ? (
-    <div style={cardShell}>
-      <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>{t("gradeAndStationScope")}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: "14px", marginTop: "16px" }}>
+    <IdentityCard
+      icon={Layers}
+      kicker={ar ? "من الهيكل" : "From org tree"}
+      title={t("gradeAndStationScope")}
+      subtitle={ar ? "الدرجة ونطاق الفروع يُشتقّان من المقعد، لا من إدخال حر." : "Grade and station scope come from the seat, not a free-hand entry."}
+    >
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: "14px" }}>
         <div>
           <div style={{ fontSize: "11px", color: MUTED }}>{t("jobGrade")}</div>
           <div style={{ marginTop: "6px" }}>
@@ -170,64 +220,54 @@ export default function ProfessionalInfoTab({
           </div>
         </div>
       </div>
-    </div>
+    </IdentityCard>
   ) : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }} dir={ar ? "rtl" : "ltr"}>
-      <div style={cardShell}>
-        <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
-          {ar ? "ملف العامل وفق سياسة الوزارة" : "Employee file — MHRSD order"}
-        </div>
-        <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.7, textWrap: "pretty" }}>
-          {ar
-            ? "يُرتَّب الملف كما تفحصه وزارة الموارد البشرية والتنمية الاجتماعية: الهوية والجوازات، ثم التأمينات والضمان الصحي، ثم التوظيف في قوى وحماية الأجور. العقد والأجر والإجازات والشهادات تلي هذا السجل."
-            : "The file follows MHRSD inspection order: identity and Jawazat, then GOSI and medical cover, then Qiwa employment and wage protection. Contract, pay, leave, and certificates follow this register."}
-        </div>
-      </div>
-
-      {isSelf && !canManage && (
-        <p style={{ margin: 0, fontSize: "12px", color: MUTED, lineHeight: 1.7 }}>
-          {ar
-            ? "ملف المعلومات المهنية للعرض فقط — تُكمله الإدارة أو الموارد البشرية."
-            : "Professional info is view-only — management or HR completes this file."}
-        </p>
-      )}
-
-      {(canFill || canEditGrade) && (
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-          {editing ? (
-            <>
-              <button type="button" onClick={() => setEditing(false)} style={ghostBtn}>
-                {ar ? "إلغاء" : "Cancel"}
-              </button>
-              <button type="button" onClick={save} style={primaryBtn}>
-                {t("save")}
-              </button>
-            </>
-          ) : (
-            <button type="button" onClick={() => setEditing(true)} style={ghostBtn}>
-              {t("edit")}
-            </button>
-          )}
-        </div>
-      )}
+      <IdentityCard
+        icon={Fingerprint}
+        kicker={ar ? "سجل نظامي" : "Statutory file"}
+        title={ar ? "ملف العامل وفق سياسة الوزارة" : "Employee file — MHRSD order"}
+        subtitle={ar
+          ? "الهوية ثم التأمينات ثم قوى ثم حماية الأجور. المادة تُعرض عند الخيار الذي يستند إليها."
+          : "Identity, then GOSI, then Qiwa, then wage protection. The article appears on the option that relies on it."}
+        meta={editMeta}
+      >
+        {isSelf && !canManage ? (
+          <p style={{ margin: 0, fontSize: "12px", color: MUTED, lineHeight: 1.7 }}>
+            {ar
+              ? "ملف المعلومات المهنية للعرض فقط — تُكمله الإدارة أو الموارد البشرية."
+              : "Professional info is view-only — management or HR completes this file."}
+          </p>
+        ) : (
+          <p style={{ margin: 0, fontSize: "12px", color: MUTED, lineHeight: 1.7 }}>
+            {ar
+              ? "يُحفظ الأمر في الملف. لا مادة مخترعة: التأمينات ومدد بلا شارة نظام العمل."
+              : "Each command is saved on the file. No invented article: GOSI and Mudad stay without a Labour Law chip."}
+          </p>
+        )}
+      </IdentityCard>
 
       {PROFILE_GROUPS.map((group) => {
         const fields = group.fields.filter((f) => isProfileFieldVisible(f, { profile, form, editing }));
         const idType = editing ? form.idType : readVal("idType");
+        const Icon = GROUP_ICON[group.id];
         return (
           <React.Fragment key={group.id}>
-            <div style={cardShell}>
-              <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
-                {ar ? group.ar : group.en}
-              </div>
-              {group.noteAr && (
-                <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.6, textWrap: "pretty" }}>
-                  {ar ? group.noteAr : group.noteEn}
+            <IdentityCard
+              icon={Icon}
+              kicker={ar ? "بند الملف" : "File block"}
+              title={ar ? group.ar : group.en}
+              subtitle={ar ? group.noteAr : group.noteEn}
+              meta={group.ruleId ? <LaborArticleCite ruleId={group.ruleId} ar={ar} /> : null}
+            >
+              {group.id === "identity" && identityLive.mismatch ? (
+                <div style={{ ...BAD, marginBottom: "12px", fontSize: "12px", lineHeight: 1.6 }}>
+                  {ar ? identityLive.reason : identityLive.reasonEn}
                 </div>
-              )}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: "14px", marginTop: "16px" }}>
+              ) : null}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: "14px" }}>
                 {group.showStation && (
                   <div>
                     <div style={{ fontSize: "11px", color: MUTED }}>
@@ -247,8 +287,10 @@ export default function ProfessionalInfoTab({
                   const canEditField = editing && canEditProfileKey(fieldDef.key, { canManage, isSelf });
                   const chip = !editing && fieldDef.expiry ? expiryChip(readVal(fieldDef.key), ar) : null;
                   const opts = profileFieldOptions(fieldDef);
+                  const currentVal = editing ? form[fieldDef.key] : readVal(fieldDef.key);
+                  const ruleId = profileFieldRuleId(fieldDef, currentVal);
                   return (
-                    <div key={fieldDef.key} style={fieldDef.area ? { gridColumn: "1 / -1" } : undefined}>
+                    <div key={fieldDef.key} style={fieldDef.area || fieldDef.key === "qualification" ? { gridColumn: "1 / -1" } : undefined}>
                       <div style={{ fontSize: "11px", color: MUTED }}>
                         {profileFieldLabel(fieldDef, idType, ar)}
                       </div>
@@ -294,11 +336,24 @@ export default function ProfessionalInfoTab({
                           </>
                         )}
                       </div>
+                      {fieldDef.key === "qualification" ? (
+                        <QualificationFiles
+                          files={profile.qualificationFiles || []}
+                          canAttach={isSelf || canManage}
+                          onChange={(next) => updateEmployeeProfile(companyId, employee.id, { qualificationFiles: next })}
+                          ar={ar}
+                        />
+                      ) : null}
+                      {ruleId ? (
+                        <div style={{ marginTop: 8 }}>
+                          <LaborArticleCite ruleId={ruleId} ar={ar} showText />
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </IdentityCard>
             {group.id === "employment" ? gradeCard : null}
           </React.Fragment>
         );

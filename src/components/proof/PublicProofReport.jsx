@@ -2,7 +2,7 @@ import React from "react";
 import { Camera, FileSignature, MapPin, ShieldAlert, ShieldCheck } from "lucide-react";
 import ProofCardsSummary from "@/components/proof/ProofCardsSummary";
 import IdentityCard from "@/components/shared/IdentityCard";
-import { ACCENT, BORDER, MUTED, NAVY, num } from "@/lib/platformStyles";
+import { ACCENT, MUTED, NAVY, num } from "@/lib/platformStyles";
 
 export default function PublicProofReport({ info, hashMatches, ar }) {
   const items = info.payload?.items || [];

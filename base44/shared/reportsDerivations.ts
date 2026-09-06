@@ -3,12 +3,14 @@
  *  Daily station board lives in dailyReport — do not duplicate StationDailyBoard here.
  */
 
-export const GRACE_MINUTES = 10;
-export const SHIFT_HOURS = 8;
+import { ruleValue } from "./laborRules.ts";
+
+export const GRACE_MINUTES = ruleValue("hours.grace.minutes");
+export const SHIFT_HOURS = ruleValue("hours.shift.ordinaryHours");
 export const SHIFT_MINUTES = SHIFT_HOURS * 60;
-/** From shift publish checks — weekly ordinary+OT must stay ≤ 48 h. */
-export const WEEKLY_HOURS_CAP = 48;
-/** Soft per-head weekly OT room under the 48 h week (5×8 ordinary → 8 h OT). */
+/** From shift publish checks — weekly ordinary+OT must stay ≤ the in-force weekly cap. */
+export const WEEKLY_HOURS_CAP = ruleValue("hours.week.ordinaryMaxHours");
+/** Soft per-head weekly OT room under the statutory week (5×ordinary → remainder OT). */
 export const WEEKLY_OT_CAP_HOURS = WEEKLY_HOURS_CAP - 5 * SHIFT_HOURS;
 export const DEFAULT_SHIFT_START = "07:00";
 

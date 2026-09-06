@@ -8,6 +8,7 @@ import {
   annualLeaveFromHireDate,
   CONTRACT_TYPES,
   formatSalaryRange,
+  hireContractId,
   hireFromSeat,
   HIRE_SESSION_SUGGEST_AT,
   inviteUrl,
@@ -26,8 +27,11 @@ import {
   profileFieldLabel,
   profileFieldOptions,
 } from "@/lib/employeeProfileFields";
+import { checkSaudiIdentityGate, checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
+import { checkProbationGate } from "@/lib/contractLawDerivations";
 import { BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE, field, labelMuted, ui } from "@/lib/platformStyles";
 import { isManagerUnit, workplaceStations } from "@/lib/stationTree";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 const SKIP_PROFILE_KEYS = new Set(["position", "department"]);
 
@@ -38,14 +42,15 @@ const emptyPerson = () => ({
   nationalId: "",
   phone: "",
   hireDate: todayKey(),
-  contractType: "unlimited",
+  contractType: "indefinite",
+  contractEndDate: "",
 });
 
 const emptyProfile = () => {
   const next = {};
   PROFILE_GROUPS.forEach((group) => {
     group.fields.forEach((item) => {
-      next[item.key] = item.key === "hireDate" ? todayKey() : "";
+      next[item.key] = item.key === "hireDate" ? todayKey() : item.key === "contractType" ? "indefinite" : "";
     });
   });
   return next;
@@ -69,13 +74,6 @@ function ReadRow({ label, value }) {
   );
 }
 
-function hireContractId(value) {
-  const raw = String(value || "").trim();
-  if (raw === "indefinite") return "unlimited";
-  if (raw === "unlimited" || raw === "fixed" || raw === "trial") return raw;
-  return "unlimited";
-}
-
 const ADMIN_HIRE = {
   ar: "المدير ليس مكان توظيف. حوّله إلى فرع ثم وظّف عليه.",
   en: "A manager is not a hire workplace. Convert it to a branch, then hire there.",
@@ -91,6 +89,7 @@ export default function HireSeatDrawer({
   listId = "",
   listName = "",
   onClose,
+  onNeedAccess,
 }) {
   const [step, setStep] = useState(1);
   const [person, setPerson] = useState(emptyPerson);
@@ -104,6 +103,7 @@ export default function HireSeatDrawer({
   const [makeManager, setMakeManager] = useState(false);
 
   const packs = useMemo(() => companyLists(data), [data]);
+  const hasLists = packs.length > 0;
   const resolvedListId = useMemo(() => {
     if (listId) return listId;
     if (!listName) return "";
@@ -202,6 +202,16 @@ export default function HireSeatDrawer({
   };
 
   const save = async (mode) => {
+    if (!hasLists) {
+      toast({
+        description: ar
+          ? "أنشئ صلاحية أولاً حتى يوزّع الموارد البشرية المناصب."
+          : "Create an access pack first so HR can distribute titles.",
+        variant: "destructive",
+      });
+      onNeedAccess?.();
+      return;
+    }
     const draft = mode === "draft";
     const email = String(person.email || "").trim();
     const password = String(person.password || "");
@@ -210,9 +220,38 @@ export default function HireSeatDrawer({
     const phone = String(profile.phone || person.phone || "").trim();
     const hireDate = String(profile.hireDate || person.hireDate || todayKey()).slice(0, 10);
     const contractType = hireContractId(profile.contractType || person.contractType);
+    const contractEndDate = String(profile.contractEndDate || person.contractEndDate || "").slice(0, 10);
 
     if (!name) {
       toast({ description: ar ? "الاسم مطلوب." : "Name is required.", variant: "destructive" });
+      setStep(2);
+      return;
+    }
+    const identity = checkSaudiIdentityGate({ ...profile, nationalId, nationality: profile.nationality });
+    if (!identity.ok) {
+      toast({ description: ar ? identity.reason : identity.reasonEn, variant: "destructive" });
+      setStep(2);
+      return;
+    }
+    const termGate = checkContractTermGate({
+      contractType: contractType === "fixed" ? "fixed" : "indefinite",
+      contractEndDate: contractType === "fixed" ? contractEndDate : "",
+      hireDate,
+      nationality: profile.nationality,
+      nationalId,
+    });
+    if (!termGate.ok) {
+      toast({ description: ar ? termGate.reason : termGate.reasonEn, variant: "destructive" });
+      setStep(2);
+      return;
+    }
+    const probationGate = checkProbationGate({
+      probation: contractType === "trial",
+      probationDays: profile.probationDays,
+      hireDate,
+    });
+    if (!probationGate.ok) {
+      toast({ description: ar ? probationGate.reason : probationGate.reasonEn, variant: "destructive" });
       setStep(2);
       return;
     }
@@ -251,6 +290,7 @@ export default function HireSeatDrawer({
         phone,
         hireDate,
         contractType,
+        contractEndDate: contractType === "fixed" ? contractEndDate : "",
         draft,
         seatId: creating ? "" : chosenSeatId,
         ar,
@@ -262,6 +302,10 @@ export default function HireSeatDrawer({
           phone,
           hireDate,
           contractType,
+          contractEndDate: contractType === "fixed" ? contractEndDate : "",
+          workPattern: profile.workPattern || "ordinary",
+          probation: contractType === "trial",
+          probationDays: profile.probationDays,
         },
         newSeat: creating
           ? {
@@ -290,6 +334,12 @@ export default function HireSeatDrawer({
         ADMIN_NO_HIRE: ar ? ADMIN_HIRE.ar : ADMIN_HIRE.en,
         MANAGER_TAKEN: ar ? "هذا الفرع له مدير. لا يُضاف مدير فرع ثانٍ." : "This branch already has a manager. A second branch manager cannot be added.",
         LIMIT: ar ? "بلغت حد الفروع في الخطة." : "The plan’s branch limit was reached.",
+        CONTRACT_END: ar ? "العقد محدد المدة يحتاج تاريخ نهاية (المادة 55)." : "A fixed-term contract needs an end date (Article 55).",
+        CONTRACT_EXPIRED: ar ? "لا يُعيَّن بعقد محدد المدة منتهٍ." : "A hire cannot use an expired fixed-term contract.",
+        CONTRACT_NONSAUDI_FIXED: ar ? "عقد غير السعودي مكتوب ومحدد المدة (المادة 37)." : "A non-Saudi contract must be written and fixed-term (Article 37).",
+        PROBATION_TERM_REQUIRED: ar ? "فترة التجربة تُذكر بعدد الأيام (المادة 53)." : "Probation must be stated in days (Article 53).",
+        PROBATION_OVER_MAX: ar ? "فترة التجربة لا تتجاوز 180 يوماً (المادة 53)." : "Probation may not exceed 180 days (Article 53).",
+        PROBATION_REPEAT: ar ? "لا تجوز التجربة مرة ثانية لدى هذه المنشأة إلا في مهنة أخرى أو بعد انقطاع ستة أشهر (المادة 54)." : "Probation may not be repeated here except in another occupation or after a six-month break (Article 54).",
       };
       toast({ description: map[result?.error] || (ar ? `تعذّر الحفظ (${result?.error || "unknown"}).` : `Could not save (${result?.error || "unknown"}).`), variant: "destructive" });
       return;
@@ -359,6 +409,23 @@ export default function HireSeatDrawer({
         toast({ description: ar ? "الاسم مطلوب." : "Name is required.", variant: "destructive" });
         return;
       }
+      const identity = checkSaudiIdentityGate(profile);
+      if (!identity.ok) {
+        toast({ description: ar ? identity.reason : identity.reasonEn, variant: "destructive" });
+        return;
+      }
+      const hireType = hireContractId(profile.contractType || person.contractType);
+      const termGate = checkContractTermGate({
+        contractType: hireType === "fixed" ? "fixed" : "indefinite",
+        contractEndDate: hireType === "fixed" ? String(profile.contractEndDate || person.contractEndDate || "") : "",
+        hireDate: String(profile.hireDate || person.hireDate || todayKey()).slice(0, 10),
+        nationality: profile.nationality || person.nationality,
+        nationalId: profile.nationalId || person.nationalId,
+      });
+      if (!termGate.ok) {
+        toast({ description: ar ? termGate.reason : termGate.reasonEn, variant: "destructive" });
+        return;
+      }
       setStep(3);
       return;
     }
@@ -393,18 +460,118 @@ export default function HireSeatDrawer({
       );
     }
     if (item.key === "contractType") {
+      const hireType = hireContractId(profile.contractType || person.contractType);
+      const nonSaudi = nationalityIsSaudi(profile.nationality) === false;
+      const typeChoices = nonSaudi
+        ? CONTRACT_TYPES.filter((row) => row.id === "fixed" || row.id === "trial")
+        : CONTRACT_TYPES;
+      const typeRuleId = nonSaudi
+        ? "contract.nonSaudi.fixed.cite"
+        : hireType === "fixed"
+          ? "contract.fixed.cite"
+          : hireType === "trial"
+            ? null
+            : "contract.indefinite.cite";
       return (
-        <Field key={item.key} label={ar ? item.ar : item.en}>
-          <select
-            value={hireContractId(profile.contractType || person.contractType)}
-            onChange={(e) => setProfileField("contractType", e.target.value)}
-            style={{ ...field, appearance: "auto" }}
-          >
-            {CONTRACT_TYPES.map((row) => (
-              <option key={row.id} value={row.id}>{ar ? row.ar : row.en}</option>
-            ))}
-          </select>
-        </Field>
+        <div key={item.key} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <Field label={ar ? item.ar : item.en}>
+            <select
+              value={nonSaudi && hireType === "indefinite" ? "fixed" : hireType}
+              onChange={(e) => {
+                const next = e.target.value;
+                setProfile((current) => ({
+                  ...current,
+                  contractType: next,
+                  contractEndDate: next === "indefinite" ? "" : (current.contractEndDate || ""),
+                }));
+                setPerson((current) => ({
+                  ...current,
+                  contractType: next,
+                  contractEndDate: next === "indefinite" ? "" : (current.contractEndDate || ""),
+                }));
+              }}
+              style={{ ...field, appearance: "auto" }}
+            >
+              {typeChoices.map((row) => (
+                <option key={row.id} value={row.id}>{ar ? row.ar : row.en}</option>
+              ))}
+            </select>
+          </Field>
+          {hireType !== "indefinite" || nonSaudi ? (
+            <Field label={ar ? "تاريخ نهاية العقد" : "Contract end date"}>
+              <input
+                type="date"
+                value={profile.contractEndDate || person.contractEndDate || ""}
+                min={profile.hireDate || person.hireDate || undefined}
+                onChange={(e) => {
+                  setProfileField("contractEndDate", e.target.value);
+                  setPerson((current) => ({ ...current, contractEndDate: e.target.value }));
+                }}
+                style={field}
+              />
+            </Field>
+          ) : null}
+          {nonSaudi ? (
+            <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.65 }}>
+              {ar
+                ? "إن تُرك تاريخ النهاية فارغاً تُعد المدة سنة من تاريخ المباشرة وتتجدد لمثلها."
+                : "If the end date is left blank the term is deemed one year from the start date and renews for a like period."}
+            </p>
+          ) : null}
+          {hireType === "trial" ? (
+            <>
+            <Field label={ar ? "أيام التجربة (حد 180)" : "Probation days (max 180)"}>
+              <input
+                type="number"
+                min={1}
+                max={180}
+                value={profile.probationDays || ""}
+                onChange={(e) => setProfileField("probationDays", e.target.value)}
+                style={field}
+              />
+            </Field>
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(profile.probationPriorAtEmployer)}
+                onChange={(e) => setProfileField("probationPriorAtEmployer", e.target.checked)}
+              />
+              <span>{ar ? "سبق أن خضع للتجربة لدى هذه المنشأة" : "Previously on probation with this employer"}</span>
+            </label>
+            {profile.probationPriorAtEmployer ? (
+              <>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(profile.probationOtherProfession)}
+                    onChange={(e) => setProfileField("probationOtherProfession", e.target.checked)}
+                  />
+                  <span>{ar ? "التجربة الجديدة في مهنة أو عمل آخر" : "The new probation is in another occupation or job"}</span>
+                </label>
+                <Field label={ar ? "أشهر الانقطاع عن المنشأة" : "Months away from this employer"}>
+                  <input
+                    type="number"
+                    min={0}
+                    value={profile.probationRehireGapMonths || ""}
+                    onChange={(e) => setProfileField("probationRehireGapMonths", e.target.value)}
+                    style={field}
+                  />
+                </Field>
+              </>
+            ) : null}
+            <LaborArticleCite ruleId="contract.probation.once.cite" ar={ar} showText />
+            <LaborArticleCite ruleId="contract.probation.excludeOfficialHolidays.cite" ar={ar} showText />
+            </>
+          ) : null}
+          {typeRuleId ? <LaborArticleCite ruleId={typeRuleId} ar={ar} showText /> : (
+            <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.65 }}>
+              {ar
+                ? "فترة التجربة طبقة على العقد وليست نوعاً ثالثاً. غير السعودي يبقى محدد المدة (المادة 37)."
+                : "Probation is an overlay, not a third contract type. A non-Saudi file stays fixed-term (Article 37)."}
+            </p>
+          )}
+          {typeRuleId === "contract.fixed.cite" ? <LaborArticleCite ruleId="contract.fixed.continuation.cite" ar={ar} showText /> : null}
+        </div>
       );
     }
     const options = profileFieldOptions(item);
@@ -520,17 +687,44 @@ export default function HireSeatDrawer({
                 ? `«${stationName}» مدير وليس مكان توظيف. حوّله إلى فرع من الشجرة، ثم وظّف عليه.`
                 : `“${stationName}” is a manager, not a hire workplace. Convert it to a branch on the tree, then hire there.`}
             </p>
+          ) : !hasLists ? (
+            <div style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE, display: "flex", flexDirection: "column", gap: 10 }}>
+              <p style={{ margin: 0, fontSize: 13, color: NAVY, lineHeight: 1.7, fontWeight: 600 }}>
+                {ar
+                  ? "يجب إنشاء صلاحية أولاً حتى يوزّع موظف الموارد البشرية المناصب بسهولة."
+                  : "Create an access pack first so HR can distribute titles."}
+              </p>
+              <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
+                {ar
+                  ? "القائمة تحمل المسمّيات والصلاحيات. بلا قائمة يبقى الفرع مكاناً فارغاً في الشجرة وقالب الإكسل."
+                  : "The pack carries titles and access. Without it the branch stays an empty place on the tree and in the Excel template."}
+              </p>
+              <button
+                type="button"
+                onClick={() => { onClose?.(); onNeedAccess?.(); }}
+                style={ui.btnPrimary}
+              >
+                {ar ? "إنشاء صلاحية" : "Create access"}
+              </button>
+            </div>
           ) : (
             <>
               {step === 1 && (
                 <>
                   <div style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE }}>
-                    <p style={{ margin: 0, fontSize: 12, color: NAVY, lineHeight: 1.55, fontWeight: 600 }}>
-                      {ar ? "أكثر من شخص؟ نزّل قالب الإضافة." : "Adding several people? Download the hire template."}
+                    <p style={{ margin: 0, fontSize: 12, color: NAVY, lineHeight: 1.65, fontWeight: 600 }}>
+                      {ar
+                        ? "قالب فارغ: عمود الفرع قائمة من فروع المنصة، تختار أين يوضع كل موظف. أو نزّل الملفات الحالية لمعرفة الناقص ثم طبّق على ملف الموظف."
+                        : "Blank template: the branch column lists platform branches — pick where each person sits. Or download current files to see gaps, then apply to the employee file."}
                     </p>
-                    <button type="button" onClick={() => downloadHireTemplate(data, ar)} style={{ ...ui.btnGhost, height: 32, marginTop: 8 }}>
-                      {ar ? "تنزيل قالب الموظف" : "Download employee template"}
-                    </button>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                      <button type="button" onClick={() => downloadHireTemplate(data, ar, { mode: "blank", focusStationId: stationId })} style={{ ...ui.btnGhost, height: 32 }}>
+                        {ar ? "قالب فارغ" : "Blank template"}
+                      </button>
+                      <button type="button" onClick={() => downloadHireTemplate(data, ar, { mode: "files", focusStationId: stationId })} style={{ ...ui.btnGhost, height: 32 }}>
+                        {ar ? "الملفات والنواقص" : "Files and gaps"}
+                      </button>
+                    </div>
                   </div>
                   {added >= HIRE_SESSION_SUGGEST_AT && (
                     <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.55 }}>
@@ -703,12 +897,18 @@ export default function HireSeatDrawer({
                       return true;
                     });
                     if (!visible.length) return null;
+                    const identityGate = group.id === "identity" ? checkSaudiIdentityGate(profile) : null;
                     return (
                       <fieldset
                         key={group.id}
                         style={{ margin: 0, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 10 }}
                       >
                         <legend style={{ fontSize: 12, fontWeight: 600, padding: "0 6px" }}>{ar ? group.ar : group.en}</legend>
+                        {identityGate?.error === "SAUDI_IDENTITY_MISMATCH" ? (
+                          <p style={{ margin: 0, fontSize: 11, color: "#B91C1C", lineHeight: 1.55 }}>
+                            {ar ? identityGate.reason : identityGate.reasonEn}
+                          </p>
+                        ) : null}
                         {visible.map((item) => renderProfileField(item))}
                       </fieldset>
                     );
@@ -737,6 +937,14 @@ export default function HireSeatDrawer({
           {adminHome ? (
             <button type="button" onClick={onClose} style={{ ...ui.btnPrimary, width: "100%" }}>
               {ar ? "حسنًا" : "OK"}
+            </button>
+          ) : !hasLists ? (
+            <button
+              type="button"
+              onClick={() => { onClose?.(); onNeedAccess?.(); }}
+              style={{ ...ui.btnPrimary, width: "100%" }}
+            >
+              {ar ? "إنشاء صلاحية" : "Create access"}
             </button>
           ) : (
             <>

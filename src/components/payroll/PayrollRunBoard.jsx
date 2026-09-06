@@ -12,6 +12,7 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import { ACCENT, MUTED, NAVY, WARN, NEUTRAL, OK, ui, CARD, SURFACE } from "@/lib/platformStyles";
 import IdentityCard from "@/components/shared/IdentityCard";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 async function payrollApi(payload) {
   const res = await base44.functions.invoke("payroll", payload);
@@ -191,12 +192,32 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
 
   return (
     <section dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <span style={NEUTRAL}>{ar ? `المادة 107 — إضافي ${OT_RATE * 100}%` : `Art. 107 — OT ${OT_RATE * 100}%`}</span>
-        <span style={NEUTRAL}>{ar ? "المادة 90 — سقف الخصم نصف الأجر" : "Art. 90 — deductions ≤ half the wage"}</span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <span style={{ ...NEUTRAL, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <LaborArticleCite ruleId="hours.ot.premium" ar={ar} />
+          {ar ? `إضافي ${OT_RATE * 100}%` : `OT ${OT_RATE * 100}%`}
+        </span>
+        <span style={{ ...NEUTRAL, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <LaborArticleCite ruleId="hours.ot.compLeave.cite" ar={ar} />
+          {ar ? "إجازة تعويضية بدل الإضافي بموافقة العامل" : "Compensatory leave instead of OT with consent"}
+        </span>
+        <span style={{ ...NEUTRAL, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <LaborArticleCite ruleId="hours.ot.exceptionDayHours" ar={ar} />
+          {ar ? "سقف الاستثناء 10/60" : "Exception cap 10/60"}
+        </span>
+        <span style={{ ...NEUTRAL, display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <LaborArticleCite ruleId="payroll.deduction.capRatio" ar={ar} />
+          {ar ? "سقف الخصم نصف الأجر" : "deductions ≤ half the wage"}
+        </span>
         <span style={late ? WARN : NEUTRAL}>
           {ar ? `حماية الأجور — المهلة ${deadline || "—"}` : `Wage protection — due ${deadline || "—"}`}
         </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <LaborArticleCite ruleId="hours.ot.annualMaxHours" ar={ar} showText />
+        <LaborArticleCite ruleId="hours.ot.compLeave.minHoursPerOtHour" ar={ar} showText />
+        <LaborArticleCite ruleId="hours.ot.compLeave.windowDays" ar={ar} showText />
+        <LaborArticleCite ruleId="hours.ot.compLeave.maxDaysPerYear" ar={ar} showText />
       </div>
 
       {!run && (
@@ -210,7 +231,7 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
         >
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "10px" }}>
             <label style={{ display: "grid", gap: "4px", fontSize: "11px", color: MUTED }}>
-              <span>{ar ? "ساعات إضافية أولية (م.107)" : "Initial OT hours (Art. 107)"}</span>
+              <span>{ar ? "ساعات إضافية أولية" : "Initial OT hours"} <LaborArticleCite ruleId="hours.ot.premium" ar={ar} /></span>
               <input
                 value={seedHours}
                 onChange={(e) => setSeedHours(e.target.value)}

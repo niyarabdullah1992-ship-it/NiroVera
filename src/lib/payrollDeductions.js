@@ -4,7 +4,7 @@
 // reason plus an AuditLog entry. item.deductions stays the computed mirror of the lines.
 import { updateCompany } from "@/lib/store";
 import { logAudit } from "@/lib/auditLog";
-import { checkArticle90Gate } from "@/lib/payrollDerivations";
+import { checkArticle90Gate, checkArticle92LoanGate } from "@/lib/payrollDerivations";
 
 const uid = () => `ded_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`;
 
@@ -42,8 +42,9 @@ export function addDeductionLine(companyId, month, item, line, actor) {
   if (line.source === "manual" && reason.length < 5) return "REASON_REQUIRED";
   if (line.source !== "manual" && !String(line?.sourceRefId || "").trim()) return "REFERENCE_REQUIRED";
 
+  if (line.source === "advance" && !checkArticle92LoanGate(item, amount).ok) return "ARTICLE_92_LOAN";
   const projected = deductionsTotal(item) + amount;
-  if (!checkArticle90Gate({ ...item, deductions: projected }).ok) return "ARTICLE_90_EXCEEDED";
+  if (!checkArticle90Gate({ ...item, deductions: projected }).ok) return "ARTICLE_93_EXCEEDED";
 
   const entry = {
     id: uid(),

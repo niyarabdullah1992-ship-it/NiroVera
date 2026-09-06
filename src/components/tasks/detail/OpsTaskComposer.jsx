@@ -10,11 +10,11 @@ export default function OpsTaskComposer({ ar, busy, approved, onAddComment }) {
   const ready = !!draft.trim();
   const btn = { height: 38, padding: "0 14px", borderRadius: 9, fontSize: 12, fontFamily: "inherit", cursor: "pointer" };
   return (
-    <div style={{ flexShrink: 0, padding: "12px 20px 16px", borderTop: `1px solid ${BORDER}`, background: CARD, display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ flexShrink: 0, padding: "12px 20px 16px", borderTop: `1px solid ${BORDER}`, background: CARD, display: "flex", flexDirection: "column", gap: 8, overflow: "visible", position: "relative", zIndex: 20 }}>
       {issue && !approved && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, overflow: "visible" }}>
           <span style={{ fontSize: 11, fontWeight: 600, color: "#B45309" }}>{ar ? "طلب تمديد الموعد إلى (اختياري)" : "Request deadline extension to (optional)"}</span>
-          <PlatformDateField ar={ar} value={extendTo} onChange={setExtendTo} />
+          <PlatformDateField ar={ar} value={extendTo} onChange={setExtendTo} placement="top" />
         </div>
       )}
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

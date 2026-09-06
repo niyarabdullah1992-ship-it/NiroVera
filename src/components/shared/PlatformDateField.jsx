@@ -48,7 +48,7 @@ function CardJumpTrigger({
   valueLabel,
   open,
   onOpen,
-  flex = 1,
+  minWidth = 72,
 }) {
   return (
     <button
@@ -60,8 +60,8 @@ function CardJumpTrigger({
         onOpen();
       }}
       style={{
-        flex,
-        minWidth: 0,
+        flex: "1 1 auto",
+        minWidth,
         height: 34,
         borderRadius: 10,
         border: open
@@ -69,7 +69,7 @@ function CardJumpTrigger({
           : "1px solid var(--nv-line, #E2E8F0)",
         background: CARD,
         color: NAVY,
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: 650,
         fontFamily: "inherit",
         padding: "0 8px 0 10px",
@@ -83,7 +83,7 @@ function CardJumpTrigger({
           : "0 1px 2px rgba(20,40,75,.04)",
       }}
     >
-      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "start" }}>
+      <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", textAlign: "start" }}>
         {valueLabel}
       </span>
       <ChevronDown
@@ -170,6 +170,7 @@ export default function PlatformDateField({
   onChange,
   ar = true,
   placeholder,
+  placement = "bottom",
 }) {
   const rootRef = useRef(null);
   const parsed = parseKey(value);
@@ -325,9 +326,12 @@ export default function PlatformDateField({
           style={{
             position: "absolute",
             insetInlineStart: 0,
-            top: "calc(100% + 6px)",
-            zIndex: 40,
-            width: "min(100%, 320px)",
+            ...(placement === "top"
+              ? { bottom: "calc(100% + 6px)", top: "auto" }
+              : { top: "calc(100% + 6px)" }),
+            zIndex: 80,
+            width: 292,
+            minWidth: 292,
             borderRadius: 16,
             border: "1px solid var(--nv-line, #E2E8F0)",
             background: CARD,
@@ -362,14 +366,14 @@ export default function PlatformDateField({
                 <CardJumpTrigger
                   label={ar ? "الشهر" : "Month"}
                   valueLabel={monthOptions.find((o) => o.value === month)?.label || ""}
-                  flex={1.45}
+                  minWidth={96}
                   open={jumpOpen === "month"}
                   onOpen={() => setJumpOpen((v) => (v === "month" ? null : "month"))}
                 />
                 <CardJumpTrigger
                   label={ar ? "السنة" : "Year"}
                   valueLabel={String(year)}
-                  flex={1}
+                  minWidth={68}
                   open={jumpOpen === "year"}
                   onOpen={() => setJumpOpen((v) => (v === "year" ? null : "year"))}
                 />

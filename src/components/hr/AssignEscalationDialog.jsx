@@ -6,7 +6,6 @@ import { deriveBranchEscalationChain } from "@/lib/orgDerivations";
 import {
   companyRootStation,
   isCompanyRootStation,
-  isWorkplaceStation,
   workplaceStations,
 } from "@/lib/stationTree";
 import { ACCENT, CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";

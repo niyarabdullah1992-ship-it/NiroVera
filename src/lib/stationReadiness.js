@@ -4,12 +4,15 @@
  * hand and nothing is fetched from a government rail (Qiwa/GOSI/Mudad remain
  * deferred until credentials, see GOV_INTEGRATIONS.md).
  */
-import { deriveExpiringDocs, deriveNitaqat } from "@/lib/complianceDerivations";
+import { deriveExpiringDocs, deriveNitaqat, checkContractTermGate, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 
 /** Weight per open blocker — readiness is 100 minus what the register still owes. */
 const WEIGHT = {
   expiredDoc: 14,
   expiringDoc: 6,
+  expiredContract: 14,
+  contractEndMissing: 14,
+  expiringContract: 6,
   criticalSafety: 18,
   openHazard: 7,
   pendingReport: 5,
@@ -73,8 +76,47 @@ export function deriveStationReadiness(data, station) {
       count: expiringDocs.length,
       weight: WEIGHT.expiringDoc * expiringDocs.length,
       to: "/app/hr",
-      ar: `${expiringDocs.length} وثيقة تنتهي خلال 60 يومًا (DOC_EXPIRING)`,
-      en: `${expiringDocs.length} documents expire within 60 days (DOC_EXPIRING)`,
+      ar: `${expiringDocs.length} وثيقة تنتهي خلال ${EXPIRY_WARN_DAYS} يومًا (DOC_EXPIRING)`,
+      en: `${expiringDocs.length} documents expire within ${EXPIRY_WARN_DAYS} days (DOC_EXPIRING)`,
+    });
+  }
+  const expiredContracts = [];
+  const missingContractEnds = [];
+  const expiringContracts = [];
+  for (const emp of crewList) {
+    const gate = checkContractTermGate(emp);
+    if (gate.error === "CONTRACT_EXPIRED") expiredContracts.push(emp);
+    else if (gate.error === "CONTRACT_END_REQUIRED") missingContractEnds.push(emp);
+    else if (gate.warning === "CONTRACT_EXPIRING") expiringContracts.push(emp);
+  }
+  if (expiredContracts.length) {
+    blockers.push({
+      key: "contract_expired",
+      count: expiredContracts.length,
+      weight: WEIGHT.expiredContract * expiredContracts.length,
+      to: "/app/hr",
+      ar: `${expiredContracts.length} عقد محدد المدة منتهٍ (CONTRACT_EXPIRED) — لا إسناد قبل التجديد`,
+      en: `${expiredContracts.length} fixed-term contracts expired (CONTRACT_EXPIRED) — no assignment before renewal`,
+    });
+  }
+  if (missingContractEnds.length) {
+    blockers.push({
+      key: "contract_end_required",
+      count: missingContractEnds.length,
+      weight: WEIGHT.contractEndMissing * missingContractEnds.length,
+      to: "/app/hr",
+      ar: `${missingContractEnds.length} عقد محدد المدة بلا تاريخ نهاية (CONTRACT_END_REQUIRED)`,
+      en: `${missingContractEnds.length} fixed-term contracts missing an end date (CONTRACT_END_REQUIRED)`,
+    });
+  }
+  if (expiringContracts.length) {
+    blockers.push({
+      key: "contract_expiring",
+      count: expiringContracts.length,
+      weight: WEIGHT.expiringContract * expiringContracts.length,
+      to: "/app/hr",
+      ar: `${expiringContracts.length} عقد محدد المدة ينتهي خلال ${EXPIRY_WARN_DAYS} يومًا (CONTRACT_EXPIRING)`,
+      en: `${expiringContracts.length} fixed-term contracts end within ${EXPIRY_WARN_DAYS} days (CONTRACT_EXPIRING)`,
     });
   }
   if (safety?.level === "red") {

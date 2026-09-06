@@ -1,8 +1,12 @@
 /** Shift / rota derivation — pre-publication statutory checks (Labour Law arts. 98, 101, 104).
  *  Design ref: NiroVera Platform.dc.html class Component (shifts / publishRota).
+ *  Caps and articles come from laborRules for the first day of the roster month.
  */
 
-export type ShiftType = { id: string; label?: string; start: string; end: string };
+import { citeRule, isRamadanDay, ruleValue } from "./laborRules.ts";
+import { checkHeatBanGate, isHeatBanDate, monthHasHeatBanDay, shiftOverlapsNight } from "./contractLawDerivations.ts";
+
+export type ShiftType = { id: string; label?: string; start: string; end: string; restMinutes?: number | null; outdoor?: boolean };
 
 /** dateKey (YYYY-MM-DD) → shiftTypeId → employee ids */
 export type DayAssignments = Record<string, Record<string, string[]>>;
@@ -14,6 +18,7 @@ export type RotaCheck = {
   labelEn: string;
   noteAr: string;
   noteEn: string;
+  article?: string;
 };
 
 export type PublishGateResult = {
@@ -31,6 +36,76 @@ export function minutesBetween(start: string, end: string) {
   let m = (eh * 60 + em) - (sh * 60 + sm);
   if (m < 0) m += 1440;
   return m;
+}
+
+/**
+ * Art. 101 — no more than five consecutive hours without a rest of ≥ 30 minutes.
+ * A missing restMinutes uses the statutory 30 so existing 8 h windows still publish.
+ * restMinutes: 0 is an explicit "no break" and fails when the span exceeds five hours.
+ */
+export function checkConsecutiveWorkGate(input: {
+  start?: string | null;
+  end?: string | null;
+  restMinutes?: number | null;
+  onDate?: string | Date | null;
+}) {
+  const onDate = input.onDate;
+  const maxHours = ruleValue("hours.rest.maxConsecutiveHours", onDate);
+  const minRest = ruleValue("hours.rest.duringShiftMinutes", onDate);
+  const cite = citeRule("hours.rest.maxConsecutiveHours", onDate);
+  const span = minutesBetween(input.start || "00:00", input.end || "00:00");
+  const maxMin = maxHours * 60;
+  if (span <= 0 || span <= maxMin) {
+    return {
+      ok: true as const,
+      cite,
+      span,
+      maxHours,
+      minRest,
+      restMinutes: 0,
+      maxBlock: Math.max(0, span),
+    };
+  }
+  const rest = input.restMinutes == null ? minRest : Math.max(0, Number(input.restMinutes) || 0);
+  if (rest < minRest) {
+    return {
+      ok: false as const,
+      error: "REST_5H_REQUIRED" as const,
+      reason: `لا يجوز تشغيل العامل أكثر من ${maxHours} ساعات متواصلة دون راحة لا تقل عن ${minRest} دقيقة — ${cite?.labelAr || "المادة 101"}.`,
+      reasonEn: `A worker may not work more than ${maxHours} consecutive hours without a rest of at least ${minRest} minutes — Labour Law ${cite?.labelEn || "Art. 101"}.`,
+      cite,
+      span,
+      maxHours,
+      minRest,
+      restMinutes: rest,
+      maxBlock: span,
+    };
+  }
+  const work = Math.max(0, span - rest);
+  const maxBlock = Math.ceil(work / 2);
+  if (maxBlock > maxMin) {
+    return {
+      ok: false as const,
+      error: "REST_5H_BLOCK_TOO_LONG" as const,
+      reason: `حتى مع راحة ${rest} دقيقة يبقى أطول مقطع ${Math.round(maxBlock / 60 * 10) / 10} ساعة فوق حد ${maxHours} ساعات — ${cite?.labelAr || "المادة 101"}.`,
+      reasonEn: `Even with a ${rest}-minute rest the longest block is ${Math.round(maxBlock / 60 * 10) / 10} h above the ${maxHours} h cap — Labour Law ${cite?.labelEn || "Art. 101"}.`,
+      cite,
+      span,
+      maxHours,
+      minRest,
+      restMinutes: rest,
+      maxBlock,
+    };
+  }
+  return {
+    ok: true as const,
+    cite,
+    span,
+    maxHours,
+    minRest,
+    restMinutes: rest,
+    maxBlock,
+  };
 }
 
 export function dateKey(year: number, monthIndex: number, day: number) {
@@ -78,6 +153,51 @@ function spansOf(
     }
   }
   return out.sort((x, y) => x.start - y.start);
+}
+
+function workplaceMinutesOnDay(spans: { start: number; end: number }[], day: number) {
+  const dayStart = (day - 1) * 1440;
+  const dayEnd = dayStart + 1440;
+  let first: number | null = null;
+  let last: number | null = null;
+  for (const sp of spans) {
+    const a = Math.max(sp.start, dayStart);
+    const b = Math.min(sp.end, dayEnd);
+    if (b <= a) continue;
+    if (first == null || a < first) first = a;
+    if (last == null || b > last) last = b;
+  }
+  if (first == null) return 0;
+  return last - first;
+}
+
+function shiftAssignedOnHeatBanDay(
+  assignments: DayAssignments,
+  year: number,
+  monthIndex: number,
+  days: number,
+  shiftId: string,
+) {
+  let anyAssigned = false;
+  for (let d = 1; d <= days; d++) {
+    const ids = cellOf(assignments, year, monthIndex, d, shiftId);
+    if (!ids.length) continue;
+    anyAssigned = true;
+    if (isHeatBanDate(dateKey(year, monthIndex, d))) return { anyAssigned: true, onHeatDay: true };
+  }
+  return { anyAssigned, onHeatDay: false };
+}
+
+function shiftHeatSeasonApplies(
+  assignments: DayAssignments,
+  year: number,
+  monthIndex: number,
+  days: number,
+  shiftId: string,
+) {
+  const { anyAssigned, onHeatDay } = shiftAssignedOnHeatBanDay(assignments, year, monthIndex, days, shiftId);
+  if (anyAssigned) return onHeatDay;
+  return monthHasHeatBanDay(year, monthIndex);
 }
 
 /**
@@ -134,16 +254,32 @@ export function checkPublishGates(input: {
     }
   }
 
+  const onDate = dateKey(year, monthIndex, 1);
+  const weeklyCap = ruleValue("hours.week.ordinaryMaxHours", onDate);
+  const restBetween = ruleValue("hours.rest.betweenShiftsHours", onDate);
+  const workplaceMax = ruleValue("hours.workplace.maxHours", onDate);
+  const ramadanDayCap = ruleValue("hours.ramadan.ordinaryHours", onDate);
+  const ramadanWeekCap = ruleValue("hours.ramadan.weekMaxHours", onDate);
+  const exceptionDayCap = ruleValue("hours.ot.exceptionDayHours", onDate);
+  const exceptionWeekCap = ruleValue("hours.ot.exceptionWeekHours", onDate);
+  // Art 98 reduces hours for Muslims. No religion field on the employee — apply the cap to every assigned person so Muslims are never under-protected.
+  const weekArticle = citeRule("hours.week.ordinaryMaxHours", onDate)?.article;
+  const workplaceArticle = citeRule("hours.workplace.maxHours", onDate)?.article;
+  const ramadanArticle = citeRule("hours.ramadan.weekMaxHours", onDate)?.article;
+  const weeklyRestArticle = citeRule("hours.rest.weeklyHours", onDate)?.article;
+  const exceptionArticle = citeRule("hours.ot.exceptionDayHours", onDate)?.article;
+
   const weeklyMaxHours = Math.round(
     Math.max(0, ...Object.values(wMin).flatMap((o) => Object.values(o)), 0) / 60,
   );
 
   let restBreach11: { name: string; gap: number; from: { label: string; d: number }; to: { label: string; d: number } } | null = null;
+  let workplaceBreach: { name: string; hours: number; d: number } | null = null;
   for (const id of assignedIds) {
     const sp = spansOf(id, shiftTypes, assignments, year, monthIndex);
     for (let i = 1; i < sp.length; i++) {
       const gap = sp[i].start - sp[i - 1].end;
-      if (gap < 11 * 60) {
+      if (gap < restBetween * 60) {
         restBreach11 = {
           name: names[id] || id,
           gap: Math.max(0, Math.round(gap / 60)),
@@ -153,7 +289,72 @@ export function checkPublishGates(input: {
         break;
       }
     }
-    if (restBreach11) break;
+    for (let d = 1; d <= days; d++) {
+      const stay = workplaceMinutesOnDay(sp, d);
+      if (stay > workplaceMax * 60) {
+        workplaceBreach = { name: names[id] || id, hours: Math.round((stay / 60) * 10) / 10, d };
+        break;
+      }
+    }
+    if (restBreach11 && workplaceBreach) break;
+  }
+
+  let ramadanDayBreach: { name: string; hours: number; d: number } | null = null;
+  let ramadanWeekBreach: { name: string; hours: number } | null = null;
+  let ramadanDaysInMonth = 0;
+  for (let d = 1; d <= days; d++) {
+    if (isRamadanDay(dateKey(year, monthIndex, d))) ramadanDaysInMonth++;
+  }
+  for (const id of assignedIds) {
+    for (let d = 1; d <= days; d++) {
+      const key = dateKey(year, monthIndex, d);
+      if (!isRamadanDay(key)) continue;
+      for (const st of shiftTypes) {
+        if (!cellOf(assignments, year, monthIndex, d, st.id).includes(id)) continue;
+        const mins = minutesBetween(st.start, st.end);
+        if (mins > ramadanDayCap * 60) {
+          ramadanDayBreach = { name: names[id] || id, hours: Math.round((mins / 60) * 10) / 10, d };
+          break;
+        }
+      }
+      if (ramadanDayBreach) break;
+    }
+    const weeks = wMin[id] || {};
+    for (const [w, mins] of Object.entries(weeks)) {
+      let ramadanWeek = false;
+      for (let d = 1; d <= days; d++) {
+        if (weekIndex(year, monthIndex, d) !== Number(w)) continue;
+        if (isRamadanDay(dateKey(year, monthIndex, d))) { ramadanWeek = true; break; }
+      }
+      if (ramadanWeek && mins / 60 > ramadanWeekCap) {
+        ramadanWeekBreach = { name: names[id] || id, hours: Math.round(mins / 60) };
+        break;
+      }
+    }
+    if (ramadanDayBreach && ramadanWeekBreach) break;
+  }
+
+  let exceptionDayBreach: { name: string; hours: number; d: number } | null = null;
+  let exceptionWeekBreach: { name: string; hours: number } | null = null;
+  for (const id of assignedIds) {
+    for (let d = 1; d <= days; d++) {
+      let mins = 0;
+      for (const st of shiftTypes) {
+        if (!cellOf(assignments, year, monthIndex, d, st.id).includes(id)) continue;
+        mins += minutesBetween(st.start, st.end);
+      }
+      if (mins > exceptionDayCap * 60) {
+        exceptionDayBreach = { name: names[id] || id, hours: Math.round((mins / 60) * 10) / 10, d };
+        break;
+      }
+    }
+    for (const mins of Object.values(wMin[id] || {})) {
+      if (mins / 60 > exceptionWeekCap) {
+        exceptionWeekBreach = { name: names[id] || id, hours: Math.round(mins / 60) };
+        break;
+      }
+    }
+    if (exceptionDayBreach && exceptionWeekBreach) break;
   }
 
   let doubleOk = true;
@@ -188,14 +389,85 @@ export function checkPublishGates(input: {
     }
   }
 
+  const consecArticle = citeRule("hours.rest.maxConsecutiveHours", onDate)?.article;
+  const consecFails = shiftTypes
+    .map((st) => ({ st, gate: checkConsecutiveWorkGate({ start: st.start, end: st.end, restMinutes: st.restMinutes, onDate }) }))
+    .filter((row) => !row.gate.ok);
+  const consecFail = consecFails[0] || null;
+  const heatFails = shiftTypes
+    .map((st) => ({
+      st,
+      gate: checkHeatBanGate({
+        start: st.start,
+        end: st.end,
+        outdoor: st.outdoor,
+        summer: shiftHeatSeasonApplies(assignments, year, monthIndex, days, st.id),
+      }),
+    }))
+    .filter((row) => !row.gate.ok);
+  const heatFail = heatFails[0] || null;
+  const nightCount = shiftTypes.filter((st) => shiftOverlapsNight(st.start, st.end)).length;
+
   const checks: RotaCheck[] = [
     {
       id: "hours_48",
-      ok: weeklyMaxHours <= 48,
-      labelAr: `أعلى حمل أسبوعي ${weeklyMaxHours} ساعة من حد 48`,
-      labelEn: `Heaviest weekly load ${weeklyMaxHours} h against the 48 h cap`,
+      ok: weeklyMaxHours <= weeklyCap,
+      article: weekArticle,
+      labelAr: `أعلى حمل أسبوعي ${weeklyMaxHours} ساعة من حد ${weeklyCap}`,
+      labelEn: `Heaviest weekly load ${weeklyMaxHours} h against the ${weeklyCap} h cap`,
       noteAr: "محسوب لكل أسبوع تقويمي على حدة من المصفوفة نفسها — أثقل أسبوع لأثقل موظف، لا متوسط الشهر.",
       noteEn: "Computed per calendar week from the matrix itself — the heaviest week for the heaviest employee, never a monthly average.",
+    },
+    {
+      id: "hours_106",
+      ok: !exceptionDayBreach && !exceptionWeekBreach,
+      article: exceptionArticle,
+      labelAr: exceptionDayBreach
+        ? `${exceptionDayBreach.name}: ${exceptionDayBreach.hours} ساعة فعلية في اليوم ${exceptionDayBreach.d} فوق حد ${exceptionDayCap}`
+        : exceptionWeekBreach
+          ? `${exceptionWeekBreach.name}: ${exceptionWeekBreach.hours} ساعة في الأسبوع فوق حد ${exceptionWeekCap}`
+          : `حتى في الاستثناء: لا أكثر من ${exceptionDayCap} ساعات في اليوم أو ${exceptionWeekCap} في الأسبوع`,
+      labelEn: exceptionDayBreach
+        ? `${exceptionDayBreach.name}: ${exceptionDayBreach.hours} actual hours on day ${exceptionDayBreach.d} above the ${exceptionDayCap} h cap`
+        : exceptionWeekBreach
+          ? `${exceptionWeekBreach.name}: ${exceptionWeekBreach.hours} h in a week above the ${exceptionWeekCap} h cap`
+          : `Even in exception cases: no more than ${exceptionDayCap} h a day or ${exceptionWeekCap} h a week`,
+      noteAr: "المادة 106 سقف فعلي 10/60 حتى عند عدم التقيد بالمواد 98 و101 و104(1). الحد السنوي للإضافي قرار وزاري بلا شارة مادة.",
+      noteEn: "Article 106 is a 10/60 actual-hours ceiling even when Articles 98, 101 and 104(1) are waived. The annual overtime cap is ministerial — no Labour Law chip.",
+    },
+    {
+      id: "hours_ramadan",
+      ok: !ramadanDayBreach && !ramadanWeekBreach,
+      article: ramadanDaysInMonth ? ramadanArticle : undefined,
+      labelAr: !ramadanDaysInMonth
+        ? "لا أيام رمضان في هذا الشهر"
+        : ramadanDayBreach
+          ? `${ramadanDayBreach.name}: ${ramadanDayBreach.hours} ساعة في يوم رمضاني فوق حد ${ramadanDayCap}`
+          : ramadanWeekBreach
+            ? `${ramadanWeekBreach.name}: ${ramadanWeekBreach.hours} ساعة في أسبوع رمضاني فوق حد ${ramadanWeekCap}`
+            : `رمضان: حد ${ramadanDayCap} ساعات يومياً أو ${ramadanWeekCap} أسبوعياً للمسلمين — يُطبَّق على كل المعيَّنين لعدم وجود حقل ديانة`,
+      labelEn: !ramadanDaysInMonth
+        ? "No Ramadan days this month"
+        : ramadanDayBreach
+          ? `${ramadanDayBreach.name}: ${ramadanDayBreach.hours} h on a Ramadan day above the ${ramadanDayCap} h cap`
+          : ramadanWeekBreach
+            ? `${ramadanWeekBreach.name}: ${ramadanWeekBreach.hours} h in a Ramadan week above the ${ramadanWeekCap} h cap`
+            : `Ramadan: ${ramadanDayCap} h a day or ${ramadanWeekCap} h a week for Muslims — applied to every assignee; religion is not on the employee record`,
+      noteAr: "المادة 98 تخفّض ساعات المسلمين في رمضان إلى 6/36. بلا حقل ديانة يُطبَّق الحد على كل المعيَّنين حتى لا يُنقص حق المسلم.",
+      noteEn: "Article 98 reduces Muslim hours in Ramadan to 6/36. With no religion field the cap applies to every assignee so Muslims are never under-protected.",
+    },
+    {
+      id: "workplace_hours",
+      ok: !workplaceBreach,
+      article: workplaceArticle,
+      labelAr: workplaceBreach
+        ? `${workplaceBreach.name}: بقاء ${workplaceBreach.hours} ساعة في موقع العمل يوم ${workplaceBreach.d} فوق حد ${workplaceMax}`
+        : `لا بقاء في موقع العمل أكثر من ${workplaceMax} ساعة في اليوم`,
+      labelEn: workplaceBreach
+        ? `${workplaceBreach.name}: ${workplaceBreach.hours} h at the workplace on day ${workplaceBreach.d} above the ${workplaceMax} h cap`
+        : `No more than ${workplaceMax} h remaining at the workplace in a day`,
+      noteAr: "المادة 101: لا يبقى العامل في مكان العمل أكثر من الحد الساري في اليوم (12 ساعة بعد تعديل 1436).",
+      noteEn: "Article 101: a worker may not remain at the workplace more than the in-force daily cap (12 hours after the 1436 amendment).",
     },
     {
       id: "rest_11h",
@@ -204,18 +476,32 @@ export function checkPublishGates(input: {
         ? "موظف مسند إلى ورديتين في يوم واحد"
         : restBreach11
           ? `${restBreach11.name}: ${restBreach11.gap === 0 ? "بلا فاصل" : `${restBreach11.gap} ساعة فقط`} بين ${restBreach11.from.label} يوم ${restBreach11.from.d} و${restBreach11.to.label} يوم ${restBreach11.to.d}`
-          : "راحة 11 ساعة بين ورديتين",
+          : `فاصل تشغيلي ${restBetween} ساعة بين ورديتين`,
       labelEn: !doubleOk
         ? "Someone is assigned two shifts in one day"
         : restBreach11
           ? `${restBreach11.name}: only ${restBreach11.gap} h between ${restBreach11.from.label} on day ${restBreach11.from.d} and ${restBreach11.to.label} on day ${restBreach11.to.d}`
-          : "11 h rest between shifts",
-      noteAr: "لا يُسند موظف إلى وردية تبدأ قبل مرور 11 ساعة على انتهاء وردية سابقة.",
-      noteEn: "No one is assigned to a shift starting less than 11 hours after their previous one ends.",
+          : `Operational ${restBetween} h gap between shifts`,
+      noteAr: "فاصل تشغيلي للمنصة — ليست المادة 101.",
+      noteEn: "An operational gap — not Article 101.",
+    },
+    {
+      id: "rest_5h",
+      ok: !consecFail,
+      article: consecArticle,
+      labelAr: consecFail
+        ? `${consecFail.st.label || consecFail.st.id}: ${consecFail.gate.reason}`
+        : `لا عمل أكثر من ${ruleValue("hours.rest.maxConsecutiveHours", onDate)} ساعات متواصلة دون راحة ${ruleValue("hours.rest.duringShiftMinutes", onDate)} دقيقة`,
+      labelEn: consecFail
+        ? `${consecFail.st.label || consecFail.st.id}: ${consecFail.gate.reasonEn}`
+        : `No more than ${ruleValue("hours.rest.maxConsecutiveHours", onDate)} consecutive hours without a ${ruleValue("hours.rest.duringShiftMinutes", onDate)}-minute rest`,
+      noteAr: "الراحة والصلاة والطعام لا تُحسب من ساعات العمل. إن زادت النافذة عن خمس ساعات تُفترض راحة نظامية 30 دقيقة ما لم تُضبط صفراً.",
+      noteEn: "Rest, prayer and meals are not working hours. Windows longer than five hours assume the statutory 30-minute rest unless rest is set to zero.",
     },
     {
       id: "weekly_rest",
       ok: restOk,
+      article: weeklyRestArticle,
       labelAr: restOk
         ? "راحة أسبوعية 24 ساعة متصلة"
         : `${restBreachName} مجدول أسبوعًا كاملًا بلا يوم راحة`,
@@ -248,6 +534,26 @@ export function checkPublishGates(input: {
         : `${onLeave.size} on approved leave — excluded from assignment`,
       noteAr: "من له إجازة معتمدة لا يظهر في الإسناد أصلًا، فلا يُسجَّل غيابه.",
       noteEn: "Anyone on approved leave never enters the assignment, so they are never recorded absent.",
+    },
+    {
+      id: "heat_ban",
+      ok: !heatFail,
+      labelAr: heatFail
+        ? `${heatFail.st.label || heatFail.st.id}: حظر 12:00–15:00 للميدان المكشوف من 15 يونيو إلى 15 سبتمبر`
+        : "لا تداخل مع حظر الشمس للميدان المكشوف",
+      labelEn: heatFail
+        ? `${heatFail.st.label || heatFail.st.id}: 12:00–15:00 outdoor ban from 15 June to 15 September`
+        : "No overlap with the outdoor heat ban",
+      noteAr: "حظر وزاري للميدان المكشوف من 15 يونيو إلى 15 سبتمبر، من 12:00 إلى 15:00 — بلا شارة مادة من نظام العمل.",
+      noteEn: "Ministerial outdoor ban from 15 June to 15 September, 12:00 to 15:00 — no Labour Law chip.",
+    },
+    {
+      id: "night_class",
+      ok: true,
+      labelAr: nightCount ? `${nightCount} وردية تُصنَّف ليلية (23:00–06:00)` : "لا وردية ليلية في هذا الشهر",
+      labelEn: nightCount ? `${nightCount} shifts classed as night (23:00–06:00)` : "No night shift this month",
+      noteAr: "التصنيف الليلي تشغيلي من 23:00 إلى 06:00، بلا شارة مادة.",
+      noteEn: "Night classification is operational from 23:00 to 06:00, with no Labour Law chip.",
     },
   ];
 

@@ -1,4 +1,7 @@
-# Saudi government integrations — deferred until credentials
+# Labour Law in the product vs live government rails
+
+NiroVera **applies** نظام العمل as dated operational rules inside attendance, leave, payroll, and HR.
+It does **not** seek ministry product accreditation. A statutory chip (`المادة …`) appears only when the in-force rule has a Labour Law article.
 
 Live rails for **Qiwa · GOSI · Mudad (WPS) · Nafath** are intentionally **not** wired for production calls.
 

@@ -32,6 +32,7 @@ export const BLOB_VISIBILITY = {
   smartPositions: "shared",
   templates: "shared",
   complaintEscalationChain: "shared",
+  disciplinaryCases: "senior",
   attendancePolicy: "shared",
   attendanceEmergency: "shared",
 };

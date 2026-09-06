@@ -1,6 +1,6 @@
 import React from "react";
 import IdentityCard from "@/components/shared/IdentityCard";
-import { ACCENT, BORDER, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
+import { BORDER, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 
 export default function HelpSection({ icon: Icon, title, steps, dir }) {
   return (

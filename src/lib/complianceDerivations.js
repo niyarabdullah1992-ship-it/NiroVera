@@ -1,9 +1,11 @@
 /** Client mirror of base44/shared/complianceDerivations.ts */
 
+import { ruleValue } from "./laborRules.js";
+
 export const COMPLIANCE_DOC_KINDS = ["iqama", "work_permit", "gosi", "qiwa_title", "national_id"];
-export const EXPIRY_WARN_DAYS = 60;
-export const GOSI_EMPLOYEE_RATE = 0.0975;
-export const GOSI_EMPLOYER_RATE = 0.1175;
+export const EXPIRY_WARN_DAYS = ruleValue("compliance.doc.expiryWarnDays");
+export const GOSI_EMPLOYEE_RATE = ruleValue("compliance.gosi.employeeRate");
+export const GOSI_EMPLOYER_RATE = ruleValue("compliance.gosi.employerRate");
 
 export function localDateKey(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -33,6 +35,147 @@ export function docLabel(kind) {
   return map[kind] || { ar: kind, en: kind };
 }
 
+function digitsId(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+export function nationalityIsSaudi(nationality) {
+  const n = String(nationality || "").trim();
+  if (!n) return null;
+  return /سعود|saudi/i.test(n);
+}
+
+export function idKindFromNationalId(nationalId) {
+  const id = digitsId(nationalId);
+  if (!id) return null;
+  if (id.startsWith("1")) return "citizen";
+  if (id.startsWith("2")) return "iqama";
+  return "unknown";
+}
+
+function readIdentity(input) {
+  const row = input || {};
+  const profile = row.profile && typeof row.profile === "object" ? row.profile : {};
+  const nationality = String(row.nationality ?? profile.nationality ?? "").trim();
+  const nationalId = String(row.nationalId ?? profile.nationalId ?? row.idNumber ?? profile.idNumber ?? "");
+  const legacySaudi = row.saudi ?? profile.saudi;
+  return { nationality, nationalId, legacySaudi };
+}
+
+/** Nationality is the criterion; national ID (1 = citizen, 2 = iqama) must agree when both exist. */
+export function deriveSaudiStatus(input) {
+  const { nationality, nationalId, legacySaudi } = readIdentity(input);
+  const nationalitySaudi = nationalityIsSaudi(nationality);
+  const idKind = idKindFromNationalId(nationalId);
+  const hasNat = nationalitySaudi !== null;
+  const hasId = idKind === "citizen" || idKind === "iqama";
+  const base = {
+    nationality,
+    nationalId: digitsId(nationalId),
+    idKind,
+    nationalitySaudi,
+  };
+
+  if (hasNat && hasId) {
+    const fromNat = nationalitySaudi === true;
+    const fromId = idKind === "citizen";
+    if (fromNat !== fromId) {
+      return {
+        ...base,
+        saudi: false,
+        countable: false,
+        mismatch: true,
+        unresolved: false,
+        needsNationality: false,
+        needsId: false,
+        source: "nationality+id",
+        error: "SAUDI_IDENTITY_MISMATCH",
+        reason: "موقوف — الجنسية لا تطابق رقم الهوية (١ مواطن / ٢ إقامة).",
+        reasonEn: "Blocked — nationality does not match the ID number (1 = citizen / 2 = iqama).",
+      };
+    }
+    return {
+      ...base,
+      saudi: fromNat,
+      countable: true,
+      mismatch: false,
+      unresolved: false,
+      needsNationality: false,
+      needsId: false,
+      source: "nationality+id",
+    };
+  }
+
+  if (hasNat) {
+    return {
+      ...base,
+      saudi: nationalitySaudi === true,
+      countable: true,
+      mismatch: false,
+      unresolved: false,
+      needsNationality: false,
+      needsId: true,
+      source: "nationality",
+    };
+  }
+
+  if (hasId) {
+    return {
+      ...base,
+      saudi: idKind === "citizen",
+      countable: true,
+      mismatch: false,
+      unresolved: false,
+      needsNationality: true,
+      needsId: false,
+      source: "id",
+    };
+  }
+
+  if (typeof legacySaudi === "boolean") {
+    return {
+      ...base,
+      saudi: legacySaudi,
+      countable: true,
+      mismatch: false,
+      unresolved: false,
+      needsNationality: true,
+      needsId: true,
+      source: "legacy_flag",
+    };
+  }
+
+  return {
+    ...base,
+    saudi: false,
+    countable: false,
+    mismatch: false,
+    unresolved: true,
+    needsNationality: true,
+    needsId: true,
+    source: "none",
+  };
+}
+
+export function isSaudiForNitaqat(input) {
+  const status = deriveSaudiStatus(input);
+  return status.countable && status.saudi;
+}
+
+export function checkSaudiIdentityGate(input) {
+  const status = deriveSaudiStatus(input);
+  if (status.mismatch) {
+    return {
+      ok: false,
+      error: "SAUDI_IDENTITY_MISMATCH",
+      reason: status.reason,
+      reasonEn: status.reasonEn,
+      ...status,
+    };
+  }
+  return { ok: true, ...status };
+}
+
 export function checkComplianceDocGate(input) {
   const emp = input.employee;
   if (!emp) {
@@ -44,13 +187,23 @@ export function checkComplianceDocGate(input) {
     };
   }
   const today = input.today || localDateKey();
-  const required = input.requiredKinds || (emp.saudi
+  const identity = deriveSaudiStatus(emp);
+  if (identity.mismatch) {
+    return {
+      ok: false,
+      error: "SAUDI_IDENTITY_MISMATCH",
+      reason: identity.reason,
+      reasonEn: identity.reasonEn,
+    };
+  }
+  const saudi = identity.countable ? identity.saudi : !!emp.saudi;
+  const required = input.requiredKinds || (saudi
     ? ["national_id", "gosi", "qiwa_title"]
     : ["iqama", "work_permit", "gosi", "qiwa_title"]);
   const docs = Array.isArray(emp.docs) ? emp.docs : [];
 
   for (const kind of required) {
-    if (kind === "iqama" && emp.saudi) continue;
+    if (kind === "iqama" && saudi) continue;
     const doc = docs.find((d) => d.kind === kind);
     const label = docLabel(kind);
     if (!doc || (!doc.number && !doc.expiryDate && kind !== "qiwa_title")) {
@@ -98,6 +251,153 @@ export function checkComplianceDocGate(input) {
   return { ok: true };
 }
 
+function isFixedTerm(type) {
+  const s = String(type || "").trim().toLowerCase();
+  if (!s) return false;
+  if (s === "indefinite" || s === "unlimited" || s === "open" || s === "open-ended" || s === "trial") return false;
+  if (/غير\s*محدد/.test(s)) return false;
+  return s === "fixed" || s === "definite" || s.includes("fixed") || /محدد/.test(s);
+}
+
+function readContractTerm(input) {
+  const row = input?.employee || input || {};
+  const profile = row.profile && typeof row.profile === "object" ? row.profile : {};
+  const contract = row.contract && typeof row.contract === "object" ? row.contract : (profile.contract || {});
+  const type = contract.type || row.contractType || profile.contractType || "";
+  const endDate = String(contract.endDate || row.contractEndDate || profile.contractEndDate || "").slice(0, 10);
+  const startDate = String(contract.startDate || profile.hireDate || row.hireDate || "").slice(0, 10);
+  return { type, endDate, startDate };
+}
+
+function isExplicitIndefinite(type) {
+  const s = String(type || "").trim().toLowerCase();
+  if (!s) return false;
+  if (s === "trial" || s === "probation") return false;
+  if (s === "indefinite" || s === "unlimited" || s === "open" || s === "open-ended") return true;
+  return /غير\s*محدد/.test(s);
+}
+
+function addCalendarDays(iso, days) {
+  const d = parseDay(iso);
+  if (!d || !Number.isFinite(Number(days))) return "";
+  d.setDate(d.getDate() + Number(days));
+  return localDateKey(d);
+}
+
+/** Article 55 — confirmed Saudi, expired fixed term, continued without a written future end. */
+function saudiArt55ConvertsExpired(input, today, resolvedEnd, type) {
+  if (!isFixedTerm(type) || !resolvedEnd || !(String(today) > String(resolvedEnd))) return false;
+  const identity = deriveSaudiStatus(input);
+  if (identity.saudi !== true) return false;
+  const row = input?.employee || input || {};
+  const profile = row.profile && typeof row.profile === "object" ? row.profile : {};
+  const pattern = String(profile.workPattern || profile.contract?.workPattern || row.workPattern || "").toLowerCase();
+  if (pattern === "temporary" || pattern === "seasonal") return false;
+  const renewals = Math.max(0, Number(profile.contractRenewalCount ?? profile.contract?.renewalCount ?? row.renewalCount ?? 0) || 0);
+  const start = String(profile.contract?.startDate || profile.hireDate || row.hireDate || "").slice(0, 10);
+  const hired = parseDay(start);
+  const now = parseDay(today);
+  const years = hired && now && now >= hired ? (now.getTime() - hired.getTime()) / 31557600000 : 0;
+  const maxRenewals = ruleValue("contract.fixed.maxConsecutiveRenewals", today);
+  const maxYears = ruleValue("contract.fixed.maxYearsBeforeIndefinite", today);
+  return renewals === 0 || renewals >= maxRenewals || years >= maxYears;
+}
+
+/**
+ * Art. 37: Saudi may be indefinite (no end date) or fixed (end required).
+ * Non-Saudi must be fixed; omitted duration is deemed one year from the start and renews alike.
+ * Expired = hard named block. Within the 60-day window = named warning, not an assignment block.
+ */
+export function checkContractTermGate(input = {}) {
+  const { type, endDate, startDate } = readContractTerm(input);
+  const today = input.today || localDateKey();
+  const identity = deriveSaudiStatus(input);
+  const nonSaudi = identity.nationalitySaudi === false;
+  if (nonSaudi && isExplicitIndefinite(type)) {
+    return {
+      ok: false,
+      error: "CONTRACT_NONSAUDI_FIXED_REQUIRED",
+      term: "fixed",
+      reason: "موقوف — عقد غير السعودي مكتوب ومحدد المدة (المادة 37).",
+      reasonEn: "Blocked — a non-Saudi contract must be written and fixed-term (Article 37).",
+    };
+  }
+  const fixed = nonSaudi || isFixedTerm(type);
+  if (!fixed) {
+    return { ok: true, term: "indefinite", startDate: startDate || null, endDate: null };
+  }
+  let resolvedEnd = endDate;
+  let deemed = false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(resolvedEnd)) {
+    if (nonSaudi && /^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      resolvedEnd = addCalendarDays(startDate, ruleValue("contract.nonSaudi.deemedTermDays"));
+      deemed = true;
+    } else {
+      return {
+        ok: false,
+        error: "CONTRACT_END_REQUIRED",
+        term: "fixed",
+        reason: nonSaudi
+          ? "موقوف — العقد محدد المدة يحتاج تاريخ نهاية (المادة 37)."
+          : "موقوف — العقد محدد المدة يحتاج تاريخ نهاية (المادة 55).",
+        reasonEn: nonSaudi
+          ? "Blocked — a fixed-term contract needs an end date (Article 37)."
+          : "Blocked — a fixed-term contract needs an end date (Article 55).",
+      };
+    }
+  }
+  const days = daysUntilExpiry(resolvedEnd, today);
+  if (days != null && days < 0) {
+    if (saudiArt55ConvertsExpired(input, today, resolvedEnd, type)) {
+      return {
+        ok: true,
+        warning: "ART55_CONVERTED",
+        term: "indefinite",
+        art55: true,
+        previousEndDate: resolvedEnd,
+        days,
+        reason: "يُعد العقد غير محدد المدة وفق المادة 55 — يُكتب النوع في الملف.",
+        reasonEn: "The contract is deemed indefinite under Article 55 — the file type is rewritten.",
+      };
+    }
+    return {
+      ok: false,
+      error: "CONTRACT_EXPIRED",
+      term: "fixed",
+      endDate: resolvedEnd,
+      deemed,
+      days,
+      reason: `موقوف — انتهى العقد محدد المدة في ${resolvedEnd}.`,
+      reasonEn: `Blocked — the fixed-term contract ended on ${resolvedEnd}.`,
+    };
+  }
+  if (deemed) {
+    return {
+      ok: true,
+      warning: "CONTRACT_TERM_DEEMED_YEAR",
+      term: "fixed",
+      endDate: resolvedEnd,
+      deemed: true,
+      days,
+      startDate: startDate || null,
+      reason: `المادة 37 — إن لم تُذكر المدة عُدّ العقد سنة حتى ${resolvedEnd}.`,
+      reasonEn: `Article 37 — omitted duration is deemed one year, ending ${resolvedEnd}.`,
+    };
+  }
+  if (days != null && days <= EXPIRY_WARN_DAYS) {
+    return {
+      ok: true,
+      warning: "CONTRACT_EXPIRING",
+      term: "fixed",
+      endDate: resolvedEnd,
+      days,
+      reason: `تنبيه — العقد محدد المدة ينتهي خلال ${days} يومًا (حد ${EXPIRY_WARN_DAYS}).`,
+      reasonEn: `Watch — the fixed-term contract ends in ${days} days (${EXPIRY_WARN_DAYS}-day window).`,
+    };
+  }
+  return { ok: true, term: "fixed", endDate: resolvedEnd, days, startDate: startDate || null };
+}
+
 export function deriveExpiringDocs(employees, today = localDateKey()) {
   const out = [];
   for (const emp of employees || []) {
@@ -122,15 +422,29 @@ export function deriveExpiringDocs(employees, today = localDateKey()) {
 
 export function deriveNitaqat(employees) {
   const list = (employees || []).filter(Boolean);
+  const statuses = list.map((e) => deriveSaudiStatus(e));
   const total = list.length;
-  const saudi = list.filter((e) => e.saudi).length;
+  const saudi = statuses.filter((s) => s.countable && s.saudi).length;
+  const mismatch = statuses.filter((s) => s.mismatch).length;
+  const needsNationality = statuses.filter((s) => s.needsNationality).length;
+  const unresolved = statuses.filter((s) => s.unresolved).length;
   const rate = total > 0 ? Math.round((saudi / total) * 1000) / 10 : 0;
   let band = "red";
   if (rate >= 40) band = "platinum";
   else if (rate >= 30) band = "high_green";
   else if (rate >= 20) band = "mid_green";
   else if (rate >= 10) band = "low_green";
-  return { total, saudi, nonSaudi: total - saudi, rate, band, bandId: band };
+  return {
+    total,
+    saudi,
+    nonSaudi: total - saudi,
+    mismatch,
+    needsNationality,
+    unresolved,
+    rate,
+    band,
+    bandId: band,
+  };
 }
 
 export const NITAQAT_BAND_LABELS = {

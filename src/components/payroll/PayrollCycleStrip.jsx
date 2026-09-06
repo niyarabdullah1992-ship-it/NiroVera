@@ -6,9 +6,9 @@ import IdentityCard from "@/components/shared/IdentityCard";
 
 const LABELS = {
   prepare: { ar: "تجهيز المسير", en: "Prepare the run", arHint: "من ملف الموظف والحضور", enHint: "From profiles and attendance" },
-  review: { ar: "مراجعة البنود", en: "Review lines", arHint: "المادة 90 و107", enHint: "Articles 90 and 107" },
+  review: { ar: "مراجعة البنود", en: "Review lines", arHint: "المادة 92 و93 و107", enHint: "Articles 92, 93 and 107" },
   approve: { ar: "اعتماد المسير", en: "Approve the run", arHint: "بوابة بأسماء الأسباب", enHint: "Named blocking reasons" },
-  protect: { ar: "حماية الأجور", en: "Wage protection", arHint: "ملف مدى — قبل اليوم 3", enHint: "Mudad file — before day 3" },
+  protect: { ar: "حماية الأجور", en: "Wage protection", arHint: "ملف مدى — خلال 30 يوماً", enHint: "Mudad file — within 30 days" },
 };
 
 export default function PayrollCycleStrip({

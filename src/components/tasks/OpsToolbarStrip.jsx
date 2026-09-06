@@ -1,5 +1,5 @@
 import React from "react";
-import { BORDER, BRAND, BRAND_DEEP, BRAND_SOFT, CARD, MUTED, ui } from "@/lib/platformStyles";
+import { filterChip, pillRail, ui } from "@/lib/platformStyles";
 
 const OUTER = {
   display: "flex",
@@ -7,35 +7,6 @@ const OUTER = {
   gap: "8px",
   flexWrap: "wrap",
 };
-
-function filterChipStyle(active) {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: "32px",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    fontSize: "12px",
-    whiteSpace: "nowrap",
-    padding: "0 14px",
-    borderRadius: "9px",
-    lineHeight: 1,
-    boxSizing: "border-box",
-    ...(active
-      ? {
-          border: `1px solid ${BRAND}`,
-          background: BRAND_SOFT,
-          color: BRAND_DEEP,
-          fontWeight: 600,
-        }
-      : {
-          border: `1px solid ${BORDER}`,
-          background: CARD,
-          color: MUTED,
-        }),
-  };
-}
 
 export default function OpsToolbarStrip({
   ar,
@@ -68,17 +39,18 @@ export default function OpsToolbarStrip({
           </button>
         ))}
       </div>
-      {chips.map((chip) => (
-        <button
-          key={chip.id}
-          type="button"
-          onClick={() => onFilterChange(chip.id)}
-          style={filterChipStyle(filter === chip.id)}
-        >
-          {chip.label}
-        </button>
-      ))}
-      <div style={{ flex: 1 }} />
+      <div className="no-scrollbar" style={{ ...pillRail, flex: "1 1 220px", minWidth: 0 }}>
+        {chips.map((chip) => (
+          <button
+            key={chip.id}
+            type="button"
+            onClick={() => onFilterChange(chip.id)}
+            style={filterChip(filter === chip.id)}
+          >
+            {chip.label}
+          </button>
+        ))}
+      </div>
       <button type="button" onClick={onToggleCreate} style={showCreate ? ui.btnCreateQuiet : ui.btnCreate}>
         {showCreate ? (ar ? "إخفاء النموذج" : "Hide form") : (ar ? "مهمة جديدة" : "New task")}
       </button>

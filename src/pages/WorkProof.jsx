@@ -21,13 +21,17 @@ import {
   SURFACE,
   cardShell,
   emptyState,
+  BAD,
+  OK,
+  WARN,
   pill,
   ui,
   field,
 } from "@/lib/platformStyles";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import { Clock, LayoutList, ShieldCheck } from "lucide-react";
+import { Archive, Clock, LayoutList, Search, ShieldCheck } from "lucide-react";
+import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import WorkProofRaiseFields, {
   EMPTY_VEHICLE,
@@ -106,11 +110,11 @@ const STAGE_LABEL = {
 };
 
 const STAGE_PILL = {
-  await: pill("#FFFBEB", "#B45309", "#FDE68A"),
+  await: WARN,
   ready: pill("#EFF6FF", "#1D4ED8", "#BFDBFE"),
-  sealed: pill("#ECFDF3", "#15803D", "#BBF7D0"),
-  accepted: pill("#ECFDF3", "#15803D", "#BBF7D0"),
-  rejected: pill("#FEF2F2", "#DC2626", "#FECACA"),
+  sealed: OK,
+  accepted: OK,
+  rejected: BAD,
 };
 
 export default function WorkProof() {
@@ -123,6 +127,7 @@ export default function WorkProof() {
 
   const [proofs, setProofs] = useState([]);
   const [filter, setFilter] = useState("all");
+  const [query, setQuery] = useState("");
   const [raising, setRaising] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({
@@ -444,15 +449,41 @@ export default function WorkProof() {
   };
 
   const scopedProofs = proofs.filter((p) => matchesStationScope(p.stationId, headerScope, data?.stations));
-  const activeFilter = filter === "accepted" || filter === "ready" || filter === "rejected" || filter === "archive" ? "all" : filter;
-  const visible = scopedProofs.filter((p) => activeFilter === "all" || (p.stage || deriveProofStage(p)) === activeFilter);
   const scopedCounts = useMemo(() => deriveProofCounts(scopedProofs), [scopedProofs]);
+  const stationName = (id) => stations.find((s) => String(s.id) === String(id))?.name || id || "—";
+  const archiveProofs = scopedProofs.filter((p) => {
+    const stage = p.stage || deriveProofStage(p);
+    return stage === "sealed" || stage === "accepted" || stage === "rejected";
+  });
+  const matchesQuery = (p) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const hay = [
+      p.title, p.workReason, p.ref, p.sealId,
+      proofPersonLabel(p), proofEntityPlaceLabel(p, stationName, ar),
+      proofVehicleText(p), p.client,
+    ].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q);
+  };
+  const visible = scopedProofs.filter((p) => {
+    if (filter === "archive") return false;
+    const stage = p.stage || deriveProofStage(p);
+    if (filter !== "all" && stage !== filter) return false;
+    return matchesQuery(p);
+  });
+  const archiveItems = archiveProofs.filter(matchesQuery).map((p) => ({
+    id: p.id || p.ref,
+    title: p.title || p.ref || "—",
+    text: [proofEntityPlaceLabel(p, stationName, ar), proofPersonLabel(p), proofVehicleText(p)].filter(Boolean).join(" · "),
+    date: p.endedAt || p.createdAt || p.startedAt,
+    badge: ar ? (STAGE_LABEL[p.stage || deriveProofStage(p)]?.ar) : (STAGE_LABEL[p.stage || deriveProofStage(p)]?.en),
+  }));
   const tabKeys = [
     ["all", scopedProofs.length, ar ? "الكل" : "All", LayoutList],
     ["await", scopedCounts.await, ar ? "بانتظار" : "Awaiting", Clock],
     ["sealed", scopedCounts.sealed, ar ? "مكتمل" : "Completed", ShieldCheck],
+    ["archive", archiveProofs.length, ar ? "الأرشيف" : "Archive", Archive],
   ];
-  const stationName = (id) => stations.find((s) => String(s.id) === String(id))?.name || id || "—";
 
   return (
     <PlatformStampShell
@@ -462,7 +493,7 @@ export default function WorkProof() {
         ? "ابدأ العمل بصورة قبل. عدّل خلال يوم إن لزم. عند الانتهاء اضغط إنهاء وارفع صورة البعد."
         : "Start with a before photo. Edit within a day if needed. End with the after photo."}
       sections={tabKeys.map(([value, count, label, icon]) => ({ value, label, icon, count }))}
-      tool={activeFilter}
+      tool={filter === "archive" ? "archive" : (filter === "all" || filter === "await" || filter === "sealed" ? filter : "all")}
       onTool={setFilter}
       meta={(
         <div style={{ display: "flex", width: "100%", alignItems: "center" }}>
@@ -529,7 +560,35 @@ export default function WorkProof() {
       </form>
       )}
 
-      {visible.length === 0 ? (
+      <div style={{ position: "relative" }}>
+        <Search
+          style={{
+            position: "absolute",
+            top: "50%",
+            transform: "translateY(-50%)",
+            [ar ? "right" : "left"]: 12,
+            width: 14,
+            height: 14,
+            color: MUTED,
+            pointerEvents: "none",
+          }}
+        />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={ar ? "بحث في الإثباتات…" : "Search proofs…"}
+          style={{ ...field, [ar ? "paddingRight" : "paddingLeft"]: 32 }}
+        />
+      </div>
+
+      {filter === "archive" ? (
+        <RecordSmartArchive
+          items={archiveItems}
+          lang={lang === "ar" ? "ar" : "en"}
+          dir={ar ? "rtl" : "ltr"}
+          emptyLabel={ar ? "لا إثباتات مؤرشفة في هذا النطاق." : "No archived proofs in this scope."}
+        />
+      ) : visible.length === 0 ? (
         <div style={emptyState}>
           {ar ? "لا إثباتات بعد — اضغط «بدء عمل جديد» للبدء." : "No proofs yet — tap “Start new work” to begin."}
         </div>

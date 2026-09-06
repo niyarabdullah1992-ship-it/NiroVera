@@ -88,7 +88,7 @@ function colLetter(index) {
   return out;
 }
 
-function sheetXml(rows, extra = "") {
+function sheetXml(rows, extra = "", options = {}) {
   const body = (rows || []).map((row, rowIndex) => {
     const cells = (row || []).map((value, colIndex) => {
       const ref = `${colLetter(colIndex)}${rowIndex + 1}`;
@@ -96,18 +96,27 @@ function sheetXml(rows, extra = "") {
     }).join("");
     return `<row r="${rowIndex + 1}">${cells}</row>`;
   }).join("");
+  const pane = options.freeze
+    ? `<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>`
+    : "";
+  const views = `<sheetViews><sheetView workbookViewId="0"${options.rtl ? ' rightToLeft="1"' : ""}>${pane}</sheetView></sheetViews>`;
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
     + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`
-    + `<sheetData>${body}</sheetData>${extra}</worksheet>`;
+    + `${views}<sheetData>${body}</sheetData>${extra}</worksheet>`;
 }
 
-function workbookXml(sheetNames) {
+function workbookXml(sheetNames, definedNames = []) {
   const sheets = sheetNames.map((name, index) =>
     `<sheet name="${xmlEsc(name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`
   ).join("");
+  const names = (definedNames || []).filter((item) => item?.name && item?.ref).map((item) =>
+    `<definedName name="${xmlEsc(item.name)}">${xmlEsc(item.ref)}</definedName>`
+  ).join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
     + `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`
-    + `<sheets>${sheets}</sheets></workbook>`;
+    + `<sheets>${sheets}</sheets>`
+    + `${names ? `<definedNames>${names}</definedNames>` : ""}`
+    + `</workbook>`;
 }
 
 function workbookRels(count) {
@@ -139,29 +148,45 @@ function utf8(text) {
   return new TextEncoder().encode(text);
 }
 
-export function listValidation(sqref, formula) {
-  return `<dataValidation type="list" allowBlank="1" showDropDown="0" sqref="${sqref}"><formula1>${xmlEsc(formula)}</formula1></dataValidation>`;
+export function listValidation(sqref, formula, extras = {}) {
+  if (!sqref || !formula) return "";
+  const prompt = extras.prompt
+    ? ` showInputMessage="1" promptTitle="${xmlEsc(extras.promptTitle || " ")}" prompt="${xmlEsc(extras.prompt)}"`
+    : "";
+  const error = extras.error
+    ? ` showErrorMessage="1" errorStyle="warning" errorTitle="${xmlEsc(extras.errorTitle || " ")}" error="${xmlEsc(extras.error)}"`
+    : " showErrorMessage=\"0\"";
+  return `<dataValidation type="list" allowBlank="1"${prompt}${error} sqref="${sqref}"><formula1>${xmlEsc(formula)}</formula1></dataValidation>`;
 }
 
-export function buildXlsx(sheets) {
+export function namedRange(name, sheet, startRow, count, col = "A") {
+  const last = Math.max(Number(startRow) || 2, (Number(startRow) || 2) + Math.max(Number(count) || 1, 1) - 1);
+  const first = Number(startRow) || 2;
+  return { name, ref: `'${sheet}'!$${col}$${first}:$${col}$${last}` };
+}
+
+export function buildXlsx(sheets, options = {}) {
   const names = sheets.map((sheet) => sheet.name || "Sheet");
   const files = [
     { name: "[Content_Types].xml", data: utf8(contentTypes(sheets.length)) },
     { name: "_rels/.rels", data: utf8(ROOT_RELS) },
-    { name: "xl/workbook.xml", data: utf8(workbookXml(names)) },
+    { name: "xl/workbook.xml", data: utf8(workbookXml(names, options.definedNames || [])) },
     { name: "xl/_rels/workbook.xml.rels", data: utf8(workbookRels(sheets.length)) },
   ];
   sheets.forEach((sheet, index) => {
     files.push({
       name: `xl/worksheets/sheet${index + 1}.xml`,
-      data: utf8(sheetXml(sheet.rows || [], sheet.extra || "")),
+      data: utf8(sheetXml(sheet.rows || [], sheet.extra || "", {
+        rtl: sheet.rtl,
+        freeze: sheet.freeze,
+      })),
     });
   });
   return zipStore(files);
 }
 
-export function downloadXlsx(filename, sheets) {
-  const blob = new Blob([buildXlsx(sheets)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+export function downloadXlsx(filename, sheets, options = {}) {
+  const blob = new Blob([buildXlsx(sheets, options)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = String(filename || "template").replace(/\.xlsx$/i, "") + ".xlsx";

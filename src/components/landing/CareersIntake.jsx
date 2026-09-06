@@ -7,7 +7,7 @@ import {
   CAREERS_SAMPLE_ROLES,
   CAREERS_STEPS,
 } from "@/lib/careersContent";
-import { ACCENT, BORDER, CARD, INK, MUTED, SURFACE } from "@/lib/publicChrome";
+import { BORDER, INK, MUTED, SURFACE } from "@/lib/publicChrome";
 
 async function hiringPublic(payload) {
   const res = await base44.functions.invoke("hiring", payload);

@@ -1,18 +1,23 @@
 import React, { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { setLeaveTotal } from "@/lib/store";
-import { getLeaveTotal, leaveTypesForProfile } from "@/lib/leaveTypes";
+import { getLeaveTotal, leaveTypesForProfile, statutoryLeaveFloor } from "@/lib/leaveTypes";
 import { Pencil, Check } from "lucide-react";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 export default function LeaveTotalsEditor({ employee, companyId }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [editing, setEditing] = useState(false);
   const profile = employee.profile || {};
   const types = leaveTypesForProfile(profile).filter((ty) => ty.defaultTotal !== null);
   const [form, setForm] = useState(() => types.reduce((acc, ty) => ({ ...acc, [ty.key]: getLeaveTotal(profile, ty.key) ?? 0 }), {}));
 
   const save = () => {
-    types.forEach((ty) => setLeaveTotal(companyId, employee.id, ty.key, form[ty.key]));
+    types.forEach((ty) => {
+      const floor = statutoryLeaveFloor(ty.key, profile);
+      const value = floor == null ? form[ty.key] : Math.max(Number(form[ty.key]) || 0, floor);
+      setLeaveTotal(companyId, employee.id, ty.key, value);
+    });
     setEditing(false);
   };
 
@@ -35,10 +40,23 @@ export default function LeaveTotalsEditor({ employee, companyId }) {
           <div key={ty.key}>
             <label className="block text-xs text-muted-foreground font-body mb-1">{t(ty.key)}</label>
             {editing ? (
-              <input type="number" min="0" value={form[ty.key]} onChange={(e) => setForm({ ...form, [ty.key]: Number(e.target.value) })} className="w-full px-2 py-1.5 rounded-md border border-input text-sm font-body" />
+              <input
+                type="number"
+                min={statutoryLeaveFloor(ty.key, profile) ?? 0}
+                value={form[ty.key]}
+                onChange={(e) => {
+                  const floor = statutoryLeaveFloor(ty.key, profile);
+                  const raw = Number(e.target.value);
+                  setForm({ ...form, [ty.key]: floor == null ? raw : Math.max(raw, floor) });
+                }}
+                className="w-full px-2 py-1.5 rounded-md border border-input text-sm font-body"
+              />
             ) : (
               <p className="text-sm font-body">{getLeaveTotal(profile, ty.key)}</p>
             )}
+            <div className="mt-1">
+              <LaborArticleCite leaveType={ty.key} profile={profile} ar={lang === "ar"} showText />
+            </div>
           </div>
         ))}
       </div>

@@ -7,8 +7,10 @@ import ScheduleCell from "./ScheduleCell";
 import ScheduleStatsBar from "./ScheduleStatsBar";
 import RotaPublishPanel from "./RotaPublishPanel";
 import { MUTED, NAVY, SURFACE, ui, CARD } from "@/lib/platformStyles";
-import { duplicateShiftGroups, nextDistinctShift } from "@/lib/shiftDerivations";
+import { duplicateShiftGroups, nextDistinctShift, checkConsecutiveWorkGate } from "@/lib/shiftDerivations";
 import { toast } from "@/components/ui/use-toast";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";
 
 const DAY_SHORT = {
   ar: ["أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"],
@@ -42,7 +44,7 @@ const monthBtn = {
 
 const LABEL_COL = 340;
 const DAY_W = 104;
-const ROW_H = 64;
+const ROW_H = 78;
 
 function normalizeTime(raw) {
   const match = String(raw || "").trim().match(/^(\d{1,2}):?(\d{2})$/);
@@ -243,6 +245,29 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                           ))}
                         </select>
                       </div>
+                      {(() => {
+                        const gate = checkConsecutiveWorkGate({ start: st.start, end: st.end, restMinutes: st.restMinutes });
+                        return (
+                          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, width: "100%" }}>
+                            <LaborArticleCite ruleId="hours.rest.maxConsecutiveHours" ar={ar} />
+                            <select
+                              className="nv-shift-field"
+                              value={st.restMinutes == null ? 30 : st.restMinutes}
+                              aria-label={ar ? "راحة داخل الوردية" : "In-shift rest"}
+                              onChange={(e) => updateShiftType(companyId, stationId, st.id, { ...st, restMinutes: Number(e.target.value) })}
+                              style={{ height: 26, fontSize: 11, padding: "0 6px", maxWidth: 92 }}
+                            >
+                              <option value={30}>{ar ? "راحة 30 د" : "30m rest"}</option>
+                              <option value={45}>{ar ? "راحة 45 د" : "45m rest"}</option>
+                              <option value={60}>{ar ? "راحة 60 د" : "60m rest"}</option>
+                              <option value={0}>{ar ? "بلا راحة" : "No rest"}</option>
+                            </select>
+                            {!gate.ok ? (
+                              <PolicyDeviationAlert gate={gate} ruleId="hours.rest.maxConsecutiveHours" ar={ar} />
+                            ) : null}
+                          </div>
+                        );
+                      })()}
                       <button
                         type="button"
                         onClick={() => removeShiftType(companyId, stationId, st.id)}
@@ -273,6 +298,12 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                         <span className="nv-shift-field nv-shift-field--time" style={{ display: "inline-block" }}>{st.start}</span>
                         <span className="nv-shift-window-sep">–</span>
                         <span className="nv-shift-field nv-shift-field--time" style={{ display: "inline-block" }}>{st.end}</span>
+                      </span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
+                        <LaborArticleCite ruleId="hours.rest.maxConsecutiveHours" ar={ar} />
+                        {st.restMinutes === 0
+                          ? (ar ? "بلا راحة" : "No rest")
+                          : (ar ? `راحة ${st.restMinutes ?? 30} د` : `${st.restMinutes ?? 30}m rest`)}
                       </span>
                     </div>
                   )}

@@ -5,6 +5,7 @@ import DeductionDisputeForm from "@/components/payroll/DeductionDisputeForm";
 import { deductionLines, deductionsTotal, sourceLabel } from "@/lib/payrollDeductions";
 import { article90MaxDeduction, checkArticle90Gate } from "@/lib/payrollDerivations";
 import { ACCENT, MUTED, NAVY, BORDER, SURFACE, BRAND_SOFT, BRAND_BORDER, DANGER, dialogOverlay, dialogCard, ui, CARD } from "@/lib/platformStyles";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 // The deduction breakdown: every line carries its source, reason, author and dispute state.
 export default function DeductionLinesDialog({ open, onOpenChange, item, employeeName, ar, canEdit, onAdd, onRemove, onResolve, currentUserId, onDispute }) {
@@ -112,10 +113,11 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
 
         <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 600, color: NAVY }}>
           {ar ? "إجمالي الخصم" : "Total deduction"}: <span dir="ltr">{total.toLocaleString()} {item.currency}</span>
-          <span style={{ display: "block", marginTop: "4px", fontSize: "11px", fontWeight: 500, color: a90.ok ? MUTED : DANGER }}>
+          <span style={{ display: "flex", marginTop: "4px", fontSize: "11px", fontWeight: 500, color: a90.ok ? MUTED : DANGER, alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+            <LaborArticleCite cite={a90.cite} ar={ar} />
             {ar
-              ? `حد المادة 90: ${article90MaxDeduction(item).toLocaleString()} ${item.currency}`
-              : `Art. 90 cap: ${article90MaxDeduction(item).toLocaleString()} ${item.currency}`}
+              ? `الحد ${article90MaxDeduction(item).toLocaleString()} ${item.currency}`
+              : `cap ${article90MaxDeduction(item).toLocaleString()} ${item.currency}`}
             {!a90.ok && (ar ? " — تجاوز الحد، يُمنع الدفع والاعتماد." : " — over cap; payment and approval blocked.")}
           </span>
         </p>

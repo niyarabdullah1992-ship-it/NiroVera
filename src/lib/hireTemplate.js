@@ -8,12 +8,13 @@ import {
   canonicalFieldValue,
   displayProfileField,
   profileFieldValue,
+  profileCompletionStats,
 } from "@/lib/employeeProfileFields";
 import { employeeJobGrade, ensureListGrade, findListGrade, gradesForList, jobGradeLabel } from "@/lib/jobGrades";
 import { attachReportsTo, createOrgBranch, findEmployeeByName, hireFromSeat, placeExistingEmployee, setOrgBranchParent, todayKey, vacantSeats } from "@/lib/orgHire";
 import { applyExtraCoverageStrip, isManagerUnit, stationParentId, stripDescendantCoverage } from "@/lib/stationTree";
 import { addListPosition, companyLists, companyTemplates, createCompanyList, listPositions, templateById, templateLabel } from "@/lib/permissionTemplates";
-import { downloadXlsx, excelSerialToIso, isZipBuffer, listValidation, parseXlsxFirstSheet } from "@/lib/simpleXlsx";
+import { downloadXlsx, excelSerialToIso, isZipBuffer, listValidation, namedRange, parseXlsxFirstSheet } from "@/lib/simpleXlsx";
 
 const PLACEMENT_HEADERS = ["الاسم", "البريد", "الهوية", "الجوال", "تاريخ التعيين", "القائمة", "المنصب", "الدرجة", "الفرع", "يتبع فرع", "يتبع", "فروع إضافية"];
 const PROFILE_SKIP = new Set(["nationalId", "hireDate", "position", "department"]);
@@ -24,6 +25,8 @@ const PAY_FIELDS = [
 ];
 const ALL_PROFILE_FIELDS = [...PROFILE_FIELDS, ...PAY_FIELDS];
 const HEADERS = [...PLACEMENT_HEADERS, ...ALL_PROFILE_FIELDS.map((field) => field.ar)];
+const GAPS_HEADER = "ناقص في الملف";
+const PEOPLE_HEADERS = [...HEADERS, GAPS_HEADER];
 
 const HEADER_KEY = {
   الاسم: "name",
@@ -66,6 +69,9 @@ const HEADER_KEY = {
   basesalary: "baseSalary",
   البدلات: "allowances",
   allowances: "allowances",
+  "ناقص في الملف": "_gaps",
+  missing: "_gaps",
+  gaps: "_gaps",
 };
 ALL_PROFILE_FIELDS.forEach((field) => {
   HEADER_KEY[field.ar] = field.key;
@@ -157,7 +163,28 @@ function gradeByLabel(data, listId, label) {
 }
 
 function branchCatalog(data) {
-  return (data?.stations || []).map((station) => station.name).filter(Boolean);
+  const seen = new Set();
+  return (data?.stations || [])
+    .map((station) => String(station?.name || "").trim())
+    .filter((name) => {
+      const key = norm(name);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+export function hireTemplateCatalogBranches(data) {
+  return branchCatalog(data);
+}
+
+function fileGaps(employee) {
+  const stats = profileCompletionStats(employee);
+  return {
+    labels: stats.missing.map((field) => field.ar).filter(Boolean),
+    pct: stats.pct,
+    count: stats.missing.length,
+  };
 }
 
 function emptyProfile() {
@@ -240,6 +267,9 @@ function employeeRow(employee, data) {
   });
   row.baseSalary = profile.baseSalary || "";
   row.allowances = profile.allowances || "";
+  const gaps = fileGaps(employee);
+  row._gaps = gaps.labels.join("، ");
+  row._gapPct = gaps.pct;
   return row;
 }
 
@@ -506,8 +536,8 @@ function guideSheet() {
     الهوية: "رقم الهوية الوطنية أو الإقامة — 10 أرقام.",
     الجوال: "رقم الجوال.",
     "تاريخ التعيين": "YYYY-MM-DD. إن تُرك يُستخدم اليوم.",
-    الفرع: "فرع العمل. إن لم يوجد يُنشأ عند التطبيق.",
-    "يتبع فرع": "أب هذا الفرع في الشجرة. فارغ = المنشأة (الفرع الرئيسي). إن لم يوجد الأب يُنشأ.",
+    الفرع: "اضغط السهم في الخلية واختر من ورقة «الفروع» — هذه فروع المنصة. لكل موظف تختار أين يوضع.",
+    "يتبع فرع": "أب هذا الفرع في الشجرة إن لزم. فارغ = المنشأة. إن لم يوجد الأب يُنشأ.",
     يتبع: "اسم المعتمِد. إن لم يوجد يُعلَّق بالمالك ويُظلَّل.",
     "فروع إضافية": "فروع تغطية إضافية مفصولة بفاصلة. غير الموجودة تُنشأ.",
     القائمة: "من عمود القوائم في ورقة الدليل. إن لم توجد تُنشأ.",
@@ -537,35 +567,138 @@ function guideSheet() {
     "الحساب البنكي (IBAN)": "SA ثم 22 رقمًا — لملف حماية الأجور.",
     "الراتب الأساسي": "بالريال، بلا فواصل.",
     البدلات: "مجموع البدلات الشهرية بالريال.",
+    "ناقص في الملف": "يُحسب عند تنزيل الملفات الحالية. الخلية الفارغة في الأعمدة الأخرى هي الناقص — املأها ثم ارفع الملف ليُحفظ في ملف الموظف.",
   };
   const rows = [["العمود", "مطلوب", "الشرح"]];
-  HEADERS.forEach((header) => {
+  PEOPLE_HEADERS.forEach((header) => {
     rows.push([header, required.has(header) ? "نعم" : "لا", notes[header] || "يُحفظ في ملف الموظف."]);
   });
   return rows;
 }
 
-export function downloadHireTemplate(data, ar = true) {
-  const blanks = Array.from({ length: 8 }, () => blankRow(data));
-  const filled = placementRows(data).filter((row) => row.name);
-  const people = [HEADERS, ...[...blanks, ...filled].map((row) => HEADERS.map((header) => row[HEADER_KEY[header]] || ""))];
+function gapsSheet(rows) {
+  const named = (rows || []).filter((row) => row.name);
+  const sorted = [...named].sort((a, b) => (a._gapPct ?? 100) - (b._gapPct ?? 100));
+  const out = [["الاسم", "الفرع", "المنصب", "اكتمال الملف", "ناقص في الملف"]];
+  sorted.forEach((row) => {
+    out.push([
+      row.name,
+      row.branch || "",
+      row.title || "",
+      `${row._gapPct ?? 100}%`,
+      row._gaps || "—",
+    ]);
+  });
+  if (out.length === 1) out.push(["", "", "", "", "لا صفوف بأسماء في هذا التنزيل."]);
+  return out;
+}
+
+function branchesSheet(data) {
+  const stations = data?.stations || [];
+  const rows = [["الفرع", "يتبع"]];
+  branchCatalog(data).forEach((name) => {
+    const station = stations.find((item) => norm(item.name) === norm(name));
+    const parent = station ? stations.find((item) => item.id === stationParentId(station)) : null;
+    rows.push([name, parent?.name || ""]);
+  });
+  if (rows.length === 1) {
+    rows.push(["", "لا فروع في المنصة. أنشئ فرعاً من الهيكل ثم نزّل القالب."]);
+  }
+  return rows;
+}
+
+function catalogNamedRanges(data) {
+  const lists = companyLists(data).map((pack) => templateLabel(pack, true)).filter(Boolean);
+  const titles = [...new Set(companyLists(data).flatMap((pack) => listPositions(pack).map((item) => item.title).filter(Boolean)))];
+  const grades = [...new Set(companyLists(data).flatMap((pack) => gradesForList(data, pack.id).flatMap((grade) => [grade.title, jobGradeLabel(grade)].filter(Boolean))))];
+  const branches = branchCatalog(data);
+  const idTypes = ID_TYPE_OPTIONS.map((item) => item.ar);
+  const genders = GENDER_OPTIONS.map((item) => item.ar);
+  const marital = MARITAL_OPTIONS.map((item) => item.ar);
+  const contracts = CONTRACT_TYPE_OPTIONS.map((item) => item.ar);
+  const names = (data?.employees || []).map((employee) => employee.name).filter(Boolean);
+  const size = (list) => Math.max(list.length, 1);
+  return [
+    namedRange("NV_LISTS", "دليل", 2, size(lists), "A"),
+    namedRange("NV_TITLES", "دليل", 2, size(titles), "B"),
+    namedRange("NV_GRADES", "دليل", 2, size(grades), "C"),
+    namedRange("NV_BRANCHES", "الفروع", 2, size(branches), "A"),
+    namedRange("NV_IDTYPES", "دليل", 2, size(idTypes), "E"),
+    namedRange("NV_GENDERS", "دليل", 2, size(genders), "F"),
+    namedRange("NV_MARITAL", "دليل", 2, size(marital), "G"),
+    namedRange("NV_CONTRACTS", "دليل", 2, size(contracts), "H"),
+    namedRange("NV_MANAGERS", "دليل", 2, size(names), "I"),
+  ];
+}
+
+function peopleValidations(last) {
+  const branchPrompt = {
+    promptTitle: "فرع المنصة",
+    prompt: "اضغط السهم واختر أين يوضع الموظف. القائمة من ورقة الفروع = فروع المنصة.",
+    errorTitle: "فرع المنصة",
+    error: "اختر فرعاً من ورقة الفروع، أو اترك الخلية فارغة إلى أن تختار.",
+  };
+  const items = [
+    listValidation(colRange("القائمة", last), "NV_LISTS"),
+    listValidation(colRange("المنصب", last), "NV_TITLES"),
+    listValidation(colRange("الدرجة", last), "NV_GRADES"),
+    listValidation(colRange("الفرع", last), "NV_BRANCHES", branchPrompt),
+    listValidation(colRange("يتبع فرع", last), "NV_BRANCHES"),
+    listValidation(colRange("يتبع", last), "NV_MANAGERS"),
+    listValidation(colRange("نوع الهوية", last), "NV_IDTYPES"),
+    listValidation(colRange("الجنس", last), "NV_GENDERS"),
+    listValidation(colRange("الحالة الاجتماعية", last), "NV_MARITAL"),
+    listValidation(colRange("نوع العقد", last), "NV_CONTRACTS"),
+  ].filter(Boolean);
+  return `<dataValidations count="${items.length}">${items.join("")}</dataValidations>`;
+}
+
+export function buildHireTemplatePeople(data, options = {}) {
+  const mode = options.mode === "blank" ? "blank" : "files";
+  const stationIds = (options.stationIds || []).map(String).filter(Boolean);
+  const employeeIds = (options.employeeIds || []).map(String).filter(Boolean);
+  const focusStationId = String(options.focusStationId || "");
+  const scopedIds = [...new Set([...stationIds, focusStationId].filter(Boolean))];
+  const blankCount = Number(options.blanks) > 0
+    ? Number(options.blanks)
+    : (mode === "blank" ? 12 : 3);
+
+  const named = mode === "blank"
+    ? []
+    : (data?.employees || [])
+      .filter((employee) => employee?.name && employee.role !== "system")
+      .filter((employee) => !employeeIds.length || employeeIds.includes(String(employee.id)))
+      .filter((employee) => !scopedIds.length || scopedIds.includes(String(employee.stationId)))
+      .map((employee) => employeeRow(employee, data));
+
+  const blanks = Array.from({ length: blankCount }, () => blankRow(data));
+
+  return mode === "blank" ? blanks : [...named, ...blanks];
+}
+
+export function downloadHireTemplate(data, ar = true, options = {}) {
+  const mode = options.mode === "blank" ? "blank" : "files";
+  const rows = buildHireTemplatePeople(data, { ...options, mode });
+  const people = [PEOPLE_HEADERS, ...rows.map((row) => PEOPLE_HEADERS.map((header) => row[HEADER_KEY[header]] || ""))];
   const last = Math.max(people.length, 80);
-  const extra = `<dataValidations count="9">${
-    listValidation(colRange("القائمة", last), "'دليل'!$A$2:$A$200")
-    + listValidation(colRange("المنصب", last), "'دليل'!$B$2:$B$200")
-    + listValidation(colRange("الدرجة", last), "'دليل'!$C$2:$C$200")
-    + listValidation(colRange("الفرع", last), "'دليل'!$D$2:$D$200")
-    + listValidation(colRange("يتبع", last), "'دليل'!$I$2:$I$200")
-    + listValidation(colRange("نوع الهوية", last), "'دليل'!$E$2:$E$200")
-    + listValidation(colRange("الجنس", last), "'دليل'!$F$2:$F$200")
-    + listValidation(colRange("الحالة الاجتماعية", last), "'دليل'!$G$2:$G$200")
-    + listValidation(colRange("نوع العقد", last), "'دليل'!$H$2:$H$200")
-  }</dataValidations>`;
-  downloadXlsx(ar ? "قالب-الموظف-كامل" : "complete-employee-template", [
-    { name: "الأشخاص", rows: people, extra },
-    { name: "دليل", rows: catalogSheet(data) },
-    { name: "شرح الأعمدة", rows: guideSheet() },
-  ]);
+  const extra = peopleValidations(last);
+  const focus = String(options.focusStationId || (options.stationIds || [])[0] || "");
+  const focusName = (data?.stations || []).find((station) => String(station.id) === focus)?.name || "";
+  const file = mode === "blank"
+    ? (ar ? "قالب-تعيين-موظف" : "hire-blank-template")
+    : (focusName
+      ? (ar ? `ملفات-ونواقص-${focusName}` : `employee-files-${focusName}`)
+      : (ar ? "ملفات-الموظفين-والنواقص" : "employee-files-and-gaps"));
+  const sheets = [
+    { name: "الأشخاص", rows: people, extra, rtl: true, freeze: true },
+    { name: "الفروع", rows: branchesSheet(data), rtl: true, freeze: true },
+    { name: "دليل", rows: catalogSheet(data), rtl: true, freeze: true },
+    { name: "شرح الأعمدة", rows: guideSheet(), rtl: true, freeze: true },
+  ];
+  if (mode === "files") {
+    sheets.splice(1, 0, { name: "نواقص الملف", rows: gapsSheet(rows), rtl: true, freeze: true });
+  }
+  downloadXlsx(file, sheets, { definedNames: catalogNamedRanges(data) });
 }
 
 function rowsFromGrid(grid) {

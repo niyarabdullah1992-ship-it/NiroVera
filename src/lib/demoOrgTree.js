@@ -252,7 +252,7 @@ export function seedDemoOrgTree(companyId, { ar = true } = {}) {
           department: pack.ar,
           gradeId: grade.id,
           hireDate: row.hireDate,
-          contractType: "unlimited",
+          contractType: "indefinite",
           nationalId: row.nationalId,
           phone: row.phone || "",
           baseSalary: "",

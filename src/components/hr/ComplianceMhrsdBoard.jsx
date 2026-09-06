@@ -11,6 +11,7 @@ import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { deriveStationReadiness, READINESS_COLOR, readinessLabel } from "@/lib/stationReadiness";
 import { nitaqatBandLabel } from "@/lib/complianceDerivations";
 import { printReport } from "@/lib/printReport";
+import { deriveInspectionPack } from "@/lib/inspectionPackDerivations";
 
 const SURFACE_LINKS = [
   { to: "/app/leave", ar: "طلبات الإجازة", en: "Leave Requests", ready: true },
@@ -18,6 +19,7 @@ const SURFACE_LINKS = [
   { to: "/app/safety", ar: "السلامة HSE", en: "Safety HSE", ready: true },
   { to: "/app/complaints", ar: "صوت الموظف", en: "Employee Voice", ready: true },
   { to: "/app/payroll", ar: "الرواتب", en: "Payroll", ready: true },
+  { to: "/app/discipline", ar: "الجزاءات", en: "Sanctions", ready: true },
 ];
 
 function LiveChip({ on, label, ar }) {
@@ -267,6 +269,7 @@ export default function ComplianceMhrsdBoard() {
           <LiveChip on={!!live?.gosi} label={ar ? "التأمينات" : "GOSI"} ar={ar} />
           <LiveChip on={!!live?.mudad} label={ar ? "مدى / WPS" : "Mudad / WPS"} ar={ar} />
           <LiveChip on={!!live?.nafath} label={ar ? "نفاذ" : "Nafath"} ar={ar} />
+          <LiveChip on={!!live?.ajeer} label={ar ? "أجير" : "Ajeer"} ar={ar} />
         </div>
         <div style={{ fontSize: 11, color: MUTED, marginTop: 8, lineHeight: 1.6 }}>
           {ar
@@ -307,6 +310,42 @@ export default function ComplianceMhrsdBoard() {
             </Link>
           ))}
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            const pack = deriveInspectionPack(register || {});
+            printReport({
+              title: ar ? "ملف التفتيش المشتق" : "Derived inspection pack",
+              companyName: company?.name || "NiroVera",
+              periodLabel: new Date().toISOString().slice(0, 10),
+              dir: ar ? "rtl" : "ltr",
+              stats: [
+                { label: ar ? "العاملون" : "Workers", value: pack.crew },
+                { label: ar ? "جزاءات مفتوحة" : "Open sanctions", value: pack.openDiscipline },
+              ],
+              sections: [{
+                title: ar ? "السجلات السبعة" : "The seven registers",
+                headers: [ar ? "السجل" : "Register", ar ? "المادة" : "Article", ar ? "العدد" : "Count", ar ? "المصدر" : "Source"],
+                rows: pack.registers.map((row) => [ar ? row.ar : row.en, row.articleLabel || "—", String(row.count), row.to]),
+              }],
+            });
+          }}
+          style={{
+            marginTop: 12,
+            height: 32,
+            padding: "0 12px",
+            borderRadius: 8,
+            border: "1px solid #E2E8F0",
+            background: NAVY_FILL,
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          {ar ? "ملف التفتيش — مشتق من الأقسام" : "Inspection pack — derived from modules"}
+        </button>
       </ChromeBox>
 
       {/* L2234–2268 Nitaqat card */}
@@ -372,6 +411,14 @@ export default function ComplianceMhrsdBoard() {
             </div>
             <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "الإجمالي" : "Total"}</div>
           </div>
+          {n?.mismatch > 0 ? (
+            <div>
+              <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: "#DC2626" }}>
+                {n.mismatch}
+              </div>
+              <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "تعارض جنسية/هوية" : "Nationality / ID mismatch"}</div>
+            </div>
+          ) : null}
         </div>
       </ChromeBox>
 

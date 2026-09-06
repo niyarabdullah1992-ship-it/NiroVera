@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Building2, Users, LogIn } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import { useI18n } from "@/lib/i18n";
-import { BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/publicChrome";
+import { BORDER, CARD, INK, MUTED, NAVY_FILL, SURFACE } from "@/lib/publicChrome";
 
 const PORTALS = [
   {

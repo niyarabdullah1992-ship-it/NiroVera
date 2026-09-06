@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import PowerCareUploadZone from "@/components/files/PowerCareUploadZone";
 import SigningPanel from "@/components/files/SigningPanel";
 import { sha256HexOfFile } from "@/lib/fileHash";
-import { MUTED, field, SURFACE } from "@/lib/platformStyles";
+import { field, SURFACE } from "@/lib/platformStyles";
 
 export default function VerifyDocumentCard({ ar, initialId = "" }) {
   const [checking, setChecking] = useState(false);

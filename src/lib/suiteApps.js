@@ -241,6 +241,18 @@ export const SUITE_APPS = [
     icon: "message",
   },
   {
+    id: "discipline",
+    path: "/app/discipline",
+    planSection: "hr",
+    group: "compliance",
+    public: true,
+    ar: "الجزاءات والتحقيق",
+    en: "Sanctions",
+    blurbAr: "واقعة ثم إشعار ومحضر وقرار وتظلم.",
+    blurbEn: "Incident, notice, hearing, decision, appeal.",
+    icon: "shield",
+  },
+  {
     id: "payroll",
     path: "/app/payroll",
     planSection: "payroll",

@@ -5,8 +5,12 @@ import { submitLeaveRequest, setLeaveRequestStatus } from "@/lib/store";
 import {
   computeLeaveDays,
   leaveNeedsAttachment,
+  checkApproveLeaveGate,
   LEAVE_TYPES,
 } from "@/lib/leaveDerivations";
+import { remainingLeaveDays, endDateFromLeaveDays } from "@/lib/leaveTypes";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";
 import { generateAbsenceDeduction } from "@/lib/deductionGenerators";
 import { base44 } from "@/api/base44Client";
 import { toast } from "@/components/ui/use-toast";
@@ -41,8 +45,8 @@ const STATUTORY_LEAVE_TYPES = [
     key: "maternity",
     ar: "وضع",
     en: "Maternity",
-    ruleAr: "عشرة أسابيع توزّعها المرأة كما تشاء قبل الوضع وبعده (م.151)",
-    ruleEn: "Ten weeks the employee distributes before and after delivery as she chooses (art. 151)",
+    ruleAr: "اثنا عشر أسبوعاً بأجر كامل من 19 فبراير 2025. ستة بعد الوضع وجوبية (م.151)",
+    ruleEn: "Twelve weeks on full pay from 19 February 2025. Six weeks after birth are mandatory (art. 151)",
   },
   {
     key: "paternity",
@@ -66,11 +70,18 @@ const STATUTORY_LEAVE_TYPES = [
     ruleEn: "Five days on the death of a spouse, parent or child (art. 113)",
   },
   {
+    key: "bereavement_sibling",
+    ar: "وفاة أخ/أخت",
+    en: "Sibling bereavement",
+    ruleAr: "ثلاثة أيام لوفاة الأخ أو الأخت (م.113)",
+    ruleEn: "Three days on the death of a sibling (art. 113)",
+  },
+  {
     key: "hajj",
     ar: "حج",
     en: "Hajj",
-    ruleAr: "من عشرة إلى خمسة عشر يومًا مرة واحدة طوال الخدمة (م.114)",
-    ruleEn: "Ten to fifteen days, once in the whole period of service (art. 114)",
+    ruleAr: "من عشرة إلى خمسة عشر يوماً شاملة عيد الأضحى، مرة بعد سنتين متصلتين (م.114)",
+    ruleEn: "Ten to fifteen days including Eid al-Adha, once after two consecutive years (art. 114)",
   },
   {
     key: "exam",
@@ -136,7 +147,7 @@ export default function AttendanceLeaveRequests({ employees, stations, t, lang }
   const { company, currentUser, refresh } = useAuth();
   const [formOpen, setFormOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ employeeId: "", type: "annual", from: "", to: "" });
+  const [form, setForm] = useState({ employeeId: "", type: "annual", from: "", to: "", days: "", eventDate: "", examRepeat: false });
 
   const stationName = (id) => stations.find((station) => station.id === id)?.name || t("hq");
 
@@ -176,9 +187,25 @@ export default function AttendanceLeaveRequests({ employees, stations, t, lang }
     },
   ];
 
+  const formEmp = (employees || []).find((row) => row.id === form.employeeId);
+  const remainingAnnual = remainingLeaveDays(formEmp?.profile, formEmp?.leaveRequests, "annual");
+  const requestedAnnual = Number(form.days);
+  const formDays = form.type === "annual" && Number.isFinite(requestedAnnual) && requestedAnnual >= 1
+    ? Math.max(1, Math.round(requestedAnnual))
+    : computeLeaveDays(form.from, form.to);
   const lvReady = form.employeeId && form.type && form.from && form.to
-    && new Date(form.to) >= new Date(form.from);
-  const lvCreateStyle = lvReady
+    && new Date(form.to) >= new Date(form.from)
+    && (form.type !== "annual" || (Number.isFinite(requestedAnnual) && requestedAnnual >= 1));
+  const formGate = lvReady
+    ? checkApproveLeaveGate(
+      { type: form.type, startDate: form.from, endDate: form.to, days: formDays, files: [], status: "pending", eventDate: form.eventDate, examRepeat: form.examRepeat },
+      !!LEAVE_TYPES.find((ty) => ty.key === form.type)?.requiresFile,
+      { profile: formEmp?.profile, requests: formEmp?.leaveRequests },
+    )
+    : { ok: true };
+  const STATUTORY_BLOCK = ["LEAVE_BALANCE_EXCEEDED", "HAJJ_OVER_MAX", "HAJJ_SERVICE", "HAJJ_ONCE", "PATERNITY_EVENT_DATE_REQUIRED", "PATERNITY_WINDOW", "MATERNITY_EVENT_DATE_REQUIRED", "MATERNITY_POST_BIRTH", "EXAM_NOTICE"];
+  const formBlocked = STATUTORY_BLOCK.includes(formGate?.error);
+  const lvCreateStyle = lvReady && !formBlocked
     ? {
       height: "36px",
       padding: "0 16px",
@@ -207,31 +234,48 @@ export default function AttendanceLeaveRequests({ employees, stations, t, lang }
 
   const createRequest = () => {
     if (!lvReady || !company?.id) return;
+    const emp = (employees || []).find((row) => row.id === form.employeeId);
+    const days = formDays;
+    const gate = checkApproveLeaveGate(
+      { type: form.type, startDate: form.from, endDate: form.to, days, files: [], status: "pending", eventDate: form.eventDate, examRepeat: form.examRepeat },
+      !!LEAVE_TYPES.find((ty) => ty.key === form.type)?.requiresFile,
+      { profile: emp?.profile, requests: emp?.leaveRequests },
+    );
+    if (!gate.ok && STATUTORY_BLOCK.includes(gate.error)) {
+      toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
+      return;
+    }
     submitLeaveRequest(company.id, form.employeeId, {
       type: form.type,
       startDate: form.from,
       endDate: form.to,
+      days,
       reason: "",
       files: [],
+      eventDate: form.eventDate,
+      examRepeat: form.examRepeat,
     });
     toast({
       description: ar
         ? "سُجّل طلب الإجازة — بانتظار الاعتماد"
         : "Leave request recorded — awaiting approval",
     });
-    setForm({ employeeId: "", type: "annual", from: "", to: "" });
+    setForm({ employeeId: "", type: "annual", from: "", to: "", days: "", eventDate: "", examRepeat: false });
     setFormOpen(false);
     refresh?.();
   };
 
   const decide = async (request, status) => {
     if (!company?.id || !currentUser) return;
-    const attached = hasAttachment(request);
-    if (status === "approved" && leaveNeedsAttachment(request) && !attached) {
+    const emp = request.employee || (employees || []).find((row) => row.id === request.employeeId);
+    const gate = checkApproveLeaveGate(
+      request,
+      !!LEAVE_TYPES.find((ty) => ty.key === request.type)?.requiresFile,
+      { profile: emp?.profile, requests: emp?.leaveRequests },
+    );
+    if (status === "approved" && !gate.ok) {
       toast({
-        description: ar
-          ? "لا يمكن الاعتماد — يلزم مستند لطلب يتجاوز 5 أيام (أو لنوع يتطلب مرفقًا)."
-          : "Approval blocked — a document is required for a request over 5 days (or a type that requires an attachment).",
+        description: ar ? gate.reason : gate.reasonEn,
         variant: "destructive",
       });
       return;
@@ -381,7 +425,10 @@ export default function AttendanceLeaveRequests({ employees, stations, t, lang }
                   </span>
                   <select
                     value={form.type}
-                    onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+                    onChange={(e) => {
+                      const type = e.target.value;
+                      setForm((f) => ({ ...f, type, days: type === "annual" ? f.days : "" }));
+                    }}
                     style={fieldInput}
                   >
                     {(LEAVE_TYPES || []).map((ty) => (
@@ -393,14 +440,96 @@ export default function AttendanceLeaveRequests({ employees, stations, t, lang }
                   <span style={{ display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" }}>
                     {ar ? "من" : "From"}
                   </span>
-                  <input type="date" value={form.from} onChange={(e) => setForm((f) => ({ ...f, from: e.target.value }))} style={fieldInput} />
+                  <input
+                    type="date"
+                    value={form.from}
+                    onChange={(e) => {
+                      const from = e.target.value;
+                      setForm((f) => {
+                        const n = Number(f.days);
+                        const to = f.type === "annual" && from && Number.isFinite(n) && n >= 1
+                          ? endDateFromLeaveDays(from, n)
+                          : f.to;
+                        return { ...f, from, to };
+                      });
+                    }}
+                    style={fieldInput}
+                  />
                 </label>
+                {form.type === "annual" ? (
+                  <label style={{ display: "block" }}>
+                    <span style={{ display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" }}>
+                      {ar ? "عدد الأيام" : "Days"}
+                    </span>
+                    <input
+                      type="number"
+                      min="1"
+                      max={remainingAnnual != null ? remainingAnnual : undefined}
+                      value={form.days}
+                      onChange={(e) => {
+                        const days = e.target.value;
+                        const n = Number(days);
+                        setForm((f) => ({
+                          ...f,
+                          days,
+                          to: f.from && Number.isFinite(n) && n >= 1 ? endDateFromLeaveDays(f.from, n) : f.to,
+                        }));
+                      }}
+                      style={fieldInput}
+                      placeholder={ar ? "من الرصيد المتبقي" : "From remaining balance"}
+                    />
+                  </label>
+                ) : null}
                 <label style={{ display: "block" }}>
                   <span style={{ display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" }}>
                     {ar ? "إلى" : "To"}
                   </span>
-                  <input type="date" value={form.to} onChange={(e) => setForm((f) => ({ ...f, to: e.target.value }))} style={fieldInput} />
+                  <input
+                    type="date"
+                    value={form.to}
+                    onChange={(e) => {
+                      const to = e.target.value;
+                      setForm((f) => ({
+                        ...f,
+                        to,
+                        days: f.type === "annual" && f.from && to ? String(computeLeaveDays(f.from, to)) : f.days,
+                      }));
+                    }}
+                    style={fieldInput}
+                  />
                 </label>
+                {(form.type === "paternity" || form.type === "maternity" || form.type === "marriage" || form.type === "bereavement" || form.type === "bereavement_sibling") ? (
+                  <label style={{ display: "block" }}>
+                    <span style={{ display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" }}>
+                      {form.type === "marriage"
+                        ? (ar ? "تاريخ الزواج" : "Marriage date")
+                        : form.type === "paternity" || form.type === "maternity"
+                          ? (ar ? "تاريخ الولادة" : "Birth date")
+                          : (ar ? "تاريخ الوفاة" : "Date of death")}
+                    </span>
+                    <input type="date" value={form.eventDate} onChange={(e) => setForm((f) => ({ ...f, eventDate: e.target.value }))} style={fieldInput} />
+                  </label>
+                ) : null}
+                {form.type === "exam" ? (
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: MUTED }}>
+                    <input type="checkbox" checked={Boolean(form.examRepeat)} onChange={(e) => setForm((f) => ({ ...f, examRepeat: e.target.checked }))} />
+                    <span>{ar ? "سنة معادة — بلا أجر" : "Repeat sitting — unpaid"}</span>
+                  </label>
+                ) : null}
+              </div>
+              <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <LaborArticleCite leaveType={form.type} ar={ar} showText />
+                {form.type === "annual" && formEmp && remainingAnnual != null ? (
+                  <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
+                    {ar
+                      ? `المتبقي ${remainingAnnual} يوماً — سجّل العدد الذي يريده الموظف.`
+                      : `${remainingAnnual} days remaining — record the number the employee wants.`}
+                  </div>
+                ) : null}
+                {formBlocked ? <PolicyDeviationAlert gate={formGate} leaveType={form.type} ar={ar} /> : null}
+                {formGate?.ok && formGate?.warning ? (
+                  <div style={{ fontSize: 12, color: "#B45309", lineHeight: 1.65 }}>{ar ? formGate.reason : formGate.reasonEn}</div>
+                ) : null}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "13px", flexWrap: "wrap" }}>
                 <span style={{ flex: "1 1 240px", fontSize: "11px", color: MUTED, lineHeight: 1.65 }}>
@@ -410,7 +539,7 @@ export default function AttendanceLeaveRequests({ employees, stations, t, lang }
                 </span>
                 <button
                   type="button"
-                  onClick={() => { setFormOpen(false); setForm({ employeeId: "", type: "annual", from: "", to: "" }); }}
+                  onClick={() => { setFormOpen(false); setForm({ employeeId: "", type: "annual", from: "", to: "", days: "", eventDate: "", examRepeat: false }); }}
                   style={{
                     height: "36px",
                     padding: "0 14px",
@@ -425,7 +554,7 @@ export default function AttendanceLeaveRequests({ employees, stations, t, lang }
                 >
                   {ar ? "إلغاء" : "Cancel"}
                 </button>
-                <button type="button" disabled={!lvReady || busy} onClick={createRequest} style={lvCreateStyle}>
+                <button type="button" disabled={!lvReady || busy || formBlocked} onClick={createRequest} style={lvCreateStyle}>
                   {ar ? "أرسل الطلب للاعتماد" : "Submit for approval"}
                 </button>
               </div>
@@ -550,6 +679,7 @@ export default function AttendanceLeaveRequests({ employees, stations, t, lang }
               <span style={{ flex: 1, fontSize: "11px", color: MUTED, lineHeight: 1.7 }}>
                 {ar ? ty.ruleAr : ty.ruleEn}
               </span>
+              <LaborArticleCite leaveType={ty.key} ar={ar} />
             </div>
           ))}
         </div>

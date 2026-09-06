@@ -18,6 +18,7 @@ import { MUTED, NEUTRAL } from "@/lib/platformStyles";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
 import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
 import { erpKicker } from "@/lib/erpModuleMeta";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 const LAYERS = new Set(["work", "comply", "approve", "analytics", "archive"]);
 
@@ -190,6 +191,11 @@ export default function Safety() {
           { label: ar ? "بانتظار الاعتماد" : "Awaiting approve", value: awaitingApprove, tone: awaitingApprove > 0 ? "warn" : null },
         ]}
       >
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-start" }}>
+        <LaborArticleCite ruleId="safety.hygiene.cite" ar={ar} showText />
+        <LaborArticleCite ruleId="safety.precautions.cite" ar={ar} showText />
+        <LaborArticleCite ruleId="safety.inform.cite" ar={ar} showText />
+      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {!canEdit && reportStation && tab === "work" && (
         <SafetyIncidentReportForm

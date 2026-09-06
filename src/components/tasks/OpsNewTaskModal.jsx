@@ -1,7 +1,22 @@
 import React, { useEffect, useRef, useState } from "react";
-import { X, Play, Pause } from "lucide-react";
+import { X, Play, Pause, ChevronLeft, ChevronRight } from "lucide-react";
 import { BRAND, BRAND_SOFT, BRAND_DEEP, MUTED, NAVY, dot, field, CARD, SURFACE, INK } from "@/lib/platformStyles";
-import { CERT_FOR, CERT_LABELS, deriveDailyTaskPace } from "@/lib/opsDerivations";
+import {
+  CERT_FOR,
+  CERT_LABELS,
+  deriveDailyTaskPace,
+  WEEKDAY_OPTIONS,
+  listIsoDaysInRange,
+  calendarDaysInclusive,
+  PACE_CHIP_DAYS_MAX,
+  PACE_DATES_MAX,
+  clipIsoDatesToWindow,
+  formPaceMode,
+  formPaceInput,
+  checkTaskPaceFromForm,
+  isoDayKey,
+} from "@/lib/opsDerivations";
+import { formatDate } from "@/lib/dateFormat";
 import DailyPaceStrip from "@/components/tasks/DailyPaceStrip";
 import {
   resolveEmployeeSelectedStation,
@@ -73,6 +88,147 @@ function assignBtnStyle(active) {
       ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND_DEEP, fontWeight: 600 }
       : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
   };
+}
+
+function chipBtnStyle(active) {
+  return {
+    flex: "0 0 auto",
+    minWidth: 36,
+    height: 32,
+    padding: "0 8px",
+    borderRadius: 9,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: 12,
+    fontWeight: active ? 650 : 500,
+    whiteSpace: "nowrap",
+    lineHeight: 1,
+    ...(active
+      ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND_DEEP }
+      : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: NAVY }),
+  };
+}
+
+function padDay(n) {
+  return String(n).padStart(2, "0");
+}
+
+function monthKey(y, m, d) {
+  return `${y}-${padDay(m + 1)}-${padDay(d)}`;
+}
+
+function monthCells(year, month) {
+  const first = new Date(year, month, 1);
+  const startPad = (first.getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < startPad; i += 1) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d += 1) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
+function PaceRangeCalendar({ ar, startAt, dueAt, picked, onToggle }) {
+  const from = String(startAt || "").slice(0, 10);
+  const to = String(dueAt || "").slice(0, 10);
+  const seed = from || isoDayKey(new Date());
+  const [cursor, setCursor] = useState(() => {
+    const p = /^(\d{4})-(\d{2})/.exec(seed);
+    return p ? new Date(Number(p[1]), Number(p[2]) - 1, 1) : new Date();
+  });
+  useEffect(() => {
+    if (!from) return;
+    const p = /^(\d{4})-(\d{2})/.exec(from);
+    if (p) setCursor(new Date(Number(p[1]), Number(p[2]) - 1, 1));
+  }, [from]);
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const cells = monthCells(year, month);
+  const selected = new Set((Array.isArray(picked) ? picked : []).map(String));
+  const weekdays = ar
+    ? ["اث", "ثل", "أر", "خم", "جم", "سب", "أح"]
+    : ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+  const monthLabel = formatDate(new Date(year, month, 1), ar ? "ar" : "en", { month: "long", year: "numeric" });
+  const navBtn = {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    border: "1px solid var(--nv-line, #E2E8F0)",
+    background: CARD,
+    color: NAVY,
+    display: "grid",
+    placeItems: "center",
+    cursor: "pointer",
+    padding: 0,
+    flexShrink: 0,
+  };
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--nv-line, #E2E8F0)",
+        background: CARD,
+        borderRadius: 12,
+        padding: 10,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+        <button
+          type="button"
+          aria-label={ar ? "الشهر السابق" : "Previous month"}
+          onClick={() => setCursor(new Date(year, month - 1, 1))}
+          style={navBtn}
+        >
+          {ar ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
+        <div style={{ fontSize: 12, fontWeight: 650, color: NAVY }}>{monthLabel}</div>
+        <button
+          type="button"
+          aria-label={ar ? "الشهر التالي" : "Next month"}
+          onClick={() => setCursor(new Date(year, month + 1, 1))}
+          style={navBtn}
+        >
+          {ar ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
+        {weekdays.map((w) => (
+          <div key={w} style={{ textAlign: "center", fontSize: 10, fontWeight: 650, color: MUTED, padding: "4px 0" }}>
+            {w}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+        {cells.map((day, i) => {
+          if (!day) return <div key={`e-${i}`} />;
+          const key = monthKey(year, month, day);
+          const inRange = (!from || key >= from) && (!to || key <= to);
+          const on = selected.has(key);
+          return (
+            <button
+              key={key}
+              type="button"
+              disabled={!inRange}
+              onClick={() => inRange && onToggle(key)}
+              style={{
+                height: 32,
+                borderRadius: 8,
+                border: on ? "none" : "1px solid transparent",
+                background: on ? "var(--nv-navy, #14284B)" : "transparent",
+                color: !inRange ? "#CBD5E1" : on ? "#fff" : NAVY,
+                fontSize: 12,
+                fontWeight: on ? 700 : 500,
+                cursor: inRange ? "pointer" : "default",
+                fontFamily: "inherit",
+              }}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function priorityBtnStyle(active, color) {
@@ -473,9 +629,19 @@ export default function OpsNewTaskModal({
     : (form.stationId ? [String(form.stationId)] : []);
   const allowMultiStation = stations.length > 1;
 
+  const scheduleForm = {
+    ...form,
+    recurrenceKind: "daily",
+    paceMode: formPaceMode(form) === "weekdays" ? "all" : formPaceMode(form),
+    paceWeekdays: [],
+  };
+  const paceGate = checkTaskPaceFromForm(scheduleForm);
+  const paceMode = formPaceMode(scheduleForm);
+
   const canSubmit = (() => {
     if (!String(form.title || "").trim()) return false;
     if (!selectedStationIds.length) return false;
+    if (!paceGate.ok) return false;
     if (form.assignMode === "one") {
       const map = form.ownersByStation && typeof form.ownersByStation === "object" ? form.ownersByStation : {};
       return selectedStationIds.every((sid) => !!map[sid] || (selectedStationIds.length === 1 && form.ownerId));
@@ -931,13 +1097,13 @@ export default function OpsNewTaskModal({
           <SectionCard
             title={ar ? "الجدول والعدد" : "Schedule & count"}
             hint={ar
-              ? "العدد يُقسَّم على الأيام بين تاريخ البدء وتاريخ الاستحقاق. إن كان البدء لاحقًا: لم يحن يومه."
-              : "The count is split across days between the start date and the due date. If start is later: its day has not come yet."}
+              ? "مهمة واحدة بين تاريخين. أيام التوزيع تحدّد على أي أيام يُقسَّم العدد."
+              : "One task between two dates. Spread days choose which days the count is split across."}
           >
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
                 gap: 12,
                 alignItems: "end",
               }}
@@ -963,7 +1129,11 @@ export default function OpsNewTaskModal({
                 <PlatformDateField
                   ar={ar}
                   value={form.startAt || ""}
-                  onChange={(next) => setForm((f) => ({ ...f, startAt: next }))}
+                  onChange={(next) => setForm((f) => ({
+                    ...f,
+                    startAt: next,
+                    paceDates: clipIsoDatesToWindow(f.paceDates, next, f.dueAt),
+                  }))}
                 />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -971,18 +1141,114 @@ export default function OpsNewTaskModal({
                 <PlatformDateField
                   ar={ar}
                   value={form.dueAt || ""}
-                  onChange={(next) => setForm((f) => ({ ...f, dueAt: next }))}
+                  onChange={(next) => setForm((f) => ({
+                    ...f,
+                    dueAt: next,
+                    paceDates: clipIsoDatesToWindow(f.paceDates, f.startAt, next),
+                  }))}
                 />
               </label>
             </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <span style={LABEL_SPAN}>{ar ? "أيام التوزيع" : "Spread days"}</span>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[
+                  { id: "all", ar: "كل الأيام", en: "All days" },
+                  { id: "dates", ar: "أيام محددة", en: "Specific days" },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, paceMode: m.id }))}
+                    style={assignBtnStyle(paceMode === m.id)}
+                  >
+                    {ar ? m.ar : m.en}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <DailyPaceStrip
               ar={ar}
-              pace={deriveDailyTaskPace({
-                targetCount: form.targetCount,
-                dueAt: form.dueAt,
-                startAt: form.startAt,
-              })}
+              pace={deriveDailyTaskPace(formPaceInput(scheduleForm))}
+              emptyHint={ar
+                ? (paceMode === "dates"
+                  ? "اكتب العدد والتاريخين وحدّد الأيام لتظهر حصة اليوم."
+                  : "اكتب العدد وحدّد تاريخ البدء وتاريخ الاستحقاق لتظهر حصة اليوم.")
+                : (paceMode === "dates"
+                  ? "Enter the count, both dates, and the picked days to see today's quota."
+                  : "Enter the count and both dates to see today's quota.")}
             />
+
+            {paceMode === "dates" ? (
+              (() => {
+                if (!form.startAt || !form.dueAt) {
+                  return (
+                    <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
+                      {ar ? "حدّد تاريخ البدء وتاريخ الاستحقاق أولًا، ثم اختر الأيام." : "Pick the start and due dates first, then choose the days."}
+                    </div>
+                  );
+                }
+                const spanDays = calendarDaysInclusive(form.startAt, form.dueAt);
+                const picked = clipIsoDatesToWindow(form.paceDates, form.startAt, form.dueAt);
+                const toggleDay = (day) => setForm((f) => {
+                  const cur = clipIsoDatesToWindow(f.paceDates, f.startAt, f.dueAt);
+                  const has = cur.includes(day);
+                  const next = has
+                    ? cur.filter((d) => d !== day)
+                    : [...cur, day].sort().slice(0, PACE_DATES_MAX);
+                  return { ...f, paceDates: next };
+                });
+                if (spanDays < 1) {
+                  return (
+                    <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
+                      {ar ? "تاريخ البدء بعد الاستحقاق." : "Start date is after the due date."}
+                    </div>
+                  );
+                }
+                if (spanDays > PACE_CHIP_DAYS_MAX) {
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div style={{ fontSize: 11, color: MUTED }}>
+                        {ar
+                          ? (picked.length === 1
+                            ? "يوم واحد محدد — انقر الأيام في التقويم."
+                            : `${picked.length} أيام محددة — انقر الأيام في التقويم.`)
+                          : `${picked.length} day${picked.length === 1 ? "" : "s"} picked — tap days on the calendar.`}
+                      </div>
+                      <PaceRangeCalendar
+                        ar={ar}
+                        startAt={form.startAt}
+                        dueAt={form.dueAt}
+                        picked={picked}
+                        onToggle={toggleDay}
+                      />
+                    </div>
+                  );
+                }
+                const rangeDays = listIsoDaysInRange(form.startAt, form.dueAt, PACE_CHIP_DAYS_MAX);
+                return (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {rangeDays.map((day) => {
+                      const dt = new Date(`${day}T00:00:00`);
+                      const w = WEEKDAY_OPTIONS.find((opt) => opt.id === dt.getDay());
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => toggleDay(day)}
+                          style={chipBtnStyle(picked.includes(day))}
+                          title={w ? (ar ? w.ar : w.en) : day}
+                        >
+                          {String(Number(day.slice(8, 10)))}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()
+            ) : null}
           </SectionCard>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>

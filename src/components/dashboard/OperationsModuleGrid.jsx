@@ -4,7 +4,7 @@ import { Check } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { getCompanyToken } from "@/lib/store";
 import { canAccessPath } from "@/lib/navVisibility";
-import { BAD, BORDER, CARD, MUTED, NAVY, WARN } from "@/lib/platformStyles";
+import { BAD, BORDER, CARD, MUTED, NAVY, WARN, navPill, pillRail } from "@/lib/platformStyles";
 
 function n(value) {
   return Number(value) || 0;
@@ -154,18 +154,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
   const columns = groups.filter((group) => group.key !== "admin");
   const institution = groups.find((group) => group.key === "admin");
 
-  const pill = (id, label) => ({
-    border: "none",
-    borderRadius: 20,
-    padding: "6px 12px",
-    fontSize: 12,
-    fontWeight: 600,
-    fontFamily: "inherit",
-    cursor: "pointer",
-    background: view === id ? CARD : "transparent",
-    color: view === id ? NAVY : MUTED,
-    boxShadow: view === id ? "0 0 0 1px var(--nv-line, #E2E8F0)" : "none",
-  });
+  const viewPill = (id) => navPill(view === id);
 
   const renderItem = (item) => {
     const urgent = item.tone === "urgent";
@@ -298,19 +287,11 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
               : "From attendance to the client seal. Each section feeds the next — no logging without proof."}
           </p>
         </div>
-        <div
-          style={{
-            display: "inline-flex",
-            gap: 4,
-            padding: 3,
-            borderRadius: 22,
-            background: "var(--nv-soft, #F7F8FA)",
-          }}
-        >
-          <button type="button" onClick={() => setView("attention")} style={pill("attention", ar ? "يحتاج انتباهك" : "Needs attention")}>
+        <div style={pillRail}>
+          <button type="button" onClick={() => setView("attention")} style={viewPill("attention")}>
             {ar ? "يحتاج انتباهك" : "Needs attention"}
           </button>
-          <button type="button" onClick={() => setView("all")} style={pill("all", ar ? "كل الأقسام" : "All sections")}>
+          <button type="button" onClick={() => setView("all")} style={viewPill("all")}>
             {ar ? "كل الأقسام" : "All sections"}
           </button>
         </div>

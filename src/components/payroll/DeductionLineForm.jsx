@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { Plus } from "lucide-react";
 import { DEDUCTION_SOURCES, sourceLabel } from "@/lib/payrollDeductions";
-import { article90MaxDeduction } from "@/lib/payrollDerivations";
+import { article90MaxDeduction, checkArticle90Gate, checkArticle92LoanGate } from "@/lib/payrollDerivations";
 import { MUTED, BORDER, SURFACE, DANGER, field, textarea, ui } from "@/lib/platformStyles";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 // Adding a deduction is only possible with a source, and a written reason when manual.
 export default function DeductionLineForm({ ar, item, onAdd }) {
@@ -12,14 +13,23 @@ export default function DeductionLineForm({ ar, item, onAdd }) {
   const [sourceRefId, setSourceRefId] = useState("");
   const [error, setError] = useState("");
 
+  const cap = article90MaxDeduction(item || {});
+  const cite = checkArticle90Gate(item || {}).cite;
+  const loanCite = checkArticle92LoanGate(item || {}, 0).cite;
   const messages = {
     INVALID_AMOUNT: ar ? "أدخل مبلغاً أكبر من صفر." : "Enter an amount greater than zero.",
     SOURCE_REQUIRED: ar ? "حدّد مصدر الخصم." : "Select the deduction source.",
     REASON_REQUIRED: ar ? "الخصم اليدوي يتطلب سبباً مكتوباً واضحاً." : "A manual deduction requires a written reason.",
     REFERENCE_REQUIRED: ar ? "أدخل معرّف السجل المرجعي (سجل الغياب أو السلفة)." : "Enter the reference record id (absence or advance).",
+    ARTICLE_92_LOAN: ar
+      ? `يتجاوز حد ${loanCite?.labelAr || "المادة 92"} لاسترداد السلفة — 10٪ من الأجر.`
+      : `Exceeds the ${loanCite?.labelEn || "Art. 92"} advance-recovery cap — 10% of the wage.`,
+    ARTICLE_93_EXCEEDED: ar
+      ? `يتجاوز حد ${cite?.labelAr || "المادة 93"} — الحد الأقصى ${cap.toLocaleString()} ${item?.currency || "SAR"} (نصف الأجر الأساسي + البدلات).`
+      : `Exceeds ${cite?.labelEn || "Art. 93"} cap — maximum ${cap.toLocaleString()} ${item?.currency || "SAR"} (half of base + allowances).`,
     ARTICLE_90_EXCEEDED: ar
-      ? `يتجاوز حد المادة 90 — الحد الأقصى ${article90MaxDeduction(item || {}).toLocaleString()} ${item?.currency || "SAR"} (نصف الأجر الأساسي + البدلات).`
-      : `Exceeds Art. 90 cap — maximum ${article90MaxDeduction(item || {}).toLocaleString()} ${item?.currency || "SAR"} (half of base + allowances).`,
+      ? `يتجاوز حد ${cite?.labelAr || "المادة 93"} — الحد الأقصى ${cap.toLocaleString()} ${item?.currency || "SAR"} (نصف الأجر الأساسي + البدلات).`
+      : `Exceeds ${cite?.labelEn || "Art. 93"} cap — maximum ${cap.toLocaleString()} ${item?.currency || "SAR"} (half of base + allowances).`,
   };
 
   const submit = () => {
@@ -77,11 +87,20 @@ export default function DeductionLineForm({ ar, item, onAdd }) {
           {ar ? "لا يُقبل سجل غياب قيد المراجعة — الغياب المعتمد فقط." : "Absences still pending review are not accepted — approved records only."}
         </p>
       )}
-      {item && (
-        <p style={{ margin: 0, fontSize: "11px", color: MUTED, lineHeight: 1.6 }}>
+      {item && source === "advance" && (
+        <p style={{ margin: 0, fontSize: "11px", color: MUTED, lineHeight: 1.6, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
+          <LaborArticleCite cite={loanCite} ar={ar} />
           {ar
-            ? `حد المادة 90: ${article90MaxDeduction(item).toLocaleString()} ${item.currency} (50% من الأساسي + البدلات).`
-            : `Art. 90 cap: ${article90MaxDeduction(item).toLocaleString()} ${item.currency} (50% of base + allowances).`}
+            ? `حد السلفة ${checkArticle92LoanGate(item, 0).max.toLocaleString()} ${item.currency} (10٪ من الأجر).`
+            : `Advance cap ${checkArticle92LoanGate(item, 0).max.toLocaleString()} ${item.currency} (10% of the wage).`}
+        </p>
+      )}
+      {item && (
+        <p style={{ margin: 0, fontSize: "11px", color: MUTED, lineHeight: 1.6, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
+          <LaborArticleCite cite={cite} ar={ar} />
+          {ar
+            ? `الحد ${article90MaxDeduction(item).toLocaleString()} ${item.currency} (50% من الأساسي + البدلات).`
+            : `Cap ${article90MaxDeduction(item).toLocaleString()} ${item.currency} (50% of base + allowances).`}
         </p>
       )}
     </div>

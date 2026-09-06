@@ -14,9 +14,11 @@ import {
   applyOpsRedistributeRemaining,
   applyOpsPaceDayLog,
   deriveDailyTaskPace,
+  taskPaceInput,
   derivePaceBlocker,
   applyOpsSoftDelete,
   canUndoOpsAction,
+  checkDeleteOpsTaskGate,
   checkReassignGate,
   checkEndDelegationGate,
   nextOpsEscalation,
@@ -24,6 +26,7 @@ import {
   runOpsEscalationSweep,
   taskAssigneeId,
   taskPoints,
+  checkTaskRecurrenceGate,
 } from "@/lib/opsDerivations";
 import { getCompanyData, updateCompany } from "@/lib/store";
 import { stationInHeaderScope } from "@/lib/stationTree";
@@ -75,6 +78,8 @@ export function normalizeLocalTask(raw, index = 0) {
     paceDayPlan: raw.paceDayPlan && typeof raw.paceDayPlan === "object" && !Array.isArray(raw.paceDayPlan)
       ? raw.paceDayPlan
       : {},
+    paceWeekdays: Array.isArray(raw.paceWeekdays) ? raw.paceWeekdays : [],
+    paceDates: Array.isArray(raw.paceDates) ? raw.paceDates : [],
     paceDayLog: raw.paceDayLog && typeof raw.paceDayLog === "object" ? raw.paceDayLog : {},
     paceBlocker: raw.paceBlocker && typeof raw.paceBlocker === "object" ? raw.paceBlocker : null,
     targetCount,
@@ -90,6 +95,9 @@ export function normalizeLocalTask(raw, index = 0) {
     proofFiles: Array.isArray(raw.proofFiles) ? raw.proofFiles : [],
     attestation: raw.attestation || "",
     createdBy: raw.createdBy || null,
+    createdByName: raw.createdByName || null,
+    deletedAt: raw.deletedAt || null,
+    deletedBy: raw.deletedBy || null,
     rejectReason: raw.rejectReason || "",
     escalationLevel: Number(raw.escalationLevel) || 0,
     escalatedAt: raw.escalatedAt || null,
@@ -99,6 +107,8 @@ export function normalizeLocalTask(raw, index = 0) {
     updatedAt: raw.updatedAt || null,
     pointsAwarded: Number(raw.pointsAwarded) || 0,
     createdAt: raw.createdAt || new Date().toISOString(),
+    seriesId: raw.seriesId || null,
+    recurrence: raw.recurrence && typeof raw.recurrence === "object" ? raw.recurrence : null,
   };
 }
 
@@ -117,6 +127,15 @@ export function buildLocalOpsBoard({ tasks, scope = "all", stations = [] } = {})
 }
 
 export function createLocalOpsTask(companyId, input, { employees = [] } = {}) {
+  const recGate = checkTaskRecurrenceGate(input.recurrence, {
+    startAt: input.startAt || null,
+    dueAt: input.dueAt || null,
+  });
+  if (!recGate.ok) {
+    return { error: recGate.error, reason: recGate.reason, reasonEn: recGate.reasonEn, tasks: [], counts: null };
+  }
+  const windows = recGate.windows;
+  const seriesId = windows.length > 1 ? uid("series") : null;
   const data = updateCompany(companyId, (d) => {
     const list = Array.isArray(d.tasks) ? d.tasks : [];
     const owner = (employees || []).find((e) => {
@@ -127,9 +146,9 @@ export function createLocalOpsTask(companyId, input, { employees = [] } = {}) {
     const stationIds = Array.isArray(input.stationIds) && input.stationIds.length
       ? input.stationIds.map(String)
       : (input.stationId ? [String(input.stationId)] : []);
-    const task = normalizeLocalTask({
+    const created = windows.map((window, index) => normalizeLocalTask({
       id: uid("tk"),
-      ref: `LOC-${String(list.length + 1).padStart(3, "0")}`,
+      ref: `LOC-${String(list.length + windows.length - index).padStart(3, "0")}`,
       title: input.title,
       stationId: stationIds[0] || input.stationId || null,
       stationIds,
@@ -149,15 +168,15 @@ export function createLocalOpsTask(companyId, input, { employees = [] } = {}) {
       effortWeight: input.effortWeight ?? 3,
       workKind: input.workKind || "gn",
       mode: input.mode || "onsite",
-      dueAt: input.dueAt || null,
-      startAt: input.startAt || createdAt,
+      dueAt: window.dueAt,
+      startAt: window.startAt || createdAt,
       targetCount: input.targetCount || 1,
       completedCount: 0,
       status: "active",
       planPinned: !!input.planPinned,
       planHorizon: input.planPinned && input.planHorizon
         ? input.planHorizon
-        : planHorizonFromDue(input.dueAt || null),
+        : planHorizonFromDue(window.dueAt || null),
       steps: input.steps || "",
       attachments: input.attachments || [],
       assignedTo: input.ownerId || null,
@@ -165,8 +184,19 @@ export function createLocalOpsTask(companyId, input, { employees = [] } = {}) {
       createdBy: input.createdBy || null,
       createdByName: input.createdByName || null,
       createdAt,
-    }, list.length);
-    d.tasks = [task, ...list];
+      seriesId,
+      paceWeekdays: Array.isArray(input.paceWeekdays) ? input.paceWeekdays : [],
+      paceDates: Array.isArray(input.paceDates) ? input.paceDates : [],
+      recurrence: windows.length > 1
+        ? {
+          ...recGate.recurrence,
+          seriesId,
+          occurrence: index + 1,
+          occurrenceCount: windows.length,
+        }
+        : null,
+    }, list.length + index));
+    d.tasks = [...created, ...list];
   }, { sync: "tasks" });
   return buildLocalOpsBoard({ tasks: data?.tasks || [], scope: "all" });
 }
@@ -206,15 +236,7 @@ export function logLocalCompletion(companyId, taskId, { amount = 1, attestation 
       escalationLevel: awaiting ? 0 : t.escalationLevel,
     }, add, at);
     if (!awaiting) {
-      const pace = deriveDailyTaskPace({
-        targetCount: next.targetCount,
-        completedCount: next.completedCount,
-        dueAt: next.dueAt,
-        startAt: next.startAt || next.createdAt,
-        paceStartAt: next.paceStartAt,
-        paceSpreadTarget: next.paceSpreadTarget,
-        paceDayPlan: next.paceDayPlan,
-      });
+      const pace = deriveDailyTaskPace(taskPaceInput(next));
       const blocker = derivePaceBlocker({ task: next, pace });
       if (blocker) {
         const logged = Math.max(0, Number(blocker.logged) || 0);
@@ -368,6 +390,23 @@ export function redistributeLocalOpsPace(companyId, taskId, {
     logged,
     gap,
     blockerDay,
+  }));
+}
+
+export function deleteLocalOpsTask(companyId, taskId, { reviewer } = {}) {
+  const current = (getCompanyData(companyId)?.tasks || []).find((t) => String(t.id) === String(taskId));
+  const task = current ? normalizeLocalTask(current) : null;
+  const gate = checkDeleteOpsTaskGate(task, reviewer);
+  if (!gate.ok) {
+    const err = new Error(gate.reason || gate.error);
+    err.code = gate.error;
+    err.reason = gate.reason;
+    err.reasonEn = gate.reasonEn;
+    throw err;
+  }
+  return mutateLocalOpsTask(companyId, taskId, (t) => applyOpsSoftDelete(t, {
+    byId: reviewer?.id || reviewer?.employeeId || null,
+    byName: reviewer?.name || "",
   }));
 }
 

@@ -16,6 +16,13 @@ import {
   taskTransferMeta,
   taskPlanHorizon,
   taskPoints,
+  taskRecurrenceFromForm,
+  checkTaskRecurrenceGate,
+  checkTaskPaceFromForm,
+  formPaceMode,
+  listMatchingPaceDays,
+  isOpsTaskDeleted,
+  isOpsTaskArchived,
 } from "@/lib/opsDerivations";
 import { visibleEmployees, visibleStations } from "@/lib/permissions";
 import { employeeInStationScope, expandSelectedStationScope } from "@/lib/stationTree";
@@ -24,6 +31,7 @@ import {
   approveLocalTask,
   buildLocalOpsBoard,
   createLocalOpsTask,
+  deleteLocalOpsTask,
   addLocalOpsComment,
   deleteLocalOpsComment,
   endLocalOpsDelegation,
@@ -43,26 +51,30 @@ import OpsToolbarStrip from "@/components/tasks/OpsToolbarStrip";
 import OpsAssignmentRefChip from "@/components/tasks/OpsAssignmentRefChip";
 import DailyPaceStrip from "@/components/tasks/DailyPaceStrip";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import { INK, MUTED, BORDER, SURFACE, tableShell } from "@/lib/platformStyles";
+import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
+import {
+  INK,
+  MUTED,
+  BORDER,
+  BRAND,
+  OK,
+  WARN,
+  NEUTRAL,
+  SURFACE,
+  dialogCard,
+  dialogOverlay,
+  statusBanner,
+  tableShell,
+  textarea,
+  ui,
+} from "@/lib/platformStyles";
 import { toast } from "@/components/ui/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import useStationScope from "@/hooks/useStationScope";
 import { Link } from "react-router-dom";
 
-const okBanner = {
-  borderRadius: 16,
-  border: "1px solid #BBF7D0",
-  background: "#ECFDF3",
-  padding: "12px 14px",
-  fontSize: 13,
-  color: "#15803D",
-  lineHeight: 1.7,
-};
-const warnBanner = {
-  ...okBanner,
-  border: "1px solid #FDE68A",
-  background: "#FFFBEB",
-  color: "#B45309",
-};
+const okBanner = statusBanner.ok;
+const warnBanner = statusBanner.warn;
 
 const HORIZON_LABEL = {
   y: { ar: "سنوية", en: "Annual" },
@@ -125,6 +137,18 @@ export default function Operations() {
     steps: "",
     planPinned: false,
     planHorizon: "w",
+    recurrenceKind: "daily",
+    recurrenceWeekday: 3,
+    recurrenceWeekdays: [3],
+    recurrenceTimes: "",
+    recurrenceDayMode: "weekday",
+    recurrenceMonthDays: [],
+    recurrencePickedDays: [],
+    recurrenceHorizon: "m",
+    recurrenceMonths: "",
+    paceMode: "all",
+    paceWeekdays: [],
+    paceDates: [],
   });
 
   const ops = useCallback((payload) => base44.functions.invoke("operations", {
@@ -227,8 +251,38 @@ export default function Operations() {
     return visible.filter((emp) => (emp.stationId || null) === stationId || (emp.managedStations || []).includes(stationId));
   }, [currentUser, data, reassignFor?.stationId, transferFor?.stationId, openTask?.stationId]);
 
-  const finishCreateUi = (ref) => {
-    toast({ title: ar ? "أُنشئت المهمة" : "Task created", description: ref });
+  const offerCreateUndo = (createdRows = []) => {
+    const ids = createdRows.map((t) => t?.id).filter(Boolean);
+    if (!ids.length) return;
+    toast({
+      title: ids.length > 1
+        ? (ar ? `أُنشئت ${ids.length} مهام` : `${ids.length} tasks created`)
+        : (ar ? "أُنشئت المهمة" : "Task created"),
+      description: ar
+        ? "يمكنك التراجع والحذف خلال 3 دقائق."
+        : "You can undo and delete within 3 minutes.",
+      duration: 3 * 60 * 1000,
+      action: (
+        <ToastAction
+          altText={ar ? "تراجع" : "Undo"}
+          onClick={() => deleteTasks(ids)}
+        >
+          {ar ? "تراجع · حذف" : "Undo · delete"}
+        </ToastAction>
+      ),
+    });
+  };
+
+  const finishCreateUi = (ref, count = 1, createdRows = []) => {
+    if (createdRows.length) offerCreateUndo(createdRows);
+    else {
+      toast({
+        title: count > 1
+          ? (ar ? `أُنشئت ${count} مهام` : `${count} tasks created`)
+          : (ar ? "أُنشئت المهمة" : "Task created"),
+        description: ref,
+      });
+    }
     setForm((f) => ({
       ...f,
       title: "",
@@ -245,6 +299,18 @@ export default function Operations() {
       targetCount: "",
       planPinned: false,
       planHorizon: "w",
+      recurrenceKind: "daily",
+      recurrenceWeekday: 3,
+      recurrenceWeekdays: [3],
+      recurrenceTimes: "",
+      recurrenceDayMode: "weekday",
+      recurrenceMonthDays: [],
+      recurrencePickedDays: [],
+      recurrenceHorizon: "m",
+      recurrenceMonths: "",
+      paceMode: "all",
+      paceWeekdays: [],
+      paceDates: [],
     }));
     setShowCreate(false);
   };
@@ -259,11 +325,22 @@ export default function Operations() {
       });
       return;
     }
-    const startAt = String(form.startAt || "").trim().slice(0, 10);
-    const dueAt = String(form.dueAt || "").trim().slice(0, 10);
-    if (startAt && dueAt && startAt > dueAt) {
+    const scheduleForm = { ...form, recurrenceKind: "daily" };
+    const paceGate = checkTaskPaceFromForm(scheduleForm);
+    if (!paceGate.ok) {
       toast({
-        title: ar ? "تاريخ البدء بعد الاستحقاق" : "Start date is after the due date",
+        title: ar ? paceGate.reason : paceGate.reasonEn,
+        variant: "destructive",
+      });
+      return;
+    }
+    const startAt = paceGate.startAt;
+    const dueAt = paceGate.dueAt;
+    const recurrence = taskRecurrenceFromForm(scheduleForm);
+    const recGate = checkTaskRecurrenceGate(recurrence, { startAt, dueAt });
+    if (!recGate.ok) {
+      toast({
+        title: ar ? recGate.reason : recGate.reasonEn,
         variant: "destructive",
       });
       return;
@@ -289,6 +366,8 @@ export default function Operations() {
       ownerId: oneOwnerId,
       ownersByStation: form.assignMode === "one" ? ownersByStation : undefined,
       memberIds: form.assignMode === "some" ? form.memberIds : [],
+      createdBy: currentUser?.id || currentUser?.employeeId || null,
+      createdByName: currentUser?.name || "",
       assignMode: form.assignMode,
       priority: form.priority,
       effortWeight: form.effortWeight,
@@ -301,6 +380,10 @@ export default function Operations() {
       planPinned: form.planPinned === true,
       planHorizon: form.planHorizon || null,
       attachments: [],
+      recurrence: recurrence.kind === "once" ? undefined : recurrence,
+      paceDates: formPaceMode(form) === "dates"
+        ? listMatchingPaceDays({ startAt, dueAt, dates: form.paceDates })
+        : undefined,
     };
 
     const buildOnePayloads = (fileAttachments) => {
@@ -317,7 +400,7 @@ export default function Operations() {
       }));
     };
 
-    const applyCreatedLocally = (board) => {
+    const applyCreatedLocally = (board, count = 1) => {
       setLocalMode(true);
       const scoped = buildLocalOpsBoard({
         tasks: board.tasks,
@@ -326,7 +409,8 @@ export default function Operations() {
       });
       setTasks(scoped.tasks);
       setCounts(scoped.counts);
-      finishCreateUi(board.tasks?.[0]?.ref);
+      const created = (board.tasks || []).filter((t) => !isOpsTaskDeleted(t)).slice(0, count);
+      finishCreateUi(board.tasks?.[0]?.ref, count, created);
     };
 
     let attachments = [];
@@ -365,9 +449,16 @@ export default function Operations() {
         let board = null;
         for (const payload of payloads) {
           board = createLocalOpsTask(company.id, payload, { employees: data?.employees || [] });
+          if (board?.error) {
+            toast({
+              title: ar ? board.reason : (board.reasonEn || board.reason),
+              variant: "destructive",
+            });
+            return;
+          }
         }
         if (!board) throw new Error(ar ? "تعذّر حفظ المهمة محليًا" : "Could not save task locally");
-        applyCreatedLocally(board);
+        applyCreatedLocally(board, recGate.windows.length * payloads.length);
         return;
       }
 
@@ -399,13 +490,11 @@ export default function Operations() {
       };
 
       // Older servers may ignore ownersByStation — fan out client-side if only one task returned.
-      let createdRows = [];
-      if (multiOne && Array.isArray(body.tasks) && body.tasks.length >= stationIds.length) {
-        createdRows = body.tasks;
-        finishCreateUi(body.tasks[0]?.ref);
-      } else if (multiOne && (!body.tasks || body.tasks.length < stationIds.length)) {
-        createdRows = body.task ? [body.task] : (Array.isArray(body.tasks) ? body.tasks : []);
-        let lastRef = body?.task?.ref;
+      let createdRows = Array.isArray(body.tasks) && body.tasks.length
+        ? body.tasks
+        : (body.task ? [body.task] : []);
+      if (multiOne && createdRows.length < stationIds.length) {
+        let lastRef = createdRows[0]?.ref;
         for (let i = 1; i < payloads.length; i += 1) {
           const extra = await ops({ action: "create", ...payloads[i] });
           const extraBody = extra?.data ?? extra ?? {};
@@ -417,13 +506,17 @@ export default function Operations() {
             });
             break;
           }
-          if (extraBody?.task) createdRows.push(extraBody.task);
-          lastRef = extraBody?.task?.ref || lastRef;
+          const extraRows = Array.isArray(extraBody.tasks) && extraBody.tasks.length
+            ? extraBody.tasks
+            : (extraBody.task ? [extraBody.task] : []);
+          createdRows = [...createdRows, ...extraRows];
+          lastRef = extraRows[0]?.ref || lastRef;
         }
-        finishCreateUi(lastRef);
-      } else if (body?.task) {
-        createdRows = [body.task];
-        finishCreateUi(body.task.ref);
+        mergeCreated(createdRows);
+        finishCreateUi(lastRef, createdRows.length, createdRows);
+      } else if (createdRows.length) {
+        mergeCreated(createdRows);
+        finishCreateUi(createdRows[0]?.ref, createdRows.length, createdRows);
       } else {
         toast({
           title: ar ? "تعذّر إنشاء المهمة" : "Could not create task",
@@ -432,7 +525,6 @@ export default function Operations() {
         });
         return;
       }
-      mergeCreated(createdRows);
       setCounts(body.counts || null);
       await reload();
     } catch (err) {
@@ -441,9 +533,10 @@ export default function Operations() {
           let board = null;
           for (const payload of buildOnePayloads(attachments)) {
             board = createLocalOpsTask(company.id, payload, { employees: data?.employees || [] });
+            if (board?.error) throw new Error(board.reason || board.error);
           }
           if (!board) throw new Error("local create empty");
-          applyCreatedLocally(board);
+          applyCreatedLocally(board, recGate.windows.length * buildOnePayloads(attachments).length);
           return;
         } catch {
           /* fall through */
@@ -809,6 +902,66 @@ export default function Operations() {
     }
   };
 
+  const deleteTasks = async (ids) => {
+    const list = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
+    if (!list.length || !company?.id) return;
+    setBusy(true);
+    try {
+      const reviewer = { id: currentUser?.id || currentUser?.employeeId, name: currentUser?.name, role: currentUser?.role };
+      if (localMode || isLocalPreviewActive()) {
+        let board = null;
+        for (const id of list) {
+          board = deleteLocalOpsTask(company.id, id, { reviewer });
+        }
+        if (board) {
+          setTasks(buildLocalOpsBoard({ tasks: board.tasks, scope, stations: data?.stations || [] }).tasks);
+          setCounts(board.counts);
+        }
+        setOpenTaskId(null);
+        toast({ title: ar ? "حُذفت المهمة" : "Task deleted" });
+        await refresh?.();
+        return;
+      }
+      for (const id of list) {
+        const res = await ops({ action: "delete", taskId: id });
+        const body = res?.data || res;
+        if (body?.error) throw new Error(body.reason || body.reasonEn || body.error);
+      }
+      setTasks((prev) => prev.filter((t) => !list.includes(t.id) || isOpsTaskDeleted({ ...t, deletedAt: t.deletedAt || "1" })));
+      setOpenTaskId(null);
+      toast({ title: ar ? "حُذفت المهمة" : "Task deleted" });
+      await reload();
+    } catch (err) {
+      if (company?.id && (isLocalPreviewActive() || localMode || Array.isArray(data?.tasks))) {
+        try {
+          const reviewer = { id: currentUser?.id || currentUser?.employeeId, name: currentUser?.name, role: currentUser?.role };
+          let board = null;
+          for (const id of list) {
+            board = deleteLocalOpsTask(company.id, id, { reviewer });
+          }
+          if (board) {
+            setTasks(buildLocalOpsBoard({ tasks: board.tasks, scope, stations: data?.stations || [] }).tasks);
+            setCounts(board.counts);
+          }
+          setOpenTaskId(null);
+          toast({ title: ar ? "حُذفت المهمة" : "Task deleted" });
+          await refresh?.();
+          return;
+        } catch (localErr) {
+          toast({
+            title: ar ? "تعذّر الحذف" : "Could not delete",
+            description: localErr.reason || localErr.message,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+      toast({ title: ar ? "تعذّر الحذف" : "Could not delete", description: err.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const addAttachment = async (task, file) => {
     if (!file) return;
     setBusy(true);
@@ -1132,7 +1285,10 @@ export default function Operations() {
   };
 
   const todayKey = localTodayKey();
-  const visible = tasks.filter((t) => {
+  const liveTasks = tasks.filter((t) => !isOpsTaskDeleted(t));
+  const archivedTasks = tasks.filter((t) => isOpsTaskArchived(t));
+  const visible = liveTasks.filter((t) => {
+    if (filter === "archive") return false;
     if (filter === "all") return true;
     if (filter === "overdue") return isOverdue(t);
     if (filter === "today") return t.dueAt && String(t.dueAt).slice(0, 10) === todayKey;
@@ -1141,7 +1297,7 @@ export default function Operations() {
     if (filter === "done") return t.status === "completed" || !!t.approvedAt;
     return true;
   });
-  const boardPace = deriveBoardDailyPace(tasks);
+  const boardPace = deriveBoardDailyPace(liveTasks);
 
   const c = counts;
   const chips = c ? [
@@ -1151,6 +1307,7 @@ export default function Operations() {
     { id: "awaiting", label: ar ? `بانتظار الاعتماد · ${c.awaiting}` : `Awaiting · ${c.awaiting}` },
     { id: "escalated", label: ar ? `صُعّدت · ${c.escalated || 0}` : `Escalated · ${c.escalated || 0}` },
     { id: "done", label: ar ? `مكتملة · ${c.done}` : `Done · ${c.done}` },
+    { id: "archive", label: ar ? `الأرشيف · ${archivedTasks.length}` : `Archive · ${archivedTasks.length}` },
   ] : [];
 
   const stationName = (id) => stations.find((s) => s.id === id)?.name || "—";
@@ -1159,6 +1316,15 @@ export default function Operations() {
     const emp = (data?.employees || []).find((e) => e.id === id || e.employeeId === id);
     return emp?.name || task.ownerName || "—";
   };
+  const archiveItems = archivedTasks.map((t) => ({
+    id: t.id,
+    title: t.title,
+    text: [t.ref, stationName(t.stationId), ownerName(t)].filter(Boolean).join(" · "),
+    date: t.deletedAt || t.completedAt || t.approvedAt || t.dueAt || t.createdAt,
+    badge: t.deletedAt
+      ? (ar ? "محذوفة" : "Deleted")
+      : (t.status === "completed" || t.approvedAt ? (ar ? "مكتملة" : "Done") : (ar ? "مؤرشفة" : "Archived")),
+  }));
   const ownerInitials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
 
   const KIND_LABEL = {
@@ -1176,13 +1342,9 @@ export default function Operations() {
   };
   const priColor = (p) => (p === "high" || p === "urgent" ? "#DC2626" : p === "low" ? "#94A3B8" : "#F59E0B");
   const statusChip = (status) => {
-    if (status === "completed") {
-      return { display: "inline-block", padding: "3px 9px", borderRadius: "20px", fontSize: "11px", fontWeight: 500, background: "#ECFDF3", color: "#15803D", border: "1px solid #BBF7D0", whiteSpace: "nowrap" };
-    }
-    if (status === "awaiting_approval" || status === "pending_review") {
-      return { display: "inline-block", padding: "3px 9px", borderRadius: "20px", fontSize: "11px", fontWeight: 500, background: "#FFFBEB", color: "#B45309", border: "1px solid #FDE68A", whiteSpace: "nowrap" };
-    }
-    return { display: "inline-block", padding: "3px 9px", borderRadius: "20px", fontSize: "11px", fontWeight: 500, background: SURFACE, color: MUTED, border: "1px solid #E2E8F0", whiteSpace: "nowrap" };
+    if (status === "completed") return OK;
+    if (status === "awaiting_approval" || status === "pending_review") return WARN;
+    return NEUTRAL;
   };
 
   const kindStyle = {
@@ -1193,7 +1355,7 @@ export default function Operations() {
     fontSize: "11px",
     background: SURFACE,
     color: MUTED,
-    border: "1px solid #E2E8F0",
+    border: `1px solid ${BORDER}`,
   };
 
   const planGroups = deriveHorizonGroups(visible).map((h) => ({
@@ -1206,16 +1368,16 @@ export default function Operations() {
     return (
       <div className="flex flex-col items-start gap-1">
         <div className="flex flex-wrap gap-1.5">
-          <button type="button" onClick={() => setOpenTaskId(task.id)} className="rounded-lg border border-[#1E9E63]/40 bg-[#EAF6EF] px-2.5 py-1 text-[11px] font-medium text-[#14683F]">
+          <button type="button" onClick={() => setOpenTaskId(task.id)} style={ui.btnMiniSoft}>
             {ar ? "بطاقة" : "Card"}
           </button>
           {task.status !== "completed" && task.mode !== "remote" && (
-            <button type="button" disabled={busy} onClick={() => setMode(task, "remote")} className="rounded-lg border border-[#E2E8F0] px-2.5 py-1 text-[11px] text-[#5A6B85]">
+            <button type="button" disabled={busy} onClick={() => setMode(task, "remote")} style={ui.btnMiniQuiet}>
               {ar ? "عن بُعد" : "Remote"}
             </button>
           )}
           {task.status !== "completed" && task.mode === "remote" && (
-            <button type="button" disabled={busy} onClick={() => setMode(task, "onsite")} className="rounded-lg border border-[#E2E8F0] px-2.5 py-1 text-[11px] text-[#5A6B85]">
+            <button type="button" disabled={busy} onClick={() => setMode(task, "onsite")} style={ui.btnMiniQuiet}>
               {ar ? "حضوري" : "On-site"}
             </button>
           )}
@@ -1224,7 +1386,7 @@ export default function Operations() {
               type="button"
               disabled={busy || logBlocked}
               onClick={() => logDone(task)}
-              className="rounded-lg border border-[#E2E8F0] px-2.5 py-1 text-[11px] font-medium text-[#14284B] disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ ...ui.btnMini, opacity: busy || logBlocked ? 0.5 : 1, cursor: busy || logBlocked ? "not-allowed" : "pointer" }}
             >
               {ar ? "سجّل" : "Log"}
             </button>
@@ -1234,7 +1396,7 @@ export default function Operations() {
               type="button"
               disabled={busy}
               onClick={() => setReassignFor(task)}
-              className="rounded-lg border border-[#E2E8F0] px-2.5 py-1 text-[11px] font-medium text-[#14284B]"
+              style={ui.btnMini}
             >
               {ar ? "توكيل" : "Delegate"}
             </button>
@@ -1244,24 +1406,24 @@ export default function Operations() {
               type="button"
               disabled={busy}
               onClick={() => setTransferFor(task)}
-              className="rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-2.5 py-1 text-[11px] font-medium text-[#B91C1C]"
+              style={ui.btnMiniDanger}
             >
               {ar ? "نقل" : "Transfer"}
             </button>
           )}
           {isAwaitingApproval(task) && canReview(task) && (
             <>
-              <button type="button" disabled={busy} onClick={() => approve(task)} className="rounded-lg bg-[#1E9E63] px-2.5 py-1 text-[11px] font-semibold text-white">
+              <button type="button" disabled={busy} onClick={() => approve(task)} style={ui.btnMiniBrand}>
                 {ar ? "اعتمد" : "Approve"}
               </button>
-              <button type="button" disabled={busy} onClick={() => { setRejectFor(task); setRejectReason(""); }} className="rounded-lg border border-[#FECACA] bg-[#FEF2F2] px-2.5 py-1 text-[11px] text-[#B91C1C]">
+              <button type="button" disabled={busy} onClick={() => { setRejectFor(task); setRejectReason(""); }} style={ui.btnMiniDanger}>
                 {ar ? "رفض" : "Reject"}
               </button>
             </>
           )}
         </div>
         {logBlocked && task.status !== "completed" && !isAwaitingApproval(task) && (
-          <span className="max-w-[220px] text-[10px] leading-snug text-[#B45309]">
+          <span className="max-w-[220px] text-[10px] leading-snug" style={{ color: "#B45309" }}>
             {attendanceGate?.reason || (ar ? "موقوف حتى بصمة اليوم" : "Blocked until today's check-in")}
           </span>
         )}
@@ -1296,7 +1458,7 @@ export default function Operations() {
         onToggleCreate={() => setShowCreate((v) => !v)}
       />
 
-      {boardPace.active > 0 ? <DailyPaceStrip ar={ar} board={boardPace} /> : null}
+      {filter !== "archive" && boardPace.active > 0 ? <DailyPaceStrip ar={ar} board={boardPace} /> : null}
 
       <div style={checkedIn ? okBanner : warnBanner}>
         {checkedIn
@@ -1335,7 +1497,14 @@ export default function Operations() {
         </div>
       )}
 
-      {viewMode === "plan" ? (
+      {filter === "archive" ? (
+        <RecordSmartArchive
+          items={archiveItems}
+          lang={lang}
+          dir={dir}
+          emptyLabel={ar ? "لا مهام مؤرشفة بعد — المكتملة والمحذوفة خلال المهلة تُحفظ هنا." : "No archived tasks yet — completed and window-deleted tasks are filed here."}
+        />
+      ) : viewMode === "plan" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <div style={{ fontSize: "11px", color: MUTED, lineHeight: 1.65, textWrap: "pretty" }}>
             {ar
@@ -1363,7 +1532,7 @@ export default function Operations() {
                   {g.unitsDone}/{g.unitsTarget}
                 </div>
                 <span style={{ width: "96px", height: "5px", borderRadius: "4px", background: SURFACE, overflow: "hidden" }}>
-                  <span style={{ display: "block", width: `${g.pct || 0}%`, height: "100%", background: "#1E9E63", borderRadius: "4px" }} />
+                  <span style={{ display: "block", width: `${g.pct || 0}%`, height: "100%", background: BRAND, borderRadius: "4px" }} />
                 </span>
                 <span dir="ltr" style={{ fontSize: "11px", color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", width: "34px", textAlign: "right" }}>
                   {g.pct || 0}%
@@ -1467,6 +1636,7 @@ export default function Operations() {
           onEndDelegation={() => endDelegation(openTask)}
           onSetMode={(mode) => setMode(openTask, mode)}
           onExtendDue={(opts) => extendDue(openTask, opts)}
+          onDelete={() => deleteTasks([openTask.id])}
           currentUserId={currentUser?.id || currentUser?.employeeId}
         />
       )}
@@ -1494,18 +1664,18 @@ export default function Operations() {
       )}
 
       {rejectFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-lg">
-            <div className="text-sm font-semibold">{ar ? "سبب الرفض" : "Rejection reason"}</div>
-            <p className="mt-1 text-[11px] leading-6 text-[#5A6B85]">
+        <div style={dialogOverlay} onClick={() => setRejectFor(null)}>
+          <div style={dialogCard} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: INK }}>{ar ? "سبب الرفض" : "Rejection reason"}</div>
+            <p style={{ margin: "6px 0 0", fontSize: 11, lineHeight: 1.7, color: MUTED }}>
               {ar
                 ? "الرفض يُسجَّل ويُصعَّد للمستوى التالي في سلسلة التصعيد. إن وصلت أعلى السلسلة تُعاد للمنفّذ."
                 : "Reject is recorded and escalates to the next level. At the top of the chain it returns to the executor."}
             </p>
-            <textarea className="mt-2 w-full rounded-lg border border-[#E2E8F0] p-2 text-sm" rows={3} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
-            <div className="mt-3 flex justify-end gap-2">
-              <button type="button" onClick={() => setRejectFor(null)} className="rounded-lg border px-3 py-1.5 text-xs">{ar ? "إلغاء" : "Cancel"}</button>
-              <button type="button" disabled={busy || !rejectReason.trim()} onClick={() => reject()} className="rounded-lg bg-[#14284B] px-3 py-1.5 text-xs text-white disabled:opacity-50">
+            <textarea style={{ ...textarea, marginTop: 12 }} rows={3} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" onClick={() => setRejectFor(null)} style={ui.btnSecondary}>{ar ? "إلغاء" : "Cancel"}</button>
+              <button type="button" disabled={busy || !rejectReason.trim()} onClick={() => reject()} style={{ ...ui.btnCreate, opacity: busy || !rejectReason.trim() ? 0.5 : 1 }}>
                 {ar ? "رفض وتصعيد" : "Reject & escalate"}
               </button>
             </div>

@@ -10,9 +10,28 @@ const NUM = {
   letterSpacing: "-0.02em",
 };
 
-export default function DailyPaceStrip({ ar = true, pace, board, compact = false }) {
+export default function DailyPaceStrip({ ar = true, pace, board, compact = false, emptyHint = "" }) {
   const copy = board ? boardPaceCopy(board, ar) : dailyPaceCopy(pace, ar);
-  if (!copy) return null;
+  if (!copy) {
+    if (!emptyHint) return null;
+    return (
+      <div
+        style={{
+          border: `1px solid ${BORDER}`,
+          background: SURFACE,
+          borderRadius: 9,
+          padding: "7px 12px",
+        }}
+      >
+        <div style={{ fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.01em" }}>
+          {ar ? "التوزيع على الأيام" : "Spread across days"}
+        </div>
+        <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.4, marginTop: 4 }}>
+          {emptyHint}
+        </div>
+      </div>
+    );
+  }
 
   const valueColor = copy.tone === "warn" ? "#B45309" : copy.tone === "done" ? MUTED : NAVY;
 

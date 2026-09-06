@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, RotateCcw } from "lucide-react";
-import { ACCENT, MUTED, NAVY, NAVY_FILL, CARD } from "@/lib/platformStyles";
+import { ACCENT, MUTED, NAVY_FILL, CARD } from "@/lib/platformStyles";
 
 export default function FlowSwipeAction({
   label,

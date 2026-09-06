@@ -91,6 +91,91 @@ export const BORDER = "var(--nv-line, #E2E8F0)";
 export const SURFACE = "var(--nv-soft, #F7F8FA)";
 export const CARD = "var(--nv-card, #FFFFFF)";
 export const DANGER = "#DC2626";
+/** Active chrome fill — same token Layout uses for section pills. */
+export const BTN_FILL = "var(--nv-btn-fill, #14284B)";
+export const BTN_INK = "var(--nv-btn-ink, #fff)";
+export const PILL_H = 34;
+
+/** Layout sub-header language: muted idle, navy fill when selected. */
+export function navPill(active) {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    height: PILL_H,
+    padding: "0 14px",
+    borderRadius: 999,
+    border: "none",
+    background: active ? BTN_FILL : "transparent",
+    color: active ? BTN_INK : MUTED,
+    boxShadow: active ? "0 6px 16px color-mix(in oklab, #14284B 22%, transparent)" : "none",
+    fontSize: "12.5px",
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+    lineHeight: 1,
+    boxSizing: "border-box",
+  };
+}
+
+export const pillRail = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
+  flexWrap: "wrap",
+  overflowX: "auto",
+  background: CARD,
+  border: `1px solid ${BORDER}`,
+  borderRadius: 999,
+  padding: 5,
+  boxShadow: "0 4px 14px rgba(20,40,75,.05)",
+};
+
+export function filterChip(active) {
+  return navPill(active);
+}
+
+export function pillCount(active) {
+  return {
+    minWidth: 16,
+    height: 16,
+    padding: "0 4px",
+    borderRadius: 8,
+    background: active
+      ? "color-mix(in oklab, #fff 24%, transparent)"
+      : "var(--tint-amber-bg, #FFFBEB)",
+    color: active ? "inherit" : "var(--tint-amber-fg, #B45309)",
+    fontSize: 9,
+    fontWeight: 700,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontFamily: "'IBM Plex Sans',sans-serif",
+  };
+}
+
+export const statusBanner = {
+  ok: {
+    borderRadius: 16,
+    border: "1px solid #BBF7D0",
+    background: "#ECFDF3",
+    padding: "12px 14px",
+    fontSize: 13,
+    color: "#15803D",
+    lineHeight: 1.7,
+  },
+  warn: {
+    borderRadius: 16,
+    border: "1px solid #FDE68A",
+    background: "#FFFBEB",
+    padding: "12px 14px",
+    fontSize: 13,
+    color: "#B45309",
+    lineHeight: 1.7,
+  },
+};
 
 export const field = {
   width: "100%",
@@ -234,6 +319,96 @@ export const ui = {
     fontFamily: "inherit",
     whiteSpace: "nowrap",
     boxShadow: "none",
+    lineHeight: 1,
+    boxSizing: "border-box",
+  },
+  btnMini: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 28,
+    padding: "0 10px",
+    borderRadius: 9,
+    border: `1px solid ${BORDER}`,
+    background: CARD,
+    color: INK,
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+    lineHeight: 1,
+    boxSizing: "border-box",
+  },
+  btnMiniQuiet: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 28,
+    padding: "0 10px",
+    borderRadius: 9,
+    border: `1px solid ${BORDER}`,
+    background: CARD,
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+    lineHeight: 1,
+    boxSizing: "border-box",
+  },
+  btnMiniSoft: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 28,
+    padding: "0 10px",
+    borderRadius: 9,
+    border: `1px solid ${BRAND_BORDER}`,
+    background: BRAND_SOFT,
+    color: BRAND_DEEP,
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+    lineHeight: 1,
+    boxSizing: "border-box",
+  },
+  btnMiniBrand: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 28,
+    padding: "0 10px",
+    borderRadius: 9,
+    border: `1px solid ${BRAND}`,
+    background: BRAND,
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+    lineHeight: 1,
+    boxSizing: "border-box",
+  },
+  btnMiniDanger: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 28,
+    padding: "0 10px",
+    borderRadius: 9,
+    border: "1px solid #FECACA",
+    background: "#FEF2F2",
+    color: "#B91C1C",
+    fontSize: 11,
+    fontWeight: 500,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
     lineHeight: 1,
     boxSizing: "border-box",
   },

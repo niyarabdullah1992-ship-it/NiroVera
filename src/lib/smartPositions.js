@@ -173,7 +173,7 @@ export const SMART_SECTION_ROUTES = {
   daily_report: ["/app/daily-report"],
   chat: ["/app/chat"],
   performance: ["/app/performance"],
-  hr: ["/app/hr", "/app/org"],
+  hr: ["/app/hr", "/app/org", "/app/discipline"],
   employees: [],
   safety: ["/app/safety"],
   work_proof: ["/app/work-proof", "/app/client-proof"],

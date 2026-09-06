@@ -31,11 +31,10 @@ dist-ssr
 .vite
 base44/.app.jsonc
 NiroVera.zip
+NiroVera-*.zip
 
-# Generated design audits / zip extracts / leftover packs
-# Keep `.tmp-design-caps/design_handoff_nirovera/` as the live design reference.
-.tmp-design-caps/_compare/
-.tmp-design-caps/_zip_extract*/
+# Leftover design dumps / zip extracts — visual source of truth is live /app
+.tmp-design-caps/
 .tmp-nirovera-pack/
 .tmp-*.mjs
 design-handoff-claude/

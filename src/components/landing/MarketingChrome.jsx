@@ -5,7 +5,7 @@ import LegalCertificatesStrip from "@/components/landing/LegalCertificatesStrip"
 import {
   BORDER,
   MUTED,
-  NAVY, NAVY_FILL,
+  NAVY_FILL,
   ON_NAVY,
   ON_NAVY_MUTED,
   SURFACE,

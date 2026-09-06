@@ -26,9 +26,10 @@ import { toast } from "@/components/ui/use-toast";
 import { seedDemoOrgTree } from "@/lib/demoOrgTree";
 import { createOrgBranch, ensureCompanyRootStation, occupantTitle, renameOrgBranch, setActingAssignment, endActingAssignment, setOrgBranchParent, setOrgUnitKind } from "@/lib/orgHire";
 import { setStationManager } from "@/lib/store";
+import { companyLists } from "@/lib/permissionTemplates";
 import { syncWorkplaceManagers } from "@/lib/peopleTree";
 import { renameCompany } from "@/lib/companySettings";
-import { allowedStationParents, checkSetStationParentGate, companyRootStation, effectiveUnitKind, isCompanyRootStation, normalizeUnitKind } from "@/lib/stationTree";
+import { allowedStationParents, checkSetStationParentGate, companyRootStation, effectiveUnitKind, isCompanyRootStation, workplaceStations } from "@/lib/stationTree";
 import StationDeleteDialog from "@/components/stations/StationDeleteDialog";
 import { quickTransferEmployee } from "@/lib/employeeStationTransfer";
 import { publishOrgStructure, structurePublishIssues } from "@/lib/jobGrades";
@@ -63,7 +64,7 @@ function findBranch(nodes, stationId) {
   return null;
 }
 
-export default function OrgTemplateBoard({ lang = "ar", onHire }) {
+export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) {
   const ar = lang === "ar";
   const { company, data, currentUser } = useAuth();
   const hireInputRef = useRef(null);
@@ -93,6 +94,9 @@ export default function OrgTemplateBoard({ lang = "ar", onHire }) {
   const [actingMenu, setActingMenu] = useState(null);
   const [previewEmployee, setPreviewEmployee] = useState(null);
   const [previewVacant, setPreviewVacant] = useState(false);
+  const [templateStationId, setTemplateStationId] = useState("");
+  const [pickedEmployeeIds, setPickedEmployeeIds] = useState([]);
+  const [pickEmployees, setPickEmployees] = useState(false);
   const viewportRef = useRef(null);
   const treeRef = useRef(null);
   const companyName = data?.settings?.companyName || company?.name || (ar ? "المنشأة" : "Company");
@@ -130,6 +134,44 @@ export default function OrgTemplateBoard({ lang = "ar", onHire }) {
   }, [data]);
   const publishIssues = useMemo(() => structurePublishIssues(data, ar), [data, ar]);
   const publishedAt = data?.settings?.orgPublishedAt;
+  const accessLists = useMemo(() => companyLists(data), [data]);
+  const accessReady = accessLists.some((pack) => (
+    Object.values(pack.permissions || {}).some((level) => level && level !== "hidden")
+  ));
+  const templateStations = useMemo(() => workplaceStations(data?.stations || []), [data]);
+  const templateEmployees = useMemo(() => (
+    (data?.employees || []).filter((employee) => (
+      employee?.name
+      && employee.role !== "system"
+      && employee.profile?.employmentStatus !== "terminated"
+      && (!templateStationId || String(employee.stationId) === String(templateStationId))
+    ))
+  ), [data, templateStationId]);
+
+  const templateScope = () => {
+    if (pickEmployees && !pickedEmployeeIds.length) {
+      toast({
+        description: ar ? "حدّد موظفاً واحداً على الأقل، أو ألغِ التحديد لتنزيل الفرع كاملاً." : "Pick at least one employee, or clear the filter to download the whole branch.",
+        variant: "destructive",
+      });
+      return null;
+    }
+    return {
+      stationIds: templateStationId ? [templateStationId] : undefined,
+      employeeIds: pickEmployees ? pickedEmployeeIds.filter(Boolean) : undefined,
+      focusStationId: templateStationId || undefined,
+    };
+  };
+
+  const downloadBlankTemplate = () => {
+    downloadHireTemplate(data, ar, { mode: "blank", focusStationId: templateStationId || undefined });
+  };
+
+  const downloadCurrentFiles = () => {
+    const scope = templateScope();
+    if (!scope) return;
+    downloadHireTemplate(data, ar, { mode: "files", ...scope });
+  };
 
   const readHireFile = async (file) => {
     if (!file || !company?.id || !canWrite) return;
@@ -221,15 +263,19 @@ export default function OrgTemplateBoard({ lang = "ar", onHire }) {
       });
       return;
     }
+    const title = branchName.trim();
     toast({
       description: branchUnitKind === "manager"
-        ? (ar ? `أُضيفت إدارة «${branchName.trim()}»` : `Admin seat “${branchName.trim()}” added`)
-        : (ar ? `أُضيف فرع «${branchName.trim()}»` : `Branch “${branchName.trim()}” added`),
+        ? (ar ? `أُضيفت إدارة «${title}»` : `Admin seat “${title}” added`)
+        : (ar
+          ? `أُضيف فرع «${title}». صار في قائمة عمود الفرع بالقالب — نزّل قالباً فارغاً أو الملفات الحالية من الشريط.`
+          : `Branch “${title}” added. It is now in the template’s branch list — download a blank template or current files from the strip.`),
     });
     setBranchName("");
     setBranchParentId("");
     setBranchUnitKind("branch");
     setAddingBranch(false);
+    if (result.stationId) setTemplateStationId(result.stationId);
   };
 
   const saveBranchName = async (stationId) => {
@@ -1156,6 +1202,124 @@ export default function OrgTemplateBoard({ lang = "ar", onHire }) {
               ) : null}
           </OrgToolbar>
 
+          {canWrite && !accessLists.length ? (
+            <OrgNotice tone="warn">
+              {ar
+                ? "يجب إنشاء صلاحية أولاً حتى يوزّع موظف الموارد البشرية المناصب على الفروع بسهولة. القائمة تمنح المفتاح، والدرجة لا تمنحه."
+                : "Create an access pack first so HR can distribute titles across branches. The pack grants the key; a grade never does."}
+              {" "}
+              <button
+                type="button"
+                onClick={() => onNeedAccess?.()}
+                style={{ all: "unset", cursor: "pointer", color: NAVY, fontWeight: 600, fontFamily: "inherit" }}
+              >
+                {ar ? "فتح الصلاحية" : "Open access"}
+              </button>
+            </OrgNotice>
+          ) : canWrite && !accessReady ? (
+            <OrgNotice tone="warn">
+              {ar
+                ? "الحزمة موجودة بلا صلاحيات. عيّن الموارد البشرية والموظفين حتى يوزَّع المنصب."
+                : "The pack exists without access. Grant HR and employees so titles can be assigned."}
+              {" "}
+              <button
+                type="button"
+                onClick={() => onNeedAccess?.()}
+                style={{ all: "unset", cursor: "pointer", color: NAVY, fontWeight: 600, fontFamily: "inherit" }}
+              >
+                {ar ? "تعيين الصلاحيات" : "Set access"}
+              </button>
+            </OrgNotice>
+          ) : null}
+
+          {canWrite ? (
+            <div style={{ padding: "10px 16px", borderBottom: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 8 }}>
+              <p style={{ margin: 0, fontSize: 12, color: NAVY, lineHeight: 1.7 }}>
+                {ar
+                  ? "عمود الفرع قائمة من فروع المنصة (ورقة «الفروع»). اضغط السهم واختر أين يوضع كل موظف. ثم ارفع الملف ليُكتب في ملف الموظف. تنزيل الملفات الحالية يُظهر الخلايا الناقصة."
+                  : "The branch column lists live platform branches (the Branches sheet). Click the arrow and pick where each person sits. Upload writes to the employee file. Downloading current files shows missing cells."}
+              </p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                <select
+                  value={templateStationId}
+                  onChange={(event) => {
+                    setTemplateStationId(event.target.value);
+                    setPickedEmployeeIds([]);
+                    setPickEmployees(false);
+                  }}
+                  aria-label={ar ? "فرع القالب" : "Template branch"}
+                  style={{ ...orgSelect, maxWidth: 220 }}
+                >
+                  <option value="">{ar ? "كل الفروع" : "All branches"}</option>
+                  {templateStations.map((station) => (
+                    <option key={station.id} value={station.id}>{station.name}</option>
+                  ))}
+                </select>
+                {templateStationId && templateEmployees.length ? (
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: MUTED }}>
+                    <input
+                      type="checkbox"
+                      checked={pickEmployees}
+                      onChange={(event) => {
+                        const on = event.target.checked;
+                        setPickEmployees(on);
+                        setPickedEmployeeIds(on ? templateEmployees.map((employee) => employee.id) : []);
+                      }}
+                    />
+                    {ar ? "تحديد موظفين من الفرع" : "Select employees in the branch"}
+                  </label>
+                ) : null}
+                <button type="button" onClick={downloadBlankTemplate} style={orgBtnGhost}>
+                  {ar ? "تنزيل قالب فارغ" : "Download blank template"}
+                </button>
+                <button type="button" onClick={downloadCurrentFiles} style={orgBtnGhost}>
+                  {ar ? "تنزيل الملفات الحالية والنواقص" : "Download current files and gaps"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => hireInputRef.current?.click()}
+                  disabled={busy || !canWrite}
+                  style={{
+                    ...orgBtnGhost,
+                    border: `1px solid ${hirePreview ? "hsl(154 79% 27% / .4)" : undefined}`,
+                    background: hirePreview ? "hsl(154 79% 27% / .08)" : undefined,
+                    color: hirePreview ? GREENT : undefined,
+                  }}
+                >
+                  {busy ? (ar ? "جارٍ القراءة…" : "Reading…") : hirePreview ? (ar ? "الملف مرفوع ✓" : "File uploaded") : (ar ? "رفع القالب" : "Upload template")}
+                </button>
+                <button
+                  type="button"
+                  onClick={applyHireFile}
+                  disabled={!canWrite || !hirePreview || hireApplied}
+                  style={orgBtnPrimary(!canWrite || !hirePreview || hireApplied)}
+                >
+                  {hireApplied ? (ar ? "حُفظ في الملفات" : "Saved to files") : (ar ? "تطبيق على ملفات الموظفين" : "Apply to employee files")}
+                </button>
+                <input ref={hireInputRef} type="file" accept=".csv,.xls,.xlsx" style={{ display: "none" }} onChange={(event) => { readHireFile(event.target.files?.[0]); event.target.value = ""; }} />
+              </div>
+              {pickEmployees && templateEmployees.length ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {templateEmployees.map((employee) => {
+                    const checked = pickedEmployeeIds.includes(employee.id);
+                    return (
+                      <label key={employee.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: NAVY }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => setPickedEmployeeIds((current) => (
+                            checked ? current.filter((id) => id !== employee.id) : [...current, employee.id]
+                          ))}
+                        />
+                        {employee.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {canWrite ? (
             <OrgNotice>
               {ar ? (
@@ -1277,31 +1441,6 @@ export default function OrgTemplateBoard({ lang = "ar", onHire }) {
                     <button type="button" onClick={fillDemoTree} disabled={busy || !canWrite} style={orgBtnGhost}>
                       {ar ? "تعبئة تجريبية" : "Fill a trial tree"}
                     </button>
-                    <button type="button" onClick={() => downloadHireTemplate(data, ar)} style={orgBtnGhost}>
-                      {ar ? "تنزيل قالب الموظف" : "Download employee template"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => hireInputRef.current?.click()}
-                      disabled={busy || !canWrite}
-                      style={{
-                        ...orgBtnGhost,
-                        border: `1px solid ${hirePreview ? "hsl(154 79% 27% / .4)" : undefined}`,
-                        background: hirePreview ? "hsl(154 79% 27% / .08)" : undefined,
-                        color: hirePreview ? GREENT : undefined,
-                      }}
-                    >
-                      {busy ? (ar ? "جارٍ القراءة…" : "Reading…") : hirePreview ? (ar ? "الملف مرفوع ✓" : "File uploaded") : (ar ? "رفع القالب" : "Upload template")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={applyHireFile}
-                      disabled={!canWrite || !hirePreview || hireApplied}
-                      style={orgBtnPrimary(!canWrite || !hirePreview || hireApplied)}
-                    >
-                      {hireApplied ? (ar ? "مطبَّق" : "Applied") : (ar ? "تطبيق القالب" : "Apply template")}
-                    </button>
-                    <input ref={hireInputRef} type="file" accept=".csv,.xls,.xlsx" style={{ display: "none" }} onChange={(event) => { readHireFile(event.target.files?.[0]); event.target.value = ""; }} />
                   </div>
                 </details>
               ) : null}

@@ -41,14 +41,17 @@ export default function OpsReassignModal({
   const [toId, setToId] = useState(options[0] ? String(options[0].employeeId || options[0].id) : "");
   const [delegatedAt, setDelegatedAt] = useState(todayKey());
   const [actingUntil, setActingUntil] = useState(addDaysKey(todayKey(), 7));
+  const [actingUntilTime, setActingUntilTime] = useState("17:00");
   const [reason, setReason] = useState("");
 
   if (!task) return null;
 
   const start = String(delegatedAt || "").slice(0, 10);
   const end = String(actingUntil || "").slice(0, 10);
-  const rangeOk = !!start && !!end && end >= start;
+  const timeOk = /^\d{2}:\d{2}$/.test(actingUntilTime);
+  const rangeOk = !!start && !!end && end >= start && timeOk;
   const canSubmit = !!toId && rangeOk && reason.trim().length > 0 && !busy;
+  const actingUntilAt = rangeOk ? `${end}T${actingUntilTime}` : "";
 
   return (
     <div
@@ -123,6 +126,18 @@ export default function OpsReassignModal({
               ar={ar}
               placeholder={ar ? "تاريخ النهاية" : "End date"}
             />
+            <label className="flex flex-col gap-1">
+              <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
+                {ar ? "وقت النهاية (مطلوب)" : "End time (required)"}
+              </span>
+              <input
+                type="time"
+                value={actingUntilTime}
+                onChange={(e) => setActingUntilTime(e.target.value)}
+                dir="ltr"
+                style={field}
+              />
+            </label>
           </div>
         </div>
         {start && end && end < start && (
@@ -160,7 +175,7 @@ export default function OpsReassignModal({
               toId,
               reason: reason.trim(),
               delegatedAt: start,
-              actingUntil: end,
+              actingUntil: actingUntilAt,
               kind: "delegate",
             })}
             className="rounded-lg px-3 py-1.5 text-xs text-white disabled:opacity-50"

@@ -172,7 +172,7 @@ export default function OrgStructure() {
             ) : tool === "escalation" ? (
               <OrgEscalationBoard lang={lang} canWrite={canWrite} />
             ) : (
-              <OrgTemplateBoard lang={lang} onHire={openHire} />
+              <OrgTemplateBoard lang={lang} onHire={openHire} onNeedAccess={() => setTool("lists")} />
             )}
           </PageErrorBoundary>
           </div>
@@ -189,6 +189,7 @@ export default function OrgStructure() {
           listId={hire?.listId || ""}
           listName={hire?.listName || ""}
           onClose={() => setHire(null)}
+          onNeedAccess={() => { setHire(null); setTool("lists"); }}
         />
       ) : null}
     </>

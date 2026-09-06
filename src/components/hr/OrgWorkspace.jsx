@@ -1,5 +1,5 @@
 import React from "react";
-import { BORDER, CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
+import { BORDER, NAVY, SURFACE } from "@/lib/platformStyles";
 import { orgPanelShell } from "@/lib/orgWorkspaceStyles";
 
 export function OrgPanel({ ar, fullscreen = false, children }) {

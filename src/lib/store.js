@@ -10,6 +10,9 @@ import { planDuplicateShiftMerge, shiftWindowKey } from "./shiftDerivations";
 import { applyWorkplaceManagerRule } from "./peopleTreeGraph";
 import { isWorkplaceStation } from "./stationTree";
 import { appendOrgStructureEvent } from "./orgStructureLog";
+import { statutoryLeaveFloor } from "./leaveTypes";
+import { checkApproveLeaveGate } from "./leaveDerivations";
+import { art55FilePatch, laborFilePatch } from "./contractLawDerivations";
 
 const REGISTRY_KEY = "powercare_registry";
 const COMPANY_PREFIX = "powercare_company_";
@@ -388,6 +391,7 @@ function emptyCompanyData(meta) {
     complaintEscalationChain: [],
     branchEscalationChains: {},
     workProofs: [],
+    disciplinaryCases: [],
     settings: { rateLimitDaily: 3, rateLimitWeekly: 10, rateLimitMonthly: 30, orgType: "company" },
   };
 }
@@ -397,7 +401,7 @@ const COMPANY_ARRAY_KEYS = [
   "safety", "files", "plans", "notifications", "templates", "targets", "hrLevels",
   "jobGrades", "hrClusters", "schedules", "stationChatGroups", "personalPlaces",
   "personalAttendance", "plannerItems", "journalEntries", "payrollRuns",
-  "smartPositions", "permissionTemplates", "orgSeats", "orgStructureLog", "complaintEscalationChain", "workProofs",
+  "smartPositions", "permissionTemplates", "orgSeats", "orgStructureLog", "complaintEscalationChain", "workProofs", "disciplinaryCases",
 ];
 
 function normalizeCompanyData(data) {
@@ -472,6 +476,12 @@ export function getCompanyData(id) {
       persist = true;
     }
   }
+  (data.employees || []).forEach((emp) => {
+    const { patch } = art55FilePatch(emp);
+    if (!Object.keys(patch).length) return;
+    emp.profile = { ...(emp.profile || {}), ...patch };
+    persist = true;
+  });
   if (persist) localStorage.setItem(companyKey(id), JSON.stringify(data));
   return data;
 }
@@ -661,7 +671,7 @@ export const BLOB_CATEGORIES = [
   "tasks", "reports", "anonymousReports", "publicReports", "safety", "plans",
   "schedules", "hrLevels", "jobGrades", "hrClusters", "files", "notifications", "templates", "targets",
   "personalPlaces", "personalAttendance", "plannerItems", "journalEntries", "payrollRuns", "smartPositions",
-  "complaintEscalationChain", "branchEscalationChains", "orgTree", "orgSeats", "workProofs",
+  "complaintEscalationChain", "branchEscalationChains", "orgTree", "orgSeats", "workProofs", "disciplinaryCases",
   ];
 const lastSyncedBlobJSON = {};
 async function syncBlobToEntity(companyId, category, payload) {
@@ -1276,8 +1286,30 @@ export function updateEmployeeProfile(companyId, employeeId, profile) {
   updateCompany(companyId, (d) => {
     const emp = d.employees.find((e) => e.id === employeeId);
     if (!emp) return;
-    emp.profile = { ...(emp.profile || {}), ...profile };
+    const incoming = profile && typeof profile === "object" ? profile : {};
+    const merged = { ...(emp.profile || {}), ...incoming };
+    if (incoming.contract && typeof incoming.contract === "object") {
+      merged.contract = { ...(emp.profile?.contract || {}), ...incoming.contract };
+    }
+    const { patch } = laborFilePatch({ ...emp, profile: merged });
+    emp.profile = { ...merged, ...patch };
+    if (patch.contract) {
+      emp.profile.contract = { ...(merged.contract || {}), ...patch.contract };
+    }
   });
+}
+
+/** Write due Article 55 conversion and statutory leave floors onto one employee file. */
+export function applyDueLaborRules(companyId, employeeId) {
+  const emp = getCompanyData(companyId)?.employees.find((e) => e.id === employeeId);
+  if (!emp) return { ok: false, applied: false };
+  const before = laborFilePatch(emp);
+  if (!Object.keys(before.patch).length) return { ok: true, applied: false, art55: false, floors: false };
+  updateEmployeeProfile(companyId, employeeId, {});
+  if (before.art55?.converts) {
+    logAudit(companyId, "art55_applied", `Article 55 converted ${emp.name || employeeId} to indefinite (${before.art55.trigger || "continued"}).`);
+  }
+  return { ok: true, applied: true, art55: Boolean(before.art55?.converts), floors: Boolean(before.floors) };
 }
 
 export function saveEmployeeOffboarding(companyId, employeeId, offboarding) {
@@ -1368,7 +1400,11 @@ export function setLeaveTotal(companyId, employeeId, type, total) {
     if (!emp) return;
     emp.profile = emp.profile || {};
     emp.profile.leaveTotals = emp.profile.leaveTotals || {};
-    emp.profile.leaveTotals[type] = Math.max(0, Number(total) || 0);
+    emp.profile.leaveTotals[type] = (() => {
+      const floor = statutoryLeaveFloor(type, emp.profile);
+      const next = Math.max(0, Number(total) || 0);
+      return floor == null ? next : Math.max(next, floor);
+    })();
   });
 }
 
@@ -1429,16 +1465,53 @@ export function addHRMessage(companyId, employeeId, { from, targetId, targetName
   }
 }
 
+export function addDisciplineMessage(companyId, caseId, { from, text, files, senderName }) {
+  let employeeId = "";
+  updateCompany(companyId, (d) => {
+    const row = (d.disciplinaryCases || []).find((c) => c.id === caseId);
+    if (!row) return;
+    employeeId = row.employeeId;
+    row.messages = row.messages || [];
+    const attached = Array.isArray(files) ? files : [];
+    row.messages.push({
+      id: uid("dmsg"),
+      from,
+      text,
+      files: attached,
+      senderName,
+      createdAt: new Date().toISOString(),
+    });
+    if (attached.length) {
+      row.evidence = [...(row.evidence || []), ...attached];
+    }
+    if (from === "employee" && String(text || "").trim()) {
+      row.appealNote = row.appealNote || String(text).trim();
+    }
+  });
+  const preview = `${senderName}: ${text || "مرفق تحقيق"}`;
+  if (from === "hr" && employeeId) {
+    addNotification(companyId, employeeId, preview);
+  }
+  if (from === "employee") {
+    const data = getCompanyData(companyId);
+    if (data?.ownerId) addNotification(companyId, data.ownerId, preview);
+  }
+}
+
 // Leave requests: employee submits, an authorized manager/HR approves or rejects.
-export function submitLeaveRequest(companyId, employeeId, { type, startDate, endDate, reason, files }) {
+export function submitLeaveRequest(companyId, employeeId, { type, startDate, endDate, reason, files, eventDate, examRepeat, days: requestedDays }) {
   updateCompany(companyId, (d) => {
     const emp = d.employees.find((e) => e.id === employeeId);
     if (!emp) return;
     emp.leaveRequests = emp.leaveRequests || [];
-    const days = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1);
+    const calendarDays = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1);
+    const explicit = Number(requestedDays);
+    const days = Number.isFinite(explicit) && explicit >= 1 ? Math.max(1, Math.round(explicit)) : calendarDays;
     emp.leaveRequests.unshift({
       id: uid("leave"),
       type, startDate, endDate, days, reason,
+      eventDate: eventDate || undefined,
+      examRepeat: examRepeat || undefined,
       files: files || [],
       status: "pending",
       createdAt: new Date().toISOString(),
@@ -1459,11 +1532,12 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
   const empName = emp?.name || "";
   const req = (emp?.leaveRequests || []).find((r) => r.id === requestId);
   if (status === "approved") {
-    const days = Number(req?.days) || 0;
-    const needsFile = days > 5 || ["sick", "exam"].includes(req?.type);
-    if (needsFile && !(Array.isArray(req?.files) && req.files.length > 0)) {
-      return { ok: false, error: "ATTACHMENT_REQUIRED", reason: "لا يمكن الاعتماد — يلزم مستند لطلب يتجاوز 5 أيام." };
-    }
+    const typeRequiresFile = ["sick", "exam"].includes(req?.type);
+    const gate = checkApproveLeaveGate(req, typeRequiresFile, {
+      profile: emp?.profile,
+      requests: emp?.leaveRequests,
+    });
+    if (!gate.ok) return gate;
   }
   audit(companyId, `leave_request_${status}`, `Leave request for ${empName} marked "${status}" by ${reviewerName || "manager"}.`);
   updateCompany(companyId, (d) => {

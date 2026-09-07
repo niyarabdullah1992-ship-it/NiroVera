@@ -6,7 +6,6 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { visibleStations } from "@/lib/permissions";
 import { assetsCall, assetStatusLabel } from "@/lib/assetsApi";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
 import { erpKicker } from "@/lib/erpModuleMeta";
 import { ChromeBox } from "@/components/shared/IdentityCard";
 import AssetStats from "@/components/assets/AssetStats";
@@ -143,15 +142,7 @@ export default function Assets() {
         </button>
       )}
     >
-      <ErpSectionFrame
-        path="/app/assets"
-        ar={ar}
-        stats={[
-          { label: ar ? "أصول مسجّلة" : "Registered assets", value: scoped.length },
-          { label: ar ? "عهد نشطة" : "Active custody", value: custody.filter((c) => !c.returnedAt).length },
-          { label: ar ? "الفروع" : "Stations", value: stations.length },
-        ]}
-      >
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <ChromeBox style={{ padding: 14 }}>
           <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.7 }}>
             {ar ? (
@@ -201,7 +192,7 @@ export default function Assets() {
             />
           )}
         </ChromeBox>
-      </ErpSectionFrame>
+      </div>
 
       {selectedAsset && (
         <AssetDetail

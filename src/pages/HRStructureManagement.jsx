@@ -7,7 +7,6 @@ import HrDirectoryBoard from "@/components/hr/HrDirectoryBoard";
 import ComplianceMhrsdBoard from "@/components/hr/ComplianceMhrsdBoard";
 import useStationScope from "@/hooks/useStationScope";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
 import { erpKicker } from "@/lib/erpModuleMeta";
 
 /**
@@ -29,11 +28,6 @@ export default function HRStructureManagement() {
       hint={lang === "ar" ? "الدليل الوظيفي، الدرجات، ومركز امتثال وزارة الموارد البشرية." : "Directory, grades, and the MHRSD compliance centre."}
       maxWidth={1280}
     >
-      <ErpSectionFrame path="/app/hr" ar={lang === "ar"} hideProof stats={[
-        { label: lang === "ar" ? "الموظفون" : "Employees", value: (data.employees || []).length },
-        { label: lang === "ar" ? "الفروع" : "Stations", value: (data.stations || []).length },
-        { label: lang === "ar" ? "الامتثال" : "Compliance", value: "MHRSD", hint: lang === "ar" ? "نطاقات · قوى" : "Nitaqat · Qiwa", tone: "ok" },
-      ]}>
       <div className="space-y-4">
 
       <HrDirectoryBoard lang={lang} stationScope={stationScope} />
@@ -57,7 +51,6 @@ export default function HRStructureManagement() {
 
       <ComplianceMhrsdBoard />
       </div>
-      </ErpSectionFrame>
     </PlatformStampShell>
   );
 }

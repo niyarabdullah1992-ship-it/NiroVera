@@ -23,19 +23,19 @@ export const SMART_DEPARTMENTS = [
     group: "daily",
   },
   {
-    id: "work_proof",
-    ar: "إثبات العمل",
-    en: "Work proof",
-    hintAr: "أدلة ميدانية وإثبات للعميل",
-    hintEn: "Field evidence and client proof",
-    group: "daily",
-  },
-  {
     id: "signing",
     ar: "التوقيع الرقمي",
     en: "Digital signing",
     hintAr: "ختم واعتماد المستندات",
     hintEn: "Document stamp and approval",
+    group: "daily",
+  },
+  {
+    id: "work_proof",
+    ar: "إثبات العمل",
+    en: "Work proof",
+    hintAr: "أدلة ميدانية وإثبات للعميل",
+    hintEn: "Field evidence and client proof",
     group: "daily",
   },
   {
@@ -56,19 +56,19 @@ export const SMART_DEPARTMENTS = [
   },
   // Workforce
   {
-    id: "performance",
-    ar: "الأداء",
-    en: "Performance",
-    hintAr: "مؤشرات وإثبات الجهد",
-    hintEn: "Metrics and effort proof",
-    group: "workforce",
-  },
-  {
     id: "hr",
     ar: "الموارد البشرية",
     en: "Human resources",
     hintAr: "الدليل والهيكل",
     hintEn: "Directory and org",
+    group: "workforce",
+  },
+  {
+    id: "performance",
+    ar: "الأداء",
+    en: "Performance",
+    hintAr: "مؤشرات وإثبات الجهد",
+    hintEn: "Metrics and effort proof",
     group: "workforce",
   },
   {

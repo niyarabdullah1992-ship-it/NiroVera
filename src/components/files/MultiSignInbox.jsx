@@ -110,7 +110,7 @@ export default function MultiSignInbox({ currentUser, companyId, ar, refreshKey,
 
   if (requests === null) {
     return (
-      <IdentityCard icon={Inbox} title={ar ? "الطلبات" : "Requests"} subtitle={ar ? "جارٍ التحميل…" : "Loading…"}>
+      <IdentityCard icon={Inbox} className="nv-signing-card" title={ar ? "الطلبات" : "Requests"} subtitle={ar ? "جارٍ التحميل…" : "Loading…"}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: MUTED }}>
           <Loader2 className="h-4 w-4 animate-spin" />
           {ar ? "جارٍ تحميل طلبات التوقيع…" : "Loading signature requests…"}
@@ -121,6 +121,7 @@ export default function MultiSignInbox({ currentUser, companyId, ar, refreshKey,
 
   return (
     <IdentityCard
+      className="nv-signing-card"
       icon={Inbox}
       title={ar ? "الطلبات" : "Requests"}
       subtitle={ar ? "طلبات بانتظارك، ونسخ مكتملة للتحميل." : "Requests waiting for you, and completed copies to download."}

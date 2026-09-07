@@ -36,7 +36,7 @@ import { setStationScope, getStationScope } from "@/lib/stationScopeStore";
 import { visibleStations } from "@/lib/permissions";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
 import { BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
-import MinistryAlertsBanner from "@/components/shared/MinistryAlertsBanner";
+import { canSeeMinistryAlerts, deriveMinistryAlerts } from "@/lib/ministryAlertDerivations";
 import { THEME_CHANGE_EVENT, applyPlatformTheme, applyStoredPlatformTheme, persistPlatformTheme } from "@/lib/platformTheme";
 
 export default function Layout({ children }) {
@@ -52,6 +52,7 @@ export default function Layout({ children }) {
   const notificationPollInFlightRef = useRef(false);
   const [chatUnread, setChatUnread] = useState(() => getChatUnreadTotal());
   const [scopeSwitchOpen, setScopeSwitchOpen] = useState(false);
+  const [ministryDismissTick, setMinistryDismissTick] = useState(0);
 
   useEffect(() => subscribeChatUnread(setChatUnread), []);
 
@@ -237,7 +238,6 @@ export default function Layout({ children }) {
     (n, employee) => n + (employee.leaveRequests || []).filter((request) => request.status === "pending").length,
     0,
   );
-  const workforceBadge = pendingLeaveBadge;
 
   // ERP navigation — group rail + section pages (production shell).
   const navItems = buildSuiteNavItems(lang, {
@@ -245,7 +245,6 @@ export default function Layout({ children }) {
       if (app.id === "daily-report") return dailyReportBadge;
       if (app.id === "chat") return chatUnread > 0 ? chatUnread : undefined;
       if (app.id === "leave") return pendingLeaveBadge > 0 ? pendingLeaveBadge : undefined;
-      if (app.id === "hr") return workforceBadge > 0 ? workforceBadge : undefined;
       return undefined;
     },
   });
@@ -264,12 +263,32 @@ export default function Layout({ children }) {
   const railGroups = buildSuiteRailGroups(orderedNavItems, lang);
   const canOpenSettings = allowedNav.has("/app/settings");
 
-  const myNotifs = (data.notifications || []).filter(
+  const myStoredNotifs = (data.notifications || []).filter(
     (notification) =>
       notification.userId === currentUser?.id
       && shouldShowNotification(notification.text, data)
       && !isChatNotification(notification.text)
   );
+  let dismissedMinistry = new Set();
+  try {
+    dismissedMinistry = new Set(JSON.parse(localStorage.getItem(`powercare_ministry_dismissed_${company.id}_${currentUser.id}`) || "[]"));
+  } catch {
+    dismissedMinistry = new Set();
+  }
+  const ministryNotifs = canSeeMinistryAlerts(currentUser, data)
+    ? deriveMinistryAlerts(data || {}).alerts
+      .filter((row) => !dismissedMinistry.has(row.id))
+      .map((row) => ({
+        id: `ministry_${row.id}`,
+        userId: currentUser.id,
+        text: lang === "ar" ? row.textAr : row.textEn,
+        read: false,
+        createdAt: new Date().toISOString(),
+        to: row.to,
+      }))
+    : [];
+  void ministryDismissTick;
+  const myNotifs = [...ministryNotifs, ...myStoredNotifs];
   const unread = myNotifs.filter((n) => !n.read).length;
 
   const markAllRead = () => {
@@ -281,6 +300,15 @@ export default function Layout({ children }) {
   };
 
   const dismissNotification = (id) => {
+    if (String(id).startsWith("ministry_")) {
+      const mid = String(id).slice("ministry_".length);
+      const key = `powercare_ministry_dismissed_${company.id}_${currentUser.id}`;
+      const dismissedIds = new Set(JSON.parse(localStorage.getItem(key) || "[]"));
+      dismissedIds.add(mid);
+      localStorage.setItem(key, JSON.stringify([...dismissedIds]));
+      setMinistryDismissTick((n) => n + 1);
+      return;
+    }
     if (String(id).startsWith("snf_")) {
       const remoteId = String(id).slice(4);
       const key = `powercare_notification_dismissed_${company.id}_${currentUser.id}`;
@@ -1136,8 +1164,6 @@ export default function Layout({ children }) {
             </nav>
           ) : null}
         </header>
-
-        <MinistryAlertsBanner lang={lang} data={data} currentUser={currentUser} />
 
         <main className="platform-main-scroll flex-1 overflow-y-auto p-5 pb-28 md:px-[22px] md:pb-10 md:pt-5">
           <div className="powercare-interior-page mx-auto w-full max-w-[1600px]">

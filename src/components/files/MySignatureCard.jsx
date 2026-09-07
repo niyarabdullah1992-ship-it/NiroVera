@@ -11,8 +11,10 @@ import SignatureSecurityBar from "./SignatureSecurityBar";
 import SigningPanel from "./SigningPanel";
 import { OFFICIAL_STAMP_THEME } from "@/lib/signatureStampThemes";
 import { generateVerificationId } from "@/lib/verificationBadge";
-import { CARD, MUTED, NAVY, SURFACE, ui } from "@/lib/platformStyles";
+import { CARD, MUTED, ui, BRAND, BRAND_SOFT, BRAND_DEEP } from "@/lib/platformStyles";
 import StampPreview from "./StampPreview";
+import SigningStepStrip from "./SigningStepStrip";
+import HowSigningWorks from "./HowSigningWorks";
 
 function dataUrlToBlob(dataUrl) {
   const [header, encoded] = dataUrl.split(",");
@@ -35,6 +37,7 @@ export default function MySignatureCard({ companyId, companyName, currentUser, a
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [refreshedPreview, setRefreshedPreview] = useState("");
+  const [docProgress, setDocProgress] = useState({ hasFile: false, hasStamp: false, signed: false });
   const [security, setSecurity] = useState({
     signatureId,
     timestamp: currentUser?.profile?.signatureUpdatedAt || "",
@@ -43,7 +46,6 @@ export default function MySignatureCard({ companyId, companyName, currentUser, a
 
   useEffect(() => {
     let active = true;
-    setRefreshedPreview("");
     if (!signatureRawUrl || !signatureId || signatureVariant === "composed") return () => { active = false; };
     const signerName = currentUser?.profile?.signatureName || currentUser?.name || "";
     makeSignatureStamp(signatureRawUrl, signerName, signatureId, signatureVariant, signatureTheme)
@@ -108,6 +110,15 @@ export default function MySignatureCard({ companyId, companyName, currentUser, a
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} dir={ar ? "rtl" : "ltr"}>
+      <SigningStepStrip
+        ar={ar}
+        steps={[
+          { ok: Boolean(signatureUrl) && !editing, label: ar ? "ختمك" : "Seal" },
+          { ok: docProgress.hasFile, label: ar ? "المستند" : "Document" },
+          { ok: docProgress.hasStamp, label: ar ? "الوضع" : "Place" },
+          { ok: docProgress.signed, label: ar ? "التوقيع" : "Sign" },
+        ]}
+      />
       <div style={{
         display: "grid",
         gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 380px)",
@@ -125,6 +136,7 @@ export default function MySignatureCard({ companyId, companyName, currentUser, a
           companyId={companyId}
           ar={ar}
           onVerified={setSecurity}
+          onProgress={setDocProgress}
         />
 
         <SigningPanel
@@ -139,7 +151,7 @@ export default function MySignatureCard({ companyId, companyName, currentUser, a
               <div style={{ display: "grid", gap: 10 }}>
                 <StampPreview src={refreshedPreview || signatureUrl} sealId={signatureId} ar={ar} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" onClick={() => setEditing(true)} style={{ ...ui.btnPrimary, flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <button type="button" onClick={() => setEditing(true)} style={{ ...ui.btnPrimary, flex: 1, height: 44, borderRadius: 12, fontWeight: 650, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                     <PenLine style={{ width: 14, height: 14 }} />
                     {ar ? "توقيع جديد" : "New signature"}
                   </button>
@@ -154,7 +166,7 @@ export default function MySignatureCard({ companyId, companyName, currentUser, a
               </div>
             ) : (
               <div style={{ display: "grid", gap: 10 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, background: SURFACE, borderRadius: 8, padding: 3 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
                   {tabs.map(({ id, icon: Icon, label }) => {
                     const active = mode === id;
                     return (
@@ -167,19 +179,17 @@ export default function MySignatureCard({ companyId, companyName, currentUser, a
                           alignItems: "center",
                           justifyContent: "center",
                           gap: 4,
-                          minHeight: 32,
-                          border: "none",
-                          borderRadius: 6,
-                          background: active ? CARD : "transparent",
-                          color: active ? NAVY : MUTED,
-                          fontSize: 11,
-                          fontWeight: active ? 600 : 500,
+                          height: 40,
+                          borderRadius: 11,
+                          fontSize: 12,
                           cursor: "pointer",
                           fontFamily: "inherit",
-                          boxShadow: active ? "0 1px 2px rgba(20,40,75,.06)" : "none",
+                          ...(active
+                            ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND_DEEP, fontWeight: 600 }
+                            : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED, fontWeight: 500 }),
                         }}
                       >
-                        <Icon style={{ width: 13, height: 13, color: active ? NAVY : MUTED }} />
+                        <Icon style={{ width: 13, height: 13 }} />
                         {label}
                       </button>
                     );
@@ -199,6 +209,7 @@ export default function MySignatureCard({ companyId, companyName, currentUser, a
         verified={security.verified}
         ar={ar}
       />
+      <HowSigningWorks ar={ar} />
     </div>
   );
 }

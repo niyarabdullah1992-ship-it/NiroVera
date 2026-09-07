@@ -48,8 +48,13 @@ function cropOpaque(canvas, padding) {
 export async function createTypedSignatureImage(text, fontFamily) {
   try {
     ensureSignatureFonts();
-    await document.fonts.load(`64px ${fontFamily}`, text);
-    await document.fonts.ready;
+    await Promise.race([
+      Promise.all([
+        document.fonts.load(`64px ${fontFamily}`, text),
+        document.fonts.ready,
+      ]),
+      new Promise((resolve) => setTimeout(resolve, 450)),
+    ]);
   } catch { /* keep going with fallback glyphs */ }
   const canvas = document.createElement("canvas");
   canvas.width = 560;
@@ -71,11 +76,14 @@ export async function createTypedSignatureImage(text, fontFamily) {
 
 export async function createTypedSignatureWithDate(name, date, fontFamily) {
   try {
-    await Promise.all([
-      document.fonts.load(`32px ${fontFamily}`, name),
-      document.fonts.load("32px Arial", date),
+    await Promise.race([
+      Promise.all([
+        document.fonts.load(`32px ${fontFamily}`, name),
+        document.fonts.load("32px Arial", date),
+        document.fonts.ready,
+      ]),
+      new Promise((resolve) => setTimeout(resolve, 450)),
     ]);
-    await document.fonts.ready;
   } catch { /* keep going with fallback glyphs */ }
   const canvas = document.createElement("canvas");
   canvas.width = 960;

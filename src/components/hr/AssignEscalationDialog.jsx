@@ -197,11 +197,14 @@ export default function AssignEscalationDialog({
 
         <label style={{ display: "block", marginTop: 12 }}>
           <span style={{ display: "block", fontSize: 11, fontWeight: 600, color: MUTED, marginBottom: 6 }}>
-            {ar ? "رقم التصعيد" : "Escalation rank"}
+            {ar ? "رقم التصعيد (غير محدد)" : "Escalation rank (unbounded)"}
           </span>
-          <select
+          <input
+            type="number"
+            min={1}
+            step={1}
             value={level}
-            onChange={(event) => setLevel(Number(event.target.value) || 1)}
+            onChange={(event) => setLevel(Math.max(1, Number(event.target.value) || 1))}
             style={{
               width: "100%",
               height: 40,
@@ -213,13 +216,10 @@ export default function AssignEscalationDialog({
               background: SURFACE,
               color: NAVY,
             }}
-          >
-            {[1, 2, 3, 4, 5].map((rank) => (
-              <option key={rank} value={rank}>
-                {ar ? `تصعيد ${rank}` : `Escalation ${rank}`}
-              </option>
-            ))}
-          </select>
+          />
+          <span style={{ display: "block", marginTop: 6, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+            {ar ? "1 أول مراجعة، ثم 2 و3 و4… بلا سقف." : "1 is first review, then 2, 3, 4… with no cap."}
+          </span>
         </label>
 
         <div style={{ marginTop: 14 }}>

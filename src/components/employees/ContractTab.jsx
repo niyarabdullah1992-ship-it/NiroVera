@@ -57,6 +57,13 @@ export default function ContractTab({ employee, companyId, canEdit }) {
   const profile = employee.profile || {};
   const contract = profile.contract;
   const [editing, setEditing] = useState(false);
+  const art55 = deriveArt55Conversion(employee);
+
+  useEffect(() => {
+    if (editing) return;
+    if (!canEdit || !companyId || !employee?.id || !art55.converts) return;
+    applyDueLaborRules(companyId, employee.id);
+  }, [editing, canEdit, companyId, employee?.id, art55.converts]);
 
   if (editing) {
     return <ContractForm employee={employee} companyId={companyId} contract={contract} ar={ar} onDone={() => setEditing(false)} />;
@@ -96,14 +103,8 @@ export default function ContractTab({ employee, companyId, canEdit }) {
   const typeRuleId = isFixedContractType(typeRaw)
     ? "contract.fixed.cite"
     : (typeRaw ? "contract.indefinite.cite" : null);
-  const art55 = deriveArt55Conversion(employee);
   const renewals = profile.contractRenewalCount ?? contract?.renewalCount;
   const appliedAt = profile.art55AppliedAt;
-
-  useEffect(() => {
-    if (!canEdit || !companyId || !employee?.id || !art55.converts) return;
-    applyDueLaborRules(companyId, employee.id);
-  }, [canEdit, companyId, employee?.id, art55.converts]);
 
   return (
     <IdentityCard

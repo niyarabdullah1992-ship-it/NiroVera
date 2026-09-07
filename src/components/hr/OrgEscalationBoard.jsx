@@ -21,8 +21,6 @@ import { orgBtnGhost, orgBtnPrimary, orgSelect } from "@/lib/orgWorkspaceStyles"
 import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 import { toast } from "@/components/ui/use-toast";
 
-const LEVEL_SLOTS = 3;
-
 function activeEmployees(data) {
   return (data?.employees || []).filter((employee) => (
     employee?.active !== false
@@ -75,13 +73,18 @@ function BranchEscalationRow({
   onAdvanced,
 }) {
   const ids = row.chain.map((step) => String(step.employeeId));
-  const slots = Array.from({ length: LEVEL_SLOTS }, (_, index) => ids[index] || "");
+  const slotCount = canWrite ? ids.length + 1 : Math.max(ids.length, 1);
+  const slots = Array.from({ length: slotCount }, (_, index) => ids[index] || "");
 
   const updateLevel = (index, employeeId) => {
-    const next = [...slots];
-    next[index] = employeeId || "";
-    const cleaned = next.filter(Boolean);
-    setBranchEscalationChain(companyId, row.stationId, cleaned);
+    const next = [...ids];
+    if (employeeId) {
+      if (index < next.length) next[index] = employeeId;
+      else next.push(employeeId);
+    } else if (index < next.length) {
+      next.splice(index, 1);
+    }
+    setBranchEscalationChain(companyId, row.stationId, next);
     if (employeeId) {
       const employee = (data?.employees || []).find((item) => String(item.id) === String(employeeId));
       toast({
@@ -134,7 +137,9 @@ function BranchEscalationRow({
         {slots.map((value, index) => (
           <label key={`${row.stationId}-${index}`} style={{ display: "block", minWidth: 0 }}>
             <span style={{ display: "block", fontSize: 10, fontWeight: 600, color: MUTED, marginBottom: 4 }}>
-              {ar ? `تصعيد ${index + 1}` : `Level ${index + 1}`}
+              {index >= ids.length
+                ? (ar ? `مستوى جديد · تصعيد ${index + 1}` : `New level · ${index + 1}`)
+                : (ar ? `تصعيد ${index + 1}` : `Level ${index + 1}`)}
             </span>
             <select
               value={value}
@@ -257,15 +262,17 @@ export default function OrgEscalationBoard({ lang = "ar", canWrite = false }) {
         <OrgNotice ar={ar}>
           {ar ? (
             <>
-              <strong>لكل فرع 3 مستويات:</strong>
-              {" "}اختر من القوائم أدناه. لتعيين موظف مقر واحد لعدة فروع دفعة واحدة استخدم
+              <strong>الرقم غير محدد:</strong>
+              {" "}أضف أي عدد من مستويات التصعيد لكل فرع. الخانة الفارغة في الآخر تضيف مستوى جديدًا.
+              {" "}لتعيين موظف مقر واحد لعدة فروع دفعة واحدة استخدم
               {" "}
               <strong>«مسؤول واحد لعدة فروع»</strong>.
             </>
           ) : (
             <>
-              <strong>Three levels per branch:</strong>
-              {" "}pick from the dropdowns below. To assign one HQ employee to many branches at once, use
+              <strong>No fixed count:</strong>
+              {" "}add as many escalation levels as the branch needs. The empty slot at the end adds another level.
+              {" "}To assign one HQ employee to many branches at once, use
               {" "}
               <strong>One handler · many branches</strong>.
             </>

@@ -16,7 +16,7 @@ import {
 
 /**
  * Public MHRSD-aligned obligations — honest readiness chips.
- * Live Qiwa / GOSI / Mudad / Nafath remain deferred (see design/GOV_INTEGRATIONS.md).
+ * Live Qiwa / GOSI / Mudad / Nafath remain deferred until official credentials.
  */
 
 const READY = "ready";

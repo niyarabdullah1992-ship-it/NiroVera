@@ -16,7 +16,7 @@ export default function StampOnPage({ src, name, color, selected, onRemove, onRe
         pointerEvents: "none",
       }}>
         {src ? (
-          <img src={src} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "fill", display: "block" }} />
+          <img src={src} alt="" draggable={false} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
         ) : (
           <div style={{ height: "100%", display: "flex", alignItems: "stretch", gap: 6, padding: "5px 8px" }}>
             <span style={{ width: 3, background: "#1E9E63", borderRadius: 2, flexShrink: 0 }} />

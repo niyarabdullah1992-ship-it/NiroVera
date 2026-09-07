@@ -1,7 +1,7 @@
 import React from "react";
 import { ShieldCheck, Fingerprint, QrCode, FileWarning } from "lucide-react";
 import SigningPanel from "./SigningPanel";
-import { MUTED, NAVY, BORDER, SURFACE } from "@/lib/platformStyles";
+import { MUTED, NAVY } from "@/lib/platformStyles";
 
 export default function HowSigningWorks({ ar }) {
   const steps = ar
@@ -20,28 +20,44 @@ export default function HowSigningWorks({ ar }) {
 
   return (
     <SigningPanel icon={ShieldCheck} title={ar ? "كيف يُحفظ التوقيع ويُكشف التلاعب؟" : "How is the signature kept and tampering detected?"}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-        {steps.map((s) => {
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(196px, 1fr))", gap: 10 }}>
+        {steps.map((s, index) => {
           const Icon = s.icon;
           return (
-          <div key={s.title} style={{
+          <div key={s.title} className="nv-signing-trust-tile" style={{
             display: "flex",
+            flexDirection: "column",
             gap: 10,
-            padding: 12,
-            borderRadius: 10,
-            background: SURFACE,
-            border: `1px solid ${BORDER}`,
+            padding: "16px 14px",
+            borderRadius: 14,
+            background: "var(--nv-inset, #F7F8FA)",
+            border: "1px solid var(--nv-line, #E2E8F0)",
+            minHeight: 132,
           }}>
-            <Icon style={{ width: 16, height: 16, color: NAVY, flexShrink: 0, marginTop: 2 }} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <span style={{
+                width: 32,
+                height: 32,
+                borderRadius: 10,
+                display: "grid",
+                placeItems: "center",
+                background: "#fff",
+                border: "1px solid var(--nv-line, #E2E8F0)",
+                color: NAVY,
+              }}>
+                <Icon style={{ width: 15, height: 15 }} />
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: MUTED }}>{String(index + 1).padStart(2, "0")}</span>
+            </div>
             <div>
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: NAVY }}>{s.title}</p>
-              <p style={{ margin: "4px 0 0", fontSize: 11, color: MUTED, lineHeight: 1.6 }}>{s.text}</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 650, color: NAVY }}>{s.title}</p>
+              <p style={{ margin: "6px 0 0", fontSize: 12, color: MUTED, lineHeight: 1.65 }}>{s.text}</p>
             </div>
           </div>
           );
         })}
       </div>
-      <p style={{ margin: "10px 0 0", fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+      <p style={{ margin: "12px 0 0", fontSize: 11, color: MUTED, lineHeight: 1.65 }}>
         {ar
           ? "يُعتمد التحقق من السجل لا شكل الختم. هذا سجل إلكتروني داخل المنشأة، وليس شهادة رقمية مؤهلة صادرة عن مركز تصديق مرخّص."
           : "Trust the registry result, not the stamp’s look. This is an in-company electronic record, not a qualified certificate issued by a licensed CSP."}

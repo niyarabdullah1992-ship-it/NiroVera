@@ -32,7 +32,7 @@ const MODULE_SAUDI = {
 };
 
 const PROOF_CYCLE_IDS = new Set([
-  "attendance", "tasks", "work-proof", "signing", "daily-report", "payroll",
+  "attendance", "tasks", "escalation", "signing", "work-proof", "daily-report", "payroll",
 ]);
 
 const MONEY_PROOF_IDS = new Set(["payroll", "expenses", "assets", "inventory"]);

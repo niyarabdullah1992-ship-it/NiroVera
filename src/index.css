@@ -874,7 +874,7 @@ html:not(.dark) .powercare-shell {
 .powercare-shell main :is(section, .bg-card).border,
 .powercare-shell main :is(.rounded-xl, .rounded-2xl, .rounded-3xl).border {
   border-color: var(--nv-line);
-  box-shadow: 0 8px 24px rgba(20, 40, 75, 0.06);
+  box-shadow: none;
 }
 .powercare-shell main :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]) {
   border: 1px solid var(--nv-line) !important;
@@ -1244,6 +1244,88 @@ html:not(.dark) .powercare-shell {
   border-inline-start: 1px solid var(--nv-line);
 }
 
+.nv-upload-zone:hover:not(:disabled) {
+  border-color: var(--nv-accent, #1E9E63) !important;
+  background: var(--nv-accent-soft, color-mix(in oklab, #1E9E63 10%, #fff)) !important;
+}
+
+/* Current NiroVera chrome is the base: stamp owns the navy rail. Nested identity
+   and leftover Base44 Tailwind cards stay paper — no second stamp underneath. */
+[data-nv="stamp"] [data-nv="identity"],
+[data-nv="identity"] [data-nv="identity"] {
+  box-shadow: none !important;
+}
+[data-nv="stamp"] [data-nv="identity"] > [aria-hidden]:first-child,
+[data-nv="identity"] [data-nv="identity"] > [aria-hidden]:first-child {
+  display: none !important;
+}
+.nv-stamp-workspace :is(.bg-card, .rounded-xl, .rounded-2xl, .rounded-3xl),
+.nv-stamp-bare :is(.bg-card, .rounded-xl, .rounded-2xl, .rounded-3xl) {
+  box-shadow: none !important;
+}
+
+.nv-signing-stage .nv-signing-card {
+  border-radius: 14px !important;
+  box-shadow: none !important;
+  transition: border-color .22s ease;
+}
+.nv-signing-stage .nv-signing-card:hover {
+  box-shadow: none !important;
+  border-color: color-mix(in oklab, var(--nv-navy, #14284B) 22%, var(--nv-line, #E2E8F0)) !important;
+}
+.nv-signing-stage .nv-signing-card > header {
+  background: linear-gradient(180deg, color-mix(in oklab, var(--nv-accent, #1E9E63) 6%, #fff) 0%, #fff 100%) !important;
+}
+.nv-signing-stage .nv-upload-zone:not(.nv-upload-zone--compact) {
+  min-height: 176px !important;
+  padding: 36px 22px !important;
+  border-radius: 16px !important;
+  background:
+    radial-gradient(120% 90% at 50% 0%, color-mix(in oklab, var(--nv-accent, #1E9E63) 9%, transparent) 0%, transparent 55%),
+    var(--nv-inset, #F7F8FA) !important;
+}
+.nv-signing-proof,
+.nv-signing-steps,
+.nv-signing-card,
+.nv-signing-proof-beat {
+  animation: nv-signing-rise .48s cubic-bezier(.22, 1, .36, 1) both;
+}
+.nv-signing-proof { animation-delay: 40ms; }
+.nv-signing-steps { animation-delay: 90ms; }
+.nv-signing-grid > .nv-signing-card:nth-child(1),
+.nv-signing-grid > div:nth-child(1) { animation-delay: 130ms; }
+.nv-signing-grid > .nv-signing-card:nth-child(2),
+.nv-signing-grid > div:nth-child(2) { animation-delay: 180ms; }
+.nv-signing-proof-beat:nth-child(1) { animation-delay: 50ms; }
+.nv-signing-proof-beat:nth-child(2) { animation-delay: 110ms; }
+.nv-signing-proof-beat:nth-child(3) { animation-delay: 170ms; }
+.nv-signing-trust-tile {
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.nv-signing-trust-tile:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--nv-accent, #1E9E63) 28%, #E2E8F0);
+  box-shadow: 0 10px 20px rgba(20, 40, 75, .06);
+  background: #fff;
+}
+@keyframes nv-signing-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-upload-zone { transition: none !important; }
+  .nv-signing-proof,
+  .nv-signing-steps,
+  .nv-signing-card,
+  .nv-signing-proof-beat,
+  .nv-signing-trust-tile {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
 @media (max-width: 900px) {
   .nv-kpi-strip,
   .nv-voice-kpis {
@@ -1258,6 +1340,9 @@ html:not(.dark) .powercare-shell {
     flex-wrap: wrap;
   }
   .nv-signing-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .nv-signing-proof {
     grid-template-columns: 1fr !important;
   }
   .nv-stamp-workspace {
@@ -1279,26 +1364,6 @@ html:not(.dark) .powercare-shell {
   .nv-inv-form {
     grid-template-columns: 1fr !important;
   }
-}
-
-/* Field-facing pages (tasks, attendance, daily report): readable label contrast and
-   thumb-sized controls. Accent TEXT uses --accent-text so labels pass contrast outdoors. */
-:is(.tasks-hub, .attendance-hub, .reports-hub) :is(p, span, label, small, li, div, h1, h2, h3, a).text-accent:not(.bg-accent),
-:is(.tasks-hub, .attendance-hub, .reports-hub) .text-accent > :is(p, span, label, small) {
-  color: hsl(var(--accent-text));
-}
-:is(.tasks-hub, .attendance-hub, .reports-hub) :is(button, [role="button"], a.rounded-md, a.rounded-lg, a.rounded-full) {
-  min-height: 48px;
-  font-size: 0.875rem;
-  line-height: 1.35;
-}
-:is(.tasks-hub, .attendance-hub, .reports-hub) :is(button, [role="button"]) :is(span, p) {
-  font-size: 0.875rem;
-}
-/* Icon-only affordances stay compact — a 48px row-action button would break the cards. */
-:is(.tasks-hub, .attendance-hub, .reports-hub) :is(button, [role="button"]):has(> svg:only-child) {
-  min-height: 40px;
-  min-width: 40px;
 }
 
 /* Authenticated pages stay on IdentityCard paper — do not overlay the old

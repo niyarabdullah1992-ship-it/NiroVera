@@ -87,8 +87,8 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
         { key: "attendance", title: ar ? "الحضور" : "Attendance", note: ar ? `${metrics.checkedIn} حاضر · ${metrics.absentCount || 0} لم يسجّل` : `${metrics.checkedIn} present · ${metrics.absentCount || 0} not in`, value: n(metrics.absentCount) > 0 ? metrics.absentCount : `${metrics.attendanceRate}%`, to: "/app/attendance" },
         { key: "tasks", title: ar ? "المهام والعمليات" : "Operations", note: ar ? `${metrics.completedTasks} مكتملة من ${metrics.tasks}` : `${metrics.completedTasks} of ${metrics.tasks} completed`, value: n(metrics.openTasks) > 0 ? metrics.openTasks : metrics.tasks, to: "/app/tasks" },
         { key: "escalation", title: ar ? "التصعيد" : "Escalation", note: ar ? "صندوق مراجعة المهام" : "Task review inbox", value: n(metrics.escalated) > 0 ? metrics.escalated : "—", to: "/app/escalation" },
-        { key: "work-proof", title: ar ? "إثبات العمل" : "Work Proof", note: ar ? "دليل ميداني وإفصاح العميل" : "Field evidence and client disclosure", value: "—", to: "/app/work-proof" },
         { key: "signing", title: ar ? "التوقيع الرقمي" : "Digital signing", note: ar ? "طلبات بانتظار التوقيع" : "Requests awaiting signature", value: n(mapMetrics.signing) > 0 ? mapMetrics.signing : "—", to: "/app/signing" },
+        { key: "work-proof", title: ar ? "إثبات العمل" : "Work Proof", note: ar ? "دليل ميداني وإفصاح العميل" : "Field evidence and client disclosure", value: "—", to: "/app/work-proof" },
         { key: "daily-report", title: ar ? "التقرير اليومي" : "Daily report", note: ar ? `${metrics.pendingReports} بانتظار المراجعة` : `${metrics.pendingReports} awaiting review`, value: n(metrics.pendingReports) > 0 ? metrics.pendingReports : (metrics.reports || "—"), to: "/app/daily-report" },
         { key: "chat", title: ar ? "المحادثات" : "Ops chat", note: ar ? "قنوات الفروع" : "Station channels", value: metrics.messages, to: "/app/chat" },
       ],
@@ -97,13 +97,13 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       key: "workforce",
       eyebrow: "02",
       title: ar ? "القوى العاملة" : "Workforce",
-      description: ar ? "من يعمل وكيف يُدار. الورديات والإجازات تغذي الحضور ثم المسير." : "Who works and how they are managed.",
+      description: ar ? "الهيكل يحدد المقاعد. الورديات والإجازات تخطط من يعمل." : "Org sets seats. Shifts and leave plan who works.",
       items: [
-        { key: "shifts", title: ar ? "الورديات" : "Shifts", note: ar ? "جدول الفرع الشهري" : "Monthly station matrix", value: metrics.stations, to: "/app/shifts" },
-        { key: "leave", title: ar ? "الإجازات" : "Leave", note: ar ? "طلبات بانتظار القرار" : "Awaiting a decision", value: metrics.pendingLeave, to: "/app/leave" },
+        { key: "org", title: ar ? "الهيكل" : "Org", note: ar ? "صلاحيات وتصعيد" : "Permissions and escalation", value: metrics.stations, to: "/app/org" },
         { key: "hr", title: ar ? "الموارد البشرية" : "HR", note: ar ? `${metrics.activeMembers} نشط اليوم` : `${metrics.activeMembers} active today`, value: metrics.employees, to: "/app/hr" },
         { key: "performance", title: ar ? "الأداء" : "Performance", note: ar ? "من بيانات فعلية" : "From actual data", value: `${metrics.performance}%`, to: "/app/performance" },
-        { key: "org", title: ar ? "الهيكل" : "Org", note: ar ? "صلاحيات وتصعيد" : "Permissions and escalation", value: metrics.stations, to: "/app/org" },
+        { key: "shifts", title: ar ? "الورديات" : "Shifts", note: ar ? "جدول الفرع الشهري" : "Monthly station matrix", value: metrics.stations, to: "/app/shifts" },
+        { key: "leave", title: ar ? "الإجازات" : "Leave", note: ar ? "طلبات بانتظار القرار" : "Awaiting a decision", value: metrics.pendingLeave, to: "/app/leave" },
       ],
     },
     {
@@ -114,6 +114,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       items: [
         { key: "safety", title: ar ? "السلامة HSE" : "Safety HSE", note: ar ? `${metrics.hazards} مخاطر مفتوحة` : `${metrics.hazards} open hazards`, value: metrics.hazards || metrics.safety, to: "/app/safety" },
         { key: "complaints", title: ar ? "صوت الموظف" : "Employee Voice", note: ar ? "بلاغات مفتوحة الآن" : "Open now", value: metrics.complaints, to: "/app/complaints" },
+        { key: "discipline", title: ar ? "الجزاءات" : "Sanctions", note: ar ? "واقعة ثم قرار وتظلم" : "Incident, decision, appeal", value: "—", to: "/app/discipline" },
       ],
     },
     {

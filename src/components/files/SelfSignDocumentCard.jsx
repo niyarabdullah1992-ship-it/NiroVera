@@ -9,7 +9,7 @@ import DocumentFirstPagePreview from "@/components/files/DocumentFirstPagePrevie
 import PowerCareUploadZone from "@/components/files/PowerCareUploadZone";
 import { makeSignatureStamp } from "@/lib/multiSignStamp";
 import SigningPanel from "./SigningPanel";
-import { BORDER, MUTED, NAVY, ui, CARD, SURFACE } from "@/lib/platformStyles";
+import { BORDER, BRAND, BRAND_SOFT, MUTED, NAVY, ui, CARD, SURFACE } from "@/lib/platformStyles";
 
 const MAX_SIZE = 25 * 1024 * 1024;
 const isPdfFile = (file) => file?.type === "application/pdf" || file?.name?.toLowerCase().endsWith(".pdf");
@@ -29,7 +29,7 @@ const ghostBtn = {
   fontFamily: "inherit",
 };
 
-export default function SelfSignDocumentCard({ signatureUrl, signatureRawUrl, signatureVariant, signatureTheme, currentUser, companyId, ar, onVerified }) {
+export default function SelfSignDocumentCard({ signatureUrl, signatureRawUrl, signatureVariant, signatureTheme, currentUser, companyId, ar, onVerified, onProgress }) {
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState("");
@@ -61,6 +61,14 @@ export default function SelfSignDocumentCard({ signatureUrl, signatureRawUrl, si
   }, [signatureUrl, signatureRawUrl, signatureVariant, verificationId, currentUser?.profile?.signatureName, currentUser?.name]);
 
   useEffect(() => () => { if (download?.url) URL.revokeObjectURL(download.url); }, [download?.url]);
+
+  useEffect(() => {
+    onProgress?.({
+      hasFile: Boolean(file),
+      hasStamp: fields.some((field) => field.type === "signature"),
+      signed: Boolean(success),
+    });
+  }, [file, fields, success, onProgress]);
 
   const chooseFile = async (event) => {
     const selected = event.target.files?.[0];
@@ -97,7 +105,7 @@ export default function SelfSignDocumentCard({ signatureUrl, signatureRawUrl, si
     const id = `${kind}-${Date.now()}`;
     const y = Math.min(82, 68 + fields.filter((field) => field.page === previewPage).length * 6);
     const field = kind === "signature"
-      ? { id, type: "signature", page: previewPage, x: 72, y, scale: 55 }
+      ? { id, type: "signature", page: previewPage, x: 72, y, scale: 100 }
       : { id, type: "text", label: kind === "date" ? (ar ? "التاريخ" : "Date") : (ar ? "الأحرف الأولى" : "Initials"), page: previewPage, x: 72, y, scale: 100 };
     setFields((current) => [...current, field]);
     if (kind !== "signature") {
@@ -117,7 +125,6 @@ export default function SelfSignDocumentCard({ signatureUrl, signatureRawUrl, si
     setFields([]);
     setTextValues({});
     setVerificationId("");
-    setStampPreview("");
     setSuccess("");
     setError("");
     setDownload(null);
@@ -213,14 +220,35 @@ export default function SelfSignDocumentCard({ signatureUrl, signatureRawUrl, si
           </div>
           <div style={{ padding: "14px 16px", display: "grid", gap: 10 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <button type="button" disabled={!sourceUrl} onClick={() => openPlacement("signature")} style={{ ...ghostBtn, opacity: sourceUrl ? 1 : 0.4 }}>
-                <PenLine style={{ width: 14, height: 14 }} />
-                {ar ? "إضافة توقيع" : "Add signature"}
-              </button>
-              <button type="button" disabled={!sourceUrl} onClick={() => openPlacement("initials")} style={{ ...ghostBtn, opacity: sourceUrl ? 1 : 0.4 }}>
-                <Type style={{ width: 14, height: 14 }} />
-                {ar ? "الأحرف الأولى" : "Initials"}
-              </button>
+              {[
+                { kind: "signature", icon: PenLine, label: ar ? "إضافة توقيع" : "Add signature" },
+                { kind: "initials", icon: Type, label: ar ? "الأحرف الأولى" : "Initials" },
+              ].map((item) => {
+                const Icon = item.icon;
+                const placed = item.kind === "signature"
+                  ? fields.some((field) => field.type === "signature")
+                  : fields.some((field) => field.type === "text" && field.label !== (ar ? "التاريخ" : "Date"));
+                return (
+                  <button
+                    key={item.kind}
+                    type="button"
+                    disabled={!sourceUrl}
+                    onClick={() => openPlacement(item.kind)}
+                    style={{
+                      ...ghostBtn,
+                      height: 36,
+                      borderRadius: 9,
+                      opacity: sourceUrl ? 1 : 0.4,
+                      ...(placed
+                        ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND, fontWeight: 600 }
+                        : {}),
+                    }}
+                  >
+                    <Icon style={{ width: 14, height: 14 }} />
+                    {item.label}
+                  </button>
+                );
+              })}
             </div>
             {!sourceUrl && (
               <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
@@ -251,7 +279,18 @@ export default function SelfSignDocumentCard({ signatureUrl, signatureRawUrl, si
               type="button"
               onClick={signAndDownload}
               disabled={signing || !sourceUrl || scanning || !intent}
-              style={{ ...ui.btnPrimary, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, height: 40, opacity: signing || !sourceUrl || scanning || !intent ? 0.5 : 1 }}
+              style={{
+                ...ui.btnPrimary,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                height: 44,
+                borderRadius: 12,
+                fontSize: 14,
+                fontWeight: 650,
+                opacity: signing || !sourceUrl || scanning || !intent ? 0.5 : 1,
+              }}
             >
               {signing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 style={{ width: 16, height: 16 }} />}
               {signing ? (ar ? "جارٍ التوقيع…" : "Signing…") : (ar ? "وقّع المستند" : "Sign document")}

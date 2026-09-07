@@ -38,3 +38,4 @@ NiroVera-*.zip
 .tmp-nirovera-pack/
 .tmp-*.mjs
 design-handoff-claude/
+claude-refs/

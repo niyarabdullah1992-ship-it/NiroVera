@@ -1,6 +1,7 @@
 import React from "react";
 import Logo from "@/components/Logo";
 import { BORDER, CARD, INK, MUTED, NAVY_FILL, SURFACE, navPill, pageCol, pillCount } from "@/lib/platformStyles";
+import { StampNestContext } from "@/components/shared/stampNestContext";
 
 /** Shared NiroVera section chrome — title, then a full-width tab bar, then body. */
 export default function PlatformStampShell({
@@ -18,29 +19,33 @@ export default function PlatformStampShell({
   maxWidth = 1280,
   flushBody = false,
   bare = false,
+  appearance,
+  className,
 }) {
   const active = sections.find((section) => section.value === tool) || sections[0];
   const subtitle = (sections.length ? (active?.hint || hint) : hint) || "";
+  const signing = appearance === "signing";
 
   if (bare) {
     return (
-      <div style={{ ...pageCol, maxWidth, margin: "0 auto", width: "100%" }} dir={ar ? "rtl" : "ltr"}>
+      <div style={{ ...pageCol, maxWidth, margin: "0 auto", width: "100%" }} className={["nv-stamp-bare", className].filter(Boolean).join(" ")} dir={ar ? "rtl" : "ltr"}>
         {children}
       </div>
     );
   }
 
   return (
-    <div style={{ ...pageCol, maxWidth, margin: "0 auto", width: "100%" }} dir={ar ? "rtl" : "ltr"}>
+    <div className={className} style={{ ...pageCol, maxWidth, margin: "0 auto", width: "100%" }} dir={ar ? "rtl" : "ltr"}>
       <section
+        data-nv="stamp"
         style={{
           display: "flex",
           flexDirection: "column",
           background: CARD,
           border: `1px solid ${BORDER}`,
-          borderRadius: 16,
+          borderRadius: signing ? 22 : 16,
           overflow: "hidden",
-          boxShadow: "0 8px 24px rgba(20,40,75,.06)",
+          boxShadow: signing ? "0 18px 48px rgba(20,40,75,.08)" : "0 8px 24px rgba(20,40,75,.06)",
         }}
       >
         <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />
@@ -50,17 +55,19 @@ export default function PlatformStampShell({
             display: "flex",
             alignItems: "center",
             gap: 16,
-            padding: "14px 18px",
+            padding: signing ? "20px 22px 18px" : "14px 18px",
             borderBottom: sections.length ? "none" : `1px solid ${BORDER}`,
-            background: CARD,
+            background: signing
+              ? "linear-gradient(180deg, color-mix(in oklab, var(--nv-accent, #1E9E63) 8%, var(--nv-card, #fff)) 0%, var(--nv-card, #fff) 100%)"
+              : CARD,
           }}
         >
           <span
             aria-hidden
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
+              width: signing ? 42 : 36,
+              height: signing ? 42 : 36,
+              borderRadius: signing ? 12 : 10,
               overflow: "hidden",
               flexShrink: 0,
               display: "flex",
@@ -71,15 +78,15 @@ export default function PlatformStampShell({
               border: `1px solid ${BORDER}`,
             }}
           >
-            <Logo size={24} wordmark={false} />
+            <Logo size={signing ? 28 : 24} wordmark={false} />
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             {kicker ? (
               <div style={{ fontSize: 10, letterSpacing: "0.18em", fontWeight: 600, color: MUTED }}>{kicker}</div>
             ) : null}
-            <h1 style={{ margin: kicker ? "4px 0 0" : 0, fontSize: 18, fontWeight: 600, color: INK }}>{title}</h1>
+            <h1 style={{ margin: kicker ? "4px 0 0" : 0, fontSize: signing ? 22 : 18, fontWeight: 650, letterSpacing: signing ? "-0.02em" : undefined, color: INK }}>{title}</h1>
             {subtitle ? (
-              <p style={{ margin: "5px 0 0", fontSize: 12, lineHeight: 1.6, color: MUTED, maxWidth: 720 }}>
+              <p style={{ margin: "5px 0 0", fontSize: 13, lineHeight: 1.65, color: MUTED, maxWidth: 760 }}>
                 {subtitle}
               </p>
             ) : null}
@@ -98,9 +105,9 @@ export default function PlatformStampShell({
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: 5,
+              gap: 6,
               background: SURFACE,
-              padding: "8px 12px",
+              padding: signing ? "10px 14px" : "8px 12px",
               borderBottom: `1px solid ${BORDER}`,
             }}
           >
@@ -169,7 +176,12 @@ export default function PlatformStampShell({
           </div>
         ) : null}
 
-        <div style={{ padding: flushBody ? 0 : 16, background: SURFACE }}>{children}</div>
+        <div
+          className="nv-stamp-workspace"
+          style={{ padding: flushBody ? 0 : 16, background: SURFACE }}
+        >
+          <StampNestContext.Provider value={true}>{children}</StampNestContext.Provider>
+        </div>
 
         {legal ? (
           <footer

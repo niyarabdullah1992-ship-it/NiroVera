@@ -235,7 +235,6 @@ export default function Dashboard() {
         <PullToRefresh onRefresh={handleRefresh}>
           <PlatformStampShell
             ar={lang === "ar"}
-            bare
             kicker={erpKicker("/app", lang)}
             title={lang === "ar" ? "مركز القيادة" : "Command center"}
             hint={lang === "ar" ? "قرارات اليوم على نطاق فرعك." : "Today's decisions for your station scope."}
@@ -346,7 +345,6 @@ export default function Dashboard() {
       <PullToRefresh onRefresh={handleRefresh}>
         <PlatformStampShell
           ar={lang === "ar"}
-          bare
           kicker={erpKicker("/app", lang)}
           title={lang === "ar" ? "مركز القيادة" : "Command center"}
           hint={lang === "ar" ? "نظرة قرار على الناس والرعاية والعمليات والثقة." : "A decision glance across people, care, operations, and trust."}

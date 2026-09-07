@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { makeSignatureStamp } from "@/lib/multiSignStamp";
 import { createTypedSignatureImage } from "@/lib/typedSignatureImage";
@@ -11,13 +11,17 @@ export default function TypedSignature({ ar, defaultName = "", verificationId, s
   const [datedSignature, setDatedSignature] = useState("");
   const [stamp, setStamp] = useState("");
   const [sealId] = useState(() => verificationId || generateVerificationId());
+  const onPreviewRef = useRef(onPreview);
+  onPreviewRef.current = onPreview;
 
   useEffect(() => {
     let active = true;
-    setDatedSignature("");
-    setStamp("");
-    onPreview?.("");
-    if (!name.trim()) return () => { active = false; };
+    if (!name.trim()) {
+      setDatedSignature("");
+      setStamp("");
+      onPreviewRef.current?.("");
+      return () => { active = false; };
+    }
     createTypedSignatureImage(name.trim(), "Arial")
       .then((rawSignature) => {
         if (!active) return null;
@@ -27,17 +31,17 @@ export default function TypedSignature({ ar, defaultName = "", verificationId, s
       .then((composed) => {
         if (active && composed) {
           setStamp(composed);
-          onPreview?.(composed);
+          onPreviewRef.current?.(composed);
         }
       })
       .catch(() => {
         if (active) {
           setStamp("");
-          onPreview?.("");
+          onPreviewRef.current?.("");
         }
       });
     return () => { active = false; };
-  }, [name, ar, sealId, stampTheme, onPreview]);
+  }, [name, ar, sealId, stampTheme]);
 
   return (
     <div style={{ display: "grid", gap: 10 }}>

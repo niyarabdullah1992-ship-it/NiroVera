@@ -10,6 +10,7 @@ const KINDS = [
   { id: "leave", routeHint: "/app/leave", keywords: ["leave", "vacation", "إجازة"], icon: CalendarOff, tone: "navy", ar: "إجازة", en: "Leave" },
   { id: "chat", routeHint: "/app/chat", keywords: ["message", "chat", "رسالة", "محادثة"], icon: MessageSquare, tone: "navy", ar: "محادثة", en: "Chat" },
   { id: "signing", routeHint: "/app/signing", keywords: ["signature", "signing", "توقيع"], icon: PenLine, tone: "ok", ar: "توقيع", en: "Signing" },
+  { id: "compliance", routeHint: "/app/hr", keywords: ["وثيقة", "عقد", "حماية الأجور", "نطاقات", "حظر الشمس", "expired document", "wps"], icon: Shield, tone: "bad", ar: "امتثال", en: "Compliance" },
   { id: "safety", routeHint: "/app/safety", keywords: ["safety", "incident", "سلامة", "حادث"], icon: Shield, tone: "bad", ar: "سلامة", en: "Safety" },
   { id: "performance", routeHint: "/app/performance", keywords: ["point", "نقاط", "إنجاز"], icon: Trophy, tone: "ok", ar: "أداء", en: "Performance" },
 ];

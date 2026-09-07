@@ -33,8 +33,6 @@ import { SUITE_APPS, SUITE_GROUPS, suiteAppLabel } from "@/lib/suiteApps";
 /** Sidebar group-rail order (production nirovera.sa/app). */
 export const SUITE_GROUP_ORDER = [
   "daily",
-  "hours",
-  "chat",
   "workforce",
   "compliance",
   "money",
@@ -76,8 +74,6 @@ const ICON_OVERRIDES = {
 /** Group-level icons for the compact sidebar rail. */
 const RAIL_ICONS = {
   daily: LayoutDashboard,
-  hours: CalendarClock,
-  chat: MessageSquare,
   workforce: UserCog,
   compliance: ShieldQuestion,
   money: Banknote,
@@ -101,8 +97,6 @@ export function suiteRailGroupMeta(lang = "ar") {
   const ar = lang !== "en";
   return {
     daily: { icon: RAIL_ICONS.daily, label: ar ? "التشغيل اليومي" : "Daily Ops" },
-    hours: { icon: RAIL_ICONS.hours, label: ar ? "مواعيد الدوام والإجازات" : "Hours & Leave" },
-    chat: { icon: RAIL_ICONS.chat, label: ar ? "المحادثات التشغيلية" : "Operations Chat" },
     workforce: { icon: RAIL_ICONS.workforce, label: ar ? "القوى العاملة" : "Workforce" },
     compliance: { icon: RAIL_ICONS.compliance, label: ar ? "الالتزام والرعاية" : "Care & Compliance" },
     money: { icon: RAIL_ICONS.money, label: ar ? "المال والأصول" : "Money & Assets" },
@@ -178,14 +172,14 @@ export function buildSuiteRailGroups(visibleItems, lang = "ar") {
 
 const MOBILE_TAB_IDS = [
   "command",
+  "attendance",
   "tasks",
   "work-proof",
-  "attendance",
+  "chat",
   "inventory",
   "expenses",
   "hr",
   "daily-report",
-  "complaints",
   "safety",
 ];
 
@@ -194,6 +188,7 @@ const MOBILE_I18N_KEYS = {
   tasks: "myTasks",
   "work-proof": "workProof",
   attendance: "attendanceScheduling",
+  chat: "chat",
   inventory: "inventory",
   expenses: "expenses",
   hr: "hr",

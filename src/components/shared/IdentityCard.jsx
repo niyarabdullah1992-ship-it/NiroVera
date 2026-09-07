@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useContext } from "react";
 import { BORDER, CARD, INK, MUTED, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
+import { StampNestContext } from "@/components/shared/stampNestContext";
 
 /** Live operational card chrome — navy rail, navy icon tile, paper white. Green is status, not card skin. */
 export const identityFrame = {
@@ -24,11 +25,16 @@ export const identityIconWrap = {
   justifyContent: "center",
 };
 
-/** Nested titled box with the same navy rail — use when IdentityCard header would duplicate copy. */
+/** Nested titled box — paper tile inside a stamp; navy rail only when it is the outer frame. */
 export function ChromeBox({ children, padded = true, bodyStyle, style }) {
+  const nested = useContext(StampNestContext);
   return (
-    <div style={{ ...identityFrame, ...style }}>
-      <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />
+    <div
+      data-nv="identity"
+      data-nv-nested={nested ? "1" : undefined}
+      style={{ ...identityFrame, boxShadow: nested ? "none" : identityFrame.boxShadow, ...style }}
+    >
+      {nested ? null : <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />}
       <div style={{ ...(padded ? { padding: "18px 20px" } : {}), ...bodyStyle }}>{children}</div>
     </div>
   );
@@ -45,11 +51,19 @@ export default function IdentityCard({
   dir,
   bodyStyle,
   bodySurface = false,
+  className,
 }) {
+  const nested = useContext(StampNestContext);
   const hasHeader = Boolean(Icon || kicker || title || subtitle || meta);
   return (
-    <section style={identityFrame} dir={dir}>
-      <div aria-hidden style={{ height: 3, background: rail }} />
+    <section
+      data-nv="identity"
+      data-nv-nested={nested ? "1" : undefined}
+      className={className}
+      style={{ ...identityFrame, boxShadow: nested ? "none" : identityFrame.boxShadow }}
+      dir={dir}
+    >
+      {nested ? null : <div aria-hidden style={{ height: 3, background: rail }} />}
       {hasHeader && (
         <header
           style={{

@@ -10,6 +10,7 @@ import MultiSignCard from "@/components/files/MultiSignCard";
 import MultiSignInbox from "@/components/files/MultiSignInbox";
 import VerifyDocumentCard from "@/components/files/VerifyDocumentCard";
 import HowSigningWorks from "@/components/files/HowSigningWorks";
+import SigningProofBand from "@/components/files/SigningProofBand";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
 import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
 import { erpKicker } from "@/lib/erpModuleMeta";
@@ -108,16 +109,30 @@ export default function FileSigning() {
   );
 
   return (
-    <PlatformStampShell ar={ar} kicker={erpKicker("/app/signing", lang)} title={ar ? "التوقيع الرقمي" : "Digital signing"} sections={sections} tool={tool} onTool={setTool} legal={legal}>
+    <PlatformStampShell
+      ar={ar}
+      appearance="signing"
+      className="nv-signing-stage"
+      kicker={erpKicker("/app/signing", lang)}
+      title={ar ? "التوقيع الرقمي" : "Digital signing"}
+      hint={ar
+        ? "ختم واحد يُحفظ بهويتك، يُوضع على الصفحة، ثم يُوقَّع باسمك وبصفتك — التحقق العلني بلا دخول."
+        : "One seal saved to your identity, placed on the page, then signed in your name — public verify with no login."}
+      sections={sections}
+      tool={tool}
+      onTool={setTool}
+      legal={legal}
+    >
       <ErpSectionFrame
         path="/app/signing"
         ar={ar}
         stats={[
-          { label: ar ? "بانتظار توقيعك" : "Awaiting your sign", value: pendingCount, tone: pendingCount > 0 ? "warn" : "ok" },
-          { label: ar ? "قنوات" : "Channels", value: sections.length, hint: ar ? "فردي · جماعي · صندوق" : "Individual · group · inbox" },
-        ]}
+        { label: ar ? "بانتظار توقيعك" : "Awaiting your sign", value: pendingCount, tone: pendingCount > 0 ? "warn" : "ok" },
+        { label: ar ? "التحقق العلني" : "Public verify", value: ar ? "مفتوح" : "Open", hint: "/verify" },
+      ]}
       >
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <SigningProofBand ar={ar} />
       {tool === "individual" && (
         <MySignatureCard
           companyId={company.id}

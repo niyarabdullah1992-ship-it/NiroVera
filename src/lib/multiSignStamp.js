@@ -4,14 +4,41 @@ import { loadBadgeQr, makeVerificationBadgeCanvas, generateVerificationId } from
 import { STAMP_FALLBACK_SPOT, STAMP_WIDTH_PERCENT, clampStampScale } from "@/lib/signatureStampGeometry";
 import { drawTextField } from "@/lib/signPdf";
 
-// Builds the one canonical stamp image used by the web preview and the PDF.
-export async function makeSignatureStamp(_sigDataUrl, name, verificationId = "") {
-  const id = String(verificationId || "").trim() || generateVerificationId();
+function loadImageElement(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img.width ? img : null);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function loadStampMark(src) {
+  if (!src || typeof src !== "string") return null;
+  if (src.startsWith("data:")) return loadImageElement(src);
   try {
-    const qr = await loadBadgeQr(id);
-    return makeVerificationBadgeCanvas(id, name, qr).toDataURL("image/png");
+    const blob = await fetch(src).then((response) => response.blob());
+    const objectUrl = URL.createObjectURL(blob);
+    const img = await loadImageElement(objectUrl);
+    URL.revokeObjectURL(objectUrl);
+    return img;
   } catch {
-    return makeVerificationBadgeCanvas(id, name, null).toDataURL("image/png");
+    return loadImageElement(src);
+  }
+}
+
+// Builds the one canonical stamp image used by the web preview and the PDF.
+export async function makeSignatureStamp(sigDataUrl, name, verificationId = "") {
+  const id = String(verificationId || "").trim() || generateVerificationId();
+  const [qr, mark] = await Promise.all([
+    loadBadgeQr(id).catch(() => null),
+    loadStampMark(sigDataUrl),
+  ]);
+  try {
+    return makeVerificationBadgeCanvas(id, name, qr, mark).toDataURL("image/png");
+  } catch {
+    return makeVerificationBadgeCanvas(id, name, null, mark).toDataURL("image/png");
   }
 }
 

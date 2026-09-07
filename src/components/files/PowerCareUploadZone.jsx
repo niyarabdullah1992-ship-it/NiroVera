@@ -36,13 +36,14 @@ export default function PowerCareUploadZone({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    padding: compact ? "16px 18px" : "28px 20px",
+        padding: compact ? "16px 18px" : "28px 20px",
     borderRadius: 14,
     border: `1px dashed ${BORDER}`,
     background: SURFACE,
     cursor: disabled || loading ? "default" : "pointer",
     fontFamily: "inherit",
     opacity: disabled ? 0.55 : 1,
+    transition: "border-color .18s ease, background .18s ease",
   };
   const inner = (
     <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, pointerEvents: "none" }}>
@@ -66,7 +67,7 @@ export default function PowerCareUploadZone({
 
   if (typeof onFileChange === "function") {
     return (
-      <label style={boxStyle} aria-label={uploadLabel}>
+      <label className={`nv-upload-zone${compact ? " nv-upload-zone--compact" : ""}`} style={boxStyle} aria-label={uploadLabel}>
         <input
           ref={inputRef}
           type="file"
@@ -86,6 +87,7 @@ export default function PowerCareUploadZone({
       onClick={onClick}
       disabled={disabled || loading}
       aria-label={uploadLabel}
+      className={`nv-upload-zone${compact ? " nv-upload-zone--compact" : ""}`}
       style={boxStyle}
     >
       {inner}

@@ -10,6 +10,7 @@ import { makeSignatureStamp } from "@/lib/multiSignStamp";
 import { appParams } from "@/lib/app-params";
 import { getCompanyToken } from "@/lib/store";
 import { OFFICIAL_STAMP_THEME } from "@/lib/signatureStampThemes";
+import SigningStepStrip from "./SigningStepStrip";
 import IdentityCard from "@/components/shared/IdentityCard";
 import { MUTED, NAVY, ui, SURFACE } from "@/lib/platformStyles";
 
@@ -176,7 +177,7 @@ export default function MultiSignCard({ currentUser, companyId, employees, ar, o
   ];
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 12 }}>
       <input
         ref={fileRef}
         type="file"
@@ -184,30 +185,7 @@ export default function MultiSignCard({ currentUser, companyId, employees, ar, o
         onChange={upload}
         style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden" }}
       />
-      <div style={{
-        display: "flex",
-        gap: 18,
-        alignItems: "center",
-        padding: "0 2px 12px",
-      }}
-      >
-        {steps.map((step, index) => (
-          <React.Fragment key={step.label}>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <span style={{
-                width: 8,
-                height: 8,
-                borderRadius: 20,
-                background: step.ok ? "#1E9E63" : "#CBD5E1",
-                flexShrink: 0,
-              }}
-              />
-              <span style={{ fontSize: 11, fontWeight: 600, color: step.ok ? NAVY : "#5A6B85" }}>{step.label}</span>
-            </div>
-            {index < steps.length - 1 ? <span style={{ flex: 1, height: 1, background: step.ok ? "#BBF7D0" : "#E2E8F0", minWidth: 12 }} /> : null}
-          </React.Fragment>
-        ))}
-      </div>
+      <SigningStepStrip ar={ar} steps={steps} />
       <div
         className="nv-signing-grid"
         style={{
@@ -219,6 +197,7 @@ export default function MultiSignCard({ currentUser, companyId, employees, ar, o
         dir={ar ? "rtl" : "ltr"}
       >
         <IdentityCard
+          className="nv-signing-card"
           icon={FileText}
           title={ar ? "المستند" : "Document"}
           subtitle={doc?.name || (ar ? "ارفع PDF ثم حرّك ختم كل موقّع" : "Upload a PDF, then place each signer’s seal")}
@@ -253,6 +232,7 @@ export default function MultiSignCard({ currentUser, companyId, employees, ar, o
         </IdentityCard>
 
         <IdentityCard
+          className="nv-signing-card"
           icon={Users}
           title={ar ? "الموقّعون" : "Signers"}
           subtitle={ar ? "الهوية ثم البريد ثم موضع الختم." : "Identity, then email, then seal placement."}
@@ -266,7 +246,7 @@ export default function MultiSignCard({ currentUser, companyId, employees, ar, o
               type="button"
               onClick={send}
               disabled={sending}
-              style={{ ...ui.btnPrimary, width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, height: 40, opacity: sending ? 0.45 : 1 }}
+              style={{ ...ui.btnPrimary, width: "100%", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, height: 44, borderRadius: 12, fontSize: 14, fontWeight: 650, opacity: sending ? 0.45 : 1 }}
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send style={{ width: 14, height: 14 }} />}
               {sending ? (ar ? "جارٍ الإرسال…" : "Sending…") : (ar ? "إرسال طلبات التوقيع" : "Send signature requests")}

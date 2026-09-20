@@ -1,5 +1,10 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.38";
-import { checkCheckInLeaveGate } from "../../shared/leaveDerivations.ts";
+import {
+  LEAVE_ROSTER_BLOB,
+  checkCheckInLeaveGate,
+  isOnApprovedLeave,
+  leaveRequestsForEmployeeId,
+} from "../../shared/leaveDerivations.ts";
 import { validateAttendanceRequest, validationFailed } from "../../shared/proofCycleSchemas.ts";
 
 const MANAGER_ROLES = ["director", "ops_manager", "pgm", "station_manager"];
@@ -108,13 +113,15 @@ Deno.serve(async (req) => {
       const part = riyadhParts();
       return Number(part.hour) * 60 + Number(part.minute);
     };
-    const isOnApprovedLeave = (employee, date) => (employee?.leaveRequests || []).some((request) => {
-      if (request.status !== "approved") return false;
-      const useActiveWindow = request.type === "annual" && request.activeStartDate && request.activeEndDate;
-      const start = (useActiveWindow ? request.activeStartDate : request.startDate)?.slice(0, 10);
-      const end = (useActiveWindow ? request.activeEndDate : request.endDate)?.slice(0, 10);
-      return !!start && !!end && start <= date && date <= end;
-    });
+    const loadLeaveRoster = async (companyId) => {
+      const blobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: LEAVE_ROSTER_BLOB });
+      const payload = blobs[0]?.payload;
+      return Array.isArray(payload) ? payload : [];
+    };
+    const punchLeaveRequests = async (companyId, employeeId, entity) => {
+      const roster = await loadLeaveRoster(companyId);
+      return leaveRequestsForEmployeeId(employeeId, { entity, roster });
+    };
     const getScheduledShift = async (companyId, employeeId) => {
       const dateKey = toRiyadhDateKey();
       const blobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: "schedules" });
@@ -131,10 +138,7 @@ Deno.serve(async (req) => {
       const now = Date.now();
       return window ? { ...window, active: new Date(window.startAt).getTime() <= now && now <= new Date(window.endAt).getTime() } : null;
     };
-    const getAttendancePolicy = async (companyId) => {
-      const blobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: "attendancePolicy" });
-      return { scheduleRequired: blobs[0]?.payload?.[0]?.scheduleRequired !== false };
-    };
+    const getAttendancePolicy = async (_companyId) => ({ scheduleRequired: true });
     // Strict date formats — values are interpolated into PostgREST query strings,
     // so anything not matching is rejected (blocks query-parameter injection).
     const isDate = (v) => {
@@ -256,7 +260,7 @@ Deno.serve(async (req) => {
       if (!auth?.admin && !["owner", "director", "ops_manager"].includes(auth?.role)) return Response.json({ error: "Forbidden" }, { status: 403 });
       const companyId = auth?.companyId;
       if (!companyId) return Response.json({ error: "Missing companyId — record without tenant is rejected" }, { status: 400 });
-      const scheduleRequired = body.scheduleRequired !== false;
+      const scheduleRequired = true;
       const blobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: "attendancePolicy" });
       const payload = [{ scheduleRequired }];
       if (blobs[0]) await base44.asServiceRole.entities.CompanyDataBlob.update(blobs[0].id, { payload });
@@ -268,12 +272,15 @@ Deno.serve(async (req) => {
       if (!auth?.admin && !["owner", "director", "ops_manager"].includes(auth?.role)) return Response.json({ error: "Forbidden" }, { status: 403 });
       const { companyId, workStartTime, lateThresholdMinutes, gpsEnabled, gpsRequired } = body;
       if (!companyId) return Response.json({ error: "Missing companyId" }, { status: 400 });
-      if (!isTime(workStartTime)) return Response.json({ error: "Invalid work start time" }, { status: 400 });
+      if (workStartTime != null && workStartTime !== "" && !isTime(workStartTime)) return Response.json({ error: "Invalid work start time" }, { status: 400 });
       const threshold = Number(lateThresholdMinutes);
       if (!Number.isFinite(threshold) || threshold < 0 || threshold > 240) return Response.json({ error: "Invalid late threshold" }, { status: 400 });
+      const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance_settings?company_id=eq.${encodeURIComponent(companyId)}`, { headers });
+      const existingRows = await existingRes.json();
+      const existing = (Array.isArray(existingRows) && existingRows[0]) || {};
       const patch = {
         company_id: companyId,
-        work_start_time: workStartTime,
+        work_start_time: isTime(workStartTime) ? workStartTime : (existing.work_start_time || "08:00"),
         late_threshold_minutes: threshold,
         gps_enabled: !!gpsEnabled,
         gps_required: !!gpsEnabled && !!gpsRequired,
@@ -349,15 +356,7 @@ Deno.serve(async (req) => {
       const attRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?date=eq.${date}&select=employee_id`, { headers });
       const attRows = await attRes.json();
       const checkedIn = new Set((Array.isArray(attRows) ? attRows : []).map((row) => row.employee_id));
-      const settingsCache = {};
       const schedulesCache = {};
-      const getSettings = async (companyId) => {
-        if (settingsCache[companyId]) return settingsCache[companyId];
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/attendance_settings?company_id=eq.${encodeURIComponent(companyId)}`, { headers });
-        const rows = await res.json();
-        settingsCache[companyId] = (Array.isArray(rows) && rows[0]) || { late_threshold_minutes: 15 };
-        return settingsCache[companyId];
-      };
       const getSchedules = async (companyId) => {
         if (schedulesCache[companyId]) return schedulesCache[companyId];
         const blobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: "schedules" });
@@ -366,23 +365,32 @@ Deno.serve(async (req) => {
       };
 
       const leaveCache = {};
+      const loadCompanyLeave = async (companyId) => {
+        if (leaveCache[companyId]) return leaveCache[companyId];
+        const [companyEmployees, roster] = await Promise.all([
+          base44.asServiceRole.entities.Employee.filter({ companyId }),
+          loadLeaveRoster(companyId),
+        ]);
+        leaveCache[companyId] = { employees: new Map(companyEmployees.map((employee) => [employee.employeeId, employee])), roster };
+        return leaveCache[companyId];
+      };
       let alerted = 0;
       for (const emp of directory) {
         if (checkedIn.has(emp.employee_id) || emp.late_alert_sent_date === date || !emp.manager_id) continue;
-        if (!leaveCache[emp.company_id]) {
-          const companyEmployees = await base44.asServiceRole.entities.Employee.filter({ companyId: emp.company_id });
-          leaveCache[emp.company_id] = new Map(companyEmployees.map((employee) => [employee.employeeId, employee]));
-        }
-        if (isOnApprovedLeave(leaveCache[emp.company_id].get(emp.employee_id), date)) continue;
+        const companyLeave = await loadCompanyLeave(emp.company_id);
+        const mergedLeave = leaveRequestsForEmployeeId(emp.employee_id, {
+          entity: companyLeave.employees.get(emp.employee_id),
+          roster: companyLeave.roster,
+        });
+        if (isOnApprovedLeave(mergedLeave, date)) continue;
         const schedules = await getSchedules(emp.company_id);
         const stationSchedule = schedules.find((schedule) => schedule.stationId === emp.station_id);
         const shift = (stationSchedule?.shiftTypes || []).find((item) =>
           (stationSchedule.assignments?.[date]?.[item.id] || []).includes(emp.employee_id)
         );
         if (!shift) continue;
-        const settings = await getSettings(emp.company_id);
         const lateMinutes = nowMinutes - toMinutes(shift.start);
-        if (lateMinutes <= (settings.late_threshold_minutes || 15)) continue;
+        if (lateMinutes <= 0) continue;
         await fetch(`${SUPABASE_URL}/rest/v1/notifications`, {
           method: "POST",
           headers,
@@ -413,12 +421,15 @@ Deno.serve(async (req) => {
         return Response.json({ error: "Forbidden" }, { status: 403 });
       }
       const date = toRiyadhDateKey();
-      const policy = await getAttendancePolicy(companyId);
+      const punchStationId = String(stationId || "").trim();
       let scheduledShift = await getScheduledShift(companyId, employeeId);
-      if (!scheduledShift && policy.scheduleRequired) return Response.json({ error: "NOT_SCHEDULED" }, { status: 400 });
-      if (!scheduledShift) scheduledShift = { start: null, stationId: auth?.stationId || stationId || null };
+      if (!scheduledShift?.start) {
+        return Response.json({ error: "NOT_SCHEDULED" }, { status: 400 });
+      }
+      if (punchStationId) scheduledShift = { ...scheduledShift, stationId: punchStationId };
       const empsForLeave = await base44.asServiceRole.entities.Employee.filter({ companyId, employeeId });
-      const leaveGate = checkCheckInLeaveGate(empsForLeave[0]?.leaveRequests, date);
+      const mergedLeave = await punchLeaveRequests(companyId, employeeId, empsForLeave[0] || null);
+      const leaveGate = checkCheckInLeaveGate(mergedLeave, date);
       if (!leaveGate.ok) {
         return Response.json({
           error: leaveGate.error,
@@ -433,12 +444,12 @@ Deno.serve(async (req) => {
       }
       const setRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance_settings?company_id=eq.${encodeURIComponent(companyId)}`, { headers });
       const setRows = await setRes.json();
-      const settings = (Array.isArray(setRows) && setRows[0]) || { work_start_time: "08:00", late_threshold_minutes: 15, gps_enabled: false, gps_required: false };
+      const settings = (Array.isArray(setRows) && setRows[0]) || { late_threshold_minutes: 15, gps_enabled: false, gps_required: false };
       const emergency = await getEmergencyWindow(companyId);
       const hasCoords = lat != null && lng != null;
       const locationRequired = settings.gps_enabled === true && settings.gps_required === true && !emergency?.active;
       if (locationRequired && !hasCoords) return Response.json({ error: "GPS_REQUIRED" }, { status: 400 });
-      const scheduledStationId = scheduledShift.stationId || auth?.stationId || stationId;
+      const scheduledStationId = punchStationId || scheduledShift.stationId || auth?.stationId || stationId;
       let workplace = null;
       let recordedWorkplace = null;
       let nearestDist = null;
@@ -453,10 +464,11 @@ Deno.serve(async (req) => {
       }
       const inZone = !locationRequired || !!workplace;
       const now = new Date();
-      const startMinutes = toMinutes(scheduledShift.start) ?? toMinutes(settings.work_start_time) ?? 480;
+      const startMinutes = toMinutes(scheduledShift.start);
+      if (startMinutes == null) return Response.json({ error: "NOT_SCHEDULED" }, { status: 400 });
       const nowMinutes = riyadhMinutes();
       const lateMinutes = Math.max(0, nowMinutes - startMinutes);
-      const timelyStatus = lateMinutes > (settings.late_threshold_minutes || 0) ? "late" : "present";
+      const timelyStatus = lateMinutes > 0 ? "late" : "present";
       // «لا يُحسب غياب بلا سجل»: تعذّر تحديد الموقع (خارج النطاق أو قياس غير حاسم)
       // لا يُنتج غياباً موثّقاً، بل حالة معلّقة تنتظر مراجعة المشرف.
       const inconclusiveAccuracy = Number(accuracy) > 100;
@@ -467,7 +479,7 @@ Deno.serve(async (req) => {
         company_id: companyId,
         employee_id: employeeId,
         employee_name: employeeName || "",
-        station_id: recordedWorkplace?.stationId || stationId || null,
+        station_id: recordedWorkplace?.stationId || punchStationId || stationId || null,
         date,
         check_in_at: now.toISOString(),
         status,
@@ -553,7 +565,8 @@ Deno.serve(async (req) => {
       const now = new Date();
       const workHours = Math.round(((now.getTime() - new Date(row.check_in_at).getTime()) / 3600000) * 100) / 100;
       const nowMinutes = riyadhMinutes();
-      const shiftEndMinutes = toMinutes(shiftEnd);
+      const scheduledOut = await getScheduledShift(auth.companyId, employeeId);
+      const shiftEndMinutes = toMinutes(scheduledOut?.end || shiftEnd);
       const earlyCheckout = shiftEndMinutes != null && nowMinutes < shiftEndMinutes;
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?id=eq.${encodeURIComponent(row.id)}`, {
         method: "PATCH",
@@ -581,6 +594,18 @@ Deno.serve(async (req) => {
       const existingRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(auth.companyId)}&employee_id=eq.${encodeURIComponent(employeeId)}&date=eq.${date}`, { headers });
       const existingRows = await existingRes.json();
       const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+      const mergedLeave = await punchLeaveRequests(auth.companyId, employeeId, employee);
+      const leaveGate = checkCheckInLeaveGate(mergedLeave, date);
+      if (!leaveGate.ok) {
+        return Response.json({
+          error: leaveGate.error,
+          reason: leaveGate.reason,
+          reasonEn: leaveGate.reasonEn,
+        }, { status: 400 });
+      }
+      if (existing?.check_in_at) {
+        return Response.json({ error: "ALREADY_CHECKED_IN", attendance: existing }, { status: 400 });
+      }
       const defaultStations = employee.stationId ? [] : await base44.asServiceRole.entities.Station.filter({ companyId: auth.companyId });
       const effectiveStationId = employee.stationId || defaultStations[0]?.stationId || null;
       const payload = {
@@ -618,6 +643,15 @@ Deno.serve(async (req) => {
       const currentRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(auth.companyId)}&employee_id=eq.${encodeURIComponent(employeeId)}&date=eq.${date}`, { headers });
       const currentRows = await currentRes.json();
       const current = Array.isArray(currentRows) ? currentRows[0] : null;
+      const employeesOut = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId, employeeId });
+      const leaveOut = checkCheckInLeaveGate(await punchLeaveRequests(auth.companyId, employeeId, employeesOut[0] || null), date);
+      if (!leaveOut.ok) {
+        return Response.json({
+          error: leaveOut.error,
+          reason: leaveOut.reason,
+          reasonEn: leaveOut.reasonEn,
+        }, { status: 400 });
+      }
       if (!current?.check_in_at) return Response.json({ error: "NOT_CHECKED_IN" }, { status: 400 });
       if (current.check_out_at) return Response.json({ error: "ALREADY_CHECKED_OUT", attendance: current }, { status: 400 });
       const now = new Date();
@@ -762,6 +796,7 @@ Deno.serve(async (req) => {
       if (!dirRes.ok || !Array.isArray(directory) || directory.length === 0) return Response.json({ ok: true, marked: 0, onLeave: 0, notScheduled: 0 });
       const employeeRecords = await base44.asServiceRole.entities.Employee.filter({ companyId });
       const employeeById = new Map(employeeRecords.filter(canAccessEmployee).map((record) => [record.employeeId, record]));
+      const leaveRoster = await loadLeaveRoster(companyId);
       const attRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(companyId)}&date=eq.${date}&select=employee_id`, { headers });
       const attRows = await attRes.json();
       const already = new Set((Array.isArray(attRows) ? attRows : []).map((row) => row.employee_id));
@@ -777,7 +812,11 @@ Deno.serve(async (req) => {
           (schedule.assignments?.[date]?.[shift.id] || []).includes(directoryEmployee.employee_id)
         ));
         if (!hasShift) { notScheduled++; continue; }
-        if (isOnApprovedLeave(employee, date)) { onLeave++; continue; }
+        const mergedLeave = leaveRequestsForEmployeeId(directoryEmployee.employee_id, {
+          entity: employee,
+          roster: leaveRoster,
+        });
+        if (isOnApprovedLeave(mergedLeave, date)) { onLeave++; continue; }
         missing.push(directoryEmployee);
       }
       if (missing.length === 0) return Response.json({ ok: true, marked: 0, onLeave, notScheduled });

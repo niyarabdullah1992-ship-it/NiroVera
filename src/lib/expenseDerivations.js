@@ -1,5 +1,4 @@
 /** Expenses / operating budget — station spend vs limit; receipt before approve.
- *  Design: NiroVera Platform.dc.html (expenses / budgets / claims).
  *  Keep in sync with base44/shared/expenseDerivations.ts
  */
 
@@ -132,7 +131,59 @@ export function checkSubmitClaimGate(input) {
       reasonEn: "A receipt is required before submitting the claim.",
     };
   }
+  const surface = checkOperatingClaimSurfaceGate(title);
+  if (!surface.ok) return surface;
   return { ok: true, title, stationId, amount };
+}
+
+/** Graduated operating-claim review: amount derives the path — it is not chosen. */
+export const EXPENSE_APPROVAL_POLICY = [
+  { upTo: 500, steps: ["mgr"] },
+  { upTo: 5000, steps: ["mgr", "fin"] },
+  { upTo: Infinity, steps: ["mgr", "fin", "cfo"] },
+];
+
+export function approvalStepsForAmount(amount) {
+  const total = Math.max(0, Number(amount) || 0);
+  return (EXPENSE_APPROVAL_POLICY.find((row) => total <= row.upTo) || EXPENSE_APPROVAL_POLICY[2]).steps;
+}
+
+export function claimNeedsCfo(amount) {
+  return approvalStepsForAmount(amount).includes("cfo");
+}
+
+/** Budget board uses pending / approved / rejected / paid. */
+export function toBudgetStatus(status) {
+  if (status === "submitted" || status === "manager_approved" || status === "cfo_pending") return "pending";
+  if (status === "finance_approved") return "approved";
+  if (status === "cfo_approved") return "approved";
+  if (status === "manager_rejected" || status === "finance_rejected" || status === "cfo_rejected") return "rejected";
+  return status || "pending";
+}
+
+/** Historical stocky titles stay on the ledger and are labelled — they are not new operating claims. */
+export function annotateLegacyStockSurface(claim) {
+  if (!claim || claim.legacyStockSurface) return claim;
+  const title = `${claim.description || ""} ${claim.title || ""} ${claim.customExpenseType || ""}`;
+  if (!checkOperatingClaimSurfaceGate(title).ok) {
+    return { ...claim, legacyStockSurface: true };
+  }
+  return claim;
+}
+
+const STOCKY_TITLE = /قفاز|كبل|زيت|فلتر|قاطع|مستلزمات|قطع غيار|أصناف|مخزون|خوذ|كمام|gloves|cable|oil|filter|breaker|stock|ppe|helmet|spare/i;
+
+/** Operating claims stay off the inventory surface. */
+export function checkOperatingClaimSurfaceGate(title) {
+  if (STOCKY_TITLE.test(String(title || ""))) {
+    return {
+      ok: false,
+      error: "STOCK_SURFACE",
+      reason: "وصفك يدلّ على شراء صنف يُخزَّن — سجّله في المخزون لا كمصروفات تشغيل.",
+      reasonEn: "This description is a stocked item — record it on Inventory, not as an operating claim.",
+    };
+  }
+  return { ok: true };
 }
 
 export function checkApproveClaimGate(claim, budget, claims = []) {
@@ -175,8 +226,10 @@ export function checkApproveClaimGate(claim, budget, claims = []) {
     return {
       ok: false,
       error: "BUDGET_EXCEEDED",
-      reason: `تجاوز ميزانية الفرع — المتبقي ${Math.max(0, limit - spent)}.`,
-      reasonEn: `Station budget exceeded — remaining ${Math.max(0, limit - spent)}.`,
+      // Every other figure on this surface is thousands-separated; the remainder was
+      // the one number printed raw.
+      reason: `تجاوز ميزانية الفرع — المتبقي ${Math.max(0, limit - spent).toLocaleString("en-US")}.`,
+      reasonEn: `Station budget exceeded — remaining ${Math.max(0, limit - spent).toLocaleString("en-US")}.`,
     };
   }
   return { ok: true };

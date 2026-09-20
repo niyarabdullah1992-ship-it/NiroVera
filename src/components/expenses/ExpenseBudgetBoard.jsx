@@ -5,28 +5,50 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { getCompanyToken } from "@/lib/store";
 import { isLocalPreviewActive, LOCAL_PREVIEW_COMPANY_ID } from "@/lib/localPreview";
 import { localBudgetCall } from "@/lib/localExpensesFallback";
-import { checkApproveClaimGate, checkMarkPaidGate } from "@/lib/expenseDerivations";
+import { checkMarkPaidGate } from "@/lib/expenseDerivations";
 import { toast } from "@/components/ui/use-toast";
+import { canFallBackForRead, isServiceOutage, namedServiceReason, refusalError } from "@/lib/serviceErrors";
+import { formatDateTime } from "@/lib/dateFormat";
 import { ACCENT, MUTED, NAVY, OK, WARN, BAD, NEUTRAL, bar, dot, ui, cardShell, tableShell, CARD } from "@/lib/platformStyles";
 
 function isLocalWorkspace(companyId) {
   return isLocalPreviewActive() || companyId === LOCAL_PREVIEW_COMPANY_ID;
 }
 
+// A refusal is not an outage. This used to swallow every error and re-run the call
+// on the local ledger, so the cloud's named refusal — "vessel exhausted", "manager
+// review comes first", "not your right" — was converted into a second attempt and
+// its Arabic reason never reached the operator. Only an unreachable service falls
+// back now, and the named reason is preserved on the thrown error.
 async function budgetApi(companyId, payload) {
   if (isLocalWorkspace(companyId)) return localBudgetCall(companyId, payload);
+  let data = null;
   try {
     const res = await base44.functions.invoke("budget", {
       ...payload,
       companyId,
       sessionToken: getCompanyToken(companyId),
     });
-    const data = res?.data ?? res;
-    if (data?.error) throw new Error(data.error);
-    return data;
-  } catch {
-    return localBudgetCall(companyId, payload);
+    data = res?.data ?? res;
+  } catch (error) {
+    const reading = String(payload?.action || "list") === "list";
+    if (reading ? canFallBackForRead(error) : isServiceOutage(error)) {
+      return localBudgetCall(companyId, payload);
+    }
+    throw refusalError(error);
   }
+  if (data?.error) {
+    const refused = new Error(data.reason || data.error);
+    refused.response = { data };
+    throw refused;
+  }
+  return data;
+}
+
+// The vessel refusal is written on the claim, so the row that raised it states it too.
+function lastVesselBlock(claim) {
+  const trail = Array.isArray(claim?.vesselBlocks) ? claim.vesselBlocks : [];
+  return trail.length ? trail[trail.length - 1] : null;
 }
 
 const TAG_STYLE = {
@@ -71,13 +93,14 @@ const claimsRow = {
 /** Platform expenses — budget bars + claims list (L1842+). */
 export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }) {
   const ar = lang === "ar";
-  const { company, currentUser } = useAuth();
+  const { company, currentUser, data } = useAuth();
   const [budgets, setBudgets] = useState([]);
   const [claims, setClaims] = useState([]);
   const [companySum, setCompanySum] = useState(null);
   const [alert, setAlert] = useState(null);
   const [busy, setBusy] = useState(false);
   const [hoverClaim, setHoverClaim] = useState(null);
+  const [loadError, setLoadError] = useState("");
 
   const visibleBudgets = stationScope === "all"
     ? budgets
@@ -97,8 +120,14 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
     if (!company?.id) return;
     try {
       const remote = await budgetApi(company.id, { action: "list" });
+      setLoadError("");
       applyRemote(remote);
-    } catch {
+    } catch (error) {
+      // An empty board reads like "nothing here"; a refused read has to say so.
+      setLoadError(namedServiceReason(error, ar, {
+        ar: "تعذّر فتح الوعاء التشغيلي — أعد المحاولة أو راجع صلاحيتك على هذا الفرع.",
+        en: "The operating vessel could not be opened — retry or check your rights on this station.",
+      }));
       setBudgets([]);
       setClaims([]);
     }
@@ -116,24 +145,31 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
           description: ar ? (remote.reason || remote.error) : (remote.reasonEn || remote.reason || remote.error),
           variant: "destructive",
         });
+        // The refusal is written on the claim server-side; re-read so the row states it
+        // even after the toast is dismissed.
+        await load();
       } else {
         if (okMsg) toast({ description: okMsg });
         applyRemote(remote);
       }
     } catch (err) {
-      toast({ description: String(err?.message || err), variant: "destructive" });
+      toast({
+        description: namedServiceReason(err, ar, {
+          ar: "تعذّر تنفيذ القرار على الوعاء التشغيلي.",
+          en: "The operating vessel could not carry out that decision.",
+        }),
+        variant: "destructive",
+      });
+      await load();
     } finally {
       setBusy(false);
     }
   };
 
+  // The gate is asked on the server, never short-circuited here: a vessel refusal is a
+  // reviewable event that has to be written on the claim, and a toast raised in this
+  // component would have been the only trace of it.
   const approve = async (claim) => {
-    const budget = budgets.find((b) => b.stationId === claim.stationId);
-    const gate = checkApproveClaimGate(claim, budget, claims);
-    if (!gate.ok) {
-      toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
-      return;
-    }
     await run({ action: "approve", claimId: claim.id }, ar ? "اعتمدت المطالبة" : "Claim approved");
   };
 
@@ -147,6 +183,10 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
   };
 
   if (!currentUser) return null;
+
+  // Deciding money on the vessel is finance work. Everyone else reads the board.
+  const canDecide = currentUser.id === data?.ownerId
+    || ["owner", "financial_officer", "director", "ops_manager", "admin"].includes(currentUser.role);
 
   const barColor = (t) => {
     if (t === "near_limit" || t === "over") return "#DC2626";
@@ -164,7 +204,7 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
   return (
     <section dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "1320px" }}>
       {/* Budget card — L1844 */}
-      <div style={cardShell}>
+      <div className="nv-doc" style={cardShell}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
@@ -188,6 +228,10 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
             </span>
           </div>
         </div>
+
+        {loadError ? (
+          <p style={{ margin: "12px 0 0", fontSize: "12px", color: "#8A1C2B", lineHeight: 1.7 }}>{loadError}</p>
+        ) : null}
 
         {(alert?.delayedPayoutCount > 0 || alert?.pendingCount > 0) && (
           <p style={{ margin: "12px 0 0", fontSize: "11px", color: "#B45309" }}>
@@ -264,6 +308,13 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
                         <div style={{ fontSize: "11px", color: MUTED, marginTop: "2px", fontFamily: "'IBM Plex Mono',monospace" }} dir="ltr">
                           {c.ref}
                         </div>
+                        {lastVesselBlock(c) ? (
+                          <div style={{ fontSize: "11px", color: "#8A6516", marginTop: "3px", lineHeight: 1.6 }}>
+                            {ar
+                              ? `وقفة الوعاء — ${lastVesselBlock(c).reason} حاولها ${lastVesselBlock(c).byName || "—"} في ${formatDateTime(lastVesselBlock(c).at, "ar")}.`
+                              : `Vessel hold — ${lastVesselBlock(c).reasonEn} ${lastVesselBlock(c).byName || "—"} attempted it on ${formatDateTime(lastVesselBlock(c).at, "en")}.`}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                     <div style={{ fontSize: "12px", color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -279,7 +330,7 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
                         {statusNote ? ` · ${statusNote}` : ""}
                       </span>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-                        {c.status === "pending" && (
+                        {canDecide && c.status === "pending" && (
                           <>
                             <button
                               type="button"
@@ -299,7 +350,7 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
                               )}
                               style={{
                                 padding: "4px 10px",
-                                borderRadius: "8px",
+                                borderRadius: "10px",
                                 border: "1px solid #E2E8F0",
                                 background: CARD,
                                 color: MUTED,
@@ -318,14 +369,14 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
                             </button>
                           </>
                         )}
-                        {c.status === "approved" && (
+                        {canDecide && c.status === "approved" && (
                           <button
                             type="button"
                             disabled={busy}
                             onClick={() => markPaid(c)}
                             style={{
                               padding: "4px 10px",
-                              borderRadius: "8px",
+                              borderRadius: "10px",
                               border: "1px solid #E2E8F0",
                               background: CARD,
                               color: MUTED,

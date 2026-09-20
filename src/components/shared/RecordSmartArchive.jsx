@@ -1,39 +1,73 @@
 import React, { useState } from "react";
 import { Archive, Search, ChevronDown, FolderOpen } from "lucide-react";
-import moment from "moment";
-import { formatDateTime } from "@/lib/dateFormat";
+import { formatDateTime, formatDayMonthYear, groupArchiveByYearDay } from "@/lib/dateFormat";
+import { peopleQueryMatches } from "@/lib/peopleTreeGraph";
 import IdentityCard, { identityIconWrap } from "@/components/shared/IdentityCard";
 import { BORDER, MUTED, NAVY, SURFACE, field, NEUTRAL, CARD } from "@/lib/platformStyles";
 
-export default function RecordSmartArchive({ items, lang, dir, emptyLabel }) {
+function dateFromDayKey(dk) {
+  const [y, m, d] = String(dk || "").split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+export function archiveItemSearchHay(it) {
+  return [it?.title, it?.text, it?.badge, it?.search, it?.hay, it?.date].filter(Boolean).join(" ");
+}
+
+export default function RecordSmartArchive({
+  items,
+  lang,
+  dir,
+  emptyLabel,
+  noMatchLabel,
+  onOpen,
+  query: queryProp,
+  onQueryChange,
+  skipFilter = false,
+  searchPlaceholder,
+  meta,
+  kicker,
+  title,
+  subtitle,
+  renderOpen,
+}) {
   const ar = lang === "ar";
-  const [query, setQuery] = useState("");
+  const [innerQuery, setInnerQuery] = useState("");
+  const query = queryProp !== undefined ? queryProp : innerQuery;
+  const setQuery = (value) => {
+    onQueryChange?.(value);
+    if (queryProp === undefined) setInnerQuery(value);
+  };
   const [open, setOpen] = useState({});
+  const [openRowId, setOpenRowId] = useState("");
 
-  const filtered = (items || []).filter((it) => {
-    if (!query) return true;
-    const q = query.toLowerCase();
-    return (it.title || "").toLowerCase().includes(q) || (it.text || "").toLowerCase().includes(q);
-  });
+  const source = items || [];
+  const filtered = skipFilter
+    ? source
+    : source.filter((it) => peopleQueryMatches(archiveItemSearchHay(it), query));
 
-  const years = new Map();
-  for (const it of filtered) {
-    const m = moment(it.date);
-    const y = m.year();
-    const mk = m.format("YYYY-MM");
-    if (!years.has(y)) years.set(y, new Map());
-    const months = years.get(y);
-    if (!months.has(mk)) months.set(mk, []);
-    months.get(mk).push(it);
-  }
-  const yearList = Array.from(years.keys()).sort((a, b) => b - a);
+  const { years, yearList, newestDk } = groupArchiveByYearDay(filtered);
+  const namedEmpty = !source.length
+    ? (emptyLabel || (ar ? "لا توجد سجلات مؤرشفة" : "No archived records"))
+    : (noMatchLabel
+      || (query
+        ? (ar ? `لا بند مؤرشف يطابق «${query}».` : `No archived item matches “${query}”.`)
+        : (ar ? "لا بند مؤرشف يطابق التصفية." : "No archived item matches this filter.")));
+
+  const openable = !!(onOpen || renderOpen);
+  const toggleRow = (it) => {
+    if (renderOpen) setOpenRowId((id) => (id === it.id ? "" : it.id));
+    onOpen?.(it);
+  };
 
   return (
     <IdentityCard
       icon={Archive}
-      kicker={ar ? "سجل زمني" : "Timeline"}
-      title={ar ? "الأرشيف" : "Archive"}
-      subtitle={ar ? "تجميع تلقائي حسب السنة ثم الشهر." : "Grouped automatically by year, then month."}
+      kicker={kicker || (ar ? "سجل زمني" : "Timeline")}
+      title={title || (ar ? "الأرشيف" : "Archive")}
+      subtitle={subtitle || (ar ? "مجمّعة يومًا بيوم حسب تاريخ الإغلاق." : "Grouped day by day by close date.")}
+      meta={meta}
       dir={dir}
       bodySurface
     >
@@ -43,8 +77,8 @@ export default function RecordSmartArchive({ items, lang, dir, emptyLabel }) {
             style={{
               position: "absolute",
               top: "50%",
+              insetInlineStart: 12,
               transform: "translateY(-50%)",
-              [dir === "rtl" ? "right" : "left"]: 12,
               width: 14,
               height: 14,
               color: MUTED,
@@ -54,8 +88,10 @@ export default function RecordSmartArchive({ items, lang, dir, emptyLabel }) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={ar ? "بحث في الأرشيف…" : "Search archive…"}
-            style={{ ...field, [dir === "rtl" ? "paddingRight" : "paddingLeft"]: 32 }}
+            placeholder={searchPlaceholder || (ar ? "بحث في الأرشيف…" : "Search archive…")}
+            aria-label={ar ? "بحث الأرشيف" : "Archive search"}
+            className="nv-search-field"
+            style={{ ...field, padding: 0, paddingInlineStart: 36, paddingInlineEnd: 12 }}
           />
         </div>
 
@@ -63,7 +99,7 @@ export default function RecordSmartArchive({ items, lang, dir, emptyLabel }) {
           <div style={{ padding: "28px 8px", textAlign: "center" }}>
             <Archive style={{ width: 28, height: 28, margin: "0 auto 8px", color: MUTED, opacity: 0.55 }} />
             <p style={{ margin: 0, fontSize: 13, color: MUTED }}>
-              {emptyLabel || (ar ? "لا توجد سجلات مؤرشفة" : "No archived records")}
+              {namedEmpty}
             </p>
           </div>
         ) : (
@@ -76,12 +112,12 @@ export default function RecordSmartArchive({ items, lang, dir, emptyLabel }) {
                   {Array.from(years.get(year).values()).reduce((a, arr) => a + arr.length, 0)}
                 </span>
               </div>
-              {Array.from(years.get(year).keys()).sort().reverse().map((mk) => {
-                const recs = years.get(year).get(mk).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
-                const isOpen = !!open[mk];
+              {Array.from(years.get(year).keys()).sort().reverse().map((dk) => {
+                const recs = years.get(year).get(dk).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+                const isOpen = open[dk] ?? (dk === newestDk);
                 return (
                   <div
-                    key={mk}
+                    key={dk}
                     style={{
                       borderRadius: 16,
                       border: `1px solid ${BORDER}`,
@@ -91,7 +127,7 @@ export default function RecordSmartArchive({ items, lang, dir, emptyLabel }) {
                   >
                     <button
                       type="button"
-                      onClick={() => setOpen((o) => ({ ...o, [mk]: !o[mk] }))}
+                      onClick={() => setOpen((o) => ({ ...o, [dk]: !o[dk] }))}
                       style={{
                         width: "100%",
                         display: "flex",
@@ -108,8 +144,8 @@ export default function RecordSmartArchive({ items, lang, dir, emptyLabel }) {
                       <span style={identityIconWrap}>
                         <FolderOpen style={{ width: 16, height: 16 }} strokeWidth={1.75} />
                       </span>
-                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: NAVY, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {moment(`${mk}-01`).locale(lang).format("MMMM YYYY")}
+                      <p dir={dir} style={{ margin: 0, fontSize: 13, fontWeight: 600, color: NAVY, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {formatDayMonthYear(dateFromDayKey(dk), lang)}
                       </p>
                       <span style={{ fontSize: 11, color: MUTED, flexShrink: 0 }}>{recs.length}</span>
                       <ChevronDown
@@ -125,26 +161,43 @@ export default function RecordSmartArchive({ items, lang, dir, emptyLabel }) {
                     </button>
                     {isOpen && (
                       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${BORDER}`, background: SURFACE }}>
-                        {recs.map((it) => (
-                          <div
-                            key={it.id}
-                            style={{
-                              padding: 12,
-                              borderRadius: 12,
-                              border: `1px solid ${BORDER}`,
-                              background: CARD,
-                            }}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: MUTED }}>
-                              <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: NAVY, fontWeight: 600 }}>{it.title}</span>
-                                {it.badge ? <span style={NEUTRAL}>{it.badge}</span> : null}
-                              </span>
-                              <span style={{ flexShrink: 0 }}>{formatDateTime(it.date, lang)}</span>
+                        {recs.map((it) => {
+                          const rowOpen = renderOpen && openRowId === it.id;
+                          return (
+                            <div
+                              key={it.id}
+                              role={openable ? "button" : undefined}
+                              tabIndex={openable ? 0 : undefined}
+                              onClick={openable ? () => toggleRow(it) : undefined}
+                              onKeyDown={openable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleRow(it); } } : undefined}
+                              style={{
+                                padding: 12,
+                                borderRadius: 12,
+                                border: `1px solid ${BORDER}`,
+                                background: CARD,
+                                cursor: openable ? "pointer" : "default",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: MUTED }}>
+                                <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: NAVY, fontWeight: 600 }}>{it.title}</span>
+                                  {it.badge ? <span style={NEUTRAL}>{it.badge}</span> : null}
+                                </span>
+                                <span style={{ flexShrink: 0 }}>{formatDateTime(it.date, lang)}</span>
+                              </div>
+                              {it.text ? <p style={{ margin: "6px 0 0", fontSize: 13, color: NAVY, lineHeight: 1.55 }}>{it.text}</p> : null}
+                              {rowOpen ? (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                  style={{ marginTop: 10 }}
+                                >
+                                  {renderOpen(it)}
+                                </div>
+                              ) : null}
                             </div>
-                            {it.text ? <p style={{ margin: "6px 0 0", fontSize: 13, color: NAVY, lineHeight: 1.55 }}>{it.text}</p> : null}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

@@ -14,7 +14,8 @@ import {
   type StationGeofenceLike,
 } from "../../shared/settingsDerivations.ts";
 
-const SETTINGS_CATEGORY = "companySettings";
+const SETTINGS_CATEGORY = "companyMeta";
+const SETTINGS_LEGACY_CATEGORY = "companySettings"; // do-not-write — read fallback only
 
 function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
@@ -101,35 +102,66 @@ Deno.serve(async (req) => {
     const canManage = auth.owner || auth.admin || manageRoles.includes(String(auth.role || ""));
     const isOwner = auth.owner || auth.admin || auth.role === "owner";
 
-    const loadBlob = async () => {
+    const loadBlob = async (category = SETTINGS_CATEGORY) => {
       const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({
         companyId: auth.companyId,
-        category: SETTINGS_CATEGORY,
+        category,
       });
       return rows[0] || null;
     };
 
-    const loadPayload = async (): Promise<SettingsPayload> => {
-      const blob = await loadBlob();
-      const raw = blob?.payload && typeof blob.payload === "object" ? blob.payload : {};
+    const metaRow = (raw: unknown): Record<string, unknown> => {
+      if (Array.isArray(raw)) return raw[0] && typeof raw[0] === "object" ? { ...raw[0] } : {};
+      return raw && typeof raw === "object" ? { ...raw } : {};
+    };
+
+    const settingsFrom = (raw: Record<string, unknown>): SettingsPayload => {
       const base = emptyPayload();
-      base.record = normalizeCompanyRecord(raw.record || raw);
+      const recordSrc = raw.record && typeof raw.record === "object" ? raw.record : raw;
+      base.record = normalizeCompanyRecord(recordSrc);
       if (typeof raw.geofenceVerificationRequired === "boolean") {
         base.geofenceVerificationRequired = raw.geofenceVerificationRequired;
       }
       base.colorTheme = normalizeColorTheme(raw.colorTheme);
       base.reportBranding = normalizeReportBranding(raw.reportBranding);
+      if (!base.record.name && typeof raw.name === "string") {
+        base.record = normalizeCompanyRecord({ ...base.record, name: raw.name });
+      }
       return base;
     };
 
+    const loadPayload = async (): Promise<SettingsPayload> => {
+      const blob = await loadBlob(SETTINGS_CATEGORY);
+      const raw = metaRow(blob?.payload);
+      let settings = settingsFrom(raw);
+      const empty = !settings.record.commercialRegistration && !settings.record.vatNumber && !settings.colorTheme;
+      if (empty) {
+        const legacy = await loadBlob(SETTINGS_LEGACY_CATEGORY);
+        if (legacy?.payload) settings = settingsFrom(metaRow(legacy.payload));
+      }
+      return settings;
+    };
+
     const savePayload = async (payload: SettingsPayload) => {
-      const blob = await loadBlob();
-      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload });
+      const blob = await loadBlob(SETTINGS_CATEGORY);
+      const current = metaRow(blob?.payload);
+      const next = {
+        ...current,
+        id: current.id || "meta",
+        name: payload.record.name || current.name,
+        record: payload.record,
+        geofenceVerificationRequired: payload.geofenceVerificationRequired,
+        colorTheme: payload.colorTheme || null,
+        reportBranding: payload.reportBranding ?? current.reportBranding ?? null,
+        settings: current.settings || {},
+      };
+      const wrapped = [next];
+      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload: wrapped });
       else {
         await base44.asServiceRole.entities.CompanyDataBlob.create({
           companyId: auth.companyId,
           category: SETTINGS_CATEGORY,
-          payload,
+          payload: wrapped,
         });
       }
     };

@@ -29,7 +29,7 @@ export default function SyncStatusIndicator({ isSyncing }) {
     gap: 5,
     height: 32,
     padding: "0 9px",
-    borderRadius: 9,
+    borderRadius: 10,
     border: "1px solid var(--nv-line, #E2E8F0)",
     background: "var(--nv-card, #fff)",
     fontSize: 11,

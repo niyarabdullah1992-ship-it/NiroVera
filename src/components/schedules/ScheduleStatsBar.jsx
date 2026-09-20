@@ -10,7 +10,6 @@ function minutesBetween(start, end) {
   return mins;
 }
 
-/** Platform.dc.html L1991–1998 / L6662–6670 — schedule summary cards. */
 export default function ScheduleStatsBar({ employees, shiftTypes, assignments, monthDates }) {
   const { lang } = useI18n();
   const ar = lang === "ar";

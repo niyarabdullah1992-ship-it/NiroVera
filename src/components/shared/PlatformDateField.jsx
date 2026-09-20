@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
-import { BRAND, BRAND_SOFT, CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
-import { formatDate } from "@/lib/dateFormat";
+import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, RADIUS, SURFACE } from "@/lib/platformStyles";
+import { formatDate, formatMonthYear } from "@/lib/dateFormat";
 
 function pad(n) {
   return String(n).padStart(2, "0");
@@ -17,9 +18,29 @@ function parseKey(value) {
   return { y: Number(m[1]), m: Number(m[2]) - 1, d: Number(m[3]) };
 }
 
+function parseMonthKey(value) {
+  const m = /^(\d{4})-(\d{2})/.exec(String(value || ""));
+  if (!m) return null;
+  return { y: Number(m[1]), m: Number(m[2]) - 1 };
+}
+
+function toMonthKey(y, m) {
+  return `${y}-${pad(m + 1)}`;
+}
+
+function monthOutOfRange(key, min, max) {
+  if (!key) return false;
+  const k = String(key).slice(0, 7);
+  const lo = min ? String(min).slice(0, 7) : "";
+  const hi = max ? String(max).slice(0, 7) : "";
+  if (lo && k < lo) return true;
+  if (hi && k > hi) return true;
+  return false;
+}
+
 function monthMatrix(year, month) {
   const first = new Date(year, month, 1);
-  const startPad = (first.getDay() + 6) % 7; // Monday-first
+  const startPad = (first.getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const cells = [];
   for (let i = 0; i < startPad; i += 1) cells.push(null);
@@ -28,11 +49,26 @@ function monthMatrix(year, month) {
   return cells;
 }
 
-const navBtnStyle = {
-  width: 28,
-  height: 28,
-  borderRadius: 8,
-  border: "1px solid var(--nv-line, #E2E8F0)",
+function outOfRange(key, min, max) {
+  if (!key) return false;
+  if (min && key < min) return true;
+  if (max && key > max) return true;
+  return false;
+}
+
+function formatTriggerDate(parsed, ar) {
+  if (!parsed) return "";
+  return formatDate(new Date(parsed.y, parsed.m, parsed.d), ar ? "ar" : "en", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+const chromeBtn = {
+  borderRadius: RADIUS,
+  border: `1px solid ${BORDER}`,
   background: CARD,
   color: NAVY,
   display: "grid",
@@ -40,16 +76,10 @@ const navBtnStyle = {
   cursor: "pointer",
   padding: 0,
   flexShrink: 0,
+  fontFamily: "inherit",
 };
 
-/** Header trigger only — options render inside the calendar card body. */
-function CardJumpTrigger({
-  label,
-  valueLabel,
-  open,
-  onOpen,
-  minWidth = 72,
-}) {
+function CardJumpTrigger({ label, valueLabel, open, onOpen, minWidth = 72 }) {
   return (
     <button
       type="button"
@@ -62,13 +92,11 @@ function CardJumpTrigger({
       style={{
         flex: "1 1 auto",
         minWidth,
-        height: 34,
-        borderRadius: 10,
-        border: open
-          ? "1px solid color-mix(in oklab, var(--nv-navy, #14284B) 22%, #E2E8F0)"
-          : "1px solid var(--nv-line, #E2E8F0)",
-        background: CARD,
-        color: NAVY,
+        height: 32,
+        borderRadius: RADIUS,
+        border: open ? `1px solid ${NAVY_FILL}` : `1px solid ${BORDER}`,
+        background: open ? NAVY_FILL : CARD,
+        color: open ? "#fff" : NAVY,
         fontSize: 13,
         fontWeight: 650,
         fontFamily: "inherit",
@@ -78,9 +106,6 @@ function CardJumpTrigger({
         alignItems: "center",
         gap: 6,
         boxSizing: "border-box",
-        boxShadow: open
-          ? "0 0 0 3px color-mix(in oklab, var(--nv-navy, #14284B) 7%, transparent)"
-          : "0 1px 2px rgba(20,40,75,.04)",
       }}
     >
       <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", textAlign: "start" }}>
@@ -89,7 +114,7 @@ function CardJumpTrigger({
       <ChevronDown
         size={13}
         style={{
-          color: MUTED,
+          color: open ? "rgba(255,255,255,.72)" : MUTED,
           flexShrink: 0,
           transform: open ? "rotate(180deg)" : "none",
           transition: "transform 120ms ease",
@@ -114,13 +139,13 @@ function JumpOptionsPanel({ label, options, value, onChange, ar }) {
         style={{
           maxHeight: 248,
           overflowY: "auto",
-          padding: 8,
-          borderRadius: 12,
-          border: "1px solid var(--nv-line, #E2E8F0)",
-          background: "var(--nv-inset, var(--nv-soft, #F7F8FA))",
+          padding: 6,
+          borderRadius: RADIUS,
+          border: `1px solid ${BORDER}`,
+          background: SURFACE,
           display: "flex",
           flexDirection: "column",
-          gap: 5,
+          gap: 4,
         }}
       >
         {options.map((opt) => {
@@ -136,13 +161,11 @@ function JumpOptionsPanel({ label, options, value, onChange, ar }) {
                 width: "100%",
                 display: "flex",
                 alignItems: "center",
-                minHeight: 36,
-                padding: "8px 11px",
-                borderRadius: 10,
-                border: active
-                  ? "1px solid color-mix(in oklab, var(--nv-navy, #14284B) 35%, #E2E8F0)"
-                  : "1px solid var(--nv-line, #E2E8F0)",
-                background: active ? "var(--nv-navy, #14284B)" : CARD,
+                minHeight: 34,
+                padding: "7px 10px",
+                borderRadius: RADIUS,
+                border: active ? `1px solid ${NAVY_FILL}` : `1px solid ${BORDER}`,
+                background: active ? NAVY_FILL : CARD,
                 color: active ? "#fff" : NAVY,
                 fontSize: 12,
                 fontWeight: active ? 700 : 550,
@@ -150,7 +173,6 @@ function JumpOptionsPanel({ label, options, value, onChange, ar }) {
                 cursor: "pointer",
                 textAlign: "start",
                 boxSizing: "border-box",
-                boxShadow: active ? "none" : "0 1px 2px rgba(20,40,75,.03)",
               }}
             >
               {opt.label}
@@ -163,41 +185,112 @@ function JumpOptionsPanel({ label, options, value, onChange, ar }) {
 }
 
 /**
- * Platform-styled due-date field + calendar popover (card identity).
+ * Shared platform date picker — ISO day (YYYY-MM-DD) or month (YYYY-MM).
  */
 export default function PlatformDateField({
-  value = "",
+  value,
+  defaultValue = "",
   onChange,
   ar = true,
   placeholder,
   placement = "bottom",
+  min,
+  max,
+  disabled = false,
+  name,
+  required = false,
+  id,
+  compact = false,
+  allowClear,
+  granularity = "day",
+  style,
 }) {
   const rootRef = useRef(null);
-  const parsed = parseKey(value);
+  const triggerRef = useRef(null);
+  const popRef = useRef(null);
+  const controlled = value !== undefined;
+  const [inner, setInner] = useState(defaultValue || "");
+  const monthMode = granularity === "month";
+  const current = controlled ? (value || "") : inner;
+  const parsed = monthMode ? parseMonthKey(current) : parseKey(current);
   const today = new Date();
   const todayKey = toKey(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayMonthKey = toMonthKey(today.getFullYear(), today.getMonth());
+  const canClear = allowClear ?? !required;
 
   const [open, setOpen] = useState(false);
-  const [jumpOpen, setJumpOpen] = useState(null); // "month" | "year" | null
+  const [jumpOpen, setJumpOpen] = useState(null);
+  const [coords, setCoords] = useState(null);
   const [cursor, setCursor] = useState(() => (
     parsed ? new Date(parsed.y, parsed.m, 1) : new Date(today.getFullYear(), today.getMonth(), 1)
   ));
 
+  const commit = (next) => {
+    if (!controlled) setInner(next);
+    onChange?.(next);
+  };
+
   useEffect(() => {
     if (!open) return undefined;
     const onDoc = (e) => {
-      if (!rootRef.current?.contains(e.target)) {
-        setOpen(false);
-        setJumpOpen(null);
-      }
+      if (rootRef.current?.contains(e.target) || popRef.current?.contains(e.target)) return;
+      setOpen(false);
+      setJumpOpen(null);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
+  useLayoutEffect(() => {
+    if (!open) {
+      setCoords(null);
+      return undefined;
+    }
+    let broughtIntoView = false;
+    const place = () => {
+      const trigger = triggerRef.current;
+      const pop = popRef.current;
+      if (!trigger) return;
+      let r = trigger.getBoundingClientRect();
+      const w = Math.max(292, pop?.offsetWidth || 292);
+      const h = Math.max(280, pop?.offsetHeight || 320);
+      const pad = 12;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      if (!broughtIntoView && placement !== "top" && vh - pad - (r.bottom + 6) < h) {
+        broughtIntoView = true;
+        trigger.scrollIntoView({ block: "center", inline: "nearest" });
+        r = trigger.getBoundingClientRect();
+      }
+      const boundaryEl = trigger.closest("form") || trigger.closest("[role='dialog']") || trigger.closest("section");
+      const b = boundaryEl?.getBoundingClientRect();
+      const minL = Math.max(pad, b ? b.left + 8 : pad);
+      const maxR = Math.min(vw - pad, b ? b.right - 8 : vw - pad);
+      let left = ar ? r.right - w : r.left;
+      if (left < minL) left = minL;
+      if (left + w > maxR) left = maxR - w;
+      if (left < minL) left = minL;
+      const below = r.bottom + 6;
+      const above = r.top - 6 - h;
+      let top = placement === "top" ? above : below;
+      if (top + h > vh - pad && above >= pad && placement !== "top") top = above;
+      if (top < pad) top = pad;
+      setCoords({ top, left, w });
+    };
+    place();
+    const idFrame = requestAnimationFrame(place);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      cancelAnimationFrame(idFrame);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, ar, placement, jumpOpen]);
+
   useEffect(() => {
     if (parsed) setCursor(new Date(parsed.y, parsed.m, 1));
-  }, [value]);
+  }, [current]);
 
   useEffect(() => {
     if (!open) setJumpOpen(null);
@@ -217,20 +310,21 @@ export default function PlatformDateField({
 
   const yearOptions = useMemo(() => {
     const base = new Date().getFullYear();
+    let lo = base - 90;
+    let hi = base + 20;
+    const bounds = [min, max, current].map((item) => parseMonthKey(item) || parseKey(item)).filter(Boolean);
+    for (const p of bounds) {
+      lo = Math.min(lo, p.y);
+      hi = Math.max(hi, p.y);
+    }
     const years = [];
-    for (let y = base - 8; y <= base + 12; y += 1) years.push(y);
-    if (!years.includes(year)) years.push(year);
-    return years.sort((a, b) => a - b).map((y) => ({ value: y, label: String(y) }));
-  }, [year]);
+    for (let y = lo; y <= hi; y += 1) years.push(y);
+    return years.map((y) => ({ value: y, label: String(y) }));
+  }, [year, min, max, current]);
 
   const display = parsed
-    ? formatDate(new Date(parsed.y, parsed.m, parsed.d), ar ? "ar" : "en", {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : (placeholder || (ar ? "اختر التاريخ" : "Pick a date"));
+    ? (monthMode ? formatMonthYear(new Date(parsed.y, parsed.m, 1), ar ? "ar" : "en") : formatTriggerDate(parsed, ar))
+    : (placeholder || (monthMode ? (ar ? "اختر الشهر" : "Pick a month") : (ar ? "اختر التاريخ" : "Pick a date")));
 
   const weekdays = ar
     ? ["اث", "ثل", "أر", "خم", "جم", "سب", "أح"]
@@ -238,66 +332,97 @@ export default function PlatformDateField({
 
   const pick = (day) => {
     if (!day) return;
-    onChange?.(toKey(year, month, day));
+    const key = toKey(year, month, day);
+    if (outOfRange(key, min, max)) return;
+    commit(key);
     setOpen(false);
     setJumpOpen(null);
   };
 
   const clear = (e) => {
     e.stopPropagation();
-    onChange?.("");
+    commit("");
     setOpen(false);
     setJumpOpen(null);
   };
 
+  const height = compact ? 32 : 36;
+
   return (
-    <div ref={rootRef} style={{ position: "relative", width: "100%" }}>
+    <div ref={rootRef} style={{ position: "relative", width: "100%", minWidth: compact ? 148 : 0 }}>
+      {name ? (
+        <input
+          type="text"
+          name={name}
+          id={id}
+          value={current}
+          required={required}
+          disabled={disabled}
+          readOnly
+          tabIndex={-1}
+          aria-hidden
+          style={{
+            position: "absolute",
+            opacity: 0,
+            width: 1,
+            height: 1,
+            pointerEvents: "none",
+          }}
+        />
+      ) : null}
       <button
+        ref={triggerRef}
         type="button"
+        disabled={disabled}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         onClick={() => {
+          if (disabled) return;
           setOpen((v) => !v);
           setJumpOpen(null);
         }}
         style={{
           width: "100%",
-          height: 36,
-          minHeight: 36,
-          padding: "0 12px",
-          borderRadius: 9,
-          border: "1px solid var(--nv-line, #E2E8F0)",
+          height,
+          minHeight: height,
+          padding: compact ? "0 8px" : "0 12px",
+          borderRadius: RADIUS,
+          border: `1px solid ${BORDER}`,
           background: CARD,
           color: parsed ? NAVY : MUTED,
           display: "flex",
           alignItems: "center",
-          gap: 8,
-          cursor: "pointer",
+          gap: compact ? 6 : 8,
+          cursor: disabled ? "not-allowed" : "pointer",
           fontFamily: "inherit",
-          fontSize: 13,
+          fontSize: compact ? 12 : 13,
           fontWeight: parsed ? 600 : 500,
           lineHeight: 1,
           boxSizing: "border-box",
           textAlign: "start",
+          opacity: disabled ? 0.55 : 1,
+          ...style,
         }}
       >
         <span
           style={{
-            width: 22,
-            height: 22,
-            borderRadius: 6,
+            width: compact ? 18 : 22,
+            height: compact ? 18 : 22,
+            borderRadius: RADIUS,
             background: SURFACE,
-            border: "1px solid var(--nv-line, #E2E8F0)",
+            border: `1px solid ${BORDER}`,
             display: "grid",
             placeItems: "center",
             color: NAVY,
             flexShrink: 0,
           }}
         >
-          <CalendarDays size={13} strokeWidth={1.75} />
+          <CalendarDays size={compact ? 12 : 13} strokeWidth={1.75} />
         </span>
         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {display}
         </span>
-        {parsed ? (
+        {parsed && canClear && !disabled ? (
           <span
             role="button"
             tabIndex={0}
@@ -309,7 +434,7 @@ export default function PlatformDateField({
             style={{
               width: 22,
               height: 22,
-              borderRadius: 6,
+              borderRadius: RADIUS,
               display: "grid",
               placeItems: "center",
               color: MUTED,
@@ -321,22 +446,25 @@ export default function PlatformDateField({
         ) : null}
       </button>
 
-      {open ? (
+      {open ? createPortal(
         <div
+          ref={popRef}
+          dir={ar ? "rtl" : "ltr"}
+          role="dialog"
+          aria-label={monthMode ? (ar ? "الشهر" : "Month") : (ar ? "التقويم" : "Calendar")}
           style={{
-            position: "absolute",
-            insetInlineStart: 0,
-            ...(placement === "top"
-              ? { bottom: "calc(100% + 6px)", top: "auto" }
-              : { top: "calc(100% + 6px)" }),
-            zIndex: 80,
-            width: 292,
+            position: "fixed",
+            top: coords?.top ?? -9999,
+            left: coords?.left ?? 0,
+            zIndex: 220,
+            width: coords?.w ?? 292,
             minWidth: 292,
-            borderRadius: 16,
-            border: "1px solid var(--nv-line, #E2E8F0)",
+            borderRadius: RADIUS,
+            border: `1px solid ${BORDER}`,
             background: CARD,
-            boxShadow: "0 16px 40px rgba(20,40,75,.14)",
+            boxShadow: "none",
             overflow: "hidden",
+            visibility: coords ? "visible" : "hidden",
           }}
         >
           <div
@@ -345,8 +473,8 @@ export default function PlatformDateField({
               flexDirection: "column",
               gap: 8,
               padding: "10px 12px",
-              borderBottom: "1px solid var(--nv-line, #E2E8F0)",
-              background: "linear-gradient(180deg, color-mix(in oklab, var(--nv-accent, #1E9E63) 6%, var(--nv-card, #fff)) 0%, var(--nv-card, #fff) 100%)",
+              borderBottom: `1px solid ${BORDER}`,
+              background: CARD,
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -354,10 +482,10 @@ export default function PlatformDateField({
                 type="button"
                 onClick={() => {
                   setJumpOpen(null);
-                  setCursor(new Date(year, month - 1, 1));
+                  setCursor(monthMode ? new Date(year - 1, month, 1) : new Date(year, month - 1, 1));
                 }}
-                aria-label={ar ? "الشهر السابق" : "Previous month"}
-                style={navBtnStyle}
+                aria-label={monthMode ? (ar ? "السنة السابقة" : "Previous year") : (ar ? "الشهر السابق" : "Previous month")}
+                style={{ ...chromeBtn, width: 28, height: 28 }}
               >
                 {ar ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
               </button>
@@ -383,10 +511,10 @@ export default function PlatformDateField({
                 type="button"
                 onClick={() => {
                   setJumpOpen(null);
-                  setCursor(new Date(year, month + 1, 1));
+                  setCursor(monthMode ? new Date(year + 1, month, 1) : new Date(year, month + 1, 1));
                 }}
-                aria-label={ar ? "الشهر التالي" : "Next month"}
-                style={navBtnStyle}
+                aria-label={monthMode ? (ar ? "السنة التالية" : "Next year") : (ar ? "الشهر التالي" : "Next month")}
+                style={{ ...chromeBtn, width: 28, height: 28 }}
               >
                 {ar ? <ChevronLeft size={14} /> : <ChevronRight size={14} />}
               </button>
@@ -401,7 +529,15 @@ export default function PlatformDateField({
                 options={monthOptions}
                 value={month}
                 onChange={(next) => {
-                  setCursor(new Date(year, Number(next), 1));
+                  const nextMonth = Number(next);
+                  setCursor(new Date(year, nextMonth, 1));
+                  if (monthMode) {
+                    const key = toMonthKey(year, nextMonth);
+                    if (!monthOutOfRange(key, min, max)) {
+                      commit(key);
+                      setOpen(false);
+                    }
+                  }
                   setJumpOpen(null);
                 }}
               />
@@ -416,116 +552,216 @@ export default function PlatformDateField({
                   setJumpOpen(null);
                 }}
               />
-            ) : (
+            ) : monthMode ? (
               <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(7, 1fr)",
-                gap: 2,
-                marginBottom: 6,
-              }}
-            >
-              {weekdays.map((w) => (
-                <div
-                  key={w}
-                  style={{
-                    textAlign: "center",
-                    fontSize: 10,
-                    fontWeight: 650,
-                    color: MUTED,
-                    padding: "4px 0",
-                  }}
-                >
-                  {w}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                  {monthOptions.map((opt) => {
+                    const key = toMonthKey(year, opt.value);
+                    const selected = key === String(current).slice(0, 7);
+                    const isNow = key === todayMonthKey;
+                    const blocked = monthOutOfRange(key, min, max);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        disabled={blocked}
+                        onClick={() => {
+                          if (blocked) return;
+                          commit(key);
+                          setCursor(new Date(year, opt.value, 1));
+                          setOpen(false);
+                          setJumpOpen(null);
+                        }}
+                        style={{
+                          minHeight: 40,
+                          padding: "8px 6px",
+                          borderRadius: RADIUS,
+                          border: selected
+                            ? `1px solid ${NAVY_FILL}`
+                            : isNow
+                              ? `1px solid ${NAVY_FILL}`
+                              : `1px solid ${BORDER}`,
+                          background: selected ? NAVY_FILL : CARD,
+                          color: selected ? "#fff" : blocked ? MUTED : NAVY,
+                          fontSize: 12,
+                          fontWeight: selected || isNow ? 700 : 550,
+                          cursor: blocked ? "not-allowed" : "pointer",
+                          fontFamily: "inherit",
+                          opacity: blocked ? 0.38 : 1,
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
-              {cells.map((day, i) => {
-                if (!day) return <div key={`e-${i}`} />;
-                const key = toKey(year, month, day);
-                const selected = key === value;
-                const isToday = key === todayKey;
-                return (
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <button
-                    key={key}
                     type="button"
-                    onClick={() => pick(day)}
+                    onClick={() => {
+                      setOpen(false);
+                      setJumpOpen(null);
+                    }}
                     style={{
-                      height: 34,
-                      borderRadius: 9,
-                      border: selected
-                        ? "none"
-                        : isToday
-                          ? `1px solid ${BRAND}`
-                          : "1px solid transparent",
-                      background: selected ? "var(--nv-navy, #14284B)" : "transparent",
-                      color: selected ? "#fff" : NAVY,
+                      height: 32,
+                      padding: "0 12px",
+                      borderRadius: RADIUS,
+                      border: `1px solid ${BORDER}`,
+                      background: CARD,
+                      color: MUTED,
                       fontSize: 12,
-                      fontWeight: selected || isToday ? 700 : 500,
+                      fontWeight: 500,
                       cursor: "pointer",
                       fontFamily: "inherit",
                     }}
                   >
-                    {day}
+                    {ar ? "إغلاق" : "Close"}
                   </button>
-                );
-              })}
-            </div>
+                  <button
+                    type="button"
+                    disabled={monthOutOfRange(todayMonthKey, min, max)}
+                    onClick={() => {
+                      if (monthOutOfRange(todayMonthKey, min, max)) return;
+                      commit(todayMonthKey);
+                      setCursor(new Date(today.getFullYear(), today.getMonth(), 1));
+                      setOpen(false);
+                      setJumpOpen(null);
+                    }}
+                    style={{
+                      flex: 1,
+                      height: 32,
+                      borderRadius: RADIUS,
+                      border: `1px solid ${NAVY_FILL}`,
+                      background: CARD,
+                      color: NAVY,
+                      fontSize: 12,
+                      fontWeight: 650,
+                      cursor: monthOutOfRange(todayMonthKey, min, max) ? "not-allowed" : "pointer",
+                      fontFamily: "inherit",
+                      opacity: monthOutOfRange(todayMonthKey, min, max) ? 0.4 : 1,
+                    }}
+                  >
+                    {ar ? "هذا الشهر" : "This month"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(7, 1fr)",
+                    gap: 2,
+                    marginBottom: 6,
+                  }}
+                >
+                  {weekdays.map((w) => (
+                    <div
+                      key={w}
+                      style={{
+                        textAlign: "center",
+                        fontSize: 10,
+                        fontWeight: 650,
+                        color: MUTED,
+                        padding: "4px 0",
+                      }}
+                    >
+                      {w}
+                    </div>
+                  ))}
+                </div>
 
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  onChange?.(todayKey);
-                  setCursor(new Date(today.getFullYear(), today.getMonth(), 1));
-                  setOpen(false);
-                  setJumpOpen(null);
-                }}
-                style={{
-                  flex: 1,
-                  height: 34,
-                  borderRadius: 9,
-                  border: `1px solid ${BRAND}`,
-                  background: BRAND_SOFT,
-                  color: BRAND,
-                  fontSize: 12,
-                  fontWeight: 650,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                {ar ? "اليوم" : "Today"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  setJumpOpen(null);
-                }}
-                style={{
-                  height: 34,
-                  padding: "0 12px",
-                  borderRadius: 9,
-                  border: "1px solid var(--nv-line, #E2E8F0)",
-                  background: SURFACE,
-                  color: MUTED,
-                  fontSize: 12,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                {ar ? "إغلاق" : "Close"}
-              </button>
-            </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+                  {cells.map((day, i) => {
+                    if (!day) return <div key={`e-${i}`} />;
+                    const key = toKey(year, month, day);
+                    const selected = key === current;
+                    const isToday = key === todayKey;
+                    const blocked = outOfRange(key, min, max);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        disabled={blocked}
+                        onClick={() => pick(day)}
+                        style={{
+                          height: 34,
+                          width: "100%",
+                          borderRadius: selected || isToday ? "50%" : RADIUS,
+                          border: selected
+                            ? "none"
+                            : isToday
+                              ? `1px solid ${NAVY_FILL}`
+                              : "1px solid transparent",
+                          background: selected ? NAVY_FILL : "transparent",
+                          color: selected ? "#fff" : blocked ? MUTED : NAVY,
+                          fontSize: 12,
+                          fontWeight: selected || isToday ? 700 : 500,
+                          cursor: blocked ? "not-allowed" : "pointer",
+                          fontFamily: "inherit",
+                          opacity: blocked ? 0.38 : 1,
+                        }}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      setJumpOpen(null);
+                    }}
+                    style={{
+                      height: 32,
+                      padding: "0 12px",
+                      borderRadius: RADIUS,
+                      border: `1px solid ${BORDER}`,
+                      background: CARD,
+                      color: MUTED,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {ar ? "إغلاق" : "Close"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={outOfRange(todayKey, min, max)}
+                    onClick={() => {
+                      if (outOfRange(todayKey, min, max)) return;
+                      commit(todayKey);
+                      setCursor(new Date(today.getFullYear(), today.getMonth(), 1));
+                      setOpen(false);
+                      setJumpOpen(null);
+                    }}
+                    style={{
+                      flex: 1,
+                      height: 32,
+                      borderRadius: RADIUS,
+                      border: `1px solid ${NAVY_FILL}`,
+                      background: CARD,
+                      color: NAVY,
+                      fontSize: 12,
+                      fontWeight: 650,
+                      cursor: outOfRange(todayKey, min, max) ? "not-allowed" : "pointer",
+                      fontFamily: "inherit",
+                      opacity: outOfRange(todayKey, min, max) ? 0.4 : 1,
+                    }}
+                  >
+                    {ar ? "اليوم" : "Today"}
+                  </button>
+                </div>
               </>
             )}
           </div>
         </div>
-      ) : null}
+      , document.body) : null}
     </div>
   );
 }

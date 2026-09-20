@@ -4,7 +4,7 @@ import { subscriptionBillableAmount, subscriptionTotals, formatSubscriptionMoney
 import { CLEAN_PRINT_CSS } from "@/lib/pdfTheme";
 
 const esc = (value) => String(value ?? "—").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const date = (value, ar) => new Date(value || Date.now()).toLocaleDateString(ar ? "ar-SA" : "en-GB");
+const date = (value, ar) => new Date(value || Date.now()).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB");
 
 export function printSubscriptionInvoiceBundle(rows, ar) {
   const subscriptions = rows.filter((row) => row.status !== "no_subscription");

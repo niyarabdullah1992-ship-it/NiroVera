@@ -7,6 +7,7 @@ import {
   canonicalFieldValue,
   isFixedContractType,
 } from "@/lib/employeeProfileFields";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import { MUTED, NAVY_FILL, field, ui } from "@/lib/platformStyles";
 import IdentityCard from "@/components/shared/IdentityCard";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
@@ -194,23 +195,15 @@ export default function ContractForm({ employee, companyId, contract, ar, onDone
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "12px" }}>
           <label style={{ fontSize: "11px", color: MUTED }}>
             {ar ? "تاريخ بداية العقد" : "Contract start date"}
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              style={{ ...field, marginTop: 6 }}
-            />
+            <div style={{ marginTop: 6 }}>
+              <PlatformDateField ar={ar} value={startDate} onChange={setStartDate} />
+            </div>
           </label>
           <label style={{ fontSize: "11px", color: MUTED }}>
             {ar ? "تاريخ نهاية العقد" : "Contract end date"}
-            <input
-              type="date"
-              value={endDate}
-              min={startDate}
-              disabled={!fixed}
-              onChange={(e) => setEndDate(e.target.value)}
-              style={{ ...field, marginTop: 6, opacity: fixed ? 1 : 0.55 }}
-            />
+            <div style={{ marginTop: 6 }}>
+              <PlatformDateField ar={ar} value={endDate} min={startDate} disabled={!fixed} onChange={setEndDate} />
+            </div>
           </label>
         </div>
         {error && <p style={{ margin: 0, fontSize: "12px", color: "#DC2626" }}>{error}</p>}

@@ -1,9 +1,15 @@
+// purpose: ProductFeedback tenant row.
+// domain: platform
+// isolation: companyId
+// owner: gmailNotify
+// status: canonical
 {
   "name": "ProductFeedback",
   "type": "object",
   "properties": {
     "companyId": {
-      "type": "string"
+      "type": "string",
+      "description": "Tenant that submitted the feedback."
     },
     "role": {
       "type": "string"

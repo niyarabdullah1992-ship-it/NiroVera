@@ -148,18 +148,10 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
           {loadError}
         </div>
       ) : null}
-      {/* formula — derived, not typed */}
       <div style={cardShell}>
         <div style={{ display: "flex", alignItems: "baseline", gap: "12px", flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 300px" }}>
-            <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
-              {ar ? "أهداف الوظيفة — وزن المهمة يقود الدرجة" : "Job objectives — task weight drives the score"}
-            </div>
-            <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.75, maxWidth: "860px" }}>
-              {ar
-                ? "لا أرقام مكتوبة يدويًا: وزن المهمة المعتمدة (الأولوية × الجهد) هو ما يُملأ به كل هدف من نوع «مهام»، وبقية الأهداف نسب مشتقة."
-                : "No typed figures: approved task weight (priority × effort) fills every task objective, and the remaining objectives are derived rates."}
-            </div>
+          <div style={{ flex: "1 1 300px", fontSize: "13px", fontWeight: 600, color: NAVY }}>
+            {ar ? "أهداف الوظيفة" : "Job objectives"}
           </div>
           <div style={{ textAlign: ar ? "left" : "right" }}>
             <div style={{ fontSize: "10px", letterSpacing: "0.06em", color: MUTED, fontWeight: 600 }}>
@@ -170,34 +162,9 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
             </div>
           </div>
         </div>
-
-        <div style={{ marginTop: "12px", padding: "12px 14px", borderRadius: "10px", background: SURFACE, border: "1px solid #E2E8F0", display: "flex", flexDirection: "column", gap: "6px" }}>
-          <div style={{ fontSize: "12px", color: NAVY, lineHeight: 1.8 }}>
-            {ar
-              ? "الدرجة = مجموع (الإنجاز × الوزن) ÷ 100"
-              : "score = Σ (attainment × weight) ÷ 100"}
-          </div>
-          <div style={{ fontSize: "12px", color: MUTED, lineHeight: 1.8 }}>
-            {ar
-              ? "إنجاز المهام = مجموع (الأولوية × الجهد المعتمد) ÷ الهدف"
-              : "task attainment = Σ (priority × approved effort) ÷ target"}
-          </div>
-          <div style={{ fontSize: "11px", color: MUTED, lineHeight: 1.7 }}>
-            {ar
-              ? "الهدف إما رقم مطلق في الخطة أو أعلى وزن مثبت بين الزملاء في النطاق نفسه. المهمة غير المعتمدة لا تدخل الحساب."
-              : "The target is either an absolute number in the plan or the highest proven weight among peers in the same scope. Unapproved work never counts."}
-          </div>
-        </div>
       </div>
 
-      {/* board */}
       <div style={tableShell}>
-        <div style={{ padding: "16px 18px 12px" }}>
-          <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>{ar ? "لوحة الأهداف" : "Objective board"}</div>
-          <div style={{ fontSize: "11px", color: MUTED, marginTop: "2px" }}>
-            {ar ? "اضغط أي صف لعرض تفكيك الأهداف" : "Select a row to open the objective breakdown"}
-          </div>
-        </div>
         <div style={{ overflowX: "auto" }}>
           <div style={{ minWidth: "760px" }}>
             <div style={headRow}>
@@ -301,11 +268,6 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
       {isSenior && (
         <div style={cardShell}>
           <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>{ar ? "خطة أهداف الوظيفة" : "Job goal plan"}</div>
-          <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.7, maxWidth: "820px" }}>
-            {ar
-              ? "الأوزان تُعاد توزيعها داخل 100% ولا تُضيف مصدرًا جديدًا للنقاط. وزن المهام المعتمدة لا يقل عن 40% — هذا حد لا يُتجاوز."
-              : "Weights are redistributed inside 100% and never add a new way to earn points. Approved task weight may not drop below 40% — a hard floor."}
-          </div>
 
           <div style={{ marginTop: "12px", maxWidth: "320px" }}>
             <span style={labelText}>{ar ? "الوظيفة" : "Job"}</span>
@@ -315,7 +277,7 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
             </select>
             {jobs.length === 0 ? (
               <div style={{ fontSize: "11px", color: "#B45309", marginTop: "6px" }}>
-                {ar ? "لا وظائف في الكتالوج — أنشئها من صفحة الهيكل التنظيمي." : "No jobs in the catalogue — create them on the organization page."}
+                {ar ? "لا وظائف في الكتالوج." : "No jobs in the catalogue."}
               </div>
             ) : null}
           </div>
@@ -404,7 +366,7 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
                 <span style={{ flex: "1 1 200px", fontSize: "11px", color: draftGate && !draftGate.ok ? "#B45309" : MUTED, lineHeight: 1.7 }}>
                   {draftGate && !draftGate.ok
                     ? (ar ? draftGate.reason : draftGate.reasonEn)
-                    : (ar ? `المجموع ${draftTotal}% — جاهزة للحفظ.` : `Total ${draftTotal}% — ready to save.`)}
+                    : (ar ? `المجموع ${draftTotal}%` : `Total ${draftTotal}%`)}
                 </span>
                 <button
                   type="button"

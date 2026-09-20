@@ -1,11 +1,11 @@
 /** Assets / custody offboarding — return gate + Articles 80/81/84/85/87 EOS.
- *  Design: NiroVera Platform.dc.html (offboarding / offAssets / eos / offComplete).
  *  Keep in sync with base44/shared/offboardingDerivations.ts
  */
 
 import { checkResignationGate, checkTerminationGate } from "./contractLawDerivations.js";
 import { citeRule, ruleValue } from "./laborRules.js";
 import { accruedAnnualDaysAtExit } from "./leaveTypes.js";
+import { checkExitCloseoutGate, eosWageBase } from "./laborProtectionGates.js";
 
 export const ANNUAL_ENTITLEMENT_DAYS = 21;
 export const MS_PER_YEAR = 31557600000;
@@ -221,7 +221,14 @@ export function deriveEos(caseRow, nowMs = Date.now()) {
   const hireDate = caseRow.hireDate || caseRow.profile?.hireDate || null;
   const preStart = isPreStart(hireDate, nowMs);
   const years = preStart ? 0 : serviceYears(hireDate, nowMs);
-  const wage = finalWage(Number(caseRow.base) || 0, Number(caseRow.allowances) || 0);
+  const eosBase = eosWageBase({
+    ...caseRow,
+    profile: caseRow.profile || {},
+    base: caseRow.base ?? caseRow.profile?.baseSalary ?? caseRow.profile?.base,
+    allowances: caseRow.allowances ?? caseRow.profile?.allowances,
+    bonus: caseRow.bonus ?? caseRow.profile?.bonus,
+  });
+  const wage = eosBase.wage;
   const onDate = localIso(nowMs);
   const entitlement = annualEntitlementDays(caseRow, onDate, nowMs);
   const accrued = preStart ? 0 : accruedAnnualDaysAtExit(hireDate, entitlement, onDate);
@@ -235,9 +242,9 @@ export function deriveEos(caseRow, nowMs = Date.now()) {
   const art87 = !preStart && !art80 && art87FullAward(caseRow, nowMs);
   const resigning = reason === "resignation";
   let fraction = 1;
-  let citeId = "eos.gratuity.cite";
+  let citeId = eosBase.citeRuleId || "eos.gratuity.cite";
   if (preStart) {
-    citeId = "eos.gratuity.cite";
+    citeId = eosBase.citeRuleId || "eos.gratuity.cite";
   } else if (art80) {
     fraction = 0;
     citeId = "eos.art80.cite";
@@ -271,6 +278,7 @@ export function deriveEos(caseRow, nowMs = Date.now()) {
     gratuity,
     leaveCash: leave,
     total: gratuity + leave,
+    allWageElements: eosBase.agreed,
   };
 }
 
@@ -403,5 +411,10 @@ export function checkCompleteOffboardingGate(caseRow, extras = {}) {
     });
     if (!resg.ok) return resg;
   }
+  const closeout = checkExitCloseoutGate({
+    serviceCertificateIssued: extras.serviceCertificateIssued ?? exit.serviceCertificateIssued,
+    documentsReturned: extras.documentsReturned ?? exit.documentsReturned,
+  });
+  if (!closeout.ok) return closeout;
   return { ok: true };
 }

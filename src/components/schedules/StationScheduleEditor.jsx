@@ -7,7 +7,9 @@ import ScheduleCell from "./ScheduleCell";
 import ScheduleStatsBar from "./ScheduleStatsBar";
 import RotaPublishPanel from "./RotaPublishPanel";
 import { MUTED, NAVY, SURFACE, ui, CARD } from "@/lib/platformStyles";
+import { uiDateLocale } from "@/lib/dateFormat";
 import { duplicateShiftGroups, nextDistinctShift, checkConsecutiveWorkGate } from "@/lib/shiftDerivations";
+import { ruleValue } from "@/lib/laborRules";
 import { toast } from "@/components/ui/use-toast";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";
@@ -86,7 +88,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
   const stationEmployees = (data.employees || []).filter((e) => (e.stationId || defaultStationId) === stationId);
   const monthDates = getMonthDates(cursor.year, cursor.month);
   const daysIn = monthDates.length;
-  const monthLabel = new Date(cursor.year, cursor.month, 1).toLocaleDateString(lang, { month: "long", year: "numeric" });
+  const monthLabel = new Date(cursor.year, cursor.month, 1).toLocaleDateString(uiDateLocale(lang), { month: "long", year: "numeric" });
   const tableWidth = LABEL_COL + daysIn * DAY_W;
 
   const changeMonth = (delta) => {
@@ -113,12 +115,12 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
     if (!draft) {
       toast({
         description: ar
-          ? "النوافذ الثلاث (صباحي · مسائي · ليلي) موجودة. غيّر وقت وردية بدل تكرارها."
-          : "Morning, evening and night windows already exist. Change a time instead of duplicating it.",
+          ? "النوافذ القياسية (صباحي · مسائي · ليلي · 12 بقاء) موجودة. غيّر وقت وردية بدل تكرارها."
+          : "Standard windows (morning, evening, night, 12h stay) already exist. Change a time instead of duplicating it.",
       });
       return;
     }
-    addShiftType(companyId, stationId, draft);
+    addShiftType(companyId, stationId, { ...draft, restMinutes: draft.restMinutes ?? ruleValue("hours.rest.duringShiftMinutes") });
   };
 
   const clones = duplicateShiftGroups(shiftTypes);
@@ -252,7 +254,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                             <LaborArticleCite ruleId="hours.rest.maxConsecutiveHours" ar={ar} />
                             <select
                               className="nv-shift-field"
-                              value={st.restMinutes == null ? 30 : st.restMinutes}
+                              value={st.restMinutes == null ? ruleValue("hours.rest.duringShiftMinutes") : st.restMinutes}
                               aria-label={ar ? "راحة داخل الوردية" : "In-shift rest"}
                               onChange={(e) => updateShiftType(companyId, stationId, st.id, { ...st, restMinutes: Number(e.target.value) })}
                               style={{ height: 26, fontSize: 11, padding: "0 6px", maxWidth: 92 }}
@@ -261,6 +263,20 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                               <option value={45}>{ar ? "راحة 45 د" : "45m rest"}</option>
                               <option value={60}>{ar ? "راحة 60 د" : "60m rest"}</option>
                               <option value={0}>{ar ? "بلا راحة" : "No rest"}</option>
+                            </select>
+                            <select
+                              className="nv-shift-field"
+                              value={st.outdoor === true ? "outdoor" : st.outdoor === false ? "indoor" : ""}
+                              aria-label={ar ? "مكان العمل: داخلي أو ميدان مكشوف" : "Work place: indoor or open-air"}
+                              onChange={(e) => {
+                                const next = e.target.value === "outdoor" ? true : e.target.value === "indoor" ? false : null;
+                                updateShiftType(companyId, stationId, st.id, { ...st, outdoor: next });
+                              }}
+                              style={{ height: 26, fontSize: 11, padding: "0 6px", maxWidth: 168 }}
+                            >
+                              <option value="">{ar ? "مكان؟" : "Place?"}</option>
+                              <option value="indoor">{ar ? "داخلي" : "Indoor"}</option>
+                              <option value="outdoor">{ar ? "ميدان مكشوف" : "Open-air"}</option>
                             </select>
                             {!gate.ok ? (
                               <PolicyDeviationAlert gate={gate} ruleId="hours.rest.maxConsecutiveHours" ar={ar} />

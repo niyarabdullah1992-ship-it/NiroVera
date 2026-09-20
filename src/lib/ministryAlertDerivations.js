@@ -1,4 +1,7 @@
-/** Named ministry / statutory alerts derived from the live register — no invented counts. */
+/** Watch surface for ministry inspection — named statutory alerts, no invented counts.
+ *  The platform judges; these rows are what an inspector would see on the trail.
+ */
+import { MINISTRY_ROLE, PLATFORM_FORUM } from "./platformJudgment.js";
 import {
   checkContractTermGate,
   collectRegisterValidityDocs,
@@ -174,7 +177,7 @@ export function deriveMinistryAlerts(data, { now = new Date(), today = localDate
       gate: "HEAT_BAN",
       level: "info",
       count: 1,
-      to: "/app/schedules",
+      to: "/app/shifts",
       ruleId: "hours.heat.fromDay",
       textAr: `اليوم ضمن حظر الشمس — الميدان المكشوف موقوف من ${startH}:00 إلى ${endH}:00.`,
       textEn: `Heat-ban day — outdoor field work blocked from ${startH}:00 to ${endH}:00.`,
@@ -220,5 +223,7 @@ export function deriveMinistryAlerts(data, { now = new Date(), today = localDate
     count: alerts.reduce((n, a) => n + (Number(a.count) || 0), 0),
     today,
     cite: alerts.map((a) => (a.ruleId ? citeRule(a.ruleId) : null)).filter(Boolean),
+    forum: PLATFORM_FORUM,
+    ministryRole: MINISTRY_ROLE,
   };
 }

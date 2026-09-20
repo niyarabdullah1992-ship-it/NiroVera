@@ -8,7 +8,7 @@ export default function PublicProofReport({ info, hashMatches, ar }) {
   const items = info.payload?.items || [];
   const totalPhotos = items.reduce((sum, item) => sum + (item.photoEvidence || 0), 0);
   const onSite = items.filter((item) => item.verifiedOnSite).length;
-  const fmt = (value) => (value ? new Date(value).toLocaleDateString(ar ? "ar-SA" : "en-GB") : "—");
+  const fmt = (value) => (value ? new Date(value).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB") : "—");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>

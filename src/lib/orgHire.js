@@ -8,7 +8,7 @@ import { LEAVE_TYPES, statutoryLeaveFloor } from "@/lib/leaveTypes";
 import { listedPacks } from "@/lib/permissionPackTemplate";
 import { templateById, templateLabel } from "@/lib/permissionTemplates";
 import { rankFromScore, scorePermissions } from "@/lib/smartPositions";
-import { applyWorkplaceManagerRule } from "@/lib/peopleTreeGraph";
+import { applyWorkplaceManagerRule, seatCompanyHeadOnRoot } from "@/lib/peopleTreeGraph";
 import { appendOrgStructureEvent } from "@/lib/orgStructureLog";
 import {
   applyExtraCoverageStrip,
@@ -413,7 +413,7 @@ export function ensureCompanyRootStation(companyId, companyName, ar = true) {
     root.unitKind = "branch";
     const holder = ownerEmployee(data);
     if (holder && !root.managerId) root.managerId = holder.id;
-    if (holder && !holder.stationId) holder.stationId = root.id;
+    seatCompanyHeadOnRoot(data);
     hangOrphanStationsUnderCompany(data.stations);
     ensureStationNode(data, root.id);
     stationId = root.id;

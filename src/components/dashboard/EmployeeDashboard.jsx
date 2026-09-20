@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Gauge, ListTodo } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { base44 } from "@/api/base44Client";
 import { getCompanyToken } from "@/lib/store";
 import PresenceStatusPicker from "@/components/employees/PresenceStatusPicker";
 import QuickCheckInCard from "@/components/attendance/QuickCheckInCard";
 import EmployeeTour from "@/components/onboarding/EmployeeTour";
-import IdentityCard, { identityIconWrap } from "@/components/shared/IdentityCard";
-import { ACCENT, BORDER, MUTED, NAVY, SURFACE, WARN, OK, BAD, bar, num, ui } from "@/lib/platformStyles";
+import { ACCENT, BORDER, CARD, MUTED, NAVY, SURFACE, bar } from "@/lib/platformStyles";
 
-function initials(name = "") {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
-}
+const MONO = "'IBM Plex Mono', monospace";
+const LINE = "var(--nv-line, #DFE3EA)";
+const HAIR = "#EEF0F4";
+const ROW = "#F7F8FA";
 
 export default function EmployeeDashboard({ user, company, data }) {
   const { lang } = useI18n();
@@ -84,20 +83,20 @@ export default function EmployeeDashboard({ user, company, data }) {
     status: tg.status === "awaiting_approval"
       ? (ar ? "بانتظار الاعتماد" : "Awaiting approval")
       : (overdue.some((o) => o.id === tg.id) ? (ar ? "متأخرة" : "Overdue") : (ar ? "نشطة" : "Active")),
-    tone: tg.status === "awaiting_approval" ? WARN : (overdue.some((o) => o.id === tg.id) ? BAD : OK),
+    tone: tg.status === "awaiting_approval" ? "#B45309" : (overdue.some((o) => o.id === tg.id) ? "#B91C1C" : "#137A49"),
   }));
 
   const alerts = [
-    ...(overdue.length ? [{ text: ar ? `${overdue.length} مهمة متأخرة — سجّل إثباتًا أو اطلب تمديدًا.` : `${overdue.length} overdue tasks — log proof or request an extension.`, to: "/app/tasks" }] : []),
+    ...(overdue.length ? [{ text: ar ? `${overdue.length} مهمة متأخرة — سجّل إثباتاً أو اطلب تمديداً.` : `${overdue.length} overdue tasks — log proof or request an extension.`, to: "/app/tasks" }] : []),
     ...(awaiting.length ? [{ text: ar ? `${awaiting.length} إنجاز بانتظار اعتماد المشرف.` : `${awaiting.length} completions awaiting supervisor approval.`, to: "/app/tasks" }] : []),
     { text: ar ? "سجّل حضور اليوم قبل الإنجاز الميداني." : "Check in today before logging on-site work.", to: "/app/attendance" },
   ].slice(0, 4);
 
   const kpis = [
-    { label: ar ? "مهام مفتوحة" : "Open tasks", value: String(open.length), to: "/app/tasks", delta: ar ? "للتنفيذ" : "To execute" },
-    { label: ar ? "بانتظار الاعتماد" : "Awaiting approval", value: String(awaiting.length), to: "/app/tasks", delta: ar ? "بعد الإثبات" : "After proof" },
-    { label: ar ? "متأخرة" : "Overdue", value: String(overdue.length), to: "/app/tasks", delta: ar ? "تحتاج متابعة" : "Need follow-up" },
-    { label: ar ? "نقاطي" : "My points", value: String(points), to: "/app/performance", delta: ar ? "تُمنح عند الاعتماد فقط" : "Awarded on approval only" },
+    { key: "open", label: ar ? "مهام مفتوحة" : "Open tasks", value: open.length, hint: ar ? "للتنفيذ" : "To execute", to: "/app/tasks", accent: open.length ? NAVY : "#137A49" },
+    { key: "await", label: ar ? "بانتظار الاعتماد" : "Awaiting approval", value: awaiting.length, hint: ar ? "بعد الإثبات" : "After proof", to: "/app/tasks", accent: awaiting.length ? "#B45309" : NAVY },
+    { key: "late", label: ar ? "متأخرة" : "Overdue", value: overdue.length, hint: ar ? "تحتاج متابعة" : "Need follow-up", to: "/app/tasks", accent: overdue.length ? "#B91C1C" : NAVY },
+    { key: "points", label: ar ? "نقاطي" : "My points", value: points, hint: ar ? "تُمنح عند الاعتماد فقط" : "Awarded on approval only", to: "/app/performance", accent: NAVY },
   ];
 
   return (
@@ -106,97 +105,131 @@ export default function EmployeeDashboard({ user, company, data }) {
       <QuickCheckInCard currentUser={user} company={company} />
 
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
+        <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
           {station
-            ? (ar ? `${station.name} · حضورك ومهامك في سلسلة الإثبات` : `${station.name} · your attendance and tasks in the proof cycle`)
-            : (ar ? "حضورك ومهامك في سلسلة الإثبات" : "Your attendance and tasks in the proof cycle")}
+            ? (ar
+              ? <>{station.name} · ملفي = محطة العمل · <Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>حضورك</Link> ثم <Link to="/app/tasks" style={{ color: "inherit", fontWeight: 600 }}>مهامك</Link> في سلسلة الإثبات</>
+              : <>{station.name} · My file = work station · your <Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>attendance</Link> then <Link to="/app/tasks" style={{ color: "inherit", fontWeight: 600 }}>tasks</Link> in the proof cycle</>)
+            : (ar
+              ? <>حضورك ثم مهامك في سلسلة الإثبات</>
+              : <>Your attendance then your tasks in the proof cycle</>)}
         </p>
         <PresenceStatusPicker user={user} />
       </div>
 
-      <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
-        <IdentityCard
-          icon={Gauge}
-          kicker={ar ? "يومي" : "My day"}
-          title={ar ? "جاهزية اليوم" : "Day readiness"}
-          meta={<span style={num()}>{readiness}<span style={{ fontSize: 12, color: MUTED, fontWeight: 500 }}>/100</span></span>}
-          dir={ar ? "rtl" : "ltr"}
-          bodySurface
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {factors.map((f) => (
-              <div key={f.label} style={{ display: "grid", gridTemplateColumns: "72px 1fr 36px", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: MUTED }}>{f.label}</span>
-                <div style={{ height: 6, overflow: "hidden", borderRadius: 4, background: SURFACE }}>
-                  <span style={bar(f.pct, ACCENT)} />
-                </div>
-                <span style={{ fontSize: 11, fontWeight: 600, color: NAVY, textAlign: "end" }}>{f.pct}%</span>
-              </div>
-            ))}
-            <p style={{ margin: 0, fontSize: 12, color: MUTED }}>
-              {ar ? `${open.length} مفتوحة · ${points} نقطة معتمدة` : `${open.length} open · ${points} awarded points`}
-            </p>
-          </div>
-        </IdentityCard>
-
-        <IdentityCard
-          icon={ListTodo}
-          kicker={ar ? "مهام" : "Tasks"}
-          title={ar ? "مهامي النشطة" : "My active tasks"}
-          subtitle={ar ? "كل إنجاز يحتاج إثباتًا قبل النقاط." : "Every completion needs proof before points."}
-          meta={(
-            <Link to="/app/tasks" style={{ ...ui.btnSecondary, textDecoration: "none" }}>
-              {ar ? "العمليات" : "Operations"}
-            </Link>
-          )}
-          dir={ar ? "rtl" : "ltr"}
-          bodySurface
-        >
-          {loading ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {[0, 1, 2].map((i) => <div key={i} style={{ height: 36, borderRadius: 9, background: SURFACE }} />)}
-            </div>
-          ) : queue.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, color: MUTED, textAlign: "center", padding: "18px 0" }}>
-              {ar ? "لا مهام مفتوحة — سلسلة إثباتك نظيفة اليوم." : "No open tasks — your proof chain is clear today."}
-            </p>
-          ) : (
-            queue.map((r) => (
-              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${BORDER}` }}>
-                <span style={{ ...identityIconWrap, width: 32, height: 32, borderRadius: "50%", fontSize: 11, fontWeight: 600 }}>
-                  {initials(r.name)}
-                </span>
-                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: 600, color: NAVY }}>{r.name}</span>
-                <span style={r.tone}>{r.status}</span>
-              </div>
-            ))
-          )}
-        </IdentityCard>
-      </div>
-
-      <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+      <div className="nv-disc-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
         {kpis.map((k) => (
-          <Link key={k.label} to={k.to} style={{ textDecoration: "none" }}>
-            <IdentityCard title={k.label} subtitle={k.delta} meta={<span style={num()}>{k.value}</span>} dir={ar ? "rtl" : "ltr"} />
+          <Link
+            key={k.key}
+            to={k.to}
+            className="nv-doc"
+            style={{
+              background: CARD,
+              border: `1px solid ${LINE}`,
+              borderTop: `3px solid ${k.accent}`,
+              padding: "14px 16px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              minWidth: 0,
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            <span style={{ fontSize: 12, color: MUTED }}>{k.label}</span>
+            <span dir="ltr" style={{ fontFamily: MONO, fontSize: 30, fontWeight: 500, color: k.accent, lineHeight: 1.05 }}>{k.value}</span>
+            <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{k.hint}</span>
           </Link>
         ))}
       </div>
 
-      <IdentityCard
-        kicker={ar ? "تنبيه" : "Alert"}
-        title={ar ? "تنبيهات اليوم" : "Today's alerts"}
-        dir={ar ? "rtl" : "ltr"}
-        bodySurface
-      >
-        <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div className="nv-emp-summary" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,1fr)", gap: 16, alignItems: "stretch" }}>
+        <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "مهامي النشطة" : "My active tasks"}</span>
+              <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
+                {ar ? "كل إنجاز يحتاج إثباتاً قبل النقاط." : "Every completion needs proof before points."}
+              </span>
+            </div>
+            <Link
+              to="/app/tasks"
+              style={{
+                fontFamily: "inherit",
+                fontSize: 12,
+                fontWeight: 600,
+                padding: "8px 14px",
+                border: `1px solid ${BORDER}`,
+                background: CARD,
+                color: NAVY,
+                textDecoration: "none",
+                whiteSpace: "nowrap",
+                borderRadius: 10,
+              }}
+            >
+              {ar ? "العمليات" : "Operations"}
+            </Link>
+          </div>
+          {loading ? (
+            <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
+              {[0, 1, 2].map((i) => <div key={i} style={{ height: 36, background: SURFACE }} />)}
+            </div>
+          ) : queue.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, color: MUTED, textAlign: "center", padding: "26px 20px" }}>
+              {ar ? "لا مهام مفتوحة — سلسلة إثباتك نظيفة اليوم." : "No open tasks — your proof chain is clear today."}
+            </p>
+          ) : (
+            queue.map((r) => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 20px", borderBottom: `1px solid ${ROW}` }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: r.tone, flexShrink: 0 }} />
+                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13, fontWeight: 700, color: NAVY }}>{r.name}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: r.tone, background: SURFACE, border: `1px solid ${BORDER}`, padding: "2px 9px", whiteSpace: "nowrap", borderRadius: 999 }}>{r.status}</span>
+              </div>
+            ))
+          )}
+        </section>
+
+        <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "جاهزية اليوم" : "Day readiness"}</div>
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.75 }}>
+                {ar ? `${open.length} مفتوحة · ${points} نقطة معتمدة` : `${open.length} open · ${points} awarded points`}
+              </div>
+            </div>
+            <span dir="ltr" style={{ fontFamily: MONO, fontSize: 22, fontWeight: 500, color: NAVY }}>
+              {readiness}
+              <span style={{ fontSize: 12, fontWeight: 500, color: MUTED }}> /100</span>
+            </span>
+          </div>
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {factors.map((f) => (
+              <div key={f.label} style={{ display: "grid", gridTemplateColumns: "72px 1fr 36px", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, color: MUTED }}>{f.label}</span>
+                <div style={{ height: 10, overflow: "hidden", background: SURFACE, borderRadius: 10 }}>
+                  <span style={bar(f.pct, ACCENT)} />
+                </div>
+                <span dir="ltr" style={{ fontSize: 12, fontFamily: MONO, color: NAVY, textAlign: "end" }}>{f.pct}%</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}` }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "تنبيهات اليوم" : "Today's alerts"}</div>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 3, lineHeight: 1.75 }}>{ar ? "كل تنبيه يفتح القسم الذي يصلحه." : "Each alert opens the section that fixes it."}</div>
+        </div>
+        <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column" }}>
           {alerts.map((line, i) => (
-            <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "13px 20px", borderBottom: `1px solid ${ROW}` }}>
               <span style={{ width: 7, height: 7, marginTop: 6, borderRadius: "50%", background: "#B45309", flexShrink: 0 }} />
               <Link to={line.to} style={{ fontSize: 13, color: NAVY, textDecoration: "none", lineHeight: 1.55 }}>{line.text}</Link>
             </li>
           ))}
         </ul>
-      </IdentityCard>
+      </section>
     </div>
   );
 }

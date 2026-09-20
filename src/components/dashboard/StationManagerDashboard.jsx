@@ -12,9 +12,9 @@ import QuickCheckInCard from "@/components/attendance/QuickCheckInCard";
 import HandoffCommandBoard from "@/components/dashboard/HandoffCommandBoard";
 
 /**
- * Station-manager Command Center — same board language as exec, station-scoped.
+ * Station-manager dashboard — same board language as exec, station-scoped.
  */
-export default function StationManagerDashboard({ user, data, stoppageCount = 0, toolbar = null, chatUnread = 0 }) {
+export default function StationManagerDashboard({ user, data, stoppageCount = 0, toolbar = null }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const { company } = useAuth();
@@ -27,20 +27,6 @@ export default function StationManagerDashboard({ user, data, stoppageCount = 0,
     stationIds.has(stationIdForTreeEmployee(data, employee.id) || employee.stationId || defaultStationId),
   );
   const tasks = (data.tasks || []).filter((tk) => stationIds.has(tk.stationId));
-  const dayKey = (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  })();
-  const reports = (data.reports || []).filter((r) =>
-    stationIds.has(r.stationId)
-    && (r.kind === "daily" || r.type === "daily" || !r.kind)
-    && (!r.dateKey || r.dateKey === dayKey),
-  );
-  const pendingReports = reports.filter((r) => !r.approved);
-  const unfiledDaily = stations.filter((st) => {
-    const r = reports.find((x) => String(x.stationId) === String(st.id));
-    return !r?.filedAt;
-  }).length;
   const completed = tasks.filter((tk) => tk.status === "completed").length;
 
   useEffect(() => {
@@ -96,40 +82,31 @@ export default function StationManagerDashboard({ user, data, stoppageCount = 0,
         name: employee.name,
         type: leaveTypeLabel(request.typeAr || request.type, ar),
         date: formatDate(request.createdAt || request.startDate || new Date(), lang, { day: "numeric", month: "short" }),
+        to: "/app/requests/manage",
         status: ar
           ? (request.awaiting === "finance" ? "بانتظار المالية" : request.awaiting === "hr" ? "بانتظار HR" : "بانتظار المدير")
           : (request.awaiting === "finance" ? "Awaiting finance" : request.awaiting === "hr" ? "Awaiting HR" : "Awaiting manager"),
       })),
   );
-  const reportQueue = pendingReports.slice(0, 4).map((r) => ({
-    id: r.id,
-    name: team.find((e) => e.id === r.employeeId)?.name || r.authorName || (ar ? "موظف" : "Staff"),
-    type: ar ? "تقرير يومي" : "Daily report",
-    date: formatDate(r.createdAt || new Date(), lang, { day: "numeric", month: "short" }),
-    status: ar ? "بانتظار المدير" : "Awaiting manager",
-  }));
-  const handoffQueue = [...leaveQueue, ...reportQueue].slice(0, 6);
+  const handoffQueue = leaveQueue.slice(0, 6);
 
   const riskScore = Math.min(
     100,
-    Math.round(absentCount * 8 + delayedTasks * 6 + stoppageCount * 5 + pendingReports.length * 4 + criticalStations * 12 + openHazards * 5),
+    Math.round(absentCount * 8 + delayedTasks * 6 + stoppageCount * 5 + criticalStations * 12 + openHazards * 5),
   );
   const readinessScore = Math.max(0, Math.min(100, 100 - riskScore));
   const readinessFactors = [
     { label: ar ? "حضور اليوم" : "Today's attendance", pct: attendanceRate },
     { label: ar ? "مهام" : "Tasks", pct: tasks.length ? Math.round((completed / tasks.length) * 100) : 100 },
     { label: ar ? "سلامة" : "Safety", pct: Math.max(0, 100 - openHazards * 12 - criticalStations * 20) },
-    { label: ar ? "اعتمادات" : "Approvals", pct: Math.max(0, 100 - (pendingLeaveCount + pendingReports.length) * 8) },
+    { label: ar ? "اعتمادات" : "Approvals", pct: Math.max(0, 100 - pendingLeaveCount * 8) },
   ];
 
   const handoffAlerts = [
-    ...(chatUnread ? [{ level: "info", text: ar ? `${chatUnread} محادثة غير مقروءة.` : `${chatUnread} unread conversation(s).`, to: "/app/chat" }] : []),
     ...(delayedTasks ? [{ level: "info", text: ar ? `${delayedTasks} مهمة تقترب من موعدها أو متأخرة.` : `${delayedTasks} tasks due soon or overdue.`, to: "/app/tasks" }] : []),
     ...(absentCount ? [{ level: "warn", text: ar ? `${absentCount} من المجدولين لم يسجّلوا حضورًا بعد.` : `${absentCount} scheduled staff not checked in yet.`, to: "/app/attendance" }] : []),
-    ...(unfiledDaily ? [{ level: "warn", text: ar ? `${unfiledDaily} فرع بلا رفع يومي — الوردية لا تُغلق.` : `${unfiledDaily} station(s) without a daily filing — shift cannot close.`, to: "/app/daily-report" }] : []),
-    ...(pendingReports.length && !unfiledDaily ? [{ level: "warn", text: ar ? `${pendingReports.length} تقرير يومي بانتظار اعتماد العمليات.` : `${pendingReports.length} daily report(s) awaiting ops approval.`, to: "/app/daily-report" }] : []),
     ...(openHazards ? [{ level: "critical", text: ar ? `${openHazards} مخاطر سلامة بانتظار الإغلاق.` : `${openHazards} open safety hazards awaiting closure.`, to: "/app/safety" }] : []),
-    ...(pendingLeaveCount ? [{ level: "ok", text: ar ? `${pendingLeaveCount} طلب إجازة بانتظار القرار.` : `${pendingLeaveCount} leave requests awaiting a decision.`, to: "/app/leave" }] : []),
+    ...(pendingLeaveCount ? [{ level: "ok", text: ar ? `${pendingLeaveCount} طلب إجازة بانتظار القرار.` : `${pendingLeaveCount} leave requests awaiting a decision.`, to: "/app/requests/manage" }] : []),
     ...(stoppageCount ? [{ level: "info", text: ar ? `${stoppageCount} عوائق تشغيل معلّمة على المهام.` : `${stoppageCount} stoppage issues flagged on tasks.`, to: "/app/tasks" }] : []),
   ].slice(0, 4);
 
@@ -151,7 +128,6 @@ export default function StationManagerDashboard({ user, data, stoppageCount = 0,
         employeesDelta={monthHired || null}
         attendanceRate={attendanceRate}
         pendingLeave={pendingLeaveCount}
-        pendingReports={pendingReports.length}
         leaveQueue={handoffQueue}
         alerts={handoffAlerts}
         stations={stations.map((s) => {
@@ -168,7 +144,7 @@ export default function StationManagerDashboard({ user, data, stoppageCount = 0,
         leaveCount={todayAtt.onLeave}
         absentCount={absentCount}
         payrollCount={team.length}
-        avgApprovalHours={pendingLeaveCount + pendingReports.length > 0 ? 4 : null}
+        avgApprovalHours={pendingLeaveCount > 0 ? 4 : null}
       />
       <QuickCheckInCard currentUser={user} company={company} />
     </div>

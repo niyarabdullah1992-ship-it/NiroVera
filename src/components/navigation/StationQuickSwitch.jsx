@@ -105,7 +105,7 @@ export default function StationQuickSwitch({ open, onClose }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const { data } = useAuth();
-  const { stations, scope, readiness, recents, apply } = useStationSwitcher();
+  const { stations, scope, readiness, recents, apply, allowsAll } = useStationSwitcher();
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
 
@@ -179,7 +179,7 @@ export default function StationQuickSwitch({ open, onClose }) {
       const stationRows = stations
         .filter((station) => !recentIds.has(String(station.id)))
         .map((station) => stationRow(station, "station"));
-      return [allRow, ...recentRows, ...stationRows];
+      return allowsAll ? [allRow, ...recentRows, ...stationRows] : [...recentRows, ...stationRows];
     }
 
     const hits = stations
@@ -197,8 +197,8 @@ export default function StationQuickSwitch({ open, onClose }) {
       .filter(Boolean)
       .sort((a, b) => (b.score - a.score) || String(a.name).localeCompare(String(b.name), ar ? "ar" : "en"));
 
-    return allRow.score ? [allRow, ...hits] : hits;
-  }, [query, stations, recents, readiness, ar, byId, peopleById, tree]);
+    return allowsAll && allRow.score ? [allRow, ...hits] : hits;
+  }, [query, stations, recents, readiness, ar, byId, peopleById, tree, allowsAll]);
 
   useEffect(() => {
     setCursor((c) => Math.min(c, Math.max(0, rows.length - 1)));

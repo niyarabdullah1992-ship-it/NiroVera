@@ -1,11 +1,11 @@
 import { CLEAN_PRINT_CSS } from "@/lib/pdfTheme";
 
 const esc = (value) => String(value ?? "—").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-const money = (value, currency, ar) => new Intl.NumberFormat(ar ? "ar-SA" : "en-US", { style: "currency", currency: currency || "SAR" }).format((value || 0) / 100);
+const money = (value, currency, ar) => new Intl.NumberFormat(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-US", { style: "currency", currency: currency || "SAR" }).format((value || 0) / 100);
 
 export function printOfficialInvoice(invoice, ar) {
   const dir = ar ? "rtl" : "ltr";
-  const date = new Date(invoice.createdAt).toLocaleDateString(ar ? "ar-SA" : "en-GB");
+  const date = new Date(invoice.createdAt).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB");
   const status = ar ? ({ paid: "مدفوعة", open: "مستحقة", void: "ملغاة", uncollectible: "متعذرة التحصيل" }[invoice.status] || invoice.status) : invoice.status;
   const billing = invoice.billing === "yearly" ? (ar ? "سنوي / Yearly" : "Yearly / سنوي") : (ar ? "شهري / Monthly" : "Monthly / شهري");
   const row = (label, value, emphasis = false) => `<div class="row${emphasis ? " emphasis" : ""}"><span class="value">${esc(value)}</span><span class="label">${esc(label)}</span></div>`;

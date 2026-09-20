@@ -30,6 +30,35 @@ const normalizeRawQuery = {
   },
 };
 
+const PROXY_RESET_CODES = new Set(["ECONNRESET", "EPIPE", "ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND"]);
+
+function hardenDevProxy() {
+  return {
+    name: "harden-dev-proxy",
+    configureServer(server) {
+      const ignore = (err) => PROXY_RESET_CODES.has(err?.code);
+      const onUncaught = (err) => {
+        if (ignore(err)) {
+          console.warn(`[vite] ignored ${err.code} from the upstream proxy`);
+          return;
+        }
+        process.off("uncaughtException", onUncaught);
+        throw err;
+      };
+      process.on("uncaughtException", onUncaught);
+      const drop = (err, socket) => {
+        if (!ignore(err)) return;
+        try { socket?.destroy?.(); } catch { /* already closed */ }
+      };
+      server.httpServer?.on("clientError", drop);
+      server.httpServer?.on("error", (err) => {
+        if (ignore(err)) return;
+      });
+      server.httpServer?.once("close", () => process.off("uncaughtException", onUncaught));
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -43,6 +72,7 @@ export default defineConfig({
       analyticsTracker: true,
       visualEditAgent: false
     }),
+    hardenDevProxy(),
     react(),
   ],
   optimizeDeps: {
@@ -55,7 +85,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     watch: {
-      ignored: ["**/design-handoff-claude/**", "**/.tmp-design-caps/**"],
+      ignored: ["**/design-handoff-claude/**", "**/.tmp-*", "**/.tmp-*/**"],
     },
   },
 });

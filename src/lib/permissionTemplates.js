@@ -11,7 +11,6 @@ export const CUSTOM_TEMPLATE_ID = "";
 const dailyOpsView = {
   tasks: "view",
   attendance: "view",
-  daily_report: "view",
   chat: "view",
   performance: "view",
   expenses: "view",
@@ -39,7 +38,6 @@ export const BUILT_IN_TEMPLATES = [
     permissions: {
       tasks: "manage",
       attendance: "manage",
-      daily_report: "manage",
       chat: "manage",
       performance: "manage",
       safety: "manage",

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { CALIBRATION_BAND, CYCLE_FLOW, CYCLE_STATUS_LABELS, RATING_JUSTIFICATION_MIN, todayKey } from "@/lib/hcmDerivations";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import { ACCENT, MUTED, NAVY, cardShell, ui, field, SURFACE } from "@/lib/platformStyles";
 
 const labelText = { display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" };
@@ -19,13 +20,8 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
   return (
     <div style={cardShell}>
       <div style={{ display: "flex", alignItems: "baseline", gap: "12px", flexWrap: "wrap" }}>
-        <div style={{ flex: "1 1 260px" }}>
-          <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>{ar ? "دورة التقييم" : "Review cycle"}</div>
-          <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.7, maxWidth: "760px" }}>
-            {ar
-              ? "الدورة تقرأ الإثبات المعتمد في فترتها. المدير يعاير الدرجة المشتقة داخل نطاق محدود بمبرر مكتوب — ولا يكتبها من الصفر."
-              : "A cycle reads approved evidence inside its window. A manager calibrates the derived score inside a bounded band with a written justification — never types it from scratch."}
-          </div>
+        <div style={{ flex: "1 1 260px", fontSize: "13px", fontWeight: 600, color: NAVY }}>
+          {ar ? "دورة التقييم" : "Review cycle"}
         </div>
         {cycle ? (
           <span style={{
@@ -70,7 +66,7 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
         </div>
       ) : (
         <div style={{ marginTop: "10px", fontSize: "11px", color: MUTED }}>
-          {ar ? "لا دورة مفتوحة — الدرجات أدناه مشتقة من كل الإثبات المعتمد." : "No open cycle — the scores below derive from all approved evidence."}
+          {ar ? "لا دورة مفتوحة." : "No open cycle."}
         </div>
       )}
 
@@ -86,11 +82,11 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
             </label>
             <label>
               <span style={labelText}>{ar ? "من" : "From"}</span>
-              <input type="date" style={field} value={newCycle.from} onChange={(e) => setNewCycle((f) => ({ ...f, from: e.target.value }))} />
+              <PlatformDateField ar={ar} value={newCycle.from} onChange={(next) => setNewCycle((f) => ({ ...f, from: next }))} />
             </label>
             <label>
               <span style={labelText}>{ar ? "إلى" : "To"}</span>
-              <input type="date" style={field} value={newCycle.to} onChange={(e) => setNewCycle((f) => ({ ...f, to: e.target.value }))} />
+              <PlatformDateField ar={ar} value={newCycle.to} min={newCycle.from} onChange={(next) => setNewCycle((f) => ({ ...f, to: next }))} />
             </label>
             <div style={{ display: "flex", alignItems: "flex-end" }}>
               <button

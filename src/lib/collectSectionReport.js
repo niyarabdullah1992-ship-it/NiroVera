@@ -53,6 +53,9 @@ export async function collectSectionReportData({
     reports: asList(store.reports?.length ? store.reports : data?.reports),
     payrollRuns: asList(store.payrollRuns?.length ? store.payrollRuns : data?.payrollRuns),
     personalAttendance: asList(store.personalAttendance?.length ? store.personalAttendance : data?.personalAttendance),
+    disciplinaryCases: asList(store.disciplinaryCases?.length ? store.disciplinaryCases : data?.disciplinaryCases),
+    schedules: asList(data?.schedules?.length ? data.schedules : store.schedules),
+    attendanceSettings: data?.attendanceSettings || store.attendanceSettings || {},
   };
 
   try {

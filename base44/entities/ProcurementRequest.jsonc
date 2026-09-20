@@ -1,15 +1,23 @@
+// purpose: ProcurementRequest tenant row.
+// domain: money
+// isolation: companyId
+// owner: inventory
+// status: canonical
 {
   "name": "ProcurementRequest",
   "type": "object",
   "properties": {
     "companyId": {
-      "type": "string"
+      "type": "string",
+      "description": "Tenant of this procurement request."
     },
     "requestNumber": {
-      "type": "string"
+      "type": "string",
+      "description": "Human request number."
     },
     "stationId": {
-      "type": "string"
+      "type": "string",
+      "description": "Requesting workplace → Station.stationId."
     },
     "requesterId": {
       "type": [

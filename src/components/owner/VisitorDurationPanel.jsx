@@ -34,7 +34,7 @@ export default function VisitorDurationPanel({ stats, ar }) {
           <tbody>
             {stats.recentVisits?.map((visit) => (
               <tr key={visit.id} className="border-t border-[#E2E8F0] text-[#14284B]">
-                <td className="px-3 py-2">{new Date(visit.createdAt).toLocaleString(ar ? "ar-SA" : "en-GB")}</td>
+                <td className="px-3 py-2">{new Date(visit.createdAt).toLocaleString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB")}</td>
                 <td className="px-3 py-2">
                   {visit.country || (ar ? "غير معروف" : "Unknown")}
                   {visit.city ? ` — ${visit.city}` : ""}

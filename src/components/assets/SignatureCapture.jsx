@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Eraser, Check, Loader2 } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { uploadFileOrLocal } from "@/lib/localFileUpload";
 
 // Compact two-party handover signature pad — draws, then uploads a PNG.
 export default function SignatureCapture({ label, value, onChange }) {
@@ -28,7 +28,7 @@ export default function SignatureCapture({ label, value, onChange }) {
     setSaving(true);
     const blob = await new Promise((resolve) => canvasRef.current.toBlob(resolve, "image/png"));
     const file = new File([blob], "signature.png", { type: "image/png" });
-    const up = await base44.integrations.Core.UploadFile({ file });
+    const up = await uploadFileOrLocal(file);
     onChange(up.file_url);
     setSaving(false);
   };

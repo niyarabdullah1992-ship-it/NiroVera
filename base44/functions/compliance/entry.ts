@@ -3,6 +3,7 @@ import { authPowerCareSession } from "../../shared/powerCareSession.ts";
 import {
   buildWpsFileRows,
   checkComplianceDocGate,
+  checkContractTermGate,
   checkGosiFileGate,
   checkNitaqatHireGate,
   checkWpsFileGate,
@@ -11,9 +12,19 @@ import {
   deriveNitaqat,
   type EmployeeComplianceLike,
 } from "../../shared/complianceDerivations.ts";
+import {
+  deriveLaborComplianceScore,
+  deriveMhrsdSectorBoard,
+  laborRulesCatalog,
+  reviewArbitrationCase,
+  sealArbitrationVerdict,
+  visibleArbitrationOutcomes,
+} from "../../shared/arbitrationDerivations.ts";
 
 const COMPLIANCE_CATEGORY = "employeeCompliance";
-const SETTINGS_CATEGORY = "companySettings";
+const SETTINGS_CATEGORY = "companyMeta";
+const SETTINGS_LEGACY_CATEGORY = "companySettings"; // do-not-write — read fallback only
+const ARBITRATION_CATEGORY = "arbitrationOutcomes";
 
 function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
@@ -73,10 +84,17 @@ Deno.serve(async (req) => {
 
     const loadSettings = async () => {
       const blob = await loadBlob(SETTINGS_CATEGORY);
-      return (blob?.payload || {}) as {
+      const raw = Array.isArray(blob?.payload) ? blob.payload[0] : blob?.payload;
+      let settings = (raw || {}) as {
         gosiEstablishment?: string;
         qiwaEstablishment?: string;
       };
+      if (!settings.gosiEstablishment && !settings.qiwaEstablishment) {
+        const legacy = await loadBlob(SETTINGS_LEGACY_CATEGORY);
+        const legacyRaw = Array.isArray(legacy?.payload) ? legacy.payload[0] : legacy?.payload;
+        if (legacyRaw && typeof legacyRaw === "object") settings = { ...settings, ...legacyRaw };
+      }
+      return settings;
     };
 
     if (action === "overview") {
@@ -216,6 +234,103 @@ Deno.serve(async (req) => {
       return Response.json({ rows, gate, channel: "mudad" });
     }
 
+    if (action === "laborCatalog") {
+      return Response.json({
+        rules: laborRulesCatalog({ family: body.family, source: body.source, onDate: body.onDate }),
+        noteAr: "كتالوج للقراءة فقط — ليست جدولاً تعدّله المنشأة.",
+        noteEn: "Read-only catalog — not a table the establishment edits.",
+      });
+    }
+
+    if (action === "review") {
+      const review = reviewArbitrationCase({
+        kind: body.kind,
+        request: body.request,
+        employee: body.employee,
+        line: body.line,
+        extraAdvance: body.extraAdvance,
+        onDate: body.onDate,
+        overtimeMinutes: body.overtimeMinutes,
+        decision: body.decision,
+        workerConsent: body.workerConsent,
+        alreadyDecided: body.alreadyDecided,
+        overtimeHoursYtd: body.overtimeHoursYtd,
+        annualCapConsent: body.annualCapConsent,
+      });
+      if (!review.ok && body.commit) {
+        return Response.json({
+          error: review.error || "BLOCKED",
+          reason: review.reason,
+          reasonEn: review.reasonEn,
+          review,
+          overrideAllowed: false,
+        }, { status: 400 });
+      }
+      let outcome = null;
+      if (body.seal) {
+        if (!isManager && String(body.employeeId || body.employee?.employeeId || "") !== String(auth.userId || "")) {
+          return Response.json({
+            error: "FORBIDDEN",
+            reason: "ختم التحكيم للإدارة أو لصاحب الطلب.",
+            reasonEn: "Sealing a verdict is for management or the request owner.",
+          }, { status: 403 });
+        }
+        const blob = await loadBlob(ARBITRATION_CATEGORY);
+        const list = Array.isArray(blob?.payload) ? blob.payload : [];
+        const sealed = sealArbitrationVerdict(review, {
+          companyId: auth.companyId,
+          requestId: body.requestId,
+          employeeId: body.employeeId || body.employee?.employeeId || body.employee?.id,
+          actorRole: "system",
+          actorId: auth.userId || "",
+        });
+        if (!list.some((row: { id?: string }) => row.id === sealed.id)) {
+          list.push(sealed);
+          await saveBlob(ARBITRATION_CATEGORY, list);
+          await audit("arbitration.verdict", `Arbitration ${sealed.kind} ${sealed.status} ${sealed.ruleId || ""}`.trim(), {
+            outcomeId: sealed.id,
+            employeeId: sealed.employeeId,
+          });
+        }
+        outcome = sealed;
+      }
+      return Response.json({ review, outcome, overrideAllowed: false });
+    }
+
+    if (action === "outcomes") {
+      const blob = await loadBlob(ARBITRATION_CATEGORY);
+      const list = Array.isArray(blob?.payload) ? blob.payload : [];
+      const audience = isManager ? "manager" : "employee";
+      const rows = visibleArbitrationOutcomes(list, { audience, employeeId: auth.userId || "" });
+      return Response.json({ outcomes: rows, audience });
+    }
+
+    if (action === "score") {
+      if (!isManager) {
+        return Response.json({
+          error: "FORBIDDEN",
+          reason: "درجة الامتثال للإدارة.",
+          reasonEn: "The compliance score is for management.",
+        }, { status: 403 });
+      }
+      const emps = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId });
+      const checks = (emps || []).slice(0, 200).map((row: { employeeId?: string; id?: string; name?: string }) => {
+        const gate = checkContractTermGate({ employee: row });
+        return {
+          id: `contract:${row.employeeId || row.id}`,
+          ok: !!gate.ok,
+          kind: "contract_end",
+          sector: "contracts",
+          error: "error" in gate ? gate.error : null,
+        };
+      });
+      return Response.json({
+        ...deriveLaborComplianceScore(checks),
+        ...deriveMhrsdSectorBoard(checks),
+        checks,
+      });
+    }
+
     if (action === "setGosiEstablishment") {
       if (!auth.owner && !auth.admin && auth.role !== "hr") {
         return Response.json({
@@ -232,9 +347,10 @@ Deno.serve(async (req) => {
           reasonEn: "A non-empty establishment number is required.",
         }, { status: 400 });
       }
-      const settings = await loadSettings();
-      settings.gosiEstablishment = number;
-      await saveBlob(SETTINGS_CATEGORY, settings);
+      const metaBlob = await loadBlob(SETTINGS_CATEGORY);
+      const current = Array.isArray(metaBlob?.payload) ? (metaBlob.payload[0] || {}) : (metaBlob?.payload || {});
+      const settings = { ...(typeof current === "object" ? current : {}), gosiEstablishment: number };
+      await saveBlob(SETTINGS_CATEGORY, Array.isArray(metaBlob?.payload) || !metaBlob ? [settings] : settings);
       await audit("compliance.setGosiEstablishment", `Set GOSI establishment ${number}`);
       return Response.json({ ok: true, gosiEstablishment: number });
     }

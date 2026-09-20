@@ -9,7 +9,9 @@ import ComparisonExportButtons from "@/components/reports/ComparisonExportButton
 import "leaflet/dist/leaflet.css";
 import EmployeeNameLink from "@/components/employees/EmployeeNameLink";
 import { useI18n } from "@/lib/i18n";
-import { ACCENT, MUTED, NAVY, field, tableShell } from "@/lib/platformStyles";
+import AttendanceLocationsPanel from "@/components/attendance/AttendanceLocationsPanel";
+import PlatformDateField from "@/components/shared/PlatformDateField";
+import { ACCENT, BORDER, MUTED, NAVY, field, tableShell } from "@/lib/platformStyles";
 
 const stationIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -84,13 +86,23 @@ export default function AttendanceMapDashboard({ employees, t }) {
   const outsideCount = located.length - insideCount;
 
   return (
-    <div style={tableShell} dir={ar ? "rtl" : "ltr"}>
-      <div style={{ padding: "11px 14px", borderBottom: "1px solid #E2E8F0", display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }} dir={ar ? "rtl" : "ltr"}>
+    <AttendanceLocationsPanel t={t} lang={lang} />
+    <div className="nv-att-card" style={tableShell}>
+      <div style={{ padding: "11px 14px", borderBottom: `1px solid ${BORDER}`, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
         <div style={{ flex: "1 1 180px" }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{t("mapTab")}</div>
-          <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{date}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "نقاط البصمة اليوم" : "Today's punch points"}</div>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 4, lineHeight: 1.7 }}>
+            {ar
+              ? "أداة نطاق، لا مراقبة. تُحفظ نقطة التسجيل فقط — بلا مسار وبلا مراسي NFC."
+              : "A range tool, not surveillance. Only the punch point is kept — no path, no NFC anchors."}
+            {" · "}
+            {date}
+          </div>
         </div>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ ...field, width: "auto" }} />
+        <div style={{ width: 220 }}>
+          <PlatformDateField compact ar={ar} value={date} onChange={setDate} allowClear={false} />
+        </div>
         <select value={stationFilter} onChange={(e) => setStationFilter(e.target.value)} style={{ ...field, minWidth: 140, maxWidth: 220 }}>
           <option value="all">{t("all")}</option>
           {(data?.stations || []).map((station) => (
@@ -115,7 +127,7 @@ export default function AttendanceMapDashboard({ employees, t }) {
         />
       </div>
 
-      <div style={{ padding: "8px 14px", borderBottom: "1px solid #F1F5F9", display: "flex", flexWrap: "wrap", gap: 12, fontSize: 11, color: MUTED }}>
+      <div data-nv-att-line style={{ padding: "8px 14px", borderBottom: `1px solid ${BORDER}`, display: "flex", flexWrap: "wrap", gap: 12, fontSize: 11, color: MUTED }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
           <span style={{ width: 8, height: 8, borderRadius: "50%", background: ACCENT }} />
           {t("insideLocation")} ({insideCount})
@@ -181,6 +193,7 @@ export default function AttendanceMapDashboard({ employees, t }) {
       {rows.length > 0 && located.length === 0 && (
         <p style={{ padding: "10px 14px", fontSize: 11, color: MUTED }}>{t("noLocatedCheckins")}</p>
       )}
+    </div>
     </div>
   );
 }

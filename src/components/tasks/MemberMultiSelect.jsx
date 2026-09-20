@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 
 // Assign one task to several members — closed by default, opens into a searchable checklist.
-export default function MemberMultiSelect({ members, selected, onChange, lang }) {
+export default function MemberMultiSelect({ members, selected, onChange, lang, emptyLabel }) {
   const ar = lang === "ar";
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -22,7 +22,11 @@ export default function MemberMultiSelect({ members, selected, onChange, lang })
     onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
 
   if (members.length === 0) {
-    return <p className="text-xs text-muted-foreground font-body">{ar ? "لا يوجد أعضاء في هذه المحطة." : "No members in this station."}</p>;
+    return (
+      <p className="text-xs text-muted-foreground font-body">
+        {emptyLabel || (ar ? "لا يوجد أعضاء في هذا الفرع." : "No members in this station.")}
+      </p>
+    );
   }
 
   return (

@@ -10,6 +10,7 @@ import { HIERARCHY_OF_CONTROLS, checkHazardCloseGate } from "@/lib/hseDerivation
 import { formatOpenDuration, formatOpenDurationShort } from "@/lib/dateFormat";
 import { base44 } from "@/api/base44Client";
 import { toast } from "@/components/ui/use-toast";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import { MUTED, NAVY, SURFACE, field, ui, CARD } from "@/lib/platformStyles";
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
@@ -281,38 +282,6 @@ export default function SafetyOverviewTab({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }} dir={ar ? "rtl" : "ltr"}>
-      {showWork ? (
-      <div
-        className="hse-work-lanes"
-        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}
-      >
-        <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #FDE68A", background: "#FFFBEB" }}>
-          <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#B45309" }}>
-            <AlertTriangle style={{ width: 14, height: 14 }} strokeWidth={1.75} />
-            {L("خطر — حالة قائمة", "Hazard — still present")}
-          </p>
-          <p style={{ margin: "5px 0 0", fontSize: 11, lineHeight: 1.55, color: "#92400E" }}>
-            {L(
-              "وضع غير آمن ما زال في الموقع. يبقى مفتوحًا ويمنع الاعتماد حتى يُغلق بصورتي قبل وبعد.",
-              "An unsafe condition still on site. It stays open and blocks approval until closed with before and after photos."
-            )}
-          </p>
-        </div>
-        <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #FECACA", background: "#FEF2F2" }}>
-          <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#B91C1C" }}>
-            <Siren style={{ width: 14, height: 14 }} strokeWidth={1.75} />
-            {L("حادث — حدث وقع", "Incident — already happened")}
-          </p>
-          <p style={{ margin: "5px 0 0", fontSize: 11, lineHeight: 1.55, color: "#991B1B" }}>
-            {L(
-              "إصابة أو شبه حادث أو ضرر حدث. يُحفظ في السجل فورًا، يُسقط الحالة الآمنة، ويلزم تفتيش جديد. لا يغلق الخطر المفتوح.",
-              "An injury, near miss, or damage that occurred. It is logged immediately, drops Safe status, and requires a new inspection. It does not close an open hazard."
-            )}
-          </p>
-        </div>
-      </div>
-      ) : null}
-
       <div
         style={{
           display: "grid",
@@ -337,12 +306,7 @@ export default function SafetyOverviewTab({
         >
           <div>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-              <div>
-                <p style={{ margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: 0.04, color: MUTED, textTransform: "uppercase" }}>
-                  {L("بطاقة العمل", "Work card")}
-                </p>
-                <p style={{ margin: "3px 0 0", fontSize: 13, fontWeight: 600, color: NAVY }}>{L("المخاطر المفتوحة", "Open hazards")}</p>
-              </div>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: NAVY }}>{L("المخاطر المفتوحة", "Open hazards")}</p>
               <span
                 style={{
                   minWidth: 22,
@@ -519,12 +483,6 @@ export default function SafetyOverviewTab({
                 <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: NAVY }}>
                   {L("فتح خطر جديد", "Open new hazard")}
                 </p>
-                <p style={{ margin: 0, fontSize: 11, color: "#92400E", lineHeight: 1.5 }}>
-                  {L(
-                    "إن كان التسريب أو العطل ما زال موجودًا فهنا مكانه. إن كان قد وقع وانتهى فسجّله كحادث بالأسفل.",
-                    "If the leak or fault is still there, log it here. If it already happened and is over, log it as an incident below."
-                  )}
-                </p>
                 <input
                   value={hazard}
                   onChange={(e) => setHazard(e.target.value)}
@@ -685,12 +643,6 @@ export default function SafetyOverviewTab({
                 <Siren style={{ width: 15, height: 15 }} strokeWidth={1.75} />
                 {L("تسجيل حادث", "Log incident")}
               </p>
-              <p style={{ margin: 0, fontSize: 11, lineHeight: 1.55, color: "#991B1B" }}>
-                {L(
-                  "للحدث الذي وقع: يدخل السجل فورًا ويحوّل المستوى إلى «تحت المراقبة» ويلزم تفتيش جديد. إذا كان الوضع ما زال قائمًا استخدم فتح خطر أعلاه.",
-                  "For an event that already happened: it goes to the log immediately, sets Watch, and requires a new inspection. If the condition is still present, open a hazard above."
-                )}
-              </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 <input
                   value={incident}
@@ -850,13 +802,12 @@ export default function SafetyOverviewTab({
                 <CalendarDays style={{ width: 13, height: 13 }} strokeWidth={1.75} />
                 {L("آخر تفتيش", "Last inspection")}
               </span>
-              <input
-                type="date"
+              <PlatformDateField
+                ar={ar}
                 disabled={!canEdit}
                 max={new Date().toISOString().slice(0, 10)}
                 value={rec?.lastInspection ? String(rec.lastInspection).slice(0, 10) : ""}
-                onChange={(e) => onUpdate({ lastInspection: e.target.value ? new Date(e.target.value).toISOString() : null })}
-                style={{ ...inputStyle, width: "100%", opacity: canEdit ? 1 : 0.55 }}
+                onChange={(next) => onUpdate({ lastInspection: next ? new Date(`${next}T00:00:00`).toISOString() : null })}
               />
             </label>
 

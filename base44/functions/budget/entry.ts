@@ -12,7 +12,8 @@ import {
   type StationBudgetLike,
 } from "../../shared/expenseDerivations.ts";
 
-const BUDGET_CATEGORY = "expenseBudget";
+const BUDGET_CATEGORY = "stationBudgets";
+const BUDGET_LEGACY_CATEGORY = "expenseBudget"; // do-not-write — read fallback only
 
 function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
@@ -59,36 +60,70 @@ Deno.serve(async (req) => {
     const financeRoles = ["owner", "director", "ops_manager", "financial_officer", "pgm", "admin"];
     const canManage = auth.owner || auth.admin || financeRoles.includes(auth.role);
 
-    const loadBlob = async () => {
+    const loadBlob = async (category = BUDGET_CATEGORY) => {
       const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({
         companyId: auth.companyId,
-        category: BUDGET_CATEGORY,
+        category,
       });
       return rows[0] || null;
     };
 
+    const budgetsFrom = (raw: unknown) => {
+      const rows = Array.isArray(raw)
+        ? raw
+        : (raw && typeof raw === "object" && Array.isArray((raw as { budgets?: unknown[] }).budgets)
+          ? (raw as { budgets: unknown[] }).budgets
+          : []);
+      return rows.filter(
+        (b: StationBudgetLike & { companyId?: string }) => b && b.stationId && (!b.companyId || b.companyId === auth.companyId),
+      ) as Array<StationBudgetLike & { companyId: string }>;
+    };
+
+    const claimsFrom = (raw: unknown) => {
+      const rows = raw && typeof raw === "object" && !Array.isArray(raw) && Array.isArray((raw as { claims?: unknown[] }).claims)
+        ? (raw as { claims: unknown[] }).claims
+        : [];
+      return rows.filter(
+        (c: ExpenseClaimLike & { companyId?: string }) => c && c.id && (!c.companyId || c.companyId === auth.companyId),
+      ) as Array<ExpenseClaimLike & { companyId: string }>;
+    };
+
     const loadPayload = async (): Promise<BudgetPayload> => {
-      const blob = await loadBlob();
-      const raw = blob?.payload && typeof blob.payload === "object" ? blob.payload : {};
+      const blob = await loadBlob(BUDGET_CATEGORY);
       const base = emptyPayload();
-      base.budgets = (Array.isArray(raw.budgets) ? raw.budgets : []).filter(
-        (b: StationBudgetLike & { companyId?: string }) => b && b.companyId === auth.companyId && b.stationId,
-      );
-      base.claims = (Array.isArray(raw.claims) ? raw.claims : []).filter(
-        (c: ExpenseClaimLike & { companyId?: string }) => c && c.companyId === auth.companyId && c.id,
-      );
+      base.budgets = budgetsFrom(blob?.payload);
+      const entityClaims = await base44.asServiceRole.entities.ExpenseClaim.filter({ companyId: auth.companyId }, "-created_date", 500);
+      base.claims = (Array.isArray(entityClaims) ? entityClaims : []).filter((c: ExpenseClaimLike & { companyId?: string; id?: string }) => c && c.id) as Array<ExpenseClaimLike & { companyId: string }>;
+      if (!base.budgets.length || !base.claims.length) {
+        const legacy = await loadBlob(BUDGET_LEGACY_CATEGORY);
+        if (!base.budgets.length) base.budgets = budgetsFrom(legacy?.payload);
+        if (!base.claims.length) base.claims = claimsFrom(legacy?.payload);
+      }
       return base;
     };
 
     const savePayload = async (payload: BudgetPayload) => {
-      const blob = await loadBlob();
-      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload });
+      const budgets = payload.budgets.map((b) => ({ ...b, companyId: b.companyId || auth.companyId }));
+      const blob = await loadBlob(BUDGET_CATEGORY);
+      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload: budgets });
       else {
         await base44.asServiceRole.entities.CompanyDataBlob.create({
           companyId: auth.companyId,
           category: BUDGET_CATEGORY,
-          payload,
+          payload: budgets,
         });
+      }
+      for (const claim of payload.claims) {
+        const row = { ...claim, companyId: claim.companyId || auth.companyId };
+        const existing = await base44.asServiceRole.entities.ExpenseClaim.filter({ companyId: auth.companyId, id: row.id });
+        if (existing[0]) await base44.asServiceRole.entities.ExpenseClaim.update(existing[0].id, row);
+        else {
+          try {
+            await base44.asServiceRole.entities.ExpenseClaim.create(row);
+          } catch {
+            // Preview-shaped demo rows may miss entity-required fields; skip rather than dual-write a blob.
+          }
+        }
       }
     };
 

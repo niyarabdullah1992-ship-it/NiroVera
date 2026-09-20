@@ -13,7 +13,7 @@ const markerIcon = new L.Icon({
   iconAnchor: [12, 41],
 });
 
-const DEFAULT_CENTER = [24.7136, 46.6753]; // Riyadh
+const DEFAULT_CENTER = [24.7136, 46.6753];
 
 function ClickToPlace({ onPick }) {
   useMapEvents({ click: (e) => onPick([e.latlng.lat, e.latlng.lng]) });
@@ -28,8 +28,6 @@ function Recenter({ pos }) {
   return null;
 }
 
-// Flies the map to a searched area (city / district) so the user can then tap
-// the exact spot inside it.
 function FitArea({ area }) {
   const map = useMap();
   React.useEffect(() => {
@@ -40,17 +38,12 @@ function FitArea({ area }) {
   return null;
 }
 
-// Broad places (a whole city, town, district...) shouldn't drop the marker at
-// their center — we zoom to them and let the user pick the precise spot.
 const BROAD_TYPES = new Set(["city", "town", "village", "state", "county", "suburb", "neighbourhood", "quarter", "administrative", "region", "municipality"]);
 function isBroadResult(r) {
   return r && (r.class === "boundary" || BROAD_TYPES.has(r.type));
 }
 
-// Smart map-based picker for a station's GPS location + allowed check-in radius:
-// tap the map to place the marker, or use the device's current location — no
-// manual coordinate typing needed.
-export default function StationLocationEditor({ t, station, onSave, onCancel }) {
+export default function StationLocationEditor({ t, station, onSave, onCancel, inline = false }) {
   const [pos, setPos] = useState(station.lat != null && station.lng != null ? [station.lat, station.lng] : null);
   const [radius, setRadius] = useState(station.radiusMeters ?? 200);
   const [locating, setLocating] = useState(false);
@@ -72,9 +65,6 @@ export default function StationLocationEditor({ t, station, onSave, onCancel }) 
 
   useEffect(() => stopTracking, []);
 
-  // Live high-accuracy tracking — keeps watching the GPS and moving the marker
-  // every time a more precise fix arrives (instead of one coarse Wi-Fi/IP reading),
-  // stopping automatically once the fix is truly precise.
   const useMyLocation = () => {
     setError("");
     setAccuracy(null);
@@ -109,93 +99,97 @@ export default function StationLocationEditor({ t, station, onSave, onCancel }) 
     });
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onCancel}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg rounded-xl border border-border bg-card overflow-hidden">
+  const card = (
+    <div className={inline ? "w-full border border-[#dfe3ea] bg-white overflow-hidden" : "w-full max-w-lg rounded-xl border border-border bg-card overflow-hidden"}>
+      {!inline ? (
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h3 className="font-heading font-semibold text-sm flex items-center gap-2">
             <MapPin className="w-4 h-4 text-[#14284B]" /> {t("setLocation")} — <span dir="auto">{station.name}</span>
           </h3>
-          <button onClick={onCancel} className="p-1 rounded-md hover:bg-muted"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onCancel} className="p-1 rounded-md hover:bg-muted"><X className="w-4 h-4" /></button>
         </div>
+      ) : null}
 
-        <div className="px-4 py-2 flex items-center justify-between gap-2 border-b border-border">
-          <p className="text-[11px] text-muted-foreground font-body">{t("tapMapToSet")}</p>
+      <div className="px-4 py-2 flex items-center justify-between gap-2 border-b border-border">
+        <p className="text-[11px] text-muted-foreground font-body">{t("tapMapToSet")}</p>
+        <button
+          type="button"
+          onClick={locating ? stopTracking : useMyLocation}
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-[#E2E8F0] bg-[#F7F8FA] text-[#14284B] text-xs font-body hover:bg-white shrink-0"
+        >
+          {locating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LocateFixed className="w-3.5 h-3.5" />}
+          {locating ? `${t("locating")}${accuracy != null ? ` ±${accuracy}${t("metersUnit")}` : ""}` : t("useMyLocation")}
+        </button>
+      </div>
+
+      <div className="px-4 py-2 border-b border-border">
+        <LocationSearchBox
+          t={t}
+          onPick={(p, r) => {
+            stopTracking();
+            setAccuracy(null);
+            if (isBroadResult(r)) {
+              const bb = r?.boundingbox?.map(Number);
+              setArea({ center: p, bounds: bb?.length === 4 ? [[bb[0], bb[2]], [bb[1], bb[3]]] : null });
+              setAreaHint(r?.display_name?.split(",")[0] || "");
+            } else {
+              setArea(null);
+              setAreaHint("");
+              setPos(p);
+            }
+          }}
+        />
+        {areaHint && !pos && (
+          <p className="mt-1 text-[11px] text-accent font-body" dir="auto">📍 {areaHint} — {t("tapMapToSet")}</p>
+        )}
+      </div>
+
+      <div className="relative" style={{ height: inline ? 230 : 288 }}>
+        <MapContainer center={pos || DEFAULT_CENTER} zoom={pos ? 17 : 6} style={{ height: "100%", width: "100%" }}>
+          <GoogleTiles />
+          <ClickToPlace onPick={(p) => { stopTracking(); setAccuracy(null); setArea(null); setPos(p); }} />
+          <Recenter pos={pos} />
+          <FitArea area={area} />
+          {pos && accuracy != null && (
+            <Circle center={pos} radius={accuracy} pathOptions={{ color: "#3b82f6", weight: 1, fillOpacity: 0.08 }} />
+          )}
+          {pos && <Marker position={pos} icon={markerIcon} />}
+          {pos && <Circle center={pos} radius={Number(radius) || 200} pathOptions={{ color: "#1E9E63", fillOpacity: 0.12 }} />}
+        </MapContainer>
+      </div>
+
+      <div className="px-4 py-3 space-y-2 border-t border-border">
+        {error && <p className="text-xs text-destructive font-body">{error}</p>}
+        {accuracy != null && (
+          <p className={`text-xs font-body ${accuracy <= 30 ? "text-emerald-600" : "text-amber-600"}`}>
+            {t("gpsAccuracy")}: ±{accuracy}{t("metersUnit")}{accuracy > 30 ? ` — ${t("lowAccuracyHint")}` : ""}
+          </p>
+        )}
+        <div className="flex items-center gap-3">
+          <input type="range" min="50" max="400" step="10" value={Number(radius) || 200} onChange={(e) => setRadius(e.target.value)} style={{ width: "100%", accentColor: "#1d9a5b" }} />
+          <span className="text-sm font-mono whitespace-nowrap">{Number(radius) || 200} {t("metersUnit")}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {!inline ? (
+            <button type="button" onClick={onCancel} className="px-3 py-1.5 border border-border text-xs font-body hover:bg-muted">{t("cancel")}</button>
+          ) : null}
           <button
-            onClick={locating ? stopTracking : useMyLocation}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#E2E8F0] bg-[#F7F8FA] text-[#14284B] text-xs font-body hover:bg-white shrink-0"
+            type="button"
+            onClick={submit}
+            disabled={!pos}
+            className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#137a49] text-white text-xs font-semibold disabled:opacity-50"
           >
-            {locating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LocateFixed className="w-3.5 h-3.5" />}
-            {locating ? `${t("locating")}${accuracy != null ? ` ±${accuracy}${t("metersUnit")}` : ""}` : t("useMyLocation")}
+            <Check className="w-3.5 h-3.5" /> {t("save")}
           </button>
         </div>
-
-        <div className="px-4 py-2 border-b border-border">
-          <LocationSearchBox
-            t={t}
-            onPick={(p, r) => {
-              stopTracking();
-              setAccuracy(null);
-              if (isBroadResult(r)) {
-                // City / district searched — fly there, let the user tap the exact spot.
-                const bb = r?.boundingbox?.map(Number);
-                setArea({ center: p, bounds: bb?.length === 4 ? [[bb[0], bb[2]], [bb[1], bb[3]]] : null });
-                setAreaHint(r?.display_name?.split(",")[0] || "");
-              } else {
-                setArea(null);
-                setAreaHint("");
-                setPos(p);
-              }
-            }}
-          />
-          {areaHint && !pos && (
-            <p className="mt-1 text-[11px] text-accent font-body" dir="auto">📍 {areaHint} — {t("tapMapToSet")}</p>
-          )}
-        </div>
-
-        <div className="h-72 relative">
-          <MapContainer center={pos || DEFAULT_CENTER} zoom={pos ? 17 : 6} style={{ height: "100%", width: "100%" }}>
-            <GoogleTiles />
-            <ClickToPlace onPick={(p) => { stopTracking(); setAccuracy(null); setArea(null); setPos(p); }} />
-            <Recenter pos={pos} />
-            <FitArea area={area} />
-            {pos && accuracy != null && (
-              <Circle center={pos} radius={accuracy} pathOptions={{ color: "#3b82f6", weight: 1, fillOpacity: 0.08 }} />
-            )}
-            {pos && <Marker position={pos} icon={markerIcon} />}
-            {pos && <Circle center={pos} radius={Number(radius) || 200} pathOptions={{ color: "#1E9E63", fillOpacity: 0.12 }} />}
-          </MapContainer>
-        </div>
-
-        <div className="px-4 py-3 space-y-2 border-t border-border">
-          {error && <p className="text-xs text-destructive font-body">{error}</p>}
-          {accuracy != null && (
-            <p className={`text-xs font-body ${accuracy <= 30 ? "text-emerald-600" : "text-amber-600"}`}>
-              {t("gpsAccuracy")}: ±{accuracy}{t("metersUnit")}{accuracy > 30 ? ` — ${t("lowAccuracyHint")}` : ""}
-            </p>
-          )}
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-muted-foreground font-body shrink-0">{t("stationRadius")}</label>
-            <input
-              type="number" min="10"
-              value={radius}
-              onChange={(e) => setRadius(e.target.value)}
-              className="w-24 px-2 py-1.5 rounded-md border border-input text-sm font-body"
-            />
-            <span className="text-xs text-muted-foreground font-body">{t("metersUnit")}</span>
-            <div className="ms-auto flex items-center gap-2">
-              <button onClick={onCancel} className="px-3 py-1.5 rounded-md border border-border text-xs font-body hover:bg-muted">{t("cancel")}</button>
-              <button
-                onClick={submit}
-                disabled={!pos}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-foreground text-background text-xs font-body disabled:opacity-50"
-              >
-                <Check className="w-3.5 h-3.5" /> {t("save")}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
+    </div>
+  );
+
+  if (inline) return card;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onCancel}>
+      <div onClick={(e) => e.stopPropagation()}>{card}</div>
     </div>
   );
 }

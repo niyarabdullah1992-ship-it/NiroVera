@@ -1,8 +1,51 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.38";
+import { movementReversalBlock } from "../../shared/inventoryDerivations.ts";
 
 // Inventory actions are authorized and scoped by the active company session.
 const stationRoles = ["station_manager", "inventory_keeper"];
 const seniorRoles = ["owner", "director", "ops_manager", "pgm"];
+
+// Mirrors src/lib/inventoryRights.js — the ledger now carries a reverse button, so
+// every refusal on this path has to name itself in Arabic instead of returning an
+// English sentence an Arabic operator cannot act on.
+const REVERSAL_DENY = {
+  STOCK_REVERSE_DENIED: { reason: "عكس حركة مخزون للإدارة العليا فقط.", reasonEn: "Reversing a stock movement is for senior management only." },
+  MOVEMENT_NOT_FOUND: { reason: "الحركة غير موجودة في الدفتر.", reasonEn: "The movement is not on the ledger." },
+  MOVEMENT_REVERSAL_ROW: { reason: "هذه حركة عكسية — الحركة العكسية لا تُعكس.", reasonEn: "This is already a reversal row — a reversal is not reversed." },
+  MOVEMENT_ALREADY_REVERSED: { reason: "هذه الحركة عُكست مرة — لا تُعكس مرتين.", reasonEn: "This movement was reversed once — it is not reversed twice." },
+  MOVEMENT_NOT_REVERSIBLE: { reason: "نوع هذه الحركة لا يُعكس.", reasonEn: "This movement type cannot be reversed." },
+  REVERSAL_REASON_REQUIRED: { reason: "اكتب سبب العكس — يُقيَّد على الحركة المعاكسة.", reasonEn: "Write the reversal reason — it is recorded on the compensating movement." },
+  MOVEMENT_ITEM_NOT_FOUND: { reason: "صنف هذه الحركة غير موجود في السجل.", reasonEn: "The item on this movement is not in the register." },
+  INSUFFICIENT_REVERSAL_STOCK: { reason: "لا يمكن العكس — هذه الكمية صُرفت أو نُقلت بعد الحركة. اعكس الأحدث أولًا.", reasonEn: "Cannot reverse — this quantity was issued or moved after the movement. Reverse the newer rows first." },
+  REVERSAL_HAS_DEPENDENCIES: { reason: "حركات أحدث خرجت من هذا الرصيد — اعكسها أولًا.", reasonEn: "Newer movements left this balance — reverse them first." },
+};
+
+const denyReversal = (code: keyof typeof REVERSAL_DENY, status: number, extra: Record<string, unknown> = {}) =>
+  Response.json({ error: code, code, ...REVERSAL_DENY[code], ...extra }, { status });
+
+// The other live stock paths used to answer in bare English, so a refusal reached an
+// Arabic operator as a code with no reason. Same words as src/lib/inventoryRights.js.
+const STOCK_DENY = {
+  STOCK_ISSUE_DENIED: { reason: "الصرف للعمل لمدير الفرع أو أمين المخزن — الطلب متاح لك.", reasonEn: "Issuing to work is for the station manager or the stock keeper — requesting is open to you." },
+  STOCK_PURCHASE_DENIED: { reason: "تسجيل شراء المخزون لمدير الفرع أو أمين المخزن.", reasonEn: "Recording a stock purchase is for the station manager or the stock keeper." },
+  STOCK_REQUEST_DENIED: { reason: "طلب مادة من فرع آخر لموظفي الفروع — لا يملك حسابك هذه الصلاحية.", reasonEn: "Requesting material from another station is for station staff — your account does not hold that right." },
+  STOCK_REVIEW_DENIED: { reason: "مراجعة طلبات المخزون لمدير الفرع المالك أو الإدارة.", reasonEn: "Reviewing stock requests is for the owning station manager or management." },
+  ISSUE_FIELDS_REQUIRED: { reason: "أكمل بيانات الصرف: الصنف والفرع والكمية والمستلم ومرجع العمل وتاريخه.", reasonEn: "Complete the issue: item, station, quantity, recipient, work reference and its date." },
+  ITEM_OR_RECIPIENT_NOT_FOUND: { reason: "الصنف أو المستلم غير موجود في السجل.", reasonEn: "The item or the recipient is not in the register." },
+  ITEM_NOT_FOUND: { reason: "الصنف غير موجود.", reasonEn: "Stock item not found." },
+  INSUFFICIENT_STATION_STOCK: { reason: "رصيد الفرع لا يكفي هذه الكمية.", reasonEn: "The station balance does not cover this quantity." },
+  INSUFFICIENT_SOURCE_STOCK: { reason: "رصيد الفرع المصدر لا يكفي هذه الكمية.", reasonEn: "The supplying station does not hold this quantity." },
+  ITEM_FIELDS_REQUIRED: { reason: "أكمل بيانات الشراء: الكود والاسم والفرع والكمية والسعر.", reasonEn: "Complete the purchase: code, name, station, quantity and unit price." },
+  REQUEST_FIELDS_REQUIRED: { reason: "أكمل بيانات الطلب: الصنف والفرع المصدر والكمية.", reasonEn: "Complete the request: item, supplying station and quantity." },
+  REQUEST_NOT_REVIEWABLE: { reason: "هذا الطلب لم يعد بانتظار القرار أو ليس من فرعك.", reasonEn: "This request is no longer awaiting a decision, or it is not your station's." },
+  QUANTITY_REQUIRED: { reason: "اكتب كمية صحيحة أكبر من صفر.", reasonEn: "Write a valid quantity above zero." },
+  STOCK_REVIEW_OUT_OF_REACH: { reason: "مراجعة الطلب لفرع المصدر — هذا الطلب خارج نطاقك.", reasonEn: "The supplying station reviews this request — it sits outside your scope." },
+  UNKNOWN_ACTION: { reason: "إجراء غير معروف على المخزون.", reasonEn: "Unknown inventory action." },
+  WORKFLOW_RETIRED: { reason: "هذا المسار لم يعد متاحًا — استخدم طلب المادة بين الفروع.", reasonEn: "This workflow is no longer available — use the inter-station material request." },
+};
+
+const denyStock = (code: keyof typeof STOCK_DENY, status: number) =>
+  Response.json({ error: code, code, ...STOCK_DENY[code] }, { status });
 
 Deno.serve(async (req) => {
   try {
@@ -84,7 +127,7 @@ Deno.serve(async (req) => {
     const visibleIds = isSenior ? allStationIds : (isStationOperator || isEmployeeRequester) ? [auth.stationId] : [];
     const visible = new Set(visibleIds);
     const ensureStation = (id) => isSenior ? allStationIds.includes(id) : isStationOperator && id === auth.stationId;
-    const warehouseGuard = () => Response.json({ error: "This workflow is no longer available" }, { status: 410 });
+    const warehouseGuard = () => denyStock("WORKFLOW_RETIRED", 410);
     const getItem = async (id) => {
       const item = (await base44.asServiceRole.entities.InventoryItem.filter({ id, companyId: auth.companyId }))[0];
       return item?.archived === true ? null : item;
@@ -160,7 +203,7 @@ Deno.serve(async (req) => {
       return Response.json({ items: scopedItems, requestItems: activeItems, historyItems: items, movements: scopedMovements, purchases, procurementRequests: [], purchaseOrders: [], requests: scopedRequests, stations: scopedStations, locations: operationalStations, transferStations: stations, employees, canManage: isStationOperator, canPurchase, canCreateItem, canIssueToWork: isStationOperator || isSenior, canIssueFromAnyStation: isSenior, canRequest: isStationOperator || isSenior || isEmployeeRequester, canReviewRequests: isStationOperator || isSenior, canReviewAllRequests: isSenior, canDelete, canApproveProcurement, canReceiveProcurement, canViewAllPurchases: canViewNetworkInventory, canWarehouseManage: false, canTransfer: false, canSetCentralWarehouse: false, canReverse: isSenior, centralWarehouseId: null });
     }
 
-    if (["submitProcurement", "reviewProcurement", "createPurchaseOrder", "receivePurchaseOrder", "issueRequest"].includes(body.action)) return Response.json({ error: "This workflow is no longer available" }, { status: 410 });
+    if (["submitProcurement", "reviewProcurement", "createPurchaseOrder", "receivePurchaseOrder", "issueRequest"].includes(body.action)) return denyStock("WORKFLOW_RETIRED", 410);
 
     if (body.action === "submitProcurement") {
       const stationId = String(body.stationId || auth.stationId || "");
@@ -207,15 +250,15 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === "issueToWork") {
-      if (!isStationOperator && !isSenior) return Response.json({ error: "Station inventory permission required" }, { status: 403 });
+      if (!isStationOperator && !isSenior) return denyStock("STOCK_ISSUE_DENIED", 403);
       const itemId = String(body.itemId || ""); const stationId = String(isSenior ? body.fromLocationId || "" : auth.stationId || "");
       const quantity = Number(body.quantity); const employeeId = String(body.employeeId || "");
       const workReference = String(body.workReference || "").trim(); const workDate = String(body.workDate || ""); const notes = String(body.notes || "").trim();
-      if (!itemId || !ensureStation(stationId) || !employeeId || !workReference || !/^\d{4}-\d{2}-\d{2}$/.test(workDate) || !Number.isFinite(quantity) || quantity <= 0) return Response.json({ error: "Valid item, station, quantity, recipient and work reference are required" }, { status: 400 });
+      if (!itemId || !ensureStation(stationId) || !employeeId || !workReference || !/^\d{4}-\d{2}-\d{2}$/.test(workDate) || !Number.isFinite(quantity) || quantity <= 0) return denyStock("ISSUE_FIELDS_REQUIRED", 400);
       const [item, employeeRows] = await Promise.all([getItem(itemId), base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId, employeeId })]);
-      if (!item || !employeeRows[0]) return Response.json({ error: "Item or recipient not found" }, { status: 404 });
+      if (!item || !employeeRows[0]) return denyStock("ITEM_OR_RECIPIENT_NOT_FOUND", 404);
       const before = balanceAt(item, stationId);
-      if (before < quantity) return Response.json({ error: "Insufficient station stock" }, { status: 400 });
+      if (before < quantity) return denyStock("INSUFFICIENT_STATION_STOCK", 400);
       const traceAllocations = await allocateTraces(item, stationId, quantity);
       const next = adjustBalance(item, stationId, -quantity);
       await base44.asServiceRole.entities.InventoryItem.update(item.id, { quantity: Math.max(0, Number(item.quantity || 0) - quantity), locationBalances: next, currentLocationId: stationId });
@@ -224,19 +267,22 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === "reverseMovement") {
-      if (!isSenior) return Response.json({ error: "Only senior management can reverse inventory movements", code: "REVERSE_FORBIDDEN" }, { status: 403 });
+      if (!isSenior) return denyReversal("STOCK_REVERSE_DENIED", 403);
       const movementId = String(body.movementId || "");
       const reversalReason = String(body.reversalReason || "").trim();
-      if (!movementId || !reversalReason) return Response.json({ error: "Movement and reversal reason are required", code: "REVERSAL_REASON_REQUIRED" }, { status: 400 });
-      if (!/^[a-f0-9]{24}$/i.test(movementId)) return Response.json({ error: "Movement was not found", code: "MOVEMENT_NOT_FOUND" }, { status: 404 });
+      if (!reversalReason) return denyReversal("REVERSAL_REASON_REQUIRED", 400);
+      if (!movementId || !/^[a-f0-9]{24}$/i.test(movementId)) return denyReversal("MOVEMENT_NOT_FOUND", 404);
       const original = (await base44.asServiceRole.entities.StockMovement.filter({ id: movementId, companyId: auth.companyId }))[0];
-      if (!original || original.isReversal || original.movementType === "reversal") return Response.json({ error: "This movement cannot be reversed", code: "MOVEMENT_NOT_REVERSIBLE" }, { status: 400 });
-      const priorReversals = await base44.asServiceRole.entities.StockMovement.filter({ companyId: auth.companyId, movementType: "reversal", reversalMovementId: original.id });
-      if (original.reversedAt || original.reversalMovementId || priorReversals.length) return Response.json({ error: "This movement has already been reversed", code: "MOVEMENT_ALREADY_REVERSED" }, { status: 409 });
-      if (!["purchase", "transfer", "issue", "return", "receive"].includes(original.movementType)) return Response.json({ error: "This movement type cannot be reversed", code: "MOVEMENT_NOT_REVERSIBLE" }, { status: 400 });
+      const priorReversals = original
+        ? await base44.asServiceRole.entities.StockMovement.filter({ companyId: auth.companyId, movementType: "reversal", reversalMovementId: original.id })
+        : [];
+      // One shared rule for "is this reversible", read by the ledger screen, the
+      // local gate and this handler alike.
+      const block = movementReversalBlock(priorReversals.length ? { ...original, reversedAt: original.reversedAt || priorReversals[0].created_date } : original);
+      if (block) return denyReversal(block as keyof typeof REVERSAL_DENY, block === "MOVEMENT_NOT_FOUND" ? 404 : block === "MOVEMENT_ALREADY_REVERSED" ? 409 : 400);
       const item = await getItem(original.itemId);
       const quantity = Number(original.quantity);
-      if (!item || !Number.isFinite(quantity) || quantity <= 0) return Response.json({ error: "Movement item was not found", code: "MOVEMENT_ITEM_NOT_FOUND" }, { status: 404 });
+      if (!item || !Number.isFinite(quantity) || quantity <= 0) return denyReversal("MOVEMENT_ITEM_NOT_FOUND", 404);
 
       const debitStationId = original.movementType === "issue" ? null : original.toLocationId;
       const creditStationId = original.movementType === "purchase" ? null : original.fromLocationId;
@@ -244,9 +290,9 @@ Deno.serve(async (req) => {
         const itemMovements = await base44.asServiceRole.entities.StockMovement.filter({ companyId: auth.companyId, itemId: item.id }, "-created_date", 300);
         const originalTime = new Date(original.created_date).getTime();
         const laterOutbound = itemMovements.filter((entry) => entry.id !== original.id && !entry.isReversal && !entry.reversedAt && entry.fromLocationId === debitStationId && new Date(entry.created_date).getTime() > originalTime);
-        if (laterOutbound.length) return Response.json({ error: "This stock was transferred or issued later. Reverse the newer movements first.", code: "REVERSAL_HAS_DEPENDENCIES", dependentMovementIds: laterOutbound.map((entry) => entry.id) }, { status: 409 });
+        if (laterOutbound.length) return denyReversal("REVERSAL_HAS_DEPENDENCIES", 409, { dependentMovementIds: laterOutbound.map((entry) => entry.id) });
       }
-      if ((debitStationId && balanceAt(item, debitStationId) < quantity) || (!debitStationId && !creditStationId)) return Response.json({ error: "Current stock is insufficient because some of this quantity has already been consumed or moved", code: "INSUFFICIENT_REVERSAL_STOCK" }, { status: 409 });
+      if ((debitStationId && balanceAt(item, debitStationId) < quantity) || (!debitStationId && !creditStationId)) return denyReversal("INSUFFICIENT_REVERSAL_STOCK", 409);
       let next = balances(item);
       const debitBefore = debitStationId ? balanceAt(item, debitStationId) : null;
       const creditBefore = creditStationId ? balanceAt(item, creditStationId) : null;
@@ -274,20 +320,36 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === "deleteItem") {
-      if (!canDelete) return Response.json({ error: "Management permission required" }, { status: 403 });
+      if (!canDelete) {
+        return Response.json({
+          error: "STOCK_DELETE_DENIED",
+          reason: "حذف صنف من المخزون لمدير الفرع أو الإدارة.",
+          reasonEn: "Archiving an item is for the station manager or management.",
+        }, { status: 403 });
+      }
       const item = await getItem(body.itemId);
-      if (!item) return Response.json({ error: "Item not found" }, { status: 404 });
-      await Promise.all([
-        base44.asServiceRole.entities.StockMovement.deleteMany({ companyId: auth.companyId, itemId: item.id }),
-        base44.asServiceRole.entities.MaterialRequest.deleteMany({ companyId: auth.companyId, itemId: item.id }),
-        base44.asServiceRole.entities.InventoryUnit.deleteMany({ companyId: auth.companyId, itemId: item.id }),
-      ]);
-      await base44.asServiceRole.entities.InventoryItem.delete(item.id);
+      if (!item) return denyStock("ITEM_NOT_FOUND", 404);
+      // Archiving hides the item from every station at once, so a station manager
+      // may only do it while no stock is left standing outside their own reach.
+      if (!isSenior && balances(item).some((entry) => entry.quantity > 0 && !visible.has(entry.locationId))) {
+        return Response.json({
+          error: "STOCK_DELETE_OUT_OF_REACH",
+          reason: "لهذا الصنف رصيد في فرع خارج نطاقك — حذفه للإدارة أو لمدير ذلك الفرع.",
+          reasonEn: "This item still holds stock at a station outside your scope — archiving it belongs to management or that station's manager.",
+        }, { status: 403 });
+      }
+      // The movement ledger is the proof that the stock existed and where it went,
+      // so retiring an item archives it and leaves that trail standing.
+      await base44.asServiceRole.entities.InventoryItem.update(item.id, {
+        archived: true,
+        archivedAt: new Date().toISOString(),
+        archivedBy: auth.userId || auth.name,
+      });
       return Response.json({ ok: true });
     }
 
     if (body.action === "createItem") {
-      if (!canCreateItem) return Response.json({ error: "Station inventory permission required" }, { status: 403 });
+      if (!canCreateItem) return denyStock("STOCK_PURCHASE_DENIED", 403);
       const name = String(body.name || "").trim(); const itemCode = String(body.itemCode || "").trim();
       const supplierName = String(body.supplierName || "").trim(); const locationId = String(body.locationId || auth.stationId || "");
       const quantity = Number(body.quantity); const totalCost = Number(body.totalCost); const enteredUnitPrice = body.unitPrice === "" || body.unitPrice == null ? null : Number(body.unitPrice);
@@ -295,7 +357,7 @@ Deno.serve(async (req) => {
       const selectedDate = String(body.purchaseDate || "");
       const purchaseMoment = selectedDate.length === 10 ? new Date(`${selectedDate}T${new Date().toTimeString().slice(0, 8)}`) : new Date(selectedDate || Date.now());
       const purchaseDate = purchaseMoment.toISOString();
-      if (!name || !itemCode || !supplierName || !ensureStation(locationId) || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(totalCost) || totalCost < 0 || !Number.isFinite(unitPrice) || unitPrice < 0) return Response.json({ error: "Valid item, station, quantity, supplier and cost are required" }, { status: 400 });
+      if (!name || !itemCode || !supplierName || !ensureStation(locationId) || !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(totalCost) || totalCost < 0 || !Number.isFinite(unitPrice) || unitPrice < 0) return denyStock("ITEM_FIELDS_REQUIRED", 400);
       const duplicates = await base44.asServiceRole.entities.InventoryItem.filter({ companyId: auth.companyId, itemCode });
       let item = duplicates[0]; let before = 0;
       if (item) {
@@ -312,10 +374,10 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === "request") {
-      if (!isStationOperator && !isSenior && !isEmployeeRequester) return Response.json({ error: "Material request permission required" }, { status: 403 });
+      if (!isStationOperator && !isSenior && !isEmployeeRequester) return denyStock("STOCK_REQUEST_DENIED", 403);
       const item = await getItem(body.itemId); const quantity = Number(body.quantity); const notes = String(body.notes || "").trim();
       const stationId = isSenior ? String(body.stationId || "") : String(auth.stationId || ""); const sourceStationId = String(body.sourceStationId || "");
-      if (!item || !allStationIds.includes(stationId) || !allStationIds.includes(sourceStationId) || sourceStationId === stationId || balanceAt(item, sourceStationId) < quantity || quantity < 1 || !notes) return Response.json({ error: "Choose different source and destination stations, an available item, valid quantity and reason" }, { status: 400 });
+      if (!item || !allStationIds.includes(stationId) || !allStationIds.includes(sourceStationId) || sourceStationId === stationId || balanceAt(item, sourceStationId) < quantity || quantity < 1 || !notes) return denyStock("REQUEST_FIELDS_REQUIRED", 400);
       const purchaseRows = await base44.asServiceRole.entities.StockMovement.filter({ companyId: auth.companyId, itemId: item.id, movementType: "purchase", toLocationId: sourceStationId }, "-purchaseDate", 1);
       const unitPrice = Number(purchaseRows[0]?.unitPrice ?? purchaseRows[0]?.purchasePrice ?? 0);
       const totalCost = quantity * unitPrice;
@@ -324,18 +386,18 @@ Deno.serve(async (req) => {
     }
 
     if (body.action === "reviewRequest") {
-      if (!isStationOperator && !isSenior) return Response.json({ error: "Management permission required" }, { status: 403 });
+      if (!isStationOperator && !isSenior) return denyStock("STOCK_REVIEW_DENIED", 403);
       const rows = await base44.asServiceRole.entities.MaterialRequest.filter({ id: body.requestId, companyId: auth.companyId }); const request = rows[0];
-      if (!request || request.status !== "pending" || (!isSenior && request.sourceStationId !== auth.stationId) || !["approved", "rejected"].includes(body.decision)) return Response.json({ error: "Request cannot be reviewed" }, { status: 400 });
+      if (!request || request.status !== "pending" || (!isSenior && request.sourceStationId !== auth.stationId) || !["approved", "rejected"].includes(body.decision)) return denyStock("REQUEST_NOT_REVIEWABLE", 400);
       const reviewedAt = new Date().toISOString();
       if (body.decision === "rejected") {
         await base44.asServiceRole.entities.MaterialRequest.update(request.id, { status: "rejected", reviewedBy: auth.userId || auth.name, reviewedAt });
         return Response.json({ ok: true });
       }
       const item = await getItem(request.itemId); const quantity = Number(request.quantity); const sourceId = request.sourceStationId;
-      if (!item || !Number.isFinite(quantity) || quantity <= 0) return Response.json({ error: "A valid requested quantity is required" }, { status: 400 });
+      if (!item || !Number.isFinite(quantity) || quantity <= 0) return denyStock("QUANTITY_REQUIRED", 400);
       const sourceBefore = balanceAt(item, sourceId); const destinationBefore = balanceAt(item, request.stationId);
-      if (sourceBefore < quantity) return Response.json({ error: "Insufficient stock at the supplying station" }, { status: 400 });
+      if (sourceBefore < quantity) return denyStock("INSUFFICIENT_SOURCE_STOCK", 400);
       const sourceAfter = sourceBefore - quantity; const destinationAfter = destinationBefore + quantity;
       const traceAllocations = await allocateTraces(item, sourceId, quantity, request.stationId);
       let next = adjustBalance(item, sourceId, -quantity); next = adjustBalance({ ...item, locationBalances: next }, request.stationId, quantity);
@@ -367,18 +429,18 @@ Deno.serve(async (req) => {
 
     if (["receive", "return", "transfer"].includes(body.action)) {
       const denied = warehouseGuard(); if (denied && body.action !== "transfer") return denied;
-      if (body.action === "transfer") return Response.json({ error: "Use the station request workflow for transfers" }, { status: 410 });
+      if (body.action === "transfer") return denyStock("WORKFLOW_RETIRED", 410);
       const item = await getItem(body.itemId); const quantity = Number(body.quantity); const from = String(body.fromLocationId || ""); const to = String(body.toLocationId || "");
-      if (!item || !allStationIds.includes(from) || !allStationIds.includes(to) || from === to || !Number.isFinite(quantity) || quantity <= 0) return Response.json({ error: "Valid item, stations and quantity are required" }, { status: 400 });
-      if (from !== auth.stationId) return Response.json({ error: "You can only transfer stock from your station" }, { status: 403 });
+      if (!item || !allStationIds.includes(from) || !allStationIds.includes(to) || from === to || !Number.isFinite(quantity) || quantity <= 0) return denyStock("REQUEST_FIELDS_REQUIRED", 400);
+      if (from !== auth.stationId) return denyStock("STOCK_REVIEW_OUT_OF_REACH", 403);
       const sourceBefore = balanceAt(item, from); const destinationBefore = balanceAt(item, to);
-      if (sourceBefore < quantity) return Response.json({ error: "Insufficient stock" }, { status: 400 });
+      if (sourceBefore < quantity) return denyStock("INSUFFICIENT_SOURCE_STOCK", 400);
       let next = adjustBalance(item, from, -quantity); next = adjustBalance({ ...item, locationBalances: next }, to, quantity);
       await base44.asServiceRole.entities.InventoryItem.update(item.id, { locationBalances: next, currentLocationId: to });
       await movement({ itemId: item.id, movementType: body.action, quantity, fromLocationId: from, toLocationId: to, employeeId: body.employeeId || null, requestId: null, sourceBalanceBefore: sourceBefore, sourceBalanceAfter: sourceBefore - quantity, destinationBalanceBefore: destinationBefore, destinationBalanceAfter: destinationBefore + quantity, notes: String(body.notes || "") });
       return Response.json({ ok: true });
     }
-    return Response.json({ error: "Unknown action" }, { status: 400 });
+    return denyStock("UNKNOWN_ACTION", 400);
   } catch (error) {
     console.error("Inventory error", error);
     const rateLimited = String(error?.message || "").toLowerCase().includes("rate limit");

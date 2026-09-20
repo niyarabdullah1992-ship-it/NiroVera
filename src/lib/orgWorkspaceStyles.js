@@ -19,16 +19,16 @@ export const orgPanelShell = (fullscreen = false) => (fullscreen
       width: "100%",
       background: CARD,
       border: `1px solid ${BORDER}`,
-      borderRadius: 12,
+      borderRadius: 14,
       overflow: "hidden",
       display: "flex",
       flexDirection: "column",
-      boxShadow: "0 1px 3px rgba(20,40,75,.04)",
+      boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
     });
 
 export const orgInput = {
   height: 34,
-  borderRadius: 8,
+  borderRadius: 10,
   border: `1px solid ${BORDER}`,
   padding: "0 11px",
   fontSize: 12,
@@ -48,7 +48,7 @@ export const orgBtnGhost = {
   cursor: "pointer",
   height: 34,
   padding: "0 12px",
-  borderRadius: 8,
+  borderRadius: 10,
   border: `1px solid ${BORDER}`,
   background: CARD,
   color: NAVY,
@@ -63,11 +63,26 @@ export const orgBtnGhost = {
 
 export const orgBtnPrimary = (disabled = false) => ({
   ...orgBtnGhost,
-  background: disabled ? SURFACE : ORG_GREEN,
-  border: `1px solid ${disabled ? BORDER : ORG_GREEN}`,
+  background: disabled ? SURFACE : NAVY_FILL,
+  border: `1px solid ${disabled ? BORDER : NAVY_FILL}`,
   color: disabled ? MUTED : "#fff",
   cursor: disabled ? "not-allowed" : "pointer",
 });
+
+/** Physical center — RTL overflow must not park the tree on the left in fullscreen. */
+export function orgTreeStageStyle(offset, zoom) {
+  return {
+    position: "absolute",
+    left: "50%",
+    top: 20,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    width: "max-content",
+    transform: `translateX(-50%) translate3d(${offset.x || 0}px, ${offset.y || 0}px, 0) scale(${zoom || 1})`,
+    transformOrigin: "top center",
+  };
+}
 
 export const orgBtnDanger = {
   ...orgBtnGhost,

@@ -18,6 +18,7 @@ import { removeCompanyJobTitle } from "@/lib/orgTree";
 import { toast } from "@/components/ui/use-toast";
 import { MUTED, NAVY, NEUTRAL, OK, WARN, field, CARD, SURFACE } from "@/lib/platformStyles";
 import { ChromeBox } from "@/components/shared/IdentityCard";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import { companyLists, templateLabel } from "@/lib/permissionTemplates";
 import { delegationScopeFromSeat, todayKey } from "@/lib/orgHire";
 
@@ -32,13 +33,12 @@ async function orgApi(payload) {
 }
 
 const SECTION_LABEL = {
-  command: { ar: "مركز القيادة", en: "Command Center" },
+  command: { ar: "لوحة القيادة", en: "Dashboard" },
   operations: { ar: "المهام والعمليات", en: "Operations" },
   attendance: { ar: "الحضور", en: "Attendance" },
-  daily: { ar: "التقرير اليومي", en: "Daily report" },
   hse: { ar: "السلامة HSE", en: "Safety HSE" },
-  complaints: { ar: "صوت الموظف", en: "Employee Voice" },
-  leave: { ar: "طلبات الإجازة", en: "Leave requests" },
+  complaints: { ar: "الشكاوى", en: "Complaints" },
+  leave: { ar: "طلباتي", en: "My requests" },
   hr: { ar: "الموارد البشرية", en: "Human Resources" },
   payroll: { ar: "الرواتب", en: "Payroll" },
   settings: { ar: "إعدادات الشركة", en: "Company settings" },
@@ -61,7 +61,6 @@ const SCOPE_LABEL = {
   [SCOPE.DELEGATED]: { ar: "بتفويض", en: "Delegated", fullAr: "مشتقة من سجل التفويض", fullEn: "Derived from the delegation register" },
 };
 
-/** Platform.dc.html L6876–6882 */
 function scopeChipStyle(scope) {
   if (scope === SCOPE.COMPANY) return OK;
   if (scope === SCOPE.STATION) {
@@ -339,7 +338,9 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
                 </div>
               ))}
             </div>
-            {(matrix.length ? matrix : ORG_SECTIONS.map((sectionId) => ({ sectionId, cells: [] }))).map((row, si) => (
+            {(matrix.length ? matrix : ORG_SECTIONS.map((sectionId) => ({ sectionId, cells: [] }))).filter((row) => row.sectionId !== "daily").map((row) => {
+              const si = ORG_SECTIONS.indexOf(row.sectionId);
+              return (
               <div
                 key={row.sectionId}
                 style={{
@@ -389,7 +390,8 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
                   );
                 })}
               </div>
-            ))}
+            );
+            })}
           </div>
         </div>
         <div style={{ padding: "14px 20px 16px", borderTop: "1px solid #F1F5F9" }}>
@@ -542,11 +544,11 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
             </label>
             <label style={{ display: "block" }}>
               <span style={{ display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" }}>{ar ? "من تاريخ" : "From"}</span>
-              <input type="date" dir="ltr" value={dgForm.start} onChange={(e) => setDgForm((f) => ({ ...f, start: e.target.value }))} style={{ ...fieldInput, colorScheme: "light" }} />
+              <PlatformDateField ar={ar} value={dgForm.start} onChange={(next) => setDgForm((f) => ({ ...f, start: next }))} />
             </label>
             <label style={{ display: "block" }}>
               <span style={{ display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" }}>{ar ? "حتى" : "Until"}</span>
-              <input required type="date" dir="ltr" value={dgForm.end} onChange={(e) => setDgForm((f) => ({ ...f, end: e.target.value }))} style={{ ...fieldInput, colorScheme: "light" }} />
+              <PlatformDateField required ar={ar} value={dgForm.end} min={dgForm.start} onChange={(next) => setDgForm((f) => ({ ...f, end: next }))} />
             </label>
             <label style={{ display: "block" }}>
               <span style={{ display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" }}>{ar ? "نطاق الفرع" : "Branch scope"}</span>

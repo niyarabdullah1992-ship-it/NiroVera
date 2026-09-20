@@ -36,7 +36,11 @@ export default function MarkLostDialog({ lang, onClose, onConfirm }) {
         <div className="flex gap-2">
           <button type="button" onClick={onClose} className="flex-1 rounded-md border border-border px-4 py-2.5 text-sm">{ar ? "إلغاء" : "Cancel"}</button>
           <button type="submit" disabled={!reason.trim() || saving} className="flex-1 rounded-md bg-destructive px-4 py-2.5 text-sm font-semibold text-destructive-foreground disabled:opacity-40">
-            {ar ? "تأكيد البلاغ" : "Confirm report"}
+            {saving
+              ? (ar ? "جارٍ الحفظ..." : "Saving...")
+              : reason.trim()
+                ? (ar ? "تأكيد البلاغ" : "Confirm report")
+                : (ar ? "اكتب سبب البلاغ." : "Write the report reason.")}
           </button>
         </div>
       </form>

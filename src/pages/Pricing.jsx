@@ -154,12 +154,12 @@ export default function Pricing() {
       <div className="max-w-6xl mx-auto px-6 py-12">
         <div className="mx-auto mb-10 max-w-3xl text-center">
           <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-[var(--nv-accent-deep)]">
-            {lang === "ar" ? "NiroVera ERP" : "NiroVera ERP"}
+            {lang === "ar" ? "NiroVera" : "NiroVera"}
           </p>
           <h1 className="mb-3 text-center text-4xl font-semibold text-[var(--nv-ink)] md:text-5xl">{t("pricingHeading")}</h1>
           <p className="mb-4 text-center text-[var(--nv-muted)]">{lang === "ar"
-            ? "سجّل شركتك وافتح حزمة ERP كاملة — حضور ومهام وإثبات ورواتب وامتثال وزارة."
-            : "Register your company and open the full ERP suite — attendance, tasks, proof, payroll, and ministry compliance."}</p>
+            ? "سجّل شركتك وافتح الحزمة كاملة — حضور ومهام وإثبات ورواتب وامتثال وزارة."
+            : "Register your company and open the full suite — attendance, tasks, proof, payroll, and ministry compliance."}</p>
         </div>
         <p className="mx-auto mb-10 w-fit rounded-full border border-[var(--nv-line)] bg-[var(--nv-card)] px-4 py-1.5 text-sm font-semibold text-[var(--nv-ink)]">
           {lang === "ar" ? "تسجيل شركة / مؤسسة" : "Company signup"}

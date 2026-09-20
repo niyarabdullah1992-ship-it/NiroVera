@@ -5,7 +5,15 @@ import {
   ARTICLE_90_CAP,
   hourlyFromBase,
   overtimePay,
+  gosiLine,
+  GOSI_WAGE_CEILING,
+  holidayPay,
+  eidPay,
   lineNet,
+  lineOvertimePay,
+  lineComponents,
+  gosiEmployeeWithheld,
+  settlementStamp,
   lineIssues,
   contractWage,
   article90MaxDeduction,
@@ -106,5 +114,43 @@ assert.equal(by.length, 2);
 assert.equal(lineIssues({ ...good, overtimeHours: 720 }).includes("OT_ANNUAL_CAP"), false);
 assert.equal(lineIssues({ ...good, overtimeHours: 721 }).includes("OT_ANNUAL_CAP"), true);
 assert.equal(enrichLine({ ...good, overtimeHours: 721 }).issues.includes("OT_ANNUAL_CAP"), true);
+
+assert.equal(GOSI_WAGE_CEILING, 45000);
+const saudiGosi = gosiLine({ base: 12000, allowances: 2500 }, { saudi: true });
+assert.equal(saudiGosi.base, 14500);
+assert.equal(saudiGosi.employeeShare, 1413.75);
+assert.equal(saudiGosi.employerShare, 1703.75);
+const expatGosi = gosiLine({ base: 7500, allowances: 1500 }, { saudi: false });
+assert.equal(expatGosi.employeeShare, 0);
+assert.equal(expatGosi.employerShare, 180);
+const capped = gosiLine({ base: 40000, allowances: 10000 }, { saudi: true });
+assert.equal(capped.base, 45000);
+assert.equal(holidayPay(2400, 8), 120);
+assert.equal(eidPay(2400, 8), 160);
+
+// One net for the whole surface: approved overtime is inside it, and the employee's own
+// GOSI share is withheld from it — only when the line says the employee is Saudi.
+const otLine = { base: 2400, allowances: 0, bonus: 0, overtimeHours: 10, deductions: 100 };
+assert.equal(lineOvertimePay(otLine), 150);
+assert.equal(lineNet(otLine), 2450); // 2400 + 150 − 100, nothing withheld while nationality is unknown
+assert.equal(gosiEmployeeWithheld(otLine), 0);
+assert.equal(gosiEmployeeWithheld({ ...otLine, isSaudi: false }), 0);
+assert.equal(gosiEmployeeWithheld({ ...otLine, isSaudi: true }), 234);
+assert.equal(lineNet({ ...otLine, isSaudi: true }), 2216); // 2450 − 234
+// The GOSI share is statutory, not an Article 93 deduction: it never widens or narrows the cap.
+assert.equal(checkArticle90Gate({ ...otLine, isSaudi: true, deductions: 1200 }).ok, true);
+assert.equal(checkArticle90Gate({ ...otLine, isSaudi: true, deductions: 1201 }).ok, false);
+assert.equal(article90MaxDeduction({ ...otLine, overtimeHours: 200 }), 1200); // overtime does not raise the cap
+
+// A settled line reports what it was settled with, whatever the formula does later.
+const stamp = settlementStamp({ ...otLine, isSaudi: true });
+assert.equal(stamp.settledNet, 2216);
+assert.equal(stamp.settledOvertimePay, 150);
+assert.equal(stamp.settledGosiEmployee, 234);
+assert.equal(lineNet({ ...otLine, isSaudi: true, base: 9999, ...stamp }), 2216);
+assert.equal(lineComponents({ ...otLine, ...stamp }).settled, true);
+// Settled before the stamp existed: keep the formula it was paid under — no overtime, no GOSI.
+assert.equal(lineNet({ ...otLine, isSaudi: true, paid: true }), 2300);
+assert.equal(lineComponents(otLine).net, 2450);
 
 console.log("payroll derivations ok");

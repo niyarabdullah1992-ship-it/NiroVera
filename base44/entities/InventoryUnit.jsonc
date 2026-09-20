@@ -1,15 +1,23 @@
+// purpose: Cloud per-location quantity. Frontend inventoryApi.js force-locals to InventoryItem.locationBalances — two quantity truths. Do not treat this as the preview sou
+// domain: money
+// isolation: companyId
+// owner: inventory
+// status: canonical
 {
   "name": "InventoryUnit",
   "type": "object",
   "properties": {
     "companyId": {
-      "type": "string"
+      "type": "string",
+      "description": "Tenant of this location balance."
     },
     "itemId": {
-      "type": "string"
+      "type": "string",
+      "description": "→ InventoryItem id. Live inventory also stores locationBalances on the item."
     },
     "locationId": {
-      "type": "string"
+      "type": "string",
+      "description": "Workplace / warehouse station id."
     },
     "quantity": {
       "type": "number",

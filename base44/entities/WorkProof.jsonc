@@ -1,3 +1,8 @@
+// purpose: Typed table exists but is NOT the runtime store. Live data is the workProofs blob.
+// domain: work_proof
+// isolation: companyId
+// owner: workproof
+// status: unused
 {
   "name": "WorkProof",
   "type": "object",
@@ -161,75 +166,11 @@
     "performedByName": {
       "type": "string"
     },
-    "employeeSignatureUrl": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "Employee's saved signature stamped automatically when the job was closed."
-    },
-    "employeeSignedAt": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "ISO timestamp of the automatic employee signature at close."
-    },
-    "clientName": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "Name of the client who signed the proof."
-    },
-    "clientTitle": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "Client's job title / capacity."
-    },
-    "clientEmail": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "Client email the signature link was sent to."
-    },
-    "signToken": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "Opaque token embedded in the emailed signature link. Cleared once signed."
-    },
-    "signLinkSentAt": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "ISO timestamp when the signature link was emailed to the client."
-    },
-    "clientSignatureUrl": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "Uploaded image of the client's hand-drawn signature."
-    },
-    "signedAt": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "ISO timestamp of the client signing moment. Once set, the record is immutable."
-    },
     "status": {
       "type": "string",
       "enum": [
         "in_progress",
-        "pending_signature",
-        "signed"
+        "closed"
       ],
       "default": "in_progress"
     },

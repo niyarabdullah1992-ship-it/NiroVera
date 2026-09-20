@@ -2,11 +2,13 @@ import { createClientFromRequest } from "npm:@base44/sdk@0.8.38";
 import { authPowerCareSession } from "../../shared/powerCareSession.ts";
 import {
   applyOpsReject,
+  applyOpsEmployeeEscalate,
   applyOpsReassign,
   applyOpsEndDelegation,
   applyOpsExtendDue,
   applyOpsRedistributeRemaining,
   applyOpsPaceDayLog,
+  applyOpsCommentDelete,
   deriveDailyTaskPace,
   taskPaceInput,
   derivePaceBlocker,
@@ -15,11 +17,12 @@ import {
   canReviewOpsTask,
   applyOpsSoftDelete,
   checkDeleteOpsTaskGate,
-  isOpsTaskDeleted,
   checkAssignGate,
   checkReassignGate,
   checkEndDelegationGate,
   checkRejectReasonGate,
+  canEmployeeEscalateOpsTask,
+  opsRejectionCount,
   clampEffortWeight,
   deriveHorizonGroups,
   deriveOpsCounts,
@@ -30,12 +33,17 @@ import {
   taskAssigneeId,
   taskPoints,
   checkTaskRecurrenceGate,
+  checkTaskHeatBanGate,
+  checkTaskModeGate,
+  deriveTaskHeatBanNotice,
+  opsVisitorStamp,
   type AssignMode,
 } from "../../shared/opsDerivations.ts";
 import { checkFieldAttendanceGate, riyadhDateKey as gateDateKey } from "../../shared/attendanceGate.ts";
 import { validateOpsRequest, validationFailed } from "../../shared/proofCycleSchemas.ts";
+import { loadCanonicalPayload, saveCanonicalPayload } from "../../shared/canonicalBlob.ts";
 
-const TASKS_CATEGORY = "operationsTasks";
+const TASKS_CATEGORY = "tasks";
 const COMPETENCY_CATEGORY = "competencyCerts";
 
 function requireCompanyId(companyId: unknown) {
@@ -111,10 +119,10 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const rawBody = await req.json();
-    const action = String(rawBody?.action || "");
+    const rawAction = String(rawBody?.action || "");
 
     /** Scheduled workflow — sweep every company (no user session). */
-    if (action === "runEscalationSweep" && !rawBody?.companyId) {
+    if (rawAction === "runEscalationSweep" && !rawBody?.companyId) {
       const workflowUser = await base44.auth.me().catch(() => null);
       if (!workflowUser || workflowUser.role !== "admin") {
         return Response.json({ error: "Forbidden" }, { status: 403 });
@@ -125,15 +133,12 @@ Deno.serve(async (req) => {
       for (const account of accounts || []) {
         const cid = String(account.companyId || "").trim();
         if (!cid) continue;
-        const blob = await base44.asServiceRole.entities.CompanyDataBlob.filter({
-          companyId: cid,
-          category: TASKS_CATEGORY,
-        });
-        const tasks = Array.isArray(blob[0]?.payload) ? blob[0].payload : [];
+        const loaded = await loadCanonicalPayload(base44, cid, TASKS_CATEGORY);
+        const tasks = Array.isArray(loaded.payload) ? loaded.payload : [];
         const escData = await loadEscalationDataForCompany(base44, cid);
         const sweep = runOpsEscalationSweep(tasks, escData, new Date(), { force: false });
-        if (sweep.escalated > 0 && blob[0]) {
-          await base44.asServiceRole.entities.CompanyDataBlob.update(blob[0].id, { payload: sweep.tasks });
+        if (sweep.escalated > 0) {
+          await saveCanonicalPayload(base44, cid, TASKS_CATEGORY, sweep.tasks);
           escalated += sweep.escalated;
           byCompany[cid] = sweep.escalated;
         }
@@ -212,20 +217,11 @@ Deno.serve(async (req) => {
       return rows[0] || null;
     };
     const saveTasks = async (tasks: unknown[]) => {
-      const blob = await loadBlob(TASKS_CATEGORY);
-      if (blob) {
-        await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload: tasks });
-      } else {
-        await base44.asServiceRole.entities.CompanyDataBlob.create({
-          companyId: auth.companyId,
-          category: TASKS_CATEGORY,
-          payload: tasks,
-        });
-      }
+      await saveCanonicalPayload(base44, auth.companyId, TASKS_CATEGORY, tasks);
     };
     const listTasksRaw = async () => {
-      const blob = await loadBlob(TASKS_CATEGORY);
-      const payload = Array.isArray(blob?.payload) ? blob.payload : [];
+      const loaded = await loadCanonicalPayload(base44, auth.companyId, TASKS_CATEGORY);
+      const payload = Array.isArray(loaded.payload) ? loaded.payload : [];
       // Blob is already tenant-scoped. Keep rows for this company; allow legacy
       // rows that were stored without companyId so managers can still delegate.
       return payload.filter((t) => t && (!t.companyId || t.companyId === auth.companyId));
@@ -321,7 +317,7 @@ Deno.serve(async (req) => {
 
     // ── seed competency lapse for testing (manager only) ─────────────────────
     if (action === "setCompetency") {
-      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      if (!isManager) return Response.json({ error: "FORBIDDEN", reason: "تعديل الكفاءات مقصور على المشرفين." }, { status: 403 });
       const { employeeId, code, expiryDate, status } = body;
       if (!employeeId || !code) return Response.json({ error: "employeeId and code required" }, { status: 400 });
       const people = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId, employeeId });
@@ -365,11 +361,11 @@ Deno.serve(async (req) => {
       const filter: Record<string, string> = { companyId: auth.companyId };
       if (employeeId) {
         if (!isManager && employeeId !== auth.userId) {
-          return Response.json({ error: "Forbidden" }, { status: 403 });
+          return Response.json({ error: "FORBIDDEN", reason: "سجل نقاط غيرك لا يُعرض لك." }, { status: 403 });
         }
         filter.employeeId = String(employeeId);
       } else if (!isManager) {
-        return Response.json({ error: "Forbidden" }, { status: 403 });
+        return Response.json({ error: "FORBIDDEN", reason: "سجل نقاط الشركة كامل مقصور على المشرفين." }, { status: 403 });
       }
       const entries = await base44.asServiceRole.entities.PointsLedger.filter(filter, "-awardedAt", 200);
       // Strict: drop rows without matching companyId (no permissive fallback).
@@ -379,7 +375,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "create") {
-      if (!isManager) return Response.json({ error: "Forbidden: only managers can create tasks" }, { status: 403 });
+      if (!isManager) return Response.json({ error: "FORBIDDEN", reason: "إنشاء المهام مقصور على المشرفين." }, { status: 403 });
       const title = String(body.title || "").trim();
       const priority = ["high", "medium", "low"].includes(body.priority) ? body.priority : "medium";
       const workKind = normalizeWorkKind(body.workKind, "gn");
@@ -389,7 +385,7 @@ Deno.serve(async (req) => {
         ? body.stationIds.map(String)
         : (stationId ? [String(stationId)] : []);
       const ownerId = body.ownerId || null;
-      const memberIds = Array.isArray(body.memberIds) ? body.memberIds.map(String) : [];
+      let memberIds = Array.isArray(body.memberIds) ? body.memberIds.map(String) : [];
       const effortWeight = clampEffortWeight(body.effortWeight);
       const targetCount = Math.max(1, Number(body.targetCount) || 1);
       const dueAt = body.dueAt ? String(body.dueAt).slice(0, 10) : null;
@@ -401,7 +397,14 @@ Deno.serve(async (req) => {
       const windows = recGate.windows;
       const seriesId = windows.length > 1 ? crypto.randomUUID() : null;
       const planPinned = body.planPinned === true;
-      const mode = body.mode === "remote" ? "remote" : "onsite";
+      const modeGate = checkTaskModeGate(body.mode, body.lang === "en" ? "en" : "ar");
+      if (!modeGate.ok) {
+        return Response.json({
+          error: modeGate.error,
+          reason: body.lang === "en" ? modeGate.reasonEn : modeGate.reason,
+        }, { status: 400 });
+      }
+      const mode = modeGate.mode;
       const steps = String(body.steps || "").split("\n").map((s: string) => s.trim()).filter(Boolean);
 
       if (!title) return Response.json({ error: "Title required" }, { status: 400 });
@@ -462,6 +465,11 @@ Deno.serve(async (req) => {
         const createdAt = new Date().toISOString();
         const windowDue = opts.dueAt;
         const windowStart = opts.startAt || createdAt.slice(0, 10);
+        const ownerPerson = allCompanyPeople.find((p) => (
+          String(p.employeeId || "") === String(opts.ownerId || "")
+          || String(p.id || "") === String(opts.ownerId || "")
+        ));
+        const visit = opsVisitorStamp(ownerPerson || {}, opts.stationId);
         return {
           id: crypto.randomUUID(),
           companyId: auth.companyId,
@@ -469,6 +477,8 @@ Deno.serve(async (req) => {
           title,
           stationId: opts.stationId,
           stationIds: opts.stationIds,
+          homeStationId: visit.homeStationId,
+          visitor: visit.visitor,
           priority,
           effortWeight,
           dueAt: windowDue,
@@ -483,7 +493,7 @@ Deno.serve(async (req) => {
           ownerId: assignMode === "one" ? opts.ownerId : null,
           originalOwnerId: assignMode === "one" ? opts.ownerId : null,
           assignmentHistory: [],
-          memberIds: assignMode === "some" ? memberIds : [],
+          memberIds: assignMode === "some" || assignMode === "all" ? memberIds : [],
           targetCount,
           completedCount: 0,
           status: "active",
@@ -505,6 +515,7 @@ Deno.serve(async (req) => {
           approvedBy: null,
           createdAt,
           createdBy: auth.userId,
+          createdByName: auth.name || "",
           seriesId,
           paceWeekdays: Array.isArray(body.paceWeekdays) ? body.paceWeekdays : [],
           paceDates: Array.isArray(body.paceDates) ? body.paceDates : [],
@@ -562,10 +573,21 @@ Deno.serve(async (req) => {
           newValue: created.map((t) => t.ref).join(", "),
         });
         const tasks = scopeFilter(await listTasksRaw(), body.scope || null);
-        return Response.json({ task: created[0], tasks: created, counts: deriveOpsCounts(tasks) });
+        return Response.json({
+          task: created[0],
+          tasks: created,
+          counts: deriveOpsCounts(tasks),
+          heatNotice: created.map((t) => deriveTaskHeatBanNotice(t)).find(Boolean) || null,
+        });
       }
 
       const stationPeople = await loadPeople(stationId);
+      if (assignMode === "all") {
+        memberIds = stationPeople.map((p) => String(p.employeeId || p.id || "")).filter(Boolean);
+        if (!memberIds.length) {
+          return Response.json({ error: "No crew at this station" }, { status: 400 });
+        }
+      }
       const gatePeople = assignMode === "all" ? stationPeople : allCompanyPeople;
       const gate = checkAssignGate({
         workKind,
@@ -592,13 +614,19 @@ Deno.serve(async (req) => {
         newValue: created.map((t) => t.ref).join(", "),
       });
       const tasks = scopeFilter(await listTasksRaw(), body.scope || null);
-      return Response.json({ task: created[0], tasks: created, counts: deriveOpsCounts(tasks) });
+      return Response.json({
+        task: created[0],
+        tasks: created,
+        counts: deriveOpsCounts(tasks),
+        heatNotice: created.map((t) => deriveTaskHeatBanNotice(t)).find(Boolean) || null,
+      });
     }
 
     if (action === "logCompletion") {
       const taskId = body.taskId;
-      const amount = Math.max(1, Number(body.amount) || 1);
+      const amount = Math.max(0, Math.round(Number(body.amount) || 0));
       const attestation = String(body.attestation || "").trim();
+      const stopReason = String(body.stopReason || "").trim();
       const proofFiles = Array.isArray(body.proofFiles)
         ? body.proofFiles.filter((f: any) => f && f.url).map((f: any) => ({ url: f.url, name: f.name || "file" }))
         : [];
@@ -613,22 +641,55 @@ Deno.serve(async (req) => {
         return Response.json({ error: gate.error, reason: gate.reason, attendance: gate.attendance || null }, { status: 403 });
       }
 
-      if (!proofFiles.length && !attestation) {
+      // Ministerial sun ban — a logged field unit inside 12:00–15:00 is a realized
+      // fact with place and time on it, so the server refuses it by name.
+      const heatGate = checkTaskHeatBanGate(task, { now: new Date(), amount });
+      if (!heatGate.ok) {
+        return Response.json({
+          error: heatGate.error,
+          reason: body.lang === "en" ? heatGate.reasonEn : heatGate.reason,
+          reasonEn: heatGate.reasonEn,
+          ruleId: heatGate.ruleId,
+          labelAr: heatGate.labelAr,
+          labelEn: heatGate.labelEn,
+          at: heatGate.at,
+        }, { status: 403 });
+      }
+
+      if (amount < 1 && !stopReason) {
+        return Response.json({ error: "STOP_REASON_REQUIRED", reason: "اكتب سبب عدم إكمال حصة اليوم." }, { status: 400 });
+      }
+      if (amount >= 1 && !proofFiles.length && !attestation) {
         return Response.json({ error: "PROOF_REQUIRED", reason: "لا نقطة بلا أثر — أرفق صورة أو اكتب إفادة أولًا" }, { status: 400 });
       }
-      const next = Math.min(task.targetCount, (Number(task.completedCount) || 0) + amount);
+      const next = Math.min(task.targetCount, (Number(task.completedCount) || 0) + Math.max(0, amount));
       const at = new Date().toISOString();
       let updated = applyOpsPaceDayLog({
         ...task,
         completedCount: next,
-        proofFiles: [...(task.proofFiles || []), ...proofFiles],
+        proofFiles: amount > 0 ? [...(task.proofFiles || []), ...proofFiles] : (task.proofFiles || []),
         attestation: attestation || task.attestation,
         status: next >= task.targetCount ? "awaiting_approval" : "active",
         escalationLevel: next >= task.targetCount ? 0 : task.escalationLevel,
-      }, amount, at);
+        comments: [
+          ...(Array.isArray(task.comments) ? task.comments : []),
+          {
+            id: crypto.randomUUID(),
+            authorId: auth.userId,
+            authorName: auth.name,
+            text: attestation || (amount > 0 ? `إنجاز ×${amount}` : stopReason),
+            kind: amount > 0 ? "log" : "stop",
+            amount,
+            isIssue: !!stopReason,
+            stopReason,
+            files: proofFiles,
+            at,
+          },
+        ],
+      }, Math.max(0, amount), at);
       if (next < Number(updated.targetCount || task.targetCount || 1)) {
         const pace = deriveDailyTaskPace(taskPaceInput(updated));
-        const blocker = derivePaceBlocker({ task: updated, pace });
+        const blocker = derivePaceBlocker({ task: updated, pace, amountJustLogged: amount, applied: true });
         if (blocker) {
           const logged = Math.max(0, Number(blocker.logged) || 0);
           updated = {
@@ -638,8 +699,19 @@ Deno.serve(async (req) => {
               logged,
               gap: Math.max(0, Number(blocker.expected) - logged),
               kind: logged <= 0 ? "missed" : "partial",
+              reason: stopReason,
               status: "open",
               openedAt: at,
+            },
+          };
+        } else if (updated.paceBlocker?.status === "open") {
+          updated = {
+            ...updated,
+            paceBlocker: {
+              ...updated.paceBlocker,
+              status: "resolved",
+              reason: stopReason || updated.paceBlocker.reason,
+              resolvedAt: at,
             },
           };
         }
@@ -651,7 +723,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "approve") {
-      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      if (!isManager) return Response.json({ error: "FORBIDDEN", reason: "اعتماد الإثبات مقصور على المشرف المراجع." }, { status: 403 });
       const tasks = await listTasksRaw();
       const idx = tasks.findIndex((t) => t.id === body.taskId);
       if (idx < 0) return Response.json({ error: "Task not found" }, { status: 404 });
@@ -679,7 +751,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "reject") {
-      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      if (!isManager) return Response.json({ error: "FORBIDDEN", reason: "رفض الإثبات مقصور على المشرف المراجع." }, { status: 403 });
       const reasonGate = checkRejectReasonGate(body.reason, body.lang === "en" ? "en" : "ar");
       if (!reasonGate.ok) {
         return Response.json({ error: reasonGate.error, reason: reasonGate.reason }, { status: 400 });
@@ -699,19 +771,55 @@ Deno.serve(async (req) => {
       const next = nextOpsEscalation(current, escData, auth.userId);
       const task = applyOpsReject(current, {
         reason,
-        escalate: next.escalate,
-        nextLevel: next.nextLevel,
+        escalate: false,
         reviewerId: auth.userId,
         reviewerName: auth.name,
       });
       tasks[idx] = task;
       await saveTasks(tasks);
+      const rejectCount = opsRejectionCount(task);
       await audit(
-        next.escalate ? "ops_task_escalate" : "ops_task_reject",
-        next.escalate
-          ? `Rejected ${task.ref} — escalated to L${next.nextLevel}`
-          : `Rejected ${task.ref} — top of chain, returned to executor`,
-        { reason, newValue: next.escalate ? String(next.nextLevel) : "returned" },
+        "ops_task_reject",
+        `Rejected ${task.ref} — returned to executor (${rejectCount}/3)`,
+        { reason, newValue: String(rejectCount) },
+      );
+      return Response.json({
+        task,
+        escalation: { escalate: false, rejectCount, canEmployeeEscalate: rejectCount >= 3 && next.escalate },
+        counts: deriveOpsCounts(scopeFilter(tasks, body.scope || null)),
+      });
+    }
+
+    if (action === "employeeEscalate") {
+      const reasonGate = checkRejectReasonGate(body.reason, body.lang === "en" ? "en" : "ar");
+      if (!reasonGate.ok) {
+        return Response.json({ error: reasonGate.error, reason: reasonGate.reason }, { status: 400 });
+      }
+      const reason = String(body.reason || "").trim();
+      const tasks = await listTasksRaw();
+      const idx = tasks.findIndex((t) => t.id === body.taskId);
+      if (idx < 0) return Response.json({ error: "Task not found" }, { status: 404 });
+      const current = { ...tasks[idx] };
+      const escData = await loadEscalationData();
+      if (!canEmployeeEscalateOpsTask(current, reviewerUser, escData)) {
+        return Response.json({
+          error: "EMPLOYEE_ESCALATE_DENIED",
+          reason: "التصعيد متاح للمنفّذ بعد ثلاثة رفض، إن وُجد مستوى أعلى.",
+        }, { status: 403 });
+      }
+      const next = nextOpsEscalation(current, escData);
+      const task = applyOpsEmployeeEscalate(current, {
+        reason,
+        nextLevel: next.nextLevel,
+        actorId: auth.userId,
+        actorName: auth.name,
+      });
+      tasks[idx] = task;
+      await saveTasks(tasks);
+      await audit(
+        "ops_task_employee_escalate",
+        `Employee escalated ${task.ref} to L${next.nextLevel} after ${opsRejectionCount(current)} rejects`,
+        { reason, newValue: String(next.nextLevel) },
       );
       return Response.json({
         task,
@@ -724,7 +832,7 @@ Deno.serve(async (req) => {
       const employeeId = String(body.employeeId || auth.userId || "");
       if (!employeeId) return Response.json({ error: "Missing employeeId" }, { status: 400 });
       if (!isManager && employeeId !== auth.userId) {
-        return Response.json({ error: "Forbidden" }, { status: 403 });
+        return Response.json({ error: "FORBIDDEN", reason: "حضور غيرك لا يُعرض لك." }, { status: 403 });
       }
       const attendance = await loadTodayAttendance(employeeId);
       const accounts = await base44.asServiceRole.entities.CompanyAccount.filter({ companyId: auth.companyId });
@@ -742,8 +850,15 @@ Deno.serve(async (req) => {
     }
 
     if (action === "setTaskMode") {
-      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
-      const mode = body.mode === "remote" ? "remote" : "onsite";
+      if (!isManager) return Response.json({ error: "FORBIDDEN", reason: "تغيير مكان التنفيذ مقصور على المشرفين." }, { status: 403 });
+      const modeGate = checkTaskModeGate(body.mode, body.lang === "en" ? "en" : "ar");
+      if (!modeGate.ok) {
+        return Response.json({
+          error: modeGate.error,
+          reason: body.lang === "en" ? modeGate.reasonEn : modeGate.reason,
+        }, { status: 400 });
+      }
+      const mode = modeGate.mode;
       const tasks = await listTasksRaw();
       const idx = tasks.findIndex((t) => t.id === body.taskId);
       if (idx < 0) return Response.json({ error: "Task not found" }, { status: 404 });
@@ -797,6 +912,18 @@ Deno.serve(async (req) => {
         at: new Date().toISOString(),
       };
       task.comments = [...(Array.isArray(task.comments) ? task.comments : []), entry];
+      if (entry.isIssue) {
+        const pace = deriveDailyTaskPace(taskPaceInput(task));
+        const blocker = derivePaceBlocker({ task, pace, missed: true });
+        if (blocker) {
+          task.paceBlocker = {
+            ...blocker,
+            reason: text,
+            status: "open",
+            openedAt: entry.at,
+          };
+        }
+      }
       tasks[idx] = task;
       await saveTasks(tasks);
       await audit(
@@ -813,18 +940,19 @@ Deno.serve(async (req) => {
       const tasks = await listTasksRaw();
       const idx = tasks.findIndex((t) => t.id === body.taskId);
       if (idx < 0) return Response.json({ error: "Task not found" }, { status: 404 });
-      const task = { ...tasks[idx] };
-      const comments = Array.isArray(task.comments) ? task.comments : [];
-      const found = comments.find((c: any) => String(c?.id) === commentId);
-      if (!found) return Response.json({ error: "COMMENT_NOT_FOUND", reason: "الرسالة غير موجودة." }, { status: 404 });
-      if (found.is_auto) {
-        return Response.json({ error: "PROTECTED", reason: "لا يُحذف سجل النظام." }, { status: 403 });
+      const result = applyOpsCommentDelete(tasks[idx], commentId, {
+        actorId: auth.userId,
+        actorIds: [auth.userId, auth.employeeId].filter(Boolean),
+        lang: body.lang === "en" ? "en" : "ar",
+      });
+      if (!result.ok) {
+        const status = result.error === "COMMENT_NOT_FOUND" ? 404 : 403;
+        return Response.json({ error: result.error, reason: result.reason }, { status });
       }
-      task.comments = comments.filter((c: any) => String(c?.id) !== commentId);
-      tasks[idx] = task;
+      tasks[idx] = result.task;
       await saveTasks(tasks);
-      await audit("ops_task_comment_deleted", `Comment removed on ${task.ref} by ${auth.name}`, { oldValue: commentId });
-      return Response.json({ task, ok: true });
+      await audit("ops_task_comment_deleted", `Comment removed on ${result.task.ref} by ${auth.name}`, { oldValue: commentId });
+      return Response.json({ task: result.task, ok: true });
     }
 
     if (action === "delete") {
@@ -832,12 +960,17 @@ Deno.serve(async (req) => {
       const idx = tasks.findIndex((t) => t.id === body.taskId);
       if (idx < 0) return Response.json({ error: "Task not found" }, { status: 404 });
       const current = tasks[idx];
+      const reason = String(body.reason || "").trim();
+      const ack = !!body.ack;
+      const undoCreate = !!body.undoCreate;
       const gate = checkDeleteOpsTaskGate(current, {
         id: auth.userId,
         employeeId: auth.userId,
         name: auth.name,
         role: auth.role,
-      });
+        isOwner: auth.owner,
+        admin: auth.admin,
+      }, { reason, ack, undoCreate });
       if (!gate.ok) {
         return Response.json({
           error: gate.error,
@@ -845,16 +978,29 @@ Deno.serve(async (req) => {
           reasonEn: gate.reasonEn,
         }, { status: 403 });
       }
-      const next = applyOpsSoftDelete(current, { byId: auth.userId, byName: auth.name });
+      const why = undoCreate ? (reason || "تراجع عن الإنشاء خلال المهلة") : reason;
+      const next = applyOpsSoftDelete(current, {
+        byId: auth.userId,
+        byName: auth.name,
+        reason: why,
+        ack: undoCreate ? true : ack,
+        undoCreate,
+      });
       tasks[idx] = next;
       await saveTasks(tasks);
-      await audit("ops_task_undo_create", `Deleted ${current.ref} within the 3-minute window`, { oldValue: current.id });
-      const live = tasks.filter((t) => !isOpsTaskDeleted(t));
-      return Response.json({ ok: true, task: next, counts: deriveOpsCounts(live) });
+      const logged = Math.max(0, Number(current.completedCount) || 0);
+      await audit(
+        undoCreate ? "ops_task_undo_create" : "ops_task_deleted",
+        undoCreate
+          ? `Deleted ${current.ref} within the 3-minute window`
+          : `Deleted ${current.ref}: ${why}${logged > 0 ? ` (logged ${logged})` : ""}`,
+        { oldValue: current.id, reason: why, loggedCount: logged },
+      );
+      return Response.json({ ok: true, task: next, counts: deriveOpsCounts(tasks) });
     }
 
     if (action === "reassign") {
-      if (!isManager) return Response.json({ error: "Forbidden: only managers can delegate tasks" }, { status: 403 });
+      if (!isManager) return Response.json({ error: "FORBIDDEN", reason: "تفويض المهام مقصور على المشرفين." }, { status: 403 });
       const toId = String(body.toId || body.ownerId || "").trim();
       const reason = String(body.reason || "").trim();
       const tasks = await listTasksRaw();
@@ -881,8 +1027,7 @@ Deno.serve(async (req) => {
         }, { status: 403 });
       }
 
-      const stationPeople = await loadPeople(current.stationId || null);
-      const companyPeople = current.stationId ? stationPeople : await loadPeople(null);
+      const companyPeople = await loadPeople(null);
       const kind = body.kind === "transfer"
         ? "transfer"
         : (body.kind === "acting" ? "acting" : "delegate");
@@ -910,7 +1055,7 @@ Deno.serve(async (req) => {
         ownerId: toId,
         memberIds: [],
         stationId: current.stationId || null,
-        people: current.stationId ? stationPeople : await loadPeople(null),
+        people: companyPeople,
         lang: body.lang === "en" ? "en" : "ar",
       });
       if (!assignGate.ok) {
@@ -931,6 +1076,8 @@ Deno.serve(async (req) => {
         fromName: fromPerson?.name || "",
         toName: toPerson?.name || "",
         byName: auth.name,
+        homeStationId: toPerson?.stationId || null,
+        toStationId: toPerson?.stationId || null,
         lang: body.lang === "en" ? "en" : "ar",
       });
       tasks[idx] = task;
@@ -1101,7 +1248,7 @@ Deno.serve(async (req) => {
 
     if (action === "runEscalationSweep") {
       if (!isManager && !auth.owner) {
-        return Response.json({ error: "Forbidden" }, { status: 403 });
+        return Response.json({ error: "FORBIDDEN", reason: "تشغيل جولة التصعيد مقصور على المشرفين." }, { status: 403 });
       }
       const escData = await loadEscalationData();
       const tasks = await listTasksRaw();

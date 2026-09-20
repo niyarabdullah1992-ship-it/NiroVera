@@ -39,6 +39,14 @@ export const opsRejectSchema = opsBase.extend({
   scope: z.string().nullable().optional(),
 });
 
+export const opsEmployeeEscalateSchema = opsBase.extend({
+  action: z.literal("employeeEscalate"),
+  taskId: entityIdSchema,
+  reason: z.string().trim().min(1).max(2000),
+  lang: z.enum(["ar", "en"]).optional(),
+  scope: z.string().nullable().optional(),
+});
+
 export const opsAttendanceStatusSchema = opsBase.extend({
   action: z.literal("attendanceStatus"),
   employeeId: employeeIdSchema.optional(),
@@ -52,7 +60,7 @@ export const opsCreateSchema = opsBase.extend({
   targetCount: z.coerce.number().int().positive().max(9999).optional(),
   effortWeight: z.coerce.number().min(0).max(10).optional(),
   priority: z.string().optional(),
-  mode: z.enum(["onsite", "remote"]).optional(),
+  mode: z.enum(["onsite", "field", "remote"]).optional(),
   workKind: z.string().max(120).optional(),
   assignMode: z.enum(["one", "some", "all"]).optional(),
   ownerId: z.string().optional(),
@@ -148,10 +156,21 @@ export const opsDeleteCommentSchema = opsBase.extend({
   commentId: z.string().trim().min(1),
 });
 
+export const opsDeleteSchema = opsBase.extend({
+  action: z.literal("delete"),
+  taskId: entityIdSchema,
+  reason: z.string().trim().max(2000).optional(),
+  ack: z.boolean().optional(),
+  undoCreate: z.boolean().optional(),
+  lang: z.enum(["ar", "en"]).optional(),
+  scope: z.string().nullable().optional(),
+});
+
 export const opsActionSchemas = {
   logCompletion: opsLogCompletionSchema,
   approve: opsApproveSchema,
   reject: opsRejectSchema,
+  employeeEscalate: opsEmployeeEscalateSchema,
   attendanceStatus: opsAttendanceStatusSchema,
   create: opsCreateSchema,
   reassign: opsReassignSchema,
@@ -160,6 +179,7 @@ export const opsActionSchemas = {
   redistributePace: opsRedistributePaceSchema,
   addComment: opsAddCommentSchema,
   deleteComment: opsDeleteCommentSchema,
+  delete: opsDeleteSchema,
 } as const;
 
 export function validateOpsRequest(body: unknown) {
@@ -177,6 +197,7 @@ const wpVehicleFields = z
     year: z.string().optional(),
     plateLetters: z.string().optional(),
     plateNumbers: z.string().optional(),
+    assetId: z.string().optional(),
   })
   .passthrough();
 
@@ -187,6 +208,9 @@ const wpPersonSchema = z.object({
   phone: z.string().max(40).optional(),
   id: z.string().max(40).optional(),
   title: z.string().max(120).optional(),
+  employeeId: z.string().max(120).optional(),
+  homeStationId: z.string().max(120).optional(),
+  visitor: z.boolean().optional(),
 }).passthrough();
 
 export const workProofRaiseSchema = tenantRequestSchema.extend({
@@ -201,11 +225,18 @@ export const workProofRaiseSchema = tenantRequestSchema.extend({
   entityScope: z.enum(["internal", "external"]).optional(),
   entityStationId: z.string().trim().max(120).optional(),
   geoVerdict: z.string().optional(),
+  // Named here because checkProofPlaceGate reads it: an unstated place decides the sun ban.
+  place: z.string().trim().max(40).optional(),
   beforeUrl: z.string().nullable().optional(),
   startedAt: z.string().optional(),
   vehicle: wpVehicleSchema,
   vehicles: z.array(wpVehicleFields).max(12).optional(),
   people: z.array(wpPersonSchema).max(12).optional(),
+  attachments: z.array(z.object({
+    url: z.string().optional(),
+    name: z.string().max(300).optional(),
+    type: z.string().max(120).optional(),
+  }).passthrough()).max(20).optional(),
   ref: z.string().optional(),
 });
 
@@ -228,6 +259,7 @@ export const workProofEditSchema = tenantRequestSchema.extend({
   entityName: z.string().trim().min(1).max(500),
   stationId: z.string().trim().min(1).optional(),
   geoVerdict: z.string().optional(),
+  place: z.string().trim().max(40).optional(),
   entityKind: z.string().optional(),
   entityScope: z.enum(["internal", "external"]).optional(),
   entityStationId: z.string().trim().max(120).optional(),
@@ -248,6 +280,16 @@ export const workProofAttendanceStatusSchema = tenantRequestSchema.extend({
   employeeId: employeeIdSchema.optional(),
 });
 
+export const workProofAddAttachmentSchema = tenantRequestSchema.extend({
+  action: z.literal("addAttachment"),
+  id: entityIdSchema.optional(),
+  ref: z.string().optional(),
+  url: z.string().min(1),
+  name: z.string().max(300).optional(),
+  type: z.string().max(120).optional(),
+  replaceId: z.string().optional(),
+}).refine((v) => !!(v.id || v.ref), { message: "id or ref is required", path: ["id"] });
+
 export const workProofActionSchemas = {
   raise: workProofRaiseSchema,
   end: workProofEndSchema,
@@ -255,6 +297,7 @@ export const workProofActionSchemas = {
   edit: workProofEditSchema,
   reject: workProofRejectSchema,
   attendanceStatus: workProofAttendanceStatusSchema,
+  addAttachment: workProofAddAttachmentSchema,
 } as const;
 
 export function validateWorkProofRequest(body: unknown) {

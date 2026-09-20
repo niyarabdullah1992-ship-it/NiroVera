@@ -1,3 +1,8 @@
+// purpose: LoginOtp tenant row.
+// domain: company
+// isolation: companyId
+// owner: companyDirectory
+// status: canonical
 {
   "name": "LoginOtp",
   "type": "object",

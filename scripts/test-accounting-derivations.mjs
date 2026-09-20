@@ -21,6 +21,10 @@ const claims = [
 
 assert.equal(postedExpenseClaims(claims, "2026-08").length, 2);
 assert.equal(postedExpenseTotal(claims, "2026-08"), 150);
+assert.equal(postedExpenseClaims([
+  { id: "cfo", title: "CFO", amount: 80, status: "cfo_approved", approvedAt: "2026-08-20T10:00:00Z" },
+  { id: "fin", title: "Fin", amount: 20, status: "finance_approved", approvedAt: "2026-08-21T10:00:00Z" },
+], "2026-08").length, 2);
 
 const draftRun = { month: "2026-08", status: "draft", items: [{ base: 1000, allowances: 0, deductions: 0, overtimeHours: 0 }] };
 const approvedRun = { month: "2026-08", status: "approved", items: [{ base: 2000, allowances: 100, deductions: 50, overtimeHours: 0 }] };

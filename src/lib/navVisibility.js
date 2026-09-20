@@ -5,36 +5,43 @@ import { SMART_SECTION_ROUTES } from "@/lib/smartPositions";
 
 const BASE = [
   "/app",
-  "/app/daily-report",
   "/app/tasks",
   "/app/attendance",
+  "/app/calendar",
   "/app/shifts",
   "/app/leave",
-  "/app/chat",
+  "/app/requests",
   "/app/files",
   "/app/inventory",
   "/app/assets",
   "/app/expenses",
+  // The wage surface is split: management resolves into the run, everyone else
+  // lands on their own payslip and deductions. Closing the route to employees
+  // would close their own wage to them, so the page derives the view and every
+  // payroll mutator carries its own guard (lib/payrollRights.js).
+  "/app/payroll",
   "/app/signing",
   "/app/work-proof",
+  "/app/visitor-proof",
   "/app/assistant",
   "/app/complaints",
+  "/app/discipline",
   "/app/performance",
-  "/app/manual",
 ];
 const MANAGER_EXTRA = ["/app/safety", "/app/escalation"];
-const EXEC_EXTRA = ["/app/hr", "/app/org", "/app/settings", "/app/payroll", "/app/discipline"];
+const EXEC_EXTRA = ["/app/hr", "/app/org", "/app/settings"];
 
 const PLAN_ROUTE_SECTIONS = {
   "/app/assistant": "assistant",
-  "/app/daily-report": "reports",
   "/app/tasks": "tasks",
   "/app/escalation": "tasks",
   "/app/inventory": "inventory",
   "/app/assets": "assets",
   "/app/attendance": "attendance",
+  "/app/calendar": "attendance",
   "/app/shifts": "attendance",
   "/app/leave": "attendance",
+  "/app/requests": "attendance",
   "/app/hr": "hr",
   "/app/org": "hr",
   "/app/settings": "hr",
@@ -46,8 +53,10 @@ const PLAN_ROUTE_SECTIONS = {
   "/app/complaints": "complaints",
   "/app/files": "files",
   "/app/signing": "signing",
-  "/app/chat": "chat",
-  "/app/work-proof": "signing",
+  // Work and visitor proof close the field's own cycle — they are not part of the
+  // document-signing section, so the signing plan feature must not gate them.
+  "/app/work-proof": "tasks",
+  "/app/visitor-proof": "tasks",
 };
 
 const routeSection = (pathname) => Object.entries(PLAN_ROUTE_SECTIONS).find(([route]) => pathname === route || pathname.startsWith(`${route}/`))?.[1];
@@ -74,19 +83,12 @@ export function allowedNavFor(user, data, company) {
   if (["ops_manager", "director"].includes(role)) {
     EXEC_EXTRA.forEach((p) => allowed.add(p));
   }
-  if (role === "pgm") allowed.add("/app/payroll");
-  if (role === "financial_officer") {
-    allowed.add("/app/payroll");
-  }
   if (user.hrLevelId) {
     allowed.add("/app/hr");
     allowed.add("/app/org");
     allowed.add("/app/settings");
     allowed.add("/app/discipline");
     if (hrPermissions.has("view_safety")) allowed.add("/app/safety");
-    if (hrPermissions.has("manage_payroll")) {
-      allowed.add("/app/payroll");
-    }
   }
   if (user.id === data?.ownerId) {
     EXEC_EXTRA.forEach((p) => allowed.add(p));
@@ -116,7 +118,7 @@ export function canAccessPath(pathname, user, data, company) {
     .flatMap((routes) => (Array.isArray(routes) ? routes : routes ? [routes] : []))
     .find((item) => pathname === item || pathname.startsWith(`${item}/`));
   if (smartRoute && !allowed.has(smartRoute)) return false;
-  const gated = ["/app/hr", "/app/org", "/app/settings", "/app/payroll", "/app/safety", "/app/discipline"];
+  const gated = ["/app/hr", "/app/org", "/app/settings", "/app/safety", "/app/discipline"];
   const hit = gated.find((g) => pathname === g || pathname.startsWith(`${g}/`));
   if (hit) return allowed.has(hit);
   return true;

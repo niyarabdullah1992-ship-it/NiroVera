@@ -4,9 +4,6 @@ import { BORDER, MUTED, CARD } from "@/lib/platformStyles";
 export default function StampPreview({ src, sealId, ar }) {
   return (
     <div>
-      <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 600, color: MUTED }}>
-        {ar ? "معاينة الختم بهوية نيروفيرا" : "NiroVera seal preview"}
-      </p>
       <div
         className="nv-stamp-stage"
         style={{

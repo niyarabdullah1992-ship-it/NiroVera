@@ -10,12 +10,15 @@ const empty = deriveMinistryAlerts({ employees: [], safety: [], payrollRuns: [] 
   today: "2026-04-10",
 });
 assert.equal(empty.alerts.some((a) => a.gate === "HEAT_BAN"), false);
+assert.equal(empty.forum, "platform");
+assert.equal(empty.ministryRole, "monitor");
 
 const heat = deriveMinistryAlerts({ employees: [], safety: [], payrollRuns: [] }, {
   now: new Date("2026-07-20T12:00:00"),
   today: "2026-07-20",
 });
 assert.ok(heat.alerts.some((a) => a.gate === "HEAT_BAN"));
+assert.equal(heat.alerts.find((a) => a.gate === "HEAT_BAN").to, "/app/shifts");
 
 const docs = deriveMinistryAlerts({
   employees: [{

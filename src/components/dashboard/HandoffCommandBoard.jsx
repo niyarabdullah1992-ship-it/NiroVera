@@ -1,101 +1,59 @@
-import React, { useState } from "react";
+import React from "react";
 import { Link } from "react-router-dom";
-import { CalendarCheck, ChevronLeft, Gauge, Mail, Users } from "lucide-react";
 import {
-  ACCENT, BORDER, INK, NAVY, MUTED, BAD, WARN, NEUTRAL, bar, dot, num, pill, ui, CARD, SURFACE, statCard,
+  ACCENT, BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE, bar, dot,
 } from "@/lib/platformStyles";
-import { ChromeBox } from "@/components/shared/IdentityCard";
+import { LEAVE_STYLE } from "@/lib/shiftWeek";
 import { setStationScope } from "@/lib/stationScopeStore";
 import useStationScope from "@/hooks/useStationScope";
 
-/**
- * Command Center — greeting, four KPIs, tinted alerts, decision queue.
- */
-
-function sparkBars(vals, color) {
-  return vals.map((v, i) => ({
-    key: i,
-    style: {
-      display: "block",
-      width: "5px",
-      height: `${Math.max(3, v)}px`,
-      borderRadius: "2px",
-      background: color,
-      opacity: 0.5,
-    },
-  }));
-}
-
-function levelTone(open) {
-  if (open >= 8) return { dot: "#DC2626", open: "#DC2626", spark: "#DC2626" };
-  if (open >= 4) return { dot: "#F59E0B", open: "#B45309", spark: "#F59E0B" };
-  return { dot: ACCENT, open: NAVY, spark: ACCENT };
-}
+const MONO = "'IBM Plex Mono', monospace";
+const LINE = "var(--nv-line, #DFE3EA)";
+const HAIR = "#EEF0F4";
+const ROW = "#F7F8FA";
 
 function inferAlertLevel(to) {
   if (!to) return "warn";
   if (String(to).includes("safety")) return "critical";
-  if (String(to).includes("leave")) return "ok";
+  if (String(to).includes("leave") || String(to).includes("requests")) return "ok";
   if (String(to).includes("task") || String(to).includes("escalation")) return "info";
   return "warn";
 }
 
-function alertSkin(level) {
-  if (level === "critical" || level === "bad") return { bg: "#FEF2F2", fg: "#B91C1C", bd: "#FECACA" };
-  if (level === "ok") return { bg: "#ECFDF3", fg: "#15803D", bd: "#BBF7D0" };
-  if (level === "info") return { bg: "#EFF6FF", fg: "#1D4ED8", bd: "#BFDBFE" };
-  return { bg: "#FFFBEB", fg: "#B45309", bd: "#FDE68A" };
+function alertDot(level) {
+  if (level === "critical" || level === "bad") return "#B91C1C";
+  if (level === "ok") return ACCENT;
+  if (level === "info") return NAVY;
+  return "#B45309";
 }
 
-function kpiGlyph(bg, fg, Icon) {
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: 36,
-        height: 36,
-        borderRadius: 10,
-        background: bg,
-        color: fg,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      <Icon style={{ width: 16, height: 16 }} strokeWidth={1.8} />
-    </span>
-  );
+function leaveTag() {
+  return {
+    display: "inline-block",
+    padding: "2px 9px",
+    fontSize: 10,
+    fontWeight: 600,
+    background: LEAVE_STYLE.bg,
+    color: LEAVE_STYLE.fg,
+    border: `1px solid ${LEAVE_STYLE.color}33`,
+    whiteSpace: "nowrap",
+    borderRadius: 999,
+  };
 }
 
-function ReadinessRing({ score, size = 36 }) {
-  const clamped = Math.max(0, Math.min(100, Number(score) || 0));
-  const deg = (clamped / 100) * 360;
-  const color = clamped >= 70 ? ACCENT : clamped >= 40 ? "#F59E0B" : "#DC2626";
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: `conic-gradient(${color} ${deg}deg, #E2E8F0 0deg)`,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      <span
-        style={{
-          width: size - 10,
-          height: size - 10,
-          borderRadius: "50%",
-          background: CARD,
-        }}
-      />
-    </span>
-  );
+function kpiAccent(key, value) {
+  if (key === "attendance") {
+    if (value < 60) return "#B91C1C";
+    if (value < 80) return "#B45309";
+    return "#137A49";
+  }
+  if (key === "decisions") return value > 0 ? "#B91C1C" : NAVY;
+  if (key === "readiness") {
+    if (value < 40) return "#B91C1C";
+    if (value < 70) return "#B45309";
+    return "#137A49";
+  }
+  return NAVY;
 }
 
 export default function HandoffCommandBoard({
@@ -109,7 +67,6 @@ export default function HandoffCommandBoard({
   employeesDelta = null,
   attendanceRate = 0,
   pendingLeave = 0,
-  pendingReports = 0,
   leaveQueue = [],
   alerts = [],
   stations = [],
@@ -126,16 +83,14 @@ export default function HandoffCommandBoard({
   const score = Math.max(0, Math.min(100, Math.round(Number(readinessScore) || 0)));
   const factorBars = (factors.length ? factors : [
     { label: ar ? "الحضور" : "Attendance", pct: attendanceRate },
-    { label: ar ? "إنجاز المهام" : "Task completion", pct: 78 },
-    { label: ar ? "إغلاق بنود السلامة" : "Safety closure", pct: Math.max(0, 100 - openHazards * 10) },
-    { label: ar ? "جاهزية الأصول" : "Asset uptime", pct: 97 },
+    { label: ar ? "مهام" : "Tasks", pct: 100 },
+    { label: ar ? "سلامة" : "Safety", pct: Math.max(0, 100 - openHazards * 10) },
+    { label: ar ? "اعتمادات" : "Approvals", pct: pendingLeave ? Math.max(0, 100 - pendingLeave * 8) : 100 },
   ]).slice(0, 4);
 
   const queue = leaveQueue.slice(0, 6).map((r) => ({
     ...r,
-    to: r.to || (String(r.type || "").includes("تقرير") || /report/i.test(String(r.type || ""))
-      ? "/app/daily-report"
-      : "/app/leave"),
+    to: r.to || "/app/requests/manage",
     action: r.action || (ar ? "راجع" : "Review"),
     age: r.date || r.age || "—",
     title: r.title || r.name || "—",
@@ -144,7 +99,7 @@ export default function HandoffCommandBoard({
     level: r.level || "warn",
   }));
 
-  const pendingDecisions = Number(pendingLeave || 0) + Number(pendingReports || 0);
+  const pendingDecisions = Number(pendingLeave || 0);
   const alertLines = (alerts.length ? alerts : []).slice(0, 4).map((a) => {
     if (typeof a === "string") return { text: a, to: null, level: "warn" };
     return {
@@ -156,33 +111,24 @@ export default function HandoffCommandBoard({
 
   const present = presentCount || Math.round((attendanceRate / 100) * Math.max(1, employeesCount));
   const late = lateCount || 0;
-  const onLeave = leaveCount || pendingLeave || 0;
+  const onLeave = leaveCount || 0;
   const absent = absentCount || 0;
   const bandTotal = Math.max(1, present + late + onLeave + absent);
   const shiftBands = [
     { label: ar ? "حاضر" : "Present", count: present, color: ACCENT, flex: present },
-    { label: ar ? "متأخر" : "Late", count: late, color: "#F59E0B", flex: Math.max(late, 0) },
-    { label: ar ? "إجازة" : "On leave", count: onLeave, color: "#94A3B8", flex: Math.max(onLeave, 0) },
-    { label: ar ? "غائب" : "Absent", count: absent, color: "#DC2626", flex: Math.max(absent, 0) },
+    { label: ar ? "متأخر" : "Late", count: late, color: "#B45309", flex: Math.max(late, 0) },
+    { label: ar ? "إجازة" : "On leave", count: onLeave, color: LEAVE_STYLE.color, flex: Math.max(onLeave, 0) },
+    { label: ar ? "غائب" : "Absent", count: absent, color: "#B91C1C", flex: Math.max(absent, 0) },
   ];
 
   const hseRows = [
-    { count: criticalHazards, label: ar ? "مخاطر حرجة مفتوحة" : "Critical hazards open", style: BAD },
-    { count: Math.max(0, openHazards - criticalHazards), label: ar ? "ملاحظات سلامة بانتظار الإغلاق" : "Observations pending closure", style: WARN },
-    { count: pendingReports, label: ar ? "تقارير بانتظار الاعتماد" : "Reports awaiting approval", style: NEUTRAL },
+    { count: criticalHazards, label: ar ? "مخاطر حرجة مفتوحة" : "Critical hazards open", tone: "#B91C1C" },
+    { count: Math.max(0, openHazards - criticalHazards), label: ar ? "ملاحظات سلامة بانتظار الإغلاق" : "Observations pending closure", tone: "#B45309" },
   ];
 
   const decisionsCountLabel = queue.length === 0
     ? (ar ? "لا شيء معلّق" : "Nothing pending")
     : (ar ? (queue.length === 1 ? "بند واحد" : queue.length === 2 ? "بندان" : `${queue.length} بنود`) : `${queue.length} items`);
-
-  const kpiLink = {
-    ...statCard,
-    textDecoration: "none",
-    color: "inherit",
-    display: "block",
-    boxShadow: "0 8px 24px rgba(20,40,75,.05)",
-  };
 
   const kpis = [
     {
@@ -190,314 +136,224 @@ export default function HandoffCommandBoard({
       to: "/app/attendance",
       label: ar ? "المجدولون اليوم" : "Scheduled today",
       value: employeesCount,
-      icon: kpiGlyph("#EFF6FF", "#1D4ED8", Users),
-      hint: (
-        <>
-          {employeesDelta != null && employeesDelta !== 0 ? (
-            <span
-              dir="ltr"
-              style={{
-                ...pill("#ECFDF3", "#15803D", "#BBF7D0"),
-                marginInlineEnd: 6,
-                fontFamily: "'IBM Plex Sans',sans-serif",
-              }}
-            >
-              {employeesDelta > 0 ? "+" : ""}
-              {employeesDelta}
-            </span>
-          ) : null}
-          <span>{ar ? "ضمن نطاق العرض الحالي" : "in the current display range"}</span>
-        </>
-      ),
+      hint: employeesDelta
+        ? (ar ? `${employeesDelta > 0 ? "+" : ""}${employeesDelta} تعيين هذا الشهر · نفس رقم الحضور` : `${employeesDelta > 0 ? "+" : ""}${employeesDelta} hired this month · same figure as Attendance`)
+        : (ar ? "ضمن نطاق العرض الحالي · يغذّي المسير" : "in the current scope · feeds payroll"),
+      accent: kpiAccent("scheduled", employeesCount),
     },
     {
       key: "attendance",
       to: "/app/attendance",
       label: ar ? "نسبة الحضور" : "Attendance rate",
       value: `${Math.round(Number(attendanceRate) || 0)}%`,
-      icon: kpiGlyph("#ECFDF3", "#15803D", CalendarCheck),
       hint: ar ? `${present} حاضرون الآن` : `${present} present now`,
+      accent: kpiAccent("attendance", Number(attendanceRate) || 0),
     },
     {
       key: "decisions",
-      to: "/app/leave",
+      to: "/app/requests/manage",
       label: ar ? "بانتظار قرارك" : "Awaiting your decision",
       value: pendingDecisions,
-      icon: kpiGlyph(pendingDecisions > 0 ? "#FEF2F2" : "#F8FAFC", pendingDecisions > 0 ? "#B91C1C" : MUTED, Mail),
-      hint: ar
-        ? `${pendingLeave} إجازة · ${pendingReports} تقارير`
-        : `${pendingLeave} leave · ${pendingReports} reports`,
-      alert: pendingDecisions > 0,
+      hint: ar ? `${pendingLeave} إجازة بانتظار القرار` : `${pendingLeave} leave awaiting a decision`,
+      accent: kpiAccent("decisions", pendingDecisions),
     },
     {
       key: "readiness",
       to: null,
       label: ar ? "مؤشر الجاهزية" : "Readiness index",
-      value: (
-        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}>
-          {score}
-          <span dir="ltr" style={{ fontSize: 14, fontWeight: 500, color: MUTED }}>/100</span>
-        </span>
-      ),
-      icon: <ReadinessRing score={score} />,
-      hint: (
-        <>
-          {readinessDelta != null ? (
-            <span
-              dir="ltr"
-              style={{
-                ...pill("#ECFDF3", "#15803D", "#BBF7D0"),
-                marginInlineEnd: 6,
-                fontFamily: "'IBM Plex Sans',sans-serif",
-              }}
-            >
-              {readinessDelta > 0 ? "+" : ""}
-              {readinessDelta}
-            </span>
-          ) : null}
-          <span>{ar ? "حضور · مهام · سلامة · اعتمادات" : "attendance · tasks · safety · approvals"}</span>
-        </>
-      ),
-      extra: kpiGlyph("#FFF7ED", "#C2410C", Gauge),
+      value: score,
+      hint: ar ? "حضور · مهام · سلامة · اعتمادات" : "attendance · tasks · safety · approvals",
+      accent: kpiAccent("readiness", score),
+      suffix: "/100",
     },
   ];
 
-  return (
-    <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "1320px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ minWidth: 0, flex: "1 1 280px" }}>
-          <h2 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.03em", color: INK, lineHeight: 1.25 }}>
-            {greetName
-              ? (ar ? `أهلاً بعودتك، ${greetName}` : `Welcome back, ${greetName}`)
-              : (ar ? "أهلاً بعودتك" : "Welcome back")}
-          </h2>
-          <p style={{ margin: "8px 0 0", fontSize: 13, lineHeight: 1.65, color: MUTED, maxWidth: 560 }}>
-            {ar
-              ? "نظرة واضحة على الفريق والحضور والقرارات المعلقة — كل ما يهمك اليوم في شاشة واحدة."
-              : "A clear view of the team, attendance, and pending decisions — everything that matters today on one screen."}
-          </p>
-        </div>
-        {toolbar}
-      </div>
+  const paperHead = {
+    padding: "16px 20px",
+    borderBottom: `1px solid ${HAIR}`,
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+  };
 
-      <div className="nv-command-kpis">
+  return (
+    <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {toolbar ? (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>{toolbar}</div>
+      ) : null}
+
+      <div className="nv-disc-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
         {kpis.map((kpi) => {
           const body = (
             <>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>{kpi.label}</span>
-                {kpi.extra || kpi.icon}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {kpi.extra ? kpi.icon : null}
-                <div
-                  style={{
-                    fontFamily: "'IBM Plex Sans',sans-serif",
-                    fontSize: 32,
-                    fontWeight: 650,
-                    letterSpacing: "-0.04em",
-                    lineHeight: 1,
-                    color: NAVY,
-                  }}
-                >
+              <span style={{ fontSize: 12, color: MUTED }}>{kpi.label}</span>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 30, fontWeight: 500, color: kpi.accent, lineHeight: 1.05 }}>
                   {kpi.value}
-                </div>
-                {kpi.alert ? <span style={{ ...dot("#DC2626"), width: 8, height: 8 }} /> : null}
-              </div>
-              <div style={{ marginTop: 10, fontSize: 11, color: MUTED, display: "flex", alignItems: "center", flexWrap: "wrap", minHeight: 18 }}>
-                {kpi.hint}
-              </div>
+                </span>
+                {kpi.suffix ? <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>{kpi.suffix}</span> : null}
+              </span>
+              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{kpi.hint}</span>
             </>
           );
+          const face = {
+            background: CARD,
+            border: `1px solid ${LINE}`,
+            borderTop: `3px solid ${kpi.accent}`,
+            borderRadius: 14,
+            boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
+            padding: "14px 16px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            minWidth: 0,
+            textDecoration: "none",
+            color: "inherit",
+          };
           return kpi.to ? (
-            <Link key={kpi.key} to={kpi.to} style={kpiLink}>{body}</Link>
+            <Link key={kpi.key} to={kpi.to} style={face}>{body}</Link>
           ) : (
-            <div key={kpi.key} style={{ ...kpiLink, cursor: "default" }}>{body}</div>
+            <div key={kpi.key} style={face}>{body}</div>
           );
         })}
       </div>
 
-      <div className="nv-handoff-top">
-        <div
-          style={{
-            minWidth: 0,
-            background: CARD,
-            border: `1px solid ${BORDER}`,
-            borderRadius: 16,
-            padding: "18px 20px",
-            display: "flex",
-            flexDirection: "column",
-            boxShadow: "0 8px 24px rgba(20,40,75,.05)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 4 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: INK }}>
-              {ar ? "ما يحتاج قرارك اليوم" : "Needs your decision today"}
+      <div className="nv-handoff-top nv-emp-summary">
+        <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
+          <div style={{ ...paperHead, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "ما يحتاج قرارك اليوم" : "Needs your decision today"}</span>
+              <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
+                {ar
+                  ? <>مرتّبة بأثرها على التشغيل — الإجازة تغذي <Link to="/app/shifts" style={{ color: "inherit", fontWeight: 600 }}>الجدول</Link> و<Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>الحضور</Link>.</>
+                  : <>Ranked by operational impact — leave feeds the <Link to="/app/shifts" style={{ color: "inherit", fontWeight: 600 }}>rota</Link> and <Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>attendance</Link>.</>}
+              </span>
             </div>
-            <span
-              style={{
-                ...pill(
-                  queue.length ? "#FEF2F2" : SURFACE,
-                  queue.length ? "#B91C1C" : MUTED,
-                  queue.length ? "#FECACA" : BORDER,
-                ),
-                fontSize: 10,
-                fontWeight: 700,
-              }}
-            >
+            <span style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: queue.length ? LEAVE_STYLE.fg : MUTED,
+              background: queue.length ? LEAVE_STYLE.bg : SURFACE,
+              border: `1px solid ${queue.length ? `${LEAVE_STYLE.color}33` : BORDER}`,
+              padding: "3px 9px",
+              whiteSpace: "nowrap",
+              borderRadius: 999,
+            }}>
               {decisionsCountLabel}
             </span>
           </div>
-          <div style={{ fontSize: 11, color: MUTED, marginBottom: 8 }}>
-            {ar ? "مرتبة بأثرها على التشغيل، لا بتاريخها" : "Ranked by operational impact, not by date"}
-          </div>
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {queue.length === 0 ? (
-              <div style={{ padding: "26px 0", textAlign: "center", fontSize: 13, color: MUTED }}>
-                {ar ? "لا بنود تحتاج قرارك اليوم" : "Nothing needs your decision today"}
-              </div>
-            ) : (
-              queue.map((r) => (
-                <div
-                  key={r.id || `${r.title}-${r.age}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "12px 0",
-                    borderTop: `1px solid ${BORDER}`,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: NAVY, textWrap: "pretty" }}>{r.title}</div>
-                    <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{r.meta}</div>
-                  </div>
-                  <span style={pill("#FFFBEB", "#B45309", "#FDE68A")}>{r.status}</span>
-                  <Link
-                    to={r.to}
-                    style={{ ...ui.btnCreate, textDecoration: "none", gap: 4, height: 32 }}
-                  >
-                    {r.action}
-                    <ChevronLeft style={{ width: 13, height: 13, transform: ar ? "none" : "scaleX(-1)" }} strokeWidth={2.2} />
-                  </Link>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
-          <div
-            style={{
-              background: CARD,
-              border: `1px solid ${BORDER}`,
-              borderRadius: 16,
-              padding: "16px 18px",
-              boxShadow: "0 8px 24px rgba(20,40,75,.05)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: INK }}>{ar ? "تنبيهات استباقية" : "Proactive alerts"}</div>
-              <div style={{ fontSize: 11, color: MUTED }}>
-                {ar ? "كل تنبيه يفتح القسم الذي يصلحه" : "Each alert opens the section that fixes it"}
-              </div>
+          {queue.length === 0 ? (
+            <div style={{ padding: "26px 20px", textAlign: "center", fontSize: 13, color: MUTED }}>
+              {ar ? "لا بنود تحتاج قرارك اليوم" : "Nothing needs your decision today"}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {alertLines.length === 0 ? (
-                <div style={{ fontSize: 12, color: MUTED, padding: "8px 0" }}>
-                  {ar ? "لا تنبيهات الآن" : "No alerts right now"}
+          ) : (
+            queue.map((r) => (
+              <div
+                key={r.id || `${r.title}-${r.age}`}
+                style={{
+                  padding: "13px 20px",
+                  borderBottom: `1px solid ${ROW}`,
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0,1fr) auto auto",
+                  gap: 12,
+                  alignItems: "center",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, lineHeight: 1.5 }}>{r.title}</div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 3, lineHeight: 1.7 }}>{r.meta}</div>
                 </div>
-              ) : (
-                alertLines.map((line, i) => {
-                  const skin = alertSkin(line.level);
-                  const style = {
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "11px 13px",
-                    borderRadius: 12,
-                    border: `1px solid ${skin.bd}`,
-                    background: skin.bg,
-                    cursor: line.to ? "pointer" : "default",
+                <span style={leaveTag()}>{r.status}</span>
+                <Link
+                  to={r.to}
+                  style={{
                     fontFamily: "inherit",
                     fontSize: 12,
-                    color: skin.fg,
-                    textAlign: "start",
-                    width: "100%",
+                    fontWeight: 600,
+                    padding: "8px 14px",
+                    border: `1px solid ${NAVY_FILL}`,
+                    background: NAVY_FILL,
+                    color: "#fff",
                     textDecoration: "none",
-                    fontWeight: 500,
-                  };
-                  const body = (
-                    <>
-                      <span style={dot(skin.fg)} />
-                      <span style={{ flex: 1, textAlign: "start", color: INK }}>{line.text}</span>
-                    </>
-                  );
-                  return line.to ? (
-                    <Link key={i} to={line.to} style={style}>{body}</Link>
-                  ) : (
-                    <div key={i} style={style}>{body}</div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+                    whiteSpace: "nowrap",
+                    borderRadius: 10,
+                  }}
+                >
+                  {r.action}
+                </Link>
+              </div>
+            ))
+          )}
+        </section>
 
-          <div
-            style={{
-              background: CARD,
-              border: `1px solid ${BORDER}`,
-              borderRadius: 16,
-              padding: "16px 18px",
-              boxShadow: "0 8px 24px rgba(20,40,75,.05)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: INK }}>{ar ? "مكونات الجاهزية" : "Readiness components"}</div>
-                <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
-                  {ar ? "نفس عوامل المؤشر أعلاه" : "Same factors as the index above"}
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                <ReadinessRing score={score} size={32} />
-                <div style={{ textAlign: "start" }}>
-                  <div style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 18, fontWeight: 650, lineHeight: 1, color: NAVY }}>
-                    {score}
-                    <span dir="ltr" style={{ fontSize: 12, fontWeight: 500, color: MUTED }}> /100</span>
-                  </div>
-                </div>
-              </div>
+        <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
+          <div style={paperHead}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "تنبيهات استباقية" : "Proactive alerts"}</span>
+            <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
+              {ar ? "كل تنبيه يفتح القسم الذي يصلحه." : "Each alert opens the section that fixes it."}
+            </span>
+          </div>
+          {alertLines.length === 0 ? (
+            <div style={{ padding: "18px 20px", fontSize: 12, color: MUTED }}>
+              {ar ? "لا تنبيهات الآن" : "No alerts right now"}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          ) : (
+            alertLines.map((line, i) => {
+              const style = {
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                padding: "13px 20px",
+                borderBottom: `1px solid ${ROW}`,
+                cursor: line.to ? "pointer" : "default",
+                fontFamily: "inherit",
+                fontSize: 13,
+                color: INK,
+                textAlign: "start",
+                width: "100%",
+                textDecoration: "none",
+                lineHeight: 1.55,
+                background: "transparent",
+                boxSizing: "border-box",
+              };
+              const body = (
+                <>
+                  <span style={{ ...dot(alertDot(line.level)), marginTop: 6 }} />
+                  <span style={{ flex: 1 }}>{line.text}</span>
+                </>
+              );
+              return line.to ? (
+                <Link key={i} to={line.to} style={style}>{body}</Link>
+              ) : (
+                <div key={i} style={style}>{body}</div>
+              );
+            })
+          )}
+
+          <div style={{ ...paperHead, borderBottom: "none", borderTop: `1px solid ${HAIR}` }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "مكونات الجاهزية" : "Readiness components"}</div>
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.75 }}>
+                  {ar ? "نفس عوامل المؤشر أعلاه — مشتقّة لا تقدير." : "Same factors as the index — derived, not estimated."}
+                </div>
+              </div>
+              <span dir="ltr" style={{ fontFamily: MONO, fontSize: 22, fontWeight: 500, color: NAVY, lineHeight: 1 }}>
+                {score}
+                <span style={{ fontSize: 12, fontWeight: 500, color: MUTED }}> /100</span>
+              </span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
               {factorBars.map((f) => {
                 const pct = Math.max(0, Math.min(100, Number(f.pct) || 0));
-                const barColor = pct < 70 ? "#F59E0B" : ACCENT;
+                const barColor = pct < 70 ? "#B45309" : ACCENT;
                 return (
-                  <div key={f.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ flex: 1, fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{f.label}</span>
-                    <span
-                      style={{
-                        width: 74,
-                        height: 4,
-                        borderRadius: 4,
-                        background: SURFACE,
-                        overflow: "hidden",
-                        flexShrink: 0,
-                      }}
-                    >
+                  <div key={f.label} style={{ display: "grid", gridTemplateColumns: "minmax(72px,auto) minmax(0,1fr) 36px", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{f.label}</span>
+                    <span style={{ height: 10, background: SURFACE, overflow: "hidden", borderRadius: 10 }}>
                       <span style={bar(pct, barColor)} />
                     </span>
-                    <span
-                      style={{
-                        width: 32,
-                        textAlign: "end",
-                        fontSize: 11,
-                        fontFamily: "'IBM Plex Sans',sans-serif",
-                        color: INK,
-                      }}
-                    >
+                    <span dir="ltr" style={{ textAlign: "end", fontSize: 12, fontFamily: MONO, color: INK }}>
                       {Math.round(pct)}%
                     </span>
                   </div>
@@ -505,194 +361,162 @@ export default function HandoffCommandBoard({
               })}
             </div>
           </div>
-        </div>
+        </section>
       </div>
 
-      <div>
-        <div style={{ display: "flex", alignItems: "baseline", gap: "10px", marginBottom: "10px" }}>
-          <div style={{ fontSize: "13px", fontWeight: 600 }}>{ar ? "الفروع" : "Stations"}</div>
-          <div style={{ fontSize: "11px", color: MUTED }}>
-            {ar ? "اضغط فرعًا لتضييق اللوحة" : "Pick a branch to narrow the board"}
+      <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
+        <div style={{ ...paperHead, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "الفروع" : "Stations"}</span>
+            <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
+              {ar
+                ? "اضغط فرعاً لتضييق اللوحة — النطاق نفسه في الحضور والمسير. إدارة = فرع واحد."
+                : "Pick a branch to narrow the board — the same scope as attendance and payroll. Manage = one branch."}
+            </span>
           </div>
-          {scope !== "all" && (
+          {scope !== "all" ? (
             <button
               type="button"
               onClick={() => setStationScope("all")}
-              style={{ marginInlineStart: "auto", border: "none", background: "transparent", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: "11px", fontWeight: 500, color: ACCENT }}
+              style={{
+                marginInlineStart: "auto",
+                border: `1px solid ${BORDER}`,
+                background: CARD,
+                padding: "8px 12px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                fontSize: 12,
+                fontWeight: 600,
+                color: NAVY,
+                borderRadius: 10,
+              }}
             >
               {ar ? "كل الفروع" : "All stations"}
             </button>
-          )}
+          ) : null}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))", gap: 0 }}>
           {(stations || []).map((s) => {
             const open = Number(s.open ?? 0);
             const crew = Number(s.crew ?? 0);
-            const tone = levelTone(open);
-            const spark = sparkBars([8, 11, 9, 13, 12, 14, Math.min(22, 13 + open)], tone.spark);
+            const tone = open >= 8 ? "#B91C1C" : open >= 4 ? "#B45309" : ACCENT;
+            const active = String(scope) === String(s.id);
             return (
-              <StationCard
+              <button
                 key={s.id || s.name}
-                name={s.name}
-                code={s.code || ""}
-                crew={crew}
-                open={open}
-                tone={tone}
-                spark={spark}
-                ar={ar}
-                active={String(scope) === String(s.id)}
+                type="button"
                 onClick={() => setStationScope(s.id ? s.id : "all")}
-              />
+                aria-pressed={active}
+                title={ar ? "اجعل هذا الفرع نطاق الصفحة" : "Scope this page to this station"}
+                style={{
+                  background: active ? "color-mix(in oklab, var(--nv-accent) 8%, var(--nv-card))" : CARD,
+                  border: "none",
+                  borderInlineEnd: `1px solid ${LINE}`,
+                  borderBottom: `1px solid ${LINE}`,
+                  padding: "16px 20px",
+                  cursor: "pointer",
+                  color: "inherit",
+                  display: "block",
+                  width: "100%",
+                  textAlign: "start",
+                  fontFamily: "inherit",
+                  boxSizing: "border-box",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={dot(tone)} />
+                  <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: NAVY, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {s.name}
+                  </span>
+                  {s.code ? (
+                    <span dir="ltr" style={{ fontSize: 10, color: MUTED, fontFamily: MONO }}>{s.code}</span>
+                  ) : null}
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 18, marginTop: 14 }}>
+                  <div>
+                    <div dir="ltr" style={{ fontFamily: MONO, fontSize: 20, fontWeight: 500, lineHeight: 1, color: NAVY }}>{crew}</div>
+                    <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{ar ? "في الوردية" : "on shift"}</div>
+                  </div>
+                  <div>
+                    <div dir="ltr" style={{ fontFamily: MONO, fontSize: 20, fontWeight: 500, lineHeight: 1, color: tone }}>{open}</div>
+                    <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{ar ? "بند مفتوح" : "open"}</div>
+                  </div>
+                </div>
+              </button>
             );
           })}
         </div>
-      </div>
+      </section>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))", gap: "16px" }}>
-        <ChromeBox>
-          <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "2px" }}>
-            {ar ? "حضور اليوم" : "Today's attendance"}
+      <div className="nv-emp-summary" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,1fr)", gap: 16, alignItems: "stretch" }}>
+        <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
+          <div style={paperHead}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "حضور اليوم" : "Today's attendance"}</span>
+            <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
+              {ar
+                ? <>{employeesCount} متوقعاً اليوم · نفس رقم <Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>شاشة الحضور</Link> · يغذّي <Link to="/app/payroll" style={{ color: "inherit", fontWeight: 600 }}>المسير</Link></>
+                : <>{employeesCount} expected today · same figure as <Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>Attendance</Link> · feeds <Link to="/app/payroll" style={{ color: "inherit", fontWeight: 600 }}>payroll</Link></>}
+            </span>
           </div>
-          <div style={{ fontSize: "11px", color: MUTED, marginBottom: "16px" }}>
-            {ar
-              ? `${employeesCount} متوقعًا اليوم · نفس رقم شاشة الحضور`
-              : `${employeesCount} expected today · same figure as Attendance`}
-          </div>
-          <div style={{ display: "flex", height: "9px", borderRadius: "6px", overflow: "hidden", gap: "2px" }}>
-            {shiftBands.map((b) => (
-              <span
-                key={b.label}
-                style={{
-                  display: "block",
-                  flex: Math.max(0.5, (b.flex / bandTotal) * 100),
-                  background: b.color,
-                }}
-              />
-            ))}
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "14px", marginTop: "14px" }}>
-            {shiftBands.map((b) => (
-              <div key={b.label} style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-                <span style={dot(b.color)} />
-                <span style={{ fontSize: "12px", color: MUTED }}>{b.label}</span>
-                <span style={{ fontSize: "13px", fontWeight: 600, fontFamily: "'IBM Plex Sans',sans-serif" }}>{b.count}</span>
-              </div>
-            ))}
-          </div>
-        </ChromeBox>
-
-        <ChromeBox>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "16px" }}>
-            <div>
-              <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "2px" }}>{ar ? "السلامة" : "Safety"}</div>
-              <div style={{ fontSize: "11px", color: MUTED }}>
-                {ar ? "بنود مفتوحة بانتظار الإغلاق" : "Open items awaiting closure"}
-              </div>
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", height: 10, overflow: "hidden", gap: 2 }}>
+              {shiftBands.map((b) => (
+                <span
+                  key={b.label}
+                  style={{
+                    display: "block",
+                    flex: Math.max(0.5, (b.flex / bandTotal) * 100),
+                    background: b.color,
+                  }}
+                />
+              ))}
             </div>
-            <div style={{ textAlign: "left", flexShrink: 0 }}>
-              <div
-                style={{
-                  fontFamily: "'IBM Plex Sans',sans-serif",
-                  fontSize: "28px",
-                  fontWeight: 600,
-                  lineHeight: 1,
-                  color: ACCENT,
-                }}
-              >
-                {daysClear != null ? daysClear : "—"}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+              {shiftBands.map((b) => (
+                <div key={b.label} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  <span style={dot(b.color)} />
+                  <span style={{ fontSize: 12, color: MUTED }}>{b.label}</span>
+                  <span dir="ltr" style={{ fontSize: 13, fontWeight: 600, fontFamily: MONO }}>{b.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
+          <div style={{ ...paperHead, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "السلامة" : "Safety"}</span>
+              <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
+                {ar
+                  ? <>بنود مفتوحة بانتظار الإغلاق — داخل <Link to="/app/safety" style={{ color: "inherit", fontWeight: 600 }}>سلسلة الثقة</Link>.</>
+                  : <>Open items awaiting closure — inside the <Link to="/app/safety" style={{ color: "inherit", fontWeight: 600 }}>trust chain</Link>.</>}
+              </span>
+            </div>
+            <div style={{ textAlign: ar ? "left" : "right", flexShrink: 0 }}>
+              <div dir="ltr" style={{ fontFamily: MONO, fontSize: 28, fontWeight: 500, lineHeight: 1, color: openHazards ? "#B91C1C" : ACCENT }}>
+                {openHazards}
               </div>
-              <div style={{ fontSize: "10px", color: MUTED, marginTop: "2px" }}>
-                {ar ? "يومًا بلا حادث" : "days clear"}
+              <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
+                {ar ? "بنداً مفتوحاً" : "open items"}
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
             {hseRows.map((r) => (
-              <div key={r.label} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <span style={r.style}>{r.count}</span>
-                <span style={{ flex: 1, fontSize: "12px", fontWeight: 500, color: INK }}>{r.label}</span>
+              <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 18, fontWeight: 500, color: r.tone, lineHeight: 1 }}>{r.count}</span>
+                <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: INK }}>{r.label}</span>
               </div>
             ))}
+            {daysClear != null ? (
+              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
+                {ar ? `${daysClear} يوماً بلا حادث اليوم` : `${daysClear} incident-free days today`}
+              </div>
+            ) : null}
           </div>
-        </ChromeBox>
+        </section>
       </div>
     </div>
-  );
-}
-
-/** Selecting a station re-scopes the board in place — it never leaves the page. */
-function StationCard({ name, code, crew, open, tone, spark, ar, onClick, active }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      aria-pressed={active}
-      title={ar ? "اجعل هذا الفرع نطاق الصفحة" : "Scope this page to this station"}
-      style={{
-        background: active ? "color-mix(in oklab, var(--nv-accent) 16%, var(--nv-card))" : CARD,
-        border: `1px solid ${active || hover ? ACCENT : BORDER}`,
-        borderRadius: "13px",
-        padding: "14px",
-        cursor: "pointer",
-        textDecoration: "none",
-        color: "inherit",
-        display: "block",
-        width: "100%",
-        textAlign: "start",
-        fontFamily: "inherit",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <span style={dot(tone.dot)} />
-        <span
-          style={{
-            flex: 1,
-            fontSize: "13px",
-            fontWeight: 500,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            color: NAVY,
-          }}
-        >
-          {name}
-        </span>
-        <span style={{ fontSize: "10px", color: MUTED, fontFamily: "'IBM Plex Mono',monospace" }}>{code}</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: "14px", marginTop: "14px" }}>
-        <div>
-          <div style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, lineHeight: 1, color: NAVY }}>
-            {crew}
-          </div>
-          <div style={{ fontSize: "10px", color: MUTED, marginTop: "3px", whiteSpace: "nowrap" }}>
-            {ar ? "في الوردية" : "on shift"}
-          </div>
-        </div>
-        <div>
-          <div style={num(tone.open)}>{open}</div>
-          <div style={{ fontSize: "10px", color: MUTED, marginTop: "3px", whiteSpace: "nowrap" }}>
-            {ar ? "بند مفتوح" : "open"}
-          </div>
-        </div>
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "flex-end",
-            justifyContent: "flex-start",
-            gap: "2px",
-            height: "26px",
-            overflow: "hidden",
-          }}
-        >
-          {spark.map((b) => (
-            <span key={b.key} style={b.style} />
-          ))}
-        </div>
-      </div>
-    </button>
   );
 }

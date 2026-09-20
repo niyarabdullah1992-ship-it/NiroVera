@@ -2,13 +2,32 @@ import { createClientFromRequest } from "npm:@base44/sdk@0.8.38";
 import { authPowerCareSession } from "../../shared/powerCareSession.ts";
 import { checkPublishGates } from "../../shared/shiftDerivations.ts";
 import {
+  checkAlterApprovedLeaveGate,
   checkApproveLeaveGate,
+  checkAttachExamSatGate,
+  checkRejectLeaveGate,
+  checkSubmitLeaveGate,
   computeLeaveDays,
+  EXAM_NOTICE_KIND,
+  EXAM_SAT_KIND,
   deriveLeaveStats,
   isOnApprovedLeave,
+  leaveCoverRange,
   LEAVE_TYPES,
   addCalendarDays,
 } from "../../shared/leaveDerivations.ts";
+import {
+  STUDY_CONSENT_TYPE,
+  appendRequestAudit,
+  appendRequestRefuseAudit,
+  buildRequestAudit,
+  buildRequestRefuseAudit,
+  checkRefuseRequestReasonGate,
+  checkRejectNightFitnessGate,
+  checkRejectStudyConsentGate,
+  requestAuditFileLog,
+  requestRefuseFileLog,
+} from "../../shared/otherRequestDerivations.ts";
 
 const SCHEDULES_CATEGORY = "schedules";
 const PUBLISHED_ROTAS_CATEGORY = "publishedRotas";
@@ -125,6 +144,7 @@ Deno.serve(async (req) => {
         assignments: schedule.assignments || {},
         onLeaveIds,
         namesById,
+        employees: emps,
       });
       return { schedule, gate, crewSize: stationCrew.length, onLeaveCount: onLeaveIds.size };
     };
@@ -186,25 +206,97 @@ Deno.serve(async (req) => {
         return Response.json({ error: "Invalid dates" }, { status: 400 });
       }
       const request = {
-        id: uid("leave"),
+        id: String(body.id || "").trim() || uid("leave"),
         type,
         startDate,
         endDate,
         days,
         reason: String(body.reason || "").trim(),
-        files: Array.isArray(body.files) ? body.files : [],
-        status: "pending",
-        createdAt: new Date().toISOString(),
+        files: Array.isArray(body.files)
+          ? (type === "exam"
+            ? body.files.map((file: { kind?: string }) => (file && typeof file === "object" ? { ...file, kind: file.kind || EXAM_NOTICE_KIND } : file))
+            : body.files)
+          : [],
+        status: String(body.status || "pending"),
+        createdAt: body.createdAt || new Date().toISOString(),
         companyId: auth.companyId,
         eventDate: String(body.eventDate || "").slice(0, 10) || undefined,
         examRepeat: body.examRepeat ? true : undefined,
+        examNoticeIssuedAt: String(body.examNoticeIssuedAt || "").slice(0, 10) || undefined,
+        noOtherEmployerAck: body.noOtherEmployerAck === true,
+        recordedBy: body.recordedBy ? String(body.recordedBy) : undefined,
+        deferConsentAt: body.deferConsentAt ? String(body.deferConsentAt) : undefined,
       };
-      const extras = { profile: emp.profile, requests: emp.leaveRequests };
-      const gatePreview = checkApproveLeaveGate({ ...request, status: "pending" }, extras);
+      const extras = {
+        profile: emp.profile,
+        requests: emp.leaveRequests,
+        otherRequests: emp.otherRequests,
+        employee: emp,
+        companyId: auth.companyId,
+        recordedBy: request.recordedBy,
+        employerRecorded: !!request.recordedBy,
+      };
+      const gate = checkSubmitLeaveGate(request, extras);
+      if (!gate.ok) {
+        return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, gate }, { status: 422 });
+      }
+      if (type === "exam") {
+        request.examLeaveTrack = gate.examLeaveTrack;
+        request.examPayFrom = gate.examPayFrom;
+        request.examNoticeVia = gate.via || undefined;
+      }
+      const raiseRow = buildRequestAudit({
+        actor: auth.name,
+        employeeId,
+        employeeName: emp.name,
+        request,
+        family: "leave",
+        verb: "raise",
+        reason: request.reason,
+        at: request.createdAt,
+      });
+      request.auditTrail = appendRequestAudit(request, raiseRow);
       const leaveRequests = [request, ...(emp.leaveRequests || [])];
-      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
-      await audit("leave_request_submitted", `Leave ${type} (${days}d) submitted for ${emp.name}`);
-      return Response.json({ request, canApproveLater: gatePreview.ok, gate: gatePreview });
+      const fileLog = [requestAuditFileLog(raiseRow, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests, fileLog });
+      await audit(raiseRow.action, raiseRow.details, { reason: raiseRow.reason, oldValue: raiseRow.oldValue, newValue: raiseRow.newValue });
+      return Response.json({ request, canApproveLater: true, gate, audit: raiseRow });
+    }
+
+    if (action === "submitOther") {
+      const employeeId = String(body.employeeId || auth.userId || "").trim();
+      if (!employeeId) return Response.json({ error: "Missing employeeId" }, { status: 400 });
+      if (!isManager && auth.userId && auth.userId !== employeeId) {
+        return Response.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const incoming = body.request && typeof body.request === "object" ? body.request : null;
+      if (!incoming) return Response.json({ error: "Missing request" }, { status: 400 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const request = {
+        ...incoming,
+        id: String(incoming.id || "").trim() || uid("oreq"),
+        companyId: auth.companyId,
+        status: String(incoming.status || "pending"),
+        createdAt: incoming.createdAt || new Date().toISOString(),
+      };
+      const prior = Array.isArray(emp.otherRequests) ? emp.otherRequests : [];
+      const raiseRow = buildRequestAudit({
+        actor: auth.name,
+        employeeId,
+        employeeName: emp.name,
+        request,
+        family: "other",
+        verb: "raise",
+        reason: String(request.reason || ""),
+        at: request.createdAt,
+      });
+      request.auditTrail = appendRequestAudit(request, raiseRow);
+      const otherRequests = [request, ...prior.filter((row: { id?: string }) => row?.id !== request.id)];
+      const fileLog = [requestAuditFileLog(raiseRow, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+      await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, fileLog });
+      await audit(raiseRow.action, raiseRow.details, { reason: raiseRow.reason, oldValue: raiseRow.oldValue, newValue: raiseRow.newValue });
+      return Response.json({ request, ok: true, audit: raiseRow });
     }
 
     if (action === "approveLeave" || action === "rejectLeave") {
@@ -231,26 +323,161 @@ Deno.serve(async (req) => {
         req.reviewedAt = approvalDate.toISOString();
         req.approvedAt = approvalDate.toISOString();
         if (req.type === "annual") {
-          const activeEnd = new Date(approvalDate);
-          activeEnd.setDate(activeEnd.getDate() + ((req.days || 1) - 1));
-          req.activeStartDate = approvalDate.toISOString().slice(0, 10);
-          req.activeEndDate = activeEnd.toISOString().slice(0, 10);
+          const span = leaveCoverRange(req);
+          if (span.start && span.end) {
+            req.activeStartDate = span.start;
+            req.activeEndDate = span.end;
+          }
         }
+        const row = buildRequestAudit({
+          actor: auth.name,
+          employeeId,
+          employeeName: emp.name,
+          request: req,
+          family: "leave",
+          verb: "approve",
+          at: req.reviewedAt,
+        });
+        req.auditTrail = appendRequestAudit(req, row);
         leaveRequests[idx] = req;
-        await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
-        await audit("leave_request_approved", `Leave approved for ${emp.name} — balance deducted`, { newValue: req });
-        return Response.json({ request: req, ok: true });
+        const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+        await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests, fileLog });
+        await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
+        return Response.json({ request: req, ok: true, audit: row });
       }
 
-      const reason = String(body.reason || "").trim();
+      const lock = checkAlterApprovedLeaveGate(req, { nextStatus: "rejected", actor: "manager" });
+      if (!lock.ok) {
+        return Response.json({ error: lock.error, reason: lock.reason, reasonEn: lock.reasonEn, gate: lock }, { status: 422 });
+      }
+      const refuse = checkRejectLeaveGate(req, { nextStatus: "rejected", actor: "manager", ...extras });
+      if (!refuse.ok) {
+        return Response.json({ error: refuse.error, reason: refuse.reason, reasonEn: refuse.reasonEn, gate: refuse }, { status: 422 });
+      }
+      const named = checkRefuseRequestReasonGate(body.reason || body.note);
+      if (!named.ok) {
+        return Response.json({ error: named.error, reason: named.reason, reasonEn: named.reasonEn, gate: named }, { status: 422 });
+      }
+      const reason = named.reason;
       req.status = "rejected";
       req.reviewedBy = auth.name;
       req.reviewedAt = new Date().toISOString();
-      req.rejectReason = reason || null;
+      req.reviewNote = reason;
+      req.rejectReason = reason;
+      const row = buildRequestRefuseAudit({
+        actor: auth.name,
+        employeeId,
+        employeeName: emp.name,
+        request: req,
+        family: "leave",
+        reason,
+        at: req.reviewedAt,
+      });
+      req.auditTrail = appendRequestRefuseAudit(req, row);
+      leaveRequests[idx] = req;
+      const fileLog = [requestRefuseFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests, fileLog });
+      await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
+      return Response.json({ request: req, ok: true, audit: row });
+    }
+
+    if (action === "rejectOther" || action === "approveOther") {
+      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const employeeId = String(body.employeeId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      if (!employeeId || !requestId) return Response.json({ error: "Missing employeeId or requestId" }, { status: 400 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const otherRequests = Array.isArray(emp.otherRequests) ? [...emp.otherRequests] : [];
+      const idx = otherRequests.findIndex((r: { id?: string }) => r.id === requestId);
+      if (idx < 0) return Response.json({ error: "REQUEST_NOT_FOUND" }, { status: 404 });
+      const pending = { ...otherRequests[idx] };
+      if (pending.type === "night_consent") {
+        return Response.json({
+          error: "EMPLOYEE_MUST_AGREE",
+          reason: "سارية وحمراء حتى يوافق الموظف على نفس الوردية الليلية. سكوت المدير يبقيها.",
+          reasonEn: "It stays in force and red until the worker agrees to the same night shift. Manager silence leaves it open.",
+        }, { status: 422 });
+      }
+      if (action === "approveOther") {
+        pending.status = "approved";
+        pending.reviewedBy = auth.name;
+        pending.reviewedAt = new Date().toISOString();
+        const row = buildRequestAudit({
+          actor: auth.name,
+          employeeId,
+          employeeName: emp.name,
+          request: pending,
+          family: "other",
+          verb: "approve",
+          at: pending.reviewedAt,
+        });
+        pending.auditTrail = appendRequestAudit(pending, row);
+        otherRequests[idx] = pending;
+        const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+        await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, fileLog });
+        await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
+        return Response.json({ request: pending, ok: true, audit: row });
+      }
+      const rejectGate = pending.type === STUDY_CONSENT_TYPE
+        ? checkRejectStudyConsentGate(pending, body.reason || body.note)
+        : pending.type === "night_fitness"
+          ? checkRejectNightFitnessGate(pending, body.reason || body.note)
+          : checkRefuseRequestReasonGate(body.reason || body.note);
+      if (!rejectGate.ok) {
+        return Response.json({ error: rejectGate.error, reason: rejectGate.reason, reasonEn: rejectGate.reasonEn, gate: rejectGate }, { status: 422 });
+      }
+      const reason = rejectGate.reason || String(body.reason || body.note || "").trim();
+      pending.status = "rejected";
+      pending.reviewedBy = auth.name;
+      pending.reviewedAt = new Date().toISOString();
+      pending.reviewNote = reason;
+      pending.rejectReason = reason;
+      const row = buildRequestRefuseAudit({
+        actor: auth.name,
+        employeeId,
+        employeeName: emp.name,
+        request: pending,
+        family: "other",
+        reason,
+        at: pending.reviewedAt,
+      });
+      pending.auditTrail = appendRequestRefuseAudit(pending, row);
+      otherRequests[idx] = pending;
+      const fileLog = [requestRefuseFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
+      await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, fileLog });
+      await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
+      return Response.json({ request: pending, ok: true, audit: row });
+    }
+
+    if (action === "attachExamSat") {
+      const employeeId = String(body.employeeId || auth.userId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      if (!employeeId || !requestId) return Response.json({ error: "Missing employeeId or requestId" }, { status: 400 });
+      if (!isManager && auth.userId && auth.userId !== employeeId) {
+        return Response.json({ error: "Forbidden" }, { status: 403 });
+      }
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
+      const idx = leaveRequests.findIndex((r: any) => r.id === requestId);
+      if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
+      const incoming = body.examSatFile && typeof body.examSatFile === "object" ? body.examSatFile : null;
+      const stamped = incoming ? { ...incoming, kind: EXAM_SAT_KIND } : incoming;
+      const gate = checkAttachExamSatGate(leaveRequests[idx], stamped);
+      if (!gate.ok) {
+        return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, gate }, { status: 422 });
+      }
+      const req = {
+        ...leaveRequests[idx],
+        examSatFile: stamped,
+        examSatAt: body.examSatAt || new Date().toISOString(),
+        examSatBy: body.examSatBy || auth.name || auth.userId,
+      };
       leaveRequests[idx] = req;
       await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
-      await audit("leave_request_rejected", `Leave rejected for ${emp.name}`, { reason: reason || null });
-      return Response.json({ request: req, ok: true });
+      await audit("exam_sat_attached", `Exam sitting proof attached for ${emp.name}`);
+      return Response.json({ request: req, ok: true, gate });
     }
 
     if (action === "getSchedule") {

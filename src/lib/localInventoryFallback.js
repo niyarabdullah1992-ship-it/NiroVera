@@ -5,10 +5,17 @@
 import { getCompanyData, getSession, updateCompany } from "@/lib/store";
 import {
   applyPoToItems,
+  checkIssueStockGate,
   checkRaisePoGate,
+  checkStationTransferRequestGate,
   deriveStockAlert,
   enrichStockItem,
+  movementReversalBlock,
+  qtyAtStation,
 } from "@/lib/inventoryDerivations";
+import { notifyMoneyMany, stationManagerIds } from "@/lib/moneyNotifications";
+import { INVENTORY_DENY, checkStockReviewGate, inventoryReach, inventoryRights, reversalDeny } from "@/lib/inventoryRights";
+import { moneyActor } from "@/lib/financeRights";
 
 function uid(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -32,20 +39,11 @@ export function isForcedLocalInventory(companyId) {
 }
 
 function actor(companyId, session) {
-  const live = session || getSession();
-  const data = getCompanyData(companyId);
-  const user = (data?.employees || []).find((e) => e.id === live?.userId);
-  const owner = !user || user.role === "owner" || user.id === data?.ownerId || user.role === "director";
-  const role = owner && user?.role !== "director" ? "owner" : (user?.role || "owner");
-  return {
-    companyId,
-    userId: user?.id || live?.userId || "owner",
-    name: user?.name || "Owner",
-    role,
-    owner: owner || role === "owner",
-    stationId: user?.stationId || null,
-    managedStations: user?.managedStations || [],
-  };
+  // A caller may hand in a session carrying only the companyId, so the stored
+  // session is the authority on who is acting.
+  const stored = getSession();
+  const live = stored?.userId ? stored : (session || stored);
+  return moneyActor(companyId, live, getCompanyData(companyId));
 }
 
 function stationRows(data) {
@@ -100,6 +98,9 @@ function normalizeItem(raw, stations) {
 
 function ensureLedger(data) {
   const stations = stationRows(data);
+  // The legacy `inventory` array is a one-time migration source, not a second
+  // ledger. It has to be emptied below, because ensureLedger runs on every read
+  // and every write — re-merging it would add its quantities again each time.
   const fromLegacy = [
     ...(Array.isArray(data.inventoryItems) ? data.inventoryItems : []),
     ...(Array.isArray(data.inventory) ? data.inventory : []),
@@ -119,6 +120,7 @@ function ensureLedger(data) {
     prev.quantity = prev.locationBalances.reduce((sum, entry) => sum + entry.quantity, 0);
   });
   data.inventoryItems = [...byCode.values()];
+  if (Array.isArray(data.inventory) && data.inventory.length) data.inventory = [];
   data.stockMovements = Array.isArray(data.stockMovements) ? data.stockMovements : [];
   data.materialRequests = Array.isArray(data.materialRequests) ? data.materialRequests : [];
   data.stockPurchaseOrders = Array.isArray(data.stockPurchaseOrders) ? data.stockPurchaseOrders : [];
@@ -126,26 +128,7 @@ function ensureLedger(data) {
   return data;
 }
 
-function caps(auth) {
-  const senior = auth.owner || ["owner", "director", "ops_manager", "pgm", "admin"].includes(auth.role);
-  const stationOp = ["station_manager", "inventory_keeper"].includes(auth.role);
-  const employee = auth.role === "employee";
-  return {
-    senior,
-    stationOp,
-    employee,
-    canPurchase: senior || stationOp,
-    canCreateItem: senior || stationOp,
-    canIssueToWork: senior || stationOp,
-    canIssueFromAnyStation: senior,
-    canRequest: senior || stationOp || employee,
-    canReviewRequests: senior || stationOp,
-    canReviewAllRequests: senior,
-    canDelete: senior || auth.role === "station_manager",
-    canReverse: senior,
-    canViewNetwork: senior || stationOp,
-  };
-}
+const caps = inventoryRights;
 
 function nextMovementNumber(movements) {
   const year = new Intl.DateTimeFormat("en", { timeZone: "Asia/Riyadh", year: "numeric" }).format(new Date());
@@ -212,10 +195,20 @@ function listState(companyId, session) {
   };
 }
 
-function fail(message, code) {
+/**
+ * `extra` is either a short code string or a named gate ({ error, reason, reasonEn }).
+ * The named shape has to survive onto `response.data` untouched, otherwise
+ * `namedServiceReason` cannot find the Arabic reason and the operator reads English.
+ */
+function fail(message, extra) {
   const error = new Error(message);
-  error.response = { data: { error: message, code } };
+  const named = extra && typeof extra === "object" ? extra : { code: extra };
+  error.response = { data: { error: named.error || message, ...named } };
   throw error;
+}
+
+function denyWith(gate) {
+  fail(gate.reason || gate.error, { error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn });
 }
 
 export function localInventoryCall(session, action, payload = {}) {
@@ -239,7 +232,7 @@ export function localInventoryCall(session, action, payload = {}) {
   }
 
   if (action === "createItem") {
-    if (!rights.canCreateItem) fail("Station inventory permission required");
+    if (!rights.canCreateItem) denyWith(INVENTORY_DENY.PURCHASE);
     const name = String(payload.name || "").trim();
     const itemCode = String(payload.itemCode || "").trim();
     const supplierName = String(payload.supplierName || "").trim();
@@ -248,8 +241,15 @@ export function localInventoryCall(session, action, payload = {}) {
     const totalCost = Number(payload.totalCost);
     const enteredUnitPrice = payload.unitPrice === "" || payload.unitPrice == null ? null : Number(payload.unitPrice);
     const unitPrice = enteredUnitPrice == null ? totalCost / quantity : enteredUnitPrice;
-    if (!name || !itemCode || !supplierName || !locationId || !Number.isFinite(quantity) || quantity <= 0) {
-      fail("Valid item, station, quantity, supplier and cost are required");
+    if (!name) fail("اسم الصنف مطلوب.", { error: "NAME_REQUIRED", reason: "اسم الصنف مطلوب.", reasonEn: "Item name is required." });
+    if (!itemCode) fail("كود الصنف مطلوب.", { error: "CODE_REQUIRED", reason: "كود الصنف مطلوب.", reasonEn: "Item code is required." });
+    if (!supplierName) fail("اسم المورد مطلوب.", { error: "SUPPLIER_REQUIRED", reason: "اسم المورد مطلوب.", reasonEn: "Supplier name is required." });
+    if (!locationId) fail("حدد فرع الشراء.", { error: "STATION_REQUIRED", reason: "حدد فرع الشراء.", reasonEn: "Set the buying station." });
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      fail("الكمية يجب أن تكون أكبر من صفر.", { error: "QTY_REQUIRED", reason: "الكمية يجب أن تكون أكبر من صفر.", reasonEn: "Quantity must be greater than zero." });
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0 || !Number.isFinite(totalCost) || totalCost < 0) {
+      fail("التكلفة يجب أن تكون صفرًا أو أكثر.", { error: "COST_REQUIRED", reason: "التكلفة يجب أن تكون صفرًا أو أكثر.", reasonEn: "Cost must be zero or more." });
     }
     updateCompany(companyId, (data) => {
       ensureLedger(data);
@@ -260,6 +260,8 @@ export function localInventoryCall(session, action, payload = {}) {
         item.locationBalances = adjustBalance(item, locationId, quantity);
         item.quantity = item.locationBalances.reduce((sum, entry) => sum + entry.quantity, 0);
         item.name = name;
+        item.unitPrice = unitPrice;
+        item.price = unitPrice;
         item.currentLocationId = locationId;
         item.archived = false;
         if (Array.isArray(payload.imageUrls) && payload.imageUrls.length) {
@@ -271,6 +273,8 @@ export function localInventoryCall(session, action, payload = {}) {
           itemCode,
           name,
           quantity,
+          unitPrice,
+          price: unitPrice,
           minimumStock: Math.max(0, Number(payload.minimumStock) || 0),
           currentLocationId: locationId,
           imageUrls: Array.isArray(payload.imageUrls) ? payload.imageUrls.slice(0, 10) : [],
@@ -307,7 +311,7 @@ export function localInventoryCall(session, action, payload = {}) {
   }
 
   if (action === "request") {
-    if (!rights.canRequest) fail("Material request permission required");
+    if (!rights.canRequest) denyWith(INVENTORY_DENY.REQUEST);
     updateCompany(companyId, (data) => {
       ensureLedger(data);
       const item = data.inventoryItems.find((entry) => entry.id === payload.itemId && entry.archived !== true);
@@ -315,10 +319,14 @@ export function localInventoryCall(session, action, payload = {}) {
       const notes = String(payload.notes || "").trim();
       const stationId = rights.senior ? String(payload.stationId || "") : String(auth.stationId || "");
       const sourceStationId = String(payload.sourceStationId || "");
-      if (!item || !stationId || !sourceStationId || sourceStationId === stationId || quantity < 1 || !notes) {
-        fail("Choose different source and destination stations, an available item, valid quantity and reason");
-      }
-      if (balanceAt(item, sourceStationId) < quantity) fail("Insufficient stock at the supplying station");
+      const gate = checkStationTransferRequestGate({
+        item,
+        sourceStationId,
+        destStationId: stationId,
+        quantity,
+        notes,
+      });
+      if (!gate.ok) fail(gate.reason || gate.error, { error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn });
       data.materialRequests.unshift({
         id: uid("req"),
         requesterId: auth.userId,
@@ -332,17 +340,33 @@ export function localInventoryCall(session, action, payload = {}) {
       });
     });
     notifyInventoryChanged(companyId);
+    const reqData = getCompanyData(companyId);
+    const last = reqData?.materialRequests?.[0];
+    if (last) {
+      notifyMoneyMany(companyId, [last.requesterId, ...stationManagerIds(reqData, last.sourceStationId)], {
+        ar: `طلب مخزون بانتظار فرع المصدر — ${last.notes || last.id}.`,
+        en: `Stock request waiting on the supplying station — ${last.notes || last.id}.`,
+        to: "/app/inventory",
+        key: `inv-req-${last.id}`,
+      });
+    }
     return { ok: true };
   }
 
   if (action === "reviewRequest") {
-    if (!rights.canReviewRequests) fail("Management permission required");
+    if (!rights.canReviewRequests) denyWith(INVENTORY_DENY.REVIEW);
     updateCompany(companyId, (data) => {
       ensureLedger(data);
       const request = data.materialRequests.find((entry) => entry.id === payload.requestId);
       if (!request || request.status !== "pending" || !["approved", "rejected"].includes(payload.decision)) {
-        fail("Request cannot be reviewed");
+        fail("هذا الطلب لم يعد قابلاً للمراجعة.", {
+          error: "REQUEST_NOT_REVIEWABLE",
+          reason: "هذا الطلب لم يعد قابلاً للمراجعة.",
+          reasonEn: "This request is no longer reviewable.",
+        });
       }
+      const reviewGate = checkStockReviewGate(auth, rights, request);
+      if (!reviewGate.ok) denyWith(reviewGate);
       const reviewedAt = new Date().toISOString();
       if (payload.decision === "rejected") {
         request.status = "rejected";
@@ -352,9 +376,9 @@ export function localInventoryCall(session, action, payload = {}) {
       }
       const item = data.inventoryItems.find((entry) => entry.id === request.itemId);
       const quantity = Number(request.quantity);
-      if (!item || quantity <= 0) fail("A valid requested quantity is required");
-      const sourceBefore = balanceAt(item, request.sourceStationId);
-      if (sourceBefore < quantity) fail("Insufficient stock at the supplying station");
+      const sourceBefore = qtyAtStation(item, request.sourceStationId);
+      const gate = checkIssueStockGate({ ...item, onHand: sourceBefore }, quantity);
+      if (!gate.ok) fail(gate.reason || gate.error, { error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn });
       const destBefore = balanceAt(item, request.stationId);
       item.locationBalances = adjustBalance(item, request.sourceStationId, -quantity);
       item.locationBalances = adjustBalance(item, request.stationId, quantity);
@@ -383,21 +407,37 @@ export function localInventoryCall(session, action, payload = {}) {
       request.issuedAt = reviewedAt;
     });
     notifyInventoryChanged(companyId);
+    const afterReview = getCompanyData(companyId);
+    const reviewed = afterReview?.materialRequests?.find((entry) => entry.id === payload.requestId);
+    if (reviewed) {
+      notifyMoneyMany(companyId, [reviewed.requesterId, ...stationManagerIds(afterReview, reviewed.sourceStationId)], {
+        ar: reviewed.status === "rejected"
+          ? `رُفض طلب المخزون — ${reviewed.notes || reviewed.id}.`
+          : `اعتُمد طلب المخزون ونُفّذ النقل — ${reviewed.notes || reviewed.id}.`,
+        en: reviewed.status === "rejected"
+          ? `Stock request rejected — ${reviewed.notes || reviewed.id}.`
+          : `Stock request approved and issued — ${reviewed.notes || reviewed.id}.`,
+        to: "/app/inventory",
+        key: `inv-rev-${reviewed.id}-${reviewed.status}`,
+      });
+    }
     return { ok: true };
   }
 
   if (action === "issueToWork") {
-    if (!rights.canIssueToWork) fail("Station inventory permission required");
+    if (!rights.canIssueToWork) denyWith(INVENTORY_DENY.ISSUE);
+    const quantity = Number(payload.quantity);
+    const workReference = String(payload.workReference || "").trim();
     updateCompany(companyId, (data) => {
       ensureLedger(data);
       const item = data.inventoryItems.find((entry) => entry.id === payload.itemId && entry.archived !== true);
       const stationId = String(rights.senior ? payload.fromLocationId || "" : auth.stationId || "");
-      const quantity = Number(payload.quantity);
-      if (!item || !stationId || !payload.employeeId || quantity <= 0) {
-        fail("Valid item, station, quantity, recipient and work reference are required");
-      }
-      const before = balanceAt(item, stationId);
-      if (before < quantity) fail("Insufficient station stock");
+      if (!stationId) fail("حدد فرع الصرف.", { error: "STATION_REQUIRED", reason: "حدد فرع الصرف.", reasonEn: "Set the issuing station." });
+      if (!payload.employeeId) fail("حدد المستلم.", { error: "RECIPIENT_REQUIRED", reason: "حدد المستلم.", reasonEn: "Set the recipient." });
+      if (!workReference) fail("مرجع العمل مطلوب.", { error: "WORK_REF_REQUIRED", reason: "مرجع العمل مطلوب.", reasonEn: "A work reference is required." });
+      const before = qtyAtStation(item, stationId);
+      const gate = checkIssueStockGate({ ...item, onHand: before }, quantity);
+      if (!gate.ok) fail(gate.reason || gate.error, { error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn });
       item.locationBalances = adjustBalance(item, stationId, -quantity);
       item.quantity = item.locationBalances.reduce((sum, entry) => sum + entry.quantity, 0);
       data.stockMovements.unshift({
@@ -409,7 +449,7 @@ export function localInventoryCall(session, action, payload = {}) {
         fromLocationId: stationId,
         toLocationId: null,
         employeeId: payload.employeeId,
-        workReference: payload.workReference,
+        workReference,
         workDate: payload.workDate,
         notes: payload.notes || "",
         imageUrls: Array.isArray(payload.imageUrls) ? payload.imageUrls.slice(0, 10) : [],
@@ -420,62 +460,106 @@ export function localInventoryCall(session, action, payload = {}) {
       });
     });
     notifyInventoryChanged(companyId);
+    notifyMoneyMany(companyId, [auth.userId, payload.employeeId].filter(Boolean), {
+      ar: `صُرف مخزون للعمل — مرجع ${workReference}.`,
+      en: `Stock issued to work — ref ${workReference}.`,
+      to: "/app/inventory",
+      key: `inv-issue-${payload.itemId}-${workReference}-${quantity}`,
+    });
     return { ok: true };
   }
 
   if (action === "deleteItem") {
-    if (!rights.canDelete) fail("Management permission required");
+    if (!rights.canDelete) denyWith(INVENTORY_DENY.DELETE);
     updateCompany(companyId, (data) => {
       ensureLedger(data);
       const item = data.inventoryItems.find((entry) => entry.id === payload.itemId);
-      if (!item) fail("Item not found");
+      if (!item) fail("الصنف غير موجود.", { error: "ITEM_NOT_FOUND", reason: "الصنف غير موجود.", reasonEn: "Stock item not found." });
+      // Archiving hides the item from every station at once, so a station manager
+      // may only do it while no stock is left standing outside their own reach.
+      if (!rights.senior) {
+        const reach = inventoryReach(auth);
+        const outside = balancesOf(item).some(
+          (entry) => entry.quantity > 0 && !reach.has(String(entry.locationId)),
+        );
+        if (outside) denyWith(INVENTORY_DENY.DELETE_OUT_OF_REACH);
+      }
+      // The ledger keeps the movements; the item row keeps who retired it and when.
       item.archived = true;
       item.archivedAt = new Date().toISOString();
+      item.archivedBy = auth.userId || auth.name;
     });
     notifyInventoryChanged(companyId);
     return { ok: true };
   }
 
   if (action === "reverseMovement") {
-    if (!rights.canReverse) fail("Only senior management can reverse inventory movements", "REVERSE_FORBIDDEN");
+    if (!rights.canReverse) denyWith(INVENTORY_DENY.REVERSE);
     const reversalReason = String(payload.reversalReason || "").trim();
-    if (!reversalReason) fail("A reversal reason is required.", "REVERSAL_REASON_REQUIRED");
+    if (!reversalReason) denyWith(reversalDeny("REVERSAL_REASON_REQUIRED"));
+    let reversal = null;
+    let reversed = null;
     updateCompany(companyId, (data) => {
       ensureLedger(data);
       const original = data.stockMovements.find((entry) => entry.id === payload.movementId);
-      if (!original || original.isReversal) fail("This movement cannot be reversed", "MOVEMENT_NOT_REVERSIBLE");
-      if (original.reversedAt) fail("This movement has already been reversed.", "MOVEMENT_ALREADY_REVERSED");
+      // Same rule the ledger screen reads, so a visible affordance and the gate
+      // cannot disagree about what is reversible.
+      const block = movementReversalBlock(original);
+      if (block) denyWith(reversalDeny(block));
       const item = data.inventoryItems.find((entry) => entry.id === original.itemId);
       const quantity = Number(original.quantity);
-      if (!item || quantity <= 0) fail("Movement item was not found", "MOVEMENT_ITEM_NOT_FOUND");
+      if (!item) denyWith(reversalDeny("MOVEMENT_ITEM_NOT_FOUND"));
       const debitStationId = original.movementType === "issue" ? null : original.toLocationId;
       const creditStationId = original.movementType === "purchase" ? null : original.fromLocationId;
       if (debitStationId && balanceAt(item, debitStationId) < quantity) {
-        fail("Cannot reverse because current stock is insufficient; the quantity may have been consumed or moved.", "INSUFFICIENT_REVERSAL_STOCK");
+        denyWith(reversalDeny("INSUFFICIENT_REVERSAL_STOCK"));
       }
       if (debitStationId) item.locationBalances = adjustBalance(item, debitStationId, -quantity);
       if (creditStationId) item.locationBalances = adjustBalance(item, creditStationId, quantity);
       item.quantity = item.locationBalances.reduce((sum, entry) => sum + entry.quantity, 0);
-      original.reversedAt = new Date().toISOString();
+      const reversedAt = new Date().toISOString();
+      // The original row is never removed: it keeps its number and gains the mark
+      // that it was reversed, and the correction is a new movement of its own.
+      original.reversedAt = reversedAt;
+      original.reversedBy = auth.userId;
       original.reversalReason = reversalReason;
-      data.stockMovements.unshift({
+      reversal = {
         id: uid("mov"),
         movementNumber: nextMovementNumber(data.stockMovements),
         itemId: item.id,
         movementType: "reversal",
         isReversal: true,
         reversalMovementId: original.id,
+        reversalMovementNumber: original.movementNumber || original.id,
         quantity,
         fromLocationId: debitStationId,
         toLocationId: creditStationId,
         notes: reversalReason,
         reversalReason,
         performedBy: auth.userId,
-        created_date: original.reversedAt,
-      });
+        created_date: reversedAt,
+      };
+      original.reversalMovementId = reversal.id;
+      data.stockMovements.unshift(reversal);
+      reversed = { ...original, itemName: item.name };
     });
     notifyInventoryChanged(companyId);
-    return { ok: true };
+    if (reversal && reversed) {
+      const after = getCompanyData(companyId);
+      notifyMoneyMany(companyId, [
+        auth.userId,
+        reversed.performedBy,
+        reversed.employeeId,
+        ...stationManagerIds(after, reversal.fromLocationId),
+        ...stationManagerIds(after, reversal.toLocationId),
+      ].filter(Boolean), {
+        ar: `عُكست حركة المخزون ${reversed.movementNumber || reversed.id} على «${reversed.itemName}» — ${reversalReason} الحركة الأصلية باقية في الدفتر وقُيّدت حركة معاكسة ${reversal.movementNumber}.`,
+        en: `Stock movement ${reversed.movementNumber || reversed.id} on «${reversed.itemName}» was reversed — ${reversalReason} The original row stays on the ledger and compensating movement ${reversal.movementNumber} was booked.`,
+        to: "/app/inventory?tab=movements",
+        key: `inv-reverse-${reversal.id}`,
+      });
+    }
+    return { ok: true, reversalMovementId: reversal?.id || null };
   }
 
   fail("Unknown action");

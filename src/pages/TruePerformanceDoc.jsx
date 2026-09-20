@@ -17,7 +17,7 @@ import { TP_META, TP_INTRO, TP_PILLARS, TP_ADVANTAGES, TP_FLOW, TP_CLOSING, TP_E
 export default function TruePerformanceDoc() {
   const documentRef = useRef(null);
   const [downloading, setDownloading] = useState(false);
-  const todayAr = new Date().toLocaleDateString("ar-SA", { year: "numeric", month: "long", day: "numeric" });
+  const todayAr = new Date().toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { year: "numeric", month: "long", day: "numeric" });
 
   const downloadPdf = async () => {
     setDownloading(true);

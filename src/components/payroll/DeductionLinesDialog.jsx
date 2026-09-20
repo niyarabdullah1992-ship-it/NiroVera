@@ -1,11 +1,12 @@
 import React from "react";
-import { Trash2, ShieldCheck, AlertTriangle, X } from "lucide-react";
+import { Trash2, AlertTriangle, X } from "lucide-react";
 import DeductionLineForm from "@/components/payroll/DeductionLineForm";
 import DeductionDisputeForm from "@/components/payroll/DeductionDisputeForm";
 import { deductionLines, deductionsTotal, sourceLabel } from "@/lib/payrollDeductions";
 import { article90MaxDeduction, checkArticle90Gate } from "@/lib/payrollDerivations";
-import { ACCENT, MUTED, NAVY, BORDER, SURFACE, BRAND_SOFT, BRAND_BORDER, DANGER, dialogOverlay, dialogCard, ui, CARD } from "@/lib/platformStyles";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import { formatDate } from "@/lib/dateFormat";
+import { MUTED, NAVY, BORDER, SURFACE, DANGER, dialogOverlay, dialogCard, ui, CARD } from "@/lib/platformStyles";
 
 // The deduction breakdown: every line carries its source, reason, author and dispute state.
 export default function DeductionLinesDialog({ open, onOpenChange, item, employeeName, ar, canEdit, onAdd, onRemove, onResolve, currentUserId, onDispute }) {
@@ -36,22 +37,6 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
           </button>
         </div>
 
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          borderRadius: "10px",
-          border: `1px solid ${BRAND_BORDER}`,
-          background: BRAND_SOFT,
-          padding: "11px 13px",
-          marginBottom: "14px",
-        }}>
-          <ShieldCheck style={{ width: 16, height: 16, color: ACCENT, flexShrink: 0 }} />
-          <p style={{ margin: 0, fontSize: "12px", color: NAVY, lineHeight: 1.6 }}>
-            {ar ? "لا يُخصم مبلغ بلا بند موثّق — الإجمالي محسوب من البنود أدناه." : "No amount is deducted without a documented line — the total is computed from the lines below."}
-          </p>
-        </div>
-
         <div style={{ maxHeight: "280px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", marginBottom: "14px" }}>
           {lines.length === 0 ? (
             <p style={{ margin: 0, padding: "28px 0", textAlign: "center", fontSize: "13px", color: MUTED }}>
@@ -63,12 +48,12 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
                 <div style={{ minWidth: 0 }}>
                   <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: NAVY }}>
                     <span dir="ltr">{Number(line.amount).toLocaleString()} {item.currency}</span>
-                    <span style={{ marginInlineStart: "8px", fontSize: "11px", fontWeight: 500, color: ACCENT }}>{sourceLabel(line.source, ar)}</span>
+                    <span style={{ marginInlineStart: "8px", fontSize: "11px", fontWeight: 500, color: MUTED }}>{sourceLabel(line.source, ar)}</span>
                   </p>
                   {line.reason && <p style={{ margin: "6px 0 0", fontSize: "12px", color: MUTED }}>{line.reason}</p>}
                   {line.sourceRefId && <p style={{ margin: "2px 0 0", fontSize: "11px", color: MUTED }} dir="ltr">ref: {line.sourceRefId}</p>}
                   <p style={{ margin: "6px 0 0", fontSize: "11px", color: MUTED }}>
-                    {line.createdByName || line.createdBy} · {new Date(line.createdAt).toLocaleDateString()}
+                    {line.createdByName || line.createdBy} · {formatDate(line.createdAt, ar ? "ar" : "en")}
                   </p>
                   {line.disputeStatus === "open" && (
                     <p style={{ margin: "6px 0 0", display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: DANGER }}>
@@ -77,10 +62,24 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
                     </p>
                   )}
                   {line.disputeStatus === "accepted" && (
-                    <p style={{ margin: "6px 0 0", fontSize: "11px", color: "#15803D" }}>{ar ? "اعتراض مقبول — أُلغي الخصم" : "Dispute accepted — deduction cancelled"}</p>
+                    <p style={{ margin: "6px 0 0", fontSize: "11px", color: "#15803D" }}>
+                      {ar ? "اعتراض مقبول — أُلغي الخصم" : "Dispute accepted — deduction cancelled"}
+                      {line.originalAmount > 0 && (
+                        <span style={{ color: MUTED }}>
+                          {" "}({ar ? "كان" : "was"} <span dir="ltr">{Number(line.originalAmount).toLocaleString()} {item.currency}</span>)
+                        </span>
+                      )}
+                    </p>
                   )}
                   {line.disputeStatus === "rejected" && (
                     <p style={{ margin: "6px 0 0", fontSize: "11px", color: MUTED }}>{ar ? "اعتراض مرفوض" : "Dispute rejected"}</p>
+                  )}
+                  {line.disputeNote && line.disputeStatus !== "open" && line.disputeStatus !== "none" && (
+                    // The objection is the employee's side of the record; settling it
+                    // must not wipe what they said from the screen.
+                    <p style={{ margin: "2px 0 0", fontSize: "11px", color: MUTED }}>
+                      {ar ? "نص الاعتراض" : "Objection"}: {line.disputeNote}
+                    </p>
                   )}
                 </div>
                 {canEdit && (
@@ -114,11 +113,11 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
         <p style={{ margin: "0 0 12px", fontSize: "13px", fontWeight: 600, color: NAVY }}>
           {ar ? "إجمالي الخصم" : "Total deduction"}: <span dir="ltr">{total.toLocaleString()} {item.currency}</span>
           <span style={{ display: "flex", marginTop: "4px", fontSize: "11px", fontWeight: 500, color: a90.ok ? MUTED : DANGER, alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-            <LaborArticleCite cite={a90.cite} ar={ar} />
             {ar
-              ? `الحد ${article90MaxDeduction(item).toLocaleString()} ${item.currency}`
-              : `cap ${article90MaxDeduction(item).toLocaleString()} ${item.currency}`}
-            {!a90.ok && (ar ? " — تجاوز الحد، يُمنع الدفع والاعتماد." : " — over cap; payment and approval blocked.")}
+              ? `سقف الخصم ${article90MaxDeduction(item).toLocaleString()} ${item.currency}`
+              : `Deduction cap ${article90MaxDeduction(item).toLocaleString()} ${item.currency}`}
+            <LaborArticleCite ruleId="payroll.deduction.capRatio" ar={ar} showText />
+            {!a90.ok && (ar ? " — تجاوز الحد." : " — over cap.")}
           </span>
         </p>
 

@@ -40,7 +40,7 @@ export function usePublicPlatformTheme() {
 export const publicBtnGhost = {
   height: 36,
   padding: "0 14px",
-  borderRadius: 9,
+  borderRadius: 0,
   border: `1px solid ${BORDER}`,
   background: CARD,
   color: INK,
@@ -55,8 +55,8 @@ export const publicBtnGhost = {
 
 export const publicBtnPrimary = {
   ...publicBtnGhost,
-  background: ACCENT,
-  borderColor: ACCENT,
+  background: NAVY_FILL,
+  borderColor: NAVY_FILL,
   color: ON_NAVY,
   fontWeight: 600,
   padding: "0 18px",
@@ -65,15 +65,15 @@ export const publicBtnPrimary = {
 export const publicCard = {
   background: CARD,
   border: `1px solid ${BORDER}`,
-  borderRadius: 16,
-  boxShadow: "0 8px 24px rgba(20,40,75,.06)",
+  borderRadius: 0,
+  boxShadow: "none",
 };
 
 /** White tile behind the official N PNG — do not recolor the mark. */
 export const publicMarkTile = {
   width: 40,
   height: 40,
-  borderRadius: 11,
+  borderRadius: 0,
   overflow: "hidden",
   display: "flex",
   alignItems: "center",

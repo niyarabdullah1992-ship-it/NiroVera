@@ -1,5 +1,5 @@
 import React from "react";
-import { MUTED, NAVY, BORDER, ACCENT, CARD } from "@/lib/platformStyles";
+import { NAVY, BORDER, ACCENT, CARD } from "@/lib/platformStyles";
 
 export default function OwnerPayrollToggle({ checked, onChange, ar }) {
   return (
@@ -16,9 +16,6 @@ export default function OwnerPayrollToggle({ checked, onChange, ar }) {
       <div>
         <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: NAVY }}>
           {ar ? "إدراج المالك في مسير الرواتب" : "Include owner in payroll"}
-        </p>
-        <p style={{ margin: "6px 0 0", fontSize: "12px", color: MUTED }}>
-          {ar ? "إعداد ثابت، وراتب المالك اختياري وغير إلزامي." : "Persistent setting; the owner's salary is optional."}
         </p>
       </div>
       <button

@@ -1,7 +1,8 @@
 
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import { LayoutDashboard, Grid3X3, Gauge, ClipboardCheck, FileSignature, ChevronDown, Shield } from "lucide-react";
 import { identityIconWrap } from "@/components/shared/IdentityCard";
+import { StampNestContext } from "@/components/shared/stampNestContext";
 import SafetyOverviewTab from "@/components/safety/SafetyOverviewTab";
 import RiskAssessmentTab from "@/components/safety/RiskAssessmentTab";
 import SafetyKpiTab from "@/components/safety/SafetyKpiTab";
@@ -11,8 +12,10 @@ import SafetyTabsSettings from "@/components/safety/SafetyTabsSettings";
 import { checklistCompliance } from "@/lib/safetyStandards";
 import { safetyLevelMeta } from "@/lib/safetyLogic";
 import { ACCENT, BORDER, MUTED, NAVY, NAVY_FILL, SURFACE, NEUTRAL, CARD } from "@/lib/platformStyles";
+import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 export default function StationSafetyCard({ station, rec, canEdit, canApprove, canCustomize, approvalIssues = [], lang, signerName, onUpdate, onDisabledTabsChange, onCloseHazard, onApprove, onRevokeApproval, onIncident, defaultExpanded = false, layer = "full" }) {
+  const nested = useContext(StampNestContext);
   const layered = layer !== "full";
   const [tab, setTab] = useState(layer === "comply" ? "checklist" : "overview");
   const [expanded, setExpanded] = useState(!!defaultExpanded || layered);
@@ -41,18 +44,21 @@ export default function StationSafetyCard({ station, rec, canEdit, canApprove, c
 
   return (
     <section
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        borderRadius: 16,
-        border: `1px solid ${BORDER}`,
-        background: CARD,
-        overflow: "hidden",
-        boxShadow: "0 8px 24px rgba(20,40,75,.06)",
-      }}
+      {...(nested ? {} : { "data-nv": "identity" })}
+      style={nested
+        ? { display: "flex", flexDirection: "column" }
+        : {
+            display: "flex",
+            flexDirection: "column",
+            borderRadius: 16,
+            border: `1px solid ${BORDER}`,
+            background: CARD,
+            overflow: "hidden",
+            boxShadow: "0 8px 24px rgba(20,40,75,.06)",
+          }}
       dir={ar ? "rtl" : "ltr"}
     >
-      <div style={{ height: 3, background: NAVY_FILL }} />
+      {nested ? null : <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />}
       <div
         style={{
           display: "flex",
@@ -60,9 +66,9 @@ export default function StationSafetyCard({ station, rec, canEdit, canApprove, c
           alignItems: "center",
           justifyContent: "space-between",
           gap: 12,
-          padding: "14px 16px",
+          padding: nested ? "4px 0 10px" : "14px 16px",
           borderBottom: expanded ? `1px solid ${BORDER}` : "none",
-          background: CARD,
+          background: nested ? "transparent" : CARD,
         }}
       >
         <button
@@ -138,7 +144,14 @@ export default function StationSafetyCard({ station, rec, canEdit, canApprove, c
       </div>
 
       {(layered || expanded) && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, background: SURFACE, padding: 14 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, background: nested ? "transparent" : SURFACE, padding: nested ? 0 : 14 }}>
+          {(layer === "comply" || layer === "full") && (
+            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+              <LaborArticleCite ruleId="safety.hygiene.cite" ar={ar} showText />
+              <LaborArticleCite ruleId="safety.precautions.cite" ar={ar} showText />
+              <LaborArticleCite ruleId="safety.inform.cite" ar={ar} showText />
+            </div>
+          )}
           {(layer === "comply" || layer === "full") && (
           <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }}>
             {visibleTabs.map(([key, Icon, label]) => {

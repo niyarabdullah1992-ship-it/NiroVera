@@ -2,11 +2,11 @@ import React from "react";
 import AssetStatusBadge from "@/components/assets/AssetStatusBadge";
 import { INK, MUTED, BORDER, SURFACE, tableShell, emptyState, tableHeadRow } from "@/lib/platformStyles";
 
-export default function AssetTable({ assets, lang, stationName, onOpen }) {
+export default function AssetTable({ assets, lang, stationName, activeStationId, onOpen }) {
   const ar = lang === "ar";
   const headers = ar
-    ? ["الأصل والرقم", "الفئة", "الحائز", "الوحدة والمقر", "الحالة"]
-    : ["Asset & code", "Category", "Holder", "Unit & site", "Status"];
+    ? ["الأصل والرقم", "الفئة", "الحائز", "الفرع الحالي", "المنشأ", "الحالة"]
+    : ["Asset & code", "Category", "Holder", "Current station", "Origin", "Status"];
 
   if (!assets.length) {
     return <div style={emptyState}>{ar ? "لا توجد أصول مطابقة للفلتر." : "No assets match these filters."}</div>;
@@ -42,6 +42,12 @@ export default function AssetTable({ assets, lang, stationName, onOpen }) {
                 <td style={{ padding: "12px 14px", color: INK }}>{a.holderName || "—"}</td>
                 <td style={{ padding: "12px 14px", color: MUTED }}>
                   {stationName(a.stationId)}{a.site ? ` · ${a.site}` : ""}
+                  {activeStationId && String(a.stationId) !== String(activeStationId) ? (
+                    <div style={{ marginTop: 2, fontSize: 10 }}>{ar ? "فرع آخر — للاطّلاع" : "Other station — read only"}</div>
+                  ) : null}
+                </td>
+                <td style={{ padding: "12px 14px", color: MUTED }}>
+                  {a.originStationId ? stationName(a.originStationId) : (ar ? "شراء مباشر" : "Direct buy")}
                 </td>
                 <td style={{ padding: "12px 14px" }}>
                   <AssetStatusBadge status={a.status} lang={lang} />

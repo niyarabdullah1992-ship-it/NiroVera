@@ -301,6 +301,9 @@ export function buildOrgDiagram(people, openMap = {}, onToggle, stations = []) {
       if (row.vacant) return;
       const home = String(row.homeId || "");
       if (!home || !scope.has(home)) return;
+      const homeStation = (stations || []).find((item) => String(item.id) === home);
+      // Manager seats are not workplaces — people parked on them are not hired staff.
+      if (effectiveUnitKind(homeStation) === "manager") return;
       ids.add(String(row.employeeId || `${row.name}:${home}`));
     });
     return ids.size;

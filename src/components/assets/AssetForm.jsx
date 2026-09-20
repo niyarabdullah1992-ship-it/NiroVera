@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { X, Loader2 } from "lucide-react";
 import MobileSelect from "@/components/mobile/MobileSelect";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 
 const Field = ({ label, children }) => (
   <label className="block space-y-1">
@@ -11,9 +12,9 @@ const Field = ({ label, children }) => (
 
 const input = "w-full rounded-md border border-input px-3 py-2 text-sm font-body";
 
-export default function AssetForm({ asset, stations, employees, lang, onClose, onSave }) {
+export default function AssetForm({ asset, stations, employees, lang, onClose, onSave, defaultStationId }) {
   const [form, setForm] = useState({
-    name: "", assetCode: "", category: "", stationId: stations[0]?.id || "", site: "",
+    name: "", assetCode: "", category: "", stationId: asset?.stationId || defaultStationId || stations[0]?.id || "", site: "",
     holderId: "", purchaseDate: "", value: "", warrantyEndDate: "",
     nextInspectionDate: "", status: "available",
     ...(asset || {}),
@@ -31,15 +32,16 @@ export default function AssetForm({ asset, stations, employees, lang, onClose, o
       const holder = employees.find((e) => e.id === form.holderId);
       const stationOf = stations.find((s) => s.id === String(form.holderId).replace("station:", ""));
       const { noWarranty, ...payload } = form;
-      await onSave({
+      const ok = await onSave({
         ...payload,
         warrantyEndDate: noWarranty ? null : (form.warrantyEndDate || null),
         holderName: branchHolder ? `${lang === "ar" ? "عهدة الفرع" : "Branch custody"} — ${stationOf?.name || ""}` : (holder?.name || form.holderName || ""),
         value: form.value ? Number(form.value) : null,
         usefulLifeMonths: form.usefulLifeYears ? Number(form.usefulLifeYears) * 12 : null,
         inspectionIntervalDays: null,
+        originStationId: asset?.originStationId || form.originStationId || form.stationId,
       });
-      onClose();
+      if (ok !== false) onClose();
     } finally {
       setSaving(false);
     }
@@ -47,7 +49,7 @@ export default function AssetForm({ asset, stations, employees, lang, onClose, o
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 sm:p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-[10px] border border-border bg-card p-4 space-y-3 pb-safe">
+      <div onClick={(e) => e.stopPropagation()} className="nv-paper w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-[14px] border border-border bg-card p-4 space-y-3 pb-safe">
         <div className="flex items-center justify-between">
           <h3 className="font-heading text-lg font-semibold">{asset ? (lang === "ar" ? "تعديل أصل" : "Edit asset") : (lang === "ar" ? "أصل جديد" : "New asset")}</h3>
           <button onClick={onClose} className="p-1.5 rounded-md hover:bg-muted"><X className="w-4 h-4" /></button>
@@ -77,11 +79,13 @@ export default function AssetForm({ asset, stations, employees, lang, onClose, o
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label={lang === "ar" ? "تاريخ الشراء" : "Purchase date"}><input type="date" value={form.purchaseDate || ""} onChange={set("purchaseDate")} className={input} /></Field>
+          <Field label={lang === "ar" ? "تاريخ الشراء" : "Purchase date"}>
+            <PlatformDateField ar={lang === "ar"} value={form.purchaseDate || ""} onChange={(next) => setForm({ ...form, purchaseDate: next })} />
+          </Field>
           <Field label={lang === "ar" ? "القيمة" : "Value"}><input type="number" value={form.value || ""} onChange={set("value")} className={input} /></Field>
           <Field label={lang === "ar" ? "العمر الافتراضي (سنوات)" : "Useful life (years)"}><input type="number" min="0" value={form.usefulLifeYears || ""} onChange={set("usefulLifeYears")} className={input} /></Field>
           <Field label={lang === "ar" ? "نهاية الضمان" : "Warranty end"}>
-            <input type="date" value={form.warrantyEndDate || ""} onChange={set("warrantyEndDate")} disabled={form.noWarranty} className={`${input} disabled:opacity-40`} />
+            <PlatformDateField ar={lang === "ar"} value={form.warrantyEndDate || ""} onChange={(next) => setForm({ ...form, warrantyEndDate: next })} disabled={form.noWarranty} />
             <label className="mt-1 flex items-center gap-2 text-xs font-body text-muted-foreground">
               <input type="checkbox" checked={!!form.noWarranty} onChange={(e) => setForm({ ...form, noWarranty: e.target.checked, warrantyEndDate: e.target.checked ? "" : form.warrantyEndDate })} className="h-3.5 w-3.5 accent-current" />
               {lang === "ar" ? "لا يوجد ضمان" : "No warranty"}

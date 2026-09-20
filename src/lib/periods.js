@@ -20,8 +20,8 @@ const LABELS = {
   daily: { ar: "يومي", en: "Daily" },
   weekly: { ar: "أسبوعي", en: "Weekly" },
   month: { ar: "شهر", en: "Month" },
-  "3months": { ar: "٣ أشهر", en: "3 months" },
-  "6months": { ar: "٦ أشهر", en: "6 months" },
+  "3months": { ar: "3 أشهر", en: "3 months" },
+  "6months": { ar: "6 أشهر", en: "6 months" },
   year: { ar: "سنة", en: "Year" },
   custom: { ar: "بين تاريخين", en: "Custom range" },
 };
@@ -49,7 +49,12 @@ const dayString = (date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
 function formatRange(start, end, lang) {
-  const fmt = new Intl.DateTimeFormat(lang === "ar" ? "ar" : "en", { day: "numeric", month: "long", year: "numeric" });
+  const fmt = new Intl.DateTimeFormat(lang === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    numberingSystem: "latn",
+  });
   return `${fmt.format(start)} – ${fmt.format(end)}`;
 }
 

@@ -21,9 +21,11 @@ export const BLOB_VISIBILITY = {
   targets: "scope",
   plans: "scope",
   schedules: "scope",
+  leaveRoster: "scope",
   safety: "scope",
   files: "scope",
   payrollRuns: "payroll",
+  stationBudgets: "senior",
   hrLevels: "senior",
   hrClusters: "senior",
   jobGrades: "shared",
@@ -33,17 +35,43 @@ export const BLOB_VISIBILITY = {
   templates: "shared",
   complaintEscalationChain: "shared",
   disciplinaryCases: "senior",
+  arbitrationOutcomes: "senior",
   attendancePolicy: "shared",
   attendanceEmergency: "shared",
+  // Previously undeclared (= hidden). Declared senior so the deny is visible
+  // without opening rows to non-senior readers. See base44/data/domains.jsonc.
+  workProofs: "senior",
+  visitorProofs: "senior",
+  assetTransfers: "senior",
+  orgSeats: "senior",
+  branchEscalationChains: "senior",
 };
 
 // الحقول الحساسة في سجل الموظف — لا تُرسل إلا لصاحبها أو لمن يدير الموظفين.
-export const SENSITIVE_EMPLOYEE_FIELDS = ["hrMessages", "leaveRequests", "certificates", "profile", "phone", "email"];
+export const SENSITIVE_EMPLOYEE_FIELDS = ["hrMessages", "leaveRequests", "otherRequests", "certificates", "profile", "phone", "email"];
+export const REQUEST_EMPLOYEE_FIELDS = ["leaveRequests", "otherRequests"];
 
 export function redactEmployee(record) {
   const safe = { ...record };
   for (const field of SENSITIVE_EMPLOYEE_FIELDS) delete safe[field];
   return safe;
+}
+
+/** Station / leave managers see the request inbox without salary or HR notes. */
+export function attachEmployeeRequestFields(full, redacted) {
+  const next = { ...(redacted || {}) };
+  for (const field of REQUEST_EMPLOYEE_FIELDS) {
+    if (full && Object.prototype.hasOwnProperty.call(full, field)) next[field] = full[field];
+  }
+  return next;
+}
+
+export function canSeeEmployeeRequests(context) {
+  if (!context) return false;
+  if (context.senior) return true;
+  const perms = context.permissions;
+  if (perms?.has?.("manage_employees") || perms?.has?.("manage_leave")) return true;
+  return ["pgm", "station_manager"].includes(context.actor?.role);
 }
 
 const recordOwner = (item) => item.userId || item.employeeId || item.ownerId || item.createdBy || null;

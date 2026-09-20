@@ -12,7 +12,12 @@ import {
   type StockItemLike,
 } from "../../shared/inventoryDerivations.ts";
 
-const STOCK_CATEGORY = "stockBoard";
+/**
+ * do-not-invoke-from-frontend — live stock is InventoryItem via inventoryApi (preview-local).
+ * Do not write `stockBoard`. Leftover callers should use inventory / inventoryItems.
+ */
+const STOCK_CATEGORY = "inventoryItems";
+const STOCK_LEGACY_CATEGORY = "stockBoard"; // do-not-write
 
 function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
@@ -63,7 +68,7 @@ Deno.serve(async (req) => {
     const loadBlob = async () => {
       const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({
         companyId: auth.companyId,
-        category: STOCK_CATEGORY,
+        category: STOCK_LEGACY_CATEGORY,
       });
       return rows[0] || null;
     };
@@ -82,16 +87,8 @@ Deno.serve(async (req) => {
       return base;
     };
 
-    const savePayload = async (payload: StockPayload) => {
-      const blob = await loadBlob();
-      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload });
-      else {
-        await base44.asServiceRole.entities.CompanyDataBlob.create({
-          companyId: auth.companyId,
-          category: STOCK_CATEGORY,
-          payload,
-        });
-      }
+    const savePayload = async (_payload: StockPayload) => {
+      // do-not-write stockBoard. Canonical quantity is InventoryItem — not this blob.
     };
 
     const audit = async (actionKey: string, details: string, extra: Record<string, unknown> = {}) => {

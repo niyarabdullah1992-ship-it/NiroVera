@@ -22,9 +22,8 @@ import {
 } from "@/lib/permissionTemplates";
 import { SMART_DEPARTMENTS, SMART_SECTION_GROUPS } from "@/lib/smartPositions";
 import { BORDER, CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
-import { orgBtnGhost, orgBtnPrimary as orgBtnPrimaryStyle, orgInput } from "@/lib/orgWorkspaceStyles";
-import { OrgAccessPanel, OrgSectionTitle } from "@/components/hr/OrgWorkspace";
-import { downloadHireTemplate } from "@/lib/hireTemplate";
+import { orgBtnPrimary as orgBtnPrimaryStyle, orgInput } from "@/lib/orgWorkspaceStyles";
+import { OrgAccessPanel } from "@/components/hr/OrgWorkspace";
 
 const GREEN = "hsl(154 79% 27%)";
 
@@ -167,25 +166,6 @@ export default function OrgListAccessBoard({ data, companyId, ar, canWrite, owne
 
   return (
     <OrgAccessPanel>
-      <OrgSectionTitle meta={ar ? `${packs.length} ${packs.length === 1 ? "قائمة" : "قوائم"}` : `${packs.length} list${packs.length === 1 ? "" : "s"}`}>
-        {ar ? "حزم الصلاحية" : "Access packs"}
-      </OrgSectionTitle>
-      <p style={{ margin: "0 0 12px", fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
-        {ar
-          ? "أنشئ حزمة وأضف المناصب. القالب يعرض فروع المنصة في عمود الفرع لتختار أين يوضع كل موظف. التعبئة تُحفظ في ملف الموظف عند التطبيق."
-          : "Create a pack and add titles. The template lists live platform branches in the branch column so you pick where each person sits. Filling a row writes to the employee file on apply."}
-      </p>
-      {canWrite ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-          <button type="button" onClick={() => downloadHireTemplate(data, ar, { mode: "blank" })} style={orgBtnGhost}>
-            {ar ? "تنزيل قالب فارغ" : "Download blank template"}
-          </button>
-          <button type="button" onClick={() => downloadHireTemplate(data, ar, { mode: "files" })} style={orgBtnGhost}>
-            {ar ? "تنزيل الملفات الحالية والنواقص" : "Download current files and gaps"}
-          </button>
-        </div>
-      ) : null}
-
       {canWrite ? (
         <div className="nv-org-access-toolbar">
           <input

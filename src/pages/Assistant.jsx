@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { base44 } from "@/api/base44Client";
@@ -20,8 +20,7 @@ import { needsWebSearch, relevantDocumentUrls, selectAssistantContext } from "@/
 import { allowedNavFor } from "@/lib/navVisibility";
 import { toast } from "@/components/ui/use-toast";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
-import { erpKicker } from "@/lib/erpModuleMeta";
+import { pageKicker } from "@/lib/moduleMeta";
 import { BORDER, CARD, MUTED, SURFACE, field, ui } from "@/lib/platformStyles";
 
 export default function Assistant() {
@@ -118,7 +117,6 @@ export default function Assistant() {
           if (r.includes("tasks")) allowedSections.push("tasks");
           if (r.includes("attendance")) allowedSections.push("attendance");
           if (r.includes("safety")) allowedSections.push("safety");
-          if (r.includes("daily-report")) allowedSections.push("reports");
           if (r.includes("performance")) allowedSections.push("performance");
           if (r.includes("payroll")) allowedSections.push("payroll");
         });
@@ -224,7 +222,6 @@ AVAILABLE ACTIONS (include them in "actions" when the user asks you to do someth
 - {"type":"create_task","title":"...","description":"...","steps":"...","section":"<folder/section name>","station":"<station name>","assignee":"<employee name>","taskTarget":1,"priority":"urgent"|"high"|"medium"|"low","days":30} — creates a REAL task in the company task system (manager roles only). If "assignee" is given the task is assigned to that member; else if "station" is given it goes to that station's team; otherwise to the current user's branch team. "taskTarget" = how many units to complete; "days" = duration (default 30).
 - {"type":"log_progress","taskTitle":"<existing task title>","amount":1} — logs completed units on one of the user's OWN active tasks. Note: reaching 100% requires uploading proof in the Tasks page.
 - {"type":"report_task_issue","taskTitle":"<existing task title>","description":"<clear issue details>"} — records a stoppage/problem on a task and alerts its responsible manager.
-- {"type":"send_station_message","station":"<station name>","message":"<message text>"} — sends a real message to a station chat visible to the current user.
 - {"type":"send_email","to":"<exact email address>","subject":"<email subject>","message":"<complete email body>"} — sends a real email from NiroVera's connected Gmail account to ANY valid email address (manager roles only). Use only after an explicit send command. Require the exact recipient address, subject and complete message; if any is missing, ask one short clarifying question and return no action. Never infer or invent an email address, and never send a proactive suggestion automatically.
 - {"type":"create_inventory_item","title":"<item name>","itemCode":"<code>","station":"<station name>","quantity":1,"supplierName":"<supplier>","totalCost":0,"minimumStock":0} — records a real station purchase/new inventory item when every required detail is supplied.
 - {"type":"request_inventory","title":"<item name or code>","sourceStation":"<source>","destinationStation":"<destination>","quantity":1,"description":"<reason>"} — submits a real material request between stations.
@@ -232,12 +229,12 @@ AVAILABLE ACTIONS (include them in "actions" when the user asks you to do someth
 - {"type":"review_inventory_request","requestId":"<request id>","decision":"approved"|"rejected"} — reviews a material request only after an explicit approve/reject command.
 - {"type":"review_expense","claimId":"<expense id>","decision":"manager_approved"|"manager_rejected"|"finance_approved"|"finance_rejected"} — proposes reviewing a pending expense.
 - {"type":"log_safety_incident","station":"<station name>","description":"<incident details>"} — proposes recording a real safety incident at a station.
-- {"type":"submit_leave","title":"<leave type>","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD","description":"<reason>"} — proposes submitting the current user's leave request.
-- {"type":"review_leave","employee":"<employee name>","requestId":"<leave request id>","decision":"approved"|"rejected"} — proposes reviewing a pending leave request when the current user has HR authority.
+- {"type":"submit_leave","title":"<leave type>","startDate":"YYYY-MM-DD","endDate":"YYYY-MM-DD","description":"<reason>"} — does NOT submit leave. Opens طلباتي / My Requests leave lane. Every leave raise happens there (type, dates, Article 118 acknowledgement, paper only when required). Never invent a leave request from chat.
+- {"type":"review_leave","employee":"<employee name>","requestId":"<leave request id>","decision":"approved"|"rejected"} — does NOT approve or reject. Opens طلباتي → إدارة so the reply is written there. Never stamp a leave or study_consent decision from chat.
 - {"type":"sign_report","dataset":"employees"|"tasks"|"targets"|"reports"|"stations"|"safety"|"plans"|"schedules"|"complaints"|"files"|"hr"|"leaves"|"certificates"|"performance"|"attendance"|"inventory"|"inventory_movements"|"material_requests"|"expenses"|"payroll","filter":"all"|"incomplete"|"completed"|"active"|"overdue","reportTitle":"<title in the user's language>"} — generates the report, stamps the user's SIGNATURE + verified badge (encrypted verification ID + QR code + SHA-256 fingerprint registered in the verification registry) INSIDE the file and downloads the signed PDF automatically. For unfinished/not completed task reports, always use dataset "tasks" with filter "incomplete". If the selected dataset has no matching records, it still generates and signs a valid empty report instead of returning a no-data error.
   CRITICAL: if the user's request contains ANY signing word — sign / توقيع / وقّع / وقع / اعتماد / اعتمد / ختم — you MUST use sign_report (NOT export_data), even though the request also mentions تقرير/PDF. Never combine sign_report with export_data for the same request.
 - {"type":"create_document","docTitle":"<document title>","subtitle":"<optional subtitle>","docContent":"<THE FULL DOCUMENT TEXT: put '## ' before every section heading, '- ' before each bullet item, and \\n between paragraphs. Write the complete, rich content here — never leave it empty or summarized>"} — WRITES A COMPLETE PROFESSIONAL DOCUMENT about ANY idea/topic the user wants (proposal, policy, contract draft, project description, plan, letter, article, official declaration…) and opens it as an elegant print-ready A4 page the user can download as PDF. YOU write the actual full content: rich, well-structured, in the user's language, with as many sections as the topic deserves (usually 4–8), ordered and formatted exactly as the user requests. Use this whenever the user asks you to create/write/prepare a file or document about an idea — it is NOT tied to company datasets.
-- {"type":"open_page","page":"dashboard"|"executive"|"tasks"|"attendance"|"reports"|"performance"|"employees"|"stations"|"hr"|"payroll"|"complaints"|"chat"|"files"|"daily_report"|"help"|"signing"|"verify"|"inventory"|"expenses"|"safety"} — opens a NiroVera section in a NEW TAB. Use this action ONLY for a direct navigation command such as "open", "go to", "افتح", "اذهب" or "انتقل". NEVER use it for a question, explanation, analysis, or merely mentioning a section.
+- {"type":"open_page","page":"dashboard"|"executive"|"tasks"|"attendance"|"reports"|"performance"|"employees"|"stations"|"hr"|"payroll"|"complaints"|"files"|"signing"|"verify"|"inventory"|"expenses"|"safety"} — opens a NiroVera section in a NEW TAB. Use this action ONLY for a direct navigation command such as "open", "go to", "افتح", "اذهب" or "انتقل". NEVER use it for a question, explanation, analysis, or merely mentioning a section.
 
 DOCUMENT SIGNING & VERIFICATION (you know this feature well):
 - The platform's File Signing section lets every employee save a personal signature, then sign any PDF/image document. Signing stamps a verification badge (encrypted verification ID + QR code) on the document and registers the signed file's SHA-256 fingerprint in a verification registry.
@@ -411,13 +408,12 @@ Answer the last user question.`,
   return (
     <PlatformStampShell
       ar={lang === "ar"}
-      kicker={erpKicker("/app/assistant", lang)}
+      kicker={pageKicker("/app/assistant", lang)}
       title={lang === "ar" ? "المساعد الذكي" : "AI Assistant"}
       hint={t("aiAssistantDesc")}
       maxWidth={1600}
       meta={<NiroVoiceSettings gender={voiceGender} onGenderChange={changeVoiceGender} ar={lang === "ar"} />}
     >
-      <ErpSectionFrame path="/app/assistant" ar={lang === "ar"} hideProof hideHub>
       <div style={{ display: "flex", flexDirection: "column", gap: 12, minHeight: "min(68vh, 720px)" }}>
         <AssistantBoard lang={lang} onPickPrompt={(q) => { setInput(q); ask(q); }} />
 
@@ -492,7 +488,6 @@ Answer the last user question.`,
           </form>
         </div>
       </div>
-      </ErpSectionFrame>
     </PlatformStampShell>
   );
 }

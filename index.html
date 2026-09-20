@@ -10,7 +10,7 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Readex+Pro:wght@500;600;700&family=Inter+Tight:wght@400;500;600;700&family=Noto+Naskh+Arabic:wght@400;600&display=swap" rel="stylesheet" />
     <meta name="description" content="NiroVera — دورة الإثبات: حضور، مهمة، اعتماد، وختم للعميل." />
     <title>NiroVera — منظومة الموارد البشرية</title>
     <style>html,body,#root{background:var(--nv-soft,#F7F8FA);color:var(--nv-ink,#14284B);margin:0;min-height:100%;}</style>
@@ -35,15 +35,42 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="nv-static-boot" dir="rtl" role="status" aria-live="polite" style="min-height:100dvh;display:flex;background:#F7F8FA;font-family:'IBM Plex Sans Arabic','IBM Plex Sans',sans-serif;color:#14284B">
+        <aside id="nv-static-rail" style="display:none;width:188px;flex-shrink:0;background:#fff;border-inline-end:1px solid #E2E8F0">
+          <div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#14284B;color:#fff">
+            <img src="/nirovera-mark.png" alt="" width="18" height="18" style="width:18px;height:18px;background:#fff;padding:4px;box-sizing:content-box" />
+            <span style="display:flex;flex-direction:column;gap:1px"><span style="font-size:12px;font-weight:700">NiroVera</span><span style="font-size:10px;color:#C7D2E4">PowerCare</span></span>
+          </div>
+        </aside>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+          <header id="nv-static-head" style="display:none;height:52px;background:#fff;border-bottom:1px solid #E2E8F0"></header>
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px">
+            <div style="width:100%;max-width:440px;background:#fff;border:1px solid #E2E8F0;padding:22px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <img src="/nirovera-mark.png" alt="" width="18" height="18" style="width:18px;height:18px;background:#fff;border:1px solid #E2E8F0;padding:4px;box-sizing:content-box" />
+                <span style="font-size:11px;letter-spacing:.12em;color:#5A6B85;font-family:'IBM Plex Mono',monospace">NIROVERA</span>
+              </div>
+              <h1 style="margin:10px 0 0;font-size:20px;font-weight:650;letter-spacing:-.02em">جارٍ فتح المنصة</h1>
+              <p style="margin:10px 0 0;font-size:13px;line-height:1.65;color:#5A6B85">حضور ثم مهمة ثم توقيع — الأرقام تُشتقّ من السجل.</p>
+              <span class="nv-boot-bar" style="display:block;height:2px;margin-top:16px;background:#14284B;transform-origin:right center;animation:nv-boot-bar 1.4s ease-in-out infinite"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <style>@keyframes nv-boot-bar{0%,100%{transform:scaleX(.14)}50%{transform:scaleX(.78)}}@media(min-width:768px){html.nv-has-session #nv-static-rail,html.nv-has-session #nv-static-head{display:flex!important}html.nv-has-session #nv-static-boot>div>div{align-items:stretch;justify-content:flex-start;padding:20px}}</style>
+      <script>
+        try { if (localStorage.getItem("powercare_session")) document.documentElement.classList.add("nv-has-session"); } catch (e) {}
+      </script>
+    </div>
     <script>
       window.addEventListener("error", function (event) {
-        var root = document.getElementById("root");
-        if (!root || root.childElementCount) return;
+        var boot = document.getElementById("nv-static-boot");
+        if (!boot) return;
         var err = event.error || event;
         var msg = String((err && err.message) || event.message || err || "Unknown error");
         var file = event.filename ? (event.filename + ":" + (event.lineno || 0)) : "";
-        root.innerHTML = '<div dir="rtl" style="padding:24px;font-family:sans-serif;color:#14284B;max-width:720px;margin:40px auto"><h1 style="font-size:20px">تعذر تشغيل نيروفيرا</h1><p style="font-size:13px;color:#5A6B85">انسخ النص ثم أعد التحميل بـ Ctrl+F5.</p><pre dir="ltr" style="white-space:pre-wrap;background:#F1F5F9;padding:12px;border-radius:8px;font-size:12px">' + (file ? file + "\\n" : "") + msg + '</pre><button type="button" onclick="location.reload()" style="margin-top:12px;height:40px;padding:0 16px;border:0;border-radius:8px;background:#1E9E63;color:#fff">إعادة التحميل</button></div>';
+        boot.parentNode.innerHTML = '<div dir="rtl" style="padding:24px;font-family:sans-serif;color:#14284B;max-width:720px;margin:40px auto"><h1 style="font-size:20px">تعذر تشغيل نيروفيرا</h1><p style="font-size:13px;color:#5A6B85">انسخ النص ثم أعد التحميل بـ Ctrl+F5.</p><pre dir="ltr" style="white-space:pre-wrap;background:#F1F5F9;padding:12px;font-size:12px">' + (file ? file + "\\n" : "") + msg + '</pre><button type="button" onclick="location.reload()" style="margin-top:12px;height:40px;padding:0 16px;border:1px solid #14284B;background:#14284B;color:#fff">إعادة التحميل</button></div>';
       });
     </script>
     <script type="module" src="/src/main.jsx"></script>

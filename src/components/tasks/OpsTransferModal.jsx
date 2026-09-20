@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { CARD, MUTED, NAVY, field, textarea } from "@/lib/platformStyles";
 import { taskAssigneeId } from "@/lib/opsDerivations";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -38,7 +39,7 @@ export default function OpsTransferModal({
   const when = String(transferredAt || "").slice(0, 10);
   const canSubmit = !!toId && !!when && reason.trim().length > 0 && ack && !busy;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
@@ -161,6 +162,7 @@ export default function OpsTransferModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

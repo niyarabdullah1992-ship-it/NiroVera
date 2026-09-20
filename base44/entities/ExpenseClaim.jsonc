@@ -1,3 +1,8 @@
+// purpose: Expense claim with receipt and approval chain.
+// domain: money
+// isolation: companyId
+// owner: expenses
+// status: canonical
 {
   "name": "ExpenseClaim",
   "type": "object",
@@ -97,10 +102,14 @@
     },
     "status": {
       "type": "string",
+      "description": "Approval chain state. Above 5,000 the claim waits on the CFO, so those three states are part of the chain the handlers already write.",
       "enum": [
         "submitted",
         "manager_approved",
         "manager_rejected",
+        "cfo_pending",
+        "cfo_approved",
+        "cfo_rejected",
         "finance_approved",
         "finance_rejected"
       ]
@@ -128,6 +137,43 @@
         "string",
         "null"
       ]
+    },
+    "cfoReviewedBy": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "cfoReviewedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approvedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "paidAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "rejectReason": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Written reason a reviewer gave when refusing the claim; shown on the claim itself."
+    },
+    "vesselBlocks": {
+      "type": "array",
+      "description": "Approvals the station vessel refused. The claim did reach a reviewer and stayed pending because the vessel is spent, so the attempt stays readable instead of living only in a dismissable toast.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
     }
   },
   "required": [

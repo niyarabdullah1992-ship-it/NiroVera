@@ -13,6 +13,7 @@ import { ACCENT, MUTED, NAVY, pageCol, ui, field, CARD, SURFACE } from "@/lib/pl
 import { ChromeBox } from "@/components/shared/IdentityCard";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import SettingsPermDelegation from "@/components/hr/SettingsPermDelegation";
+import LaborCalendarCard from "@/components/hr/LaborCalendarCard";
 
 async function settingsApi(payload) {
   const res = await base44.functions.invoke("settings", payload);
@@ -21,7 +22,7 @@ async function settingsApi(payload) {
 
 export default function CompanySettingsBoard({ lang = "ar" }) {
   const ar = lang === "ar";
-  const { company, data, currentUser } = useAuth();
+  const { company, data, currentUser, refresh } = useAuth();
   const [record, setRecord] = useState({
     name: "",
     commercialRegistration: "",
@@ -399,6 +400,15 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
           </div>
         )}
       </ChromeBox>
+
+      <LaborCalendarCard
+        companyId={company?.id}
+        laborCalendar={data?.laborCalendar}
+        year={new Date().getFullYear()}
+        canEdit={canManage}
+        ar={ar}
+        onSaved={() => refresh?.()}
+      />
 
       {/* L2162–2231 — design owns these on settings */}
       <SettingsPermDelegation lang={lang} />

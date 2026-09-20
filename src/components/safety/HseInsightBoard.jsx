@@ -14,7 +14,7 @@ import {
   WARN,
   NEUTRAL,
 } from "@/lib/platformStyles";
-import { ChromeBox, identityFrame } from "@/components/shared/IdentityCard";
+import { ChromeBox } from "@/components/shared/IdentityCard";
 
 const PYRAMID_LEVELS = [
   { key: "fatality", ar: "وفاة", en: "Fatality", color: "#991B1B" },
@@ -274,7 +274,7 @@ export default function HseInsightBoard({ lang = "ar", stationScope }) {
       </ChromeBox>
 
       {/* PTW / CAPA / competency / drills — secondary detail, not a competing board */}
-      <details style={{ ...identityFrame, padding: "14px 18px" }}>
+      <details style={{ padding: "8px 0 0", borderTop: "1px solid #E2E8F0" }}>
         <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: NAVY, listStyle: "none" }}>
           {ar ? "تصاريح · CAPA · كفاءة · تمارين — تفصيل" : "PTW · CAPA · competency · drills — detail"}
         </summary>

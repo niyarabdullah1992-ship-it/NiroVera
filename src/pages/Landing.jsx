@@ -151,21 +151,21 @@ export default function Landing() {
           <p style={{ margin: 0, fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "clamp(42px, 7vw, 72px)", fontWeight: 700, letterSpacing: "-0.04em", lineHeight: 1.05, color: ON_NAVY }}>
             NiroVera
           </p>
-          <p style={{ margin: "14px 0 0", display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 14px", borderRadius: 20, background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.22)", fontSize: 12, fontWeight: 600, color: ON_NAVY, letterSpacing: "0.06em" }}>
+          <p style={{ margin: "14px 0 0", display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 14px", borderRadius: 0, background: "rgba(255,255,255,.1)", border: "1px solid rgba(255,255,255,.22)", fontSize: 12, fontWeight: 600, color: ON_NAVY, letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: ACCENT }} />
-            {T("ERP للتشغيل السعودي · معايير عالمية", "Saudi operations ERP · global standard")}
+            {T("منصة تشغيل سعودية · معايير عالمية", "Saudi operations platform · global standard")}
           </p>
           <h1 data-nv="h1" style={{ margin: "18px 0 0", fontSize: "clamp(26px, 3.6vw, 40px)", fontWeight: 500, lineHeight: 1.35, letterSpacing: "-0.02em", maxWidth: "720px", textWrap: "pretty", color: ON_NAVY }}>
-            {T("إثبات العمل قبل الحكم — نظام ERP مؤسسي مبني للسعودية", "Prove work before judgment — institutional ERP built for Saudi Arabia")}
+            {T("إثبات العمل قبل الحكم — منظومة موارد مؤسسية مبنية للسعودية", "Prove work before judgment — institutional HR built for Saudi Arabia")}
           </h1>
           <p style={{ margin: "20px 0 0", fontSize: "18px", lineHeight: 1.65, color: ON_NAVY_MUTED, maxWidth: "560px", textWrap: "pretty" }}>
             {T("حضور ومهام وإثبات ورواتب وأصول وامتثال وزارة — تطبيقات مترابطة في مساحة شركة واحدة.", "Attendance, tasks, proof, payroll, assets, and ministry compliance — connected apps in one company space.")}
           </p>
           <div style={{ display: "flex", gap: "12px", marginTop: "36px", flexWrap: "wrap" }}>
-            <Link to="/pricing" style={{ height: "48px", padding: "0 26px", borderRadius: "9px", background: ACCENT, color: "#fff", fontSize: "15px", fontWeight: 600, display: "flex", alignItems: "center", textDecoration: "none" }}>
+            <Link to="/pricing" style={{ height: "48px", padding: "0 26px", borderRadius: 0, background: "#fff", color: NAVY_FILL, fontSize: "15px", fontWeight: 600, display: "flex", alignItems: "center", textDecoration: "none" }}>
               {T("أنشئ مساحة شركتك", "Create your company space")}
             </Link>
-            <a href="#apps" style={{ height: "48px", padding: "0 26px", borderRadius: "9px", background: "transparent", color: ON_NAVY, border: "1px solid rgba(255,255,255,.28)", fontSize: "15px", fontWeight: 500, display: "flex", alignItems: "center", textDecoration: "none" }}>
+            <a href="#apps" style={{ height: "48px", padding: "0 26px", borderRadius: 0, background: "transparent", color: ON_NAVY, border: "1px solid rgba(255,255,255,.28)", fontSize: "15px", fontWeight: 500, display: "flex", alignItems: "center", textDecoration: "none" }}>
               {T("شاهد التطبيقات", "See the apps")}
             </a>
           </div>
@@ -190,8 +190,8 @@ export default function Landing() {
         <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
           <div data-nv="hero-gov" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
             {heroGov.map((g) => (
-              <a key={g.title} href={g.href} style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "12px", padding: "12px 14px", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "8px", textDecoration: "none", color: "inherit", height: "100%", boxSizing: "border-box" }}>
-                <span style={{ height: "22px", padding: "0 9px", borderRadius: "20px", fontSize: "11px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px", background: g.live ? "rgba(148,163,184,.15)" : "rgba(30,158,99,.18)", color: g.live ? "#CBD5E1" : "#6EE7B7", border: `1px solid ${g.live ? "rgba(148,163,184,.35)" : "rgba(110,231,183,.35)"}` }}>
+              <a key={g.title} href={g.href} style={{ background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 0, padding: "12px 14px", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "8px", textDecoration: "none", color: "inherit", height: "100%", boxSizing: "border-box" }}>
+                <span style={{ height: "22px", padding: "0 9px", borderRadius: 0, fontSize: "11px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "6px", background: g.live ? "rgba(148,163,184,.15)" : "rgba(30,158,99,.18)", color: g.live ? "#CBD5E1" : "#6EE7B7", border: `1px solid ${g.live ? "rgba(148,163,184,.35)" : "rgba(110,231,183,.35)"}` }}>
                   <span style={{ width: 6, height: 6, borderRadius: "50%", background: g.live ? "#94A3B8" : "#6EE7B7" }} />
                   {g.chip}
                 </span>
@@ -236,7 +236,7 @@ export default function Landing() {
             )}
           />
           <div style={{ marginTop: 36 }}>
-            <Link to="/pricing" style={{ display: "inline-flex", height: 44, padding: "0 22px", borderRadius: 9, background: NAVY_FILL, color: ON_NAVY, fontSize: 14, fontWeight: 600, alignItems: "center", textDecoration: "none" }}>
+            <Link to="/pricing" style={{ display: "inline-flex", height: 44, padding: "0 22px", borderRadius: 0, background: NAVY_FILL, color: ON_NAVY, fontSize: 14, fontWeight: 600, alignItems: "center", textDecoration: "none" }}>
               {T("أنشئ مساحة شركتك", "Create your company space")}
             </Link>
           </div>
@@ -259,10 +259,10 @@ export default function Landing() {
               ))}
             </div>
           </div>
-          <div style={{ flex: "1 1 340px", background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: "16px", padding: "26px", display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: "1 1 340px", background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 0, padding: "26px", display: "flex", flexDirection: "column" }}>
             <div style={{ display: "flex", gap: "12px", flex: 1, minHeight: "190px" }}>
               {[T("قبل", "BEFORE"), T("بعد", "AFTER")].map((label, i) => (
-                <div key={label} style={{ flex: 1, background: CARD, border: `1px solid ${BORDER}`, borderRadius: "12px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "6px" }}>
+                <div key={label} style={{ flex: 1, background: CARD, border: `1px solid ${BORDER}`, borderRadius: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "6px" }}>
                   <span style={{ fontSize: "11px", color: MUTED, letterSpacing: "0.08em" }}>{label}</span>
                   <span dir="ltr" style={{ fontSize: "13px", color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif" }}>{i === 0 ? "06:18" : "09:42"}</span>
                 </div>
@@ -287,7 +287,7 @@ export default function Landing() {
         <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
           <div style={{ fontSize: "12px", letterSpacing: "0.12em", color: ON_NAVY_ACCENT, fontWeight: 600 }}>{T("المساعد الذكي", "AI ASSISTANT")}</div>
           <h2 data-nv="h2" style={{ margin: "18px 0 0", fontSize: "40px", fontWeight: 600, letterSpacing: "-0.02em", maxWidth: "800px", textWrap: "pretty" }}>{T("يقرأ بيانات شركتك، ويعرض مصدر كل رقم", "It reads your company's data and shows the source behind every number")}</h2>
-          <div style={{ marginTop: "38px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "18px", padding: "32px" }}>
+          <div style={{ marginTop: "38px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 0, padding: "32px" }}>
             <div style={{ fontSize: "12px", color: ON_NAVY_ACCENT, fontWeight: 600, letterSpacing: "0.08em" }}>{T("السؤال", "QUESTION")}</div>
             <p style={{ margin: "14px 0 0", fontSize: "24px", fontWeight: 500, lineHeight: 1.5, textWrap: "pretty" }}>{T("لماذا انخفض إنجاز المهام في فرع الجبيل 2 هذا الأسبوع؟", "Why did task completion drop at Jubail 2 this week?")}</p>
             <div style={{ height: "1px", background: "rgba(255,255,255,.1)", margin: "26px 0" }} />
@@ -298,12 +298,12 @@ export default function Landing() {
                 { source: T("الحضور", "ATTENDANCE"), value: "0%" },
                 { source: T("الأصول", "ASSETS"), value: "31h" },
               ].map((e) => (
-                <div key={e.source} style={{ flex: "1 1 150px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: "12px", padding: "18px" }}>
+                <div key={e.source} style={{ flex: "1 1 150px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 0, padding: "18px" }}>
                   <div style={{ fontSize: "11px", color: ON_NAVY_MUTED, letterSpacing: "0.08em" }}>{e.source}</div>
                   <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "30px", fontWeight: 600, marginTop: "8px", textAlign: numAlign }}>{e.value}</div>
                 </div>
               ))}
-              <div style={{ flex: "1 1 200px", background: ACCENT, borderRadius: "12px", padding: "18px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", fontWeight: 600, textAlign: "center" }}>
+              <div style={{ flex: "1 1 200px", background: ACCENT, borderRadius: 0, padding: "18px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", fontWeight: 600, textAlign: "center" }}>
                 {T("أعد جدولة المهام الثلاث", "Reschedule the 3 tasks")}
               </div>
             </div>
@@ -315,7 +315,7 @@ export default function Landing() {
       <section data-nv="pad" style={{ padding: "80px 48px", background: CARD }}>
         <div style={{ maxWidth: "1240px", margin: "0 auto" }}>
           <h2 data-nv="h2" style={{ margin: 0, fontSize: "40px", fontWeight: 600, letterSpacing: "-0.02em" }}>{T("مقارنة بأنظمة الموارد التقليدية", "Compared with a traditional ERP")}</h2>
-          <div style={{ marginTop: "40px", border: `1px solid ${BORDER}`, borderRadius: "16px", overflow: "hidden" }}>
+          <div style={{ marginTop: "40px", border: `1px solid ${BORDER}`, borderRadius: 0, overflow: "hidden" }}>
             <div style={{ overflowX: "auto" }}>
               <div style={{ minWidth: "760px" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", background: NAVY_FILL, color: ON_NAVY }}>
@@ -348,7 +348,7 @@ export default function Landing() {
                 style={{
                   background: p.dark ? NAVY : CARD,
                   border: `1px solid ${p.dark ? NAVY : BORDER}`,
-                  borderRadius: "16px",
+                  borderRadius: 0,
                   padding: "32px",
                   display: "flex",
                   flexDirection: "column",
@@ -359,7 +359,7 @@ export default function Landing() {
                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                   <span style={{ fontSize: "22px", fontWeight: 600 }}>{p.name}</span>
                   {!!p.tag && (
-                    <span style={{ fontSize: "11px", background: ACCENT, color: ON_NAVY, borderRadius: "20px", padding: "4px 11px", fontWeight: 600 }}>{p.tag}</span>
+                    <span style={{ fontSize: "11px", background: ACCENT, color: ON_NAVY, borderRadius: 0, padding: "4px 11px", fontWeight: 600 }}>{p.tag}</span>
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: "9px", marginTop: "18px" }}>
@@ -384,10 +384,10 @@ export default function Landing() {
                   style={{
                     marginTop: "26px",
                     height: "44px",
-                    borderRadius: "9px",
-                    background: p.dark ? ACCENT : SURFACE,
+                    borderRadius: 0,
+                    background: p.dark ? "#fff" : SURFACE,
                     border: p.dark ? "none" : `1px solid ${BORDER}`,
-                    color: p.dark ? ON_NAVY : INK,
+                    color: p.dark ? NAVY_FILL : INK,
                     fontSize: "14px",
                     fontWeight: 600,
                     display: "flex",
@@ -421,11 +421,11 @@ export default function Landing() {
           </div>
           <div style={{ marginTop: "36px" }}>
             <a
-              href={loggedIn ? "/app/hr#compliance-center" : "#mhrsd"}
+              href={loggedIn ? "/app/hr?tab=compliance" : "#mhrsd"}
               style={{
                 height: "44px",
                 padding: "0 22px",
-                borderRadius: "9px",
+                borderRadius: 0,
                 background: NAVY_FILL,
                 color: ON_NAVY,
                 fontSize: "14px",
@@ -449,8 +449,8 @@ export default function Landing() {
           <h2 data-nv="h2" style={{ margin: 0, fontSize: "48px", fontWeight: 600, letterSpacing: "-0.025em", maxWidth: "800px", lineHeight: 1.25, textWrap: "pretty" }}>{T("فرع واحد — قيسوا الإثبات قبل التوسّع", "One station — measure proof before you scale")}</h2>
           <p style={{ margin: "22px 0 0", fontSize: "19px", color: ON_NAVY_MUTED, maxWidth: "700px", lineHeight: 1.65, textWrap: "pretty" }}>{T("للمؤسسات: تجريب 90 يومًا على موقع واحد فوق أنظمتكم الحالية. للصفقات الأصغر: فرع واحد خلال أسبوعين بلا التزام.", "Enterprises: a 90-day pilot on one site on top of your current stack. Smaller deals: one station in two weeks, no commitment.")}</p>
           <div style={{ display: "flex", gap: "12px", marginTop: "34px", flexWrap: "wrap" }}>
-            <a href="mailto:niyar@powercares.pro?subject=NiroVera%20Enterprise%20Pilot" style={{ height: "50px", padding: "0 28px", borderRadius: "9px", background: ACCENT, color: ON_NAVY, fontSize: "15px", fontWeight: 600, display: "flex", alignItems: "center", textDecoration: "none" }}>{T("اطلب تجريب موقع", "Request a site pilot")}</a>
-            <a href="tel:+966595414472" dir="ltr" style={{ height: "50px", padding: "0 28px", borderRadius: "9px", background: "transparent", color: ON_NAVY, border: "1px solid rgba(255,255,255,.2)", fontSize: "15px", fontWeight: 500, display: "flex", alignItems: "center", textDecoration: "none" }}>+966 59 541 4472</a>
+            <a href="mailto:niyar@powercares.pro?subject=NiroVera%20Enterprise%20Pilot" style={{ height: "50px", padding: "0 28px", borderRadius: 0, background: "#fff", color: NAVY_FILL, fontSize: "15px", fontWeight: 600, display: "flex", alignItems: "center", textDecoration: "none" }}>{T("اطلب تجريب موقع", "Request a site pilot")}</a>
+            <a href="tel:+966595414472" dir="ltr" style={{ height: "50px", padding: "0 28px", borderRadius: 0, background: "transparent", color: ON_NAVY, border: "1px solid rgba(255,255,255,.2)", fontSize: "15px", fontWeight: 500, display: "flex", alignItems: "center", textDecoration: "none" }}>+966 59 541 4472</a>
           </div>
         </div>
       </section>

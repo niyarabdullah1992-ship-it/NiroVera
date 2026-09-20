@@ -10,18 +10,16 @@ const stepBtn = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  border: "1px solid var(--nv-line, #E2E8F0)",
-  background: "var(--nv-soft, #F7F8FA)",
+  border: "none",
+  background: "transparent",
   color: "var(--nv-muted, #5A6B85)",
   cursor: "pointer",
   fontFamily: "inherit",
   padding: 0,
+  borderRadius: 0,
 };
 
-/**
- * Header scope chrome — Platform.dc.html L108–125 metrics, with the station
- * list moved into the quick-switch palette so there is one station picker.
- */
+/** Header station scope — one 10px picker for the live operational range. */
 export default function StationScopeControl() {
   const { lang, dir } = useI18n();
   const ar = lang === "ar";
@@ -39,14 +37,25 @@ export default function StationScopeControl() {
   const Next = rtl ? ChevronLeft : ChevronRight;
 
   return (
-    <div className="flex shrink-0" style={{ alignItems: "center", flexShrink: 0 }}>
+    <div
+      className="nv-station-scope"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        flexShrink: 0,
+        borderRadius: 10,
+        overflow: "hidden",
+        border: "1px solid var(--nv-line, #E2E8F0)",
+        background: "var(--nv-soft, #F7F8FA)",
+      }}
+    >
       {canSwitch && (
         <button
           type="button"
           onClick={previous}
           aria-label={ar ? "الفرع السابق" : "Previous station"}
           title={ar ? "الفرع السابق · Ctrl+Shift+↑" : "Previous station · Ctrl+Shift+↑"}
-          style={{ ...stepBtn, borderStartStartRadius: "9px", borderEndStartRadius: "9px", borderInlineEnd: "none" }}
+          style={stepBtn}
         >
           <Prev style={{ width: 13, height: 13 }} />
         </button>
@@ -61,9 +70,11 @@ export default function StationScopeControl() {
           gap: "9px",
           height: "34px",
           padding: "0 12px",
-          borderRadius: canSwitch ? 0 : "9px",
-          border: "1px solid var(--nv-line, #E2E8F0)",
-          background: "var(--nv-soft, #F7F8FA)",
+          borderRadius: 0,
+          border: "none",
+          borderInlineStart: canSwitch ? "1px solid var(--nv-line, #E2E8F0)" : "none",
+          borderInlineEnd: canSwitch ? "1px solid var(--nv-line, #E2E8F0)" : "none",
+          background: "transparent",
           cursor: "pointer",
           fontFamily: "inherit",
         }}
@@ -88,7 +99,7 @@ export default function StationScopeControl() {
           onClick={next}
           aria-label={ar ? "الفرع التالي" : "Next station"}
           title={ar ? "الفرع التالي · Ctrl+Shift+↓" : "Next station · Ctrl+Shift+↓"}
-          style={{ ...stepBtn, borderStartEndRadius: "9px", borderEndEndRadius: "9px", borderInlineStart: "none" }}
+          style={stepBtn}
         >
           <Next style={{ width: 13, height: 13 }} />
         </button>

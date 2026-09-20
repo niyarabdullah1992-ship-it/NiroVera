@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2, Send, AlertTriangle, ShieldCheck, ListChecks } from "lucide-react";
+import { Loader2, Send, AlertTriangle } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { formatDate } from "@/lib/dateFormat";
 import { netOf } from "@/lib/payroll";
 import {
   checkSendWpsGate,
@@ -10,14 +12,18 @@ import {
   wpsDeadline,
 } from "@/lib/payrollDerivations";
 import { buildWpsFileRows, checkWpsFileGate, wpsRowBlockers } from "@/lib/complianceDerivations";
+import { localPayrollAction } from "@/lib/localPayrollFallback";
 import { toast } from "@/components/ui/use-toast";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
-import { ACCENT, MUTED, NAVY, OK, WARN, BAD, NEUTRAL, ui, CARD, SURFACE } from "@/lib/platformStyles";
-import IdentityCard from "@/components/shared/IdentityCard";
+import { MUTED, NAVY, OK, WARN, BAD, NEUTRAL, ui, CARD, SURFACE } from "@/lib/platformStyles";
 
 async function payrollApi(payload) {
   const res = await base44.functions.invoke("payroll", payload);
-  return res?.data ?? res;
+  const data = res?.data ?? res;
+  // Preview answers this function without running it; without the local mirror the
+  // board reported "no server run" for a run that exists, and the build did nothing.
+  if (data?.localPreview) return localPayrollAction(payload) || data;
+  return data;
 }
 
 function profileOf(employee) {
@@ -36,7 +42,9 @@ function wpsLineFrom(item, employee) {
     netPay: netOf(item),
     base,
     allowances,
-    qiwaWage: item.qiwaWage != null ? item.qiwaWage : base + allowances,
+    // Never invented: an unknown contract wage is an unmatched row, and the row has to
+    // say so rather than show "file ready" for something the build gate will refuse.
+    qiwaWage: item.qiwaWage != null ? item.qiwaWage : null,
   };
 }
 
@@ -44,9 +52,11 @@ function rowBlockers(row, ar) {
   return wpsRowBlockers(row, ar);
 }
 
+const COLUMNS = "minmax(140px,1.3fr) 120px 160px 120px minmax(190px,1.5fr)";
+
 const headStyle = {
   display: "grid",
-  gridTemplateColumns: "minmax(140px,1.3fr) 110px 150px 100px minmax(160px,1.4fr)",
+  gridTemplateColumns: COLUMNS,
   gap: 12,
   padding: "11px 18px",
   background: SURFACE,
@@ -58,12 +68,22 @@ const headStyle = {
 
 const rowStyle = {
   display: "grid",
-  gridTemplateColumns: "minmax(140px,1.3fr) 110px 150px 100px minmax(160px,1.4fr)",
+  gridTemplateColumns: COLUMNS,
   gap: 12,
   padding: "12px 18px",
   borderBottom: "1px solid #F1F5F9",
-  alignItems: "center",
+  alignItems: "start",
 };
+
+const monoStyle = { fontSize: 12, fontFamily: "'IBM Plex Sans',sans-serif" };
+
+/** Blocked rows first, the most blocked before the least, then the ready ones — the
+ *  order the hiring gaps sheet uses, so the one row holding up the file is never buried. */
+function sortByBlockers(entries, ar) {
+  return [...entries].sort((a, b) =>
+    b.blockers.length - a.blockers.length
+    || String(a.row.employeeName || "").localeCompare(String(b.row.employeeName || ""), ar ? "ar" : "en"));
+}
 
 export default function PayrollWpsBoard({
   month,
@@ -77,6 +97,9 @@ export default function PayrollWpsBoard({
   const { company } = useAuth();
   const [run, setRun] = useState(null);
   const [busy, setBusy] = useState(false);
+  // The five-column row needs 720px; below that it folded off-screen behind a horizontal
+  // scrollbar, taking the readiness column — the one that says what to do — with it.
+  const narrow = useIsMobile();
 
   const load = async () => {
     if (!company?.id) return;
@@ -98,8 +121,16 @@ export default function PayrollWpsBoard({
   const lines = items.map((item) => wpsLineFrom(item, employeeForItem?.(item)));
   const rows = buildWpsFileRows(lines);
   const fileGate = checkWpsFileGate(rows);
-  const readyCount = rows.filter((row) => rowBlockers(row, ar).length === 0).length;
-  const blockedCount = rows.length - readyCount;
+  const entries = sortByBlockers(rows.map((row) => ({ row, blockers: rowBlockers(row, ar) })), ar);
+  const readyCount = entries.filter((entry) => entry.blockers.length === 0).length;
+  const blockedCount = entries.length - readyCount;
+  // The header carries the news, not a neutral tally: what stands between today and a
+  // buildable file.
+  const readiness = blockedCount === 0
+    ? (ar ? "كل الصفوف جاهزة — الملف قابل للبناء" : "Every row is ready — the file can be built")
+    : blockedCount === 1
+      ? (ar ? "صفّ واحد يمنع بناء الملف" : "One row blocks the file build")
+      : (ar ? `${blockedCount} صفوف تمنع بناء الملف` : `${blockedCount} rows block the file build`);
   const deadline = wpsDeadline(month);
   const late = isWpsLate(month);
   const approved = run?.status === "approved" || run?.status === "sent";
@@ -139,6 +170,8 @@ export default function PayrollWpsBoard({
         if (remote.run) {
           setRun(remote.run);
           onMeta?.({ status: remote.run.status, wps: remote.run.wps, heads: remote.run.totals?.heads || 0 });
+        } else if (remote.localApplied) {
+          await load();
         }
       }
     } catch (err) {
@@ -156,54 +189,41 @@ export default function PayrollWpsBoard({
 
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: 14 }} dir={ar ? "rtl" : "ltr"}>
-      <IdentityCard
-        icon={ShieldCheck}
-        kicker={ar ? "حماية الأجور" : "Wage protection"}
-        title={ar ? "مدى" : "Mudad"}
-        subtitle={ar
-          ? "الصف جاهز عند اكتمال الهوية والآيبان وتطابق أجر قوى والصافي الموجب. الإرسال الحي مؤجّل حتى الاعتمادات الرسمية."
-          : "A row is ready when national ID, IBAN, Qiwa wage match and a positive net are complete. Live send waits for official credentials."}
-        rail={late ? "#B45309" : sent ? ACCENT : NAVY}
-        meta={<span style={{ ...statusChip.style, borderRadius: 8 }}>{statusChip.label}</span>}
-      >
-
-        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
-          {[
-            { label: ar ? "مهلة الإيداع" : "Deposit deadline", value: deadline || "—", hint: late ? (ar ? "متأخر" : "Late") : (ar ? "30 يوماً من نهاية شهر الاستحقاق" : "30 days from end of entitlement month"), warn: late },
-            { label: ar ? "صفوف جاهزة" : "Ready rows", value: `${readyCount}/${rows.length}` },
-            { label: ar ? "موقوف" : "Blocked", value: String(blockedCount), warn: blockedCount > 0 },
-          ].map((card) => (
-            <div key={card.label} style={{ border: "1px solid #E2E8F0", borderRadius: 12, padding: "14px 16px", background: CARD }}>
-              <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{card.label}</p>
-              <p dir="ltr" style={{ margin: "8px 0 0", fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 18, fontWeight: 600, color: card.warn ? "#B45309" : NAVY, textAlign: "start" }}>
-                {card.value}
-              </p>
-              {card.hint && (
-                <p style={{ margin: "4px 0 0", fontSize: 10, color: card.warn ? "#B45309" : MUTED }}>{card.hint}</p>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {!approved && (
-          <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={WARN}>{ar ? "لا ملف مدى قبل اعتماد المسير" : "No Mudad file before run approval"}</span>
-            {onBackToRun && (
-              <button type="button" onClick={onBackToRun} style={ui.btnSecondary}>
-                {ar ? "العودة للاعتماد" : "Back to approval"}
-              </button>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+        <span style={statusChip.style}>{statusChip.label}</span>
+        {!approved && onBackToRun ? (
+          <button type="button" onClick={onBackToRun} style={ui.btnSecondary}>
+            {ar ? "العودة للاعتماد" : "Back to approval"}
+          </button>
+        ) : null}
+      </div>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+          <div className="nv-paper" style={{ border: "1px solid #E2E8F0", padding: "14px 16px", background: CARD }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{ar ? "مهلة الإيداع" : "Deposit deadline"}</p>
+            <p style={{ margin: "8px 0 0", fontSize: 16, fontWeight: 600, color: late ? "#B45309" : NAVY }}>
+              {deadline ? formatDate(deadline, lang, { year: "numeric", month: "long", day: "numeric" }) : "—"}
+            </p>
+            {late && <p style={{ margin: "4px 0 0", fontSize: 10, color: "#B45309" }}>{ar ? "متأخر" : "Late"}</p>}
+          </div>
+          <div className="nv-paper" style={{ border: "1px solid #E2E8F0", padding: "14px 16px", background: CARD }}>
+            <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{ar ? "جاهزية الصفوف" : "Row readiness"}</p>
+            <p style={{ margin: "8px 0 0", fontSize: 16, fontWeight: 600, color: blockedCount ? "#B45309" : NAVY, lineHeight: 1.5 }}>
+              {rows.length ? readiness : (ar ? "لا صفوف بعد" : "No rows yet")}
+            </p>
+            {rows.length > 0 && (
+              <p dir="ltr" style={{ margin: "4px 0 0", fontSize: 10, color: MUTED, textAlign: "start" }}>{`${readyCount}/${rows.length}`}</p>
             )}
           </div>
-        )}
+        </div>
 
         {approved && !fileGate.ok && (
-          <p style={{ margin: "14px 0 0", fontSize: 12, color: "#B45309", display: "flex", alignItems: "center", gap: 6 }}>
+          <p style={{ margin: 0, fontSize: 12, color: "#B45309", display: "flex", alignItems: "center", gap: 6 }}>
             <AlertTriangle style={{ width: 14, height: 14, flexShrink: 0 }} />
             {ar ? fileGate.reason : fileGate.reasonEn}
           </p>
         )}
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <button
             type="button"
             disabled={busy || sent || !approved || !fileGate.ok}
@@ -221,64 +241,107 @@ export default function PayrollWpsBoard({
               ? (ar ? "أُنشئ ملف حماية الأجور" : "Wage-protection file built")
               : (ar ? "إنشاء ملف مدى" : "Build the Mudad file")}
           </button>
-          <Link to="/app/hr" style={{ fontSize: 12, color: ACCENT, fontWeight: 600, textDecoration: "none" }}>
-            {ar ? "مركز الامتثال — قوى والتأمينات" : "Compliance centre — Qiwa and GOSI"}
-          </Link>
         </div>
-      </IdentityCard>
 
-      <IdentityCard
-        icon={ListChecks}
-        kicker={ar ? "الصفوف" : "Rows"}
-        title={ar ? "جاهزية صف مدى" : "Mudad-row readiness"}
-        subtitle={ar ? "الهوية · الآيبان · تطابق قوى · الصافي" : "ID · IBAN · Qiwa match · net"}
-        bodyStyle={{ padding: 0 }}
-      >
         {rows.length === 0 ? (
-          <p style={{ margin: "24px 18px", textAlign: "center", fontSize: 13, color: MUTED }}>
+          <p style={{ margin: 0, textAlign: "center", fontSize: 13, color: MUTED }}>
             {ar ? "لا بنود في هذا النطاق — جهّز المسير أولًا." : "No lines in this scope — prepare the run first."}
           </p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <div style={{ minWidth: 720 }}>
+          <div>
+            {!narrow && (
               <div style={headStyle}>
                 <div>{ar ? "الموظف" : "Employee"}</div>
                 <div>{ar ? "الهوية" : "ID"}</div>
                 <div>{ar ? "آيبان" : "IBAN"}</div>
-                <div>{ar ? "الصافي" : "Net"}</div>
-                <div>{ar ? "البوابة" : "Gate"}</div>
+                <div>{ar ? "الصافي المحوَّل" : "Net transferred"}</div>
+                <div>{ar ? "الجاهزية" : "Readiness"}</div>
               </div>
-              {rows.map((row) => {
-                const blockers = rowBlockers(row, ar);
-                const ready = blockers.length === 0;
+            )}
+            {entries.map(({ row, blockers }) => {
+              const ready = blockers.length === 0;
+              const identity = (
+                <EmployeeIdentityRow
+                  employee={employeeForItem?.({ employeeId: row.employeeId })}
+                  employeeId={row.employeeId}
+                  name={row.employeeName || "—"}
+                  showId={false}
+                  compact
+                />
+              );
+              const nationalId = (
+                <span dir="ltr" style={{ ...monoStyle, color: row.nationalId ? NAVY : MUTED }}>{row.nationalId || "—"}</span>
+              );
+              const iban = (
+                <span dir="ltr" style={{ ...monoStyle, color: row.iban ? NAVY : MUTED }}>
+                  {row.iban ? `${row.iban.slice(0, 4)}…${row.iban.slice(-4)}` : "—"}
+                </span>
+              );
+              const net = (
+                <span dir="ltr" style={{ ...monoStyle, fontWeight: 600, color: NAVY }}>
+                  {Number(row.netPay || 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                </span>
+              );
+              // A ready row asks for nothing, so it keeps no fill and no border; the
+              // saturation belongs to the rows that hold the file back, and every reason
+              // is named — fixing the first one used to leave the row blocked again.
+              const readiness = ready ? (
+                <span style={{ fontSize: 12, color: MUTED }}>{ar ? "جاهز" : "Ready"}</span>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "start", gap: 6 }}>
+                  {blockers.map((blocker) => (
+                    <span key={blocker} style={BAD}>{blocker}</span>
+                  ))}
+                  <Link
+                    to={`/app/employees/${encodeURIComponent(row.employeeId)}`}
+                    style={{ ...ui.btnRow, display: "inline-block", textDecoration: "none" }}
+                  >
+                    {ar ? "أصلِح في ملف الموظف" : "Fix in the employee file"}
+                  </Link>
+                </div>
+              );
+
+              if (narrow) {
                 return (
-                  <div key={row.employeeId} style={rowStyle}>
-                    <EmployeeIdentityRow
-                      employee={employeeForItem?.({ employeeId: row.employeeId })}
-                      employeeId={row.employeeId}
-                      name={row.employeeName || "—"}
-                      showId={false}
-                      compact
-                    />
-                    <span dir="ltr" style={{ fontSize: 12, color: row.nationalId ? NAVY : MUTED, fontFamily: "'IBM Plex Sans',sans-serif" }}>
-                      {row.nationalId || "—"}
-                    </span>
-                    <span dir="ltr" style={{ fontSize: 12, color: row.iban ? NAVY : MUTED, fontFamily: "'IBM Plex Sans',sans-serif" }}>
-                      {row.iban ? `${row.iban.slice(0, 4)}…${row.iban.slice(-4)}` : "—"}
-                    </span>
-                    <span dir="ltr" style={{ fontSize: 12, fontWeight: 600, color: NAVY, fontFamily: "'IBM Plex Sans',sans-serif" }}>
-                      {Number(row.netPay || 0).toLocaleString("en-US")}
-                    </span>
-                    <span style={ready ? OK : BAD}>
-                      {ready ? (ar ? "ملف جاهز" : "File ready") : blockers[0]}
-                    </span>
+                  <div
+                    key={row.employeeId}
+                    style={{ display: "flex", flexDirection: "column", gap: 10, padding: "14px 16px", borderBottom: "1px solid #F1F5F9" }}
+                  >
+                    {identity}
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {[
+                        [ar ? "الهوية" : "ID", nationalId],
+                        [ar ? "آيبان" : "IBAN", iban],
+                        [ar ? "الصافي المحوَّل" : "Net transferred", net],
+                      ].map(([label, value]) => (
+                        <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                          <span style={{ fontSize: 11, color: MUTED }}>{label}</span>
+                          {value}
+                        </div>
+                      ))}
+                    </div>
+                    {readiness}
                   </div>
                 );
-              })}
-            </div>
+              }
+
+              return (
+                <div key={row.employeeId} style={rowStyle}>
+                  {identity}
+                  {nationalId}
+                  {iban}
+                  {net}
+                  {readiness}
+                </div>
+              );
+            })}
+            <p style={{ margin: "10px 0 0", fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
+              {ar
+                ? "الصافي المحوَّل هو نفسه رقم القسيمة: الأساسي والبدلات والمكافأة + الأجر الإضافي المعتمد − الخصومات الموثّقة − حصة التأمينات."
+                : "Net transferred is the payslip figure: base, allowances and bonus + approved overtime − documented deductions − the GOSI employee share."}
+            </p>
           </div>
         )}
-      </IdentityCard>
     </section>
   );
 }

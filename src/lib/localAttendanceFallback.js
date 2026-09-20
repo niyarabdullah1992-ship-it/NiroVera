@@ -2,14 +2,13 @@
  * Local attendance punch when supabaseAttendance / attendance cloud is down.
  * Stores rows on company.personalAttendance — same shape the UI already reads.
  */
+import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
+import { attendanceOnDate, checkPunchRecordGate, toCloudAttendanceRow as punchCloudRow } from "@/lib/attendancePunch";
 import { updateCompany, getCompanyData } from "@/lib/store";
+import { getTodaysShift, lateMinutesFromScheduledStart } from "@/lib/attendanceDerivations";
 
 function todayKey() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
 }
 
 function nowIso() {
@@ -62,10 +61,10 @@ function toCloudAttendanceRow(row) {
 
 export function localAttendanceSettings() {
   return {
-    schedule_required: false,
+    schedule_required: true,
     gps_enabled: false,
     emergency_active: false,
-    late_grace_minutes: 10,
+    late_grace_minutes: 0,
     localPreview: true,
   };
 }
@@ -151,22 +150,53 @@ export function getLocalTodayAttendance(companyId, employeeId) {
   return toCloudAttendanceRow(row);
 }
 
+function throwGate(gate) {
+  const err = new Error(gate.reasonEn || gate.error);
+  err.code = gate.error;
+  err.reason = gate.reason;
+  err.reasonEn = gate.reasonEn;
+  throw err;
+}
+
 export function localCheckIn(companyId, { employeeId, employeeName, stationId }) {
   const date = todayKey();
+  const data = getCompanyData(companyId);
+  const employee = (data?.employees || []).find((row) => String(row.id) === String(employeeId));
+  const leaveGate = checkCheckInLeaveGate(employee, date);
+  if (!leaveGate.ok) throwGate(leaveGate);
+  const existing = attendanceOnDate(data?.personalAttendance, employeeId, date);
+  const already = checkPunchRecordGate({
+    type: "manual_punch",
+    employee,
+    attendance: existing,
+    date,
+    reason: "self-punch",
+    requireTime: false,
+  });
+  if (!already.ok && already.error === "ALREADY_CHECKED_IN") throwGate(already);
+  const shift = employee ? getTodaysShift(data, employee) : null;
+  const now = new Date();
+  const late = shift?.start
+    ? lateMinutesFromScheduledStart(now.getHours() * 60 + now.getMinutes(), shift.start, 0)
+    : { lateMinutes: 0, status: "present" };
   let saved = null;
   updateCompany(companyId, (d) => {
     const list = Array.isArray(d.personalAttendance) ? d.personalAttendance : [];
     const idx = list.findIndex((r) => String(r.employeeId) === String(employeeId) && String(r.date) === date);
+    if (idx >= 0 && (list[idx].checkInAt || list[idx].check_in_at)) {
+      saved = list[idx];
+      return;
+    }
     const row = {
       id: idx >= 0 ? list[idx].id : `pa_${employeeId}_${date}`,
       employeeId,
-      employeeName: employeeName || "",
-      stationId: stationId || null,
+      employeeName: employeeName || employee?.name || "",
+      stationId: stationId || employee?.stationId || null,
       date,
       checkInAt: nowIso(),
       checkOutAt: null,
-      status: "present",
-      lateMinutes: 0,
+      status: late.status || "present",
+      lateMinutes: late.lateMinutes || 0,
       locationStatus: "disabled",
       localPreview: true,
     };
@@ -175,11 +205,23 @@ export function localCheckIn(companyId, { employeeId, employeeName, stationId })
     d.personalAttendance = list;
     saved = row;
   });
-  return getLocalTodayAttendance(companyId, employeeId) || saved;
+  return getLocalTodayAttendance(companyId, employeeId) || punchCloudRow(saved);
 }
 
 export function localCheckOut(companyId, { employeeId }) {
   const date = todayKey();
+  const data = getCompanyData(companyId);
+  const employee = (data?.employees || []).find((row) => String(row.id) === String(employeeId));
+  const existing = attendanceOnDate(data?.personalAttendance, employeeId, date);
+  const gate = checkPunchRecordGate({
+    type: "checkout_fix",
+    employee,
+    attendance: existing,
+    date,
+    reason: "self-checkout",
+    requireTime: false,
+  });
+  if (!gate.ok) throwGate(gate);
   updateCompany(companyId, (d) => {
     const list = Array.isArray(d.personalAttendance) ? d.personalAttendance : [];
     const idx = list.findIndex((r) => String(r.employeeId) === String(employeeId) && String(r.date) === date);

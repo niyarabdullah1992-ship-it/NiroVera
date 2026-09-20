@@ -1,98 +1,59 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { base44 } from "@/api/base44Client";
-import { getMediaStream, mediaErrorText, openStandalone } from "@/lib/mediaAccess";
+import { mediaErrorText, openStandalone } from "@/lib/mediaAccess";
+import { useVoiceRecording } from "@/hooks/useVoiceRecording";
 import { Mic, Square, Loader2 } from "lucide-react";
 
-export default function VoiceRecorder({ files, setFiles, disabled, onRecorded }) {
+export default function VoiceRecorder({ files, setFiles, disabled, onRecorded, compact = false }) {
   const { t } = useI18n();
-  const [recording, setRecording] = useState(false);
+  const rec = useVoiceRecording();
   const [uploading, setUploading] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const recorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const timerRef = useRef(null);
 
   const start = async () => {
-    let stream;
     try {
-      stream = await getMediaStream({ audio: true });
+      await rec.start();
     } catch (err) {
       const ar = document.documentElement.dir === "rtl";
       alert(mediaErrorText(err.code, ar));
       if (err.code === "embedded") openStandalone();
-      return;
-    }
-    try {
-      const supportedTypes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
-      const mimeType = supportedTypes.find((type) => MediaRecorder.isTypeSupported(type));
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      chunksRef.current = [];
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      recorder.onerror = () => {
-        stream.getTracks().forEach((track) => track.stop());
-        clearInterval(timerRef.current);
-        setRecording(false);
-        setUploading(false);
-        alert(t("attachmentFailed"));
-      };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        const type = recorder.mimeType || chunksRef.current[0]?.type || "audio/webm";
-        const blob = new Blob(chunksRef.current, { type });
-        try {
-          if (!blob.size) throw new Error("Empty recording");
-          const extension = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
-          const file = new File([blob], `voice-${Date.now()}.${extension}`, { type });
-          try {
-            const up = await base44.integrations.Core.UploadFile({ file });
-            const voice = { url: up.file_url, name: file.name, type };
-            if (onRecorded) await onRecorded(voice);
-            else setFiles((current) => [...(current || []), voice]);
-          } catch {
-            // Keep the clip locally so create/submit flows can still attach it.
-            if (onRecorded) await onRecorded(file);
-            else setFiles((current) => [...(current || []), file]);
-          }
-        } catch {
-          alert(t("attachmentFailed"));
-        } finally {
-          chunksRef.current = [];
-          recorderRef.current = null;
-          setUploading(false);
-        }
-      };
-      recorder.start(1000);
-      recorderRef.current = recorder;
-      setElapsed(0);
-      const startedAt = Date.now();
-      timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
-      setRecording(true);
-    } catch {
-      alert(t("micError"));
     }
   };
 
-  const stop = () => {
-    const recorder = recorderRef.current;
-    if (!recorder || recorder.state !== "recording") return;
-    clearInterval(timerRef.current);
-    setRecording(false);
+  const stop = async () => {
     setUploading(true);
-    recorder.stop();
+    try {
+      const file = await rec.stop();
+      if (!file) throw new Error("Empty recording");
+      try {
+        const up = await base44.integrations.Core.UploadFile({ file });
+        const voice = { url: up.file_url, name: file.name, type: file.type };
+        if (onRecorded) await onRecorded(voice);
+        else setFiles((current) => [...(current || []), voice]);
+      } catch {
+        // Keep the clip locally so create/submit flows can still attach it.
+        if (onRecorded) await onRecorded(file);
+        else setFiles((current) => [...(current || []), file]);
+      }
+    } catch {
+      alert(t("attachmentFailed"));
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const duration = `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
+  const duration = rec.durationLabel;
 
   return (
     <button
       type="button"
-      onClick={recording ? stop : start}
+      onClick={rec.recording ? stop : start}
       disabled={disabled || uploading}
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-body border transition-colors disabled:opacity-50 ${recording ? "border-red-400 bg-red-50 text-red-700" : "border-border hover:bg-muted"}`}
+      className={`inline-flex items-center justify-center gap-1.5 ${compact ? "h-10 w-10 rounded-full px-0" : "px-2.5 py-1.5 rounded-md"} text-xs font-body border transition-colors disabled:opacity-50 ${rec.recording ? "border-red-400 bg-red-50 text-red-700" : "border-border hover:bg-muted"}`}
+      aria-label={uploading ? t("uploading") : rec.recording ? t("stopRecording") : t("recordVoice")}
     >
-      {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : recording ? <Square className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
-      {uploading ? t("uploading") : recording ? `${t("stopRecording")} · ${duration}` : t("recordVoice")}
+      {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : rec.recording ? <Square className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+      {compact ? null : (uploading ? t("uploading") : rec.recording ? `${t("stopRecording")} · ${duration}` : t("recordVoice"))}
     </button>
   );
 }

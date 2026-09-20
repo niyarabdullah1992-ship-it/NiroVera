@@ -14,7 +14,12 @@ import {
   type SignerLike,
 } from "../../shared/signingDerivations.ts";
 
-const SIGNING_CATEGORY = "signingChain";
+/**
+ * do-not-invoke-from-frontend — live envelopes are SignatureRequest via multiSign.
+ * Do not write `signingChain`. Leftover callers should invoke multiSign.
+ */
+const SIGNING_CATEGORY = "signatureRequests";
+const SIGNING_LEGACY_CATEGORY = "signingChain"; // do-not-write
 
 function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
@@ -51,7 +56,7 @@ Deno.serve(async (req) => {
     const loadBlob = async () => {
       const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({
         companyId: auth.companyId,
-        category: SIGNING_CATEGORY,
+        category: SIGNING_LEGACY_CATEGORY,
       });
       return rows[0] || null;
     };
@@ -62,16 +67,8 @@ Deno.serve(async (req) => {
       return payload.filter((d: SigningDocLike & { companyId?: string }) => d && d.companyId === auth.companyId && d.docKey);
     };
 
-    const saveDocs = async (docs: SigningDocLike[]) => {
-      const blob = await loadBlob();
-      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload: docs });
-      else {
-        await base44.asServiceRole.entities.CompanyDataBlob.create({
-          companyId: auth.companyId,
-          category: SIGNING_CATEGORY,
-          payload: docs,
-        });
-      }
+    const saveDocs = async (_docs: SigningDocLike[]) => {
+      // do-not-write signingChain. Canonical store is the SignatureRequest entity (multiSign).
     };
 
     const audit = async (actionKey: string, details: string, extra: Record<string, unknown> = {}) => {

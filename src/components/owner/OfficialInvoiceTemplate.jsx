@@ -1,10 +1,10 @@
 import React from "react";
 import InvoiceStatusBadge from "@/components/owner/InvoiceStatusBadge";
 
-const money = (value, currency, ar) => new Intl.NumberFormat(ar ? "ar-SA" : "en-US", { style: "currency", currency: currency || "SAR" }).format((value || 0) / 100);
+const money = (value, currency, ar) => new Intl.NumberFormat(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-US", { style: "currency", currency: currency || "SAR" }).format((value || 0) / 100);
 
 export default function OfficialInvoiceTemplate({ invoice, ar }) {
-  const date = new Date(invoice.createdAt).toLocaleDateString(ar ? "ar-SA" : "en-GB");
+  const date = new Date(invoice.createdAt).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB");
   const billing = invoice.billing === "yearly" ? (ar ? "سنوي / Yearly" : "Yearly / سنوي") : (ar ? "شهري / Monthly" : "Monthly / شهري");
   const row = (label, value, ltr = false, emphasis = false) => (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-5 border-b border-[#E2E8F0] py-1.5 text-sm last:border-0">

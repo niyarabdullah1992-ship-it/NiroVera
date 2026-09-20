@@ -1,5 +1,6 @@
 import { base44 } from "@/api/base44Client";
 import { getCompanyToken } from "@/lib/store";
+import { registerLocalSignedDoc } from "@/lib/localSignedDocs";
 import { makeVerificationBadgeCanvas, generateVerificationId, loadBadgeQr } from "@/lib/verificationBadge";
 import { imageBlobToPdf } from "@/lib/signPdf";
 import { sha256HexOfBuffer } from "@/lib/fileHash";
@@ -56,7 +57,7 @@ function drawReportCanvas({ title, companyName, dir, headers, rows }) {
   ctx.fillText(title, xTitle, 86);
   ctx.fillStyle = PDF_THEME.muted;
   ctx.font = "17px Tahoma, Arial, sans-serif";
-  ctx.fillText(`${companyName} — ${new Date().toLocaleDateString(rtl ? "ar-SA" : "en-GB")}`, xTitle, 120);
+  ctx.fillText(`${companyName} — ${new Date().toLocaleDateString(rtl ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB")}`, xTitle, 120);
   ctx.strokeStyle = PDF_THEME.line;
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -138,16 +139,24 @@ export async function generateSignedReport({ title, companyName, dir, headers, r
   if (!blob) throw new Error("Report image too large to sign");
   const { bytes } = await imageBlobToPdf(blob);
   const fileHash = await sha256HexOfBuffer(bytes);
-  await base44.functions.invoke("signedDocs", {
-    action: "register",
+  const entry = {
     verificationId: sigId,
     fileHash,
     signerName,
     signerId,
     companyId,
-    sessionToken: getCompanyToken(companyId),
     fileName: `${title}.pdf`,
-  });
+  };
+  registerLocalSignedDoc(companyId, entry);
+  try {
+    await base44.functions.invoke("signedDocs", {
+      action: "register",
+      ...entry,
+      sessionToken: getCompanyToken(companyId),
+    });
+  } catch (err) {
+    if (String(err?.response?.data?.error || err?.message || "").includes("SIGNATURE_REUSE")) throw err;
+  }
 
   // Download the signed PDF locally.
   const dl = new Blob([bytes], { type: "application/pdf" });

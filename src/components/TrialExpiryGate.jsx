@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
-import { Loader2, LockKeyhole, LogOut } from "lucide-react";
+import { LockKeyhole, LogOut } from "lucide-react";
 import { ALL_PLANS_CURRENTLY_FREE } from "@/lib/pricingPolicy";
 import { isLocalPreviewActive, LOCAL_PREVIEW_COMPANY_ID } from "@/lib/localPreview";
 import IdentityCard from "@/components/shared/IdentityCard";
-import { MUTED, SURFACE, ui } from "@/lib/platformStyles";
+import PlatformBoot from "@/components/shared/PlatformBoot";
+import { SURFACE, ui } from "@/lib/platformStyles";
 
 export default function TrialExpiryGate({ company, children }) {
   const [access, setAccess] = useState(null);
@@ -27,11 +28,7 @@ export default function TrialExpiryGate({ company, children }) {
   }, [company?.id, company?.subscriptionExempt]);
 
   if (company?.id && (access === null || checkedCompanyId !== company.id)) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: SURFACE }}>
-        <Loader2 style={{ width: 22, height: 22, color: MUTED }} className="animate-spin" />
-      </div>
-    );
+    return <PlatformBoot variant="shell" />;
   }
 
   if (access?.frozen) {

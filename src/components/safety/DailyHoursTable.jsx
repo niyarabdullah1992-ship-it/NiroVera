@@ -12,7 +12,7 @@ export default function DailyHoursTable({ selectedMonth, dailyHours = [], totalH
   const entries = new Map(dailyHours.map((item) => [item.date, item.hours]));
   const days = Array.from({ length: count }, (_, index) => {
     const date = `${selectedMonth}-${String(index + 1).padStart(2, "0")}`;
-    return { date, future: date > today, day: new Date(`${date}T12:00:00`).toLocaleDateString(ar ? "ar-SA" : "en-US", { weekday: "short" }) };
+    return { date, future: date > today, day: new Date(`${date}T12:00:00`).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-US", { weekday: "short" }) };
   });
   const setHours = (date, raw) => {
     const rest = dailyHours.filter((item) => item.date !== date);

@@ -13,6 +13,7 @@ import {
   ACCENT, BORDER, CARD, MUTED, NAVY, SURFACE,
   dialogCard, dialogOverlay, field, labelMuted, ui,
 } from "@/lib/platformStyles";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 
 function isoToday() {
   const d = new Date();
@@ -62,7 +63,8 @@ export default function SectionReportPicker({ lang = "ar" }) {
   }, [options.map((item) => item.id).join("|"), pickedId]);
 
   useEffect(() => {
-    if (picked?.format) setFormat(picked.format === "pdf" ? "pdf" : "xlsx");
+    if (picked?.format === "pdf") setFormat("pdf");
+    else if (picked?.format) setFormat("xlsx");
   }, [picked?.id]);
 
   if (!options.length) return null;
@@ -95,7 +97,10 @@ export default function SectionReportPicker({ lang = "ar" }) {
       const live = await collectSectionReportData({
         companyId: company.id,
         session,
-        data,
+        data: {
+          ...data,
+          attendanceSettings: data?.attendanceSettings || company?.attendanceSettings || {},
+        },
         employees,
         dateFrom,
         dateTo,
@@ -104,7 +109,10 @@ export default function SectionReportPicker({ lang = "ar" }) {
         reportId: picked.id,
         dateFrom,
         dateTo,
-        data: live,
+        data: {
+          ...live,
+          attendanceSettings: live.attendanceSettings || company?.attendanceSettings || {},
+        },
         companyId: company.id,
         employees,
         stationScope,
@@ -120,6 +128,9 @@ export default function SectionReportPicker({ lang = "ar" }) {
         ? built.rows
         : [[ar ? "لا بيانات في هذه الفترة — وسّعوا التاريخ أو غيّروا الفرع." : "No rows in this period — widen the dates or change station."]];
       const fileBase = safeReportFilename(`${picked.id}_${rangeLabel}`);
+      const reportSections = built.sections?.length
+        ? built.sections
+        : [{ heading: built.title, headers: built.headers, rows }];
       if (format === "pdf") {
         const opened = printReport({
           title: built.title,
@@ -129,7 +140,7 @@ export default function SectionReportPicker({ lang = "ar" }) {
           stats: built.stats,
           logoUrl: branding.logoUrl || "",
           color,
-          sections: [{ heading: built.title, headers: built.headers, rows }],
+          sections: reportSections,
         });
         toast({
           title: opened
@@ -168,7 +179,7 @@ export default function SectionReportPicker({ lang = "ar" }) {
           gap: 7,
           height: 34,
           padding: "0 12px",
-          borderRadius: 9,
+          borderRadius: 10,
           border: `1px solid ${BORDER}`,
           background: CARD,
           color: NAVY,
@@ -270,11 +281,11 @@ export default function SectionReportPicker({ lang = "ar" }) {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <label>
                     <span style={{ ...labelMuted, marginBottom: 4 }}>{ar ? "من" : "From"}</span>
-                    <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} style={{ ...field, width: "100%" }} />
+                    <PlatformDateField ar={ar} value={dateFrom} onChange={setDateFrom} />
                   </label>
                   <label>
                     <span style={{ ...labelMuted, marginBottom: 4 }}>{ar ? "إلى" : "To"}</span>
-                    <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} style={{ ...field, width: "100%" }} />
+                    <PlatformDateField ar={ar} value={dateTo} min={dateFrom} onChange={setDateTo} />
                   </label>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>

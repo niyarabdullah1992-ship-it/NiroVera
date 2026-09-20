@@ -4,13 +4,13 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import OrgTypeSettings from "@/components/hr/OrgTypeSettings";
 import CompanySettingsBoard from "@/components/hr/CompanySettingsBoard";
+import DesignSystemBoard from "@/components/hr/DesignSystemBoard";
 import PlatformColorThemeCard from "@/components/hr/PlatformColorThemeCard";
 import BrandingSettingsCard from "@/components/reports/BrandingSettingsCard";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
-import { erpKicker } from "@/lib/erpModuleMeta";
+import { pageKicker } from "@/lib/moduleMeta";
 import { ChromeBox } from "@/components/shared/IdentityCard";
-import { ACCENT, INK, MUTED, SURFACE } from "@/lib/platformStyles";
+import { ACCENT, BORDER, INK, MUTED, SURFACE } from "@/lib/platformStyles";
 
 /** Platform `settings` — company, geofence, permissions, delegation. */
 export default function CompanySettings() {
@@ -22,12 +22,12 @@ export default function CompanySettings() {
   return (
     <PlatformStampShell
       ar={ar}
-      kicker={erpKicker("/app/settings", lang)}
+      kicker={pageKicker("/app/settings", lang)}
       title={ar ? "إعدادات الشركة" : "Company settings"}
       hint={ar ? "الشركة، الموقع الجغرافي، الصلاحيات، والتفويض." : "Company, geofence, permissions, and delegation."}
     >
-      <ErpSectionFrame path="/app/settings" ar={ar} hideProof hideHub>
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <DesignSystemBoard ar={ar} />
         <OrgTypeSettings lang={lang} />
         <PlatformColorThemeCard lang={lang} />
         <BrandingSettingsCard lang={lang} />
@@ -46,15 +46,15 @@ export default function CompanySettings() {
               : "Nitaqat, the GOSI establishment number and document alerts live in one place under Human Resources — no second copy here, so two screens can never disagree."}
           </p>
           <Link
-            to="/app/hr"
+            to="/app/hr?tab=compliance"
             style={{
               display: "inline-flex",
               alignItems: "center",
               height: "34px",
               marginTop: "14px",
               padding: "0 14px",
-              borderRadius: "9px",
-              border: "1px solid #E2E8F0",
+              borderRadius: 10,
+              border: `1px solid ${BORDER}`,
               background: SURFACE,
               color: INK,
               fontSize: "12px",
@@ -66,7 +66,6 @@ export default function CompanySettings() {
           </Link>
         </ChromeBox>
       </div>
-      </ErpSectionFrame>
     </PlatformStampShell>
   );
 }

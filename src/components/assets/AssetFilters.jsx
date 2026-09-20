@@ -13,7 +13,7 @@ const selectStyle = {
   cursor: "pointer",
 };
 
-export default function AssetFilters({ lang, stations, categories, filters, setFilters }) {
+export default function AssetFilters({ lang, stations, categories, filters, setFilters, allowAllStations = true }) {
   const ar = lang === "ar";
   const all = ar ? "الكل" : "All";
   const set = (key) => (event) => setFilters({ ...filters, [key]: event.target.value });
@@ -27,6 +27,7 @@ export default function AssetFilters({ lang, stations, categories, filters, setF
           {categories.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </label>
+      {allowAllStations ? (
       <label style={{ display: "grid", gap: 4 }}>
         <span style={{ ...labelMuted, fontSize: 10 }}>{ar ? "الوحدة" : "Unit"}</span>
         <select value={filters.stationId} onChange={set("stationId")} style={selectStyle}>
@@ -34,6 +35,7 @@ export default function AssetFilters({ lang, stations, categories, filters, setF
           {stations.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </label>
+      ) : null}
       <label style={{ display: "grid", gap: 4 }}>
         <span style={{ ...labelMuted, fontSize: 10 }}>{ar ? "الحالة" : "Status"}</span>
         <select value={filters.status} onChange={set("status")} style={selectStyle}>

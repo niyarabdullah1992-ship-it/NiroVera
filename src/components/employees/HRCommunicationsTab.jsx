@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { addHRMessage } from "@/lib/store";
 import { Send } from "lucide-react";
@@ -8,10 +7,12 @@ import VoiceRecorder from "@/components/tasks/VoiceRecorder";
 import TreeCommunicationTargetPicker from "@/components/employees/TreeCommunicationTargetPicker";
 import { adminCommunicationTargets } from "@/lib/orgTree";
 import { BORDER, MUTED, NAVY, SURFACE, field, ui, BRAND_BORDER, BRAND_SOFT, BRAND_DEEP, CARD } from "@/lib/platformStyles";
+import { employeeFileVoice } from "@/lib/employeeFileView";
 
 export default function HRCommunicationsTab({ employee, companyId, currentUser, isSelf, canReply, data }) {
   const { t, lang } = useI18n();
   const ar = lang === "ar";
+  const voice = employeeFileVoice({ employee, currentUser, ar });
   const targets = useMemo(
     () => adminCommunicationTargets(data, employee.id, { ar }),
     [data, employee.id, ar],
@@ -53,11 +54,8 @@ export default function HRCommunicationsTab({ employee, companyId, currentUser, 
     <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: "14px", padding: "16px 18px" }}>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "10px", marginBottom: "12px" }}>
         <h3 style={{ margin: 0, flex: "1 1 220px", fontSize: "14px", fontWeight: 600, color: NAVY }}>
-          {ar ? "التواصل الإداري والإنذارات" : "Admin communications and warnings"}
+          {voice.warnings}
         </h3>
-        <Link to="/app/chat" style={{ fontSize: "11px", color: MUTED, textDecoration: "none" }}>
-          {ar ? "للتنسيق اليومي استخدم المحادثات التشغيلية ←" : "For day-to-day coordination use Operations Chat →"}
-        </Link>
       </div>
 
       <div style={{

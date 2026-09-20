@@ -41,7 +41,7 @@ export default function HeaderDateTime({ lang }) {
         height: 34,
         paddingInlineStart: 10,
         paddingInlineEnd: 6,
-        borderRadius: 9,
+        borderRadius: 10,
         border: `1px solid ${BORDER}`,
         background: SURFACE,
         flexShrink: 0,

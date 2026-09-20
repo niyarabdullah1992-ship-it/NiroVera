@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { visibleStations } from "@/lib/permissions";
+import {
+  fallbackStationId,
+  headerAllowsAllStations,
+  pageLocksToOwnWorkplace,
+} from "@/lib/stationScopePolicy";
 import {
   getRecentStationScopes,
   setStationScope,
@@ -24,15 +30,24 @@ export function openStationSwitcher() {
  */
 export default function useStationSwitcher() {
   const { data, currentUser } = useAuth();
+  const { pathname } = useLocation();
   const scope = useStationScope();
+  const allowsAll = headerAllowsAllStations(pathname);
+  const locksToOwn = pageLocksToOwnWorkplace({ pathname, employee: currentUser, data });
   const [recentIds, setRecentIds] = useState(() => getRecentStationScopes());
 
   useEffect(() => subscribeStationScope(() => setRecentIds(getRecentStationScopes())), []);
 
-  const stations = useMemo(
-    () => (data && currentUser ? visibleStations(currentUser, data) : []),
-    [data, currentUser],
-  );
+  const stations = useMemo(() => {
+    const visible = data && currentUser ? visibleStations(currentUser, data) : [];
+    if (!locksToOwn) return visible;
+    const own = fallbackStationId({
+      employee: currentUser,
+      stations: data?.stations,
+      visible,
+    });
+    return own ? visible.filter((row) => String(row.id) === String(own)) : visible;
+  }, [data, currentUser, locksToOwn]);
 
   const readiness = useMemo(() => deriveReadinessByStation(data, stations), [data, stations]);
 
@@ -53,16 +68,18 @@ export default function useStationSwitcher() {
 
   const apply = useCallback((id) => setStationScope(id), []);
 
-  /** Step through the visible stations; "all" is the entry before the first one. */
+  /** Step through the visible stations; "all" is only on surfaces that allow it. */
   const step = useCallback(
     (delta) => {
       if (!stations.length) return;
-      const ring = ["all", ...stations.map((s) => String(s.id))];
+      const ids = stations.map((s) => String(s.id));
+      const ring = allowsAll ? ["all", ...ids] : ids;
+      if (!ring.length) return;
       const at = ring.indexOf(String(scope));
       const next = ring[((at < 0 ? 0 : at) + delta + ring.length) % ring.length];
       setStationScope(next);
     },
-    [stations, scope],
+    [stations, scope, allowsAll],
   );
 
   return {
@@ -72,8 +89,10 @@ export default function useStationSwitcher() {
     readiness,
     recents,
     apply,
+    allowsAll,
+    locksToOwn,
     next: () => step(1),
     previous: () => step(-1),
-    canSwitch: stations.length > 1,
+    canSwitch: !locksToOwn && stations.length > 1,
   };
 }

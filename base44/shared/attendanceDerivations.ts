@@ -3,7 +3,7 @@
  *  Status keys are stable IDs — never bind filters to translated labels.
  */
 
-import { ruleValue } from "./laborRules.ts";
+import { addLaborDays, laborDayKey, ruleValue } from "./laborRules.ts";
 
 export const GRACE_MINUTES = ruleValue("hours.grace.minutes");
 export const SHIFT_HOURS = ruleValue("hours.shift.ordinaryHours");
@@ -303,6 +303,14 @@ export function checkOtDecisionGate(input: {
   overtimeMinutes?: number;
   decision?: string | null;
   alreadyDecided?: boolean | null;
+  workerConsent?: boolean | null;
+  consent?: boolean | null;
+  overtimeHoursYtd?: number | null;
+  annualCapConsent?: boolean | null;
+  creditDaysYtd?: number | null;
+  enjoyDate?: string | null;
+  windowAgreed?: boolean | null;
+  onDate?: string | Date | null;
 }) {
   const ot = Math.max(0, Number(input.overtimeMinutes) || 0);
   if (ot <= 0) {
@@ -313,7 +321,7 @@ export function checkOtDecisionGate(input: {
       reasonEn: "No overtime minutes to decide on this day.",
     };
   }
-  if (input.alreadyDecided === true || input.alreadyDecided === false) {
+  if (input.alreadyDecided === true) {
     return {
       ok: false as const,
       error: "ALREADY_DECIDED",
@@ -321,16 +329,80 @@ export function checkOtDecisionGate(input: {
       reasonEn: "Overtime decision is already recorded — it stays visible on the timesheet.",
     };
   }
-  const decision = String(input.decision || "");
-  if (decision !== "approve" && decision !== "reject") {
+  let decision = String(input.decision || "");
+  if (decision === "pay") decision = "approve";
+  if (decision === "credit") decision = "comp_leave";
+  if (!decision) decision = "approve";
+  if (decision !== "approve" && decision !== "reject" && decision !== "comp_leave") {
     return {
       ok: false as const,
       error: "DECISION_REQUIRED",
-      reason: "يلزم اعتماد أو رفض الإضافي للصرف — الساعات تبقى مسجّلة في الحالين.",
-      reasonEn: "Approve or reject overtime for pay — hours stay recorded either way.",
+      reason: "يلزم اعتماد الإضافي للصرف، أو رفضه، أو إجازة تعويضية بموافقة العامل — الساعات تبقى مسجّلة.",
+      reasonEn: "Approve overtime for pay, reject it, or grant compensatory leave with the worker's consent — hours stay recorded.",
     };
   }
-  return { ok: true as const, decision: decision as "approve" | "reject", overtimeMinutes: ot };
+  const onDate = laborDayKey(input.onDate);
+  if (decision === "comp_leave") {
+    const consent = input.workerConsent === true || input.consent === true;
+    if (!consent) {
+      return {
+        ok: false as const,
+        error: "COMP_LEAVE_CONSENT",
+        reason: "موقوف — المادة 107: الإجازة التعويضية بدل أجر الإضافي لا تكون إلا بموافقة العامل المسجّلة. بلا موافقة يبقى الصرف.",
+        reasonEn: "Blocked — Article 107: compensatory leave instead of overtime pay needs the worker's recorded consent. Without consent, pay remains the default.",
+      };
+    }
+    const windowDays = ruleValue("hours.ot.compLeave.windowDays", onDate);
+    let enjoy = String(input.enjoyDate || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(enjoy) && /^\d{4}-\d{2}-\d{2}$/.test(onDate)) {
+      enjoy = addLaborDays(onDate, windowDays - 1);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(enjoy) && /^\d{4}-\d{2}-\d{2}$/.test(onDate)) {
+      const latest = addLaborDays(onDate, windowDays - 1);
+      if (enjoy > latest && input.windowAgreed !== true) {
+        return {
+          ok: false as const,
+          error: "COMP_LEAVE_WINDOW",
+          reason: `موقوف — اللائحة مادة 22 مكرر: يُحدَّد موعد التمتع بالإجازة التعويضية خلال ${windowDays} يوماً من الإضافي ما لم يُتفق على خلاف ذلك.`,
+          reasonEn: `Blocked — implementing regulations Art. 22 bis: the date for taking compensatory leave is set within ${windowDays} days of the overtime unless otherwise agreed.`,
+          enjoyDate: enjoy,
+          latest,
+          windowDays,
+        };
+      }
+    }
+    const perHour = ruleValue("hours.ot.compLeave.minHoursPerOtHour", onDate);
+    const dayHours = ruleValue("hours.shift.ordinaryHours", onDate);
+    const addDays = Math.round((((ot / 60) * perHour) / dayHours) * 1000) / 1000;
+    const usedDays = Math.max(0, Number(input.creditDaysYtd) || 0);
+    const yearCap = ruleValue("hours.ot.compLeave.maxDaysPerYear", onDate);
+    if (usedDays + addDays > yearCap) {
+      return {
+        ok: false as const,
+        error: "COMP_LEAVE_YEAR_CAP",
+        reason: `موقوف — اللائحة مادة 22 مكرر: الإجازة التعويضية لا تزيد على ${yearCap} يوماً في السنة. المستخدم ${usedDays} وهذا القرار ${addDays}.`,
+        reasonEn: `Blocked — implementing regulations Art. 22 bis: compensatory leave may not exceed ${yearCap} days in the year. Used ${usedDays}; this decision adds ${addDays}.`,
+        cap: yearCap,
+        used: usedDays,
+        add: addDays,
+      };
+    }
+  }
+  const ytd = Math.max(0, Number(input.overtimeHoursYtd) || 0);
+  const add = ot / 60;
+  const cap = ruleValue("hours.ot.annualMaxHours", onDate);
+  if (decision !== "reject" && ytd + add > cap && input.annualCapConsent !== true) {
+    return {
+      ok: false as const,
+      error: "OT_ANNUAL_CAP",
+      reason: `تنبيه — اللائحة مادة 22: ساعات الإضافي السنوية لا تزيد على ${cap} ساعة إلا بموافقة العامل. المستخدم ${ytd} وهذا القرار ${add}.`,
+      reasonEn: `Notice — implementing regulations Art. 22: annual overtime may not exceed ${cap} hours unless the worker consents. Used ${ytd}; this decision adds ${add}.`,
+      cap,
+      ytd,
+      add,
+    };
+  }
+  return { ok: true as const, decision: decision as "approve" | "reject" | "comp_leave", overtimeMinutes: ot, workerConsent: decision === "comp_leave" };
 }
 
 export type RosterRow = PunchLike & {

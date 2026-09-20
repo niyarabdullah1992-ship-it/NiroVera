@@ -1,3 +1,8 @@
+// purpose: Person record. Session userId is employeeId (also stored as Employee.employeeId).
+// domain: people
+// isolation: companyId
+// owner: companyDirectory
+// status: canonical
 {
   "name": "Employee",
   "type": "object",
@@ -11,53 +16,64 @@
       "description": "The PowerCare company this employee belongs to."
     },
     "name": {
-      "type": "string"
+      "type": "string",
+      "description": "Display name. Not a join key."
     },
     "email": {
-      "type": "string"
+      "type": "string",
+      "description": "Login email. Deduped in the local cache; credentials live on EmployeeCredential."
     },
     "role": {
-      "type": "string"
+      "type": "string",
+      "description": "App role (director, station_manager, …). Not the Base44 User.role."
     },
     "stationId": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "description": "Home workplace → Station.stationId."
     },
     "phone": {
-      "type": "string"
+      "type": "string",
+      "description": "Sensitive. Redacted for non-self / non-HR readers."
     },
     "position": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "description": "Legacy title. Prefer profile.position."
     },
     "anonymousId": {
-      "type": "string"
+      "type": "string",
+      "description": "Public anonymous handle. Never the same as employeeId."
     },
     "points": {
       "type": "number",
-      "default": 0
+      "default": 0,
+      "description": "Display cache. Source of truth is PointsLedger — do not treat this as the score ledger."
     },
     "hrLevelId": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "description": "→ hrLevels blob."
     },
     "hrStationId": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "description": "HR coverage workplace → Station.stationId."
     },
     "hrClusterId": {
       "type": [
         "string",
         "null"
-      ]
+      ],
+      "description": "→ hrClusters blob."
     },
     "canManageTeam": {
       "type": "boolean",
@@ -67,7 +83,8 @@
       "type": "array",
       "items": {
         "type": "string"
-      }
+      },
+      "description": "Station ids this person manages."
     },
     "profile": {
       "type": "object",
@@ -99,6 +116,7 @@
     },
     "certificates": {
       "type": "array",
+      "description": "Competency / license files on the person. Sensitive.",
       "items": {
         "type": "object",
         "additionalProperties": true
@@ -106,6 +124,15 @@
     },
     "leaveRequests": {
       "type": "array",
+      "description": "Leave inbox nested here — not a first-class collection. Cloud snapshot: leaveRoster blob.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "otherRequests": {
+      "type": "array",
+      "description": "study_consent, leave top-up, overtime assignment, written consent. Signing token lives here or on SignatureRequest — not on WorkProof.",
       "items": {
         "type": "object",
         "additionalProperties": true
@@ -113,6 +140,7 @@
     },
     "hrMessages": {
       "type": "array",
+      "description": "Private HR notes. Redacted for non-self / non-HR readers.",
       "items": {
         "type": "object",
         "additionalProperties": true

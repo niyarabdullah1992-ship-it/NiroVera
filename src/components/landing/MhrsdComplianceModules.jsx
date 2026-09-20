@@ -32,7 +32,7 @@ const MODULES = [
     enText:
       "Entitlement is a Labour Law rule, not manager discretion — the balance source is shown before approval, with end-of-service calculation.",
     status: READY,
-    href: "/app/leave",
+    href: "/app/requests/leave",
   },
   {
     id: "hr",
@@ -80,14 +80,14 @@ const MODULES = [
   },
   {
     id: "settings",
-    arTitle: "إعدادات الشركة",
-    enTitle: "Company Settings",
+    arTitle: "امتثال الوزارة",
+    enTitle: "Ministry compliance",
     arText:
-      "رقم المنشأة، نسبة التوطين المشتقة، وملف التأمينات الشهري — معاينة حتى الاعتمادات الرسمية.",
+      "نطاقات، رقم منشأة التأمينات، وملف GOSI الشهري — مشتقة من السجل. الربط الحي لقوى ومدى مؤجّل حتى الاعتمادات.",
     enText:
-      "Establishment number, derived Saudization rate, and the monthly GOSI file — preview until official credentials.",
-    status: PENDING,
-    href: "/app/settings",
+      "Nitaqat, GOSI establishment number, and the monthly file — derived from the register. Live Qiwa/Mudad rails pending credentials.",
+    status: READY,
+    href: "/app/hr?tab=compliance",
   },
 ];
 
@@ -255,7 +255,7 @@ export default function MhrsdComplianceModules({ ar, loggedIn = false }) {
           </div>
           {loggedIn ? (
             <Link
-              to="/app/settings"
+              to="/app/hr?tab=compliance"
               style={{
                 height: "44px",
                 padding: "0 22px",

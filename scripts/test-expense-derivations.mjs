@@ -11,6 +11,11 @@ import {
   checkApproveClaimGate,
   checkRejectClaimGate,
   checkMarkPaidGate,
+  checkOperatingClaimSurfaceGate,
+  approvalStepsForAmount,
+  claimNeedsCfo,
+  toBudgetStatus,
+  annotateLegacyStockSurface,
 } from "../src/lib/expenseDerivations.js";
 
 assert.equal(WATCH_PCT, 85);
@@ -45,6 +50,21 @@ assert.equal(isDelayedPayout({ ...claims[1], approvedAt: new Date().toISOString(
 
 assert.equal(checkSubmitClaimGate({ title: "x", stationId: "jbl1", amount: 10 }).error, "RECEIPT_REQUIRED");
 assert.equal(checkSubmitClaimGate({ title: "x", stationId: "jbl1", amount: 10, receiptUrl: "r" }).ok, true);
+assert.equal(checkOperatingClaimSurfaceGate("قفازات عازلة").error, "STOCK_SURFACE");
+assert.equal(checkOperatingClaimSurfaceGate("قطع غيار مضخة").error, "STOCK_SURFACE");
+assert.equal(checkOperatingClaimSurfaceGate("قاطع تيار").error, "STOCK_SURFACE");
+assert.equal(checkOperatingClaimSurfaceGate("سفر عمل إلى الرياض").ok, true);
+assert.equal(checkSubmitClaimGate({ title: "فلتر هواء مولّد", stationId: "jbl1", amount: 10, receiptUrl: "r" }).error, "STOCK_SURFACE");
+assert.deepEqual(approvalStepsForAmount(400), ["mgr"]);
+assert.deepEqual(approvalStepsForAmount(2000), ["mgr", "fin"]);
+assert.deepEqual(approvalStepsForAmount(8000), ["mgr", "fin", "cfo"]);
+assert.equal(claimNeedsCfo(400), false);
+assert.equal(claimNeedsCfo(8000), true);
+assert.equal(toBudgetStatus("cfo_pending"), "pending");
+assert.equal(toBudgetStatus("cfo_approved"), "approved");
+assert.equal(toBudgetStatus("finance_approved"), "approved");
+assert.equal(annotateLegacyStockSurface({ description: "قطع غيار مضخة" }).legacyStockSurface, true);
+assert.equal(annotateLegacyStockSurface({ description: "سفر عمل" }).legacyStockSurface, undefined);
 
 const pending = { id: "1", title: "C", stationId: "jbl2", amount: 50, status: "pending", receiptUrl: "r" };
 assert.equal(checkApproveClaimGate(pending, budgets[1], claims).error, "BUDGET_EXCEEDED");

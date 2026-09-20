@@ -18,8 +18,10 @@ import { MUTED, NAVY, NAVY_FILL, OK, WARN, BAD, field, ui } from "@/lib/platform
 import { checkSaudiIdentityGate, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { workPatternForcesFixed } from "@/lib/contractLawDerivations";
 import IdentityCard from "@/components/shared/IdentityCard";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import CommentFiles, { CommentAttachments } from "@/components/tasks/CommentFiles";
+import NightMedicalFileField from "@/components/employees/NightMedicalFileField";
 import { Fingerprint, HeartPulse, Briefcase, Contact, Landmark, Layers } from "lucide-react";
 
 export { PROFILE_GROUPS };
@@ -56,6 +58,7 @@ const GROUP_ICON = {
   employment: Briefcase,
   contact: Contact,
   wps: Landmark,
+  night_fitness: HeartPulse,
 };
 
 const inputStyle = { ...field };
@@ -250,6 +253,9 @@ export default function ProfessionalInfoTab({
       </IdentityCard>
 
       {PROFILE_GROUPS.map((group) => {
+        if (group.nightMedicalRestricted && !canManage && !isSelf) {
+          return null;
+        }
         const fields = group.fields.filter((f) => isProfileFieldVisible(f, { profile, form, editing }));
         const idType = editing ? form.idType : readVal("idType");
         const Icon = GROUP_ICON[group.id];
@@ -315,6 +321,12 @@ export default function ProfessionalInfoTab({
                                 <option key={o.value} value={o.value}>{ar ? o.ar : o.en}</option>
                               ))}
                             </select>
+                          ) : fieldDef.type === "date" ? (
+                            <PlatformDateField
+                              ar={ar}
+                              value={form[fieldDef.key] || ""}
+                              onChange={(next) => setForm({ ...form, [fieldDef.key]: next })}
+                            />
                           ) : (
                             <input
                               type={fieldDef.type || "text"}
@@ -353,6 +365,14 @@ export default function ProfessionalInfoTab({
                   );
                 })}
               </div>
+              {group.id === "night_fitness" ? (
+                <NightMedicalFileField
+                  employee={employee}
+                  canRead={canManage || isSelf}
+                  ar={ar}
+                  requestsHref={isSelf ? "/app/requests" : "/app/requests/manage"}
+                />
+              ) : null}
             </IdentityCard>
             {group.id === "employment" ? gradeCard : null}
           </React.Fragment>

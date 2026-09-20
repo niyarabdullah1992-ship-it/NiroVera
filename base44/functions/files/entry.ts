@@ -16,7 +16,12 @@ import {
   type ArchiveNodeLike,
 } from "../../shared/fileArchiveDerivations.ts";
 
-const FILES_CATEGORY = "smartArchive";
+/**
+ * do-not-invoke-from-frontend — companyDirectory + store sync the live `files` bag.
+ * Leftover callers persist to `files` only. `smartArchive` is read-once fallback.
+ */
+const FILES_CATEGORY = "files";
+const FILES_LEGACY_CATEGORY = "smartArchive"; // do-not-write
 
 function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
@@ -71,33 +76,47 @@ Deno.serve(async (req) => {
     ];
     const canManage = auth.owner || auth.admin || manageRoles.includes(String(auth.role || ""));
 
-    const loadBlob = async () => {
+    const loadBlob = async (category = FILES_CATEGORY) => {
       const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({
         companyId: auth.companyId,
-        category: FILES_CATEGORY,
+        category,
       });
       return rows[0] || null;
     };
 
-    const loadPayload = async (): Promise<FilesPayload> => {
-      const blob = await loadBlob();
-      const raw = blob?.payload && typeof blob.payload === "object" ? blob.payload : {};
-      const base = emptyPayload();
-      base.nodes = (Array.isArray(raw.nodes) ? raw.nodes : []).filter(
+    const nodesFromPayload = (raw: unknown) => {
+      const rows = Array.isArray(raw)
+        ? raw
+        : (raw && typeof raw === "object" && Array.isArray((raw as { nodes?: unknown[] }).nodes)
+          ? (raw as { nodes: unknown[] }).nodes
+          : []);
+      return rows.filter(
         (n: ArchiveNodeLike & { companyId?: string }) =>
-          n && n.companyId === auth.companyId && n.id && n.name && (n.type === "folder" || n.type === "file"),
-      );
+          n && n.id && n.name && (n.type === "folder" || n.type === "file")
+          && (!n.companyId || n.companyId === auth.companyId),
+      ) as Array<ArchiveNodeLike & { companyId: string }>;
+    };
+
+    const loadPayload = async (): Promise<FilesPayload> => {
+      const blob = await loadBlob(FILES_CATEGORY);
+      const base = emptyPayload();
+      base.nodes = nodesFromPayload(blob?.payload);
+      if (!base.nodes.length) {
+        const legacy = await loadBlob(FILES_LEGACY_CATEGORY);
+        base.nodes = nodesFromPayload(legacy?.payload);
+      }
       return base;
     };
 
     const savePayload = async (payload: FilesPayload) => {
-      const blob = await loadBlob();
-      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload });
+      const nodes = payload.nodes.map((n) => ({ ...n, companyId: n.companyId || auth.companyId }));
+      const blob = await loadBlob(FILES_CATEGORY);
+      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload: nodes });
       else {
         await base44.asServiceRole.entities.CompanyDataBlob.create({
           companyId: auth.companyId,
           category: FILES_CATEGORY,
-          payload,
+          payload: nodes,
         });
       }
     };

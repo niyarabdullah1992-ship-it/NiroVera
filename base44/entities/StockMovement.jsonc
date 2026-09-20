@@ -1,16 +1,23 @@
+// purpose: StockMovement tenant row.
+// domain: money
+// isolation: companyId
+// owner: inventory
+// status: canonical
 {
   "name": "StockMovement",
   "type": "object",
   "properties": {
     "companyId": {
-      "type": "string"
+      "type": "string",
+      "description": "Tenant of this movement."
     },
     "movementNumber": {
       "type": "string",
       "description": "Human-readable company movement number, for example MOV-2026-000001."
     },
     "itemId": {
-      "type": "string"
+      "type": "string",
+      "description": "→ InventoryItem id."
     },
     "movementType": {
       "type": "string",

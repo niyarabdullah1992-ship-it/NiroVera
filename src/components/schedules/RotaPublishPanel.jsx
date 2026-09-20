@@ -27,8 +27,8 @@ const CHECK_NOTES = {
     en: "A worker may not remain at the workplace more than 12 hours a day — Art. 101.",
   },
   hours_ramadan: {
-    ar: "في رمضان تُخفَّض ساعات المسلمين إلى 6 يومياً أو 36 أسبوعياً — المادة 98.",
-    en: "In Ramadan, Muslim hours drop to 6 a day or 36 a week — Art. 98.",
+    ar: "في رمضان تُخفَّض ساعات المسلمين إلى 6 يومياً أو 36 أسبوعياً — المادة 98. الفراغ على الملف = مسلم. غير مسلم مسجّل مستثنى.",
+    en: "In Ramadan, Muslim hours drop to 6 a day or 36 a week — Art. 98. An empty file is treated as Muslim. A recorded non-Muslim is exempt.",
   },
   rest_5h: {
     ar: "لا يجوز تشغيل العامل أكثر من خمس ساعات متواصلة دون راحة وصلاة وطعام لا تقل عن نصف ساعة — المادة 101. والراحة ليست ساعات عمل — المادة 102.",
@@ -43,13 +43,13 @@ const CHECK_NOTES = {
     en: "Press + in any empty cell in the matrix above to assign someone — a gap is closed by assignment, never by extending an existing shift.",
   },
   leave_excluded: {
-    ar: "من له إجازة معتمدة لا يظهر في الإسناد أصلًا، فلا يُسجَّل غيابه.",
-    en: "Anyone on approved leave never enters the assignment, so they are never recorded absent.",
+    ar: "إجازة معتمدة تبقى إجازة. تعيين متبقٍ على يوم الإجازة يُذكر ولا يمنع النشر.",
+    en: "Approved leave stays leave. A leftover assignment on a leave day is noted and does not block publish.",
   },
 };
 
 /**
- * Platform.dc.html pre-publication checks — L2067–2084 / L6806–6817.
+ * Pre-publication rota checks (hours, rest, coverage).
  */
 export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTypes, assignments, canManage }) {
   const { company, data } = useAuth();
@@ -236,7 +236,7 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
                     }}
                   >
                     {ar ? c.labelAr : c.labelEn}
-                    {c.article ? <LaborArticleCite cite={{ article: c.article }} ar={ar} /> : null}
+                    {c.article ? <LaborArticleCite cite={{ article: c.article }} ar={ar} tone={!c.ok ? "block" : undefined} /> : null}
                   </span>
                   {note && (
                     <span style={{ display: "block", fontSize: "11px", color: MUTED, lineHeight: 1.65, marginTop: "3px" }}>

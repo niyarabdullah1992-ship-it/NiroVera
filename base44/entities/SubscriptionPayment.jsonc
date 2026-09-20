@@ -1,3 +1,8 @@
+// purpose: companyId is nullable (checkout before a company exists).
+// domain: platform
+// isolation: companyId
+// owner: tapPayments
+// status: platform
 {
   "name": "SubscriptionPayment",
   "type": "object",

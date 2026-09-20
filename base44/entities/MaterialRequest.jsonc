@@ -1,15 +1,23 @@
+// purpose: MaterialRequest tenant row.
+// domain: money
+// isolation: companyId
+// owner: inventory
+// status: canonical
 {
   "name": "MaterialRequest",
   "type": "object",
   "properties": {
     "companyId": {
-      "type": "string"
+      "type": "string",
+      "description": "Tenant of this material request."
     },
     "requesterId": {
-      "type": "string"
+      "type": "string",
+      "description": "Employee.employeeId of the requester."
     },
     "stationId": {
-      "type": "string"
+      "type": "string",
+      "description": "Requesting workplace → Station.stationId."
     },
     "sourceStationId": {
       "type": [
@@ -19,7 +27,8 @@
       "description": "Station requested to supply the item."
     },
     "itemId": {
-      "type": "string"
+      "type": "string",
+      "description": "→ InventoryItem id."
     },
     "quantity": {
       "type": "number",

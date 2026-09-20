@@ -10,6 +10,7 @@ import {
 import { checkContractTermGate } from "@/lib/complianceDerivations";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import { MUTED, NAVY, NAVY_FILL, field, WARN } from "@/lib/platformStyles";
 
 export default function ContractExitCard({ employee, companyId, ar, canManage }) {
@@ -117,11 +118,15 @@ export default function ContractExitCard({ employee, companyId, ar, canManage })
             </label>
             <label style={{ fontSize: 11, color: MUTED }}>
               {ar ? "تاريخ الإشعار" : "Notice given"}
-              <input type="date" value={noticeGivenDate} disabled={!canManage} onChange={(e) => setNoticeGivenDate(e.target.value)} style={{ ...field, marginTop: 6 }} />
+              <div style={{ marginTop: 6 }}>
+                <PlatformDateField ar={ar} value={noticeGivenDate} disabled={!canManage} onChange={setNoticeGivenDate} />
+              </div>
             </label>
             <label style={{ fontSize: 11, color: MUTED }}>
               {ar ? "آخر يوم عمل" : "Last working day"}
-              <input type="date" value={effectiveDate} disabled={!canManage} onChange={(e) => setEffectiveDate(e.target.value)} style={{ ...field, marginTop: 6 }} />
+              <div style={{ marginTop: 6 }}>
+                <PlatformDateField ar={ar} value={effectiveDate} disabled={!canManage} onChange={setEffectiveDate} />
+              </div>
             </label>
           </div>
           {!notice.pending && notice.shortfall > 0 ? (
@@ -141,7 +146,9 @@ export default function ContractExitCard({ employee, companyId, ar, canManage })
           <LaborArticleCite ruleId="contract.resignation.autoAcceptDays" ar={ar} showText />
           <label style={{ fontSize: 11, color: MUTED }}>
             {ar ? "تاريخ تقديم الاستقالة المكتوبة" : "Written resignation date"}
-            <input type="date" value={resignAt} disabled={!canManage} onChange={(e) => setResignAt(e.target.value)} style={{ ...field, marginTop: 6 }} />
+            <div style={{ marginTop: 6 }}>
+              <PlatformDateField ar={ar} value={resignAt} disabled={!canManage} onChange={setResignAt} />
+            </div>
           </label>
           <label style={{ fontSize: 11, color: MUTED }}>
             {ar ? "مسوغ تأجيل القبول إن وُجد" : "Postpone justification if any"}

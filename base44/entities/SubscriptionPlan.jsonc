@@ -1,3 +1,8 @@
+// purpose: No companyId — catalog of plans.
+// domain: platform
+// isolation: none (platform / preview / dead)
+// owner: subscriptionOverview
+// status: platform
 {
   "name": "SubscriptionPlan",
   "type": "object",

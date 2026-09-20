@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
+import { CARD, DANGER, RADIUS } from "@/lib/platformStyles";
 
 // Wraps a notification row with swipe-left/right-to-delete support (touch + mouse drag).
 export default function SwipeToDeleteItem({ onDelete, children }) {
@@ -31,9 +32,20 @@ export default function SwipeToDeleteItem({ onDelete, children }) {
   const opacity = Math.max(1 - Math.abs(dragX) / (THRESHOLD * 2.5), 0.3);
 
   return (
-    <div className="relative overflow-hidden">
-      <div className="absolute inset-0 flex items-center justify-center" style={{ background: "#FEF2F2", color: "#DC2626" }}>
-        <Trash2 className="w-4 h-4" />
+    <div style={{ position: "relative", overflow: "hidden" }}>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#FEF2F2",
+          color: DANGER,
+          borderRadius: RADIUS,
+        }}
+      >
+        <Trash2 style={{ width: 16, height: 16 }} strokeWidth={1.75} />
       </div>
       <div
         onPointerDown={onPointerDown}
@@ -41,12 +53,14 @@ export default function SwipeToDeleteItem({ onDelete, children }) {
         onPointerUp={endDrag}
         onPointerLeave={endDrag}
         style={{
+          position: "relative",
+          background: CARD,
+          cursor: "grab",
           transform: `translateX(${dragX}px)`,
           opacity,
           transition: dragging ? "none" : "transform 0.2s ease, opacity 0.2s ease",
           touchAction: "pan-y",
         }}
-        className="relative bg-card cursor-grab active:cursor-grabbing"
       >
         {children}
       </div>

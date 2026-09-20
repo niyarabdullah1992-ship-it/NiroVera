@@ -1,3 +1,8 @@
+// purpose: Session tokens. Browser cache: powercare_tokens / powercare_session.
+// domain: company
+// isolation: companyId
+// owner: companyDirectory
+// status: canonical
 {
   "name": "CompanySession",
   "type": "object",

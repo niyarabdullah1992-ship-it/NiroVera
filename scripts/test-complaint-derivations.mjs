@@ -14,7 +14,14 @@ import {
   checkFileAnonymousGate,
   checkEscalateGate,
   checkCloseGate,
+  checkSubmitVoiceGate,
+  checkWorkerAppealGate,
+  checkReturnNoteGate,
+  isAnonymousReport,
   applySlaAutoEscalate,
+  appendVoiceAudit,
+  ensureVoiceAuditTrail,
+  buildVoiceAuditTimeline,
   countFilingsInWindow,
   RATE_WINDOW_MS,
 } from "../src/lib/complaintDerivations.js";
@@ -59,13 +66,14 @@ assert.equal(checkRateLimitGate({ day: 0, week: 10, month: 0 }).error, "RATE_LIM
 assert.equal(checkRateLimitGate({ day: 0, week: 0, month: 30 }).error, "RATE_LIMIT_MONTH");
 assert.equal(checkRateLimitGate({ day: 2, week: 9, month: 29 }).ok, true);
 
-assert.equal(checkFileAnonymousGate({ message: "", usage: { day: 0, week: 0, month: 0 } }).error, "MESSAGE_REQUIRED");
+assert.equal(checkFileAnonymousGate({ message: "", usage: { day: 0, week: 0, month: 0 } }).error, "STATION_REQUIRED");
+assert.equal(checkFileAnonymousGate({ message: "", usage: { day: 0, week: 0, month: 0 }, stationId: "st" }).error, "MESSAGE_REQUIRED");
 assert.equal(
-  checkFileAnonymousGate({ message: "x", usage: { day: 3, week: 0, month: 0 } }).error,
+  checkFileAnonymousGate({ message: "x", usage: { day: 3, week: 0, month: 0 }, stationId: "st" }).error,
   "RATE_LIMIT_DAY",
 );
 assert.equal(
-  checkFileAnonymousGate({ message: "hello", usage: { day: 0, week: 0, month: 0 } }).ok,
+  checkFileAnonymousGate({ message: "hello", usage: { day: 0, week: 0, month: 0 }, stationId: "st" }).ok,
   true,
 );
 
@@ -106,11 +114,27 @@ assert.equal(swept.escalated, 1);
 assert.equal(swept.reports[0].escalationLevel, 1);
 assert.equal(swept.reports[0].lastEscalationReason, "SLA_BREACH");
 assert.equal(swept.reports[1].escalationLevel, 0);
+assert.equal(swept.reports[0].auditTrail?.at(-1)?.type, "sla");
+assert.equal(swept.reports[0].auditTrail?.at(-1)?.actorName, "");
+assert.equal(swept.reports[0].auditTrail?.at(-1)?.actorId, null);
 
 const enriched = enrichComplaint(openHigh, chain, NOW);
 assert.equal(enriched.slaBreached, true);
 assert.equal(enriched.steps[0].state, "current");
-assert.equal(enriched.anonymous, true); // no reporterName
+assert.equal(enriched.anonymous, true); // hosted row: no author, no reporterName
+assert.equal(isAnonymousReport({ authorId: "e1", type: "complaint", title: "named" }), false);
+assert.equal(isAnonymousReport({ anonymous: true, anonymousId: "AN-1", title: "hidden" }), true);
+assert.equal(checkSubmitVoiceGate({ channel: "complaint", title: "تأخير بدل الوردية", message: "بدل شهرين لم يُصرف مع الراتب." }).error, "STATION_REQUIRED");
+assert.equal(checkSubmitVoiceGate({ channel: "complaint", title: "أب", message: "قصير", stationId: "st" }).error, "TITLE_REQUIRED");
+assert.equal(checkSubmitVoiceGate({ channel: "complaint", title: "تأخير بدل الوردية", message: "قصير", stationId: "st" }).error, "DETAIL_REQUIRED");
+assert.equal(checkSubmitVoiceGate({ channel: "complaint", title: "تأخير بدل الوردية", message: "بدل شهرين لم يُصرف مع الراتب.", stationId: "st" }).ok, true);
+assert.equal(checkSubmitVoiceGate({ channel: "anonymous", title: "خطر ورديات", message: "ثلاثة عمال بلا راحة أسبوعية.", usage: { day: 3, week: 0, month: 0 }, stationId: "st" }).error, "RATE_LIMIT_DAY");
+assert.equal(checkReturnNoteGate("لا").error, "RETURN_NOTE_REQUIRED");
+assert.equal(checkReturnNoteGate("لم تثبت الواقعة بعد المراجعة.").ok, true);
+assert.equal(checkWorkerAppealGate({ ...openHigh, authorId: "e1", status: "open" }, chain, "e1").error, "NOT_RETURNED");
+assert.equal(checkWorkerAppealGate({ ...openHigh, authorId: "e1", status: "rejected" }, chain, "e2").error, "NOT_AUTHOR");
+assert.equal(checkWorkerAppealGate({ ...openHigh, anonymous: true, status: "rejected" }, chain, "e1").error, "ANONYMOUS_NO_APPEAL");
+assert.equal(checkWorkerAppealGate({ ...openHigh, authorId: "e1", status: "rejected", anonymous: false, kind: "public" }, chain, "e1").ok, true);
 
 const named = enrichComplaint({
   ...fresh,
@@ -145,5 +169,86 @@ const ats = [
   new Date(NOW - 2 * RATE_WINDOW_MS.day).toISOString(),
 ];
 assert.equal(countFilingsInWindow(ats, RATE_WINDOW_MS.day, NOW), 1);
+
+const hiddenRaise = appendVoiceAudit({}, "raise", { id: "e1", name: "عمر ناصر" }, {
+  hideActor: true,
+  at: "2026-09-12T08:00:00.000Z",
+});
+assert.equal(hiddenRaise[0].type, "raise");
+assert.equal(hiddenRaise[0].actorId, null);
+assert.equal(hiddenRaise[0].actorName, "");
+assert.equal("rateActorId" in hiddenRaise[0], false);
+
+const namedRaise = appendVoiceAudit({}, "raise", { id: "e1", name: "عمر ناصر", role: "employee" }, {
+  at: "2026-09-12T08:00:00.000Z",
+});
+assert.equal(namedRaise[0].actorName, "عمر ناصر");
+assert.equal(namedRaise[0].actorId, "e1");
+
+const hydrated = ensureVoiceAuditTrail({
+  authorId: "e1",
+  reporterName: "عمر ناصر",
+  createdAt: "2026-09-08T08:00:00.000Z",
+  status: "rejected",
+  resolution: "rejected",
+  replies: [{
+    authorName: "أحمد السالم",
+    role: "station_manager",
+    text: "لم تثبت الواقعة بعد المراجعة.",
+    createdAt: "2026-09-09T10:00:00.000Z",
+  }],
+});
+assert.equal(hydrated[0].type, "raise");
+assert.equal(hydrated[1].type, "return");
+assert.equal(hydrated[1].actorName, "أحمد السالم");
+
+const anonClosed = {
+  anonymous: true,
+  anonymousId: "AN-1842",
+  createdAt: "2026-09-08T08:00:00.000Z",
+  status: "closed",
+  resolution: "approved",
+  auditTrail: [
+    { type: "raise", at: "2026-09-08T08:00:00.000Z" },
+    {
+      type: "adopt",
+      at: "2026-09-09T10:00:00.000Z",
+      actorName: "أحمد السالم",
+      actorRole: "station_manager",
+      detail: "عُولِج بوقائعه.",
+    },
+  ],
+};
+const workerAnon = buildVoiceAuditTimeline(anonClosed, { ar: true, viewerIsHandler: false, chain });
+assert.equal(workerAnon[0].actor, "بلا هويّة");
+assert.notEqual(workerAnon[1].actor, "أحمد السالم");
+assert.match(workerAnon[1].actor, /مدير|مراجع/);
+assert.equal(workerAnon[1].text, "عُولِج");
+const managerAnon = buildVoiceAuditTimeline(anonClosed, { ar: true, viewerIsHandler: true, chain });
+assert.equal(managerAnon[1].actor, "أحمد السالم");
+
+const namedPath = buildVoiceAuditTimeline({
+  authorId: "e1",
+  reporterName: "عمر ناصر",
+  createdAt: "2026-09-08T08:00:00.000Z",
+  auditTrail: [
+    { type: "raise", at: "2026-09-08T08:00:00.000Z", actorName: "عمر ناصر" },
+    { type: "return", at: "2026-09-09T10:00:00.000Z", actorName: "أحمد السالم", actorRole: "station_manager", detail: "وضّح الواقعة." },
+  ],
+}, { ar: true, viewerIsHandler: false, authorName: "عمر ناصر", chain });
+assert.equal(namedPath[0].actor, "عمر ناصر");
+assert.equal(namedPath[1].actor, "أحمد السالم");
+assert.equal(namedPath[1].text, "أُعيد بملاحظة");
+
+const enSla = buildVoiceAuditTimeline({
+  authorId: "e1",
+  createdAt: "2026-09-08T08:00:00.000Z",
+  auditTrail: [
+    { type: "raise", at: "2026-09-08T08:00:00.000Z", actorName: "Omar" },
+    { type: "sla", at: "2026-09-09T10:00:00.000Z", toLevel: 1, reason: "SLA_BREACH" },
+  ],
+}, { ar: false, viewerIsHandler: true, chain });
+assert.match(enSla[1].text, /Raised automatically/);
+assert.equal(enSla[1].actor, "System");
 
 console.log("complaint derivations ok");

@@ -30,17 +30,11 @@ export default function DashboardPersonaBar({ lang = "ar" }) {
   const label = PERSONA_LABEL[persona];
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "6px 10px", fontSize: "12px", color: MUTED, lineHeight: 1.55 }}>
-      <span>
-        {ar ? "العرض بصلاحية" : "Viewing as"}{" "}
-        <strong style={{ color: INK, fontWeight: 600 }}>{ar ? label.ar : label.en}</strong>
-        {" · "}
-        {ar ? "شركة" : terms.orgKindShort}
-      </span>
-      <span style={{ fontSize: "11px", color: MUTED }}>
-        {ar
-          ? "مشتقّة من الدور والهيكل — لا تُبدَّل من هنا."
-          : "Derived from role and structure — not switched here."}
+    <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
+      <span style={{ fontSize: 10, color: MUTED }}>{ar ? "العرض بصلاحية" : "Viewing as"}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: INK, lineHeight: 1.35 }}>
+        {ar ? label.ar : label.en}
+        <span style={{ fontWeight: 400, color: MUTED }}> · {ar ? "شركة" : terms.orgKindShort}</span>
       </span>
     </div>
   );

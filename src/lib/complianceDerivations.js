@@ -328,7 +328,7 @@ export function deriveSaudiStatus(input) {
         needsId: false,
         source: "nationality+id",
         error: "SAUDI_IDENTITY_MISMATCH",
-        reason: "موقوف — الجنسية لا تطابق رقم الهوية (١ مواطن / ٢ إقامة).",
+        reason: "موقوف — الجنسية لا تطابق رقم الهوية (1 مواطن / 2 إقامة).",
         reasonEn: "Blocked — nationality does not match the ID number (1 = citizen / 2 = iqama).",
       };
     }
@@ -775,8 +775,8 @@ export function buildWpsFileRows(lines) {
 /** Named blockers for one Mudad file row — file-ready, not live send. */
 export function wpsRowBlockers(row, ar) {
   const reasons = [];
-  if (!/^\d{10}$/.test(row?.nationalId || "")) reasons.push(ar ? "هوية غير مكتملة (10 أرقام)" : "ID incomplete (10 digits)");
-  if (!/^SA\d{22}$/.test(row?.iban || "")) reasons.push(ar ? "آيبان غير مكتمل (SA + 22)" : "IBAN incomplete (SA + 22)");
+  if (!/^\d{10}$/.test(row?.nationalId || "")) reasons.push(ar ? "هوية غير مكتملة" : "ID incomplete");
+  if (!/^SA\d{22}$/.test(row?.iban || "")) reasons.push(ar ? "آيبان غير مكتمل" : "IBAN incomplete");
   if (!row?.qiwaMatch) reasons.push(ar ? "أجر قوى غير مطابق" : "Qiwa wage mismatch");
   return reasons;
 }

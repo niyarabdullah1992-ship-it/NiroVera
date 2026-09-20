@@ -1,12 +1,19 @@
+// purpose: Stock SKU. Live quantity is locationBalances + currentLocationId.
+// domain: money
+// isolation: companyId
+// owner: inventory
+// status: canonical
 {
   "name": "InventoryItem",
   "type": "object",
   "properties": {
     "companyId": {
-      "type": "string"
+      "type": "string",
+      "description": "Tenant that owns this SKU."
     },
     "itemCode": {
-      "type": "string"
+      "type": "string",
+      "description": "Human SKU code. Join key for UI; entity id is the row id."
     },
     "name": {
       "type": "string"
@@ -20,10 +27,12 @@
     },
     "quantity": {
       "type": "number",
-      "minimum": 0
+      "minimum": 0,
+      "description": "Display total. Source of truth is locationBalances — do not also treat stockBoard as quantity."
     },
     "locationBalances": {
       "type": "array",
+      "description": "Per-location quantity. InventoryUnit is a parallel typed table; live inventory stores balances here.",
       "items": {
         "type": "object",
         "additionalProperties": true

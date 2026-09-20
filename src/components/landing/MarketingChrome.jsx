@@ -67,11 +67,8 @@ export function MarketingHeader({ ar, loggedIn, onToggleLang, ctaHref = "/#prici
       }}
     >
       <div style={{ maxWidth: 1240, margin: "0 auto", height: 68, display: "flex", alignItems: "center", gap: 20 }}>
-        <Link to="/" style={{ display: "flex", alignItems: "center", color: "inherit", textDecoration: "none", flexShrink: 0, gap: 10 }}>
+        <Link to="/" style={{ display: "flex", alignItems: "center", color: "inherit", textDecoration: "none", flexShrink: 0 }}>
           <Logo size={28} />
-          <span className="hidden lg:inline" style={{ fontSize: 11, fontWeight: 600, color: MUTED, letterSpacing: "0.08em" }}>
-            ERP
-          </span>
         </Link>
         <nav data-nv="navlinks" style={{ flex: 1, display: "flex", alignItems: "center", gap: 22, minWidth: 0 }}>
           {NAV.map((l) =>

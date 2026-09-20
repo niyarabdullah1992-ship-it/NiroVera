@@ -2,21 +2,27 @@ import React, { useEffect, useState } from "react";
 import { Loader2, Banknote, ListChecks } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { monthKey as localMonthKey } from "@/lib/payroll";
+import { getCompanyData } from "@/lib/store";
+import { monthKey as localMonthKey, getRun, ensurePayrollRun, netOf } from "@/lib/payroll";
+import { localPayrollAction } from "@/lib/localPayrollFallback";
 import {
   OT_RATE,
   checkApprovePayrollGate,
-  wpsDeadline,
-  isWpsLate,
+  deriveRunTotals,
+  deriveStationBreakdown,
 } from "@/lib/payrollDerivations";
 import { toast } from "@/components/ui/use-toast";
-import { ACCENT, MUTED, NAVY, WARN, NEUTRAL, OK, ui, CARD, SURFACE } from "@/lib/platformStyles";
+import { ACCENT, MUTED, NAVY, NEUTRAL, OK, ui, CARD, SURFACE } from "@/lib/platformStyles";
 import IdentityCard from "@/components/shared/IdentityCard";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 async function payrollApi(payload) {
   const res = await base44.functions.invoke("payroll", payload);
-  return res?.data ?? res;
+  const data = res?.data ?? res;
+  // The preview workspace answers this function without running it, which made every
+  // run action report success while the run stayed in draft. Apply the same rules locally.
+  if (data?.localPreview) return localPayrollAction(payload) || data;
+  return data;
 }
 
 const fmt = (n, currency = "SAR") =>
@@ -56,7 +62,6 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
   const [month, setMonth] = useState(monthProp || localMonthKey());
   const [run, setRun] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [seedHours, setSeedHours] = useState("4");
   const [hoverRow, setHoverRow] = useState(null);
 
   useEffect(() => {
@@ -66,6 +71,20 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
   const stationName = (id) => {
     if (!id || id === "__unassigned__") return ar ? "غير مخصص" : "Unassigned";
     return data?.stations?.find((s) => s.id === id)?.name || id;
+  };
+
+  // Totals and the station breakdown come from the shared derivations, the same ones the
+  // cloud handler answers with. They used to be recomputed here by hand, which is how
+  // overtime ended up hard-written as zero on this board while the payslip showed it.
+  const localView = (raw) => {
+    if (!raw) return null;
+    const items = (raw.items || []).map((item) => ({ ...item, stationId: item.stationId || item.employeeStationId || null }));
+    return {
+      ...raw,
+      items,
+      totals: { ...deriveRunTotals(items), paid: items.filter((item) => item.paid).length },
+      byStation: deriveStationBreakdown(items),
+    };
   };
 
   const applyRemote = (remote) => {
@@ -85,13 +104,25 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
     if (!company?.id) return;
     try {
       const remote = await payrollApi({ action: "list", companyId: company.id, month });
-      applyRemote(remote);
+      if (remote?.run) {
+        applyRemote(remote);
+        return;
+      }
     } catch {
-      setRun(null);
+      /* local preview — fall through */
     }
+    ensurePayrollRun(company.id, month);
+    const fromStore = getRun(getCompanyData(company.id) || data, month);
+    const view = localView(fromStore);
+    setRun(view);
+    onMeta?.({
+      status: view?.status || "",
+      wps: view?.wps || null,
+      heads: view?.totals?.heads || 0,
+    });
   };
 
-  useEffect(() => { load(); }, [company?.id, month]);
+  useEffect(() => { load(); }, [company?.id, month, data?.payrollRuns?.length]);
 
   const runAction = async (payload, okMsg) => {
     if (!company?.id) return;
@@ -106,6 +137,7 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
       } else {
         if (okMsg) toast({ description: okMsg });
         if (remote.run) setRun(remote.run);
+        else if (remote.localApplied) await load();
         else applyRemote(remote);
       }
     } catch (err) {
@@ -127,7 +159,7 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
         base,
         allowances,
         bonus: 0,
-        overtimeHours: Number(seedHours) || 0,
+        overtimeHours: 0,
         deductions: 0,
         currency: String(e.profile?.currency || "SAR").toUpperCase(),
         qiwaWage: base + allowances,
@@ -155,98 +187,48 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
   if (!currentUser) return null;
 
   const totals = run?.totals;
-  const wps = run?.wps;
   const stationRows = stationScope === "all"
     ? (run?.byStation || [])
     : (run?.byStation || []).filter((r) => String(r.stationId ?? "") === String(stationScope));
   const currency = run?.items?.[0]?.currency || "SAR";
-  const monthLabel = new Date(`${month}-01T00:00:00`).toLocaleDateString(ar ? "ar-SA" : "en-GB", {
+  const monthLabel = new Date(`${month}-01T00:00:00`).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", {
     month: "long",
     year: "numeric",
   });
   const scopedName = stationScope !== "all" ? stationName(stationScope) : null;
+  const scopedItems = (run?.items || []).filter((item) => stationScope === "all" || String(item.employeeStationId || item.stationId || "") === String(stationScope));
+  const paidCount = scopedItems.filter((item) => item.paid).length;
   const displayTotals = stationScope === "all"
-    ? totals
+    ? { ...totals, paid: paidCount }
     : stationRows.length
       ? {
           heads: stationRows.reduce((s, r) => s + (Number(r.heads) || 0), 0),
           baseAndAllowances: stationRows.reduce((s, r) => s + (Number(r.baseAndAllowances) || 0), 0),
           overtime: stationRows.reduce((s, r) => s + (Number(r.overtime) || 0), 0),
           deductions: stationRows.reduce((s, r) => s + (Number(r.deductions) || 0), 0),
+          gosiEmployee: stationRows.reduce((s, r) => s + (Number(r.gosiEmployee) || 0), 0),
           total: stationRows.reduce((s, r) => s + (Number(r.total) || 0), 0),
           issueCount: totals?.issueCount || 0,
+          paid: paidCount,
         }
       : {
           heads: 0,
           baseAndAllowances: 0,
           overtime: 0,
           deductions: 0,
+          gosiEmployee: 0,
           total: 0,
           issueCount: totals?.issueCount || 0,
+          paid: 0,
         };
 
-  const deadline = wps?.deadline || wpsDeadline(month);
-  const late = wps?.late ?? isWpsLate(month);
   const approved = run?.status === "approved" || run?.status === "sent";
   const sent = run?.status === "sent";
 
   return (
     <section dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <span style={{ ...NEUTRAL, display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <LaborArticleCite ruleId="hours.ot.premium" ar={ar} />
-          {ar ? `إضافي ${OT_RATE * 100}%` : `OT ${OT_RATE * 100}%`}
-        </span>
-        <span style={{ ...NEUTRAL, display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <LaborArticleCite ruleId="hours.ot.compLeave.cite" ar={ar} />
-          {ar ? "إجازة تعويضية بدل الإضافي بموافقة العامل" : "Compensatory leave instead of OT with consent"}
-        </span>
-        <span style={{ ...NEUTRAL, display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <LaborArticleCite ruleId="hours.ot.exceptionDayHours" ar={ar} />
-          {ar ? "سقف الاستثناء 10/60" : "Exception cap 10/60"}
-        </span>
-        <span style={{ ...NEUTRAL, display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <LaborArticleCite ruleId="payroll.deduction.capRatio" ar={ar} />
-          {ar ? "سقف الخصم نصف الأجر" : "deductions ≤ half the wage"}
-        </span>
-        <span style={late ? WARN : NEUTRAL}>
-          {ar ? `حماية الأجور — المهلة ${deadline || "—"}` : `Wage protection — due ${deadline || "—"}`}
-        </span>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <LaborArticleCite ruleId="hours.ot.annualMaxHours" ar={ar} showText />
-        <LaborArticleCite ruleId="hours.ot.compLeave.minHoursPerOtHour" ar={ar} showText />
-        <LaborArticleCite ruleId="hours.ot.compLeave.windowDays" ar={ar} showText />
-        <LaborArticleCite ruleId="hours.ot.compLeave.maxDaysPerYear" ar={ar} showText />
-      </div>
-
       {!run && (
-        <IdentityCard
-          icon={Banknote}
-          title={ar ? `لا مسير على الخادم لـ ${monthLabel}` : `No server run for ${monthLabel}`}
-          subtitle={ar
-            ? "افتح المسير من ملفات الموظفين — الراتب الأساسي والبدلات تُسحب تلقائيًا، ثم راجع البنود قبل الاعتماد."
-            : "Open the run from employee profiles — base salary and allowances are pulled in, then review the lines before approval."}
-          dir={ar ? "rtl" : "ltr"}
-        >
-          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: "10px" }}>
-            <label style={{ display: "grid", gap: "4px", fontSize: "11px", color: MUTED }}>
-              <span>{ar ? "ساعات إضافية أولية" : "Initial OT hours"} <LaborArticleCite ruleId="hours.ot.premium" ar={ar} /></span>
-              <input
-                value={seedHours}
-                onChange={(e) => setSeedHours(e.target.value)}
-                style={{
-                  height: "34px",
-                  width: "96px",
-                  borderRadius: "9px",
-                  border: "1px solid #E2E8F0",
-                  background: SURFACE,
-                  padding: "0 8px",
-                  fontSize: "13px",
-                  fontFamily: "inherit",
-                }}
-              />
-            </label>
+        <div>
             <button
               type="button"
               disabled={busy}
@@ -256,8 +238,7 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
               {busy ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <Banknote style={{ width: 14, height: 14 }} />}
               {ar ? "افتح المسير من الملفات" : "Open run from profiles"}
             </button>
-          </div>
-        </IdentityCard>
+        </div>
       )}
 
       {run && displayTotals && (
@@ -274,8 +255,8 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
             dir={ar ? "rtl" : "ltr"}
             meta={(
               <>
-                <span style={{ ...NEUTRAL, borderRadius: 8 }} dir="ltr">{fmt(displayTotals.total, currency)}</span>
-                <span style={{ ...(approved ? OK : NEUTRAL), borderRadius: 8 }}>
+                <span style={NEUTRAL} dir="ltr">{fmt(displayTotals.total, currency)}</span>
+                <span style={approved ? OK : NEUTRAL}>
                   {approved ? (ar ? "معتمد" : "Approved") : (ar ? "بانتظار الاعتماد" : "Awaiting approval")}
                 </span>
                 <button
@@ -306,13 +287,22 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
             )}
           >
 
+            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", marginBottom: 12 }}>
+              <LaborArticleCite ruleId="payroll.wage.payment.cite" ar={ar} showText />
+              <LaborArticleCite ruleId="payroll.loan.capRatio" ar={ar} showText />
+              <LaborArticleCite ruleId="payroll.deduction.capRatio" ar={ar} showText />
+              <LaborArticleCite ruleId="hours.ot.premium" ar={ar} showText />
+            </div>
+
             <div style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
               {[
                 { label: ar ? "الأساسي والبدلات" : "Base & allowances", value: fmt(displayTotals.baseAndAllowances, currency) },
-                { label: ar ? "ساعات إضافية" : "Overtime", value: fmt(displayTotals.overtime, currency) },
+                { label: ar ? "أجر الإضافي المعتمد" : "Approved overtime", value: fmt(displayTotals.overtime, currency) },
                 { label: ar ? "استقطاعات" : "Deductions", value: fmt(displayTotals.deductions, currency) },
+                // Without it the header did not add up to the total below it.
+                { label: ar ? "التأمينات — حصة الموظف" : "GOSI — employee share", value: fmt(displayTotals.gosiEmployee || 0, currency) },
               ].map((m) => (
-                <div key={m.label} style={{ border: "1px solid #E2E8F0", borderRadius: "12px", padding: "14px 16px", background: CARD }}>
+                <div key={m.label} className="nv-paper" style={{ border: "1px solid #E2E8F0", borderRadius: 14, padding: "14px 16px", background: CARD }}>
                   <p style={{ margin: 0, fontSize: "10px", fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{m.label}</p>
                   <p dir="ltr" style={{ margin: "8px 0 0", fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "18px", fontWeight: 600, color: NAVY, textAlign: "start" }}>{m.value}</p>
                 </div>
@@ -356,24 +346,11 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
                   <div title={ar ? `إضافي ×${OT_RATE}` : `OT ×${OT_RATE}`}>{ar ? "الإضافي" : "Overtime"}</div>
                   <div>{ar ? "الإجمالي" : "Total"}</div>
                 </div>
-                <div style={{ padding: "9px 18px", borderBottom: "1px solid #F1F5F9", fontSize: "11px", color: MUTED }}>
-                  {ar
-                    ? `قاعدة الإضافي: ${OT_RATE * 100}% من أجر الساعة (المادة 107)`
-                    : `OT rule: ${OT_RATE * 100}% of hourly wage (Article 107)`}
-                  {stationScope !== "all" && (
-                    <>
-                      {" · "}
-                      {ar
-                        ? "التصفية أدناه بحسب نطاق الفرع — ملف حماية الأجور يُقدَّم على مستوى المنشأة كاملة"
-                        : "Rows below follow the station scope — the WPS file is still filed for the whole establishment"}
-                    </>
-                  )}
-                </div>
                 {stationRows.length === 0 ? (
                   <div style={{ padding: "22px 18px", textAlign: "center", fontSize: "12px", color: MUTED }}>
                     {stationScope === "all"
                       ? (ar ? "لا صفوف فروع في هذا المسير." : "No station rows in this run.")
-                      : (ar ? "لا صف لهذا الفرع في المسير — بدّل الفرع أو اختر كل الفروع." : "No row for this station in the run — switch station or pick all stations.")}
+                      : (ar ? "لا صف لهذا الفرع في المسير — بدّل الفرع من الهيدر." : "No row for this station in the run — switch station from the header.")}
                   </div>
                 ) : (
                   stationRows.map((r) => (
@@ -409,6 +386,39 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
                 )}
               </div>
             </div>
+          </IdentityCard>
+
+          <IdentityCard
+            icon={ListChecks}
+            title={ar ? "بنود هذا الشهر" : "This month's lines"}
+            subtitle={ar
+              ? `${displayTotals.paid || 0}/${displayTotals.heads} مدفوع — عدّل الأرقام من تبويب البنود`
+              : `${displayTotals.paid || 0}/${displayTotals.heads} paid — edit figures on the Lines tab`}
+            bodyStyle={{ padding: 0 }}
+            dir={ar ? "rtl" : "ltr"}
+          >
+            <div style={{ overflowX: "auto" }}>
+              {(run.items || [])
+                .filter((item) => stationScope === "all" || String(item.employeeStationId || item.stationId || "") === String(stationScope))
+                .slice(0, 40)
+                .map((item) => (
+                  <div
+                    key={item.id || item.employeeId}
+                    style={{ ...tableRow, gridTemplateColumns: "minmax(140px,1.6fr) 110px 90px" }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 500, color: NAVY }}>{item.employeeName || item.name}</div>
+                    <div dir="ltr" style={{ fontSize: 12, color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "end" }}>{fmt(netOf(item), item.currency || currency)}</div>
+                    <div style={{ fontSize: 11, color: item.paid ? "#15803D" : MUTED }}>{item.paid ? (ar ? "مدفوع" : "Paid") : (ar ? "غير مدفوع" : "Unpaid")}</div>
+                  </div>
+                ))}
+            </div>
+            {onEditLines ? (
+              <div style={{ padding: "12px 18px" }}>
+                <button type="button" onClick={onEditLines} style={ui.btnSecondary}>
+                  {ar ? "افتح البنود للدفع والتعديل" : "Open lines to pay and edit"}
+                </button>
+              </div>
+            ) : null}
           </IdentityCard>
         </div>
       )}

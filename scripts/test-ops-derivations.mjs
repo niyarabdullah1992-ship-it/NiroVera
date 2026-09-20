@@ -8,6 +8,15 @@ import {
   clampEffortWeight,
   checkAssignGate,
   checkReassignGate,
+  opsVisitorStamp,
+  isOpsVisitorTask,
+  taskAssignScope,
+  taskAssignScopeLabel,
+  taskAssigneeIds,
+  taskAssigneePeople,
+  taskPeopleCountLabel,
+  taskCreatorName,
+  employeeHomeStationId,
   canReassignOpsTask,
   applyOpsReassign,
   assignmentHistoryNote,
@@ -15,6 +24,7 @@ import {
   CERT_LABELS,
   isAwaitingApproval,
   deriveDailyTaskPace,
+  derivePaceBlocker,
   deriveBoardDailyPace,
   dailyPaceCopy,
   dailyPaceLabel,
@@ -38,8 +48,26 @@ import {
   isOpsTaskArchived,
   checkDeleteOpsTaskGate,
   applyOpsSoftDelete,
+  applyOpsCommentDelete,
   buildTaskAuditTimeline,
+  isOutdoorFieldTask,
+  riyadhClock,
+  checkTaskHeatBanGate,
+  checkTaskModeGate,
+  deriveTaskHeatBanNotice,
+  normalizeTaskMode,
+  taskModeConsequence,
+  taskModeLabel,
+  taskWaivesSiteAttendance,
 } from "../src/lib/opsDerivations.js";
+import { HEAT_BAN_STATE_LEVEL, heatBanWindow, isHeatBanDate } from "../src/lib/contractLawDerivations.js";
+import { citeRule, explainRule, ruleValue } from "../src/lib/laborRules.js";
+import { articleOfficialText } from "../src/lib/laborArticleTexts.js";
+import {
+  DECISION_3337_TEXT_AR,
+  heatBanDecisionDutiesNote,
+  heatBanDecisionLabel,
+} from "../src/lib/heatBanDecision.js";
 
 // ── Points formula (High 3 · Medium 2 · Low 1) × effort (1–5) ───────────────
 assert.equal(taskPoints("high", 4), 12);
@@ -89,13 +117,15 @@ const counts = deriveOpsCounts([
   { status: "awaiting_approval", dueAt: "2026-08-11", completedCount: 1, targetCount: 1 },
   { status: "completed", approvedAt: "2026-08-10", dueAt: "2026-08-10", completedCount: 1, targetCount: 1, pointsAwarded: 6 },
 ], today);
-assert.equal(counts.total, 3);
+assert.equal(counts.total, 2);
 assert.equal(counts.overdue, 1);
 assert.equal(counts.today, 1);
 assert.equal(counts.awaiting, 1);
 assert.equal(counts.done, 1);
 assert.equal(counts.pointsAwarded, 6);
 assert.equal(counts.badge, 2);
+assert.equal(isOpsTaskArchived({ status: "completed", approvedAt: "2026-08-10" }), true);
+assert.equal(isOpsTaskArchived({ status: "active" }), false);
 
 assert.equal(isAwaitingApproval({ status: "active", completedCount: 2, targetCount: 2 }), true);
 assert.equal(isAwaitingApproval({ status: "completed", completedCount: 2, targetCount: 2, approvedAt: "2026-08-10" }), false);
@@ -120,7 +150,16 @@ const lastDay = deriveDailyTaskPace({
   startAt: "2026-08-17",
   today: new Date("2026-08-25T12:00:00"),
 });
-assert.equal(lastDay.todayExpected, 3);
+assert.equal(lastDay.todayExpected, 30);
+
+const lastDayCaughtUp = deriveDailyTaskPace({
+  targetCount: 30,
+  completedCount: 27,
+  dueAt: "2026-08-25",
+  startAt: "2026-08-17",
+  today: new Date("2026-08-25T12:00:00"),
+});
+assert.equal(lastDayCaughtUp.todayExpected, 3);
 
 const sameDay = deriveDailyTaskPace({
   targetCount: 30,
@@ -228,6 +267,21 @@ const cpOk = checkAssignGate({
 });
 assert.equal(cpOk.ok, true);
 assert.equal(cpOk.required, null);
+
+// ── Visitor dispatch: home branch ≠ executing branch, not an HR transfer ────
+assert.equal(employeeHomeStationId({ stationId: "dammam" }), "dammam");
+assert.equal(opsVisitorStamp({ stationId: "dammam" }, "riyadh").visitor, true);
+assert.equal(opsVisitorStamp({ stationId: "dammam" }, "dammam").visitor, false);
+assert.equal(opsVisitorStamp({ stationId: "dammam" }, "riyadh").homeStationId, "dammam");
+assert.equal(isOpsVisitorTask({ stationId: "riyadh", homeStationId: "dammam", visitor: true }), true);
+assert.equal(isOpsVisitorTask({ stationId: "dammam", homeStationId: "dammam" }), false);
+const visitorReassign = applyOpsReassign(
+  { status: "active", ownerId: "e1", stationId: "riyadh", assignmentHistory: [], comments: [], actionLog: [] },
+  { toId: "e2", reason: "send", kind: "delegate", delegatedAt: "2026-09-08", actingUntil: "2026-09-15", homeStationId: "dammam" },
+);
+assert.equal(visitorReassign.visitor, true);
+assert.equal(visitorReassign.homeStationId, "dammam");
+assert.equal(visitorReassign.ownerId, "e2");
 
 // ── Manager-only توكيل keeps the original assignee on the trail ─────────────
 const manager = { id: "mgr1", role: "ops_manager" };
@@ -649,14 +703,29 @@ const freshTask = {
   completedCount: 0,
   status: "active",
 };
-assert.equal(checkDeleteOpsTaskGate(freshTask, { id: "u1" }).ok, true);
-assert.equal(checkDeleteOpsTaskGate({ ...freshTask, completedCount: 1 }, { id: "u1" }).ok, false);
+assert.equal(checkDeleteOpsTaskGate(freshTask, { id: "u1" }).error, "REASON_REQUIRED");
+assert.equal(checkDeleteOpsTaskGate(freshTask, { id: "u1" }, { undoCreate: true }).ok, true);
+assert.equal(checkDeleteOpsTaskGate({ ...freshTask, completedCount: 1, targetCount: 14 }, { id: "u1" }, { undoCreate: true }).error, "REASON_REQUIRED");
+assert.equal(checkDeleteOpsTaskGate({ ...freshTask, completedCount: 1, targetCount: 14 }, { id: "u1" }, { reason: "إلغاء بعد بدء الإنجاز", ack: true }).ok, true);
 const oldTask = { ...freshTask, createdAt: new Date(Date.now() - 4 * 60 * 1000).toISOString() };
-assert.equal(checkDeleteOpsTaskGate(oldTask, { id: "u1" }).error, "UNDO_WINDOW_CLOSED");
-const deleted = applyOpsSoftDelete(freshTask, { byId: "u1", byName: "نورة" });
+assert.equal(checkDeleteOpsTaskGate(oldTask, { id: "u1" }, { undoCreate: true }).error, "UNDO_WINDOW_CLOSED");
+assert.equal(checkDeleteOpsTaskGate(oldTask, { id: "u1" }, { reason: "إلغاء", ack: true }).ok, true);
+assert.equal(checkDeleteOpsTaskGate({ ...freshTask, status: "completed", approvedAt: new Date().toISOString() }, { id: "u1" }, { reason: "x", ack: true }).error, "PROOF_CHAIN_LOCKED");
+assert.equal(checkDeleteOpsTaskGate({ ...freshTask, status: "awaiting_approval" }, { id: "u1" }, { reason: "x", ack: true }).error, "PROOF_CHAIN_LOCKED");
+const deleted = applyOpsSoftDelete(freshTask, { byId: "u1", byName: "نورة", reason: "إلغاء", ack: true });
 assert.equal(isOpsTaskDeleted(deleted), true);
 assert.equal(isOpsTaskArchived(deleted), true);
+assert.equal(deleted.deleteReason, "إلغاء");
+assert.equal(deleted.completedCount, 0);
+assert.equal(deleted.deletedByName, "نورة");
+assert.ok((deleted.actionLog || []).some((e) => e.type === "delete" && e.reason === "إلغاء" && e.byName === "نورة"));
 assert.equal(deriveOpsCounts([freshTask, deleted]).total, 1);
+const partialDeleted = applyOpsSoftDelete({ ...freshTask, completedCount: 3, targetCount: 14, comments: [{ id: "c1", text: "ثبت" }] }, { byId: "u1", byName: "نورة", reason: "تغيّر الخطة", ack: true });
+assert.equal(partialDeleted.completedCount, 3);
+assert.equal(partialDeleted.comments.length, 1);
+const delTimeline = buildTaskAuditTimeline(partialDeleted, "ar");
+assert.ok(delTimeline.some((r) => r.type === "delete" && r.reason === "تغيّر الخطة" && r.by === "نورة"));
+assert.ok(delTimeline.some((r) => r.type === "delete" && String(r.text).includes("3/14") && String(r.text).includes("نورة")));
 const timeline = buildTaskAuditTimeline({
   ...freshTask,
   assignmentHistory: [{
@@ -671,5 +740,257 @@ const timeline = buildTaskAuditTimeline({
 }, "ar");
 assert.ok(timeline.some((r) => r.type === "create"));
 assert.ok(timeline.some((r) => r.type === "delegate"));
+
+const reasonTask = {
+  id: "t_reason",
+  comments: [
+    { id: "rej_1", text: "الإثبات ناقص", is_rejection: true, authorId: "u1", at: "2026-09-08T16:00:00.000Z" },
+    { id: "esc_1", text: "ثلاثة رفض", is_escalation: true, authorId: "u2", at: "2026-09-08T16:01:00.000Z" },
+    { id: "msg_1", text: "مرحبا", authorId: "u1", at: "2026-09-08T16:02:00.000Z" },
+  ],
+};
+assert.equal(applyOpsCommentDelete(reasonTask, "rej_1", { actorId: "u1", now: Date.parse("2026-09-08T16:02:10.000Z") }).error, "PROTECTED");
+assert.equal(applyOpsCommentDelete(reasonTask, "esc_1", { actorId: "u2", now: Date.parse("2026-09-08T16:02:10.000Z") }).error, "PROTECTED");
+assert.equal(applyOpsCommentDelete(reasonTask, "msg_1", { actorId: "u1", now: Date.parse("2026-09-08T16:02:10.000Z") }).ok, true);
+
+assert.equal(taskAssignScope({ assignMode: "one" }), "person");
+assert.equal(taskAssignScope({ assignMode: "all" }), "station");
+assert.equal(taskAssignScope({ assignMode: "some", memberIds: ["a"] }), "person");
+assert.equal(taskAssignScope({ assignMode: "some", memberIds: ["a", "b"] }), "group");
+assert.equal(taskAssignScopeLabel({ assignMode: "all" }, true), "الفرع");
+assert.equal(taskAssignScopeLabel({ assignMode: "one" }, true), "شخص");
+assert.equal(taskPeopleCountLabel(1, true), "1 شخص");
+assert.equal(taskPeopleCountLabel(2, true), "شخصان");
+assert.equal(taskPeopleCountLabel(3, true), "3 أشخاص");
+assert.deepEqual(taskAssigneeIds({ assignMode: "some", memberIds: ["a", "b"] }), ["a", "b"]);
+assert.deepEqual(taskAssigneePeople({ assignMode: "one", ownerId: "u1" }, [{ id: "u1", name: "حسن العمري" }]), [{ id: "u1", name: "حسن العمري" }]);
+assert.equal(taskCreatorName({ createdByName: "نورة" }), "نورة");
+assert.equal(taskCreatorName({ createdBy: "u1" }, [{ id: "u1", name: "حسن العمري" }]), "حسن العمري");
+assert.equal(taskCreatorName({ actionLog: [{ type: "create", byName: "سارة" }] }), "سارة");
+
+// Remainder card: idle 0 is hidden; incomplete log or «بلا إنجاز» opens it.
+const remainderDay = new Date("2026-08-17T12:00:00");
+const remainderPace = deriveDailyTaskPace({
+  targetCount: 30,
+  dueAt: "2026-08-25",
+  startAt: "2026-08-17",
+  today: remainderDay,
+});
+assert.equal(remainderPace.active, true);
+assert.equal(remainderPace.todayExpected, 4);
+const idleRemainderTask = { targetCount: 30, completedCount: 0, dueAt: "2026-08-25", startAt: "2026-08-17", paceDayLog: {} };
+assert.equal(derivePaceBlocker({ task: idleRemainderTask, pace: remainderPace, today: remainderDay }), null);
+const missedRemainder = derivePaceBlocker({
+  task: idleRemainderTask,
+  pace: remainderPace,
+  today: remainderDay,
+  missed: true,
+});
+assert.ok(missedRemainder);
+assert.equal(missedRemainder.kind, "missed");
+assert.equal(missedRemainder.logged, 0);
+const appliedZero = derivePaceBlocker({
+  task: idleRemainderTask,
+  pace: remainderPace,
+  today: remainderDay,
+  amountJustLogged: 0,
+  applied: true,
+});
+assert.ok(appliedZero);
+assert.equal(appliedZero.kind, "missed");
+const shortKey = "2026-08-17";
+const partialRemainder = derivePaceBlocker({
+  task: { ...idleRemainderTask, paceDayLog: { [shortKey]: 1 } },
+  pace: remainderPace,
+  today: remainderDay,
+});
+assert.ok(partialRemainder);
+assert.equal(partialRemainder.kind, "partial");
+assert.equal(partialRemainder.logged, 1);
+const fullRemainder = derivePaceBlocker({
+  task: { ...idleRemainderTask, paceDayLog: { [shortKey]: remainderPace.todayExpected } },
+  pace: remainderPace,
+  today: remainderDay,
+});
+assert.equal(fullRemainder, null);
+const storedOpenToday = derivePaceBlocker({
+  task: {
+    ...idleRemainderTask,
+    paceBlocker: { status: "open", day: shortKey, kind: "missed", expected: remainderPace.todayExpected, logged: 0 },
+  },
+  pace: remainderPace,
+  today: remainderDay,
+});
+assert.ok(storedOpenToday);
+const storedOtherDay = derivePaceBlocker({
+  task: {
+    ...idleRemainderTask,
+    paceBlocker: { status: "open", day: "2026-08-16", kind: "missed" },
+  },
+  pace: remainderPace,
+  today: remainderDay,
+});
+assert.equal(storedOtherDay, null);
+
+// ── Ministerial midday sun ban on a logged field unit ───────────────────────
+// Every figure below is derived; nothing about 12:00, 15:00 or the season is typed here.
+const heatWin = heatBanWindow("2026-06-20");
+assert.equal(heatWin.startHour, ruleValue("hours.heat.startHour"));
+assert.equal(heatWin.endHour, ruleValue("hours.heat.endHour"));
+assert.equal(heatWin.seasonAr, `من ${ruleValue("hours.heat.fromDay")} يونيو إلى ${ruleValue("hours.heat.toDay")} سبتمبر`);
+
+// The hours themselves carry no المادة chip — they are the decision's figures.
+assert.equal(citeRule("hours.heat.startHour"), null);
+assert.equal(explainRule("hours.heat.startHour")?.labelAr, "قرار وزاري");
+
+// Decision 3337 was issued on articles 122 and 243 — 122 is the one with a text to read.
+const heatCite = citeRule("hours.heat.cite");
+assert.ok(heatCite);
+assert.equal(heatCite.article, "122");
+assert.equal(heatCite.labelAr, "المادة 122");
+assert.ok(heatCite.hintAr.includes("3337"));
+assert.ok(heatCite.textAr.includes("ولا يجوز لصاحب العمل أن يحمّل العمال"));
+assert.equal(heatCite.textAr, articleOfficialText("122").ar);
+
+// The decision's own wording is quoted, never paraphrased into an article.
+assert.ok(DECISION_3337_TEXT_AR.includes("لا يجوز تشغيل العامل في الأعمال المكشوفة تحت أشعة الشمس"));
+assert.equal(heatBanDecisionLabel(true), "قرار وزاري رقم 3337 وتاريخ 15/7/1435هـ");
+assert.ok(heatBanDecisionDutiesNote(true).includes("المادتين 122 و243"));
+
+// The place's consequence is one sentence with the hours in it — no vague «نافذة الحظر».
+assert.equal(taskModeConsequence(""), "");
+assert.equal(
+  taskModeConsequence("field", { ar: true }),
+  `التسجيل يتطلب بصمة اليوم، ويُرفض بين ${heatWin.startLabel} و${heatWin.endLabel} ${heatWin.seasonAr} — حظر العمل تحت أشعة الشمس.`,
+);
+assert.ok(taskModeConsequence("onsite", { ar: true }).includes("لا يسري"));
+assert.ok(taskModeConsequence("remote", { ar: true }).includes("لا تُطلب بصمة موقع"));
+assert.ok(taskModeConsequence("field", { ar: false }).includes("12:00"));
+
+// Open air is the nature the supervisor stated — never inferred from the work kind.
+const fieldTask = { id: "t_heat", mode: "field", workKind: "cm", targetCount: 4, completedCount: 0 };
+const deskTask = { ...fieldTask, mode: "onsite", workKind: "of" };
+const remoteTask = { ...fieldTask, mode: "remote" };
+// The default work kind is عام: guessing from it would call an office task open air.
+const generalIndoorTask = { ...fieldTask, mode: "onsite", workKind: "gn" };
+const unsetTask = { ...fieldTask, mode: "" };
+assert.equal(isOutdoorFieldTask(fieldTask), true);
+assert.equal(isOutdoorFieldTask(deskTask), false);
+assert.equal(isOutdoorFieldTask(remoteTask), false);
+assert.equal(isOutdoorFieldTask(generalIndoorTask), false);
+assert.equal(isOutdoorFieldTask(unsetTask), false);
+
+// Nature is stated at creation; an unstated one is refused by name, not defaulted.
+assert.equal(checkTaskModeGate("field").ok, true);
+assert.equal(checkTaskModeGate("field").mode, "field");
+assert.equal(checkTaskModeGate("").ok, false);
+assert.equal(checkTaskModeGate("").error, "TASK_MODE_REQUIRED");
+assert.ok(checkTaskModeGate("").reason.includes("ميداني في الهواء الطلق"));
+assert.equal(checkTaskModeGate("outdoors").ok, false);
+assert.equal(normalizeTaskMode("FIELD"), "field");
+assert.equal(normalizeTaskMode("onsite "), "onsite");
+assert.equal(normalizeTaskMode("yard"), "");
+assert.equal(taskModeLabel("field", "ar"), "ميداني في الهواء الطلق");
+assert.equal(taskModeLabel("", "ar"), "طبيعة غير محدَّدة");
+
+// Only remote waives the site fingerprint — open-air work still punches in.
+assert.equal(taskWaivesSiteAttendance(remoteTask), true);
+assert.equal(taskWaivesSiteAttendance(fieldTask), false);
+assert.equal(taskWaivesSiteAttendance(deskTask), false);
+
+// Riyadh wall clock, never the runner's zone: same instant, two offsets.
+assert.equal(riyadhClock(new Date("2026-06-20T13:00:00+03:00")).label, "13:00");
+assert.equal(riyadhClock(new Date("2026-06-20T10:00:00Z")).label, "13:00");
+assert.equal(riyadhClock(new Date("2026-06-20T13:00:00+03:00")).dayKey, "2026-06-20");
+
+const inSeasonMidday = new Date("2026-06-20T13:00:00+03:00");
+const inSeasonMorning = new Date("2026-06-20T09:00:00+03:00");
+const offSeasonMidday = new Date("2026-12-20T13:00:00+03:00");
+assert.equal(isHeatBanDate("2026-06-20"), true);
+assert.equal(isHeatBanDate("2026-12-20"), false);
+
+// 1) Field task · in season · 13:00 Riyadh → refused, by name, in Arabic.
+const heatBlocked = checkTaskHeatBanGate(fieldTask, { now: inSeasonMidday, amount: 1 });
+assert.equal(heatBlocked.ok, false);
+assert.equal(heatBlocked.error, "HEAT_BAN");
+assert.equal(heatBlocked.ruleId, "hours.heat.startHour");
+assert.equal(heatBlocked.labelAr, "قرار وزاري");
+assert.equal(
+  heatBlocked.reason,
+  "موقوف — حظر العمل تحت أشعة الشمس: لا يُسجَّل إنجاز ميداني بين 12:00 و15:00 بتوقيت الرياض من 15 يونيو إلى 15 سبتمبر. الوقت الآن 13:00، فسجّل الإنجاز بعد 15:00. الساعتان والموسم من قرار وزاري رقم 3337 وتاريخ 15/7/1435هـ، الصادر على المادة 122.",
+);
+// The refusal hands over the statute it stands on, text and all — not a bare label.
+assert.equal(heatBlocked.cite.article, "122");
+assert.equal(heatBlocked.cite.textAr, articleOfficialText("122").ar);
+assert.ok(heatBlocked.reason.includes(heatBlocked.cite.labelAr));
+// The refusal names the reason, the window and when it lifts — never a bare "not allowed".
+assert.ok(heatBlocked.reason.includes(heatWin.endLabel));
+assert.ok(heatBlocked.reason.includes(heatWin.seasonAr));
+
+// 2) Field task · in season · 09:00 Riyadh → passes.
+assert.equal(checkTaskHeatBanGate(fieldTask, { now: inSeasonMorning, amount: 1 }).ok, true);
+// 3) Field task · out of season (December) · 13:00 → passes.
+assert.equal(checkTaskHeatBanGate(fieldTask, { now: offSeasonMidday, amount: 1 }).ok, true);
+// 4) Indoor / remote task · in season · 13:00 → passes untouched.
+assert.equal(checkTaskHeatBanGate(deskTask, { now: inSeasonMidday, amount: 1 }).ok, true);
+assert.equal(checkTaskHeatBanGate(remoteTask, { now: inSeasonMidday, amount: 1 }).ok, true);
+// A عام task indoors is the common case: banning it would idle the offices at noon.
+assert.equal(checkTaskHeatBanGate(generalIndoorTask, { now: inSeasonMidday, amount: 1 }).ok, true);
+assert.equal(checkTaskHeatBanGate(generalIndoorTask, { now: inSeasonMidday, amount: 1 }).skipped, "not_outdoor");
+assert.equal(checkTaskHeatBanGate(unsetTask, { now: inSeasonMidday, amount: 1 }).ok, true);
+
+// Season edges and the half-open window, both derived from the rule rows.
+const lastBanDay = `2026-${String(ruleValue("hours.heat.toMonth")).padStart(2, "0")}-${String(ruleValue("hours.heat.toDay")).padStart(2, "0")}`;
+assert.equal(checkTaskHeatBanGate(fieldTask, { now: new Date(`${lastBanDay}T13:00:00+03:00`), amount: 1 }).ok, false);
+assert.equal(checkTaskHeatBanGate(fieldTask, { now: new Date(`2026-06-20T${heatWin.endLabel}:00+03:00`), amount: 1 }).ok, true);
+assert.equal(checkTaskHeatBanGate(fieldTask, { now: new Date(`2026-06-20T${heatWin.startLabel}:00+03:00`), amount: 1 }).ok, false);
+
+// Reporting a stopped day is not a realized unit — blocking it would buy silence.
+assert.equal(checkTaskHeatBanGate(fieldTask, { now: inSeasonMidday, amount: 0 }).ok, true);
+assert.equal(checkTaskHeatBanGate(fieldTask, { now: inSeasonMidday, amount: 0 }).skipped, "no_unit");
+
+// Creation is a notice, not a gate: a window spanning the season still passes.
+// The severity ladder rides on the notice, so the create form and the task card
+// read red for any span the season reaches, and only the log gate's own refusal
+// carries the heavier level above it.
+assert.deepEqual(HEAT_BAN_STATE_LEVEL, {
+  off_season: "cite",
+  before_window: "alert",
+  in_window: "block",
+  after_window: "alert",
+});
+assert.notEqual(HEAT_BAN_STATE_LEVEL.before_window, HEAT_BAN_STATE_LEVEL.off_season);
+assert.notEqual(HEAT_BAN_STATE_LEVEL.in_window, HEAT_BAN_STATE_LEVEL.before_window);
+const spanNotice = deriveTaskHeatBanNotice({ ...fieldTask, startAt: "2026-06-10", dueAt: "2026-06-30" });
+assert.ok(spanNotice);
+assert.equal(spanNotice.id, "heat_ban");
+assert.equal(spanNotice.level, HEAT_BAN_STATE_LEVEL.before_window);
+assert.equal(spanNotice.inSeason, true);
+assert.equal(spanNotice.labelAr, "قرار وزاري");
+assert.equal(spanNotice.cite.article, "122");
+assert.ok(spanNotice.textAr.includes(heatWin.seasonAr));
+assert.ok(spanNotice.textAr.includes("3337"));
+// A span the season reaches is an alert, not reference — the ban bites on those days.
+assert.notEqual(spanNotice.level, HEAT_BAN_STATE_LEVEL.off_season);
+
+// State 1 — a span the season never reaches keeps the decision readable, in a
+// cite level: no red is owed for a December task, whatever hour it is opened at.
+const offSeasonSpan = deriveTaskHeatBanNotice({ ...fieldTask, startAt: "2026-12-01", dueAt: "2026-12-20" });
+assert.ok(offSeasonSpan);
+assert.equal(offSeasonSpan.id, "heat_ban_off_season");
+assert.equal(offSeasonSpan.level, HEAT_BAN_STATE_LEVEL.off_season);
+assert.equal(offSeasonSpan.inSeason, false);
+assert.equal(offSeasonSpan.cite.article, "122");
+assert.ok(offSeasonSpan.textAr.includes(heatWin.seasonAr));
+assert.ok(offSeasonSpan.textAr.includes(heatWin.startLabel));
+assert.ok(offSeasonSpan.textAr.includes(heatWin.endLabel));
+// The creation notice never carries the block level — that stays with the log gate.
+assert.notEqual(offSeasonSpan.level, HEAT_BAN_STATE_LEVEL.in_window);
+assert.notEqual(spanNotice.level, HEAT_BAN_STATE_LEVEL.in_window);
+assert.equal(heatBlocked.ok, false);
+
+// Indoors never reaches the ladder, so nothing to paint at all.
+assert.equal(deriveTaskHeatBanNotice({ ...deskTask, startAt: "2026-06-10", dueAt: "2026-06-30" }), null);
+assert.equal(deriveTaskHeatBanNotice({ ...generalIndoorTask, startAt: "2026-06-10", dueAt: "2026-06-30" }), null);
 
 console.log("opsDerivations E2E rules: PASS");

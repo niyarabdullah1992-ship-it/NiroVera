@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { CARD, MUTED, NAVY, NAVY_FILL, field, textarea } from "@/lib/platformStyles";
 import { taskAssigneeId } from "@/lib/opsDerivations";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -41,19 +42,17 @@ export default function OpsReassignModal({
   const [toId, setToId] = useState(options[0] ? String(options[0].employeeId || options[0].id) : "");
   const [delegatedAt, setDelegatedAt] = useState(todayKey());
   const [actingUntil, setActingUntil] = useState(addDaysKey(todayKey(), 7));
-  const [actingUntilTime, setActingUntilTime] = useState("17:00");
   const [reason, setReason] = useState("");
+  const [ack, setAck] = useState(false);
 
   if (!task) return null;
 
   const start = String(delegatedAt || "").slice(0, 10);
   const end = String(actingUntil || "").slice(0, 10);
-  const timeOk = /^\d{2}:\d{2}$/.test(actingUntilTime);
-  const rangeOk = !!start && !!end && end >= start && timeOk;
-  const canSubmit = !!toId && rangeOk && reason.trim().length > 0 && !busy;
-  const actingUntilAt = rangeOk ? `${end}T${actingUntilTime}` : "";
+  const rangeOk = !!start && !!end && end >= start;
+  const canSubmit = !!toId && rangeOk && reason.trim().length > 0 && ack && !busy;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
@@ -126,18 +125,6 @@ export default function OpsReassignModal({
               ar={ar}
               placeholder={ar ? "تاريخ النهاية" : "End date"}
             />
-            <label className="flex flex-col gap-1">
-              <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
-                {ar ? "وقت النهاية (مطلوب)" : "End time (required)"}
-              </span>
-              <input
-                type="time"
-                value={actingUntilTime}
-                onChange={(e) => setActingUntilTime(e.target.value)}
-                dir="ltr"
-                style={field}
-              />
-            </label>
           </div>
         </div>
         {start && end && end < start && (
@@ -159,6 +146,20 @@ export default function OpsReassignModal({
           />
         </label>
 
+        <label className="mt-3 flex items-start gap-2 text-[11px] leading-6" style={{ color: NAVY }}>
+          <input
+            type="checkbox"
+            checked={ack}
+            onChange={(e) => setAck(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            {ar
+              ? `أقرّ أن التوكيل ينتهي بنهاية يوم ${end || "—"}، ويحق للموكِّل إنهاؤه قبل ذلك.`
+              : `I acknowledge the delegation ends at the close of ${end || "—"}, and the delegator may end it earlier.`}
+          </span>
+        </label>
+
         <div className="mt-3 flex justify-end gap-2">
           <button
             type="button"
@@ -171,13 +172,15 @@ export default function OpsReassignModal({
           <button
             type="button"
             disabled={!canSubmit}
-            onClick={() => onConfirm?.({
+            onClick={() => {
+              onConfirm?.({
               toId,
               reason: reason.trim(),
               delegatedAt: start,
-              actingUntil: actingUntilAt,
+              actingUntil: end,
               kind: "delegate",
-            })}
+            });
+            }}
             className="rounded-lg px-3 py-1.5 text-xs text-white disabled:opacity-50"
             style={{ background: NAVY_FILL }}
           >
@@ -185,6 +188,7 @@ export default function OpsReassignModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

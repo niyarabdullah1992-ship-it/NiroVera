@@ -11,21 +11,24 @@ import { isEscalated } from "@/lib/opsDerivations";
 import { listLocalTodayAttendance, mergeAttendanceRows } from "@/lib/localAttendanceFallback";
 import { isOnLeaveToday, leaveTypeLabel } from "@/lib/leaveTypes";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
 import PullToRefresh from "@/components/mobile/PullToRefresh";
-import DashboardPersonaBar from "@/components/dashboard/DashboardPersonaBar";
+import { Link } from "react-router-dom";
 import EmployeeDashboard from "@/components/dashboard/EmployeeDashboard";
 import HandoffCommandBoard from "@/components/dashboard/HandoffCommandBoard";
 import OperationsModuleGrid from "@/components/dashboard/OperationsModuleGrid";
+import DashboardPersonaBar from "@/components/dashboard/DashboardPersonaBar";
+import useCommandSigningSnapshot from "@/hooks/useCommandSigningSnapshot";
 import StationManagerDashboard from "@/components/dashboard/StationManagerDashboard";
 import SuiteWelcomeModal from "@/components/suite/SuiteWelcomeModal";
+import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { hasSeenSuiteWelcome } from "@/lib/suiteApps";
-import ErpCommandBanner from "@/components/erp/ErpCommandBanner";
-import { erpKicker } from "@/lib/erpModuleMeta";
-import { getChatUnreadTotal, subscribeChatUnread } from "@/lib/chatUnreadStore";
+import { pageKicker } from "@/lib/moduleMeta";
+import { openWrittenConsentCount } from "@/lib/writtenConsent";
+import { BORDER, MUTED } from "@/lib/platformStyles";
 
 function pendingSigningCount(data) {
   return (data?.signatureRequests || []).filter((row) => {
+    if (row?.consentId || row?.otherRequestId || row?.kind === "written_consent" || ["salary_letter", "employment_letter", "document", "custody"].includes(row?.kind)) return false;
     const status = String(row.status || "").toLowerCase();
     return status === "pending" || status === "awaiting" || status === "in_progress";
   }).length;
@@ -86,11 +89,9 @@ export default function Dashboard() {
   const [attendanceRows, setAttendanceRows] = useState([]);
   const [targetRows, setTargetRows] = useState([]);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
-  const [chatUnread, setChatUnread] = useState(() => getChatUnreadTotal());
-
+  const [face, setFace] = useState("decide");
   const ar = lang === "ar";
-
-  useEffect(() => subscribeChatUnread(setChatUnread), []);
+  const signingSnap = useCommandSigningSnapshot(company, currentUser, data);
 
   useEffect(() => {
     if (!company?.id) return;
@@ -198,61 +199,78 @@ export default function Dashboard() {
     activeMembers: todayAtt.presentLike,
     employees: teamEmployees.length,
   };
+  const pendingLeaveEarly = teamEmployees.reduce(
+    (sum, employee) => sum + (employee.leaveRequests || []).filter((request) => request.status === "pending").length,
+    0,
+  );
+  const isStationLead = currentUser.role === "station_manager" || currentUser.role === "pgm";
+
+  const wrapBoard = (decideBody, mapMetrics, viewNote) => (
+    <>
+      {welcome}
+      <PullToRefresh onRefresh={handleRefresh}>
+        <SuiteWorkspaceFrame
+          ar={ar}
+          kicker={pageKicker("/app", lang)}
+          title={ar ? "لوحة القيادة" : "Dashboard"}
+          hint={ar
+            ? <>نظرة قرار: <Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>حضور</Link> يغذّي المسير · <Link to="/app/tasks" style={{ color: "inherit", fontWeight: 600 }}>مهمة</Link> تحتاج إثباتاً · <Link to="/app/signing" style={{ color: "inherit", fontWeight: 600 }}>توقيع</Link> ثم تحقق. الأرقام من السجل والنطاق المعروض.</>
+            : <>A decision glance: <Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>attendance</Link> feeds payroll · a <Link to="/app/tasks" style={{ color: "inherit", fontWeight: 600 }}>task</Link> needs proof · <Link to="/app/signing" style={{ color: "inherit", fontWeight: 600 }}>sign</Link> then verify. Figures from the registry and the current scope.</>}
+          tabs={[
+            {
+              value: "decide",
+              label: isEmployee ? (ar ? "يومي" : "My day") : (ar ? "قرار اليوم" : "Today's decision"),
+              count: isEmployee ? signingSnap.mine : pendingLeaveEarly,
+            },
+            { value: "map", label: ar ? "دورة الإثبات" : "Proof cycle" },
+          ]}
+          tool={face}
+          onTool={setFace}
+          viewNote={viewNote}
+          legal={ar
+            ? "الأرقام مشتقّة من السجل والنطاق المعروض — ليست تقديراً ولا تُختلق. ملفي = محطة العمل · إدارة = فرع واحد."
+            : "Figures are derived from the registry and the current scope — not estimated or invented. My file = work station · Manage = one branch."}
+          meta={(
+            <>
+              <DashboardPersonaBar lang={lang} />
+              <span style={{ width: 1, height: 30, background: BORDER }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
+                <span style={{ fontSize: 10, color: MUTED }}>{ar ? "حضور اليوم" : "Today's attendance"}</span>
+                <span style={{ fontSize: 15, fontWeight: 700 }}>{Math.round(attendanceRate)}%</span>
+              </div>
+              {!isEmployee && pendingLeaveEarly > 0 ? (
+                <>
+                  <span style={{ width: 1, height: 30, background: BORDER }} />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
+                    <span style={{ fontSize: 10, color: MUTED }}>{ar ? "بانتظار قرارك" : "Awaiting you"}</span>
+                    <span style={{ fontSize: 15, fontWeight: 700 }}>{pendingLeaveEarly}</span>
+                  </div>
+                </>
+              ) : null}
+            </>
+          )}
+        >
+          {face === "map" ? (
+            <OperationsModuleGrid metrics={mapMetrics} lang={lang} user={currentUser} data={data} company={company} />
+          ) : decideBody}
+        </SuiteWorkspaceFrame>
+      </PullToRefresh>
+    </>
+  );
 
   if (isEmployee) {
-    return (
-      <>
-        {welcome}
-        <PullToRefresh onRefresh={handleRefresh}>
-          <PlatformStampShell
-            ar={lang === "ar"}
-            kicker={erpKicker("/app", lang)}
-            title={lang === "ar" ? "لوحة العمل" : "Work dashboard"}
-            hint={lang === "ar" ? "حضور اليوم، المهام، ودورة الإثبات في مكان واحد." : "Today's attendance, tasks, and the proof cycle in one place."}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <ErpCommandBanner ar={lang === "ar"} metrics={buildModuleMetrics(data, attendanceExtras)} />
-              <DashboardPersonaBar lang={lang} />
-              <EmployeeDashboard user={currentUser} company={company} data={data} />
-              <OperationsModuleGrid
-                metrics={buildModuleMetrics(data, attendanceExtras)}
-                lang={lang}
-                user={currentUser}
-                data={data}
-                company={company}
-              />
-            </div>
-          </PlatformStampShell>
-        </PullToRefresh>
-      </>
+    return wrapBoard(
+      <EmployeeDashboard user={currentUser} company={company} data={data} />,
+      buildModuleMetrics(data, attendanceExtras),
+      ar ? "حضورك ثم مهامك ثم الإثبات — الرفع والقرار ليسا من هنا." : "Your attendance, then your tasks, then proof — raising and ruling are not from here.",
     );
   }
 
-  if (currentUser.role === "station_manager" || currentUser.role === "pgm") {
-    return (
-      <>
-        {welcome}
-        <PullToRefresh onRefresh={handleRefresh}>
-          <PlatformStampShell
-            ar={lang === "ar"}
-            kicker={erpKicker("/app", lang)}
-            title={lang === "ar" ? "مركز القيادة" : "Command center"}
-            hint={lang === "ar" ? "قرارات اليوم على نطاق فرعك." : "Today's decisions for your station scope."}
-            maxWidth={1280}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <StationManagerDashboard user={currentUser} data={data} stoppageCount={stoppageCount} chatUnread={chatUnread} />
-              <OperationsModuleGrid
-                metrics={buildModuleMetrics(data, attendanceExtras)}
-                lang={lang}
-                user={currentUser}
-                data={data}
-                company={company}
-              />
-            </div>
-          </PlatformStampShell>
-        </PullToRefresh>
-      </>
+  if (isStationLead) {
+    return wrapBoard(
+      <StationManagerDashboard user={currentUser} data={data} stoppageCount={stoppageCount} />,
+      buildModuleMetrics(data, attendanceExtras),
+      ar ? "قرارات اليوم على نطاق فرعك — الحضور يغذّي المسير، والمهمة تحتاج إثباتاً." : "Today's decisions for your station — attendance feeds payroll, and a task needs proof.",
     );
   }
 
@@ -283,7 +301,7 @@ export default function Dashboard() {
   const riskWeights = getRiskWeights(data);
   const riskScore = Math.min(100, Math.round(
     (absentCount * riskWeights.absent) + (delayedTasks * riskWeights.delayed) + (stoppageCount * riskWeights.stoppage) +
-    (pendingReports * riskWeights.reports) + (criticalStations * riskWeights.critical) +
+    (criticalStations * riskWeights.critical) +
     (recentIncidents * riskWeights.incidents) + (openHazards * riskWeights.hazards)
   ));
 
@@ -291,6 +309,8 @@ export default function Dashboard() {
     (sum, employee) => sum + (employee.leaveRequests || []).filter((request) => request.status === "pending").length,
     0,
   );
+  const selfRow = (data.employees || []).find((row) => row.id === currentUser?.id) || currentUser;
+  const mineConsentCount = openWrittenConsentCount([selfRow]);
   const leaveQueue = teamEmployees.flatMap((employee) =>
     (employee.leaveRequests || [])
       .filter((request) => request.status === "pending")
@@ -304,26 +324,17 @@ export default function Dashboard() {
           : (request.awaiting === "finance" ? "Awaiting finance" : request.awaiting === "hr" ? "Awaiting HR" : "Awaiting manager"),
       })),
   );
-  const reportQueue = reports
-    .filter((r) => r.status === "pending")
-    .slice(0, 4)
-    .map((r) => ({
-      id: r.id,
-      name: teamEmployees.find((e) => e.id === r.employeeId)?.name || r.authorName || (lang === "ar" ? "موظف" : "Staff"),
-      type: lang === "ar" ? "تقرير يومي" : "Daily report",
-      date: formatDate(r.createdAt || new Date(), lang, { day: "numeric", month: "short" }),
-      status: lang === "ar" ? "بانتظار المدير" : "Awaiting manager",
-    }));
-  const handoffQueue = [...leaveQueue, ...reportQueue].slice(0, 6);
+  const handoffQueue = leaveQueue.slice(0, 6);
   const handoffAlerts = [
-    ...(chatUnread ? [{ level: "info", text: lang === "ar" ? `${chatUnread} محادثة غير مقروءة.` : `${chatUnread} unread conversation(s).`, to: "/app/chat" }] : []),
     ...(escalatedTasks ? [{ level: "info", text: lang === "ar" ? `${escalatedTasks} مهمة في صندوق التصعيد — تحتاج مراجعتك.` : `${escalatedTasks} task(s) in the escalation inbox — need your review.`, to: "/app/escalation" }] : []),
     ...(delayedTasks ? [{ level: "info", text: lang === "ar" ? `${delayedTasks} مهمة تقترب من موعدها أو متأخرة.` : `${delayedTasks} tasks due soon or overdue.`, to: "/app/tasks" }] : []),
     ...(absentCount ? [{ level: "warn", text: lang === "ar" ? `${absentCount} من المجدولين لم يسجّلوا حضورًا بعد.` : `${absentCount} scheduled staff not checked in yet.`, to: "/app/attendance" }] : []),
-    ...(pendingReports ? [{ level: "warn", text: lang === "ar" ? `${pendingReports} تقرير يومي بانتظار الاعتماد.` : `${pendingReports} daily reports awaiting approval.`, to: "/app/daily-report" }] : []),
     ...(openHazards ? [{ level: "critical", text: lang === "ar" ? `${openHazards} مخاطر سلامة بانتظار الإغلاق.` : `${openHazards} open safety hazards awaiting closure.`, to: "/app/safety" }] : []),
-    ...(pendingLeaveCount ? [{ level: "ok", text: lang === "ar" ? `${pendingLeaveCount} طلب إجازة بانتظار القرار.` : `${pendingLeaveCount} leave requests awaiting a decision.`, to: "/app/leave" }] : []),
-  ].filter(Boolean).slice(0, 4);
+    ...(pendingLeaveCount ? [{ level: "ok", text: lang === "ar" ? `${pendingLeaveCount} طلب إجازة بانتظار القرار.` : `${pendingLeaveCount} leave requests awaiting a decision.`, to: "/app/requests/leave" }] : []),
+    ...(mineConsentCount ? [{ level: "warn", text: lang === "ar" ? `${mineConsentCount} موافقة خطية تنتظر ختمك في طلباتي.` : `${mineConsentCount} written consent awaiting your seal in My Requests.`, to: "/app/requests" }] : []),
+    ...(signingSnap.mine ? [{ level: "warn", text: lang === "ar" ? `${signingSnap.mine} ملف ينتظر ختمك — توقيع متوازٍ.` : `${signingSnap.mine} file(s) awaiting your seal — parallel signing.`, to: "/app/signing?tab=mine" }] : []),
+    ...(signingSnap.cooling ? [{ level: "info", text: lang === "ar" ? `${signingSnap.cooling} ملف في مهلة التراجع — البصمة مؤقتة حتى تُغلق.` : `${signingSnap.cooling} file(s) in the retract window — fingerprint is temporary until it closes.`, to: "/app/signing?tab=verify" }] : []),
+  ].filter(Boolean).slice(0, 5);
 
   const monthHired = teamEmployees.filter((e) => {
     const d = new Date(e.createdAt || e.hiredAt || e.startDate || 0);
@@ -336,79 +347,61 @@ export default function Dashboard() {
     { label: lang === "ar" ? "حضور اليوم" : "Today's attendance", pct: attendanceRate },
     { label: lang === "ar" ? "مهام" : "Tasks", pct: tasks.length ? Math.round((completed / tasks.length) * 100) : 100 },
     { label: lang === "ar" ? "سلامة" : "Safety", pct: Math.max(0, 100 - openHazards * 12 - criticalStations * 20) },
-    { label: lang === "ar" ? "اعتمادات" : "Approvals", pct: Math.max(0, 100 - (pendingLeaveCount + pendingReports) * 8) },
+    { label: lang === "ar" ? "اعتمادات" : "Approvals", pct: Math.max(0, 100 - pendingLeaveCount * 8) },
   ];
 
-  return (
-    <>
-      {welcome}
-      <PullToRefresh onRefresh={handleRefresh}>
-        <PlatformStampShell
-          ar={lang === "ar"}
-          kicker={erpKicker("/app", lang)}
-          title={lang === "ar" ? "مركز القيادة" : "Command center"}
-          hint={lang === "ar" ? "نظرة قرار على الناس والرعاية والعمليات والثقة." : "A decision glance across people, care, operations, and trust."}
-          maxWidth={1280}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <HandoffCommandBoard
-              lang={lang}
-              greetName={(currentUser.name || "").split(/\s+/)[0]}
-              readinessScore={readinessScore}
-                  factors={readinessFactors}
-                  employeesCount={todayAtt.scheduled}
-                  employeesDelta={monthHired || null}
-                  attendanceRate={attendanceRate}
-                  pendingLeave={pendingLeaveCount}
-                  pendingReports={pendingReports}
-                  leaveQueue={handoffQueue}
-                  alerts={handoffAlerts}
-                  stations={stations.map((s) => {
-                    const crew = teamEmployees.filter((e) => (e.stationId || null) === s.id && presentIds.has(String(e.id))).length;
-                    const open = tasks.filter((tk) => (tk.stationId || tk.station_id) === s.id && tk.status !== "completed").length
-                      + ((safetyRecs.find((r) => r.stationId === s.id)?.hazards || []).filter((h) => !h.closedAt).length);
-                    return {
-                      id: s.id,
-                      name: s.name,
-                      code: s.code || s.shortCode || "",
-                      crew,
-                      open,
-                    };
-                  })}
-                  openHazards={openHazards}
-                  criticalHazards={criticalStations}
-                  presentCount={checkedInCount}
-                  lateCount={mergedAttendanceRows.filter((row) => row.status === "late").length}
-                  leaveCount={teamEmployees.filter((e) => isOnLeaveToday(e)).length}
-                  absentCount={absentCount}
-                  daysClear={todayIncidents > 0 ? 0 : null}
-                />
-                <OperationsModuleGrid
-                  metrics={buildModuleMetrics(data, {
-                    tasks: tasks.length,
-                    completedTasks: completed,
-                    openTasks: Math.max(0, tasks.length - completed),
-                    complaints: anonOpenCount,
-                    reports: reports.length,
-                    pendingReports,
-                    attendanceRate,
-                    checkedIn: checkedInCount,
-                    absentCount,
-                    scheduled: todayAtt.scheduled,
-                    signing: pendingSigningCount(data),
-                    performance: tasks.length ? Math.round((completed / tasks.length) * 100) : 0,
-                    employees: teamEmployees.length,
-                    activeMembers: activeMembersCount,
-                    pendingLeave: pendingLeaveCount,
-                    hazards: openHazards,
-                    pendingExpenses: pendingExpenseCount(data),
-                    escalated: escalatedTasks,
-                  })}
-                  lang={lang} user={currentUser} data={data} company={company}
-                />
-          </div>
-        </PlatformStampShell>
-      </PullToRefresh>
-    </>
+  return wrapBoard(
+    <HandoffCommandBoard
+      lang={lang}
+      greetName={(currentUser.name || "").split(/\s+/)[0]}
+      readinessScore={readinessScore}
+      factors={readinessFactors}
+      employeesCount={todayAtt.scheduled}
+      employeesDelta={monthHired || null}
+      attendanceRate={attendanceRate}
+      pendingLeave={pendingLeaveCount}
+      leaveQueue={handoffQueue}
+      alerts={handoffAlerts}
+      stations={stations.map((s) => {
+        const crew = teamEmployees.filter((e) => (e.stationId || null) === s.id && presentIds.has(String(e.id))).length;
+        const open = tasks.filter((tk) => (tk.stationId || tk.station_id) === s.id && tk.status !== "completed").length
+          + ((safetyRecs.find((r) => r.stationId === s.id)?.hazards || []).filter((h) => !h.closedAt).length);
+        return {
+          id: s.id,
+          name: s.name,
+          code: s.code || s.shortCode || "",
+          crew,
+          open,
+        };
+      })}
+      openHazards={openHazards}
+      criticalHazards={criticalStations}
+      presentCount={checkedInCount}
+      lateCount={mergedAttendanceRows.filter((row) => row.status === "late").length}
+      leaveCount={teamEmployees.filter((e) => isOnLeaveToday(e)).length}
+      absentCount={absentCount}
+      daysClear={todayIncidents > 0 ? 0 : null}
+    />,
+    buildModuleMetrics(data, {
+      tasks: tasks.length,
+      completedTasks: completed,
+      openTasks: Math.max(0, tasks.length - completed),
+      complaints: anonOpenCount,
+      reports: reports.length,
+      pendingReports,
+      attendanceRate,
+      checkedIn: checkedInCount,
+      absentCount,
+      scheduled: todayAtt.scheduled,
+      signing: pendingSigningCount(data),
+      performance: tasks.length ? Math.round((completed / tasks.length) * 100) : 0,
+      employees: teamEmployees.length,
+      activeMembers: activeMembersCount,
+      pendingLeave: pendingLeaveCount,
+      hazards: openHazards,
+      pendingExpenses: pendingExpenseCount(data),
+      escalated: escalatedTasks,
+    }),
+    ar ? "ما يحتاج قرارك اليوم — كل رقم يفتح القسم الذي يصلحه." : "What needs your decision today — each figure opens the section that fixes it.",
   );
 }

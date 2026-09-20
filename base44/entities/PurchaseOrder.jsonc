@@ -1,15 +1,23 @@
+// purpose: PurchaseOrder tenant row.
+// domain: money
+// isolation: companyId
+// owner: inventory
+// status: canonical
 {
   "name": "PurchaseOrder",
   "type": "object",
   "properties": {
     "companyId": {
-      "type": "string"
+      "type": "string",
+      "description": "Tenant of this purchase order."
     },
     "orderNumber": {
-      "type": "string"
+      "type": "string",
+      "description": "Human PO number."
     },
     "requestId": {
-      "type": "string"
+      "type": "string",
+      "description": "→ ProcurementRequest id."
     },
     "stationId": {
       "type": "string"

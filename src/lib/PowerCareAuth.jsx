@@ -114,7 +114,7 @@ export function AuthProvider({ children }) {
       // owner/director from the synced roster.
       if (s.userId && localData) {
         const emps = localData.employees || [];
-        if (emps.length > 0 && !emps.some((e) => e.id === s.userId)) {
+        if (emps.length > 0 && !emps.some((e) => e.id === s.userId || e.employeeId === s.userId)) {
           const fallback = emps.find((e) => e.id === localData.ownerId) || emps.find((e) => e.role === "director");
           if (fallback) {
             switchUser(fallback.id);
@@ -170,6 +170,13 @@ export function AuthProvider({ children }) {
               })
             );
           });
+          if (changed("blob:leaveRoster")) hydrationTasks.push(
+            hydrateBlobFromEntity(s.companyId, "leaveRoster").then((records) => {
+              if (!records) return;
+              cacheCloudData(s.companyId, { leaveRoster: records });
+              setData((prevData) => (prevData ? { ...prevData, leaveRoster: records } : prevData));
+            })
+          );
           // Company-wide settings (name, plan, chat groups, rate limits) — single record, server wins.
           if (changed("blob:companyMeta")) hydrationTasks.push(
             hydrateBlobFromEntity(s.companyId, "companyMeta").then((records) => {
@@ -311,7 +318,7 @@ export function AuthProvider({ children }) {
   };
 
   const currentUser = data && session?.userId
-    ? (data.employees || []).find((e) => e.id === session.userId)
+    ? (data.employees || []).find((e) => e.id === session.userId || e.employeeId === session.userId)
     : null;
   const companyWithPlan = useMemo(() => company ? { ...company, planConfig } : company, [company, planConfig]);
 

@@ -2,6 +2,7 @@ import React from "react";
 import { calendarDateKey, summarizeAttendanceDay } from "@/lib/attendanceCalendar";
 import { isOnApprovedLeave } from "@/lib/leaveTypes";
 import { ACCENT, BORDER, CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
+import { formatUiNumber } from "@/lib/dateFormat";
 
 const STATUS = {
   present: { ar: "حاضر", en: "Present", bg: "#ECFDF3", fg: "#15803D", bd: "#BBF7D0", dot: "#1E9E63" },
@@ -34,6 +35,7 @@ export default function AttendanceMonthCalendarGrid({
   currentUser,
   lang,
   teamView,
+  proofsByDate = {},
 }) {
   const ar = lang === "ar";
   const weekdays = ar
@@ -44,10 +46,10 @@ export default function AttendanceMonthCalendarGrid({
 
   return (
     <div>
-      <div style={{ overflow: "hidden", borderRadius: 12, border: `1px solid ${BORDER}`, background: CARD }}>
+      <div style={{ overflow: "hidden", border: `1px solid ${BORDER}`, background: CARD }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", borderBottom: `1px solid ${BORDER}`, background: SURFACE }}>
           {weekdays.map((day) => (
-            <div key={day} style={{ padding: "6px 4px", textAlign: "center", fontSize: 10, fontWeight: 600, color: MUTED }}>
+            <div key={day} style={{ padding: "10px 4px", textAlign: "center", fontSize: 11, fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>
               {day}
             </div>
           ))}
@@ -83,33 +85,30 @@ export default function AttendanceMonthCalendarGrid({
               leaveOn: (employee, dateKey) => isOnApprovedLeave(employee, dateKey),
             });
             const ownKey = Object.keys(selfStatus).find((status) => selfStatus[status] > 0);
+            const dayProofs = proofsByDate[key] || [];
             return (
               <div
                 key={key}
+                className={`nv-att-month-cell${today ? " is-today" : ""}`}
                 style={{
-                  minHeight: 92,
-                  padding: 6,
+                  minHeight: 104,
+                  padding: "10px 8px",
                   borderBottom: `1px solid ${BORDER}`,
                   borderInlineEnd: `1px solid ${BORDER}`,
                   background: CARD,
-                  boxShadow: today ? `inset 0 0 0 2px ${ACCENT}` : "none",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 10 }}>
                   <span
+                    dir="ltr"
                     style={{
-                      display: "inline-flex",
-                      minWidth: 20,
-                      height: 20,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: "50%",
-                      fontSize: 11,
+                      fontFamily: "'IBM Plex Mono', monospace",
+                      fontSize: 15,
                       fontWeight: 600,
                       color: today ? ACCENT : NAVY,
                     }}
                   >
-                    {date.getDate()}
+                    {formatUiNumber(date.getDate())}
                   </span>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
@@ -127,6 +126,19 @@ export default function AttendanceMonthCalendarGrid({
                     : ownKey && STATUS[ownKey]
                       ? <span style={chip(STATUS[ownKey])}>{ar ? STATUS[ownKey].ar : STATUS[ownKey].en}</span>
                       : null}
+                  {dayProofs.map((proof) => (
+                    <span
+                      key={proof.id || proof.ref}
+                      style={chip({
+                        bg: proof.kind === "visitor" ? "#ECFDF3" : "#EFF6FF",
+                        fg: proof.kind === "visitor" ? "#15803D" : "#1D4ED8",
+                        bd: proof.kind === "visitor" ? "#BBF7D0" : "#BFDBFE",
+                        dot: proof.kind === "visitor" ? "#1E9E63" : "#1D4ED8",
+                      })}
+                    >
+                      {proof.kind === "visitor" ? (ar ? "زائر" : "Visitor") : (ar ? "إثبات" : "Proof")}
+                    </span>
+                  ))}
                 </div>
               </div>
             );
@@ -143,6 +155,14 @@ export default function AttendanceMonthCalendarGrid({
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
           <span style={{ width: 10, height: 10, borderRadius: "50%", boxShadow: `inset 0 0 0 2px ${ACCENT}` }} />
           {ar ? "اليوم" : "Today"}
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#1D4ED8" }} />
+          {ar ? "إثبات عمل" : "Work proof"}
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#1E9E63" }} />
+          {ar ? "إثبات زائر" : "Visitor"}
         </span>
       </div>
     </div>

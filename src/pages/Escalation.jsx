@@ -1,32 +1,24 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, RefreshCw } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { base44 } from "@/api/base44Client";
-import { getCompanyToken } from "@/lib/store";
 import { deriveBranchEscalationChain } from "@/lib/orgDerivations";
 import { isEscalated } from "@/lib/opsDerivations";
-import { runLocalEscalationSweep } from "@/lib/localOpsFallback";
-import { isLocalPreviewActive } from "@/lib/localPreview";
 import { canAccessPath } from "@/lib/navVisibility";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { workplaceStations } from "@/lib/stationTree";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import { BORDER, CARD, INK, MUTED, NAVY, SURFACE, emptyState, ui } from "@/lib/platformStyles";
-import { toast } from "@/components/ui/use-toast";
-
-const MANAGER_ROLES = new Set(["owner", "director", "ops_manager", "station_manager", "pgm", "admin"]);
+import { pageKicker } from "@/lib/moduleMeta";
+import { BORDER, CARD, INK, MUTED, NAVY, emptyState, ui } from "@/lib/platformStyles";
 
 export default function Escalation() {
   const { lang } = useI18n();
   const ar = lang === "ar";
-  const { data, currentUser, company, refresh } = useAuth();
+  const { data, currentUser, company } = useAuth();
   const headerScope = useStationScope();
-  const [busy, setBusy] = useState(false);
 
   const allowed = canAccessPath("/app/escalation", currentUser, data, company);
-  const isManager = MANAGER_ROLES.has(currentUser?.role) || currentUser?.isOwner || currentUser?.admin;
 
   const stations = useMemo(() => {
     const workplaces = workplaceStations(data?.stations || []);
@@ -46,64 +38,9 @@ export default function Escalation() {
     chain: deriveBranchEscalationChain(station.id, data),
   })), [stations, data]);
 
-  const runSweep = async (force = false) => {
-    if (!company?.id || !isManager) return;
-    setBusy(true);
-    try {
-      if (isLocalPreviewActive()) {
-        const result = runLocalEscalationSweep(company.id, data, { force });
-        await refresh?.();
-        toast({
-          title: ar ? "فحص التصعيد" : "Escalation sweep",
-          description: ar
-            ? `صُعّد ${result.escalated || 0} مهمة`
-            : `${result.escalated || 0} task(s) escalated`,
-        });
-        return;
-      }
-      const res = await base44.functions.invoke("operations", {
-        action: "runEscalationSweep",
-        companyId: company.id,
-        sessionToken: getCompanyToken(company.id),
-        force,
-      });
-      const body = res?.data ?? res;
-      await refresh?.();
-      toast({
-        title: ar ? "فحص التصعيد" : "Escalation sweep",
-        description: ar
-          ? `صُعّد ${body?.escalated || 0} مهمة`
-          : `${body?.escalated || 0} task(s) escalated`,
-      });
-    } catch (err) {
-      if (company?.id) {
-        try {
-          const result = runLocalEscalationSweep(company.id, data, { force });
-          await refresh?.();
-          toast({
-            title: ar ? "فحص التصعيد (محلي)" : "Escalation sweep (local)",
-            description: ar
-              ? `صُعّد ${result.escalated || 0} مهمة`
-              : `${result.escalated || 0} task(s) escalated`,
-          });
-          return;
-        } catch {
-          /* fall through */
-        }
-      }
-      toast({
-        title: ar ? "تعذّر الفحص" : "Sweep failed",
-        description: err.message,
-        variant: "destructive",
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
   if (!allowed) {
     return (
-      <PlatformStampShell ar={ar} title={ar ? "التصعيد" : "Escalation"} hint={ar ? "لا صلاحية." : "No access."}>
+      <PlatformStampShell ar={ar} kicker={pageKicker("/app/escalation", lang)} title={ar ? "التصعيد" : "Escalation"} hint={ar ? "لا صلاحية." : "No access."}>
         <div style={emptyState}>{ar ? "هذا القسم للمديرين فقط." : "Managers only."}</div>
       </PlatformStampShell>
     );
@@ -112,44 +49,14 @@ export default function Escalation() {
   return (
     <PlatformStampShell
       ar={ar}
+      kicker={pageKicker("/app/escalation", lang)}
       title={ar ? "نظام التصعيد" : "Escalation system"}
       hint={ar
-        ? "سلسلة لكل فرع — رفض يدوي أو تصعيد تلقائي عند احتراق إيقاع الإنجاز."
-        : "Per-station chain — manual reject or auto-escalate when pace quota burns."}
+        ? "سلسلة لكل فرع — الرفض يُعاد للمنفّذ، وبعد ثلاثة رفض يحق له التصعيد. أسباب الرفض والتصعيد تظهر في مراسلات بطاقة المهمة، ليست خاصة. التصعيد التلقائي يبقى عند احتراق إيقاع الإنجاز."
+        : "Per-station chain — a reject returns to the executor; after three rejects they may escalate. Reject and escalate reasons stay on the task card thread, not in a private channel. Auto-escalate still fires when pace quota burns."}
       maxWidth={1280}
-      meta={isManager ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => runSweep(false)}
-          style={{ ...ui.btnPrimary, display: "inline-flex", alignItems: "center", gap: 6, opacity: busy ? 0.7 : 1 }}
-        >
-          <RefreshCw style={{ width: 14, height: 14 }} />
-          {ar ? "فحص التصعيد الآن" : "Run sweep now"}
-        </button>
-      ) : null}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ padding: "14px 16px", borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE, fontSize: 13, lineHeight: 1.7, color: MUTED }}>
-            {ar ? (
-              <>
-                <strong style={{ color: INK }}>كيف يعمل:</strong>
-                {" "}كل مهمة مربوطة بفرع. الرفض يرفعها مستوى في سلسلة ذلك الفرع.
-                {" "}يومياً (8 مساءً بتوقيت الرياض) يفحص النظام المهام التي لم تُستوفِ إيقاعها — ويصعّدها تلقائياً.
-                {" "}
-                <Link to="/app/org?tab=escalation" style={{ color: NAVY, fontWeight: 600 }}>اضبط السلسلة في الهيكل</Link>
-              </>
-            ) : (
-              <>
-                <strong style={{ color: INK }}>How it works:</strong>
-                {" "}Each task belongs to a station. Reject moves it one level up that station&apos;s chain.
-                {" "}Daily at 8 PM Riyadh, unmet pace quotas auto-escalate.
-                {" "}
-                <Link to="/app/org?tab=escalation" style={{ color: NAVY, fontWeight: 600 }}>Configure chains in Org</Link>
-              </>
-            )}
-          </div>
-
           <section style={{ borderRadius: 12, border: `1px solid ${BORDER}`, background: CARD, overflow: "hidden" }}>
             <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <div>
@@ -223,14 +130,6 @@ export default function Escalation() {
               ))
             )}
           </section>
-
-          <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
-            {ar
-              ? "تصعيد الشكاوى (صوت الموظف) له SLA منفصل — راجع قسم الالتزام."
-              : "Complaint escalation uses a separate SLA — see Care & compliance."}
-            {" "}
-            <Link to="/app/complaints" style={{ color: NAVY }}>{ar ? "صوت الموظف" : "Employee Voice"}</Link>
-          </div>
       </div>
     </PlatformStampShell>
   );

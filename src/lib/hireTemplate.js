@@ -17,7 +17,20 @@ import { addListPosition, companyLists, companyTemplates, createCompanyList, lis
 import { downloadXlsx, excelSerialToIso, isZipBuffer, listValidation, namedRange, parseXlsxFirstSheet } from "@/lib/simpleXlsx";
 
 const PLACEMENT_HEADERS = ["الاسم", "البريد", "الهوية", "الجوال", "تاريخ التعيين", "القائمة", "المنصب", "الدرجة", "الفرع", "يتبع فرع", "يتبع", "فروع إضافية"];
-const PROFILE_SKIP = new Set(["nationalId", "hireDate", "position", "department"]);
+const PROFILE_SKIP = new Set([
+  "nationalId",
+  "hireDate",
+  "position",
+  "department",
+  "expectedBirthDate",
+  "pregnant",
+  "nightFitnessStatus",
+  "nightMedicalShareConsent",
+  "nightPregnancyBanUntil",
+  "nightTransferImpossible",
+  "nightPayPreserved",
+  "familyResponsibilities",
+]);
 const PROFILE_FIELDS = PROFILE_GROUPS.flatMap((group) => group.fields).filter((field) => !PROFILE_SKIP.has(field.key));
 const PAY_FIELDS = [
   { key: "baseSalary", ar: "الراتب الأساسي", en: "Base salary" },

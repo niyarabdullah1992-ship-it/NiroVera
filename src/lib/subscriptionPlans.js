@@ -6,10 +6,10 @@ export const PLAN_SECTIONS = [
   { key: "performance", ar: "الأداء", en: "Performance" }, { key: "expenses", ar: "المصروفات", en: "Expenses" },
   { key: "payroll", ar: "الرواتب", en: "Payroll" }, { key: "safety", ar: "السلامة", en: "Safety" },
   { key: "complaints", ar: "صوت الموظف", en: "Employee Voice" }, { key: "files", ar: "الملفات", en: "Files" },
-  { key: "signing", ar: "التوقيع", en: "Signing" }, { key: "chat", ar: "المحادثات", en: "Chat" },
+  { key: "signing", ar: "التوقيع", en: "Signing" },
 ];
 export const PLAN_FEATURES = [{ key: "exports", ar: "تصدير PDF وExcel", en: "PDF & Excel exports" }, { key: "ai", ar: "الذكاء الاصطناعي", en: "AI tools" }, { key: "signing", ar: "التوقيع الرقمي", en: "Digital signing" }];
-const CORE = ["tasks", "attendance", "chat", "files"];
+const CORE = ["tasks", "attendance", "files"];
 const STARTER = [...CORE, "reports", "performance", "expenses", "complaints", "hr", "signing", "assets", "inventory", "payroll", "safety", "assistant", "accounting"];
 const ALL = PLAN_SECTIONS.map((item) => item.key);
 

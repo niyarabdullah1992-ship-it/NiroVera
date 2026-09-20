@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Wrench, Plus, Loader2 } from "lucide-react";
 import MobileSelect from "@/components/mobile/MobileSelect";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 
 // Rule 4 — an inspection closes only with photographic proof.
 export default function MaintenanceLog({ records, lang, onAdd }) {
@@ -23,9 +24,11 @@ export default function MaintenanceLog({ records, lang, onAdd }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h4 className="font-heading font-semibold flex items-center gap-2"><Wrench className="w-4 h-4" /> {lang === "ar" ? "الصيانة والفحوصات" : "Maintenance & inspections"}</h4>
-        <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-body hover:bg-muted">
-          <Plus className="w-3.5 h-3.5" /> {lang === "ar" ? "تسجيل" : "Log"}
-        </button>
+        {onAdd ? (
+          <button onClick={() => setOpen(!open)} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-body hover:bg-muted">
+            <Plus className="w-3.5 h-3.5" /> {lang === "ar" ? "تسجيل" : "Log"}
+          </button>
+        ) : null}
       </div>
 
       {open && (
@@ -34,7 +37,7 @@ export default function MaintenanceLog({ records, lang, onAdd }) {
             value={form.type} onChange={(v) => setForm({ ...form, type: v })} className="w-full"
             options={[{ value: "preventive", label: lang === "ar" ? "وقائية" : "Preventive" }, { value: "emergency", label: lang === "ar" ? "طارئة" : "Emergency" }]}
           />
-          <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="w-full rounded-md border border-input px-3 py-2 text-sm" />
+          <PlatformDateField ar={lang === "ar"} value={form.date} onChange={(next) => setForm({ ...form, date: next })} />
           <input value={form.performedBy} onChange={(e) => setForm({ ...form, performedBy: e.target.value })} placeholder={lang === "ar" ? "المنفّذ" : "Performed by"} className="w-full rounded-md border border-input px-3 py-2 text-sm font-body" />
           <input type="number" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} placeholder={lang === "ar" ? "التكلفة" : "Cost"} className="w-full rounded-md border border-input px-3 py-2 text-sm" />
           <textarea value={form.result} onChange={(e) => setForm({ ...form, result: e.target.value })} rows={2} placeholder={lang === "ar" ? "النتيجة" : "Result"} className="w-full rounded-md border border-input px-3 py-2 text-sm font-body" />

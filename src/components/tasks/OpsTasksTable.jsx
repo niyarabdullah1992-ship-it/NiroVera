@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { dayDiffFromToday, deriveDailyTaskPace, taskPaceInput, taskDelegationMeta, taskTransferMeta } from "@/lib/opsDerivations";
+import { dayDiffFromToday, deriveDailyTaskPace, isOpsVisitorTask, taskPaceInput, taskDelegationMeta, taskTransferMeta, workKindLabel, taskModeLabel } from "@/lib/opsDerivations";
 import OpsAssignmentRefChip from "@/components/tasks/OpsAssignmentRefChip";
+import OpsDispatchChip from "@/components/tasks/OpsDispatchChip";
 import { ACCENT, INK, MUTED, emptyState, tableHeadRow, tableShell } from "@/lib/platformStyles";
 
 /**
@@ -8,7 +9,7 @@ import { ACCENT, INK, MUTED, emptyState, tableHeadRow, tableShell } from "@/lib/
  * title → quiet identity meta → assignment refs → columns for station/owner/due/status/progress.
  */
 
-const GRID_COLS = "minmax(280px,2.6fr) 112px 132px 104px 112px 128px";
+const GRID_COLS = "minmax(280px,2.6fr) 112px 156px 104px 112px 128px";
 
 const WEIGHT_LABEL = {
   1: { ar: "روتيني", en: "Routine" },
@@ -18,13 +19,22 @@ const WEIGHT_LABEL = {
   5: { ar: "حرج/عميل", en: "Critical / client" },
 };
 
-const KIND_META = {
-  pm: { ar: "وقائية", en: "Preventive", color: "#1E9E63" },
-  cm: { ar: "تصحيحية", en: "Corrective", color: "#B45309" },
-  em: { ar: "طارئة", en: "Emergency", color: "#DC2626" },
-  pr: { ar: "مشروع", en: "Project", color: INK },
-  cp: { ar: "امتثال", en: "Compliance", color: MUTED },
+const KIND_COLOR = {
+  pm: "#1E9E63",
+  cm: "#B45309",
+  em: "#DC2626",
+  pr: INK,
+  cp: MUTED,
 };
+
+/** Label every work kind from the shared list — an unmapped kind must not read as preventive. */
+function kindMeta(workKind, ar) {
+  const id = String(workKind || "").trim();
+  return {
+    label: workKindLabel(id, ar ? "ar" : "en"),
+    color: KIND_COLOR[id] || MUTED,
+  };
+}
 
 function pill(bg, fg, bd) {
   return {
@@ -172,12 +182,11 @@ function progVisual(task) {
   return { pct, bar: barStyle(width, color), label: `${pct}%` };
 }
 
-function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen }) {
+function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen, renderActions, justCreated }) {
   const [hover, setHover] = useState(false);
-  const kind = KIND_META[task.workKind] || KIND_META.pm;
+  const kind = kindMeta(task.workKind, ar);
   const weight = Number(task.effortWeight) || 3;
   const weightLabel = ar ? WEIGHT_LABEL[weight]?.ar : WEIGHT_LABEL[weight]?.en;
-  const remote = task.mode === "remote";
   const status = statusVisual(task, ar);
   const due = dueVisual(task, ar);
   const prog = progVisual(task);
@@ -211,7 +220,10 @@ function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen }) {
         borderBottom: "1px solid #F1F5F9",
         alignItems: "start",
         cursor: "pointer",
-        background: hover ? "#F7F8FA" : "transparent",
+        // A row that was just created keeps a tint until the next reload, so the
+        // create confirmation lands somewhere the eye can find.
+        background: hover ? "#F7F8FA" : justCreated ? "#F0FAF5" : "transparent",
+        boxShadow: justCreated ? `inset ${ar ? "-3px" : "3px"} 0 0 #1E9E63` : "none",
       }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", minWidth: 0 }}>
@@ -219,16 +231,35 @@ function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen }) {
         <div style={{ minWidth: 0, flex: 1 }}>
           <div
             style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
               fontSize: "13px",
               fontWeight: 600,
               color: INK,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
               letterSpacing: "-0.01em",
+              minWidth: 0,
             }}
           >
-            {task.title}
+            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {task.title}
+            </span>
+            {justCreated ? (
+              <span
+                style={{
+                  flexShrink: 0,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: "#1E9E63",
+                  background: "#E7F7EF",
+                  border: "1px solid #BBE8D2",
+                  borderRadius: 999,
+                  padding: "1px 7px",
+                }}
+              >
+                {ar ? "أُنشئت الآن" : "Just created"}
+              </span>
+            ) : null}
           </div>
 
           <div style={{
@@ -242,9 +273,9 @@ function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen }) {
           >
             {metaText(task.ref || "—", { mono: true, ltr: true })}
             {metaSep()}
-            {metaText(ar ? kind.ar : kind.en, { strong: true })}
+            {metaText(kind.label, { strong: true })}
             {metaSep()}
-            {metaText(remote ? (ar ? "عن بُعد" : "Remote") : (ar ? "حضوري" : "On-site"))}
+            {metaText(taskModeLabel(task.mode, ar ? "ar" : "en"))}
             {metaSep()}
             {metaText(`×${weight} ${weightLabel || ""}`)}
             {escalated ? (
@@ -291,36 +322,41 @@ function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen }) {
         {stationName(task.stationId)}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "7px", minWidth: 0, paddingTop: "1px" }}>
-        <span
-          style={{
-            width: "22px",
-            height: "22px",
-            borderRadius: "50%",
-            background: "#F1F5F9",
-            border: "1px solid #E2E8F0",
-            fontSize: "9px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: MUTED,
-            flexShrink: 0,
-            fontFamily: "'IBM Plex Sans',sans-serif",
-          }}
-        >
-          {ownerInitials(owner)}
-        </span>
-        <span
-          style={{
-            fontSize: "12px",
-            color: MUTED,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {owner}
-        </span>
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px", minWidth: 0, paddingTop: "1px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "7px", minWidth: 0 }}>
+          <span
+            style={{
+              width: "22px",
+              height: "22px",
+              borderRadius: "50%",
+              background: "#F1F5F9",
+              border: "1px solid #E2E8F0",
+              fontSize: "9px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: MUTED,
+              flexShrink: 0,
+              fontFamily: "'IBM Plex Sans',sans-serif",
+            }}
+          >
+            {ownerInitials(owner)}
+          </span>
+          <span
+            style={{
+              fontSize: "12px",
+              color: MUTED,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {owner}
+          </span>
+        </div>
+        {isOpsVisitorTask(task) ? (
+          <OpsDispatchChip homeName={stationName(task.homeStationId)} ar={ar} />
+        ) : null}
       </div>
 
       <div style={{ ...due.style, paddingTop: "2px" }}>{due.text}</div>
@@ -378,6 +414,11 @@ function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen }) {
           </div>
         ) : null}
       </div>
+      {typeof renderActions === "function" ? (
+        <div style={{ gridColumn: "1 / -1" }} onClick={(e) => e.stopPropagation()}>
+          {renderActions(task)}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -391,6 +432,8 @@ export default function OpsTasksTable({
   ownerInitials,
   onOpen,
   serviceDown = false,
+  renderActions,
+  createdIds,
 }) {
   const ar = lang === "ar";
   const listStyle = tableShell;
@@ -457,6 +500,8 @@ export default function OpsTasksTable({
               ownerName={ownerName}
               ownerInitials={ownerInitials}
               onOpen={onOpen}
+              renderActions={renderActions}
+              justCreated={createdIds?.includes(task.id)}
             />
           ))}
         </div>

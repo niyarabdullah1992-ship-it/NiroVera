@@ -8,6 +8,7 @@ export type LaborArticleOfficialText = {
   ar: string;
   en: string;
   sourceUrl: string;
+  localPdf: string;
   effectiveFrom: string;
   effectiveTo: string | null;
   amendedBy: string | null;
@@ -24,6 +25,16 @@ type ArticleRow = {
 
 export const BOE_LABOUR_LAW_URL =
   "https://laws.boe.gov.sa/BoeLaws/Laws/LawDetails/08381293-6388-48e2-8ad2-a9a700f2aa94/1";
+
+/** Official HRSD Labour Law PDF served by the product (M/51 1426 as amended through M/44 8/2/1446). */
+export const HRSD_LABOUR_LAW_PDF = "/labor-law.pdf";
+export const HRSD_LABOUR_LAW_EDITION = {
+  decree: "M/51",
+  decreeHijri: "1426-08-23",
+  lastAmend: "M/44",
+  lastAmendHijri: "1446-02-08",
+  lastAmendGregorian: "2025-02-19",
+} as const;
 
 const FROM = "2005-01-01";
 const AMEND_2015 = "2015-03-25";
@@ -112,6 +123,12 @@ export const LABOR_ARTICLE_TEXTS: ArticleRow[] = [
     "1 - ينتهي عقد العمل المحدد المدة بانقضاء مدته، فإذا استمر طرفاه في تنفيذ عُدَّ العقدُ مجدداً لمدة غير محددة. مع مراعاة ما نصت عليه المادة (السابعة والثلاثون) من هذا النظام بالنسبة إلى غير السعوديين.\n\n2 - إذا تضمن العقد المحدد المدة شرطاً يقضي بتجديده لمدة مماثلة أو لمدة محددة، فإنه يتجدد للمدة المتفق عليها. فإن تعدد التجديد ثلاث مرات متتالية، أو بلغت مدة العقد الأصلي مع مدة التجديد أربع سنوات أيهما أقل واستمر الطرفان في تنفيذه؛ تحوّل العقد إلى عقد غير محدد المدة.",
     "1 - A fixed-term contract ends when its term expires. If both parties continue to perform it, the contract shall be deemed renewed for an indefinite term, without prejudice to Article (37) of this Law in respect of non-Saudis.\n\n2 - If a fixed-term contract contains a clause renewing it for a like or specified term, it renews for the agreed term. If it is renewed three consecutive times, or the original term plus renewals amount to four years, whichever is less, and the parties continue to perform it, the contract converts to an indefinite-term contract.",
     { from: AMEND_2015, amendedBy: "M/46" },
+  ),
+
+  v(
+    "58",
+    "1. لا يجوز لصاحب العمل أن ينقل العامل بغير موافقته - كتابةً - من مكان عمله الأصلي إلى مكان آخر يقتضي تغيير محل إقامته.\n\n2. لصاحب العمل - في حالات الضرورة التي قد تقتضيها ظروف عارضة ولمدة لا تتجاوز ثلاثين يوماً في السنة - تكليف العامل بعمل في مكان يختلف عن المكان المتفق عليه دون اشتراط موافقته، على أن يتحمل صاحب العمل تكاليف انتقال العامل وإقامته خلال تلك المدة.",
+    "1. The employer may not transfer the worker, without his written consent, from his original workplace to another place that requires a change of residence.\n\n2. In cases of necessity arising from incidental circumstances, and for a period not exceeding thirty days in the year, the employer may assign the worker to work in a place other than the agreed place without requiring his consent, provided the employer bears the worker's travel and accommodation costs during that period.",
   ),
 
   v(
@@ -306,8 +323,8 @@ export const LABOR_ARTICLE_TEXTS: ArticleRow[] = [
 
   v(
     "102",
-    "لا تدخل الفترات المنصوص عليها في المادة (الحادية بعد المائة) من هذا النظام ضمن ساعات العمل الفعلية.",
-    "The periods provided for in Article (101) of this Law shall not be counted as actual working hours.",
+    "لا تدخل الفترات المخصصة للراحة والصلاة والطعام ضمن ساعات العمل الفعلية، ولا يكون العامل خلال هذه الفترات تحت سلطة صاحب العمل، ولا يجوز لصاحب العمل أن يلزم العامل بالبقاء خلالها في مكان العمل.",
+    "The periods designated for rest, prayer and food shall not be counted within actual working hours. During those periods the worker shall not be under the employer's authority, and the employer may not require the worker to remain at the workplace during them.",
   ),
 
   v(
@@ -446,6 +463,37 @@ export const LABOR_ARTICLE_TEXTS: ArticleRow[] = [
     "The employer is prohibited from dismissing a female worker or giving her notice of dismissal during her pregnancy or while she is on maternity leave, including the period of illness arising from pregnancy or childbirth, provided the illness is established by an authenticated medical certificate and her absence does not exceed one hundred and eighty days.",
     { from: AMEND_2015, amendedBy: "M/134" },
   ),
+
+  v(
+    "160",
+    "1- للمرأة العاملة المسلمة التي يتوفى زوجها الحق في إجازة عدة بأجر كامل لمدة لا تقل عن أربعة أشهر وعشرة أيام من تاريخ الوفاة، ولها الحق في تمديد هذه الإجازة دون أجر إن كانت حاملاً - خلال هذه الفترة - حتى تضع حملها، ولا يجوز لها الاستفادة من باقي إجازة العدة الممنوحة لها بموجب هذا النظام بعد وضع حملها.\n\n2- للمرأة العاملة غير المسلمة التي يتوفى زوجها الحق في إجازة بأجر كامل لمدة خمسة عشر يوماً. وفي جميع الأحوال لا يجوز للعاملة المتوفى عنها زوجها ممارسة أي عمل لدى الغير خلال هذه المدة. ويحق لصاحب العمل أن يطلب الوثائق المؤيدة للحالات المشار إليها.",
+    "1- A Muslim female worker whose husband dies is entitled to iddah leave with full pay of not less than four months and ten days from the date of death. She may extend this leave without pay if she is pregnant during that period until she gives birth, and she may not use the remainder of the iddah leave granted under this Law after giving birth.\n\n2- A non-Muslim female worker whose husband dies is entitled to leave with full pay of fifteen days. In all cases a female worker whose husband has died may not work for another party during this period. The employer may require supporting documents for the cases referred to.",
+    { from: AMEND_2015, amendedBy: "M/46" },
+  ),
+
+  v(
+    "153",
+    "على صاحب العمل أن يوفر الرعاية الطبية للمرأة العاملة أثناء الحمل والولادة.",
+    "The employer shall provide medical care for the female worker during pregnancy and childbirth.",
+  ),
+
+  v(
+    "159",
+    "على صاحب العمل في جميع الأماكن التي يعمل فيها نساء وفي جميع المهن أن يوفر لهن مقاعد لاستراحة النساء العاملات. وعلى كل صاحب عمل يشغّل خمسين عاملة فأكثر أن يهيئ مكاناً مناسباً يتوافر فيه العدد الكافي من المربيات لرعاية أطفال العاملات الذين تقل أعمارهم عن ست سنوات، وذلك إذا بلغ عدد الأطفال عشرة فأكثر.",
+    "In every place where women work, and in every occupation, the employer shall provide seats for women workers to rest. An employer who employs fifty or more female workers shall prepare a suitable place with a sufficient number of attendants to care for the workers' children under six years of age, if the number of such children is ten or more.",
+  ),
+
+  v(
+    "163",
+    "يحظر تشغيل الأحداث أثناء فترة من الليل لا تقل عن اثنتي عشرة ساعة متتالية إلا في الحالات التي يحددها الوزير بقرار منه.",
+    "Juveniles may not be employed during a night period of less than twelve consecutive hours, except in cases specified by a decision of the Minister.",
+  ),
+
+  v(
+    "164",
+    "لا يجوز تشغيل الأحداث تشغيلاً فعلياً أكثر من ست ساعات في اليوم الواحد لسائر شهور السنة، عدا شهر رمضان فيجب ألا تزيد ساعات العمل الفعلية فيه على أربع ساعات. وتنظم ساعات العمل بحيث لا يعمل الحدث أكثر من أربع ساعات متصلة، دون فترة أو أكثر للراحة والطعام والصلاة، لا تقل في المرة الواحدة عن نصف ساعة، وبحيث لا يبقى في مكان العمل أكثر من سبع ساعات. ولا يجوز تشغيل الأحداث في أيام الراحة الأسبوعية أو في أيام الأعياد والعطلات الرسمية والإجازة السنوية. ولا تسري عليهم الاستثناءات التي نصت عليها المادة السادسة بعد المائة من هذا النظام.",
+    "Juveniles may not actually work more than six hours a day in all months of the year, except Ramadan when actual hours may not exceed four. Hours shall be organised so that a juvenile does not work more than four consecutive hours without one or more periods for rest, food and prayer of at least half an hour each, and so that he does not remain at the workplace more than seven hours. Juveniles may not work on weekly rest days, Eids, official holidays or annual leave. The exceptions in Article 106 do not apply to them.",
+  ),
 ];
 
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
@@ -491,6 +539,7 @@ export function articleOfficialText(
     ar: row.ar,
     en: row.en,
     sourceUrl: BOE_LABOUR_LAW_URL,
+    localPdf: HRSD_LABOUR_LAW_PDF,
     effectiveFrom: row.effectiveFrom,
     effectiveTo: row.effectiveTo,
     amendedBy: row.amendedBy,

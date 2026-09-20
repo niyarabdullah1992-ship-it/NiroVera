@@ -23,6 +23,7 @@ import {
 } from "@/lib/employeeProfileFields";
 import { employeeJobGrade, jobGradeLabel } from "@/lib/jobGrades";
 import { activeActingAssignments, occupantTitle, seatForEmployee } from "@/lib/orgHire";
+import { explainWorkplaceManager } from "@/lib/peopleTree";
 import { listedPacks } from "@/lib/permissionPackTemplate";
 import { companyLists, templateLabel } from "@/lib/permissionTemplates";
 
@@ -269,7 +270,10 @@ export default function OrgEmployeePreview({
   const contractRaw = profileFieldValue(profile, "contractType", employee);
   const contractType = optionLabel(CONTRACT_TYPE_OPTIONS, contractRaw, ar) || String(contractRaw || "").trim();
   const department = String(profile.department || profile.unit || "").trim();
-  const stationRole = employee ? stationRoleOf(employee, station, ar) : "";
+  const place = employee ? explainWorkplaceManager(data, employee.id, { ar }) : null;
+  const stationRole = place?.many
+    ? (ar ? `مدير · ${place.coversLabel}` : `Manager · ${place.coversLabel}`)
+    : (employee ? stationRoleOf(employee, station, ar) : "");
   const acting = employee ? actingLabelOf(employee, data, ar) : "";
   const status = employmentStatusOf(employee, ar);
   const empty = !employee;
@@ -581,7 +585,12 @@ export default function OrgEmployeePreview({
                   <FactCell ar={ar} label={ar ? "الدرجة" : "Grade"} value={gradeText} />
                 </CellShell>
                 <CellShell bottom>
-                  <FactCell ar={ar} label={ar ? "دور الفرع" : "Station role"} value={stationRole} />
+                  <FactCell
+                    ar={ar}
+                    label={ar ? "دور الفرع" : "Station role"}
+                    value={stationRole}
+                    tip={place?.line || stationRole}
+                  />
                 </CellShell>
                 <CellShell end bottom>
                   <FactCell ar={ar} label={ar ? "القائمة" : "Access list"} value={listLabel} />
@@ -589,9 +598,19 @@ export default function OrgEmployeePreview({
                 <CellShell bottom>
                   <FactCell ar={ar} label={ar ? "المدير المباشر" : "Manager"} value={managerName} />
                 </CellShell>
-                <CellShell end={Boolean(acting)} bottom={!acting} full={!acting}>
+                <CellShell end={Boolean(acting || place?.many)} bottom={!acting && !place?.many} full={!acting && !place?.many}>
                   <FactCell ar={ar} label={ar ? "تاريخ التعيين" : "Hire date"} value={hireDate} dir={ar ? undefined : "ltr"} />
                 </CellShell>
+                {place?.many ? (
+                  <CellShell end={Boolean(acting)} bottom={!acting}>
+                    <FactCell
+                      ar={ar}
+                      label={ar ? "يحضر من" : "Attends from"}
+                      value={place.homeName}
+                      tip={place.line}
+                    />
+                  </CellShell>
+                ) : null}
                 {acting ? (
                   <CellShell bottom>
                     <FactCell ar={ar} label={ar ? "الوكالة" : "Acting"} value={acting} tip={acting} />

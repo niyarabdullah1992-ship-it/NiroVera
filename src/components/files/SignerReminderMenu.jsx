@@ -1,14 +1,14 @@
 import React from "react";
 import { BellRing, CheckCircle2, ChevronDown, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ui } from "@/lib/platformStyles";
+import { signGhostBtn } from "@/components/files/signingUi";
 
 export default function SignerReminderMenu({ requestId, signers, ar, busyKey, sentKey, onRemind }) {
   const pending = signers.filter((signer) => signer.status === "pending");
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" style={{ ...ui.btnSecondary, marginTop: 12, display: "inline-flex", alignItems: "center", gap: 6, minHeight: 36 }}>
+        <button type="button" style={signGhostBtn}>
           <BellRing className="h-3.5 w-3.5" />
           {ar ? `إرسال تذكير (${pending.length})` : `Send reminder (${pending.length})`}
           <ChevronDown className="h-3.5 w-3.5" />

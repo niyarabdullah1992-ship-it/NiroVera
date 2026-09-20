@@ -24,7 +24,6 @@ const SESSION_SECURED_FUNCTIONS = new Set([
   'workforce',
   'scores',
   'workproof',
-  'dailyReport',
   'hiring',
   'org',
   'hcm',

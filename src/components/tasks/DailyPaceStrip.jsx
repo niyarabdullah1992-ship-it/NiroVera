@@ -69,15 +69,15 @@ export default function DailyPaceStrip({ ar = true, pace, board, compact = false
         <div style={{ fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.01em", whiteSpace: "nowrap" }}>
           {copy.kicker}
         </div>
-        <div style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, copy.metrics.length)}, minmax(0, 1fr))`, gap: 0, flex: 1, minWidth: 0 }}>
           {copy.metrics.map((metric, index) => (
             <div
               key={metric.label}
               style={{
                 display: "flex",
-                alignItems: "baseline",
-                gap: 6,
-                paddingInline: index === 0 ? 0 : 12,
+                flexDirection: "column",
+                gap: 4,
+                paddingInline: 12,
                 borderInlineStart: index === 0 ? "none" : `1px solid ${BORDER}`,
                 minWidth: 0,
               }}

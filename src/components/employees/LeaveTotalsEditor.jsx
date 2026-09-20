@@ -9,7 +9,7 @@ export default function LeaveTotalsEditor({ employee, companyId }) {
   const { t, lang } = useI18n();
   const [editing, setEditing] = useState(false);
   const profile = employee.profile || {};
-  const types = leaveTypesForProfile(profile).filter((ty) => ty.defaultTotal !== null);
+  const types = leaveTypesForProfile(profile).filter((ty) => ty.defaultTotal !== null && ty.key !== "iddah" && ty.key !== "maternity_extend" && ty.key !== "maternity_companion");
   const [form, setForm] = useState(() => types.reduce((acc, ty) => ({ ...acc, [ty.key]: getLeaveTotal(profile, ty.key) ?? 0 }), {}));
 
   const save = () => {

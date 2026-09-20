@@ -13,8 +13,8 @@ import StationFilesCard from "@/components/files/StationFilesCard";
 import useStationScope from "@/hooks/useStationScope";
 import { stationInHeaderScope } from "@/lib/stationTree";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
-import { erpKicker } from "@/lib/erpModuleMeta";
+import KpiStrip from "@/components/shared/KpiStrip";
+import { pageKicker } from "@/lib/moduleMeta";
 import { MUTED, NAVY, emptyState, ui } from "@/lib/platformStyles";
 
 function FolderBrowser({
@@ -291,21 +291,19 @@ export default function Files() {
   return (
     <PlatformStampShell
       ar={lang === "ar"}
-      kicker={erpKicker("/app/files", lang)}
+      kicker={pageKicker("/app/files", lang)}
       title={pageTitle}
-      hint={lang === "ar" ? "مجلدات مرتبطة بالفرع — ارفع ونظّم المستندات من هنا." : "Station-linked folders — upload and organize documents here."}
+      hint={lang === "ar" ? "أرشيف المستندات هنا فقط. التوقيع والإثبات والحضور لكل منها قسمه." : "Document archive only. Signing, proof, and attendance each keep their own section."}
     >
-      <ErpSectionFrame
-        path="/app/files"
-        ar={lang === "ar"}
-        hideProof
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <KpiStrip
         stats={[
           { label: lang === "ar" ? "ملفات" : "Files", value: files.length },
           { label: lang === "ar" ? "مجلدات" : "Folders", value: folders.length },
         ]}
-      >
+      />
       <FolderBrowser {...browserProps} />
-      </ErpSectionFrame>
+      </div>
     </PlatformStampShell>
   );
 }

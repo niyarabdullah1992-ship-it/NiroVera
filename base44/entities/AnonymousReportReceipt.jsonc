@@ -1,12 +1,19 @@
+// purpose: AnonymousReportReceipt tenant row.
+// domain: voice
+// isolation: companyId
+// owner: complaints
+// status: canonical
 {
   "name": "AnonymousReportReceipt",
   "type": "object",
   "properties": {
     "companyId": {
-      "type": "string"
+      "type": "string",
+      "description": "Tenant of the anonymous report. Missing = receipt cannot be scoped."
     },
     "reportId": {
-      "type": "string"
+      "type": "string",
+      "description": "→ anonymousReports[].id. Never store the sender name on the report itself."
     },
     "employeeId": {
       "type": "string",

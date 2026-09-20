@@ -1,25 +1,27 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X, Play, Pause, ChevronLeft, ChevronRight } from "lucide-react";
 import { BRAND, BRAND_SOFT, BRAND_DEEP, MUTED, NAVY, dot, field, CARD, SURFACE, INK } from "@/lib/platformStyles";
+import HeatBanNotice from "@/components/shared/HeatBanNotice";
 import {
   CERT_FOR,
   CERT_LABELS,
   deriveDailyTaskPace,
   WEEKDAY_OPTIONS,
-  listIsoDaysInRange,
   calendarDaysInclusive,
-  PACE_CHIP_DAYS_MAX,
   PACE_DATES_MAX,
   clipIsoDatesToWindow,
   formPaceMode,
   formPaceInput,
   checkTaskPaceFromForm,
   isoDayKey,
+  syncPaceSelection,
+  TASK_MODES,
+  taskModeConsequence,
+  deriveTaskHeatBanNotice,
 } from "@/lib/opsDerivations";
 import { formatDate } from "@/lib/dateFormat";
 import DailyPaceStrip from "@/components/tasks/DailyPaceStrip";
 import {
-  resolveEmployeeSelectedStation,
   stationPrimaryId,
 } from "@/lib/stationTree";
 import VoiceRecorder from "@/components/tasks/VoiceRecorder";
@@ -42,6 +44,27 @@ const PRIORITIES = [
   { id: "low", ar: "منخفضة", en: "Low", color: MUTED },
 ];
 
+const PLAN_HORIZONS = [
+  { id: "w", ar: "أسبوعية", en: "Weekly" },
+  { id: "m", ar: "شهرية", en: "Monthly" },
+  { id: "q", ar: "ربعية", en: "Quarterly" },
+  { id: "h", ar: "نصف سنوية", en: "Half-year" },
+  { id: "y", ar: "سنوية", en: "Annual" },
+];
+
+function dueFromPlanHorizon(startAt, horizon) {
+  const from = String(startAt || "").slice(0, 10) || isoDayKey(new Date());
+  const dt = new Date(`${from}T12:00:00`);
+  if (Number.isNaN(dt.getTime())) return from;
+  if (horizon === "w") dt.setDate(dt.getDate() + 7);
+  else if (horizon === "m") dt.setMonth(dt.getMonth() + 1);
+  else if (horizon === "q") dt.setMonth(dt.getMonth() + 3);
+  else if (horizon === "h") dt.setMonth(dt.getMonth() + 6);
+  else dt.setFullYear(dt.getFullYear() + 1);
+  dt.setDate(dt.getDate() - 1);
+  return isoDayKey(dt);
+}
+
 const WEIGHTS = [
   { w: 1, ar: "روتيني", en: "Routine" },
   { w: 2, ar: "إدخال/متابعة", en: "Data & follow-up" },
@@ -49,17 +72,6 @@ const WEIGHTS = [
   { w: 4, ar: "فني/صيانة", en: "Technical / maintenance" },
   { w: 5, ar: "حرج/عميل", en: "Critical / client" },
 ];
-
-const WEIGHT_RULES = [
-  [5, /مدير|رئيس|سلامة|طوارئ|عميل|manager|director|safety|emergency|client/i],
-  [4, /مهندس|فني أول|صيانة|كهرب|ميكانيك|engineer|senior|maintenance|electric|mechanic/i],
-  [3, /فني|مشغل|تشغيل|technician|operator/i],
-  [2, /مساعد|إداري|تقارير|مدخل|assistant|admin|clerk|report/i],
-];
-
-function suggestWeight(title) {
-  return (WEIGHT_RULES.find(([, re]) => re.test(String(title || ""))) || [1])[0];
-}
 
 function initialsOf(name) {
   return String(name || "")
@@ -593,15 +605,15 @@ export default function OpsNewTaskModal({
   form,
   setForm,
   stations,
-  stationTree,
+  stationTree: _stationTree,
   employees,
   busy,
   onClose,
   onSubmit,
 }) {
-  const tree = Array.isArray(stationTree) && stationTree.length ? stationTree : stations;
   const [files, setFiles] = useState([]);
   const [previewUrls, setPreviewUrls] = useState([]);
+  const [showSend, setShowSend] = useState(false);
 
   useEffect(() => {
     const created = [];
@@ -629,26 +641,68 @@ export default function OpsNewTaskModal({
     : (form.stationId ? [String(form.stationId)] : []);
   const allowMultiStation = stations.length > 1;
 
+  const homeIdOf = (emp) => String(emp?.stationId || emp?.station_id || emp?.homeStationId || "");
+
+  const isLinkedTo = (emp, sid) => {
+    const want = String(sid);
+    if (homeIdOf(emp) === want) return true;
+    const managed = Array.isArray(emp?.managedStations)
+      ? emp.managedStations
+      : String(emp?.managedStations || "").split(/[،,]/);
+    return managed.map(String).map((id) => id.trim()).filter(Boolean).includes(want);
+  };
+
+  const teamMembers = employees
+    .filter((e) => selectedStationIds.length && selectedStationIds.some((sid) => isLinkedTo(e, sid)))
+    .map((e) => ({
+      id: String(e.employeeId || e.id),
+      name: e.name || "",
+    }));
+
+  const selectedTeam = (form.memberIds || []).map(String).filter((id) => teamMembers.some((m) => m.id === id));
+  const dispatchStationId = String(form.dispatchStationId || "").trim();
+  const assignMode = form.assignMode === "all" ? "all" : "some";
+  const stationOptions = stations.map((s) => ({
+    ...s,
+    id: stationPrimaryId(s),
+    name: s.name,
+  }));
+  const otherStations = stationOptions.filter((s) => !selectedStationIds.includes(String(s.id)));
+  const hasAssignees = assignMode === "all"
+    ? teamMembers.length > 0
+    : selectedTeam.length > 0;
+  const sendOpen = showSend || !!dispatchStationId;
+  const sendWho = assignMode === "all"
+    ? (ar ? `فريق الفرع (${teamMembers.length})` : `Station team (${teamMembers.length})`)
+    : selectedTeam.length === 1
+      ? (teamMembers.find((m) => m.id === selectedTeam[0])?.name || "")
+      : (ar ? `${selectedTeam.length} موظفون` : `${selectedTeam.length} people`);
+
   const scheduleForm = {
     ...form,
     recurrenceKind: "daily",
-    paceMode: formPaceMode(form) === "weekdays" ? "all" : formPaceMode(form),
-    paceWeekdays: [],
   };
   const paceGate = checkTaskPaceFromForm(scheduleForm);
-  const paceMode = formPaceMode(scheduleForm);
+  const paceMode = formPaceMode(form);
+  const specificOn = paceMode === "specific" || paceMode === "weekdays" || paceMode === "dates";
+  const heatNotice = deriveTaskHeatBanNotice(
+    { mode: form.mode },
+    { startAt: form.startAt, dueAt: form.dueAt },
+  );
 
-  const canSubmit = (() => {
-    if (!String(form.title || "").trim()) return false;
-    if (!selectedStationIds.length) return false;
-    if (!paceGate.ok) return false;
-    if (form.assignMode === "one") {
-      const map = form.ownersByStation && typeof form.ownersByStation === "object" ? form.ownersByStation : {};
-      return selectedStationIds.every((sid) => !!map[sid] || (selectedStationIds.length === 1 && form.ownerId));
-    }
-    if (form.assignMode === "some") return (form.memberIds || []).length > 0;
-    return true;
+  /** A disabled button that will not say why reads as a broken button. Name the first gap. */
+  const submitBlock = (() => {
+    if (!String(form.title || "").trim()) return ar ? "اكتب عنوان المهمة." : "Write the task title.";
+    if (!selectedStationIds.length) return ar ? "اختر فرعًا واحدًا على الأقل." : "Pick at least one station.";
+    if (!form.mode) return ar ? "حدّد مكان التنفيذ." : "Choose where the work happens.";
+    if (!paceGate.ok) return (ar ? paceGate.reason : paceGate.reasonEn) || paceGate.reason || "";
+    if (!(Math.round(Number(form.targetCount)) >= 1)) return ar ? "حدّد العدد المستهدف (1 فأكثر)." : "Set the target count (1 or more).";
+    if (assignMode === "some" && !selectedTeam.length) return ar ? "اختر عضوًا واحدًا من الفريق على الأقل." : "Pick at least one team member.";
+    if (assignMode === "all" && !teamMembers.length) return ar ? "لا طاقم في هذا الفرع." : "No crew at this station.";
+    return "";
   })();
+
+  const canSubmit = !submitBlock;
 
   const submitEnabled = canSubmit && !busy;
   const submitStyle = submitEnabled
@@ -677,92 +731,19 @@ export default function OpsNewTaskModal({
         fontFamily: "inherit",
       };
 
-  const stationCrew = employees.length;
+  const stationCrew = teamMembers.length;
 
   const setStations = (ids) => {
     const next = [...new Set((ids || []).map(String).filter(Boolean))];
-    setForm((f) => {
-      const prevMap = f.ownersByStation && typeof f.ownersByStation === "object" ? f.ownersByStation : {};
-      const ownersByStation = Object.fromEntries(
-        next.map((sid) => [sid, String(prevMap[sid] || "")]).filter(([, oid]) => oid),
-      );
-      // Keep sole station's prior single owner if map empty.
-      if (next.length === 1 && !ownersByStation[next[0]] && f.ownerId) {
-        ownersByStation[next[0]] = String(f.ownerId);
-      }
-      return {
-        ...f,
-        stationIds: next,
-        stationId: next[0] || "",
-        ownersByStation,
-        ownerId: ownersByStation[next[0]] || "",
-        memberIds: f.assignMode === "some" ? [] : f.memberIds,
-      };
-    });
-  };
-
-  const ownersByStation = form.ownersByStation && typeof form.ownersByStation === "object"
-    ? form.ownersByStation
-    : {};
-  const ownerForStation = (sid) => {
-    const oid = ownersByStation[sid] || (selectedStationIds.length === 1 && selectedStationIds[0] === sid ? form.ownerId : "");
-    if (!oid) return null;
-    return employees.find((e) => String(e.employeeId || e.id) === String(oid)) || null;
-  };
-
-  const stationNameById = (id) => {
-    const sid = String(id || "");
-    const hit = (tree || []).find((s) => stationPrimaryId(s) === sid || String(s.stationId || "") === sid)
-      || (stations || []).find((s) => stationPrimaryId(s) === sid || String(s.stationId || "") === sid);
-    return hit?.name || "";
-  };
-
-  const employeeStationId = (emp) => String(emp?.stationId || emp?.station_id || "");
-
-  const peopleForStation = (sid) => employees.filter((emp) => {
-    const resolved = resolveEmployeeSelectedStation(emp, [sid], tree);
-    if (resolved === sid) return true;
-    if (employeeStationId(emp) === sid) return true;
-    return (emp.managedStations || []).map(String).includes(sid);
-  });
-
-  const setOwnerForStation = (stationId, employeeId) => {
-    const sid = String(stationId || "");
-    const eid = String(employeeId || "");
-    if (!sid) return;
-    const emp = employees.find((e) => String(e.employeeId || e.id) === eid);
-    const weight = suggestWeight(emp?.jobTitle || emp?.title || emp?.role || "");
-    setForm((f) => {
-      const prev = f.ownersByStation && typeof f.ownersByStation === "object" ? f.ownersByStation : {};
-      const ownersByStation = { ...prev };
-      if (eid) ownersByStation[sid] = eid;
-      else delete ownersByStation[sid];
-      const first = String((Array.isArray(f.stationIds) && f.stationIds[0]) || f.stationId || sid);
-      return {
-        ...f,
-        ownersByStation,
-        ownerId: ownersByStation[first] || "",
-        effortWeight: weight || f.effortWeight,
-      };
-    });
-  };
-
-  const stationOptions = stations.map((s) => ({
-    ...s,
-    id: stationPrimaryId(s),
-    name: s.name,
-  }));
-
-  const teamMembers = employees
-    .filter((e) => {
-      if (!selectedStationIds.length) return false;
-      const sid = String(resolveEmployeeSelectedStation(e, selectedStationIds, tree) || employeeStationId(e) || "");
-      return selectedStationIds.includes(sid) || (e.managedStations || []).map(String).some((id) => selectedStationIds.includes(id));
-    })
-    .map((e) => ({
-      id: String(e.employeeId || e.id),
-      name: e.name || "",
+    setShowSend(false);
+    setForm((f) => ({
+      ...f,
+      stationIds: next,
+      stationId: next[0] || "",
+      memberIds: (f.assignMode === "all" ? f.memberIds : []),
+      dispatchStationId: "",
     }));
+  };
 
   const setWorkTypeText = (value) => {
     setForm((f) => ({
@@ -779,9 +760,8 @@ export default function OpsNewTaskModal({
   };
 
   const assignModes = [
-    { id: "one", label: ar ? "موظف واحد" : "One employee" },
     { id: "some", label: ar ? "عدد من الفريق" : "Several of the team" },
-    { id: "all", label: ar ? "كامل فريق الفرع" : "Whole station team" },
+    { id: "all", label: ar ? "كامل الفريق" : "Whole team" },
   ];
 
   return (
@@ -823,7 +803,7 @@ export default function OpsNewTaskModal({
             flexShrink: 0,
             padding: "20px 24px 16px",
             borderBottom: "1px solid var(--nv-line, #E2E8F0)",
-            background: "linear-gradient(180deg, color-mix(in oklab, var(--nv-accent, #1E9E63) 7%, var(--nv-card, #fff)) 0%, var(--nv-card, #fff) 100%)",
+            background: "var(--nv-card, #fff)",
           }}
         >
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -832,7 +812,9 @@ export default function OpsNewTaskModal({
                 {ar ? "مهمة جديدة" : "New task"}
               </div>
               <div style={{ fontSize: 12, color: MUTED, marginTop: 4, lineHeight: 1.6 }}>
-                {ar ? "تُسند فورًا وتصل إشعارًا للمسؤول" : "Assigned immediately and sent to the owner as a notification"}
+                {ar
+                  ? "تُسند فورًا لفريق الفرع المختار، وتصل إشعارًا للمسؤول."
+                  : "Assigned immediately to the selected station team, and sent to the owner."}
               </div>
             </div>
             <button
@@ -913,66 +895,35 @@ export default function OpsNewTaskModal({
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <span style={LABEL_SPAN}>{ar ? "لمن تُسند؟" : "Assign to"}</span>
+              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+                {ar
+                  ? "اختر فرع الفريق ثم الأعضاء. التنفيذ في نفس الفرع إلا إذا اخترت تنفيذ في فرع آخر."
+                  : "Pick the team’s station then its people. Work stays here unless you choose to execute at another station."}
+              </div>
               <div style={{ display: "flex", gap: 6 }}>
                 {assignModes.map((m) => (
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => setForm((f) => ({ ...f, assignMode: m.id }))}
-                    style={assignBtnStyle(form.assignMode === m.id)}
+                    onClick={() => setForm((f) => ({
+                      ...f,
+                      assignMode: m.id,
+                      memberIds: m.id === "all"
+                        ? teamMembers.map((t) => t.id)
+                        : (m.id === "some" ? f.memberIds : []),
+                    }))}
+                    style={assignBtnStyle(assignMode === m.id)}
                   >
                     {m.label}
                   </button>
                 ))}
               </div>
 
-              {form.assignMode === "one" && (
-                selectedStationIds.length ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
-                    {selectedStationIds.map((sid) => {
-                      const crew = peopleForStation(sid);
-                      const picked = ownerForStation(sid);
-                      return (
-                        <label key={sid} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          {selectedStationIds.length > 1 ? (
-                            <span style={{ fontSize: 11, color: MUTED, fontWeight: 600 }}>
-                              {stationNameById(sid) || sid}
-                            </span>
-                          ) : null}
-                          <select
-                            value={picked ? String(picked.employeeId || picked.id) : ""}
-                            onChange={(e) => setOwnerForStation(sid, e.target.value)}
-                            disabled={!crew.length}
-                            style={SELECT}
-                          >
-                            <option value="">
-                              {crew.length
-                                ? (ar ? "اختر الموظف" : "Select employee")
-                                : (ar ? "لا يوجد موظفون في هذا الفرع" : "No employees in this station")}
-                            </option>
-                            {crew.map((emp) => {
-                              const eid = String(emp.employeeId || emp.id);
-                              return (
-                                <option key={eid} value={eid}>{emp.name}</option>
-                              );
-                            })}
-                          </select>
-                        </label>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-                    {ar ? "حدّد الفروع أولًا" : "Pick stations first"}
-                  </div>
-                )
-              )}
-
-              {form.assignMode === "some" && (
+              {assignMode === "some" && (
                 selectedStationIds.length ? (
                   <MemberMultiSelect
                     members={teamMembers}
-                    selected={(form.memberIds || []).map(String)}
+                    selected={selectedTeam}
                     onChange={(ids) => setForm((f) => ({ ...f, memberIds: ids }))}
                     lang={ar ? "ar" : "en"}
                   />
@@ -983,7 +934,7 @@ export default function OpsNewTaskModal({
                 )
               )}
 
-              {form.assignMode === "all" && (
+              {assignMode === "all" && (
                 <div
                   style={{
                     marginTop: 2,
@@ -998,11 +949,74 @@ export default function OpsNewTaskModal({
                 >
                   {selectedStationIds.length
                     ? (ar
-                      ? `تُسند إلى ${stationCrew || "—"} موظفًا عبر ${selectedStationIds.length > 1 ? `${selectedStationIds.length} فروع` : "هذا الفرع"}، ويظهر لكل منهم نسخته الخاصة.`
-                      : `Assigned to all ${stationCrew || "—"} employees across ${selectedStationIds.length > 1 ? `${selectedStationIds.length} stations` : "this station"}; each gets their own copy.`)
+                      ? `تُسند إلى فريق الفرع كاملًا (${stationCrew || teamMembers.length || "—"} موظفًا) كمهمة واحدة يراها الجميع.`
+                      : `Assigned to the whole station team (${stationCrew || teamMembers.length || "—"} people) as one shared work order.`)
                     : (ar ? "اختر الفرع أولًا لتحديد الفريق." : "Pick a station first to resolve the team.")}
                 </div>
               )}
+
+              {hasAssignees && otherStations.length ? (
+                sendOpen ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <span style={LABEL_SPAN}>{ar ? "تنفيذ في فرع آخر" : "Execute at another station"}</span>
+                    <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+                      {ar
+                        ? `خيار نادر. ${sendWho} ينفّذ العمل في فرع آخر — فرعهم الأم لا يتغيّر.`
+                        : `Rare. ${sendWho} execute the work at another station — their home station stays.`}
+                    </div>
+                    <select
+                      value={dispatchStationId}
+                      onChange={(e) => setForm((f) => ({ ...f, dispatchStationId: e.target.value }))}
+                      style={SELECT}
+                    >
+                      <option value="">{ar ? "اختر فرع التنفيذ" : "Pick executing station"}</option>
+                      {otherStations.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSend(false);
+                        setForm((f) => ({ ...f, dispatchStationId: "" }));
+                      }}
+                      style={{
+                        alignSelf: "flex-start",
+                        margin: 0,
+                        padding: 0,
+                        border: "none",
+                        background: "none",
+                        color: MUTED,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {ar ? "تنفيذ في هذا الفرع" : "Execute at this station"}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowSend(true)}
+                    style={{
+                      alignSelf: "flex-start",
+                      margin: 0,
+                      padding: 0,
+                      border: "none",
+                      background: "none",
+                      color: MUTED,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {ar ? "تنفيذ في فرع آخر" : "Execute at another station"}
+                  </button>
+                )
+              ) : null}
 
               <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.6, textWrap: "pretty" }}>
                 {reqCert
@@ -1073,23 +1087,33 @@ export default function OpsNewTaskModal({
             </div>
 
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ flex: "1 1 180px", display: "flex", flexDirection: "column", gap: 7 }}>
-                <span style={LABEL_SPAN}>{ar ? "نمط الإنجاز" : "Completion mode"}</span>
-                <div style={{ display: "flex", gap: 8 }}>
-                  {[
-                    { id: "onsite", label: ar ? "حضوري" : "On-site" },
-                    { id: "remote", label: ar ? "عن بُعد" : "Remote" },
-                  ].map((m) => (
+              <div style={{ flex: "1 1 280px", display: "flex", flexDirection: "column", gap: 7 }}>
+                <span style={LABEL_SPAN}>
+                  {ar ? "مكان التنفيذ — مطلوب" : "Where the work happens — required"}
+                </span>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {TASK_MODES.map((m) => (
                     <button
                       key={m.id}
                       type="button"
                       onClick={() => setForm((f) => ({ ...f, mode: m.id }))}
                       style={modeBtnStyle(form.mode === m.id)}
                     >
-                      {m.label}
+                      {ar ? m.ar : m.en}
                     </button>
                   ))}
                 </div>
+                <span style={{ fontSize: 11, color: form.mode ? NAVY : MUTED, lineHeight: 1.6 }}>
+                  {form.mode
+                    ? taskModeConsequence(form.mode, { ar, onDate: form.startAt })
+                    : (ar
+                      ? "المكان يحدّد ما تطلبه المنصة عند تسجيل الإنجاز: بصمة الحضور، وسريان حظر العمل تحت أشعة الشمس."
+                      : "The place decides what the platform requires when a completion is logged: the attendance stamp, and whether the sun ban applies.")}
+                </span>
+                {/* Creating a task is never refused, so the level here follows the task's
+                    own span: a red alert when it touches the season, plain reference when
+                    it does not. The heavier red of a refusal belongs to the log gate. */}
+                <HeatBanNotice notice={heatNotice} ar={ar} />
               </div>
             </div>
           </SectionCard>
@@ -1103,7 +1127,7 @@ export default function OpsNewTaskModal({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                 gap: 12,
                 alignItems: "end",
               }}
@@ -1129,11 +1153,16 @@ export default function OpsNewTaskModal({
                 <PlatformDateField
                   ar={ar}
                   value={form.startAt || ""}
-                  onChange={(next) => setForm((f) => ({
-                    ...f,
-                    startAt: next,
-                    paceDates: clipIsoDatesToWindow(f.paceDates, next, f.dueAt),
-                  }))}
+                  onChange={(next) => setForm((f) => {
+                    const startAt = next;
+                    const dueAt = f.dueAt;
+                    return {
+                      ...f,
+                      startAt,
+                      paceDates: clipIsoDatesToWindow(f.paceDates, next, dueAt),
+                      ...syncPaceSelection({ ...f, startAt }, startAt, dueAt),
+                    };
+                  })}
                 />
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -1141,27 +1170,40 @@ export default function OpsNewTaskModal({
                 <PlatformDateField
                   ar={ar}
                   value={form.dueAt || ""}
-                  onChange={(next) => setForm((f) => ({
-                    ...f,
-                    dueAt: next,
-                    paceDates: clipIsoDatesToWindow(f.paceDates, f.startAt, next),
-                  }))}
+                  onChange={(next) => setForm((f) => {
+                    const startAt = f.startAt;
+                    const dueAt = next;
+                    return {
+                      ...f,
+                      dueAt,
+                      paceDates: clipIsoDatesToWindow(f.paceDates, startAt, next),
+                      ...syncPaceSelection({ ...f, dueAt }, startAt, dueAt),
+                    };
+                  })}
                 />
               </label>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <span style={LABEL_SPAN}>{ar ? "أيام التوزيع" : "Spread days"}</span>
-              <div style={{ display: "flex", gap: 6 }}>
-                {[
-                  { id: "all", ar: "كل الأيام", en: "All days" },
-                  { id: "dates", ar: "أيام محددة", en: "Specific days" },
-                ].map((m) => (
+              <span style={LABEL_SPAN}>{ar ? "أفق الخطة" : "Plan horizon"}</span>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {PLAN_HORIZONS.map((m) => (
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => setForm((f) => ({ ...f, paceMode: m.id }))}
-                    style={assignBtnStyle(paceMode === m.id)}
+                    onClick={() => setForm((f) => {
+                      const startAt = f.startAt || isoDayKey(new Date());
+                      const dueAt = f.dueAt || dueFromPlanHorizon(startAt, m.id);
+                      return {
+                        ...f,
+                        planHorizon: m.id,
+                        planPinned: true,
+                        startAt,
+                        dueAt,
+                        ...syncPaceSelection({ ...f, startAt, dueAt }, startAt, dueAt),
+                      };
+                    })}
+                    style={assignBtnStyle(form.planPinned && form.planHorizon === m.id)}
                   >
                     {ar ? m.ar : m.en}
                   </button>
@@ -1169,24 +1211,101 @@ export default function OpsNewTaskModal({
               </div>
             </div>
 
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <span style={LABEL_SPAN}>{ar ? "أيام التوزيع" : "Spread days"}</span>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[
+                  { id: "all", ar: "كل الأيام", en: "All days" },
+                  { id: "specific", ar: "أيام محددة", en: "Specific days" },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setForm((f) => ({
+                      ...f,
+                      paceMode: m.id === "all" ? "all" : (specificOn ? f.paceMode : "specific"),
+                      ...(m.id === "all" ? { paceWeekdays: [], paceDates: [] } : {}),
+                    }))}
+                    style={assignBtnStyle(m.id === "all" ? paceMode === "all" : specificOn)}
+                  >
+                    {ar ? m.ar : m.en}
+                  </button>
+                ))}
+              </div>
+              {specificOn ? (
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[
+                    { id: "weekdays", ar: "يوم ثابت", en: "Fixed day" },
+                    { id: "dates", ar: "مرن", en: "Flexible" },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        setForm((f) => ({ ...f, paceMode: m.id }));
+                      }}
+                      style={assignBtnStyle(paceMode === m.id)}
+                    >
+                      {ar ? m.ar : m.en}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {specificOn ? (
+                <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
+                  {paceMode === "weekdays"
+                    ? (ar ? "يوم الأسبوع نفسه يتكرر من البداية حتى الاستحقاق — مناسب للسنة." : "The same weekday repeats from start to due — fits a year.")
+                    : paceMode === "dates"
+                      ? (ar ? "اختر التواريخ من التقويم داخل الفترة المحددة فقط." : "Pick dates on the calendar inside the defined window only.")
+                      : (ar ? "هل التوزيع يوم ثابت في الفترة، أم مرن تختار أيامه من التقويم؟" : "Is the spread a fixed weekday in the window, or flexible dates from the calendar?")}
+                </div>
+              ) : null}
+            </div>
+
             <DailyPaceStrip
               ar={ar}
               pace={deriveDailyTaskPace(formPaceInput(scheduleForm))}
               emptyHint={ar
                 ? (paceMode === "dates"
-                  ? "اكتب العدد والتاريخين وحدّد الأيام لتظهر حصة اليوم."
-                  : "اكتب العدد وحدّد تاريخ البدء وتاريخ الاستحقاق لتظهر حصة اليوم.")
+                  ? "اكتب العدد والتاريخين واختر الأيام من التقويم لتظهر حصة اليوم."
+                  : paceMode === "weekdays"
+                    ? "اكتب العدد والتاريخين واختر يوم الأسبوع الثابت لتظهر حصة اليوم."
+                    : "اكتب العدد وحدّد تاريخ البدء وتاريخ الاستحقاق لتظهر حصة اليوم.")
                 : (paceMode === "dates"
-                  ? "Enter the count, both dates, and the picked days to see today's quota."
-                  : "Enter the count and both dates to see today's quota.")}
+                  ? "Enter the count and dates, then pick days on the calendar."
+                  : paceMode === "weekdays"
+                    ? "Enter the count and dates, then pick the fixed weekday."
+                    : "Enter the count and both dates to see today's quota.")}
             />
+
+            {paceMode === "weekdays" ? (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {WEEKDAY_OPTIONS.map((w) => {
+                  const on = (form.paceWeekdays || []).includes(w.id);
+                  return (
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => setForm((f) => {
+                        const cur = Array.isArray(f.paceWeekdays) ? f.paceWeekdays : [];
+                        const next = cur.includes(w.id) ? cur.filter((d) => d !== w.id) : [...cur, w.id];
+                        return { ...f, paceWeekdays: next, paceDates: [] };
+                      })}
+                      style={chipBtnStyle(on)}
+                    >
+                      {ar ? w.ar : w.en}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
 
             {paceMode === "dates" ? (
               (() => {
                 if (!form.startAt || !form.dueAt) {
                   return (
                     <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
-                      {ar ? "حدّد تاريخ البدء وتاريخ الاستحقاق أولًا، ثم اختر الأيام." : "Pick the start and due dates first, then choose the days."}
+                      {ar ? "حدّد تاريخ البدء وتاريخ الاستحقاق أولًا، ثم اختر من التقويم." : "Pick the start and due dates first, then choose on the calendar."}
                     </div>
                   );
                 }
@@ -1198,7 +1317,7 @@ export default function OpsNewTaskModal({
                   const next = has
                     ? cur.filter((d) => d !== day)
                     : [...cur, day].sort().slice(0, PACE_DATES_MAX);
-                  return { ...f, paceDates: next };
+                  return { ...f, paceDates: next, paceWeekdays: [] };
                 });
                 if (spanDays < 1) {
                   return (
@@ -1207,44 +1326,20 @@ export default function OpsNewTaskModal({
                     </div>
                   );
                 }
-                if (spanDays > PACE_CHIP_DAYS_MAX) {
-                  return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div style={{ fontSize: 11, color: MUTED }}>
-                        {ar
-                          ? (picked.length === 1
-                            ? "يوم واحد محدد — انقر الأيام في التقويم."
-                            : `${picked.length} أيام محددة — انقر الأيام في التقويم.`)
-                          : `${picked.length} day${picked.length === 1 ? "" : "s"} picked — tap days on the calendar.`}
-                      </div>
-                      <PaceRangeCalendar
-                        ar={ar}
-                        startAt={form.startAt}
-                        dueAt={form.dueAt}
-                        picked={picked}
-                        onToggle={toggleDay}
-                      />
-                    </div>
-                  );
-                }
-                const rangeDays = listIsoDaysInRange(form.startAt, form.dueAt, PACE_CHIP_DAYS_MAX);
                 return (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {rangeDays.map((day) => {
-                      const dt = new Date(`${day}T00:00:00`);
-                      const w = WEEKDAY_OPTIONS.find((opt) => opt.id === dt.getDay());
-                      return (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => toggleDay(day)}
-                          style={chipBtnStyle(picked.includes(day))}
-                          title={w ? (ar ? w.ar : w.en) : day}
-                        >
-                          {String(Number(day.slice(8, 10)))}
-                        </button>
-                      );
-                    })}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ fontSize: 11, color: MUTED }}>
+                      {ar
+                        ? (picked.length ? `${picked.length} يوم مختار داخل الفترة.` : "انقر الأيام داخل الفترة على التقويم.")
+                        : (picked.length ? `${picked.length} day${picked.length === 1 ? "" : "s"} picked in the window.` : "Tap days inside the window on the calendar.")}
+                    </div>
+                    <PaceRangeCalendar
+                      ar={ar}
+                      startAt={form.startAt}
+                      dueAt={form.dueAt}
+                      picked={picked}
+                      onToggle={toggleDay}
+                    />
                   </div>
                 );
               })()
@@ -1452,9 +1547,16 @@ export default function OpsNewTaskModal({
           >
             {ar ? "إلغاء" : "Cancel"}
           </button>
-          <button type="submit" disabled={!submitEnabled} style={submitStyle}>
-            {ar ? "أنشئ المهمة" : "Create task"}
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
+            <button type="submit" disabled={!submitEnabled} style={submitStyle}>
+              {ar ? "أنشئ المهمة" : "Create task"}
+            </button>
+            {submitBlock ? (
+              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, textAlign: "center" }}>
+                {submitBlock}
+              </span>
+            ) : null}
+          </div>
         </div>
       </form>
     </div>

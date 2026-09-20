@@ -349,18 +349,73 @@ export function shiftOverlapsHeatBan(start, end, { outdoor = false, summer = fal
   return false;
 }
 
+const HEAT_MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+const HEAT_MONTHS_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** Every heat-ban figure in one place, read from laborRules — the roster and the task board share it. */
+export function heatBanWindow(onDate) {
+  const startHour = ruleValue("hours.heat.startHour", onDate);
+  const endHour = ruleValue("hours.heat.endHour", onDate);
+  const fromMonth = ruleValue("hours.heat.fromMonth", onDate);
+  const fromDay = ruleValue("hours.heat.fromDay", onDate);
+  const toMonth = ruleValue("hours.heat.toMonth", onDate);
+  const toDay = ruleValue("hours.heat.toDay", onDate);
+  const pad = (n) => String(n).padStart(2, "0");
+  return {
+    startHour,
+    endHour,
+    fromMonth,
+    fromDay,
+    toMonth,
+    toDay,
+    startLabel: `${pad(startHour)}:00`,
+    endLabel: `${pad(endHour)}:00`,
+    seasonAr: `من ${fromDay} ${HEAT_MONTHS_AR[fromMonth - 1]} إلى ${toDay} ${HEAT_MONTHS_AR[toMonth - 1]}`,
+    seasonEn: `from ${fromDay} ${HEAT_MONTHS_EN[fromMonth - 1]} to ${toDay} ${HEAT_MONTHS_EN[toMonth - 1]}`,
+  };
+}
+
+/** Minutes past midnight inside the banned midday window — half-open, so the end hour is free. */
+export function isHeatBanMinuteOfDay(minutes, onDate) {
+  const m = Number(minutes);
+  if (!Number.isFinite(m)) return false;
+  const win = heatBanWindow(onDate);
+  return m >= win.startHour * 60 && m < win.endHour * 60;
+}
+
+/**
+ * The four states the sun ban can be in against a Riyadh wall clock, and the
+ * severity each one earns. Red is owed to the whole season, because inside it
+ * the ban bites today: `alert` before the window opens and after it closes, and
+ * `block` — the heavier red — while an open-air action is actually being refused.
+ * Outside the season the same figures are reference and nothing alarms. Surfaces
+ * read the level from here instead of inferring a tone from an absent notice.
+ */
+export const HEAT_BAN_STATE_LEVEL = {
+  off_season: "cite",
+  before_window: "alert",
+  in_window: "block",
+  after_window: "alert",
+};
+
+export function heatBanClockState(clock) {
+  const dayKey = clock?.dayKey;
+  const minutes = Number(clock?.minutes);
+  if (!dayKey || !Number.isFinite(minutes)) return "off_season";
+  if (!isHeatBanDate(dayKey)) return "off_season";
+  if (isHeatBanMinuteOfDay(minutes, dayKey)) return "in_window";
+  return minutes >= heatBanWindow(dayKey).endHour * 60 ? "after_window" : "before_window";
+}
+
 export function checkHeatBanGate(input = {}) {
   const hit = shiftOverlapsHeatBan(input.start, input.end, { outdoor: input.outdoor, summer: input.summer });
   if (!hit) return { ok: true };
-  const startH = String(ruleValue("hours.heat.startHour")).padStart(2, "0");
-  const endH = String(ruleValue("hours.heat.endHour")).padStart(2, "0");
-  const fromDay = ruleValue("hours.heat.fromDay");
-  const toDay = ruleValue("hours.heat.toDay");
+  const win = heatBanWindow(input.onDate);
   return {
     ok: false,
     error: "HEAT_BAN",
-    reason: `موقوف — حظر العمل في الميدان المكشوف من ${startH}:00 إلى ${endH}:00 من ${fromDay} يونيو إلى ${toDay} سبتمبر.`,
-    reasonEn: `Blocked — outdoor field work is banned from ${startH}:00 to ${endH}:00 from ${fromDay} June to ${toDay} September.`,
+    reason: `موقوف — حظر العمل في الميدان المكشوف من ${win.startLabel} إلى ${win.endLabel} ${win.seasonAr}.`,
+    reasonEn: `Blocked — outdoor field work is banned from ${win.startLabel} to ${win.endLabel} ${win.seasonEn}.`,
   };
 }
 
@@ -483,6 +538,13 @@ export function laborFilePatch(employee, onDate) {
     const floor = statutoryLeaveFloor(ty.key, floorProfile, today);
     if (floor == null) continue;
     const current = Number(totals[ty.key]);
+    if (ty.key === "iddah") {
+      if (!Number.isFinite(current) || current !== floor) {
+        totals[ty.key] = floor;
+        floors = true;
+      }
+      continue;
+    }
     if (!Number.isFinite(current) || current < floor) {
       totals[ty.key] = floor;
       floors = true;

@@ -4,6 +4,7 @@ import { useI18n } from "@/lib/i18n";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import RenameDialog from "@/components/files/RenameDialog";
 import { BORDER, MUTED, NAVY, NEUTRAL, CARD } from "@/lib/platformStyles";
+import { uiDateLocale } from "@/lib/dateFormat";
 import { identityIconWrap } from "@/components/shared/IdentityCard";
 
 function fileIcon(mimeType = "", name = "") {
@@ -27,7 +28,7 @@ const iconBtn = {
   border: "none",
   background: "transparent",
   color: MUTED,
-  borderRadius: 8,
+  borderRadius: 10,
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
@@ -41,7 +42,7 @@ export default function FileRow({ file, onDelete, onRename, stationName }) {
   const Icon = fileIcon(file.mimeType, file.name);
   const meta = [
     formatSize(file.size),
-    file.createdAt ? new Date(file.createdAt).toLocaleDateString(lang) : "",
+    file.createdAt ? new Date(file.createdAt).toLocaleDateString(uiDateLocale(lang)) : "",
     file.uploadedBy ? `${t("uploadedBy")} ${file.uploadedBy}` : "",
   ].filter(Boolean).join(" · ");
 
@@ -54,7 +55,8 @@ export default function FileRow({ file, onDelete, onRename, stationName }) {
         padding: "8px 10px",
         background: CARD,
         border: `1px solid ${BORDER}`,
-        borderRadius: 12,
+        borderRadius: 14,
+        boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
       }}
     >
       <span style={{ ...identityIconWrap, width: 32, height: 32, borderRadius: 9 }}>

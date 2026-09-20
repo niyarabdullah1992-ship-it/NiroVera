@@ -1,3 +1,8 @@
+// purpose: Tenant registry. ownerPassword is server-side only.
+// domain: company
+// isolation: companyId
+// owner: companyDirectory
+// status: canonical
 {
   "name": "CompanyAccount",
   "type": "object",

@@ -1,12 +1,19 @@
+// purpose: AssetCustody tenant row.
+// domain: money
+// isolation: companyId
+// owner: assets
+// status: canonical
 {
   "name": "AssetCustody",
   "type": "object",
   "properties": {
     "companyId": {
-      "type": "string"
+      "type": "string",
+      "description": "Tenant of this handover."
     },
     "assetId": {
-      "type": "string"
+      "type": "string",
+      "description": "→ Asset id."
     },
     "fromId": {
       "type": [

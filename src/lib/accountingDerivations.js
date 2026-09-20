@@ -4,7 +4,7 @@
  * Not a general ledger.
  */
 
-import { deriveCompanyBudget } from "./expenseDerivations.js";
+import { deriveCompanyBudget, toBudgetStatus } from "./expenseDerivations.js";
 import { deriveRunTotals, deriveWpsStatus } from "./payrollDerivations.js";
 
 const POSTED_EXPENSE = new Set(["approved", "paid"]);
@@ -14,7 +14,7 @@ function monthKeyNow(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function periodMonth(value) {
+export function periodMonth(value) {
   if (typeof value === "string" && /^\d{4}-\d{2}$/.test(value)) return value;
   return monthKeyNow(value instanceof Date ? value : new Date());
 }
@@ -24,17 +24,18 @@ function claimInPeriod(claim, month) {
   return stamp === month;
 }
 
-function postedExpenseClaims(claims = [], month) {
-  return (claims || []).filter(
-    (claim) => POSTED_EXPENSE.has(claim?.status) && claimInPeriod(claim, month),
-  );
+export function postedExpenseClaims(claims = [], month) {
+  return (claims || []).filter((claim) => {
+    const status = toBudgetStatus(claim?.status);
+    return POSTED_EXPENSE.has(status) && claimInPeriod(claim, month);
+  });
 }
 
-function postedExpenseTotal(claims = [], month) {
+export function postedExpenseTotal(claims = [], month) {
   return postedExpenseClaims(claims, month).reduce((sum, claim) => sum + (Number(claim.amount) || 0), 0);
 }
 
-function postedPayrollRun(runs = [], month) {
+export function postedPayrollRun(runs = [], month) {
   const run = (runs || []).find((entry) => entry.month === month) || null;
   if (!run || !POSTED_PAYROLL.has(run.status)) return null;
   return run;
@@ -91,5 +92,36 @@ export function deriveAccountingPeriod({
       wps: { ...wps, label: wpsLabel(wps, ar) },
       posted: Boolean(payrollRun),
     },
+  };
+}
+
+export function toCsv(headers = [], rows = []) {
+  const escape = (value) => {
+    const text = String(value ?? "");
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  return [headers.map(escape).join(","), ...rows.map((row) => row.map(escape).join(","))].join("\n");
+}
+
+export function accountingExportPack(snap, lang = "ar") {
+  const ar = lang === "ar";
+  const expenseRows = (snap?.expenses?.claims || []).map((claim) => [
+    claim.id,
+    claim.title || "",
+    claim.amount,
+    toBudgetStatus(claim.status),
+    claim.stationId || "",
+  ]);
+  const payrollRows = snap?.payroll?.run
+    ? [[snap.month, snap.payroll.status, snap.payroll.heads, snap.payroll.netTotal]]
+    : [];
+  return {
+    expenseRows,
+    payrollRows,
+    summaryHeaders: ar ? ["البند", "القيمة"] : ["Item", "Value"],
+    summaryRows: [
+      [ar ? "مصروف منشور" : "Posted expense", snap?.expenses?.total || 0],
+      [ar ? "مسير منشور" : "Posted payroll", snap?.payroll?.netTotal || 0],
+    ],
   };
 }

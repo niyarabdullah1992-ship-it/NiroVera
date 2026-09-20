@@ -13,7 +13,12 @@ import {
 } from "../../shared/attendanceDerivations.ts";
 import { deriveVerificationMode } from "../../shared/settingsDerivations.ts";
 
-const LEDGER_CATEGORY = "attendanceLedger";
+/**
+ * do-not-invoke-from-frontend — live punches are `personalAttendance` (supabaseAttendance + store).
+ * Leftover callers persist to `personalAttendance` only. `attendanceLedger` is read-once fallback.
+ */
+const LEDGER_CATEGORY = "personalAttendance";
+const LEDGER_LEGACY_CATEGORY = "attendanceLedger"; // do-not-write
 
 function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
@@ -61,6 +66,7 @@ Deno.serve(async (req) => {
     };
 
     const saveBlob = async (category: string, payload: unknown) => {
+      if (category === LEDGER_LEGACY_CATEGORY || category === "companySettings") return;
       const blob = await loadBlob(category);
       if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload });
       else await base44.asServiceRole.entities.CompanyDataBlob.create({ companyId: auth.companyId, category, payload });
@@ -68,18 +74,33 @@ Deno.serve(async (req) => {
 
     const loadLedger = async () => {
       const blob = await loadBlob(LEDGER_CATEGORY);
-      const payload = blob?.payload && typeof blob.payload === "object" ? blob.payload : {};
-      return {
-        punches: Array.isArray((payload as { punches?: unknown[] }).punches)
+      const payload = blob?.payload;
+      let punches: PunchLike[] = [];
+      let geofenceVerificationRequired = true;
+      if (Array.isArray(payload)) {
+        punches = payload as PunchLike[];
+      } else if (payload && typeof payload === "object") {
+        punches = Array.isArray((payload as { punches?: unknown[] }).punches)
           ? (payload as { punches: PunchLike[] }).punches
-          : [],
-        geofenceVerificationRequired:
-          (payload as { geofenceVerificationRequired?: boolean }).geofenceVerificationRequired !== false,
-      };
+          : [];
+        geofenceVerificationRequired =
+          (payload as { geofenceVerificationRequired?: boolean }).geofenceVerificationRequired !== false;
+      }
+      if (!punches.length) {
+        const legacy = await loadBlob(LEDGER_LEGACY_CATEGORY);
+        const raw = legacy?.payload && typeof legacy.payload === "object" ? legacy.payload : {};
+        punches = Array.isArray((raw as { punches?: unknown[] }).punches)
+          ? (raw as { punches: PunchLike[] }).punches
+          : (Array.isArray(legacy?.payload) ? legacy.payload as PunchLike[] : []);
+        if (typeof (raw as { geofenceVerificationRequired?: boolean }).geofenceVerificationRequired === "boolean") {
+          geofenceVerificationRequired = (raw as { geofenceVerificationRequired: boolean }).geofenceVerificationRequired;
+        }
+      }
+      return { punches, geofenceVerificationRequired };
     };
 
     const saveLedger = async (ledger: { punches: PunchLike[]; geofenceVerificationRequired: boolean }) => {
-      await saveBlob(LEDGER_CATEGORY, ledger);
+      await saveBlob(LEDGER_CATEGORY, ledger.punches);
     };
 
     const audit = async (actionKey: string, details: string, extra: Record<string, unknown> = {}) => {
@@ -95,8 +116,11 @@ Deno.serve(async (req) => {
     };
 
     const loadSettingsGeo = async () => {
-      const blob = await loadBlob("companySettings");
-      const payload = (blob?.payload || {}) as { geofenceVerificationRequired?: boolean };
+      const blob = await loadBlob("companyMeta");
+      const meta = (Array.isArray(blob?.payload) ? blob.payload[0] : blob?.payload || {}) as { geofenceVerificationRequired?: boolean };
+      if (typeof meta.geofenceVerificationRequired === "boolean") return meta.geofenceVerificationRequired;
+      const legacy = await loadBlob("companySettings");
+      const payload = (legacy?.payload || {}) as { geofenceVerificationRequired?: boolean };
       if (typeof payload.geofenceVerificationRequired === "boolean") return payload.geofenceVerificationRequired;
       const ledger = await loadLedger();
       return ledger.geofenceVerificationRequired !== false;

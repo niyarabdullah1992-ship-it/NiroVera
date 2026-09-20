@@ -110,7 +110,7 @@ export default function SuiteWelcomeModal({ ar, companyId, companyName, onClose 
               fontFamily: "inherit",
             }}
           >
-            {ar ? "متابعة إلى مركز القيادة" : "Continue to Command Center"}
+            {ar ? "متابعة إلى لوحة القيادة" : "Continue to the dashboard"}
           </button>
         </div>
       </div>

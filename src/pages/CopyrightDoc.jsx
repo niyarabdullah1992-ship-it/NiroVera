@@ -7,7 +7,7 @@ import Logo from "@/components/Logo";
 // Property). Renders as a clean A4-style document; the button opens the
 // browser's print dialog where the user chooses "Save as PDF".
 export default function CopyrightDoc() {
-  const today = new Date().toLocaleDateString("ar-SA", { year: "numeric", month: "long", day: "numeric" });
+  const today = new Date().toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { year: "numeric", month: "long", day: "numeric" });
 
   return (
     <div dir="rtl" className="min-h-screen bg-neutral-200 print:bg-white py-8 print:py-0 font-body">

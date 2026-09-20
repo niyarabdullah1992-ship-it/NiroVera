@@ -1,13 +1,15 @@
 import React from "react";
-import { Bell, CheckCheck, X } from "lucide-react";
+import { X } from "lucide-react";
 import SwipeToDeleteItem from "@/components/notifications/SwipeToDeleteItem";
 import {
-  cleanNotificationText,
+  formatNotificationText,
   kindForNotification,
-  notificationTone,
   relativeNotificationTime,
 } from "@/lib/notificationKind";
-import { MUTED, NAVY, NAVY_FILL, SURFACE, CARD } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, PAPER_SHADOW, PILL_RADIUS, RADIUS, SURFACE, ui } from "@/lib/platformStyles";
+
+const NASKH = "'Noto Naskh Arabic', 'Amiri', serif";
+const MONO = "'IBM Plex Mono', monospace";
 
 export default function NotificationPanel({
   items = [],
@@ -19,43 +21,52 @@ export default function NotificationPanel({
   onMarkAll,
 }) {
   const ar = lang === "ar";
+  const rows = [...items]
+    .sort((a, b) => Number(!!a.read) - Number(!!b.read))
+    .slice(0, 12);
 
   return (
     <div
+      dir={ar ? "rtl" : "ltr"}
       style={{
         width: 360,
         maxWidth: "92vw",
         background: CARD,
-        border: "1px solid #E2E8F0",
-        borderRadius: 16,
-        boxShadow: "0 16px 40px rgba(20,40,75,.12)",
+        border: `1px solid ${BORDER}`,
+        borderRadius: RADIUS,
+        boxShadow: PAPER_SHADOW,
         overflow: "hidden",
+        color: NAVY,
       }}
     >
-      <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />
       <header
         style={{
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
           gap: 12,
-          padding: "12px 14px 11px",
-          background: SURFACE,
-          borderBottom: "1px solid #E2E8F0",
+          padding: "16px 20px",
+          background: CARD,
+          borderBottom: "1px solid #eef0f4",
         }}
       >
-        <div>
-          <p style={{ margin: 0, fontSize: 10, letterSpacing: "0.16em", fontWeight: 600, color: MUTED }}>NIROVERA</p>
-          <p style={{ margin: "3px 0 0", fontSize: 15, fontWeight: 600, color: NAVY }}>{t("notifications")}</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.14em", fontWeight: 600, color: MUTED, fontFamily: MONO }}>
+            NIROVERA
+          </span>
+          <h2 style={{ margin: 0, fontFamily: NASKH, fontSize: 18, fontWeight: 600, lineHeight: 1.35, color: NAVY }}>
+            {t("notifications")}
+          </h2>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          {unread > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, paddingTop: 2 }}>
+          {unread > 0 ? (
             <span
+              dir="ltr"
               style={{
                 minWidth: 20,
                 height: 20,
                 padding: "0 6px",
-                borderRadius: 20,
+                borderRadius: PILL_RADIUS,
                 background: NAVY_FILL,
                 color: "#fff",
                 fontSize: 10,
@@ -63,76 +74,44 @@ export default function NotificationPanel({
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
+                fontFamily: MONO,
               }}
             >
               {unread > 9 ? "9+" : unread}
             </span>
-          )}
-          {unread > 0 && (
-            <button
-              type="button"
-              onClick={onMarkAll}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                height: 28,
-                padding: "0 9px",
-                borderRadius: 8,
-                border: "1px solid #E2E8F0",
-                background: CARD,
-                color: "#1E9E63",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              <CheckCheck style={{ width: 13, height: 13 }} />
+          ) : null}
+          {unread > 0 ? (
+            <button type="button" onClick={onMarkAll} style={ui.btnMiniQuiet}>
               {t("markRead")}
             </button>
-          )}
+          ) : null}
         </div>
       </header>
 
       <div style={{ maxHeight: 380, overflowY: "auto" }}>
-        {items.length === 0 ? (
-          <div style={{ padding: "36px 20px", textAlign: "center" }}>
-            <span
-              style={{
-                width: 44,
-                height: 44,
-                margin: "0 auto 12px",
-                borderRadius: 12,
-                background: SURFACE,
-                color: MUTED,
-                display: "grid",
-                placeItems: "center",
-              }}
-            >
-              <Bell style={{ width: 18, height: 18 }} strokeWidth={1.75} />
-            </span>
-            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: NAVY }}>{t("noNotifications")}</p>
-            <p style={{ margin: "6px 0 0", fontSize: 12, lineHeight: 1.6, color: MUTED }}>
-              {ar ? "عندما يحدث أمر يستحق المتابعة سيظهر هنا." : "When something needs attention, it will appear here."}
-            </p>
+        {rows.length === 0 ? (
+          <div style={{ padding: "18px 20px 22px", fontSize: 12, color: MUTED, lineHeight: 1.85, textAlign: "start" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: NAVY, marginBottom: 6 }}>{t("noNotifications")}</div>
+            {ar
+              ? "عندما يحدث أمر يستحق المتابعة سيظهر هنا — بنفس أثره وموضعه في المنصة."
+              : "When something needs attention, it will appear here — with its effect and place in the platform."}
           </div>
         ) : (
-          items.slice(0, 12).map((item) => {
+          rows.map((item) => {
             const kind = kindForNotification(item.text);
-            const tone = notificationTone(kind);
-            const Icon = kind.icon;
-            const title = cleanNotificationText(item.text) || (ar ? kind.ar : kind.en);
+            const title = formatNotificationText(item, lang) || (ar ? kind.ar : kind.en);
+            const unreadRow = !item.read;
             return (
               <SwipeToDeleteItem key={item.id} onDelete={() => onDismiss(item.id)}>
                 <div
                   style={{
                     display: "flex",
                     alignItems: "flex-start",
-                    gap: 10,
-                    padding: "12px 12px 12px 10px",
-                    borderBottom: "1px solid #F1F5F9",
-                    background: item.read ? CARD : SURFACE,
+                    gap: 8,
+                    padding: "12px 16px 12px 12px",
+                    borderBottom: "1px solid #f7f8fa",
+                    background: unreadRow ? SURFACE : CARD,
+                    borderInlineStart: unreadRow ? `3px solid ${NAVY_FILL}` : "3px solid transparent",
                   }}
                 >
                   <button
@@ -142,8 +121,8 @@ export default function NotificationPanel({
                       flex: 1,
                       minWidth: 0,
                       display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
+                      flexDirection: "column",
+                      gap: 5,
                       textAlign: "start",
                       border: "none",
                       background: "transparent",
@@ -152,50 +131,25 @@ export default function NotificationPanel({
                       padding: 0,
                     }}
                   >
-                    <span
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: tone.bg,
-                        color: tone.fg,
-                        display: "grid",
-                        placeItems: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Icon style={{ width: 16, height: 16 }} strokeWidth={1.85} />
-                    </span>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        {!item.read && (
-                          <span
-                            aria-hidden
-                            style={{
-                              width: 7,
-                              height: 7,
-                              borderRadius: "50%",
-                              background: "#1E9E63",
-                              flexShrink: 0,
-                            }}
-                          />
-                        )}
-                        <span
-                          style={{
-                            fontSize: 13,
-                            fontWeight: item.read ? 500 : 600,
-                            color: NAVY,
-                            lineHeight: 1.45,
-                          }}
-                        >
-                          {title}
-                        </span>
+                    <span style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "baseline" }}>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: unreadRow ? 700 : 500,
+                          color: unreadRow ? NAVY : MUTED,
+                          lineHeight: 1.55,
+                          minWidth: 0,
+                        }}
+                      >
+                        {title}
                       </span>
-                      <span style={{ display: "block", marginTop: 4, fontSize: 11, color: MUTED }}>
+                      <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, color: MUTED, flexShrink: 0 }}>
                         {relativeNotificationTime(item.createdAt, lang)}
-                        <span style={{ marginInline: 6, color: "#CBD5E1" }}>·</span>
-                        {ar ? kind.ar : kind.en}
                       </span>
+                    </span>
+                    <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
+                      {ar ? kind.ar : kind.en}
+                      {unreadRow ? (ar ? " · غير مقروء" : " · Unread") : (ar ? " · مقروء" : " · Read")}
                     </span>
                   </button>
                   <button
@@ -205,15 +159,16 @@ export default function NotificationPanel({
                     style={{
                       width: 26,
                       height: 26,
-                      border: "none",
-                      borderRadius: 8,
-                      background: "transparent",
+                      border: `1px solid ${BORDER}`,
+                      borderRadius: 10,
+                      background: CARD,
                       color: MUTED,
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
                       cursor: "pointer",
                       flexShrink: 0,
+                      marginTop: 1,
                     }}
                   >
                     <X style={{ width: 13, height: 13 }} />

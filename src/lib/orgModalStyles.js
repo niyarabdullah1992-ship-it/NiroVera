@@ -1,5 +1,5 @@
 /**
- * Shared chrome for org-tree create/edit sheets — Platform.dc.html tokens only.
+ * Shared chrome for org-tree create/edit sheets — platform tokens only.
  */
 import { ACCENT, MUTED, NAVY, SURFACE, field, labelMuted, dialogOverlay, dialogCard, ui, CARD } from "@/lib/platformStyles";
 
@@ -38,10 +38,10 @@ export const hintText = {
 
 export function segmentBtn(active) {
   return {
-    borderRadius: "8px",
+    borderRadius: 10,
     border: "none",
     background: active ? CARD : "transparent",
-    boxShadow: active ? "0 1px 2px rgba(20,40,75,.06)" : "none",
+    boxShadow: "none",
     padding: "11px 12px",
     fontSize: "13px",
     fontWeight: 600,
@@ -52,7 +52,7 @@ export function segmentBtn(active) {
 }
 
 export const softPanel = {
-  borderRadius: "16px",
+  borderRadius: 14,
   border: "1px solid #E2E8F0",
   background: SURFACE,
   padding: "12px 14px",
@@ -61,7 +61,7 @@ export const softPanel = {
 export const closeBtn = {
   width: 34,
   height: 34,
-  borderRadius: 9,
+  borderRadius: 10,
   border: "1px solid #E2E8F0",
   background: CARD,
   color: MUTED,

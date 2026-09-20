@@ -1,5 +1,6 @@
 import { POWERCARE_LOGO_URL } from "@/lib/brand";
 import { PDF_THEME, brandReportColor } from "@/lib/pdfTheme";
+import { uiDateLocale } from "@/lib/dateFormat";
 
 // Builds an elegant, print-ready (A4) HTML document from AI-generated content.
 // Used by Niro's "create_document" action — supports headings, paragraphs,
@@ -64,7 +65,7 @@ export function buildDocumentHtml({ title, subtitle, sections = [], dir = "ltr",
     ${sectionHtml}
     <footer class="foot">
       <span>${esc(authorName)}</span>
-      <span>${new Date().toLocaleDateString(ar ? "ar" : "en-GB")}</span>
+      <span>${new Date().toLocaleDateString(uiDateLocale(ar))}</span>
     </footer>
   </div>
 </body>

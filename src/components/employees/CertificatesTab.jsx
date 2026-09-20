@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef } from "react";
+import React, { useState, useRef } from "react";
 import { useI18n } from "@/lib/i18n";
 import { base44 } from "@/api/base44Client";
 import { addCertificate, removeCertificate, setCertificateStatus } from "@/lib/store";
@@ -6,6 +6,7 @@ import { Loader2, Plus, Check, X, Paperclip } from "lucide-react";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import { BORDER, MUTED, NAVY, NAVY_FILL, OK, WARN, BAD, NEUTRAL, field, CARD, SURFACE } from "@/lib/platformStyles";
 import { ChromeBox } from "@/components/shared/IdentityCard";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 
 /** Competency codes tracked on the employee file (CERT_FOR). */
 export const COMPETENCY_CODES = [
@@ -262,7 +263,7 @@ export default function CertificatesTab({ employee, companyId, canEdit, canAppro
               <div style={{ fontSize: "11px", color: MUTED, marginBottom: "6px" }}>
                 {ar ? "تاريخ الانتهاء" : "Expiry date"}
               </div>
-              <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} style={inputStyle} />
+              <PlatformDateField ar={ar} value={expiryDate} onChange={setExpiryDate} />
             </div>
             <div>
               <div style={{ fontSize: "11px", color: MUTED, marginBottom: "6px" }}>{t("category")}</div>

@@ -4,6 +4,20 @@
  * Professional-info fields are management / HR only.
  */
 
+import { isRamadanHoursSubject } from "./laborRules.js";
+
+export function profileGender(profile) {
+  const raw = String(profile?.gender || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (raw === "female" || raw === "f" || raw.includes("أنث") || raw.includes("انث") || raw === "woman") return "female";
+  if (raw === "male" || raw === "m" || raw.includes("ذكر") || raw === "man") return "male";
+  return "";
+}
+
+export function profileReligion(profile) {
+  return isRamadanHoursSubject({ profile }) ? "muslim" : "non_muslim";
+}
+
 export function canEmployeeEditProfileKey() {
   return false;
 }
@@ -43,13 +57,33 @@ export const MARITAL_OPTIONS = [
   { value: "widowed", ar: "أرمل / أرملة", en: "Widowed", aliases: ["أرمل", "أرملة", "widowed"] },
 ];
 
+export const NIGHT_FITNESS_OPTIONS = [
+  { value: "fit", ar: "لائق للعمل الليلي", en: "Fit for night work", aliases: ["fit", "لائق"] },
+  { value: "unfit", ar: "غير لائق للعمل الليلي", en: "Unfit for night work", aliases: ["unfit", "failed", "غير لائق"] },
+];
+
+export const YES_NO_OPTIONS = [
+  { value: "yes", ar: "نعم", en: "Yes", aliases: ["yes", "true", "1", "نعم"] },
+  { value: "no", ar: "لا", en: "No", aliases: ["no", "false", "0", "لا"] },
+];
+
+export const RELIGION_OPTIONS = [
+  { value: "muslim", ar: "مسلم", en: "Muslim", aliases: ["مسلم", "مسلمة", "muslim", "islam"] },
+  { value: "non_muslim", ar: "غير مسلم", en: "Non-Muslim", aliases: ["غير مسلم", "غير مسلمة", "non_muslim", "non-muslim"] },
+];
+
 const OPTION_SETS = {
   idType: ID_TYPE_OPTIONS,
   contractType: CONTRACT_TYPE_OPTIONS,
   workPattern: WORK_PATTERN_OPTIONS,
   gender: GENDER_OPTIONS,
   marital: MARITAL_OPTIONS,
+  religion: RELIGION_OPTIONS,
+  nightFitness: NIGHT_FITNESS_OPTIONS,
+  yesNo: YES_NO_OPTIONS,
 };
+
+export { isRamadanHoursSubject } from "./laborRules.js";
 
 function normalizeOption(value, options) {
   const s = String(value || "").trim().toLowerCase();
@@ -93,8 +127,8 @@ export const PROFILE_GROUPS = [
     id: "identity",
     ar: "الهوية والجنسية",
     en: "Identity and nationality",
-    noteAr: "الجنسية هي المعيار، ورقم الهوية يؤكدها: ١ مواطن، ٢ إقامة. إن اختلفا يُوقف العدّ في نطاقات.",
-    noteEn: "Nationality is the criterion; the ID number must agree (1 = citizen, 2 = iqama). A mismatch is not counted in Nitaqat.",
+    noteAr: "الجنسية هي المعيار، ورقم الهوية يؤكدها: 1 مواطن، 2 إقامة. الجنس يصنّف إجازات المرأة (أمومة وعدة) والأبوة. الدين يصنّف رمضان والحج ومدة العدّة: الفراغ أو مسلم = سقف 6/36 وحج وعدّة 130 يوماً. غير مسلم مسجّل = مستثنى من ذلك وعدّة 15 يوماً.",
+    noteEn: "Nationality is the criterion; the ID number must agree (1 = citizen, 2 = iqama). Gender classifies women's leave (maternity and iddah) and paternity. Religion classifies Ramadan, Hajj, and iddah length: empty or Muslim = the 6/36 cap, Hajj, and 130-day iddah. A recorded non-Muslim is exempt and has 15-day iddah.",
     fields: [
       { key: "nationality", ar: "الجنسية", en: "Nationality" },
       { key: "idType", ar: "نوع الهوية", en: "ID type", options: "idType" },
@@ -103,6 +137,7 @@ export const PROFILE_GROUPS = [
       { key: "birthDate", ar: "تاريخ الميلاد", en: "Birth date", type: "date" },
       { key: "gender", ar: "الجنس", en: "Gender", options: "gender" },
       { key: "maritalStatus", ar: "الحالة الاجتماعية", en: "Marital status", options: "marital" },
+      { key: "religion", ar: "الدين — رمضان والحج والعدّة", en: "Religion — Ramadan, Hajj and iddah", options: "religion", alwaysShow: true },
       { key: "passportNumber", ar: "رقم الجواز", en: "Passport number", dir: "ltr", forIqama: true },
       { key: "passportExpiry", ar: "انتهاء الجواز", en: "Passport expiry", type: "date", expiry: true, forIqama: true },
     ],
@@ -163,6 +198,25 @@ export const PROFILE_GROUPS = [
       { key: "iban", ar: "الحساب البنكي (IBAN)", en: "Bank account (IBAN)", dir: "ltr", ruleId: "payroll.wps.deadlineDayOfMonth" },
     ],
   },
+  {
+    id: "night_fitness",
+    ar: "لياقة العمل الليلي — القرار 18632",
+    en: "Night-work fitness — decision 18632",
+    noteAr: "تقرير اللياقة الليلية يُرفع من طلباتي (لياقة ليلية). بعد الاعتماد يُحفظ في الملف ولا يُعرض للغير دون موافقة. للحامل: تاريخ الوضع المتوقع وحظر 24 أسبوعاً.",
+    noteEn: "The night-fitness report is raised from My Requests (Night fitness). After approval it is stored on the file and not shown to others without consent. For pregnancy: expected birth date and the 24-week ban.",
+    nightMedicalRestricted: true,
+    ruleId: "hours.night.medicalYearMonths",
+    fields: [
+      { key: "expectedBirthDate", ar: "تاريخ الوضع المتوقع", en: "Expected birth date", type: "date", optional: true },
+      { key: "pregnant", ar: "حامل", en: "Pregnant", options: "yesNo", optional: true },
+      { key: "nightFitnessStatus", ar: "لياقة ليلية", en: "Night fitness", options: "nightFitness", optional: true },
+      { key: "nightMedicalShareConsent", ar: "موافقة عرض التقرير لغير الملف", en: "Consent to show the report to others", options: "yesNo", optional: true },
+      { key: "nightPregnancyBanUntil", ar: "تمديد حظر ليلي بشهادة (حتى)", en: "Certificate night ban until", type: "date", optional: true },
+      { key: "nightTransferImpossible", ar: "تعذّر النقل من الليل", en: "Night transfer impossible", options: "yesNo", optional: true },
+      { key: "nightPayPreserved", ar: "الأجر والمزايا محفوظة بعد التخفيض", en: "Pay and benefits preserved after reduction", options: "yesNo", optional: true },
+      { key: "familyResponsibilities", ar: "مسؤوليات عائلية تُراعى ليلاً", en: "Family responsibilities for night consideration", options: "yesNo", optional: true },
+    ],
+  },
 ];
 
 export function profileFieldValue(profile = {}, key, employee) {
@@ -190,6 +244,9 @@ export function profileFieldLabel(field, idType, ar) {
 
 export function displayProfileField(field, raw, ar) {
   const opts = profileFieldOptions(field);
+  if (field?.key === "religion" && !String(raw || "").trim()) {
+    return ar ? "مسلم — افتراضي لرمضان والحج والعدّة" : "Muslim — default for Ramadan, Hajj and iddah";
+  }
   if (opts) return optionLabel(opts, raw, ar) || "";
   return raw || "";
 }
@@ -213,6 +270,7 @@ export function isProfileFieldVisible(field, { profile, form, editing }) {
     if (isIqamaIdType(idType)) return true;
     return !!String(raw || "").trim();
   }
+  if (field.alwaysShow) return true;
   if (!field.optional) return true;
   if (editing) return true;
   return !!String(raw || "").trim();

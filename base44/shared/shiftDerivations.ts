@@ -3,8 +3,8 @@
  *  Caps and articles come from laborRules for the first day of the roster month.
  */
 
-import { citeRule, isRamadanDay, ruleValue } from "./laborRules.ts";
-import { checkHeatBanGate, isHeatBanDate, monthHasHeatBanDay, shiftOverlapsNight } from "./contractLawDerivations.ts";
+import { citeRule, isRamadanDay, isRamadanHoursSubject, ruleValue } from "./laborRules.ts";
+import { checkHeatBanGate, heatBanWindow, isHeatBanDate, monthHasHeatBanDay, shiftOverlapsNight } from "./contractLawDerivations.ts";
 
 export type ShiftType = { id: string; label?: string; start: string; end: string; restMinutes?: number | null; outdoor?: boolean };
 
@@ -14,6 +14,7 @@ export type DayAssignments = Record<string, Record<string, string[]>>;
 export type RotaCheck = {
   id: string;
   ok: boolean;
+  block?: boolean;
   labelAr: string;
   labelEn: string;
   noteAr: string;
@@ -204,6 +205,10 @@ function shiftHeatSeasonApplies(
  * Four hard gates before publish + leave exclusion note.
  * Rest day default: Friday (JS getDay() === 5), matching the design matrix.
  */
+function employeeForGate(id: string, employees: Array<{ id?: string; employeeId?: string; religion?: string; profile?: { religion?: string } }> = []) {
+  return employees.find((row) => String(row?.id) === String(id) || String(row?.employeeId) === String(id)) || { id };
+}
+
 export function checkPublishGates(input: {
   year: number;
   monthIndex: number;
@@ -212,6 +217,7 @@ export function checkPublishGates(input: {
   onLeaveIds?: Iterable<string>;
   restDow?: number;
   namesById?: Record<string, string>;
+  employees?: Array<{ id?: string; employeeId?: string; religion?: string; profile?: { religion?: string } }>;
 }): PublishGateResult {
   const year = Number(input.year);
   const monthIndex = Number(input.monthIndex);
@@ -220,6 +226,7 @@ export function checkPublishGates(input: {
   const restDow = input.restDow == null ? 5 : Number(input.restDow);
   const onLeave = new Set(Array.from(input.onLeaveIds || []).map(String));
   const names = input.namesById || {};
+  const employees = input.employees || [];
   const days = daysInMonth(year, monthIndex);
 
   let filled = 0;
@@ -237,19 +244,26 @@ export function checkPublishGates(input: {
   const coveragePct = staffable ? Math.round((filled / staffable) * 100) : 0;
 
   const wMin: Record<string, Record<number, number>> = {};
+  const wRamadanMin: Record<string, Record<number, number>> = {};
   const wDays: Record<string, Record<number, Set<number>>> = {};
   const assignedIds = new Set<string>();
 
   for (let d = 1; d <= days; d++) {
     const w = weekIndex(year, monthIndex, d);
+    const ramadanDay = isRamadanDay(dateKey(year, monthIndex, d));
     for (const st of shiftTypes) {
       for (const id of cellOf(assignments, year, monthIndex, d, st.id)) {
         if (onLeave.has(id)) continue;
         assignedIds.add(id);
+        const mins = minutesBetween(st.start, st.end);
         wMin[id] = wMin[id] || {};
         wDays[id] = wDays[id] || {};
-        wMin[id][w] = (wMin[id][w] || 0) + minutesBetween(st.start, st.end);
+        wMin[id][w] = (wMin[id][w] || 0) + mins;
         (wDays[id][w] = wDays[id][w] || new Set()).add(d);
+        if (ramadanDay) {
+          wRamadanMin[id] = wRamadanMin[id] || {};
+          wRamadanMin[id][w] = (wRamadanMin[id][w] || 0) + mins;
+        }
       }
     }
   }
@@ -262,7 +276,7 @@ export function checkPublishGates(input: {
   const ramadanWeekCap = ruleValue("hours.ramadan.weekMaxHours", onDate);
   const exceptionDayCap = ruleValue("hours.ot.exceptionDayHours", onDate);
   const exceptionWeekCap = ruleValue("hours.ot.exceptionWeekHours", onDate);
-  // Art 98 reduces hours for Muslims. No religion field on the employee — apply the cap to every assigned person so Muslims are never under-protected.
+  // Art 98: empty religion is Muslim/protected; recorded non-Muslim is exempt.
   const weekArticle = citeRule("hours.week.ordinaryMaxHours", onDate)?.article;
   const workplaceArticle = citeRule("hours.workplace.maxHours", onDate)?.article;
   const ramadanArticle = citeRule("hours.ramadan.weekMaxHours", onDate)?.article;
@@ -306,6 +320,7 @@ export function checkPublishGates(input: {
     if (isRamadanDay(dateKey(year, monthIndex, d))) ramadanDaysInMonth++;
   }
   for (const id of assignedIds) {
+    if (!isRamadanHoursSubject(employeeForGate(id, employees))) continue;
     for (let d = 1; d <= days; d++) {
       const key = dateKey(year, monthIndex, d);
       if (!isRamadanDay(key)) continue;
@@ -319,14 +334,9 @@ export function checkPublishGates(input: {
       }
       if (ramadanDayBreach) break;
     }
-    const weeks = wMin[id] || {};
-    for (const [w, mins] of Object.entries(weeks)) {
-      let ramadanWeek = false;
-      for (let d = 1; d <= days; d++) {
-        if (weekIndex(year, monthIndex, d) !== Number(w)) continue;
-        if (isRamadanDay(dateKey(year, monthIndex, d))) { ramadanWeek = true; break; }
-      }
-      if (ramadanWeek && mins / 60 > ramadanWeekCap) {
+    const ramadanWeeks = wRamadanMin[id] || {};
+    for (const mins of Object.values(ramadanWeeks)) {
+      if (mins / 60 > ramadanWeekCap) {
         ramadanWeekBreach = { name: names[id] || id, hours: Math.round(mins / 60) };
         break;
       }
@@ -406,7 +416,12 @@ export function checkPublishGates(input: {
     }))
     .filter((row) => !row.gate.ok);
   const heatFail = heatFails[0] || null;
+  // The hours and the season are the rule rows', so the roster check cannot outlive them.
+  const heatWin = heatBanWindow(onDate);
   const nightCount = shiftTypes.filter((st) => shiftOverlapsNight(st.start, st.end)).length;
+  const nightWin = `${String(ruleValue("hours.night.startHour", onDate)).padStart(2, "0")}:00–${String(ruleValue("hours.night.endHour", onDate)).padStart(2, "0")}:00`;
+  const nightWorkerHours = ruleValue("hours.night.workerHours", onDate);
+  const weeklyRestHours = ruleValue("hours.rest.weeklyHours", onDate);
 
   const checks: RotaCheck[] = [
     {
@@ -445,14 +460,14 @@ export function checkPublishGates(input: {
           ? `${ramadanDayBreach.name}: ${ramadanDayBreach.hours} ساعة في يوم رمضاني فوق حد ${ramadanDayCap}`
           : ramadanWeekBreach
             ? `${ramadanWeekBreach.name}: ${ramadanWeekBreach.hours} ساعة في أسبوع رمضاني فوق حد ${ramadanWeekCap}`
-            : `رمضان: حد ${ramadanDayCap} ساعات يومياً أو ${ramadanWeekCap} أسبوعياً للمسلمين — يُطبَّق على كل المعيَّنين لعدم وجود حقل ديانة`,
+            : `رمضان: حد ${ramadanDayCap} ساعات يومياً أو ${ramadanWeekCap} أسبوعياً للمسلمين — غير المسلم المسجّل على الملف مستثنى`,
       labelEn: !ramadanDaysInMonth
         ? "No Ramadan days this month"
         : ramadanDayBreach
           ? `${ramadanDayBreach.name}: ${ramadanDayBreach.hours} h on a Ramadan day above the ${ramadanDayCap} h cap`
           : ramadanWeekBreach
             ? `${ramadanWeekBreach.name}: ${ramadanWeekBreach.hours} h in a Ramadan week above the ${ramadanWeekCap} h cap`
-            : `Ramadan: ${ramadanDayCap} h a day or ${ramadanWeekCap} h a week for Muslims — applied to every assignee; religion is not on the employee record`,
+            : `Ramadan: ${ramadanDayCap} h a day or ${ramadanWeekCap} h a week for Muslims — a file marked non-Muslim is exempt`,
       noteAr: "المادة 98 تخفّض ساعات المسلمين في رمضان إلى 6/36. بلا حقل ديانة يُطبَّق الحد على كل المعيَّنين حتى لا يُنقص حق المسلم.",
       noteEn: "Article 98 reduces Muslim hours in Ramadan to 6/36. With no religion field the cap applies to every assignee so Muslims are never under-protected.",
     },
@@ -503,10 +518,10 @@ export function checkPublishGates(input: {
       ok: restOk,
       article: weeklyRestArticle,
       labelAr: restOk
-        ? "راحة أسبوعية 24 ساعة متصلة"
+        ? `راحة أسبوعية ${weeklyRestHours} ساعة متصلة`
         : `${restBreachName} مجدول أسبوعًا كاملًا بلا يوم راحة`,
       labelEn: restOk
-        ? "24 h continuous weekly rest"
+        ? `${weeklyRestHours} h continuous weekly rest`
         : `${restBreachName} is scheduled a full week with no rest day`,
       noteAr: "يوم راحة كامل لكل موظف في كل أسبوع، ولا يُستبدل بأجر.",
       noteEn: "A full rest day every week for every employee, never substituted with pay.",
@@ -525,39 +540,48 @@ export function checkPublishGates(input: {
     },
     {
       id: "leave_excluded",
-      ok: leaveOnMatrix.length === 0,
+      ok: true,
+      block: false,
       labelAr: leaveOnMatrix.length
-        ? `${leaveOnMatrix.length} على إجازة معتمدة ما زالوا في الإسناد`
-        : `${onLeave.size} على إجازة معتمدة — مستبعدون من الإسناد`,
+        ? `${leaveOnMatrix.map((id) => names[id] || id).join("، ")} على إجازة معتمدة — الإجازة تبقى إجازة، والنشر جائز`
+        : onLeave.size
+          ? `${onLeave.size} على إجازة معتمدة — مستبعدون من الإسناد`
+          : "لا إجازات معتمدة في هذا الشهر",
       labelEn: leaveOnMatrix.length
-        ? `${leaveOnMatrix.length} on approved leave still appear in the assignment`
-        : `${onLeave.size} on approved leave — excluded from assignment`,
-      noteAr: "من له إجازة معتمدة لا يظهر في الإسناد أصلًا، فلا يُسجَّل غيابه.",
-      noteEn: "Anyone on approved leave never enters the assignment, so they are never recorded absent.",
+        ? `${leaveOnMatrix.map((id) => names[id] || id).join(", ")} on approved leave — leave stays leave, and publish is allowed`
+        : onLeave.size
+          ? `${onLeave.size} on approved leave — excluded from assignment`
+          : "No approved leave this month",
+      noteAr: leaveOnMatrix.length
+        ? "تعيين متبقٍ على يوم إجازة يُذكر ولا يمنع النشر. الإجازة تبقى إجازة ولا تُحسب ساعات."
+        : "من له إجازة معتمدة لا يُحسب في ساعات الإسناد، والنشر جائز.",
+      noteEn: leaveOnMatrix.length
+        ? "A leftover assignment on a leave day is noted and does not block publish. Leave stays leave and is not counted as hours."
+        : "Anyone on approved leave is excluded from duty hours, and publish is allowed.",
     },
     {
       id: "heat_ban",
       ok: !heatFail,
       labelAr: heatFail
-        ? `${heatFail.st.label || heatFail.st.id}: حظر 12:00–15:00 للميدان المكشوف من 15 يونيو إلى 15 سبتمبر`
+        ? `${heatFail.st.label || heatFail.st.id}: حظر ${heatWin.startLabel}–${heatWin.endLabel} للميدان المكشوف ${heatWin.seasonAr}`
         : "لا تداخل مع حظر الشمس للميدان المكشوف",
       labelEn: heatFail
-        ? `${heatFail.st.label || heatFail.st.id}: 12:00–15:00 outdoor ban from 15 June to 15 September`
+        ? `${heatFail.st.label || heatFail.st.id}: ${heatWin.startLabel}–${heatWin.endLabel} outdoor ban ${heatWin.seasonEn}`
         : "No overlap with the outdoor heat ban",
-      noteAr: "حظر وزاري للميدان المكشوف من 15 يونيو إلى 15 سبتمبر، من 12:00 إلى 15:00 — بلا شارة مادة من نظام العمل.",
-      noteEn: "Ministerial outdoor ban from 15 June to 15 September, 12:00 to 15:00 — no Labour Law chip.",
+      noteAr: `حظر وزاري للميدان المكشوف ${heatWin.seasonAr}، من ${heatWin.startLabel} إلى ${heatWin.endLabel} — بلا شارة مادة من نظام العمل.`,
+      noteEn: `Ministerial outdoor ban ${heatWin.seasonEn}, ${heatWin.startLabel} to ${heatWin.endLabel} — no Labour Law chip.`,
     },
     {
       id: "night_class",
       ok: true,
-      labelAr: nightCount ? `${nightCount} وردية تُصنَّف ليلية (23:00–06:00)` : "لا وردية ليلية في هذا الشهر",
-      labelEn: nightCount ? `${nightCount} shifts classed as night (23:00–06:00)` : "No night shift this month",
-      noteAr: "التصنيف الليلي تشغيلي من 23:00 إلى 06:00، بلا شارة مادة.",
-      noteEn: "Night classification is operational from 23:00 to 06:00, with no Labour Law chip.",
+      labelAr: nightCount ? `${nightCount} وردية تدخل ${nightWin} (يؤدي عملاً ليلياً — عامل ليلي إن بلغت ${nightWorkerHours} ساعات)` : "لا وردية تدخل نافذة الليل في هذا الشهر",
+      labelEn: nightCount ? `${nightCount} shifts enter ${nightWin} (night work — night worker if ${nightWorkerHours} hours or more)` : "No shift enters the night window this month",
+      noteAr: `التصنيف وفق القرار 18632: أي عمل داخل ${nightWin} يؤدي عملاً ليلياً. عامل ليلي من يعمل ${nightWorkerHours} ساعات فأكثر في النافذة. بلا شارة مادة.`,
+      noteEn: `Classification under decision 18632: any work inside ${nightWin} performs night work. A night worker works ${nightWorkerHours} hours or more in the window. No Labour Law chip.`,
     },
   ];
 
-  const failed = checks.find((c) => !c.ok) || null;
+  const failed = checks.find((c) => !c.ok && c.block !== false) || null;
   return {
     checks,
     blocked: !!failed,

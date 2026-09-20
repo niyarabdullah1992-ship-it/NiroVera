@@ -8,6 +8,7 @@ import {
   deriveWpsStatus,
   enrichLine,
   overtimePay,
+  settlementStamp,
   type PayrollLineLike,
   type PayrollRunLike,
 } from "../../shared/payrollDerivations.ts";
@@ -145,6 +146,7 @@ Deno.serve(async (req) => {
             deductions: Number(it.deductions) || 0,
             currency: String(it.currency || "SAR").toUpperCase(),
             qiwaWage: it.qiwaWage != null ? Number(it.qiwaWage) : (Number(it.base) || 0) + (Number(it.allowances) || 0),
+            isSaudi: it.isSaudi ?? null,
             paid: false,
           })),
           approvedAt: null,
@@ -177,6 +179,15 @@ Deno.serve(async (req) => {
       if (!employeeId) return Response.json({ error: "EMPLOYEE_REQUIRED" }, { status: 400 });
       const items = [...(run.items || [])];
       const li = items.findIndex((i) => i.employeeId === employeeId || i.id === lineIn.id);
+      // A settled line is not editable. The handler used to rebuild it with paid:false,
+      // which both unpaid it and dropped the figures it was settled with.
+      if (li >= 0 && items[li].paid) {
+        return Response.json({
+          error: "LINE_PAID",
+          reason: "البند مدفوع — لا يُعدَّل بعد الصرف.",
+          reasonEn: "This line is paid — it cannot be edited after settlement.",
+        }, { status: 400 });
+      }
       const next: PayrollLineLike = {
         id: (li >= 0 ? items[li].id : null) || uid("itm"),
         employeeId,
@@ -191,6 +202,7 @@ Deno.serve(async (req) => {
         qiwaWage: lineIn.qiwaWage != null
           ? Number(lineIn.qiwaWage)
           : (li >= 0 ? items[li].qiwaWage : null),
+        isSaudi: lineIn.isSaudi ?? (li >= 0 ? items[li].isSaudi : null),
         paid: false,
       };
       next.overtimePay = overtimePay(next.base || 0, next.overtimeHours || 0);
@@ -213,6 +225,9 @@ Deno.serve(async (req) => {
       }
       runs[idx] = {
         ...runs[idx],
+        // Approval decides the figures. Freezing them on the lines here is what keeps a
+        // later change to the net formula from rewriting a run the company already signed.
+        items: (runs[idx].items || []).map((it) => (it.settledNet == null ? { ...it, ...settlementStamp(it) } : it)),
         status: "approved",
         approvedAt: new Date().toISOString(),
         approvedBy: auth.name,

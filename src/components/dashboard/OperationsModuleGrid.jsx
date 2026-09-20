@@ -1,10 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Link } from "react-router-dom";
-import { Check } from "lucide-react";
-import { base44 } from "@/api/base44Client";
-import { getCompanyToken } from "@/lib/store";
 import { canAccessPath } from "@/lib/navVisibility";
-import { BAD, BORDER, CARD, MUTED, NAVY, WARN, navPill, pillRail } from "@/lib/platformStyles";
+import { formatUiNumber } from "@/lib/dateFormat";
+import { ACCENT, BORDER, CARD, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
+import useCommandSigningSnapshot from "@/hooks/useCommandSigningSnapshot";
+import { pendingWorkProofBadgeCount } from "@/lib/suiteBadges";
+
+const MONO = "'IBM Plex Mono', monospace";
+const LINE = "var(--nv-line, #DFE3EA)";
+const HAIR = "#EEF0F4";
+const ROW = "#F7F8FA";
 
 function n(value) {
   return Number(value) || 0;
@@ -13,9 +18,12 @@ function n(value) {
 function waitingOf(key, metrics) {
   if (key === "attendance") return n(metrics.scheduled) > 0 ? n(metrics.absentCount) : 0;
   if (key === "tasks") return n(metrics.openTasks ?? (n(metrics.tasks) - n(metrics.completedTasks)));
-  if (key === "escalation") return n(metrics.escalated);
-  if (key === "signing") return n(metrics.signing);
-  if (key === "daily-report") return n(metrics.pendingReports);
+  if (key === "review" || key === "escalation") return n(metrics.escalated);
+  if (key === "signing" || key === "signing-mine") return n(metrics.signing);
+  if (key === "work-proof") return n(metrics.workProofAwaiting);
+  if (key === "signing-status") return n(metrics.signingOpen);
+  if (key === "signing-verify") return n(metrics.signingCooling);
+  if (key === "signing-reopen") return n(metrics.signingReopen);
   if (key === "leave") return n(metrics.pendingLeave);
   if (key === "safety") return n(metrics.hazards);
   if (key === "complaints") return n(metrics.complaints);
@@ -25,179 +33,209 @@ function waitingOf(key, metrics) {
 
 function toneOf(key, waiting) {
   if (waiting <= 0) return null;
-  if (key === "tasks" || key === "signing" || key === "expenses" || key === "escalation") return waiting >= 1 ? "urgent" : "watch";
+  if (key === "tasks" || key === "signing" || key === "signing-mine" || key === "review" || key === "escalation" || key === "expenses") return "urgent";
   return "watch";
 }
 
-function waitingCount(items) {
-  return items.reduce((sum, item) => sum + (item.waiting || 0), 0);
-}
-
-function badgeStyle(items) {
-  const urgent = items.some((item) => item.tone === "urgent");
-  return urgent ? BAD : WARN;
+function tabBtn(on) {
+  return {
+    fontFamily: "inherit",
+    fontSize: 13,
+    fontWeight: on ? 700 : 400,
+    padding: "9px 16px",
+    border: `1px solid ${on ? NAVY_FILL : BORDER}`,
+    background: on ? NAVY_FILL : CARD,
+    color: on ? "#fff" : MUTED,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    whiteSpace: "nowrap",
+    borderRadius: 10,
+  };
 }
 
 /**
- * Command Center platform map — one card, four columns, attention filter.
+ * Proof-cycle map — a connected chain first, then quieter destinations.
  */
 export default function OperationsModuleGrid({ metrics, lang, user, data, company }) {
   const ar = lang === "ar";
-  const [view, setView] = useState("attention");
-  const [inboxPending, setInboxPending] = useState(0);
+  const [view, setView] = React.useState("attention");
+  const signing = useCommandSigningSnapshot(company, user, data);
+  // Work proof carries its own figure — the signing snapshot says nothing about it.
+  const proofsAwaiting = pendingWorkProofBadgeCount(data?.workProofs || [], user);
+  const mapMetrics = {
+    ...metrics,
+    signing: signing.mine,
+    signingOpen: signing.open,
+    signingCooling: signing.cooling,
+    signingReopen: signing.reopen,
+    workProofAwaiting: proofsAwaiting,
+  };
+  const dash = (value) => (n(value) > 0 ? formatUiNumber(value) : "—");
 
-  useEffect(() => {
-    if (!company?.id || !user?.id) {
-      setInboxPending(0);
-      return undefined;
-    }
-    let active = true;
-    base44.functions
-      .invoke("multiSign", {
-        action: "list",
-        companyId: company.id,
-        sessionToken: getCompanyToken(company.id),
-        userId: user.id,
-        email: (user.email || "").toLowerCase(),
-      })
-      .then((response) => {
-        if (!active) return;
-        const pending = (response.data?.requests || []).filter((row) => row.myStatus === "pending").length;
-        setInboxPending(pending);
-      })
-      .catch(() => {
-        if (active) setInboxPending(0);
-      });
-    return () => {
-      active = false;
-    };
-  }, [company?.id, user?.id, user?.email]);
-
-  const mapMetrics = { ...metrics, signing: inboxPending };
-
-  const groups = [
+  const cycle = [
     {
-      key: "daily",
-      eyebrow: "01",
-      title: ar ? "دورة الإثبات" : "Proof cycle",
-      description: ar
-        ? "من الحضور إلى ختم العميل. كل قسم يغذي التالي — لا تسجيل بلا إثبات."
-        : "From attendance to the client seal. Each section feeds the next.",
-      items: [
-        { key: "attendance", title: ar ? "الحضور" : "Attendance", note: ar ? `${metrics.checkedIn} حاضر · ${metrics.absentCount || 0} لم يسجّل` : `${metrics.checkedIn} present · ${metrics.absentCount || 0} not in`, value: n(metrics.absentCount) > 0 ? metrics.absentCount : `${metrics.attendanceRate}%`, to: "/app/attendance" },
-        { key: "tasks", title: ar ? "المهام والعمليات" : "Operations", note: ar ? `${metrics.completedTasks} مكتملة من ${metrics.tasks}` : `${metrics.completedTasks} of ${metrics.tasks} completed`, value: n(metrics.openTasks) > 0 ? metrics.openTasks : metrics.tasks, to: "/app/tasks" },
-        { key: "escalation", title: ar ? "التصعيد" : "Escalation", note: ar ? "صندوق مراجعة المهام" : "Task review inbox", value: n(metrics.escalated) > 0 ? metrics.escalated : "—", to: "/app/escalation" },
-        { key: "signing", title: ar ? "التوقيع الرقمي" : "Digital signing", note: ar ? "طلبات بانتظار التوقيع" : "Requests awaiting signature", value: n(mapMetrics.signing) > 0 ? mapMetrics.signing : "—", to: "/app/signing" },
-        { key: "work-proof", title: ar ? "إثبات العمل" : "Work Proof", note: ar ? "دليل ميداني وإفصاح العميل" : "Field evidence and client disclosure", value: "—", to: "/app/work-proof" },
-        { key: "daily-report", title: ar ? "التقرير اليومي" : "Daily report", note: ar ? `${metrics.pendingReports} بانتظار المراجعة` : `${metrics.pendingReports} awaiting review`, value: n(metrics.pendingReports) > 0 ? metrics.pendingReports : (metrics.reports || "—"), to: "/app/daily-report" },
-        { key: "chat", title: ar ? "المحادثات" : "Ops chat", note: ar ? "قنوات الفروع" : "Station channels", value: metrics.messages, to: "/app/chat" },
-      ],
+      key: "attendance",
+      step: "01",
+      title: ar ? "حضور" : "Attend",
+      note: ar
+        ? `${metrics.checkedIn} حاضر · ${metrics.absentCount || 0} لم يسجّل — يغذّي المسير`
+        : `${metrics.checkedIn} present · ${metrics.absentCount || 0} not in — feeds payroll`,
+      value: n(metrics.absentCount) > 0 ? metrics.absentCount : `${metrics.attendanceRate}%`,
+      to: "/app/attendance",
     },
     {
-      key: "workforce",
-      eyebrow: "02",
-      title: ar ? "القوى العاملة" : "Workforce",
-      description: ar ? "الهيكل يحدد المقاعد. الورديات والإجازات تخطط من يعمل." : "Org sets seats. Shifts and leave plan who works.",
+      key: "tasks",
+      step: "02",
+      title: ar ? "مهمة" : "Task",
+      note: ar ? `${metrics.completedTasks} مكتملة من ${metrics.tasks}` : `${metrics.completedTasks} of ${metrics.tasks} completed`,
+      value: n(metrics.openTasks) > 0 ? metrics.openTasks : metrics.tasks,
+      to: "/app/tasks",
+    },
+    {
+      key: "review",
+      step: "03",
+      title: ar ? "مراجعة" : "Review",
+      note: ar ? "اعتماد أو رفض بسبب مكتوب" : "Approve or refuse with a written reason",
+      value: dash(metrics.escalated),
+      to: "/app/escalation",
+    },
+    {
+      key: "escalation",
+      step: "04",
+      title: ar ? "تصعيد" : "Escalate",
+      note: ar ? "عند احتراق الحصة دون تقدّم" : "When the time quota burns without progress",
+      value: n(metrics.escalated) > 0 ? metrics.escalated : "—",
+      to: "/app/escalation",
+    },
+    {
+      key: "signing",
+      step: "05",
+      title: ar ? "توقيع" : "Sign",
+      note: ar ? `متوازٍ حتى 100 طرف · ${dash(signing.mine)} ينتظر ختمك` : `Parallel, up to 100 parties · ${dash(signing.mine)} awaiting you`,
+      value: dash(signing.mine),
+      to: "/app/signing?tab=mine",
+    },
+    {
+      key: "work-proof",
+      step: "06",
+      title: ar ? "إثبات العميل" : "Client proof",
+      note: ar ? "جهة خارج الشركة · تحقق عام" : "Outside company · public verify",
+      value: dash(proofsAwaiting),
+      to: "/app/work-proof",
+    },
+  ]
+    .filter((item) => canAccessPath(item.to, user, data, company))
+    .map((item) => {
+      const waiting = waitingOf(item.key, mapMetrics);
+      return { ...item, waiting, tone: toneOf(item.key, waiting) };
+    });
+
+  const more = [
+    {
+      key: "people",
+      title: ar ? "الناس" : "People",
       items: [
+        { key: "leave", title: ar ? "طلباتي" : "My Requests", note: ar ? "إجازة وموافقة خطية — الختم غاية الطلب" : "Leave and written consent — the seal is the request's purpose", value: metrics.pendingLeave, to: "/app/requests" },
         { key: "org", title: ar ? "الهيكل" : "Org", note: ar ? "صلاحيات وتصعيد" : "Permissions and escalation", value: metrics.stations, to: "/app/org" },
         { key: "hr", title: ar ? "الموارد البشرية" : "HR", note: ar ? `${metrics.activeMembers} نشط اليوم` : `${metrics.activeMembers} active today`, value: metrics.employees, to: "/app/hr" },
-        { key: "performance", title: ar ? "الأداء" : "Performance", note: ar ? "من بيانات فعلية" : "From actual data", value: `${metrics.performance}%`, to: "/app/performance" },
-        { key: "shifts", title: ar ? "الورديات" : "Shifts", note: ar ? "جدول الفرع الشهري" : "Monthly station matrix", value: metrics.stations, to: "/app/shifts" },
-        { key: "leave", title: ar ? "الإجازات" : "Leave", note: ar ? "طلبات بانتظار القرار" : "Awaiting a decision", value: metrics.pendingLeave, to: "/app/leave" },
+        { key: "performance", title: ar ? "الأداء" : "Performance", note: ar ? "درجة من الإثبات المعتمد بين تاريخين" : "A score from approved proof between two dates", value: `${metrics.performance}%`, to: "/app/performance" },
+        { key: "complaints", title: ar ? "صوت الموظف" : "Employee Voice", note: ar ? "اقتراح · شكوى · مجهول" : "Suggest · complain · anon", value: metrics.complaints, to: "/app/complaints" },
+        { key: "discipline", title: ar ? "الجزاءات" : "Sanctions", note: ar ? "واقعة ثم قرار وتظلم — 66–73" : "Incident, decision, appeal — 66–73", value: "—", to: "/app/discipline" },
       ],
     },
     {
-      key: "compliance",
-      eyebrow: "03",
-      title: ar ? "الالتزام والرعاية" : "Care & compliance",
-      description: ar ? "سلامة الموقع وصوت الموظف — ليست تصعيد المهمة." : "Site care and the people channel — not task escalation.",
+      key: "care",
+      title: ar ? "الالتزام" : "Care",
       items: [
         { key: "safety", title: ar ? "السلامة HSE" : "Safety HSE", note: ar ? `${metrics.hazards} مخاطر مفتوحة` : `${metrics.hazards} open hazards`, value: metrics.hazards || metrics.safety, to: "/app/safety" },
-        { key: "complaints", title: ar ? "صوت الموظف" : "Employee Voice", note: ar ? "بلاغات مفتوحة الآن" : "Open now", value: metrics.complaints, to: "/app/complaints" },
-        { key: "discipline", title: ar ? "الجزاءات" : "Sanctions", note: ar ? "واقعة ثم قرار وتظلم" : "Incident, decision, appeal", value: "—", to: "/app/discipline" },
+        { key: "shifts", title: ar ? "الورديات" : "Shifts", note: ar ? "جدول الفرع الشهري" : "Monthly station matrix", value: metrics.stations, to: "/app/shifts" },
+        { key: "calendar", title: ar ? "التقويم التشغيلي" : "Operational calendar", note: ar ? "حضر وتأخّر وغياب كل يوم" : "On time, late, and absent each day", value: "—", to: "/app/calendar" },
       ],
     },
     {
       key: "money",
-      eyebrow: "04",
-      title: ar ? "المال والأصول" : "Money & assets",
-      description: ar ? "البصمة تغذي المسير. المصروف والمخزون والأصول والعهد في مسار واحد." : "Attendance feeds payroll. Expenses, stock, and assets & custody each have a path.",
+      title: ar ? "المال" : "Money",
       items: [
         { key: "payroll", title: ar ? "الرواتب" : "Payroll", note: ar ? "يغذيه الحضور المعتمد" : "Fed by approved attendance", value: metrics.payroll, to: "/app/payroll" },
         { key: "expenses", title: ar ? "المصروفات" : "Expenses", note: ar ? "مطالبات بانتظار الاعتماد" : "Claims awaiting approval", value: n(metrics.expenses) > 0 ? metrics.expenses : "—", to: "/app/expenses" },
-        { key: "assets", title: ar ? "الأصول / العهد" : "Assets / Custody", note: ar ? "سجل وتسليم" : "Register and handover", value: metrics.assets ?? "—", to: "/app/assets" },
-        { key: "inventory", title: ar ? "المخزون" : "Inventory", note: ar ? "مواد ووحدات" : "Stock and units", value: metrics.inventory, to: "/app/inventory" },
+        { key: "assets", title: ar ? "الأصول / العهد" : "Assets / Custody", note: ar ? "سجل وتسليم ونقل بين الفروع" : "Register, handover, inter-station transfer", value: metrics.assets ?? "—", to: "/app/assets" },
+        { key: "inventory", title: ar ? "المخزون" : "Inventory", note: ar ? "رصيد لا مركزي · طلب من فرع آخر" : "Decentralised balance · request from another station", value: metrics.inventory, to: "/app/inventory" },
       ],
     },
     {
-      key: "admin",
-      eyebrow: "05",
-      title: ar ? "المؤسسة" : "Institution",
-      description: ar ? "ملفات ومساعد وإعدادات — ذاكرة المنشأة في مكان واحد." : "Files, assistant, and settings — the institution's memory.",
+      key: "trust",
+      title: ar ? "الثقة" : "Trust",
       items: [
-        { key: "files", title: ar ? "الملفات" : "Files", note: ar ? "مقيّدة بالصلاحية" : "Permission-scoped", value: metrics.files, to: "/app/files" },
+        { key: "signing-status", title: ar ? "الحالة والإثبات" : "Status and proof", note: ar ? `مهلة 0–3 أيام · إعادة فتح ${dash(signing.reopen)}` : `Retract 0–3 days · reopen ${dash(signing.reopen)}`, value: dash(signing.open), to: "/app/signing?tab=status" },
+        { key: "signing-verify", title: ar ? "تحقق" : "Verify", note: ar ? "SHA-256 على جهازك · /verify عام" : "On-device SHA-256 · public /verify", value: dash(signing.cooling), to: "/app/signing?tab=verify" },
+        { key: "visitor-proof", title: ar ? "إثبات زائر" : "Visitor Proof", note: ar ? "ضيف على الفرع — ليس موظفاً من فرع آخر" : "A guest at the station — not a company employee from another branch", value: "—", to: "/app/visitor-proof" },
+        { key: "files", title: ar ? "الملفات" : "Files", note: ar ? "أرشيف مستقل" : "Standalone archive", value: metrics.files, to: "/app/files" },
         { key: "assistant", title: ar ? "المساعد" : "Assistant", note: ar ? "اسأل بيانات منشأتك" : "Ask company data", value: ar ? "جاهز" : "Ready", to: "/app/assistant" },
         { key: "settings", title: ar ? "الإعدادات" : "Settings", note: ar ? "نطاق وصلاحيات" : "Scope and permissions", value: "—", to: "/app/settings" },
       ],
     },
   ]
-    .map((group) => {
-      const items = group.items
+    .map((group) => ({
+      ...group,
+      items: group.items
         .filter((item) => canAccessPath(item.to, user, data, company))
         .map((item) => {
           const waiting = waitingOf(item.key, mapMetrics);
           return { ...item, waiting, tone: toneOf(item.key, waiting) };
-        });
-      return { ...group, items };
-    })
+        }),
+    }))
     .filter((group) => group.items.length > 0);
 
-  const columns = groups.filter((group) => group.key !== "admin");
-  const institution = groups.find((group) => group.key === "admin");
+  const shownMore = more
+    .map((group) => ({
+      ...group,
+      items: view === "attention" ? group.items.filter((item) => item.tone) : group.items,
+    }))
+    .filter((group) => group.items.length > 0);
 
-  const viewPill = (id) => navPill(view === id);
+  const cycleWaiting = cycle.reduce((sum, item) => sum + (item.waiting || 0), 0);
 
-  const renderItem = (item) => {
+  const renderRow = (item) => {
     const urgent = item.tone === "urgent";
-    const watch = item.tone === "watch";
     return (
       <Link
         key={item.to}
         to={item.to}
         style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
+          display: "grid",
+          gridTemplateColumns: "auto minmax(0,1fr) auto",
           gap: 12,
-          padding: "11px 0",
-          borderBottom: `1px solid ${BORDER}`,
+          alignItems: "start",
+          padding: "13px 20px",
+          borderBottom: `1px solid ${ROW}`,
           textDecoration: "none",
           minWidth: 0,
         }}
       >
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            {(urgent || watch) && (
-              <span
-                aria-hidden
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  background: urgent ? "#DC2626" : "#F59E0B",
-                  flexShrink: 0,
-                }}
-              />
-            )}
-            <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{item.title}</span>
-          </div>
-          <div style={{ marginTop: 3, fontSize: 11, color: MUTED, lineHeight: 1.45 }}>{item.note}</div>
-        </div>
         <span
+          aria-hidden
           style={{
-            fontFamily: "'IBM Plex Sans',sans-serif",
+            width: 7,
+            height: 7,
+            borderRadius: "50%",
+            background: urgent ? "#DC2626" : item.tone ? "#B45309" : SURFACE,
+            border: item.tone ? "none" : `1px solid ${BORDER}`,
+            marginTop: 6,
+            flexShrink: 0,
+          }}
+        />
+        <span style={{ minWidth: 0 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, display: "block" }}>{item.title}</span>
+          <span style={{ marginTop: 3, fontSize: 11, color: MUTED, lineHeight: 1.7, display: "block" }}>{item.note}</span>
+        </span>
+        <span
+          dir="ltr"
+          style={{
+            fontFamily: MONO,
             fontSize: 18,
-            fontWeight: 600,
+            fontWeight: 500,
             color: urgent ? "#DC2626" : NAVY,
             flexShrink: 0,
             lineHeight: 1.1,
@@ -209,113 +247,93 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
     );
   };
 
-  const renderColumn = (group, footer) => {
-    const visible = view === "attention" ? group.items.filter((item) => item.tone) : group.items;
-    const waiting = waitingCount(group.items);
-    if (view === "attention" && visible.length === 0 && !footer) return null;
-    return (
-      <section key={group.key} style={{ minWidth: 0, padding: "0 16px" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 6 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>
-              <span style={{ color: MUTED, marginInlineEnd: 6 }}>{group.eyebrow}</span>
-              {group.title}
-            </div>
-            <p style={{ margin: "4px 0 0", fontSize: 11, color: MUTED, lineHeight: 1.5 }}>{group.description}</p>
+  return (
+    <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "سلسلة الإثبات" : "Proof cycle"}</span>
+            <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
+              {ar
+                ? "حضور → مهمة → مراجعة → تصعيد → توقيع → إثبات للعميل. كل رقم من السجل والنطاق المعروض."
+                : "Attend → task → review → escalate → sign → client proof. Each figure is from the registry and the current scope."}
+            </span>
           </div>
-          {waiting > 0 ? (
-            <span style={{ ...badgeStyle(group.items), flexShrink: 0 }}>
-              {ar ? `${waiting} بانتظارك` : `${waiting} waiting`}
+          {cycleWaiting > 0 ? (
+            <span style={{ fontSize: 10, fontWeight: 600, color: "#fff", background: ACCENT, padding: "3px 9px", fontFamily: MONO, borderRadius: 999 }}>
+              {cycleWaiting}
             </span>
           ) : null}
         </div>
-        <div>
-          {visible.map(renderItem)}
-          {view === "attention" && visible.length === 0 && footer}
-          {view === "all" && footer}
+        <div className="nv-dash-cycle">
+          {cycle.map((item, index) => {
+            const urgent = item.tone === "urgent";
+            const watch = item.tone === "watch";
+            return (
+              <Link
+                key={item.step}
+                to={item.to}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  padding: "16px 18px",
+                  borderInlineStart: index ? `1px solid ${LINE}` : "none",
+                  textDecoration: "none",
+                  minWidth: 0,
+                  background: CARD,
+                }}
+              >
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: MUTED }}>{item.step}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{item.title}</span>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 26, fontWeight: 500, color: urgent ? "#DC2626" : NAVY, lineHeight: 1.05 }}>
+                  {item.value}
+                </span>
+                <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{item.note}</span>
+                {urgent || watch ? (
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: urgent ? "#DC2626" : "#B45309" }} />
+                ) : null}
+              </Link>
+            );
+          })}
         </div>
       </section>
-    );
-  };
 
-  const institutionFooter = institution ? (
-    <div style={{ paddingTop: 16 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: NAVY, marginBottom: 6 }}>
-        <span style={{ color: MUTED, marginInlineEnd: 6 }}>{institution.eyebrow}</span>
-        {institution.title}
-      </div>
-      {waitingCount(institution.items) === 0 ? (
-        <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: MUTED }}>
-          <Check style={{ width: 14, height: 14, color: "#94A3B8" }} strokeWidth={1.8} />
-          {ar ? "لا شيء معلق" : "Nothing pending"}
-        </p>
-      ) : (
-        institution.items.filter((item) => view === "all" || item.tone).map(renderItem)
-      )}
-      {waitingCount(institution.items) === 0 && view === "all" ? (
-        <p style={{ margin: "6px 0 0", fontSize: 11, color: MUTED, lineHeight: 1.5 }}>{institution.description}</p>
-      ) : null}
-    </div>
-  ) : null;
-
-  return (
-    <section
-      dir={ar ? "rtl" : "ltr"}
-      style={{
-        borderRadius: 16,
-        border: `1px solid ${BORDER}`,
-        background: CARD,
-        padding: "18px 8px 12px",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 12,
-          padding: "0 16px 16px",
-        }}
-      >
-        <div>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: NAVY }}>
-            {ar ? "خريطة المنصة" : "Platform map"}
-          </h2>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
-            {ar
-              ? "من الحضور إلى ختم العميل. كل قسم يغذي التالي — لا تسجيل بلا إثبات."
-              : "From attendance to the client seal. Each section feeds the next — no logging without proof."}
-          </p>
-        </div>
-        <div style={pillRail}>
-          <button type="button" onClick={() => setView("attention")} style={viewPill("attention")}>
-            {ar ? "يحتاج انتباهك" : "Needs attention"}
-          </button>
-          <button type="button" onClick={() => setView("all")} style={viewPill("all")}>
-            {ar ? "كل الأقسام" : "All sections"}
-          </button>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-          gap: 0,
-        }}
-      >
-        {columns.map((group, index) => (
-          <div
-            key={group.key}
-            style={{
-              borderInlineStart: index === 0 ? "none" : `1px solid ${BORDER}`,
-            }}
-          >
-            {renderColumn(group, group.key === "daily" ? institutionFooter : null)}
+      <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "باقي المنصة" : "The rest of the suite"}</span>
+            <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
+              {ar ? "ناس والتزام ومال وثقة — يظهر ما ينتظرك أولاً." : "People, care, money, and trust — what is waiting appears first."}
+            </span>
           </div>
-        ))}
-      </div>
-    </section>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setView("attention")} style={tabBtn(view === "attention")}>
+              <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, opacity: 0.75 }}>01</span>
+              {ar ? "ينتظرك" : "Waiting"}
+            </button>
+            <button type="button" onClick={() => setView("all")} style={tabBtn(view === "all")}>
+              <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, opacity: 0.75 }}>02</span>
+              {ar ? "كل الأقسام" : "All sections"}
+            </button>
+          </div>
+        </div>
+
+        {shownMore.length === 0 ? (
+          <div style={{ padding: "18px 20px", fontSize: 12, color: MUTED, lineHeight: 1.8 }}>
+            {ar ? "لا شيء معلّق خارج السلسلة." : "Nothing pending outside the cycle."}
+          </div>
+        ) : (
+          shownMore.map((group) => (
+            <div key={group.key}>
+              <div style={{ padding: "12px 20px 4px", fontSize: 11, letterSpacing: ".14em", color: MUTED }}>
+                {group.title}
+              </div>
+              {group.items.map(renderRow)}
+            </div>
+          ))
+        )}
+      </section>
+    </div>
   );
 }

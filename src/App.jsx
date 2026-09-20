@@ -18,8 +18,8 @@ import { canAccessPath, canAccessPlanPath } from '@/lib/navVisibility';
 import { isBase44BackendConfigured } from '@/lib/localPreview';
 
 import { lazy, Suspense, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
 import { applyStoredPlatformTheme } from '@/lib/platformTheme';
+import PlatformBoot from '@/components/shared/PlatformBoot';
 
 // Landing stays eager so the first paint is instant; every other page is
 // lazy-loaded on demand — the initial bundle shrinks dramatically.
@@ -42,7 +42,6 @@ const Careers = lazy(() => import('./pages/Careers'));
 const Workspace = lazy(() => import('./pages/Workspace'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Operations = lazy(() => import('./pages/Operations'));
-const StationChat = lazy(() => import('./pages/StationChat'));
 const Complaints = lazy(() => import('./pages/Complaints'));
 const Discipline = lazy(() => import('./pages/Discipline'));
 const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'));
@@ -52,12 +51,11 @@ const CompanySettings = lazy(() => import('./pages/CompanySettings'));
 const Payroll = lazy(() => import('./pages/Payroll'));
 const Performance = lazy(() => import('./pages/Performance'));
 const Safety = lazy(() => import('./pages/Safety'));
-const DailyReport = lazy(() => import('./pages/DailyReport'));
 const Attendance = lazy(() => import('./pages/Attendance'));
+const Requests = lazy(() => import('./pages/Requests'));
 const Files = lazy(() => import('./pages/Files'));
 const FileSigning = lazy(() => import('./pages/FileSigning'));
 const About = lazy(() => import('./pages/About'));
-const Help = lazy(() => import('./pages/Help'));
 const Verify = lazy(() => import('./pages/Verify'));
 const PublicSign = lazy(() => import('./pages/PublicSign'));
 const Privacy = lazy(() => import('./pages/Privacy'));
@@ -71,7 +69,6 @@ const AcwaComprehensiveProposal = lazy(() => import('./pages/AcwaComprehensivePr
 const AdAudio = lazy(() => import('./pages/AdAudio'));
 const CopyrightDoc = lazy(() => import('./pages/CopyrightDoc'));
 const SourceCodeDoc = lazy(() => import('./pages/SourceCodeDoc'));
-const ProjectGuideDoc = lazy(() => import('./pages/ProjectGuideDoc'));
 const TiktokAd = lazy(() => import('./pages/TiktokAd'));
 const TruePerformanceDoc = lazy(() => import('./pages/TruePerformanceDoc'));
 const Inventory = lazy(() => import('./pages/Inventory'));
@@ -79,31 +76,40 @@ const Assets = lazy(() => import('./pages/Assets'));
 const Expenses = lazy(() => import('./pages/Expenses'));
 const StationExpenses = lazy(() => import('./pages/StationExpenses'));
 const WorkProof = lazy(() => import('./pages/WorkProof'));
+const VisitorProof = lazy(() => import('./pages/VisitorProof'));
 const ProofVerify = lazy(() => import('./pages/ProofVerify'));
-const WorkProofSign = lazy(() => import('./pages/WorkProofSign'));
 
 // Start the workspace chunk immediately when a session already exists so /app
 // does not wait for window load — that delay was a blank spinner then a jump.
 if (typeof window !== "undefined" && localStorage.getItem("powercare_session")) {
   import('./pages/Dashboard');
+  const prefetch = () => {
+    import('./pages/Operations');
+    import('./pages/Attendance');
+    import('./pages/Requests');
+    import('./pages/FileSigning');
+    import('./pages/OrgStructure');
+    import('./pages/HRStructureManagement');
+  };
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(prefetch, { timeout: 2500 });
+  } else {
+    window.setTimeout(prefetch, 800);
+  }
 }
 
-const LOADER_STYLE = { background: "#F7F8FA", color: "#14284B" };
-
-function PageLoader() {
-  return (
-    <div className="min-h-screen flex items-center justify-center" style={LOADER_STYLE}>
-      <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#14284B" }} />
-    </div>
-  );
+function PageLoader({ variant = "full" }) {
+  return <PlatformBoot variant={variant} />;
 }
 
 function InteriorLoader() {
-  return (
-    <div className="flex min-h-[40vh] items-center justify-center">
-      <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#14284B" }} />
-    </div>
-  );
+  return <PlatformBoot variant="interior" />;
+}
+
+function OpenEmployeeFile() {
+  const { currentUser } = usePowerCareAuth();
+  if (!currentUser?.id) return <InteriorLoader />;
+  return <Navigate to={`/app/employees/${encodeURIComponent(currentUser.id)}`} replace />;
 }
 
 function RequireAuth({ children }) {
@@ -118,9 +124,8 @@ function RequireAuth({ children }) {
       />
     );
   }
-  // While the workspace is still loading (fresh device / restored account),
-  // show a spinner instead of the blank page that pages render without a user.
-  if (!data || (session.userId && !currentUser)) return <PageLoader />;
+  // Session exists — paint the live chrome, not a centered card then a jump.
+  if (!data || (session.userId && !currentUser)) return <PageLoader variant="shell" />;
   if (!canAccessPath(location.pathname, currentUser, data, company)) return <Navigate to={canAccessPlanPath(location.pathname, company) ? "/app" : "/pricing"} replace />;
   return (
     <TrialExpiryGate company={company}>
@@ -132,9 +137,13 @@ function RequireAuth({ children }) {
 }
 
 function AppRoutes() {
-  const isPlatform = useLocation().pathname.startsWith("/app");
+  const path = useLocation().pathname;
+  const isPlatform = path.startsWith("/app");
+  const bootVariant = isPlatform && (typeof window !== "undefined" && localStorage.getItem("powercare_session"))
+    ? "shell"
+    : "full";
   return (
-    <Suspense fallback={<PageLoader />}>
+    <Suspense fallback={<PageLoader variant={bootVariant} />}>
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/preview" element={<LocalPreviewEntry />} />
@@ -154,7 +163,6 @@ function AppRoutes() {
       <Route path="/verify" element={<Verify />} />
       <Route path="/sign" element={<PublicSign />} />
       <Route path="/proof" element={<ProofVerify />} />
-      <Route path="/work-proof-sign" element={<WorkProofSign />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/security" element={<Security />} />
       <Route path="/terms" element={<Terms />} />
@@ -169,8 +177,8 @@ function AppRoutes() {
       <Route path="/ad-audio" element={<AdAudio />} />
       <Route path="/copyright-doc" element={<CopyrightDoc />} />
       <Route path="/source-code-doc" element={<SourceCodeDoc />} />
-      <Route path="/project-guide" element={<ProjectGuideDoc />} />
-      <Route path="/manual" element={<ProjectGuideDoc />} />
+      <Route path="/project-guide" element={<Navigate to="/" replace />} />
+      <Route path="/manual" element={<Navigate to="/" replace />} />
       <Route path="/tiktok-ad" element={<TiktokAd />} />
       <Route path="/true-performance" element={<TruePerformanceDoc />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
@@ -183,10 +191,11 @@ function AppRoutes() {
       <Route path="/app/tasks-classic" element={<Navigate to="/app/tasks" replace />} />
       <Route path="/app/my-tasks" element={<Navigate to="/app/tasks" replace />} />
       <Route path="/MyTasks" element={<Navigate to="/app/tasks" replace />} />
-      <Route path="/app/chat" element={<RequireAuth><StationChat /></RequireAuth>} />
+      <Route path="/app/chat" element={<Navigate to="/app" replace />} />
 
       <Route path="/app/complaints" element={<RequireAuth><Complaints /></RequireAuth>} />
       <Route path="/app/discipline" element={<RequireAuth><Discipline /></RequireAuth>} />
+      <Route path="/app/employees" element={<RequireAuth><OpenEmployeeFile /></RequireAuth>} />
       <Route path="/app/employees/:employeeId" element={<RequireAuth><EmployeeProfile /></RequireAuth>} />
       <Route path="/app/hr" element={<RequireAuth><HRStructureManagement /></RequireAuth>} />
       <Route path="/app/org" element={<RequireAuth><OrgStructure /></RequireAuth>} />
@@ -195,13 +204,20 @@ function AppRoutes() {
       <Route path="/app/payroll" element={<RequireAuth><Payroll /></RequireAuth>} />
       <Route path="/app/performance" element={<RequireAuth><Performance /></RequireAuth>} />
       <Route path="/app/safety" element={<RequireAuth><Safety /></RequireAuth>} />
-      <Route path="/app/daily-report" element={<RequireAuth><DailyReport /></RequireAuth>} />
+      <Route path="/app/daily-report" element={<Navigate to="/app" replace />} />
       <Route path="/app/reports" element={<Navigate to="/app" replace />} />
       <Route path="/app/attendance" element={<RequireAuth><Attendance /></RequireAuth>} />
       <Route path="/app/attendance/shifts" element={<RequireAuth><Attendance /></RequireAuth>} />
-      <Route path="/app/attendance/leave" element={<RequireAuth><Attendance /></RequireAuth>} />
+      <Route path="/app/attendance/leave" element={<Navigate to="/app/requests/leave" replace />} />
+      <Route path="/app/attendance/calendar" element={<RequireAuth><Attendance /></RequireAuth>} />
       <Route path="/app/shifts" element={<RequireAuth><Attendance /></RequireAuth>} />
-      <Route path="/app/leave" element={<RequireAuth><Attendance /></RequireAuth>} />
+      <Route path="/app/leave" element={<Navigate to="/app/requests/leave" replace />} />
+      <Route path="/app/requests" element={<RequireAuth><Requests /></RequireAuth>} />
+      <Route path="/app/requests/leave" element={<RequireAuth><Requests /></RequireAuth>} />
+      <Route path="/app/requests/other" element={<RequireAuth><Requests /></RequireAuth>} />
+      <Route path="/app/requests/manage" element={<RequireAuth><Requests /></RequireAuth>} />
+      <Route path="/app/requests/archive" element={<RequireAuth><Requests /></RequireAuth>} />
+      <Route path="/app/calendar" element={<RequireAuth><Attendance /></RequireAuth>} />
       <Route path="/app/files" element={<RequireAuth><Files /></RequireAuth>} />
       <Route path="/app/inventory" element={<RequireAuth><Inventory /></RequireAuth>} />
       <Route path="/app/assets" element={<RequireAuth><Assets /></RequireAuth>} />
@@ -212,9 +228,10 @@ function AppRoutes() {
       <Route path="/app/signing" element={<RequireAuth><FileSigning /></RequireAuth>} />
       <Route path="/app/client-proof" element={<Navigate to="/app/work-proof" replace />} />
       <Route path="/app/work-proof" element={<RequireAuth><WorkProof /></RequireAuth>} />
+      <Route path="/app/visitor-proof" element={<RequireAuth><VisitorProof /></RequireAuth>} />
       <Route path="/app/assistant" element={<RequireAuth><Assistant /></RequireAuth>} />
-      <Route path="/app/help" element={<RequireAuth><Help /></RequireAuth>} />
-      <Route path="/app/manual" element={<RequireAuth><ProjectGuideDoc /></RequireAuth>} />
+      <Route path="/app/help" element={<Navigate to="/app" replace />} />
+      <Route path="/app/manual" element={<Navigate to="/app" replace />} />
       <Route path="/api/*" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>

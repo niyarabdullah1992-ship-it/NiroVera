@@ -1,16 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
+import { useAuth } from "@/lib/PowerCareAuth";
+import { visibleStations } from "@/lib/permissions";
+import { matchesExactStation, resolvePageStationScope } from "@/lib/stationScopePolicy";
 import {
   getStationScope,
   normalizeStationScope,
   subscribeStationScope,
 } from "@/lib/stationScopeStore";
-import { stationInHeaderScope } from "@/lib/stationTree";
 
 /**
- * Header station scope from Layout (`powercare:scope-change` + store).
- * Returns `all` or a station id — consumers must still enforce companyId on the server.
+ * Stored header scope (`powercare_station_scope`) — may still be `all`
+ * while the current page resolves it to one workplace.
  */
-export default function useStationScope() {
+export function useRawStationScope() {
   const [stationId, setStationId] = useState(() => getStationScope());
 
   useEffect(() => {
@@ -26,7 +29,6 @@ export default function useStationScope() {
     const unsub = subscribeStationScope(sync);
     window.addEventListener("powercare:scope-change", onEvent);
     window.addEventListener("storage", onStorage);
-    // Re-read once after mount in case Layout wrote before this subscribed.
     sync(getStationScope());
     return () => {
       unsub();
@@ -38,8 +40,29 @@ export default function useStationScope() {
   return stationId;
 }
 
+/**
+ * Page-aware header scope. Duty / care / money (except inventory) never
+ * return `all` — each section is one workplace. Consumers must still
+ * enforce companyId on the server.
+ */
+export default function useStationScope() {
+  const raw = useRawStationScope();
+  const { pathname } = useLocation();
+  const { data, currentUser } = useAuth();
+  return useMemo(
+    () => resolvePageStationScope({
+      pathname,
+      headerScope: raw,
+      employee: currentUser,
+      stations: data?.stations,
+      visible: currentUser && data ? visibleStations(currentUser, data) : data?.stations,
+      data,
+    }),
+    [pathname, raw, data, currentUser],
+  );
+}
+
+/** One workplace at a time. `all` is only a match on surfaces that still allow it. */
 export function matchesStationScope(rowStationId, scopeId) {
-  const scope = normalizeStationScope(scopeId);
-  if (scope === "all") return true;
-  return stationInHeaderScope(rowStationId, scope);
+  return matchesExactStation(rowStationId, normalizeStationScope(scopeId));
 }

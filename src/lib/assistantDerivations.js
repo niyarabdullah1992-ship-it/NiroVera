@@ -419,7 +419,7 @@ export function derivePromptAnswer(
       primaryActionEn: "Review the draft in Reports",
       secondaryActionAr: "أرسِل للرئيس والمدير المالي",
       secondaryActionEn: "Send to CEO and CFO",
-      goOps: "/app/daily-report",
+      goOps: "/app",
     };
   }
 

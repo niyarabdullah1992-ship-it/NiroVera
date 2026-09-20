@@ -1,6 +1,7 @@
 import { getCompanyData, updateCompany } from "@/lib/store";
+import { applyPreviewStationPin } from "@/lib/previewStationPins";
 import { ownerEmployee, syncStationManagersFromSeats } from "@/lib/orgHire";
-import { applyWorkplaceManagerRule } from "@/lib/peopleTreeGraph";
+import { applyWorkplaceManagerRule, seatCompanyHeadOnRoot } from "@/lib/peopleTreeGraph";
 import { applyExtraCoverageStrip, companyRootStation, hangOrphanStationsUnderCompany, isCompanyRootStation, stationParentId, stripDescendantCoverage } from "@/lib/stationTree";
 import {
   DEMO_BRANCH_MANAGERS,
@@ -35,6 +36,7 @@ function applyDemoBranchManagers(data) {
   const root = companyRootStation(data.stations);
   const owner = ownerEmployee(data);
   if (root && owner) root.managerId = owner.id;
+  seatCompanyHeadOnRoot(data);
   applyWorkplaceManagerRule(data);
 }
 
@@ -146,15 +148,17 @@ function ensureCompanyRoot(data, companyName) {
       radiusMeters: 200,
       createdAt: new Date().toISOString(),
     };
+    applyPreviewStationPin(root);
     data.stations = data.stations || [];
     data.stations.push(root);
   } else {
     root.isCompanyRoot = true;
     root.parentStationId = null;
+    applyPreviewStationPin(root);
   }
   const owner = ownerEmployee(data);
   if (owner && !root.managerId) root.managerId = owner.id;
-  if (owner && !owner.stationId) owner.stationId = root.id;
+  seatCompanyHeadOnRoot(data);
   ensureStationNode(data, root.id);
   return root;
 }
@@ -179,8 +183,10 @@ function ensureBranch(data, name, parentName, unitKind) {
       radiusMeters: 200,
       createdAt: new Date().toISOString(),
     };
+    applyPreviewStationPin(station);
     data.stations.push(station);
   } else if (!isCompanyRootStation(station)) {
+    applyPreviewStationPin(station);
     const wanted = parent?.id || null;
     if ((stationParentId(station) || null) !== wanted) station.parentStationId = wanted;
     if (unitKind) station.unitKind = unitKind === "manager" ? "manager" : "branch";

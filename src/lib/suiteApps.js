@@ -8,29 +8,71 @@ export const SUITE_GROUPS = [
     id: "daily",
     ar: "التشغيل اليومي",
     en: "Daily operations",
-    blurbAr: "حضور ثم مهمة ثم ختم ثم إثبات للعميل — والمحادثة جزء من اليوم.",
-    blurbEn: "Attendance, task, seal, then client proof — chat stays in the same day.",
+    blurbAr: "مهمة ثم إثبات للعميل — والحضور من قسم الدوام يغذي البداية.",
+    blurbEn: "Task, then client proof — attendance in Time & Attendance starts the chain.",
+  },
+  {
+    id: "signing",
+    ar: "التوقيع الرقمي",
+    en: "Digital Signing",
+    blurbAr: "ختم ورقم تحقق قابل للمراجعة — حلقة الإثبات الخامسة.",
+    blurbEn: "Seal and a verifiable stamp — the fifth ring of the proof cycle.",
+  },
+  {
+    id: "duty",
+    ar: "الدوام والحضور",
+    en: "Time & Attendance",
+    blurbAr: "جدول الورديات يحدد من يجب أن يحضر — ثم تسجيل الحضور والانصراف يغذي المسير.",
+    blurbEn: "The rota says who should be present — then check-in feeds payroll.",
+  },
+  {
+    id: "requests",
+    ar: "طلباتي",
+    en: "My Requests",
+    blurbAr: "إجازة وطلبات أخرى في صندوق واحد.",
+    blurbEn: "Leave and other requests in one inbox.",
   },
   {
     id: "workforce",
     ar: "القوى العاملة",
     en: "Workforce",
-    blurbAr: "هيكل ثم ملفات ثم أداء، والورديات والإجازات تخطط الناس.",
-    blurbEn: "Org, files, then performance — shifts and leave plan the people.",
+    blurbAr: "هيكل ثم ملفات.",
+    blurbEn: "Org, then files.",
+  },
+  {
+    id: "performance",
+    ar: "الأداء",
+    en: "Performance",
+    blurbAr: "أهداف ووزن مهام معتمدة من دورة الإثبات.",
+    blurbEn: "Goals and approved task weight from the proof cycle.",
+  },
+  {
+    id: "complaints",
+    ar: "صوت الموظف",
+    en: "Employee Voice",
+    blurbAr: "اقتراح وشكوى وبلاغ مجهول بمسار تصعيد.",
+    blurbEn: "Suggestion, complaint, and anonymous report with an escalation path.",
+  },
+  {
+    id: "discipline",
+    ar: "الجزاءات",
+    en: "Sanctions",
+    blurbAr: "واقعة ثم إشعار ومحضر وقرار وتظلم.",
+    blurbEn: "Incident, notice, hearing, decision, appeal.",
   },
   {
     id: "compliance",
     ar: "الالتزام والرعاية",
     en: "Care & compliance",
-    blurbAr: "سلامة وصوت موظف داخل نفس سلسلة الثقة.",
-    blurbEn: "Safety and employee voice inside the same trust chain.",
+    blurbAr: "سلامة الموقع داخل سلسلة الثقة.",
+    blurbEn: "Site safety inside the trust chain.",
   },
   {
     id: "money",
     ar: "المال والأصول",
     en: "Money & assets",
-    blurbAr: "رواتب ومصروفات وأصول وعهد ومخزون.",
-    blurbEn: "Payroll, expenses, assets & custody, and stock.",
+    blurbAr: "البصمة تغذّي المسير. المصروف والمخزون والأصول والعهد في مسار واحد، ولكل مسار سطحه.",
+    blurbEn: "Attendance feeds payroll. Expenses, stock, and assets & custody each have their own path.",
   },
   {
     id: "admin",
@@ -41,7 +83,7 @@ export const SUITE_GROUPS = [
   },
 ];
 
-/** @typedef {{ id: string, path: string, planSection: string | null, group: string, public: boolean, rail?: boolean, ar: string, en: string, blurbAr: string, blurbEn: string, icon: string }} SuiteApp */
+/** @typedef {{ id: string, path: string, planSection: string | null, group: string, public: boolean, rail?: boolean, aliases?: string[], ar: string, en: string, blurbAr: string, blurbEn: string, icon: string }} SuiteApp */
 
 /** @type {SuiteApp[]} */
 export const SUITE_APPS = [
@@ -51,8 +93,8 @@ export const SUITE_APPS = [
     planSection: null,
     group: "daily",
     public: true,
-    ar: "مركز القيادة",
-    en: "Command Center",
+    ar: "لوحة القيادة",
+    en: "Dashboard",
     blurbAr: "نظرة قرار عبر الناس والتشغيل والثقة.",
     blurbEn: "Decision glance across people, ops, and trust.",
     icon: "grid",
@@ -61,13 +103,26 @@ export const SUITE_APPS = [
     id: "attendance",
     path: "/app/attendance",
     planSection: "attendance",
-    group: "daily",
+    group: "duty",
     public: true,
-    ar: "الحضور والانصراف",
+    ar: "الحضور",
     en: "Attendance",
-    blurbAr: "حضور مربوط بموقع الفرع والوقت.",
-    blurbEn: "Check-in tied to station place and time.",
+    blurbAr: "سؤالان: مَن يسجّل، وأين هو. البصمة من الجدول فقط.",
+    blurbEn: "Two questions: who punched, and where. The punch follows the rota only.",
     icon: "clock",
+  },
+  {
+    id: "calendar",
+    path: "/app/calendar",
+    planSection: "attendance",
+    group: "duty",
+    public: true,
+    aliases: ["/app/attendance/calendar"],
+    ar: "التقويم التشغيلي",
+    en: "Operational calendar",
+    blurbAr: "كل يوم يحمل توزيعه: حضر، تأخّر، غاب — واليوم الذي انكسرت فيه حلقة يُعلَّم بحدّ ذهبي.",
+    blurbEn: "Each day carries its split: on time, late, absent — a broken ring is marked in gold.",
+    icon: "month",
   },
   {
     id: "tasks",
@@ -77,8 +132,8 @@ export const SUITE_APPS = [
     public: true,
     ar: "المهام والعمليات",
     en: "Operations",
-    blurbAr: "جهد ووزن وإثبات واعتماد.",
-    blurbEn: "Effort, weight, proof, and review.",
+    blurbAr: "أمر عمل لموظف الشركة — حتى إن نفّذ العمل في فرع آخر.",
+    blurbEn: "A work order for a company employee — even if they execute at another branch.",
     icon: "ops",
   },
   {
@@ -97,7 +152,7 @@ export const SUITE_APPS = [
     id: "signing",
     path: "/app/signing",
     planSection: "signing",
-    group: "daily",
+    group: "signing",
     public: true,
     ar: "التوقيع الرقمي",
     en: "Digital Signing",
@@ -108,38 +163,26 @@ export const SUITE_APPS = [
   {
     id: "work-proof",
     path: "/app/work-proof",
-    planSection: "signing",
+    planSection: "tasks",
     group: "daily",
     public: true,
     ar: "إثبات العمل",
     en: "Work Proof",
-    blurbAr: "دليل ميداني وإفصاح للعميل.",
-    blurbEn: "Field evidence and client disclosure.",
+    blurbAr: "إثبات عمل لجهة خارج الشركة — المنشئ والمنشأة وهويات العمال.",
+    blurbEn: "Work proof for an outside company — raiser, establishment, worker IDs.",
     icon: "camera",
   },
   {
-    id: "daily-report",
-    path: "/app/daily-report",
-    planSection: "reports",
+    id: "visitor-proof",
+    path: "/app/visitor-proof",
+    planSection: "tasks",
     group: "daily",
     public: true,
-    ar: "التقرير اليومي",
-    en: "Daily Report",
-    blurbAr: "ملخص الفرع لليوم التشغيلي.",
-    blurbEn: "Station summary for the operating day.",
-    icon: "day",
-  },
-  {
-    id: "chat",
-    path: "/app/chat",
-    planSection: "chat",
-    group: "daily",
-    public: true,
-    ar: "المحادثات التشغيلية",
-    en: "Operations Chat",
-    blurbAr: "قنوات الفروع داخل الصلاحيات.",
-    blurbEn: "Station channels within permissions.",
-    icon: "chat",
+    ar: "إثبات زائر",
+    en: "Visitor Proof",
+    blurbAr: "ضيف على الفرع — ليس موظفاً ينفّذ من فرع آخر وليس جهة خارجية.",
+    blurbEn: "A guest at the station — not a company employee executing from another branch, and not an outside company.",
+    icon: "idcard",
   },
   {
     id: "org",
@@ -169,7 +212,7 @@ export const SUITE_APPS = [
     id: "performance",
     path: "/app/performance",
     planSection: "performance",
-    group: "workforce",
+    group: "performance",
     public: true,
     ar: "الأداء",
     en: "Performance",
@@ -181,25 +224,27 @@ export const SUITE_APPS = [
     id: "shifts",
     path: "/app/shifts",
     planSection: "attendance",
-    group: "workforce",
+    group: "duty",
     public: true,
-    ar: "الورديات",
-    en: "Shifts",
-    blurbAr: "جدول الفرع الشهري.",
-    blurbEn: "Monthly station matrix.",
+    aliases: ["/app/attendance/shifts"],
+    ar: "جدول الدوام",
+    en: "Duty roster",
+    blurbAr: "الوردية المنشورة هي مصدر الوقت: من يحضر ومتى يُعدّ متأخراً.",
+    blurbEn: "The published shift is the clock: who attends, and when lateness starts.",
     icon: "clock",
   },
   {
-    id: "leave",
-    path: "/app/leave",
+    id: "requests",
+    path: "/app/requests",
     planSection: "attendance",
-    group: "workforce",
+    group: "requests",
     public: true,
-    ar: "طلبات الإجازة",
-    en: "Leave Requests",
-    blurbAr: "استحقاق واعتماد ومتابعة.",
-    blurbEn: "Entitlement, approval, and follow-up.",
-    icon: "cal",
+    aliases: ["/app/leave", "/app/attendance/leave", "/app/requests/leave", "/app/requests/other", "/app/requests/manage", "/app/requests/archive"],
+    ar: "طلباتي",
+    en: "My Requests",
+    blurbAr: "إجازة وطلبات أخرى في صندوق واحد.",
+    blurbEn: "Leave and other requests in one inbox.",
+    icon: "clip",
   },
   {
     id: "safety",
@@ -217,21 +262,21 @@ export const SUITE_APPS = [
     id: "complaints",
     path: "/app/complaints",
     planSection: "complaints",
-    group: "compliance",
+    group: "complaints",
     public: true,
     ar: "صوت الموظف",
     en: "Employee Voice",
-    blurbAr: "بلاغات بمسار تصعيد.",
-    blurbEn: "Reports with an escalation path.",
-    icon: "message",
+    blurbAr: "اقتراح وشكوى وبلاغ مجهول بمسار تصعيد.",
+    blurbEn: "Suggestion, complaint, and anonymous report with an escalation path.",
+    icon: "megaphone",
   },
   {
     id: "discipline",
     path: "/app/discipline",
     planSection: "hr",
-    group: "compliance",
+    group: "discipline",
     public: true,
-    ar: "الجزاءات والتحقيق",
+    ar: "الجزاءات",
     en: "Sanctions",
     blurbAr: "واقعة ثم إشعار ومحضر وقرار وتظلم.",
     blurbEn: "Incident, notice, hearing, decision, appeal.",
@@ -245,8 +290,8 @@ export const SUITE_APPS = [
     public: true,
     ar: "الرواتب",
     en: "Payroll",
-    blurbAr: "مسير وحماية أجور مشتقة.",
-    blurbEn: "Runs and derived wage protection.",
+    blurbAr: "الحضور يُقفل في المسير قبل ملف مدى. مواد 90 و92 و93 و107.",
+    blurbEn: "Attendance closes into the run before the Mudad file. Art. 90, 92, 93 and 107.",
     icon: "wallet",
   },
   {
@@ -257,8 +302,8 @@ export const SUITE_APPS = [
     public: true,
     ar: "المصروفات",
     en: "Expenses",
-    blurbAr: "مطالبات واعتماد وميزانية.",
-    blurbEn: "Claims, approval, and budget.",
+    blurbAr: "وعاء تشغيلي · إيصال بوابة · اعتماد متدرّج بالمبلغ.",
+    blurbEn: "Operating vessel · receipt gate · amount-derived approval.",
     icon: "receipt",
   },
   {
@@ -269,8 +314,8 @@ export const SUITE_APPS = [
     public: true,
     ar: "الأصول / العهد",
     en: "Assets / Custody",
-    blurbAr: "سجل أصل · حائز واحد · تسليم بتوقيع الطرفين.",
-    blurbEn: "Asset register · one holder · dual-sign handover.",
+    blurbAr: "سجل أصل · حائز واحد · نقل بين الفروع · تسليم بتوقيع الطرفين.",
+    blurbEn: "Asset register · one holder · inter-station transfer · dual-sign handover.",
     icon: "box",
   },
   {
@@ -281,8 +326,8 @@ export const SUITE_APPS = [
     public: true,
     ar: "المخزون",
     en: "Inventory",
-    blurbAr: "أصناف وحركات فروع.",
-    blurbEn: "Items and station movements.",
+    blurbAr: "لا مركزي: رصيد الفرع · شراء · طلب من فرع آخر · صرف للعمل.",
+    blurbEn: "Decentralised: station balance · buy · request from another station · issue to work.",
     icon: "box",
   },
   {
@@ -293,8 +338,8 @@ export const SUITE_APPS = [
     public: true,
     ar: "الملفات",
     en: "Files",
-    blurbAr: "أرشيف الشركة المنظم.",
-    blurbEn: "Organized company archive.",
+    blurbAr: "أرشيف المستندات — قسم مستقل.",
+    blurbEn: "Document archive — its own section.",
     icon: "folder",
   },
   {
@@ -321,19 +366,6 @@ export const SUITE_APPS = [
     blurbEn: "Station scope, permissions, and identity.",
     icon: "settings",
   },
-  {
-    id: "help",
-    path: "/app/help",
-    planSection: null,
-    group: "admin",
-    public: false,
-    rail: false,
-    ar: "المساعدة",
-    en: "Help",
-    blurbAr: "دليل التشغيل وأسئلة شائعة.",
-    blurbEn: "Operating guide and FAQs.",
-    icon: "help",
-  },
 ];
 
 export const SUITE_ICON_PATHS = {
@@ -359,7 +391,6 @@ export const SUITE_ICON_PATHS = {
   spark: ["M12 3.5l1.9 5.3 5.3 1.9-5.3 1.9L12 17.9l-1.9-5.3L4.8 10.7l5.3-1.9z"],
   brief: ["M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7", "M4 8.5h16v11H4z", "M4 12.5h16"],
   settings: ["M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z", "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"],
-  help: ["M12 18h.01", "M9.5 9a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4", "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z"],
 };
 
 export function publicSuiteApps() {
@@ -375,6 +406,28 @@ export function suiteAppsByGroup(apps = SUITE_APPS) {
 
 export function suiteAppLabel(app, lang = "ar") {
   return lang === "en" ? app.en : app.ar;
+}
+
+/** Longest matching suite app for a live path (aliases included). `/app` stays exact. */
+export function suiteAppForPath(pathname = "", apps = SUITE_APPS) {
+  const path = String(pathname || "").replace(/\/+$/, "") || "/";
+  let best = null;
+  let bestLen = -1;
+  for (const app of apps) {
+    const candidates = [app.path, ...(app.aliases || [])];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const base = String(candidate).replace(/\/+$/, "") || "/";
+      const match = base === "/app"
+        ? (path === "/app")
+        : (path === base || path.startsWith(`${base}/`));
+      if (match && base.length > bestLen) {
+        best = app;
+        bestLen = base.length;
+      }
+    }
+  }
+  return best;
 }
 
 export function suiteAppBlurb(app, lang = "ar") {

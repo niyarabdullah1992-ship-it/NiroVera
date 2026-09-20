@@ -21,7 +21,7 @@ export default function PolicyDeviationAlert({ gate, ruleId, leaveType, profile,
       <div style={{ fontSize: 12, lineHeight: 1.65 }}>
         {ar ? gate.reason : (gate.reasonEn || gate.reason)}
       </div>
-      <LaborArticleCite cite={gate.cite} ruleId={ruleId} leaveType={leaveType} profile={profile} ar={ar} showText />
+      <LaborArticleCite cite={gate.cite} ruleId={ruleId} leaveType={leaveType} profile={profile} ar={ar} showText tone="block" />
     </div>
   );
 }

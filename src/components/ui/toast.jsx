@@ -24,7 +24,7 @@ ToastViewport.displayName = "ToastViewport";
 const toastVariants = cva(
   [
     "group pointer-events-auto relative flex w-full items-start gap-3 overflow-hidden",
-    "rounded-[12px] border px-3.5 py-3 pe-10",
+    "rounded-none border px-3.5 py-3 pe-10",
     "shadow-[0_10px_32px_rgba(20,40,75,0.12)]",
     "will-change-transform",
   ].join(" "),

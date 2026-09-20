@@ -1,0 +1,16 @@
+﻿# Keep Cursor from indexing scratch dumps and build output.
+.tmp*
+.tmp-*/
+node_modules/
+dist/
+dist-ssr/
+.vite/
+.git/objects/
+.cursor/
+.cursor/*.log
+.cursor/debug-*.log
+claude-refs/
+design-handoff-claude/
+*.zip
+*.log
+.vite-dev.log

@@ -50,9 +50,10 @@ export function OrgTreeCanvas({ viewportRef, gestures, fullscreen, children }) {
       {...gestures}
       className="nv-org-canvas"
       style={{
+        position: "relative",
         flex: 1,
         minHeight: fullscreen ? 0 : 440,
-        height: fullscreen ? "auto" : "68vh",
+        height: fullscreen ? "100%" : "68vh",
         maxHeight: fullscreen ? "none" : 720,
       }}
     >

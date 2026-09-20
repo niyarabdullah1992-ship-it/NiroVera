@@ -1,6 +1,7 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.38";
 import { authPowerCareSession } from "../../shared/powerCareSession.ts";
 import {
+  appendVoiceAudit,
   applySlaAutoEscalate,
   checkCloseGate,
   checkEscalateGate,
@@ -17,7 +18,8 @@ import {
   type RateLimits,
 } from "../../shared/complaintDerivations.ts";
 
-const COMPLAINTS_CATEGORY = "complaintQueue";
+const COMPLAINTS_CATEGORY = "anonymousReports";
+const COMPLAINTS_LEGACY_CATEGORY = "complaintQueue"; // do-not-write — read fallback only
 
 function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
@@ -72,10 +74,10 @@ Deno.serve(async (req) => {
     ];
     const isHandlerRole = auth.owner || auth.admin || handlerRoles.includes(auth.role);
 
-    const loadBlob = async () => {
+    const loadBlob = async (category = COMPLAINTS_CATEGORY) => {
       const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({
         companyId: auth.companyId,
-        category: COMPLAINTS_CATEGORY,
+        category,
       });
       return rows[0] || null;
     };
@@ -91,29 +93,54 @@ Deno.serve(async (req) => {
       return [];
     };
 
-    const loadPayload = async (): Promise<ComplaintsPayload> => {
-      const blob = await loadBlob();
-      const raw = blob?.payload && typeof blob.payload === "object" ? blob.payload : {};
-      const base = emptyPayload();
-      base.reports = (Array.isArray(raw.reports) ? raw.reports : []).filter(
+    const reportsFromPayload = (raw: unknown): Array<ComplaintLike & { companyId: string; id: string }> => {
+      const rows = Array.isArray(raw)
+        ? raw
+        : (raw && typeof raw === "object" && Array.isArray((raw as { reports?: unknown[] }).reports)
+          ? (raw as { reports: unknown[] }).reports
+          : []);
+      return rows.filter(
         (r: ComplaintLike & { companyId?: string; id?: string }) =>
-          r && r.companyId === auth.companyId && r.id && r.title,
-      );
-      base.rateLimits = normalizeRateLimits(raw.rateLimits || null);
-      base.chainHandlerIds = Array.isArray(raw.chainHandlerIds)
-        ? raw.chainHandlerIds.filter((x: unknown) => typeof x === "string")
-        : [];
+          r && r.id && r.title && (!r.companyId || r.companyId === auth.companyId),
+      ) as Array<ComplaintLike & { companyId: string; id: string }>;
+    };
+
+    const loadPayload = async (): Promise<ComplaintsPayload> => {
+      const blob = await loadBlob(COMPLAINTS_CATEGORY);
+      const base = emptyPayload();
+      base.reports = reportsFromPayload(blob?.payload);
+      if (!base.reports.length) {
+        const legacy = await loadBlob(COMPLAINTS_LEGACY_CATEGORY);
+        base.reports = reportsFromPayload(legacy?.payload);
+        const raw = legacy?.payload && typeof legacy.payload === "object" && !Array.isArray(legacy.payload)
+          ? legacy.payload as { rateLimits?: unknown; chainHandlerIds?: unknown[] }
+          : {};
+        base.rateLimits = normalizeRateLimits(raw.rateLimits || null);
+        base.chainHandlerIds = Array.isArray(raw.chainHandlerIds)
+          ? raw.chainHandlerIds.filter((x: unknown) => typeof x === "string")
+          : [];
+      } else {
+        const raw = blob?.payload && typeof blob.payload === "object" && !Array.isArray(blob.payload)
+          ? blob.payload as { rateLimits?: unknown; chainHandlerIds?: unknown[] }
+          : {};
+        base.rateLimits = normalizeRateLimits(raw.rateLimits || null);
+        base.chainHandlerIds = Array.isArray(raw.chainHandlerIds)
+          ? raw.chainHandlerIds.filter((x: unknown) => typeof x === "string")
+          : [];
+      }
+      if (!base.chainHandlerIds.length) base.chainHandlerIds = await loadEscalationIds();
       return base;
     };
 
     const savePayload = async (payload: ComplaintsPayload) => {
-      const blob = await loadBlob();
-      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload });
+      const reports = payload.reports.map((r) => ({ ...r, companyId: r.companyId || auth.companyId }));
+      const blob = await loadBlob(COMPLAINTS_CATEGORY);
+      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload: reports });
       else {
         await base44.asServiceRole.entities.CompanyDataBlob.create({
           companyId: auth.companyId,
           category: COMPLAINTS_CATEGORY,
-          payload,
+          payload: reports,
         });
       }
     };
@@ -316,6 +343,7 @@ Deno.serve(async (req) => {
         message: body.message || body.title,
         usage,
         limits: data.rateLimits,
+        stationId: auth.stationId,
       });
       if (!gate.ok) {
         return Response.json({
@@ -338,7 +366,7 @@ Deno.serve(async (req) => {
         type: body.type === "suggestion" ? "suggestion" : "complaint",
         title: String(body.title || gate.message).slice(0, 200),
         message: gate.message,
-        stationId: body.stationId || auth.stationId || null,
+        stationId: auth.stationId || null,
         stationName: body.stationName || null,
         priority: ["high", "medium", "low"].includes(body.priority) ? body.priority : "medium",
         status: "open",
@@ -346,6 +374,7 @@ Deno.serve(async (req) => {
         levelSinceAt: nowIso,
         createdAt: nowIso,
         reporterName: null,
+        auditTrail: appendVoiceAudit({}, "raise", {}, { at: nowIso, hideActor: true, level: 0 }),
       };
       data.reports = [record, ...data.reports];
       await savePayload(data);
@@ -390,6 +419,12 @@ Deno.serve(async (req) => {
         levelSinceAt: nowIso,
         lastEscalationReason: "MANUAL",
         status: "open",
+        auditTrail: appendVoiceAudit(report, "escalate", { id: auth.userId, name: auth.name, role: auth.role }, {
+          at: nowIso,
+          level: Number(report.escalationLevel) || 0,
+          toLevel: gate.nextLevel,
+          reason: "MANUAL",
+        }),
       };
       await savePayload(data);
       await audit("complaints.escalate", `${report.id} → L${gate.nextLevel}`, {
@@ -442,6 +477,11 @@ Deno.serve(async (req) => {
         closedAt: nowIso,
         closedBy: auth.name,
         satisfaction: body.satisfaction != null ? Number(body.satisfaction) : report.satisfaction ?? null,
+        auditTrail: appendVoiceAudit(report, "adopt", { id: auth.userId, name: auth.name, role: auth.role }, {
+          at: nowIso,
+          detail: String(body.note || body.reason || "").trim(),
+          level: Number(report.escalationLevel) || 0,
+        }),
       };
       await savePayload(data);
       await audit("complaints.close", `Closed ${report.id}`, { newValue: report.title });

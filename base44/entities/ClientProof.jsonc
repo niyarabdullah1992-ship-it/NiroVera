@@ -1,3 +1,8 @@
+// purpose: Public verify payload — allowed fields + content hash only.
+// domain: work_proof
+// isolation: companyId
+// owner: clientProof
+// status: canonical
 {
   "name": "ClientProof",
   "type": "object",

@@ -1,35 +1,25 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { identityIconWrap } from "@/components/shared/IdentityCard";
-import { BORDER, CARD, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
-import {
-  applyHireTemplate,
-  downloadHireTemplate,
-  hireApplySummary,
-  parseHireTemplateFile,
-  previewHireTemplate,
-} from "@/lib/hireTemplate";
+import { BORDER, CARD, PAPER_SHADOW, RADIUS, SURFACE } from "@/lib/platformStyles";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import {
   GREEN,
-  GREENT,
   MUTED,
   NAVY,
   branchWord,
   buildOrgDiagram,
   peopleFromCompany,
   peopleWord,
-  scopedSeatsFromCompany,
 } from "@/lib/orgTemplateView";
 import { toast } from "@/components/ui/use-toast";
 import { seedDemoOrgTree } from "@/lib/demoOrgTree";
 import { createOrgBranch, ensureCompanyRootStation, occupantTitle, renameOrgBranch, setActingAssignment, endActingAssignment, setOrgBranchParent, setOrgUnitKind } from "@/lib/orgHire";
 import { setStationManager } from "@/lib/store";
-import { companyLists } from "@/lib/permissionTemplates";
-import { syncWorkplaceManagers } from "@/lib/peopleTree";
+import { explainWorkplaceManager, syncWorkplaceManagers, workplaceManagerCardMark } from "@/lib/peopleTree";
 import { renameCompany } from "@/lib/companySettings";
-import { allowedStationParents, checkSetStationParentGate, companyRootStation, effectiveUnitKind, isCompanyRootStation, workplaceStations } from "@/lib/stationTree";
+import { allowedStationParents, checkSetStationParentGate, companyRootStation, effectiveUnitKind, isCompanyRootStation } from "@/lib/stationTree";
 import StationDeleteDialog from "@/components/stations/StationDeleteDialog";
 import { quickTransferEmployee } from "@/lib/employeeStationTransfer";
 import { publishOrgStructure, structurePublishIssues } from "@/lib/jobGrades";
@@ -40,7 +30,7 @@ import OrgEmployeePreview from "@/components/hr/OrgEmployeePreview";
 import { OrgCap, OrgColumn, OrgKids } from "@/components/hr/OrgChartLayout";
 import useOrgTreeViewport from "@/hooks/useOrgTreeViewport";
 import { printReport } from "@/lib/printReport";
-import { orgBtnDanger, orgBtnGhost, orgBtnPrimary, orgInput, orgSelect } from "@/lib/orgWorkspaceStyles";
+import { orgBtnDanger, orgBtnGhost, orgBtnPrimary, orgInput, orgSelect, orgTreeStageStyle } from "@/lib/orgWorkspaceStyles";
 import { OrgFooterStrip, OrgNotice, OrgPanel, OrgSearchBox, OrgToolbar, OrgTreeCanvas } from "@/components/hr/OrgWorkspace";
 import {
   actingAtStation,
@@ -51,28 +41,11 @@ import {
   printOrgPyramidRows,
 } from "@/lib/orgStructureLog";
 
-function findBranch(nodes, stationId) {
-  const id = String(stationId || "");
-  if (!id) return null;
-  const stack = [...(nodes || [])];
-  while (stack.length) {
-    const node = stack.pop();
-    if (!node) continue;
-    if (String(node.stationId || "") === id) return node;
-    (node.children || []).forEach((child) => stack.push(child));
-  }
-  return null;
-}
-
-export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) {
+export default function OrgTemplateBoard({ lang = "ar", onHire }) {
   const ar = lang === "ar";
   const { company, data, currentUser } = useAuth();
-  const hireInputRef = useRef(null);
   const skipBranchSave = useRef(false);
   const [open, setOpen] = useState({});
-  const [busy, setBusy] = useState(false);
-  const [hirePreview, setHirePreview] = useState(null);
-  const [hireApplied, setHireApplied] = useState(false);
   const [addingBranch, setAddingBranch] = useState(false);
   const [branchName, setBranchName] = useState("");
   const [branchParentId, setBranchParentId] = useState("");
@@ -93,10 +66,6 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
   const [actingUntil, setActingUntil] = useState("");
   const [actingMenu, setActingMenu] = useState(null);
   const [previewEmployee, setPreviewEmployee] = useState(null);
-  const [previewVacant, setPreviewVacant] = useState(false);
-  const [templateStationId, setTemplateStationId] = useState("");
-  const [pickedEmployeeIds, setPickedEmployeeIds] = useState([]);
-  const [pickEmployees, setPickEmployees] = useState(false);
   const viewportRef = useRef(null);
   const treeRef = useRef(null);
   const companyName = data?.settings?.companyName || company?.name || (ar ? "المنشأة" : "Company");
@@ -124,104 +93,8 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
       return { branches: [], headline: "", listCards: [] };
     }
   }, [people, open, data?.stations]);
-  const scoped = useMemo(() => {
-    try {
-      return scopedSeatsFromCompany(data);
-    } catch (error) {
-      console.error("NiroVera scoped seats:", error);
-      return [];
-    }
-  }, [data]);
   const publishIssues = useMemo(() => structurePublishIssues(data, ar), [data, ar]);
   const publishedAt = data?.settings?.orgPublishedAt;
-  const accessLists = useMemo(() => companyLists(data), [data]);
-  const accessReady = accessLists.some((pack) => (
-    Object.values(pack.permissions || {}).some((level) => level && level !== "hidden")
-  ));
-  const templateStations = useMemo(() => workplaceStations(data?.stations || []), [data]);
-  const templateEmployees = useMemo(() => (
-    (data?.employees || []).filter((employee) => (
-      employee?.name
-      && employee.role !== "system"
-      && employee.profile?.employmentStatus !== "terminated"
-      && (!templateStationId || String(employee.stationId) === String(templateStationId))
-    ))
-  ), [data, templateStationId]);
-
-  const templateScope = () => {
-    if (pickEmployees && !pickedEmployeeIds.length) {
-      toast({
-        description: ar ? "حدّد موظفاً واحداً على الأقل، أو ألغِ التحديد لتنزيل الفرع كاملاً." : "Pick at least one employee, or clear the filter to download the whole branch.",
-        variant: "destructive",
-      });
-      return null;
-    }
-    return {
-      stationIds: templateStationId ? [templateStationId] : undefined,
-      employeeIds: pickEmployees ? pickedEmployeeIds.filter(Boolean) : undefined,
-      focusStationId: templateStationId || undefined,
-    };
-  };
-
-  const downloadBlankTemplate = () => {
-    downloadHireTemplate(data, ar, { mode: "blank", focusStationId: templateStationId || undefined });
-  };
-
-  const downloadCurrentFiles = () => {
-    const scope = templateScope();
-    if (!scope) return;
-    downloadHireTemplate(data, ar, { mode: "files", ...scope });
-  };
-
-  const readHireFile = async (file) => {
-    if (!file || !company?.id || !canWrite) return;
-    setBusy(true);
-    setHireApplied(false);
-    try {
-      const rows = await parseHireTemplateFile(file);
-      if (!rows.length) {
-        toast({ description: ar ? "لا صفوف في الملف." : "No rows in the file.", variant: "destructive" });
-        setHirePreview(null);
-        setBusy(false);
-        return;
-      }
-      const next = previewHireTemplate(data, rows, ar);
-      setHirePreview(next);
-    } catch {
-      setHirePreview(null);
-      toast({ description: ar ? "تعذّرت قراءة قالب الإضافة." : "Could not read the hire template.", variant: "destructive" });
-    }
-    setBusy(false);
-  };
-
-  const patchHireRow = (index, key, value) => {
-    if (!hirePreview?.rows) return;
-    const rows = hirePreview.rows.map((row, i) => (i === index ? { ...row, [key]: value } : row));
-    setHirePreview(previewHireTemplate(data, rows, ar));
-    setHireApplied(false);
-  };
-
-  const applyHireFile = () => {
-    if (!company?.id || !canWrite || !hirePreview?.rows?.length || hireApplied) return;
-    const result = applyHireTemplate(company.id, hirePreview.rows, ar);
-    setHireApplied(true);
-    toast({
-      description: hireApplySummary(result, ar),
-      variant: result.errors.length && !result.hired.length && !result.updated.length ? "destructive" : undefined,
-    });
-  };
-
-  const fillDemoTree = () => {
-    if (!company?.id || !canWrite || busy) return;
-    setBusy(true);
-    demoSeeded.current = true;
-    const result = seedDemoOrgTree(company.id, { ar });
-    toast({
-      description: result.message,
-      variant: result.ok ? undefined : "destructive",
-    });
-    setBusy(false);
-  };
 
   useEffect(() => {
     if (!company?.id || !canWrite || demoSeeded.current || !data) return;
@@ -393,10 +266,20 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
       });
       return;
     }
+    const note = employeeId
+      ? explainWorkplaceManager({
+        ...data,
+        stations: (data?.stations || []).map((station) => (
+          String(station.id) === String(stationId) ? { ...station, managerId: employeeId } : station
+        )),
+      }, employeeId, { ar })
+      : null;
     toast({
-      description: employeeId
-        ? (ar ? "حُفظ مدير الفرع." : "Branch manager saved.")
-        : (ar ? "أُزيل المدير." : "Manager cleared."),
+      description: note?.many
+        ? note.line
+        : employeeId
+          ? (ar ? "حُفظ مدير الفرع." : "Branch manager saved.")
+          : (ar ? "أُزيل المدير." : "Manager cleared."),
     });
   };
 
@@ -554,12 +437,18 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
     const folded = stationId && collapsed.has(stationId);
     const childCount = branch.childCount || (branch.children || []).length || 0;
     const canFold = childCount > 0;
-    const countLabel = [
-      peopleWord(branch.treePeople, ar),
-      childCount > 0 ? branchWord(childCount, ar) : "",
-    ].filter(Boolean).join(" · ");
     const dropStyle = drop && typeof drop.style === "object" && drop.style ? drop.style : {};
     const parentValue = String(liveStation?.parentStationId || branch.parentStationId || companyRootId || "");
+    const mark = managerId ? workplaceManagerCardMark(data, managerId, stationId) : null;
+    const seatBusy = vacant
+      ? (ar ? "بلا مدير" : "Vacant")
+      : (ar ? "مقعد المدير مشغول" : "Manager seat filled");
+    const glanceCount = isManagerNode
+      ? [childCount > 0 ? (ar ? `${branchWord(childCount, ar)} تحته` : `${branchWord(childCount, ar)} under it`) : (ar ? "بلا فروع" : "No branches"), ar ? "لا مقاعد" : "No seats"].join(" · ")
+      : [branch.treePeople || branch.ownPeople || branch.seatCount ? peopleWord(branch.treePeople || branch.ownPeople || 0, ar) : peopleWord(0, ar), seatBusy].join(" · ");
+    const cardBorder = isManagerNode
+      ? `1px dashed ${selected ? NAVY : "#B9C0CC"}`
+      : `1px solid ${selected || mark === "home" ? NAVY : BORDER}`;
     return (
       <div
         data-org-hit="true"
@@ -580,19 +469,19 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
           display: "flex",
           flexDirection: "column",
           flex: "none",
-          borderRadius: 10,
-          border: `1px solid ${selected ? NAVY_FILL : BORDER}`,
+          borderRadius: RADIUS,
+          border: cardBorder,
           background: CARD,
           boxShadow: selected
-            ? "0 0 0 2px color-mix(in oklab, #14284B 18%, transparent)"
-            : "0 1px 2px rgba(20,40,75,.04)",
+            ? `0 0 0 2px color-mix(in oklab, #14213D 18%, transparent), ${PAPER_SHADOW}`
+            : PAPER_SHADOW,
           overflow: "hidden",
           cursor: "pointer",
           transition: "box-shadow .15s ease, border-color .15s ease",
           ...dropStyle,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 12px 10px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "34px minmax(0,1fr) auto", gap: 10, alignItems: "start", padding: "11px 12px 9px" }}>
           <button
             type="button"
             data-org-hit="true"
@@ -603,23 +492,18 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
               ? (ar ? "لا يوجد موظف" : "No employee")
               : (ar ? "عرض بطاقة الموظف" : "View employee card")}
             onClick={(event) => {
-              event.stopPropagation();
               const person = manager || acting?.employee || null;
-              if (!person) {
-                setPreviewEmployee(null);
-                setPreviewVacant(true);
-                return;
-              }
-              setPreviewVacant(false);
+              if (!person) return;
+              event.stopPropagation();
               setPreviewEmployee(person);
             }}
             onPointerDown={(event) => event.stopPropagation()}
             style={{
               ...identityIconWrap,
-              width: 38,
-              height: 38,
-              minWidth: 38,
-              minHeight: 38,
+              width: 34,
+              height: 34,
+              minWidth: 34,
+              minHeight: 34,
               borderRadius: 999,
               fontSize: 11,
               fontWeight: 700,
@@ -628,9 +512,9 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
               padding: 0,
               margin: 0,
               cursor: "pointer",
-              border: vacant && !acting ? `1px dashed ${BORDER}` : (identityIconWrap.border || `1px solid ${BORDER}`),
-              background: vacant && !acting ? SURFACE : identityIconWrap.background,
-              color: vacant && !acting ? MUTED : identityIconWrap.color,
+              border: (vacant && !acting) || isManagerNode ? `1px dashed ${isManagerNode ? "#B9C0CC" : BORDER}` : (identityIconWrap.border || `1px solid ${BORDER}`),
+              background: (vacant && !acting) || isManagerNode ? "#fff" : identityIconWrap.background,
+              color: (vacant && !acting) || isManagerNode ? MUTED : identityIconWrap.color,
               fontFamily: "inherit",
             }}
           >
@@ -638,19 +522,38 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
               ? <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               : (vacant && !acting ? "—" : initialsOf(who))}
           </button>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: NAVY, lineHeight: 1.3, ...ELLIPSIS }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: NAVY, lineHeight: 1.3, ...ELLIPSIS }}>
               {who || (ar ? "بلا مدير" : "Vacant")}
             </span>
-            <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.35, ...ELLIPSIS }}>
+            <span style={{ fontSize: 10.5, color: "#4B5567", lineHeight: 1.35, ...ELLIPSIS }}>
               {branch.name || (ar ? "بلا فرع" : "No branch")}
             </span>
-            <span style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.3, ...ELLIPSIS }}>
+            <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.3, ...ELLIPSIS }}>
               {roleLabel}
               {acting ? (ar ? ` · وكالة حتى ${until}` : ` · Acting until ${until}`) : ""}
-              {isManagerNode ? (ar ? " · بلا توظيف" : " · No hire") : ""}
             </span>
+            {mark === "home" ? (
+              <span style={{ fontSize: 10, fontWeight: 600, color: "#137A49", background: "#F2FAF6", border: "1px solid #BFE6D2", padding: "1px 6px", alignSelf: "flex-start", marginTop: 3, whiteSpace: "nowrap" }}>
+                {ar ? "بيتي · الحضور هنا" : "Home · punch here"}
+              </span>
+            ) : mark === "cover" ? (
+              <span style={{ fontSize: 10, fontWeight: 600, color: "#8A6516", background: "#FDF6E8", border: "1px solid #ECD9A8", padding: "1px 6px", alignSelf: "flex-start", marginTop: 3, whiteSpace: "nowrap" }}>
+                {ar ? "تغطية · لا مقعد ثانٍ" : "Cover · not a second seat"}
+              </span>
+            ) : null}
           </div>
+          <span style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: isManagerNode ? "#4B5567" : "#137A49",
+            background: isManagerNode ? "#F5F6F8" : "#F2FAF6",
+            border: `1px solid ${isManagerNode ? BORDER : "#BFE6D2"}`,
+            padding: "1px 7px",
+            whiteSpace: "nowrap",
+          }}>
+            {isManagerNode ? (ar ? "إدارة" : "Admin") : (ar ? "تشغيلي" : "Workplace")}
+          </span>
         </div>
 
         {editing ? (
@@ -728,6 +631,16 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
                   <option key={employee.id} value={employee.id}>{employee.name}</option>
                 ))}
               </select>
+              {(() => {
+                const note = managerId ? explainWorkplaceManager(data, managerId, { ar }) : null;
+                const text = note?.line
+                  || (isManagerNode
+                    ? (ar ? "هذه الإدارة ليست مكان توظيف أو حضور." : "This admin seat is not a hire or attendance workplace.")
+                    : "");
+                return text ? (
+                  <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{text}</span>
+                ) : null;
+              })()}
             </label>
 
             {!isRoot ? (
@@ -796,13 +709,22 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
             ) : null}
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-              {onHire && !isManagerNode ? (
+              {isManagerNode ? (
+                <button
+                  type="button"
+                  disabled
+                  title={ar ? "عقدة إدارة — ليست مكان توظيف. وظّف على فرع تشغيلي تحتها." : "Admin node — not a hire workplace. Hire on a workplace branch under it."}
+                  style={{ ...orgBtnGhost, height: 30, fontSize: 11, color: MUTED, background: "#EEF0F4", cursor: "not-allowed" }}
+                >
+                  {ar ? "لا توظيف — إدارة" : "No hire — admin"}
+                </button>
+              ) : onHire && canWrite ? (
                 <button
                   type="button"
                   onClick={() => onHire({ stationId })}
-                  style={{ ...orgBtnGhost, height: 30, fontSize: 11 }}
+                  style={{ ...orgBtnGhost, height: 30, fontSize: 11, background: "#137A49", color: "#fff", border: "none" }}
                 >
-                  {ar ? "توظيف" : "Hire"}
+                  {ar ? "وظّف على مقعد" : "Hire onto a seat"}
                 </button>
               ) : null}
               <button
@@ -851,48 +773,97 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
           </div>
         ) : null}
 
-        <button
-          type="button"
-          data-org-hit="true"
-          disabled={!canFold}
-          title={canFold
-            ? (folded
-              ? (ar ? "إظهار الفروع التابعة" : "Show child branches")
-              : (ar ? "طي الفروع التابعة" : "Hide child branches"))
-            : undefined}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (!canFold || !stationId) return;
-            setCollapsed((current) => {
-              const next = new Set(current);
-              if (next.has(stationId)) next.delete(stationId);
-              else next.add(stationId);
-              return next;
-            });
-            setSelectedStationId(stationId);
-          }}
+        <div
           style={{
-            all: "unset",
-            boxSizing: "border-box",
+            padding: "6px 12px",
+            borderTop: isManagerNode ? "1px dashed #DFE3EA" : "1px solid #EEF0F4",
+            background: "#FAFBFC",
             display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            justifyContent: "space-between",
             gap: 8,
-            width: "100%",
-            height: 32,
-            flex: "none",
-            borderTop: `1px solid ${BORDER}`,
-            background: CARD,
-            color: canFold ? NAVY : MUTED,
-            fontSize: 11,
-            fontWeight: 600,
-            fontFamily: "inherit",
-            cursor: canFold ? "pointer" : "default",
+            alignItems: "center",
           }}
         >
-          <span>{countLabel || (ar ? "لا موظفون" : "No employees")}</span>
-          {canFold ? <span style={{ fontSize: 11, color: MUTED }}>{folded ? "+" : "−"}</span> : null}
-        </button>
+          <button
+            type="button"
+            data-org-hit="true"
+            disabled={!canFold}
+            title={canFold
+              ? (folded
+                ? (ar ? "إظهار الفروع التابعة" : "Show child branches")
+                : (ar ? "طي الفروع التابعة" : "Hide child branches"))
+              : undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (!canFold || !stationId) return;
+              setCollapsed((current) => {
+                const next = new Set(current);
+                if (next.has(stationId)) next.delete(stationId);
+                else next.add(stationId);
+                return next;
+              });
+              setSelectedStationId(stationId);
+            }}
+            style={{
+              all: "unset",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              minWidth: 0,
+              fontSize: 10.5,
+              color: "#4B5567",
+              fontFamily: "inherit",
+              cursor: canFold ? "pointer" : "default",
+            }}
+          >
+            <span style={{ ...ELLIPSIS }}>{glanceCount}</span>
+            {canFold ? <span style={{ color: MUTED }}>{folded ? "+" : "−"}</span> : null}
+          </button>
+          {isManagerNode ? (
+            <button
+              type="button"
+              data-org-hit="true"
+              disabled
+              title={ar ? "عقدة إدارة — ليست مكان توظيف. وظّف على فرع تشغيلي تحتها." : "Admin node — not a hire workplace. Hire on a workplace branch under it."}
+              onClick={(event) => event.stopPropagation()}
+              style={{
+                fontFamily: "inherit",
+                fontSize: 10,
+                fontWeight: 600,
+                padding: "4px 9px",
+                border: "1px solid #DFE3EA",
+                background: "#EEF0F4",
+                color: "#4B5567",
+                cursor: "not-allowed",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {ar ? "لا توظيف — إدارة" : "No hire — admin"}
+            </button>
+          ) : onHire && canWrite ? (
+            <button
+              type="button"
+              data-org-hit="true"
+              onClick={(event) => {
+                event.stopPropagation();
+                onHire({ stationId });
+              }}
+              style={{
+                fontFamily: "inherit",
+                fontSize: 10,
+                fontWeight: 600,
+                padding: "4px 9px",
+                border: "none",
+                background: "#137A49",
+                color: "#fff",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {ar ? "وظّف على مقعد" : "Hire onto a seat"}
+            </button>
+          ) : null}
+        </div>
       </div>
     );
   };
@@ -918,13 +889,18 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
     setSafeZoom(Number.isFinite(next) ? next : 1);
     setOffset({ x: 0, y: 0 });
   };
+  const scheduleFit = () => {
+    requestAnimationFrame(() => requestAnimationFrame(fitTree));
+  };
   const enterFullscreen = () => {
+    setOffset({ x: 0, y: 0 });
     setFullscreen(true);
-    window.setTimeout(fitTree, 80);
+    scheduleFit();
   };
   const exitFullscreen = () => {
+    setOffset({ x: 0, y: 0 });
     setFullscreen(false);
-    window.setTimeout(fitTree, 80);
+    scheduleFit();
   };
 
   useEffect(() => {
@@ -1030,84 +1006,13 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
 
   return (
     <>
-      {hirePreview?.grid?.length ? (
-        <div style={{
-          background: "#FFFFFF",
-          border: "1px solid hsl(220 13% 91%)",
-          borderRadius: 11,
-          overflow: "hidden",
-        }}
-        >
-          <div style={{ padding: "10px 14px", display: "flex", gap: 8, flexWrap: "wrap", borderBottom: "1px solid hsl(220 13% 93%)" }}>
-            {[
-              [hirePreview.willHire.length + hirePreview.willUpdate.length, ar ? "ملفات" : "files"],
-              [hirePreview.creates?.lists?.length || 0, ar ? "قوائم" : "lists"],
-              [hirePreview.creates?.seats || 0, ar ? "مناصب" : "seats"],
-              [hirePreview.creates?.branches?.length || 0, ar ? "فروع" : "branches"],
-            ].map(([n, label]) => (
-              <span key={label} style={{ fontSize: 11, padding: "4px 9px", borderRadius: 99, background: "hsl(220 16% 96%)", color: NAVY }}>
-                {n} {label}
-              </span>
-            ))}
-          </div>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
-              <thead>
-                <tr style={{ background: "hsl(220 20% 98%)", color: MUTED, textAlign: "start" }}>
-                  {(ar
-                    ? ["الاسم", "القائمة", "المنصب", "الدرجة", "الفرع", "يتبع", "الحالة"]
-                    : ["Name", "List", "Title", "Grade", "Branch", "Reports to", "Status"]
-                  ).map((header) => (
-                    <th key={header} style={{ padding: "8px 10px", fontWeight: 600 }}>{header}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(hirePreview.grid || []).filter((row) => !row.skip).map((row) => {
-                  const cell = (key) => (
-                    <td style={{ padding: "4px 6px", minWidth: 88 }}>
-                      <input
-                        value={hirePreview.rows?.[row.index]?.[key] || ""}
-                        onChange={(event) => patchHireRow(row.index, key, event.target.value)}
-                        style={{
-                          width: "100%",
-                          border: row.error && ["name", "list", "title", "grade", "branch"].includes(key) ? "1px solid hsl(41 62% 52%)" : "1px solid hsl(220 13% 90%)",
-                          borderRadius: 6,
-                          padding: "5px 7px",
-                          fontFamily: "inherit",
-                          fontSize: 11.5,
-                          background: row.orphan && key === "reportsTo" ? "hsl(41 62% 96%)" : "#FFFFFF",
-                        }}
-                      />
-                    </td>
-                  );
-                  return (
-                    <tr key={row.index} style={{ borderTop: "1px solid hsl(220 13% 94%)", background: row.error ? "hsl(41 62% 97%)" : undefined }}>
-                      {cell("name")}
-                      {cell("list")}
-                      {cell("title")}
-                      {cell("grade")}
-                      {cell("branch")}
-                      {cell("reportsTo")}
-                      <td style={{ padding: "6px 10px", color: row.error ? "hsl(25 70% 32%)" : MUTED, maxWidth: 220 }}>
-                        {row.error
-                          || (row.creates?.length ? (ar ? `يُنشأ: ${row.creates.join(" · ")}` : `Will create: ${row.creates.join(" · ")}`) : "")
-                          || (row.warnings?.[0] || (row.existing ? (ar ? "تحديث" : "Update") : (ar ? "ملف جديد" : "New file")))}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-
       {(panel => (fullscreen ? createPortal(panel, document.body) : panel))(
         <OrgPanel ar={ar} fullscreen={fullscreen}>
           <OrgToolbar
-            title={companyName}
-            subtitle={ar ? "شجرة المكان — فرع للتوظيف، إدارة للمقعد" : "Workplace tree — branch hires, admin seats"}
+            title={ar ? "شجرة المكان" : "Place tree"}
+            subtitle={ar
+              ? "مدير فرعين شخص واحد: يظهر على البطاقتين، يحضر من مقعده، ويتبع مدير المكان الأعلى."
+              : "A manager of two branches is one person: on both cards, punches at their seat, reports to the parent-place manager."}
           >
             <OrgSearchBox
               value={query}
@@ -1131,9 +1036,6 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
             <button type="button" onClick={printTree} style={orgBtnGhost}>
               {ar ? "طباعة" : "Print"}
             </button>
-            <Link to="/app/org?tab=escalation" style={{ ...orgBtnPrimary(), textDecoration: "none" }}>
-              {ar ? "تصعيد الفروع" : "Branch escalation"}
-            </Link>
             <HierarchyZoomControls
               zoom={zoom}
               onZoom={(change) => setSafeZoom(zoom + change)}
@@ -1202,142 +1104,6 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
               ) : null}
           </OrgToolbar>
 
-          {canWrite && !accessLists.length ? (
-            <OrgNotice tone="warn">
-              {ar
-                ? "يجب إنشاء صلاحية أولاً حتى يوزّع موظف الموارد البشرية المناصب على الفروع بسهولة. القائمة تمنح المفتاح، والدرجة لا تمنحه."
-                : "Create an access pack first so HR can distribute titles across branches. The pack grants the key; a grade never does."}
-              {" "}
-              <button
-                type="button"
-                onClick={() => onNeedAccess?.()}
-                style={{ all: "unset", cursor: "pointer", color: NAVY, fontWeight: 600, fontFamily: "inherit" }}
-              >
-                {ar ? "فتح الصلاحية" : "Open access"}
-              </button>
-            </OrgNotice>
-          ) : canWrite && !accessReady ? (
-            <OrgNotice tone="warn">
-              {ar
-                ? "الحزمة موجودة بلا صلاحيات. عيّن الموارد البشرية والموظفين حتى يوزَّع المنصب."
-                : "The pack exists without access. Grant HR and employees so titles can be assigned."}
-              {" "}
-              <button
-                type="button"
-                onClick={() => onNeedAccess?.()}
-                style={{ all: "unset", cursor: "pointer", color: NAVY, fontWeight: 600, fontFamily: "inherit" }}
-              >
-                {ar ? "تعيين الصلاحيات" : "Set access"}
-              </button>
-            </OrgNotice>
-          ) : null}
-
-          {canWrite ? (
-            <div style={{ padding: "10px 16px", borderBottom: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 8 }}>
-              <p style={{ margin: 0, fontSize: 12, color: NAVY, lineHeight: 1.7 }}>
-                {ar
-                  ? "عمود الفرع قائمة من فروع المنصة (ورقة «الفروع»). اضغط السهم واختر أين يوضع كل موظف. ثم ارفع الملف ليُكتب في ملف الموظف. تنزيل الملفات الحالية يُظهر الخلايا الناقصة."
-                  : "The branch column lists live platform branches (the Branches sheet). Click the arrow and pick where each person sits. Upload writes to the employee file. Downloading current files shows missing cells."}
-              </p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                <select
-                  value={templateStationId}
-                  onChange={(event) => {
-                    setTemplateStationId(event.target.value);
-                    setPickedEmployeeIds([]);
-                    setPickEmployees(false);
-                  }}
-                  aria-label={ar ? "فرع القالب" : "Template branch"}
-                  style={{ ...orgSelect, maxWidth: 220 }}
-                >
-                  <option value="">{ar ? "كل الفروع" : "All branches"}</option>
-                  {templateStations.map((station) => (
-                    <option key={station.id} value={station.id}>{station.name}</option>
-                  ))}
-                </select>
-                {templateStationId && templateEmployees.length ? (
-                  <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: MUTED }}>
-                    <input
-                      type="checkbox"
-                      checked={pickEmployees}
-                      onChange={(event) => {
-                        const on = event.target.checked;
-                        setPickEmployees(on);
-                        setPickedEmployeeIds(on ? templateEmployees.map((employee) => employee.id) : []);
-                      }}
-                    />
-                    {ar ? "تحديد موظفين من الفرع" : "Select employees in the branch"}
-                  </label>
-                ) : null}
-                <button type="button" onClick={downloadBlankTemplate} style={orgBtnGhost}>
-                  {ar ? "تنزيل قالب فارغ" : "Download blank template"}
-                </button>
-                <button type="button" onClick={downloadCurrentFiles} style={orgBtnGhost}>
-                  {ar ? "تنزيل الملفات الحالية والنواقص" : "Download current files and gaps"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => hireInputRef.current?.click()}
-                  disabled={busy || !canWrite}
-                  style={{
-                    ...orgBtnGhost,
-                    border: `1px solid ${hirePreview ? "hsl(154 79% 27% / .4)" : undefined}`,
-                    background: hirePreview ? "hsl(154 79% 27% / .08)" : undefined,
-                    color: hirePreview ? GREENT : undefined,
-                  }}
-                >
-                  {busy ? (ar ? "جارٍ القراءة…" : "Reading…") : hirePreview ? (ar ? "الملف مرفوع ✓" : "File uploaded") : (ar ? "رفع القالب" : "Upload template")}
-                </button>
-                <button
-                  type="button"
-                  onClick={applyHireFile}
-                  disabled={!canWrite || !hirePreview || hireApplied}
-                  style={orgBtnPrimary(!canWrite || !hirePreview || hireApplied)}
-                >
-                  {hireApplied ? (ar ? "حُفظ في الملفات" : "Saved to files") : (ar ? "تطبيق على ملفات الموظفين" : "Apply to employee files")}
-                </button>
-                <input ref={hireInputRef} type="file" accept=".csv,.xls,.xlsx" style={{ display: "none" }} onChange={(event) => { readHireFile(event.target.files?.[0]); event.target.value = ""; }} />
-              </div>
-              {pickEmployees && templateEmployees.length ? (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {templateEmployees.map((employee) => {
-                    const checked = pickedEmployeeIds.includes(employee.id);
-                    return (
-                      <label key={employee.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: NAVY }}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => setPickedEmployeeIds((current) => (
-                            checked ? current.filter((id) => id !== employee.id) : [...current, employee.id]
-                          ))}
-                        />
-                        {employee.name}
-                      </label>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {canWrite ? (
-            <OrgNotice>
-              {ar ? (
-                <>
-                  عيّن مسؤول تصعيد لكل فرع من تبويب «التصعيد» — يظهر في أعلى الصفحة.
-                  {" "}
-                  <Link to="/app/org?tab=escalation" style={{ color: NAVY, fontWeight: 600 }}>فتح التصعيد</Link>
-                </>
-              ) : (
-                <>
-                  Assign an escalation handler per branch from the Escalation tab at the top of this page.
-                  {" "}
-                  <Link to="/app/org?tab=escalation" style={{ color: NAVY, fontWeight: 600 }}>Open escalation</Link>
-                </>
-              )}
-            </OrgNotice>
-          ) : null}
-
           {publishIssues.length ? (
             <OrgNotice tone="warn">
               {publishIssues[0]}
@@ -1359,14 +1125,7 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
           >
             <div
               ref={treeRef}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                minWidth: "min-content",
-                transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${zoom})`,
-                transformOrigin: "top center",
-              }}
+              style={orgTreeStageStyle(offset, zoom)}
             >
               {(() => {
                 const rootBranch = (diagram.branches || []).find((branch) => branch.isCompanyRoot);
@@ -1432,23 +1191,13 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
             </div>
           </OrgTreeCanvas>
 
-          {!fullscreen ? (
+          {!fullscreen && structureLog.length ? (
             <OrgFooterStrip>
-              {canWrite ? (
-                <details className="nv-org-import">
-                  <summary>{ar ? "استيراد وتجربة" : "Import & trial"}</summary>
-                  <div className="nv-org-import__actions">
-                    <button type="button" onClick={fillDemoTree} disabled={busy || !canWrite} style={orgBtnGhost}>
-                      {ar ? "تعبئة تجريبية" : "Fill a trial tree"}
-                    </button>
-                  </div>
-                </details>
-              ) : null}
-              {structureLog.length ? structureLog.slice(0, 4).map((event) => (
+              {structureLog.slice(0, 4).map((event) => (
                 <span key={event.id}>
                   {String(event.at || "").slice(0, 10)} · {formatOrgStructureEvent(event, ar)}
                 </span>
-              )) : null}
+              ))}
             </OrgFooterStrip>
           ) : null}
         </OrgPanel>
@@ -1585,12 +1334,11 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
                 </select>
                 <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: MUTED }}>
                   {ar ? "حتى" : "Until"}
-                  <input
-                    type="date"
+                  <PlatformDateField
+                    ar={ar}
+                    compact
                     value={actingUntil}
-                    onChange={(event) => setActingUntil(event.target.value)}
-                    aria-label={ar ? "تاريخ انتهاء الوكالة" : "Acting end date"}
-                    style={orgInput}
+                    onChange={setActingUntil}
                   />
                 </label>
                 <button
@@ -1623,18 +1371,12 @@ export default function OrgTemplateBoard({ lang = "ar", onHire, onNeedAccess }) 
         document.body,
       ) : null}
       <OrgEmployeePreview
-        open={Boolean(previewEmployee) || previewVacant}
+        open={Boolean(previewEmployee)}
         employee={previewEmployee}
         data={data}
         companyName={companyName}
         ar={ar}
-        vacantHint={ar
-          ? "لا يوجد موظف على هذا المقعد. وظّف من بطاقة الفرع لإشغاله."
-          : "No employee on this seat. Hire from the branch card to fill it."}
-        onClose={() => {
-          setPreviewEmployee(null);
-          setPreviewVacant(false);
-        }}
+        onClose={() => setPreviewEmployee(null)}
       />
     </>
   );

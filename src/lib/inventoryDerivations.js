@@ -2,6 +2,20 @@
 
 export const CRITICAL_RATIO = 0.5;
 
+/** On-hand at one station. Zero is zero — do not fall through to company total. */
+export function qtyAtStation(item, stationId) {
+  if (!item || stationId == null || stationId === "") return 0;
+  const balances = item.locationBalances;
+  if (Array.isArray(balances) && balances.length) {
+    const row = balances.find((entry) => String(entry.locationId) === String(stationId));
+    return row ? Math.max(0, Number(row.quantity) || 0) : 0;
+  }
+  if (String(item.currentLocationId || item.stationId) === String(stationId)) {
+    return Math.max(0, Number(item.quantity ?? item.onHand) || 0);
+  }
+  return 0;
+}
+
 export function fillRatio(onHand, reorder) {
   const r = Number(reorder) || 0;
   if (r <= 0) return Number(onHand) > 0 ? 100 : 0;
@@ -61,6 +75,39 @@ export function shortfallQty(item) {
   return Math.max(0, (Math.max(0, Number(item.reorder) || 0) - Math.max(0, Number(item.onHand) || 0)));
 }
 
+export function checkStationTransferRequestGate({ item, sourceStationId, destStationId, quantity, notes }) {
+  const source = String(sourceStationId || "");
+  const dest = String(destStationId || "");
+  if (!source || !dest) {
+    return { ok: false, error: "STATIONS_REQUIRED", reason: "حدد فرع المصدر والوجهة.", reasonEn: "Set source and destination stations." };
+  }
+  if (source === dest) {
+    return { ok: false, error: "SAME_STATION", reason: "الطلب بين فرعين مختلفين.", reasonEn: "A request is between two different stations." };
+  }
+  if (!item) {
+    return { ok: false, error: "ITEM_NOT_FOUND", reason: "الصنف غير موجود.", reasonEn: "Stock item not found." };
+  }
+  const q = Number(quantity);
+  if (!Number.isFinite(q) || q <= 0) {
+    return { ok: false, error: "QTY_REQUIRED", reason: "الكمية يجب أن تكون أكبر من صفر.", reasonEn: "Quantity must be greater than zero." };
+  }
+  const avail = qtyAtStation(item, source);
+  if (q > avail) {
+    return {
+      ok: false,
+      error: "INSUFFICIENT_STOCK",
+      reason: `لا يكفي المخزون في فرع المصدر — المتاح ${avail}.`,
+      reasonEn: `Insufficient stock at the source station — ${avail} on hand.`,
+      onHand: avail,
+      requested: q,
+    };
+  }
+  if (!String(notes || "").trim()) {
+    return { ok: false, error: "REASON_REQUIRED", reason: "اكتب سبب الطلب.", reasonEn: "Write the request reason." };
+  }
+  return { ok: true, source, dest, quantity: q };
+}
+
 export function checkIssueStockGate(item, qty) {
   if (!item) return { ok: false, error: "ITEM_NOT_FOUND", reason: "الصنف غير موجود.", reasonEn: "Stock item not found." };
   const q = Number(qty);
@@ -79,6 +126,26 @@ export function checkIssueStockGate(item, qty) {
     };
   }
   return { ok: true, onHand, requested: q, nextOnHand: onHand - q };
+}
+
+/**
+ * Which ledger rows a reversal may touch. A reversal never erases the original —
+ * it books a new compensating movement — so the original row stays readable and
+ * carries the mark that it was reversed.
+ */
+export const REVERSIBLE_MOVEMENTS = ["purchase", "transfer", "issue", "return", "receive"];
+
+/**
+ * Why this movement cannot be reversed, or null when it can. The ledger screen and
+ * the write gate both ask this, so a row never offers a reversal the gate refuses.
+ */
+export function movementReversalBlock(movement) {
+  if (!movement) return "MOVEMENT_NOT_FOUND";
+  if (movement.isReversal || String(movement.movementType) === "reversal") return "MOVEMENT_REVERSAL_ROW";
+  if (movement.reversedAt || movement.reversalMovementId) return "MOVEMENT_ALREADY_REVERSED";
+  if (!REVERSIBLE_MOVEMENTS.includes(String(movement.movementType))) return "MOVEMENT_NOT_REVERSIBLE";
+  if (!(Number(movement.quantity) > 0)) return "MOVEMENT_NOT_REVERSIBLE";
+  return null;
 }
 
 export function checkReceiveStockGate(item, qty) {

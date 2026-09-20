@@ -4,6 +4,8 @@ import {
   setSession,
 } from "@/lib/store";
 import { appParams } from "@/lib/app-params";
+import { buildDummySignatureRequests, dummySigningEmployees } from "@/lib/multiSignDerivations";
+export { previewTodayKey, migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, seedPreviewOwnerNightStreak, seedPreviewProofCycle } from "@/lib/previewMigrations";
 
 export const LOCAL_PREVIEW_COMPANY_ID = "local-preview-nirovera";
 export const LOCAL_PREVIEW_FLAG = "powercare_local_preview";
@@ -99,8 +101,8 @@ export function enterLocalPreview() {
     directorId: ownerId,
     ownerId,
     stations: [
-      { id: stationNorth, name: "فرع الخفجي", createdAt: now, managerId },
-      { id: stationEast, name: "فرع رابغ", createdAt: now },
+      { id: stationNorth, name: "فرع الخفجي", createdAt: now, managerId, lat: 28.4391, lng: 48.4912, radiusMeters: 200 },
+      { id: stationEast, name: "فرع رابغ", createdAt: now, lat: 22.7984, lng: 39.0349, radiusMeters: 200 },
     ],
     employees: [
       {
@@ -114,7 +116,7 @@ export function enterLocalPreview() {
         anonymousId: "a_owner",
         createdAt: now,
         leaveRequests: [],
-        profile: { satisfactionScore: 92 },
+        profile: { satisfactionScore: 92, gender: "male" },
       },
       {
         id: managerId,
@@ -127,7 +129,16 @@ export function enterLocalPreview() {
         createdAt: now,
         managedStations: [stationNorth],
         leaveRequests: [{ id: "lv_1", status: "pending", type: "annual" }],
-        profile: { satisfactionScore: 88 },
+        otherRequests: [{
+          id: "or_1",
+          status: "pending",
+          type: "salary_letter",
+          reason: "تقديم للبنك",
+          createdAt: now,
+          senderFile: { name: "bank-form.pdf", url: "/signing-preview-pumps.pdf", hash: "OR1FORM" },
+          paper: { name: "bank-form-signed.pdf", url: "/signing-preview-pumps.pdf", hash: "OR1PAPER" },
+        }],
+        profile: { satisfactionScore: 88, gender: "male" },
       },
       {
         id: employeeId,
@@ -142,6 +153,7 @@ export function enterLocalPreview() {
         leaveRequests: [],
         profile: {
           satisfactionScore: 81,
+          gender: "male",
           nationality: "مصري",
           idType: "iqama",
           nationalId: "2000000001",
@@ -168,7 +180,31 @@ export function enterLocalPreview() {
         anonymousId: "a_hse",
         createdAt: now,
         leaveRequests: [],
-        profile: { satisfactionScore: 90 },
+        profile: { satisfactionScore: 90, gender: "female" },
+      },
+      {
+        id: "emp_noura_preview",
+        name: "نورة القحطاني",
+        email: "noura@nirovera.local",
+        role: "employee",
+        stationId: stationEast,
+        phone: "",
+        anonymousId: "a_noura",
+        createdAt: now,
+        leaveRequests: [],
+        profile: { satisfactionScore: 86, gender: "female" },
+      },
+      {
+        id: "emp_hassan_preview",
+        name: "حسن العمري",
+        email: "hassan@nirovera.local",
+        role: "employee",
+        stationId: stationNorth,
+        phone: "",
+        anonymousId: "a_hassan",
+        createdAt: now,
+        leaveRequests: [],
+        profile: { satisfactionScore: 84, gender: "male" },
       },
     ],
     tasks: [
@@ -184,7 +220,7 @@ export function enterLocalPreview() {
         effortWeight: 4,
         weight: 4,
         workKind: "cm",
-        mode: "onsite",
+        mode: "field",
         completedCount: 34,
         completed_tasks: 34,
         targetCount: 50,
@@ -250,7 +286,7 @@ export function enterLocalPreview() {
         priority: "medium",
         effortWeight: 3,
         workKind: "cp",
-        mode: "onsite",
+        mode: "field",
         completedCount: 0,
         targetCount: 1,
         planHorizon: "w",
@@ -332,7 +368,7 @@ export function enterLocalPreview() {
     ],
     plans: [],
     notifications: [
-      { id: "nt_1", userId: ownerId, title: "طلب إجازة بانتظار الاعتماد", read: false, createdAt: now },
+      { id: "nt_1", userId: ownerId, text: "طلب إجازة بانتظار الاعتماد", read: false, createdAt: now },
     ],
     templates: [],
     targets: [],
@@ -347,17 +383,35 @@ export function enterLocalPreview() {
           id: "sch_1",
           stationId: stationNorth,
           published: true,
-          shiftTypes: [{ id: "morning", start: "07:00", end: "15:00", label: "صباحي" }],
+          nightCompensation: true,
+          nightFirstAidReady: true,
+          nightEmergencyTransferReady: true,
+          nightFoodAccessReady: true,
+          shiftTypes: [
+            { id: "morning", start: "07:00", end: "15:00", label: "صباحي", restMinutes: 30 },
+            { id: "evening", start: "15:00", end: "23:00", label: "مسائي", restMinutes: 30 },
+            { id: "night", start: "23:00", end: "07:00", label: "ليلي", restMinutes: 30 },
+          ],
           assignments: {
-            [dateKey]: { morning: [ownerId, managerId, employeeId] },
+            0: { morning: [ownerId, managerId], evening: ["emp_hassan_preview"], night: [employeeId] },
+            1: { morning: [ownerId, managerId], evening: ["emp_hassan_preview"], night: [employeeId] },
+            2: { morning: [ownerId, managerId], evening: ["emp_hassan_preview"], night: [employeeId] },
+            3: { morning: [ownerId, managerId], evening: ["emp_hassan_preview"], night: [employeeId] },
+            4: { morning: [ownerId, managerId], evening: ["emp_hassan_preview"], night: [employeeId] },
+            [dateKey]: { morning: [ownerId, managerId], evening: ["emp_hassan_preview"], night: [employeeId] },
           },
         },
         {
           id: "sch_2",
           stationId: stationEast,
           published: true,
-          shiftTypes: [{ id: "morning", start: "07:00", end: "15:00", label: "صباحي" }],
+          shiftTypes: [{ id: "morning", start: "07:00", end: "15:00", label: "صباحي", restMinutes: 30 }],
           assignments: {
+            0: { morning: [hseId] },
+            1: { morning: [hseId] },
+            2: { morning: [hseId] },
+            3: { morning: [hseId] },
+            4: { morning: [hseId] },
             [dateKey]: { morning: [hseId] },
           },
         },
@@ -366,7 +420,7 @@ export function enterLocalPreview() {
     stationChatGroups: [],
     personalPlaces: [],
     personalAttendance: [],
-    attendanceSettings: { schedule_required: false, gps_enabled: false },
+    attendanceSettings: { schedule_required: true, gps_enabled: false },
     plannerItems: [],
     journalEntries: [],
     payrollRuns: [{
@@ -406,14 +460,12 @@ export function enterLocalPreview() {
       },
     ],
     complaintEscalationChain: [],
-    signatureRequests: [{
-      id: "sg_1",
-      status: "pending",
-      title: "شهادة إنجاز — فحص المضخات",
-      source: "workproof",
-      createdAt: now,
-      stationId: stationNorth,
-    }],
+    signatureRequests: buildDummySignatureRequests({
+      companyId,
+      actor: { id: ownerId, email: "preview@nirovera.local", name: "نيار عبدالله" },
+      employees: dummySigningEmployees(),
+      now,
+    }),
     signedDocuments: [{
       id: "sd_1",
       title: "قرار إجازة — أحمد السالم",
@@ -423,6 +475,53 @@ export function enterLocalPreview() {
       signedAt: now,
       stationId: stationNorth,
     }],
+    assets: [
+      {
+        id: "ast_1",
+        name: "مولد احتياطي 80 ك.و",
+        assetCode: "GEN-080",
+        qrCode: "AST-GEN080",
+        category: "معدات تشغيل",
+        stationId: stationNorth,
+        originStationId: stationNorth,
+        holderId: managerId,
+        holderName: "أحمد السالم",
+        status: "in_custody",
+        value: 42000,
+        purchaseDate: "2025-03-12",
+        nextInspectionDate: "2026-12-01",
+      },
+      {
+        id: "ast_2",
+        name: "جهاز فحص عزل",
+        assetCode: "TST-MEG",
+        qrCode: "AST-TSTMEG",
+        category: "أجهزة قياس",
+        stationId: stationEast,
+        originStationId: stationEast,
+        holderId: hseId,
+        holderName: "سارة حسن",
+        status: "available",
+        value: 8500,
+        purchaseDate: "2025-08-20",
+        nextInspectionDate: "2026-10-15",
+      },
+    ],
+    assetCustody: [
+      {
+        id: "cst_1",
+        assetId: "ast_1",
+        fromId: null,
+        fromName: "—",
+        toId: managerId,
+        toName: "أحمد السالم",
+        stationId: stationNorth,
+        handedAt: now,
+        notes: "initial",
+      },
+    ],
+    assetMaintenance: [],
+    assetTransfers: [],
     expenses: [
       {
         id: "ex_1",
@@ -478,6 +577,8 @@ export function enterLocalPreview() {
     settings: { rateLimitDaily: 3, rateLimitWeekly: 10, rateLimitMonthly: 30 },
     reportBranding: {},
   };
+
+  data.notifications = (data.notifications || []).filter((row) => !String(row?.id || "").startsWith("nt_sign_"));
 
   localStorage.setItem(`powercare_company_${companyId}`, JSON.stringify(data));
   localStorage.setItem(LOCAL_PREVIEW_FLAG, "1");

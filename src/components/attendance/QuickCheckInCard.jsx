@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { useI18n } from "@/lib/i18n";
 import { getTodaysShift, isLocationRequired } from "@/lib/attendance";
+import { workplaceStations } from "@/lib/stationTree";
 import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
 import { getAccuratePosition, startGeoWarmup } from "@/lib/geo";
 import { LogIn, LogOut, MapPin, Loader2, CheckCircle2 } from "lucide-react";
-import { ACCENT, BORDER, MUTED, NAVY, WARN, CARD } from "@/lib/platformStyles";
+import { ACCENT, BORDER, MUTED, NAVY, CARD } from "@/lib/platformStyles";
 
 export default function QuickCheckInCard({ currentUser, company }) {
   const { t, lang } = useI18n();
@@ -14,7 +16,9 @@ export default function QuickCheckInCard({ currentUser, company }) {
   const { data } = useAuth();
   const shift = getTodaysShift(data, currentUser);
   const scheduledStationId = shift?.stationId || currentUser.stationId || data?.stations?.[0]?.id || null;
-  const station = data?.stations?.find((s) => s.id === scheduledStationId);
+  const workplaces = workplaceStations(data?.stations);
+  const [punchStationId, setPunchStationId] = useState(scheduledStationId || "");
+  const station = data?.stations?.find((s) => s.id === (punchStationId || scheduledStationId));
   const [settings, setSettings] = useState(null);
   const [attendance, setAttendance] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -37,6 +41,8 @@ export default function QuickCheckInCard({ currentUser, company }) {
     })();
   }, [currentUser?.id, company?.id]);
 
+  const scheduleBlocks = !shift;
+
   const handleCheckIn = async () => {
     setError("");
     const leaveGate = checkCheckInLeaveGate(currentUser);
@@ -44,7 +50,7 @@ export default function QuickCheckInCard({ currentUser, company }) {
       setError(ar ? leaveGate.reason : leaveGate.reasonEn);
       return;
     }
-    if (!shift && settings?.schedule_required !== false) {
+    if (scheduleBlocks) {
       setError(ar ? "لا يمكنك تسجيل الحضور لأنك غير مدرج في جدول اليوم." : "You cannot check in because you are not scheduled today.");
       return;
     }
@@ -66,7 +72,7 @@ export default function QuickCheckInCard({ currentUser, company }) {
         companyId: company.id,
         employeeId: currentUser.id,
         employeeName: currentUser.name,
-        stationId: scheduledStationId,
+        stationId: punchStationId || scheduledStationId,
         shiftStart: shift?.start,
         ...(coords ? { lat: coords.lat, lng: coords.lng, accuracy: coords.accuracy } : {}),
       });
@@ -120,7 +126,7 @@ export default function QuickCheckInCard({ currentUser, company }) {
 
   const checkedIn = !!attendance?.check_in_at;
   const checkedOut = !!attendance?.check_out_at;
-  const punchDisabled = loading || (!checkedIn && !shift && settings?.schedule_required !== false);
+  const punchDisabled = loading || (!checkedIn && scheduleBlocks);
 
   return (
     <div
@@ -182,20 +188,24 @@ export default function QuickCheckInCard({ currentUser, company }) {
         </div>
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, textAlign: "center" }}>
-          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: NAVY }}>{t("myAttendance")}</h3>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: NAVY }}>{ar ? "البصمة — من الجدول فقط" : "Punch — from the rota only"}</h3>
           <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
-            {isLocationRequired(settings)
-              ? (ar ? "ضع حضر عندما تصل — يجب أن تكون داخل الفرع" : "Mark present when you arrive — must be at the station")
-              : (ar ? "ضع حضر عندما تصل — تسجيل يدوي" : "Mark present when you arrive — manual punch")}
+            {ar ? "ورديتك اليوم — من الجدول" : "Today's shift — from the rota"}
           </p>
-
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
-            {settings?.schedule_required === false && <span style={WARN}>{ar ? "شرط الجدول متوقف" : "Schedule off"}</span>}
-          </div>
-
-          {!shift && !checkedIn && settings?.schedule_required !== false && (
-            <p style={{ margin: 0, fontSize: 11, color: "#B45309" }}>
-              {ar ? "غير مدرج في جدول اليوم — البصمة موقوفة." : "Not scheduled today — punch blocked."}
+          {shift ? (
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: NAVY, fontFamily: "'IBM Plex Mono', monospace" }}>
+              {shift.start || "—"} → {shift.end || "—"}
+            </p>
+          ) : (
+            <Link to="/app/shifts" style={{ color: ACCENT, textDecoration: "none", fontWeight: 600, fontSize: 12 }}>
+              {ar ? "غير مدرج في جدول اليوم — لا بصمة" : "Not on today's rota — no punch"}
+            </Link>
+          )}
+          {error ? (
+            <p style={{ margin: 0, fontSize: 11, color: "#DC2626" }}>{error}</p>
+          ) : (
+            <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
+              {ar ? "اضغط عندما تصل. الموقع يظهر عند الفشل فقط." : "Tap when you arrive. Location appears only on failure."}
             </p>
           )}
 
@@ -216,11 +226,30 @@ export default function QuickCheckInCard({ currentUser, company }) {
             </p>
           )}
 
-          {!checkedIn && station?.name && (
+          {!checkedIn && workplaces.length > 1 && (
+            <select
+              value={punchStationId || ""}
+              onChange={(event) => setPunchStationId(event.target.value)}
+              style={{
+                height: 32,
+                borderRadius: 8,
+                border: "1px solid #E2E8F0",
+                background: CARD,
+                color: NAVY,
+                fontSize: 11,
+                fontWeight: 600,
+                padding: "0 8px",
+                fontFamily: "inherit",
+              }}
+            >
+              {workplaces.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          )}
+          {!checkedIn && station?.name && workplaces.length <= 1 && (
             <span style={{ fontSize: 10, color: MUTED }} dir="auto">{station.name}</span>
           )}
-
-          {error && <p style={{ margin: 0, fontSize: 11, color: "#DC2626" }}>{error}</p>}
         </div>
       </div>
     </div>

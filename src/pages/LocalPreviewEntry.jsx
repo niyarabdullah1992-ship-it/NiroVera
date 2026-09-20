@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { enterLocalPreview } from "@/lib/localPreview";
+import PlatformBoot from "@/components/shared/PlatformBoot";
 
 /**
  * Hard entry point for local internal-pages preview.
@@ -32,10 +32,5 @@ export default function LocalPreviewEntry() {
     );
   }
 
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background">
-      <Loader2 className="h-7 w-7 animate-spin text-accent" />
-      <p className="text-sm text-muted-foreground">جارٍ فتح الأقسام الداخلية…</p>
-    </div>
-  );
+  return <PlatformBoot variant="shell" />;
 }

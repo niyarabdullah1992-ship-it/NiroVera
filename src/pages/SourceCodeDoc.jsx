@@ -152,7 +152,7 @@ export default function SourceCodeDoc() {
                 T.rows.env,
                 [T.rows.fileCount, files ? `${files.length} ${T.rows.filesUnit}` : "…"],
                 [T.rows.lineCount, files ? `${totalLines.toLocaleString("en-US")} ${T.rows.linesUnit}` : "…"],
-                [T.rows.date, new Date().toLocaleDateString(isAr ? "ar-SA" : "en-GB")],
+                [T.rows.date, new Date().toLocaleDateString(isAr ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB")],
               ].map(([k, v]) => (
                 <tr key={k}>
                   <td className="border border-gray-400 bg-gray-50 font-semibold p-2.5 w-56">{k}</td>
@@ -197,7 +197,7 @@ export default function SourceCodeDoc() {
         {files && (
           <div className="border-t-2 border-black pt-4 mt-10 text-xs text-gray-600 flex justify-between">
             <span>NiroVera — {T.end} ({files.length} {T.rows.filesUnit} • {totalLines.toLocaleString("en-US")} {T.rows.linesUnit})</span>
-            <span>{new Date().toLocaleDateString(isAr ? "ar-SA" : "en-GB")}</span>
+            <span>{new Date().toLocaleDateString(isAr ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB")}</span>
           </div>
         )}
       </div>

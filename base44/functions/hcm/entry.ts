@@ -29,7 +29,8 @@ import { countPersonalHseDuty, deriveFairHseRates } from "../../shared/perfDeriv
 
 const FOUNDATION_CATEGORY = "hcmFoundation";
 const PERFORMANCE_CATEGORY = "hcmPerformance";
-const TASKS_CATEGORY = "operationsTasks";
+const TASKS_CATEGORY = "tasks";
+const TASKS_LEGACY_CATEGORY = "operationsTasks"; // do-not-write — read fallback only
 const SAFETY_CATEGORY = "safety";
 const HSE_CREDITS_CATEGORY = "hseCredits";
 
@@ -106,9 +107,20 @@ Deno.serve(async (req) => {
       return rows[0] || null;
     };
     const saveBlob = async (category: string, payload: unknown) => {
+      if (category === TASKS_LEGACY_CATEGORY) return;
       const blob = await loadBlob(category);
       if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload });
       else await base44.asServiceRole.entities.CompanyDataBlob.create({ companyId: auth.companyId, category, payload });
+    };
+    const loadTasks = async () => {
+      const blob = await loadBlob(TASKS_CATEGORY);
+      let payload = Array.isArray(blob?.payload) ? blob.payload : [];
+      if (!payload.length) {
+        const legacy = await loadBlob(TASKS_LEGACY_CATEGORY);
+        payload = Array.isArray(legacy?.payload) ? legacy.payload : [];
+        if (payload.length) await saveBlob(TASKS_CATEGORY, payload);
+      }
+      return payload;
     };
 
     const audit = async (actionKey: string, details: string, extra: Record<string, unknown> = {}) => {
@@ -242,7 +254,7 @@ Deno.serve(async (req) => {
     if (action === "list") {
       if (!isManager) {
         return Response.json({
-          error: "Forbidden",
+          error: "HCM_REGISTER_DENIED",
           reason: "سجل الإجراءات الوظيفية للمسؤولين — افتح ملفك الشخصي لعرض إسنادك.",
           reasonEn: "The employment register is for managers — open your own file to see your assignment.",
         }, { status: 403 });
@@ -290,7 +302,13 @@ Deno.serve(async (req) => {
       const employeeId = String(body.employeeId || auth.userId || "");
       if (!employeeId) return Response.json({ error: "Missing employeeId" }, { status: 400 });
       if (!isManager && employeeId !== auth.userId) {
-        return Response.json({ error: "Forbidden" }, { status: 403 });
+        // A bare "Forbidden" reads as a fault on an Arabic screen; the refusal says
+        // who this register belongs to, in the same words the local fallback uses.
+        return Response.json({
+          error: "HCM_ASSIGNMENT_DENIED",
+          reason: "إسناد موظف آخر للمسؤولين — افتح ملفك الشخصي لعرض إسنادك أنت.",
+          reasonEn: "Another person's assignment is for managers — open your own file to see yours.",
+        }, { status: 403 });
       }
       const data = await loadFoundation();
       const employees = await loadEmployees();
@@ -316,8 +334,7 @@ Deno.serve(async (req) => {
       const perf = await loadPerformance();
       const employees = (await loadEmployees()).filter((e: { stationId?: string }) => !scope || e.stationId === scope);
 
-      const taskBlob = await loadBlob(TASKS_CATEGORY);
-      const tasks = (Array.isArray(taskBlob?.payload) ? taskBlob.payload : [])
+      const tasks = (await loadTasks())
         .filter((t: { companyId?: string; stationId?: string }) => t && t.companyId === auth.companyId && (!scope || t.stationId === scope));
 
       const safetyBlob = await loadBlob(SAFETY_CATEGORY);
@@ -426,7 +443,7 @@ Deno.serve(async (req) => {
 
     if (!isSenior) {
       return Response.json({
-        error: "Forbidden",
+        error: "HCM_STRUCTURE_DENIED",
         reason: "تغيير الهيكل الوظيفي أو خطط الأهداف يحتاج صلاحية إدارية.",
         reasonEn: "Changing the job structure or goal plans requires a senior role.",
       }, { status: 403 });

@@ -1,56 +1,41 @@
 import React from "react";
-import { Boxes, UserCheck, PowerOff, Wallet } from "lucide-react";
-import { MUTED, NAVY, SURFACE, BORDER, CARD, num } from "@/lib/platformStyles";
+import { MUTED, NAVY, statCard, num } from "@/lib/platformStyles";
 
-const iconWrap = {
-  width: 32,
-  height: 32,
-  borderRadius: 9,
-  background: SURFACE,
-  color: NAVY,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-export default function AssetStats({ assets, lang }) {
+export default function AssetStats({ assets, lang, originValue, physicalValue }) {
   const ar = lang === "ar";
   const inCustody = assets.filter((a) => a.status === "in_custody").length;
   const outOfService = assets.filter((a) => ["maintenance", "lost", "retired"].includes(a.status)).length;
-  const bookValue = assets
+  const derivedPhysical = physicalValue ?? assets
     .filter((a) => a.status !== "retired")
     .reduce((sum, a) => sum + (Number(a.value) || 0), 0);
+  const derivedOrigin = originValue ?? derivedPhysical;
+  const fmt = (n) => Number(n || 0).toLocaleString(ar ? "en-US" : "en-US");
 
   const cards = [
-    { icon: Boxes, label: ar ? "إجمالي الأصول" : "Total assets", value: assets.length },
-    { icon: UserCheck, label: ar ? "عهد نشطة" : "Active custody", value: inCustody },
-    { icon: PowerOff, label: ar ? "خارج الخدمة" : "Out of service", value: outOfService },
+    { label: ar ? "أصول في الموقع" : "On site", value: assets.length, hint: ar ? "السجل حسب الفرع الحالي" : "Register by physical station" },
+    { label: ar ? "عهد نشطة" : "Active custody", value: inCustody },
+    { label: ar ? "خارج الخدمة" : "Out of service", value: outOfService },
     {
-      icon: Wallet,
-      label: ar ? "القيمة الدفترية" : "Book value",
-      value: bookValue.toLocaleString(ar ? "ar-SA" : "en-US"),
+      label: ar ? "قيمة في الموقع" : "On-site value",
+      value: fmt(derivedPhysical),
       money: true,
+      hint: ar ? "ما هو موجود هنا الآن" : "What sits here now",
+    },
+    {
+      label: ar ? "قيمة المنشأ / الوعاء" : "Origin / vessel",
+      value: fmt(derivedOrigin),
+      money: true,
+      hint: ar ? "كتاب الشراء — لا ينتقل مع النقل" : "Buyer's book — does not move with a transfer",
     },
   ];
 
   return (
-    <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
+    <div style={{ display: "grid", gap: 0, gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
       {cards.map((card) => (
-        <div
-          key={card.label}
-          style={{
-            background: CARD,
-            border: `1px solid ${BORDER}`,
-            borderRadius: 13,
-            padding: "14px 16px",
-            boxShadow: "0 4px 14px rgba(20,40,75,.04)",
-          }}
-        >
-          <span style={iconWrap}>
-            <card.icon size={15} strokeWidth={1.75} />
-          </span>
-          <p style={{ margin: "10px 0 0", ...num(NAVY), fontSize: card.money ? 18 : 22 }}>{card.value}</p>
-          <p style={{ margin: "6px 0 0", fontSize: 11, color: MUTED, fontWeight: 500 }}>{card.label}</p>
+        <div key={card.label} style={statCard}>
+          <p style={{ margin: 0, fontSize: 12, color: MUTED }}>{card.label}</p>
+          <p dir="ltr" style={{ margin: "8px 0 0", ...num(NAVY), fontSize: card.money ? 18 : 22, textAlign: "start" }}>{card.value}</p>
+          {card.hint ? <p style={{ margin: "6px 0 0", fontSize: 10, color: MUTED, lineHeight: 1.5 }}>{card.hint}</p> : null}
         </div>
       ))}
     </div>

@@ -14,7 +14,7 @@ export function exportExcelColored({ filename, title, headers, rows, color = PDF
   });
   const tableWidth = columnWidths.reduce((sum, width) => sum + width, 0);
   const columns = `<colgroup>${columnWidths.map((width) => `<col width="${width}" style="width:${width}px;mso-width-source:userset;" />`).join("")}</colgroup>`;
-  const generated = new Date().toLocaleString(dir === "rtl" ? "ar-SA" : "en-GB");
+  const generated = new Date().toLocaleString(dir === "rtl" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB");
   const headerCells = headers.map((h) => `<th style="height:34px;background:${ink};color:#ffffff;padding:10px 14px;border:1px solid ${ink};font-size:13px;font-weight:700;white-space:nowrap;">${esc(h)}</th>`).join("");
   const bodyRows = rows.map((row, index) => {
     if (!row.length) return `<tr><td colspan="${columnCount}" style="height:10px;border:none;background:#ffffff;"></td></tr>`;

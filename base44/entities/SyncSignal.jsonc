@@ -1,3 +1,8 @@
+// purpose: SyncSignal tenant row.
+// domain: company
+// isolation: companyId
+// owner: companyDirectory
+// status: canonical
 {
   "name": "SyncSignal",
   "type": "object",

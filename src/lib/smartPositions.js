@@ -8,11 +8,11 @@ export const SMART_DEPARTMENTS = [
   // Proof cycle — matches Layout category "daily"
   {
     id: "attendance",
-    ar: "الحضور والانصراف",
-    en: "Attendance",
-    hintAr: "يشمل الورديات وطلبات الإجازة",
-    hintEn: "Includes shifts and leave",
-    group: "daily",
+    ar: "الدوام والحضور",
+    en: "Time & Attendance",
+    hintAr: "حضور وانصراف وتقويم تشغيلي وورديات — وطلباتي في الشريط",
+    hintEn: "Check-in, operational calendar, shifts — My Requests is on the rail",
+    group: "duty",
   },
   {
     id: "tasks",
@@ -28,7 +28,7 @@ export const SMART_DEPARTMENTS = [
     en: "Digital signing",
     hintAr: "ختم واعتماد المستندات",
     hintEn: "Document stamp and approval",
-    group: "daily",
+    group: "signing",
   },
   {
     id: "work_proof",
@@ -36,22 +36,6 @@ export const SMART_DEPARTMENTS = [
     en: "Work proof",
     hintAr: "أدلة ميدانية وإثبات للعميل",
     hintEn: "Field evidence and client proof",
-    group: "daily",
-  },
-  {
-    id: "daily_report",
-    ar: "التقرير اليومي",
-    en: "Daily report",
-    hintAr: "ملخص تشغيل اليوم",
-    hintEn: "Day operations summary",
-    group: "daily",
-  },
-  {
-    id: "chat",
-    ar: "المحادثات التشغيلية",
-    en: "Operations chat",
-    hintAr: "تواصل الفرق في الفرع",
-    hintEn: "Team communication",
     group: "daily",
   },
   // Workforce
@@ -69,7 +53,7 @@ export const SMART_DEPARTMENTS = [
     en: "Performance",
     hintAr: "مؤشرات وإثبات الجهد",
     hintEn: "Metrics and effort proof",
-    group: "workforce",
+    group: "performance",
   },
   {
     id: "employees",
@@ -94,7 +78,7 @@ export const SMART_DEPARTMENTS = [
     en: "Employee Voice",
     hintAr: "للمالك فقط منحه",
     hintEn: "Owner grants only",
-    group: "compliance",
+    group: "complaints",
     ownerOnly: true,
   },
   // Money
@@ -160,7 +144,11 @@ export const SMART_DEPARTMENTS = [
 
 export const SMART_SECTION_GROUPS = [
   { id: "daily", ar: "دورة الإثبات", en: "Proof cycle" },
+  { id: "duty", ar: "الدوام والحضور", en: "Time & Attendance" },
   { id: "workforce", ar: "القوى العاملة", en: "Workforce" },
+  { id: "performance", ar: "الأداء", en: "Performance" },
+  { id: "complaints", ar: "صوت الموظف", en: "Employee Voice" },
+  { id: "discipline", ar: "الجزاءات", en: "Sanctions" },
   { id: "compliance", ar: "الالتزام والرعاية", en: "Care & compliance" },
   { id: "money", ar: "المال والأصول", en: "Money & assets" },
   { id: "admin", ar: "المؤسسة", en: "Institution" },
@@ -169,21 +157,18 @@ export const SMART_SECTION_GROUPS = [
 /** department id → routes removed when not granted (after owner composed access). */
 export const SMART_SECTION_ROUTES = {
   tasks: ["/app/tasks"],
-  attendance: ["/app/attendance", "/app/shifts", "/app/leave"],
-  daily_report: ["/app/daily-report"],
-  chat: ["/app/chat"],
+  attendance: ["/app/attendance", "/app/calendar", "/app/shifts", "/app/leave", "/app/requests"],
   performance: ["/app/performance"],
-  hr: ["/app/hr", "/app/org", "/app/discipline"],
+  hr: ["/app/hr", "/app/org"],
   employees: [],
   safety: ["/app/safety"],
-  work_proof: ["/app/work-proof", "/app/client-proof"],
+  work_proof: ["/app/work-proof", "/app/client-proof", "/app/visitor-proof"],
   signing: ["/app/signing"],
   complaints: ["/app/complaints"],
   expenses: ["/app/expenses"],
   assets: ["/app/assets"],
   inventory: ["/app/inventory"],
   payroll: ["/app/payroll"],
-  reports: ["/app/daily-report"],
   files: ["/app/files"],
   assistant: ["/app/assistant"],
 };

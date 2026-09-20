@@ -23,7 +23,6 @@ function sectionsFromNav(user, data, company) {
     if (r === "/app/tasks") keys.add("tasks");
     if (r === "/app/attendance") keys.add("attendance");
     if (r === "/app/safety") keys.add("safety");
-    if (r === "/app/daily-report") keys.add("reports");
     if (r === "/app/performance") keys.add("performance");
     if (r === "/app/payroll") keys.add("payroll");
     if (r === "/app/hr") keys.add("hr");

@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { useI18n } from "@/lib/i18n";
 import { expensesCall } from "@/lib/expensesApi";
 import ExpenseStats from "@/components/expenses/ExpenseStats";
 import ExpenseList from "@/components/expenses/ExpenseList";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import { MUTED, SURFACE, ui } from "@/lib/platformStyles";
+import SectionBackLink from "@/components/shared/SectionBackLink";
+import { pageKicker } from "@/lib/moduleMeta";
+import { MUTED, SURFACE } from "@/lib/platformStyles";
 
 export default function StationExpenses() {
   const { stationId } = useParams();
@@ -28,6 +30,7 @@ export default function StationExpenses() {
     return (
       <PlatformStampShell
         ar={ar}
+        kicker={pageKicker("/app/expenses", lang)}
         title={ar ? "مصروفات الفرع" : "Station expenses"}
         hint={ar ? "هذا الفرع غير موجود في النطاق الحالي." : "This station is not in the current scope."}
       >
@@ -43,13 +46,10 @@ export default function StationExpenses() {
   return (
     <PlatformStampShell
       ar={ar}
+      kicker={pageKicker("/app/expenses", lang)}
       title={ar ? `مصروفات ${station.name}` : `${station.name} expenses`}
       hint={ar ? "السجل المالي الخاص بهذا الفرع فقط." : "Financial expense ledger for this station only."}
-      meta={(
-        <Link to="/app/expenses" style={{ ...ui.btnSecondary, textDecoration: "none" }}>
-          {ar ? "كل المصروفات" : "All expenses"}
-        </Link>
-      )}
+      lead={<SectionBackLink ar={ar} label={ar ? "المصروفات" : "Expenses"} to="/app/expenses" />}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <ExpenseStats claims={claims} ar={ar} />

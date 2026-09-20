@@ -3,6 +3,7 @@ import { ArrowLeftRight } from "lucide-react";
 import { ACTION_REASONS } from "@/lib/hcmDerivations";
 import { transferEmployeeBetweenStations } from "@/lib/employeeStationTransfer";
 import { toast } from "@/components/ui/use-toast";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import { ACCENT, BORDER, MUTED, NAVY, field, ui, BRAND_BORDER, BRAND_SOFT, BRAND_DEEP, CARD, SURFACE } from "@/lib/platformStyles";
 
 function todayKey() {
@@ -156,13 +157,7 @@ export default function StationTransferPanel({
           </label>
           <label style={{ display: "grid", gap: "4px", fontSize: "11px", color: MUTED }}>
             {ar ? "تاريخ السريان" : "Effective date"}
-            <input
-              type="date"
-              value={effectiveDate}
-              onChange={(e) => setEffectiveDate(e.target.value)}
-              style={{ ...field }}
-              required
-            />
+            <PlatformDateField ar={ar} value={effectiveDate} onChange={setEffectiveDate} required />
           </label>
           <label style={{ display: "grid", gap: "4px", fontSize: "11px", color: MUTED }}>
             {ar ? "ملاحظة (اختياري)" : "Note (optional)"}

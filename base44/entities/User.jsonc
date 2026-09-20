@@ -1,8 +1,13 @@
+// purpose: Base44 platform user (admin/user). Not a tenant employee.
+// domain: people
+// isolation: none (platform / preview / dead)
+// owner: companyDirectory
+// status: platform
 {
   "properties": {
     "role": {
       "type": "string",
-      "description": "The role of the user in the app",
+      "description": "Base44 platform role (admin/user). Not a tenant employee. This entity has no companyId by design.",
       "enum": [
         "admin",
         "user"

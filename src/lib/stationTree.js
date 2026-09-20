@@ -176,9 +176,10 @@ export function employeeLinkedStationIds(employee) {
   const out = new Set();
   const home = String(employee?.stationId || employee?.station_id || "").trim();
   if (home) out.add(home);
-  const managed = Array.isArray(employee?.managedStations)
-    ? employee.managedStations
-    : String(employee?.managedStations || "").split(/[،,]/).map((item) => item.trim()).filter(Boolean);
+  const rawManaged = employee?.managedStations ?? employee?.managedStationIds;
+  const managed = Array.isArray(rawManaged)
+    ? rawManaged
+    : String(rawManaged || "").split(/[،,]/).map((item) => item.trim()).filter(Boolean);
   managed.forEach((id) => {
     const sid = String(id || "").trim();
     if (sid) out.add(sid);
@@ -219,11 +220,16 @@ export function allowedStationParents(stations, stationId) {
 }
 
 export function userManagesStation(user, data, stationId) {
-  if (!user?.id || !stationId) return false;
+  if (!user || !stationId) return false;
+  const actorIds = new Set([
+    String(user.id || "").trim(),
+    String(user.employeeId || "").trim(),
+  ].filter(Boolean));
+  if (!actorIds.size) return false;
   const station = (data?.stations || []).find((item) => String(item.id) === String(stationId));
-  if (station && String(station.managerId) === String(user.id)) return true;
+  if (station && actorIds.has(String(station.managerId || ""))) return true;
   return (data?.orgSeats || []).some((seat) =>
-    String(seat.employeeId) === String(user.id)
+    actorIds.has(String(seat.employeeId || ""))
     && String(seat.stationId) === String(stationId)
     && isTreeManagerTitle(seat.title)
   );
@@ -271,7 +277,11 @@ export function stripDescendantCoverage(managedStations, stations, homeId) {
 }
 
 export function extraCoverageStationIds(user, data) {
-  return stripDescendantCoverage(user?.managedStations, data?.stations || [], user?.stationId);
+  return stripDescendantCoverage(
+    user?.managedStations ?? user?.managedStationIds,
+    data?.stations || [],
+    user?.stationId,
+  );
 }
 
 export function applyExtraCoverageStrip(data) {
@@ -331,13 +341,18 @@ export function userCoversStation(user, data, stationId) {
   return scopedStationIdsForUser(user, data).some((id) => String(id) === String(stationId));
 }
 
-/** Header scope is one branch. Pick Jeddah to see Jeddah; Western does not pull its children. */
-export function stationInHeaderScope(rowStationId, scopeId) {
+/** Header scope: a workplace includes its child workplaces. A manager/region seat stays exact. */
+export function stationInHeaderScope(rowStationId, scopeId, stations) {
   const scope = String(scopeId || "").trim();
   if (!scope || scope === "all") return true;
   const row = String(rowStationId ?? "").trim();
   if (!row) return false;
-  return row === scope;
+  if (row === scope) return true;
+  const list = Array.isArray(stations) ? stations : [];
+  if (!list.length) return false;
+  const node = list.find((item) => String(item.id) === scope);
+  if (effectiveUnitKind(node) === "manager") return false;
+  return stationSubtreeIds(list, scope).includes(row);
 }
 
 /** Home stays the nearest node; managers and extra coverage inherit every descendant. */

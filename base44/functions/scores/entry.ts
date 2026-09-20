@@ -11,7 +11,8 @@ import { PERF_WEIGHTS, countPersonalHseDuty, scoreBoard } from "../../shared/per
 import { taskPoints } from "../../shared/opsDerivations.ts";
 
 const SAFETY_CATEGORY = "safety";
-const TASKS_CATEGORY = "operationsTasks";
+const TASKS_CATEGORY = "tasks";
+const TASKS_LEGACY_CATEGORY = "operationsTasks"; // do-not-write — read fallback only
 const HSE_CREDITS_CATEGORY = "hseCredits";
 
 function requireCompanyId(companyId: unknown) {
@@ -55,9 +56,20 @@ Deno.serve(async (req) => {
       return rows[0] || null;
     };
     const saveBlob = async (category: string, payload: unknown) => {
+      if (category === TASKS_LEGACY_CATEGORY) return;
       const blob = await loadBlob(category);
       if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload });
       else await base44.asServiceRole.entities.CompanyDataBlob.create({ companyId: auth.companyId, category, payload });
+    };
+    const loadTasks = async () => {
+      const blob = await loadBlob(TASKS_CATEGORY);
+      let payload = Array.isArray(blob?.payload) ? blob.payload : [];
+      if (!payload.length) {
+        const legacy = await loadBlob(TASKS_LEGACY_CATEGORY);
+        payload = Array.isArray(legacy?.payload) ? legacy.payload : [];
+        if (payload.length) await saveBlob(TASKS_CATEGORY, payload);
+      }
+      return payload;
     };
 
     const audit = async (actionKey: string, details: string, extra: Record<string, unknown> = {}) => {
@@ -253,8 +265,7 @@ Deno.serve(async (req) => {
       const emps = (await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId }))
         .filter((e: { companyId?: string; stationId?: string }) => e.companyId === auth.companyId && (!scope || e.stationId === scope));
 
-      const taskBlob = await loadBlob(TASKS_CATEGORY);
-      const tasks = (Array.isArray(taskBlob?.payload) ? taskBlob.payload : [])
+      const tasks = (await loadTasks())
         .filter((t: { companyId?: string; stationId?: string }) => t && t.companyId === auth.companyId && (!scope || t.stationId === scope));
 
       const credits = await loadCredits();

@@ -1,3 +1,8 @@
+// purpose: Anonymous marketing analytics. No companyId by design.
+// domain: platform
+// isolation: none (platform / preview / dead)
+// owner: pageVisits
+// status: platform
 {
   "name": "PageVisit",
   "type": "object",

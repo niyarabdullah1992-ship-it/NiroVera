@@ -234,12 +234,7 @@ export default function OrgEscalationBoard({ lang = "ar", canWrite = false }) {
 
   return (
     <OrgPanel ar={ar}>
-      <OrgToolbar
-        title={ar ? "تصعيد المهام — لكل فرع" : "Task escalation — per branch"}
-        subtitle={ar
-          ? "اختر موظفًا لكل مستوى. موظف المقر يمكن أن يمسك تصعيد الفروع الميدانية."
-          : "Pick an employee per level. HQ staff can hold field-branch escalation."}
-      >
+      <OrgToolbar>
         {canWrite ? (
           <button
             type="button"
@@ -258,27 +253,7 @@ export default function OrgEscalationBoard({ lang = "ar", canWrite = false }) {
             ? "العرض فقط — التعديل متاح للمالك ومدير العمليات والموارد البشرية."
             : "Read-only — editing is for owner, ops, and HR leads."}
         </OrgNotice>
-      ) : (
-        <OrgNotice ar={ar}>
-          {ar ? (
-            <>
-              <strong>الرقم غير محدد:</strong>
-              {" "}أضف أي عدد من مستويات التصعيد لكل فرع. الخانة الفارغة في الآخر تضيف مستوى جديدًا.
-              {" "}لتعيين موظف مقر واحد لعدة فروع دفعة واحدة استخدم
-              {" "}
-              <strong>«مسؤول واحد لعدة فروع»</strong>.
-            </>
-          ) : (
-            <>
-              <strong>No fixed count:</strong>
-              {" "}add as many escalation levels as the branch needs. The empty slot at the end adds another level.
-              {" "}To assign one HQ employee to many branches at once, use
-              {" "}
-              <strong>One handler · many branches</strong>.
-            </>
-          )}
-        </OrgNotice>
-      )}
+      ) : null}
 
       {hqHandlers.length > 0 && (
         <div style={{ padding: "12px 16px", borderBottom: `1px solid ${BORDER}`, background: CARD }}>

@@ -1,3 +1,8 @@
+// purpose: Workplace / org node. Check-in GPS and hire seat live here.
+// domain: people
+// isolation: companyId
+// owner: companyDirectory
+// status: canonical
 {
   "name": "Station",
   "type": "object",

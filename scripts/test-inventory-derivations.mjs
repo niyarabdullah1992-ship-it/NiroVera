@@ -9,6 +9,9 @@ import {
   applyPoToItems,
   clearOnOrderIfFilled,
   fillRatio,
+  qtyAtStation,
+  checkStationTransferRequestGate,
+  movementReversalBlock,
 } from "../src/lib/inventoryDerivations.js";
 
 assert.equal(CRITICAL_RATIO, 0.5);
@@ -18,6 +21,36 @@ assert.equal(deriveStockStatus({ sku: "C", name: "C", onHand: 8, reorder: 10 }),
 assert.equal(deriveStockStatus({ sku: "D", name: "D", onHand: 4, reorder: 8 }), "low"); // 0.5 → low
 assert.equal(deriveStockStatus({ sku: "E", name: "E", onHand: 42, reorder: 20 }), "ok");
 assert.equal(deriveStockStatus({ sku: "F", name: "F", onHand: 1, reorder: 6, onOrder: true }), "on_order");
+
+assert.equal(qtyAtStation({
+  locationBalances: [{ locationId: "s1", quantity: 0 }, { locationId: "s2", quantity: 8 }],
+  quantity: 8,
+  currentLocationId: "s2",
+}, "s1"), 0);
+assert.equal(qtyAtStation({
+  locationBalances: [{ locationId: "s1", quantity: 0 }, { locationId: "s2", quantity: 8 }],
+  quantity: 8,
+}, "s2"), 8);
+assert.equal(qtyAtStation({ currentLocationId: "s1", quantity: 4 }, "s1"), 4);
+assert.equal(qtyAtStation({ currentLocationId: "s1", quantity: 4 }, "s2"), 0);
+
+const cable = { id: "ivi", locationBalances: [{ locationId: "s2", quantity: 12 }], quantity: 12 };
+assert.equal(checkStationTransferRequestGate({ item: cable, sourceStationId: "s1", destStationId: "s1", quantity: 1, notes: "سبب" }).error, "SAME_STATION");
+assert.equal(checkStationTransferRequestGate({ item: cable, sourceStationId: "s2", destStationId: "s1", quantity: 20, notes: "سبب كافٍ" }).error, "INSUFFICIENT_STOCK");
+assert.equal(checkStationTransferRequestGate({ item: cable, sourceStationId: "s2", destStationId: "s1", quantity: 2, notes: "تمديد مؤقت" }).ok, true);
+
+// The ledger button and both reversal gates read this one rule, so they cannot
+// disagree about what is reversible.
+assert.equal(movementReversalBlock({ movementType: "purchase", quantity: 10 }), null);
+assert.equal(movementReversalBlock({ movementType: "transfer", quantity: 2 }), null);
+assert.equal(movementReversalBlock({ movementType: "issue", quantity: 2 }), null);
+assert.equal(movementReversalBlock(null), "MOVEMENT_NOT_FOUND");
+assert.equal(movementReversalBlock({ movementType: "reversal", quantity: 2 }), "MOVEMENT_REVERSAL_ROW");
+assert.equal(movementReversalBlock({ movementType: "purchase", quantity: 2, isReversal: true }), "MOVEMENT_REVERSAL_ROW");
+assert.equal(movementReversalBlock({ movementType: "issue", quantity: 2, reversedAt: "2026-09-17T00:00:00Z" }), "MOVEMENT_ALREADY_REVERSED");
+assert.equal(movementReversalBlock({ movementType: "issue", quantity: 2, reversalMovementId: "mov_9" }), "MOVEMENT_ALREADY_REVERSED");
+assert.equal(movementReversalBlock({ movementType: "adjustment", quantity: 2 }), "MOVEMENT_NOT_REVERSIBLE");
+assert.equal(movementReversalBlock({ movementType: "issue", quantity: 0 }), "MOVEMENT_NOT_REVERSIBLE");
 
 assert.equal(fillRatio(1, 6), 17);
 assert.equal(enrichStockItem({ sku: "E", name: "E", onHand: 42, reorder: 20 }).fillPct, 100);

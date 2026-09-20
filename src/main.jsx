@@ -29,7 +29,7 @@ class BootErrorBoundary extends React.Component {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          style={{ marginTop: 12, height: 40, padding: "0 16px", border: 0, borderRadius: 8, background: "#1E9E63", color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
+          style={{ marginTop: 12, height: 40, padding: "0 16px", border: "1px solid #14284B", background: "#14284B", color: "#fff", cursor: "pointer", fontFamily: "inherit" }}
         >
           إعادة التحميل
         </button>

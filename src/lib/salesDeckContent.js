@@ -185,7 +185,6 @@ export const SALES_DECK_SLIDES = [
       { ar: "التوقيع الرقمي", en: "Signing" },
       { ar: "التقرير اليومي", en: "Daily report" },
       { ar: "التقارير والتحليلات", en: "Reports" },
-      { ar: "المحادثات التشغيلية", en: "Ops chat" },
       { ar: "الورديات", en: "Shifts" },
       { ar: "طلبات الإجازة", en: "Leave" },
       { ar: "الموارد البشرية", en: "HR" },

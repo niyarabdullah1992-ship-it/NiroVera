@@ -6,6 +6,16 @@
 export const BOE_LABOUR_LAW_URL =
   "https://laws.boe.gov.sa/BoeLaws/Laws/LawDetails/08381293-6388-48e2-8ad2-a9a700f2aa94/1";
 
+/** Official HRSD Labour Law PDF served by the product (M/51 1426 as amended through M/44 8/2/1446). */
+export const HRSD_LABOUR_LAW_PDF = "/labor-law.pdf";
+export const HRSD_LABOUR_LAW_EDITION = {
+  decree: "M/51",
+  decreeHijri: "1426-08-23",
+  lastAmend: "M/44",
+  lastAmendHijri: "1446-02-08",
+  lastAmendGregorian: "2025-02-19",
+};
+
 const FROM = "2005-01-01";
 const AMEND_2015 = "2015-03-25";
 const BEFORE_2015 = "2015-03-24";
@@ -24,6 +34,12 @@ function v(article, ar, en, dates = {}) {
 }
 
 export const LABOR_ARTICLE_TEXTS = [
+  v(
+    "17",
+    "يجب على صاحب العمل أن يعلن في مكان ظاهر بمقر العمل جدول مواعيد العمل، وفترات الراحة، ويوم الراحة الأسبوعية، ومواعيد العمل اليومي للنوبات.",
+    "The employer must post in a conspicuous place at the workplace the work-hours table, rest periods, the weekly rest day, and the daily shift times.",
+  ),
+
   v(
     "37",
     "يجب أن يكون عقد عمل غير السعودي مكتوبًا ومحدد المدة. وإذا خلا العقد من بيان مدته تعد مدة رخصة العمل هي مدة العقد.",
@@ -88,6 +104,30 @@ export const LABOR_ARTICLE_TEXTS = [
     "1 - ينتهي عقد العمل المحدد المدة بانقضاء مدته، فإذا استمر طرفاه في تنفيذ عُدَّ العقدُ مجدداً لمدة غير محددة. مع مراعاة ما نصت عليه المادة (السابعة والثلاثون) من هذا النظام بالنسبة إلى غير السعوديين.\n\n2 - إذا تضمن العقد المحدد المدة شرطاً يقضي بتجديده لمدة مماثلة أو لمدة محددة، فإنه يتجدد للمدة المتفق عليها. فإن تعدد التجديد ثلاث مرات متتالية، أو بلغت مدة العقد الأصلي مع مدة التجديد أربع سنوات أيهما أقل واستمر الطرفان في تنفيذه؛ تحوّل العقد إلى عقد غير محدد المدة.",
     "1 - A fixed-term contract ends when its term expires. If both parties continue to perform it, the contract shall be deemed renewed for an indefinite term, without prejudice to Article (37) of this Law in respect of non-Saudis.\n\n2 - If a fixed-term contract contains a clause renewing it for a like or specified term, it renews for the agreed term. If it is renewed three consecutive times, or the original term plus renewals amount to four years, whichever is less, and the parties continue to perform it, the contract converts to an indefinite-term contract.",
     { from: AMEND_2015, amendedBy: "M/46" },
+  ),
+
+  v(
+    "58",
+    "1. لا يجوز لصاحب العمل أن ينقل العامل بغير موافقته - كتابةً - من مكان عمله الأصلي إلى مكان آخر يقتضي تغيير محل إقامته.\n\n2. لصاحب العمل - في حالات الضرورة التي قد تقتضيها ظروف عارضة ولمدة لا تتجاوز ثلاثين يوماً في السنة - تكليف العامل بعمل في مكان يختلف عن المكان المتفق عليه دون اشتراط موافقته، على أن يتحمل صاحب العمل تكاليف انتقال العامل وإقامته خلال تلك المدة.",
+    "1. The employer may not transfer the worker, without his written consent, from his original workplace to another place that requires a change of residence.\n\n2. In cases of necessity arising from incidental circumstances, and for a period not exceeding thirty days in the year, the employer may assign the worker to work in a place other than the agreed place without requiring his consent, provided the employer bears the worker's travel and accommodation costs during that period.",
+  ),
+
+  v(
+    "59",
+    "لا يجوز نقل العامل ذي الأجر الشهري إلى فئة عمال اليومية أو العمال المعينين بالأجر الأسبوعي أو بالقطعة أو بالساعة إلا إذا وافق العامل على ذلك كتابة، مع عدم الإخلال بالحقوق التي اكتسبها في المدة التي قضاها بالأجر الشهري.",
+    "A monthly-wage worker may not be moved to the class of daily-wage workers or of workers engaged on a weekly, piece-rate or hourly wage except with the worker's written consent, without prejudice to the rights acquired during the period spent on a monthly wage.",
+  ),
+
+  v(
+    "60",
+    "مع عدم الإخلال بما تضمنته المادة (الثامنة والثلاثون) من هذا النظام، لا يجوز تكليف العامل بعمل يختلف اختلافاً جوهرياً عن العمل المتفق عليه بغير موافقته الكتابية، إلا في حالات الضرورة التي قد تقتضيها ظروف عارضة ولمدة لا تتجاوز ثلاثين يوماً في السنة.",
+    "Without prejudice to Article (38) of this Law, a worker may not be assigned work that differs substantially from the agreed work without his written consent, except in cases of necessity arising from incidental circumstances and for a period not exceeding thirty days in the year.",
+  ),
+
+  v(
+    "64",
+    "يلتزم صاحب العمل عند انتهاء عقد العمل بما يأتي:\n1 - أن يعطي العامل - بناء على طلبه - شهادة خدمة دون مقابل، يوضح فيها تاريخ التحاقه بالعمل وتاريخ انتهائه ومهنته ومقدار أجره الأخير. ولا يجوز أن تتضمن الشهادة ما قد يسيء إلى سمعة العامل أو يقلل فرص العمل أمامه.\n2 - أن يعيد إلى العامل جميع ما أودعه لديه من شهادات أو وثائق.",
+    "Upon the end of the work contract the employer shall:\n1 - Give the worker, at his request and free of charge, a service certificate stating the date of joining, the date of leaving, his occupation and his last wage. The certificate may not contain anything that would harm the worker's reputation or reduce his chances of work.\n2 - Return to the worker all certificates or documents he deposited with the employer.",
   ),
 
   v(
@@ -219,6 +259,12 @@ export const LABOR_ARTICLE_TEXTS = [
   ),
 
   v(
+    "82",
+    "لا يجوز لصاحب العمل إنهاء خدمة العامل بسبب المرض، قبل استنفاذه المدد المحددة للإجازة المنصوص عليها في هذا النظام، وللعامل الحق في أن يطلب وصل إجازته السنوية بالمرضية.",
+    "The employer may not terminate the worker's service because of illness before the worker has exhausted the leave periods prescribed in this Law. The worker is entitled to request that his annual leave be joined to the sick leave.",
+  ),
+
+  v(
     "84",
     "إذا انتهت علاقة العمل وجب على صاحب العمل أن يدفع إلى العامل مكافأة عن مدة خدمته تحسب على أساس أجر نصف شهر عن كل سنة من السنوات الخمس الأولى، وأجر شهر عن كل سنة من السنوات التالية، ويتخذ الأجر الأخير أساسًا لحساب المكافأة، ويستحق العامل مكافأة عن أجزاء السنة بنسبة ما قضاه منها في العمل.",
     "Upon the end of the work relation, the employer shall pay the worker an end-of-service award of a half-month wage for each of the first five years and a one-month wage for each of the following years. The award shall be calculated on the basis of the last wage, and the worker shall be entitled to an award for portions of the year in proportion to the time spent on the job.",
@@ -228,6 +274,12 @@ export const LABOR_ARTICLE_TEXTS = [
     "85",
     "إذا كان انتهاء علاقة العمل بسبب استقالة العامل يستحق في هذه الحالة ثلث المكافأة بعد خدمة لا تقل مدتها عن سنتين متتاليتين، ولا تزيد على خمس سنوات، ويستحق ثلثيها إذا زادت مدة خدمته على خمس سنوات متتالية ولم تبلغ عشر سنوات، ويستحق المكافأة كاملة إذا بلغت مدة خدمته عشر سنوات فأكثر.",
     "If the work relation ends due to the worker's resignation, he shall be entitled to one third of the award after a service of not less than two consecutive years and not more than five years, to two thirds if his service exceeds five successive years but is less than ten years, and to the full award if his service amounts to ten years or more.",
+  ),
+
+  v(
+    "86",
+    "إذا اتفق الطرفان على خلاف ما ورد في المادة (الرابعة والثمانين) من هذا النظام بحيث تدخل في الأجر الذي تسوى على أساسه المكافأة جميع مبالغ العمولات أو النسب المئوية من المبيعات وما أشبه ذلك مما يدفع إلى العامل وتكون قابلة بطبيعتها للزيادة والنقص، وجب العمل بهذا الاتفاق.",
+    "If the parties agree, contrary to Article (84) of this Law, that the wage on which the award is settled shall include all commissions or percentages of sales and the like paid to the worker that are by nature liable to increase and decrease, that agreement shall be applied.",
   ),
 
   v(
@@ -250,6 +302,12 @@ export const LABOR_ARTICLE_TEXTS = [
   ),
 
   v(
+    "91",
+    "إذا تسبب العامل في فقد أو إتلاف أو تدمير آلات أو منتجات يملكها أو هي في عهدته وكان ذلك ناشئاً عن خطئه أو مخالفته تعليمات صاحب العمل ولم يكن نتيجة خطأ الغير أو قوة قاهرة، فلصاحب العمل أن يقتطع من أجر العامل القيمة اللازمة للإصلاح أو لإعادة الوضع إلى ما كان عليه على ألا يزيد ما يقتطع لهذا الغرض على أجر خمسة أيام في كل شهر. ولصاحب العمل حق التظلم إن كان له مقتض، وذلك بطلب ما هو أكثر من ذلك إذا كان للعامل مال آخر يمكن الاستيفاء منه. وللعامل أن يتظلم مما نُسب إليه أو من تقدير صاحب العمل للتعويض أمام المحكمة العمالية. فإذا حكمت بعدم أحقية صاحب العمل في الرجوع على العامل بما اقتطعه منه أو ببعضه وجب على صاحب العمل أن يرد إلى العامل ما اقتطع منه دون وجه حق خلال سبعة أيام من تاريخ صدور الحكم.",
+    "If the worker causes the loss, damage or destruction of machinery or products owned by the employer or in the worker's custody, arising from his fault or from breach of the employer's instructions and not from the fault of another or force majeure, the employer may deduct from the worker's wage the amount needed for repair or restoration, provided the deduction for that purpose does not exceed five days' wage in any month. The employer may complain where warranted and claim more if the worker has other property from which recovery can be made. The worker may challenge what is attributed to him or the employer's assessment of compensation before the labour court. If the court holds that the employer was not entitled to recover all or part of what was deducted, the employer shall return the amount wrongly deducted within seven days of the judgment.",
+  ),
+
+  v(
     "92",
     "لا يجوز حسم أي مبلغ من أجور العامل لقاء حقوق خاصة دون موافقة خطية منه، إلا في الحالات الآتية:\n1 - استرداد قروض صاحب العمل، بشرط ألا يزيد ما يُحسم من العامل في هذه الحالة على 10% من أجره.\n2 - الاشتراكات التأمينات الاجتماعية وأي اشتراكات أخرى مستحقة على العامل ومقررة نظاماً.\n3 - اشتراكات العامل في صندوق الادخار والقروض المستحقة للصندوق.\n4 - أقساط أي مشروع يقوم به صاحب العمل لبناء المساكن بقصد تمليكها للعمال أو أي مزية أخرى.\n5 - الغرامات التي توقع على العامل بسبب المخالفات التي يرتكبها، وكذلك المبلغ الذي يقتطع منه مقابل ما أتلفه.\n6 - استيفاء دين إنفاذاً لأي حكم قضائي، على ألا يزيد ما يُحسم شهرياً لقاء ذلك على ربع الأجر المستحق للعامل ما لم يتضمن الحكم خلاف ذلك.\nوتُجمع النفقة الشرعية أولاً، ثم المأكل والملبس والمسكن قبل الديون الأخرى.",
     "No amount shall be deducted from the worker's wages against private rights without his written consent, except in the following cases:\n1 - Recovery of employer loans, provided the deduction does not exceed 10% of his wage.\n2 - Social insurance contributions and any other contributions due from the worker as provided by law.\n3 - The worker's contributions to thrift funds and loans due to such funds.\n4 - Instalments of any employer housing scheme intended to transfer ownership to workers, or any other benefit.\n5 - Fines imposed for offences, and amounts deducted for damage caused.\n6 - Satisfaction of a debt pursuant to a court judgment, provided the monthly deduction does not exceed one quarter of the wage due unless the judgment provides otherwise.\nLegal maintenance is collected first, then food, clothing and housing, before other debts.",
@@ -268,6 +326,18 @@ export const LABOR_ARTICLE_TEXTS = [
   ),
 
   v(
+    "99",
+    "يجوز زيادة ساعات العمل المنصوص عليها في المادة (الثامنة والتسعين) من هذا النظام إلى تسع ساعات في اليوم لبعض فئات العمال، أو في الصناعات والأعمال التي لا يشتغل فيها العامل بصفة مستمرة. كما يجوز تخفيضها إلى سبع ساعات في اليوم لبعض فئات العمال أو في الصناعات والأعمال الخطرة أو الضارة. وتحدد فئات العمال أو الصناعات أو الأعمال المشار إليها بقرار من الوزير.",
+    "The working hours provided for in Article (98) of this Law may be increased to nine hours a day for certain categories of workers, or in industries and work in which the worker is not employed continuously. They may also be reduced to seven hours a day for certain categories of workers or in hazardous or harmful industries and work. The categories of workers or the industries or work referred to shall be specified by a decision of the Minister.",
+  ),
+
+  v(
+    "100",
+    "يجوز لصاحب العمل في المنشآت التي يقتضي العمل فيها أسلوباً لا يسمح بالوقف اليومي لساعات العمل المحددة في المادة (الثامنة والتسعين) من هذا النظام، أو في بعض الأنشطة المحددة بقرار من الوزير، زيادة ساعات العمل على ثماني ساعات في اليوم أو ثمان وأربعين ساعة في الأسبوع، بشرط ألا يزيد متوسط ساعات العمل عند احتسابه لمدة ثلاثة أسابيع أو أقل على ثماني ساعات في اليوم أو ثمان وأربعين ساعة في الأسبوع.",
+    "In establishments whose work requires a method that does not allow a daily stop of the hours specified in Article (98) of this Law, or in certain activities specified by a ministerial decision, the employer may increase working hours beyond eight a day or forty-eight a week, provided that the average working hours, calculated over a period of three weeks or less, do not exceed eight hours a day or forty-eight hours a week.",
+  ),
+
+  v(
     "101",
     "تنظم ساعات العمل وفترات الراحة خلال اليوم، بحيث لا يعمل أي عامل أكثر من خمس ساعات متتالية دون فترة للراحة والصلاة والطعام لا تقل عن نصف ساعة في المرة الواحدة خلال مجموع ساعات العمل، وبحيث لا يبقى العامل في مكان العمل أكثر من إحدى عشرة ساعة في اليوم الواحد.",
     "Working hours and rest periods during the day shall be organised so that no worker works more than five consecutive hours without a period for rest, prayer and food of not less than half an hour at a time during the total working hours, and so that the worker does not remain at the workplace more than eleven hours a day.",
@@ -282,14 +352,26 @@ export const LABOR_ARTICLE_TEXTS = [
 
   v(
     "102",
-    "لا تدخل الفترات المنصوص عليها في المادة (الحادية بعد المائة) من هذا النظام ضمن ساعات العمل الفعلية.",
-    "The periods provided for in Article (101) of this Law shall not be counted as actual working hours.",
+    "لا تدخل الفترات المخصصة للراحة والصلاة والطعام ضمن ساعات العمل الفعلية، ولا يكون العامل خلال هذه الفترات تحت سلطة صاحب العمل، ولا يجوز لصاحب العمل أن يلزم العامل بالبقاء خلالها في مكان العمل.",
+    "The periods designated for rest, prayer and food shall not be counted within actual working hours. During those periods the worker shall not be under the employer's authority, and the employer may not require the worker to remain at the workplace during them.",
+  ),
+
+  v(
+    "103",
+    "يجوز للوزير تحديد الحالات والأعمال التي يتحتم فيها استمرار العمل دون توقف لأسباب فنية أو بسبب طبيعة الإنتاج أو الخدمة التي تقدمها المنشأة. وفي هذه الحالات يجب على صاحب العمل أن يمنح العمال فترات راحة بديلة تحسب من ساعات العمل الفعلية.",
+    "The Minister may specify the cases and work in which continuity of work without interruption is required for technical reasons or because of the nature of the production or service the establishment provides. In those cases the employer must grant the workers alternative rest periods that count as actual working hours.",
   ),
 
   v(
     "104",
     "1- يوم الجمعة يوم الراحة الأسبوعية لجميع العمال.ويجوز لصاحب العمل- بعد إبلاغ مكتب العمل المختص- أن يستبدل بهذا اليوم لبعض عماله أي يوم من أيام الأسبوع، وعليه أن يمكنهم من القيام بواجباتهم الدينية، ولا يجوز تعويض يوم الراحة الأسبوعية بمقابل نقدي.\n\n2- يكون يوم الراحة الأسبوعية بأجر كامل، ولا يقل عن أربع وعشرين ساعة متتالية.",
     "1- Friday is the weekly rest day for all workers. The employer may — after notifying the competent labour office — substitute any other day of the week for some of his workers, and must enable them to perform their religious duties. The weekly rest day may not be compensated with a cash equivalent.\n\n2- The weekly rest day is with full pay and shall not be less than twenty-four consecutive hours.",
+  ),
+
+  v(
+    "105",
+    "استثناءً من حكم المادة (الرابعة بعد المائة) من هذا النظام، يجوز في الأماكن النائية وعن أعمال محددة بقرار من الوزير تجميع الراحات الأسبوعية المستحقة للعامل عن مدة لا تزيد على ثمانية أسابيع إذا وافق العامل كتابة وبعد موافقة الوزارة، وتُمنح للعامل مجمعة.",
+    "By way of exception from Article (104) of this Law, in remote places and for work specified by a ministerial decision, the weekly rests due to the worker may be accumulated for a period not exceeding eight weeks if the worker consents in writing and after the Ministry's approval, and they shall be granted to the worker in a lump.",
   ),
 
   v(
@@ -422,6 +504,37 @@ export const LABOR_ARTICLE_TEXTS = [
     "The employer is prohibited from dismissing a female worker or giving her notice of dismissal during her pregnancy or while she is on maternity leave, including the period of illness arising from pregnancy or childbirth, provided the illness is established by an authenticated medical certificate and her absence does not exceed one hundred and eighty days.",
     { from: AMEND_2015, amendedBy: "M/134" },
   ),
+
+  v(
+    "160",
+    "1- للمرأة العاملة المسلمة التي يتوفى زوجها الحق في إجازة عدة بأجر كامل لمدة لا تقل عن أربعة أشهر وعشرة أيام من تاريخ الوفاة، ولها الحق في تمديد هذه الإجازة دون أجر إن كانت حاملاً - خلال هذه الفترة - حتى تضع حملها، ولا يجوز لها الاستفادة من باقي إجازة العدة الممنوحة لها بموجب هذا النظام بعد وضع حملها.\n\n2- للمرأة العاملة غير المسلمة التي يتوفى زوجها الحق في إجازة بأجر كامل لمدة خمسة عشر يوماً. وفي جميع الأحوال لا يجوز للعاملة المتوفى عنها زوجها ممارسة أي عمل لدى الغير خلال هذه المدة. ويحق لصاحب العمل أن يطلب الوثائق المؤيدة للحالات المشار إليها.",
+    "1- A Muslim female worker whose husband dies is entitled to iddah leave with full pay of not less than four months and ten days from the date of death. She may extend this leave without pay if she is pregnant during that period until she gives birth, and she may not use the remainder of the iddah leave granted under this Law after giving birth.\n\n2- A non-Muslim female worker whose husband dies is entitled to leave with full pay of fifteen days. In all cases a female worker whose husband has died may not work for another party during this period. The employer may require supporting documents for the cases referred to.",
+    { from: AMEND_2015, amendedBy: "M/46" },
+  ),
+
+  v(
+    "153",
+    "على صاحب العمل أن يوفر الرعاية الطبية للمرأة العاملة أثناء الحمل والولادة.",
+    "The employer shall provide medical care for the female worker during pregnancy and childbirth.",
+  ),
+
+  v(
+    "159",
+    "على صاحب العمل في جميع الأماكن التي يعمل فيها نساء وفي جميع المهن أن يوفر لهن مقاعد لاستراحة النساء العاملات. وعلى كل صاحب عمل يشغّل خمسين عاملة فأكثر أن يهيئ مكاناً مناسباً يتوافر فيه العدد الكافي من المربيات لرعاية أطفال العاملات الذين تقل أعمارهم عن ست سنوات، وذلك إذا بلغ عدد الأطفال عشرة فأكثر.",
+    "In every place where women work, and in every occupation, the employer shall provide seats for women workers to rest. An employer who employs fifty or more female workers shall prepare a suitable place with a sufficient number of attendants to care for the workers' children under six years of age, if the number of such children is ten or more.",
+  ),
+
+  v(
+    "163",
+    "يحظر تشغيل الأحداث أثناء فترة من الليل لا تقل عن اثنتي عشرة ساعة متتالية إلا في الحالات التي يحددها الوزير بقرار منه.",
+    "Juveniles may not be employed during a night period of less than twelve consecutive hours, except in cases specified by a decision of the Minister.",
+  ),
+
+  v(
+    "164",
+    "لا يجوز تشغيل الأحداث تشغيلاً فعلياً أكثر من ست ساعات في اليوم الواحد لسائر شهور السنة، عدا شهر رمضان فيجب ألا تزيد ساعات العمل الفعلية فيه على أربع ساعات. وتنظم ساعات العمل بحيث لا يعمل الحدث أكثر من أربع ساعات متصلة، دون فترة أو أكثر للراحة والطعام والصلاة، لا تقل في المرة الواحدة عن نصف ساعة، وبحيث لا يبقى في مكان العمل أكثر من سبع ساعات. ولا يجوز تشغيل الأحداث في أيام الراحة الأسبوعية أو في أيام الأعياد والعطلات الرسمية والإجازة السنوية. ولا تسري عليهم الاستثناءات التي نصت عليها المادة السادسة بعد المائة من هذا النظام.",
+    "Juveniles may not actually work more than six hours a day in all months of the year, except Ramadan when actual hours may not exceed four. Hours shall be organised so that a juvenile does not work more than four consecutive hours without one or more periods for rest, food and prayer of at least half an hour each, and so that he does not remain at the workplace more than seven hours. Juveniles may not work on weekly rest days, Eids, official holidays or annual leave. The exceptions in Article 106 do not apply to them.",
+  ),
 ];
 
 const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
@@ -464,6 +577,7 @@ export function articleOfficialText(article, onDate) {
     ar: row.ar,
     en: row.en,
     sourceUrl: BOE_LABOUR_LAW_URL,
+    localPdf: HRSD_LABOUR_LAW_PDF,
     effectiveFrom: row.effectiveFrom,
     effectiveTo: row.effectiveTo,
     amendedBy: row.amendedBy,

@@ -1,6 +1,7 @@
-import { addCompanyFile, getCompanyToken, submitLeaveRequest, setLeaveRequestStatus } from "@/lib/store";
+import { addCompanyFile, getCompanyToken } from "@/lib/store";
+import { requestReplyHref } from "@/lib/requestWorkspace";
 import { recordSafetyIncident } from "@/lib/safetyStore";
-import { canManageEmployees, hasHRPermission, visibleStations } from "@/lib/permissions";
+import { canManageEmployees, hasHRPermission } from "@/lib/permissions";
 import { buildAssistantContext } from "./assistantContext";
 import { printReport } from "@/lib/printReport";
 import { generateSignedReport } from "@/lib/signedReport";
@@ -8,6 +9,7 @@ import { base44 } from "@/api/base44Client";
 import { exportExcelColored } from "@/lib/exportExcelColored";
 import { buildDocumentHtml, openDocumentHtml } from "@/lib/printDocument";
 import { enrichAssistantContext } from "@/lib/assistantLiveContext";
+import { uiDateLocale } from "@/lib/dateFormat";
 import { inventoryCall } from "@/lib/inventoryApi";
 import { expensesCall } from "@/lib/expensesApi";
 
@@ -126,7 +128,7 @@ export async function executeAssistantAction(action, { data, company, currentUse
       printReport({
         title: action.reportTitle || dataset,
         companyName: data.name || "",
-        periodLabel: new Date().toLocaleDateString(document.documentElement.dir === "rtl" ? "ar" : "en-GB"),
+        periodLabel: new Date().toLocaleDateString(uiDateLocale(document.documentElement.dir === "rtl")),
         dir: document.documentElement.dir,
         sections: [{ heading: action.reportTitle || dataset, headers, rows: tableRows }],
         logoUrl: data.reportBranding?.logoUrl || "",
@@ -202,11 +204,12 @@ export async function executeAssistantAction(action, { data, company, currentUse
   if (action.type === "open_page") {
     const routes = {
       dashboard: "/app", executive: "/app/executive", tasks: "/app/tasks", attendance: "/app/attendance",
-      reports: "/app/daily-report", performance: "/app/performance", employees: "/app/employees",
+      reports: "/app", performance: "/app/performance", employees: "/app/employees",
       stations: "/app/stations", hr: "/app/hr", payroll: "/app/payroll", complaints: "/app/complaints",
-      chat: "/app/chat", files: "/app/files", daily_report: "/app/daily-report",
-      help: "/app/help", signing: "/app/signing", verify: "/verify",
+      files: "/app/files",
+      signing: "/app/signing", verify: "/verify",
       inventory: "/app/inventory", expenses: "/app/expenses", safety: "/app/safety",
+      leave: "/app/requests/leave", requests: "/app/requests",
     };
     const path = routes[norm(action.page)];
     if (!path) return { ok: false, message: t("aiActionFailed") };
@@ -250,18 +253,25 @@ export async function executeAssistantAction(action, { data, company, currentUse
   }
 
   if (action.type === "submit_leave") {
-    submitLeaveRequest(company.id, currentUser.id, { type: action.title, startDate: action.startDate, endDate: action.endDate, reason: action.description || "", files: [] });
-    return { ok: true, message: document.documentElement.dir === "rtl" ? "تم إرسال طلب الإجازة." : "Leave request submitted." };
+    window.open("/app/requests/leave", "_blank");
+    return {
+      ok: true,
+      message: document.documentElement.dir === "rtl"
+        ? "تقديم الإجازة يتم من قسم طلباتي — فُتح مسار الإجازة هناك. عبّئ النوع والتاريخ والإقرار من ذلك النموذج."
+        : "Leave is raised in My Requests — the leave lane is open. Complete type, dates, and the acknowledgement there.",
+    };
   }
 
   if (action.type === "review_leave") {
     const allowed = canManageEmployees(currentUser) || hasHRPermission(currentUser, data, "manage_leave") || hasHRPermission(currentUser, data, "manage_employees");
-    const employee = action.employee || action.employeeId ? data.employees.find((entry) => (action.employee && matches(entry.name, action.employee)) || entry.id === action.employeeId) : null;
-    const request = employee?.leaveRequests?.find((entry) => entry.id === action.requestId && entry.status === "pending");
     if (!allowed) return { ok: false, message: t("aiNoPermission") };
-    if (!employee || !request || !["approved", "rejected"].includes(action.decision)) return { ok: false, message: t("aiNoData") };
-    setLeaveRequestStatus(company.id, employee.id, action.requestId, action.decision, currentUser.name);
-    return { ok: true, message: document.documentElement.dir === "rtl" ? "تمت مراجعة طلب الإجازة." : "Leave request reviewed." };
+    window.open(requestReplyHref({ manage: true }), "_blank");
+    return {
+      ok: true,
+      message: document.documentElement.dir === "rtl"
+        ? "الرد على الإجازة والموافقة الدراسية يتم من قسم طلباتي — فُتح المسار هناك."
+        : "Leave and study-consent replies are written in My Requests — that lane is open.",
+    };
   }
 
   if (action.type === "log_safety_incident") {
@@ -340,17 +350,6 @@ export async function executeAssistantAction(action, { data, company, currentUse
       content: String(action.description).trim(), files: [], isIssue: true,
     });
     return { ok: true, message: document.documentElement.dir === "rtl" ? "تم تسجيل مشكلة المهمة وإشعار المسؤول." : "Task issue reported and the responsible manager was notified." };
-  }
-
-  if (action.type === "send_station_message") {
-    const station = visibleStations(currentUser, data).find((entry) => matches(entry.name, action.station || ""));
-    if (!station || !String(action.message || "").trim()) return { ok: false, message: t("aiNoData") };
-    await base44.functions.invoke("supabaseTargets", {
-      action: "sendChatMessage", ...sessionAuth, stationId: station.id,
-      userId: currentUser.id, userName: currentUser.name,
-      text: String(action.message).trim(), files: [],
-    });
-    return { ok: true, message: document.documentElement.dir === "rtl" ? `تم إرسال الرسالة إلى ${station.name}.` : `Message sent to ${station.name}.` };
   }
 
   if (action.type === "send_email") {

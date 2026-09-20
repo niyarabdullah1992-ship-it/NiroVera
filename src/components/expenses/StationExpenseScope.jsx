@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { Search } from "lucide-react";
-import { ACCENT, MUTED, NAVY, BORDER, SURFACE, BRAND_SOFT, field, CARD } from "@/lib/platformStyles";
+import { ACCENT, MUTED, NAVY, BORDER, SURFACE, BRAND_SOFT, field, CARD, CONTROL_RADIUS, PILL_RADIUS, RADIUS } from "@/lib/platformStyles";
 
 export default function StationExpenseScope({ stations, scope, setScope, selected, setSelected, canPick, ar }) {
   const [query, setQuery] = useState("");
   if (!canPick) {
     return (
-      <p style={{ margin: 0, borderRadius: "10px", background: SURFACE, border: `1px solid ${BORDER}`, padding: "11px 13px", fontSize: "13px", color: NAVY }}>
+      <p style={{ margin: 0, borderRadius: CONTROL_RADIUS, background: SURFACE, border: `1px solid ${BORDER}`, padding: "11px 13px", fontSize: "13px", color: NAVY }}>
         {ar ? "يُسجل المصروف على فرعك." : "Expense applies to your station."}
       </p>
     );
@@ -15,7 +15,7 @@ export default function StationExpenseScope({ stations, scope, setScope, selecte
   const visibleStations = stations.filter((station) => `${station.name || ""} ${station.location || ""}`.toLowerCase().includes(query.trim().toLowerCase()));
 
   const chip = (active) => ({
-    borderRadius: "20px",
+    borderRadius: PILL_RADIUS,
     padding: "6px 12px",
     fontSize: "12px",
     fontWeight: 500,
@@ -27,7 +27,7 @@ export default function StationExpenseScope({ stations, scope, setScope, selecte
   });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "8px", borderRadius: "13px", border: `1px solid ${BORDER}`, padding: "12px 13px", background: CARD }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px", borderRadius: RADIUS, border: `1px solid ${BORDER}`, padding: "12px 13px", background: CARD }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
         <button type="button" onClick={() => setScope("all")} style={chip(scope === "all")}>{ar ? "جميع الفروع" : "All stations"}</button>
         <button type="button" onClick={() => setScope("selected")} style={chip(scope === "selected")}>{ar ? "فروع معينة" : "Selected stations"}</button>
@@ -44,7 +44,7 @@ export default function StationExpenseScope({ stations, scope, setScope, selecte
               style={{ ...field, paddingInlineStart: "40px", paddingInlineEnd: "14px" }}
             />
           </div>
-          <div style={{ maxHeight: "240px", overflowY: "auto", borderRadius: "10px", border: `1px solid ${BORDER}`, background: CARD }}>
+          <div style={{ maxHeight: "240px", overflowY: "auto", borderRadius: CONTROL_RADIUS, border: `1px solid ${BORDER}`, background: CARD }}>
             {visibleStations.map((station) => (
               <label
                 key={station.stationId}

@@ -1,7 +1,7 @@
 /** Client mirror of base44/shared/shiftDerivations.ts — keep in sync. */
 
-import { citeRule, isRamadanDay, ruleValue } from "./laborRules.js";
-import { checkHeatBanGate, isHeatBanDate, monthHasHeatBanDay, shiftOverlapsNight } from "./contractLawDerivations.js";
+import { citeRule, isRamadanDay, isRamadanHoursSubject, ruleValue } from "./laborRules.js";
+import { checkHeatBanGate, heatBanWindow, isHeatBanDate, monthHasHeatBanDay, shiftOverlapsNight } from "./contractLawDerivations.js";
 
 export function minutesBetween(start, end) {
   const [sh, sm] = String(start || "0:0").split(":").map(Number);
@@ -129,6 +129,10 @@ function shiftHeatSeasonApplies(assignments, year, monthIndex, days, shiftId) {
   return monthHasHeatBanDay(year, monthIndex);
 }
 
+function employeeForGate(id, employees = []) {
+  return employees.find((row) => String(row?.id) === String(id) || String(row?.employeeId) === String(id)) || { id };
+}
+
 export function checkPublishGates({
   year,
   monthIndex,
@@ -137,6 +141,7 @@ export function checkPublishGates({
   onLeaveIds = [],
   restDow = 5,
   namesById = {},
+  employees = [],
 }) {
   const onLeave = new Set([...onLeaveIds].map(String));
   const days = daysInMonth(year, monthIndex);
@@ -156,19 +161,26 @@ export function checkPublishGates({
   const coveragePct = staffable ? Math.round((filled / staffable) * 100) : 0;
 
   const wMin = {};
+  const wRamadanMin = {};
   const wDays = {};
   const assignedIds = new Set();
 
   for (let d = 1; d <= days; d++) {
     const w = weekIndex(year, monthIndex, d);
+    const ramadanDay = isRamadanDay(dateKey(year, monthIndex, d));
     for (const st of shiftTypes) {
       for (const id of cellOf(assignments, year, monthIndex, d, st.id)) {
         if (onLeave.has(id)) continue;
         assignedIds.add(id);
+        const mins = minutesBetween(st.start, st.end);
         wMin[id] = wMin[id] || {};
         wDays[id] = wDays[id] || {};
-        wMin[id][w] = (wMin[id][w] || 0) + minutesBetween(st.start, st.end);
+        wMin[id][w] = (wMin[id][w] || 0) + mins;
         (wDays[id][w] = wDays[id][w] || new Set()).add(d);
+        if (ramadanDay) {
+          wRamadanMin[id] = wRamadanMin[id] || {};
+          wRamadanMin[id][w] = (wRamadanMin[id][w] || 0) + mins;
+        }
       }
     }
   }
@@ -181,7 +193,7 @@ export function checkPublishGates({
   const ramadanWeekCap = ruleValue("hours.ramadan.weekMaxHours", onDate);
   const exceptionDayCap = ruleValue("hours.ot.exceptionDayHours", onDate);
   const exceptionWeekCap = ruleValue("hours.ot.exceptionWeekHours", onDate);
-  // Art 98 reduces hours for Muslims. No religion field on the employee — apply the cap to every assigned person so Muslims are never under-protected.
+  // Art 98: empty religion is Muslim/protected; recorded non-Muslim is exempt.
   const weekArticle = citeRule("hours.week.ordinaryMaxHours", onDate)?.article;
   const workplaceArticle = citeRule("hours.workplace.maxHours", onDate)?.article;
   const ramadanArticle = citeRule("hours.ramadan.weekMaxHours", onDate)?.article;
@@ -227,6 +239,7 @@ export function checkPublishGates({
     if (isRamadanDay(dateKey(year, monthIndex, d))) ramadanDaysInMonth++;
   }
   for (const id of assignedIds) {
+    if (!isRamadanHoursSubject(employeeForGate(id, employees))) continue;
     for (let d = 1; d <= days; d++) {
       const key = dateKey(year, monthIndex, d);
       if (!isRamadanDay(key)) continue;
@@ -240,14 +253,9 @@ export function checkPublishGates({
       }
       if (ramadanDayBreach) break;
     }
-    const weeks = wMin[id] || {};
-    for (const [w, mins] of Object.entries(weeks)) {
-      let ramadanWeek = false;
-      for (let d = 1; d <= days; d++) {
-        if (weekIndex(year, monthIndex, d) !== Number(w)) continue;
-        if (isRamadanDay(dateKey(year, monthIndex, d))) { ramadanWeek = true; break; }
-      }
-      if (ramadanWeek && mins / 60 > ramadanWeekCap) {
+    const ramadanWeeks = wRamadanMin[id] || {};
+    for (const mins of Object.values(ramadanWeeks)) {
+      if (mins / 60 > ramadanWeekCap) {
         ramadanWeekBreach = { name: namesById[id] || id, hours: Math.round(mins / 60) };
         break;
       }
@@ -326,7 +334,12 @@ export function checkPublishGates({
     }))
     .filter((row) => !row.gate.ok);
   const heatFail = heatFails[0] || null;
+  // The hours and the season are the rule rows', so the roster check cannot outlive them.
+  const heatWin = heatBanWindow(onDate);
   const nightCount = shiftTypes.filter((st) => shiftOverlapsNight(st.start, st.end)).length;
+  const nightWin = `${String(ruleValue("hours.night.startHour", onDate)).padStart(2, "0")}:00–${String(ruleValue("hours.night.endHour", onDate)).padStart(2, "0")}:00`;
+  const nightWorkerHours = ruleValue("hours.night.workerHours", onDate);
+  const weeklyRestHours = ruleValue("hours.rest.weeklyHours", onDate);
 
   const checks = [
     {
@@ -361,14 +374,14 @@ export function checkPublishGates({
           ? `${ramadanDayBreach.name}: ${ramadanDayBreach.hours} ساعة في يوم رمضاني فوق حد ${ramadanDayCap}`
           : ramadanWeekBreach
             ? `${ramadanWeekBreach.name}: ${ramadanWeekBreach.hours} ساعة في أسبوع رمضاني فوق حد ${ramadanWeekCap}`
-            : `رمضان: حد ${ramadanDayCap} ساعات يومياً أو ${ramadanWeekCap} أسبوعياً للمسلمين — يُطبَّق على كل المعيَّنين لعدم وجود حقل ديانة`,
+            : `رمضان: حد ${ramadanDayCap} ساعات يومياً أو ${ramadanWeekCap} أسبوعياً للمسلمين — غير المسلم المسجّل على الملف مستثنى`,
       labelEn: !ramadanDaysInMonth
         ? "No Ramadan days this month"
         : ramadanDayBreach
           ? `${ramadanDayBreach.name}: ${ramadanDayBreach.hours} h on a Ramadan day above the ${ramadanDayCap} h cap`
           : ramadanWeekBreach
             ? `${ramadanWeekBreach.name}: ${ramadanWeekBreach.hours} h in a Ramadan week above the ${ramadanWeekCap} h cap`
-            : `Ramadan: ${ramadanDayCap} h a day or ${ramadanWeekCap} h a week for Muslims — applied to every assignee; religion is not on the employee record`,
+            : `Ramadan: ${ramadanDayCap} h a day or ${ramadanWeekCap} h a week for Muslims — a file marked non-Muslim is exempt`,
     },
     {
       id: "workplace_hours",
@@ -411,8 +424,8 @@ export function checkPublishGates({
       id: "weekly_rest",
       ok: restOk,
       article: weeklyRestArticle,
-      labelAr: restOk ? "راحة أسبوعية 24 ساعة متصلة" : `${restBreachName} بلا يوم راحة`,
-      labelEn: restOk ? "24 h continuous weekly rest" : `${restBreachName} has no rest day`,
+      labelAr: restOk ? `راحة أسبوعية ${weeklyRestHours} ساعة متصلة` : `${restBreachName} بلا يوم راحة`,
+      labelEn: restOk ? `${weeklyRestHours} h continuous weekly rest` : `${restBreachName} has no rest day`,
     },
     {
       id: "coverage",
@@ -422,51 +435,83 @@ export function checkPublishGates({
     },
     {
       id: "leave_excluded",
-      ok: leaveOnMatrix.length === 0,
+      ok: true,
+      block: false,
       labelAr: leaveOnMatrix.length
-        ? `${leaveOnMatrix.length} على إجازة ما زالوا في الإسناد`
-        : `${onLeave.size} على إجازة معتمدة — مستبعدون`,
+        ? `${leaveOnMatrix.map((id) => namesById[id] || id).join("، ")} على إجازة معتمدة — الإجازة تبقى إجازة، والنشر جائز`
+        : onLeave.size
+          ? `${onLeave.size} على إجازة معتمدة — مستبعدون من الإسناد`
+          : "لا إجازات معتمدة في هذا الشهر",
       labelEn: leaveOnMatrix.length
-        ? `${leaveOnMatrix.length} on leave still assigned`
-        : `${onLeave.size} on approved leave — excluded`,
+        ? `${leaveOnMatrix.map((id) => namesById[id] || id).join(", ")} on approved leave — leave stays leave, and publish is allowed`
+        : onLeave.size
+          ? `${onLeave.size} on approved leave — excluded from assignment`
+          : "No approved leave this month",
     },
     {
       id: "heat_ban",
       ok: !heatFail,
       labelAr: heatFail
-        ? `${heatFail.st.label || heatFail.st.id}: حظر 12:00–15:00 للميدان المكشوف من 15 يونيو إلى 15 سبتمبر`
+        ? `${heatFail.st.label || heatFail.st.id}: حظر ${heatWin.startLabel}–${heatWin.endLabel} للميدان المكشوف ${heatWin.seasonAr}`
         : "لا تداخل مع حظر الشمس للميدان المكشوف",
       labelEn: heatFail
-        ? `${heatFail.st.label || heatFail.st.id}: 12:00–15:00 outdoor ban from 15 June to 15 September`
+        ? `${heatFail.st.label || heatFail.st.id}: ${heatWin.startLabel}–${heatWin.endLabel} outdoor ban ${heatWin.seasonEn}`
         : "No overlap with the outdoor heat ban",
     },
     {
       id: "night_class",
       ok: true,
-      labelAr: nightCount ? `${nightCount} وردية تُصنَّف ليلية (23:00–06:00)` : "لا وردية ليلية في هذا الشهر",
-      labelEn: nightCount ? `${nightCount} shifts classed as night (23:00–06:00)` : "No night shift this month",
+      labelAr: nightCount ? `${nightCount} وردية تدخل ${nightWin} (يؤدي عملاً ليلياً — عامل ليلي إن بلغت ${nightWorkerHours} ساعات)` : "لا وردية تدخل نافذة الليل في هذا الشهر",
+      labelEn: nightCount ? `${nightCount} shifts enter ${nightWin} (night work — night worker if ${nightWorkerHours} hours or more)` : "No shift enters the night window this month",
     },
   ];
 
-  const failed = checks.find((c) => !c.ok) || null;
+  const failed = checks.find((c) => !c.ok && c.block !== false) || null;
   return { checks, blocked: !!failed, failed, openCells, weeklyMaxHours, coveragePct };
 }
 
 export const STANDARD_SHIFT_WINDOWS = [
-  { key: "morning", ar: "صباحي", en: "Morning", start: "07:00", end: "15:00" },
-  { key: "evening", ar: "مسائي", en: "Evening", start: "15:00", end: "23:00" },
-  { key: "night", ar: "ليلي", en: "Night", start: "23:00", end: "07:00" },
+  { key: "morning", ar: "صباحي", en: "Morning", start: "07:00", end: "15:00", restMinutes: 30 },
+  { key: "evening", ar: "مسائي", en: "Evening", start: "15:00", end: "23:00", restMinutes: 30 },
+  { key: "night", ar: "ليلي", en: "Night", start: "23:00", end: "07:00", restMinutes: 30 },
+  { key: "twelve", ar: "12 بقاء", en: "12h stay", start: "07:00", end: "19:00", restMinutes: 120 },
 ];
 
 export function shiftWindowKey(start, end) {
   return `${String(start || "").slice(0, 5)}-${String(end || "").slice(0, 5)}`;
 }
 
+/** Roster cell / aria — the duty window, not the start alone. */
+export function shiftHoursLine(shift, lang = "ar") {
+  const start = String(shift?.start || "").trim().slice(0, 5);
+  const end = String(shift?.end || "").trim().slice(0, 5);
+  if (!start && !end) return "";
+  if (start && end) return lang === "ar" ? `من ${start} إلى ${end}` : `${start}–${end}`;
+  return start || end;
+}
+
 export function nextDistinctShift(shiftTypes = [], ar = true) {
   const used = new Set((shiftTypes || []).map((s) => shiftWindowKey(s.start, s.end)));
   const unused = STANDARD_SHIFT_WINDOWS.find((slot) => !used.has(shiftWindowKey(slot.start, slot.end)));
   if (!unused) return null;
-  return { label: ar ? unused.ar : unused.en, start: unused.start, end: unused.end };
+  return {
+    label: ar ? unused.ar : unused.en,
+    start: unused.start,
+    end: unused.end,
+    restMinutes: unused.restMinutes ?? 30,
+  };
+}
+
+/** Restore a cleared start/end from the matching standard window. */
+export function repairedShiftWindow(shift) {
+  const start = String(shift?.start || "").slice(0, 5);
+  const end = String(shift?.end || "").slice(0, 5);
+  if (start && end) return null;
+  const match = STANDARD_SHIFT_WINDOWS.find((slot) =>
+    (start && slot.start === start) || (end && slot.end === end) || (!start && !end && slot.key === "morning"),
+  );
+  if (!match) return null;
+  return { start: match.start, end: match.end };
 }
 
 export function duplicateShiftGroups(shiftTypes = []) {

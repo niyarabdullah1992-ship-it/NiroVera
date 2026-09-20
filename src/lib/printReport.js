@@ -8,11 +8,11 @@ import { INVENTORY_REPORT_CSS, inventoryThemeClass } from "@/lib/inventoryReport
 // it renders real HTML instead of drawing glyphs into a PDF canvas.
 // Each company can supply its own logo and brand color; the color drives all
 // accents in the document, with light tints derived via hex-alpha.
-export function printReport({ title, companyName, periodLabel, dir = "ltr", stats = [], charts = [], sections = [], logoUrl = "", color = PDF_THEME.navy, theme = "default" }) {
+export function buildReportHtml({ title, companyName, periodLabel, dir = "ltr", stats = [], charts = [], sections = [], logoUrl = "", color = PDF_THEME.navy, theme = "default", autoPrint = false }) {
   const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const accent = brandReportColor(color);
   const isWide = theme === "inventorySimplified" ? false : theme === "attendanceModern" || sections.some((section) => (section.headers || []).length > 8);
-  const locale = dir === "rtl" ? "ar-SA" : "en-GB";
+  const locale = dir === "rtl" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB";
   const generatedAt = new Date().toLocaleString(locale);
   const sectionAnalytics = sections.map((section) => deriveReportAnalytics(section.headers, section.rows));
   const displayedStats = stats.length ? stats : sectionAnalytics.flatMap((item) => item.stats).slice(0, 4);
@@ -133,23 +133,35 @@ export function printReport({ title, companyName, periodLabel, dir = "ltr", stat
     <span class="foot-brand"><img src="${POWERCARE_MARK_URL}" alt="" />${dir === "rtl" ? "صادرة عبر NiroVera" : "Issued on NiroVera"}${companyName ? ` • ${esc(companyName)}` : ""}</span>
     <span>${esc(generatedAt)}</span>
   </div>
-  <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 350); };</script>
+  ${autoPrint ? `<script>window.onload = function(){ setTimeout(function(){ window.print(); }, 350); };</script>` : ""}
 </body>
 </html>`;
 
+  return html;
+}
+
+export function downloadReportHtml({ filename = "report", ...opts }) {
+  const html = buildReportHtml({ ...opts, autoPrint: false });
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  const base = String(filename || opts.title || "report").replace(/[^\w\u0600-\u06FF.-]+/g, "_").slice(0, 80) || "report";
+  link.download = base.toLowerCase().endsWith(".html") ? base : `${base}.html`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+  return true;
+}
+
+export function printReport(opts) {
+  const html = buildReportHtml({ ...opts, autoPrint: true });
   const win = window.open("", "_blank");
   if (win) {
     win.document.write(html);
     win.document.close();
     return true;
   }
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${String(title || "report").replace(/[^\w\u0600-\u06FF.-]+/g, "_").slice(0, 80) || "report"}.html`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(link.href);
+  downloadReportHtml({ filename: opts.title, ...opts });
   return false;
 }

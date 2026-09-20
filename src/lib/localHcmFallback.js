@@ -2,7 +2,7 @@
  * HCM register + job-objective board when the `hcm` cloud function is down.
  * Derives scores from company tasks / safety using the same gates as the server.
  */
-import { getCompanyData, getSession, updateCompany } from "@/lib/store";
+import { getCompanyData, updateCompany } from "@/lib/store";
 import {
   ACTION_LABELS,
   ACTION_REASONS,
@@ -24,6 +24,9 @@ import {
   todayKey,
 } from "@/lib/hcmDerivations";
 import { countPersonalHseDuty, deriveFairHseRates } from "@/lib/perfDerivations";
+import { HCM_DENY, hcmActor, hcmDenied } from "@/lib/hcmRights";
+
+const READ_ACTIONS = new Set(["list", "assignment", "objectiveBoard"]);
 
 function uid(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -35,18 +38,13 @@ function fail(message, extra = {}) {
   throw error;
 }
 
-function actor(companyId) {
-  const session = getSession();
-  const data = getCompanyData(companyId);
-  const user = (data?.employees || []).find((e) => e.id === session?.userId);
-  const owner = !user || user.role === "owner" || user.id === data?.ownerId || user.role === "director";
-  return {
-    userId: user?.id || session?.userId || "owner",
-    name: user?.name || "Owner",
-    role: user?.role || "owner",
-    owner,
-  };
-}
+// Who is acting comes from `hcmActor`, which carries the one rule every local
+// fallback shares: a session the roster does not recognise falls to least
+// privilege. This used to read `!user || …` — an unknown session was handed
+// `role: "owner"`, so a caller with a stale or invented userId could rewrite the
+// org structure and record hires and terminations, and the segregation-of-duties
+// gates (`SELF_ACTION_FORBIDDEN`, `SELF_RATING_FORBIDDEN`) never matched an actor
+// id of "owner" either.
 
 const ROLE_JOBS = {
   director: { code: "DIR", title: "مدير", family: "admin" },
@@ -330,8 +328,22 @@ export function localHcmCall(payload = {}) {
   const companyId = payload.companyId;
   if (!companyId) fail("Missing companyId");
   const action = String(payload.action || "");
-  const auth = actor(companyId);
+  const auth = hcmActor(companyId);
   const onDay = String(payload.onDay || "").slice(0, 10) || todayKey();
+
+  // The same three gates the cloud function applies, in the same order and with the
+  // same reasons: the objective board is open to any session, the register and other
+  // people's assignments are for managers, and every write is for senior roles. A
+  // refusal is returned rather than thrown so the screen prints its named reason
+  // instead of the generic "service offline" line it shows for a failed call.
+  if (READ_ACTIONS.has(action)) {
+    if (action === "list" && !auth.manager) return hcmDenied(HCM_DENY.REGISTER);
+    if (action === "assignment" && !auth.manager && String(payload.employeeId || "") !== String(auth.userId)) {
+      return hcmDenied(HCM_DENY.ASSIGNMENT);
+    }
+  } else if (!auth.senior) {
+    return hcmDenied(HCM_DENY.STRUCTURE);
+  }
 
   if (action === "objectiveBoard") {
     const current = getCompanyData(companyId);

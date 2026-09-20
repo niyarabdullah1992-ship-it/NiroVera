@@ -1,3 +1,8 @@
+// purpose: Secure Sign request. Proof Cycle step 5.
+// domain: trust
+// isolation: companyId
+// owner: multiSign
+// status: canonical
 {
   "name": "SignatureRequest",
   "type": "object",
@@ -39,14 +44,31 @@
         "string",
         "null"
       ],
-      "description": "SHA-256 of the fully-signed final file."
+      "description": "SHA-256 of the fully-signed final file. Set only after the creator releases."
+    },
+    "releasedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "When the creator released the file. Download and the completion notice wait for this."
+    },
+    "releasedByName": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Display name of the creator who released the file."
     },
     "status": {
       "type": "string",
+      "description": "pending while anyone is still unanswered or the creator has not released the file. A refusal never stops the remaining parties. Silence does not block the file: the creator can continue without the rest (skipped). The final copy cannot be downloaded until the creator releases. A 1–3 day retract window that closes without the remaining parties signing is a deadline refusal (رفض بانتهاء المدة), not a skip. Option 0 never auto-refuses. completed = all signed and the creator released. completed_with_refusal = released with at least one signature and at least one refusal or skip. rejected = released with nobody signed. deleted = soft-deleted by the creator with a required reason.",
       "enum": [
         "pending",
         "completed",
-        "rejected"
+        "completed_with_refusal",
+        "rejected",
+        "deleted"
       ]
     },
     "signingMode": {
@@ -55,12 +77,14 @@
         "sequential",
         "parallel"
       ],
-      "default": "parallel"
+      "default": "parallel",
+      "description": "Always treated as parallel. Every pending party may sign in any order. sequential on old records is ignored."
     },
     "currentSignerIndex": {
       "type": "number",
       "minimum": 0,
-      "default": 0
+      "default": 0,
+      "description": "Count of parties who have already signed. Not a turn index — it never blocks another pending signer."
     },
     "expiresAt": {
       "type": "string"
@@ -73,6 +97,20 @@
         "string",
         "null"
       ]
+    },
+    "deletedAt": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "When the creator soft-deleted the request. The record stays for the audit trail."
+    },
+    "deletionReason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Required written reason for the delete audit event."
     },
     "signers": {
       "type": "array",

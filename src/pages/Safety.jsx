@@ -16,9 +16,8 @@ import { toast } from "@/components/ui/use-toast";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import { MUTED, NEUTRAL } from "@/lib/platformStyles";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
-import { erpKicker } from "@/lib/erpModuleMeta";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import KpiStrip from "@/components/shared/KpiStrip";
+import { pageKicker } from "@/lib/moduleMeta";
 
 const LAYERS = new Set(["work", "comply", "approve", "analytics", "archive"]);
 
@@ -67,11 +66,11 @@ export default function Safety() {
   const awaitingApprove = stations.filter((station) => !recFor(station.id)?.approvedBy).length;
 
   const hints = {
-    work: ar ? "طبقة العمل: افتح الخطر إن كان قائمًا، أو سجّل الحادث إن كان قد وقع." : "Work layer: open a hazard if it is still present, or log an incident if it already happened.",
-    comply: ar ? "طبقة الامتثال: قوائم التحقق وتقييم المخاطر والتصاريح قبل الاعتماد." : "Compliance layer: checklists, risk assessment and permits before approval.",
-    approve: ar ? "طبقة الاعتماد: حدّد المستوى بعد التفتيش. لا تعتمد «آمنة» مع مخاطر مفتوحة." : "Approval layer: set the level after inspection. Do not approve Safe with open hazards.",
-    analytics: ar ? "طبقة المراجعة: المعدّلات والهرم عبر النطاق الحالي." : "Review layer: rates and pyramid for the current scope.",
-    archive: ar ? "طبقة السجل: حوادث مؤرشفة في هذا النطاق." : "Record layer: archived incidents in this scope.",
+    work: ar ? "افتح الخطر إن كان قائمًا، أو سجّل الحادث إن كان قد وقع." : "Open a hazard if it is still present, or log an incident if it already happened.",
+    comply: ar ? "قوائم التحقق وتقييم المخاطر والتصاريح قبل الاعتماد." : "Checklists, risk assessment and permits before approval.",
+    approve: ar ? "حدّد المستوى بعد التفتيش. لا تعتمد «آمنة» مع مخاطر مفتوحة." : "Set the level after inspection. Do not approve Safe with open hazards.",
+    analytics: ar ? "المعدّلات والهرم عبر النطاق الحالي." : "Rates and pyramid for the current scope.",
+    archive: ar ? "حوادث ومخاطر مغلقة في هذا النطاق." : "Closed incidents and hazards in this scope.",
   };
 
   const handleUpdate = (id, updates) => {
@@ -116,12 +115,31 @@ export default function Safety() {
     });
   };
 
+  const archiveItems = stations.flatMap((station) => {
+    const rec = recFor(station.id);
+    const incidents = ((rec?.incidentLog) || []).map((i, idx) => ({
+      id: `${station.id}_inc_${i.at || idx}`,
+      date: i.at || i.reviewedAt,
+      title: station.name,
+      text: i.description || "",
+      badge: ar ? "حادث" : "Incident",
+    }));
+    const hazards = ((rec?.hazardLog) || []).map((h, idx) => ({
+      id: `${station.id}_haz_${h.id || h.closedAt || idx}`,
+      date: h.closedAt || h.openedAt,
+      title: station.name,
+      text: h.description || "",
+      badge: ar ? "خطر أُغلق" : "Hazard closed",
+    }));
+    return [...incidents, ...hazards];
+  });
+
   const toolbarTabs = [
     { key: "work", icon: AlertTriangle, label: ar ? "العمل" : "Work" },
     { key: "comply", icon: ListChecks, label: ar ? "الامتثال" : "Compliance" },
     { key: "approve", icon: BadgeCheck, label: ar ? "الاعتماد" : "Approval" },
     ...(canSeeAnalytics ? [{ key: "analytics", icon: BarChart3, label: ar ? "المؤشرات" : "Rates" }] : []),
-    { key: "archive", icon: Archive, label: ar ? "السجل" : "Record" },
+    { key: "archive", icon: Archive, label: ar ? "الأرشيف" : "Archive" },
   ];
 
   const stationWorkspace = (layer) => {
@@ -164,7 +182,7 @@ export default function Safety() {
   return (
     <PlatformStampShell
       ar={ar}
-      kicker={erpKicker("/app/safety", lang)}
+      kicker={pageKicker("/app/safety", lang)}
       title={ar ? "السلامة HSE" : "Safety HSE"}
       hint={hints[tab]}
       maxWidth={1280}
@@ -172,7 +190,7 @@ export default function Safety() {
         value: tabItem.key,
         label: tabItem.label,
         icon: tabItem.icon,
-        count: tabItem.key === "approve" ? awaitingApprove : tabItem.key === "work" ? openHazardCount : 0,
+        count: tabItem.key === "approve" ? awaitingApprove : tabItem.key === "work" ? openHazardCount : tabItem.key === "archive" ? archiveItems.length : 0,
       }))}
       tool={tab}
       onTool={setTab}
@@ -182,20 +200,13 @@ export default function Safety() {
         </>
       )}
     >
-      <ErpSectionFrame
-        path="/app/safety"
-        ar={ar}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <KpiStrip
         stats={[
           { label: ar ? "مخاطر مفتوحة" : "Open hazards", value: openHazardCount, tone: openHazardCount > 0 ? "warn" : "ok" },
-          { label: ar ? "الفروع" : "Stations", value: stations.length },
           { label: ar ? "بانتظار الاعتماد" : "Awaiting approve", value: awaitingApprove, tone: awaitingApprove > 0 ? "warn" : null },
         ]}
-      >
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-start" }}>
-        <LaborArticleCite ruleId="safety.hygiene.cite" ar={ar} showText />
-        <LaborArticleCite ruleId="safety.precautions.cite" ar={ar} showText />
-        <LaborArticleCite ruleId="safety.inform.cite" ar={ar} showText />
-      </div>
+      />
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {!canEdit && reportStation && tab === "work" && (
         <SafetyIncidentReportForm
@@ -227,22 +238,14 @@ export default function Safety() {
 
       {tab === "archive" && (
         <RecordSmartArchive
-          items={stations.flatMap((station) =>
-            ((recFor(station.id)?.incidentLog) || []).map((i, idx) => ({
-              id: `${station.id}_${i.at || idx}`,
-              date: i.at,
-              title: station.name,
-              text: i.description || "",
-              badge: ar ? "حادث" : "Incident",
-            }))
-          )}
+          items={archiveItems}
           lang={lang}
           dir={dir}
-          emptyLabel={ar ? "لا حوادث مؤرشفة في هذا النطاق." : "No archived incidents in this scope."}
+          emptyLabel={ar ? "لا حوادث أو مخاطر مغلقة في هذا النطاق." : "No closed incidents or hazards in this scope."}
         />
       )}
       </div>
-      </ErpSectionFrame>
+      </div>
     </PlatformStampShell>
   );
 }

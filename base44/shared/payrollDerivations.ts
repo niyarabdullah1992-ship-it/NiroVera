@@ -25,12 +25,22 @@ export type PayrollLineLike = {
   allowances?: number;
   bonus?: number;
   overtimeHours?: number;
+  /** Approved overtime so far this calendar year, for the annual ceiling. */
+  overtimeHoursYtd?: number;
   overtimePay?: number;
   deductions?: number;
   currency?: string;
   /** Contract wage on Qiwa (base+allowances expected). Null = unknown / unmatched. */
   qiwaWage?: number | null;
   paid?: boolean;
+  /** Whether the employee's own GOSI share is withheld. Null/undefined = unknown, withhold nothing. */
+  isSaudi?: boolean | null;
+  /** Net frozen when the line was settled (paid, or its run approved). Read back verbatim. */
+  settledNet?: number | null;
+  settledOvertimeHours?: number;
+  settledOvertimePay?: number;
+  settledGosiEmployee?: number;
+  settledAt?: string | null;
 };
 
 export type PayrollRunLike = {
@@ -68,18 +78,55 @@ export function overtimePay(base: number, overtimeHours: number, onDate?: string
   return Math.round(hourlyFromBase(base) * ruleValue("hours.ot.premium", onDate) * hours * 100) / 100;
 }
 
+/** Pay for the month's approved overtime hours, at the statutory Article 107 premium. */
+export function lineOvertimePay(line: PayrollLineLike) {
+  if (line?.overtimePay != null) return Number(line.overtimePay) || 0;
+  return overtimePay(Number(line?.base) || 0, Number(line?.overtimeHours) || 0);
+}
+
 export function lineGross(line: PayrollLineLike) {
-  const ot = line.overtimePay != null
-    ? Number(line.overtimePay) || 0
-    : overtimePay(Number(line.base) || 0, Number(line.overtimeHours) || 0);
   return (Number(line.base) || 0)
     + (Number(line.allowances) || 0)
     + (Number(line.bonus) || 0)
-    + ot;
+    + lineOvertimePay(line);
 }
 
+/**
+ * The employee's own GOSI share, withheld from the wage before transfer. A statutory
+ * contribution, not an Article 93 deduction: it leaves the transfer but stays outside the
+ * half-wage cap. Non-Saudis carry no employee share; an unknown nationality withholds
+ * nothing rather than inventing a subtraction from someone's wage.
+ */
+export function gosiEmployeeWithheld(line: PayrollLineLike) {
+  if (line?.isSaudi !== true) return 0;
+  return gosiLine(line, { saudi: true }).employeeShare;
+}
+
+/**
+ * The one net: base + allowances + bonus + approved overtime − documented deductions −
+ * the employee's GOSI share. A settled line reports the figure stamped on it when it was
+ * paid or its run approved, so a later change to this formula never rewrites money that
+ * already moved; lines settled before the stamp existed keep the formula they were
+ * settled under (no overtime, no GOSI).
+ */
 export function lineNet(line: PayrollLineLike) {
-  return lineGross(line) - (Number(line.deductions) || 0);
+  const settled = Number(line?.settledNet);
+  if (line?.settledNet != null && Number.isFinite(settled)) return settled;
+  if (line?.paid) {
+    return (Number(line.base) || 0) + (Number(line.allowances) || 0) + (Number(line.bonus) || 0) - (Number(line.deductions) || 0);
+  }
+  return lineGross(line) - (Number(line.deductions) || 0) - gosiEmployeeWithheld(line);
+}
+
+/** The figures to freeze on a line at the moment it is settled. */
+export function settlementStamp(line: PayrollLineLike) {
+  return {
+    settledNet: lineNet({ ...line, settledNet: null, paid: false }),
+    settledOvertimeHours: Math.max(0, Number(line?.overtimeHours) || 0),
+    settledOvertimePay: lineOvertimePay(line),
+    settledGosiEmployee: gosiEmployeeWithheld(line),
+    settledAt: new Date().toISOString(),
+  };
 }
 
 /** Contractual monthly wage (base + allowances) — Qiwa / Art. 93 denominator. */
@@ -156,7 +203,9 @@ export function lineIssues(line: PayrollLineLike) {
   }
   if (lineNet(line) <= 0) issues.push("NET_REQUIRED");
   if (!checkArticle93Gate(line).ok) issues.push("ARTICLE_93_EXCEEDED");
-  if (Number(line.overtimeHours) > ruleValue("hours.ot.annualMaxHours")) issues.push("OT_ANNUAL_CAP");
+  // The ceiling is annual, so weigh the year's approved overtime when the line
+  // carries it; a single month can never reach 720 hours on its own.
+  if (Number(line.overtimeHoursYtd ?? line.overtimeHours) > ruleValue("hours.ot.annualMaxHours")) issues.push("OT_ANNUAL_CAP");
   const currency = String(line?.currency || "SAR").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) issues.push("CURRENCY_REQUIRED");
   return [...new Set(issues)];
@@ -177,6 +226,7 @@ export function enrichLine(line: PayrollLineLike) {
     ...line,
     overtimeHours: otHours,
     overtimePay: otPay,
+    gosiEmployee: gosiEmployeeWithheld(line),
     gross: lineGross({ ...line, overtimePay: otPay }),
     net: lineNet({ ...line, overtimePay: otPay }),
     qiwaMatched: qiwaMatches(line),
@@ -207,6 +257,7 @@ export function deriveStationBreakdown(items: PayrollLineLike[] = []) {
       allowances: 0,
       overtime: 0,
       deductions: 0,
+      gosiEmployee: 0,
       total: 0,
     };
     row.heads += 1;
@@ -214,6 +265,7 @@ export function deriveStationBreakdown(items: PayrollLineLike[] = []) {
     row.allowances += Number(line.allowances) || 0;
     row.overtime += line.overtimePay;
     row.deductions += Number(line.deductions) || 0;
+    row.gosiEmployee += Number(line.gosiEmployee) || 0;
     row.total += line.net;
     by.set(sid, row);
   }
@@ -228,6 +280,9 @@ export function deriveRunTotals(items: PayrollLineLike[] = []) {
   const baseAndAllowances = enriched.reduce((s, i) => s + (Number(i.base) || 0) + (Number(i.allowances) || 0), 0);
   const overtime = enriched.reduce((s, i) => s + i.overtimePay, 0);
   const deductions = enriched.reduce((s, i) => s + (Number(i.deductions) || 0), 0);
+  // Named on its own so the header arithmetic closes: wage + overtime − deductions −
+  // this is the total that leaves for the bank.
+  const gosiEmployee = enriched.reduce((s, i) => s + (Number(i.gosiEmployee) || 0), 0);
   const total = enriched.reduce((s, i) => s + i.net, 0);
   const qiwaMatched = enriched.filter((i) => i.qiwaMatched).length;
   const issueCount = enriched.filter((i) => i.issues.length > 0).length;
@@ -236,6 +291,7 @@ export function deriveRunTotals(items: PayrollLineLike[] = []) {
     baseAndAllowances,
     overtime,
     deductions,
+    gosiEmployee,
     total,
     qiwaMatched,
     qiwaTotal: enriched.length,
@@ -362,4 +418,34 @@ export function deriveWpsStatus(run: PayrollRunLike | null | undefined, now: Dat
     total: totals.qiwaTotal,
     matchLabel: `${totals.qiwaMatched}/${totals.qiwaTotal}`,
   };
+}
+
+export const GOSI_WAGE_CEILING = ruleValue("compliance.gosi.wageCeiling");
+export const GOSI_EMPLOYEE_RATE = ruleValue("compliance.gosi.employeeRate");
+export const GOSI_EMPLOYER_RATE = ruleValue("compliance.gosi.employerRate");
+export const GOSI_EXPAT_EMPLOYER_RATE = ruleValue("compliance.gosi.expatEmployerRate");
+
+/** Contributory wage = base + allowances, capped. Saudi: employee + employer shares. Expat: employer occupational hazard only. */
+export function gosiLine(line: PayrollLineLike, { saudi }: { saudi?: boolean } = {}) {
+  const wage = Math.min(contractWage(line), Number(GOSI_WAGE_CEILING) || 45000);
+  const sa = saudi !== false;
+  const employeeShare = sa ? Math.round(wage * (Number(GOSI_EMPLOYEE_RATE) || 0) * 100) / 100 : 0;
+  const employerShare = Math.round(wage * (sa ? (Number(GOSI_EMPLOYER_RATE) || 0) : (Number(GOSI_EXPAT_EMPLOYER_RATE) || 0)) * 100) / 100;
+  return {
+    base: Math.round(wage),
+    saudi: sa,
+    employeeShare,
+    employerShare,
+    total: Math.round((employeeShare + employerShare) * 100) / 100,
+  };
+}
+
+export function holidayPay(base: number, holidayHours: number) {
+  const hours = Math.max(0, Number(holidayHours) || 0);
+  return Math.round(hourlyFromBase(base) * ruleValue("hours.ot.premium") * hours * 100) / 100;
+}
+
+export function eidPay(base: number, eidHours: number) {
+  const hours = Math.max(0, Number(eidHours) || 0);
+  return Math.round(hourlyFromBase(base) * 2 * hours * 100) / 100;
 }

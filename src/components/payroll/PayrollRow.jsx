@@ -3,11 +3,8 @@ import { FileText, CheckCircle2, Circle, ListChecks } from "lucide-react";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
 import { netOf } from "@/lib/payroll";
 import { checkArticle90Gate, article90MaxDeduction } from "@/lib/payrollDerivations";
-import { buildWpsFileRows, wpsRowBlockers } from "@/lib/complianceDerivations";
-import { deductionLines, sourceLabel } from "@/lib/payrollDeductions";
 import { normalizeLocalizedNumber } from "@/lib/localizedNumber";
-import { BAD, OK, CARD, SURFACE } from "@/lib/platformStyles";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import { BAD, OK, CARD } from "@/lib/platformStyles";
 
 const NAVY = "#14284B";
 const MUTED = "#5A6B85";
@@ -18,40 +15,9 @@ const GREEN = "#1E9E63";
 // way in the table, the totals, and the exported WPS file.
 const money = (value) => Number(value || 0).toLocaleString("en-US");
 
-function mudadFileStatus(item, employee, ar) {
-  const profile = employee?.profile || {};
-  const base = Number(item.base) || 0;
-  const allowances = Number(item.allowances) || 0;
-  const [row] = buildWpsFileRows([{
-    employeeId: item.employeeId,
-    employeeName: employee?.name || "",
-    nationalId: profile.nationalId || employee?.nationalId || "",
-    iban: profile.iban || "",
-    netPay: netOf(item),
-    base,
-    allowances,
-    qiwaWage: item.qiwaWage != null ? item.qiwaWage : base + allowances,
-  }]);
-  const blocker = wpsRowBlockers(row, ar)[0];
-  return blocker || (ar ? "ملف مدى جاهز" : "Mudad file ready");
-}
-
-function attendanceChip(item, ar) {
-  const att = deductionLines(item).find((line) => line.source === "attendance");
-  if (att) {
-    const ref = att.sourceRefId ? ` · ${att.sourceRefId}` : "";
-    return `${sourceLabel("attendance", ar)}${ref}`;
-  }
-  if (Number(item.deductions) > 0) return ar ? "خصم موثّق" : "Documented deduction";
-  return ar ? "بلا خصم حضور" : "No attendance deduction";
-}
-
 export default function PayrollRow({ item, employee, ar, onChange, onTogglePaid, onPayslip, onDeductions }) {
   const num = (v) => Number(v) || 0;
   const baseMissing = !item.isOwner && num(item.base) <= 0;
-  const attLabel = attendanceChip(item, ar);
-  const mudadLabel = mudadFileStatus(item, employee, ar);
-  const mudadReady = mudadLabel === (ar ? "ملف مدى جاهز" : "Mudad file ready");
   const cell = (field, editable = true) => {
     const invalid = field === "base" && baseMissing;
     return (
@@ -84,22 +50,6 @@ export default function PayrollRow({ item, employee, ar, onChange, onTogglePaid,
   const a90 = checkArticle90Gate(item);
   const a90Max = article90MaxDeduction(item);
   const cellStyle = { padding: "12px 8px", textAlign: "center", borderBottom: `1px solid ${BORDER}` };
-  const chainChip = {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "1px 7px",
-    borderRadius: 20,
-    fontSize: 10,
-    fontWeight: 600,
-    background: SURFACE,
-    color: MUTED,
-    border: `1px solid ${BORDER}`,
-    lineHeight: 1.4,
-    maxWidth: 160,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  };
   return (
     <tr style={{ opacity: item.paid ? 0.72 : 1 }}>
       <td data-label={ar ? "الموظف" : "Employee"} style={{ ...cellStyle, textAlign: "start" }}>
@@ -112,13 +62,6 @@ export default function PayrollRow({ item, employee, ar, onChange, onTogglePaid,
           compact
           link={!!employee?.role}
         />
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 6 }}>
-          <span style={chainChip} title={attLabel}>{attLabel}</span>
-          <span style={{ fontSize: 10, color: MUTED }} aria-hidden>→</span>
-          <span style={chainChip} dir="ltr">{ar ? "صافٍ" : "Net"} {money(netOf(item))}</span>
-          <span style={{ fontSize: 10, color: MUTED }} aria-hidden>→</span>
-          <span style={mudadReady ? OK : BAD} title={mudadLabel}>{mudadLabel}</span>
-        </div>
       </td>
       <td data-label={ar ? "الأساسي" : "Base"} style={cellStyle}>{cell("base")}</td>
       <td data-label={ar ? "البدلات" : "Allowances"} style={cellStyle}>{cell("allowances")}</td>
@@ -155,12 +98,11 @@ export default function PayrollRow({ item, employee, ar, onChange, onTogglePaid,
         <span
           style={{ ...(a90.ok ? OK : BAD), display: "inline-flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}
           title={ar
-            ? `${a90.cite?.labelAr || "المادة 93"}: الخصم ${money(item.deductions)} من سقف ${money(a90Max)}`
-            : `${a90.cite?.labelEn || "Art. 93"}: deducted ${money(item.deductions)} of ${money(a90Max)} cap`}
+            ? `الخصم ${money(item.deductions)} من سقف ${money(a90Max)}`
+            : `Deducted ${money(item.deductions)} of ${money(a90Max)} cap`}
         >
-          <LaborArticleCite cite={a90.cite} ar={ar} />
           {a90.ok
-            ? (ar ? `${money(item.deductions)} / ${money(a90Max)}` : `${money(item.deductions)} / ${money(a90Max)}`)
+            ? `${money(item.deductions)} / ${money(a90Max)}`
             : (ar ? "تجاوز نصف الأجر" : "Over half the wage")}
         </span>
       </td>

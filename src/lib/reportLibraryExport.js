@@ -6,10 +6,13 @@ import { buildLocalOpsBoard } from "@/lib/localOpsFallback";
 import { netOf } from "@/lib/payroll";
 import { stationInHeaderScope } from "@/lib/stationTree";
 import { deriveAccountingPeriod } from "@/lib/accountingDerivations";
+import { buildDisciplineRegister } from "@/lib/disciplineDerivations";
+import { bandOf, derivePerformanceRange, isoDay } from "@/lib/perfRange";
 
 /** One picker row per live section — same columns as that page. */
 export const SECTION_REPORTS = [
   { id: "attendance", path: "/app/attendance", format: "xlsx", labelAr: "الحضور والانصراف", labelEn: "Attendance" },
+  { id: "shifts", path: "/app/shifts", format: "html", labelAr: "جدول الدوام", labelEn: "Duty roster" },
   { id: "tasks", path: "/app/tasks", format: "pdf", labelAr: "المهام والعمليات", labelEn: "Tasks" },
   { id: "payroll", path: "/app/payroll", format: "xlsx", labelAr: "الرواتب", labelEn: "Payroll" },
   { id: "expenses", path: "/app/expenses", format: "xlsx", labelAr: "المصروفات", labelEn: "Expenses" },
@@ -17,8 +20,8 @@ export const SECTION_REPORTS = [
   { id: "assets", path: "/app/assets", format: "xlsx", labelAr: "الأصول والعهد", labelEn: "Assets & custody" },
   { id: "safety", path: "/app/safety", format: "pdf", labelAr: "السلامة HSE", labelEn: "Safety" },
   { id: "performance", path: "/app/performance", format: "pdf", labelAr: "الأداء", labelEn: "Performance" },
-  { id: "leave", path: "/app/leave", format: "xlsx", labelAr: "طلبات الإجازة", labelEn: "Leave" },
-  { id: "daily_report", path: "/app/daily-report", format: "pdf", labelAr: "التقرير اليومي", labelEn: "Daily report" },
+  { id: "discipline", path: "/app/discipline", format: "xlsx", labelAr: "الجزاءات", labelEn: "Sanctions" },
+  { id: "leave", path: "/app/requests", format: "xlsx", labelAr: "طلبات الإجازة", labelEn: "Leave" },
 ];
 
 export function visibleSectionReports(currentUser, data, company) {
@@ -315,6 +318,83 @@ export function buildLibraryReport({
     };
   }
 
+  if (reportId === "shifts") {
+    const settings = data?.attendanceSettings || {};
+    const gps = settings.gps_enabled === true;
+    const scheduleRequired = settings.schedule_required !== false;
+    const weekdayNames = ar
+      ? ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
+      : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const rosters = (data?.schedules || []).filter((row) => {
+      if (!row) return false;
+      if (!stationScope || stationScope === "all") return stations.some((s) => s.id === row.stationId) || !row.stationId;
+      return stationInHeaderScope(row.stationId, stationScope, data?.stations);
+    });
+    const clockRows = [
+      [ar ? "مصدر الساعة" : "Clock source", ar ? "الجدول المنشور — لا ساعة شركة افتراضية" : "Published rota — no company default hour"],
+      [ar ? "شرط الوردية" : "Shift required", scheduleRequired ? (ar ? "إلزامي — غير المدرج لا يبصم" : "Required — unscheduled staff cannot punch") : (ar ? "اختياري" : "Optional")],
+      [ar ? "التأخير" : "Lateness", ar ? "من أول دقيقة بعد بداية الوردية المنشورة — لا حدّ سماح" : "From the first minute after the published start — no grace"],
+      [ar ? "شرط الموقع" : "Location", gps ? (ar ? "داخل نطاق الفرع" : "Inside station range") : (ar ? "غير مطلوب" : "Not required")],
+      [ar ? "جداول منشورة" : "Published rotas", String(rosters.filter((row) => row.published).length)],
+      [ar ? "جداول مسودة" : "Draft rotas", String(rosters.filter((row) => !row.published).length)],
+    ];
+    const typeRows = rosters.flatMap((sch) => (sch.shiftTypes || []).map((st) => [
+      stationName(data, sch.stationId),
+      sch.published ? (ar ? "منشور" : "Published") : (ar ? "مسودة" : "Draft"),
+      st.label || st.id,
+      st.start || "—",
+      st.end || "—",
+    ]));
+    const assignRows = [];
+    for (const sch of rosters) {
+      const types = Object.fromEntries((sch.shiftTypes || []).map((st) => [st.id, st]));
+      for (const [key, cells] of Object.entries(sch.assignments || {})) {
+        const dated = /^\d{4}-\d{2}-\d{2}$/.test(key);
+        if (dated && !inPeriod(key, period)) continue;
+        const dayLabel = dated ? key : (weekdayNames[Number(key)] || key);
+        for (const [shiftId, ids] of Object.entries(cells || {})) {
+          const st = types[shiftId] || {};
+          for (const empId of ids || []) {
+            assignRows.push([
+              dayLabel,
+              stationName(data, sch.stationId),
+              st.label || shiftId,
+              `${st.start || "—"}–${st.end || "—"}`,
+              employeeName(data, empId),
+              sch.published ? (ar ? "منشور" : "Published") : (ar ? "مسودة" : "Draft"),
+            ]);
+          }
+        }
+      }
+    }
+    const sections = [
+      { heading: ar ? "مصدر الوقت" : "Clock source", headers: ar ? ["القاعدة", "القيمة"] : ["Rule", "Value"], rows: clockRows },
+      {
+        heading: ar ? "أنواع الورديات" : "Shift types",
+        headers: ar ? ["الفرع", "الحالة", "الوردية", "من", "إلى"] : ["Station", "State", "Shift", "Start", "End"],
+        rows: typeRows.length ? typeRows : [[ar ? "لا أنواع ورديات في النطاق" : "No shift types in scope", "—", "—", "—", "—"]],
+      },
+      {
+        heading: ar ? "التعيينات" : "Assignments",
+        headers: ar ? ["اليوم", "الفرع", "الوردية", "الوقت", "الموظف", "النشر"] : ["Day", "Station", "Shift", "Hours", "Employee", "Publish"],
+        rows: assignRows.length ? assignRows : [[ar ? "لا تعيينات في هذه الفترة" : "No assignments in this period", "—", "—", "—", "—", "—"]],
+      },
+    ];
+    return {
+      entry,
+      title,
+      periodLabel,
+      headers: sections[2].headers,
+      rows: assignRows,
+      stats: [
+        { value: rosters.filter((row) => row.published).length, label: ar ? "جداول منشورة" : "Published" },
+        { value: typeRows.length, label: ar ? "أنواع ورديات" : "Shift types" },
+        { value: assignRows.length, label: ar ? "تعيينات" : "Assignments" },
+      ],
+      sections,
+    };
+  }
+
   if (reportId === "attendance") {
     const days = attendanceOtDays(data, team, period);
     const headers = ar
@@ -512,18 +592,60 @@ export function buildLibraryReport({
     return { entry, title, periodLabel, headers, rows, stats: [{ value: rows.length, label: ar ? "ملاحظات سلامة" : "Safety notes" }] };
   }
 
-  if (reportId === "performance") {
-    const tasks = data?.tasks || [];
-    const headers = ar ? ["الموظف", "مهام منجزة", "مهام مفتوحة"] : ["Employee", "Done", "Open"];
-    const rows = team.map((e) => {
-      const mine = tasks.filter((t) => String(t.employee_id || t.assignedTo) === String(e.id));
-      return [
-        e.name,
-        mine.filter((t) => t.status === "completed" || t.status === "approved").length,
-        mine.filter((t) => t.status !== "completed" && t.status !== "approved").length,
-      ];
+  if (reportId === "discipline") {
+    const teamIds = new Set(team.map((row) => String(row.id)));
+    const cases = (data?.disciplinaryCases || []).filter((item) => {
+      if (teamIds.size && !teamIds.has(String(item.employeeId))) return false;
+      return inPeriod(item.decidedAt || item.updatedAt || item.createdAt, period) || !item.createdAt;
     });
-    return { entry, title, periodLabel, headers, rows, stats: [{ value: team.length, label: ar ? "موظفون" : "People" }] };
+    const register = buildDisciplineRegister({
+      cases,
+      employees: team,
+      stations: data?.stations || [],
+      ar,
+    });
+    return {
+      entry,
+      title,
+      periodLabel,
+      headers: register.headers,
+      rows: register.rows,
+      stats: register.stats,
+    };
+  }
+
+  if (reportId === "performance") {
+    const today = isoDay();
+    const from = (periodFilter && typeof periodFilter === "object" && periodFilter.from) || String(period || "").slice(0, 10) || `${today.slice(0, 7)}-01`;
+    const to = (periodFilter && typeof periodFilter === "object" && periodFilter.to) || (String(period || "").length === 10 ? String(period) : today);
+    const view = derivePerformanceRange({ employees: team, stations, data, from, to, ar });
+    const headers = ar
+      ? ["#", "الموظف", "الفرع", "الإنجاز", "الموعد", "السلامة", "التغطية", "الدرجة", "التقييم", "الإثبات"]
+      : ["#", "Employee", "Branch", "Done", "On time", "Safety", "Coverage", "Score", "Band", "Proof"];
+    const rows = view.ranked.map((row, index) => [
+      index + 1,
+      row.name,
+      row.branch,
+      `${row.a.done}%`,
+      `${row.a.time}%`,
+      `${row.a.safe}%`,
+      `${row.a.cover}%`,
+      row.score,
+      bandOf(row.score, ar),
+      row.ok ? (ar ? "مكتمل" : "Enough") : `${row.a.proof}/${view.minProof}`,
+    ]);
+    return {
+      entry,
+      title,
+      periodLabel: `${view.fmtFrom} → ${view.fmtTo}`,
+      headers,
+      rows,
+      stats: [
+        { value: view.eligible.length ? view.avg : "—", label: ar ? "متوسط الدرجة" : "Average" },
+        { value: view.top ? `${view.top.name} ${view.top.score}` : "—", label: ar ? "الأعلى" : "Highest" },
+        { value: view.rowsAll.length - view.eligible.length, label: ar ? "بلا إثبات كافٍ" : "Short of proof" },
+      ],
+    };
   }
 
   if (reportId === "leave") {
@@ -546,26 +668,6 @@ export function buildLibraryReport({
     ];
     const headers = ar ? ["الموظف", "النوع", "الحالة", "من", "إلى"] : ["Employee", "Type", "Status", "From", "To"];
     return { entry, title, periodLabel, headers, rows, stats: [{ value: rows.filter((r) => r[2] === "pending").length, label: ar ? "معلّق" : "Pending" }] };
-  }
-
-  if (reportId === "daily_report") {
-    const filings = (data?.reports || []).filter((r) => {
-      const daily = !r.kind || r.kind === "daily" || r.type === "daily";
-      if (!daily) return false;
-      if (stationScope && stationScope !== "all" && !stationInHeaderScope(r.stationId, stationScope, data?.stations)) return false;
-      return inPeriod(r.dateKey || r.date || r.createdAt, period);
-    });
-    const headers = ar
-      ? ["التاريخ", "الفرع", "الحالة", "المُعِدّ", "الملاحظة"]
-      : ["Date", "Station", "Status", "Author", "Note"];
-    const rows = filings.map((r) => [
-      String(r.dateKey || r.date || r.createdAt || "").slice(0, 10),
-      stationName(data, r.stationId),
-      r.approved ? (ar ? "معتمد" : "Approved") : (ar ? "بانتظار الاعتماد" : "Pending"),
-      r.authorName || employeeName(data, r.authorId || r.employeeId) || "—",
-      r.note || r.content || r.summary || "—",
-    ]);
-    return { entry, title, periodLabel, headers, rows, stats: [{ value: filings.filter((r) => !r.approved).length, label: ar ? "بانتظار الاعتماد" : "Pending" }] };
   }
 
   if (reportId === "audit_trail") {

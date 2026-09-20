@@ -58,7 +58,7 @@ export const FILE_TREE = [
   },
   {
     group: "الصفحات الرئيسية (Pages)",
-    files: ["src/pages/Landing.jsx", "src/pages/Login.jsx", "src/pages/Register.jsx", "src/pages/ForgotPassword.jsx", "src/pages/ResetPassword.jsx", "src/pages/Dashboard.jsx", "src/pages/Operations.jsx", "src/pages/StationChat.jsx", "src/pages/Complaints.jsx", "src/pages/OrgStructure.jsx", "src/pages/EmployeeProfile.jsx", "src/pages/HRStructureManagement.jsx", "src/pages/Payroll.jsx", "src/pages/Performance.jsx", "src/pages/Safety.jsx", "src/pages/DailyReport.jsx", "src/pages/Attendance.jsx", "src/pages/Files.jsx", "src/pages/FileSigning.jsx", "src/pages/WorkProof.jsx", "src/pages/Assistant.jsx", "src/pages/OwnerPanel.jsx", "src/pages/Pricing.jsx", "src/pages/PricingSuccess.jsx", "src/pages/Verify.jsx", "src/pages/PublicSign.jsx", "src/pages/About.jsx", "src/pages/Help.jsx", "src/pages/Privacy.jsx", "src/pages/Security.jsx", "src/pages/Terms.jsx", "src/pages/PowerCarePresentation.jsx", "src/pages/CopyrightDoc.jsx", "src/pages/ProjectGuideDoc.jsx"],
+    files: ["src/pages/Landing.jsx", "src/pages/Login.jsx", "src/pages/Register.jsx", "src/pages/ForgotPassword.jsx", "src/pages/ResetPassword.jsx", "src/pages/Dashboard.jsx", "src/pages/Operations.jsx", "src/pages/Complaints.jsx", "src/pages/OrgStructure.jsx", "src/pages/EmployeeProfile.jsx", "src/pages/HRStructureManagement.jsx", "src/pages/Payroll.jsx", "src/pages/Performance.jsx", "src/pages/Safety.jsx", "src/pages/Attendance.jsx", "src/pages/Files.jsx", "src/pages/FileSigning.jsx", "src/pages/WorkProof.jsx", "src/pages/Assistant.jsx", "src/pages/OwnerPanel.jsx", "src/pages/Pricing.jsx", "src/pages/PricingSuccess.jsx", "src/pages/Verify.jsx", "src/pages/PublicSign.jsx", "src/pages/About.jsx", "src/pages/Privacy.jsx", "src/pages/Security.jsx", "src/pages/Terms.jsx", "src/pages/PowerCarePresentation.jsx", "src/pages/CopyrightDoc.jsx"],
   },
   {
     group: "المنطق والمكتبات (Libraries)",
@@ -70,7 +70,7 @@ export const FILE_TREE = [
   },
   {
     group: "مكونات الحضور والجدولة",
-    files: ["src/components/attendance/QuickCheckInCard.jsx", "src/components/attendance/CheckInOutCard.jsx", "src/components/attendance/AttendanceDailyDashboard.jsx", "src/components/attendance/AttendanceMonthlyReport.jsx", "src/components/attendance/AttendanceAnalytics.jsx", "src/components/attendance/AttendanceMapDashboard.jsx", "src/components/attendance/AttendanceSettingsBoard.jsx", "src/components/attendance/AttendanceLeaveRequests.jsx", "src/components/attendance/LocationMapModal.jsx", "src/components/attendance/ScheduleTab.jsx", "src/components/attendance/TimeFormatToggle.jsx", "src/components/schedules/StationScheduleEditor.jsx", "src/components/schedules/ScheduleCell.jsx", "src/components/schedules/ScheduleStatsBar.jsx"],
+    files: ["src/components/attendance/QuickCheckInCard.jsx", "src/components/attendance/CheckInOutCard.jsx", "src/components/attendance/AttendanceDailyDashboard.jsx", "src/components/attendance/AttendanceMonthlyReport.jsx", "src/components/attendance/AttendanceMapDashboard.jsx", "src/components/attendance/AttendanceSettingsBoard.jsx", "src/components/attendance/AttendanceLeaveRequests.jsx", "src/components/attendance/LocationMapModal.jsx", "src/components/attendance/ScheduleTab.jsx", "src/components/attendance/TimeFormatToggle.jsx", "src/components/schedules/StationScheduleEditor.jsx", "src/components/schedules/ScheduleCell.jsx", "src/components/schedules/ScheduleStatsBar.jsx"],
   },
   {
     group: "مكونات المهام والتقارير والأداء",
@@ -82,11 +82,11 @@ export const FILE_TREE = [
   },
   {
     group: "مكونات التوقيع الإلكتروني والملفات",
-    files: ["src/components/files/MySignatureCard.jsx", "src/components/files/SignaturePad.jsx", "src/components/files/TypedSignature.jsx", "src/components/files/MultiSignPlacementModal.jsx", "src/components/files/MultiSignCard.jsx", "src/components/files/MultiSignInbox.jsx", "src/components/files/VerifyDocumentCard.jsx", "src/components/files/FolderCard.jsx", "src/components/files/FileRow.jsx"],
+    files: ["src/components/files/StampStudio.jsx", "src/lib/stampStudio.js", "src/components/files/SigningHome.jsx", "src/components/files/SignaturePad.jsx", "src/components/files/TypedSignature.jsx", "src/components/files/SigningWorkspace.jsx", "src/components/files/SigningWorkspacePages.jsx", "src/components/files/SigningStatusBoard.jsx", "src/components/files/SigningArchiveBoard.jsx", "src/components/files/VerifyDocumentCard.jsx", "src/components/files/FolderCard.jsx", "src/components/files/FileRow.jsx"],
   },
   {
     group: "مكونات الدردشة والمساعد الذكي والجوال",
-    files: ["src/components/chat/ChatBubble.jsx", "src/components/chat/ChatContactList.jsx", "src/components/chat/ChatGroupManager.jsx", "src/components/chat/ChatMediaGallery.jsx", "src/components/chat/ChatSearchPanel.jsx", "src/components/chat/CompanyEmailComposer.jsx", "src/components/assistant/AssistantMessage.jsx", "src/components/assistant/VoiceControl.jsx", "src/components/assistant/SuggestedQuestions.jsx", "src/components/mobile/BottomTabBar.jsx", "src/components/mobile/PullToRefresh.jsx", "src/components/mobile/MobileSelect.jsx", "src/components/mobile/BackButton.jsx", "src/components/Layout.jsx", "src/components/Logo.jsx"],
+    files: ["src/components/assistant/AssistantMessage.jsx", "src/components/assistant/VoiceControl.jsx", "src/components/assistant/SuggestedQuestions.jsx", "src/components/mobile/BottomTabBar.jsx", "src/components/mobile/PullToRefresh.jsx", "src/components/mobile/MobileSelect.jsx", "src/components/mobile/BackButton.jsx", "src/components/Layout.jsx", "src/components/Logo.jsx"],
   },
   {
     group: "الوظائف الخلفية والأتمتة (Backend & Workflows)",
@@ -207,7 +207,7 @@ const stabilityScore = 100 - riskScore;`,
 };`,
   },
   {
-    name: "src/components/files/MySignatureCard.jsx — التوقيع الإلكتروني برقم تحقق مشفّر",
+    name: "src/components/files/StampStudio.jsx — التوقيع الإلكتروني برقم تحقق مشفّر",
     code: `// DocuSign-style unique signature ID: a non-reversible SHA-256 hash of the
 // signer + timestamp, formatted as PWC-XXXX-XXXX-XXXX for verification.
 async function generateSignatureId(userId) {
@@ -286,9 +286,11 @@ const GUIDES = {
   },
   "/app/signing": {
     ar: ["احفظ توقيعك مرة واحدة — يحصل على رقم تحقق مشفّر فريد.",
-         "لتواقيع عدة أطراف استخدم «طلب تواقيع متعددة» — كل طرف يوقّع من رابط خاص به."],
+         "في «توقيع» تحدّد من يوقّع الملف: أنت وحدك أو عدة أطراف، ولكل طرف رابطه الخاص.",
+         "لو رفض أحد الموقّعين لا يتوقف الملف — يواصل الباقون، ويُغلق بحالة «مكتمل مع رفض» مع تسجيل السبب."],
     en: ["Save your signature once — it gets a unique encrypted ID.",
-         "For multiple parties use Multi-Sign — each signer gets their own link."],
+         "In Sign you decide who signs the file: you alone or several parties, each with their own link.",
+         "If a signer refuses the file does not stop — the rest continue, and it closes as “completed with refusal” with the reason recorded."],
   },
 };
 

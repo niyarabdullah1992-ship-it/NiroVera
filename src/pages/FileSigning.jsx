@@ -1,91 +1,121 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { base44 } from "@/api/base44Client";
 import { getCompanyToken } from "@/lib/store";
-import { Inbox, PenLine, ShieldCheck, Users } from "lucide-react";
-import MySignatureCard from "@/components/files/MySignatureCard";
-import MultiSignCard from "@/components/files/MultiSignCard";
-import MultiSignInbox from "@/components/files/MultiSignInbox";
-import VerifyDocumentCard from "@/components/files/VerifyDocumentCard";
-import HowSigningWorks from "@/components/files/HowSigningWorks";
-import SigningProofBand from "@/components/files/SigningProofBand";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
-import { erpKicker } from "@/lib/erpModuleMeta";
+import SigningHome from "@/components/files/SigningHome";
+import StampStudio from "@/components/files/StampStudio";
+import SigningWorkspace from "@/components/files/SigningWorkspace";
+import PublicSignFlow from "@/components/files/PublicSignFlow";
+import { isOpenSigningState, settledState } from "@/lib/multiSignDerivations";
+import { invokeLocalMultiSign, shouldUseLocalMultiSign } from "@/lib/localMultiSignFallback";
+import SigningSectionShell from "@/components/files/SigningSectionShell";
+import { pageKicker } from "@/lib/moduleMeta";
 import { canCreateSignatureRequests, visibleEmployees } from "@/lib/permissions";
-import { MUTED, NAVY, pageCol } from "@/lib/platformStyles";
+import { updateEmployeeProfile } from "@/lib/store";
+import { MUTED, pageCol } from "@/lib/platformStyles";
+import { formatUiNumber } from "@/lib/dateFormat";
 import { ensureSignatureFonts } from "@/lib/typedSignatureImage";
+import { deskSigningRows, isConsentSignToken } from "@/lib/writtenConsent";
+
+// Signing is one surface now. Status, archive and verify are all filters on the
+// strip above the table — exactly as the tasks board treats its archive — so
+// nothing here needs a tab bar of its own.
+const TAB_FILTERS = { inbox: "status", status: "status", archive: "archive", verify: "verify", mine: "mine", individual: "all", group: "all" };
 
 export default function FileSigning() {
   const { lang } = useI18n();
   const { company, data, currentUser } = useAuth();
   const ar = lang === "ar";
   const [searchParams, setSearchParams] = useSearchParams();
-  const [multiRefresh, setMultiRefresh] = useState(0);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [requests, setRequests] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [workspace, setWorkspace] = useState(null);
+  const [studioOpen, setStudioOpen] = useState(false);
+  const [postSend, setPostSend] = useState(null);
+  const [homeFilter, setHomeFilter] = useState(null);
+  // Mirrors the seal the studio just wrote so the home card updates without a reload.
+  const [sealPatch, setSealPatch] = useState(null);
+
+  const closeWorkspace = () => {
+    setWorkspace((current) => {
+      if (current?.sourceUrl?.startsWith("blob:")) URL.revokeObjectURL(current.sourceUrl);
+      return null;
+    });
+  };
 
   useEffect(() => { ensureSignatureFonts(); }, []);
 
-  const canCreate = currentUser && data ? canCreateSignatureRequests(currentUser, data) : false;
-  const sections = useMemo(() => [
-    {
-      value: "individual",
-      label: ar ? "توقيع فردي" : "Individual",
-      hint: ar
-        ? "ارفع المستند، ضع ختمك على الصفحة، ثم وقّعه باسمك وبصفتك."
-        : "Upload the document, place your seal on the page, then sign in your name and capacity.",
-      icon: PenLine,
-    },
-    ...(canCreate ? [{
-      value: "group",
-      label: ar ? "توقيع جماعي" : "Group",
-      hint: ar
-        ? "المستند ثم الموقّعون ثم الحقول ثم الإرسال — نفس سلسلة الختم."
-        : "Document, then signers, then fields, then send — the same seal chain.",
-      icon: Users,
-    }] : []),
-    {
-      value: "inbox",
-      label: ar ? "الصندوق" : "Inbox",
-      hint: ar
-        ? "طلبات بانتظار توقيعك، ونسخ مكتملة جاهزة للتحميل."
-        : "Requests waiting for your signature, and completed copies ready to download.",
-      icon: Inbox,
-      count: pendingCount,
-    },
-    {
-      value: "verify",
-      label: ar ? "تحقق" : "Verify",
-      hint: ar
-        ? "ارفع النسخة الموقّعة أو أدخل رقم التحقق لمطابقة البصمة مع السجل."
-        : "Upload the signed copy or enter the verification id to match the fingerprint to the registry.",
-      icon: ShieldCheck,
-    },
-  ], [ar, canCreate, pendingCount]);
+  const companyId = company?.id;
+  const userId = currentUser?.id;
+  const userEmail = (currentUser?.email || "").toLowerCase();
 
-  const requested = searchParams.get("tab");
-  const allowed = new Set(sections.map((section) => section.value));
-  const tool = allowed.has(requested) ? requested : "individual";
+  const actor = useMemo(() => ({
+    id: userId,
+    userId,
+    email: userEmail,
+    name: currentUser?.name || "",
+    role: currentUser?.role || "",
+    companyId,
+  }), [userId, userEmail, currentUser?.name, currentUser?.role, companyId]);
 
-  const setTool = (value) => {
-    const next = new URLSearchParams(searchParams);
-    if (value === "individual") next.delete("tab");
-    else next.set("tab", value);
-    setSearchParams(next, { replace: true });
-  };
-
-  useEffect(() => {
-    if (!currentUser || !company) return;
+  const reload = useCallback(() => {
+    if (!companyId || !userId) return;
+    setLoading(true);
+    const localList = () => invokeLocalMultiSign(
+      { action: "list", companyId },
+      { actor, employees: data?.employees || [] },
+    ).requests || [];
+    if (shouldUseLocalMultiSign()) {
+      setRequests(deskSigningRows(localList()));
+      setLoading(false);
+      return;
+    }
     base44.functions.invoke("multiSign", {
       action: "list",
-      companyId: company.id,
-      sessionToken: getCompanyToken(company.id),
-      userId: currentUser.id,
-      email: (currentUser.email || "").toLowerCase(),
-    }).then((response) => setPendingCount((response.data?.requests || []).filter((request) => request.myStatus === "pending").length)).catch(() => setPendingCount(0));
-  }, [company, currentUser, multiRefresh]);
+      companyId,
+      sessionToken: getCompanyToken(companyId),
+      userId,
+      email: userEmail,
+    })
+      .then((response) => setRequests(deskSigningRows(response.data?.requests || [])))
+      .catch(() => setRequests(deskSigningRows(localList())))
+      .finally(() => setLoading(false));
+  }, [actor, companyId, data?.employees, userId, userEmail]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const { active, pendingCount } = useMemo(() => {
+    const rows = requests || [];
+    const open = rows.filter((row) => isOpenSigningState(settledState(row).state));
+    return {
+      active: requests === null ? null : open,
+      pendingCount: open.filter((row) => row.myStatus === "pending").length,
+    };
+  }, [requests]);
+
+  const canCreate = currentUser && data ? canCreateSignatureRequests(currentUser, data) : false;
+
+  // An old ?tab= bookmark now picks the matching chip instead of a tab, then the
+  // parameter is dropped so the URL settles on the single surface.
+  const requested = searchParams.get("tab");
+  const signToken = searchParams.get("sign") || "";
+  const [initialFilter] = useState(() => TAB_FILTERS[searchParams.get("tab")] || "all");
+  useEffect(() => {
+    if (!requested) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("tab");
+    setSearchParams(next, { replace: true });
+  }, [requested, searchParams, setSearchParams]);
+
+  const closeSignRequest = () => {
+    setHomeFilter("mine");
+    const next = new URLSearchParams(searchParams);
+    next.delete("sign");
+    next.delete("tab");
+    setSearchParams(next, { replace: true });
+  };
 
   if (!currentUser || !company) {
     return (
@@ -96,77 +126,143 @@ export default function FileSigning() {
   }
 
   const scopedEmployees = visibleEmployees(currentUser, data || { stations: [], employees: [] });
-  const legal = (
-    <>
-      {ar
-        ? "توقيع إلكتروني متقدم داخل المنشأة وفق نظام التعاملات الإلكترونية: هوية الموقّع، إثبات الإرادة، سلامة المحتوى، والتحقق. ليس شهادة رقمية مؤهلة من مركز تصديق مرخّص."
-        : "An advanced in-company electronic signature under the Electronic Transactions Law: signer identity, intent, content integrity, and verification. Not a qualified certificate from a licensed CSP."}
-      {" "}
-      {ar ? "التحقق العلني عبر" : "Public verification at"}{" "}
-      <Link to="/verify" style={{ color: NAVY, fontWeight: 600 }}>/verify</Link>
-      {ar ? " دون الدخول إلى المنصة." : " — no platform login required."}
-    </>
-  );
+  const seal = { ...(currentUser.profile || {}), ...(sealPatch || {}) };
+  const sealReady = Boolean(seal.signatureUrl);
+
+  const removeSeal = () => {
+    const cleared = { signatureUrl: "", signatureRawUrl: "", signatureVariant: "", signatureId: "", stampConfig: null };
+    updateEmployeeProfile(company.id, currentUser.id, cleared);
+    setSealPatch(cleared);
+  };
+
+  const openRequest = (request) => {
+    if (settledState(request).state === "deleted") return;
+    if (request.myStatus === "pending" && request.myToken) {
+      setHomeFilter("mine");
+      const next = new URLSearchParams(searchParams);
+      next.set("sign", request.myToken);
+      setSearchParams(next);
+      return;
+    }
+    if (request.docUrl) window.open(request.docUrl, "_blank", "noopener");
+  };
+
+  if (signToken && isConsentSignToken(signToken, data?.signatureRequests, data?.employees)) {
+    return <Navigate to="/app/requests" replace />;
+  }
+
+  if (signToken) {
+    return <PublicSignFlow token={signToken} variant="app" onBack={closeSignRequest} />;
+  }
+
+  const applySavedSeal = (saved) => {
+    setSealPatch(saved);
+    setWorkspace((current) => (current
+      ? {
+        ...current,
+        signature: {
+          signatureUrl: saved.signatureUrl,
+          signatureRawUrl: saved.signatureRawUrl,
+          signatureVariant: saved.signatureVariant,
+          stampConfig: saved.stampConfig,
+          preview: saved.signatureUrl,
+        },
+      }
+      : current));
+  };
+
+  if (studioOpen) {
+    return (
+      <StampStudio
+        companyId={company.id}
+        companyName={company.name}
+        currentUser={{ ...currentUser, profile: seal }}
+        ar={ar}
+        onClose={() => setStudioOpen(false)}
+        onSaved={(saved) => {
+          applySavedSeal(saved);
+          setStudioOpen(false);
+        }}
+      />
+    );
+  }
+
+  if (workspace) {
+    return (
+      <SigningWorkspace
+        file={workspace.file}
+        sourceUrl={workspace.sourceUrl}
+        currentUser={{ ...currentUser, profile: seal }}
+        companyId={company.id}
+        employees={scopedEmployees}
+        canGroup={canCreate}
+        sealPreview={workspace.signature?.preview || seal.signatureUrl}
+        signatureUrl={workspace.signature?.signatureUrl || seal.signatureUrl}
+        signatureRawUrl={workspace.signature?.signatureRawUrl || seal.signatureRawUrl}
+        signatureVariant={workspace.signature?.signatureVariant || seal.signatureVariant}
+        stampConfig={workspace.signature?.stampConfig || seal.stampConfig}
+        ar={ar}
+        onOpenStudio={() => setStudioOpen(true)}
+        onClose={closeWorkspace}
+        onSigned={(payload) => {
+          reload();
+          if (payload?.kind === "group") {
+            setPostSend({
+              requestId: payload.requestId || "",
+              links: payload.links || [],
+            });
+          }
+        }}
+      />
+    );
+  }
 
   return (
-    <PlatformStampShell
+    <SigningSectionShell
       ar={ar}
-      appearance="signing"
-      className="nv-signing-stage"
-      kicker={erpKicker("/app/signing", lang)}
+      kicker={pageKicker("/app/signing", lang)}
       title={ar ? "التوقيع الرقمي" : "Digital signing"}
       hint={ar
-        ? "ختم واحد يُحفظ بهويتك، يُوضع على الصفحة، ثم يُوقَّع باسمك وبصفتك — التحقق العلني بلا دخول."
-        : "One seal saved to your identity, placed on the page, then signed in your name — public verify with no login."}
-      sections={sections}
-      tool={tool}
-      onTool={setTool}
-      legal={legal}
+        ? "ختمك هنا لملفات التوقيع المتوازي. الموافقة الخطية تُختم داخل طلباتي — الملف يبقى هناك لأن الختم غاية ذلك الطلب."
+        : "Your seal lives here for parallel signing files. Written consent is sealed inside My Requests — the file stays there because the seal is that request's purpose."}
+      meta={pendingCount > 0
+        ? (ar ? `بصمة · ${formatUiNumber(pendingCount, true)} بانتظارك` : `SHA-256 · ${pendingCount} awaiting you`)
+        : (ar ? "بصمة · سجل الشركة" : "SHA-256 · company registry")}
     >
-      <ErpSectionFrame
-        path="/app/signing"
-        ar={ar}
-        stats={[
-        { label: ar ? "بانتظار توقيعك" : "Awaiting your sign", value: pendingCount, tone: pendingCount > 0 ? "warn" : "ok" },
-        { label: ar ? "التحقق العلني" : "Public verify", value: ar ? "مفتوح" : "Open", hint: "/verify" },
-      ]}
-      >
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <SigningProofBand ar={ar} />
-      {tool === "individual" && (
-        <MySignatureCard
-          companyId={company.id}
-          companyName={company.name}
-          currentUser={currentUser}
+      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+        <SigningHome
           ar={ar}
-        />
-      )}
-      {tool === "group" && canCreate && (
-        <MultiSignCard
+          lang={lang}
           currentUser={currentUser}
           companyId={company.id}
-          employees={scopedEmployees}
-          ar={ar}
-          onCreated={() => setMultiRefresh((n) => n + 1)}
+          requests={requests}
+          activeRequests={active}
+          loading={loading}
+          canGroup={canCreate}
+          initialFilter={postSend ? "status" : initialFilter}
+          activeFilter={homeFilter}
+          focusRequestId={postSend?.requestId || ""}
+          sentLinks={postSend?.links || []}
+          sealPreview={seal.signatureUrl}
+          sealId={seal.signatureId}
+          sealReady={sealReady}
+          onOpenStudio={() => setStudioOpen(true)}
+          onRemoveSeal={removeSeal}
+          onOpenDocument={({ file, sourceUrl }) => setWorkspace({
+            file,
+            sourceUrl,
+            signature: {
+              signatureUrl: seal.signatureUrl,
+              signatureRawUrl: seal.signatureRawUrl,
+              signatureVariant: seal.signatureVariant,
+              stampConfig: seal.stampConfig,
+              preview: seal.signatureUrl,
+            },
+          })}
+          onOpenRequest={openRequest}
+          onReload={reload}
         />
-      )}
-      {tool === "inbox" && (
-        <MultiSignInbox
-          currentUser={currentUser}
-          companyId={company.id}
-          ar={ar}
-          refreshKey={multiRefresh}
-          onPendingChange={setPendingCount}
-        />
-      )}
-      {tool === "verify" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <VerifyDocumentCard ar={ar} />
-          <HowSigningWorks ar={ar} />
-        </div>
-      )}
       </div>
-      </ErpSectionFrame>
-    </PlatformStampShell>
+    </SigningSectionShell>
   );
 }

@@ -15,7 +15,6 @@ const WEIGHT = {
   expiringContract: 6,
   criticalSafety: 18,
   openHazard: 7,
-  pendingReport: 5,
   pendingLeave: 4,
   overdueTask: 6,
 };
@@ -44,9 +43,6 @@ export function deriveStationReadiness(data, station) {
   const expiring = deriveExpiringDocs(crewList);
   const expiredDocs = expiring.filter((d) => d.days < 0);
   const expiringDocs = expiring.filter((d) => d.days >= 0);
-  const pendingReports = (data?.reports || []).filter(
-    (r) => String(r.stationId ?? "") === String(stationId) && r.status === "pending",
-  );
   const pendingLeave = crewList.reduce(
     (sum, e) => sum + (e.leaveRequests || []).filter((r) => r.status === "pending").length,
     0,
@@ -66,8 +62,8 @@ export function deriveStationReadiness(data, station) {
       count: expiredDocs.length,
       weight: WEIGHT.expiredDoc * expiredDocs.length,
       to: "/app/hr",
-      ar: `${expiredDocs.length} وثيقة نظامية منتهية (DOC_EXPIRED) — لا إسناد قبل التجديد`,
-      en: `${expiredDocs.length} statutory documents expired (DOC_EXPIRED) — no assignment before renewal`,
+      ar: `${expiredDocs.length} وثيقة نظامية منتهية — لا إسناد قبل التجديد`,
+      en: `${expiredDocs.length} statutory documents expired — no assignment before renewal`,
     });
   }
   if (expiringDocs.length) {
@@ -76,8 +72,8 @@ export function deriveStationReadiness(data, station) {
       count: expiringDocs.length,
       weight: WEIGHT.expiringDoc * expiringDocs.length,
       to: "/app/hr",
-      ar: `${expiringDocs.length} وثيقة تنتهي خلال ${EXPIRY_WARN_DAYS} يومًا (DOC_EXPIRING)`,
-      en: `${expiringDocs.length} documents expire within ${EXPIRY_WARN_DAYS} days (DOC_EXPIRING)`,
+      ar: `${expiringDocs.length} وثيقة تنتهي خلال ${EXPIRY_WARN_DAYS} يومًا`,
+      en: `${expiringDocs.length} documents expire within ${EXPIRY_WARN_DAYS} days`,
     });
   }
   const expiredContracts = [];
@@ -95,8 +91,8 @@ export function deriveStationReadiness(data, station) {
       count: expiredContracts.length,
       weight: WEIGHT.expiredContract * expiredContracts.length,
       to: "/app/hr",
-      ar: `${expiredContracts.length} عقد محدد المدة منتهٍ (CONTRACT_EXPIRED) — لا إسناد قبل التجديد`,
-      en: `${expiredContracts.length} fixed-term contracts expired (CONTRACT_EXPIRED) — no assignment before renewal`,
+      ar: `${expiredContracts.length} عقد محدد المدة منتهٍ — لا إسناد قبل التجديد`,
+      en: `${expiredContracts.length} fixed-term contracts expired — no assignment before renewal`,
     });
   }
   if (missingContractEnds.length) {
@@ -105,8 +101,8 @@ export function deriveStationReadiness(data, station) {
       count: missingContractEnds.length,
       weight: WEIGHT.contractEndMissing * missingContractEnds.length,
       to: "/app/hr",
-      ar: `${missingContractEnds.length} عقد محدد المدة بلا تاريخ نهاية (CONTRACT_END_REQUIRED)`,
-      en: `${missingContractEnds.length} fixed-term contracts missing an end date (CONTRACT_END_REQUIRED)`,
+      ar: `${missingContractEnds.length} عقد محدد المدة بلا تاريخ نهاية`,
+      en: `${missingContractEnds.length} fixed-term contracts missing an end date`,
     });
   }
   if (expiringContracts.length) {
@@ -115,8 +111,8 @@ export function deriveStationReadiness(data, station) {
       count: expiringContracts.length,
       weight: WEIGHT.expiringContract * expiringContracts.length,
       to: "/app/hr",
-      ar: `${expiringContracts.length} عقد محدد المدة ينتهي خلال ${EXPIRY_WARN_DAYS} يومًا (CONTRACT_EXPIRING)`,
-      en: `${expiringContracts.length} fixed-term contracts end within ${EXPIRY_WARN_DAYS} days (CONTRACT_EXPIRING)`,
+      ar: `${expiringContracts.length} عقد محدد المدة ينتهي خلال ${EXPIRY_WARN_DAYS} يومًا`,
+      en: `${expiringContracts.length} fixed-term contracts end within ${EXPIRY_WARN_DAYS} days`,
     });
   }
   if (safety?.level === "red") {
@@ -139,22 +135,12 @@ export function deriveStationReadiness(data, station) {
       en: `${hazards.length} open hazards awaiting closure`,
     });
   }
-  if (pendingReports.length) {
-    blockers.push({
-      key: "report_pending",
-      count: pendingReports.length,
-      weight: WEIGHT.pendingReport * pendingReports.length,
-      to: "/app/daily-report",
-      ar: `${pendingReports.length} تقرير يومي بانتظار الاعتماد`,
-      en: `${pendingReports.length} daily reports awaiting approval`,
-    });
-  }
   if (pendingLeave) {
     blockers.push({
       key: "leave_pending",
       count: pendingLeave,
       weight: WEIGHT.pendingLeave * pendingLeave,
-      to: "/app/leave",
+      to: "/app/requests/leave",
       ar: `${pendingLeave} طلب إجازة نظامية بانتظار القرار (نظام العمل م.109)`,
       en: `${pendingLeave} statutory leave requests awaiting a decision (Labour Law art.109)`,
     });

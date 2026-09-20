@@ -1,40 +1,92 @@
 // Shared leave category config used across leave components.
 
-import { citeLeaveType, ruleAt, ruleValue } from "./laborRules.js";
+import { profileGender } from "./employeeProfileFields.js";
+import { citeLeaveType, isRamadanHoursSubject, ruleAt, ruleValue } from "./laborRules.js";
+import { chargeableSpanExcludingHolidays } from "./leaveEidOverlap.js";
 
 export const LEAVE_TYPES = [
   { key: "annual", defaultTotal: ruleValue("leave.annual.days"), article: citeLeaveType("annual")?.article || null, ar: "سنوية", en: "Annual" },
+  { key: "grant", defaultTotal: null, article: null, ar: "رصيد", en: "Granted days" },
   { key: "sick", defaultTotal: ruleValue("leave.sick.days"), article: citeLeaveType("sick")?.article || null, requiresFile: true, ar: "مرضية", en: "Sick" },
   { key: "exam", defaultTotal: null, article: citeLeaveType("exam")?.article || null, requiresFile: true, ar: "امتحان", en: "Exam" },
   { key: "marriage", defaultTotal: ruleValue("leave.marriage.days"), article: citeLeaveType("marriage")?.article || null, ar: "زواج", en: "Marriage" },
   { key: "bereavement", defaultTotal: ruleValue("leave.bereavement.days"), article: citeLeaveType("bereavement")?.article || null, ar: "وفاة زوج/أصل/فرع", en: "Bereavement (spouse/parent/child)" },
   { key: "bereavement_sibling", defaultTotal: ruleValue("leave.bereavement_sibling.days"), article: citeLeaveType("bereavement_sibling")?.article || null, ar: "وفاة أخ/أخت", en: "Bereavement (sibling)" },
   { key: "maternity", defaultTotal: ruleValue("leave.maternity.days"), article: citeLeaveType("maternity")?.article || null, gender: "female", requiresFile: true, ar: "أمومة", en: "Maternity" },
+  { key: "maternity_extend", defaultTotal: ruleValue("leave.maternity.unpaidExtendDays"), article: citeLeaveType("maternity_extend")?.article || "151", gender: "female", ar: "تمديد وضع بلا أجر", en: "Unpaid maternity extension" },
+  { key: "maternity_companion", defaultTotal: ruleValue("leave.maternity.disabledChildDays"), article: citeLeaveType("maternity_companion")?.article || "151", gender: "female", requiresFile: true, ar: "مرافقة مولود مريض/معاق", en: "Sick or disabled-child companion" },
+  { key: "iddah", defaultTotal: ruleValue("leave.iddah.days"), article: citeLeaveType("iddah")?.article || null, gender: "female", requiresFile: true, ar: "عدّة وفاة الزوج", en: "Iddah" },
   { key: "paternity", defaultTotal: ruleValue("leave.paternity.days"), article: citeLeaveType("paternity")?.article || null, gender: "male", ar: "أبوة", en: "Paternity" },
-  { key: "hajj", defaultTotal: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article || null, ar: "حج", en: "Hajj" },
+  { key: "hajj", defaultTotal: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article || null, religion: "muslim", ar: "حج", en: "Hajj" },
+  { key: "eid", defaultTotal: null, article: citeLeaveType("eid")?.article || null, ar: "عيد / عطلة رسمية", en: "Eid / official holiday" },
   { key: "emergency", defaultTotal: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
   { key: "unpaid", defaultTotal: null, article: citeLeaveType("unpaid")?.article || null, ar: "بدون راتب", en: "Unpaid" },
 ];
 
-export function leaveTypeLabel(type, ar = true) {
+export function leaveTypeLabel(type, ar = true, profile) {
   const key = String(type || "").trim();
   const found = LEAVE_TYPES.find((item) => item.key === key.toLowerCase());
-  if (found) return ar ? found.ar : found.en;
+  if (found) {
+    if (found.key === "bereavement" && profileGender(profile) === "female") {
+      return ar ? "وفاة أصل/فرع" : "Bereavement (parent/child)";
+    }
+    return ar ? found.ar : found.en;
+  }
   if (!key) return ar ? "إجازة" : "Leave";
   if (/[\u0600-\u06FF]/.test(key)) return key;
   return key;
+}
+
+/** Local Friday/Saturday — Saudi weekly rest. Parse YYYY-MM-DD as a local date. */
+export function isSaudiWeekend(date) {
+  if (date instanceof Date && !Number.isNaN(date.getTime())) {
+    const day = date.getDay();
+    return day === 5 || day === 6;
+  }
+  const key = String(date || "").slice(0, 10);
+  const match = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const local = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  const day = local.getDay();
+  return day === 5 || day === 6;
+}
+
+/** Roster people with approved leave on this day — no invented absences. */
+export function approvedLeavePeopleOnDay(employees, date = new Date()) {
+  const out = [];
+  for (const employee of employees || []) {
+    const request = approvedLeaveOnDay(employee, date);
+    if (!request) continue;
+    out.push({
+      id: employee.id,
+      name: employee.name || employee.id,
+      request,
+    });
+  }
+  return out;
+}
+
+/**
+ * Weekend overlay for the operational calendar.
+ * Weekday → null (caller uses the full day record).
+ * Weekend with no approved leave → [] (cell stays عطلة).
+ * Weekend with approved leave → leave-only people (no fake absence).
+ */
+export function weekendLeavePeople(employees, date) {
+  if (!isSaudiWeekend(date)) return null;
+  return approvedLeavePeopleOnDay(employees, date);
 }
 
 // Requests longer than this many days require a mandatory justification + supporting file.
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
 
 export function leaveTypesForProfile(profile) {
-  const g = String(profile?.gender || "").toLowerCase();
-  const female = g === "female" || g.includes("أنثى");
-  const male = g === "male" || g.includes("ذكر");
+  const g = profileGender(profile);
+  const muslim = isRamadanHoursSubject({ profile });
   return LEAVE_TYPES.filter((ty) => {
-    if (ty.gender === "female" && male) return false;
-    if (ty.gender === "male" && female) return false;
+    if (ty.gender && ty.gender !== g) return false;
+    if (ty.religion === "muslim" && !muslim) return false;
+    if (ty.religion === "non_muslim" && muslim) return false;
     return true;
   });
 }
@@ -71,6 +123,9 @@ export function statutoryLeaveFloor(key, profile, onDate) {
   if (k === "sick") {
     return ruleValue("leave.sick.days", onDate);
   }
+  if (k === "iddah") return iddahPaidDays(profile, onDate);
+  if (k === "maternity_extend") return ruleValue("leave.maternity.unpaidExtendDays", onDate);
+  if (k === "maternity_companion") return ruleValue("leave.maternity.disabledChildDays", onDate);
   return LEAVE_TYPES.find((ty) => ty.key === k)?.defaultTotal ?? null;
 }
 
@@ -90,12 +145,57 @@ export function leaveCiteRuleId(key, profile, onDate) {
   }
   if (k === "exam") return "leave.exam.cite";
   if (k === "unpaid") return "leave.unpaid.cite";
+  if (k === "eid") return "leave.eid.cite";
+  if (k === "iddah") return iddahCiteRuleId(profile, onDate);
+  if (k === "maternity_extend") return "leave.maternity.unpaidExtendDays";
+  if (k === "maternity_companion") return "leave.maternity.disabledChildDays";
   if (k === "paternity") return "leave.paternity.days";
   return `leave.${k}.days`;
 }
 
+export function iddahCiteRuleId(profile, onDate) {
+  return isRamadanHoursSubject({ profile }) ? "leave.iddah.days" : "leave.iddah.nonMuslimDays";
+}
+
+export function iddahPaidDays(profile, onDate) {
+  return isRamadanHoursSubject({ profile })
+    ? ruleValue("leave.iddah.days", onDate)
+    : ruleValue("leave.iddah.nonMuslimDays", onDate);
+}
+
+export function iddahSpanFromEvent(eventDate, profile, onDate) {
+  const start = dateOnly(eventDate);
+  const days = iddahPaidDays(profile, start || onDate);
+  if (!start || !days) return { start: "", end: "", days: 0 };
+  return { start, end: addCalendarDays(start, days - 1), days };
+}
+
+export function lastApprovedMaternity(requests) {
+  const ended = (requests || []).filter((row) => (
+    String(row?.type || "").toLowerCase() === "maternity"
+    && row?.status === "approved"
+    && dateOnly(row.endDate)
+  ));
+  if (!ended.length) return null;
+  return [...ended].sort((a, b) => dateOnly(b.endDate).localeCompare(dateOnly(a.endDate)))[0];
+}
+
+/** Art. 151: unpaid extension and companion month begin after maternity ends. */
+export function maternityFollowOnSpan(requests, days) {
+  const mat = lastApprovedMaternity(requests);
+  const n = Math.max(1, Number(days) || 0);
+  if (!mat || !n) return { start: "", end: "", days: 0, after: "", maternityEnd: "" };
+  const maternityEnd = dateOnly(mat.endDate);
+  const start = addCalendarDays(maternityEnd, 1);
+  return { start, end: addCalendarDays(start, n - 1), days: n, after: start, maternityEnd };
+}
+
 export function getLeaveTotal(profile, key, onDate) {
   const floor = statutoryLeaveFloor(key, profile, onDate);
+  const k = String(key || "").trim().toLowerCase();
+  // Art. 160 is an event span, not a stored balance. A leftover 130 from a
+  // previous Muslim floor must not outrank the 15-day non-Muslim entitlement.
+  if (k === "iddah" || k === "maternity_extend" || k === "maternity_companion") return floor;
   const custom = profile?.leaveTotals?.[key];
   if (floor == null) return custom ?? null;
   if (custom == null) return floor;
@@ -119,6 +219,24 @@ function overlapInclusiveDays(a0, a1, b0, b1) {
   const end = a1 < b1 ? a1 : b1;
   if (start > end) return 0;
   return computeDays(start, end);
+}
+
+function overlapRange(a0, a1, b0, b1) {
+  if (!a0 || !a1 || !b0 || !b1) return null;
+  const start = a0 > b0 ? a0 : b0;
+  const end = a1 < b1 ? a1 : b1;
+  if (start > end) return null;
+  return { start, end };
+}
+
+/** Art. 24(2): official holidays inside annual leave extend it — they are not charged. */
+export function chargeableAnnualDays(startDate, endDate, calendar) {
+  return chargeableSpanExcludingHolidays(startDate, endDate, calendar);
+}
+
+/** Art. 24(2): Eid (and other official holidays) inside sick leave pay full wage, not the sick band. */
+export function chargeableSickDays(startDate, endDate, calendar) {
+  return chargeableSpanExcludingHolidays(startDate, endDate, calendar);
 }
 
 /** Inclusive local days between YYYY-MM-DD dates. */
@@ -192,7 +310,13 @@ export function sickStatutoryYearWindow(requests, onDate) {
   return { start: startIso, end: addCalendarDays(startIso, 364) };
 }
 
-export function usedLeaveDays(requests, key, onDate, hireDate) {
+export function examLeaveChargesAnnual(request) {
+  return String(request?.type || "").toLowerCase() === "exam"
+    && String(request?.status || "") === "approved"
+    && request?.examPayFrom === "annual";
+}
+
+export function usedLeaveDays(requests, key, onDate, hireDate, calendar) {
   const k = String(key || "").trim().toLowerCase();
   const approved = (requests || []).filter((r) => String(r.type || "").toLowerCase() === k && r.status === "approved");
   if (k === "sick") {
@@ -200,16 +324,19 @@ export function usedLeaveDays(requests, key, onDate, hireDate) {
     return approved.reduce((sum, r) => {
       const start = dateOnly(r.startDate);
       const end = dateOnly(r.endDate) || (start ? addCalendarDays(start, Math.max(1, Number(r.days) || 1) - 1) : "");
-      return sum + overlapInclusiveDays(start, end, win.start, win.end);
+      const span = overlapRange(start, end, win.start, win.end);
+      return sum + (span ? chargeableSickDays(span.start, span.end, calendar) : 0);
     }, 0);
   }
   if (k === "annual") {
     const win = anniversaryYearWindow(hireDate, onDate);
-    return approved.reduce((sum, r) => {
+    const charged = approved.concat((requests || []).filter(examLeaveChargesAnnual));
+    return charged.reduce((sum, r) => {
       const start = dateOnly(r.startDate);
       const end = dateOnly(r.endDate) || (start ? addCalendarDays(start, Math.max(1, Number(r.days) || 1) - 1) : "");
       if (start && end && win) {
-        return sum + overlapInclusiveDays(start, end, win.start, win.end);
+        const span = overlapRange(start, end, win.start, win.end);
+        return sum + (span ? chargeableAnnualDays(span.start, span.end, calendar) : 0);
       }
       return sum + (Number(r.days) || 0);
     }, 0);
@@ -237,25 +364,113 @@ export function endDateFromLeaveDays(startDate, days) {
   return addCalendarDays(startDate, n - 1);
 }
 
+export function grantDaysOf(profile) {
+  return (profile?.discretionaryGrants || []).reduce((n, grant) => n + Math.max(0, Number(grant.days) || 0), 0);
+}
+
+/** Discretionary days still available — grant leave and annual overflow share this pool. */
+export function leftoverGrantDays(profile, requests, onDate) {
+  const split = annualBalanceSplit(profile, requests, onDate);
+  const overflow = Math.max(0, (split.currentUsed + split.carryUsed) - (split.currentTotal || 0) - split.carryTotal);
+  return Math.max(0, grantDaysOf(profile) - usedLeaveDays(requests, "grant", onDate, profile?.hireDate) - overflow);
+}
+
 export function remainingLeaveDays(profile, requests, key = "annual", onDate) {
+  if (key === "grant") return leftoverGrantDays(profile, requests, onDate);
+  if (key === "annual") {
+    const split = annualBalanceSplit(profile, requests, onDate);
+    if (split.currentTotal == null && split.carryTotal === 0) return null;
+    return split.remaining;
+  }
   const total = getLeaveTotal(profile, key, onDate);
   if (total == null) return null;
   return Math.max(0, total - usedLeaveDays(requests, key, onDate, profile?.hireDate));
 }
 
-// True when an approved request covers the supplied day. Annual leave uses its
-// approval-activated window when available; every comparison is date-only and inclusive.
-export function isOnApprovedLeave(employee, date = new Date()) {
-  const day = typeof date === "string"
+/** Unused days of the previous hire-anniversary year — Art. 110 carry line. */
+export function unusedFromPreviousYear(profile, requests, onDate) {
+  const hire = dateOnly(profile?.hireDate);
+  const current = anniversaryYearWindow(hire, onDate);
+  if (!current || !hire || current.start === hire) return 0;
+  const prevEnd = addCalendarDays(current.start, -1);
+  const prev = anniversaryYearWindow(hire, prevEnd);
+  if (!prev) return 0;
+  const entitlement = getLeaveTotal(profile, "annual", prev.end) ?? 0;
+  const used = usedLeaveDays(requests, "annual", prev.end, hire);
+  return Math.max(0, entitlement - used);
+}
+
+/** Current-year statutory line plus a separate carry line; carry is consumed first. */
+export function annualBalanceSplit(profile, requests, onDate) {
+  const currentTotal = getLeaveTotal(profile, "annual", onDate);
+  const usedThisYear = usedLeaveDays(requests, "annual", onDate, profile?.hireDate);
+  const carryTotal = unusedFromPreviousYear(profile, requests, onDate);
+  const carryUsed = Math.min(carryTotal, usedThisYear);
+  const currentUsed = Math.max(0, usedThisYear - carryTotal);
+  const currentLeft = currentTotal == null ? 0 : Math.max(0, currentTotal - currentUsed);
+  const carryLeft = Math.max(0, carryTotal - carryUsed);
+  return {
+    currentTotal,
+    currentUsed,
+    currentLeft,
+    carryTotal,
+    carryUsed,
+    carryLeft,
+    remaining: currentLeft + carryLeft,
+  };
+}
+
+/** Art. 154: after return from maternity, until nursingUntil or two years from birth/return. */
+export function isNursingSubject(employee, onDate) {
+  const profile = employee?.profile || {};
+  const gender = String(profile.gender || "").toLowerCase();
+  if (gender !== "female" && !gender.includes("أنث")) return false;
+  const day = dateOnly(onDate) || todayRiyadh();
+  const ended = (employee?.leaveRequests || []).filter((r) => (
+    String(r.type || "").toLowerCase() === "maternity"
+    && r.status === "approved"
+    && dateOnly(r.endDate)
+    && dateOnly(r.endDate) < day
+  ));
+  if (!ended.length) return false;
+  const last = [...ended].sort((a, b) => dateOnly(b.endDate).localeCompare(dateOnly(a.endDate)))[0];
+  const until = dateOnly(profile.nursingUntil) || addCalendarDays(dateOnly(last.eventDate || last.endDate), 730);
+  return !!until && day <= until;
+}
+
+function leaveDayKey(date = new Date()) {
+  return typeof date === "string"
     ? date.slice(0, 10)
     : new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(date);
-  return (employee?.leaveRequests || []).some((request) => {
-    if (request.status !== "approved") return false;
-    const useActiveWindow = request.type === "annual" && request.activeStartDate && request.activeEndDate;
-    const start = (useActiveWindow ? request.activeStartDate : request.startDate)?.slice(0, 10);
-    const end = (useActiveWindow ? request.activeEndDate : request.endDate)?.slice(0, 10);
-    return !!start && !!end && start <= day && day <= end;
-  });
+}
+
+/** Inclusive cover range: requested dates win over a stale approval-day window. */
+export function leaveCoverRange(request) {
+  const start = String(request?.startDate || "").slice(0, 10);
+  const end = String(request?.endDate || "").slice(0, 10);
+  if (start && end) return { start, end };
+  const activeStart = String(request?.activeStartDate || "").slice(0, 10);
+  const activeEnd = String(request?.activeEndDate || "").slice(0, 10);
+  if (activeStart && activeEnd) return { start: activeStart, end: activeEnd };
+  return { start: "", end: "" };
+}
+
+function leaveRequestCoversDay(request, day) {
+  if (!request || request.status !== "approved") return false;
+  const { start, end } = leaveCoverRange(request);
+  return !!start && !!end && start <= day && day <= end;
+}
+
+/** The approved طلباتي / file request covering this day, if any. */
+export function approvedLeaveOnDay(employee, date = new Date()) {
+  const day = leaveDayKey(date);
+  return (employee?.leaveRequests || []).find((request) => leaveRequestCoversDay(request, day)) || null;
+}
+
+// True when an approved request covers the supplied day. Requested start/end
+// win; a leftover approval-day window is ignored when dates exist.
+export function isOnApprovedLeave(employee, date = new Date()) {
+  return !!approvedLeaveOnDay(employee, date);
 }
 
 export function isOnLeaveToday(employee) {

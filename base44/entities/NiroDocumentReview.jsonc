@@ -1,3 +1,8 @@
+// purpose: NiroDocumentReview tenant row.
+// domain: trust
+// isolation: companyId
+// owner: niroDocumentReview
+// status: canonical
 {
   "name": "NiroDocumentReview",
   "type": "object",

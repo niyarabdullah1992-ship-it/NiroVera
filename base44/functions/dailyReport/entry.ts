@@ -16,10 +16,14 @@ import {
 import { deriveProofStage } from "../../shared/workProofDerivations.ts";
 import { isOnApprovedLeave } from "../../shared/leaveDerivations.ts";
 
-/** Prefer company `reports` blob (synced with the app store). Legacy `dailyReports` is merged on read. */
+/**
+ * do-not-invoke-from-frontend — store + Operations own the live daily/ops bags.
+ * Writes stay on canonical `reports` / `tasks`. Legacy keys are read-only fallback.
+ */
 const REPORTS_CATEGORY = "reports";
-const LEGACY_DAILY_CATEGORY = "dailyReports";
-const TASKS_CATEGORY = "operationsTasks";
+const LEGACY_DAILY_CATEGORY = "dailyReports"; // do-not-write
+const TASKS_CATEGORY = "tasks";
+const TASKS_LEGACY_CATEGORY = "operationsTasks"; // do-not-write
 const SAFETY_CATEGORY = "safety";
 const PROOFS_CATEGORY = "workProofs";
 const FILES_CATEGORY = "files";
@@ -173,7 +177,12 @@ Deno.serve(async (req) => {
       const stations = await base44.asServiceRole.entities.Station.filter({ companyId: auth.companyId });
       const emps = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId });
       const taskBlob = await loadBlob(TASKS_CATEGORY);
-      const tasks = (Array.isArray(taskBlob?.payload) ? taskBlob.payload : []).filter((t: any) => t?.companyId === auth.companyId || !t?.companyId);
+      let tasks = (Array.isArray(taskBlob?.payload) ? taskBlob.payload : []).filter((t: any) => t?.companyId === auth.companyId || !t?.companyId);
+      if (!tasks.length) {
+        const legacyTasks = await loadBlob(TASKS_LEGACY_CATEGORY);
+        tasks = (Array.isArray(legacyTasks?.payload) ? legacyTasks.payload : []).filter((t: any) => t?.companyId === auth.companyId || !t?.companyId);
+        if (tasks.length) await saveBlob(TASKS_CATEGORY, tasks);
+      }
       const safetyBlob = await loadBlob(SAFETY_CATEGORY);
       const safety = Array.isArray(safetyBlob?.payload) ? safetyBlob.payload : [];
       const proofBlob = await loadBlob(PROOFS_CATEGORY);

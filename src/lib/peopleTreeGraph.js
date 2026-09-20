@@ -1,4 +1,5 @@
-import { descendantStationIds, isCompanyRootStation, stationParentId, stationSubtreeIds } from "./stationTree.js";
+import { companyRootStation, descendantStationIds, isCompanyRootStation, isManagerUnit, stationParentId, stationSubtreeIds } from "./stationTree.js";
+import { normalizeArabicQuery } from "./workspaceDerivations.js";
 
 const DEPTH_TONE = [
   "hsl(41 48% 42%)",
@@ -118,10 +119,67 @@ function stationById(data, id) {
   return (data?.stations || []).find((station) => String(station.id) === String(id || "")) || null;
 }
 
-function stationsManagedBy(data, employeeId) {
+export function stationsManagedBy(data, employeeId) {
   const id = String(employeeId || "");
   if (!id) return [];
   return (data?.stations || []).filter((station) => String(station.managerId || "") === id);
+}
+
+function joinNames(names, ar) {
+  const list = (names || []).map((name) => String(name || "").trim()).filter(Boolean);
+  if (!list.length) return "";
+  if (list.length === 1) return list[0];
+  if (list.length === 2) return ar ? `${list[0]} و${list[1]}` : `${list[0]} and ${list[1]}`;
+  const lead = list.slice(0, -1).join(ar ? "، " : ", ");
+  return ar ? `${lead} و${list[list.length - 1]}` : `${lead}, and ${list[list.length - 1]}`;
+}
+
+/** Subscriber copy: one person on two branch cards — home punch, parent-place boss. */
+export function explainWorkplaceManager(data, employeeId, { ar = true } = {}) {
+  const id = String(employeeId || "").trim();
+  if (!id) return null;
+  const employee = (data?.employees || []).find((item) => String(item.id) === id);
+  if (!employee) return null;
+  const managed = stationsManagedBy(data, id);
+  if (!managed.length) return null;
+  const home = stationById(data, homeStationId(employee, data));
+  const bossId = workplaceReportsToId(employee, data);
+  const boss = bossId
+    ? (data?.employees || []).find((item) => String(item.id) === String(bossId))
+    : null;
+  const coversLabel = joinNames(managed.map((station) => station.name), ar);
+  const homeName = home?.name || (ar ? "مقعده" : "their seat");
+  const reportsToName = boss?.name || (ar ? "مدير المكان الأعلى" : "the parent-place manager");
+  const many = managed.length > 1;
+  const homeId = String(home?.id || "");
+  const managedIds = managed.map((station) => String(station.id));
+  return {
+    managedCount: managed.length,
+    managedIds,
+    homeId,
+    coversLabel,
+    homeName,
+    reportsToName,
+    many,
+    line: many
+      ? (ar
+        ? `يمسك ${coversLabel} — شخص واحد لا مقعدان. يحضر من ${homeName}. يتبع ${reportsToName}.`
+        : `Holds ${coversLabel} — one person, not two seats. Attends from ${homeName}. Reports to ${reportsToName}.`)
+      : (ar
+        ? `يحضر من ${homeName}. يتبع ${reportsToName}.`
+        : `Attends from ${homeName}. Reports to ${reportsToName}.`),
+  };
+}
+
+/** On a workplace card: home punch vs extra cover. Admin nodes stay unmarked. */
+export function workplaceManagerCardMark(data, employeeId, stationId) {
+  const note = explainWorkplaceManager(data, employeeId, { ar: true });
+  if (!note?.many) return null;
+  const sid = String(stationId || "");
+  if (!sid || !note.managedIds.includes(sid)) return null;
+  const station = stationById(data, sid);
+  if (isManagerUnit(station)) return null;
+  return sid === note.homeId ? "home" : "cover";
 }
 
 function topManagedStations(data, employeeId) {
@@ -217,13 +275,72 @@ function writeReportsTo(data, employee, manager) {
   return true;
 }
 
+function stripEmployeeFromForeignRotas(data, employeeId, homeStationId) {
+  const id = String(employeeId || "");
+  const home = String(homeStationId || "");
+  if (!id) return false;
+  let changed = false;
+  for (const schedule of data.schedules || []) {
+    if (home && String(schedule.stationId || "") === home) continue;
+    for (const day of Object.values(schedule.assignments || {})) {
+      if (!day || typeof day !== "object" || Array.isArray(day)) continue;
+      for (const key of Object.keys(day)) {
+        const ids = day[key];
+        if (!Array.isArray(ids) || !ids.includes(id)) continue;
+        day[key] = ids.filter((item) => item !== id);
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+function seatEmployeeOnStation(data, employee, stationId) {
+  const sid = String(stationId || "");
+  if (!employee || !sid) return false;
+  let changed = false;
+  if (String(employee.stationId || "") !== sid) {
+    employee.stationId = sid;
+    changed = true;
+  }
+  if (employee.profile && String(employee.profile.stationId || "") && String(employee.profile.stationId) !== sid) {
+    employee.profile.stationId = sid;
+    changed = true;
+  }
+  (data.orgSeats || []).forEach((seat) => {
+    if (String(seat.employeeId) !== String(employee.id)) return;
+    if (String(seat.stationId || "") === sid) return;
+    seat.stationId = sid;
+    changed = true;
+  });
+  if (stripEmployeeFromForeignRotas(data, employee.id, sid)) changed = true;
+  return changed;
+}
+
+/**
+ * رأس المنشأة sits on the company root — not a child branch they happen to have been seeded on.
+ * The org card already shows NiroVera; the file and roster must match that workplace.
+ */
+export function seatCompanyHeadOnRoot(data) {
+  if (!data) return false;
+  const root = companyRootStation(data.stations);
+  if (!root?.id) return false;
+  const people = Array.isArray(data.employees) ? data.employees : [];
+  const owner = people.find((item) => item.id === data.ownerId || item.role === "owner" || item.isOwner) || null;
+  if (owner && !root.managerId) root.managerId = owner.id;
+  const headId = String(root.managerId || owner?.id || "");
+  const head = people.find((item) => String(item.id) === headId);
+  if (!head) return false;
+  return seatEmployeeOnStation(data, head, root.id);
+}
+
 /** Branch manager is the branch. People at that workplace report to them; child-branch managers report to the parent manager. */
 export function applyWorkplaceManagerRule(data) {
   if (!data) return false;
+  let changed = seatCompanyHeadOnRoot(data);
   const stations = data.stations || [];
   const people = activeEmployees(data);
   const byId = new Map(people.map((employee) => [String(employee.id), employee]));
-  let changed = false;
   stations.forEach((station) => {
     const manager = byId.get(String(station.managerId || ""));
     if (!manager) return;
@@ -377,4 +494,29 @@ export function teamsByManager(tree) {
       if (byCount) return byCount;
       return String(a.manager?.name || "").localeCompare(String(b.manager?.name || ""), "ar");
     });
+}
+
+/** Same haystack the people-tree search already uses: name + job + branch (+ English / nickname if present). */
+export function peopleSearchHay(person) {
+  return [
+    person?.name,
+    person?.nameEn,
+    person?.englishName,
+    person?.nickname,
+    person?.job,
+    person?.branch,
+    person?.stationName,
+  ].filter(Boolean).join(" ");
+}
+
+export function peopleQueryMatches(hay, query) {
+  const q = normalizeArabicQuery(query);
+  if (!q) return true;
+  return normalizeArabicQuery(hay).includes(q);
+}
+
+export function filterPeopleHits(people, query, limit = 8) {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  return (people || []).filter((person) => peopleQueryMatches(peopleSearchHay(person), q)).slice(0, limit);
 }

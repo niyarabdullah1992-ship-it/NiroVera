@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from "react";
 import moment from "moment";
 import { base44 } from "@/api/base44Client";
 import ComparisonExportButtons from "@/components/reports/ComparisonExportButtons";
-import AttendanceKpiStrip from "@/components/attendance/AttendanceKpiStrip";
+import KpiStrip from "@/components/shared/KpiStrip";
 import { useI18n } from "@/lib/i18n";
 import { formatTime, useTimeFormat } from "@/hooks/useTimeFormat";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import { MUTED, NAVY, field, CARD } from "@/lib/platformStyles";
 
 const RANGES = [
@@ -130,9 +131,9 @@ export default function AttendanceMonthlyReport({ employees, defaultEmployeeId, 
   ]);
 
   const kpiItems = [
-    { label: t("totalPresent"), value: String(totals.present), accent: totals.present > 0 },
-    { label: t("totalLate"), value: String(totals.late), hot: totals.late > 0 },
-    { label: t("totalAbsent"), value: String(totals.absent), hot: totals.absent > 0 },
+    { label: t("totalPresent"), value: String(totals.present), tone: totals.present > 0 ? "ok" : null },
+    { label: t("totalLate"), value: String(totals.late), tone: totals.late > 0 ? "warn" : null },
+    { label: t("totalAbsent"), value: String(totals.absent), tone: totals.absent > 0 ? "danger" : null },
     { label: `${t("totalAbsent")} (${t("excused")})`, value: String(totals.excusedAbsent) },
     { label: t("totalWorkHours"), value: totals.hours.toFixed(1), suffix: ar ? "س" : "h" },
   ];
@@ -195,14 +196,14 @@ export default function AttendanceMonthlyReport({ employees, defaultEmployeeId, 
         </div>
         {range === "custom" && (
           <>
-            <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} style={field} />
-            <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} style={field} />
+            <PlatformDateField compact ar={ar} value={customStart} onChange={setCustomStart} />
+            <PlatformDateField compact ar={ar} value={customEnd} min={customStart} onChange={setCustomEnd} />
           </>
         )}
       </div>
 
       <div style={{ padding: "12px 14px 0" }}>
-        <AttendanceKpiStrip items={kpiItems} />
+        <KpiStrip stats={kpiItems} />
       </div>
 
       <div style={{ padding: "0 14px 14px" }}>

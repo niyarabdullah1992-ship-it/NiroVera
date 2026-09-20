@@ -1,7 +1,7 @@
 import { base44 } from "@/api/base44Client";
+import { employeeScheduledOn, hasPublishedScheduleOn } from "@/lib/attendanceCalendar";
 import { isOnLeaveToday } from "@/lib/leaveTypes";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
-import { extraCoverageStationIds } from "@/lib/stationTree";
 
 // Thin helpers around the supabaseAttendance backend function, shared by the
 // check-in widget, manager dashboards, and the task-gating check in Operations.
@@ -27,21 +27,11 @@ export function isCheckedIn(att) {
 
 export function isScheduledToday(employee, data) {
   if (!employee?.id) return false;
-  const dateKey = toRiyadhDateKey();
-  return (data?.schedules || []).some((schedule) =>
-    (schedule.shiftTypes || []).some((shift) =>
-      (schedule.assignments?.[dateKey]?.[shift.id] || []).includes(employee.id)
-    )
-  );
+  return employeeScheduledOn(data?.schedules, employee.id, toRiyadhDateKey());
 }
 
 export function hasPublishedScheduleToday(data) {
-  const dateKey = toRiyadhDateKey();
-  return (data?.schedules || []).some((schedule) =>
-    (schedule.shiftTypes || []).some((shift) =>
-      (schedule.assignments?.[dateKey]?.[shift.id] || []).length > 0
-    )
-  );
+  return hasPublishedScheduleOn(data?.schedules, toRiyadhDateKey());
 }
 
 export function checkedInToday(att) {
@@ -75,22 +65,14 @@ export function deriveTeamAttendanceToday(employees = [], attendanceRows = [], d
   return { ...counts, scheduled, presentLike, rate };
 }
 
-// Looks up the employee's shift for today from the station's existing weekly schedule
-// (Schedules page) — reused here instead of a separate attendance-only schedule.
-export function getTodaysShift(data, employee) {
-  if (!employee?.id) return null;
-  // Personal punch lookup: home + extra coverage. Child branches under home are not extra sites.
-  const stationIds = [employee.stationId || data?.stations?.[0]?.id, ...extraCoverageStationIds(employee, data)].filter(Boolean);
-  const dateKey = toRiyadhDateKey();
-  for (const stationId of stationIds) {
-    const schedule = (data?.schedules || []).find((s) => s.stationId === stationId);
-    for (const st of schedule?.shiftTypes || []) {
-      const ids = schedule.assignments?.[dateKey]?.[st.id] || [];
-      if (ids.includes(employee.id)) return { start: st.start, end: st.end, label: st.label, stationId };
-    }
-  }
-  return null;
-}
+export {
+  earlyCheckoutFromScheduledEnd,
+  getTodaysShift,
+  hmToMinutes,
+  isForgottenCheckout,
+  lateMinutesFromScheduledStart,
+  selfPunchScheduleGate,
+} from "./attendanceDerivations.js";
 
 /** Company policy: employee must punch from the station geofence. */
 export function isLocationRequired(settings) {
@@ -98,6 +80,7 @@ export function isLocationRequired(settings) {
 }
 
 const POLICY_PUNCH_ERRORS = new Set([
+  "ON_APPROVED_LEAVE",
   "NOT_SCHEDULED",
   "GPS_REQUIRED",
   "STATION_LOCATION_REQUIRED",

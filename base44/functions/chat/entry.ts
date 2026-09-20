@@ -14,6 +14,10 @@ import {
   type ChatMessage,
 } from "../../shared/chatDerivations.ts";
 
+/**
+ * do-not-invoke-from-frontend — no page calls this function. Live groups cache on companyMeta;
+ * messages stay on `stationChat` if a leftover caller arrives. Do not add a second chat bag.
+ */
 const CHAT_CATEGORY = "stationChat";
 
 function requireCompanyId(companyId: unknown) {
@@ -303,6 +307,21 @@ Deno.serve(async (req) => {
       }
 
       const nowIso = new Date().toISOString();
+      const cleanFiles = Array.isArray(body.files)
+        ? body.files
+          .filter((f: { url?: string }) => f && f.url)
+          .map((f: { url: string; name?: string; type?: string; durationSec?: number }) => {
+            const durationSec = Number(f.durationSec);
+            return {
+              url: String(f.url),
+              name: String(f.name || "file"),
+              type: String(f.type || "file"),
+              ...(Number.isFinite(durationSec) && durationSec > 0
+                ? { durationSec: Math.round(durationSec) }
+                : {}),
+            };
+          })
+        : [];
       const msg: ChatMessage = {
         id: uid("msg"),
         companyId: auth.companyId,
@@ -310,6 +329,7 @@ Deno.serve(async (req) => {
         authorId: auth.userId,
         authorName: auth.name,
         text,
+        files: cleanFiles,
         attachmentRef: typeof body.attachmentRef === "string" ? body.attachmentRef : null,
         createdAt: nowIso,
       };

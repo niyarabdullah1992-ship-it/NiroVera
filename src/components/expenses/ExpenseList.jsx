@@ -1,27 +1,54 @@
 import React from "react";
 import { ExternalLink, FileText } from "lucide-react";
 import { Image } from "@/components/ui/image";
-import { ACCENT, MUTED, NAVY, BORDER, SURFACE, emptyState, NEUTRAL, WARN, OK, BAD, ui, CARD } from "@/lib/platformStyles";
+import { ACCENT, MUTED, NAVY, BORDER, SURFACE, emptyState, NEUTRAL, WARN, OK, BAD, ui, cardShell } from "@/lib/platformStyles";
+import { formatDateTime } from "@/lib/dateFormat";
 
-const TYPE = { travel: ["Travel", "سفر"], accommodation: ["Accommodation", "سكن"], fuel: ["Fuel", "وقود"], overtime_meals: ["Overtime Meals", "وجبات العمل الإضافي"], tools_equipment: ["Tools & Equipment", "أدوات ومعدات"], training: ["Training", "تدريب"] };
-const STATUS = { submitted: ["Manager review", "مراجعة المدير"], manager_approved: ["Finance review", "مراجعة المالية"], manager_rejected: ["Manager rejected", "مرفوض من المدير"], finance_approved: ["Approved", "معتمد"], finance_rejected: ["Finance rejected", "مرفوض من المالية"] };
+const TYPE = { travel: ["Travel", "سفر"], accommodation: ["Accommodation", "سكن"], fuel: ["Fuel", "وقود"], overtime_meals: ["Overtime Meals", "وجبات العمل الإضافي"], tools_equipment: ["Tools & Equipment", "أدوات ومعدات"], training: ["Training", "تدريب"], svc: ["Services & repair", "خدمات وإصلاح"], rent: ["Equipment hire", "تأجير معدات"] };
+const STATUS = {
+  submitted: ["Manager review", "مراجعة المدير"],
+  manager_approved: ["Finance review", "مراجعة المالية"],
+  manager_rejected: ["Manager rejected", "مرفوض من المدير"],
+  finance_approved: ["Approved", "معتمد"],
+  finance_rejected: ["Finance rejected", "مرفوض من المالية"],
+  cfo_pending: ["CFO review", "مراجعة المدير المالي"],
+  cfo_approved: ["CFO approved", "معتمد من المدير المالي"],
+  cfo_rejected: ["CFO rejected", "مرفوض من المدير المالي"],
+};
 const STATUS_STYLE = {
   submitted: WARN,
   manager_approved: WARN,
   manager_rejected: BAD,
   finance_approved: OK,
   finance_rejected: BAD,
+  cfo_pending: WARN,
+  cfo_approved: OK,
+  cfo_rejected: BAD,
 };
 const isPdf = (url = "") => decodeURIComponent(url).toLowerCase().includes(".pdf");
 
-export default function ExpenseList({ claims, stations, canManagerReview, canFinanceReview, onManagerReview, onFinanceReview, ar }) {
+// A vessel refusal is part of the claim's history: finance really did decide, and the
+// claim stayed where it was because the branch's vessel is spent. The last attempt is
+// the one that still holds, so that is the one the row states.
+const VESSEL_STAGE = {
+  finance: ["finance approval", "اعتماد المالية"],
+  cfo: ["CFO approval", "اعتماد المدير المالي"],
+  vessel: ["approval from the operating vessel", "الاعتماد من الوعاء التشغيلي"],
+};
+
+function lastVesselBlock(claim) {
+  const trail = Array.isArray(claim?.vesselBlocks) ? claim.vesselBlocks : [];
+  return trail.length ? trail[trail.length - 1] : null;
+}
+
+export default function ExpenseList({ claims, stations, canManagerReview, canFinanceReview, canCfoReview, onManagerReview, onFinanceReview, onCfoReview, ar }) {
   if (!claims.length) return <div style={emptyState}>{ar ? "لا توجد مصروفات بعد." : "No expenses yet."}</div>;
   const stationNames = (claim) => (claim.stationIds?.length ? claim.stationIds : [claim.stationId]).map((id) => stations.find((station) => station.stationId === id)?.name || id).join("، ");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       {claims.map((claim) => (
-        <article key={claim.id} style={{ borderRadius: "16px", border: `1px solid ${BORDER}`, background: CARD, padding: "16px 18px" }}>
+        <article key={claim.id} className="nv-doc" style={{ ...cardShell, padding: "16px 18px" }}>
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
             <div>
               <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: NAVY }}>
@@ -46,7 +73,7 @@ export default function ExpenseList({ claims, stations, canManagerReview, canFin
             marginTop: "12px",
             display: "grid",
             gap: "8px",
-            borderRadius: "11px",
+            borderRadius: 0,
             background: SURFACE,
             border: `1px solid ${BORDER}`,
             padding: "12px",
@@ -61,6 +88,25 @@ export default function ExpenseList({ claims, stations, canManagerReview, canFin
             {claim.invoiceNumber && <p style={{ margin: 0 }}><span style={{ color: MUTED }}>{ar ? "رقم الفاتورة" : "Invoice no."}: </span>{claim.invoiceNumber}</p>}
           </div>
           {claim.description && <p style={{ margin: "12px 0 0", fontSize: "13px", color: MUTED }}>{claim.description}</p>}
+          {claim.rejectReason ? (
+            <p style={{ margin: "8px 0 0", fontSize: 12, color: "#8A1C2B", lineHeight: 1.6 }}>
+              {ar ? `سبب الرفض: ${claim.rejectReason}` : `Rejection reason: ${claim.rejectReason}`}
+            </p>
+          ) : null}
+          {lastVesselBlock(claim) ? (
+            <p style={{ margin: "8px 0 0", fontSize: 12, color: "#8A6516", lineHeight: 1.7 }}>
+              {ar
+                ? `وقفة الوعاء عند ${VESSEL_STAGE[lastVesselBlock(claim).stage]?.[1] || VESSEL_STAGE.vessel[1]} — ${lastVesselBlock(claim).reason} حاولها ${lastVesselBlock(claim).byName || "—"} في ${formatDateTime(lastVesselBlock(claim).at, "ar")}، فبقيت المطالبة بانتظار القرار ولم تُقيَّد على الوعاء.`
+                : `Vessel hold at ${VESSEL_STAGE[lastVesselBlock(claim).stage]?.[0] || VESSEL_STAGE.vessel[0]} — ${lastVesselBlock(claim).reasonEn} ${lastVesselBlock(claim).byName || "—"} attempted it on ${formatDateTime(lastVesselBlock(claim).at, "en")}; the claim stayed awaiting a decision and nothing was booked.`}
+            </p>
+          ) : null}
+          {claim.legacyStockSurface ? (
+            <p style={{ margin: "8px 0 0", fontSize: 11, color: "#8A6516", lineHeight: 1.6 }}>
+              {ar
+                ? "أُدخلت قبل بوابة المخزون — تبقى في الدفتر ولا تُحتسب مطالبة تشغيل جديدة. سجّل مثيلها في المخزون."
+                : "Entered before the stock gate — kept on the ledger, not a new operating claim. Record its like on Inventory."}
+            </p>
+          ) : null}
           <div style={{ marginTop: "14px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", borderTop: `1px solid ${BORDER}`, paddingTop: "12px" }}>
             <a href={claim.receiptUrl} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: ACCENT, textDecoration: "none" }}>
               {isPdf(claim.receiptUrl)
@@ -71,14 +117,32 @@ export default function ExpenseList({ claims, stations, canManagerReview, canFin
             </a>
             {canManagerReview && claim.status === "submitted" && (
               <>
-                <button onClick={() => onManagerReview(claim.id, "manager_approved")} style={{ ...ui.btnPrimary, marginInlineStart: "auto" }}>{ar ? "اعتماد" : "Approve"}</button>
-                <button onClick={() => onManagerReview(claim.id, "manager_rejected")} style={ui.btnDanger}>{ar ? "رفض" : "Reject"}</button>
+                <button type="button" onClick={() => onManagerReview(claim.id, "manager_approved")} style={{ ...ui.btnPrimary, marginInlineStart: "auto" }}>{ar ? "اعتماد" : "Approve"}</button>
+                <button type="button" onClick={() => {
+                  const reason = window.prompt(ar ? "اكتب سبب الرفض — يظهر على المطالبة." : "Write the rejection reason — it is shown on the claim.");
+                  if (!String(reason || "").trim()) return;
+                  onManagerReview(claim.id, "manager_rejected", String(reason).trim());
+                }} style={ui.btnDanger}>{ar ? "رفض" : "Reject"}</button>
               </>
             )}
             {canFinanceReview && claim.status === "manager_approved" && (
               <>
-                <button onClick={() => onFinanceReview(claim.id, "finance_approved")} style={{ ...ui.btnPrimary, marginInlineStart: "auto" }}>{ar ? "اعتماد نهائي" : "Final approve"}</button>
-                <button onClick={() => onFinanceReview(claim.id, "finance_rejected")} style={ui.btnDanger}>{ar ? "رفض" : "Reject"}</button>
+                <button type="button" onClick={() => onFinanceReview(claim.id, "finance_approved")} style={{ ...ui.btnPrimary, marginInlineStart: "auto" }}>{ar ? "اعتماد المالية" : "Finance approve"}</button>
+                <button type="button" onClick={() => {
+                  const reason = window.prompt(ar ? "اكتب سبب الرفض — يظهر على المطالبة." : "Write the rejection reason — it is shown on the claim.");
+                  if (!String(reason || "").trim()) return;
+                  onFinanceReview(claim.id, "finance_rejected", String(reason).trim());
+                }} style={ui.btnDanger}>{ar ? "رفض" : "Reject"}</button>
+              </>
+            )}
+            {canCfoReview && claim.status === "cfo_pending" && (
+              <>
+                <button type="button" onClick={() => onCfoReview(claim.id, "cfo_approved")} style={{ ...ui.btnPrimary, marginInlineStart: "auto" }}>{ar ? "اعتماد المدير المالي" : "CFO approve"}</button>
+                <button type="button" onClick={() => {
+                  const reason = window.prompt(ar ? "اكتب سبب الرفض — يظهر على المطالبة." : "Write the rejection reason — it is shown on the claim.");
+                  if (!String(reason || "").trim()) return;
+                  onCfoReview(claim.id, "cfo_rejected", String(reason).trim());
+                }} style={ui.btnDanger}>{ar ? "رفض" : "Reject"}</button>
               </>
             )}
           </div>

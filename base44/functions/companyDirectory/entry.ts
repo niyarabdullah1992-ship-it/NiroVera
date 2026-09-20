@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 import { createMimeMessage } from 'npm:mimetext@3.0.24';
 import { fetchWithRetry } from '../../shared/fetchRetry.ts';
-import { filterBlobPayload, redactEmployee, APPEND_ONLY_CATEGORIES, inspectAppendOnly } from '../../shared/blobVisibility.ts';
+import { filterBlobPayload, redactEmployee, attachEmployeeRequestFields, canSeeEmployeeRequests, APPEND_ONLY_CATEGORIES, inspectAppendOnly } from '../../shared/blobVisibility.ts';
 import {
   WORKSPACE_SEARCH_MAX,
   accountMatchesWorkspaceQuery,
@@ -9,6 +9,7 @@ import {
   derivePublicWorkspaceCard,
 } from '../../shared/workspaceDerivations.ts';
 import { POWERCARE_MARK_URL } from '../../shared/brand.ts';
+import { companyMetaCreatePayload, creatorEmployeeRecord } from '../../shared/companyBootstrap.ts';
 
 // System emails (OTP codes, welcome messages) go out through the app's connected
 // Gmail account, because the built-in email service refuses recipients who are
@@ -266,13 +267,18 @@ Deno.serve(async (req) => {
       const crByCompany = new Map();
       if (wantDigits.length >= 4) {
         // Only load settings blobs when the query looks like a commercial registration.
-        const blobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ category: 'companySettings' });
-        for (const blob of blobs) {
-          const raw = blob?.payload && typeof blob.payload === 'object' ? blob.payload : {};
+        const [metaBlobs, legacyBlobs] = await Promise.all([
+          base44.asServiceRole.entities.CompanyDataBlob.filter({ category: 'companyMeta' }),
+          base44.asServiceRole.entities.CompanyDataBlob.filter({ category: 'companySettings' }),
+        ]);
+        const takeCr = (blob) => {
+          const raw = Array.isArray(blob?.payload) ? (blob.payload[0] || {}) : (blob?.payload && typeof blob.payload === 'object' ? blob.payload : {});
           const record = raw.record && typeof raw.record === 'object' ? raw.record : raw;
           const cr = String(record?.commercialRegistration || '').replace(/\D/g, '');
           if (cr && blob.companyId) crByCompany.set(blob.companyId, cr);
-        }
+        };
+        for (const blob of legacyBlobs) takeCr(blob);
+        for (const blob of metaBlobs) takeCr(blob);
       }
 
       const matched = [];
@@ -622,8 +628,39 @@ Deno.serve(async (req) => {
         await base44.asServiceRole.entities.CompanyAccount.create(fields);
         token = await makeSession(base44, companyId, null, 'owner');
       }
+      const ownerId = String(body.ownerId || '').trim() || (existing.length ? '' : `emp_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`);
+      const ownerName = String(body.ownerName || email.split('@')[0] || 'Owner').trim();
+      if (ownerId) {
+        const owners = await base44.asServiceRole.entities.Employee.filter({ companyId, employeeId: ownerId });
+        if (!owners.length) {
+          const row = creatorEmployeeRecord({ ownerId, name: ownerName, email, companyId });
+          await base44.asServiceRole.entities.Employee.create({
+            employeeId: row.id,
+            companyId,
+            name: row.name,
+            email: row.email,
+            role: row.role,
+            stationId: row.stationId,
+            phone: row.phone,
+            anonymousId: row.anonymousId,
+          });
+        }
+        const metaRows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: 'companyMeta' });
+        const currentMeta = metaRows[0]?.payload?.[0] || {};
+        if (!metaRows.length) {
+          await base44.asServiceRole.entities.CompanyDataBlob.create({
+            companyId,
+            category: 'companyMeta',
+            payload: [companyMetaCreatePayload({ name, plan, ownerId, directorId: ownerId, settings: { orgType } })],
+          });
+        } else if (!currentMeta.ownerId) {
+          const payload = Array.isArray(metaRows[0].payload) ? [...metaRows[0].payload] : [{}];
+          payload[0] = { ...currentMeta, ...companyMetaCreatePayload({ ...currentMeta, name: currentMeta.name || name, plan: currentMeta.plan || plan, ownerId, directorId: currentMeta.directorId || ownerId, settings: currentMeta.settings || { orgType } }) };
+          await base44.asServiceRole.entities.CompanyDataBlob.update(metaRows[0].id, { payload });
+        }
+      }
       if (signupOtp) await base44.asServiceRole.entities.LoginOtp.delete(signupOtp.id);
-      return Response.json({ ok: true, token });
+      return Response.json({ ok: true, token, ownerId: ownerId || null });
     }
 
     if (!auth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -889,13 +926,18 @@ Deno.serve(async (req) => {
       const context = await getActorContext();
       // Deny by default: HR messages, leave, certificates and profile/salary data are
       // returned only for the caller themself, or to HR/managers inside their scope.
+      // Station / leave managers still receive leaveRequests + otherRequests so إدارة
+      // can decide a leave-balance top-up without opening salary fields.
       if (context.senior) return Response.json({ employees: records });
       const canSeeFull = context.permissions.has('manage_employees');
+      const canSeeRequests = canSeeEmployeeRequests(context);
       const stations = context.scope === null ? null : new Set(context.scope || []);
       const employees = records.map((record) => {
         if (record.employeeId === auth.userId) return record;
-        const inScope = canSeeFull && (stations === null || stations.has(record.stationId));
-        return inScope ? record : redactEmployee(record);
+        const inStation = stations === null || stations.has(record.stationId);
+        if (canSeeFull && inStation) return record;
+        if (canSeeRequests && inStation) return attachEmployeeRequestFields(record, redactEmployee(record));
+        return redactEmployee(record);
       });
       return Response.json({ employees });
     }
@@ -950,7 +992,7 @@ Deno.serve(async (req) => {
       const actorRole = context.actor?.role;
       const privilege = await getActorPrivilege();
       let allowed = false;
-      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'workProofs', 'cameras', 'disciplinaryCases'].includes(category)) allowed = context.senior;
+      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'workProofs', 'disciplinaryCases'].includes(category)) allowed = context.senior;
       else if (['hrLevels', 'hrClusters', 'jobGrades'].includes(category)) allowed = context.senior && (!context.actor || context.actor.role === 'director');
       else if (category === 'payrollRuns') allowed = context.senior || context.permissions.has('manage_payroll');
       else if (category === 'schedules') allowed = context.senior || ['pgm', 'station_manager'].includes(actorRole) || context.permissions.has('manage_schedules');
@@ -962,9 +1004,12 @@ Deno.serve(async (req) => {
           || taskManagers.includes(actorRole) || taskManagers.includes(auth.role);
       }
       else if (['reports', 'anonymousReports', 'publicReports', 'notifications', 'personalPlaces', 'personalAttendance', 'plannerItems', 'journalEntries'].includes(category)) allowed = privilege === 'full';
+      else if (category === 'leaveRoster') {
+        allowed = privilege === 'full' || context.senior || context.permissions.has('manage_employees');
+      }
       // Regular employees may write their OWN records in these categories — their
-      // reports and personal entries must never be silently dropped.
-      const SELF_WRITABLE = ['anonymousReports', 'publicReports', 'notifications', 'personalPlaces', 'personalAttendance', 'plannerItems', 'journalEntries'];
+      // reports, personal entries, and own leave row must never be silently dropped.
+      const SELF_WRITABLE = ['anonymousReports', 'publicReports', 'notifications', 'personalPlaces', 'personalAttendance', 'plannerItems', 'journalEntries', 'leaveRoster'];
       const selfWrite = !allowed && privilege === 'self' && SELF_WRITABLE.includes(category);
       // Never fail silently: a rejected write returns 403 so the UI can tell the user.
       if (!allowed && !selfWrite) return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });
@@ -1115,9 +1160,15 @@ Deno.serve(async (req) => {
     if (action === 'logAudit') {
       const { auditAction, details } = body;
       const context = await getActorContext();
-      const performedBy = context.actor?.name || (auth.role === 'owner' || auth.admin ? 'Company owner' : 'User');
+      const performedBy = body.performedBy || context.actor?.name || (auth.role === 'owner' || auth.admin ? 'Company owner' : 'User');
       await base44.asServiceRole.entities.AuditLog.create({
-        companyId, action: String(auditAction || 'unknown').slice(0, 100), performedBy, details: String(details || '').slice(0, 2000),
+        companyId,
+        action: String(auditAction || 'unknown').slice(0, 100),
+        performedBy,
+        details: String(details || '').slice(0, 2000),
+        reason: body.reason != null && String(body.reason).trim() ? String(body.reason).slice(0, 500) : null,
+        oldValue: body.oldValue != null ? String(body.oldValue).slice(0, 500) : null,
+        newValue: body.newValue != null ? String(body.newValue).slice(0, 2000) : null,
       });
       return Response.json({ ok: true });
     }

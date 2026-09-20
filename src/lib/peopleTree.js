@@ -1,16 +1,28 @@
 import { updateCompany } from "@/lib/store";
 import { seatForEmployee } from "@/lib/orgHire";
-import { applyWorkplaceManagerRule, checkSetReportsToGate } from "@/lib/peopleTreeGraph";
+import { applyCompanyOwnershipTransfer, applyWorkplaceManagerRule, checkSetReportsToGate } from "@/lib/peopleTreeGraph";
 
 export {
   allowedReportsTo,
+  applyCompanyOwnershipTransfer,
   buildPeopleTree,
   checkSetReportsToGate,
+  checkTransferCompanyOwnershipGate,
   descendantEmployeeIds,
+  explainWorkplaceManager,
+  workplaceManagerCardMark,
+  filterPeopleHits,
   flattenPeopleTree,
+  hasOrgSuperior,
+  isCompanyOwner,
+  isTopAuthority,
+  peopleQueryMatches,
+  peopleSearchHay,
   pathToPerson,
   reportsToId,
   reportsWord,
+  sameCompanyScope,
+  stationsManagedBy,
   teamsByManager,
   applyWorkplaceManagerRule,
   workplaceReportsToId,
@@ -59,4 +71,12 @@ export function syncWorkplaceManagers(companyId) {
     applyWorkplaceManagerRule(data);
   });
   return { ok: true };
+}
+
+export function transferCompanyOwnership(companyId, nextOwnerId) {
+  let result = { ok: false, error: "MISSING" };
+  updateCompany(companyId, (data) => {
+    result = applyCompanyOwnershipTransfer(data, nextOwnerId);
+  });
+  return result;
 }

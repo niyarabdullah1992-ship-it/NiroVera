@@ -12,7 +12,7 @@ export function subscriptionBillableAmount(row) {
 }
 
 export function formatSubscriptionMoney(amount, currency = "USD", ar = false) {
-  return new Intl.NumberFormat(ar ? "ar-SA" : "en-US", {
+  return new Intl.NumberFormat(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-US", {
     style: "currency",
     currency: currency || "USD",
     minimumFractionDigits: 2,

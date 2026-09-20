@@ -60,6 +60,12 @@ export default function ResolveLostDialog({ lang, onClose, onConfirm }) {
           className="w-full rounded-md border border-input px-3 py-2 text-sm"
         />
 
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {ar
+            ? "سبب فتح البلاغ محفوظ ولا يُستبدل — هذا سبب القرار وحده، ويظهر السطران معًا على بطاقة الأصل."
+            : "The opening reason is kept and never replaced — this is the decision's own reason, and both lines show on the asset card."}
+        </p>
+
         <div className="flex gap-2">
           <button type="button" onClick={onClose} className="flex-1 rounded-md border border-border px-4 py-2.5 text-sm">
             {ar ? "إلغاء" : "Cancel"}
@@ -69,7 +75,11 @@ export default function ResolveLostDialog({ lang, onClose, onConfirm }) {
             disabled={!reason.trim() || saving}
             className="flex-1 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-40"
           >
-            {ar ? "تأكيد الإغلاق" : "Confirm close"}
+            {saving
+              ? (ar ? "جارٍ الحفظ..." : "Saving...")
+              : reason.trim()
+                ? (ar ? "تأكيد الإغلاق" : "Confirm close")
+                : (ar ? "اكتب سبب القرار." : "Write the decision reason.")}
           </button>
         </div>
       </form>

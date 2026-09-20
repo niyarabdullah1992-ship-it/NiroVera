@@ -4,8 +4,13 @@ import {
   buildPeopleTree,
   checkSetReportsToGate,
   descendantEmployeeIds,
+  explainWorkplaceManager,
+  workplaceManagerCardMark,
+  filterPeopleHits,
   flattenPeopleTree,
+  peopleQueryMatches,
   pathToPerson,
+  seatCompanyHeadOnRoot,
   teamsByManager,
   workplaceReportsToId,
   wouldCreateReportsCycle,
@@ -131,5 +136,76 @@ const sultan = flattenPeopleTree(eastTree.roots).find((node) => node.id === "e0"
 assert.equal(sultan?.treeBranches, 4);
 assert.equal(sultan?.scopePeople, 3);
 assert.equal(sultan?.scopePeople < eastScope.employees.length, true);
+
+const twins = {
+  ownerId: "o1",
+  employees: [
+    { id: "o1", name: "نورة", role: "owner", stationId: "hq" },
+    { id: "m1", name: "سالم", role: "employee", stationId: "north" },
+  ],
+  orgSeats: [
+    { id: "s0", employeeId: "o1", stationId: "hq", title: "المالك" },
+    { id: "s1", employeeId: "m1", stationId: "north", title: "مدير فرع" },
+  ],
+  stations: [
+    { id: "hq", name: "المنشأة", isCompanyRoot: true, managerId: "o1" },
+    { id: "north", name: "الشمال", parentStationId: "hq", managerId: "m1" },
+    { id: "east", name: "الشرق", parentStationId: "hq", managerId: "m1" },
+  ],
+};
+assert.equal(workplaceReportsToId(twins.employees[1], twins), "o1");
+const note = explainWorkplaceManager(twins, "m1", { ar: true });
+assert.equal(note.many, true);
+assert.equal(note.homeName, "الشمال");
+assert.equal(note.reportsToName, "نورة");
+assert.match(note.line, /الشمال والشرق/);
+assert.match(note.line, /يحضر من الشمال/);
+assert.match(note.line, /يتبع نورة/);
+const en = explainWorkplaceManager(twins, "m1", { ar: false });
+assert.match(en.line, /Attends from الشمال/);
+assert.match(en.line, /Reports to نورة/);
+assert.equal(note.homeId, "north");
+assert.deepEqual(note.managedIds.sort(), ["east", "north"]);
+assert.equal(workplaceManagerCardMark(twins, "m1", "north"), "home");
+assert.equal(workplaceManagerCardMark(twins, "m1", "east"), "cover");
+assert.equal(workplaceManagerCardMark(twins, "m1", "hq"), null);
+assert.equal(explainWorkplaceManager(twins, "missing"), null);
+
+const misplacedHead = {
+  ownerId: "niyar",
+  employees: [
+    { id: "niyar", name: "نيار عبدالله", role: "director", stationId: "khafji" },
+    { id: "salem", name: "سالم العتيبي", role: "employee", stationId: "khafji" },
+  ],
+  orgSeats: [
+    { id: "seat_n", employeeId: "niyar", stationId: "khafji", title: "رأس المنشأة" },
+  ],
+  stations: [
+    { id: "hq", name: "NiroVera Preview", isCompanyRoot: true, managerId: "niyar" },
+    { id: "khafji", name: "فرع الخفجي", parentStationId: "hq", managerId: "salem" },
+  ],
+  schedules: [
+    {
+      stationId: "khafji",
+      assignments: { "2026-09-13": { morning: ["niyar", "salem"] } },
+    },
+  ],
+};
+assert.equal(seatCompanyHeadOnRoot(misplacedHead), true);
+assert.equal(misplacedHead.employees[0].stationId, "hq");
+assert.equal(misplacedHead.orgSeats[0].stationId, "hq");
+assert.deepEqual(misplacedHead.schedules[0].assignments["2026-09-13"].morning, ["salem"]);
+applyWorkplaceManagerRule(misplacedHead);
+assert.equal(misplacedHead.employees[0].stationId, "hq");
+assert.equal(seatCompanyHeadOnRoot(misplacedHead), false);
+
+assert.equal(peopleQueryMatches("خالد القحطاني فرع جدة", "خالد"), true);
+assert.equal(peopleQueryMatches("أحمد السلمي", "احمد"), true);
+assert.equal(peopleQueryMatches("خالد القحطاني فرع جدة", "جدة"), true);
+assert.equal(peopleQueryMatches("خالد القحطاني فرع جدة", "نورة"), false);
+const treeHits = filterPeopleHits(flattenPeopleTree(tree.roots), "خالد");
+assert.equal(treeHits.length, 1);
+assert.equal(treeHits[0].id, "a2");
+assert.equal(filterPeopleHits(flattenPeopleTree(tree.roots), "").length, 0);
 
 console.log("people tree ok");

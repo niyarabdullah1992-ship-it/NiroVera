@@ -1,5 +1,5 @@
 const SIGNATURE_FONTS_HREF =
-  "https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=Dancing+Script:wght@400..700&family=Great+Vibes&family=Lateef:wght@400;700&display=swap";
+  "https://fonts.googleapis.com/css2?family=Alex+Brush&family=Allura&family=Amiri:wght@400;700&family=Aref+Ruqaa:wght@400;700&family=Dancing+Script:wght@400..700&family=Great+Vibes&family=IBM+Plex+Mono:wght@400;500;600&family=Lateef:wght@400;700&family=Noto+Naskh+Arabic:wght@400;600;700&display=swap";
 
 export function ensureSignatureFonts() {
   if (typeof document === "undefined") return;
@@ -11,7 +11,7 @@ export function ensureSignatureFonts() {
   document.head.appendChild(link);
 }
 
-function cropOpaque(canvas, padding) {
+export function cropOpaque(canvas, padding) {
   const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
   let left = canvas.width;
   let top = canvas.height;
@@ -43,6 +43,12 @@ function cropOpaque(canvas, padding) {
     bottom - top + 1,
   );
   return trimmed.toDataURL("image/png");
+}
+
+export function signatureScriptFont(text) {
+  return /[\u0600-\u06ff]/.test(String(text || ""))
+    ? "'Aref Ruqaa', 'Amiri', serif"
+    : "'Great Vibes', 'Alex Brush', cursive";
 }
 
 export async function createTypedSignatureImage(text, fontFamily) {

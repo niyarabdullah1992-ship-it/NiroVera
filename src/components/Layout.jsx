@@ -1,43 +1,48 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { updateCompany, getCompanyData, getCompanyToken } from "@/lib/store";
 import { base44 } from "@/api/base44Client";
 import {
-  Search, Bell, LogOut, ChevronDown, Settings2, HelpCircle, MessageSquare,
+  Search, Bell, ChevronDown, MessageSquare,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
-import Logo from "@/components/Logo";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import SyncStatusIndicator from "@/components/SyncStatusIndicator";
 import ThemeToggle from "@/components/ThemeToggle";
 import { allowedNavFor } from "@/lib/navVisibility";
+import { collectSuiteBadges, suiteAppBadge, suiteAppGlow } from "@/lib/suiteBadges";
+import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
+import { hydrateEmployeesLeave } from "@/lib/leaveDerivations";
 import BottomTabBar from "@/components/mobile/BottomTabBar";
 import BackButton from "@/components/mobile/BackButton";
 import ProductFeedbackPrompt from "@/components/ProductFeedbackPrompt";
 import { shouldShowNotification } from "@/lib/notificationFilters";
 import { isChatNotification } from "@/lib/notificationKind";
-import { getChatUnreadTotal, subscribeChatUnread, getChatSeenMap, threadIsUnread, setChatUnreadTotal } from "@/lib/chatUnreadStore";
 import { routeForNotification } from "@/lib/notificationRoute";
 import GlobalSearch from "@/components/navigation/GlobalSearch";
 import {
   buildSuiteNavItems,
   buildSuiteRailGroups,
+  buildSuiteRailClusters,
   matchSuiteNavItem,
   SUITE_GROUP_ORDER,
 } from "@/lib/suiteNav";
+import SuiteRail from "@/components/navigation/SuiteRail";
 import StationScopeControl from "@/components/navigation/StationScopeControl";
 import SectionReportPicker from "@/components/reports/SectionReportPicker";
 import StationQuickSwitch from "@/components/navigation/StationQuickSwitch";
 import HeaderDateTime from "@/components/navigation/HeaderDateTime";
 import { OPEN_STATION_SWITCH_EVENT } from "@/hooks/useStationSwitcher";
 import { setStationScope, getStationScope } from "@/lib/stationScopeStore";
+import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { visibleStations } from "@/lib/permissions";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
 import { BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
 import { canSeeMinistryAlerts, deriveMinistryAlerts } from "@/lib/ministryAlertDerivations";
 import { THEME_CHANGE_EVENT, applyPlatformTheme, applyStoredPlatformTheme, persistPlatformTheme } from "@/lib/platformTheme";
+import PlatformBoot from "@/components/shared/PlatformBoot";
 
 export default function Layout({ children }) {
   const { t, lang, setLang, dir } = useI18n();
@@ -50,11 +55,9 @@ export default function Layout({ children }) {
   const notifRef = useRef(null);
   const userRef = useRef(null);
   const notificationPollInFlightRef = useRef(false);
-  const [chatUnread, setChatUnread] = useState(() => getChatUnreadTotal());
   const [scopeSwitchOpen, setScopeSwitchOpen] = useState(false);
   const [ministryDismissTick, setMinistryDismissTick] = useState(0);
-
-  useEffect(() => subscribeChatUnread(setChatUnread), []);
+  const stationScope = useStationScope();
 
   useEffect(() => {
     applyStoredPlatformTheme(company?.id);
@@ -87,6 +90,7 @@ export default function Layout({ children }) {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
+
 
   // Ctrl/Cmd+K searches; the same chord with Shift switches station in place.
   useEffect(() => {
@@ -185,68 +189,35 @@ export default function Layout({ children }) {
     return () => clearInterval(interval);
   }, [currentUser?.id, company?.id]);
 
-  useEffect(() => {
-    if (!currentUser?.id || !company?.id) return undefined;
-    if (location.pathname.startsWith("/app/chat")) return undefined;
-    let cancelled = false;
-    const load = () => {
-      const stationIds = visibleStations(currentUser, data).map((station) => station.id).slice(0, 24);
-      base44.functions
-        .invoke("supabaseTargets", {
-          action: "listUnreadInbox",
-          companyId: company.id,
-          sessionToken: getCompanyToken(company.id),
-          stationIds,
-        })
-        .then((res) => {
-          if (cancelled) return;
-          const rows = Array.isArray(res?.data?.threads) ? res.data.threads : [];
-          const seen = getChatSeenMap(company.id, currentUser.id);
-          const count = rows.filter((thread) => threadIsUnread(thread, seen[thread.key], currentUser.id)).length;
-          setChatUnreadTotal(count);
-        })
-        .catch(() => {});
-    };
-    load();
-    const interval = setInterval(load, 15000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [currentUser?.id, company?.id, data?.stations?.length, location.pathname]);
+  const scopedEmployees = useMemo(
+    () => {
+      if (!data) return [];
+      return hydrateEmployeesLeave(data.employees || [], data).filter((employee) =>
+        matchesStationScope(employee.stationId, stationScope, data.stations),
+      );
+    },
+    [data, stationScope],
+  );
+  const suiteBadges = useMemo(
+    () => {
+      if (!data || !currentUser) return { byApp: {}, glowByApp: {} };
+      return collectSuiteBadges({
+        data,
+        user: currentUser,
+        employees: scopedEmployees,
+        attendanceRows: listLocalTodayAttendance(company?.id, data),
+        inScope: (stationId) => matchesStationScope(stationId, stationScope, data.stations),
+      });
+    },
+    [data, currentUser, scopedEmployees, company?.id, stationScope],
+  );
 
   if (!currentUser || !data) return children;
 
-  // Outstanding daily reports = stations without an approved filing today (Platform nav badge).
-  const dailyReportBadge = (() => {
-    const d = new Date();
-    const dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const stations = data?.stations || [];
-    const filed = (data?.reports || []).filter((r) =>
-      r && (r.kind === "daily" || r.type === "daily" || !r.kind)
-      && (!r.dateKey || r.dateKey === dayKey),
-    );
-    const byStation = new Map(filed.map((r) => [String(r.stationId), r]));
-    const open = stations.filter((st) => {
-      const r = byStation.get(String(st.id));
-      return !(r && r.approved);
-    }).length;
-    return open > 0 ? open : undefined;
-  })();
-
-  const pendingLeaveBadge = (data?.employees || []).reduce(
-    (n, employee) => n + (employee.leaveRequests || []).filter((request) => request.status === "pending").length,
-    0,
-  );
-
-  // ERP navigation — group rail + section pages (production shell).
+  // Suite navigation — group rail + section pages.
   const navItems = buildSuiteNavItems(lang, {
-    badgeFor: (app) => {
-      if (app.id === "daily-report") return dailyReportBadge;
-      if (app.id === "chat") return chatUnread > 0 ? chatUnread : undefined;
-      if (app.id === "leave") return pendingLeaveBadge > 0 ? pendingLeaveBadge : undefined;
-      return undefined;
-    },
+    badgeFor: (app) => suiteAppBadge(app, suiteBadges),
+    glowFor: (app) => suiteAppGlow(app, suiteBadges),
   });
 
   const allowedNav = allowedNavFor(currentUser, data, company);
@@ -259,8 +230,11 @@ export default function Layout({ children }) {
     orderedNavItems.find((item) => matchSuiteNavItem(item, location.pathname) === "exact")
     || orderedNavItems.find((item) => matchSuiteNavItem(item, location.pathname));
   const activeCategory = activeNavItem?.category || "daily";
-  const sectionPages = orderedNavItems.filter((item) => item.category === activeCategory);
+  const sectionPages = location.pathname.startsWith("/app/settings")
+    ? []
+    : orderedNavItems.filter((item) => item.category === activeCategory && item.to !== "/app/settings");
   const railGroups = buildSuiteRailGroups(orderedNavItems, lang);
+  const railClusters = buildSuiteRailClusters(railGroups, lang);
   const canOpenSettings = allowedNav.has("/app/settings");
 
   const myStoredNotifs = (data.notifications || []).filter(
@@ -339,15 +313,11 @@ export default function Layout({ children }) {
   };
 
   const sidebarSide = dir === "rtl" ? "right-0" : "left-0";
-  const glassBg = "var(--nv-glass-bg, var(--nv-card, #fff))";
-  const glassLine = "var(--nv-glass-line, var(--nv-line, #E2E8F0))";
-  const btnFill = "var(--nv-btn-fill, #14284B)";
-  const btnInk = "var(--nv-btn-ink, #fff)";
 
   const pageMeta = {
     "/app": {
-      title: lang === "ar" ? "مركز القيادة" : "Command Center",
-      sub: lang === "ar" ? "نظرة واحدة على جاهزية التشغيل الآن" : "One view of operational readiness right now",
+      title: lang === "ar" ? "لوحة القيادة" : "Dashboard",
+      sub: lang === "ar" ? "نظرة قرار: حضور يغذّي المسير · مهمة تحتاج إثباتاً" : "A decision glance: attendance feeds payroll · a task needs proof",
     },
     "/app/hr": {
       title: lang === "ar" ? "الموارد البشرية" : "Human Resources",
@@ -364,16 +334,52 @@ export default function Layout({ children }) {
       sub: lang === "ar" ? "الحساب والنطاق الجغرافي والصلاحيات" : "Account, geofences and permissions",
     },
     "/app/attendance": {
-      title: lang === "ar" ? "الحضور والانصراف" : "Attendance",
-      sub: lang === "ar" ? "يضع حضر بنفسه — يغذي المهام والرواتب" : "Marks present in person — feeds tasks and payroll",
+      title: lang === "ar" ? "الحضور — سؤالان: مَن / أين" : "Attendance — two questions: who / where",
+      sub: lang === "ar" ? "يضع حضر بنفسه — يغذي المهام والرواتب · الورديات والتقويم في نفس القسم" : "Marks present in person — feeds tasks and payroll · shifts and calendar live in the same section",
+    },
+    "/app/calendar": {
+      title: lang === "ar" ? "التقويم التشغيلي" : "Operational calendar",
+      sub: lang === "ar" ? "كل يوم يحمل توزيعه: حضر، تأخّر، غاب — واليوم الذي انكسرت فيه حلقة يُعلَّم بحدّ ذهبي." : "Each day carries its split: on time, late, absent — a broken ring is marked in gold.",
+    },
+    "/app/attendance/calendar": {
+      title: lang === "ar" ? "التقويم التشغيلي" : "Operational calendar",
+      sub: lang === "ar" ? "كل يوم يحمل توزيعه: حضر، تأخّر، غاب — واليوم الذي انكسرت فيه حلقة يُعلَّم بحدّ ذهبي." : "Each day carries its split: on time, late, absent — a broken ring is marked in gold.",
     },
     "/app/shifts": {
-      title: lang === "ar" ? "الورديات" : "Shifts",
-      sub: lang === "ar" ? "جدول شهري لكل فرع · الفحص النظامي قبل النشر" : "A monthly schedule per station · statutory checks before publishing",
+      title: lang === "ar" ? "جدول الدوام" : "Duty roster",
+      sub: lang === "ar" ? "الوردية المنشورة هي مصدر الوقت: منها يُعرف من يجب أن يحضر، ومتى يُعدّ متأخراً." : "The published shift is the clock: who must attend, and when lateness starts.",
+    },
+    "/app/attendance/shifts": {
+      title: lang === "ar" ? "جدول الدوام" : "Duty roster",
+      sub: lang === "ar" ? "الوردية المنشورة هي مصدر الوقت: منها يُعرف من يجب أن يحضر، ومتى يُعدّ متأخراً." : "The published shift is the clock: who must attend, and when lateness starts.",
+    },
+    "/app/requests": {
+      title: lang === "ar" ? "طلباتي" : "My Requests",
+      sub: lang === "ar" ? "ترفع طلبك هنا — القرار في إدارة، والأثر في الدوام والتقويم" : "You raise the request here — the decision sits in Manage, and the effect lands on the rota and calendar",
+    },
+    "/app/requests/leave": {
+      title: lang === "ar" ? "طلباتي" : "My Requests",
+      sub: lang === "ar" ? "ترفع طلبك هنا — القرار مسمّى والأثر يصل للدوام والتقويم" : "You raise the request here — the decision is named, and the effect reaches the rota and calendar",
+    },
+    "/app/requests/other": {
+      title: lang === "ar" ? "طلباتي" : "My Requests",
+      sub: lang === "ar" ? "ترفع طلبك هنا — القرار مسمّى والأثر يصل للدوام والتقويم" : "You raise the request here — the decision is named, and the effect reaches the rota and calendar",
+    },
+    "/app/requests/manage": {
+      title: lang === "ar" ? "إدارة" : "Manage",
+      sub: lang === "ar" ? "تستقبل وتقرر — القرار يُسجَّل باسمك" : "You receive and decide — the ruling is recorded in your name",
+    },
+    "/app/requests/archive": {
+      title: lang === "ar" ? "الأرشيف" : "Archive",
+      sub: lang === "ar" ? "ما استقرّ من طلب أو موافقة يبقى بمرجعه — والأثر في التقويم والتحقق" : "Settled requests and consents stay with their reference — the effect lands on the calendar and verify",
     },
     "/app/leave": {
-      title: lang === "ar" ? "طلبات الإجازة" : "Leave Requests",
-      sub: lang === "ar" ? "الرصيد يُخصم عند الاعتماد فقط" : "Balance is deducted only on approval",
+      title: lang === "ar" ? "طلباتي" : "My Requests",
+      sub: lang === "ar" ? "إجازة وطلبات أخرى في صندوق واحد" : "Leave and other requests in one inbox",
+    },
+    "/app/attendance/leave": {
+      title: lang === "ar" ? "طلباتي" : "My Requests",
+      sub: lang === "ar" ? "إجازة وطلبات أخرى في صندوق واحد" : "Leave and other requests in one inbox",
     },
     "/app/payroll": {
       title: lang === "ar" ? "الرواتب" : "Payroll",
@@ -383,7 +389,7 @@ export default function Layout({ children }) {
     },
     "/app/performance": {
       title: lang === "ar" ? "الأداء" : "Performance",
-      sub: lang === "ar" ? "مبني على بيانات فعلية لا تقييم يدوي" : "From actual data, not manual ratings",
+      sub: lang === "ar" ? "درجة مشتقّة من الإثبات المعتمد بين تاريخين — مقارنة بين الموظفين والفروع" : "A score derived from approved proof between two dates — compared across people and branches",
     },
     "/app/tasks": {
       title: lang === "ar" ? "المهام والعمليات" : "Operations",
@@ -393,21 +399,17 @@ export default function Layout({ children }) {
       title: lang === "ar" ? "نظام التصعيد" : "Escalation",
       sub: lang === "ar" ? "صندوق المراجعة · سلسلة لكل فرع حتى القمة" : "Review inbox · per-station chain to the top",
     },
-    "/app/daily-report": {
-      title: lang === "ar" ? "التقرير اليومي" : "Daily Report",
-      sub: lang === "ar" ? "تقرير واحد لكل فرع، يُعتمد قبل نهاية الوردية" : "One report per station, approved before the shift ends",
-    },
     "/app/inventory": {
       title: lang === "ar" ? "المخزون" : "Inventory",
-      sub: lang === "ar" ? "شراء · رصيد الفرع · صرف للعمل" : "Purchase · station balance · issue to work",
+      sub: lang === "ar" ? "لا مركزي: كل فرع يشتري رصيده · يرى غيره ويطلب · صرف للعمل بمرجع" : "Decentralised: each station buys its stock · sees others and requests · issue to work with a ref",
     },
     "/app/assets": {
       title: lang === "ar" ? "الأصول / العهد" : "Assets / Custody",
-      sub: lang === "ar" ? "سجل أصل · حائز واحد · تسليم بتوقيع الطرفين" : "Asset register · one holder · dual-sign handover",
+      sub: lang === "ar" ? "سجل أصل · حائز واحد · نقل بين الفروع بطلب وموافقة · تسليم بتوقيع الطرفين" : "Asset register · one holder · inter-station transfer by request · dual-sign handover",
     },
     "/app/expenses": {
       title: lang === "ar" ? "المصروفات" : "Expenses",
-      sub: lang === "ar" ? "مطالبات ومصروفات تشغيلية مقابل ميزانية كل فرع" : "Claims and operating spend against each station's budget",
+      sub: lang === "ar" ? "الوعاء التشغيلي وحده — اعتماد متدرّج بالمبلغ · الإيصال بوابة · لا مخزون ولا أصل" : "Operating vessel only — amount-derived approval · receipt gates · not stock, not an asset",
     },
     "/app/safety": {
       title: lang === "ar" ? "السلامة HSE" : "Safety HSE",
@@ -415,19 +417,19 @@ export default function Layout({ children }) {
     },
     "/app/files": {
       title: lang === "ar" ? "الملفات" : "Files",
-      sub: lang === "ar" ? "مستندات مقيّدة بالصلاحية ومربوطة بالفرع" : "Permission-scoped documents linked to their station",
+      sub: lang === "ar" ? "أرشيف المستندات — قسم مستقل عن التوقيع والحضور" : "Document archive — its own section, apart from signing and attendance",
     },
     "/app/signing": {
       title: lang === "ar" ? "التوقيع الرقمي" : "Digital Signing",
-      sub: lang === "ar" ? "فردي · جماعي · الصندوق · تحقق" : "Individual · group · inbox · verify",
+      sub: lang === "ar" ? "توقيع · الحالة · أرشيف وتحقق" : "Sign · status · archive and verify",
     },
     "/app/work-proof": {
       title: lang === "ar" ? "إثبات العمل" : "Work Proof",
-      sub: lang === "ar" ? "دليل ميداني + إفصاح العميل ورابط تحقق" : "Field evidence + client disclosure and a verify link",
+      sub: lang === "ar" ? "جهة خارج الشركة · المنشئ · هويات العمال والسيارات" : "Outside company · raiser · worker IDs and vehicles",
     },
-    "/app/help": {
-      title: lang === "ar" ? "دليل الاستخدام" : "User guide",
-      sub: lang === "ar" ? "مرجع الأقسام من الدخول حتى الأمن" : "Section reference from sign-in through security",
+    "/app/visitor-proof": {
+      title: lang === "ar" ? "إثبات زائر" : "Visitor Proof",
+      sub: lang === "ar" ? "هوية الزوّار والسيارات على فرع التنفيذ" : "Visitor identity and vehicles at the executing station",
     },
     "/app/complaints": {
       title: lang === "ar" ? "صوت الموظف" : "Employee Voice",
@@ -435,19 +437,11 @@ export default function Layout({ children }) {
     },
     "/app/discipline": {
       title: lang === "ar" ? "الجزاءات والتحقيق" : "Sanctions and investigation",
-      sub: lang === "ar" ? "مسار المواد 66–73 داخل الالتزام" : "Articles 66–73 path inside compliance",
+      sub: lang === "ar" ? "مسار المواد 66–73 — واقعة ثم إشعار ومحضر وقرار وتظلم" : "Articles 66–73 — incident, notice, hearing, decision, appeal",
     },
     "/app/assistant": {
       title: lang === "ar" ? "المساعد الذكي" : "AI Assistant",
       sub: lang === "ar" ? "يقرأ بياناتك ويجيب بالمصدر" : "Reads your data, answers with sources",
-    },
-    "/app/chat": {
-      title: lang === "ar" ? "المحادثات التشغيلية" : "Operations Chat",
-      sub: lang === "ar" ? "قنوات لكل فرع · الرسائل جزء من سجل التشغيل" : "A channel per station · messages are part of the operations log",
-    },
-    "/app/manual": {
-      title: lang === "ar" ? "دليل الاستخدام" : "User guide",
-      sub: lang === "ar" ? "مرجع التشغيل والصلاحيات" : "Operating reference and permissions",
     },
   };
   const resolvePageMeta = () => {
@@ -468,283 +462,59 @@ export default function Layout({ children }) {
           : (lang === "ar" ? "لا يوجد موظف بهذا المعرّف في هذه الشركة" : "No employee with this id in this company"),
       };
     }
-    const hit = Object.keys(pageMeta).find((key) => key !== "/app" && path.startsWith(key));
+    const hit = Object.keys(pageMeta)
+      .filter((key) => key !== "/app" && (path === key || path.startsWith(`${key}/`)))
+      .sort((a, b) => b.length - a.length)[0];
     return hit
       ? pageMeta[hit]
       : { title: lang === "ar" ? "نيروفيرا" : "NiroVera", sub: lang === "ar" ? "منظومة الموارد البشرية" : "HR operating system" };
   };
-  const { title: pageTitle, sub: pageSubtitle } = resolvePageMeta();
+  const { title: pageTitle } = resolvePageMeta();
   // period footer removed from design shell — user chip only (L93–99)
   const roleInitials = String(currentUser?.name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
 
   if (!currentUser) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: SURFACE }}>
-        <span style={{ color: MUTED, fontSize: 13 }}>{lang === "ar" ? "جاري تجهيز الحساب…" : "Preparing account…"}</span>
-      </div>
-    );
+    return <PlatformBoot variant="shell" />;
   }
 
   return (
-    <div className="powercare-shell flex min-h-screen" dir={dir}>
-      {/* Desktop group rail — production nirovera.sa/app */}
-      <aside
-        data-nv="sidebar"
-        className={`corporate-sidebar nv-group-rail hidden md:flex sticky top-0 z-40 h-screen pt-safe ${sidebarSide}`}
-        style={{
-          width: "94px",
-          flexShrink: 0,
-          flexDirection: "column",
-          alignItems: "center",
-          paddingBlock: "18px 14px",
-          gap: "12px",
-          background: glassBg,
-          borderInlineEnd: `1px solid ${glassLine}`,
-        }}
-      >
-        <span
-          title="NiroVera"
-          style={{
-            width: 46,
-            height: 46,
-            borderRadius: 15,
-            overflow: "hidden",
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: glassBg,
-            border: `1px solid ${glassLine}`,
-            boxShadow: "0 6px 16px rgba(20,40,75,.08)",
-          }}
-        >
-          <Logo size={26} wordmark={false} />
-        </span>
+    <div className="powercare-shell flex h-dvh max-h-dvh min-h-0 overflow-hidden" dir={dir}>
+      <SuiteRail
+        clusters={railClusters}
+        activeCategory={activeCategory}
+        lang={lang}
+        sidebarSide={sidebarSide}
+        canOpenSettings={canOpenSettings}
+        onSettings={() => navigate("/app/settings")}
+        onLogout={() => { logout(); navigate("/"); }}
+      />
 
-        <nav
-          className="no-select no-scrollbar"
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "12px",
-            paddingBlock: "10px",
-            paddingInline: "8px",
-            overflow: "visible",
-            width: "100%",
-          }}
-        >
-          {railGroups.map((group) => {
-            const active = group.key === activeCategory;
-            return (
-              <NavLink
-                key={group.key}
-                to={group.to}
-                aria-label={group.label}
-                aria-current={active ? "page" : undefined}
-                data-nv="navbtn"
-                className="group/nav nv-rail-btn"
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  textDecoration: "none",
-                  outline: "none",
-                }}
-              >
-                <span
-                  className="nv-rail-btn-face"
-                  style={{
-                    position: "relative",
-                    width: 48,
-                    height: 48,
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    overflow: "visible",
-                    color: active ? btnInk : MUTED,
-                    background: active ? btnFill : glassBg,
-                    border: active ? "1px solid transparent" : `1px solid ${glassLine}`,
-                    boxShadow: active
-                      ? "0 10px 24px rgba(20, 40, 75, 0.28)"
-                      : "0 6px 16px rgba(20, 40, 75, 0.08)",
-                    transition: "color .18s, background .18s, box-shadow .18s",
-                  }}
-                >
-                  <group.icon style={{ width: 20, height: 20, color: "inherit" }} strokeWidth={active ? 2 : 1.75} />
-                  {group.badge != null && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: -5,
-                        ...(dir === "rtl" ? { left: -4 } : { right: -4 }),
-                        zIndex: 2,
-                        minWidth: 18,
-                        height: 18,
-                        padding: "0 5px",
-                        borderRadius: 999,
-                        background: "var(--tint-amber-bg, #FFFBEB)",
-                        color: "var(--tint-amber-fg, #B45309)",
-                        fontSize: 10,
-                        fontWeight: 700,
-                        lineHeight: 1,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        border: "2px solid var(--nv-card, #fff)",
-                        boxShadow: "0 1px 4px rgba(20,40,75,.16)",
-                        pointerEvents: "none",
-                        direction: "ltr",
-                        unicodeBidi: "isolate",
-                      }}
-                    >
-                      {group.badge > 99 ? "99+" : group.badge}
-                    </span>
-                  )}
-                </span>
-                <span
-                  aria-hidden
-                  className="pointer-events-none opacity-0 transition-opacity duration-150 group-hover/nav:opacity-100"
-                  style={{
-                    position: "absolute",
-                    insetInlineStart: "calc(100% + 14px)",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    zIndex: 60,
-                    background: btnFill,
-                    color: btnInk,
-                    fontSize: "11.5px",
-                    fontWeight: 600,
-                    padding: "6px 11px",
-                    borderRadius: 10,
-                    whiteSpace: "nowrap",
-                    boxShadow: "0 10px 24px rgba(11,21,40,.28)",
-                  }}
-                >
-                  {group.label}
-                  {group.items.length > 1 ? (
-                    <span style={{ marginInlineStart: 6, opacity: 0.75, fontWeight: 500 }}>
-                      {lang === "ar" ? `${group.items.length} صفحات` : `${group.items.length} pages`}
-                    </span>
-                  ) : null}
-                </span>
-              </NavLink>
-            );
-          })}
-        </nav>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 10,
-            flexShrink: 0,
-            paddingTop: 6,
-          }}
-        >
-          {[
-            ...(canOpenSettings
-              ? [{ key: "settings", icon: Settings2, label: lang === "ar" ? "الإعدادات" : "Settings", onClick: () => navigate("/app/settings") }]
-              : []),
-            { key: "help", icon: HelpCircle, label: lang === "ar" ? "دليل الاستخدام" : "User guide", onClick: () => navigate("/app/manual") },
-            { key: "logout", icon: LogOut, label: t("logout"), danger: true, onClick: () => { logout(); navigate("/"); } },
-          ].map((action) => (
-            <button
-              key={action.key}
-              type="button"
-              onClick={action.onClick}
-              aria-label={action.label}
-              className="group/nav"
-              style={{
-                position: "relative",
-                display: "flex",
-                border: "none",
-                background: "transparent",
-                padding: 0,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                borderRadius: "50%",
-              }}
-            >
-              <span
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: action.danger ? "#DC2626" : MUTED,
-                  background: glassBg,
-                  border: `1px solid ${glassLine}`,
-                  boxShadow: "0 6px 16px rgba(20,40,75,.08)",
-                }}
-              >
-                <action.icon style={{ width: 18, height: 18 }} strokeWidth={1.75} />
-              </span>
-              <span
-                aria-hidden
-                className="pointer-events-none opacity-0 transition-opacity duration-150 group-hover/nav:opacity-100"
-                style={{
-                  position: "absolute",
-                  insetInlineStart: "calc(100% + 14px)",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  zIndex: 60,
-                  background: action.danger ? "#DC2626" : btnFill,
-                  color: "#fff",
-                  fontSize: "11.5px",
-                  fontWeight: 600,
-                  padding: "6px 11px",
-                  borderRadius: 10,
-                  whiteSpace: "nowrap",
-                  boxShadow: "0 10px 24px rgba(11,21,40,.28)",
-                }}
-              >
-                {action.label}
-              </span>
-            </button>
-          ))}
-        </div>
-      </aside>
 
       {/* Main */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {/* Header — title row + section pages strip */}
         <header
           data-nv="pad"
-          className="powercare-global-header sticky top-0 z-40 overflow-visible pt-safe"
+          aria-label={pageTitle}
+          className="powercare-global-header z-40 overflow-visible pt-safe"
           style={{
             flexShrink: 0,
             background: CARD,
             borderBottom: `1px solid ${BORDER}`,
             display: "flex",
             flexDirection: "column",
-            gap: sectionPages.length > 1 ? 10 : 0,
-            padding: sectionPages.length > 1 ? "10px 22px 12px" : "0 22px",
-            minHeight: sectionPages.length > 1 ? undefined : 58,
-            justifyContent: "center",
+            gap: 0,
+            padding: 0,
             color: INK,
           }}
         >
-          <div className="flex min-w-0 items-center gap-2" style={{ minHeight: sectionPages.length > 1 ? 38 : 58, gap: 16 }}>
-          <div className="flex min-w-0 items-center gap-2 md:hidden" style={{ flex: 1, minWidth: 0 }}>
+          <div className="nv-topbar-row flex min-w-0 items-center" style={{ height: 52, padding: "0 16px", gap: 10, boxSizing: "border-box" }}>
+          <div className="flex min-w-0 items-center gap-2 md:hidden">
             <BackButton />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: "15px", fontWeight: 600, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pageTitle}</div>
-              <div style={{ fontSize: "11px", color: MUTED, marginTop: "1px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pageSubtitle}</div>
-            </div>
           </div>
+          <div style={{ flex: 1, minWidth: 0 }} />
 
-          <div className="hidden md:block" style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: "15px", fontWeight: 600, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pageTitle}</div>
-            <div style={{ fontSize: "11px", color: MUTED, marginTop: "1px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pageSubtitle}</div>
-          </div>
-
-            {/* Scope chrome — Platform.dc.html L108–125 metrics, one station picker */}
+            {/* One station picker for the live scope */}
             <StationScopeControl />
 
             <div className="hidden md:flex" style={{ alignItems: "center", minWidth: 0, flexShrink: 1 }}>
@@ -766,7 +536,7 @@ export default function Layout({ children }) {
                   gap: "7px",
                   height: "34px",
                   padding: "0 12px",
-                  borderRadius: "9px",
+                  borderRadius: 10,
                   border: `1px solid ${BORDER}`,
                   background: SURFACE,
                   minWidth: "140px",
@@ -794,7 +564,7 @@ export default function Layout({ children }) {
                 justifyContent: "center",
                 height: "34px",
                 width: "34px",
-                borderRadius: "9px",
+                borderRadius: 0,
                 border: `1px solid ${BORDER}`,
                 background: CARD,
                 color: MUTED,
@@ -809,6 +579,7 @@ export default function Layout({ children }) {
             <SyncStatusIndicator isSyncing={isSyncing} />
             <ThemeToggle />
 
+            {location.pathname.startsWith("/app/signing") ? null : (
             <button
               type="button"
               onClick={() => setLang(lang === "ar" ? "en" : "ar")}
@@ -818,7 +589,7 @@ export default function Layout({ children }) {
                 height: "34px",
                 minWidth: "38px",
                 padding: "0 11px",
-                borderRadius: "9px",
+                borderRadius: 0,
                 border: `1px solid ${BORDER}`,
                 background: CARD,
                 fontSize: "11px",
@@ -838,6 +609,7 @@ export default function Layout({ children }) {
             >
               {lang === "ar" ? "EN" : "ع"}
             </button>
+            )}
 
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginInlineStart: "auto" }}>
               <div className="relative" ref={notifRef}>
@@ -849,7 +621,7 @@ export default function Layout({ children }) {
                     position: "relative",
                     width: 34,
                     height: 34,
-                    borderRadius: 9,
+                    borderRadius: 10,
                     border: notifOpen ? `1px solid ${NAVY}` : `1px solid ${BORDER}`,
                     background: notifOpen ? NAVY : CARD,
                     color: notifOpen ? "#fff" : MUTED,
@@ -928,7 +700,7 @@ export default function Layout({ children }) {
                     style={{
                       width: 28,
                       height: 28,
-                      borderRadius: 8,
+                      borderRadius: 10,
                       background: NAVY_FILL,
                       color: "#fff",
                       display: "inline-flex",
@@ -957,8 +729,8 @@ export default function Layout({ children }) {
                       width: 260,
                       background: CARD,
                       border: `1px solid ${BORDER}`,
-                      borderRadius: 14,
-                      boxShadow: "0 14px 32px rgba(20,40,75,.14)",
+                      borderRadius: 10,
+                      boxShadow: "none",
                       zIndex: 50,
                       overflow: "hidden",
                     }}
@@ -984,7 +756,7 @@ export default function Layout({ children }) {
                         style={{
                           width: 40,
                           height: 40,
-                          borderRadius: 11,
+                          borderRadius: 10,
                           background: NAVY_FILL,
                           color: "#fff",
                           display: "inline-flex",
@@ -1034,7 +806,7 @@ export default function Layout({ children }) {
                         style={{
                           width: 30,
                           height: 30,
-                          borderRadius: 9,
+                          borderRadius: 10,
                           background: "var(--nv-accent-soft)",
                           color: "var(--nv-accent)",
                           display: "inline-flex",
@@ -1046,43 +818,6 @@ export default function Layout({ children }) {
                         <MessageSquare style={{ width: 14, height: 14 }} strokeWidth={1.75} />
                       </span>
                       {lang === "ar" ? "التقييم والاقتراحات" : "Feedback & suggestions"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { logout(); navigate("/"); }}
-                      style={{
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "12px 14px",
-                        border: "none",
-                        borderTop: `1px solid ${BORDER}`,
-                        background: CARD,
-                        color: "#DC2626",
-                        fontSize: 13,
-                        fontWeight: 500,
-                        cursor: "pointer",
-                        fontFamily: "inherit",
-                        textAlign: "start",
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: 9,
-                          background: "#FEF2F2",
-                          color: "#DC2626",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <LogOut style={{ width: 14, height: 14 }} strokeWidth={1.75} />
-                      </span>
-                      {t("logout")}
                     </button>
                   </div>
                 )}
@@ -1096,13 +831,11 @@ export default function Layout({ children }) {
               className="no-scrollbar flex"
               style={{
                 alignItems: "center",
-                gap: 5,
+                gap: 0,
                 overflowX: "auto",
                 background: CARD,
-                border: `1px solid ${BORDER}`,
-                borderRadius: 999,
-                padding: 5,
-                boxShadow: "0 4px 14px rgba(20,40,75,.05)",
+                borderTop: `1px solid ${BORDER}`,
+                padding: "0 8px",
               }}
             >
               {sectionPages.map((page) => {
@@ -1119,18 +852,17 @@ export default function Layout({ children }) {
                       display: "inline-flex",
                       alignItems: "center",
                       gap: 7,
-                      height: 34,
-                      padding: "0 14px",
-                      borderRadius: 999,
+                      height: 36,
+                      padding: "0 13px",
+                      borderRadius: 10,
                       textDecoration: "none",
                       whiteSpace: "nowrap",
-                      fontSize: "12.5px",
-                      fontWeight: 600,
-                      color: active ? btnInk : MUTED,
-                      transition: "color .2s",
+                      fontSize: 12,
+                      fontWeight: active ? 700 : 500,
+                      color: active ? NAVY_FILL : MUTED,
                       flexShrink: 0,
-                      background: active ? btnFill : "transparent",
-                      boxShadow: active ? "0 6px 16px color-mix(in oklab, #14284B 22%, transparent)" : "none",
+                      background: active ? SURFACE : "transparent",
+                      borderInlineEnd: `2px solid ${active ? NAVY_FILL : "transparent"}`,
                     }}
                   >
                     <page.icon style={{ position: "relative", width: 14, height: 14, color: "inherit" }} strokeWidth={active ? 2 : 1.7} />
@@ -1143,11 +875,9 @@ export default function Layout({ children }) {
                           minWidth: 16,
                           height: 16,
                           padding: "0 4px",
-                          borderRadius: 8,
-                          background: active
-                            ? "color-mix(in oklab, #fff 24%, transparent)"
-                            : "var(--tint-amber-bg, #FFFBEB)",
-                          color: active ? "inherit" : "var(--tint-amber-fg, #B45309)",
+                          borderRadius: 10,
+                          background: page.appId === "complaints" ? "#C9962B" : NAVY_FILL,
+                          color: "#fff",
                           fontSize: 9,
                           fontWeight: 700,
                           display: "inline-flex",
@@ -1165,7 +895,7 @@ export default function Layout({ children }) {
           ) : null}
         </header>
 
-        <main className="platform-main-scroll flex-1 overflow-y-auto p-5 pb-28 md:px-[22px] md:pb-10 md:pt-5">
+        <main className="nv-bg platform-main-scroll min-h-0 flex-1 overflow-y-auto p-5 pb-28 md:px-[22px] md:pb-10 md:pt-5">
           <div className="powercare-interior-page mx-auto w-full max-w-[1600px]">
             <PageErrorBoundary resetKey={location.pathname}>{children}</PageErrorBoundary>
           </div>

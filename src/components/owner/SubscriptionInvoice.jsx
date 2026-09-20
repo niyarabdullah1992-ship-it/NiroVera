@@ -11,7 +11,7 @@ export default function SubscriptionInvoice({ row, ar }) {
   const currency = row.currency || "USD";
   const totals = subscriptionTotals(subscriptionBillableAmount(row));
   const invoiceNumber = subscriptionInvoiceNumber(row);
-  const issueDate = new Date(row.startedAt || Date.now()).toLocaleDateString(ar ? "ar-SA" : "en-GB");
+  const issueDate = new Date(row.startedAt || Date.now()).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB");
   const money = (value) => formatSubscriptionMoney(value, currency, ar);
   const lines = [
     [ar ? "المبلغ قبل الضريبة" : "Subtotal before VAT", money(totals.subtotal)],

@@ -1,3 +1,8 @@
+// purpose: Public verification badge (PWC-…) bound to fileHash.
+// domain: trust
+// isolation: companyId
+// owner: signedDocs
+// status: canonical
 {
   "name": "SignedDocument",
   "type": "object",

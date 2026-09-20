@@ -11,34 +11,15 @@ const OUTER = {
 export default function OpsToolbarStrip({
   ar,
   dir,
-  viewMode,
-  onViewModeChange,
   filter,
   onFilterChange,
   chips,
   showCreate,
   onToggleCreate,
+  canCreate = true,
 }) {
-  const viewTabs = [
-    { id: "list", label: ar ? "قائمة" : "List" },
-    { id: "plan", label: ar ? "الخطة" : "Plan" },
-  ];
-
   return (
     <div dir={dir} style={OUTER}>
-      <div className="nv-tabrail">
-        {viewTabs.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            onClick={() => onViewModeChange(v.id)}
-            aria-current={viewMode === v.id ? "true" : undefined}
-            data-active={viewMode === v.id ? "true" : undefined}
-          >
-            {v.label}
-          </button>
-        ))}
-      </div>
       <div className="no-scrollbar" style={{ ...pillRail, flex: "1 1 220px", minWidth: 0 }}>
         {chips.map((chip) => (
           <button
@@ -51,9 +32,11 @@ export default function OpsToolbarStrip({
           </button>
         ))}
       </div>
-      <button type="button" onClick={onToggleCreate} style={showCreate ? ui.btnCreateQuiet : ui.btnCreate}>
-        {showCreate ? (ar ? "إخفاء النموذج" : "Hide form") : (ar ? "مهمة جديدة" : "New task")}
-      </button>
+      {canCreate ? (
+        <button type="button" onClick={onToggleCreate} style={showCreate ? ui.btnCreateQuiet : ui.btnCreate}>
+          {showCreate ? (ar ? "إخفاء النموذج" : "Hide form") : (ar ? "مهمة جديدة" : "New task")}
+        </button>
+      ) : null}
     </div>
   );
 }

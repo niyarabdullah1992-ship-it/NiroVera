@@ -1,3 +1,8 @@
+// purpose: Physical asset with QR and current custodian.
+// domain: money
+// isolation: companyId
+// owner: assets
+// status: canonical
 {
   "name": "Asset",
   "type": "object",
@@ -19,6 +24,10 @@
     "stationId": {
       "type": "string",
       "description": "Owning unit (station)."
+    },
+    "originStationId": {
+      "type": "string",
+      "description": "Station that bought the asset. Survives inter-station transfer; book cost stays on the buyer."
     },
     "site": {
       "type": "string",
@@ -120,8 +129,16 @@
         "object",
         "null"
       ],
-      "description": "Open investigation for a lost asset; closed only by a documented decision.",
+      "description": "Open investigation for a lost asset; closed only by a documented decision. Keeps both reasons: reason (why the case was opened) and decisionReason (why it was closed).",
       "additionalProperties": true
+    },
+    "lostHistory": {
+      "type": "array",
+      "description": "Earlier closed loss cases on this asset, newest first. A new report never overwrites a decided one.",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
     },
     "description": {
       "type": "string",

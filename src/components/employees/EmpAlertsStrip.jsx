@@ -1,8 +1,12 @@
 import React, { useMemo } from "react";
+import { Link } from "react-router-dom";
 import { OK, WARN, BAD } from "@/lib/platformStyles";
 import { checkContractTermGate, collectEmployeeValidityDocs, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { deriveProbationProgress, deriveArt55Conversion } from "@/lib/contractLawDerivations";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import { nightRotateStage, pendingNightRotate } from "@/lib/nightRotateCycle";
+import { annualEntitlementDue } from "@/lib/leaveEntitlementCycle";
+import { employeeFileVoice } from "@/lib/employeeFileView";
 
 function daysTo(iso) {
   if (!iso) return null;
@@ -31,9 +35,10 @@ function niceDate(iso, ar) {
 }
 
 /** Platform emp alerts — L2648–2661 «يحتاج تجديدًا». Same dated-doc collector as ministry alerts. */
-export default function EmpAlertsStrip({ employee, lang = "ar" }) {
+export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
   const ar = lang === "ar";
   const profile = employee?.profile || {};
+  const voice = employeeFileVoice({ employee, currentUser, ar });
 
   const alerts = useMemo(() => {
     const rows = [];
@@ -91,6 +96,31 @@ export default function EmpAlertsStrip({ employee, lang = "ar" }) {
         ruleId: "contract.probation.warnDays",
       });
     }
+    const nightPending = pendingNightRotate(employee);
+    if (nightPending) {
+      const stage = nightRotateStage(nightPending);
+      rows.push({
+        label: ar ? "موافقة العمل الليلي" : "Night-work consent",
+        value: ar ? "سارية حتى تختار: موافقة أو تقليص ساعات أو تدوير" : "In force until you choose: consent, reduced hours, or rotation",
+        chipText: stage === "active" ? (ar ? "سارية" : "In force") : (ar ? "سارية" : "In force"),
+        chipStyle: BAD,
+        href: "/app/requests",
+        ruleId: "hours.night.rotateWeeks",
+      });
+    }
+    const leaveDue = annualEntitlementDue(employee);
+    if (leaveDue.due || leaveDue.reason === "notified") {
+      rows.push({
+        label: ar ? "الإجازة السنوية المستحقة" : "Annual leave entitlement",
+        value: leaveDue.kind === "year_end" || String(leaveDue.noticeKey || "").endsWith("year_end")
+          ? (ar ? `${leaveDue.remaining} يوماً متبقية قبل نهاية سنة الاستحقاق` : `${leaveDue.remaining} days left before the entitlement year ends`)
+          : (ar ? `سنة الاستحقاق بدأت — رصيد ${leaveDue.remaining} يوماً` : `Entitlement year started — ${leaveDue.remaining} days`),
+        chipText: ar ? "المادة 109" : "Art. 109",
+        chipStyle: WARN,
+        href: "/app/requests",
+        ruleId: "leave.annual.days",
+      });
+    }
     const art55 = deriveArt55Conversion(employee);
     if (art55.converts && term.warning !== "ART55_CONVERTED") {
       rows.push({
@@ -115,32 +145,40 @@ export default function EmpAlertsStrip({ employee, lang = "ar" }) {
   if (!alerts.length) return null;
 
   return (
-    <div style={{
-      background: "#FFFBEB",
-      border: "1px solid #FDE68A",
-      borderRadius: "14px",
-      padding: "16px 18px",
-    }}
+    <section
+      className="nv-file-card"
+      style={{
+        background: "#FDF6E8",
+        border: "1px solid #ECD9A8",
+        borderTop: "3px solid var(--nv-warn-fill, #D97706)",
+        borderRadius: 14,
+        boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
+        padding: "13px 20px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 7,
+      }}
       dir={ar ? "rtl" : "ltr"}
     >
-      <div style={{ fontSize: "13px", fontWeight: 600, color: "#B45309" }}>
-        {ar ? "يحتاج تجديدًا" : "Needs renewal"}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "9px", marginTop: "12px" }}>
-        {alerts.map((a) => (
-          <div
-            key={`${a.label}-${a.value}`}
-            style={{ display: "flex", flexDirection: "column", gap: "6px" }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-              <span style={{ flex: "1 1 200px", fontSize: "13px", color: "#78350F" }}>{a.label}</span>
-              <span style={{ fontSize: "12px", color: "#92400E" }}>{a.value}</span>
-              <span style={a.chipStyle}>{a.chipText}</span>
-            </div>
-            {a.ruleId ? <LaborArticleCite ruleId={a.ruleId} ar={ar} showText /> : null}
+      <span style={{ fontSize: 12, fontWeight: 700, color: "#8A6516" }}>
+        {voice.warnings}
+      </span>
+      {alerts.map((a) => (
+        <div key={`${a.label}-${a.value}`} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "6px minmax(0,1fr) auto", gap: 11, alignItems: "start" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: a.chipStyle?.color || "#8A6516", marginTop: 6 }} />
+            {a.href ? (
+              <Link to={a.href} style={{ fontSize: 11, color: "#3C4657", lineHeight: 1.85, minWidth: 0, fontWeight: 600 }}>
+                {a.label} — {a.value}
+              </Link>
+            ) : (
+              <span style={{ fontSize: 11, color: "#3C4657", lineHeight: 1.85, minWidth: 0 }}>{a.label} — {a.value}</span>
+            )}
+            <span style={{ fontSize: 10, fontWeight: 600, color: a.chipStyle?.color || "#8A6516", whiteSpace: "nowrap" }}>{a.chipText}</span>
           </div>
-        ))}
-      </div>
-    </div>
+          {a.ruleId ? <LaborArticleCite ruleId={a.ruleId} ar={ar} /> : null}
+        </div>
+      ))}
+    </section>
   );
 }

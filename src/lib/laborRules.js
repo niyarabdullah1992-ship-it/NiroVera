@@ -2,11 +2,11 @@
  *  Labour Law as dated operational rules. Cite a المادة only when source is labour.
  */
 
-import { articleOfficialText, BOE_LABOUR_LAW_URL } from "./laborArticleTexts.js";
+import { articleOfficialText, BOE_LABOUR_LAW_URL, HRSD_LABOUR_LAW_PDF, HRSD_LABOUR_LAW_EDITION } from "./laborArticleTexts.js";
 
 export const HRSD_CATALOGUE_URL = "https://www.hrsd.gov.sa/knowledge-centre/decisions-and-regulations/regulation-and-procedures";
 export const HRSD_IMPLEMENTING_REGS_URL = "https://www.hrsd.gov.sa/sites/default/files/2025-04/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%AA%D9%86%D9%81%D9%8A%D8%B0%D9%8A%D8%A9%20%D9%84%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D8%B9%D9%85%D9%84%20%D9%88%D9%85%D9%84%D8%AD%D9%82%D8%A7%D8%AA%D9%87%D8%A7.pdf";
-export { BOE_LABOUR_LAW_URL };
+export { BOE_LABOUR_LAW_URL, HRSD_LABOUR_LAW_PDF, HRSD_LABOUR_LAW_EDITION };
 
 const ENCODED_FROM = "2005-01-01";
 
@@ -32,6 +32,7 @@ export const LABOR_RULES = [
   row("leave.annual.afterFiveYearsDays", 30, "days", "109", "labour", "ترتفع الإجازة السنوية إلى 30 يوماً بعد خمس سنوات خدمة.", "Annual leave rises to 30 days after five years of service."),
   row("leave.annual.carry.cite", 1, "days", "110", "labour", "يجوز تأجيل الإجازة السنوية إلى السنة التالية بموافقة صاحب العمل. لصاحب العمل التأجيل حتى 90 يوماً بعد سنة الاستحقاق، وأبعد من ذلك بموافقة كتابية على ألا يتجاوز نهاية السنة التالية.", "Annual leave may be postponed to the next year with the employer's approval. The employer may postpone up to 90 days after the entitlement year, and further only with written consent, not beyond the end of the following year."),
   row("leave.annual.deferMaxDays", 90, "days", "110", "labour", "تأجيل صاحب العمل للإجازة السنوية بعد سنة الاستحقاق لا يزيد على تسعين يوماً إلا بموافقة العامل كتابة.", "The employer may postpone annual leave after the entitlement year by no more than ninety days without the worker's written consent."),
+  row("leave.annual.noticeDays", 30, "days", "109", "labour", "إذا حدّد صاحب العمل ميعاد الإجازة السنوية وجب إشعار العامل قبل ثلاثين يوماً على الأقل. طلب العامل لتواريخه لا يخضع لهذه المهلة.", "If the employer sets the annual-leave dates, the worker must be notified at least thirty days ahead. A worker-chosen request is not subject to this notice."),
   row("leave.sick.days", 120, "days", "117", "labour", "إجازة مرضية خلال السنة الواحدة: 30 يوماً بأجر كامل، ثم 60 بثلاثة أرباع الأجر، ثم 30 بلا أجر — 120 يوماً متصلة أو متقطعة من تاريخ أول إجازة مرضية.", "Sick leave in one year: 30 days at full pay, then 60 at three-quarters, then 30 unpaid — 120 days continuous or intermittent from the first sick leave."),
   row("leave.maternity.days", 70, "days", "151", "labour", "إجازة وضع عشرة أسابيع بأجر كامل — النص قبل نفاذ تعديل 19 فبراير 2025.", "Maternity leave of ten weeks on full pay — the text before the 19 February 2025 amendment.", { to: BEFORE_AMENDMENT_2025 }),
   row("leave.maternity.days", 84, "days", "151", "labour", "إجازة وضع اثنا عشر أسبوعاً بأجر كامل. ستة أسابيع بعد الوضع وجوبية، وتوزَّع الستة الباقية ابتداءً من أربعة أسابيع قبل التاريخ المرجح بشهادة طبية.", "Maternity leave of twelve weeks on full pay. Six weeks after birth are mandatory; the remaining six may start up to four weeks before the expected date with a medical certificate.", { from: AMENDMENT_2025 }),
@@ -39,16 +40,18 @@ export const LABOR_RULES = [
   row("leave.maternity.preDaysMax", 28, "days", "151", "labour", "يجوز بدء الإجازة قبل أربعة أسابيع من التاريخ المرجح للوضع.", "Leave may start up to four weeks before the expected date of birth.", { from: AMENDMENT_2025 }),
   row("leave.maternity.unpaidExtendDays", 30, "days", "151", "labour", "يجوز تمديد إجازة الوضع شهراً دون أجر.", "Maternity leave may be extended by one unpaid month.", { from: AMENDMENT_2025 }),
   row("leave.maternity.disabledChildDays", 30, "days", "151", "labour", "إنجاب طفل مريض أو من ذوي الإعاقة يحتاج مرافقاً: شهر إضافي بأجر كامل بعد إجازة الوضع — المادة 151 فقرة 2.", "A sick or disabled newborn who needs a constant companion: one extra month on full pay after maternity leave — Article 151(2).", { from: AMENDMENT_2025 }),
+  row("leave.maternity_extend.days", 30, "days", "151", "labour", "تمديد إجازة الوضع شهراً دون أجر بعد انتهائها — المادة 151 فقرة 1. ليست إجازة المادة 116 فلا يُوقف العقد بعد 20 يوماً.", "One unpaid month after maternity leave ends — Article 151(1). It is not Article 116 leave, so the contract does not suspend after 20 days.", { from: AMENDMENT_2025 }),
+  row("leave.maternity_companion.days", 30, "days", "151", "labour", "شهر بأجر كامل بعد إجازة الوضع لمرافقة مولود مريض أو ذي إعاقة يحتاج مرافقاً مستمراً، مع حق تمديد شهر دون أجر — المادة 151 فقرة 2.", "One paid month after maternity leave to accompany a sick or disabled newborn who needs a constant companion, with a further unpaid month — Article 151(2).", { from: AMENDMENT_2025 }),
   row("leave.paternity.days", 3, "days", "113", "labour", "إجازة مولود ثلاثة أيام بأجر كامل خلال سبعة أيام من تاريخ الولادة.", "Paternity leave of three days on full pay within seven days of the birth."),
   row("leave.paternity.windowDays", 7, "days", "113", "labour", "تُؤخذ إجازة المولود خلال سبعة أيام من تاريخ الولادة.", "Paternity leave must be taken within seven days of the birth."),
   row("leave.marriage.days", 5, "days", "113", "labour", "إجازة زواج خمسة أيام بأجر كامل من تاريخ الواقعة.", "Marriage leave of five days on full pay from the date of the event."),
-  row("leave.bereavement.days", 5, "days", "113", "labour", "إجازة خمسة أيام لوفاة الزوج أو أحد الأصول أو الفروع، من تاريخ الواقعة.", "Five days on the death of a spouse, parent or child, from the date of the event."),
+  row("leave.bereavement.days", 5, "days", "113", "labour", "إجازة خمسة أيام من تاريخ الواقعة: للعامل وفاة زوجه أو أصل أو فرع. وفاة زوج العاملة مسار العدّة في المادة 160، فتبقى لها هنا وفاة الأصل أو الفرع فقط.", "Five days from the event: a male worker for spouse, parent or child. A female worker's husband death is iddah under Article 160; this type is parent or child only for her."),
   row("leave.bereavement_sibling.days", 3, "days", "113", "labour", "إجازة ثلاثة أيام لوفاة الأخ أو الأخت، من تاريخ الواقعة.", "Three days on the death of a sibling, from the date of the event.", { from: AMENDMENT_2025 }),
   row("leave.hajj.days", 10, "days", "114", "labour", "إجازة حج لا تقل عن عشرة أيام ولا تزيد على خمسة عشر يوماً شاملة عيد الأضحى، مرة واحدة بعد سنتين متصلتين إن لم يُؤدَّ الحج من قبل.", "Hajj leave of ten to fifteen days including Eid al-Adha, once after two consecutive years if Hajj has not been performed before."),
   row("leave.hajj.maxDays", 15, "days", "114", "labour", "الحد الأعلى لإجازة الحج خمسة عشر يوماً شاملة عيد الأضحى.", "Hajj leave may not exceed fifteen days including Eid al-Adha."),
   row("leave.hajj.minServiceYears", 2, "years", "114", "labour", "يشترط لإجازة الحج سنتان متصلتان في الخدمة.", "Hajj leave requires two consecutive years of service."),
-  row("leave.exam.cite", 1, "days", "115", "labour", "إجازة أداء الامتحان وفق شروط المادة 115: بأجر إن وافق صاحب العمل وكانت السنة غير معادة، وبلا أجر إن أُعيدت. يُقدَّم الطلب قبل خمسة عشر يوماً مع إثبات.", "Exam leave under Article 115: paid if the employer agrees and it is a first sitting; unpaid if a repeat. Fifteen days' notice and proof."),
-  row("leave.exam.noticeDays", 15, "days", "115", "labour", "يُقدَّم طلب إجازة الامتحان قبل موعدها بخمسة عشر يوماً على الأقل.", "The exam-leave request must be submitted at least fifteen days before it is due."),
+  row("leave.exam.cite", 1, "days", "115", "labour", "إجازة أداء الامتحان وفق نص المادة 115: بأجر إن وافق صاحب العمل وكانت السنة غير معادة، وبلا أجر إن أُعيدت. إن لم يوافق على الانتساب تبقى الإجازة من السنوية أو بلا أجر — لا يُرفض الطلب المستوفي. يُقدَّم الطلب قبل خمسة عشر يوماً مع إثبات المواعيد. إن وصل الجدول بعد المهلة: الورقة وتاريخ صدورها في يومها أو اليوم التالي. إثبات الأداء ورقة ثانية بعد الامتحان على البطاقة نفسها.", "Exam leave under the text of Article 115: paid if the employer agrees and it is a first sitting; unpaid if a repeat. If enrolment is refused the leave stays from annual or unpaid — a qualifying request is not refused. Fifteen days' notice with the timetable. If the paper arrives late: attach it with its issue date on that day or the next. Sitting proof is a second paper after the exam, on the same card."),
+  row("leave.exam.noticeDays", 15, "days", "115", "labour", "يُقدَّم طلب إجازة الامتحان قبل موعدها بخمسة عشر يوماً على الأقل. إن وصل جدول المواعيد بعد المهلة يُقبل الطلب بورقة الجدول وتاريخ صدورها في يوم الورقة أو اليوم التالي — المهلة لا تسقط.", "The exam-leave request must be submitted at least fifteen days before it is due. If the timetable paper arrives after that window, the request is accepted with the paper and its issue date on that day or the next — the notice does not lapse."),
   row("leave.unpaid.cite", 1, "days", "116", "labour", "الإجازة بلا أجر توقف عقد العمل فيما زاد على عشرين يوماً ما لم يتفق الطرفان على خلاف ذلك.", "Unpaid leave suspends the contract for any period beyond twenty days unless the parties agree otherwise."),
   row("leave.eid.cite", 1, "days", "112", "labour", "إجازة الأعياد والمناسبات بأجر كامل وفق ما تحدده اللائحة.", "Paid leave on the Eids and occasions specified in the Regulations."),
   row("leave.eid.fitrDays", 4, "days", null, "ministerial", "اللائحة التنفيذية مادة 24: عيد الفطر أربعة أيام تبدأ من اليوم التالي لـ 29 رمضان حسب تقويم أم القرى. ليست شارة مادة.", "Implementing regulations Art. 24: Eid al-Fitr is four days starting the day after 29 Ramadan on the Umm al-Qura calendar. No Labour Law chip."),
@@ -58,13 +61,17 @@ export const LABOR_RULES = [
   row("leave.eid.overlap.cite", 1, "days", null, "ministerial", "اللائحة مادة 24 ثانياً: تداخل العيد مع الراحة الأسبوعية يُعوَّض، ومع السنوية تُمدَّد، ومع المرضية يُدفع الأجر الكامل. اليوم الوطني أو التأسيس مع أحد العيدين لا يُعوَّض.", "Implementing regulations Art. 24(2): overlap with weekly rest is compensated, annual leave is extended, sick leave still pays full wage for the Eid days. National or Founding Day falling in an Eid is not extra-compensated."),
   row("leave.noOtherEmployer.cite", 1, "days", "118", "labour", "لا يعمل العامل لدى صاحب عمل آخر أثناء أي إجازة في هذا الفصل، وإلا جاز حرمانه من أجر الإجازة أو استرداده.", "A worker may not work for another employer during any leave in this chapter; otherwise leave pay may be withheld or recovered."),
   row("leave.nursing.dailyMinutes", 60, "minutes", "154", "labour", "بعد العودة من إجازة الوضع: فترات إرضاع لا تزيد في مجموعها على ساعة في اليوم، ضمن ساعات العمل الفعلية وبلا تخفيض أجر.", "After returning from maternity leave: nursing rest totalling not more than one hour a day, counted as actual hours with no wage cut."),
+  row("leave.iddah.days", 130, "days", "160", "labour", "عدّة المسلمة المتوفى عنها زوجها: أربعة أشهر وعشرة أيام بأجر كامل من تاريخ الوفاة — 130 يوماً بحساب شهر العمل 30 يوماً.", "Iddah for a Muslim widow: four months and ten days on full pay from the date of death — 130 days on the 30-day work-month."),
+  row("leave.iddah.nonMuslimDays", 15, "days", "160", "labour", "عدّة غير المسلمة المتوفى عنها زوجها: خمسة عشر يوماً بأجر كامل من تاريخ الوفاة.", "Iddah for a non-Muslim widow: fifteen days on full pay from the date of death."),
+  row("leave.iddah.cite", 1, "days", "160", "labour", "المادة 160: عدّة بأجر كامل. المسلمة 4 أشهر و10 أيام، وغير المسلمة 15 يوماً. تمديد بلا أجر إن كانت حاملاً حتى تضع، ولا تُكمَّل العدة بعد الوضع. وثائق مؤيدة، ولا عمل لدى الغير.", "Article 160: paid iddah. A Muslim widow has 4 months and 10 days; a non-Muslim widow has 15 days. Unpaid extension if pregnant until birth; remaining iddah is not used after birth. Supporting papers, and no other employer."),
   row("leave.emergency.days", 5, "days", null, "product", "رصيد اضطراري داخلي — ليست مادة مستقلة.", "Internal emergency balance — not a standalone article."),
   row("leave.attachment.thresholdDays", 5, "days", null, "product", "بوابة مرفق للمنصة إن تجاوز الطلب هذا الحد.", "Product attachment gate when the request exceeds this many days."),
 
   row("hours.shift.ordinaryHours", 8, "hours", "98", "labour", "ساعات العمل العادية في اليوم ثمانٍ، أو ثمان وأربعون في الأسبوع.", "Ordinary hours are eight a day, or forty-eight a week."),
   row("hours.week.ordinaryMaxHours", 48, "hours", "98", "labour", "الحد الأسبوعي لساعات العمل العادية ثمان وأربعون ساعة.", "Weekly cap on ordinary hours is forty-eight."),
-  row("hours.ramadan.ordinaryHours", 6, "hours", "98", "labour", "في رمضان تُخفَّض ساعات العمل الفعلية للمسلمين إلى ست ساعات في اليوم.", "In Ramadan, actual hours for Muslims are reduced to six a day."),
-  row("hours.ramadan.weekMaxHours", 36, "hours", "98", "labour", "في رمضان تُخفَّض ساعات العمل الفعلية للمسلمين إلى ست وثلاثين ساعة في الأسبوع.", "In Ramadan, actual hours for Muslims are reduced to thirty-six a week."),
+  row("hours.ramadan.ordinaryHours", 6, "hours", "98", "labour", "في رمضان تُخفَّض ساعات العمل الفعلية للمسلمين إلى ست ساعات في اليوم. الفراغ على الملف = مسلم. غير المسلم المسجّل مستثنى.", "In Ramadan, actual hours for Muslims are reduced to six a day. An empty file is treated as Muslim. A recorded non-Muslim is exempt."),
+  row("hours.ramadan.weekMaxHours", 36, "hours", "98", "labour", "في رمضان تُخفَّض ساعات العمل الفعلية للمسلمين إلى ست وثلاثين ساعة في الأسبوع. الفراغ على الملف = مسلم. غير المسلم المسجّل مستثنى.", "In Ramadan, actual hours for Muslims are reduced to thirty-six a week. An empty file is treated as Muslim. A recorded non-Muslim is exempt."),
+  row("hours.ramadan.compressedTwelveStay.cite", 1, "days", "98", "labour", "المادة 98 معياران: خمسة أيام وثماني ساعات معيار يومي فينزل في رمضان إلى ست ساعات. أربعة أيام بقاء 12 ساعة وأربعة راحة معيار أسبوعي فتبقى الـ12 ساعة بقاء.", "Article 98 has two criteria: five days × eight hours is daily, so Ramadan drops to six. Four 12h-stay days + four rest is weekly, so the 12h stay remains."),
   row("hours.rest.betweenShiftsHours", 11, "hours", null, "product", "فاصل تشغيلي 11 ساعة بين نهاية وردية وبداية التالية — ليس حكم المادة 101.", "Operational 11-hour gap between shifts — not Article 101."),
   row("hours.workplace.maxHours", 11, "hours", "101", "labour", "لا يجوز أن يبقى العامل في مكان العمل أكثر من إحدى عشرة ساعة في اليوم.", "A worker may not remain at the workplace more than eleven hours a day.", { to: "2015-03-24" }),
   row("hours.workplace.maxHours", 12, "hours", "101", "labour", "لا يجوز أن يبقى العامل في مكان العمل أكثر من اثنتي عشرة ساعة في اليوم.", "A worker may not remain at the workplace more than twelve hours a day.", { from: "2015-03-25" }),
@@ -76,6 +83,7 @@ export const LABOR_RULES = [
   row("hours.ot.compLeave.cite", 1, "days", "107", "labour", "يجوز بموافقة العامل احتساب أيام إجازة تعويضية مدفوعة بدل أجر الساعات الإضافية (من 19 فبراير 2025).", "With the worker's consent, paid compensatory leave may replace overtime pay (from 19 February 2025).", { from: AMENDMENT_2025 }),
   row("hours.ot.exceptionDayHours", 10, "hours", "106", "labour", "حتى في حالات الاستثناء من المواد 98 و101 و104(1)، لا تزيد ساعات العمل الفعلية على عشر ساعات في اليوم.", "Even when Articles 98, 101 and 104(1) are waived, actual hours may not exceed ten a day."),
   row("hours.ot.exceptionWeekHours", 60, "hours", "106", "labour", "حتى في حالات الاستثناء، لا تزيد ساعات العمل الفعلية على ستين ساعة في الأسبوع. الحد السنوي للإضافي بقرار وزاري — بلا شارة مادة.", "Even in exception cases, actual hours may not exceed sixty a week. The annual overtime cap is a ministerial decision — no Labour Law chip."),
+  row("hours.ot.art106.inventoryMaxDays", 30, "days", "106", "labour", "المادة 106: الجرد السنوي وإعداد الميزانية وضغط العمل غير العادي — التكليف الإجباري لا يزيد على ثلاثين يوماً في السنة.", "Article 106: annual inventory, preparing the budget, and unusual work pressure — mandatory assignment may not exceed thirty days in the year."),
   row("hours.ot.annualMaxHours", 720, "hours", null, "ministerial", "اللائحة التنفيذية مادة 22: لا تزيد ساعات الإضافي على 720 ساعة في السنة، ويجوز زيادتها بموافقة العامل. ليست شارة مادة من نظام العمل.", "Implementing regulations Art. 22: overtime may not exceed 720 hours in a year, and may be increased with the worker's consent. No Labour Law chip."),
   row("hours.ot.compLeave.minHoursPerOtHour", 1.5, "hours", null, "ministerial", "اللائحة مادة 22 مكرر: الإجازة التعويضية لا تقل عن ساعة ونصف عن كل ساعة عمل إضافي.", "Implementing regulations Art. 22 bis: compensatory leave is at least one-and-a-half hours for each overtime hour."),
   row("hours.ot.compLeave.windowDays", 60, "days", null, "ministerial", "اللائحة مادة 22 مكرر: يُحدَّد موعد التمتع بالإجازة التعويضية خلال 60 يوماً من الإضافي ما لم يُتفق على خلاف ذلك.", "Implementing regulations Art. 22 bis: the date for taking compensatory leave is set within 60 days of the overtime unless otherwise agreed."),
@@ -95,6 +103,7 @@ export const LABOR_RULES = [
   row("contract.nonSaudi.fixed.cite", 1, "days", "37", "labour", "عقد غير السعودي مكتوب ومحدد المدة. إن لم تُذكر المدة عُدّ سنة من تاريخ المباشرة ويتجدد لمثلها.", "A non-Saudi contract is written and fixed-term. If the term is omitted it is deemed one year from the start date and renews for a like period."),
   row("contract.nonSaudi.deemedTermDays", 365, "days", "37", "labour", "المدة المفترضة لعقد غير السعودي إن لم تُذكر المدة: سنة.", "Deemed term for a non-Saudi contract when duration is omitted: one year."),
   row("contract.written.cite", 1, "days", "51", "labour", "يُكتب عقد العمل من نسختين يحتفظ كل طرف بنسخة، ويُوثَّق وفق الأحكام النظامية.", "The employment contract is written in two copies, one for each party, and documented under the applicable rules."),
+  row("contract.workplace.transfer.cite", 1, "days", "58", "labour", "لا يُنقل العامل إلى مكان يقتضي تغيير محل إقامته إلا بموافقته كتابةً. للضرورة العارضة حتى ثلاثين يوماً في السنة دون موافقة، مع تحمل صاحب العمل تكاليف الانتقال والإقامة.", "A worker may not be moved to a place that requires changing residence except with written consent. For incidental necessity up to thirty days a year, the employer may assign without consent and bears travel and lodging."),
   row("contract.model.cite", 1, "days", "52", "labour", "نموذج الوزارة الموحّد لكل نوع عقد، وللطرفين إضافة بنود لا تخالف النظام.", "The Ministry's unified model for each contract type; the parties may add clauses that do not conflict with the Law."),
   row("contract.fixed.continuation.cite", 1, "days", "55", "labour", "إن استمر الطرفان بعد انتهاء المدة عُدّ العقد غير محدد المدة للسعودي، مع مراعاة المادة 37 لغير السعودي. التجديد ثلاث مرات أو أربع سنوات أيهما أقل ثم الاستمرار يحوّل العقد.", "If both parties continue after the term ends, a Saudi contract is deemed indefinite, subject to Article 37 for non-Saudis. Three consecutive renewals or four years, whichever is less, then continuing, converts the contract."),
   row("contract.fixed.maxConsecutiveRenewals", 3, "count", "55", "labour", "ثلاثة تجديدات متتالية حدّ التحويل إلى غير محدد المدة.", "Three consecutive renewals is the conversion cap to an indefinite term."),
@@ -138,20 +147,33 @@ export const LABOR_RULES = [
   row("eos.unlawful.perYearDays", 15, "days", "77", "labour", "تعويض العقد غير المحدد: خمسة عشر يوماً عن كل سنة خدمة.", "Indefinite-contract indemnity: fifteen days' wage per year of service."),
   row("eos.unlawful.minMonths", 2, "count", "77", "labour", "حد أدنى لتعويض الإنهاء غير المشروع: أجر شهرين.", "Floor for unlawful-termination compensation: two months' wage."),
   row("discipline.penalties.cite", 1, "days", "66", "labour", "الجزاءات التأديبية الجائز توقيعها: إنذار، غرامة، حرمان من علاوة أو تأجيلها، تأجيل ترقية، إيقاف، فصل في الحالات المقررة.", "Disciplinary penalties that may be imposed: warning, fine, withholding or deferring an increment, deferring promotion, suspension, and dismissal in the prescribed cases."),
+  row("discipline.increment.maxMonths", 12, "months", "66", "labour", "حرمان العلاوة أو تأجيلها لا يزيد على سنة متى كانت مقررة من صاحب العمل.", "Withholding or deferring an increment may not exceed one year when the increment is granted by the employer."),
+  row("discipline.promotion.maxMonths", 12, "months", "66", "labour", "تأجيل الترقية لا يزيد على سنة متى كانت مقررة من صاحب العمل.", "Deferring promotion may not exceed one year when promotion is granted by the employer."),
   row("discipline.listedOnly.cite", 1, "days", "67", "labour", "لا يُوقَّع جزاء غير وارد في النظام أو في لائحة تنظيم العمل.", "No penalty may be imposed that is not provided for in the Law or the work-organization regulations."),
   row("discipline.repeat.cooloffDays", 180, "days", "68", "labour", "لا يُشدَّد الجزاء عند التكرار إذا مضى 180 يوماً على إبلاغ الجزاء السابق.", "A repeat penalty may not be increased if 180 days have passed since notice of the previous penalty."),
   row("discipline.charge.maxDays", 30, "days", "69", "labour", "لا يُتهم العامل بمخالفة مضى على كشفها أكثر من ثلاثين يوماً، ولا يُوقَّع الجزاء بعد انتهاء التحقيق بأكثر من ثلاثين يوماً.", "A worker may not be accused more than thirty days after the offence was discovered, nor penalised more than thirty days after the investigation ended."),
   row("discipline.fine.maxDays", 5, "days", "70", "labour", "غرامة المخالفة الواحدة لا تزيد على أجر خمسة أيام، ولا يُحسم وفاءً للغرامات أكثر من أجر خمسة أيام في الشهر، ولا يزيد الإيقاف دون أجر على خمسة أيام في الشهر.", "A single-offence fine may not exceed five days' wage, monthly fine deductions may not exceed five days' wage, and unpaid suspension may not exceed five days in a month."),
-  row("discipline.hearing.cite", 1, "days", "71", "labour", "لا جزاء إلا بعد إبلاغ كتابي بما نُسب واستجواب وتحقيق الدفاع وإثبات ذلك في محضر بالملف.", "No penalty without written notice of the accusation, questioning, hearing the defence, and minutes placed on the file."),
-  row("discipline.appeal.internalDays", 30, "days", "72", "labour", "التظلم الداخلي من الجزاء خلال 30 يوماً.", "Internal appeal of a sanction within 30 days."),
+  row("discipline.workplace.cite", 1, "days", "70", "labour", "لا جزاء على أمر ارتُكب خارج مكان العمل ما لم يكن متصلاً بالعمل أو بصاحبه أو بمديره المسؤول.", "No penalty for an act committed outside the workplace unless it is connected with the work, the employer, or the responsible manager."),
+  row("discipline.hearing.cite", 1, "days", "71", "labour", "لا جزاء إلا بعد إبلاغ كتابي بما نُسب واستجواب وتحقيق الدفاع وإثبات ذلك في محضر بالملف. ويجوز الاستجواب شفاهة في المخالفات البسيطة (إنذار أو غرامة لا تجاوز أجر يوم) على أن يُثبت في المحضر.", "No penalty without written notice of the accusation, questioning, hearing the defence, and minutes placed on the file. Questioning may be oral for minor offences (a warning or a fine not exceeding one day's wage) if that is recorded in the minutes."),
+  row("discipline.appeal.internalDays", 30, "days", "72", "labour", "التظلم الداخلي من الجزاء خلال 30 يوماً عدا أيام العطل الرسمية.", "Internal appeal of a sanction within 30 days excluding official holidays."),
   row("discipline.decision.days", 15, "days", "72", "labour", "البت في التظلم خلال 15 يوماً.", "Decide the internal appeal within 15 days."),
   row("discipline.fines.register.cite", 1, "days", "73", "labour", "سجل الغرامات: الاسم والأجر ومقدار الغرامة وسببها وتاريخها. تُصرف الغرامات لنفع العمال عبر اللجنة العمالية أو بموافقة الوزارة.", "Fine register: name, wage, amount, reason, and date. Fines are used for the workers' benefit by the labour committee, or with the Ministry's approval."),
-  row("hours.night.startHour", 23, "hours", null, "product", "تصنيف الوردية الليلية يبدأ الساعة 23:00 — قرار تشغيلي مرمّز، ليست شارة مادة حتى يُثبَّت الرقم.", "Night-shift classification starts at 23:00 — encoded operationally, no Labour Law chip until the article is confirmed."),
-  row("hours.night.endHour", 6, "hours", null, "product", "تصنيف الوردية الليلية ينتهي الساعة 06:00.", "Night-shift classification ends at 06:00."),
-  row("hours.heat.startHour", 12, "hours", null, "ministerial", "حظر العمل في الميدان المكشوف من 12:00 — قرار وزاري سنوي من الوزارة، ليست شارة مادة من نظام العمل.", "Outdoor field-work ban from 12:00 — an annual ministerial decision, not a Labour Law article chip."),
+  row("discipline.record.eraseDays", 365, "days", null, "product", "الجزاء يُمحى من سجل الموظف الظاهر بعد سنة من توقيعه، ويبقى في أرشيف الشركة.", "A sanction drops off the employee's visible record one year after it is signed, and stays in the company archive."),
+  row("hours.night.startHour", 23, "hours", null, "ministerial", "القرار 18632 لسنة 1441هـ (ساري 2020-01-01 / 1441-05-01): الليل من 23:00. الساعات العادية من 06:00.", "Decision 18632 of 1441 AH (from 2020-01-01 / 1441-05-01): night starts at 23:00. Ordinary hours start at 06:00.", { from: "2020-01-01" }),
+  row("hours.night.endHour", 6, "hours", null, "ministerial", "القرار 18632: الليل حتى 06:00، ثم ساعات عادية.", "Decision 18632: night ends at 06:00, then ordinary hours.", { from: "2020-01-01" }),
+  row("hours.night.workerHours", 3, "hours", null, "ministerial", "القرار 18632: عامل ليلي من يعمل ثلاث ساعات فأكثر بين 23:00 و06:00. أي دقيقة داخل النافذة = يؤدي عملاً ليلياً، ولو قلت عن ثلاث ساعات.", "Decision 18632: a night worker works three hours or more between 23:00 and 06:00. Any minute in that window performs night work, even under three hours.", { from: "2020-01-01" }),
+  row("hours.night.restHours", 12, "hours", null, "ministerial", "القرار 18632: راحة لا تقل عن 12 ساعة بين يومي عمل لكل من يؤدي عملاً ليلياً — ليست حصراً على العامل الليلي.", "Decision 18632: at least 12 hours rest between two work days for anyone who performs night work — not only night workers.", { from: "2020-01-01" }),
+  row("hours.night.rotateWeeks", 13, "weeks", null, "ministerial", "القرار 18632: لا إسناد متواصل كعامل ليلي فوق ثلاثة أشهر، ثم يُدوَّر لساعات عادية شهراً على الأقل، أو موافقة خطية محفوظة مع حق التراجع في أي وقت. لا تجديد شهري واجب. أسبوع صباحي واحد لا يصفّر العدّ.", "Decision 18632: no continuous night-worker assignment beyond three months, then rotate to ordinary hours for at least one month, or keep written consent on file with the right to withdraw at any time. Monthly renewal is not a legal duty. One morning week does not reset the clock.", { from: "2020-01-01" }),
+  row("hours.night.rotateOrdinaryWeeks", 4, "weeks", null, "ministerial", "القرار 18632: التدوير لساعات عادية لا يقل عن شهر واحد (~4 أسابيع تقويمية) قبل إعادة عدّ الثلاثة أشهر.", "Decision 18632: rotation to ordinary hours is at least one month (~4 calendar weeks) before the three-month count resets.", { from: "2020-01-01" }),
+  row("hours.night.compensateOrReduce", 1, "count", null, "ministerial", "القرار 18632: من يؤدي عملاً ليلياً يُعوَّض بساعات أو أجر أو مزايا مماثلة (بدل/نقل). للمنشأة حرية اختيار تقليص الساعات أو بدل أو تغيير العمل الليلي. إن اختارت تقليصاً أو بدلاً فلها سحبه والبدء من جديد. البدل مبلغ تختاره المنشأة (أجر أو نقل) ويُصرف مع الراتب. للعامل الليلي بدل مناسب أو تخفيض الساعات مع حفظ وزن الساعات العادية والأجر والمزايا — إلا الليلي العرضي (رمضان، أو دون عتبة شهر / 25٪ لشهرين / 5 أيام في السنة). بعد ثلاثة أشهر يبقى التدوير أو موافقة الموظف الخطية.", "Decision 18632: anyone who performs night work is compensated in hours, pay, or similar benefits (allowance / transport). The establishment freely chooses reduced hours, an allowance, or a change of night work. If it chose a reduction or an allowance, it may withdraw that choice and start over. The allowance is an amount the establishment names (pay or transport) and it pays with salary. A night worker gets a suitable allowance or reduced hours with ordinary-hour weight, pay and benefits preserved — except incidental night (Ramadan, or under the month / 25% for two months / 5 days a year thresholds). After three months, rotation or the worker's written consent still applies.", { from: "2020-01-01" }),
+  row("hours.night.pregnancyBanWeeks", 24, "weeks", null, "ministerial", "القرار 18632: يحظر العمل الليلي للحامل قبل الوضع بأربعة وعشرين أسبوعاً على الأقل، مع عمل مناسب في الساعات المعتادة. فترات إضافية بشهادة؛ وإن تعذّر النقل في حالتي الشهادة الطبية — لا الحظر التلقائي للحامل — تُخفَّض الساعات إلى ست ساعات كحد أدنى مع حفظ الأجر والمزايا.", "Decision 18632: night work is banned for a pregnant worker for at least 24 weeks before birth, with suitable ordinary-hours work. Extra periods with a certificate; if transfer is impossible in the medical-certificate cases — not the automatic pregnancy ban — hours drop to at least six with pay and benefits preserved.", { from: "2020-01-01" }),
+  row("hours.night.incidentalYearDays", 5, "days", null, "ministerial", "القرار 18632: الليلي العرضي دون أكثر من 5 أيام في السنة — أو دون شهر / دون 25٪ من العمل الشهري لشهرين فأكثر — لا يُلزم بمانع التعويض أو التخفيض الخاص بالعامل الليلي.", "Decision 18632: incidental night of no more than 5 days a year — or under one month / under 25% of monthly work for two or more months — does not trigger the night-worker compensate-or-reduce block.", { from: "2020-01-01" }),
+  row("hours.night.medicalYearMonths", 12, "months", null, "ministerial", "القرار 18632: للعامل الليلي طلب تقرير طبي قبل الإسناد، وسنوياً أثناء الإسناد، وعند ظهور مشكلة صحية. يُحفظ في الملف ولا يُعرض للغير دون موافقة، ويُستخدم للياقة الليلية فقط.", "Decision 18632: a night worker may request a medical report before assignment, yearly while assigned, and when health problems appear. Stored on the file, not shown to others without consent, and used only for night fitness.", { from: "2020-01-01" }),
+  row("hours.heat.cite", 1, "count", "122", "labour", "النظام لا يذكر ساعة ولا موسماً لحظر العمل تحت أشعة الشمس؛ الساعتان والموسم من القرار الوزاري رقم 3337 وتاريخ 15/7/1435هـ، الصادر على المادتين 122 و243، والمعدِّل للفقرة (أولاً) من القرار 1/1559. والمادة 122 تلزم صاحب العمل باتخاذ احتياطات الحماية دون تحميل العامل تكلفتها.", "The Labour Law names no hour and no season for the sun-exposure ban; the hours and the season come from ministerial decision 3337 of 15/07/1435 AH, issued on articles 122 and 243 and amending paragraph (أولاً) of decision 1/1559. Article 122 obliges the employer to take the protective precautions without charging the worker for them."),
+  row("hours.heat.startHour", 12, "hours", null, "ministerial", "حظر العمل المكشوف تحت أشعة الشمس من 12:00 — نصّ القرار الوزاري 3337، فالرقم قراري لا نصّ مادة.", "Sun-exposed work is banned from 12:00 — the wording of ministerial decision 3337, so the figure is the decision's, not an article's."),
   row("hours.heat.endHour", 15, "hours", null, "ministerial", "حظر العمل في الميدان المكشوف حتى 15:00.", "Outdoor field-work ban until 15:00."),
   row("hours.heat.fromMonth", 6, "count", null, "ministerial", "بداية موسم حظر الشمس: يونيو.", "Heat-ban season starts in June."),
-  row("hours.heat.fromDay", 15, "day_of_month", null, "ministerial", "حظر الشمس من 15 يونيو حتى 15 سبتمبر وفق إعلان الوزارة لعام 2026.", "Heat ban from 15 June to 15 September per the ministry's 2026 announcement."),
+  row("hours.heat.fromDay", 15, "day_of_month", null, "ministerial", "حظر الشمس من 15 يونيو حتى 15 سبتمبر من كل عام ميلادي — نصّ القرار الوزاري 3337 نفسه، قرار دائم لا إعلان سنوي.", "Sun ban from 15 June to 15 September of every Gregorian year — fixed by ministerial decision 3337 itself, a standing decision and not an annual announcement."),
   row("hours.heat.toMonth", 9, "count", null, "ministerial", "نهاية موسم حظر الشمس: سبتمبر.", "Heat-ban season ends in September."),
   row("hours.heat.toDay", 15, "day_of_month", null, "ministerial", "آخر يوم لحظر الشمس: 15 سبتمبر.", "Last heat-ban day: 15 September."),
   row("leave.sick.fullPayDays", 30, "days", "117", "labour", "الإجازة المرضية: ثلاثون يوماً بأجر كامل.", "Sick leave: thirty days at full pay."),
@@ -164,25 +186,54 @@ export const LABOR_RULES = [
   row("compliance.doc.expiryWarnDays", 60, "days", null, "product", "تنبيه انتهاء وثيقة قبل هذا العدد من الأيام.", "Document-expiry warning window."),
   row("compliance.gosi.employeeRate", 0.0975, "ratio", null, "gosi", "نسبة اشتراك الموظف كما هي مرمّزة للعرض.", "Employee GOSI rate as currently encoded."),
   row("compliance.gosi.employerRate", 0.1175, "ratio", null, "gosi", "نسبة اشتراك صاحب العمل كما هي مرمّزة للعرض.", "Employer GOSI rate as currently encoded."),
+  row("compliance.gosi.wageCeiling", 45000, "sar", null, "gosi", "سقف الأجر الخاضع للتأمينات: 45,000 ر.س.", "GOSI contributory-wage ceiling: 45,000 SAR."),
+  row("compliance.gosi.expatEmployerRate", 0.02, "ratio", null, "gosi", "الوافد: 2٪ أخطار مهنية على صاحب العمل وحده.", "Non-Saudi: 2% occupational-hazard share on the employer only."),
   row("compliance.ajeer.cite", 1, "days", null, "programme", "أجير خدمة وزارية للعمالة الزائرة/المؤقتة — الإرسال الحي قيد الاعتمادات الرسمية.", "Ajeer is a ministry service for visiting/temporary labour — live send waits for official credentials."),
   row("safety.hygiene.cite", 1, "days", "121", "labour", "يحفظ صاحب العمل المنشأة في حالة صحية ونظيفة ويؤمّن الإنارة والمياه وفق ما يحدده الوزير.", "The employer keeps the establishment hygienic and clean and provides lighting and water as the Minister determines."),
   row("safety.precautions.cite", 1, "days", "122", "labour", "يتخذ صاحب العمل الاحتياطات اللازمة لحماية العمال من أخطار العمل والآلات، ولا يحمّلهم كلفتها.", "The employer takes the precautions needed to protect workers from work and machinery hazards, and does not charge them for that protection."),
   row("safety.inform.cite", 1, "days", "123", "labour", "يُحاط العامل قبل مزاولة العمل بمخاطر المهنة، ويُلزم بوسائل الوقاية، وتُوفَّر مهمات الوقاية الشخصية.", "The worker is informed of occupational hazards before starting work, required to use protection, and provided with PPE."),
   row("safety.ppe.cite", 1, "days", "123", "labour", "يوفر صاحب العمل مهمات الوقاية الشخصية المناسبة ويدرب العمال على استخدامها.", "The employer provides suitable personal protective equipment and trains workers in its use."),
+
+  row("hours.posting.cite", 1, "days", "17", "labour", "يُعلن في مكان ظاهر بمقر العمل جدول مواعيد العمل وفترات الراحة ويوم الراحة الأسبوعية ومواعيد النوبات.", "The work-hours table, rest periods, weekly rest day and shift times must be posted in a conspicuous place at the workplace."),
+  row("hours.art99.extendedDayHours", 9, "hours", "99", "labour", "يجوز بقرار وزاري رفع ساعات اليوم إلى تسع لبعض الفئات أو الأعمال غير المتصلة.", "A ministerial decision may raise the daily hours to nine for certain categories or non-continuous work."),
+  row("hours.art99.hazardousDayHours", 7, "hours", "99", "labour", "يجوز بقرار وزاري تخفيض ساعات اليوم إلى سبع في الأعمال الخطرة أو الضارة.", "A ministerial decision may reduce the daily hours to seven in hazardous or harmful work."),
+  row("hours.art100.averageWeeks", 3, "count", "100", "labour", "إن زاد اليوم أو الأسبوع عن سقف المادة 98 في منشأة لا تقف يومياً، لا يزيد المتوسط على ثلاثة أسابيع أو أقل عن ثماني ساعات في اليوم أو 48 في الأسبوع.", "Where daily stop is impossible, a rise above Article 98 still may not average, over three weeks or less, more than eight hours a day or 48 a week."),
+  row("hours.art103.cite", 1, "days", "103", "labour", "إن حتّم استمرار العمل دون توقف، تُمنح فترات راحة بديلة وتُحسب من ساعات العمل الفعلية.", "Where continuity of work is required, alternative rest periods are granted and counted as actual hours."),
+  row("hours.art105.bankMaxWeeks", 8, "weeks", "105", "labour", "تجميع الراحة الأسبوعية في الأماكن النائية لا يزيد على ثمانية أسابيع، بموافقة العامل كتابة وموافقة الوزارة.", "Banking weekly rest in remote places may not exceed eight weeks, with the worker's written consent and the Ministry's approval."),
+  row("hours.art108.cite", 1, "days", "108", "labour", "استثناء فئات من أحكام الساعات بقرار وزاري — يُوسَم الملف ولا يُخترع سقف.", "Exemption of categories from the hours chapter by ministerial decision — a file flag, not an invented cap."),
+  row("hours.juvenile.minAgeYears", 15, "years", "161", "labour", "الحدث من أتم الخامسة عشرة ولم يتم الثامنة عشرة.", "A juvenile has completed fifteen years and has not completed eighteen."),
+  row("hours.juvenile.maxAgeYears", 18, "years", "161", "labour", "حدّ الحدث الأعلى: دون الثامنة عشرة.", "The juvenile ceiling: under eighteen."),
+  row("hours.juvenile.ordinaryHours", 6, "hours", "164", "labour", "تشغيل الحدث الفعلي لا يزيد على ست ساعات في اليوم.", "A juvenile's actual work may not exceed six hours a day."),
+  row("hours.juvenile.ramadanHours", 4, "hours", "164", "labour", "في رمضان لا يزيد تشغيل الحدث الفعلي على أربع ساعات.", "In Ramadan a juvenile's actual work may not exceed four hours."),
+  row("hours.juvenile.maxStretchHours", 4, "hours", "164", "labour", "لا يعمل الحدث أكثر من أربع ساعات متصلة دون راحة.", "A juvenile may not work more than four consecutive hours without a rest."),
+  row("hours.juvenile.maxPresenceHours", 7, "hours", "164", "labour", "لا يبقى الحدث في مكان العمل أكثر من سبع ساعات.", "A juvenile may not remain at the workplace more than seven hours."),
+  row("hours.juvenile.nightBanHours", 12, "hours", "163", "labour", "يحظر تشغيل الحدث أثناء فترة ليل لا تقل عن اثنتي عشرة ساعة متتالية.", "A juvenile may not work during a night period of less than twelve consecutive hours."),
+  row("hours.juvenile.no106.cite", 1, "days", "164", "labour", "لا تسري على الأحداث استثناءات المادة 106، ولا تشغيل في الراحة أو الأعياد أو السنوية.", "Article 106 exceptions do not apply to juveniles, nor may they work on weekly rest, Eids or annual leave."),
+  row("contract.illness.noDismiss.cite", 1, "days", "82", "labour", "لا إنهاء بسبب المرض قبل استنفاذ الإجازة المرضية. للعامل وصل السنوية بالمرضية.", "Service may not end for illness before sick leave is exhausted. The worker may join annual leave to sick leave."),
+  row("contract.wageType.consent.cite", 1, "days", "59", "labour", "لا نقل من الأجر الشهري إلى يومي أو أسبوعي أو قطعة أو ساعة بغير موافقة كتابية.", "A monthly wage may not switch to daily, weekly, piece or hourly pay without written consent."),
+  row("contract.essentialChange.cite", 1, "days", "60", "labour", "لا تكليف بعمل يختلف جوهرياً بغير موافقة كتابية، إلا لضرورة عارضة.", "Substantially different work needs written consent, except incidental necessity."),
+  row("contract.essentialChange.maxDays", 30, "days", "60", "labour", "الضرورة العارضة لتكليف مختلف لا تتجاوز ثلاثين يوماً في السنة.", "Incidental necessity for different work may not exceed thirty days in the year."),
+  row("contract.serviceCertificate.cite", 1, "days", "64", "labour", "شهادة الخدمة بلا تقييم واجبة عند انتهاء العلاقة.", "A service certificate with no appraisal is required when the relation ends."),
+  row("contract.returnDocuments.cite", 1, "days", "64", "labour", "إعادة الشهادات والوثائق المودعة واجبة عند الإغلاق.", "Returning deposited certificates and documents is required at close-out."),
+  row("eos.allElements.cite", 1, "days", "86", "labour", "إن اتفق الطرفان دخلت العمولات والنسب في أجر تسوية المكافأة.", "If the parties so agree, commissions and percentages enter the wage on which the award is settled."),
+  row("payroll.damage.capDays", 5, "days", "91", "labour", "حسم التلف لا يزيد على أجر خمسة أيام في الشهر، مستقل عن غرامات المادة 70.", "A damage deduction may not exceed five days' wage in a month, distinct from Article 70 fines."),
+  row("leave.maternity.medicalCare.cite", 1, "days", "153", "labour", "على صاحب العمل توفير الرعاية الطبية للمرأة العاملة أثناء الحمل والولادة.", "The employer shall provide medical care for the female worker during pregnancy and childbirth."),
+  row("facility.nursery.womenMin", 50, "count", "159", "labour", "إن بلغ عدد العاملات خمسين ولهن عشرة أطفال دون ست سنوات يلزم مكان رعاية.", "If fifty female workers have ten children under six, a care place is required."),
+  row("facility.nursery.childrenMin", 10, "count", "159", "labour", "عتبة الأطفال دون ست سنوات لمكان الرعاية: عشرة.", "The under-six children threshold for a care place: ten."),
 ];
 
-/** Umm al-Qura Gregorian windows for Ramadan — operational, not a live ministry calendar. */
+/**
+ * Umm al-Qura Gregorian starts for 1 Ramadan.
+ * Sighting may move the start one day earlier or later. Until the company
+ * records that start, the day before the prediction is treated as Ramadan
+ * when a company calendar is present. Day 30 waits for 29/30.
+ */
 export const RAMADAN_WINDOWS = [
-  { from: "2025-03-01", to: "2025-03-29" },
-  { from: "2026-02-18", to: "2026-03-19" },
-  { from: "2027-02-08", to: "2027-03-09" },
-  { from: "2028-01-28", to: "2028-02-26" },
+  { from: "2025-03-01", announcedLength: 29 },
+  { from: "2026-02-18" },
+  { from: "2027-02-08" },
+  { from: "2028-01-28" },
 ];
-
-export function isRamadanDay(value) {
-  const day = laborDayKey(value);
-  return RAMADAN_WINDOWS.some((w) => w.from <= day && day <= w.to);
-}
 
 export function laborDayKey(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -192,6 +243,96 @@ export function laborDayKey(value) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+export function addLaborDays(iso, n) {
+  const day = laborDayKey(iso);
+  const m = day.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return day;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  d.setDate(d.getDate() + Number(n));
+  return laborDayKey(d);
+}
+
+export function laborDaysBetween(from, to) {
+  const a = new Date(`${laborDayKey(from)}T00:00:00`);
+  const b = new Date(`${laborDayKey(to)}T00:00:00`);
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+function laborCalendarYear(win, calendar) {
+  if (!win || !calendar) return null;
+  const year = Number(String(win.from).slice(0, 4));
+  return calendar[year] || calendar[String(year)] || null;
+}
+
+/** -1 / 0 / +1 after sighting. Null until the company records the start. */
+export function announcedRamadanStartShift(win, calendar) {
+  const bag = laborCalendarYear(win, calendar);
+  if (!bag) return null;
+  const n = Number(bag.ramadanStartShift);
+  if (n === -1 || n === 0 || n === 1) return n;
+  const raw = String(bag.ramadanFrom || "").slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const shift = laborDaysBetween(win.from, raw);
+    if (shift >= -1 && shift <= 1) return shift;
+  }
+  return null;
+}
+
+export function announcedRamadanFrom(win, calendar) {
+  if (!win) return "";
+  const shift = announcedRamadanStartShift(win, calendar);
+  if (shift == null) return win.from;
+  return addLaborDays(win.from, shift);
+}
+
+export function ramadanWindowOn(value, calendar) {
+  const day = laborDayKey(value);
+  return RAMADAN_WINDOWS.find((w) => {
+    const from = announcedRamadanFrom(w, calendar);
+    const startPending = calendar != null && announcedRamadanStartShift(w, calendar) == null;
+    const first = startPending ? addLaborDays(w.from, -1) : from;
+    const last = addLaborDays(from, 29);
+    return first <= day && day <= last;
+  }) || null;
+}
+
+export function announcedRamadanLength(win, calendar) {
+  if (!win) return null;
+  const year = Number(String(win.from).slice(0, 4));
+  const fromCal = calendar?.[year]?.ramadanLength ?? calendar?.[String(year)]?.ramadanLength;
+  if (fromCal === 29 || fromCal === 30) return fromCal;
+  if (win.announcedLength === 29 || win.announcedLength === 30) return win.announcedLength;
+  return null;
+}
+
+export function lastRamadanDay(win, calendar) {
+  if (!win) return "";
+  const len = announcedRamadanLength(win, calendar);
+  return addLaborDays(announcedRamadanFrom(win, calendar), len === 29 ? 28 : 29);
+}
+
+/** Art. 98: apply unless the file explicitly records non-Muslim. Empty religion stays protected. */
+export function isRamadanHoursSubject(employee) {
+  const raw = String(employee?.profile?.religion || employee?.religion || "").trim().toLowerCase();
+  if (!raw) return true;
+  const compact = raw.replace(/[\s-]+/g, "_");
+  if (compact === "non_muslim" || raw.includes("غير مسلم") || raw.includes("غير مسلمة")) return false;
+  return true;
+}
+
+/** Art. 98: days 1–29 from the announced (or predicted) start; day 30 only if not announced as 29. */
+export function isRamadanDay(value, calendar) {
+  const day = laborDayKey(value);
+  const win = ramadanWindowOn(day, calendar);
+  if (!win) return false;
+  const from = announcedRamadanFrom(win, calendar);
+  const idx = laborDaysBetween(from, day) + 1;
+  if (idx < 1) return calendar != null && announcedRamadanStartShift(win, calendar) == null;
+  if (idx <= 29) return true;
+  if (idx === 30) return announcedRamadanLength(win, calendar) !== 29;
+  return false;
 }
 
 export function ruleAt(id, onDate, catalog = LABOR_RULES) {
@@ -213,6 +354,41 @@ export function ruleValue(id, onDate, catalog) {
   return row.value;
 }
 
+const RULE_UNITS = {
+  days: { arOne: "يوم", arDual: "يومان", arMany: "أيام", enOne: "day", enMany: "days" },
+  hours: { arOne: "ساعة", arDual: "ساعتان", arMany: "ساعات", enOne: "hour", enMany: "hours" },
+  minutes: { arOne: "دقيقة", arDual: "دقيقتان", arMany: "دقائق", enOne: "minute", enMany: "minutes" },
+  years: { arOne: "سنة", arDual: "سنتان", arMany: "سنوات", enOne: "year", enMany: "years" },
+  months: { arOne: "شهر", arDual: "شهران", arMany: "أشهر", enOne: "month", enMany: "months" },
+  weeks: { arOne: "أسبوع", arDual: "أسبوعان", arMany: "أسابيع", enOne: "week", enMany: "weeks" },
+};
+
+function arNounForCount(value, pack) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return pack.arOne;
+  if (n === 2) return pack.arDual || pack.arOne;
+  if (n === 1 || n % 1 !== 0) return pack.arOne;
+  const lastTwo = Math.abs(Math.trunc(n)) % 100;
+  if (lastTwo >= 3 && lastTwo <= 10) return pack.arMany;
+  return pack.arOne;
+}
+
+/** Localized in-force figure: "12 ساعة" not "12 ساعات"; "1 يوم" not "1 days". */
+export function formatRuleFigure(value, unit, ar = true) {
+  if (value == null || value === "") return "";
+  const key = String(unit || "").trim().toLowerCase();
+  if (key === "ratio") return `${value}×`;
+  const pack = RULE_UNITS[key];
+  if (!pack) return `${value} ${unit || ""}`.trim();
+  if (ar) {
+    const noun = arNounForCount(value, pack);
+    if (Number(value) === 2 && pack.arDual) return noun;
+    return `${value} ${noun}`;
+  }
+  const one = Number(value) === 1;
+  return `${value} ${one ? pack.enOne : pack.enMany}`;
+}
+
 export function citeRule(id, onDate, catalog) {
   const row = ruleAt(id, onDate, catalog);
   if (!row?.article || row.source !== "labour") return null;
@@ -229,6 +405,7 @@ export function citeRule(id, onDate, catalog) {
     textAr: official?.ar || "",
     textEn: official?.en || "",
     sourceUrl: official?.sourceUrl || BOE_LABOUR_LAW_URL,
+    localPdf: official?.localPdf || HRSD_LABOUR_LAW_PDF,
   };
 }
 
@@ -254,8 +431,8 @@ export function explainRule(id, onDate, catalog) {
     article: labour ? row.article : null,
     value: row.value,
     unit: row.unit,
-    labelAr: labour ? `المادة ${row.article}` : (row.source === "ministerial" ? "قرار وزاري" : null),
-    labelEn: labour ? `Art. ${row.article}` : (row.source === "ministerial" ? "Ministerial decision" : null),
+    labelAr: labour ? `المادة ${row.article}` : (String(row.id).startsWith("hours.night.") ? "قرار 18632" : (row.source === "ministerial" ? "قرار وزاري" : null)),
+    labelEn: labour ? `Art. ${row.article}` : (String(row.id).startsWith("hours.night.") ? "Decision 18632" : (row.source === "ministerial" ? "Ministerial decision" : null)),
     hintAr: row.hintAr,
     hintEn: row.hintEn,
     sourceUrl: HRSD_CATALOGUE_URL,

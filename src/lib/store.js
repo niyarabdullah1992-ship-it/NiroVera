@@ -3,16 +3,93 @@
 import { MANAGER_PERMISSIONS, ASSISTANT_PERMISSIONS, groupLevelsByOrder } from "./hrLevels";
 import { base44 } from "@/api/base44Client";
 import { sendEmailAlert } from "./emailAlerts";
+import { getUiLang } from "./dateFormat";
 import { toRiyadhDateKey } from "./riyadhDate";
 import { reconcileStationReferences } from "./stationConsistency";
 import { clearStationScope } from "./stationScopeStore";
 import { planDuplicateShiftMerge, shiftWindowKey } from "./shiftDerivations";
+import { checkShiftChangeApplyGate, checkWeekPublishGates, cloneDayMap, employeeShiftOnDay, isNightWorker, nightAllowanceAmount, nightAllowanceKind, nightAllowancePayLabel, nightCutHoursLabel, nightReduceCutHours, payableNightAllowance, shiftHours, weekDateKeys, weekKeyFromDate, weekStartDate } from "./shiftWeek";
+import {
+  applyNightWorkerDecision,
+  checkDecideNightRemedyGate,
+  checkNightAgreeGate,
+  checkNightEmployeeActorGate,
+  checkWithdrawNightConsentGate,
+  checkWithdrawNightRemedyGate,
+  applyLapsedNightConsents,
+  collectDueNightRotates,
+  nightCycleKey,
+  nightRotateRequestDraft,
+  nightRotateStage,
+  pendingNightRotate,
+} from "./nightRotateCycle";
+import { planNightDueAdminNotifications, planNightDueNotifications } from "./nightDueNotify";
+import { checkSelfDecideRequestGate, nightDueAdminAudience, requestNoticeAudience } from "./dutyScope";
+import {
+  annualEntitlementNoticeText,
+  collectDueAnnualLeaveNotices,
+  daysUntilLeaveStart,
+  leaveDateSpanText,
+  leaveDecisionNoticeText,
+} from "./leaveEntitlementCycle";
+import { dayAssignmentMap } from "./attendanceCalendar";
 import { applyWorkplaceManagerRule } from "./peopleTreeGraph";
 import { isWorkplaceStation } from "./stationTree";
 import { appendOrgStructureEvent } from "./orgStructureLog";
-import { statutoryLeaveFloor } from "./leaveTypes";
-import { checkApproveLeaveGate } from "./leaveDerivations";
+import { leaveCoverRange, leaveTypeLabel, statutoryLeaveFloor } from "./leaveTypes";
+import { EXAM_NOTICE_KIND, EXAM_SAT_KIND, LEAVE_ROSTER_BLOB, chargeableLeaveDays, checkAlterApprovedLeaveGate, checkApproveLeaveGate, checkAttachExamSatGate, checkRejectLeaveGate, checkSeeLeaveDecisionGate, checkSubmitLeaveGate, computeLeaveDays, leaveDecisionNoticeKey, leaveRosterFromEmployees } from "./leaveDerivations";
+import { mergeEmployeeRequestBags, projectDirectoryEmployee, rosterEmployeeById } from "./employeeRequestBags";
+import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_TYPE, STUDY_CONSENT_TYPE, appendRequestAudit, appendRequestRefuseAudit, buildRequestAudit, buildRequestRefuseAudit, checkApproveOtherRequestGate, checkApproveStudyConsentGate, checkLeaveTopupDaysGate, checkRefuseRequestReasonGate, checkRejectNightFitnessGate, checkRejectStudyConsentGate, checkRevokeStudyConsentGate, checkSubmitOtherRequestGate, composeStudyConsentReason, otherRequestTypeLabel, requestAuditFileLog, requestRefuseFileLog, stampLeaveTopupOnEmployee, stampNightFitnessOnEmployee } from "./otherRequestDerivations";
+import {
+  attendanceOnDate,
+  buildManualAttendanceRow,
+  checkPunchRecordGate,
+  clockFromPunchReason,
+  parsePunchClock,
+  toCloudAttendanceRow,
+} from "./attendancePunch";
+import {
+  OT_STATUS,
+  checkApproveOtAssignmentGate,
+  checkEmployeeAcceptOtGate,
+  checkManagerRejectOtGate,
+  checkRaiseOtAssignmentGate,
+  checkRefuseOtAssignmentGate,
+  isOvertimeAssignment,
+  otCreditDays,
+  stampOvertimeCreditOnEmployee,
+  stampOvertimePayOnDraft,
+} from "./overtimeAssignment";
+import { approvedCompLeaveDaysForYear, approvedOvertimeHoursForYear, checkOtDecisionGate } from "./attendanceDerivations";
+import { laborCalendarOf, ramadanWindowForYear } from "./ummAlQuraCalendar";
+import { addLaborDays, ruleValue } from "./laborRules";
 import { art55FilePatch, laborFilePatch } from "./contractLawDerivations";
+import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, migratePreviewSigningNotices, migratePreviewEmployeeGenders, migratePreviewAssets, migratePreviewFieldTasks, seedPreviewOwnerNightStreak, seedPreviewProofCycle, seedPreviewWrittenConsent, seedPreviewDiscipline, seedPreviewVoice, seedPreviewPerformance } from "./previewMigrations";
+import { migratePreviewStationPins } from "./previewStationPins";
+import { assertWritableCategory, isDoNotWrite } from "./canonicalStore";
+import { visibleArbitrationOutcomes } from "./arbitrationEngine";
+import {
+  WRITTEN_CONSENT_TYPE,
+  checkAcceptConsentGate,
+  checkRaiseConsentGate,
+  checkRefuseConsentGate,
+  consentPdfName,
+  consentSignerEmail,
+  consentSignerSpot,
+  consentTopicMeta,
+  findConsentBySigning,
+  isWrittenConsent,
+  savedConsentSeals,
+} from "./writtenConsent";
+import {
+  findSignableBySigning,
+  hasOpenRequestSigning,
+  isLetterSignableType,
+  requestSignerSpot,
+} from "./requestSigning";
+import { defaultConsentMark, normalizeSignMark } from "./documentReadGate";
+import { generateVerificationId } from "./verificationBadge";
+import { applyCreate } from "./multiSignDerivations";
 
 const REGISTRY_KEY = "powercare_registry";
 const COMPANY_PREFIX = "powercare_company_";
@@ -93,6 +170,12 @@ function invokeDirectory(payload) {
   return base44.functions.invoke("companyDirectory", { ...payload, sessionToken: companyId ? getCompanyToken(companyId) : null });
 }
 
+function invokeWorkforce(payload) {
+  const companyId = payload.companyId || read(SESSION_KEY, null)?.companyId;
+  if (!companyId || isLocalPreviewWorkspace(companyId)) return Promise.resolve(null);
+  return base44.functions.invoke("workforce", { ...payload, sessionToken: getCompanyToken(companyId) }).catch(() => null);
+}
+
 /* ----------------------------- audit trail ----------------------------- */
 // Full audit trail: every sensitive mutation below logs who did what. The acting
 // user's name is set by the auth provider whenever the session changes.
@@ -100,12 +183,53 @@ let auditActor = "system";
 export function setAuditActor(name) {
   auditActor = name || "system";
 }
-function audit(companyId, action, details) {
-  const safeDetails = String(details || "").slice(0, 1000);
-  invokeDirectory({ action: "logAudit", companyId, auditAction: action, performedBy: auditActor, details: safeDetails }).catch(() => {});
+function audit(companyId, action, details, extra = {}) {
+  const safeDetails = String(details || extra.details || "").slice(0, 1000);
+  invokeDirectory({
+    action: "logAudit",
+    companyId,
+    auditAction: action,
+    performedBy: extra.performedBy || auditActor,
+    details: safeDetails,
+    reason: extra.reason || null,
+    oldValue: extra.oldValue || null,
+    newValue: extra.newValue || null,
+  }).catch(() => {});
 }
-export function logAudit(companyId, action, details) {
-  audit(companyId, action, details);
+export function logAudit(companyId, action, details, extra = {}) {
+  audit(companyId, action, details, extra);
+}
+
+function stampRequestAudit(companyId, employee, request, { actor, note, family, verb } = {}) {
+  const row = buildRequestAudit({
+    actor: actor || auditActor,
+    employeeId: employee?.id,
+    employeeName: employee?.name,
+    request,
+    family,
+    verb: verb || "refuse",
+    reason: note,
+  });
+  audit(companyId, row.action, row.details, row);
+  return { row, log: requestAuditFileLog(row, true) };
+}
+
+function stampRefuseAudit(companyId, employee, request, { actor, note, family } = {}) {
+  const row = buildRequestRefuseAudit({
+    actor: actor || auditActor,
+    employeeId: employee?.id,
+    employeeName: employee?.name,
+    request,
+    family,
+    reason: note,
+  });
+  audit(companyId, row.action, row.details, row);
+  return { row, log: requestRefuseFileLog(row, true) };
+}
+
+function pushEmployeeFileLog(employee, log) {
+  if (!employee || !log) return;
+  employee.fileLog = [log, ...(employee.fileLog || [])].slice(0, 40);
 }
 // The lowest-order HR manager assigned to handle this employee's station (falls
 // back up through cluster/company tiers if no station-level manager is assigned).
@@ -162,7 +286,12 @@ function getStationHRManager(data, employeeId) {
     });
     if (candidate) return candidate;
   }
-  return null;
+  const station = (data.stations || []).find((row) => String(row.id || row.stationId) === String(emp.stationId || ""));
+  const stationMgr = data.employees.find((row) => row.id === station?.managerId && row.id !== employeeId);
+  if (stationMgr) return stationMgr;
+  return data.employees.find((row) => row.id === data.directorId && row.id !== employeeId)
+    || data.employees.find((row) => (row.role === "director" || row.role === "ops_manager") && row.id !== employeeId)
+    || null;
 }
 
 function hashId(seed) {
@@ -384,6 +513,7 @@ function emptyCompanyData(meta) {
     plannerItems: [],
     journalEntries: [],
     payrollRuns: [],
+    assetTransfers: [],
     smartPositions: [],
     permissionTemplates: [],
     orgSeats: [],
@@ -391,7 +521,10 @@ function emptyCompanyData(meta) {
     complaintEscalationChain: [],
     branchEscalationChains: {},
     workProofs: [],
+    visitorProofs: [],
     disciplinaryCases: [],
+    orgTree: [],
+    arbitrationOutcomes: [],
     settings: { rateLimitDaily: 3, rateLimitWeekly: 10, rateLimitMonthly: 30, orgType: "company" },
   };
 }
@@ -401,7 +534,11 @@ const COMPANY_ARRAY_KEYS = [
   "safety", "files", "plans", "notifications", "templates", "targets", "hrLevels",
   "jobGrades", "hrClusters", "schedules", "stationChatGroups", "personalPlaces",
   "personalAttendance", "plannerItems", "journalEntries", "payrollRuns",
-  "smartPositions", "permissionTemplates", "orgSeats", "orgStructureLog", "complaintEscalationChain", "workProofs", "disciplinaryCases",
+  "smartPositions", "permissionTemplates", "orgSeats", "orgStructureLog", "complaintEscalationChain", "workProofs", "visitorProofs", "disciplinaryCases",
+  "orgTree", "arbitrationOutcomes",
+  "assetTransfers", "assets", "assetCustody", "assetMaintenance",
+  "expenseClaims", "stationBudgets", "inventoryItems", "materialRequests", "stockMovements",
+  "signedDocRegistry", "signingFieldTemplates", "signatureRequests",
 ];
 
 function normalizeCompanyData(data) {
@@ -453,7 +590,7 @@ export function getCompanyData(id) {
   if (purgePresetLadders(data)) persist = true;
   // Local preview used to seed compass names (شمال/شرق) — those were labels only,
   // not a forced region layer. Rewrite once so the org tree shows free branch names.
-  if (id === LOCAL_PREVIEW_COMPANY && Array.isArray(data.stations)) {
+  if (isLocalPreviewWorkspace(id) && Array.isArray(data.stations)) {
     const renames = {
       "الفرع الشمالية": "فرع الخفجي",
       "الفرع الشرقية": "فرع رابغ",
@@ -475,6 +612,22 @@ export function getCompanyData(id) {
       });
       persist = true;
     }
+    if (migratePreviewRotaClock(data)) persist = true;
+    if (migratePreviewWeekRota(data)) persist = true;
+    if (migratePreviewCompanyHeadWorkplace(data)) persist = true;
+    if (migratePreviewEmployeeGenders(data)) persist = true;
+    if (migratePreviewOwnerMorningRota(data)) persist = true;
+    if (seedPreviewOwnerNightStreak(data)) persist = true;
+    if (migratePreviewSigningNotices(data)) persist = true;
+    if (migratePreviewStationPins(data)) persist = true;
+    if (seedPreviewProofCycle(data)) persist = true;
+    if (seedPreviewWrittenConsent(data)) persist = true;
+    if (applyLapsedNightConsents(data)) persist = true;
+    if (seedPreviewDiscipline(data)) persist = true;
+    if (seedPreviewVoice(data)) persist = true;
+    if (seedPreviewPerformance(data)) persist = true;
+    if (migratePreviewAssets(data)) persist = true;
+    if (migratePreviewFieldTasks(data)) persist = true;
   }
   (data.employees || []).forEach((emp) => {
     const { patch } = art55FilePatch(emp);
@@ -531,7 +684,12 @@ export function cacheCloudData(companyId, updates) {
   const current = getCompanyData(companyId);
   if (!current) return null;
   const nextUpdates = { ...updates };
-  if (nextUpdates.employees) nextUpdates.employees = mergeLocalDemoRecords(current.employees, nextUpdates.employees, "employees", companyId);
+  if (nextUpdates.employees) {
+    nextUpdates.employees = mergeEmployeeRequestBags(
+      current.employees,
+      mergeLocalDemoRecords(current.employees, nextUpdates.employees, "employees", companyId),
+    );
+  }
   if (nextUpdates.stations) nextUpdates.stations = mergeLocalDemoRecords(current.stations, nextUpdates.stations, "stations", companyId);
   let next = { ...current, ...nextUpdates };
   try {
@@ -593,6 +751,7 @@ function pushCompanyDataToCloud(id, data) {
   syncEmployeesToEntity(id, data.employees);
   syncStationsToEntity(id, data.stations);
   BLOB_CATEGORIES.forEach((category) => syncBlobToEntity(id, category, data[category]));
+  syncBlobToEntity(id, LEAVE_ROSTER_BLOB, leaveRosterFromEmployees(data.employees));
   syncBlobToEntity(id, "companyMeta", [{
     id: "meta",
     name: data.name,
@@ -670,12 +829,15 @@ if (typeof window !== "undefined") {
 export const BLOB_CATEGORIES = [
   "tasks", "reports", "anonymousReports", "publicReports", "safety", "plans",
   "schedules", "hrLevels", "jobGrades", "hrClusters", "files", "notifications", "templates", "targets",
-  "personalPlaces", "personalAttendance", "plannerItems", "journalEntries", "payrollRuns", "smartPositions",
-  "complaintEscalationChain", "branchEscalationChains", "orgTree", "orgSeats", "workProofs", "disciplinaryCases",
+  "personalPlaces", "personalAttendance", "plannerItems", "journalEntries", "payrollRuns", "assetTransfers", "smartPositions",
+  "complaintEscalationChain", "branchEscalationChains", "orgTree", "orgSeats", "workProofs", "visitorProofs", "disciplinaryCases",
+  "arbitrationOutcomes", "stationBudgets",
   ];
 const lastSyncedBlobJSON = {};
 async function syncBlobToEntity(companyId, category, payload) {
   if (isLocalPreviewWorkspace(companyId)) return;
+  if (isDoNotWrite(category)) return;
+  assertWritableCategory(category);
   const key = `${companyId}_${category}`;
   const json = JSON.stringify(payload || []);
   if (lastSyncedBlobJSON[key] === json) return;
@@ -803,27 +965,7 @@ export async function hydrateEmployeesFromEntity(companyId) {
   try {
     const res = await invokeDirectory({ action: "getEmployees", companyId });
     const records = res?.data?.employees || [];
-    return records.map((r) => ({
-      id: r.employeeId,
-      name: r.name,
-      email: r.email,
-      role: r.role,
-      stationId: r.stationId,
-      phone: r.phone,
-      position: r.position,
-      anonymousId: r.anonymousId,
-      points: r.points,
-      hrLevelId: r.hrLevelId,
-      hrStationId: r.hrStationId,
-      hrClusterId: r.hrClusterId,
-      canManageTeam: r.canManageTeam,
-      managedStations: r.managedStations,
-      profile: r.profile,
-      certificates: r.certificates,
-      leaveRequests: r.leaveRequests,
-      hrMessages: r.hrMessages,
-      createdAt: r.created_date,
-    }));
+    return records.map((r) => projectDirectoryEmployee(r)).filter(Boolean);
   } catch {
     return null;
   }
@@ -1169,25 +1311,35 @@ export function assignStationManager(companyId, employeeId, stationIds) {
 export function updateCompany(companyId, updater, options = {}) {
   const data = getCompanyData(companyId);
   if (!data) return;
+  const scheduleOnly = options.sync === "schedules";
   // Snapshot key collections so every add/remove/status change is audited
   // automatically, no matter which page performed the mutation.
-  const before = {
-    emp: new Map((data.employees || []).map((e) => [e.id, e.name])),
-    st: new Map((data.stations || []).map((s) => [s.id, s.name])),
-    stLoc: new Map((data.stations || []).map((s) => [s.id, `${s.lat},${s.lng},${s.radiusMeters}`])),
-    tasks: new Map((data.tasks || []).map((t) => [t.id, t.status])),
-    taskTitles: new Map((data.tasks || []).map((t) => [t.id, t.title])),
-    reports: new Map((data.reports || []).map((r) => [r.id, r.title])),
-    files: new Map((data.files || []).map((f) => [f.id, f.name])),
-    plans: new Map((data.plans || []).map((p) => [p.id, p.title])),
-    anrIds: new Set((data.anonymousReports || []).map((r) => r.id)),
-    paidPayroll: new Set((data.payrollRuns || []).flatMap((r) => (r.items || []).filter((i) => i?.paid).map((i) => i.id))),
-    pubIds: new Set((data.publicReports || []).map((r) => r.id)),
-    schedulesJSON: JSON.stringify(data.schedules || []),
-    settingsJSON: JSON.stringify(data.settings || {}),
-  };
+  // A cell toggle only needs the schedule fingerprint — skip the full roster scan.
+  const before = scheduleOnly
+    ? { schedulesJSON: JSON.stringify(data.schedules || []) }
+    : {
+      emp: new Map((data.employees || []).map((e) => [e.id, e.name])),
+      st: new Map((data.stations || []).map((s) => [s.id, s.name])),
+      stLoc: new Map((data.stations || []).map((s) => [s.id, `${s.lat},${s.lng},${s.radiusMeters}`])),
+      tasks: new Map((data.tasks || []).map((t) => [t.id, t.status])),
+      taskTitles: new Map((data.tasks || []).map((t) => [t.id, t.title])),
+      reports: new Map((data.reports || []).map((r) => [r.id, r.title])),
+      files: new Map((data.files || []).map((f) => [f.id, f.name])),
+      plans: new Map((data.plans || []).map((p) => [p.id, p.title])),
+      anrIds: new Set((data.anonymousReports || []).map((r) => r.id)),
+      paidPayroll: new Set((data.payrollRuns || []).flatMap((r) => (r.items || []).filter((i) => i?.paid).map((i) => i.id))),
+      pubIds: new Set((data.publicReports || []).map((r) => r.id)),
+      schedulesJSON: JSON.stringify(data.schedules || []),
+      settingsJSON: JSON.stringify(data.settings || {}),
+    };
   updater(data);
   persistCompanyData(companyId, data, options.sync || "all");
+  if (scheduleOnly) {
+    if (JSON.stringify(data.schedules || []) !== before.schedulesJSON) {
+      audit(companyId, "schedule_changed", "Work schedule updated.");
+    }
+    return data;
+  }
   logCollectionDiffs(companyId, data, before);
   emailNewEvents(companyId, data, before);
   return data;
@@ -1274,9 +1426,66 @@ function logCollectionDiffs(companyId, data, before) {
   if (JSON.stringify(data.settings || {}) !== before.settingsJSON) audit(companyId, "settings_changed", "Company settings updated.");
 }
 
-export function addNotification(companyId, userId, text) {
+function noticeLang(extras) {
+  return extras?.lang === "en" || extras?.lang === "ar" ? extras.lang : getUiLang();
+}
+
+function notifyRequestManagers(companyId, employeeId, text) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  if (!emp || !text) return;
+  const seen = new Set();
+  const list = [...requestNoticeAudience(data, emp)];
+  const hr = getStationHRManager(data, employeeId);
+  if (hr) list.push(hr);
+  for (const manager of list) {
+    if (!manager?.id || seen.has(String(manager.id)) || String(manager.id) === String(employeeId)) continue;
+    seen.add(String(manager.id));
+    addNotification(companyId, manager.id, text);
+  }
+}
+
+function requestManagerNotice(data, employee, kindLabel, lang) {
+  const ar = lang === "ar";
+  const who = String(employee?.name || "").trim();
+  const raw = String(employee?.stationName || (data?.stations || []).find((station) => String(station.id) === String(employee?.stationId || ""))?.name || "").trim();
+  const station = raw
+    ? (ar && !/^(فرع|دائرة)\s+/i.test(raw) ? `فرع ${raw}` : raw)
+    : (ar ? "بلا فرع" : "No branch");
+  const regarding = who
+    ? (ar ? `بشأن: ${who} · ${station}` : `Re: ${who} · ${station}`)
+    : station;
+  const label = String(kindLabel || "").trim();
+  if (ar) {
+    return label
+      ? `طلب ${label} ${regarding} بانتظار مراجعتك.`
+      : `طلب ${regarding} بانتظار مراجعتك.`;
+  }
+  return label
+    ? `New ${label} request ${regarding} needs your review.`
+    : `New request ${regarding} needs your review.`;
+}
+
+export function addNotification(companyId, userId, text, extra = {}) {
   updateCompany(companyId, (d) => {
-    d.notifications.unshift({ id: uid("ntf"), userId, text, read: false, createdAt: new Date().toISOString() });
+    const key = extra?.key ? String(extra.key) : "";
+    if (key && (d.notifications || []).some((row) => row.key === key && row.userId === userId)) return;
+    const row = {
+      id: uid("ntf"),
+      userId,
+      text,
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+    if (key) row.key = key;
+    if (extra?.leaveDecision && typeof extra.leaveDecision === "object") {
+      row.leaveDecision = extra.leaveDecision;
+    }
+    if (extra?.voiceNotice && typeof extra.voiceNotice === "object") {
+      row.voiceNotice = extra.voiceNotice;
+    }
+    if (extra?.to) row.to = String(extra.to);
+    d.notifications.unshift(row);
   });
 }
 
@@ -1299,6 +1508,26 @@ export function updateEmployeeProfile(companyId, employeeId, profile) {
   });
 }
 
+export function patchEmployeeFile(companyId, employeeId, { profile, phone, name, log } = {}) {
+  updateCompany(companyId, (d) => {
+    const emp = d.employees.find((e) => e.id === employeeId);
+    if (!emp) return;
+    if (profile && typeof profile === "object") {
+      const incoming = profile;
+      const merged = { ...(emp.profile || {}), ...incoming };
+      if (incoming.contract && typeof incoming.contract === "object") {
+        merged.contract = { ...(emp.profile?.contract || {}), ...incoming.contract };
+      }
+      const { patch } = laborFilePatch({ ...emp, profile: merged });
+      emp.profile = { ...merged, ...patch };
+      if (patch.contract) emp.profile.contract = { ...(merged.contract || {}), ...patch.contract };
+    }
+    if (phone != null) emp.phone = phone;
+    if (name != null && String(name).trim()) emp.name = String(name).trim();
+    if (log) emp.fileLog = [log, ...(emp.fileLog || [])].slice(0, 40);
+  });
+}
+
 /** Write due Article 55 conversion and statutory leave floors onto one employee file. */
 export function applyDueLaborRules(companyId, employeeId) {
   const emp = getCompanyData(companyId)?.employees.find((e) => e.id === employeeId);
@@ -1310,6 +1539,497 @@ export function applyDueLaborRules(companyId, employeeId) {
     logAudit(companyId, "art55_applied", `Article 55 converted ${emp.name || employeeId} to indefinite (${before.art55.trigger || "continued"}).`);
   }
   return { ok: true, applied: true, art55: Boolean(before.art55?.converts), floors: Boolean(before.floors) };
+}
+
+function nightRotateAudienceIds(data, emp) {
+  return nightDueAdminAudience(data, emp).map((row) => row.id);
+}
+
+/** Open one night-consent request after 3 months as a night worker if no written consent is on file. */
+export function openDueNightRotateCycles(companyId, weekStart, employeeId) {
+  const data = getCompanyData(companyId);
+  if (!data) return { ok: false, opened: [] };
+  updateCompany(companyId, (draft) => {
+    applyLapsedNightConsents(draft, weekStart);
+  });
+  const dueList = collectDueNightRotates(getCompanyData(companyId), weekStart)
+    .filter((row) => !employeeId || String(row.employee?.id) === String(employeeId));
+  const opened = [];
+  updateCompany(companyId, (draft) => {
+    for (const row of dueList) {
+      const emp = draft.employees.find((item) => item.id === row.employee.id);
+      if (!emp || pendingNightRotate(emp)) continue;
+      emp.otherRequests = emp.otherRequests || [];
+      const request = { id: uid("oreq"), ...nightRotateRequestDraft(row.due) };
+      const raiseStamp = stampRequestAudit(companyId, emp, request, {
+        actor: "system",
+        family: "other",
+        verb: "raise",
+        note: request.reason,
+      });
+      request.auditTrail = appendRequestAudit(request, raiseStamp.row);
+      pushEmployeeFileLog(emp, raiseStamp.log);
+      emp.otherRequests.unshift(request);
+      opened.push({ employeeId: emp.id, name: emp.name, requestId: request.id, months: row.due.months, weeks: row.due.weeks });
+    }
+  });
+  const fresh = getCompanyData(companyId);
+  const existingKeys = [
+    ...(fresh?.nightDueNoticeKeys || []),
+    ...(fresh?.notifications || []).map((row) => row.key).filter(Boolean),
+  ];
+  const dueEmployees = employeeId
+    ? (fresh?.employees || []).filter((row) => String(row.id) === String(employeeId))
+    : (fresh?.employees || []);
+  const plans = planNightDueNotifications({
+    employees: dueEmployees,
+    data: fresh,
+    weekStart,
+    existingKeys,
+  });
+  const adminPlans = planNightDueAdminNotifications({
+    employees: dueEmployees,
+    data: fresh,
+    weekStart,
+    existingKeys: [...existingKeys, ...plans.map((row) => row.key)],
+  });
+  const usedKeys = [];
+  for (const plan of plans) {
+    addNotification(companyId, plan.employeeId, plan.text, { key: plan.key });
+    usedKeys.push(plan.key);
+  }
+  for (const plan of adminPlans) {
+    addNotification(companyId, plan.managerId, plan.text, { key: plan.key });
+    usedKeys.push(plan.key);
+  }
+  if (usedKeys.length) {
+    updateCompany(companyId, (draft) => {
+      const have = new Set(draft.nightDueNoticeKeys || []);
+      for (const key of usedKeys) have.add(key);
+      draft.nightDueNoticeKeys = [...have];
+    });
+  }
+  for (const row of opened) {
+    const emp = fresh?.employees.find((item) => item.id === row.employeeId);
+    if (!emp) continue;
+    audit(companyId, "night_rotate_opened", `Night-worker consent opened for ${emp.name} after ${row.months} months (decision 18632).`);
+  }
+  return { ok: true, opened, notified: plans.length + adminPlans.length };
+}
+
+/** Worker agrees or refuses from the file. Written consent stays until withdrawn. */
+export function answerNightRotate(companyId, employeeId, requestId, decision, { acknowledged, paper, note, actorId } = {}) {
+  const actorGate = checkNightEmployeeActorGate({ employeeId, actorId });
+  if (!actorGate.ok) return actorGate;
+  const data0 = getCompanyData(companyId);
+  const emp0 = data0?.employees.find((row) => row.id === employeeId);
+  const req0 = (emp0?.otherRequests || []).find((row) => row.id === requestId);
+  const gate = checkNightAgreeGate({
+    decision,
+    acknowledged,
+    paper: paper || req0?.paper,
+    note,
+  });
+  if (!gate.ok) return gate;
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  const req = (emp?.otherRequests || []).find((row) => row.id === requestId);
+  if (!emp || !req || req.type !== "night_consent" || (req.status || "pending") !== "pending") {
+    return { ok: false, error: "REQUEST_NOT_FOUND", reason: "الطلب غير موجود.", reasonEn: "That request was not found." };
+  }
+  if (nightRotateStage(req) !== "active") {
+    return { ok: false, error: "ALREADY_ANSWERED", reason: "أُجيبت هذه الموافقة.", reasonEn: "This consent was already answered." };
+  }
+  const now = new Date().toISOString();
+  const weekStart = weekStartDate(new Date());
+  let applied = { moved: 0 };
+  updateCompany(companyId, (draft) => {
+    const employee = draft.employees.find((row) => row.id === employeeId);
+    const request = (employee?.otherRequests || []).find((row) => row.id === requestId);
+    if (!employee || !request) return;
+    request.status = decision === "refuse" ? "rejected" : "approved";
+    request.decision = decision;
+    request.violation = false;
+    if (paper?.name || paper?.url) {
+      request.paper = {
+        name: paper.name || request.paper?.name || "",
+        hash: paper.hash || request.paper?.hash || "",
+        url: paper.url || request.paper?.url || "",
+        size: paper.size || request.paper?.size || 0,
+      };
+    }
+    request.acknowledgedAt = now;
+    request.acknowledgedBy = employee.name;
+    request.attestation = decision === "agree"
+      ? "أقرّ بموافقتي على الاستمرار كعامل ليلي وفق القرار 18632، مع حق التراجع في أي وقت."
+      : decision === "reduce"
+        ? "أختار تقليص ساعات الليل تحت 3 ساعات في نافذة 23:00–06:00 وفق القرار 18632."
+        : "أرفض الاستمرار كعامل ليلي وأطلب التدوير لساعات عادية شهراً على الأقل.";
+    request.decidedAt = now;
+    request.reviewedBy = employee.name;
+    request.reviewedAt = now;
+    if (decision === "refuse") {
+      const refuseReason = String(note || "").trim() || request.attestation;
+      request.reviewNote = refuseReason;
+      request.rejectReason = refuseReason;
+    }
+    employee.profile = employee.profile || {};
+    if (decision === "agree") {
+      employee.profile.nightConsentAt = now;
+      employee.profile.nightConsentWithdrawnAt = undefined;
+      employee.profile.nightHoursReducedAt = undefined;
+    } else if (decision === "reduce") {
+      employee.profile.nightHoursReducedAt = now;
+      employee.profile.nightConsentWithdrawnAt = undefined;
+      employee.profile.nightAllowance = undefined;
+      employee.profile.nightRemedy = { kind: "reduce", at: now, byId: employeeId, source: "employee" };
+    } else {
+      employee.profile.nightConsentWithdrawnAt = now;
+    }
+    if (decision === "reduce" || decision === "refuse") {
+      const schedule = getOrCreateSchedule(draft, employee.stationId);
+      applied = applyNightWorkerDecision(schedule, employee.id, decision, weekStart);
+      request.appliedShiftId = applied.shiftId;
+      request.appliedDays = applied.moved;
+      const key = weekKeyFromDate(weekStart);
+      schedule.weekDirty = schedule.weekDirty || {};
+      schedule.weekDirty[key] = true;
+    }
+  });
+  const fresh = getCompanyData(companyId);
+  const person = fresh?.employees.find((row) => row.id === employeeId);
+  const text = decision === "agree"
+    ? `${person?.name || ""} وافق على الاستمرار كعامل ليلي. الموافقة محفوظة مع حق التراجع في أي وقت.`
+    : decision === "reduce"
+      ? `${person?.name || ""} اختار تقليص ساعات الليل — أُخرج من صفة العامل الليلي هذا الأسبوع (${applied.moved || 0} يوماً).`
+      : `${person?.name || ""} رفض الاستمرار كعامل ليلي — يُدوَّر لساعات عادية شهراً على الأقل.`;
+  for (const id of nightRotateAudienceIds(fresh, person)) {
+    if (id === employeeId) continue;
+    addNotification(companyId, id, text);
+  }
+  addNotification(
+    companyId,
+    employeeId,
+    decision === "agree"
+      ? "سُجّلت موافقتك الخطية على الاستمرار كعامل ليلي. يحق لك سحبها في أي وقت من طلباتي وفق القرار 18632."
+      : decision === "reduce"
+        ? "سُجّل اختيارك تقليص الساعات. الجدول يطبّق وردية تحت 3 ساعات في نافذة الليل."
+        : "سُجّل رفضك. أُخرجت من صفة العامل الليلي إلى ساعات عادية لمدة شهر على الأقل.",
+  );
+  const nightVerb = decision === "refuse" ? "refuse" : decision === "agree" ? "agree" : "revise";
+  const nightNote = decision === "refuse"
+    ? (String(note || "").trim() || "رفض الاستمرار كعامل ليلي وأطلب التدوير لساعات عادية شهراً على الأقل.")
+    : (decision === "agree"
+      ? "أقرّ بموافقتي على الاستمرار كعامل ليلي وفق القرار 18632، مع حق التراجع في أي وقت."
+      : "أختار تقليص ساعات الليل تحت 3 ساعات في نافذة 23:00–06:00 وفق القرار 18632.");
+  const stamped = decision === "refuse"
+    ? stampRefuseAudit(companyId, person, { ...req, type: "night_consent", id: requestId, decisionId: "18632" }, {
+      actor: person?.name || employeeId,
+      note: nightNote,
+      family: "other",
+    })
+    : stampRequestAudit(companyId, person, { ...req, type: "night_consent", id: requestId, decisionId: "18632" }, {
+      actor: person?.name || employeeId,
+      note: nightNote,
+      family: "other",
+      verb: nightVerb,
+    });
+  updateCompany(companyId, (draft) => {
+    const employee = draft.employees.find((row) => row.id === employeeId);
+    const request = (employee?.otherRequests || []).find((row) => row.id === requestId);
+    if (request) {
+      request.auditTrail = decision === "refuse"
+        ? appendRequestRefuseAudit(request, stamped.row)
+        : appendRequestAudit(request, stamped.row);
+    }
+    pushEmployeeFileLog(employee, stamped.log);
+  });
+  return { ok: true, decision, applied };
+}
+
+/** Worker withdraws written night consent at any time — 18632 حق التراجع. */
+export function withdrawNightRotate(companyId, employeeId, requestId, { acknowledged, actorId } = {}) {
+  const actorGate = checkNightEmployeeActorGate({ employeeId, actorId });
+  if (!actorGate.ok) return actorGate;
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  const req = (emp?.otherRequests || []).find((row) => row.id === requestId);
+  const gate = checkWithdrawNightConsentGate({ request: req, acknowledged });
+  if (!gate.ok) return gate;
+  const weekStart = weekStartDate(new Date());
+  const now = new Date().toISOString();
+  let applied = { moved: 0 };
+  updateCompany(companyId, (draft) => {
+    const employee = draft.employees.find((row) => row.id === employeeId);
+    const request = (employee?.otherRequests || []).find((row) => row.id === requestId);
+    if (!employee || !request) return;
+    request.status = "withdrawn";
+    request.withdrawnAt = now;
+    request.reviewedBy = employee.name;
+    request.reviewedAt = now;
+    request.attestation = "أسحب موافقتي الخطية على الاستمرار كعامل ليلي وفق القرار 18632، وأطلب التدوير لساعات عادية شهراً على الأقل.";
+    employee.profile = employee.profile || {};
+    employee.profile.nightConsentWithdrawnAt = now;
+    const schedule = getOrCreateSchedule(draft, employee.stationId);
+    applied = applyNightWorkerDecision(schedule, employee.id, "refuse", weekStart);
+    request.appliedShiftId = applied.shiftId;
+    request.appliedDays = applied.moved;
+    const key = weekKeyFromDate(weekStart);
+    schedule.weekDirty = schedule.weekDirty || {};
+    schedule.weekDirty[key] = true;
+  });
+  const fresh = getCompanyData(companyId);
+  const person = fresh?.employees.find((row) => row.id === employeeId);
+  const withdrawKey = `18632-withdrawn:${employeeId}:${requestId}`;
+  for (const id of nightRotateAudienceIds(fresh, person)) {
+    if (id === employeeId) continue;
+    addNotification(
+      companyId,
+      id,
+      `${person?.name || ""} سحب موافقته الخطية على العمل الليلي (القرار 18632). يُدوَّر لساعات عادية شهراً على الأقل.`,
+      { key: `${withdrawKey}:${id}` },
+    );
+  }
+  addNotification(
+    companyId,
+    employeeId,
+    "سحبت موافقتك الخطية. أُخرجت من صفة العامل الليلي إلى ساعات عادية لمدة شهر على الأقل.",
+  );
+  const withdrawStamp = stampRequestAudit(companyId, person, { ...req, type: "night_consent", id: requestId, decisionId: "18632" }, {
+    actor: person?.name || employeeId,
+    note: "أسحب موافقتي الخطية على الاستمرار كعامل ليلي وفق القرار 18632.",
+    family: "other",
+    verb: "withdraw",
+  });
+  updateCompany(companyId, (draft) => {
+    const employee = draft.employees.find((row) => row.id === employeeId);
+    const request = (employee?.otherRequests || []).find((row) => row.id === requestId);
+    if (request) request.auditTrail = appendRequestAudit(request, withdrawStamp.row);
+    pushEmployeeFileLog(employee, withdrawStamp.log);
+  });
+  return { ok: true, decision: "withdraw", applied };
+}
+
+function firstNightDutyHours(schedule, employeeId, weekStart) {
+  for (const key of weekDateKeys(weekStart)) {
+    const shift = employeeShiftOnDay(schedule, employeeId, key);
+    if (isNightWorker(shift, key)) return shiftHours(shift);
+  }
+  return null;
+}
+
+function stampNightRemedy(profile, kind, { at, byId, cutHours, fromHours, amount, allowanceKind } = {}) {
+  const next = profile || {};
+  const cut = nightReduceCutHours(cutHours);
+  const pay = nightAllowanceAmount(amount);
+  const payKind = nightAllowanceKind(allowanceKind);
+  next.nightRemedy = {
+    kind,
+    at,
+    byId,
+    source: "management",
+    ...(kind === "reduce" && cut ? { cutHours: cut, fromHours: fromHours || undefined } : {}),
+    ...(kind === "allowance" && pay ? { amount: pay, allowanceKind: payKind || "pay" } : {}),
+  };
+  if (kind === "allowance") {
+    next.nightAllowance = pay || true;
+    next.nightHoursReducedAt = undefined;
+  } else if (kind === "reduce") {
+    next.nightHoursReducedAt = at;
+    next.nightHoursCut = cut || undefined;
+    next.nightAllowance = undefined;
+  } else {
+    next.nightHoursReducedAt = undefined;
+    next.nightHoursCut = undefined;
+    next.nightAllowance = undefined;
+  }
+  return next;
+}
+
+function currentPayrollMonthKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function syncNightAllowanceOnPayrollDraft(draft, employee) {
+  if (!employee) return;
+  const run = (draft.payrollRuns || []).find((row) => row.month === currentPayrollMonthKey());
+  if (!run) return;
+  const item = (run.items || []).find((row) => row.employeeId === employee.id);
+  if (!item || item.paid) return;
+  const contract = Number(employee.profile?.allowances) || 0;
+  item.allowances = contract + payableNightAllowance(employee);
+  item.nightAllowance = payableNightAllowance(employee);
+  if (item.qiwaWage != null) item.qiwaWage = (Number(item.base) || 0) + item.allowances;
+}
+
+/** Establishment chooses reduce, allowance, or a change of night work. */
+export function decideNightRemedy(companyId, employeeId, kind, { actorId, ordinaryKind, applyRoster = true, cutHours, amount, allowanceKind } = {}) {
+  const gate = checkDecideNightRemedyGate({ kind, employeeId, actorId, cutHours, amount, allowanceKind });
+  if (!gate.ok) return gate;
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  if (!emp) {
+    return { ok: false, error: "EMPLOYEE_REQUIRED", reason: "الموظف غير موجود.", reasonEn: "That employee was not found." };
+  }
+  const now = new Date().toISOString();
+  const weekStart = weekStartDate(new Date());
+  let applied = { moved: 0 };
+  const cut = nightReduceCutHours(cutHours);
+  const pay = nightAllowanceAmount(amount);
+  const payKind = nightAllowanceKind(allowanceKind);
+  updateCompany(companyId, (draft) => {
+    const employee = draft.employees.find((row) => row.id === employeeId);
+    if (!employee) return;
+    const schedule = getOrCreateSchedule(draft, employee.stationId);
+    const fromHours = kind === "reduce" ? firstNightDutyHours(schedule, employee.id, weekStart) : null;
+    employee.profile = stampNightRemedy(employee.profile || {}, kind, {
+      at: now,
+      byId: actorId,
+      cutHours: cut,
+      fromHours,
+      amount: pay,
+      allowanceKind: payKind,
+    });
+    if (kind === "allowance") syncNightAllowanceOnPayrollDraft(draft, employee);
+    if (!applyRoster || kind === "allowance") return;
+    applied = applyNightWorkerDecision(schedule, employee.id, kind === "reduce" ? "reduce" : "rotate", weekStart, { ordinaryKind, cutHours: cut });
+    const key = weekKeyFromDate(weekStart);
+    schedule.weekDirty = schedule.weekDirty || {};
+    schedule.weekDirty[key] = true;
+  });
+  const fresh = getCompanyData(companyId);
+  const person = fresh?.employees.find((row) => row.id === employeeId);
+  const cutLabel = nightCutHoursLabel(cut, true);
+  const payLabel = nightAllowancePayLabel(pay, payKind, true);
+  const text = kind === "allowance"
+    ? `${person?.name || ""} — سُجّل ${payLabel}. يُصرف مع الراتب. للمنشأة سحبه والبدء من جديد.`
+    : kind === "reduce"
+      ? `${person?.name || ""} — سُجّل تقليص ${cutLabel} (${applied.moved || 0} يوماً). للمنشأة سحبه والبدء من جديد.`
+      : `${person?.name || ""} — غُيّر العمل الليلي إلى ساعات عادية.`;
+  addNotification(companyId, employeeId, text);
+  audit(companyId, kind === "allowance" ? "night_allowance_recorded" : kind === "reduce" ? "night_hours_reduced" : "night_work_changed", `Night remedy ${kind}${cut ? ` −${cut}h` : pay ? ` ${payKind} ${pay}` : ""} by management for ${person?.name || employeeId}.`);
+  return { ok: true, kind, applied, cutHours: cut || null, amount: pay || null, allowanceKind: payKind || null };
+}
+
+/** Withdraw a recorded reduction or allowance and start the 18632 choice over. */
+export function withdrawNightRemedy(companyId, employeeId, { actorId } = {}) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  const gate = checkWithdrawNightRemedyGate({ employee: emp, employeeId, actorId });
+  if (!gate.ok) return gate;
+  const now = new Date().toISOString();
+  const previous = emp?.profile?.nightRemedy?.kind;
+  updateCompany(companyId, (draft) => {
+    const employee = draft.employees.find((row) => row.id === employeeId);
+    if (!employee) return;
+    employee.profile = employee.profile || {};
+    if (employee.profile.nightRemedy) {
+      employee.profile.nightRemedy = { ...employee.profile.nightRemedy, withdrawnAt: now, withdrawnById: actorId };
+    }
+    employee.profile.nightHoursReducedAt = undefined;
+    employee.profile.nightHoursCut = undefined;
+    employee.profile.nightAllowance = undefined;
+    syncNightAllowanceOnPayrollDraft(draft, employee);
+  });
+  const fresh = getCompanyData(companyId);
+  const person = fresh?.employees.find((row) => row.id === employeeId);
+  addNotification(
+    companyId,
+    employeeId,
+    previous === "reduce"
+      ? "سحبَت المنشأة تقليص ساعات الليل. يُختار من جديد: تقليص أو بدل أو تغيير العمل الليلي."
+      : "سحبَت المنشأة البدل الليلي. يُختار من جديد: تقليص أو بدل أو تغيير العمل الليلي.",
+  );
+  audit(companyId, "night_remedy_withdrawn", `Night remedy ${previous} withdrawn for ${person?.name || employeeId} — start over.`);
+  return { ok: true, decision: "withdraw", previous };
+}
+
+/** إدارة may ping the worker — never agree, refuse, or close the 18632 file. */
+export function remindNightDue(companyId, employeeId, { byId, byName } = {}) {
+  if (!byId || String(byId) === String(employeeId)) {
+    return {
+      ok: false,
+      error: "MANAGER_REMIND",
+      reason: "التذكير من الإدارة للموظف — دون موافقة أو رفض في النظام.",
+      reasonEn: "The reminder is from management to the worker — no agree or refuse in the system.",
+    };
+  }
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  if (!emp) {
+    return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "That employee was not found." };
+  }
+  const pending = pendingNightRotate(emp);
+  if (!pending) {
+    return {
+      ok: false,
+      error: "NOT_DUE",
+      reason: "لا موافقة ليلية بانتظار الموظف.",
+      reasonEn: "No night consent is waiting for the worker.",
+    };
+  }
+  const key = `18632-remind:${byId}:${employeeId}:${pending.cycleKey || nightCycleKey(new Date())}`;
+  addNotification(
+    companyId,
+    employeeId,
+    `تذكير من ${byName || "الإدارة"}: موافقة العمل الليلي (18632) بانتظارك في ملفي. الإدارة لا توافق عنك ولا ترفض.`,
+    { key },
+  );
+  return { ok: true, key };
+}
+
+/** Manager cannot close an unanswered night notice. Silence leaves it in force. */
+export function decideNightRotate(companyId, employeeId, requestId, status, reviewerName, note) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  const req = (emp?.otherRequests || []).find((row) => row.id === requestId);
+  if (!emp || !req || req.type !== "night_consent") {
+    return { ok: false, error: "REQUEST_NOT_FOUND", reason: "الطلب غير موجود.", reasonEn: "That request was not found." };
+  }
+  if (nightRotateStage(req) === "active") {
+    return {
+      ok: false,
+      error: "EMPLOYEE_MUST_AGREE",
+      reason: "سارية وحمراء حتى يوافق الموظف على نفس الوردية الليلية. سكوت المدير يبقيها.",
+      reasonEn: "It stays in force and red until the worker agrees to the same night shift. Manager silence leaves it open.",
+    };
+  }
+  if (String(note || "").trim()) {
+    updateCompany(companyId, (draft) => {
+      const request = (draft.employees.find((row) => row.id === employeeId)?.otherRequests || []).find((row) => row.id === requestId);
+      if (!request) return;
+      request.reviewNote = String(note).trim();
+      request.reviewedBy = reviewerName;
+      request.reviewedAt = new Date().toISOString();
+    });
+  }
+  void status;
+  return { ok: true, stayed: true };
+}
+
+/** Art. 109 entitlement-year notices — once at year open, once when 30 days remain. */
+export function openDueAnnualLeaveNotices(companyId, onDate) {
+  const data = getCompanyData(companyId);
+  if (!data) return { ok: false, opened: [] };
+  const dueList = collectDueAnnualLeaveNotices(data, onDate);
+  if (!dueList.length) return { ok: true, opened: [] };
+  const opened = [];
+  updateCompany(companyId, (draft) => {
+    for (const row of dueList) {
+      const emp = draft.employees.find((item) => item.id === row.employee.id);
+      if (!emp) continue;
+      emp.profile = emp.profile || {};
+      emp.profile.annualEntitlementNoticeKey = row.due.noticeKey;
+      opened.push({ employeeId: emp.id, name: emp.name, kind: row.due.kind, remaining: row.due.remaining });
+    }
+  });
+  for (const row of opened) {
+    const due = dueList.find((item) => item.employee.id === row.employeeId)?.due;
+    if (!due) continue;
+    addNotification(companyId, row.employeeId, annualEntitlementNoticeText(due, "", getUiLang()));
+    audit(companyId, "annual_leave_entitlement_notice", `Article 109 ${row.kind} notice for ${row.name} (${row.remaining} days).`);
+  }
+  return { ok: true, opened };
 }
 
 export function saveEmployeeOffboarding(companyId, employeeId, offboarding) {
@@ -1499,47 +2219,174 @@ export function addDisciplineMessage(companyId, caseId, { from, text, files, sen
 }
 
 // Leave requests: employee submits, an authorized manager/HR approves or rejects.
-export function submitLeaveRequest(companyId, employeeId, { type, startDate, endDate, reason, files, eventDate, examRepeat, days: requestedDays }) {
+export function submitLeaveRequest(companyId, employeeId, { type, startDate, endDate, reason, files, eventDate, examRepeat, examNoticeIssuedAt, iddahPregnant, companionUnpaidExtend, days: requestedDays, status, recordedBy, noOtherEmployerAck, deferConsentAt }) {
+  const live = getCompanyData(companyId);
+  const subject = rosterEmployeeById(live?.employees, employeeId);
+  if (!subject) return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
+  const calendarDays = computeLeaveDays(startDate, endDate);
+  const chargeable = chargeableLeaveDays(startDate, endDate, type, laborCalendarOf(live));
+  const explicit = Number(requestedDays);
+  const days = Number.isFinite(explicit) && explicit >= 1 ? Math.max(1, Math.round(explicit)) : (chargeable || calendarDays);
+  const gate = checkSubmitLeaveGate({
+    type,
+    startDate,
+    endDate,
+    days,
+    reason,
+    files,
+    eventDate,
+    examRepeat,
+    examNoticeIssuedAt,
+    iddahPregnant,
+    companionUnpaidExtend,
+    status: "pending",
+    recordedBy,
+    noOtherEmployerAck,
+    deferConsentAt,
+  }, {
+    profile: subject.profile,
+    requests: subject.leaveRequests,
+    otherRequests: subject.otherRequests,
+    employee: subject,
+    companyId,
+    recordedBy,
+    employerRecorded: status === "approved" && !!recordedBy,
+    laborCalendar: laborCalendarOf(live),
+  });
+  if (!gate.ok) return gate;
+  let createdRequest = null;
   updateCompany(companyId, (d) => {
-    const emp = d.employees.find((e) => e.id === employeeId);
+    const emp = rosterEmployeeById(d.employees, employeeId);
     if (!emp) return;
     emp.leaveRequests = emp.leaveRequests || [];
-    const calendarDays = Math.max(1, Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1);
-    const explicit = Number(requestedDays);
-    const days = Number.isFinite(explicit) && explicit >= 1 ? Math.max(1, Math.round(explicit)) : calendarDays;
-    emp.leaveRequests.unshift({
+    const now = new Date().toISOString();
+    const approved = status === "approved";
+    const span = approved ? leaveCoverRange({ startDate, endDate }) : { start: "", end: "" };
+    createdRequest = {
       id: uid("leave"),
+      employeeId: emp.id || employeeId,
       type, startDate, endDate, days, reason,
       eventDate: eventDate || undefined,
       examRepeat: examRepeat || undefined,
-      files: files || [],
-      status: "pending",
-      createdAt: new Date().toISOString(),
+      examNoticeIssuedAt: examNoticeIssuedAt || undefined,
+      examNoticeVia: gate.via || undefined,
+      examLeaveTrack: gate.examLeaveTrack || undefined,
+      examPayFrom: gate.examPayFrom || undefined,
+      iddahPregnant: iddahPregnant || undefined,
+      companionUnpaidExtend: companionUnpaidExtend || undefined,
+      noOtherEmployerAck: noOtherEmployerAck === true,
+      deferConsentAt: deferConsentAt || undefined,
+      files: type === "exam"
+        ? (files || []).map((file) => (file && typeof file === "object" ? { ...file, kind: file.kind || EXAM_NOTICE_KIND } : file))
+        : (files || []),
+      status: approved ? "approved" : "pending",
+      recordedBy: recordedBy || undefined,
+      reviewedBy: approved ? recordedBy : undefined,
+      reviewedAt: approved ? now : undefined,
+      approvedAt: approved ? now : undefined,
+      activeStartDate: type === "annual" && span.start ? span.start : undefined,
+      activeEndDate: type === "annual" && span.end ? span.end : undefined,
+      createdAt: now,
+      companyId,
+    };
+    const raiseStamp = stampRequestAudit(companyId, emp, createdRequest, {
+      actor: recordedBy || emp.name || auditActor,
+      family: "leave",
+      verb: "raise",
+      note: reason,
     });
+    createdRequest.auditTrail = appendRequestAudit(createdRequest, raiseStamp.row);
+    pushEmployeeFileLog(emp, raiseStamp.log);
+    if (approved) {
+      const approveStamp = stampRequestAudit(companyId, emp, createdRequest, {
+        actor: recordedBy || auditActor,
+        family: "leave",
+        verb: "approve",
+      });
+      createdRequest.auditTrail = appendRequestAudit(createdRequest, approveStamp.row);
+      pushEmployeeFileLog(emp, approveStamp.log);
+    }
+    emp.leaveRequests.unshift(createdRequest);
   });
   // Route to the assigned HR manager for this employee's station, if any.
   const data = getCompanyData(companyId);
-  const hrManager = getStationHRManager(data, employeeId);
-  if (hrManager) {
-    const emp = data.employees.find((e) => e.id === employeeId);
-    addNotification(companyId, hrManager.id, `New ${type} leave request from ${emp?.name || ""} needs your review.`);
+  const filedId = subject.id || employeeId;
+  if (createdRequest?.status === "pending") {
+    const emp = rosterEmployeeById(data?.employees, filedId) || subject;
+    const lang = getUiLang();
+    const label = leaveTypeLabel(type, lang === "ar");
+    notifyRequestManagers(
+      companyId,
+      filedId,
+      requestManagerNotice(data, emp, lang === "ar" ? `إجازة ${label}` : `${label} leave`, lang),
+    );
   }
+  if (createdRequest) {
+    invokeWorkforce({ action: "submitLeave", companyId, employeeId: filedId, ...createdRequest });
+  }
+  return { ok: true, id: createdRequest?.id };
 }
 
-export function setLeaveRequestStatus(companyId, employeeId, requestId, status, reviewerName) {
+export function setLeaveRequestStatus(companyId, employeeId, requestId, status, reviewerName, note, extras = {}) {
   const data = getCompanyData(companyId);
+  const selfDecide = checkSelfDecideRequestGate({
+    actorId: extras.actorId,
+    subjectId: employeeId,
+    status,
+    ownerId: data?.ownerId,
+    actor: (data?.employees || []).find((row) => String(row.id) === String(extras.actorId)) || extras.actor,
+    data,
+  });
+  if (!selfDecide.ok) return selfDecide;
   const emp = data?.employees.find((e) => e.id === employeeId);
   const empName = emp?.name || "";
   const req = (emp?.leaveRequests || []).find((r) => r.id === requestId);
+  const prevStatus = req?.status;
+  const actor = extras.actorId && String(extras.actorId) === String(employeeId) ? "employee" : "manager";
+  if (prevStatus === "approved" && status !== "approved") {
+    const lock = checkAlterApprovedLeaveGate(req, {
+      nextStatus: status,
+      actor,
+      employeeConsent: extras.employeeConsent === true,
+      onDate: extras.onDate,
+    });
+    if (!lock.ok) return lock;
+  }
+  if (status === "rejected") {
+    const refuse = checkRejectLeaveGate(req, {
+      nextStatus: "rejected",
+      actor,
+      profile: emp?.profile,
+      requests: emp?.leaveRequests,
+      otherRequests: emp?.otherRequests,
+      companyId,
+      onDate: extras.onDate,
+    });
+    if (!refuse.ok) return refuse;
+    if (actor !== "employee") {
+      const named = checkRefuseRequestReasonGate(note);
+      if (!named.ok) return named;
+    }
+  }
   if (status === "approved") {
     const typeRequiresFile = ["sick", "exam"].includes(req?.type);
     const gate = checkApproveLeaveGate(req, typeRequiresFile, {
       profile: emp?.profile,
       requests: emp?.leaveRequests,
+      laborCalendar: laborCalendarOf(data),
     });
     if (!gate.ok) return gate;
   }
-  audit(companyId, `leave_request_${status}`, `Leave request for ${empName} marked "${status}" by ${reviewerName || "manager"}.`);
+  const refuseReason = status === "rejected" ? String(note || "").trim() : "";
+  const decideVerb = status === "rejected" ? "refuse" : status === "approved" ? "approve" : status === "withdrawn" ? "withdraw" : status === "revise" ? "revise" : "";
+  const decideLog = decideVerb
+    ? (status === "rejected"
+      ? stampRefuseAudit(companyId, emp, req, { actor: reviewerName || auditActor, note: refuseReason || "رفض الطلب", family: "leave" })
+      : stampRequestAudit(companyId, emp, req, { actor: reviewerName || auditActor, note: String(note || "").trim(), family: "leave", verb: decideVerb }))
+    : null;
+  if (!decideVerb) {
+    audit(companyId, `leave_request_${status}`, `Leave request for ${empName} marked "${status}" by ${reviewerName || "manager"}.`);
+  }
   updateCompany(companyId, (d) => {
     const employee = d.employees.find((e) => e.id === employeeId);
     if (!employee) return;
@@ -1548,20 +2395,1183 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
     leaveReq.status = status;
     leaveReq.reviewedBy = reviewerName;
     leaveReq.reviewedAt = new Date().toISOString();
+    if (String(note || "").trim()) leaveReq.reviewNote = String(note).trim();
+    if (decideLog?.row) {
+      leaveReq.auditTrail = status === "rejected"
+        ? appendRequestRefuseAudit(leaveReq, decideLog.row)
+        : appendRequestAudit(leaveReq, decideLog.row);
+      pushEmployeeFileLog(employee, decideLog.log);
+    }
+    if (status === "rejected") {
+      leaveReq.rejectReason = refuseReason || leaveReq.reviewNote || null;
+    }
     if (status === "approved") {
-      const approvalDate = new Date();
-      leaveReq.approvedAt = approvalDate.toISOString();
-      // Annual leave: the active vacation period always starts on the approval date,
-      // using the number of days originally requested.
+      leaveReq.approvedAt = new Date().toISOString();
       if (leaveReq.type === "annual") {
-        const activeEnd = new Date(approvalDate);
-        activeEnd.setDate(activeEnd.getDate() + ((leaveReq.days || 1) - 1));
-        leaveReq.activeStartDate = approvalDate.toISOString();
-        leaveReq.activeEndDate = activeEnd.toISOString();
+        const span = leaveCoverRange(leaveReq);
+        if (span.start && span.end) {
+          leaveReq.activeStartDate = span.start;
+          leaveReq.activeEndDate = span.end;
+        }
       }
     }
   });
+  if (status === "approved" || status === "rejected" || status === "revise" || status === "withdrawn") {
+    const fresh = getCompanyData(companyId);
+    const leave = (fresh?.employees.find((row) => row.id === employeeId)?.leaveRequests || []).find((row) => row.id === requestId);
+    const lang = noticeLang(extras);
+    const decision = {
+      status,
+      type: leave?.type,
+      startDate: leave?.startDate,
+      endDate: leave?.endDate,
+      recordedBy: leave?.recordedBy,
+      daysUntilStart: daysUntilLeaveStart(leave?.startDate),
+    };
+    addNotification(companyId, employeeId, leaveDecisionNoticeText(decision, lang), {
+      ...(status === "approved" ? { key: leaveDecisionNoticeKey(employeeId, requestId) } : {}),
+      leaveDecision: decision,
+    });
+    if (status === "withdrawn" && prevStatus === "approved") {
+      const hr = getStationHRManager(fresh, employeeId);
+      if (hr && String(hr.id) !== String(employeeId)) {
+        const span = leaveDateSpanText(leave?.startDate, leave?.endDate, lang);
+        addNotification(
+          companyId,
+          hr.id,
+          lang === "ar"
+            ? `${empName} سحب إجازة معتمدة (${span}) قبل موعد بدئها — عدّل جدول التشغيل.`
+            : `${empName} withdrew approved leave (${span}) before it started — adjust the roster.`,
+        );
+      }
+    }
+  }
+  if (status === "rejected") {
+    invokeWorkforce({ action: "rejectLeave", companyId, employeeId, requestId, reason: refuseReason, note: refuseReason });
+  }
   return { ok: true };
+}
+
+/** Worker opens the approved leave decision — card then leaves ملفي for الأرشيف. Roster/punch still use approved dates. */
+export function attachExamSatProof(companyId, employeeId, requestId, file, extras = {}) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((e) => e.id === employeeId);
+  const req = (emp?.leaveRequests || []).find((r) => r.id === requestId);
+  if (!req) {
+    return {
+      ok: false,
+      error: "LEAVE_NOT_FOUND",
+      reason: "طلب الإجازة غير موجود في نطاق الشركة.",
+      reasonEn: "Leave request was not found in this company.",
+    };
+  }
+  const stamped = file && typeof file === "object" ? { ...file, kind: EXAM_SAT_KIND } : file;
+  const gate = checkAttachExamSatGate(req, stamped, { onDate: extras.onDate, actorId: extras.actorId, subjectId: employeeId });
+  if (!gate.ok) return gate;
+  const now = new Date().toISOString();
+  updateCompany(companyId, (d) => {
+    const employee = d.employees.find((e) => e.id === employeeId);
+    if (!employee) return;
+    const leaveReq = (employee.leaveRequests || []).find((r) => r.id === requestId);
+    if (!leaveReq) return;
+    leaveReq.examSatFile = stamped;
+    leaveReq.examSatAt = now;
+    leaveReq.examSatBy = extras.actorName || extras.actorId || undefined;
+  });
+  const lang = noticeLang(extras);
+  const empName = emp?.name || "";
+  notifyRequestManagers(
+    companyId,
+    employeeId,
+    lang === "ar"
+      ? `${empName} رفع إثبات أداء الامتحان على إجازة المادة 115.`
+      : `${empName} attached exam-sitting proof on the Article 115 leave.`,
+  );
+  invokeWorkforce({ action: "attachExamSat", companyId, employeeId, requestId, examSatFile: stamped, examSatAt: now, examSatBy: extras.actorName || extras.actorId });
+  return { ok: true, examSatFile: stamped };
+}
+
+export function markLeaveDecisionSeen(companyId, employeeId, requestId, extras = {}) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((e) => e.id === employeeId);
+  const req = (emp?.leaveRequests || []).find((r) => r.id === requestId);
+  const actorId = extras.actorId || employeeId;
+  const gate = checkSeeLeaveDecisionGate({ request: req, employeeId, actorId });
+  if (!gate.ok) return gate;
+  if (gate.already) return { ok: true, already: true };
+  const noticeKey = leaveDecisionNoticeKey(employeeId, requestId);
+  updateCompany(companyId, (d) => {
+    const employee = d.employees.find((e) => e.id === employeeId);
+    const leaveReq = (employee?.leaveRequests || []).find((r) => r.id === requestId);
+    if (!leaveReq || leaveReq.status !== "approved") return;
+    leaveReq.decisionSeenAt = new Date().toISOString();
+    for (const note of d.notifications || []) {
+      if (note.userId === employeeId && note.key === noticeKey) note.read = true;
+    }
+  });
+  return { ok: true };
+}
+
+function pickRequestSigner(data, employee, { raisedById } = {}) {
+  if (!employee) return null;
+  if (raisedById && String(raisedById) !== String(employee.id)) return employee;
+  const hr = getStationHRManager(data, employee.id);
+  if (hr && String(hr.id) !== String(employee.id)) return hr;
+  return (data?.employees || []).find((row) => (
+    row.id !== employee.id
+    && ["director", "ops_manager", "pgm", "station_manager"].includes(row.role)
+  )) || null;
+}
+
+function attachSigningPackage(companyId, employeeId, requestId, {
+  file,
+  signMark,
+  kind,
+  title,
+  creator,
+  signer,
+}) {
+  const data = getCompanyData(companyId);
+  const created = applyCreate(data?.signatureRequests || [], {
+    companyId,
+    id: `sig_${requestId}`,
+    fileName: consentPdfName(file, title),
+    docUrl: file?.url || "",
+    verificationId: generateVerificationId(),
+    creatorId: creator?.id || "",
+    creatorName: creator?.name || "",
+    creatorEmail: creator?.email || "",
+    signers: [{
+      name: signer?.name || "",
+      email: consentSignerEmail(signer),
+      employeeId: signer?.id || "",
+      role: signer?.role || "",
+      stationId: signer?.stationId || null,
+      spots: [requestSignerSpot(signMark)],
+    }],
+  }, {
+    id: creator?.id || "",
+    userId: creator?.id || "",
+    name: creator?.name || "",
+    email: creator?.email || "",
+    role: creator?.role || "",
+    stationId: signer?.stationId || null,
+  }, { rid: () => `tok_${String(requestId).slice(-8)}_${Math.random().toString(36).slice(2, 8)}` });
+  if (!created.ok) return created;
+  created.request.otherRequestId = requestId;
+  created.request.kind = kind;
+  if (kind === WRITTEN_CONSENT_TYPE) created.request.consentId = requestId;
+  const packSigner = created.request.signers[0];
+  const signToken = `${created.request.id}.${packSigner.token}`;
+  updateCompany(companyId, (draft) => {
+    draft.signatureRequests = created.store;
+    const request = (draft.employees.find((row) => row.id === employeeId)?.otherRequests || []).find((row) => row.id === requestId);
+    if (!request) return;
+    request.signRequestId = created.request.id;
+    request.signToken = signToken;
+    request.signerEmployeeId = signer?.id || "";
+    request.signMark = normalizeSignMark(signMark) || defaultConsentMark();
+  });
+  return { ok: true, signToken, signRequestId: created.request.id };
+}
+
+function stampRequestFile(file, at) {
+  if (!file) return file;
+  return {
+    name: file.name,
+    url: file.url,
+    size: file.size,
+    type: file.type,
+    hash: file.hash,
+    at: file.at || at,
+  };
+}
+
+export function submitOtherRequest(companyId, employeeId, {
+  type, reason, date, hours, time, files, shiftTypeId, stationId,
+  purpose, party, lang, showSalary, docKind, status, recordedBy, title,
+  days, paper, requestedBy, requestedById, program, institution, issuedFile,
+  examDate, until, permanent, from, to,
+}) {
+  const file = Array.isArray(files) ? files[0] : files || null;
+  const signedPaper = paper || (Array.isArray(files) ? files[1] : null);
+  if (type === STUDY_CONSENT_TYPE) {
+    const snapshot = getCompanyData(companyId);
+    const subject = rosterEmployeeById(snapshot?.employees, employeeId);
+    const gate = checkSubmitOtherRequestGate({
+      type,
+      reason,
+      date,
+      program,
+      institution,
+      startDate: date,
+      file,
+      files,
+      issuedFile,
+      status,
+      companyId,
+      employee: subject,
+      otherRequests: subject?.otherRequests,
+    });
+    if (!gate.ok) return gate;
+    if (status === "approved") {
+      const approveGate = checkApproveStudyConsentGate({ type, issuedFile, status: "pending" });
+      if (!approveGate.ok) return approveGate;
+    }
+    reason = gate.reason || composeStudyConsentReason({ program, institution, startDate: date, reason });
+  }
+  let fitnessGate = null;
+  if (type === NIGHT_FITNESS_TYPE) {
+    const snapshot = getCompanyData(companyId);
+    const subject = rosterEmployeeById(snapshot?.employees, employeeId);
+    fitnessGate = checkSubmitOtherRequestGate({
+      type,
+      reason,
+      date,
+      examDate: examDate || from || date,
+      from: from || examDate || date,
+      to: to || until,
+      until: until || to,
+      permanent,
+      file,
+      files,
+      status,
+      companyId,
+      employee: subject,
+      employeeId,
+      otherRequests: subject?.otherRequests,
+      actorId: requestedById,
+      requestedById,
+      lane: (requestedById && String(requestedById) !== String(employeeId)) || status === "approved" ? "manage" : "mine",
+    });
+    if (!fitnessGate.ok) return fitnessGate;
+    reason = fitnessGate.reason || reason;
+  }
+  const fitnessFrom = type === NIGHT_FITNESS_TYPE ? (fitnessGate?.from || from || examDate || date || undefined) : undefined;
+  const fitnessTo = type === NIGHT_FITNESS_TYPE ? (fitnessGate?.permanent ? "" : (fitnessGate?.to ?? to ?? until)) : undefined;
+  const fitnessPermanent = type === NIGHT_FITNESS_TYPE ? !!(fitnessGate?.permanent ?? permanent) : undefined;
+  if (type === LEAVE_TOPUP_TYPE || isLetterSignableType(type)) {
+    const gate = checkSubmitOtherRequestGate({ type, reason, date, days, file, files, paper: signedPaper });
+    if (!gate.ok) return gate;
+  }
+  if (type === "manual_punch" || type === "checkout_fix") {
+    const snapshot = getCompanyData(companyId);
+    const subject = rosterEmployeeById(snapshot?.employees, employeeId);
+    const day = date || toRiyadhDateKey();
+    const clock = parsePunchClock(time) || clockFromPunchReason(reason);
+    const att = attendanceOnDate(snapshot?.personalAttendance, employeeId, day);
+    const punchGate = checkSubmitOtherRequestGate({
+      type,
+      reason,
+      date: day,
+      time: clock,
+      employee: subject,
+      attendance: att,
+    });
+    if (!punchGate.ok) return punchGate;
+  }
+  let created = false;
+  let createdId = "";
+  let applyError = null;
+  const raiserId = requestedById || (status === "approved" ? "" : employeeId);
+  updateCompany(companyId, (d) => {
+    const emp = rosterEmployeeById(d.employees, employeeId);
+    if (!emp) return;
+    emp.otherRequests = emp.otherRequests || [];
+    const now = new Date().toISOString();
+    createdId = uid("oreq");
+    const request = {
+      id: createdId,
+      employeeId: emp.id || employeeId,
+      type,
+      title: String(title || "").trim() || undefined,
+      reason: String(reason || "").trim(),
+      date: date || undefined,
+      hours: hours || undefined,
+      time: time || undefined,
+      days: type === LEAVE_TOPUP_TYPE ? parseLeaveTopupDaysSafe(days) : (days || undefined),
+      shiftTypeId: shiftTypeId || undefined,
+      stationId: stationId || emp.stationId || undefined,
+      files: files || [],
+      purpose: purpose || undefined,
+      party: party || undefined,
+      lang: lang || undefined,
+      showSalary: showSalary === undefined ? undefined : !!showSalary,
+      docKind: docKind || undefined,
+      status: status === "approved" ? "approved" : "pending",
+      recordedBy: recordedBy || undefined,
+      requestedBy: requestedBy || recordedBy || undefined,
+      requestedById: raiserId || undefined,
+      reviewedBy: status === "approved" ? recordedBy : undefined,
+      reviewedAt: status === "approved" ? now : undefined,
+      createdAt: now,
+      companyId,
+      program: type === STUDY_CONSENT_TYPE ? String(program || "").trim() || undefined : undefined,
+      institution: type === STUDY_CONSENT_TYPE ? String(institution || "").trim() || undefined : undefined,
+      startDate: type === STUDY_CONSENT_TYPE ? (date || undefined) : undefined,
+      from: type === NIGHT_FITNESS_TYPE ? (fitnessPermanent ? (fitnessFrom || "") : fitnessFrom) : undefined,
+      to: type === NIGHT_FITNESS_TYPE ? (fitnessPermanent ? "" : fitnessTo) : undefined,
+      examDate: type === NIGHT_FITNESS_TYPE ? fitnessFrom : undefined,
+      until: type === NIGHT_FITNESS_TYPE ? (fitnessPermanent ? "" : fitnessTo) : undefined,
+      permanent: type === NIGHT_FITNESS_TYPE ? fitnessPermanent : undefined,
+      approvedAt: (type === STUDY_CONSENT_TYPE || type === NIGHT_FITNESS_TYPE) && status === "approved" ? now : undefined,
+      approvedBy: (type === STUDY_CONSENT_TYPE || type === NIGHT_FITNESS_TYPE) && status === "approved" ? recordedBy : undefined,
+    };
+    if ((type === STUDY_CONSENT_TYPE || type === NIGHT_FITNESS_TYPE) && file) {
+      const stamped = stampRequestFile(file, now);
+      request.file = stamped;
+      request.files = [stamped];
+    }
+    if (type === STUDY_CONSENT_TYPE && status === "approved" && issuedFile) {
+      const stampedIssued = stampRequestFile(issuedFile, now);
+      request.issuedFile = stampedIssued;
+      request.approvalFile = stampedIssued;
+    }
+    if (isLetterSignableType(type) && file) {
+      request.senderFile = file;
+      if (signedPaper) request.paper = signedPaper;
+    }
+    if (request.status === "approved" && (request.type === "manual_punch" || request.type === "checkout_fix")) {
+      const stamped = stampPunchRequestOnDraft(d, emp, request, recordedBy);
+      if (!stamped.ok) {
+        applyError = stamped;
+        return;
+      }
+    }
+    if (request.status === "approved" && request.type === LEAVE_TOPUP_TYPE) {
+      const applied = stampLeaveTopupOnEmployee(emp, request);
+      if (!applied.ok) {
+        applyError = applied;
+        return;
+      }
+    }
+    if (request.status === "approved" && request.type === NIGHT_FITNESS_TYPE) {
+      const applied = stampNightFitnessOnEmployee(emp, request, {
+        reviewedAt: now,
+        from: request.from,
+        to: request.to,
+        examDate: request.from || request.examDate,
+        until: request.to || request.until,
+        permanent: request.permanent,
+      });
+      if (!applied.ok) {
+        applyError = applied;
+        return;
+      }
+    }
+    const raiseStamp = stampRequestAudit(companyId, emp, request, {
+      actor: requestedBy || recordedBy || emp.name || auditActor,
+      family: "other",
+      verb: "raise",
+      note: request.reason,
+    });
+    request.auditTrail = appendRequestAudit(request, raiseStamp.row);
+    pushEmployeeFileLog(emp, raiseStamp.log);
+    if (request.status === "approved") {
+      const approveStamp = stampRequestAudit(companyId, emp, request, {
+        actor: recordedBy || requestedBy || auditActor,
+        family: "other",
+        verb: "approve",
+      });
+      request.auditTrail = appendRequestAudit(request, approveStamp.row);
+      pushEmployeeFileLog(emp, approveStamp.log);
+    }
+    emp.otherRequests.unshift(request);
+    created = true;
+  });
+  if (applyError) return applyError;
+  if (!created) {
+    return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
+  }
+  const data = getCompanyData(companyId);
+  const filed = rosterEmployeeById(data?.employees, employeeId);
+  const raised = (filed?.otherRequests || []).find((row) => row.id === createdId);
+  if (raised && raised.status !== "approved") {
+    const emp = filed;
+    const lang = getUiLang();
+    const label = otherRequestTypeLabel(type, lang === "ar");
+    notifyRequestManagers(
+      companyId,
+      emp?.id || employeeId,
+      requestManagerNotice(data, emp, label, lang),
+    );
+  }
+  if (raised) {
+    invokeWorkforce({ action: "submitOther", companyId, employeeId: filed?.id || employeeId, request: raised });
+  }
+  if (isLetterSignableType(type)) {
+    audit(companyId, "request_signed_in_requests", `Hand-signed ${type} ${createdId} raised in My Requests for ${employeeId}.`);
+  }
+  return { ok: true, id: createdId };
+}
+
+function stampPunchRequestOnDraft(draft, employee, request, reviewerName) {
+  const day = request.date || toRiyadhDateKey();
+  const clock = parsePunchClock(request.time) || clockFromPunchReason(request.reason);
+  const existing = attendanceOnDate(draft.personalAttendance, employee.id, day);
+  const gate = checkPunchRecordGate({
+    type: request.type,
+    employee,
+    attendance: existing,
+    date: day,
+    time: clock,
+    reason: request.reason,
+    requireTime: true,
+  });
+  if (!gate.ok) return gate;
+  const row = buildManualAttendanceRow({
+    existing,
+    employee,
+    date: day,
+    time: clock,
+    kind: request.type === "checkout_fix" ? "checkout_fix" : "manual_punch",
+    by: reviewerName || request.recordedBy || "",
+    reason: request.reason,
+    stationId: request.stationId || employee.stationId,
+  });
+  const list = Array.isArray(draft.personalAttendance) ? draft.personalAttendance : [];
+  const idx = list.findIndex((item) => item.id === row.id || (String(item.employeeId) === String(employee.id) && String(item.date) === day));
+  if (idx >= 0) list[idx] = { ...list[idx], ...row };
+  else list.push(row);
+  draft.personalAttendance = list;
+  request.time = clock;
+  request.attendanceId = row.id;
+  return { ok: true, row };
+}
+
+export function recordManualAttendance(companyId, { employeeId, kind, date, time, reason, by, stationId }) {
+  const type = kind === "out" || kind === "checkout_fix" ? "checkout_fix" : "manual_punch";
+  const day = date || toRiyadhDateKey();
+  const data = getCompanyData(companyId);
+  const employee = data?.employees.find((row) => String(row.id) === String(employeeId));
+  if (!employee) {
+    return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "That employee was not found." };
+  }
+  const clock = parsePunchClock(time);
+  const existing = attendanceOnDate(data?.personalAttendance, employeeId, day);
+  const gate = checkPunchRecordGate({
+    type,
+    employee,
+    attendance: existing,
+    date: day,
+    time: clock,
+    reason,
+    requireTime: type === "checkout_fix" ? false : !!clock,
+  });
+  if (!gate.ok) return gate;
+  let saved = null;
+  updateCompany(companyId, (draft) => {
+    const emp = draft.employees.find((row) => String(row.id) === String(employeeId));
+    const current = attendanceOnDate(draft.personalAttendance, employeeId, day);
+    const row = buildManualAttendanceRow({
+      existing: current,
+      employee: emp || employee,
+      date: day,
+      time: clock || undefined,
+      kind: type,
+      by,
+      reason,
+      stationId: stationId || emp?.stationId,
+    });
+    const list = Array.isArray(draft.personalAttendance) ? draft.personalAttendance : [];
+    const idx = list.findIndex((item) => item.id === row.id || (String(item.employeeId) === String(employeeId) && String(item.date) === day));
+    if (idx >= 0) list[idx] = { ...list[idx], ...row };
+    else list.push(row);
+    draft.personalAttendance = list;
+    saved = row;
+  });
+  audit(companyId, type === "checkout_fix" ? "manual_checkout" : "manual_checkin", `${by || "manager"} recorded ${type} for ${employee.name} on ${day}.`);
+  return { ok: true, attendance: toCloudAttendanceRow(saved) };
+}
+
+function parseLeaveTopupDaysSafe(value) {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) && n >= 1 ? n : undefined;
+}
+
+export function submitOtAssignment(companyId, employeeId, input = {}) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  if (!emp) {
+    return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
+  }
+  const gate = checkRaiseOtAssignmentGate({
+    ...input,
+    otherRequests: emp.otherRequests,
+  });
+  if (!gate.ok) return gate;
+  let createdId = "";
+  updateCompany(companyId, (d) => {
+    const employee = d.employees.find((row) => row.id === employeeId);
+    if (!employee) return;
+    employee.otherRequests = employee.otherRequests || [];
+    createdId = uid("oreq");
+    const now = new Date().toISOString();
+    const files = Array.isArray(input.files) ? input.files.filter(Boolean) : (input.file ? [input.file] : []);
+    employee.otherRequests.unshift({
+      id: createdId,
+      type: "overtime",
+      assignment: true,
+      source: "assignment",
+      reason: gate.reason,
+      date: gate.date,
+      dateTo: gate.dateTo,
+      hours: gate.hours,
+      creditDays: gate.creditDays,
+      article106: gate.article106,
+      article106Ground: gate.article106Ground,
+      manager106Ack: gate.article106 ? true : undefined,
+      files,
+      stationId: input.stationId || employee.stationId || undefined,
+      status: OT_STATUS.pending_employee,
+      recordedBy: input.by || input.recordedBy || undefined,
+      createdAt: now,
+    });
+  });
+  if (!createdId) {
+    return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
+  }
+  addNotification(companyId, employeeId, "تكليف ساعات إضافية بانتظار اختيارك: أجر إضافي أو رصيد إجازة.");
+  audit(companyId, "ot_assignment_raised", `Overtime assignment raised for ${emp.name} by ${input.by || ""}.`);
+  return { ok: true, id: createdId, status: OT_STATUS.pending_employee, creditDays: gate.creditDays };
+}
+
+export function answerOtAssignment(companyId, employeeId, requestId, { accept, compensation, ack, note, enjoyDate, windowAgreed, annualCapConsent } = {}) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  const req = (emp?.otherRequests || []).find((row) => row.id === requestId);
+  if (!emp || !isOvertimeAssignment(req) || req.status !== OT_STATUS.pending_employee) {
+    return {
+      ok: false,
+      error: "REQUEST_NOT_FOUND",
+      reason: "تكليف الإضافي غير موجود أو ليس بانتظارك.",
+      reasonEn: "That overtime assignment was not found or is not awaiting you.",
+    };
+  }
+  if (!accept) {
+    const refuse = checkRefuseOtAssignmentGate(req);
+    if (!refuse.ok) return refuse;
+    updateCompany(companyId, (d) => {
+      const employee = d.employees.find((row) => row.id === employeeId);
+      const request = (employee?.otherRequests || []).find((row) => row.id === requestId);
+      if (!request) return;
+      request.status = OT_STATUS.refused_by_employee;
+      request.employeeAck = false;
+      request.reply = String(note || "").trim();
+      request.answeredAt = new Date().toISOString();
+      request.answeredBy = employee.name;
+    });
+    const managerId = data.employees.find((row) => row.name === req.recordedBy)?.id;
+    if (managerId) addNotification(companyId, managerId, `${emp.name} رفض تكليف الساعات الإضافية.`);
+    addNotification(companyId, employeeId, "سُجّل رفضك لتكليف الساعات الإضافية.");
+    audit(companyId, "ot_assignment_refused", `${emp.name} refused an overtime assignment.`);
+    return { ok: true, status: OT_STATUS.refused_by_employee };
+  }
+  const acceptGate = checkEmployeeAcceptOtGate({
+    ...req,
+    compensation,
+    ack,
+    hours: req.hours,
+    date: req.date,
+    enjoyDate,
+    windowAgreed,
+    annualCapConsent,
+    otherRequests: emp.otherRequests,
+    exceptId: requestId,
+    overtimeHoursYtd: approvedOvertimeHoursForYear(data?.otDecisions, employeeId, req.date),
+    creditDaysYtd: approvedCompLeaveDaysForYear(data?.otDecisions, employeeId, req.date),
+  });
+  if (!acceptGate.ok) return acceptGate;
+  updateCompany(companyId, (d) => {
+    const employee = d.employees.find((row) => row.id === employeeId);
+    const request = (employee?.otherRequests || []).find((row) => row.id === requestId);
+    if (!request) return;
+    request.status = OT_STATUS.pending_manager;
+    request.compensation = acceptGate.compensation;
+    request.compensationChoice = acceptGate.compensation;
+    request.employeeAck = true;
+    request.creditDays = otCreditDays(request.hours, request.date);
+    request.enjoyDate = acceptGate.enjoyDate || undefined;
+    request.windowAgreed = windowAgreed === true ? true : undefined;
+    request.annualCapConsent = annualCapConsent === true ? true : undefined;
+    request.answeredAt = new Date().toISOString();
+    request.answeredBy = employee.name;
+  });
+  const managerId = data.employees.find((row) => row.name === req.recordedBy)?.id;
+  if (managerId) {
+    addNotification(
+      companyId,
+      managerId,
+      acceptGate.compensation === "credit"
+        ? `${emp.name} اختار رصيد إجازة بدل الأجر الإضافي.`
+        : `${emp.name} اختار أجر الساعات الإضافية.`,
+    );
+  }
+  audit(companyId, "ot_assignment_accepted", `${emp.name} chose ${acceptGate.compensation} for overtime.`);
+  return { ok: true, status: OT_STATUS.pending_manager, compensation: acceptGate.compensation };
+}
+
+function consentVerifyRef() {
+  try {
+    return generateVerificationId();
+  } catch {
+    return `PWC-${Date.now().toString(36).toUpperCase()}`;
+  }
+}
+
+export function requestWrittenConsent(companyId, employeeId, {
+  topic = "night",
+  body,
+  deadline,
+  file,
+  paper,
+  requestedBy,
+  requestedById,
+}) {
+  const topicMeta = consentTopicMeta(topic);
+  if (topicMeta.id === "night" || topic === "night" || topic === "night_consent") {
+    return {
+      ok: false,
+      error: "NIGHT_AUTO",
+      reason: "موافقة 18632 تُفتح تلقائياً للموظف بعد ثلاثة أشهر. الإدارة تُبلَّغ فقط ولا ترفعها ولا تقرر فيها.",
+      reasonEn: "Decision 18632 opens automatically for the worker after three months. Management is notified only and neither raises nor decides it.",
+    };
+  }
+  const gate = checkRaiseConsentGate({ employeeId, body, deadline, file, paper });
+  if (!gate.ok) return gate;
+  let createdId = "";
+  updateCompany(companyId, (draft) => {
+    const emp = draft.employees.find((row) => row.id === employeeId);
+    if (!emp) return;
+    emp.otherRequests = emp.otherRequests || [];
+    const now = new Date().toISOString();
+    createdId = uid("wcon");
+    emp.otherRequests.unshift({
+      id: createdId,
+      type: WRITTEN_CONSENT_TYPE,
+      topic: topicMeta.id,
+      titleAr: topicMeta.ar,
+      titleEn: topicMeta.en,
+      citeAr: topicMeta.citeAr,
+      citeEn: topicMeta.citeEn,
+      article: topicMeta.article || "",
+      decisionId: topicMeta.decisionId || "",
+      reason: String(body || "").trim(),
+      deadline,
+      senderFile: file || null,
+      paper: paper || null,
+      status: "open",
+      answeredAt: "",
+      requestedBy: requestedBy || "",
+      requestedById: requestedById || "",
+      createdAt: now,
+    });
+  });
+  if (!createdId) {
+    return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "That employee was not found." };
+  }
+  addNotification(companyId, employeeId, `موافقة خطية في طلباتي: اكتب موافقة خطية، وقّع الملف في قسم التوقيع، ثم ارفع النسخة لاعتمادها — أو ارفض مباشرة.`);
+  audit(companyId, "written_consent_raised", `Written consent ${topicMeta.id} opened in My Requests for ${employeeId} by ${requestedBy || ""}.`);
+  return { ok: true, id: createdId };
+}
+
+export function markWrittenConsentRead(companyId, employeeId, requestId) {
+  let found = false;
+  updateCompany(companyId, (draft) => {
+    const emp = draft.employees.find((row) => row.id === employeeId);
+    const req = (emp?.otherRequests || []).find((row) => row.id === requestId && row.type === WRITTEN_CONSENT_TYPE);
+    if (!req || req.status !== "open") return;
+    found = true;
+    if (!req.readAt) req.readAt = new Date().toISOString();
+  });
+  if (!found) {
+    return { ok: false, error: "REQUEST_NOT_FOUND", reason: "طلب الموافقة غير موجود.", reasonEn: "That consent request was not found." };
+  }
+  return { ok: true };
+}
+
+export function applyWrittenConsentSeal(companyId, employeeId, requestId, seal) {
+  if (!seal?.url) {
+    return { ok: false, error: "SEAL_REQUIRED", reason: "اختر توقيعاً محفوظاً.", reasonEn: "Pick a saved seal." };
+  }
+  const ref = seal.signatureId || consentVerifyRef();
+  let found = false;
+  updateCompany(companyId, (draft) => {
+    const emp = draft.employees.find((row) => row.id === employeeId);
+    const req = (emp?.otherRequests || []).find((row) => row.id === requestId && row.type === WRITTEN_CONSENT_TYPE);
+    if (!req || req.status !== "open") return;
+    found = true;
+    req.seal = {
+      id: seal.id || "signature",
+      label: seal.labelAr || seal.labelEn || "",
+      url: seal.url,
+      signatureId: ref,
+    };
+  });
+  if (!found) {
+    return { ok: false, error: "REQUEST_NOT_FOUND", reason: "طلب الموافقة غير موجود.", reasonEn: "That consent request was not found." };
+  }
+  return { ok: true, signatureId: ref };
+}
+
+export function clearWrittenConsentSeal(companyId, employeeId, requestId) {
+  updateCompany(companyId, (draft) => {
+    const emp = draft.employees.find((row) => row.id === employeeId);
+    const req = (emp?.otherRequests || []).find((row) => row.id === requestId && row.type === WRITTEN_CONSENT_TYPE);
+    if (req && req.status === "open") req.seal = null;
+  });
+  return { ok: true };
+}
+
+export function attachWrittenConsentPaper(companyId, employeeId, requestId, file) {
+  if (!file?.name) {
+    return { ok: false, error: "PAPER_REQUIRED", reason: "ارفع النسخة الموقّعة.", reasonEn: "Upload the signed copy." };
+  }
+  let found = false;
+  updateCompany(companyId, (draft) => {
+    const emp = draft.employees.find((row) => row.id === employeeId);
+    const req = (emp?.otherRequests || []).find((row) => row.id === requestId);
+    const openWritten = req?.type === WRITTEN_CONSENT_TYPE && req.status === "open";
+    const openNight = req?.type === "night_consent" && (req.status || "pending") === "pending";
+    if (!req || (!openWritten && !openNight)) return;
+    found = true;
+    req.paper = {
+      name: file.name,
+      hash: file.hash || "",
+      url: file.url || "",
+      size: file.size || 0,
+    };
+  });
+  if (!found) {
+    return { ok: false, error: "REQUEST_NOT_FOUND", reason: "طلب الموافقة غير موجود.", reasonEn: "That consent request was not found." };
+  }
+  return { ok: true };
+}
+
+export function settleSignableOtherRequest(companyId, employeeId, requestId, { accept, note, docUrl, verificationId } = {}) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  const req = (emp?.otherRequests || []).find((row) => row.id === requestId);
+  if (!emp || !req || !isLetterSignableType(req.type) || !isOpenSignableStatus(req.status)) {
+    return {
+      ok: false,
+      error: "REQUEST_NOT_FOUND",
+      reason: "الطلب غير موجود أو ليس بانتظار التوقيع.",
+      reasonEn: "That request was not found or is not awaiting a signature.",
+    };
+  }
+  if (!accept) {
+    const gate = checkRefuseConsentGate({ note, viaSigning: true });
+    if (!gate.ok) return gate;
+  }
+  const now = new Date().toISOString();
+  const verifyId = verificationId || req.verifyId || consentVerifyRef();
+  updateCompany(companyId, (draft) => {
+    const employee = draft.employees.find((row) => row.id === employeeId);
+    const request = (employee?.otherRequests || []).find((row) => row.id === requestId);
+    if (!request) return;
+    request.status = accept ? "approved" : "rejected";
+    request.answeredAt = now;
+    request.reviewedAt = now;
+    request.reviewedBy = emp.name;
+    request.reply = String(note || "").trim();
+    if (String(note || "").trim()) request.reviewNote = String(note).trim();
+    if (docUrl) request.signedDocUrl = docUrl;
+    if (accept) {
+      request.verifyId = verifyId;
+      request.issued = isLetterSignableType(request.type) && request.type !== "custody";
+      request.signedAt = now;
+    }
+  });
+  const managerId = req.requestedById && req.requestedById !== employeeId ? req.requestedById : null;
+  if (managerId) {
+    addNotification(
+      companyId,
+      managerId,
+      accept
+        ? `${emp.name} وقّع طلب ${req.type}.`
+        : `${emp.name} رفض طلب ${req.type}${note ? `: ${note}` : "."}`,
+    );
+  }
+  if (req.signerEmployeeId && req.signerEmployeeId !== employeeId) {
+    addNotification(
+      companyId,
+      employeeId,
+      accept
+        ? `وُقّع طلبك (${req.type}) وبقي في ملفك.`
+        : `رُفض طلبك (${req.type}) وبقي في ملفك.`,
+    );
+  }
+  audit(
+    companyId,
+    accept ? "request_signed" : "request_sign_refused",
+    `Signable ${req.type} ${accept ? "signed" : "refused"} (${verifyId}).`,
+  );
+  return { ok: true, status: accept ? "approved" : "rejected", signatureId: verifyId };
+}
+
+function isOpenSignableStatus(status) {
+  return ["pending", "pending_employee", "pending_manager", "open"].includes(status || "pending");
+}
+
+export function settleWrittenConsentFromSigning(companyId, { requestId, token, accept, note, docUrl }) {
+  const data = getCompanyData(companyId);
+  const found = findSignableBySigning(data?.employees || [], { requestId, token })
+    || findConsentBySigning(data?.employees || [], { requestId, token });
+  if (!found) return { ok: true, skipped: true };
+  if (isWrittenConsent(found.request)) {
+    return answerWrittenConsent(companyId, found.employee.id, found.request.id, {
+      accept,
+      ack: !!accept,
+      note: note || "",
+      readAt: found.request.readAt || new Date().toISOString(),
+      seal: savedConsentSeals(found.employee.profile)[0] || { url: "signed" },
+      viaSigning: true,
+    });
+  }
+  return settleSignableOtherRequest(companyId, found.employee.id, found.request.id, {
+    accept,
+    note,
+    docUrl,
+  });
+}
+
+export function answerWrittenConsent(companyId, employeeId, requestId, { accept, ack, note, paper, seal, readAt, viaSigning }) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => row.id === employeeId);
+  const req = (emp?.otherRequests || []).find((row) => row.id === requestId && row.type === WRITTEN_CONSENT_TYPE);
+  if (!emp || !req || req.status !== "open") {
+    return { ok: false, error: "REQUEST_NOT_FOUND", reason: "طلب الموافقة غير موجود.", reasonEn: "That consent request was not found." };
+  }
+  const autoSeal = seal || req.seal || savedConsentSeals(emp.profile)[0] || null;
+  if (accept) {
+    const gate = checkAcceptConsentGate({
+      ack,
+      readAt: readAt || req.readAt,
+      file: req.senderFile,
+      seal: autoSeal,
+      paper: paper || req.paper,
+      viaSigning,
+    });
+    if (!gate.ok) return gate;
+  } else {
+    const gate = checkRefuseConsentGate({ note, viaSigning });
+    if (!gate.ok) return gate;
+  }
+  const now = new Date().toISOString();
+  const usedSeal = accept ? autoSeal : (seal || req.seal);
+  const verifyId = usedSeal?.signatureId || consentVerifyRef();
+  updateCompany(companyId, (draft) => {
+    const employee = draft.employees.find((row) => row.id === employeeId);
+    const request = (employee?.otherRequests || []).find((row) => row.id === requestId);
+    if (!request) return;
+    request.status = accept ? "yes" : "no";
+    request.ack = !!ack;
+    request.readAt = readAt || request.readAt || (accept ? now : request.readAt);
+    request.reply = String(note || "").trim();
+    request.answeredAt = now;
+    request.answeredBy = employee.name;
+    if (paper?.name) request.paper = paper;
+    if (usedSeal?.url) {
+      request.seal = { ...usedSeal, signatureId: verifyId };
+    }
+    if (accept && request.topic === "night") {
+      employee.profile = employee.profile || {};
+      employee.profile.nightConsentAt = now;
+    }
+  });
+  const managerId = req.requestedById;
+  if (managerId) {
+    addNotification(
+      companyId,
+      managerId,
+      accept
+        ? `${emp.name} وقّع الموافقة الخطية: ${req.titleAr || ""}.`
+        : `${emp.name} رفض الموافقة الخطية: ${req.titleAr || ""}.`,
+    );
+  }
+  addNotification(
+    companyId,
+    employeeId,
+    accept
+      ? "سُجّلت موافقتك الخطية ووصلت إلى المسؤول في طلباتي."
+      : "سُجّل رفضك الخطي ووصل إلى المسؤول — والرفض لا يُتخذ سبباً لجزاء.",
+  );
+  const consentStamp = accept
+    ? stampRequestAudit(companyId, emp, req, { actor: emp.name, note: String(note || "").trim(), family: "other", verb: "agree" })
+    : stampRefuseAudit(companyId, emp, req, { actor: emp.name, note: String(note || "").trim() || "رفض الموافقة الخطية.", family: "other" });
+  updateCompany(companyId, (draft) => {
+    const employee = draft.employees.find((row) => row.id === employeeId);
+    const request = (employee?.otherRequests || []).find((row) => row.id === requestId);
+    if (request) {
+      request.auditTrail = accept
+        ? appendRequestAudit(request, consentStamp.row)
+        : appendRequestRefuseAudit(request, consentStamp.row);
+    }
+    pushEmployeeFileLog(employee, consentStamp.log);
+  });
+  return { ok: true, status: accept ? "yes" : "no", signatureId: verifyId };
+}
+
+export function setOtherRequestStatus(companyId, employeeId, requestId, status, reviewerName, note, extras = {}) {
+  const data = getCompanyData(companyId);
+  const selfDecide = checkSelfDecideRequestGate({
+    actorId: extras.actorId,
+    subjectId: employeeId,
+    status,
+    ownerId: data?.ownerId,
+    actor: (data?.employees || []).find((row) => String(row.id) === String(extras.actorId)) || extras.actor,
+    data,
+  });
+  if (!selfDecide.ok) return selfDecide;
+  const emp = data?.employees.find((e) => e.id === employeeId);
+  const empName = emp?.name || "";
+  const pending = (emp?.otherRequests || []).find((row) => row.id === requestId);
+  const revokeGate = checkRevokeStudyConsentGate(pending, status);
+  if (!revokeGate.ok) return revokeGate;
+  if (status === "rejected" && pending?.type === STUDY_CONSENT_TYPE) {
+    const rejectGate = checkRejectStudyConsentGate(pending, note);
+    if (!rejectGate.ok) return rejectGate;
+  }
+  if (status === "rejected" && pending?.type === NIGHT_FITNESS_TYPE) {
+    const rejectGate = checkRejectNightFitnessGate(pending, note);
+    if (!rejectGate.ok) return rejectGate;
+  }
+  if (status === "rejected" && pending?.type !== STUDY_CONSENT_TYPE && pending?.type !== NIGHT_FITNESS_TYPE && pending?.type !== "night_consent") {
+    const named = checkRefuseRequestReasonGate(note);
+    if (!named.ok) return named;
+  }
+  if (pending?.type === WRITTEN_CONSENT_TYPE) {
+    return {
+      ok: false,
+      error: "WRITTEN_CONSENT_FLOW",
+      reason: "الموافقة الخطية يختمها الموظف من طلباتي، ثم تظهر لك هنا.",
+      reasonEn: "The worker seals written consent from My Requests, then it appears here.",
+    };
+  }
+  if (hasOpenRequestSigning(pending) && status !== "withdrawn") {
+    return {
+      ok: false,
+      error: "SIGN_FLOW",
+      reason: "هذا الطلب يُوقَّع أو يُرفض من رابط التوقيع — موضع الختم حُدِّد عند الرفع.",
+      reasonEn: "This request is signed or refused from the signing link — placement was set when it was raised.",
+    };
+  }
+  if (pending?.type === "night_consent") {
+    if (status === "revise" || status === "withdrawn") {
+      return {
+        ok: false,
+        error: "NIGHT_FLOW",
+        reason: "موافقة العمل الليلي تُقرّ من الملف ثم يعتمدها مدير القسم.",
+        reasonEn: "Night-work consent is acknowledged on the file, then the department manager decides.",
+      };
+    }
+    return decideNightRotate(companyId, employeeId, requestId, status, reviewerName, note);
+  }
+  if (isOvertimeAssignment(pending)) {
+    if (status === "approved") {
+      const gate = checkApproveOtAssignmentGate(pending);
+      if (!gate.ok) return gate;
+    } else if (status === "rejected" || status === "revise") {
+      const rejectGate = checkManagerRejectOtGate(pending, status);
+      if (!rejectGate.ok) return rejectGate;
+    }
+  }
+  if (status === "approved") {
+    const letterGate = checkApproveOtherRequestGate({
+      ...pending,
+      issuedFile: extras.issuedFile || pending?.issuedFile,
+    });
+    if (!letterGate.ok) return letterGate;
+  }
+  if (status === "approved" && pending?.type === LEAVE_TOPUP_TYPE && !pending.balanceApplied) {
+    const daysGate = checkLeaveTopupDaysGate(pending);
+    if (!daysGate.ok) return daysGate;
+  }
+  if (status === "approved" && pending?.type === NIGHT_FITNESS_TYPE) {
+    const probe = stampNightFitnessOnEmployee(
+      { profile: { ...(emp?.profile || {}) } },
+      { ...pending, fitnessApplied: false },
+      {
+        reviewedAt: new Date().toISOString(),
+        from: pending.from,
+        to: pending.to,
+        issuedAt: pending.from || pending.examDate || toRiyadhDateKey(),
+        until: pending.to || pending.until,
+        permanent: pending.permanent,
+      },
+    );
+    if (!probe.ok) return probe;
+  }
+  if (status === "approved" && (pending?.type === "manual_punch" || pending?.type === "checkout_fix")) {
+    const day = pending.date || toRiyadhDateKey();
+    const clock = parsePunchClock(pending.time) || clockFromPunchReason(pending.reason);
+    const att = attendanceOnDate(data?.personalAttendance, employeeId, day);
+    const punchGate = checkPunchRecordGate({
+      type: pending.type,
+      employee: emp,
+      attendance: att,
+      date: day,
+      time: clock,
+      reason: pending.reason,
+      requireTime: true,
+    });
+    if (!punchGate.ok) return punchGate;
+  }
+  if (status === "approved" && pending?.type === "shift_change") {
+    const stationId = pending.stationId || emp?.stationId;
+    const schedule = (data?.schedules || []).find((row) => row.stationId === stationId);
+    const gate = checkShiftChangeApplyGate({
+      schedule,
+      employee: emp,
+      dateKey: pending.date,
+      shiftTypeId: pending.shiftTypeId || null,
+      laborCalendar: laborCalendarOf(data),
+    });
+    if (!gate.ok) return gate;
+  }
+  const refuseReason = status === "rejected" ? String(note || "").trim() : "";
+  const decideVerb = status === "rejected" ? "refuse" : status === "approved" ? "approve" : status === "withdrawn" ? "withdraw" : status === "revise" ? "revise" : "";
+  const decideLog = decideVerb
+    ? (status === "rejected"
+      ? stampRefuseAudit(companyId, emp, pending, { actor: reviewerName || auditActor, note: refuseReason, family: "other" })
+      : stampRequestAudit(companyId, emp, pending, { actor: reviewerName || auditActor, note: String(note || "").trim(), family: "other", verb: decideVerb }))
+    : null;
+  if (!decideVerb) {
+    audit(companyId, `other_request_${status}`, `Service request for ${empName} marked "${status}" by ${reviewerName || "manager"}.`);
+  }
+  updateCompany(companyId, (d) => {
+    const employee = d.employees.find((e) => e.id === employeeId);
+    if (!employee) return;
+    const req = (employee.otherRequests || []).find((r) => r.id === requestId);
+    if (!req) return;
+    req.status = status;
+    req.reviewedBy = reviewerName;
+    req.reviewedAt = new Date().toISOString();
+    if (String(note || "").trim()) req.reviewNote = String(note).trim();
+    if (decideLog?.row) {
+      req.auditTrail = status === "rejected"
+        ? appendRequestRefuseAudit(req, decideLog.row)
+        : appendRequestAudit(req, decideLog.row);
+      pushEmployeeFileLog(employee, decideLog.log);
+    }
+    if (status === "rejected") {
+      req.rejectReason = refuseReason || req.reviewNote || null;
+      return;
+    }
+    if (status !== "approved") return;
+    if (extras.issuedFile && (extras.issuedFile.name || extras.issuedFile.url)) {
+      const stampedIssued = stampRequestFile(extras.issuedFile, req.reviewedAt);
+      req.issuedFile = stampedIssued;
+      if (req.type === STUDY_CONSENT_TYPE) {
+        req.approvalFile = stampedIssued;
+      } else {
+        req.senderFile = stampedIssued;
+      }
+    }
+    if (["salary_letter", "employment_letter", "document"].includes(req.type) && !req.verifyId) {
+      req.verifyId = consentVerifyRef();
+      req.issued = true;
+    }
+    if (req.type === "night_consent") {
+      employee.profile = {
+        ...(employee.profile || {}),
+        nightConsentAt: new Date().toISOString(),
+        nightConsentWithdrawnAt: undefined,
+      };
+    }
+    if (req.type === STUDY_CONSENT_TYPE) {
+      req.companyId = req.companyId || companyId;
+      req.approvedAt = req.reviewedAt;
+      req.approvedBy = reviewerName;
+    }
+    if (req.type === NIGHT_FITNESS_TYPE) {
+      req.companyId = req.companyId || companyId;
+      req.approvedAt = req.reviewedAt;
+      req.approvedBy = reviewerName;
+      const applied = stampNightFitnessOnEmployee(employee, req, {
+        reviewedAt: req.reviewedAt,
+        from: req.from,
+        to: req.to,
+        issuedAt: req.from || req.examDate || toRiyadhDateKey(req.reviewedAt),
+        until: req.to || req.until,
+        permanent: req.permanent,
+      });
+      if (!applied.ok) return;
+    }
+    if (req.type === LEAVE_TOPUP_TYPE) {
+      stampLeaveTopupOnEmployee(employee, req);
+    }
+    if (isOvertimeAssignment(req)) {
+      if (status === "revise") {
+        req.status = OT_STATUS.pending_employee;
+        req.compensation = undefined;
+        req.compensationChoice = undefined;
+        req.employeeAck = false;
+        return;
+      }
+      if (status === "approved") {
+        stampOvertimeCreditOnEmployee(employee, req);
+        stampOvertimePayOnDraft(d, employee.id, req, reviewerName);
+      }
+    }
+    if (req.type === "manual_punch" || req.type === "checkout_fix") {
+      stampPunchRequestOnDraft(d, employee, req, reviewerName);
+    }
+    if (req.type === "shift_change" && req.date) {
+      const stationId = req.stationId || employee.stationId;
+      if (stationId) applyEmployeeDayShift(getOrCreateSchedule(d, stationId), req.date, employee.id, req.shiftTypeId || null);
+    }
+  });
+  if (status === "approved" && ["salary_letter", "employment_letter", "document"].includes(pending?.type)) {
+    const title = pending.title || otherRequestTypeLabel(pending.type, true);
+    addNotification(companyId, employeeId, `صدرت وثيقتك: ${title}. النسخة في ملفات طلباتي.`);
+  }
+  if (status === "approved" && pending?.type === STUDY_CONSENT_TYPE) {
+    addNotification(companyId, employeeId, "اعتُمدت موافقتك الدراسية. ملف الموافقة في طلباتي.");
+  }
+  if (status === "approved" && pending?.type === NIGHT_FITNESS_TYPE) {
+    addNotification(companyId, employeeId, "اعتُمد تقرير لياقتك الليلية. الملف المسجّل في طلباتي.");
+  }
+  if (status === "rejected") {
+    invokeWorkforce({ action: "rejectOther", companyId, employeeId, requestId, reason: refuseReason, note: refuseReason });
+  }
+  return { ok: true };
+}
+
+const DISCRETIONARY_GRANT_CAP = 5;
+
+export function grantDiscretionaryDays(companyId, employeeId, { days, reason, by }) {
+  const n = Math.max(1, Math.min(30, Math.round(Number(days) || 0)));
+  const why = String(reason || "").trim();
+  if (!why) {
+    return { ok: false, error: "REASON_REQUIRED", reason: "اكتب سبب المنح.", reasonEn: "Write why the days are granted." };
+  }
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((e) => e.id === employeeId);
+  if (!emp) {
+    return { ok: false, error: "EMPLOYEE_REQUIRED", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
+  }
+  const used = (emp.profile?.discretionaryGrants || []).reduce((sum, grant) => sum + Math.max(0, Number(grant.days) || 0), 0);
+  if (used + n > DISCRETIONARY_GRANT_CAP) {
+    return {
+      ok: false,
+      error: "GRANT_CAP",
+      reason: `يتجاوز سقف ${DISCRETIONARY_GRANT_CAP} أيام تقديرية في السنة.`,
+      reasonEn: `Exceeds the ${DISCRETIONARY_GRANT_CAP}-day discretionary cap for the year.`,
+    };
+  }
+  updateCompany(companyId, (d) => {
+    const employee = d.employees.find((e) => e.id === employeeId);
+    if (!employee) return;
+    employee.profile = employee.profile || {};
+    employee.profile.discretionaryGrants = [
+      { id: uid("grant"), days: n, reason: why, by: by || "", at: new Date().toISOString().slice(0, 10) },
+      ...(employee.profile.discretionaryGrants || []),
+    ];
+  });
+  audit(companyId, "discretionary_leave_grant", `${n} discretionary days for ${emp.name}${why ? ` — ${why}` : ""}`);
+  return { ok: true, days: n };
 }
 
 export function addPoints(companyId, employeeId, points, reason) {
@@ -1597,19 +3607,29 @@ export async function syncPointsFromCloud(companyId) {
   return true;
 }
 
+export function listArbitrationOutcomes(companyId, opts = {}) {
+  const data = getCompanyData(companyId) || {};
+  return visibleArbitrationOutcomes(data.arbitrationOutcomes || [], opts);
+}
+
 /* ----------------------------- anonymous rate limit ----------------------------- */
 export function getAnonUsage(companyId, employeeId, legacyAnonymousId) {
-  const data = getCompanyData(companyId);
+  const data = getCompanyData(companyId) || {};
   const now = Date.now();
-  const mine = (r) => (r.authorId ? r.authorId === employeeId : r.anonymousId === legacyAnonymousId);
-  const day = data.anonymousReports.filter((r) => mine(r) && now - new Date(r.createdAt).getTime() < 86400000).length;
-  const week = data.anonymousReports.filter((r) => mine(r) && now - new Date(r.createdAt).getTime() < 86400000 * 7).length;
-  const month = data.anonymousReports.filter((r) => mine(r) && now - new Date(r.createdAt).getTime() < 86400000 * 30).length;
+  const rows = data.anonymousReports || [];
+  const mine = (r) => (
+    (r.rateActorId && r.rateActorId === employeeId)
+    || (r.authorId && r.authorId === employeeId)
+    || (!r.rateActorId && !r.authorId && r.anonymousId === legacyAnonymousId)
+  );
+  const day = rows.filter((r) => mine(r) && now - new Date(r.createdAt).getTime() < 86400000).length;
+  const week = rows.filter((r) => mine(r) && now - new Date(r.createdAt).getTime() < 86400000 * 7).length;
+  const month = rows.filter((r) => mine(r) && now - new Date(r.createdAt).getTime() < 86400000 * 30).length;
   return {
     day, week, month,
-    dayLimit: data.settings.rateLimitDaily,
-    weekLimit: data.settings.rateLimitWeekly,
-    monthLimit: data.settings.rateLimitMonthly ?? 30,
+    dayLimit: data.settings?.rateLimitDaily,
+    weekLimit: data.settings?.rateLimitWeekly,
+    monthLimit: data.settings?.rateLimitMonthly ?? 30,
   };
 }
 
@@ -1678,7 +3698,72 @@ export function addShiftType(companyId, stationId, shiftType) {
     const entry = getOrCreateSchedule(d, stationId);
     const window = shiftWindowKey(shiftType.start, shiftType.end);
     if (entry.shiftTypes.some((shift) => shiftWindowKey(shift.start, shift.end) === window)) return;
-    entry.shiftTypes.push({ id: uid("sft"), label: shiftType.label, start: shiftType.start, end: shiftType.end });
+    entry.shiftTypes.push({
+      id: uid("sft"),
+      label: shiftType.label,
+      start: shiftType.start,
+      end: shiftType.end,
+      restMinutes: shiftType.restMinutes ?? ruleValue("hours.rest.duringShiftMinutes"),
+      ...(shiftType.outdoor === true ? { outdoor: true } : shiftType.outdoor === false ? { outdoor: false } : {}),
+    });
+  });
+}
+
+export function setScheduleNightCompensation(companyId, stationId, on) {
+  updateCompany(companyId, (d) => {
+    const entry = getOrCreateSchedule(d, stationId);
+    entry.nightCompensation = !!on;
+    markWeekDirty(entry, new Date());
+  });
+}
+
+export function setNightFacilityFlag(companyId, { stationId, key, on, scope = "schedule" } = {}) {
+  const allowed = {
+    nightFirstAidReady: true,
+    nightEmergencyTransferReady: true,
+    nightFoodAccessReady: true,
+  };
+  if (!allowed[key]) return;
+  updateCompany(companyId, (d) => {
+    if (scope === "company") {
+      d.nightFacilities = { ...(d.nightFacilities || {}), [key]: !!on };
+      return;
+    }
+    const entry = getOrCreateSchedule(d, stationId);
+    entry[key] = !!on;
+    markWeekDirty(entry, new Date());
+  });
+}
+
+/** 18632 night-fitness report on the employee file — url/name/at + from/to/permanent. */
+export function setNightMedicalFitnessReport(companyId, employeeId, report) {
+  const from = String(report?.from || report?.issuedAt || report?.issued || "").trim().slice(0, 10);
+  const hasFile = !!(report && (String(report.url || "").trim() || String(report.name || "").trim()));
+  if (!hasFile) {
+    updateEmployeeProfile(companyId, employeeId, { nightMedicalReport: null, nightMedicalIssuedAt: "" });
+    return;
+  }
+  const permanent = report?.permanent === true;
+  const explicitTo = String(report?.to || report?.until || "").trim().slice(0, 10);
+  const months = Number(ruleValue("hours.night.medicalYearMonths", from || undefined)) || 12;
+  const span = Math.max(1, Math.round(months * 365.25 / 12));
+  const to = permanent
+    ? ""
+    : (explicitTo || (from && !report?.from && !report?.to ? addLaborDays(from, span) : ""));
+  updateEmployeeProfile(companyId, employeeId, {
+    nightMedicalReport: {
+      url: String(report.url || ""),
+      name: String(report.name || ""),
+      type: String(report.type || "file"),
+      from,
+      to,
+      permanent,
+      issuedAt: from,
+      at: report.at || new Date().toISOString(),
+      until: to,
+    },
+    nightMedicalIssuedAt: from,
+    nightMedicalPermanent: permanent || undefined,
   });
 }
 
@@ -1689,6 +3774,7 @@ export function updateShiftType(companyId, stationId, shiftTypeId, updates) {
     if (!st) return;
     Object.assign(st, updates);
     applyShiftMerge(entry, planDuplicateShiftMerge(entry.shiftTypes));
+    markWeekDirty(entry, new Date());
   });
 }
 
@@ -1717,6 +3803,211 @@ export function unassignEmployeeFromShift(companyId, stationId, weekday, shiftTy
     if (!entry.assignments[weekday]?.[shiftTypeId]) return;
     entry.assignments[weekday][shiftTypeId] = entry.assignments[weekday][shiftTypeId].filter((id) => id !== employeeId);
   });
+}
+
+function markWeekDirty(entry, dateKey) {
+  const key = weekKeyFromDate(dateKey);
+  entry.weekDirty = entry.weekDirty || {};
+  entry.weekDirty[key] = true;
+}
+
+function applyEmployeeDayShift(entry, dateKey, employeeId, shiftTypeId) {
+  const current = dayAssignmentMap(entry.assignments, dateKey) || {};
+  const day = cloneDayMap(current);
+  for (const shift of entry.shiftTypes || []) {
+    day[shift.id] = (day[shift.id] || []).filter((id) => id !== employeeId);
+  }
+  if (shiftTypeId && (entry.shiftTypes || []).some((shift) => shift.id === shiftTypeId)) {
+    day[shiftTypeId] = [...(day[shiftTypeId] || []), employeeId];
+  }
+  entry.assignments = entry.assignments || {};
+  entry.assignments[dateKey] = day;
+  markWeekDirty(entry, dateKey);
+}
+
+export function setEmployeeDayShift(companyId, stationId, dateKey, employeeId, shiftTypeId) {
+  const data = getCompanyData(companyId);
+  const employee = data?.employees?.find((row) => row.id === employeeId);
+  const schedule = (data?.schedules || []).find((row) => row.stationId === stationId) || getOrCreateSchedule({ schedules: data?.schedules || [], ...data }, stationId);
+  const gate = checkShiftChangeApplyGate({
+    schedule,
+    employee,
+    dateKey,
+    shiftTypeId,
+    laborCalendar: laborCalendarOf(data),
+  });
+  if (!gate.ok) return gate;
+  updateCompany(companyId, (d) => {
+    applyEmployeeDayShift(getOrCreateSchedule(d, stationId), dateKey, employeeId, shiftTypeId);
+  }, { sync: "schedules" });
+  return { ok: true };
+}
+
+export function setWeekValidity(companyId, stationId, validity, validUntil) {
+  updateCompany(companyId, (d) => {
+    const entry = getOrCreateSchedule(d, stationId);
+    entry.validity = validity || "week";
+    entry.validUntil = validity === "until" ? validUntil || "" : "";
+    const key = weekKeyFromDate(new Date());
+    entry.weekDirty = entry.weekDirty || {};
+    entry.weekDirty[key] = true;
+  });
+}
+
+export function publishWeek(companyId, stationId, weekStartKey, { by } = {}) {
+  const live = getCompanyData(companyId);
+  if (!live) return { ok: false, error: "NO_COMPANY", reason: "لا شركة.", reasonEn: "No company." };
+  const schedule = (live.schedules || []).find((row) => row.stationId === stationId);
+  if (!schedule) return { ok: false, error: "NO_SCHEDULE", reason: "لا جدول لهذا الفرع.", reasonEn: "No roster for this station." };
+  const gates = checkWeekPublishGates({
+    schedule,
+    employees: live.employees || [],
+    weekStart: weekStartKey || new Date(),
+    stationId,
+    station: (live.stations || []).find((row) => String(row.id) === String(stationId)),
+    settings: live.settings,
+    ar: true,
+    laborCalendar: laborCalendarOf(live),
+  });
+  if (gates.blocked) {
+    const first = gates.blockers[0];
+    return {
+      ok: false,
+      error: "PUBLISH_BLOCKED",
+      reason: first?.note || "لا يُنشر جدول يخالف مانعاً نظامياً.",
+      reasonEn: first?.note || "A blocking labour check stops publish.",
+      blockers: gates.blockers.map((row) => row.id),
+    };
+  }
+  updateCompany(companyId, (d) => {
+    const entry = getOrCreateSchedule(d, stationId);
+    const weekKey = weekKeyFromDate(weekStartKey || new Date());
+    const validity = entry.validity || "week";
+    const validUntil = validity === "until" ? (entry.validUntil || "") : "";
+    entry.publishedWeeks = entry.publishedWeeks || {};
+    entry.publishedWeeks[weekKey] = {
+      at: new Date().toISOString(),
+      by: by || "",
+      validity,
+      validUntil,
+    };
+    entry.weekDirty = entry.weekDirty || {};
+    delete entry.weekDirty[weekKey];
+  });
+  return { ok: true };
+}
+
+export function announceRamadanStart(companyId, year, shift, { by } = {}) {
+  const n = Number(shift);
+  if (n !== -1 && n !== 0 && n !== 1) {
+    return {
+      ok: false,
+      error: "RAMADAN_START",
+      reason: "بداية رمضان تُعلن بعد الرؤية: يوماً قبل أم القرى، أو كما هي، أو يوماً بعد.",
+      reasonEn: "Ramadan start is announced after the sighting: one day before Umm al-Qura, as predicted, or one day after.",
+    };
+  }
+  const y = Number(year);
+  const win = ramadanWindowForYear(y);
+  if (!win) {
+    return { ok: false, error: "RAMADAN_WINDOW", reason: "لا نافذة مرمّزة لهذه السنة.", reasonEn: "No encoded Ramadan window for that year." };
+  }
+  updateCompany(companyId, (d) => {
+    d.laborCalendar = d.laborCalendar || {};
+    d.laborCalendar[String(y)] = {
+      ...(d.laborCalendar[String(y)] || {}),
+      ramadanStartShift: n,
+      ramadanFrom: addLaborDays(win.from, n),
+      startAnnouncedAt: new Date().toISOString(),
+      startAnnouncedBy: by || "",
+    };
+  });
+  return { ok: true, year: y, ramadanStartShift: n, ramadanFrom: addLaborDays(win.from, n) };
+}
+
+export function announceRamadanLength(companyId, year, length, { by } = {}) {
+  const n = Number(length);
+  if (n !== 29 && n !== 30) {
+    return {
+      ok: false,
+      error: "RAMADAN_LENGTH",
+      reason: "إعلان رمضان يكون 29 أو 30 يوماً بعد ثبوت الرؤية — لا يُخمَّن اليوم الأخير.",
+      reasonEn: "Ramadan is announced as 29 or 30 days after the sighting — the last day is never guessed.",
+    };
+  }
+  const y = Number(year);
+  if (!Number.isFinite(y) || y < 2000) {
+    return { ok: false, error: "YEAR_REQUIRED", reason: "حدد سنة الإعلان.", reasonEn: "Set the announcement year." };
+  }
+  updateCompany(companyId, (d) => {
+    d.laborCalendar = d.laborCalendar || {};
+    d.laborCalendar[String(y)] = {
+      ...(d.laborCalendar[String(y)] || {}),
+      ramadanLength: n,
+      announcedAt: new Date().toISOString(),
+      announcedBy: by || "",
+    };
+  });
+  return { ok: true, year: y, ramadanLength: n };
+}
+
+export function setOtDecision(companyId, employeeId, dateKey, {
+  decision,
+  overtimeMinutes,
+  by,
+  workerConsent,
+  annualCapConsent,
+  enjoyDate,
+  windowAgreed,
+} = {}) {
+  const live = getCompanyData(companyId);
+  const day = String(dateKey || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    return { ok: false, error: "DATE_REQUIRED", reason: "حدد يوم الإضافي.", reasonEn: "Set the overtime day." };
+  }
+  const key = `${employeeId}:${day}`;
+  const gate = checkOtDecisionGate({
+    overtimeMinutes,
+    decision,
+    alreadyDecided: !!live?.otDecisions?.[key],
+    workerConsent,
+    annualCapConsent,
+    enjoyDate,
+    windowAgreed,
+    onDate: day,
+    overtimeHoursYtd: approvedOvertimeHoursForYear(live?.otDecisions, employeeId, day),
+    creditDaysYtd: approvedCompLeaveDaysForYear(live?.otDecisions, employeeId, day),
+  });
+  if (!gate.ok) return gate;
+  updateCompany(companyId, (d) => {
+    d.otDecisions = d.otDecisions || {};
+    d.otDecisions[key] = {
+      decision: gate.decision,
+      overtimeMinutes: gate.overtimeMinutes,
+      at: new Date().toISOString(),
+      by: by || "",
+      workerConsent: gate.workerConsent || undefined,
+      annualCapConsent: annualCapConsent === true ? true : undefined,
+      enjoyDate: enjoyDate || undefined,
+      windowAgreed: windowAgreed === true ? true : undefined,
+    };
+  });
+  return { ok: true, decision: gate.decision };
+}
+
+export function setNightConsent(companyId, employeeId, consented) {
+  updateCompany(companyId, (d) => {
+    const employee = d.employees.find((row) => row.id === employeeId);
+    if (!employee) return;
+    employee.profile = employee.profile || {};
+    if (consented) {
+      employee.profile.nightConsentAt = new Date().toISOString();
+      employee.profile.nightConsentWithdrawnAt = undefined;
+    } else {
+      employee.profile.nightConsentWithdrawnAt = new Date().toISOString();
+    }
+  });
+  audit(companyId, consented ? "night_consent_recorded" : "night_consent_withdrawn", `Night-work consent ${consented ? "recorded" : "withdrawn"} for employee ${employeeId}.`);
 }
 
 /* ----------------------------- company files (nested folders + documents) -----------------------------

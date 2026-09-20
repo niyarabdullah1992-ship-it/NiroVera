@@ -15,7 +15,7 @@ export default function SubscriberRow({ row, ar, onChanged }) {
   const [editOpen, setEditOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [daysOpen, setDaysOpen] = useState(false);
-  const fmt = (value) => value ? new Date(value).toLocaleDateString(ar ? "ar-SA" : "en-GB") : "—";
+  const fmt = (value) => value ? new Date(value).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB") : "—";
   const act = async (action, reason = "", extra = {}) => {
     setBusy(true);
     try { await base44.functions.invoke("subscriptionOverview", { action, subscriptionId: row.id, accountId: row.accountId, reason, ...extra }); await onChanged(); }

@@ -1,29 +1,36 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
-import { Link, useLocation, useSearchParams } from "react-router-dom";
+import { Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { base44 } from "@/api/base44Client";
-import { canCreateTasks, isCompanyOwner, visibleEmployees, visibleStations, hasHRPermission, hrScopeStations } from "@/lib/permissions";
+import { canCreateTasks, isCompanyOwner, hasHRPermission } from "@/lib/permissions";
+import { managedDutyEmployees } from "@/lib/dutyScope";
 import { Loader2 } from "lucide-react";
 import CheckInOutCard from "@/components/attendance/CheckInOutCard";
-import AttendanceExtraToolbar from "@/components/attendance/AttendanceExtraToolbar";
+import { AttendanceProofChain, punchChainFromAttendance } from "@/components/attendance/AttendanceTrustChrome";
+import AttendanceSectionFrame from "@/components/attendance/AttendanceSectionFrame";
+import { getTodaysShift } from "@/lib/attendance";
+import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
+import { isOnLeaveToday } from "@/lib/leaveTypes";
 import PullToRefresh from "@/components/mobile/PullToRefresh";
 import { queryClientInstance } from "@/lib/query-client";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
-import { ACCENT, MUTED } from "@/lib/platformStyles";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import ErpSectionFrame from "@/components/erp/ErpSectionFrame";
-import { erpKicker } from "@/lib/erpModuleMeta";
+import { ACCENT } from "@/lib/platformStyles";
+import SectionShell from "@/components/shared/SectionShell";
+import DutyLaneBar, { dutyLaneFromSearch, writeDutyLane } from "@/components/shared/DutyLaneBar";
+import { pageKicker } from "@/lib/moduleMeta";
+import { hydrateEmployeesLeave } from "@/lib/leaveDerivations";
+import { calendarOverlayEmployees } from "@/lib/shiftWeek";
+import { isLocalPreviewActive } from "@/lib/localPreview";
+import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, seedPreviewOwnerNightStreak, seedPreviewProofCycle } from "@/lib/previewMigrations";
+import { openDueAnnualLeaveNotices, openDueNightRotateCycles, updateCompany } from "@/lib/store";
 
 const ShiftsPlatformBoard = lazy(() => import("@/components/schedules/ShiftsPlatformBoard"));
-const AttendanceMonthlyReport = lazy(() => import("@/components/attendance/AttendanceMonthlyReport"));
 const AttendanceMonthCalendar = lazy(() => import("@/components/attendance/AttendanceMonthCalendar"));
-const AttendanceMapDashboard = lazy(() => import("@/components/attendance/AttendanceMapDashboard"));
-const AttendanceAnalytics = lazy(() => import("@/components/attendance/AttendanceAnalytics"));
-const AttendanceLeaveRequests = lazy(() => import("@/components/attendance/AttendanceLeaveRequests"));
-const AttendanceDailyDashboard = lazy(() => import("@/components/attendance/AttendanceDailyDashboard"));
+const AttendanceLocationsPanel = lazy(() => import("@/components/attendance/AttendanceLocationsPanel"));
 const AttendanceSettingsBoard = lazy(() => import("@/components/attendance/AttendanceSettingsBoard"));
-
+const AttendanceMineWeek = lazy(() => import("@/components/attendance/AttendanceMineWeek"));
+const AttendanceDailyDashboard = lazy(() => import("@/components/attendance/AttendanceDailyDashboard"));
 function TabLoader() {
   return (
     <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
@@ -34,7 +41,7 @@ function TabLoader() {
 
 function tabFromRoute(pathname, searchTab) {
   if (pathname.endsWith("/shifts") || searchTab === "schedule") return "schedule";
-  if (pathname.endsWith("/leave") || searchTab === "leaves") return "leaves";
+  if (pathname.endsWith("/calendar") || searchTab === "calendar") return "calendar";
   if (searchTab) return searchTab;
   return null;
 }
@@ -46,26 +53,20 @@ export default function Attendance() {
   const [searchParams, setSearchParams] = useSearchParams();
   const routeTab = tabFromRoute(location.pathname, searchParams.get("tab"));
   const [tab, setTab] = useState(routeTab);
+  const [punchAtt, setPunchAtt] = useState(null);
+  const [queueCount, setQueueCount] = useState(0);
 
   useEffect(() => {
-    if (routeTab) setTab(routeTab);
+    setTab(routeTab);
   }, [routeTab]);
 
   const isManager = data && currentUser && canCreateTasks(currentUser);
   const canManageLeave = data && currentUser && (isManager || hasHRPermission(currentUser, data, "manage_leave"));
-  // Company-wide attendance policy is restricted to the owner and senior operations roles.
-  const canEditSettings = data && currentUser && (isCompanyOwner(currentUser, data) || ["director", "ops_manager"].includes(currentUser.role));
-  const canManageEmergency = data && currentUser && (canEditSettings || currentUser.role === "station_manager");
-  const defaultEmployees = data && currentUser ? visibleEmployees(currentUser, data) : [];
-  const stations = data && currentUser ? visibleStations(currentUser, data) : [];
-  const leaveScope = data && currentUser?.hrLevelId ? hrScopeStations(currentUser, data) : null;
   const defaultStationId = data?.stations?.[0]?.id || null;
   const headerScope = useStationScope();
   const roster = data?.employees || [];
   const stationList = data?.stations || [];
-  const employeesBase = canManageLeave && currentUser?.hrLevelId
-    ? roster.filter((employee) => leaveScope === null || leaveScope.includes(employee.stationId || defaultStationId))
-    : defaultEmployees;
+  const employeesBase = data && currentUser ? managedDutyEmployees(currentUser, data) : [];
   const employees = (employeesBase || []).filter((employee) =>
     matchesStationScope(employee.stationId || defaultStationId, headerScope, stationList),
   );
@@ -88,6 +89,40 @@ export default function Attendance() {
     syncRoster();
   }, [isManager, company?.id, employees.length]);
 
+  useEffect(() => {
+    if (!isManager) return;
+    const local = listLocalTodayAttendance(company?.id, data);
+    const byId = Object.fromEntries(local.map((row) => [String(row.employee_id ?? row.employeeId), row]));
+    setQueueCount(employees.filter((employee) => {
+      const row = byId[String(employee.id)];
+      const asked = (employee.otherRequests || []).some((item) => item.type === "manual_punch" && (item.status || "pending") === "pending");
+      return row?.location_status === "outside" || (row?.check_in_at && !row?.check_out_at && row?.status !== "absent") || !!row?.early_checkout || asked;
+    }).length);
+  }, [isManager, company?.id, employees, data]);
+
+  useEffect(() => {
+    if (!company?.id || !isLocalPreviewActive()) return;
+    const hasSeed = (data?.workProofs || []).some((item) => String(item.id || "").startsWith("wp_preview_"));
+    const hasVisitor = (data?.visitorProofs || []).some((item) => String(item.id || "").startsWith("vp_preview_"));
+    if (hasSeed && hasVisitor) return;
+    updateCompany(company.id, (draft) => {
+      migratePreviewRotaClock(draft);
+      migratePreviewWeekRota(draft);
+      migratePreviewCompanyHeadWorkplace(draft);
+      migratePreviewOwnerMorningRota(draft);
+      seedPreviewOwnerNightStreak(draft);
+      seedPreviewProofCycle(draft);
+    });
+    refresh?.();
+  }, [company?.id, data?.workProofs, data?.visitorProofs]);
+
+  useEffect(() => {
+    if (!company?.id) return;
+    const night = openDueNightRotateCycles(company.id);
+    const leave = openDueAnnualLeaveNotices(company.id);
+    if (night.opened?.length || night.notified || leave.opened?.length) refresh?.();
+  }, [company?.id]);
+
   // Pull-to-refresh: full state reload — roster sync, tanstack-query caches,
   // and the AuthContext offline/online store sync.
   const handleRefresh = async () => {
@@ -97,148 +132,168 @@ export default function Attendance() {
 
   if (!data || !currentUser) return null;
 
-  const focusShifts = location.pathname.endsWith("/shifts") || tab === "schedule";
-  const focusLeave = location.pathname.endsWith("/leave") || tab === "leaves";
-  const defaultHubTab = isManager ? "team" : "roster";
-  const hubTabs = isManager
+  if (location.pathname === "/app/attendance" && searchParams.get("tab") === "calendar") {
+    return <Navigate to="/app/calendar" replace />;
+  }
+  if (location.pathname === "/app/attendance" && (searchParams.get("tab") === "settings" || searchParams.get("tab") === "map")) {
+    return <Navigate to="/app/attendance?tab=policy" replace />;
+  }
+  if (location.pathname === "/app/attendance" && searchParams.get("tab") === "analytics") {
+    return <Navigate to="/app/attendance" replace />;
+  }
+  if (location.pathname.endsWith("/leave") || searchParams.get("tab") === "leaves") {
+    return <Navigate to="/app/requests/leave" replace />;
+  }
+
+  const focusShifts = location.pathname.endsWith("/shifts");
+  const focusCalendar = location.pathname.endsWith("/calendar");
+  const ar = lang === "ar";
+  const canManageDuty = !!(isManager || canManageLeave);
+  const canManageHere = focusShifts || focusCalendar ? canManageDuty : !!isManager;
+  const lane = dutyLaneFromSearch(searchParams, canManageHere);
+  const defaultHubTab = "punch";
+  const mineTabs = [
+    { key: "punch", label: ar ? "بصمتي" : "My punch" },
+    { key: "mine", label: ar ? "كشفي" : "My register" },
+  ];
+  const manageTabs = isManager
     ? [
-        { key: "team", label: t("teamTab") },
-        { key: "map", label: t("mapTab") },
-        { key: "analytics", label: t("analyticsTab") },
-        { key: "calendar", label: lang === "ar" ? "التقويم الشهري" : "Monthly calendar" },
-        ...(canManageEmergency ? [{ key: "settings", label: t("settingsTab") }] : []),
+        { key: "team", label: ar ? "يحتاج قرارك" : "Needs your decision", count: queueCount },
+        { key: "policy", label: ar ? "السياسة والمواقع" : "Policy and sites" },
       ]
-    : [
-        { key: "roster", label: lang === "ar" ? "اليوم" : "Day" },
-        { key: "calendar", label: lang === "ar" ? "التقويم الشهري" : "Monthly calendar" },
-      ];
-  const allowedTabs = new Set([...hubTabs.map((item) => item.key), "report", "roster"]);
+    : [];
+  const hubTabs = lane === "manage" && isManager ? manageTabs : mineTabs;
+  const allowedTabs = new Set([...mineTabs.map((item) => item.key), ...manageTabs.map((item) => item.key), "report", "roster", "map", "settings", "policy"]);
   const requested = routeTab || tab;
-  let activeTab = defaultHubTab;
-  if (focusShifts && isManager) activeTab = "schedule";
-  else if (focusLeave && canManageLeave) activeTab = "leaves";
+  let activeTab = lane === "manage" && isManager ? "team" : defaultHubTab;
+  if (focusShifts && lane === "manage" && isManager) activeTab = "schedule";
   else if (requested && allowedTabs.has(requested)) {
-    if (isManager && requested === "roster") activeTab = "team";
-    else if (!isManager && ["team", "map", "analytics", "settings"].includes(requested)) activeTab = "roster";
-    else if (requested === "settings" && !canManageEmergency) activeTab = defaultHubTab;
+    if (requested === "roster") activeTab = "punch";
+    else if (lane === "mine" && ["team", "map", "analytics", "settings", "policy"].includes(requested)) activeTab = requested === "mine" ? "mine" : "punch";
+    else if (lane === "manage" && ["punch", "mine", "roster", "report"].includes(requested)) activeTab = "team";
+    else if (requested === "map" || requested === "settings") activeTab = lane === "manage" && isManager ? "policy" : "punch";
+    else if (requested === "report") activeTab = "mine";
     else activeTab = requested;
   }
+
+  const setLane = (nextLane) => {
+    const next = writeDutyLane(searchParams, nextLane);
+    if (location.pathname === "/app/attendance") {
+      if (nextLane === "manage") next.set("tab", "team");
+      else next.delete("tab");
+    }
+    setSearchParams(next, { replace: true });
+    setTab(nextLane === "manage" ? "team" : defaultHubTab);
+  };
 
   const selectTab = (key) => {
     setTab(key);
     if (location.pathname === "/app/attendance") {
-      const next = new URLSearchParams(searchParams);
+      const next = writeDutyLane(searchParams, ["team", "policy"].includes(key) ? "manage" : "mine");
       if (key === defaultHubTab) next.delete("tab");
       else next.set("tab", key);
       setSearchParams(next, { replace: true });
     }
   };
 
-  const calendarEmployees = employees.length ? employees : [currentUser];
+  const self = roster.find((row) => row.id === currentUser.id) || currentUser;
+  const teamEmployees = employees.filter((row) => row.id !== currentUser.id);
+  const rotaStationId = headerScope && headerScope !== "all" ? headerScope : defaultStationId;
+  const shiftManageCount = rotaStationId
+    ? employees.filter((row) => (row.stationId || defaultStationId) === rotaStationId && row.id !== currentUser.id).length
+    : teamEmployees.length;
+  const headerLeavePeople = headerScope && headerScope !== "all"
+    ? (data?.employees || []).filter((row) => matchesStationScope(row.stationId || defaultStationId, headerScope, stationList))
+    : [];
+  const calendarEmployees = hydrateEmployeesLeave(
+    calendarOverlayEmployees({
+      lane: lane === "manage" && canManageDuty ? "manage" : "mine",
+      employee: self,
+      employees: data?.employees || [],
+      managed: employees.length ? employees : [],
+      headerPeople: headerLeavePeople,
+    }),
+    data,
+  );
 
   if (focusShifts) {
     return (
       <PullToRefresh onRefresh={handleRefresh}>
-        <PlatformStampShell
-          ar={lang === "ar"}
-          title={lang === "ar" ? "الورديات" : "Shifts"}
-          hint={lang === "ar" ? "جدول الفرع يغذي الحضور ثم المسير — لا نشر بلا اكتمال الوردية." : "The station roster feeds attendance, then payroll — no publish until the shift is complete."}
-          maxWidth={1280}
-        >
-        <Suspense fallback={<TabLoader />}>
-          <ShiftsPlatformBoard lang={lang} />
-        </Suspense>
-        </PlatformStampShell>
+        <SectionShell bare ar={ar} maxWidth={1320}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <DutyLaneBar ar={ar} canManage={canManageDuty} lane={lane} onLane={setLane} manageCount={shiftManageCount} />
+            <Suspense fallback={<TabLoader />}>
+              <ShiftsPlatformBoard lang={lang} kicker={pageKicker("/app/shifts", lang)} lane={lane} employees={employees} canManage={canManageDuty} />
+            </Suspense>
+          </div>
+        </SectionShell>
       </PullToRefresh>
     );
   }
 
+  if (focusCalendar) {
+    return (
+      <PullToRefresh onRefresh={handleRefresh}>
+        <SectionShell bare ar={ar} maxWidth={1320}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <DutyLaneBar ar={ar} canManage={canManageDuty} lane={lane} onLane={setLane} manageCount={teamEmployees.length} />
+            <Suspense fallback={<TabLoader />}>
+              <AttendanceMonthCalendar
+                employees={calendarEmployees}
+                currentUser={currentUser}
+                company={company}
+                data={data}
+                kicker={pageKicker("/app/calendar", lang)}
+                lane={lane}
+                canManage={canManageDuty}
+              />
+            </Suspense>
+          </div>
+        </SectionShell>
+      </PullToRefresh>
+    );
+  }
+
+  const hubTool = hubTabs.some((item) => item.key === activeTab) ? activeTab : defaultHubTab;
+  const todayShift = getTodaysShift(data, currentUser);
+  const chain = punchChainFromAttendance(punchAtt, { scheduled: !!todayShift, onLeave: isOnLeaveToday(currentUser) });
+
   return (
     <PullToRefresh onRefresh={handleRefresh}>
-    <PlatformStampShell
-      ar={lang === "ar"}
-      kicker={erpKicker("/app/attendance", lang)}
-      title={focusLeave
-        ? (lang === "ar" ? "الإجازات" : "Leave")
-        : (lang === "ar" ? "الحضور والانصراف" : "Attendance")}
-      hint={focusLeave
-        ? (lang === "ar"
-          ? "إجازة معتمدة تغلق يوم الحضور؛ بلا أجر تُنشئ بند خصم في المسير قبل ملف مدى."
-          : "Approved leave closes the attendance day; unpaid leave writes a deduction line before the Mudad file.")
-        : (lang === "ar"
-          ? "بصمة اليوم تغذي المهام والرواتب وإثبات العمل — أنت في سلسلة الحضور → الراتب."
-          : "Today's check-in feeds tasks, payroll, and work proof — you are on the attendance → payroll chain.")}
-      maxWidth={1280}
+    <AttendanceSectionFrame
+      ar={ar}
+      kicker={pageKicker("/app/attendance", lang)}
+      tabs={hubTabs}
+      tool={hubTool}
+      onTool={selectTab}
+      laneBar={<DutyLaneBar ar={ar} canManage={!!isManager} lane={lane} onLane={setLane} manageCount={queueCount} />}
     >
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {!focusLeave && (
-        <ErpSectionFrame path="/app/attendance" ar={lang === "ar"} hideHub>
-          <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
-            {lang === "ar" ? (
-              <>
-                بعد البصمة افتح{" "}
-                <Link to="/app/tasks" style={{ color: ACCENT, fontWeight: 600 }}>المهام</Link>
-                {" "}أو{" "}
-                <Link to="/app/work-proof" style={{ color: ACCENT, fontWeight: 600 }}>إثبات العمل</Link>
-                {" "}— والحضور المعتمد يغذي{" "}
-                <Link to="/app/payroll" style={{ color: ACCENT, fontWeight: 600 }}>الرواتب</Link>.
-              </>
-            ) : (
-              <>
-                After check-in open{" "}
-                <Link to="/app/tasks" style={{ color: ACCENT, fontWeight: 600 }}>Tasks</Link>
-                {" "}or{" "}
-                <Link to="/app/work-proof" style={{ color: ACCENT, fontWeight: 600 }}>Work proof</Link>
-                {" "}— approved attendance feeds{" "}
-                <Link to="/app/payroll" style={{ color: ACCENT, fontWeight: 600 }}>Payroll</Link>.
-              </>
-            )}
-          </p>
-        </ErpSectionFrame>
-      )}
-      {!focusLeave && (
-        <AttendanceExtraToolbar
-          lang={lang}
-          tabs={hubTabs}
-          activeTab={hubTabs.some((item) => item.key === activeTab) ? activeTab : defaultHubTab}
-          onSelect={selectTab}
-        />
-      )}
-
-      {!focusLeave && (
-        <Suspense fallback={<TabLoader />}>
-          {activeTab === "team" && isManager && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <CheckInOutCard currentUser={currentUser} company={company} t={t} compact />
-              <AttendanceDailyDashboard employees={employees} currentUser={currentUser} company={company} data={data} t={t} />
+      <Suspense fallback={<TabLoader />}>
+          {(activeTab === "roster" || activeTab === "punch") && (
+            <div className="nv-att-punch-grid">
+              <CheckInOutCard currentUser={currentUser} company={company} t={t} onStatusChange={setPunchAtt} />
+              <AttendanceProofChain ar={ar} {...chain} />
             </div>
           )}
-          {activeTab === "roster" && !isManager && (
-            <CheckInOutCard currentUser={currentUser} company={company} t={t} />
+          {activeTab === "team" && isManager && (
+            <AttendanceDailyDashboard employees={employees} currentUser={currentUser} company={company} data={data} t={t} onQueueCount={setQueueCount} />
           )}
-          {activeTab === "report" && (
-            <AttendanceMonthlyReport employees={employees.length ? employees : [currentUser]} defaultEmployeeId={currentUser.id} t={t} />
+          {activeTab === "mine" && (
+            <AttendanceMineWeek employee={currentUser} company={company} data={data} lang={lang} />
           )}
-          {activeTab === "calendar" && (
-            <AttendanceMonthCalendar employees={calendarEmployees} currentUser={currentUser} company={company} data={data} />
-          )}
-          {activeTab === "map" && isManager && <AttendanceMapDashboard employees={employees} t={t} />}
-          {activeTab === "analytics" && isManager && (
-            <AttendanceAnalytics employees={employees} company={company} data={data} t={t} />
-          )}
-          {activeTab === "settings" && canManageEmergency && (
-            <AttendanceSettingsBoard company={company} currentUser={currentUser} t={t} canEditSettings={canEditSettings} />
+          {activeTab === "policy" && isManager && (
+            <div className="nv-att-policy-grid">
+              <AttendanceSettingsBoard
+                company={company}
+                currentUser={currentUser}
+                t={t}
+                canEditSettings={isCompanyOwner(currentUser, data) || currentUser.role === "director"}
+              />
+              <AttendanceLocationsPanel t={t} lang={lang} />
+            </div>
           )}
         </Suspense>
-      )}
-
-      {focusLeave && canManageLeave && (
-        <Suspense fallback={<TabLoader />}>
-          <AttendanceLeaveRequests employees={employees} stations={stations} t={t} lang={lang} />
-        </Suspense>
-      )}
-    </div>
-    </PlatformStampShell>
+    </AttendanceSectionFrame>
     </PullToRefresh>
   );
 }

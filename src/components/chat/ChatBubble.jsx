@@ -1,16 +1,27 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
 import { ChevronDown, Copy, Trash2 } from "lucide-react";
 import { CommentAttachments } from "@/components/tasks/CommentFiles";
+import { isAudioAttachment } from "@/hooks/useVoiceRecording";
 import { BORDER, CARD, DANGER, MUTED, NAVY, NAVY_FILL } from "@/lib/platformStyles";
 
-const DELETE_WINDOW_MS = 2 * 60 * 1000;
+const DELETE_WINDOW_MS = 3 * 60 * 1000;
 const INTERACTIVE = "a, button, audio, input, textarea";
 
-/** WhatsApp-style bubbles — long-press / right-click / chevron, then copy or delete. */
-export default function ChatBubble({ msg, isMine, lang, onDelete }) {
+function letterOf(name) {
+  const raw = String(name || "").trim();
+  return raw.charAt(0) || "?";
+}
+
+/** Task-thread bubble — long-press / right-click / chevron, then copy or delete. */
+export default function ChatBubble({ msg, isMine, lang, onDelete, allowDeleteAnytime = false }) {
   const ar = lang === "ar";
-  const time = new Date(msg.created_at).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
+  const profileId = String(msg.user_id || msg.authorId || msg.employeeId || "").trim();
+  const displayName = String(msg.user_name || "").trim() || (isMine ? (ar ? "أنت" : "You") : "");
+  const avatarUrl = String(msg.avatarUrl || "").trim();
+  const initials = letterOf(displayName);
+  const time = new Date(msg.created_at).toLocaleTimeString(lang === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
   const [now, setNow] = useState(Date.now());
   const [picked, setPicked] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -19,7 +30,9 @@ export default function ChatBubble({ msg, isMine, lang, onDelete }) {
   const rootRef = useRef(null);
   const hold = useRef({ timer: 0, x: 0, y: 0, armed: false });
   const ignoreClick = useRef(false);
-  const deletable = isMine && onDelete && now - new Date(msg.created_at).getTime() <= DELETE_WINDOW_MS;
+  const deletable = isMine && onDelete && (
+    allowDeleteAnytime || now - new Date(msg.created_at).getTime() <= DELETE_WINDOW_MS
+  );
 
   useEffect(() => {
     if (!deletable) return undefined;
@@ -64,8 +77,8 @@ export default function ChatBubble({ msg, isMine, lang, onDelete }) {
         top: openUp ? undefined : rect.bottom + 6,
         bottom: openUp ? window.innerHeight - rect.top + 6 : undefined,
         ...(ar
-          ? { left: Math.max(12, rect.left + 8) }
-          : { right: Math.max(12, window.innerWidth - rect.right + 8) }),
+          ? { right: Math.max(12, window.innerWidth - rect.right + 8) }
+          : { left: Math.max(12, rect.left + 8) }),
         zIndex: 80,
         minWidth: 168,
         background: CARD,
@@ -115,15 +128,54 @@ export default function ChatBubble({ msg, isMine, lang, onDelete }) {
     </button>
   );
 
+  const avatarFace = avatarUrl
+    ? <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+    : initials;
+  const avatarStyle = {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    overflow: "hidden",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: isMine ? NAVY_FILL : CARD,
+    color: isMine ? "#6EE7B7" : NAVY,
+    border: `1px solid ${BORDER}`,
+    fontSize: 11,
+    fontWeight: 700,
+    textDecoration: "none",
+    fontFamily: "'IBM Plex Sans',sans-serif",
+  };
+  const avatar = profileId ? (
+    <Link
+      to={`/app/employees/${encodeURIComponent(profileId)}`}
+      title={ar ? "فتح ملف الموظف" : "Open employee file"}
+      onClick={(event) => event.stopPropagation()}
+      style={avatarStyle}
+    >
+      {avatarFace}
+    </Link>
+  ) : (
+    <span style={avatarStyle}>{avatarFace}</span>
+  );
+
+  const mineRadius = ar ? "14px 14px 4px 14px" : "14px 14px 14px 4px";
+  const otherRadius = ar ? "14px 14px 14px 4px" : "14px 14px 4px 14px";
+
   return (
     <div
+      dir={ar ? "rtl" : "ltr"}
       style={{
         display: "flex",
-        justifyContent: isMine ? "flex-end" : "flex-start",
+        justifyContent: isMine ? "flex-start" : "flex-end",
+        width: "100%",
       }}
     >
       <div
         ref={rootRef}
+        dir={ar ? "rtl" : "ltr"}
         onPointerEnter={(event) => {
           if (event.pointerType === "mouse") setHover(true);
         }}
@@ -161,14 +213,16 @@ export default function ChatBubble({ msg, isMine, lang, onDelete }) {
           background: isMine ? NAVY_FILL : CARD,
           color: isMine ? "#fff" : NAVY,
           border: isMine ? "none" : `1px solid ${BORDER}`,
-          borderRadius: isMine ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+          borderRadius: isMine ? mineRadius : otherRadius,
           padding: "11px 14px",
           boxShadow: isMine ? "0 1px 0 rgba(20,40,75,.12)" : "0 1px 0 #E2E8F0",
+          textAlign: "start",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: isMine ? "#6EE7B7" : NAVY, flex: 1 }}>
-            {isMine ? (ar ? "أنت" : "You") : msg.user_name}
+        <div data-nv-bubble-head style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          {avatar}
+          <div style={{ fontSize: 11, fontWeight: 600, color: isMine ? "#6EE7B7" : NAVY, flex: 1, minWidth: 0 }}>
+            {displayName}
           </div>
           <button
             type="button"
@@ -189,7 +243,7 @@ export default function ChatBubble({ msg, isMine, lang, onDelete }) {
               background: hover || picked ? (isMine ? "rgba(255,255,255,.12)" : CARD) : "transparent",
               color: isMine ? "#A8B4C8" : MUTED,
               cursor: "pointer",
-              opacity: hover || picked ? 1 : 0,
+              opacity: hover || picked || deletable ? 1 : 0,
             }}
           >
             <ChevronDown size={14} />
@@ -200,7 +254,12 @@ export default function ChatBubble({ msg, isMine, lang, onDelete }) {
             {msg.text}
           </div>
         ) : null}
-        <CommentAttachments files={msg.files} />
+        <CommentAttachments files={(Array.isArray(msg.files) ? msg.files : []).filter((file) => !isAudioAttachment(file))} />
+        {(Array.isArray(msg.files) ? msg.files : []).filter(isAudioAttachment).length ? (
+          <div style={{ fontSize: 12, color: isMine ? "#A8B4C8" : MUTED, marginTop: 6 }}>
+            {ar ? "مقطع صوتي" : "Voice note"}
+          </div>
+        ) : null}
         <div style={{ fontSize: 10, color: isMine ? "#A8B4C8" : MUTED, marginTop: 6 }}>{time}</div>
       </div>
 
@@ -223,7 +282,7 @@ export default function ChatBubble({ msg, isMine, lang, onDelete }) {
                       {ar ? "حذف هذه الرسالة؟" : "Delete this message?"}
                     </div>
                     <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                      <button type="button" onClick={() => setConfirming(false)} style={{ ...quietBtn }}>
+                      <button type="button" onClick={() => setConfirming(false)} style={quietBtn}>
                         {ar ? "إلغاء" : "Cancel"}
                       </button>
                       <button

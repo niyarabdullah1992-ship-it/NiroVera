@@ -24,6 +24,30 @@ async function sendGmail(base44, to, subject, text) {
 }
 
 // Best-effort Google Calendar deadline event on the connected calendar.
+function cleanChatFiles(files) {
+  if (!Array.isArray(files)) return [];
+  return files.filter((f) => f && f.url).map((f) => {
+    const durationSec = Number(f.durationSec);
+    return {
+      url: f.url,
+      name: f.name || "file",
+      type: f.type || "file",
+      ...(Number.isFinite(durationSec) && durationSec > 0 ? { durationSec: Math.round(durationSec) } : {}),
+    };
+  });
+}
+
+function chatPreviewText(row) {
+  const text = String(row?.text || "").trim();
+  if (text) return text.slice(0, 80);
+  const files = Array.isArray(row?.files) ? row.files : [];
+  if (files.some((f) => /^audio\//i.test(String(f?.type || "")) || /\.(webm|mp3|wav|m4a|ogg)$/i.test(String(f?.name || "")))) {
+    return "مقطع صوتي";
+  }
+  if (files[0]?.name) return String(files[0].name).slice(0, 80);
+  return "";
+}
+
 async function addCalendarDeadline(base44, { title, description, endDate }) {
   const { accessToken } = await base44.asServiceRole.connectors.getConnection("googlecalendar");
   const day = new Date(endDate).toISOString().slice(0, 10);
@@ -129,6 +153,16 @@ Deno.serve(async (req) => {
       if (taskBlobCache !== undefined) return taskBlobCache;
       const records = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId: auth.companyId, category: "tasks" });
       taskBlobCache = records[0] || null;
+      if (!taskBlobCache || !Array.isArray(taskBlobCache.payload) || !taskBlobCache.payload.length) {
+        const legacy = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId: auth.companyId, category: "operationsTasks" });
+        if (legacy[0] && Array.isArray(legacy[0].payload) && legacy[0].payload.length) {
+          if (taskBlobCache) {
+            taskBlobCache = await base44.asServiceRole.entities.CompanyDataBlob.update(taskBlobCache.id, { payload: legacy[0].payload });
+          } else {
+            taskBlobCache = await base44.asServiceRole.entities.CompanyDataBlob.create({ companyId: auth.companyId, category: "tasks", payload: legacy[0].payload });
+          }
+        }
+      }
       return taskBlobCache;
     };
     const taskMetadataFor = async (targetId) => {
@@ -956,7 +990,7 @@ Deno.serve(async (req) => {
           key,
           lastAt: row.created_at,
           fromId: row.sender_id,
-          preview: String(row.text || "").slice(0, 80),
+          preview: chatPreviewText(row),
         });
       }
       const requested = (Array.isArray(body.stationIds) ? body.stationIds : []).slice(0, 24);
@@ -982,7 +1016,7 @@ Deno.serve(async (req) => {
             key: threadKey,
             lastAt: row.created_at,
             fromId: row.user_id,
-            preview: String(row.text || "").slice(0, 80),
+            preview: chatPreviewText(row),
           });
         }
       }
@@ -1172,9 +1206,7 @@ Deno.serve(async (req) => {
       const roomId = await resolveRoomId(stationId);
       if (!roomId || !(await canActAs(userId))) return Response.json({ error: "Forbidden" }, { status: 403 });
       const actorName = await actorNameFor(userId);
-      const cleanFiles = Array.isArray(files)
-        ? files.filter((f) => f && f.url).map((f) => ({ url: f.url, name: f.name || "file", type: f.type || "file" }))
-        : [];
+      const cleanFiles = cleanChatFiles(files);
       const res = await fetch(`${SUPABASE_URL}/rest/v1/station_chat`, {
         method: "POST",
         headers: { ...headers, Prefer: "return=representation" },
@@ -1194,7 +1226,7 @@ Deno.serve(async (req) => {
     }
 
     // ---- Delete a station/group chat message: only the sender, and only within ----
-    // 2 minutes of sending — after that the message is permanent for everyone.
+    // 3 minutes of sending — after that the message is permanent for everyone.
     if (action === "deleteChatMessage") {
       const { messageId, userId } = body;
       if (!messageId || !userId) return Response.json({ error: "Missing fields" }, { status: 400 });
@@ -1205,8 +1237,8 @@ Deno.serve(async (req) => {
       const rawRoom = msg.station_id === `${auth.companyId}_all` ? "all" : msg.station_id;
       if (!(await canActAs(userId)) || msg.user_id !== userId || (await resolveRoomId(rawRoom)) !== msg.station_id) return Response.json({ error: "Forbidden" }, { status: 403 });
       const ageMs = Date.now() - new Date(msg.created_at).getTime();
-      if (ageMs > 2 * 60 * 1000) {
-        return Response.json({ error: "Messages can only be deleted within 2 minutes of sending" }, { status: 403 });
+      if (ageMs > 3 * 60 * 1000) {
+        return Response.json({ error: "Messages can only be deleted within 3 minutes of sending" }, { status: 403 });
       }
       await fetch(`${SUPABASE_URL}/rest/v1/station_chat?id=eq.${encodeURIComponent(messageId)}`, { method: "DELETE", headers });
       return Response.json({ ok: true });
@@ -1231,7 +1263,7 @@ Deno.serve(async (req) => {
       return Response.json({ messages: visible });
     }
 
-    // ---- Delete a sent DM: within 2 minutes it's removed for both sides, after ----
+    // ---- Delete a sent DM: within 3 minutes it's removed for both sides, after ----
     // that it only disappears from the sender's own view (stays for the other side).
     if (action === "deleteDirectMessage") {
       const { messageId, userId } = body;
@@ -1246,7 +1278,7 @@ Deno.serve(async (req) => {
       const otherParticipant = msg.sender_id === userId ? msg.receiver_id : msg.sender_id;
       if (msg.sender_id !== userId || !dmScope.employeeIds.has(otherParticipant)) return Response.json({ error: "Forbidden" }, { status: 403 });
       const ageMs = Date.now() - new Date(msg.created_at).getTime();
-      if (ageMs <= 2 * 60 * 1000) {
+      if (ageMs <= 3 * 60 * 1000) {
         await fetch(`${SUPABASE_URL}/rest/v1/direct_messages?id=eq.${encodeURIComponent(messageId)}`, { method: "DELETE", headers });
         return Response.json({ ok: true, deletedForEveryone: true });
       }
@@ -1273,9 +1305,7 @@ Deno.serve(async (req) => {
       const dmScope = await getCompanyScope();
       if (!(await canActAs(senderId)) || !dmScope.employeeIds.has(receiverId)) return Response.json({ error: "Forbidden" }, { status: 403 });
       const actorName = await actorNameFor(senderId);
-      const cleanFiles = Array.isArray(files)
-        ? files.filter((f) => f && f.url).map((f) => ({ url: f.url, name: f.name || "file", type: f.type || "file" }))
-        : [];
+      const cleanFiles = cleanChatFiles(files);
       const res = await fetch(`${SUPABASE_URL}/rest/v1/direct_messages`, {
         method: "POST",
         headers: { ...headers, Prefer: "return=representation" },

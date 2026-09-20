@@ -3,7 +3,6 @@ import { Download, FileUp, Loader2, Check, X, AlertTriangle } from "lucide-react
 import { downloadPayrollTemplate } from "@/lib/payrollTemplate";
 import { extractSalaryRows, matchRowsToEmployees, applySalaryImport } from "@/lib/salaryImport";
 import { ACCENT, MUTED, NAVY, DANGER, ui, SURFACE } from "@/lib/platformStyles";
-import IdentityCard from "@/components/shared/IdentityCard";
 
 const matchRow = {
   display: "grid",
@@ -50,15 +49,7 @@ export default function PayrollTemplateCard({ company, data, employees, month, a
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <IdentityCard
-        icon={FileUp}
-        kicker={ar ? "القالب" : "Template"}
-        title={ar ? "قالب الرواتب" : "Payroll template"}
-        subtitle={ar
-          ? "القيم من ملف الموظف. نزّل القالب، عدّل المبالغ، ثم ارفعه — الصفوف المدفوعة لا تُمس."
-          : "Values come from the employee file. Download, edit amounts, then upload — paid rows are left untouched."}
-        meta={(
-          <>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
             <button
               type="button"
               onClick={() => downloadPayrollTemplate(data, month, ar, employees)}
@@ -91,29 +82,15 @@ export default function PayrollTemplateCard({ company, data, employees, month, a
                 : <FileUp style={{ width: 14, height: 14 }} strokeWidth={1.75} />}
               {busy ? (ar ? "جارٍ القراءة…" : "Reading…") : (ar ? "رفع الملف" : "Upload file")}
             </button>
-          </>
-        )}
-      >
+      </div>
         {error && (
           <p style={{ margin: 0, fontSize: 12, color: DANGER, display: "flex", alignItems: "center", gap: 6 }}>
             <AlertTriangle style={{ width: 14, height: 14, flexShrink: 0 }} /> {error}
           </p>
         )}
-        {!matches && !error && (
-          <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
-            {ar ? "xlsx أو csv — بعد الرفع تظهر المطابقة هنا قبل التطبيق." : "xlsx or csv — after upload, matches appear here before they are applied."}
-          </p>
-        )}
-      </IdentityCard>
 
       {matches && (
-        <IdentityCard
-          icon={Check}
-          kicker={ar ? "المطابقة" : "Match"}
-          title={ar ? "معاينة الصفوف" : "Row preview"}
-          meta={<span style={{ fontSize: 11, color: MUTED }}>{ar ? `${matchedCount} صفًا جاهزًا للتطبيق` : `${matchedCount} rows ready to apply`}</span>}
-          bodyStyle={{ padding: 0 }}
-        >
+        <div>
           <div style={{ overflowX: "auto" }}>
             <div style={{ minWidth: 520 }}>
               <div style={{ ...matchRow, background: SURFACE, borderBottom: "1px solid #E2E8F0", fontSize: 10, letterSpacing: "0.06em", color: MUTED, fontWeight: 600, padding: "11px 18px" }}>
@@ -146,7 +123,7 @@ export default function PayrollTemplateCard({ company, data, employees, month, a
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "12px 18px", borderTop: "1px solid #E2E8F0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "12px 0" }}>
             <button
               type="button"
               onClick={apply}
@@ -169,7 +146,7 @@ export default function PayrollTemplateCard({ company, data, employees, month, a
               {ar ? "إلغاء" : "Cancel"}
             </button>
           </div>
-        </IdentityCard>
+        </div>
       )}
     </div>
   );

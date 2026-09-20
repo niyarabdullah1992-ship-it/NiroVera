@@ -7,6 +7,12 @@ import {
 
 const pendingLists = new Map();
 
+/**
+ * The board could not be read, so nothing is claimed on its behalf. Every right used
+ * to default to `true` here, which meant a failed read handed the screen full purchase,
+ * issue, archive and reversal rights — the loudest possible way for a fallback to be
+ * more permissive than the layer it stands in for.
+ */
 function emptyList(session) {
   try {
     return localInventoryCall(session, "list", {});
@@ -24,27 +30,32 @@ function emptyList(session) {
       locations: [],
       transferStations: [],
       employees: [],
-      canManage: true,
-      canPurchase: true,
-      canCreateItem: true,
-      canIssueToWork: true,
-      canIssueFromAnyStation: true,
-      canRequest: true,
-      canReviewRequests: true,
-      canReviewAllRequests: true,
-      canDelete: true,
+      canManage: false,
+      canPurchase: false,
+      canCreateItem: false,
+      canIssueToWork: false,
+      canIssueFromAnyStation: false,
+      canRequest: false,
+      canReviewRequests: false,
+      canReviewAllRequests: false,
+      canDelete: false,
       canApproveProcurement: false,
       canReceiveProcurement: false,
-      canViewAllPurchases: true,
+      canViewAllPurchases: false,
       canWarehouseManage: false,
       canTransfer: false,
       canSetCentralWarehouse: false,
-      canReverse: true,
+      canReverse: false,
       centralWarehouseId: null,
     };
   }
 }
 
+/**
+ * One inventory adapter. Preview is forced-local (`inventoryItems` in the company cache).
+ * Cloud InventoryUnit / ProcurementRequest / PurchaseOrder stay behind this function —
+ * not a second UI. Do not add a parallel stockBoard reader.
+ */
 export async function inventoryCall(session, action, payload = {}) {
   forceLocalInventory(session?.companyId);
   if (action !== "list") {

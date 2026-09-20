@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { identityIconWrap } from "@/components/shared/IdentityCard";
 import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
 import { GREEN, branchWord, peopleWord } from "@/lib/orgTemplateView";
-import { buildPeopleTree, flattenPeopleTree, pathToPerson } from "@/lib/peopleTree";
+import { buildPeopleTree, explainWorkplaceManager, filterPeopleHits, flattenPeopleTree, pathToPerson } from "@/lib/peopleTree";
 import HierarchyZoomControls from "@/components/hr/HierarchyZoomControls";
 import OrgTreeFullscreenButton from "@/components/hr/OrgTreeFullscreenButton";
 import { OrgCap, OrgColumn, OrgKids, OrgRow, OrgStaffTray } from "@/components/hr/OrgChartLayout";
@@ -17,9 +17,10 @@ import { workplaceStations } from "@/lib/stationTree";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import { printReport } from "@/lib/printReport";
 import { activeActingAssignments } from "@/lib/orgHire";
-import { orgBtnGhost, orgBtnPrimary, orgSelect } from "@/lib/orgWorkspaceStyles";
+import { orgBtnGhost, orgBtnPrimary, orgSelect, orgTreeStageStyle } from "@/lib/orgWorkspaceStyles";
 import { OrgInspector, OrgInspectorField, OrgPanel, OrgSearchBox, OrgToolbar, OrgTreeCanvas } from "@/components/hr/OrgWorkspace";
 import OrgEmployeePreview from "@/components/hr/OrgEmployeePreview";
+import { FileSelfBadge } from "@/components/employees/ProfileHero";
 
 const CARD_W = 236;
 const CARD_H = 108;
@@ -95,10 +96,7 @@ export default function OrgPeopleTree({ lang = "ar", canWrite = false }) {
     && selectedEmployee.id !== data?.ownerId
     && selectedEmployee.id !== currentUser?.id
   );
-  const needle = query.trim().toLowerCase();
-  const hits = needle
-    ? people.filter((person) => `${person.name} ${person.job} ${person.branch}`.toLowerCase().includes(needle)).slice(0, 8)
-    : [];
+  const hits = filterPeopleHits(people, query, 8);
 
   const setSafeZoom = (value) => setZoom(Math.max(0.15, Math.min(2.5, value)));
   const panTree = (x, y) => setOffset((current) => ({ x: current.x + x, y: current.y + y }));
@@ -122,14 +120,19 @@ export default function OrgPeopleTree({ lang = "ar", canWrite = false }) {
     setSafeZoom(Number.isFinite(next) ? next : 1);
     setOffset({ x: 0, y: 0 });
   };
+  const scheduleFit = () => {
+    requestAnimationFrame(() => requestAnimationFrame(fitTree));
+  };
 
   const enterFullscreen = () => {
+    setOffset({ x: 0, y: 0 });
     setFullscreen(true);
-    window.setTimeout(fitTree, 80);
+    scheduleFit();
   };
   const exitFullscreen = () => {
+    setOffset({ x: 0, y: 0 });
     setFullscreen(false);
-    window.setTimeout(fitTree, 80);
+    scheduleFit();
   };
 
   useEffect(() => {
@@ -240,6 +243,7 @@ export default function OrgPeopleTree({ lang = "ar", canWrite = false }) {
       branchCount ? branchWord(branchCount, ar) : "",
     ].filter(Boolean).join(" · ");
     const employee = (data?.employees || []).find((item) => String(item.id) === String(person.id));
+    const place = explainWorkplaceManager(data, person.id, { ar });
     const acting = activeActingAssignments(employee)[0];
     const actingUntil = String(acting?.until || "").slice(0, 10);
     const actingBranch = acting
@@ -323,14 +327,19 @@ export default function OrgPeopleTree({ lang = "ar", canWrite = false }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, flex: 1, textAlign: "start" }}>
             <span style={{ fontSize: compact ? 11.5 : 13, fontWeight: 700, color: NAVY, lineHeight: ar ? 1.4 : 1.3, ...ELLIPSIS }}>
               {person.name || "—"}
-              {isMe ? <span style={{ fontWeight: 500, color: GREEN }}> · {ar ? "أنت" : "You"}</span> : null}
+              {isMe ? <>{" "}<FileSelfBadge ar={ar} /></> : null}
             </span>
             <span style={{ fontSize: compact ? 10.5 : 11.5, color: MUTED, lineHeight: ar ? 1.45 : 1.35, ...ELLIPSIS }}>
               {person.isBranchHead
                 ? (person.branch || person.job || (ar ? "بلا فرع" : "No branch"))
                 : (person.job || (ar ? "بلا منصب" : "No title"))}
             </span>
-            {!compact && acting ? (
+            {!compact && place?.many ? (
+              <span style={{ fontSize: 10, color: "#4B5567", lineHeight: 1.35, ...ELLIPSIS }}>
+                {ar ? "مرة واحدة" : "Once"}
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#137A49", marginInlineStart: 6 }}>1 seat · 1 home</span>
+              </span>
+            ) : !compact && acting ? (
               <span style={{ fontSize: 11, color: GREEN, lineHeight: ar ? 1.45 : 1.35, ...ELLIPSIS }}>
                 {ar
                   ? `وكالة${actingBranch ? ` · ${actingBranch}` : ""}${actingUntil ? ` حتى ${actingUntil}` : ""}`
@@ -433,8 +442,10 @@ export default function OrgPeopleTree({ lang = "ar", canWrite = false }) {
   const panel = (
     <OrgPanel ar={ar} fullscreen={fullscreen}>
       <OrgToolbar
-        title={companyName}
-        subtitle={peopleWord(tree.total, ar)}
+        title={ar ? "شجرة الناس" : "People tree"}
+        subtitle={ar
+          ? "التبعية تُشتق من شجرة المكان. مدير فرعين يتبع مدير الأب ويحضر من مقعده."
+          : "Reporting follows the place tree. A two-branch manager reports to the parent manager and attends from their seat."}
       >
         <OrgSearchBox
           value={query}
@@ -474,6 +485,21 @@ export default function OrgPeopleTree({ lang = "ar", canWrite = false }) {
       </OrgToolbar>
       {selectedEmployee ? (
         <OrgInspector label={ar ? "المحدد" : "Selected"} title={selectedEmployee.name}>
+          {(() => {
+            const note = explainWorkplaceManager(data, selectedEmployee.id, { ar });
+            if (!note) return null;
+            return (
+              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7, flex: "1 1 260px" }}>
+                {note.many ? (
+                  <>
+                    <span style={{ fontWeight: 600, color: NAVY }}>{ar ? "مرة واحدة" : "Once"}</span>
+                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#137A49", marginInline: 8 }}>1 seat · 1 home</span>
+                  </>
+                ) : null}
+                {note.line}
+              </span>
+            );
+          })()}
           <Link
             to={`/app/employees/${encodeURIComponent(selectedEmployee.id)}`}
             style={{ ...orgBtnGhost, textDecoration: "none", marginBottom: 0, alignSelf: "flex-end" }}
@@ -547,14 +573,7 @@ export default function OrgPeopleTree({ lang = "ar", canWrite = false }) {
       >
         <div
           ref={treeRef}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            minWidth: "min-content",
-            transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${zoom})`,
-            transformOrigin: "top center",
-          }}
+          style={orgTreeStageStyle(offset, zoom)}
         >
           {tree.roots.length ? (
             tree.roots.length === 1

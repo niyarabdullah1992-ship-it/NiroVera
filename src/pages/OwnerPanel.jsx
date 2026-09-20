@@ -95,8 +95,12 @@ export default function OwnerPanel() {
   const handleEnter = (id) => {
     const data = getCompanyData(id);
     if (!data) return;
-    const director = data.employees.find((e) => e.role === "director") || data.employees[0] || null;
-    setSession({ companyId: id, userId: director ? director.id : null });
+    const userId = data.ownerId
+      || data.employees.find((e) => e.id === data.ownerId)?.id
+      || data.employees.find((e) => e.role === "director")?.id
+      || data.employees[0]?.id
+      || null;
+    setSession({ companyId: id, userId });
     navigate("/app");
   };
 

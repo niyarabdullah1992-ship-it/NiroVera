@@ -41,7 +41,9 @@ export default function OpsTaskLogBox({ ar, busy, doneN, targetN, onsiteBlocked,
         <button
           type="button"
           disabled={busy || !canLog}
-          onClick={async () => { await onLog?.({ amount, proofFile, proofVoice, attestation: attest.trim() }); setProofVoice(null); setProofFile(null); setAttest(""); }}
+          onClick={async () => {
+            await onLog?.({ amount, proofFile, proofVoice, attestation: attest.trim() }); setProofVoice(null); setProofFile(null); setAttest("");
+          }}
           style={{ padding: "9px 16px", borderRadius: 9, border: "none", fontSize: 12, fontWeight: 600, fontFamily: "inherit", background: canLog ? BRAND : "#E2E8F0", color: canLog ? "#fff" : MUTED, cursor: canLog ? (busy ? "wait" : "pointer") : "not-allowed", opacity: busy ? 0.6 : 1 }}
         >
           {ar ? "سجّل الإنجاز" : "Log completion"}

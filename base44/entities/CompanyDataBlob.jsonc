@@ -1,3 +1,8 @@
+// purpose: Envelope for every blob category. One row per (companyId, category).
+// domain: company
+// isolation: companyId
+// owner: companyDirectory
+// status: canonical
 {
   "name": "CompanyDataBlob",
   "type": "object",
@@ -8,7 +13,7 @@
     },
     "category": {
       "type": "string",
-      "description": "Which collection this blob holds, e.g. tasks, reports, anonymousReports, safety, plans, schedules, hrLevels."
+      "description": "Blob collection key. Canonical list: base44/data/domains.jsonc (kind: blob). Examples: tasks, workProofs, personalAttendance, payrollRuns."
     },
     "payload": {
       "type": "array",

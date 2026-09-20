@@ -32,6 +32,7 @@ import { checkProbationGate } from "@/lib/contractLawDerivations";
 import { BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE, field, labelMuted, ui } from "@/lib/platformStyles";
 import { isManagerUnit, workplaceStations } from "@/lib/stationTree";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 
 const SKIP_PROFILE_KEYS = new Set(["position", "department"]);
 
@@ -438,9 +439,9 @@ export default function HireSeatDrawer({
 
   const chevron = ar ? <ChevronLeft style={{ width: 14, height: 14 }} /> : <ChevronRight style={{ width: 14, height: 14 }} />;
   const stepLabel = (n) => {
-    if (n === 1) return ar ? "١ — المكان" : "1 — Place";
-    if (n === 2) return ar ? "٢ — الملف" : "2 — File";
-    return ar ? "٣ — الدخول" : "3 — Sign-in";
+    if (n === 1) return ar ? "1 — المكان" : "1 — Place";
+    if (n === 2) return ar ? "2 — الملف" : "2 — File";
+    return ar ? "3 — الدخول" : "3 — Sign-in";
   };
 
   const renderProfileField = (item) => {
@@ -499,15 +500,14 @@ export default function HireSeatDrawer({
           </Field>
           {hireType !== "indefinite" || nonSaudi ? (
             <Field label={ar ? "تاريخ نهاية العقد" : "Contract end date"}>
-              <input
-                type="date"
+              <PlatformDateField
+                ar={ar}
                 value={profile.contractEndDate || person.contractEndDate || ""}
                 min={profile.hireDate || person.hireDate || undefined}
-                onChange={(e) => {
-                  setProfileField("contractEndDate", e.target.value);
-                  setPerson((current) => ({ ...current, contractEndDate: e.target.value }));
+                onChange={(next) => {
+                  setProfileField("contractEndDate", next);
+                  setPerson((current) => ({ ...current, contractEndDate: next }));
                 }}
-                style={field}
               />
             </Field>
           ) : null}
@@ -600,13 +600,21 @@ export default function HireSeatDrawer({
     }
     return (
       <Field key={item.key} label={profileFieldLabel(item, profile.idType, ar)}>
-        <input
-          type={item.type === "date" ? "date" : "text"}
-          dir={item.dir || undefined}
-          value={profile[item.key] || ""}
-          onChange={(e) => setProfileField(item.key, e.target.value)}
-          style={field}
-        />
+        {item.type === "date" ? (
+          <PlatformDateField
+            ar={ar}
+            value={profile[item.key] || ""}
+            onChange={(next) => setProfileField(item.key, next)}
+          />
+        ) : (
+          <input
+            type="text"
+            dir={item.dir || undefined}
+            value={profile[item.key] || ""}
+            onChange={(e) => setProfileField(item.key, e.target.value)}
+            style={field}
+          />
+        )}
       </Field>
     );
   };

@@ -3,47 +3,40 @@ import { useI18n } from "@/lib/i18n";
 import { base44 } from "@/api/base44Client";
 import { updateEmployeeProfile } from "@/lib/store";
 import { Loader2 } from "lucide-react";
-import { MUTED, NAVY, NAVY_FILL, OK, WARN, ACCENT } from "@/lib/platformStyles";
-import { profileCompletionStats } from "@/lib/employeeProfileFields";
-import IdentityCard from "@/components/shared/IdentityCard";
+import { MUTED, NAVY, BORDER } from "@/lib/platformStyles";
+import { employeeFileStatus } from "@/lib/employeeFileBoard";
+import { employeeFileVoice } from "@/lib/employeeFileView";
+
+/** Small «أنت» / «ملفي» chip — one restrained green accent. */
+export function FileSelfBadge({ ar, kind = "you" }) {
+  const label = kind === "file" ? (ar ? "ملفي" : "My file") : (ar ? "أنت" : "You");
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 600,
+        color: "#137A49",
+        background: "#F2FAF6",
+        border: "1px solid #BFE6D2",
+        padding: "1px 7px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
 
 /** Platform isEmpFile hero — L2623–2646 (inline styles AS-IS). */
-export default function ProfileHero({ employee, companyId, canEdit, roleLabel, grade, stationName }) {
+export default function ProfileHero({ employee, companyId, canEdit, roleLabel, grade, stationName, currentUser }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const [uploading, setUploading] = useState(false);
   const avatarInput = useRef(null);
   const profile = employee.profile || {};
+  const voice = employeeFileVoice({ employee, currentUser, ar });
 
-  const { pct: completionPct } = profileCompletionStats(employee);
-
-  const hireIso = profile.hireDate || employee.hireDate || employee.startDate || "";
-  const hireDate = hireIso ? new Date(`${String(hireIso).slice(0, 10)}T00:00:00`) : null;
-  const preStart = hireDate && hireDate > new Date();
-  const svcYears = hireDate && !preStart
-    ? Math.max(0, Math.floor((Date.now() - hireDate.getTime()) / 31557600000))
-    : 0;
-  const yrWord = (n) => {
-    if (ar) {
-      if (n === 0) return "أقل من سنة";
-      if (n === 1) return "سنة واحدة";
-      if (n === 2) return "سنتان";
-      if (n <= 10) return `${n} سنوات`;
-      return `${n} سنة`;
-    }
-    return `${n} year${n === 1 ? "" : "s"} of service`;
-  };
-  const niceHire = hireDate
-    ? hireDate.toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { year: "numeric", month: "short", day: "numeric" })
-    : "—";
-  const tenure = preStart
-    ? (ar ? `يباشر في ${niceHire} — لم يباشر بعد` : `Starts ${niceHire} — not yet commenced`)
-    : (ar ? `${yrWord(svcYears)} في الخدمة` : yrWord(svcYears));
-
-  const statusLabel = preStart
-    ? (ar ? "قيد المباشرة" : "Pending start")
-    : (employee.active === false ? (ar ? "غير نشط" : "Inactive") : (ar ? "نشط" : "Active"));
-  const statusStyle = preStart ? WARN : OK;
+  const status = employeeFileStatus(employee, ar);
 
   const initials = (employee.name || "?")
     .split(/\s+/)
@@ -68,34 +61,26 @@ export default function ProfileHero({ employee, companyId, canEdit, roleLabel, g
   };
 
   return (
-    <IdentityCard dir={ar ? "rtl" : "ltr"} bodyStyle={{ padding: 0 }}>
-    <div style={{
-      padding: "20px 22px",
-      display: "flex",
-      gap: "18px",
-      flexWrap: "wrap",
-      alignItems: "center",
-    }}
-    >
+    <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
       <button
         type="button"
         onClick={() => canEdit && avatarInput.current?.click()}
         disabled={!canEdit || uploading}
         title={canEdit ? (ar ? "تحديث الصورة" : "Update photo") : undefined}
         style={{
-          width: "56px",
-          height: "56px",
+          width: 46,
+          height: 46,
           borderRadius: "50%",
-          background: NAVY_FILL,
-          color: "#fff",
-          display: "flex",
+          background: "#F5F6F8",
+          color: NAVY,
+          display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "18px",
-          fontWeight: 600,
-          fontFamily: "'IBM Plex Sans',sans-serif",
+          fontSize: 16,
+          fontWeight: 700,
+          fontFamily: "inherit",
           flexShrink: 0,
-          border: "none",
+          border: `1px solid ${BORDER}`,
           padding: 0,
           cursor: canEdit ? "pointer" : "default",
           overflow: "hidden",
@@ -123,46 +108,27 @@ export default function ProfileHero({ employee, companyId, canEdit, roleLabel, g
         onChange={(e) => upload(e.target.files?.[0])}
       />
 
-      <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-          <span style={{ fontSize: "19px", fontWeight: 600, color: NAVY }}>{employee.name}</span>
-          <span style={statusStyle}>{statusLabel}</span>
-        </div>
-        <div style={{ fontSize: "13px", color: "#A8B4C8", marginTop: "4px" }}>{meta || "—"}</div>
-        <div style={{ fontSize: "11px", color: "#A8B4C8", marginTop: "4px", fontFamily: "'IBM Plex Mono',monospace" }} dir="ltr">
-          {employee.id}
-        </div>
-      </div>
-
-      <div style={{ flex: "0 0 auto", display: "flex", gap: "22px", flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: "10px", color: MUTED, letterSpacing: "0.06em" }}>
-            {ar ? "اكتمال الملف" : "COMPLETION"}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "7px" }}>
-            <span style={{ width: "92px", height: "6px", borderRadius: "5px", background: "#F1F5F9", overflow: "hidden" }}>
-              <span style={{
-                display: "block",
-                width: `${completionPct}%`,
-                height: "100%",
-                background: completionPct === 100 ? "#15803D" : ACCENT,
-                borderRadius: "5px",
-              }}
-              />
-            </span>
-            <span dir="ltr" style={{ fontSize: "13px", fontWeight: 600, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right", color: NAVY }}>
-              {completionPct}%
-            </span>
-          </div>
-        </div>
-        <div>
-          <div style={{ fontSize: "10px", color: MUTED, letterSpacing: "0.06em" }}>
-            {ar ? "تاريخ التعيين" : "HIRE DATE"}
-          </div>
-          <div style={{ fontSize: "13px", fontWeight: 500, marginTop: "7px", color: NAVY }}>{tenure}</div>
-        </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, letterSpacing: ".08em", color: MUTED }}>{voice.title}</span>
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 17, fontWeight: 700, color: NAVY }}>{employee.name}</span>
+          {voice.own ? <FileSelfBadge ar={ar} kind="file" /> : null}
+          <span style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: status.kind === "ok" ? "#137A49" : status.kind === "bad" ? "#8A1C2B" : "#8A6516",
+            background: status.kind === "ok" ? "#F2FAF6" : status.kind === "bad" ? "#FBF1F2" : "#FDF6E8",
+            border: `1px solid ${status.kind === "ok" ? "#BFE6D2" : status.kind === "bad" ? "#E9C4C9" : "#ECD9A8"}`,
+            padding: "2px 9px",
+          }}
+          >
+            {status.label}
+          </span>
+        </span>
+        <span style={{ fontSize: 12, color: MUTED }}>{meta || "—"}</span>
       </div>
     </div>
-    </IdentityCard>
   );
 }

@@ -76,6 +76,22 @@ assert.equal(
     ...caseRow,
     assets: caseRow.assets.map((a) => ({ ...a, status: "returned", returnedAt: "2026-08-10" })),
     contractExit: { reason: "mutual" },
+  }).error,
+  "SERVICE_CERTIFICATE_REQUIRED",
+);
+assert.equal(
+  checkCompleteOffboardingGate({
+    ...caseRow,
+    assets: caseRow.assets.map((a) => ({ ...a, status: "returned", returnedAt: "2026-08-10" })),
+    contractExit: { reason: "mutual", serviceCertificateIssued: true },
+  }).error,
+  "DOCUMENTS_RETURN_REQUIRED",
+);
+assert.equal(
+  checkCompleteOffboardingGate({
+    ...caseRow,
+    assets: caseRow.assets.map((a) => ({ ...a, status: "returned", returnedAt: "2026-08-10" })),
+    contractExit: { reason: "mutual", serviceCertificateIssued: true, documentsReturned: true },
   }).ok,
   true,
 );

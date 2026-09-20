@@ -34,8 +34,13 @@ NiroVera.zip
 NiroVera-*.zip
 
 # Leftover design dumps / zip extracts — visual source of truth is live /app
-.tmp-design-caps/
-.tmp-nirovera-pack/
+.tmp*
+.tmp-*/
+.tmp-*.md
+.tmp-*.png
 .tmp-*.mjs
+.tmp-*.txt
+.cursor/*.log
+.vite-dev.log
 design-handoff-claude/
 claude-refs/

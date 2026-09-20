@@ -78,11 +78,11 @@ export default function PlatformMusicButton({ inPlatform = false }) {
             : { insetInlineEnd: 24, bottom: inPlatform && mobile ? 88 : 24 }),
           display: "flex",
           alignItems: "stretch",
-          borderRadius: 9,
+          borderRadius: 14,
           border: `1px solid ${BORDER}`,
           background: CARD,
           overflow: "hidden",
-          boxShadow: "0 8px 24px rgba(20,40,75,.08)",
+          boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
         }}
       >
         <button

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -15,6 +15,7 @@ import OrgEscalationBoard from "@/components/hr/OrgEscalationBoard";
 import HireSeatDrawer from "@/components/hr/HireSeatDrawer";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
+import { pageKicker } from "@/lib/moduleMeta";
 import { MUTED } from "@/lib/platformStyles";
 
 const ORG_TABS = new Set(["branches", "people", "lists", "escalation"]);
@@ -142,15 +143,16 @@ export default function OrgStructure() {
     <>
       <PlatformStampShell
         ar={ar}
+        kicker={pageKicker("/app/org", lang)}
         title={ar ? "الهيكل التنظيمي" : "Org structure"}
         sections={sections}
         tool={tool}
         onTool={setTool}
         maxWidth={1400}
         flushBody
-        metaBar={(
+        metaBar={tool === "branches" ? (
           <OrgChainStrip ar={ar} onTool={setTool} health={health} next={next} />
-        )}
+        ) : null}
       >
         {!data || !currentUser || !company ? (
           <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "جارٍ تحميل الهيكل…" : "Loading org structure…"}</p>
@@ -172,7 +174,7 @@ export default function OrgStructure() {
             ) : tool === "escalation" ? (
               <OrgEscalationBoard lang={lang} canWrite={canWrite} />
             ) : (
-              <OrgTemplateBoard lang={lang} onHire={openHire} onNeedAccess={() => setTool("lists")} />
+              <OrgTemplateBoard lang={lang} onHire={openHire} />
             )}
           </PageErrorBoundary>
           </div>

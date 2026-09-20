@@ -1,45 +1,33 @@
 import { PDFDocument } from "pdf-lib";
 import { base44 } from "@/api/base44Client";
-import { loadBadgeQr, makeVerificationBadgeCanvas, generateVerificationId } from "@/lib/verificationBadge";
-import { STAMP_FALLBACK_SPOT, STAMP_WIDTH_PERCENT, clampStampScale } from "@/lib/signatureStampGeometry";
+import { generateVerificationId, verificationUrlFor } from "@/lib/verificationBadge";
+import { STAMP_FALLBACK_SPOT, clampStampScale, fitStampSize } from "@/lib/signatureStampGeometry";
 import { drawTextField } from "@/lib/signPdf";
+import { DEFAULT_STAMP_CONFIG, normalizeStampConfig, renderStampDataUrl, STAMP_DESIGNS } from "@/lib/stampStudio";
 
-function loadImageElement(src) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    if (!src.startsWith("data:")) img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img.width ? img : null);
-    img.onerror = () => resolve(null);
-    img.src = src;
+function resolveStampConfig(name, markUrl, themeOrConfig) {
+  const extra = themeOrConfig && typeof themeOrConfig === "object" && !Array.isArray(themeOrConfig)
+    ? themeOrConfig
+    : {};
+  const designId = typeof themeOrConfig === "string" ? themeOrConfig : extra.design;
+  const known = STAMP_DESIGNS.some((item) => item.id === designId);
+  return normalizeStampConfig({
+    ...DEFAULT_STAMP_CONFIG,
+    ...extra,
+    design: known ? designId : (extra.design || DEFAULT_STAMP_CONFIG.design),
+    name: name || extra.name || "",
+    markUrl: markUrl || extra.markUrl || "",
   });
 }
 
-async function loadStampMark(src) {
-  if (!src || typeof src !== "string") return null;
-  if (src.startsWith("data:")) return loadImageElement(src);
-  try {
-    const blob = await fetch(src).then((response) => response.blob());
-    const objectUrl = URL.createObjectURL(blob);
-    const img = await loadImageElement(objectUrl);
-    URL.revokeObjectURL(objectUrl);
-    return img;
-  } catch {
-    return loadImageElement(src);
-  }
-}
-
-// Builds the one canonical stamp image used by the web preview and the PDF.
-export async function makeSignatureStamp(sigDataUrl, name, verificationId = "") {
+// Same studio renderer as StampStudio — preview and PDF share one artwork.
+export async function makeSignatureStamp(sigDataUrl, name, verificationId = "", _style, themeOrConfig) {
   const id = String(verificationId || "").trim() || generateVerificationId();
-  const [qr, mark] = await Promise.all([
-    loadBadgeQr(id).catch(() => null),
-    loadStampMark(sigDataUrl),
-  ]);
-  try {
-    return makeVerificationBadgeCanvas(id, name, qr, mark).toDataURL("image/png");
-  } catch {
-    return makeVerificationBadgeCanvas(id, name, null, mark).toDataURL("image/png");
-  }
+  const config = resolveStampConfig(name, sigDataUrl, themeOrConfig);
+  return renderStampDataUrl(config, {
+    verificationId: id,
+    verificationUrl: verificationUrlFor(id),
+  });
 }
 
 // Stamps the signer's composed stamp only in the creator-assigned fields.
@@ -59,8 +47,7 @@ export async function stampOnPdf(docUrl, stampDataUrl, slotIndex, _badge, spot, 
     if (field.type === "text") { await drawTextField(pdf, page, field, textValues[field.id]); continue; }
     const { width, height } = page.getSize();
     const fieldScale = clampStampScale(Number(field.scale) || scale * 100) / 100;
-    const sw = width * (STAMP_WIDTH_PERCENT / 100) * fieldScale;
-    const sh = sw * (stampImg.height / stampImg.width);
+    const { width: sw, height: sh } = fitStampSize(width, height, stampImg.height / stampImg.width, fieldScale);
     const cx = (Number(field.x) / 100) * width;
     const cy = height - (Number(field.y) / 100) * height;
     const drawX = Math.min(width - sw, Math.max(0, cx - sw / 2));

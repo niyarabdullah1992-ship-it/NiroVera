@@ -1,3 +1,8 @@
+// purpose: PointsLedger tenant row.
+// domain: work_proof
+// isolation: companyId
+// owner: scores
+// status: canonical
 {
   "name": "PointsLedger",
   "type": "object",

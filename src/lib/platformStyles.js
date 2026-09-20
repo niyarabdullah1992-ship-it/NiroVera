@@ -1,13 +1,20 @@
 /**
- * Shared platform style helpers — literal values only.
- *
- * Chrome rules (no second identity):
- * - /app page → PlatformStampShell (navy 3px rail, 1280)
+ * Shared platform style helpers — Design System v2.
+ * - document cards 14 · controls 10 · chips 999 · status dots stay circular
+ * - 1px line + paper shadow; status is a 3px top edge, never a coloured frame
+ * - /app page → SectionShell / PlatformStampShell
  * - titled module → IdentityCard
- * - nested box / table → cardShell / tableShell (do not copy the white box inline)
- * - person in a row → EmployeeIdentityRow
- * - green #1E9E63 = status or one primary button, not card skin
+ * - nested box / table → cardShell / tableShell
+ * - green = meaning only, never card skin
  */
+
+import { DS_CONTROL_RADIUS, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "./designSystem.js";
+
+/** Document / slab corner. */
+export const RADIUS = DS_RADIUS;
+export const CONTROL_RADIUS = DS_CONTROL_RADIUS;
+export const PILL_RADIUS = DS_PILL_RADIUS;
+export const PAPER_SHADOW = DS_SHADOW;
 
 export const ACCENT = "var(--nv-accent, #1E9E63)";
 /** Navy fill for inverted panels and rails — stays #14284B in dark mode. */
@@ -15,7 +22,7 @@ export const NAVY_FILL = "var(--nv-navy, #14284B)";
 /** Title/body color. In light mode this is navy; in dark mode it follows --nv-ink. */
 export const NAVY = "var(--nv-ink, #14284B)";
 export const INK = "var(--nv-ink, #14284B)";
-export const MUTED = "var(--nv-muted, #5A6B85)";
+export const MUTED = "var(--nv-muted, var(--nv-ink3, #6B7280))";
 
 export const BRAND = "var(--nv-accent, #1E9E63)";
 export const BRAND_SOFT = "var(--nv-accent-soft, color-mix(in oklab, #1E9E63 10%, #fff))";
@@ -28,7 +35,7 @@ export function bar(pct, color = ACCENT) {
     width: `${pct}%`,
     height: "100%",
     background: color,
-    borderRadius: "4px",
+    borderRadius: CONTROL_RADIUS,
   };
 }
 
@@ -45,8 +52,12 @@ export function dot(color) {
 export function pill(bg, fg, bd) {
   return {
     display: "inline-block",
+    // A badge is a label, not a bar: as a direct grid/flex child the inline-block is
+    // blockified and would fill the whole cell, reading as a progress bar or an input.
+    width: "fit-content",
+    justifySelf: "start",
     padding: "3px 9px",
-    borderRadius: "20px",
+    borderRadius: PILL_RADIUS,
     fontSize: "11px",
     fontWeight: 500,
     background: bg,
@@ -59,10 +70,12 @@ export function pill(bg, fg, bd) {
 export function tag(bg, fg, bd) {
   return {
     display: "inline-flex",
+    width: "fit-content",
+    justifySelf: "start",
     alignItems: "center",
     gap: "3px",
     padding: "2px 7px",
-    borderRadius: "20px",
+    borderRadius: PILL_RADIUS,
     fontSize: "10px",
     fontWeight: 600,
     background: bg,
@@ -74,22 +87,27 @@ export function tag(bg, fg, bd) {
 
 export function num(color = INK) {
   return {
-    fontFamily: "'IBM Plex Sans',sans-serif",
+    fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)",
     fontSize: "20px",
-    fontWeight: 600,
+    fontWeight: 500,
     lineHeight: 1,
     color,
+    direction: "ltr",
   };
 }
 
-export const OK = pill("#ECFDF3", "#15803D", "#BBF7D0");
-export const WARN = pill("#FFFBEB", "#B45309", "#FDE68A");
-export const BAD = pill("#FEF2F2", "#DC2626", "#FECACA");
-export const NEUTRAL = pill("#F7F8FA", "#5A6B85", "#E2E8F0");
+export const OK = pill("var(--nv-ok-soft)", "var(--nv-ok-ink)", "var(--nv-ok-line)");
+export const WARN = pill("var(--nv-warn-soft)", "var(--nv-warn-ink)", "var(--nv-warn-line)");
+export const BAD = pill("var(--nv-bad-soft)", "var(--nv-bad-ink)", "var(--nv-bad-line)");
+export const NEUTRAL = pill("var(--nv-mute-soft)", "var(--nv-mute-ink)", "var(--nv-mute-line)");
 
-export const BORDER = "var(--nv-line, #E2E8F0)";
-export const SURFACE = "var(--nv-soft, #F7F8FA)";
+export const BORDER = "var(--nv-line, #DFE3EA)";
+export const SURFACE = "var(--nv-soft, #EEF2F8)";
 export const CARD = "var(--nv-card, #FFFFFF)";
+export const PAGE = "var(--nv-page, #EEF1F5)";
+export const HOVER = "var(--nv-hover, #F5F7FA)";
+/** Recessed stage behind white slabs — the paper table the signing surfaces sit on. */
+export const STAGE = "color-mix(in oklab, var(--nv-navy, #14284B) 5%, var(--nv-soft, #F7F8FA))";
 export const DANGER = "#DC2626";
 /** Active chrome fill — same token Layout uses for section pills. */
 export const BTN_FILL = "var(--nv-btn-fill, #14284B)";
@@ -105,11 +123,11 @@ export function navPill(active) {
     gap: 7,
     height: PILL_H,
     padding: "0 14px",
-    borderRadius: 999,
-    border: "none",
+    borderRadius: CONTROL_RADIUS,
+    border: active ? `1px solid ${BTN_FILL}` : "1px solid transparent",
     background: active ? BTN_FILL : "transparent",
     color: active ? BTN_INK : MUTED,
-    boxShadow: active ? "0 6px 16px color-mix(in oklab, #14284B 22%, transparent)" : "none",
+    boxShadow: "none",
     fontSize: "12.5px",
     fontWeight: 600,
     cursor: "pointer",
@@ -128,9 +146,9 @@ export const pillRail = {
   overflowX: "auto",
   background: CARD,
   border: `1px solid ${BORDER}`,
-  borderRadius: 999,
+  borderRadius: RADIUS,
   padding: 5,
-  boxShadow: "0 4px 14px rgba(20,40,75,.05)",
+  boxShadow: "none",
 };
 
 export function filterChip(active) {
@@ -142,7 +160,7 @@ export function pillCount(active) {
     minWidth: 16,
     height: 16,
     padding: "0 4px",
-    borderRadius: 8,
+    borderRadius: PILL_RADIUS,
     background: active
       ? "color-mix(in oklab, #fff 24%, transparent)"
       : "var(--tint-amber-bg, #FFFBEB)",
@@ -158,21 +176,21 @@ export function pillCount(active) {
 
 export const statusBanner = {
   ok: {
-    borderRadius: 16,
-    border: "1px solid #BBF7D0",
-    background: "#ECFDF3",
+    borderRadius: RADIUS,
+    border: "1px solid var(--nv-ok-line)",
+    background: "var(--nv-ok-soft)",
     padding: "12px 14px",
     fontSize: 13,
-    color: "#15803D",
+    color: "var(--nv-ok-ink)",
     lineHeight: 1.7,
   },
   warn: {
-    borderRadius: 16,
-    border: "1px solid #FDE68A",
-    background: "#FFFBEB",
+    borderRadius: RADIUS,
+    border: "1px solid var(--nv-warn-line)",
+    background: "var(--nv-warn-soft)",
     padding: "12px 14px",
     fontSize: 13,
-    color: "#B45309",
+    color: "var(--nv-warn-ink)",
     lineHeight: 1.7,
   },
 };
@@ -180,7 +198,7 @@ export const statusBanner = {
 export const field = {
   width: "100%",
   height: "36px",
-  borderRadius: "9px",
+  borderRadius: CONTROL_RADIUS,
   border: `1px solid ${BORDER}`,
   background: CARD,
   color: INK,
@@ -192,7 +210,7 @@ export const field = {
 
 export const textarea = {
   width: "100%",
-  borderRadius: "9px",
+  borderRadius: CONTROL_RADIUS,
   border: `1px solid ${BORDER}`,
   background: CARD,
   color: INK,
@@ -228,18 +246,18 @@ export const dialogCard = {
   overflow: "auto",
   background: CARD,
   border: `1px solid ${BORDER}`,
-  borderRadius: "16px",
-  boxShadow: "0 24px 60px rgba(20,40,75,.22)",
+  borderRadius: RADIUS,
+  boxShadow: PAPER_SHADOW,
   padding: "18px 20px",
 };
 
 export const ui = {
   btnPrimary: {
     padding: "8px 15px",
-    borderRadius: "9px",
-    background: BRAND,
+    borderRadius: CONTROL_RADIUS,
+    background: NAVY_FILL,
     color: "#fff",
-    border: `1px solid ${BRAND}`,
+    border: `1px solid ${NAVY_FILL}`,
     fontSize: "12px",
     fontWeight: 500,
     cursor: "pointer",
@@ -248,7 +266,7 @@ export const ui = {
   },
   btnSecondary: {
     padding: "8px 15px",
-    borderRadius: "9px",
+    borderRadius: CONTROL_RADIUS,
     background: CARD,
     color: INK,
     border: `1px solid ${BORDER}`,
@@ -260,7 +278,7 @@ export const ui = {
   },
   btnGhost: {
     padding: "6px 12px",
-    borderRadius: "9px",
+    borderRadius: CONTROL_RADIUS,
     background: CARD,
     color: MUTED,
     border: `1px solid ${BORDER}`,
@@ -272,7 +290,7 @@ export const ui = {
   },
   btnDanger: {
     padding: "8px 15px",
-    borderRadius: "9px",
+    borderRadius: CONTROL_RADIUS,
     background: CARD,
     color: DANGER,
     border: "1px solid #FECACA",
@@ -288,7 +306,7 @@ export const ui = {
     justifyContent: "center",
     height: "32px",
     padding: "0 16px",
-    borderRadius: "999px",
+    borderRadius: CONTROL_RADIUS,
     background: NAVY_FILL,
     color: "#fff",
     border: "none",
@@ -298,7 +316,7 @@ export const ui = {
     cursor: "pointer",
     fontFamily: "inherit",
     whiteSpace: "nowrap",
-    boxShadow: "0 2px 8px color-mix(in oklab, #14284B 18%, transparent)",
+    boxShadow: "none",
     lineHeight: 1,
     boxSizing: "border-box",
   },
@@ -308,7 +326,7 @@ export const ui = {
     justifyContent: "center",
     height: "32px",
     padding: "0 16px",
-    borderRadius: "999px",
+    borderRadius: CONTROL_RADIUS,
     background: CARD,
     color: MUTED,
     border: `1px solid ${BORDER}`,
@@ -328,7 +346,7 @@ export const ui = {
     justifyContent: "center",
     height: 28,
     padding: "0 10px",
-    borderRadius: 9,
+    borderRadius: CONTROL_RADIUS,
     border: `1px solid ${BORDER}`,
     background: CARD,
     color: INK,
@@ -346,7 +364,7 @@ export const ui = {
     justifyContent: "center",
     height: 28,
     padding: "0 10px",
-    borderRadius: 9,
+    borderRadius: CONTROL_RADIUS,
     border: `1px solid ${BORDER}`,
     background: CARD,
     color: MUTED,
@@ -364,7 +382,7 @@ export const ui = {
     justifyContent: "center",
     height: 28,
     padding: "0 10px",
-    borderRadius: 9,
+    borderRadius: CONTROL_RADIUS,
     border: `1px solid ${BRAND_BORDER}`,
     background: BRAND_SOFT,
     color: BRAND_DEEP,
@@ -382,9 +400,9 @@ export const ui = {
     justifyContent: "center",
     height: 28,
     padding: "0 10px",
-    borderRadius: 9,
-    border: `1px solid ${BRAND}`,
-    background: BRAND,
+    borderRadius: CONTROL_RADIUS,
+    border: `1px solid ${NAVY_FILL}`,
+    background: NAVY_FILL,
     color: "#fff",
     fontSize: 11,
     fontWeight: 600,
@@ -400,7 +418,7 @@ export const ui = {
     justifyContent: "center",
     height: 28,
     padding: "0 10px",
-    borderRadius: 9,
+    borderRadius: CONTROL_RADIUS,
     border: "1px solid #FECACA",
     background: "#FEF2F2",
     color: "#B91C1C",
@@ -414,9 +432,9 @@ export const ui = {
   },
   btnRow: {
     padding: "6px 14px",
-    borderRadius: "9px",
-    border: `1px solid ${BRAND}`,
-    background: BRAND,
+    borderRadius: CONTROL_RADIUS,
+    border: `1px solid ${NAVY_FILL}`,
+    background: NAVY_FILL,
     color: "#fff",
     fontSize: "12px",
     fontWeight: 500,
@@ -428,10 +446,10 @@ export const ui = {
     width: "100%",
     marginTop: "18px",
     padding: "10px",
-    borderRadius: "9px",
-    background: BRAND,
+    borderRadius: CONTROL_RADIUS,
+    background: NAVY_FILL,
     color: "#fff",
-    border: "none",
+    border: `1px solid ${NAVY_FILL}`,
     fontSize: "13px",
     fontWeight: 600,
     cursor: "pointer",
@@ -442,21 +460,22 @@ export const ui = {
 export const cardShell = {
   background: CARD,
   border: `1px solid ${BORDER}`,
-  borderRadius: "16px",
+  borderRadius: RADIUS,
+  boxShadow: PAPER_SHADOW,
   padding: "18px 20px",
 };
 
 export const tableShell = {
   background: CARD,
   border: `1px solid ${BORDER}`,
-  borderRadius: "16px",
+  borderRadius: RADIUS,
   overflow: "hidden",
 };
 
 export const emptyState = {
   background: CARD,
   border: "1px dashed #CBD5E1",
-  borderRadius: "16px",
+  borderRadius: RADIUS,
   padding: "32px",
   textAlign: "center",
   fontSize: "13px",
@@ -466,7 +485,8 @@ export const emptyState = {
 export const statCard = {
   background: CARD,
   border: `1px solid ${BORDER}`,
-  borderRadius: "16px",
+  borderRadius: RADIUS,
+  boxShadow: PAPER_SHADOW,
   padding: "15px 16px",
 };
 
@@ -507,7 +527,7 @@ export function pyramidBar(pct, color, empty = false) {
   if (empty || pct <= 0) {
     return {
       height: "22px",
-      borderRadius: "5px",
+      borderRadius: CONTROL_RADIUS,
       width: "26px",
       background: "transparent",
       border: "1px dashed #E2E8F0",
@@ -515,7 +535,7 @@ export function pyramidBar(pct, color, empty = false) {
   }
   return {
     height: "22px",
-    borderRadius: "5px",
+    borderRadius: CONTROL_RADIUS,
     background: color,
     width: `${Math.max(2, pct)}%`,
   };

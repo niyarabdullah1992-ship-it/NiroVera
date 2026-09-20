@@ -1,3 +1,42 @@
+function daysBetweenKeys(fromKey, toKey) {
+  const from = new Date(`${fromKey}T00:00:00`);
+  const to = new Date(`${toKey}T00:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
+  return Math.round((to.getTime() - from.getTime()) / 86400000);
+}
+
+/** Grid filter for the operational calendar — leave and weekend are not the same query. */
+export function calendarCellMatches({
+  cell,
+  query = "",
+  quick = "",
+  month,
+  todayKey,
+  monthNames = [],
+}) {
+  if (!cell || cell.blank) return false;
+  const q = String(query || "").trim();
+  if (quick === "broken") return !!(cell.rec && cell.rec.broke);
+  if (quick === "abs") return !!(cell.rec && cell.rec.abs > 0);
+  if (quick === "late") return !!(cell.rec && cell.rec.late > 0);
+  if (quick === "week") {
+    const diff = daysBetweenKeys(cell.key, todayKey);
+    return diff != null && diff >= 0 && diff < 7;
+  }
+  if (!q) return true;
+  if (/غياب|غاب|absent/.test(q)) return !!(cell.rec && cell.rec.abs > 0);
+  if (/تأخير|متأخر|تأخر|late/.test(q)) return !!(cell.rec && cell.rec.late > 0);
+  if (/انكسار|كسر|سلسلة|حلقة|break|ring/.test(q)) return !!(cell.rec && cell.rec.broke);
+  if (/عطلة|weekend/.test(q)) return !!cell.weekend;
+  if (/إجازة|leave/.test(q)) return !!(cell.rec && cell.rec.leave);
+  if (/^\d{1,2}$/.test(q)) return cell.d === Number(q);
+  const slash = q.match(/^(\d{1,2})\s*[/\-]\s*(\d{1,2})/);
+  if (slash) return cell.d === Number(slash[1]);
+  const named = monthNames.findIndex((name) => q.includes(name));
+  if (named >= 0) return named === month;
+  return true;
+}
+
 export function calendarDateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -27,18 +66,40 @@ export function tasksDueOn(tasks, key) {
   });
 }
 
+export function isIsoDateAssignmentKey(key) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(key || ""));
+}
+
+/** 18632 lookback: ISO date keys only. Weekday keys 0–4 are this week's pattern, not history. */
+export function datedDayAssignmentMap(assignments, dateKey) {
+  return dayAssignmentMap(assignments, dateKey, { datedOnly: true });
+}
+
+export function dayAssignmentMap(assignments, dateKey, { datedOnly = false } = {}) {
+  if (!assignments || !dateKey) return null;
+  const dated = assignments[dateKey];
+  if (dated && typeof dated === "object" && !Array.isArray(dated)) return dated;
+  if (datedOnly || !isIsoDateAssignmentKey(dateKey)) return null;
+  const parts = String(dateKey).split("-").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !n)) return null;
+  const weekday = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+  const weekly = assignments[weekday] || assignments[String(weekday)];
+  if (weekly && typeof weekly === "object" && !Array.isArray(weekly)) return weekly;
+  return null;
+}
+
 export function employeeScheduledOn(schedules, employeeId, key) {
-  return (schedules || []).some((schedule) => (schedule.shiftTypes || []).some((shift) =>
-    (schedule.assignments?.[key]?.[shift.id] || []).includes(employeeId)
-  ));
+  return (schedules || []).some((schedule) => {
+    const day = dayAssignmentMap(schedule.assignments, key);
+    return (schedule.shiftTypes || []).some((shift) => (day?.[shift.id] || []).includes(employeeId));
+  });
 }
 
 export function hasPublishedScheduleOn(schedules, key) {
-  return (schedules || []).some((schedule) =>
-    (schedule.shiftTypes || []).some((shift) =>
-      (schedule.assignments?.[key]?.[shift.id] || []).length > 0
-    )
-  );
+  return (schedules || []).some((schedule) => {
+    const day = dayAssignmentMap(schedule.assignments, key);
+    return (schedule.shiftTypes || []).some((shift) => (day?.[shift.id] || []).length > 0);
+  });
 }
 
 export function attendanceRowDateKey(row) {
@@ -47,17 +108,17 @@ export function attendanceRowDateKey(row) {
 
 /**
  * Day status for the attendance month calendar.
- * Future scheduled days stay empty (not marked absent).
+ * Future days and today (still open) stay empty — not marked absent.
  */
 export function dayAttendanceStatus({ employee, row, dateKey, schedules, todayKey, onLeave }) {
+  if (onLeave) return "on_leave";
   if (row?.check_in_at || row?.checkInAt) {
     return row.status === "late" ? "late" : "present";
   }
-  if (onLeave) return "on_leave";
   const published = hasPublishedScheduleOn(schedules, dateKey);
   const scheduled = employeeScheduledOn(schedules, employee?.id, dateKey);
   if (published && !scheduled) return "off_day";
-  if (dateKey > todayKey) return null;
+  if (!todayKey || dateKey >= todayKey) return null;
   return "absent";
 }
 

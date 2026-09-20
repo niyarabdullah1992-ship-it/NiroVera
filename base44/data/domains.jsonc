@@ -1,0 +1,1735 @@
+// NiroVera / PowerCare data map — the only schema map that is allowed to exist.
+// Programmer entry (generated, lockstep): ../SCHEMA.md
+// Folded pointer: ../DATA.md → SCHEMA.md. Entities folder pointer: ../entities/_schema.md
+// Doctor: node scripts/test-data-catalog.mjs
+{
+  "version": 2,
+  "titleAr": "خريطة بيانات نيروفيرا — المصدر الوحيد",
+  "titleEn": "NiroVera data map — single source of truth",
+  "generatedDoc": "base44/DATA.md",
+  "schemaDoc": "base44/SCHEMA.md",
+  "schemaPointer": "base44/entities/_schema.md",
+  "doctor": "scripts/test-data-catalog.mjs",
+  "rules": [
+    "Figures are derived in the listed derivation file — never hard-coded on a screen.",
+    "Tenant records need companyId. Platform rows (plans, visits, UI strings) are the exception.",
+    "Do not rename a live key unless store.js, previewMigrations, and every reader move in one pass.",
+    "Proof Cycle: attendance → task → review → escalation → sign/stamp → client proof.",
+    "One name, one record. A split silo is legacy / do-not-write until a migration lands — do not pretend the cleanup already happened."
+  ],
+  "defaults": {
+    "isolationKey": "companyId",
+    "status": "canonical",
+    "neverLeak": "Do not copy tenant rows across companyId. Employee identities, salaries, attendance, proofs, complaints, and chat stay inside the tenant."
+  },
+  "howToAdd": [
+    "Create base44/entities/Name.jsonc. Tenant rows must declare companyId in properties (unless the isolation map marks the entity platform / none).",
+    "Add exactly one collection under the matching domain in base44/data/domains.jsonc. One key, one record. List owner function, identity, isolationKey if it is not companyId.",
+    "If the fact is a CompanyDataBlob category: add the category to domains.jsonc, then to src/lib/store.js BLOB_CATEGORIES and base44/shared/blobVisibility.ts. Undeclared visibility = hidden.",
+    "If the fact already lives on another key, do not add a second write path. Mark the extra key legacy / do-not-write and point splitOf at the canonical key.",
+    "Run: node scripts/test-data-catalog.mjs --fix   then   node scripts/test-data-catalog.mjs"
+  ],
+  "isolationRule": {
+    "tenant": "Every tenant fact is keyed by companyId. Missing companyId on write is a cross-tenant leak.",
+    "person": "Stored person key is employeeId (also Employee.id in the local cache). Loop variables named empId are not a second identifier.",
+    "platform": "User, SubscriptionPlan, PageVisit, UiTranslation have no companyId by design. SubscriptionPayment.companyId is nullable (checkout before a company exists). SignedDocument.companyId is optional (public-verify rows).",
+    "previewRow": "permissionTemplates, signingFieldTemplates, stationChatGroups isolate via the company localStorage key, not a row-level companyId.",
+    "nested": "leaveRequests and otherRequests isolate via the parent Employee.companyId. Do not invent a first-class table for them.",
+    "neverLeak": "Never embed employee names, salaries, or complaint sender identity on a public / cross-tenant row (ClientProof, AnonymousReport, PageVisit)."
+  },
+  "isolationOf": {
+    "User": null,
+    "SubscriptionPlan": null,
+    "PageVisit": null,
+    "UiTranslation": null,
+    "laborRules": null,
+    "cameras": null,
+    "permissionTemplates": null,
+    "signingFieldTemplates": null,
+    "stationChatGroups": null,
+    "SubscriptionPayment": "companyId",
+    "SignedDocument": "companyId",
+    "leaveRequests": "companyId",
+    "otherRequests": "companyId"
+  },
+  "doNotWrite": [
+    "operationsTasks",
+    "smartArchive",
+    "reportAnalytics",
+    "dailyReports",
+    "complaintQueue",
+    "attendanceLedger",
+    "orgStructure",
+    "expenseBudget",
+    "stockBoard",
+    "signingChain",
+    "companySettings"
+  ],
+  "statusOf": {
+    "WorkProof": "unused",
+    "operationsTasks": "legacy-read-fallback",
+    "attendanceLedger": "legacy-read-fallback",
+    "orgStructure": "legacy-read-fallback",
+    "companySettings": "legacy-read-fallback",
+    "signingChain": "retired",
+    "smartArchive": "legacy-read-fallback",
+    "expenseBudget": "legacy-read-fallback",
+    "stockBoard": "retired",
+    "complaintQueue": "legacy-read-fallback",
+    "reportAnalytics": "retired",
+    "dailyReports": "legacy-read-fallback",
+    "permissionTemplates": "preview-only",
+    "signingFieldTemplates": "preview-only",
+    "stationChatGroups": "preview-only",
+    "User": "platform",
+    "SubscriptionPlan": "platform",
+    "SubscriptionPayment": "platform",
+    "PageVisit": "platform",
+    "UiTranslation": "platform",
+    "cameras": "dead",
+    "laborRules": "catalog"
+  },
+  "previewGaps": {
+    "specialSync": ["companyMeta", "leaveRoster"],
+    "notInStoreBlobCategories": [
+      "companySettings",
+      "attendanceLedger",
+      "publishedRotas",
+      "attendancePolicy",
+      "attendanceEmergency",
+      "operationsTasks",
+      "hcmFoundation",
+      "hcmPerformance",
+      "hiringPipeline",
+      "offboardingCustody",
+      "employeeCompliance",
+      "signingChain",
+      "smartArchive",
+      "expenseBudget",
+      "stockBoard",
+      "complaintQueue",
+      "reportAnalytics",
+      "dailyReports",
+      "assistantFacts",
+      "stationChat",
+      "competencyCerts",
+      "hseCredits",
+      "orgStructure"
+    ]
+  },
+  "schemaIndex": {
+    "order": ["people", "time", "leave", "money", "proof", "trust", "company", "voice", "platform"],
+    "groups": {
+      "people": {
+        "titleEn": "People / org",
+        "titleAr": "الناس والتنظيم",
+        "intent": "Employee, station, contract seat, hire, offboard. Person ref for every later domain."
+      },
+      "time": {
+        "titleEn": "Attendance / hours / shifts",
+        "titleAr": "الحضور والورديات",
+        "intent": "Proof Cycle step 1 — person + place + time. Feeds payroll and tasks."
+      },
+      "leave": {
+        "titleEn": "Leave / requests",
+        "titleAr": "الإجازات والطلبات",
+        "intent": "Leave inbox, study_consent, leave top-up, overtime assignment, written consent. Nested on Employee — not a first-class table."
+      },
+      "money": {
+        "titleEn": "Money",
+        "titleAr": "المال",
+        "intent": "Payroll, expenses, assets, inventory. Figures from derivations only."
+      },
+      "proof": {
+        "titleEn": "Proof cycle",
+        "titleAr": "دورة الإثبات",
+        "intent": "Steps 2–4 and 6 — task → review → escalation → client proof. Signing is step 5 but lives under Trust so it is not recoupled to WorkProof."
+      },
+      "trust": {
+        "titleEn": "Trust / files / chat / discipline",
+        "titleAr": "الثقة والملفات والدردشة والانضباط",
+        "intent": "Proof Cycle step 5 (Secure Sign) plus archive, station chat, and disciplinary cases."
+      },
+      "company": {
+        "titleEn": "Company (tenant envelope)",
+        "titleAr": "الشركة",
+        "intent": "Tenant envelope, session, blob store. Isolation starts here."
+      },
+      "voice": {
+        "titleEn": "Voice / complaints",
+        "titleAr": "الصوت والشكاوى",
+        "intent": "Anonymous and public reports. Discipline lives under Trust."
+      },
+      "platform": {
+        "titleEn": "Platform",
+        "titleAr": "المنصة",
+        "intent": "SaaS chrome: plans, billing, visits, translations, assistant. Not the Proof Cycle."
+      }
+    },
+    "groupOf": {
+      "leaveRequests": "leave",
+      "otherRequests": "leave",
+      "leaveRoster": "leave",
+      "disciplinaryCases": "trust",
+      "stationChat": "trust",
+      "stationChatGroups": "trust",
+      "arbitrationOutcomes": "trust",
+      "laborRules": "trust"
+    },
+    "domainGroup": {
+      "people": "people",
+      "time": "time",
+      "work_proof": "proof",
+      "trust": "trust",
+      "money": "money",
+      "company": "company",
+      "voice": "voice",
+      "platform": "platform"
+    },
+    "copy": {
+      "employees": {
+        "purpose": "Person record. Session userId is employeeId (also stored as Employee.employeeId).",
+        "relates": "stationId → Station; employeeId → EmployeeCredential",
+        "neverDenorm": "Do not store payroll totals, ministry figures, or leave balances as source columns — derive them.",
+        "bugLooks": "Missing companyId = person appears in another tenant."
+      },
+      "EmployeeCredential": {
+        "purpose": "Password hash only. Never localStorage.",
+        "relates": "employeeId → Employee",
+        "neverDenorm": "Never copy passwordHash into a blob or preview row.",
+        "bugLooks": "Orphan employeeId = login works, profile missing."
+      },
+      "User": {
+        "purpose": "Base44 platform user (admin/user). Not a tenant employee.",
+        "relates": "—",
+        "neverDenorm": "Do not add companyId here; it is platform-scoped.",
+        "bugLooks": "Treating User.id as employeeId mixes platform admins into the roster."
+      },
+      "stations": {
+        "purpose": "Workplace / org node. Check-in GPS and hire seat live here.",
+        "relates": "managerId → Employee; parentStationId → Station",
+        "neverDenorm": "Do not rename stationId without previewMigrations + every reader.",
+        "bugLooks": "Missing companyId = workplace leaks across tenants. Orphan parentStationId = broken org tree."
+      },
+      "orgSeats": {
+        "purpose": "Org chart seat bound to one employee.",
+        "relates": "employeeId → Employee",
+        "neverDenorm": "Permissions are on smartPositions / templates, not copied onto the seat as figures.",
+        "bugLooks": "Orphan employeeId = empty seat that still blocks a hire."
+      },
+      "orgTree": {
+        "purpose": "Serialized org graph (nodes + edges) for the people tree.",
+        "relates": "node.refId → Employee or Station",
+        "neverDenorm": "Prefer orgTree over orgStructure.",
+        "bugLooks": "orgStructure split = tree drawn from the empty silo."
+      },
+      "permissionTemplates": {
+        "purpose": "Reusable permission packs. Local preview only — not in BLOB_CATEGORIES.",
+        "relates": "applied onto smartPositions.employeeId → Employee",
+        "neverDenorm": "Do not copy a template onto every employee as frozen figures.",
+        "bugLooks": "Row has no companyId — isolation is the company localStorage key, not the row."
+      },
+      "stationBudgets": {
+        "purpose": "Station expense vessel. Canonical blob + store array.",
+        "relates": "stationId → Station",
+        "neverDenorm": "Remaining SAR is derived — do not persist it as the source.",
+        "bugLooks": "Writes to expenseBudget while the board reads stationBudgets = empty vessel."
+      },
+      "laborRules": {
+        "purpose": "Read-only labour_rules catalog (Labour Law + 18632 + 3337). Never a company-editable table.",
+        "relates": "Cited by named gates and arbitration verdicts",
+        "neverDenorm": "Do not copy rule values onto screens or tenant rows — read ruleAt/ruleValue.",
+        "bugLooks": "A second rules table per company would invent verses."
+      },
+      "arbitrationOutcomes": {
+        "purpose": "Append-only preliminary arbitration verdicts. The system is the actor.",
+        "relates": "employeeId → Employee; requestId → leaveRequests/otherRequests",
+        "neverDenorm": "Never update or delete a sealed row. Score is derived from live gates, not stored.",
+        "bugLooks": "Editing a sealed verdict breaks the immutable audit trail."
+      },
+      "journalEntries": {
+        "purpose": "Employee self-service journal / memo lines.",
+        "relates": "userId → Employee.employeeId",
+        "neverDenorm": "Not a payroll journal. Do not store net pay here.",
+        "bugLooks": "Missing companyId = another tenant reads private notes."
+      },
+      "leaveRequests": {
+        "purpose": "Annual / sick / other leave rows nested on employees[].",
+        "relates": "employeeId → Employee; cloud snapshot → leaveRoster",
+        "neverDenorm": "Do not edit chargeable days on leaveRoster — derive from leaveDerivations.",
+        "bugLooks": "Row on a missing employee = inbox vanishes. Missing companyId on the parent employee = cross-tenant leak."
+      },
+      "otherRequests": {
+        "purpose": "study_consent, leave top-up, overtime assignment, written consent. Nested on employees[].",
+        "relates": "employeeId → Employee; signing token → SignatureRequest (not WorkProof)",
+        "neverDenorm": "Do not put signToken on workProofs. Tokens belong here or on SignatureRequest.",
+        "bugLooks": "Dropped on hydrate = study/OT inbox empty after cloud pull."
+      },
+      "leaveRoster": {
+        "purpose": "Derived snapshot of employees[].leaveRequests for scope readers.",
+        "relates": "employeeId → Employee",
+        "neverDenorm": "Do not treat this blob as the source of leave days.",
+        "bugLooks": "Editing figures here while employees[].leaveRequests differ = two truths."
+      },
+      "personalAttendance": {
+        "purpose": "Daily punch / presence. Proof Cycle step 1.",
+        "relates": "employeeId → Employee; stationId → Station",
+        "neverDenorm": "Hours and OT pay are derived — do not store ministry totals on the row.",
+        "bugLooks": "Missing companyId = attendance of tenant A shown to tenant B. Missing dateKey = payroll miss."
+      },
+      "attendanceLedger": {
+        "purpose": "Split silo of personalAttendance (attendance function).",
+        "relates": "splitOf personalAttendance",
+        "neverDenorm": "Prefer personalAttendance as the live key.",
+        "bugLooks": "Writes here, reads there = silent empty day."
+      },
+      "schedules": {
+        "purpose": "Shift types and week assignments per station.",
+        "relates": "stationId → Station; assignment employee ids → Employee",
+        "neverDenorm": "Do not store computed week hours as source columns.",
+        "bugLooks": "Orphan stationId = rota board for a deleted workplace."
+      },
+      "tasks": {
+        "purpose": "Operational task — effort, field gate, evidence, attestation. Proof Cycle step 2.",
+        "relates": "assignedTo / ownerId → Employee; stationId → Station",
+        "neverDenorm": "Review reason and escalation live on the task trail — do not invent a second task table for UI.",
+        "bugLooks": "operationsTasks split = approve in one silo, list in the other."
+      },
+      "operationsTasks": {
+        "purpose": "Split silo of tasks (operations/hcm/scores/dailyReport).",
+        "relates": "splitOf tasks",
+        "neverDenorm": "Same fact as tasks. Do not write a third copy.",
+        "bugLooks": "Two Proof Cycle step-2 bags — a bug hides in the gap."
+      },
+      "workProofs": {
+        "purpose": "Live work-proof blob. Shape uses ref / sealId.",
+        "relates": "raiserId → Employee; task via ref",
+        "neverDenorm": "Do not add signToken. Client-facing disclose fields belong on ClientProof.",
+        "bugLooks": "Writing WorkProof.proofNumber here = row the UI never finds."
+      },
+      "WorkProof": {
+        "purpose": "Typed table exists but is NOT the runtime store. Live data is the workProofs blob.",
+        "relates": "performedById → Employee (unused path)",
+        "neverDenorm": "Do not recouple signing or task review onto this entity.",
+        "bugLooks": "Creating a WorkProof entity row while the app reads workProofs = invisible proof."
+      },
+      "ClientProof": {
+        "purpose": "Public verify payload — allowed fields + content hash only.",
+        "relates": "companyId + stationId; no employee identities",
+        "neverDenorm": "Never embed employee names, ids, or salaries.",
+        "bugLooks": "Employee identity in snapshot = trust leak on the public link."
+      },
+      "signatureRequests": {
+        "purpose": "Secure Sign request. Proof Cycle step 5.",
+        "relates": "creatorId → Employee; signers[].token is the public link half",
+        "neverDenorm": "Do not put signToken on WorkProof or tasks.",
+        "bugLooks": "Missing companyId = another tenant can list the envelope. sequential on old rows is ignored."
+      },
+      "SignedDocument": {
+        "purpose": "Public verification badge (PWC-…) bound to fileHash.",
+        "relates": "signerId → Employee (optional); companyId optional by design",
+        "neverDenorm": "Do not flip companyId to required without a backfill of public-verify rows.",
+        "bugLooks": "Missing companyId on an in-app row = weaker isolation; expected on some public-verify rows."
+      },
+      "files": {
+        "purpose": "Company file archive.",
+        "relates": "uploadedBy → Employee",
+        "neverDenorm": "Prefer this key over smartArchive.",
+        "bugLooks": "smartArchive split = upload here, list there."
+      },
+      "payrollRuns": {
+        "purpose": "Payroll cycle snapshot. Amounts are derived at run time.",
+        "relates": "line employee ids → Employee",
+        "neverDenorm": "Do not persist ministry/WPS figures as editable columns.",
+        "bugLooks": "Hard-coded net pay on the screen while the run blob differs."
+      },
+      "expenseClaims": {
+        "purpose": "Expense claim with receipt and approval chain.",
+        "relates": "requesterId → Employee; stationId → Station",
+        "neverDenorm": "Do not store remaining budget on the claim — derive from station vessel.",
+        "bugLooks": "Missing companyId = claim paid from another tenant. amount vs afterTaxAmount drift."
+      },
+      "assets": {
+        "purpose": "Physical asset with QR and current custodian.",
+        "relates": "holderId → Employee; stationId / purchasedByStationId → Station",
+        "neverDenorm": "Book cost stays on the buying station after transfer.",
+        "bugLooks": "Empty holderId = asset with no custodian (unit custodian must hold available assets)."
+      },
+      "inventoryItems": {
+        "purpose": "Stock SKU. Live quantity is locationBalances + currentLocationId.",
+        "relates": "companyId; InventoryUnit.itemId → this id",
+        "neverDenorm": "Do not also treat stockBoard as source quantity.",
+        "bugLooks": "quantity vs locationBalances disagree = phantom stock."
+      },
+      "anonymousReports": {
+        "purpose": "Anonymous voice inbox. Append-only; archive with reason.",
+        "relates": "receipt via AnonymousReportReceipt.employeeId (private)",
+        "neverDenorm": "Never store the sender name on the report row.",
+        "bugLooks": "complaintQueue split = handler sees a different list than store."
+      },
+      "CompanyAccount": {
+        "purpose": "Tenant registry. ownerPassword is server-side only.",
+        "relates": "companyId is the tenant key",
+        "neverDenorm": "Never put ownerPassword in localStorage or a blob.",
+        "bugLooks": "Missing companyId = orphan account that login cannot find."
+      },
+      "CompanyDataBlob": {
+        "purpose": "Envelope for every blob category. One row per (companyId, category).",
+        "relates": "category → catalog blob key",
+        "neverDenorm": "Do not invent a category that is not in this catalog.",
+        "bugLooks": "Unknown category = data that the doctor and ACL cannot see."
+      },
+      "cameras": {
+        "purpose": "Purged. Do not revive.",
+        "relates": "—",
+        "neverDenorm": "Do not add a cameras array back to store.js.",
+        "bugLooks": "A write path still naming cameras is a leftover door."
+      }
+    }
+  },
+  "domains": [
+    {
+      "id": "company",
+      "titleAr": "الشركة",
+      "titleEn": "Company",
+      "intent": "Tenant envelope, session, blob store. Isolation starts here.",
+      "collections": [
+        {
+          "key": "CompanyAccount",
+          "kind": "entity",
+          "entity": "CompanyAccount",
+          "entityFile": "base44/entities/CompanyAccount.jsonc",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "derivation": "base44/shared/settingsDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "ownerEmail",
+          "notes": "Tenant registry. ownerPassword is server-side only."
+        },
+        {
+          "key": "CompanySession",
+          "kind": "entity",
+          "entity": "CompanySession",
+          "entityFile": "base44/entities/CompanySession.jsonc",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "identity": ["id", "companyId", "token"],
+          "personRef": null,
+          "notes": "Session tokens. Browser cache: powercare_tokens / powercare_session."
+        },
+        {
+          "key": "LoginOtp",
+          "kind": "entity",
+          "entity": "LoginOtp",
+          "entityFile": "base44/entities/LoginOtp.jsonc",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "identity": ["id", "companyId", "pendingId"],
+          "personRef": "email"
+        },
+        {
+          "key": "CompanyDataBlob",
+          "kind": "entity",
+          "entity": "CompanyDataBlob",
+          "entityFile": "base44/entities/CompanyDataBlob.jsonc",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "identity": ["id", "companyId", "category"],
+          "personRef": null,
+          "notes": "Envelope for every blob category below. One row per (companyId, category)."
+        },
+        {
+          "key": "companyMeta",
+          "kind": "blob",
+          "blobCategory": "companyMeta",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "derivation": "base44/shared/settingsDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "directorId",
+          "visibility": "shared",
+          "notes": "Name, plan, director, settings, stationChatGroups, orgStructureLog."
+        },
+        {
+          "key": "companySettings",
+          "kind": "blob",
+          "blobCategory": "companySettings",
+          "owner": "settings",
+          "ownerFile": "base44/functions/settings/entry.ts",
+          "derivation": "base44/shared/settingsDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "splitOf": "companyMeta",
+          "defect": "split-settings"
+        },
+        {
+          "key": "SyncSignal",
+          "kind": "entity",
+          "entity": "SyncSignal",
+          "entityFile": "base44/entities/SyncSignal.jsonc",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null
+        },
+        {
+          "key": "AuditLog",
+          "kind": "entity",
+          "entity": "AuditLog",
+          "entityFile": "base44/entities/AuditLog.jsonc",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "performedBy"
+        }
+      ]
+    },
+    {
+      "id": "people",
+      "titleAr": "الناس",
+      "titleEn": "People",
+      "intent": "Employee, contract, org seat, hire, offboard. Person ref for every later domain.",
+      "collections": [
+        {
+          "key": "employees",
+          "kind": "entity",
+          "entity": "Employee",
+          "entityFile": "base44/entities/Employee.jsonc",
+          "storeKey": "employees",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "derivation": "base44/shared/hcmDerivations.ts",
+          "identity": ["id", "companyId", "employeeId"],
+          "personRef": "employeeId",
+          "notes": "Client id is employeeId (also used as session userId). Nested: leaveRequests, otherRequests, profile, certificates, hrMessages."
+        },
+        {
+          "key": "EmployeeCredential",
+          "kind": "entity",
+          "entity": "EmployeeCredential",
+          "entityFile": "base44/entities/EmployeeCredential.jsonc",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "identity": ["id", "companyId", "employeeId"],
+          "personRef": "employeeId",
+          "notes": "Password hash only. Never localStorage."
+        },
+        {
+          "key": "User",
+          "kind": "platform",
+          "entity": "User",
+          "entityFile": "base44/entities/User.jsonc",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "identity": ["id", "role"],
+          "personRef": null,
+          "notes": "Base44 platform user. No companyId — not a tenant row."
+        },
+        {
+          "key": "stations",
+          "kind": "entity",
+          "entity": "Station",
+          "entityFile": "base44/entities/Station.jsonc",
+          "storeKey": "stations",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "derivation": "base44/shared/orgDerivations.ts",
+          "identity": ["id", "companyId", "stationId"],
+          "personRef": "managerId"
+        },
+        {
+          "key": "orgSeats",
+          "kind": "blob",
+          "blobCategory": "orgSeats",
+          "storeKey": "orgSeats",
+          "owner": "org",
+          "ownerFile": "base44/functions/org/entry.ts",
+          "derivation": "base44/shared/orgDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "employeeId",
+          "visibility": "senior"
+        },
+        {
+          "key": "orgTree",
+          "kind": "blob",
+          "blobCategory": "orgTree",
+          "owner": "org",
+          "ownerFile": "base44/functions/org/entry.ts",
+          "derivation": "base44/shared/orgDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "visibility": "shared"
+        },
+        {
+          "key": "orgStructure",
+          "kind": "blob",
+          "blobCategory": "orgStructure",
+          "owner": "org",
+          "ownerFile": "base44/functions/org/entry.ts",
+          "derivation": "base44/shared/orgDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "splitOf": "orgTree",
+          "defect": "split-org"
+        },
+        {
+          "key": "orgStructureLog",
+          "kind": "store",
+          "storeKey": "orgStructureLog",
+          "owner": "org",
+          "ownerFile": "base44/functions/org/entry.ts",
+          "derivation": "base44/shared/orgDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "notes": "Synced inside companyMeta, not its own blob category."
+        },
+        {
+          "key": "smartPositions",
+          "kind": "blob",
+          "blobCategory": "smartPositions",
+          "storeKey": "smartPositions",
+          "owner": "org",
+          "ownerFile": "base44/functions/org/entry.ts",
+          "derivation": "base44/shared/orgDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "employeeId",
+          "visibility": "shared"
+        },
+        {
+          "key": "permissionTemplates",
+          "kind": "store",
+          "storeKey": "permissionTemplates",
+          "owner": "org",
+          "ownerFile": "base44/functions/org/entry.ts",
+          "derivation": "base44/shared/orgDerivations.ts",
+          "identity": ["id"],
+          "personRef": null,
+          "notes": "Local preview / company blob only — not in BLOB_CATEGORIES."
+        },
+        {
+          "key": "hrLevels",
+          "kind": "blob",
+          "blobCategory": "hrLevels",
+          "storeKey": "hrLevels",
+          "owner": "hcm",
+          "ownerFile": "base44/functions/hcm/entry.ts",
+          "derivation": "base44/shared/hcmDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "senior"
+        },
+        {
+          "key": "hrClusters",
+          "kind": "blob",
+          "blobCategory": "hrClusters",
+          "storeKey": "hrClusters",
+          "owner": "hcm",
+          "ownerFile": "base44/functions/hcm/entry.ts",
+          "derivation": "base44/shared/hcmDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "senior"
+        },
+        {
+          "key": "jobGrades",
+          "kind": "blob",
+          "blobCategory": "jobGrades",
+          "storeKey": "jobGrades",
+          "owner": "hcm",
+          "ownerFile": "base44/functions/hcm/entry.ts",
+          "derivation": "base44/shared/hcmDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "shared"
+        },
+        {
+          "key": "hcmFoundation",
+          "kind": "blob",
+          "blobCategory": "hcmFoundation",
+          "owner": "hcm",
+          "ownerFile": "base44/functions/hcm/entry.ts",
+          "derivation": "base44/shared/hcmDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null
+        },
+        {
+          "key": "hcmPerformance",
+          "kind": "blob",
+          "blobCategory": "hcmPerformance",
+          "owner": "hcm",
+          "ownerFile": "base44/functions/hcm/entry.ts",
+          "derivation": "base44/shared/perfDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": "employeeId"
+        },
+        {
+          "key": "hiringPipeline",
+          "kind": "blob",
+          "blobCategory": "hiringPipeline",
+          "owner": "hiring",
+          "ownerFile": "base44/functions/hiring/entry.ts",
+          "derivation": "base44/shared/hiringDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null
+        },
+        {
+          "key": "offboardingCustody",
+          "kind": "blob",
+          "blobCategory": "offboardingCustody",
+          "owner": "offboarding",
+          "ownerFile": "base44/functions/offboarding/entry.ts",
+          "derivation": "base44/shared/offboardingDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "employeeId"
+        },
+        {
+          "key": "employeeCompliance",
+          "kind": "blob",
+          "blobCategory": "employeeCompliance",
+          "owner": "compliance",
+          "ownerFile": "base44/functions/compliance/entry.ts",
+          "derivation": "base44/shared/complianceDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "employeeId"
+        },
+        {
+          "key": "leaveRequests",
+          "kind": "nested",
+          "nestedOn": "employees",
+          "owner": "workforce",
+          "ownerFile": "base44/functions/workforce/entry.ts",
+          "derivation": "base44/shared/leaveDerivations.ts",
+          "identity": ["id", "employeeId"],
+          "personRef": "employeeId",
+          "notes": "Not a first-class collection. Cloud snapshot: leaveRoster blob."
+        },
+        {
+          "key": "otherRequests",
+          "kind": "nested",
+          "nestedOn": "employees",
+          "owner": "workforce",
+          "ownerFile": "base44/functions/workforce/entry.ts",
+          "derivation": "base44/shared/otherRequestDerivations.ts",
+          "identity": ["id", "employeeId"],
+          "personRef": "employeeId",
+          "notes": "Study consent, leave top-up, overtime assignment. Signing token lives here or on SignatureRequest — not on WorkProof."
+        }
+      ]
+    },
+    {
+      "id": "time",
+      "titleAr": "الوقت",
+      "titleEn": "Time",
+      "intent": "Proof Cycle step 1 — person + place + time. Feeds payroll and tasks.",
+      "collections": [
+        {
+          "key": "personalAttendance",
+          "kind": "blob",
+          "blobCategory": "personalAttendance",
+          "storeKey": "personalAttendance",
+          "owner": "supabaseAttendance",
+          "ownerFile": "base44/functions/supabaseAttendance/entry.ts",
+          "derivation": "base44/shared/attendanceDerivations.ts",
+          "identity": ["id", "companyId", "employeeId", "dateKey"],
+          "personRef": "employeeId",
+          "visibility": "self"
+        },
+        {
+          "key": "attendanceLedger",
+          "kind": "blob",
+          "blobCategory": "attendanceLedger",
+          "owner": "attendance",
+          "ownerFile": "base44/functions/attendance/entry.ts",
+          "derivation": "base44/shared/attendanceDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": "employeeId",
+          "splitOf": "personalAttendance",
+          "defect": "split-attendance"
+        },
+        {
+          "key": "personalPlaces",
+          "kind": "blob",
+          "blobCategory": "personalPlaces",
+          "storeKey": "personalPlaces",
+          "owner": "supabaseAttendance",
+          "ownerFile": "base44/functions/supabaseAttendance/entry.ts",
+          "derivation": "base44/shared/attendanceDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "employeeId",
+          "visibility": "self"
+        },
+        {
+          "key": "schedules",
+          "kind": "blob",
+          "blobCategory": "schedules",
+          "storeKey": "schedules",
+          "owner": "workforce",
+          "ownerFile": "base44/functions/workforce/entry.ts",
+          "derivation": "base44/shared/shiftDerivations.ts",
+          "identity": ["id", "companyId", "stationId"],
+          "personRef": null,
+          "visibility": "scope"
+        },
+        {
+          "key": "publishedRotas",
+          "kind": "blob",
+          "blobCategory": "publishedRotas",
+          "owner": "workforce",
+          "ownerFile": "base44/functions/workforce/entry.ts",
+          "derivation": "base44/shared/shiftDerivations.ts",
+          "identity": ["id", "companyId", "stationId"],
+          "personRef": null
+        },
+        {
+          "key": "leaveRoster",
+          "kind": "blob",
+          "blobCategory": "leaveRoster",
+          "owner": "workforce",
+          "ownerFile": "base44/functions/workforce/entry.ts",
+          "derivation": "base44/shared/leaveDerivations.ts",
+          "identity": ["companyId", "employeeId"],
+          "personRef": "employeeId",
+          "visibility": "scope",
+          "notes": "Derived snapshot of employees[].leaveRequests. Do not edit figures here."
+        },
+        {
+          "key": "attendancePolicy",
+          "kind": "blob",
+          "blobCategory": "attendancePolicy",
+          "owner": "supabaseAttendance",
+          "ownerFile": "base44/functions/supabaseAttendance/entry.ts",
+          "derivation": "base44/shared/attendanceDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "visibility": "shared"
+        },
+        {
+          "key": "attendanceEmergency",
+          "kind": "blob",
+          "blobCategory": "attendanceEmergency",
+          "owner": "supabaseAttendance",
+          "ownerFile": "base44/functions/supabaseAttendance/entry.ts",
+          "derivation": "base44/shared/attendanceDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "visibility": "shared"
+        }
+      ]
+    },
+    {
+      "id": "work_proof",
+      "titleAr": "إثبات العمل",
+      "titleEn": "Work proof",
+      "intent": "Proof Cycle steps 2–4 and 6 — task, review, escalation, client proof. Not signing.",
+      "collections": [
+        {
+          "key": "tasks",
+          "kind": "blob",
+          "blobCategory": "tasks",
+          "storeKey": "tasks",
+          "owner": "operations",
+          "ownerFile": "base44/functions/operations/entry.ts",
+          "derivation": "base44/shared/opsDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "assignedTo",
+          "visibility": "scope",
+          "notes": "Store + supabaseTargets + companyDirectory sync this key."
+        },
+        {
+          "key": "operationsTasks",
+          "kind": "blob",
+          "blobCategory": "operationsTasks",
+          "owner": "operations",
+          "ownerFile": "base44/functions/operations/entry.ts",
+          "derivation": "base44/shared/opsDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "assignedTo",
+          "splitOf": "tasks",
+          "defect": "split-tasks",
+          "notes": "operations/hcm/scores/dailyReport read this key. Same idea as tasks, different silo."
+        },
+        {
+          "key": "workProofs",
+          "kind": "blob",
+          "blobCategory": "workProofs",
+          "storeKey": "workProofs",
+          "owner": "workproof",
+          "ownerFile": "base44/functions/workproof/entry.ts",
+          "derivation": "base44/shared/workProofDerivations.ts",
+          "identity": ["id", "companyId", "ref"],
+          "personRef": "raiserId",
+          "visibility": "senior",
+          "notes": "Live proofs. Shape uses ref / sealId. Frontend invokes workproof. signToken does not belong here."
+        },
+        {
+          "key": "WorkProof",
+          "kind": "entity",
+          "entity": "WorkProof",
+          "entityFile": "base44/entities/WorkProof.jsonc",
+          "owner": "workproof",
+          "ownerFile": "base44/functions/workproof/entry.ts",
+          "derivation": "base44/shared/workProofDerivations.ts",
+          "identity": ["id", "companyId", "proofNumber"],
+          "personRef": "performedById",
+          "splitOf": "workProofs",
+          "defect": "split-workproof-shape",
+          "status": "unused",
+          "isolationKey": "companyId",
+          "notes": "Typed table exists but is NOT the runtime store. No entities.WorkProof reader in functions or src/. Live data is the workProofs blob (ref / sealId). Do-not-write."
+        },
+        {
+          "key": "visitorProofs",
+          "kind": "blob",
+          "blobCategory": "visitorProofs",
+          "storeKey": "visitorProofs",
+          "owner": "clientProof",
+          "ownerFile": "base44/functions/clientProof/entry.ts",
+          "derivation": "base44/shared/workProofDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "senior"
+        },
+        {
+          "key": "ClientProof",
+          "kind": "entity",
+          "entity": "ClientProof",
+          "entityFile": "base44/entities/ClientProof.jsonc",
+          "owner": "clientProof",
+          "ownerFile": "base44/functions/clientProof/entry.ts",
+          "derivation": "base44/shared/workProofDerivations.ts",
+          "identity": ["id", "companyId", "proofId", "contentHash"],
+          "personRef": null,
+          "notes": "Public verify payload — disclose only allowed fields + hash."
+        },
+        {
+          "key": "PointsLedger",
+          "kind": "entity",
+          "entity": "PointsLedger",
+          "entityFile": "base44/entities/PointsLedger.jsonc",
+          "owner": "scores",
+          "ownerFile": "base44/functions/scores/entry.ts",
+          "derivation": "base44/shared/perfDerivations.ts",
+          "identity": ["id", "companyId", "employeeId"],
+          "personRef": "employeeId"
+        },
+        {
+          "key": "targets",
+          "kind": "blob",
+          "blobCategory": "targets",
+          "storeKey": "targets",
+          "owner": "supabaseTargets",
+          "ownerFile": "base44/functions/supabaseTargets/entry.ts",
+          "derivation": "base44/shared/opsDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "assignedTo",
+          "visibility": "scope"
+        },
+        {
+          "key": "plans",
+          "kind": "blob",
+          "blobCategory": "plans",
+          "storeKey": "plans",
+          "owner": "operations",
+          "ownerFile": "base44/functions/operations/entry.ts",
+          "derivation": "base44/shared/opsDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "scope"
+        },
+        {
+          "key": "safety",
+          "kind": "blob",
+          "blobCategory": "safety",
+          "storeKey": "safety",
+          "owner": "scores",
+          "ownerFile": "base44/functions/scores/entry.ts",
+          "derivation": "base44/shared/hseDerivations.ts",
+          "identity": ["id", "companyId", "stationId"],
+          "personRef": null,
+          "visibility": "scope"
+        },
+        {
+          "key": "hseCredits",
+          "kind": "blob",
+          "blobCategory": "hseCredits",
+          "owner": "scores",
+          "ownerFile": "base44/functions/scores/entry.ts",
+          "derivation": "base44/shared/hseDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "employeeId"
+        },
+        {
+          "key": "competencyCerts",
+          "kind": "blob",
+          "blobCategory": "competencyCerts",
+          "owner": "operations",
+          "ownerFile": "base44/functions/operations/entry.ts",
+          "derivation": "base44/shared/opsDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "employeeId"
+        }
+      ]
+    },
+    {
+      "id": "trust",
+      "titleAr": "التوقيع والأرشيف",
+      "titleEn": "Trust / signing",
+      "intent": "Proof Cycle step 5 — Secure Sign. Own domain, not WorkProof.",
+      "collections": [
+        {
+          "key": "signatureRequests",
+          "kind": "entity",
+          "entity": "SignatureRequest",
+          "entityFile": "base44/entities/SignatureRequest.jsonc",
+          "storeKey": "signatureRequests",
+          "owner": "multiSign",
+          "ownerFile": "base44/functions/multiSign/entry.ts",
+          "derivation": "base44/shared/signingDerivations.ts",
+          "identity": ["id", "companyId", "creatorId"],
+          "personRef": "creatorId",
+          "notes": "Signer tokens live on signers[].token. Compose public link as id.token — do not put signToken on WorkProof."
+        },
+        {
+          "key": "SignedDocument",
+          "kind": "entity",
+          "entity": "SignedDocument",
+          "entityFile": "base44/entities/SignedDocument.jsonc",
+          "storeKey": "signedDocRegistry",
+          "owner": "signedDocs",
+          "ownerFile": "base44/functions/signedDocs/entry.ts",
+          "derivation": "base44/shared/signingDerivations.ts",
+          "identity": ["id", "verificationId", "fileHash"],
+          "personRef": "signerId",
+          "defect": "signed-doc-companyId",
+          "notes": "companyId exists but is not required. Public verify can omit tenant — isolation is weaker."
+        },
+        {
+          "key": "signingFieldTemplates",
+          "kind": "store",
+          "storeKey": "signingFieldTemplates",
+          "owner": "multiSign",
+          "ownerFile": "base44/functions/multiSign/entry.ts",
+          "derivation": "base44/shared/signingDerivations.ts",
+          "identity": ["id"],
+          "personRef": null
+        },
+        {
+          "key": "signingChain",
+          "kind": "blob",
+          "blobCategory": "signingChain",
+          "owner": "signing",
+          "ownerFile": "base44/functions/signing/entry.ts",
+          "derivation": "base44/shared/signingDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "splitOf": "signatureRequests",
+          "defect": "split-signing"
+        },
+        {
+          "key": "files",
+          "kind": "blob",
+          "blobCategory": "files",
+          "storeKey": "files",
+          "owner": "files",
+          "ownerFile": "base44/functions/files/entry.ts",
+          "derivation": "base44/shared/fileArchiveDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "uploadedBy",
+          "visibility": "scope"
+        },
+        {
+          "key": "smartArchive",
+          "kind": "blob",
+          "blobCategory": "smartArchive",
+          "owner": "files",
+          "ownerFile": "base44/functions/files/entry.ts",
+          "derivation": "base44/shared/fileArchiveDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "splitOf": "files",
+          "defect": "split-files"
+        },
+        {
+          "key": "NiroDocumentReview",
+          "kind": "entity",
+          "entity": "NiroDocumentReview",
+          "entityFile": "base44/entities/NiroDocumentReview.jsonc",
+          "owner": "niroDocumentReview",
+          "ownerFile": "base44/functions/niroDocumentReview/entry.ts",
+          "derivation": "base44/shared/assistantDerivations.ts",
+          "identity": ["id", "companyId", "actorId"],
+          "personRef": "actorId"
+        }
+      ]
+    },
+    {
+      "id": "money",
+      "titleAr": "المال",
+      "titleEn": "Money",
+      "intent": "Payroll, expenses, assets, inventory. Figures from derivations only.",
+      "collections": [
+        {
+          "key": "payrollRuns",
+          "kind": "blob",
+          "blobCategory": "payrollRuns",
+          "storeKey": "payrollRuns",
+          "owner": "payroll",
+          "ownerFile": "base44/functions/payroll/entry.ts",
+          "derivation": "base44/shared/payrollDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "payroll"
+        },
+        {
+          "key": "journalEntries",
+          "kind": "blob",
+          "blobCategory": "journalEntries",
+          "storeKey": "journalEntries",
+          "owner": "payroll",
+          "ownerFile": "base44/functions/payroll/entry.ts",
+          "derivation": "base44/shared/payrollDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "userId",
+          "visibility": "self"
+        },
+        {
+          "key": "expenseClaims",
+          "kind": "entity",
+          "entity": "ExpenseClaim",
+          "entityFile": "base44/entities/ExpenseClaim.jsonc",
+          "storeKey": "expenseClaims",
+          "owner": "expenses",
+          "ownerFile": "base44/functions/expenses/entry.ts",
+          "derivation": "base44/shared/expenseDerivations.ts",
+          "identity": ["id", "companyId", "requesterId"],
+          "personRef": "requesterId"
+        },
+        {
+          "key": "stationBudgets",
+          "kind": "blob",
+          "blobCategory": "stationBudgets",
+          "storeKey": "stationBudgets",
+          "owner": "budget",
+          "ownerFile": "base44/functions/budget/entry.ts",
+          "derivation": "base44/shared/expenseDerivations.ts",
+          "identity": ["id", "stationId", "companyId"],
+          "personRef": null,
+          "visibility": "senior",
+          "notes": "Station expense vessel. Writes are this blob only; expenseBudget is read-once fallback."
+        },
+        {
+          "key": "expenseBudget",
+          "kind": "blob",
+          "blobCategory": "expenseBudget",
+          "owner": "budget",
+          "ownerFile": "base44/functions/budget/entry.ts",
+          "derivation": "base44/shared/expenseDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "splitOf": "stationBudgets",
+          "defect": "split-budget"
+        },
+        {
+          "key": "assets",
+          "kind": "entity",
+          "entity": "Asset",
+          "entityFile": "base44/entities/Asset.jsonc",
+          "storeKey": "assets",
+          "owner": "assets",
+          "ownerFile": "base44/functions/assets/entry.ts",
+          "identity": ["id", "companyId", "assetCode"],
+          "personRef": "holderId"
+        },
+        {
+          "key": "assetCustody",
+          "kind": "entity",
+          "entity": "AssetCustody",
+          "entityFile": "base44/entities/AssetCustody.jsonc",
+          "storeKey": "assetCustody",
+          "owner": "assets",
+          "ownerFile": "base44/functions/assets/entry.ts",
+          "identity": ["id", "companyId", "assetId"],
+          "personRef": "toId"
+        },
+        {
+          "key": "assetMaintenance",
+          "kind": "entity",
+          "entity": "AssetMaintenance",
+          "entityFile": "base44/entities/AssetMaintenance.jsonc",
+          "storeKey": "assetMaintenance",
+          "owner": "assets",
+          "ownerFile": "base44/functions/assets/entry.ts",
+          "identity": ["id", "companyId", "assetId"],
+          "personRef": null
+        },
+        {
+          "key": "assetTransfers",
+          "kind": "blob",
+          "blobCategory": "assetTransfers",
+          "storeKey": "assetTransfers",
+          "owner": "assets",
+          "ownerFile": "base44/functions/assets/entry.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "senior"
+        },
+        {
+          "key": "inventoryItems",
+          "kind": "entity",
+          "entity": "InventoryItem",
+          "entityFile": "base44/entities/InventoryItem.jsonc",
+          "storeKey": "inventoryItems",
+          "owner": "inventory",
+          "ownerFile": "base44/functions/inventory/entry.ts",
+          "derivation": "base44/shared/inventoryDerivations.ts",
+          "identity": ["id", "companyId", "itemCode"],
+          "personRef": null,
+          "isolationKey": "companyId",
+          "defect": "inventory-forced-local",
+          "notes": "Canonical SKU. Live quantity is locationBalances + currentLocationId. src/lib/inventoryApi.js forceLocalInventory — frontend never invokes the inventory function."
+        },
+        {
+          "key": "InventoryUnit",
+          "kind": "entity",
+          "entity": "InventoryUnit",
+          "entityFile": "base44/entities/InventoryUnit.jsonc",
+          "owner": "inventory",
+          "ownerFile": "base44/functions/inventory/entry.ts",
+          "derivation": "base44/shared/inventoryDerivations.ts",
+          "identity": ["id", "companyId", "itemId"],
+          "personRef": null,
+          "isolationKey": "companyId",
+          "defect": "inventory-qty-dual",
+          "notes": "Cloud per-location quantity. Frontend inventoryApi.js force-locals to InventoryItem.locationBalances — two quantity truths. Do not treat this as the preview source."
+        },
+        {
+          "key": "materialRequests",
+          "kind": "entity",
+          "entity": "MaterialRequest",
+          "entityFile": "base44/entities/MaterialRequest.jsonc",
+          "storeKey": "materialRequests",
+          "owner": "inventory",
+          "ownerFile": "base44/functions/inventory/entry.ts",
+          "derivation": "base44/shared/inventoryDerivations.ts",
+          "identity": ["id", "companyId", "requesterId"],
+          "personRef": "requesterId"
+        },
+        {
+          "key": "stockMovements",
+          "kind": "entity",
+          "entity": "StockMovement",
+          "entityFile": "base44/entities/StockMovement.jsonc",
+          "storeKey": "stockMovements",
+          "owner": "inventory",
+          "ownerFile": "base44/functions/inventory/entry.ts",
+          "derivation": "base44/shared/inventoryDerivations.ts",
+          "identity": ["id", "companyId", "itemId"],
+          "personRef": "performedBy"
+        },
+        {
+          "key": "stockBoard",
+          "kind": "blob",
+          "blobCategory": "stockBoard",
+          "owner": "stock",
+          "ownerFile": "base44/functions/stock/entry.ts",
+          "derivation": "base44/shared/inventoryDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "splitOf": "inventoryItems",
+          "defect": "split-stock"
+        },
+        {
+          "key": "ProcurementRequest",
+          "kind": "entity",
+          "entity": "ProcurementRequest",
+          "entityFile": "base44/entities/ProcurementRequest.jsonc",
+          "owner": "inventory",
+          "ownerFile": "base44/functions/inventory/entry.ts",
+          "derivation": "base44/shared/inventoryDerivations.ts",
+          "identity": ["id", "companyId", "requestNumber"],
+          "personRef": null
+        },
+        {
+          "key": "PurchaseOrder",
+          "kind": "entity",
+          "entity": "PurchaseOrder",
+          "entityFile": "base44/entities/PurchaseOrder.jsonc",
+          "owner": "inventory",
+          "ownerFile": "base44/functions/inventory/entry.ts",
+          "derivation": "base44/shared/inventoryDerivations.ts",
+          "identity": ["id", "companyId", "orderNumber"],
+          "personRef": null
+        }
+      ]
+    },
+    {
+      "id": "voice",
+      "titleAr": "الصوت والانضباط",
+      "titleEn": "Voice / discipline / requests",
+      "intent": "Anonymous voice, complaints, discipline, daily reports.",
+      "collections": [
+        {
+          "key": "anonymousReports",
+          "kind": "blob",
+          "blobCategory": "anonymousReports",
+          "storeKey": "anonymousReports",
+          "owner": "complaints",
+          "ownerFile": "base44/functions/complaints/entry.ts",
+          "derivation": "base44/shared/complaintDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "handlers",
+          "notes": "Append-only. Archive with archivedBy + archivedReason."
+        },
+        {
+          "key": "publicReports",
+          "kind": "blob",
+          "blobCategory": "publicReports",
+          "storeKey": "publicReports",
+          "owner": "complaints",
+          "ownerFile": "base44/functions/complaints/entry.ts",
+          "derivation": "base44/shared/complaintDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "handlers"
+        },
+        {
+          "key": "complaintQueue",
+          "kind": "blob",
+          "blobCategory": "complaintQueue",
+          "owner": "complaints",
+          "ownerFile": "base44/functions/complaints/entry.ts",
+          "derivation": "base44/shared/complaintDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "splitOf": "anonymousReports",
+          "defect": "split-complaints"
+        },
+        {
+          "key": "AnonymousReportReceipt",
+          "kind": "entity",
+          "entity": "AnonymousReportReceipt",
+          "entityFile": "base44/entities/AnonymousReportReceipt.jsonc",
+          "owner": "complaints",
+          "ownerFile": "base44/functions/complaints/entry.ts",
+          "derivation": "base44/shared/complaintDerivations.ts",
+          "identity": ["id", "companyId", "reportId", "employeeId"],
+          "personRef": "employeeId"
+        },
+        {
+          "key": "complaintEscalationChain",
+          "kind": "blob",
+          "blobCategory": "complaintEscalationChain",
+          "storeKey": "complaintEscalationChain",
+          "owner": "complaints",
+          "ownerFile": "base44/functions/complaints/entry.ts",
+          "derivation": "base44/shared/complaintDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "visibility": "shared"
+        },
+        {
+          "key": "branchEscalationChains",
+          "kind": "blob",
+          "blobCategory": "branchEscalationChains",
+          "storeKey": "branchEscalationChains",
+          "owner": "complaints",
+          "ownerFile": "base44/functions/complaints/entry.ts",
+          "derivation": "base44/shared/complaintDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "visibility": "senior",
+          "notes": "Store treats this as an object map, not an array."
+        },
+        {
+          "key": "disciplinaryCases",
+          "kind": "blob",
+          "blobCategory": "disciplinaryCases",
+          "storeKey": "disciplinaryCases",
+          "owner": "hcm",
+          "ownerFile": "base44/functions/hcm/entry.ts",
+          "derivation": "base44/shared/disciplineDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "employeeId",
+          "visibility": "senior"
+        },
+        {
+          "key": "laborRules",
+          "kind": "catalog",
+          "derivation": "base44/shared/laborRules.ts",
+          "identity": ["id"],
+          "personRef": null,
+          "notes": "Read-only Labour Law / Decision 18632 / Decision 3337 catalog. Not a tenant-writable table."
+        },
+        {
+          "key": "arbitrationOutcomes",
+          "kind": "blob",
+          "blobCategory": "arbitrationOutcomes",
+          "storeKey": "arbitrationOutcomes",
+          "owner": "compliance",
+          "ownerFile": "base44/functions/compliance/entry.ts",
+          "derivation": "base44/shared/arbitrationDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "employeeId",
+          "visibility": "senior",
+          "notes": "Append-only preliminary verdicts. Disputes stay on Employee leaveRequests/otherRequests."
+        },
+        {
+          "key": "reports",
+          "kind": "blob",
+          "blobCategory": "reports",
+          "storeKey": "reports",
+          "owner": "dailyReport",
+          "ownerFile": "base44/functions/dailyReport/entry.ts",
+          "derivation": "base44/shared/dailyReportDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "createdBy",
+          "visibility": "scope"
+        },
+        {
+          "key": "reportAnalytics",
+          "kind": "blob",
+          "blobCategory": "reportAnalytics",
+          "owner": "reports",
+          "ownerFile": "base44/functions/reports/entry.ts",
+          "derivation": "base44/shared/reportsDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "splitOf": "reports",
+          "defect": "split-reports"
+        },
+        {
+          "key": "dailyReports",
+          "kind": "blob",
+          "blobCategory": "dailyReports",
+          "owner": "dailyReport",
+          "ownerFile": "base44/functions/dailyReport/entry.ts",
+          "derivation": "base44/shared/dailyReportDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "splitOf": "reports",
+          "defect": "split-reports",
+          "notes": "Legacy category constant in dailyReport."
+        }
+      ]
+    },
+    {
+      "id": "platform",
+      "titleAr": "المنصة",
+      "titleEn": "Platform",
+      "intent": "SaaS chrome: plans, billing, visits, translations, chat, assistant. Not the Proof Cycle.",
+      "collections": [
+        {
+          "key": "SubscriptionPlan",
+          "kind": "platform",
+          "entity": "SubscriptionPlan",
+          "entityFile": "base44/entities/SubscriptionPlan.jsonc",
+          "owner": "subscriptionOverview",
+          "ownerFile": "base44/functions/subscriptionOverview/entry.ts",
+          "identity": ["id", "slug"],
+          "personRef": null,
+          "notes": "No companyId — catalog of plans."
+        },
+        {
+          "key": "SubscriptionPayment",
+          "kind": "platform",
+          "entity": "SubscriptionPayment",
+          "entityFile": "base44/entities/SubscriptionPayment.jsonc",
+          "owner": "tapPayments",
+          "ownerFile": "base44/functions/tapPayments/entry.ts",
+          "identity": ["id", "chargeId", "invoiceNumber"],
+          "personRef": "email",
+          "notes": "companyId is nullable (checkout before a company exists)."
+        },
+        {
+          "key": "PageVisit",
+          "kind": "platform",
+          "entity": "PageVisit",
+          "entityFile": "base44/entities/PageVisit.jsonc",
+          "owner": "pageVisits",
+          "ownerFile": "base44/functions/pageVisits/entry.ts",
+          "identity": ["id", "visitorId", "day"],
+          "personRef": null,
+          "notes": "Anonymous marketing analytics. No companyId by design."
+        },
+        {
+          "key": "UiTranslation",
+          "kind": "platform",
+          "entity": "UiTranslation",
+          "entityFile": "base44/entities/UiTranslation.jsonc",
+          "owner": "uiTranslations",
+          "ownerFile": "base44/functions/uiTranslations/entry.ts",
+          "identity": ["id", "lang"],
+          "personRef": null
+        },
+        {
+          "key": "ProductFeedback",
+          "kind": "entity",
+          "entity": "ProductFeedback",
+          "entityFile": "base44/entities/ProductFeedback.jsonc",
+          "owner": "gmailNotify",
+          "ownerFile": "base44/functions/gmailNotify/entry.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null
+        },
+        {
+          "key": "notifications",
+          "kind": "blob",
+          "blobCategory": "notifications",
+          "storeKey": "notifications",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "userId",
+          "visibility": "self"
+        },
+        {
+          "key": "templates",
+          "kind": "blob",
+          "blobCategory": "templates",
+          "storeKey": "templates",
+          "owner": "settings",
+          "ownerFile": "base44/functions/settings/entry.ts",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "shared"
+        },
+        {
+          "key": "plannerItems",
+          "kind": "blob",
+          "blobCategory": "plannerItems",
+          "storeKey": "plannerItems",
+          "owner": "assistant",
+          "ownerFile": "base44/functions/assistant/entry.ts",
+          "derivation": "base44/shared/assistantDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "userId",
+          "visibility": "self"
+        },
+        {
+          "key": "assistantFacts",
+          "kind": "blob",
+          "blobCategory": "assistantFacts",
+          "owner": "assistant",
+          "ownerFile": "base44/functions/assistant/entry.ts",
+          "derivation": "base44/shared/assistantDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null
+        },
+        {
+          "key": "stationChatGroups",
+          "kind": "store",
+          "storeKey": "stationChatGroups",
+          "owner": "chat",
+          "ownerFile": "base44/functions/chat/entry.ts",
+          "derivation": "base44/shared/chatDerivations.ts",
+          "identity": ["id"],
+          "personRef": null,
+          "notes": "Cached on companyMeta. Live messages: stationChat blob."
+        },
+        {
+          "key": "stationChat",
+          "kind": "blob",
+          "blobCategory": "stationChat",
+          "owner": "chat",
+          "ownerFile": "base44/functions/chat/entry.ts",
+          "derivation": "base44/shared/chatDerivations.ts",
+          "identity": ["id", "companyId"],
+          "personRef": "senderId"
+        },
+        {
+          "key": "cameras",
+          "kind": "dead",
+          "owner": "companyDirectory",
+          "ownerFile": "base44/functions/companyDirectory/entry.ts",
+          "identity": [],
+          "personRef": null,
+          "isolationKey": null,
+          "status": "dead",
+          "notes": "Purged from store.js. Do not add a cameras blob back."
+        }
+      ]
+    }
+  ],
+  "localStorageKeys": [
+    { "key": "powercare_registry", "role": "company list" },
+    { "key": "powercare_company_*", "role": "per-tenant preview cache (COMPANY_ARRAY_KEYS)" },
+    { "key": "powercare_session", "role": "active company session" },
+    { "key": "powercare_tokens", "role": "per-company session tokens" },
+    { "key": "powercare_local_preview", "role": "preview workspace flag" }
+  ],
+  "defects": [
+    {
+      "id": "split-tasks",
+      "severity": "risky",
+      "keys": ["tasks", "operationsTasks"],
+      "canonical": "tasks",
+      "legacy": ["operationsTasks"],
+      "evidence": ["src/lib/store.js:764", "base44/functions/operations/entry.ts:45", "base44/functions/hcm/entry.ts:32", "base44/functions/scores/entry.ts:14", "base44/functions/dailyReport/entry.ts:22"],
+      "summary": "Writes go to tasks. operationsTasks is read-once fallback then persist canonical. Do not dual-write."
+    },
+    {
+      "id": "split-files",
+      "severity": "risky",
+      "keys": ["files", "smartArchive"],
+      "canonical": "files",
+      "legacy": ["smartArchive"],
+      "evidence": ["src/lib/store.js:764", "base44/functions/files/entry.ts:19"],
+      "summary": "Writes go to files. smartArchive is read-once fallback. files function is do-not-invoke-from-frontend."
+    },
+    {
+      "id": "split-reports",
+      "severity": "risky",
+      "keys": ["reports", "reportAnalytics", "dailyReports"],
+      "canonical": "reports",
+      "legacy": ["reportAnalytics", "dailyReports"],
+      "evidence": ["src/lib/store.js:764", "base44/functions/dailyReport/entry.ts:20", "base44/functions/dailyReport/entry.ts:21", "base44/functions/reports/entry.ts:19"],
+      "summary": "Writes go to reports. dailyReports is read-once fallback. reportAnalytics writes are stopped (orphaned analytics shape — do not merge onto the reports array)."
+    },
+    {
+      "id": "split-complaints",
+      "severity": "risky",
+      "keys": ["anonymousReports", "complaintQueue"],
+      "canonical": "anonymousReports",
+      "legacy": ["complaintQueue"],
+      "evidence": ["src/lib/store.js:764", "base44/functions/complaints/entry.ts:21"],
+      "summary": "Writes go to anonymousReports (array). complaintQueue is read-once fallback."
+    },
+    {
+      "id": "split-workproof-shape",
+      "severity": "risky",
+      "keys": ["workProofs", "WorkProof"],
+      "canonical": "workProofs",
+      "legacy": ["WorkProof"],
+      "evidence": ["base44/functions/workproof/entry.ts:22", "src/pages/WorkProof.jsx:75", "base44/entities/WorkProof.jsonc"],
+      "summary": "Live data is the workProofs blob (ref, sealId). WorkProof entity still requires proofNumber/workTitle — a second shape, not the runtime store. No entities.WorkProof reader in functions or src/. Do-not-write the entity."
+    },
+    {
+      "id": "split-attendance",
+      "severity": "risky",
+      "keys": ["personalAttendance", "attendanceLedger"],
+      "canonical": "personalAttendance",
+      "legacy": ["attendanceLedger"],
+      "evidence": ["src/lib/store.js:767", "base44/functions/attendance/entry.ts:16"],
+      "summary": "Writes go to personalAttendance. attendanceLedger is read-once fallback. attendance function is do-not-invoke-from-frontend."
+    },
+    {
+      "id": "split-org",
+      "severity": "risky",
+      "keys": ["orgTree", "orgStructure"],
+      "canonical": "orgTree",
+      "legacy": ["orgStructure"],
+      "evidence": ["src/lib/store.js:768", "base44/functions/org/entry.ts:26"],
+      "summary": "Writes go to orgTree (node array) plus companyMeta.orgBoard extras. orgStructure is read-once fallback."
+    },
+    {
+      "id": "split-budget",
+      "severity": "risky",
+      "keys": ["stationBudgets", "expenseBudget"],
+      "canonical": "stationBudgets",
+      "legacy": ["expenseBudget"],
+      "evidence": ["src/lib/store.js:480", "base44/functions/budget/entry.ts:15"],
+      "summary": "Writes go to stationBudgets. expenseBudget is read-once fallback. Claims persist on ExpenseClaim."
+    },
+    {
+      "id": "split-stock",
+      "severity": "risky",
+      "keys": ["inventoryItems", "stockBoard"],
+      "canonical": "inventoryItems",
+      "legacy": ["stockBoard"],
+      "evidence": ["src/lib/store.js:480", "base44/functions/stock/entry.ts:15"],
+      "summary": "stockBoard writes are stopped. Live preview quantity is inventoryItems via inventoryApi. stock function is do-not-invoke-from-frontend."
+    },
+    {
+      "id": "split-signing",
+      "severity": "risky",
+      "keys": ["signatureRequests", "signingChain"],
+      "canonical": "signatureRequests",
+      "legacy": ["signingChain"],
+      "evidence": ["src/pages/FileSigning.jsx:75", "base44/functions/signing/entry.ts:17"],
+      "summary": "signingChain writes are stopped. Live envelopes are SignatureRequest via multiSign. signing function is do-not-invoke-from-frontend."
+    },
+    {
+      "id": "split-settings",
+      "severity": "risky",
+      "keys": ["companyMeta", "companySettings"],
+      "canonical": "companyMeta",
+      "legacy": ["companySettings"],
+      "evidence": ["src/lib/store.js:690", "base44/functions/settings/entry.ts:17"],
+      "summary": "Writes go to companyMeta. companySettings is read-once fallback."
+    },
+    {
+      "id": "signed-doc-companyId",
+      "severity": "risky",
+      "keys": ["SignedDocument"],
+      "canonical": "SignedDocument",
+      "evidence": ["base44/entities/SignedDocument.jsonc:23", "base44/entities/SignedDocument.jsonc:40"],
+      "summary": "SignedDocument.companyId is optional (not in required). Making it required would break public-verify rows created without a tenant. Do not flip required without a backfill."
+    },
+    {
+      "id": "orphan-function-silos",
+      "severity": "risky",
+      "keys": ["attendanceLedger", "smartArchive", "stockBoard", "signingChain", "reportAnalytics", "dailyReports", "stationChat", "InventoryUnit"],
+      "canonical": null,
+      "evidence": ["src/pages/WorkProof.jsx:75", "src/lib/inventoryApi.js:55"],
+      "summary": "Frontend never invokes attendance, files, stock, signing, reports, dailyReport, chat, or inventory. Folders kept; new writes to parallel keys are stopped. A leftover call must use the owner of the canonical bag."
+    },
+    {
+      "id": "inventory-forced-local",
+      "severity": "risky",
+      "keys": ["inventoryItems"],
+      "canonical": "inventoryItems",
+      "evidence": ["src/lib/inventoryApi.js:55", "src/pages/Inventory.jsx:5"],
+      "summary": "inventoryApi.js calls forceLocalInventory on every request. The inventory function (ProcurementRequest, PurchaseOrder, InventoryUnit) is dark from the UI. Preview store is the live path."
+    },
+    {
+      "id": "inventory-qty-dual",
+      "severity": "risky",
+      "keys": ["inventoryItems", "InventoryUnit"],
+      "canonical": "inventoryItems",
+      "legacy": ["InventoryUnit"],
+      "evidence": ["src/lib/localInventoryFallback.js:58", "base44/functions/inventory/entry.ts:305", "base44/entities/InventoryItem.jsonc"],
+      "summary": "Preview quantity is InventoryItem.locationBalances + quantity. Cloud inventory also writes InventoryUnit rows. Two quantity truths for the same SKU."
+    },
+    {
+      "id": "arbitration-preview-gap",
+      "severity": "fixed",
+      "keys": ["arbitrationOutcomes"],
+      "canonical": "arbitrationOutcomes",
+      "evidence": ["src/components/hr/ArbitrationEngineBoard.jsx:64", "src/lib/store.js", "src/lib/store.js", "base44/functions/compliance/entry.ts:26"],
+      "summary": "arbitrationOutcomes is in COMPANY_ARRAY_KEYS and BLOB_CATEGORIES. listArbitrationOutcomes reads the store bag."
+    },
+    {
+      "id": "preview-blob-gaps",
+      "severity": "info",
+      "keys": ["publishedRotas", "hcmFoundation", "hcmPerformance", "hiringPipeline", "offboardingCustody", "employeeCompliance", "assistantFacts", "stationChat", "competencyCerts", "hseCredits"],
+      "canonical": null,
+      "evidence": ["src/lib/store.js:764", "base44/data/domains.jsonc previewGaps.notInStoreBlobCategories"],
+      "summary": "These CompanyDataBlob categories are owned by functions but are not in store.js BLOB_CATEGORIES. companyDirectory preview sync will not push/pull them. Listed in previewGaps — do not add a second undocumented category."
+    },
+    {
+      "id": "workproof-folder-case",
+      "severity": "fixed-visible",
+      "keys": ["workProofs"],
+      "canonical": "workProofs",
+      "evidence": ["src/pages/WorkProof.jsx:75", "base44/functions/workproof/entry.ts", "base44/functions/workProof/entry.ts"],
+      "summary": "Frontend invokes workproof. A workProof folder listing also exists; on Windows they are the same path. Canonical invoke name: workproof."
+    },
+    {
+      "id": "workproof-signToken",
+      "severity": "fixed",
+      "keys": ["workProofs", "WorkProof"],
+      "canonical": "signatureRequests",
+      "evidence": ["base44/entities/SignatureRequest.jsonc"],
+      "summary": "signToken is not on the WorkProof entity or the workProofs blob. Tokens belong to SignatureRequest / nested otherRequests."
+    },
+    {
+      "id": "hydrate-otherRequests",
+      "severity": "fixed",
+      "keys": ["otherRequests", "employees"],
+      "canonical": "otherRequests",
+      "evidence": ["src/lib/store.js"],
+      "summary": "hydrateEmployeesFromEntity used to drop otherRequests (study_consent, overtime, written consent). Cloud rows survived; the preview cache after hydrate lost the inbox."
+    }
+  ]
+}

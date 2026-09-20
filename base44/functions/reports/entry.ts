@@ -16,7 +16,12 @@ import {
   type TimesheetCloseLike,
 } from "../../shared/reportsDerivations.ts";
 
-const REPORTS_CATEGORY = "reportAnalytics";
+/**
+ * do-not-invoke-from-frontend — daily reports live on the `reports` blob (store + dailyReport).
+ * Do not write `reportAnalytics`. Leftover callers should read `reports`.
+ */
+const REPORTS_CATEGORY = "reports";
+const REPORTS_LEGACY_CATEGORY = "reportAnalytics"; // do-not-write
 
 function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
@@ -71,7 +76,7 @@ Deno.serve(async (req) => {
     const loadBlob = async () => {
       const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({
         companyId: auth.companyId,
-        category: REPORTS_CATEGORY,
+        category: REPORTS_LEGACY_CATEGORY,
       });
       return rows[0] || null;
     };
@@ -100,16 +105,9 @@ Deno.serve(async (req) => {
       return base;
     };
 
-    const savePayload = async (payload: ReportsPayload) => {
-      const blob = await loadBlob();
-      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload });
-      else {
-        await base44.asServiceRole.entities.CompanyDataBlob.create({
-          companyId: auth.companyId,
-          category: REPORTS_CATEGORY,
-          payload,
-        });
-      }
+    const savePayload = async (_payload: ReportsPayload) => {
+      // do-not-write reportAnalytics. Canonical `reports` is the daily-report array —
+      // never persist this analytics object onto that bag.
     };
 
     const audit = async (actionKey: string, details: string, extra: Record<string, unknown> = {}) => {

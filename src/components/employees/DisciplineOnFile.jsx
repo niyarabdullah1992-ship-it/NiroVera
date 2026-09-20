@@ -1,8 +1,11 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { DISCIPLINE_STEPS } from "@/lib/disciplineDerivations";
+import { isErasedFromEmployeeRecord } from "@/lib/disciplineBoard";
 import DisciplineCaseThread from "@/components/employees/DisciplineCaseThread";
+import AppliedLawList from "@/components/shared/AppliedLawList";
 import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
+import { isViewerOwnFile } from "@/lib/employeeFileView";
 
 export default function DisciplineOnFile({
   employee,
@@ -12,19 +15,36 @@ export default function DisciplineOnFile({
   canManage,
   ar,
 }) {
-  const mine = (cases || []).filter((c) => c.employeeId === employee.id);
+  const mine = (cases || []).filter((c) => {
+    if (c.employeeId !== employee.id) return false;
+    if (isViewerOwnFile(employee, currentUser) && isErasedFromEmployeeRecord(c)) return false;
+    return true;
+  });
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 10 }}>
         <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: NAVY }}>
           {ar ? "الجزاءات والتحقيق" : "Sanctions and investigation"}
         </p>
-        {canManage ? (
-          <Link to="/app/discipline" style={{ fontSize: 11, color: MUTED, textDecoration: "none" }}>
-            {ar ? "فتح مسار المواد 66–73 ←" : "Open Articles 66–73 path →"}
-          </Link>
-        ) : null}
+        <Link to="/app/discipline" style={{ fontSize: 11, color: MUTED, textDecoration: "none" }}>
+          {ar ? "فتح مسار المواد 66–73 ←" : "Open Articles 66–73 path →"}
+        </Link>
       </div>
+      <AppliedLawList
+        note={ar
+          ? "هذه حقوقك إن فُتح ملف جزاء. اضغط المادة لقراءة النص الرسمي."
+          : "These are your rights if a sanction file is opened. Press the article to read the official text."}
+        ruleIds={[
+          "discipline.hearing.cite",
+          "discipline.appeal.internalDays",
+          "discipline.charge.maxDays",
+          "discipline.fine.maxDays",
+          "discipline.listedOnly.cite",
+          "discipline.repeat.cooloffDays",
+          "discipline.penalties.cite",
+        ]}
+        ar={ar}
+      />
       {mine.length === 0 ? (
         <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
           {ar
@@ -44,7 +64,7 @@ export default function DisciplineOnFile({
               companyId={companyId}
               currentUser={currentUser}
               canManage={canManage}
-              isSubject={currentUser?.id === employee.id}
+              isSubject={isViewerOwnFile(employee, currentUser)}
               ar={ar}
             />
           </div>

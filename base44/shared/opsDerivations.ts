@@ -2,6 +2,9 @@
  *  Design ref: NiroVera Platform.dc.html class Component (ops / task points / cert gate).
  */
 import { deriveBranchEscalationChain } from "./orgDerivations.ts";
+import { HEAT_BAN_STATE_LEVEL, heatBanWindow, isHeatBanDate, isHeatBanMinuteOfDay } from "./contractLawDerivations.ts";
+import { heatBanDecisionLabel } from "./heatBanDecision.ts";
+import { citeRule, explainRule } from "./laborRules.ts";
 
 export const PRIORITY_VALUE: Record<string, number> = {
   high: 3,
@@ -248,7 +251,8 @@ export function deriveDailyTaskPace({
   const done = Math.max(0, Number(completedCount) || 0);
   const remaining = Math.max(0, target - done);
   const todayKey = isoDayKey(today);
-  const due = isoDayKey(dueAt);
+  // A task with no due date has no time quota — never fabricate today as its deadline.
+  const due = dueAt != null && String(dueAt).trim() ? isoDayKey(dueAt) : "";
   const start = isoDayKey(startAt) || todayKey;
   const plan = normalizePaceDayPlan(paceDayPlan);
   const planEntries = paceDayPlanEntries(plan);
@@ -477,54 +481,127 @@ export function applyOpsPaceDayLog(
   at = new Date().toISOString(),
 ) {
   const day = isoDayKey(at);
-  const add = Math.max(0, Math.round(Number(amount) || 0));
+  const raw = Math.round(Number(amount));
+  const add = Number.isFinite(raw) ? raw : 0;
   const prev = task?.paceDayLog && typeof task.paceDayLog === "object"
     ? task.paceDayLog as Record<string, number>
     : {};
-  const nextVal = Math.max(0, Number(prev[day]) || 0) + add;
+  const nextVal = Math.max(0, (Number(prev[day]) || 0) + add);
   return {
     ...task,
     paceDayLog: { ...prev, [day]: nextVal },
   };
 }
 
-/** Open / derived pace blocker when today's quota is unmet. */
+/** Unsend a task-thread message within three minutes of posting. */
+export const OPS_MESSAGE_DELETE_WINDOW_MS = 3 * 60 * 1000;
+
+export function applyOpsCommentDelete(
+  task: OpsTaskLike & Record<string, unknown>,
+  commentId: string,
+  {
+    now = Date.now(),
+    actorId = "",
+    actorIds = [],
+    windowMs = OPS_MESSAGE_DELETE_WINDOW_MS,
+    lang = "ar",
+  }: { now?: number; actorId?: string; actorIds?: string[]; windowMs?: number; lang?: string } = {},
+) {
+  const id = String(commentId || "").trim();
+  const comments = Array.isArray(task?.comments) ? task.comments as any[] : [];
+  const found = comments.find((c) => String(c?.id || "") === id);
+  if (!found) {
+    return { ok: false as const, error: "COMMENT_NOT_FOUND", reason: lang === "en" ? "Message not found." : "الرسالة غير موجودة." };
+  }
+  if (found.is_auto || found.is_rejection || found.is_escalation) {
+    return {
+      ok: false as const,
+      error: "PROTECTED",
+      reason: lang === "en"
+        ? "Reject and escalation reasons stay on the card so the cause stays visible."
+        : "أسباب الرفض والتصعيد تبقى في البطاقة ليُعرف السبب.",
+    };
+  }
+  const atMs = new Date(found.at || found.createdAt || 0).getTime();
+  const ageMs = Number.isFinite(atMs) ? now - atMs : Infinity;
+  if (ageMs > windowMs) {
+    return { ok: false as const, error: "WINDOW", reason: lang === "en" ? "Messages can only be deleted within 3 minutes of sending." : "انتهت مهلة الثلاث دقائق للحذف." };
+  }
+  const aid = String(found.authorId || found.author_id || "").trim();
+  const actors = new Set([actorId, ...(Array.isArray(actorIds) ? actorIds : [])].map((x) => String(x || "").trim()).filter(Boolean));
+  if (actors.size && aid && !actors.has(aid)) {
+    return { ok: false as const, error: "FORBIDDEN", reason: lang === "en" ? "You can only delete your own message." : "لا تُحذف إلا رسالتك." };
+  }
+  const add = String(found.kind || "") === "log" ? Math.max(0, Math.round(Number(found.amount) || 0)) : 0;
+  const approved = task.status === "completed" || !!(task as { approvedAt?: string }).approvedAt;
+  if (approved && add > 0) {
+    return { ok: false as const, error: "LOCKED", reason: lang === "en" ? "Logged completion cannot be removed after approval." : "لا يُحذف سجل الإنجاز بعد الاعتماد." };
+  }
+  let next: OpsTaskLike & Record<string, unknown> = {
+    ...task,
+    comments: comments.filter((c) => String(c?.id || "") !== id),
+  };
+  if (add > 0) {
+    const nextCount = Math.max(0, (Number(task.completedCount) || 0) - add);
+    const targetN = Math.max(1, Number(task.targetCount) || 1);
+    next.completedCount = nextCount;
+    next.completed_tasks = nextCount;
+    if (task.status === "awaiting_approval" && nextCount < targetN) next.status = "active";
+    next = applyOpsPaceDayLog(next, -add, found.at || found.createdAt);
+  }
+  return { ok: true as const, task: next, comment: found, ageMs };
+}
+
+/**
+ * Remainder card / pace blocker — only after an incomplete log or «بلا إنجاز».
+ * Idle 0 before any action is not a shortfall (would keep the card always on).
+ */
 export function derivePaceBlocker({
   task,
   pace,
   amountJustLogged = 0,
   today = new Date(),
+  applied = false,
+  missed = false,
 }: {
   task?: OpsTaskLike | null;
   pace?: DailyTaskPace | null;
   amountJustLogged?: number;
   today?: Date;
+  applied?: boolean;
+  missed?: boolean;
 } = {}) {
   if (!pace?.active || pace.overdue || pace.notYet) return null;
   const expected = Math.max(0, Number(pace.todayExpected) || 0);
   if (expected <= 0) return null;
   const day = isoDayKey(today);
-  const stored = task?.paceBlocker && typeof task.paceBlocker === "object" ? task.paceBlocker as any : null;
-  if (stored?.status === "resolved" && String(stored.day || "") === day) return null;
-
   const add = Math.max(0, Math.round(Number(amountJustLogged) || 0));
-  const beforeToday = taskPaceLoggedOnDay(task, today);
-  const logged = Math.max(0, beforeToday + add);
-  if (logged >= expected) return null;
+  const onDay = taskPaceLoggedOnDay(task, today);
+  const before = applied ? Math.max(0, onDay - add) : onDay;
+  const logged = Math.max(0, before + add);
+  const stored = task?.paceBlocker && typeof task.paceBlocker === "object" ? task.paceBlocker as any : null;
+  const storedOpenToday = stored?.status === "open" && String(stored.day || "") === day;
+  const entryShort = add > 0 && add < expected;
+  const partialDay = logged > 0 && logged < expected;
+  const declaredMissed = !!missed || (applied && add === 0);
+  if (logged >= expected && !entryShort) return null;
+  if (!entryShort && !partialDay && !declaredMissed && !storedOpenToday) return null;
+  if (!entryShort && !declaredMissed && stored?.status === "resolved" && String(stored.day || "") === day) return null;
 
+  const shown = entryShort ? add : (declaredMissed && logged <= 0 ? 0 : logged);
   const target = Math.max(1, Number(task?.targetCount) || pace?.target || 1);
   const done = Math.max(0, Number(task?.completedCount) || 0);
-  const remainingAfter = Math.max(0, target - done - add);
+  const remainingAfter = Math.max(0, target - done - (applied ? 0 : add));
 
   return {
     day,
     expected,
-    logged,
-    gap: expected - logged,
+    logged: shown,
+    gap: expected - shown,
     remainingAfter,
     daysLeft: pace.daysLeft,
     due: pace.due || "",
-    kind: logged <= 0 ? "missed" as const : "partial" as const,
+    kind: shown <= 0 ? "missed" as const : "partial" as const,
     status: "open" as const,
   };
 }
@@ -542,14 +619,16 @@ export function derivePaceLogShortfall({
   task?: OpsTaskLike | null;
   today?: Date;
 } = {}) {
-  if (task) return derivePaceBlocker({ task, pace, amountJustLogged: amount, today });
+  const add = amount != null ? Number(amount) : 0;
+  const missed = amount != null && !(add > 0);
+  if (task) return derivePaceBlocker({ task, pace, amountJustLogged: add, today, missed });
   const remBefore = remainingBefore != null ? Number(remainingBefore) : pace?.remaining;
   const synthetic = {
     targetCount: pace?.target || 0,
     completedCount: Math.max(0, (Number(pace?.target) || 0) - Math.max(0, remBefore || 0)),
     paceDayLog: {},
   };
-  return derivePaceBlocker({ task: synthetic, pace, amountJustLogged: amount, today });
+  return derivePaceBlocker({ task: synthetic, pace, amountJustLogged: add, today, missed });
 }
 
 export function paceShortfallCopy(
@@ -1406,6 +1485,9 @@ export function applyOpsReject(task: OpsTaskLike & Record<string, unknown>, inpu
 } = {}) {
   const at = input.now || new Date().toISOString();
   const comments = Array.isArray(task.comments) ? task.comments : [];
+  const stored = Math.max(0, Math.round(Number(task.rejectCount) || 0));
+  const fromComments = comments.filter((c: { is_rejection?: boolean }) => c && c.is_rejection).length;
+  const rejectCount = Math.max(stored, fromComments) + 1;
   const entry = {
     id: `rej_${at}`,
     authorId: input.reviewerId || null,
@@ -1420,6 +1502,7 @@ export function applyOpsReject(task: OpsTaskLike & Record<string, unknown>, inpu
     return {
       ...task,
       status: "awaiting_approval",
+      rejectCount,
       escalationLevel: input.nextLevel,
       rejectReason: entry.text,
       escalatedAt: at,
@@ -1429,10 +1512,74 @@ export function applyOpsReject(task: OpsTaskLike & Record<string, unknown>, inpu
   return {
     ...task,
     status: "active",
+    rejectCount,
     completedCount: Math.max(0, (Number(task.completedCount) || 0) - 1),
     rejectReason: entry.text,
     comments: [...comments, entry],
     approvedAt: null,
+  };
+}
+
+export const OPS_EMPLOYEE_ESCALATE_AFTER = 3;
+
+export function opsRejectionCount(task: OpsTaskLike & { rejectCount?: number; comments?: Array<{ is_rejection?: boolean }> }) {
+  const stored = Math.max(0, Math.round(Number(task?.rejectCount) || 0));
+  const fromComments = (Array.isArray(task?.comments) ? task.comments : [])
+    .filter((c) => c && c.is_rejection)
+    .length;
+  return Math.max(stored, fromComments);
+}
+
+export function isOpsTaskAssignee(
+  task: OpsTaskLike & { memberIds?: string[] },
+  user: { id?: string; employeeId?: string } | null,
+) {
+  const uid = String(user?.id || user?.employeeId || "");
+  if (!uid || !task) return false;
+  if (String(taskAssigneeId(task) || "") === uid) return true;
+  const members = Array.isArray(task.memberIds) ? task.memberIds.map(String) : [];
+  return members.includes(uid);
+}
+
+export function canEmployeeEscalateOpsTask(
+  task: OpsTaskLike & { memberIds?: string[]; rejectCount?: number; comments?: Array<{ is_rejection?: boolean }> },
+  user: { id?: string; employeeId?: string } | null,
+  data?: EscalationData | null,
+) {
+  if (!task || isDone(task) || isOpsTaskDeleted(task)) return false;
+  if (isAwaitingApproval(task)) return false;
+  if (!isOpsTaskAssignee(task, user)) return false;
+  if (opsRejectionCount(task) < OPS_EMPLOYEE_ESCALATE_AFTER) return false;
+  return nextOpsEscalation(task, data).escalate;
+}
+
+export function applyOpsEmployeeEscalate(task: OpsTaskLike & Record<string, unknown>, input: {
+  reason?: string;
+  nextLevel?: number;
+  actorId?: string | null;
+  actorName?: string;
+  now?: string;
+} = {}) {
+  const at = input.now || new Date().toISOString();
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  const text = String(input.reason || "").trim() || "تصعيد من المنفّذ بعد ثلاثة رفض.";
+  return {
+    ...task,
+    status: "awaiting_approval",
+    escalationLevel: input.nextLevel,
+    escalatedAt: at,
+    employeeEscalatedAt: at,
+    comments: [...comments, {
+      id: `esc_${at}`,
+      authorId: input.actorId || null,
+      authorName: input.actorName || "",
+      text,
+      isIssue: false,
+      is_rejection: false,
+      is_escalation: true,
+      kind: "employee_escalate",
+      at,
+    }],
   };
 }
 
@@ -1483,13 +1630,14 @@ export function deriveHorizonGroups(tasks: OpsTaskLike[], today = new Date()) {
 }
 
 export function deriveOpsCounts(tasks: OpsTaskLike[], today = new Date()) {
-  const list = (Array.isArray(tasks) ? tasks : []).filter((t) => !isOpsTaskDeleted(t));
-  const done = list.filter((t) => isDone(t)).length;
+  const raw = Array.isArray(tasks) ? tasks : [];
+  const kept = raw.filter((t) => !isOpsTaskDeleted(t));
+  const list = kept.filter((t) => !isDone(t));
+  const done = kept.filter((t) => isDone(t)).length;
   const overdue = list.filter((t) => isOverdue(t, today)).length;
   const dueToday = list.filter((t) => isDueToday(t, today)).length;
   const awaiting = list.filter((t) => isAwaitingApproval(t)).length;
   const escalated = list.filter((t) => isEscalated(t)).length;
-  const active = Math.max(0, list.length - done);
   return {
     total: list.length,
     done,
@@ -1497,9 +1645,9 @@ export function deriveOpsCounts(tasks: OpsTaskLike[], today = new Date()) {
     today: dueToday,
     awaiting,
     escalated,
-    active,
+    active: list.length,
     badge: overdue + awaiting,
-    pointsAwarded: list.reduce((n, t) => n + (Number(t.pointsAwarded) || 0), 0),
+    pointsAwarded: kept.reduce((n, t) => n + (Number(t.pointsAwarded) || 0), 0),
   };
 }
 
@@ -1538,8 +1686,141 @@ export type AssignGatePerson = {
   employeeId: string;
   id?: string;
   name?: string;
+  stationId?: string | null;
+  homeStationId?: string | null;
   certificates?: unknown[];
 };
+
+/** Home workplace of an employee — not the executing station of a task. */
+export function employeeHomeStationId(person?: {
+  homeStationId?: string | null;
+  stationId?: string | null;
+  station_id?: string | null;
+} | null) {
+  return String(person?.homeStationId || person?.stationId || person?.station_id || "").trim();
+}
+
+/**
+ * Temporary dispatch: employee keeps their home branch; the task executes elsewhere.
+ * Not an HR transfer.
+ */
+export function opsVisitorStamp(person: {
+  homeStationId?: string | null;
+  stationId?: string | null;
+  station_id?: string | null;
+  visitor?: boolean;
+} | null | undefined, executeStationId?: string | null) {
+  const homeStationId = employeeHomeStationId(person);
+  const execute = String(executeStationId || "").trim();
+  const visitor = !!(homeStationId && execute && homeStationId !== execute);
+  return { homeStationId: homeStationId || null, visitor };
+}
+
+export function isOpsVisitorTask(task?: {
+  stationId?: string | null;
+  homeStationId?: string | null;
+  visitor?: boolean;
+} | null) {
+  if (!task) return false;
+  return opsVisitorStamp(
+    { homeStationId: task.homeStationId, stationId: task.homeStationId, visitor: task.visitor },
+    task.stationId,
+  ).visitor === true;
+}
+
+export function taskAssignScope(task?: { assignMode?: string | null; memberIds?: string[] | null } | null) {
+  const mode = String(task?.assignMode || "one");
+  if (mode === "all") return "station" as const;
+  if (mode === "some") {
+    const n = (Array.isArray(task?.memberIds) ? task.memberIds : []).filter(Boolean).length;
+    return n === 1 ? "person" as const : "group" as const;
+  }
+  return "person" as const;
+}
+
+export function taskAssignScopeLabel(task?: { assignMode?: string | null; memberIds?: string[] | null } | null, ar = true) {
+  const scope = taskAssignScope(task);
+  if (scope === "station") return ar ? "الفرع" : "Station";
+  if (scope === "group") return ar ? "عدة أشخاص" : "Several people";
+  return ar ? "شخص" : "Person";
+}
+
+export function taskAssigneeIds(task?: {
+  assignMode?: string | null;
+  memberIds?: string[] | null;
+  ownerId?: string | null;
+  employee_id?: string | null;
+  assignedTo?: string | null;
+} | null) {
+  const members = (Array.isArray(task?.memberIds) ? task.memberIds : []).map(String).filter(Boolean);
+  const mode = String(task?.assignMode || "one");
+  if ((mode === "some" || mode === "all") && members.length) {
+    return [...new Set(members)];
+  }
+  const owner = String(task?.ownerId || task?.employee_id || task?.assignedTo || "").trim();
+  if (owner) return [owner];
+  return [...new Set(members)];
+}
+
+export function taskAssigneePeople(
+  task?: {
+    assignMode?: string | null;
+    memberIds?: string[] | null;
+    ownerId?: string | null;
+    employee_id?: string | null;
+    assignedTo?: string | null;
+    ownerName?: string | null;
+  } | null,
+  people: Array<{ id?: string; employeeId?: string; name?: string }> = [],
+) {
+  const ids = taskAssigneeIds(task);
+  const out: Array<{ id: string; name: string }> = [];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const hit = matchOpsPerson(people, id);
+    out.push({ id, name: String(hit?.name || "").trim() || id });
+  }
+  if (!out.length && String(task?.ownerName || "").trim()) {
+    out.push({ id: String(task?.ownerId || "owner"), name: String(task.ownerName).trim() });
+  }
+  return out;
+}
+
+export function taskPeopleCountLabel(count: number, ar = true) {
+  const n = Math.max(0, Number(count) || 0);
+  if (!ar) return n === 1 ? "1 person" : `${n} people`;
+  if (n === 0) return "لا أحد";
+  if (n === 1) return "1 شخص";
+  if (n === 2) return "شخصان";
+  if (n >= 3 && n <= 10) return `${n} أشخاص`;
+  return `${n} شخصًا`;
+}
+
+function matchOpsPerson(people: Array<{ id?: string; employeeId?: string; name?: string }> | undefined, id?: string | null) {
+  const want = String(id || "").trim();
+  if (!want) return null;
+  return (people || []).find((person) => (
+    String(person?.id || "") === want || String(person?.employeeId || "") === want
+  )) || null;
+}
+
+export function taskCreatorName(
+  task?: {
+    createdBy?: string | null;
+    createdByName?: string | null;
+    actionLog?: Array<{ type?: string; byName?: string }>;
+  } | null,
+  people: Array<{ id?: string; employeeId?: string; name?: string }> = [],
+) {
+  const named = String(task?.createdByName || "").trim();
+  if (named) return named;
+  const fromLog = (Array.isArray(task?.actionLog) ? task.actionLog : []).find((entry) => entry?.type === "create");
+  const logName = String(fromLog?.byName || "").trim();
+  if (logName) return logName;
+  return String(matchOpsPerson(people, task?.createdBy)?.name || "").trim();
+}
 
 /**
  * Server-side assignment gate. Validates that an owner/team exists in the
@@ -1788,8 +2069,6 @@ export function canReassignOpsTask(
 ) {
   if (!user || !task) return false;
   if (isDone(task) || isAwaitingApproval(task)) return false;
-  const mode = task.assignMode || "one";
-  if (mode !== "one" && !taskAssigneeId(task)) return false;
   const uid = user.id || user.employeeId;
   const isOwner = user.role === "owner" || user.isOwner || user.admin
     || (data?.ownerId && uid && String(uid) === String(data.ownerId));
@@ -1942,6 +2221,9 @@ export function applyOpsReassign(task: OpsTaskLike & Record<string, unknown>, in
   fromName?: string;
   toName?: string;
   byName?: string;
+  homeStationId?: string | null;
+  toStationId?: string | null;
+  visitor?: boolean;
   lang?: "ar" | "en";
 } = { toId: "" }) {
   const delegatedAtRaw = String(input.delegatedAt || input.at || "").trim().slice(0, 10);
@@ -1975,6 +2257,11 @@ export function applyOpsReassign(task: OpsTaskLike & Record<string, unknown>, in
   };
   const comments = Array.isArray(task.comments) ? task.comments : [];
   const note = assignmentHistoryNote(entry, input.lang === "en" ? "en" : "ar");
+  const visit = opsVisitorStamp({
+    homeStationId: input.homeStationId,
+    stationId: input.toStationId || input.homeStationId,
+    visitor: input.visitor,
+  }, task.stationId);
   const prevLog = Array.isArray((task as any).actionLog) ? (task as any).actionLog : [];
   const base = {
     ...task,
@@ -1982,6 +2269,10 @@ export function applyOpsReassign(task: OpsTaskLike & Record<string, unknown>, in
     assignedTo: toId,
     employee_id: toId,
     ownerName: entry.toName || task.ownerName,
+    assignMode: "one",
+    memberIds: [],
+    homeStationId: visit.homeStationId,
+    visitor: visit.visitor,
     assignmentHistory: [...(Array.isArray(task.assignmentHistory) ? task.assignmentHistory as AssignmentHistoryEntry[] : []), entry],
     actionLog: [
       ...prevLog,
@@ -2380,6 +2671,193 @@ export function riyadhHour(now = new Date()) {
   return Number(parts.find((p) => p.type === "hour")?.value || 0);
 }
 
+/** Riyadh wall clock of an instant — never the browser's zone. */
+export function riyadhClock(now: Date | string | number = new Date()) {
+  const at = now instanceof Date ? now : new Date(now);
+  if (Number.isNaN(at.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Riyadh",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(at);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value || 0);
+  const minute = Number(parts.find((p) => p.type === "minute")?.value || 0);
+  return {
+    dayKey: riyadhDayKey(at),
+    hour,
+    minute,
+    minutes: hour * 60 + minute,
+    label: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
+  };
+}
+
+/**
+ * Task nature — three surfaces, not two. `remote` waives the site fingerprint;
+ * `field` is open-air work the ministerial sun ban reaches; `onsite` is indoor
+ * work at the facility, which the ban does not touch. The work kind cannot
+ * stand in for this: the default kind is عام, and an office task would read as
+ * open air.
+ */
+export const TASK_MODES = [
+  { id: "onsite", ar: "حضوري داخل المنشأة", en: "On-site · indoors" },
+  { id: "field", ar: "ميداني في الهواء الطلق", en: "Field · open air" },
+  { id: "remote", ar: "عن بُعد", en: "Remote" },
+] as const;
+
+export type TaskMode = (typeof TASK_MODES)[number]["id"];
+
+export function normalizeTaskMode(value: unknown): TaskMode | "" {
+  const raw = String(value ?? "").trim().toLowerCase();
+  return (TASK_MODES.some((m) => m.id === raw) ? raw : "") as TaskMode | "";
+}
+
+export function taskModeLabel(value: unknown, lang: "ar" | "en" = "ar") {
+  const row = TASK_MODES.find((m) => m.id === normalizeTaskMode(value));
+  if (!row) return lang === "ar" ? "طبيعة غير محدَّدة" : "Nature not set";
+  return lang === "ar" ? row.ar : row.en;
+}
+
+/** The place is stated, never defaulted — a silent onsite would decide the sun ban for the crew. */
+export function checkTaskModeGate(value: unknown, lang: "ar" | "en" = "ar") {
+  const mode = normalizeTaskMode(value);
+  if (mode) return { ok: true as const, mode };
+  return {
+    ok: false as const,
+    error: "TASK_MODE_REQUIRED",
+    reason: "حدِّد مكان التنفيذ: حضوري داخل المنشأة، أو ميداني في الهواء الطلق، أو عن بُعد. الميداني وحده يخضع لحظر العمل تحت أشعة الشمس.",
+    reasonEn: "State where the work happens: on-site indoors, field in the open air, or remote. Only field work falls under the midday sun ban.",
+    lang,
+  };
+}
+
+/** Open-air field work — the nature the supervisor chose, not a guess from the work kind. */
+export function isOutdoorFieldTask(task: { mode?: string | null } | null | undefined) {
+  if (!task || typeof task !== "object") return false;
+  return normalizeTaskMode(task.mode) === "field";
+}
+
+/** Field work is still at a site: only remote waives today's check-in. */
+export function taskWaivesSiteAttendance(task: { mode?: string | null } | null | undefined) {
+  return normalizeTaskMode(task?.mode) === "remote";
+}
+
+/**
+ * What the chosen place actually costs at logging time — the attendance stamp and
+ * the sun ban, with the banned hours named. One source, so the create form, the
+ * switch dialog and the task card cannot drift apart.
+ */
+export function taskModeConsequence(
+  value: unknown,
+  { ar = true, onDate }: { ar?: boolean; onDate?: string | Date | null } = {},
+) {
+  const mode = normalizeTaskMode(value);
+  if (!mode) return "";
+  if (mode === "remote") {
+    return ar
+      ? "لا تُطلب بصمة موقع، والإثبات يبقى مطلوباً عند التسجيل."
+      : "No site check-in is required, and proof is still required to log.";
+  }
+  if (mode === "onsite") {
+    return ar
+      ? "التسجيل يتطلب بصمة اليوم، وحظر العمل تحت أشعة الشمس لا يسري."
+      : "Logging requires today's check-in, and the sun ban does not apply.";
+  }
+  const win = heatBanWindow(onDate);
+  return ar
+    ? `التسجيل يتطلب بصمة اليوم، ويُرفض بين ${win.startLabel} و${win.endLabel} ${win.seasonAr} — حظر العمل تحت أشعة الشمس.`
+    : `Logging requires today's check-in, and is refused between ${win.startLabel} and ${win.endLabel} ${win.seasonEn} — the sun ban.`;
+}
+
+/**
+ * Ministerial midday sun ban on the logged unit — Proof Cycle step 2.
+ * A logged field unit is a realized fact carrying place and time, so it is
+ * refused inside the window. Merely holding a task that spans the window is
+ * lawful — the hands may work before it opens or after it closes — so creation
+ * only carries the named notice below.
+ */
+export function checkTaskHeatBanGate(
+  task: { mode?: string | null } | null | undefined,
+  { now = new Date(), amount = 1 }: { now?: Date | string | number; amount?: unknown } = {},
+) {
+  if (Math.max(0, Math.round(Number(amount) || 0)) < 1) return { ok: true as const, skipped: "no_unit" as const };
+  if (!isOutdoorFieldTask(task)) return { ok: true as const, skipped: "not_outdoor" as const };
+  const clock = riyadhClock(now);
+  if (!clock) return { ok: true as const, skipped: "no_clock" as const };
+  if (!isHeatBanDate(clock.dayKey)) return { ok: true as const, skipped: "off_season" as const };
+  if (!isHeatBanMinuteOfDay(clock.minutes, clock.dayKey)) return { ok: true as const, skipped: "off_window" as const };
+  const win = heatBanWindow(clock.dayKey);
+  const badge = explainRule("hours.heat.startHour", clock.dayKey);
+  // The hours are decision 3337's; the cited article is only the basis it was issued on.
+  const cite = citeRule("hours.heat.cite", clock.dayKey);
+  return {
+    ok: false as const,
+    error: "HEAT_BAN",
+    ruleId: "hours.heat.startHour",
+    labelAr: badge?.labelAr || "قرار وزاري",
+    labelEn: badge?.labelEn || "Ministerial decision",
+    cite,
+    dayKey: clock.dayKey,
+    at: clock.label,
+    window: win,
+    reason: `موقوف — حظر العمل تحت أشعة الشمس: لا يُسجَّل إنجاز ميداني بين ${win.startLabel} و${win.endLabel} بتوقيت الرياض ${win.seasonAr}. الوقت الآن ${clock.label}، فسجّل الإنجاز بعد ${win.endLabel}. الساعتان والموسم من ${heatBanDecisionLabel(true)}، الصادر على ${cite?.labelAr || "نظام العمل"}.`,
+    reasonEn: `Blocked — midday sun ban: no field completion may be logged between ${win.startLabel} and ${win.endLabel} Riyadh time ${win.seasonEn}. It is now ${clock.label} — log after ${win.endLabel}. The hours and the season come from ${heatBanDecisionLabel(false)}, issued on ${cite?.labelEn || "the Labour Law"}.`,
+  };
+}
+
+/**
+ * Named creation notice — never a block, because holding the task is lawful
+ * whatever the clock says. Severity follows the task's own span: `alert` when it
+ * touches the ban season, `cite` when it does not, so the open-air place still
+ * carries the decision as reference without borrowing an alarm it has not
+ * earned. The heavier `block` level belongs to `checkTaskHeatBanGate` alone.
+ */
+export function deriveTaskHeatBanNotice(
+  task: { mode?: string | null; startAt?: string | null; dueAt?: string | null } | null | undefined,
+  { startAt, dueAt }: { startAt?: string | null; dueAt?: string | null } = {},
+) {
+  if (!isOutdoorFieldTask(task)) return null;
+  const from = isoDayKey(startAt ?? task?.startAt) || isoDayKey(new Date());
+  const to = isoDayKey(dueAt ?? task?.dueAt) || from;
+  if (!from || !to || to < from) return null;
+  let day = from;
+  let hit = false;
+  for (let guard = 0; guard < 400 && day <= to; guard += 1) {
+    if (isHeatBanDate(day)) { hit = true; break; }
+    const next = new Date(`${day}T00:00:00`);
+    next.setDate(next.getDate() + 1);
+    day = isoDayKey(next);
+  }
+  const onDay = hit ? day : from;
+  const win = heatBanWindow(onDay);
+  const badge = explainRule("hours.heat.startHour", onDay);
+  const cite = citeRule("hours.heat.cite", onDay);
+  const shared = {
+    ruleId: "hours.heat.startHour",
+    labelAr: badge?.labelAr || "قرار وزاري",
+    labelEn: badge?.labelEn || "Ministerial decision",
+    cite,
+    window: win,
+    inSeason: hit,
+  };
+  if (!hit) {
+    return {
+      ...shared,
+      id: "heat_ban_off_season",
+      level: HEAT_BAN_STATE_LEVEL.off_season,
+      textAr: `مدة هذه المهمة خارج موسم حظر العمل تحت أشعة الشمس ${win.seasonAr}، فلا ساعة موقوفة عليها. النافذة ${win.startLabel}–${win.endLabel} داخل الموسم — ${heatBanDecisionLabel(true)}.`,
+      textEn: `This task's window falls outside the sun-ban season ${win.seasonEn}, so no hour on it is stopped. The banned window is ${win.startLabel}–${win.endLabel} inside the season — ${heatBanDecisionLabel(false)}.`,
+    };
+  }
+  return {
+    ...shared,
+    id: "heat_ban",
+    level: HEAT_BAN_STATE_LEVEL.before_window,
+    textAr: `مدة هذه المهمة تمسّ موسم حظر العمل تحت أشعة الشمس ${win.seasonAr} — ${heatBanDecisionLabel(true)}. الإسناد جائز، والتنفيذ الميداني خارج ${win.startLabel}–${win.endLabel}؛ أما تسجيل إنجاز ميداني داخل النافذة فمرفوض.`,
+    textEn: `This task's window touches the midday sun-ban season ${win.seasonEn}. Assignment is allowed and field work may run outside ${win.startLabel}–${win.endLabel}; logging a field completion inside the window is refused.`,
+  };
+}
+
 export function cumulativePaceExpected(pace: DailyTaskPace | null | undefined, today = new Date()) {
   if (!pace?.active) return 0;
   const todayKey = isoDayKey(today);
@@ -2550,49 +3028,72 @@ export function canUndoOpsAction(task: OpsTaskLike | null | undefined, { now = D
   return false;
 }
 
-export function applyOpsSoftDelete(task: OpsTaskLike, input: { at?: string; byId?: string | null; byName?: string } = {}) {
+export function applyOpsSoftDelete(task: OpsTaskLike, input: {
+  at?: string;
+  byId?: string | null;
+  byName?: string;
+  reason?: string;
+  ack?: boolean;
+  undoCreate?: boolean;
+} = {}) {
   const at = input.at || new Date().toISOString();
+  const why = String(input.reason || "").trim();
+  const logged = Math.max(0, Number(task.completedCount) || 0);
   const prevLog = Array.isArray((task as any).actionLog) ? (task as any).actionLog : [];
   return {
     ...task,
     status: "cancelled",
     deletedAt: at,
     deletedBy: input.byId || null,
+    deletedByName: input.byName || "",
+    deleteReason: why,
+    deleteAck: input.ack !== false,
     actionLog: [
       ...prevLog,
       {
         id: `del_${at}`,
-        type: "undo_create",
+        type: input.undoCreate ? "undo_create" : "delete",
         at,
         byId: input.byId || null,
         byName: input.byName || "",
+        reason: why,
+        ack: input.ack !== false,
+        loggedCount: logged,
       },
     ],
   };
 }
 
-export function checkDeleteOpsTaskGate(task: OpsTaskLike | null | undefined, user: any, { now = Date.now() }: { now?: number } = {}) {
+export function canDeleteOpsTask(task: OpsTaskLike | null | undefined, user: any) {
+  if (!task || isOpsTaskDeleted(task) || isDone(task) || isAwaitingApproval(task)) return false;
+  const uid = String(user?.id || user?.employeeId || "");
+  const creator = String((task as any).createdBy || "");
+  const manager = !!(user && (
+    user.role === "owner" || user.isOwner || user.admin
+    || ["director", "ops_manager", "pgm", "station_manager"].includes(user.role)
+  ));
+  if (manager) return true;
+  return !!(uid && creator && uid === creator);
+}
+
+export function checkDeleteOpsTaskGate(task: OpsTaskLike | null | undefined, user: any, {
+  now = Date.now(),
+  reason = "",
+  ack = false,
+  undoCreate = false,
+}: { now?: number; reason?: string; ack?: boolean; undoCreate?: boolean } = {}) {
   if (!task) {
     return { ok: false, error: "TASK_REQUIRED", reason: "المهمة غير موجودة.", reasonEn: "The task was not found." };
   }
   if (isOpsTaskDeleted(task)) {
     return { ok: false, error: "ALREADY_DELETED", reason: "المهمة محذوفة أصلًا.", reasonEn: "The task is already deleted." };
   }
-  if ((Number(task.completedCount) || 0) > 0 || task.approvedAt || isDone(task) || isAwaitingApproval(task)) {
+  if (isDone(task) || isAwaitingApproval(task)) {
     return {
       ok: false,
       error: "PROOF_CHAIN_LOCKED",
-      reason: "بعد تسجيل إنجاز أو اعتماد لا يُحذف — سلسلة الإثبات تبقى.",
-      reasonEn: "After a completion log or approval the task cannot be deleted — the proof chain stays.",
-    };
-  }
-  const undo = canUndoOpsAction(task, { now });
-  if (!undo || undo.target !== "create") {
-    return {
-      ok: false,
-      error: "UNDO_WINDOW_CLOSED",
-      reason: "انتهت مهلة الثلاث دقائق للحذف.",
-      reasonEn: "The 3-minute delete window has closed.",
+      reason: "بعد الاعتماد أو انتظار الاعتماد لا يُحذف الإثبات — يبقى في الأرشيف.",
+      reasonEn: "After approval or while awaiting review the proof cannot be deleted — it stays in the archive.",
     };
   }
   const uid = String(user?.id || user?.employeeId || "");
@@ -2605,17 +3106,49 @@ export function checkDeleteOpsTaskGate(task: OpsTaskLike | null | undefined, use
     return {
       ok: false,
       error: "DELETE_FORBIDDEN",
-      reason: "الحذف لمن أنشأ المهمة أو للمدير خلال المهلة فقط.",
-      reasonEn: "Only the creator or a manager can delete within the window.",
+      reason: "الحذف لمن أنشأ المهمة أو للمدير.",
+      reasonEn: "Only the creator or a manager can delete the task.",
     };
   }
-  return { ok: true, target: "create" };
+  if (undoCreate) {
+    if ((Number(task.completedCount) || 0) > 0) {
+      return {
+        ok: false,
+        error: "REASON_REQUIRED",
+        reason: "سُجّل إنجاز جزئي — احذف بسبب وإقرار ليبقى في سجل التدقيق.",
+        reasonEn: "Partial completion is logged — delete with a reason and acknowledgement so it stays in the audit trail.",
+      };
+    }
+    const undo = canUndoOpsAction(task, { now });
+    if (!undo || undo.target !== "create") {
+      return {
+        ok: false,
+        error: "UNDO_WINDOW_CLOSED",
+        reason: "انتهت مهلة الثلاث دقائق للتراجع السريع.",
+        reasonEn: "The 3-minute quick-undo window has closed.",
+      };
+    }
+    return { ok: true, target: "create", undoCreate: true };
+  }
+  const why = String(reason || "").trim();
+  if (!why) {
+    return { ok: false, error: "REASON_REQUIRED", reason: "اكتب سبب الحذف.", reasonEn: "Write the deletion reason." };
+  }
+  if (!ack) {
+    return {
+      ok: false,
+      error: "ACK_REQUIRED",
+      reason: "أقرّ أن الحذف يُبقي المهمة في سجل التدقيق.",
+      reasonEn: "Acknowledge that deletion keeps the task in the audit trail.",
+    };
+  }
+  return { ok: true, target: "delete", reason: why };
 }
 
 export function buildTaskAuditTimeline(task: OpsTaskLike | null | undefined, lang = "ar") {
   if (!task) return [];
   const ar = lang === "ar";
-  const rows: Array<{ id: string; type: string; at: string; when: string; by: string; tone: string; text: string }> = [];
+  const rows: Array<{ id: string; type: string; at: string; when: string; by: string; tone: string; text: string; reason?: string }> = [];
   const createdAt = (task as any).createdAt || (task as any).created_date;
   if (createdAt) {
     rows.push({
@@ -2642,9 +3175,8 @@ export function buildTaskAuditTimeline(task: OpsTaskLike | null | undefined, lan
     });
   }
   for (const entry of (Array.isArray((task as any).actionLog) ? (task as any).actionLog : [])) {
-    if (!entry || entry.type === "create") continue;
+    if (!entry || entry.type === "create" || entry.type === "delete" || entry.type === "undo_create") continue;
     const labelMap: Record<string, string> = {
-      undo_create: ar ? "حُذفت المهمة ضمن مهلة التراجع" : "Task deleted within the undo window",
       undo: ar ? `تُراجع إجراء: ${entry.undoneType || "—"}` : `Undid action: ${entry.undoneType || "—"}`,
       extend: ar ? `مُدّد الموعد إلى ${entry.toDue || "—"}` : `Due extended to ${entry.toDue || "—"}`,
       redistribute_pace: ar ? "وُزِّع المتبقي على الأيام" : "Remainder redistributed across days",
@@ -2660,7 +3192,8 @@ export function buildTaskAuditTimeline(task: OpsTaskLike | null | undefined, lan
       at: entry.at,
       when: formatAuditWhen(entry.at),
       by: entry.byName || "",
-      tone: entry.type === "undo_create" ? "#DC2626" : "#64748B",
+      reason: String(entry.reason || "").trim(),
+      tone: "#64748B",
       text: labelMap[entry.type] || entry.type,
     });
   }
@@ -2675,15 +3208,34 @@ export function buildTaskAuditTimeline(task: OpsTaskLike | null | undefined, lan
       text: ar ? "اعتُمد الإنجاز" : "Completion approved",
     });
   }
-  if ((task as any).deletedAt) {
+  const deleteLog = (Array.isArray((task as any).actionLog) ? (task as any).actionLog : [])
+    .find((entry: any) => entry && (entry.type === "delete" || entry.type === "undo_create"));
+  if ((task as any).deletedAt || deleteLog) {
+    const at = (task as any).deletedAt || deleteLog.at;
+    const why = String((task as any).deleteReason || deleteLog?.reason || "").trim();
+    const logged = Math.max(0, Number(deleteLog?.loggedCount ?? task.completedCount) || 0);
+    const target = Math.max(1, Number(task.targetCount) || 1);
+    const who = String((task as any).deletedByName || deleteLog?.byName || "").trim();
+    const byLine = who ? (ar ? ` بواسطة ${who}` : ` by ${who}`) : "";
+    let text = ar ? `حُذفت المهمة${byLine}` : `Task deleted${byLine}`;
+    if (logged > 0) {
+      text = ar
+        ? `حُذفت المهمة${byLine} — الإنجاز المسجّل ${logged}/${target} يبقى في السجل`
+        : `Task deleted${byLine} — logged progress ${logged}/${target} stays in the record`;
+    } else if (deleteLog?.type === "undo_create") {
+      text = ar
+        ? `حُذفت المهمة ضمن مهلة التراجع${byLine}`
+        : `Task deleted within the undo window${byLine}`;
+    }
     rows.push({
-      id: "deleted",
+      id: deleteLog?.id || "deleted",
       type: "delete",
-      at: (task as any).deletedAt,
-      when: formatAuditWhen((task as any).deletedAt),
-      by: "",
+      at,
+      when: formatAuditWhen(at),
+      by: who,
+      reason: why,
       tone: "#DC2626",
-      text: ar ? "أُرشفت بعد الحذف" : "Archived after delete",
+      text,
     });
   }
   return rows

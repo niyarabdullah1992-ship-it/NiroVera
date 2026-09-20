@@ -1,12 +1,8 @@
 import React from "react";
-import { ORG_CHAIN } from "@/lib/orgChain";
 import { ORG_GREEN } from "@/lib/orgWorkspaceStyles";
 
-/** Health signals only — tab counts live on the step bar; guidance is the next action. */
+/** Health signals only — tab counts live on the step bar. */
 export default function OrgChainStrip({ ar, onTool, health, next }) {
-  const nextLabel = ar ? (next?.ar || "") : (next?.en || "");
-  const nextStep = ORG_CHAIN.find((step) => step.value === next?.tab);
-  const jump = Boolean(next?.tab);
   const chainComplete = next?.tone === "green";
 
   const metrics = [
@@ -54,15 +50,8 @@ export default function OrgChainStrip({ ar, onTool, health, next }) {
           <span className="nv-org-chain__ready" style={{ color: ORG_GREEN }}>
             {ar ? "مكتمل" : "Complete"}
           </span>
-        ) : jump ? (
-          <button type="button" className="nv-org-chain__next" onClick={() => onTool?.(next.tab)}>
-            {ar ? `متابعة · ${nextStep?.ar || ""}` : `Continue · ${nextStep?.en || ""}`}
-          </button>
         ) : null}
       </div>
-      {!chainComplete && nextLabel ? (
-        <p className="nv-org-chain__copy">{nextLabel}</p>
-      ) : null}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-﻿/** Station chat (المحادثات التشغيلية) — channel list, unread counts, named send gates.
+/** Station chat (المحادثات التشغيلية) — channel list, unread counts, named send gates.
  *  Design: NiroVera Platform.dc.html (isChat / channels / messages / Enter-sends).
  *  Messages and unread badges are derived server-side within companyId + station scope.
  */
@@ -32,6 +32,13 @@ export type ChatChannel = {
   accent?: string;
 };
 
+export type ChatAttachment = {
+  url: string;
+  name: string;
+  type: string;
+  durationSec?: number;
+};
+
 export type ChatMessage = {
   id: string;
   companyId?: string;
@@ -39,6 +46,7 @@ export type ChatMessage = {
   authorId?: string | null;
   authorName: string;
   text: string;
+  files?: ChatAttachment[];
   attachmentRef?: string | null;
   createdAt: string;
 };
@@ -197,6 +205,21 @@ export function unreadForChannel(
   }).length;
 }
 
+export function isAudioChatFile(file?: { type?: string; name?: string } | null): boolean {
+  if (!file) return false;
+  return /^audio\//i.test(String(file.type || ""))
+    || /\.(webm|mp3|wav|m4a|ogg)$/i.test(String(file.name || ""));
+}
+
+export function messagePreview(msg?: ChatMessage | null): string {
+  const text = String(msg?.text || "").trim();
+  if (text) return text;
+  const files = Array.isArray(msg?.files) ? msg.files : [];
+  if (files.some(isAudioChatFile)) return "مقطع صوتي";
+  if (files[0]?.name) return String(files[0].name);
+  return "";
+}
+
 export function deriveChannelRow(
   channel: ChatChannel,
   messages: ChatMessage[],
@@ -210,7 +233,7 @@ export function deriveChannelRow(
   const inScope = actorCanAccessChannel(channel, actor, opts);
   return {
     ...channel,
-    preview: last?.text || "",
+    preview: messagePreview(last),
     unread: inScope
       ? unreadForChannel(messages, channel.id, seenAt, companyId, actor?.userId)
       : 0,
@@ -342,8 +365,8 @@ export function checkSendGate(input: {
     return {
       ok: false,
       error: "EMPTY_MESSAGE",
-      reason: "اكتب رسالة أو أرفق ملفًا قبل الإرسال.",
-      reasonEn: "Enter a message or attach a file before sending.",
+      reason: "اكتب رسالة أو أرفق ملفًا أو مقطعًا صوتيًا قبل الإرسال.",
+      reasonEn: "Enter a message, attach a file, or send a voice note.",
     };
   }
 

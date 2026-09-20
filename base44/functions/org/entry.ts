@@ -23,7 +23,9 @@ import {
   type ScopeCode,
 } from "../../shared/orgDerivations.ts";
 
-const ORG_CATEGORY = "orgStructure";
+const ORG_CATEGORY = "orgTree";
+const ORG_LEGACY_CATEGORY = "orgStructure"; // do-not-write — read fallback only
+const META_CATEGORY = "companyMeta";
 
 function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
@@ -80,22 +82,44 @@ Deno.serve(async (req) => {
     const seniorRoles = ["owner", "director", "ops_manager", "pgm", "admin"];
     const isSenior = auth.owner || auth.admin || seniorRoles.includes(auth.role);
 
-    const loadBlob = async () => {
+    const loadBlob = async (category: string) => {
       const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({
         companyId: auth.companyId,
-        category: ORG_CATEGORY,
+        category,
       });
       return rows[0] || null;
     };
 
+    const metaRecord = (raw: unknown) => {
+      if (Array.isArray(raw)) return raw[0] && typeof raw[0] === "object" ? raw[0] as Record<string, unknown> : {};
+      return raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    };
+
     const loadPayload = async (): Promise<OrgPayload> => {
-      const blob = await loadBlob();
-      const raw = blob?.payload && typeof blob.payload === "object" ? blob.payload : {};
+      const treeBlob = await loadBlob(ORG_CATEGORY);
+      const treeRaw = treeBlob?.payload;
+      const treeNodesFromCanon = Array.isArray(treeRaw)
+        ? treeRaw
+        : (treeRaw && typeof treeRaw === "object" && Array.isArray((treeRaw as { treeNodes?: unknown[] }).treeNodes)
+          ? (treeRaw as { treeNodes: unknown[] }).treeNodes
+          : (treeRaw && typeof treeRaw === "object" && Array.isArray((treeRaw as { nodes?: unknown[] }).nodes)
+            ? (treeRaw as { nodes: unknown[] }).nodes
+            : []));
+      const metaBlob = await loadBlob(META_CATEGORY);
+      const meta = metaRecord(metaBlob?.payload);
+      const board = meta.orgBoard && typeof meta.orgBoard === "object" ? meta.orgBoard as Record<string, unknown> : {};
+      let raw: Record<string, unknown> = { ...board };
+      if (!treeNodesFromCanon.length && !Array.isArray(board.branches) && !board.permOverrides) {
+        const legacy = await loadBlob(ORG_LEGACY_CATEGORY);
+        raw = legacy?.payload && typeof legacy.payload === "object" && !Array.isArray(legacy.payload)
+          ? legacy.payload as Record<string, unknown>
+          : raw;
+      }
       const base = emptyPayload();
       base.branches = (Array.isArray(raw.branches) ? raw.branches : [])
         .filter((b: BranchLike & { companyId?: string }) => b && b.companyId === auth.companyId && b.id)
         .map((b: BranchLike & { companyId: string }) => normalizeBranchRow(b));
-      base.treeNodes = (Array.isArray(raw.treeNodes) ? raw.treeNodes : []).filter(
+      base.treeNodes = (treeNodesFromCanon.length ? treeNodesFromCanon : (Array.isArray(raw.treeNodes) ? raw.treeNodes : [])).filter(
         (n: OrgNodeLike & { companyId?: string }) => n && (!n.companyId || n.companyId === auth.companyId) && n.id,
       );
       const overrides: Record<string, PermOverride> = {};
@@ -118,13 +142,36 @@ Deno.serve(async (req) => {
     };
 
     const savePayload = async (payload: OrgPayload) => {
-      const blob = await loadBlob();
-      if (blob) await base44.asServiceRole.entities.CompanyDataBlob.update(blob.id, { payload });
+      const treeBlob = await loadBlob(ORG_CATEGORY);
+      const existingTree = Array.isArray(treeBlob?.payload) ? treeBlob.payload : [];
+      const tree = (payload.treeNodes || []).length ? payload.treeNodes : existingTree;
+      if (treeBlob) await base44.asServiceRole.entities.CompanyDataBlob.update(treeBlob.id, { payload: tree });
       else {
         await base44.asServiceRole.entities.CompanyDataBlob.create({
           companyId: auth.companyId,
           category: ORG_CATEGORY,
-          payload,
+          payload: tree,
+        });
+      }
+      const extras = {
+        branches: payload.branches,
+        permOverrides: payload.permOverrides,
+        delegations: payload.delegations,
+        knownTitles: payload.knownTitles || [],
+        removedTitles: payload.removedTitles || [],
+      };
+      const metaBlob = await loadBlob(META_CATEGORY);
+      const meta = metaRecord(metaBlob?.payload);
+      const nextMeta = { ...meta, id: meta.id || "meta", orgBoard: extras };
+      const metaPayload = Array.isArray(metaBlob?.payload)
+        ? [{ ...metaRecord(metaBlob.payload), ...nextMeta }]
+        : [nextMeta];
+      if (metaBlob) await base44.asServiceRole.entities.CompanyDataBlob.update(metaBlob.id, { payload: metaPayload });
+      else {
+        await base44.asServiceRole.entities.CompanyDataBlob.create({
+          companyId: auth.companyId,
+          category: META_CATEGORY,
+          payload: metaPayload,
         });
       }
     };

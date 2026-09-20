@@ -76,28 +76,100 @@ Deno.serve(async (req) => {
       if (!/^[0-9a-f]{64}$/.test(fileHash)) {
         return Response.json({ error: 'A valid SHA-256 fileHash is required' }, { status: 400 });
       }
-      const byHash = await Docs.filter({ fileHash });
-      if (byHash.length > 0) {
-        const r = byHash[0];
-        return Response.json({
-          status: 'valid',
-          verificationId: r.verificationId,
-          signerName: r.signerName,
-          fileName: r.fileName,
-          signedAt: r.signedAt || r.created_date,
-        });
-      }
-      // Hash not found — if the user typed the badge's verification ID and it exists,
-      // the badge was lifted from another file → tampered.
       const verificationId = String(body.verificationId || '').slice(0, 40);
-      if (verificationId) {
-        const byId = await Docs.filter({ verificationId });
-        if (byId.length > 0) {
-          const r = byId[0];
-          return Response.json({ status: 'tampered', signerName: r.signerName, signedAt: r.signedAt || r.created_date });
-        }
+      const publicOf = (r, extra = {}) => ({
+        verificationId: r.verificationId || null,
+        signerName: r.signerName || null,
+        fileName: r.fileName || null,
+        signedAt: r.signedAt || r.created_date || null,
+        uploadedHash: fileHash,
+        registryHash: r.fileHash || '',
+        ...extra,
+      });
+      const byHash = await Docs.filter({ fileHash });
+      const byId = verificationId ? await Docs.filter({ verificationId }) : [];
+      if (byHash.length && byId.length && byHash[0].verificationId !== byId[0].verificationId) {
+        return Response.json({ status: 'reuse', kind: 'reuse', ...publicOf(byId[0], { originalFileName: byId[0].fileName }) });
       }
-      return Response.json({ status: 'unknown' });
+      if (byHash.length > 0) {
+        return Response.json({ status: 'valid', kind: 'ok', ...publicOf(byHash[0]) });
+      }
+      if (byId.length > 0) {
+        return Response.json({ status: 'tampered', kind: 'modified', ...publicOf(byId[0]) });
+      }
+      const fileNameKey = (value) => String(value || '').toLowerCase().replace(/-signed(?=\.pdf$)/i, '').replace(/\.pdf$/i, '').replace(/[\s_\-]+/g, '');
+      const requestHashes = (rec) => {
+        const hashes = new Set();
+        const sealed = String(rec?.finalHash || '').toLowerCase();
+        if (sealed) hashes.add(sealed);
+        (rec?.signers || []).forEach((row) => {
+          const hash = String(row.documentHash || '').toLowerCase();
+          if (/^[0-9a-f]{64}$/.test(hash)) hashes.add(hash);
+        });
+        return hashes;
+      };
+      const answerFromRequest = (rec) => {
+        const now = Date.now();
+        const open = (rec.signers || [])
+          .filter((row) => row?.status === 'signed' && row.retractUntil && Date.parse(row.retractUntil) > now)
+          .map((row) => Date.parse(row.retractUntil))
+          .filter(Number.isFinite);
+        const coolingUntil = open.length ? new Date(Math.max(...open)).toISOString() : null;
+        const signed = (rec.signers || []).filter((row) => row.status === 'signed');
+        const last = signed.slice().sort((a, b) => Date.parse(a.signedAt || 0) - Date.parse(b.signedAt || 0)).at(-1);
+        const requestPublic = {
+          verificationId: rec.verificationId || null,
+          signerName: signed.map((row) => row.name).filter(Boolean).join('، ') || rec.creatorName || null,
+          fileName: rec.fileName || null,
+          signedAt: last?.signedAt || rec.lastActivityAt || rec.created_date || null,
+          uploadedHash: fileHash,
+        };
+        if (coolingUntil && !rec.finalHash) {
+          return { status: 'cooling', kind: 'cooling', coolingUntil, registryHash: '', ...requestPublic };
+        }
+        const sealed = String(rec.finalHash || last?.documentHash || '').toLowerCase();
+        if (sealed && sealed === fileHash) {
+          return { status: 'valid', kind: 'ok', registryHash: sealed, ...requestPublic };
+        }
+        if (requestHashes(rec).has(fileHash)) {
+          return { status: 'valid', kind: 'ok', registryHash: fileHash, ...requestPublic };
+        }
+        if (sealed && sealed !== fileHash) {
+          return { status: 'tampered', kind: 'modified', registryHash: sealed, ...requestPublic };
+        }
+        return null;
+      };
+      try {
+        const Requests = base44.asServiceRole.entities.SignatureRequest;
+        const byVerify = verificationId ? await Requests.filter({ verificationId }) : [];
+        if (byVerify[0]) {
+          const fromId = answerFromRequest(byVerify[0]);
+          if (fromId) return Response.json(fromId);
+        }
+        const companyId = String(body.companyId || '').trim();
+        const sessionToken = String(body.sessionToken || '');
+        if (companyId && sessionToken) {
+          const sessions = await base44.asServiceRole.entities.CompanySession.filter({ token: sessionToken, companyId });
+          const session = sessions[0];
+          if (session && new Date(session.expiresAt).getTime() > Date.now()) {
+            const reqs = await Requests.filter({ companyId }, '-created_date', 100);
+            const byHash = reqs.find((rec) => requestHashes(rec).has(fileHash));
+            if (byHash) {
+              const fromHash = answerFromRequest(byHash);
+              if (fromHash) return Response.json(fromHash);
+            }
+            const nameKey = fileNameKey(body.fileName);
+            const byName = nameKey ? reqs.find((rec) => fileNameKey(rec.fileName) === nameKey) : null;
+            if (byName) {
+              const fromName = answerFromRequest(byName);
+              if (fromName) return Response.json(fromName);
+            }
+          }
+        }
+      } catch (lookupError) {
+        console.error('signedDocs: request lookup', lookupError);
+      }
+      return Response.json({ status: 'unknown', kind: 'none', uploadedHash: fileHash, registryHash: '' });
     }
 
     return Response.json({ error: 'Unknown action' }, { status: 400 });

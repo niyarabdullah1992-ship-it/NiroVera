@@ -38,7 +38,7 @@ export default function ThemeToggle() {
       style={{
         width: 34,
         height: 34,
-        borderRadius: 9,
+        borderRadius: 10,
         border: "1px solid var(--nv-line, #E2E8F0)",
         background: "var(--nv-card, #fff)",
         color: "var(--nv-ink, #14284B)",

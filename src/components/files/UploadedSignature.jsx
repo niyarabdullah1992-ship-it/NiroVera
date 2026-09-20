@@ -5,7 +5,7 @@ import { generateVerificationId } from "@/lib/verificationBadge";
 import { INK, BORDER, MUTED, ui, SURFACE } from "@/lib/platformStyles";
 import StampPreview from "./StampPreview";
 
-export default function UploadedSignature({ ar, signerName, stampTheme = "heritage", onSave, saving }) {
+export default function UploadedSignature({ ar, signerName, stampTheme = "heritage", stampConfig, onSave, saving }) {
   const inputRef = useRef(null);
   const [preview, setPreview] = useState("");
   const [stamp, setStamp] = useState("");
@@ -25,11 +25,11 @@ export default function UploadedSignature({ ar, signerName, stampTheme = "herita
       setStamp("");
       return () => { active = false; };
     }
-    makeSignatureStamp(preview, signerName, sealId, "uploaded", stampTheme)
+    makeSignatureStamp(preview, signerName, sealId, "uploaded", stampConfig || stampTheme)
       .then((composed) => { if (active) setStamp(composed); })
       .catch(() => { if (active) setStamp(""); });
     return () => { active = false; };
-  }, [preview, signerName, sealId, stampTheme]);
+  }, [preview, signerName, sealId, stampTheme, stampConfig]);
 
   return (
     <div style={{ display: "grid", gap: 10 }}>

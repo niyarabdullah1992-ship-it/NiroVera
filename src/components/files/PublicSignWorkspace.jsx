@@ -1,35 +1,60 @@
-import React, { useRef } from "react";
-import { PenLine, ShieldCheck } from "lucide-react";
+import React, { useRef, useState } from "react";
 import PublicSignDocumentPanel from "@/components/files/PublicSignDocumentPanel";
 import PublicSignSignaturePanel from "@/components/files/PublicSignSignaturePanel";
-import PublicSignRequestSummary from "@/components/files/PublicSignRequestSummary";
-import IdentityCard from "@/components/shared/IdentityCard";
-import { OK } from "@/lib/platformStyles";
+import { BORDER, CARD, STAGE } from "@/lib/platformStyles";
 
-export default function PublicSignWorkspace({ signing, reviewed, onContinue }) {
+export default function PublicSignWorkspace({ signing, onOpenStudio }) {
   const signatureRef = useRef(null);
   const { ar, info, textValues, setTextValue } = signing;
+  const [focusPage, setFocusPage] = useState(null);
+  const railCol = "clamp(280px, 32%, 360px)";
+  const docCol = "minmax(0, 1fr)";
+
   return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <IdentityCard
-        icon={PenLine}
-        kicker={reviewed ? (ar ? "مرحلة التوقيع" : "Signature stage") : (ar ? "مرحلة المراجعة" : "Review stage")}
-        title={reviewed ? (ar ? "املأ الحقول ووقّع" : "Complete fields and sign") : (ar ? "راجع المستند والطلب" : "Review document and request")}
-        subtitle={ar ? `${info.creatorName} أرسل إليك هذا المستند.` : `${info.creatorName} sent you this document.`}
-        meta={<span style={OK}><ShieldCheck style={{ width: 12, height: 12, marginInlineEnd: 4, verticalAlign: "middle" }} />{info.signedCount}/{info.totalCount} {ar ? "مكتمل" : "complete"}</span>}
-        dir={ar ? "rtl" : "ltr"}
+    <section
+      className="nv-public-sign-work"
+      style={{
+        flex: 1,
+        minWidth: 0,
+        maxWidth: "100%",
+        minHeight: 0,
+        overflow: "hidden",
+        display: "grid",
+        gridTemplateColumns: ar ? `${railCol} ${docCol}` : `${docCol} ${railCol}`,
+        gridTemplateAreas: ar ? `"rail doc"` : `"doc rail"`,
+        background: STAGE,
+      }}
+    >
+      <PublicSignDocumentPanel
+        ar={ar}
+        info={info}
+        textValues={textValues}
+        onTextChange={setTextValue}
+        interactive
+        focusPage={focusPage}
+        stampPreview={signing.stampPreview}
+        stampConfig={signing.stampConfig}
+        onSignatureClick={() => signatureRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
       />
-      {!reviewed ? (
-        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-          <PublicSignDocumentPanel ar={ar} info={info} textValues={textValues} onTextChange={setTextValue} interactive={false} />
-          <PublicSignRequestSummary ar={ar} info={info} onContinue={onContinue} />
+      <aside
+        dir={ar ? "rtl" : "ltr"}
+        style={{
+          gridArea: "rail",
+          minHeight: 0,
+          minWidth: 0,
+          overflow: "auto",
+          background: CARD,
+          borderLeft: `1px solid ${BORDER}`,
+        }}
+      >
+        <div ref={signatureRef}>
+          <PublicSignSignaturePanel
+            {...signing}
+            onFieldFocus={setFocusPage}
+            onOpenStudio={onOpenStudio}
+          />
         </div>
-      ) : (
-        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-          <PublicSignDocumentPanel ar={ar} info={info} textValues={textValues} onTextChange={setTextValue} onSignatureClick={() => signatureRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })} />
-          <div ref={signatureRef}><PublicSignSignaturePanel {...signing} /></div>
-        </div>
-      )}
+      </aside>
     </section>
   );
 }

@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NiroVera — لوحة القيادة</title>
+<!--
+  موجّه لـ Claude
+  جرد الحالة الحالية لسطح /app (لوحة القيادة — كانت تُسمّى مركز القيادة).
+  المصدر الحي: src/pages/Dashboard.jsx + SuiteWorkspaceFrame + HandoffCommandBoard
+  + OperationsModuleGrid + EmployeeDashboard + StationManagerDashboard.
+  لا تنفّذ كود إنتاج. هذا HTML/CSS مستقل — لقطة لا منتج ثانٍ.
+
+  المنتج: NiroVera يثبت العمل، لا يسجّله فقط.
+  نظرة قرار واحدة: حضور يغذّي المسير · مهمة تحتاج إثباتاً · توقيع ثم تحقق.
+  سلسلة الإثبات: حضور → مهمة → مراجعة → تصعيد → توقيع → إثبات العميل.
+  الأرقام في هذه اللقطة تمثيلية لنفس التسميات والمشتقّات الحيّة — ليست KPI مختلقة.
+  ملفي = محطة العمل · إدارة = فرع واحد.
+  الأخضر #1E9E63 معنى (حالة/إثبات)، لا جلد بطاقات. لا كريم/تيراكوتا.
+  عربي RTL أولًا. كثافة هادئة. ورق مربّع (radius 0) كما في اللوحة الحيّة.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Naskh+Arabic:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #14213D;
+    --navy: #14284B;
+    --mid: #4B5567;
+    --muted: #6B7280;
+    --line: #DFE3EA;
+    --hair: #EEF0F4;
+    --row: #F7F8FA;
+    --wash: #F5F6F8;
+    --card: #ffffff;
+    --green: #137A49;
+    --mark: #1E9E63;
+    --warn: #B45309;
+    --bad: #B91C1C;
+    --leave: #4a2c14;
+    --leave-bg: #efe0cc;
+    --leave-fg: #3d2410;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Tahoma, "Segoe UI", Arial, sans-serif;
+    background: #F7F8FA;
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 13px;
+  }
+  .mono { font-family: "IBM Plex Mono", monospace; }
+  .naskh { font-family: "Noto Naskh Arabic", serif; }
+  .app {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    min-height: 100vh;
+  }
+  .rail {
+    background: var(--navy);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 0 16px;
+    gap: 10px;
+  }
+  .rail .mark {
+    width: 28px; height: 28px;
+    background: #fff; color: var(--navy);
+    display: grid; place-items: center;
+    font: 700 13px Georgia, serif;
+  }
+  .rail i {
+    width: 28px; height: 28px;
+    display: grid; place-items: center;
+    color: #9FB0C8; font-size: 11px; font-style: normal;
+  }
+  .rail i.on { background: #1E3A5F; color: #fff; }
+  .main { padding: 18px 22px 40px; }
+  .top {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .top .scope {
+    height: 34px; padding: 0 14px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink);
+    font: 600 12px Tahoma, sans-serif;
+  }
+  .note {
+    font-size: 11px; color: var(--muted); border: 1px dashed var(--line);
+    background: var(--card); padding: 8px 12px; line-height: 1.7;
+  }
+  .faces {
+    display: flex; gap: 5px; flex-wrap: wrap;
+  }
+  .faces button {
+    font: 400 12px Tahoma, sans-serif;
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    background: #fff; color: var(--mid);
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .faces button.on {
+    border-color: var(--ink); background: var(--ink); color: #fff; font-weight: 700;
+  }
+  .faces button .num { font-family: "IBM Plex Mono", monospace; font-size: 10px; opacity: .75; }
+  .board {
+    max-width: 1320px; margin: 0 auto;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .slab {
+    background: var(--card);
+    border: 1px solid var(--line);
+  }
+  .head {
+    padding: 18px 22px;
+    display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+  }
+  .kicker {
+    font-size: 11px; letter-spacing: .14em; color: var(--muted);
+    display: flex; gap: 7px; align-items: center;
+  }
+  .head h1 { font-size: 24px; font-weight: 600; margin-top: 5px; line-height: 1.35; }
+  .head p { margin-top: 5px; font-size: 12px; color: var(--mid); line-height: 1.85; max-width: 720px; }
+  .head a { color: inherit; font-weight: 600; text-decoration: none; }
+  .meta {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 4px;
+  }
+  .meta .cell { display: flex; flex-direction: column; gap: 2px; align-items: flex-end; }
+  .meta small { font-size: 10px; color: var(--muted); }
+  .meta b { font-size: 15px; font-weight: 700; }
+  .meta .rule { width: 1px; height: 30px; background: var(--line); }
+  .tabs {
+    padding: 9px 14px;
+    display: flex; gap: 5px; flex-wrap: wrap; align-items: center;
+  }
+  .tabs button {
+    font: 400 13px Tahoma, sans-serif;
+    padding: 9px 16px;
+    border: 1px solid var(--line);
+    background: #fff; color: var(--mid);
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    white-space: nowrap;
+  }
+  .tabs button.on {
+    border-color: var(--ink); background: var(--ink); color: #fff; font-weight: 700;
+  }
+  .tabs button .num { font-family: "IBM Plex Mono", monospace; font-size: 10px; opacity: .75; }
+  .tabs button .count {
+    font-family: "IBM Plex Mono", monospace; font-size: 11px;
+    background: var(--wash); color: var(--muted); padding: 1px 7px;
+  }
+  .tabs button.on .count { background: var(--mark); color: #fff; }
+  .tabs .view-note {
+    margin-inline-start: auto; font-size: 11px; color: var(--muted);
+    line-height: 1.7; max-width: 380px; text-align: start;
+  }
+  .legal { font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .pane { display: none; }
+  .pane.on { display: flex; flex-direction: column; gap: 16px; }
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+  }
+  .kpi {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--ink);
+    padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 4px;
+    min-width: 0;
+    text-decoration: none; color: inherit;
+  }
+  .kpi.ok { border-top-color: var(--green); }
+  .kpi.warn { border-top-color: var(--warn); }
+  .kpi.bad { border-top-color: var(--bad); }
+  .kpi span { font-size: 12px; color: var(--mid); }
+  .kpi strong {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 30px; font-weight: 500; line-height: 1.05; color: var(--ink);
+  }
+  .kpi.ok strong { color: var(--green); }
+  .kpi.warn strong { color: var(--warn); }
+  .kpi.bad strong { color: var(--bad); }
+  .kpi em { font-style: normal; font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 0;
+    align-items: stretch;
+  }
+  .paper { background: #fff; border: 1px solid var(--line); display: flex; flex-direction: column; }
+  .sec-head {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--hair);
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  .sec-head h2 { font-size: 15px; font-weight: 700; }
+  .sec-head p { margin-top: 3px; font-size: 12px; color: var(--muted); line-height: 1.75; }
+  .sec-head a { color: inherit; font-weight: 600; text-decoration: none; }
+  .tag {
+    display: inline-block; padding: 2px 9px;
+    font-size: 10px; font-weight: 600; white-space: nowrap;
+    background: var(--wash); color: var(--muted); border: 1px solid var(--line);
+  }
+  .tag.leave { background: var(--leave-bg); color: var(--leave-fg); border-color: #d4b896; }
+  .tag.empty { background: var(--wash); color: var(--muted); }
+  .row {
+    padding: 13px 20px;
+    border-bottom: 1px solid var(--row);
+    display: grid;
+    gap: 12px; align-items: center;
+  }
+  .row.decide { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .row.alert { grid-template-columns: auto minmax(0, 1fr); }
+  .row.task { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .row.more { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .who strong { display: block; font-size: 13px; font-weight: 700; line-height: 1.5; }
+  .who span { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.7; }
+  .btn {
+    font: 600 12px Tahoma, sans-serif;
+    padding: 8px 14px; border: 1px solid var(--ink);
+    background: var(--ink); color: #fff;
+    text-decoration: none; white-space: nowrap;
+    display: inline-flex; align-items: center;
+  }
+  .btn.ghost { background: #fff; color: var(--ink); border-color: var(--line); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .dot.info { background: var(--navy); }
+  .dot.warn { background: var(--warn); }
+  .dot.bad { background: var(--bad); }
+  .dot.ok { background: var(--mark); }
+  .empty { padding: 26px 20px; text-align: center; font-size: 13px; color: var(--muted); }
+  .bars { padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+  .bar-row {
+    display: grid; grid-template-columns: minmax(72px, auto) minmax(0, 1fr) 36px;
+    align-items: center; gap: 10px;
+  }
+  .bar-row span { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .track { height: 10px; background: var(--wash); overflow: hidden; }
+  .track i { display: block; height: 100%; background: var(--mark); }
+  .track i.warn { background: var(--warn); }
+  .bar-row b { font-family: "IBM Plex Mono", monospace; font-size: 12px; font-weight: 500; text-align: end; }
+  .stations { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 0; }
+  .station {
+    padding: 16px 20px;
+    border-inline-end: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in oklab, var(--mark) 8%, #fff);
+    text-align: start;
+  }
+  .station .name { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+  .station .figs { display: flex; gap: 18px; margin-top: 14px; }
+  .station .figs b { display: block; font-family: "IBM Plex Mono", monospace; font-size: 20px; font-weight: 500; line-height: 1; }
+  .station .figs small { display: block; font-size: 10px; color: var(--muted); margin-top: 3px; }
+  .band { display: flex; height: 10px; overflow: hidden; gap: 2px; margin: 16px 20px 0; }
+  .band i { display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 14px 20px 16px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+  .legend b { font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .hse { padding: 14px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .hse div { display: flex; align-items: center; gap: 10px; }
+  .hse b { font-family: "IBM Plex Mono", monospace; font-size: 18px; font-weight: 500; }
+  .cycle {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0;
+  }
+  .ring {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 16px 18px;
+    border-inline-start: 1px solid var(--line);
+    min-width: 0; text-decoration: none; color: inherit;
+  }
+  .ring:first-child { border-inline-start: none; }
+  .ring .step { font-family: "IBM Plex Mono", monospace; font-size: 10px; letter-spacing: .14em; color: var(--muted); }
+  .ring strong { font-size: 13px; font-weight: 700; }
+  .ring b { font-family: "IBM Plex Mono", monospace; font-size: 26px; font-weight: 500; line-height: 1.05; }
+  .ring b.bad { color: var(--bad); }
+  .ring em { font-style: normal; font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .group-name { padding: 12px 20px 4px; font-size: 11px; letter-spacing: .14em; color: var(--muted); }
+  .checkin {
+    padding: 18px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  .checkin h3 { font-size: 15px; font-weight: 700; }
+  .checkin p { margin-top: 4px; font-size: 12px; color: var(--muted); line-height: 1.75; }
+  .punch {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--mark); color: #fff;
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 700;
+  }
+  .line-note { font-size: 12px; color: var(--muted); line-height: 1.75; }
+  @media (max-width: 980px) {
+    .cycle { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .ring { border-inline-start: none; border-top: 1px solid var(--line); }
+  }
+  @media (max-width: 900px) {
+    .kpis { grid-template-columns: 1fr 1fr; }
+    .split { grid-template-columns: 1fr; }
+    .app { grid-template-columns: 1fr; }
+    .rail { display: none; }
+  }
+  @media (max-width: 560px) {
+    .kpis, .cycle { grid-template-columns: 1fr 1fr; }
+    .row.decide { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <aside class="rail" aria-hidden="true">
+      <div class="mark">N</div>
+      <i class="on">ق</i><i>ت</i><i>ح</i><i>ط</i><i>ن</i><i>أ</i><i>ص</i>
+    </aside>
+    <div class="main">
+      <div class="top">
+        <div class="scope">النطاق · فرع الخفجي</div>
+        <div class="faces" role="tablist" aria-label="وجه اللوحة">
+          <button type="button" class="on" data-persona="manage"><span class="num mono" dir="ltr">01</span>إدارة — مدير الفرع</button>
+          <button type="button" data-persona="mine"><span class="num mono" dir="ltr">02</span>ملفي — موظف</button>
+        </div>
+        <div class="note">لقطة من /app الحيّ — ليست شاشة ثانية. إدارة = فرع واحد · ملفي = محطة العمل.</div>
+      </div>
+
+      <div class="board">
+        <section class="slab">
+          <div class="head">
+            <div>
+              <div class="kicker"><span class="mono" dir="ltr">01</span><span>·</span><span>التشغيل اليومي</span></div>
+              <h1 class="naskh">لوحة القيادة</h1>
+              <p>نظرة قرار: <a href="#cycle">حضور</a> يغذّي المسير · <a href="#cycle">مهمة</a> تحتاج إثباتاً · <a href="#cycle">توقيع</a> ثم تحقق. الأرقام من السجل والنطاق المعروض.</p>
+            </div>
+            <div class="meta" id="meta-manage">
+              <div class="cell">
+                <small>العرض بصلاحية</small>
+                <b>مدير مباشر <span style="font-weight:400;color:var(--muted)">· شركة</span></b>
+              </div>
+              <span class="rule"></span>
+              <div class="cell">
+                <small>حضور اليوم</small>
+                <b>0%</b>
+              </div>
+              <span class="rule"></span>
+              <div class="cell">
+                <small>بانتظار قرارك</small>
+                <b>1</b>
+              </div>
+            </div>
+            <div class="meta" id="meta-mine" hidden>
+              <div class="cell">
+                <small>العرض بصلاحية</small>
+                <b>موظف <span style="font-weight:400;color:var(--muted)">· شركة</span></b>
+              </div>
+              <span class="rule"></span>
+              <div class="cell">
+                <small>حضور اليوم</small>
+                <b>0%</b>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <nav class="slab tabs" aria-label="لوحة القيادة">
+          <div id="tabs-manage">
+            <button type="button" class="on" data-face="manage-decide"><span class="num" dir="ltr">01</span>قرار اليوم<span class="count" dir="ltr">1</span></button>
+            <button type="button" data-face="manage-map"><span class="num" dir="ltr">02</span>دورة الإثبات</button>
+          </div>
+          <div id="tabs-mine" hidden>
+            <button type="button" class="on" data-face="mine-day"><span class="num" dir="ltr">01</span>يومي</button>
+            <button type="button" data-face="mine-map"><span class="num" dir="ltr">02</span>دورة الإثبات</button>
+          </div>
+          <span class="view-note" id="view-note">قرارات اليوم على نطاق فرعك — الحضور يغذّي المسير، والمهمة تحتاج إثباتاً.</span>
+        </nav>
+
+        <div id="manage-decide" class="pane on">
+          <div class="kpis">
+            <a class="kpi" href="#">
+              <span>المجدولون اليوم</span>
+              <strong dir="ltr">3</strong>
+              <em>+25 تعيين هذا الشهر · نفس رقم الحضور</em>
+            </a>
+            <a class="kpi bad" href="#">
+              <span>نسبة الحضور</span>
+              <strong dir="ltr">0%</strong>
+              <em>0 حاضرون الآن</em>
+            </a>
+            <a class="kpi bad" href="#">
+              <span>بانتظار قرارك</span>
+              <strong dir="ltr">1</strong>
+              <em>1 إجازة بانتظار القرار</em>
+            </a>
+            <div class="kpi ok">
+              <span>مؤشر الجاهزية</span>
+              <strong dir="ltr">73<span style="font-size:12px;font-weight:600;color:var(--muted)"> /100</span></strong>
+              <em>حضور · مهام · سلامة · اعتمادات</em>
+            </div>
+          </div>
+
+          <div class="split">
+            <section class="paper">
+              <div class="sec-head">
+                <div>
+                  <h2>ما يحتاج قرارك اليوم</h2>
+                  <p>مرتّبة بأثرها على التشغيل — الإجازة تغذي <a href="#">الجدول</a> و<a href="#">الحضور</a>.</p>
+                </div>
+                <span class="tag leave">بند واحد</span>
+              </div>
+              <div class="row decide">
+                <div class="who">
+                  <strong>أحمد السالم</strong>
+                  <span>سنوية · 16 سبتمبر</span>
+                </div>
+                <span class="tag leave">بانتظار المدير</span>
+                <a class="btn" href="#">راجع</a>
+              </div>
+            </section>
+
+            <section class="paper">
+              <div class="sec-head">
+                <div>
+                  <h2>تنبيهات استباقية</h2>
+                  <p>كل تنبيه يفتح القسم الذي يصلحه.</p>
+                </div>
+              </div>
+              <div class="row alert"><span class="dot info"></span><span>1 مهمة تقترب من موعدها أو متأخرة.</span></div>
+              <div class="row alert"><span class="dot warn"></span><span>2 من المجدولين لم يسجّلوا حضورًا بعد.</span></div>
+              <div class="row alert"><span class="dot bad"></span><span>1 مخاطر سلامة بانتظار الإغلاق.</span></div>
+              <div class="row alert"><span class="dot ok"></span><span>1 طلب إجازة بانتظار القرار.</span></div>
+              <div class="sec-head" style="border-top:1px solid var(--hair);border-bottom:none">
+                <div>
+                  <h2>مكونات الجاهزية</h2>
+                  <p>نفس عوامل المؤشر أعلاه — مشتقّة لا تقدير.</p>
+                </div>
+                <span class="mono" dir="ltr" style="font-size:22px;font-weight:500">73<span style="font-size:12px;color:var(--muted)"> /100</span></span>
+              </div>
+              <div class="bars" style="padding-top:0">
+                <div class="bar-row"><span>حضور اليوم</span><div class="track"><i class="warn" style="width:0%"></i></div><b dir="ltr">0%</b></div>
+                <div class="bar-row"><span>مهام</span><div class="track"><i style="width:81%"></i></div><b dir="ltr">81%</b></div>
+                <div class="bar-row"><span>سلامة</span><div class="track"><i style="width:88%"></i></div><b dir="ltr">88%</b></div>
+                <div class="bar-row"><span>اعتمادات</span><div class="track"><i style="width:92%"></i></div><b dir="ltr">92%</b></div>
+              </div>
+            </section>
+          </div>
+
+          <section class="paper">
+            <div class="sec-head">
+              <div>
+                <h2>الفروع</h2>
+                <p>اضغط فرعاً لتضييق اللوحة — النطاق نفسه في الحضور والمسير. إدارة = فرع واحد.</p>
+              </div>
+              <a class="btn ghost" href="#">كل الفروع</a>
+            </div>
+            <div class="stations">
+              <div class="station">
+                <div class="name"><span class="dot ok"></span>فرع الخفجي</div>
+                <div class="figs">
+                  <div><b dir="ltr">0</b><small>في الوردية</small></div>
+                  <div><b dir="ltr" style="color:var(--warn)">6</b><small>بند مفتوح</small></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="split">
+            <section class="paper">
+              <div class="sec-head">
+                <div>
+                  <h2>حضور اليوم</h2>
+                  <p>3 متوقعاً اليوم · نفس رقم <a href="#">شاشة الحضور</a> · يغذّي <a href="#">المسير</a></p>
+                </div>
+              </div>
+              <div class="band">
+                <i style="flex:0.5;background:var(--mark)"></i>
+                <i style="flex:0.5;background:var(--warn)"></i>
+                <i style="flex:1;background:var(--leave)"></i>
+                <i style="flex:2;background:var(--bad)"></i>
+              </div>
+              <div class="legend">
+                <span><i class="dot ok"></i>حاضر <b dir="ltr">0</b></span>
+                <span><i class="dot warn"></i>متأخر <b dir="ltr">0</b></span>
+                <span><i class="dot" style="background:var(--leave)"></i>إجازة <b dir="ltr">1</b></span>
+                <span><i class="dot bad"></i>غائب <b dir="ltr">2</b></span>
+              </div>
+            </section>
+            <section class="paper">
+              <div class="sec-head">
+                <div>
+                  <h2>السلامة</h2>
+                  <p>بنود مفتوحة بانتظار الإغلاق — داخل <a href="#">سلسلة الثقة</a>.</p>
+                </div>
+                <div style="text-align:start">
+                  <div class="mono" dir="ltr" style="font-size:28px;font-weight:500;color:var(--bad);line-height:1">1</div>
+                  <div style="font-size:10px;color:var(--muted);margin-top:2px">بنداً مفتوحاً</div>
+                </div>
+              </div>
+              <div class="hse">
+                <div><b dir="ltr" style="color:var(--bad)">0</b><span>مخاطر حرجة مفتوحة</span></div>
+                <div><b dir="ltr" style="color:var(--warn)">1</b><span>ملاحظات سلامة بانتظار الإغلاق</span></div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div id="manage-map" class="pane">
+          <section class="paper" id="cycle">
+            <div class="sec-head">
+              <div>
+                <h2>سلسلة الإثبات</h2>
+                <p>حضور → مهمة → مراجعة → تصعيد → توقيع → إثبات للعميل. كل رقم من السجل والنطاق المعروض.</p>
+              </div>
+              <span class="tag" style="background:var(--mark);color:#fff;border:none" dir="ltr">8</span>
+            </div>
+            <div class="cycle">
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">01</span>
+                <strong>حضور</strong>
+                <b class="bad" dir="ltr">2</b>
+                <em>0 حاضر · 2 لم يسجّل — يغذّي المسير</em>
+                <i class="dot bad"></i>
+              </a>
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">02</span>
+                <strong>مهمة</strong>
+                <b class="bad" dir="ltr">5</b>
+                <em>22 مكتملة من 27</em>
+                <i class="dot bad"></i>
+              </a>
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">03</span>
+                <strong>مراجعة</strong>
+                <b dir="ltr">—</b>
+                <em>اعتماد أو رفض بسبب مكتوب</em>
+              </a>
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">04</span>
+                <strong>تصعيد</strong>
+                <b dir="ltr">—</b>
+                <em>عند احتراق الحصة دون تقدّم</em>
+              </a>
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">05</span>
+                <strong>توقيع</strong>
+                <b class="bad" dir="ltr">1</b>
+                <em>متوازٍ حتى 100 طرف · 1 ينتظر ختمك</em>
+                <i class="dot bad"></i>
+              </a>
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">06</span>
+                <strong>إثبات العميل</strong>
+                <b dir="ltr">—</b>
+                <em>جهة خارج الشركة · تحقق عام</em>
+              </a>
+            </div>
+          </section>
+
+          <section class="paper">
+            <div class="sec-head">
+              <div>
+                <h2>باقي المنصة</h2>
+                <p>ناس والتزام ومال وثقة — يظهر ما ينتظرك أولاً.</p>
+              </div>
+              <div class="faces">
+                <button type="button" class="on"><span class="num mono" dir="ltr">01</span>ينتظرك</button>
+                <button type="button"><span class="num mono" dir="ltr">02</span>كل الأقسام</button>
+              </div>
+            </div>
+            <div class="group-name">الناس</div>
+            <a class="row more" href="#">
+              <i class="dot warn"></i>
+              <span class="who"><strong>طلباتي</strong><span>إجازة وموافقة خطية — الختم غاية الطلب</span></span>
+              <b class="mono" dir="ltr" style="font-size:18px;font-weight:500">1</b>
+            </a>
+            <div class="group-name">الالتزام</div>
+            <a class="row more" href="#">
+              <i class="dot warn"></i>
+              <span class="who"><strong>السلامة HSE</strong><span>1 مخاطر مفتوحة</span></span>
+              <b class="mono" dir="ltr" style="font-size:18px;font-weight:500">1</b>
+            </a>
+            <div class="group-name">المال</div>
+            <a class="row more" href="#">
+              <i class="dot bad"></i>
+              <span class="who"><strong>المصروفات</strong><span>مطالبات بانتظار الاعتماد</span></span>
+              <b class="mono" dir="ltr" style="font-size:18px;font-weight:500;color:var(--bad)">1</b>
+            </a>
+            <div class="group-name">الثقة</div>
+            <a class="row more" href="#">
+              <i class="dot warn"></i>
+              <span class="who"><strong>الحالة والإثبات</strong><span>مهلة 0–3 أيام · إعادة فتح 3</span></span>
+              <b class="mono" dir="ltr" style="font-size:18px;font-weight:500">4</b>
+            </a>
+          </section>
+        </div>
+
+        <div id="mine-day" class="pane">
+          <section class="paper">
+            <div class="checkin">
+              <div>
+                <h3>البصمة — من الجدول فقط</h3>
+                <p>ورديتك اليوم — من الجدول<br /><span class="mono" dir="ltr">23:00 → 07:00</span><br />اضغط عندما تصل. الموقع يظهر عند الفشل فقط.</p>
+              </div>
+              <div class="punch">حضر</div>
+            </div>
+            <div style="padding:0 20px 16px">
+              <p class="line-note">فرع الخفجي · ملفي = محطة العمل · <a href="#" style="color:inherit;font-weight:600">حضورك</a> ثم <a href="#" style="color:inherit;font-weight:600">مهامك</a> في سلسلة الإثبات</p>
+            </div>
+          </section>
+
+          <div class="kpis">
+            <a class="kpi ok" href="#">
+              <span>مهام مفتوحة</span>
+              <strong dir="ltr">0</strong>
+              <em>للتنفيذ</em>
+            </a>
+            <a class="kpi" href="#">
+              <span>بانتظار الاعتماد</span>
+              <strong dir="ltr">0</strong>
+              <em>بعد الإثبات</em>
+            </a>
+            <a class="kpi" href="#">
+              <span>متأخرة</span>
+              <strong dir="ltr">0</strong>
+              <em>تحتاج متابعة</em>
+            </a>
+            <a class="kpi" href="#">
+              <span>نقاطي</span>
+              <strong dir="ltr">0</strong>
+              <em>تُمنح عند الاعتماد فقط</em>
+            </a>
+          </div>
+
+          <div class="split">
+            <section class="paper">
+              <div class="sec-head">
+                <div>
+                  <h2>مهامي النشطة</h2>
+                  <p>كل إنجاز يحتاج إثباتاً قبل النقاط.</p>
+                </div>
+                <a class="btn ghost" href="#">العمليات</a>
+              </div>
+              <div class="empty">لا مهام مفتوحة — سلسلة إثباتك نظيفة اليوم.</div>
+            </section>
+            <section class="paper">
+              <div class="sec-head">
+                <div>
+                  <h2>جاهزية اليوم</h2>
+                  <p>0 مفتوحة · 0 نقطة معتمدة</p>
+                </div>
+                <span class="mono" dir="ltr" style="font-size:22px;font-weight:500">90<span style="font-size:12px;color:var(--muted)"> /100</span></span>
+              </div>
+              <div class="bars">
+                <div class="bar-row"><span>مهامي</span><div class="track"><i style="width:100%"></i></div><b dir="ltr">100%</b></div>
+                <div class="bar-row"><span>في الموعد</span><div class="track"><i style="width:100%"></i></div><b dir="ltr">100%</b></div>
+                <div class="bar-row"><span>إثبات</span><div class="track"><i style="width:90%"></i></div><b dir="ltr">90%</b></div>
+                <div class="bar-row"><span>نقاط</span><div class="track"><i style="width:35%"></i></div><b dir="ltr">35%</b></div>
+              </div>
+            </section>
+          </div>
+
+          <section class="paper">
+            <div class="sec-head">
+              <div>
+                <h2>تنبيهات اليوم</h2>
+                <p>كل تنبيه يفتح القسم الذي يصلحه.</p>
+              </div>
+            </div>
+            <div class="row alert"><span class="dot warn"></span><span>سجّل حضور اليوم قبل الإنجاز الميداني.</span></div>
+          </section>
+        </div>
+
+        <div id="mine-map" class="pane">
+          <section class="paper">
+            <div class="sec-head">
+              <div>
+                <h2>سلسلة الإثبات</h2>
+                <p>حضور → مهمة → مراجعة → تصعيد → توقيع → إثبات للعميل. الرفع والقرار ليسا من هنا.</p>
+              </div>
+              <span class="tag" style="background:var(--mark);color:#fff;border:none" dir="ltr">8</span>
+            </div>
+            <div class="cycle">
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">01</span>
+                <strong>حضور</strong>
+                <b class="bad" dir="ltr">2</b>
+                <em>0 حاضر · 2 لم يسجّل — يغذّي المسير</em>
+                <i class="dot bad"></i>
+              </a>
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">02</span>
+                <strong>مهمة</strong>
+                <b class="bad" dir="ltr">6</b>
+                <em>32 مكتملة من 38</em>
+                <i class="dot bad"></i>
+              </a>
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">03</span>
+                <strong>مراجعة</strong>
+                <b dir="ltr">—</b>
+                <em>اعتماد أو رفض بسبب مكتوب</em>
+              </a>
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">04</span>
+                <strong>تصعيد</strong>
+                <b dir="ltr">—</b>
+                <em>عند احتراق الحصة دون تقدّم</em>
+              </a>
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">05</span>
+                <strong>توقيع</strong>
+                <b dir="ltr">—</b>
+                <em>متوازٍ حتى 100 طرف · — ينتظر ختمك</em>
+              </a>
+              <a class="ring" href="#">
+                <span class="step" dir="ltr">06</span>
+                <strong>إثبات العميل</strong>
+                <b dir="ltr">—</b>
+                <em>جهة خارج الشركة · تحقق عام</em>
+              </a>
+            </div>
+          </section>
+          <section class="paper">
+            <div class="sec-head">
+              <div>
+                <h2>باقي المنصة</h2>
+                <p>ما يظهر للموظف داخل صلاحياته — ليس طابور الإدارة.</p>
+              </div>
+            </div>
+            <div class="group-name">الالتزام</div>
+            <a class="row more" href="#">
+              <i class="dot warn"></i>
+              <span class="who"><strong>السلامة HSE</strong><span>1 مخاطر مفتوحة</span></span>
+              <b class="mono" dir="ltr" style="font-size:18px;font-weight:500">1</b>
+            </a>
+            <div class="group-name">المال</div>
+            <a class="row more" href="#">
+              <i class="dot bad"></i>
+              <span class="who"><strong>المصروفات</strong><span>مطالبات بانتظار الاعتماد</span></span>
+              <b class="mono" dir="ltr" style="font-size:18px;font-weight:500;color:var(--bad)">1</b>
+            </a>
+          </section>
+        </div>
+
+        <p class="legal">الأرقام مشتقّة من السجل والنطاق المعروض — ليست تقديراً ولا تُختلق. ملفي = محطة العمل · إدارة = فرع واحد.</p>
+      </div>
+    </div>
+  </div>
+  <script>
+    var notes = {
+      "manage-decide": "قرارات اليوم على نطاق فرعك — الحضور يغذّي المسير، والمهمة تحتاج إثباتاً.",
+      "manage-map": "من الحضور إلى المهمة ثم التوقيع ثم التحقق. الأرقام من السجل.",
+      "mine-day": "حضورك ثم مهامك ثم الإثبات — الرفع والقرار ليسا من هنا.",
+      "mine-map": "حضورك ثم مهامك ثم الإثبات — الرفع والقرار ليسا من هنا."
+    };
+    var panes = ["manage-decide", "manage-map", "mine-day", "mine-map"];
+    function showPane(id) {
+      panes.forEach(function (p) {
+        var el = document.getElementById(p);
+        if (el) el.classList.toggle("on", p === id);
+      });
+      document.querySelectorAll("[data-face]").forEach(function (b) {
+        b.classList.toggle("on", b.getAttribute("data-face") === id);
+      });
+      var note = document.getElementById("view-note");
+      if (note) note.textContent = notes[id] || "";
+    }
+    function showPersona(id) {
+      var manage = id === "manage";
+      document.getElementById("tabs-manage").hidden = !manage;
+      document.getElementById("tabs-mine").hidden = manage;
+      document.getElementById("meta-manage").hidden = !manage;
+      document.getElementById("meta-mine").hidden = manage;
+      document.querySelectorAll("[data-persona]").forEach(function (b) {
+        b.classList.toggle("on", b.getAttribute("data-persona") === id);
+      });
+      showPane(manage ? "manage-decide" : "mine-day");
+    }
+    document.querySelectorAll("[data-persona]").forEach(function (btn) {
+      btn.addEventListener("click", function () { showPersona(btn.getAttribute("data-persona")); });
+    });
+    document.querySelectorAll("[data-face]").forEach(function (btn) {
+      btn.addEventListener("click", function () { showPane(btn.getAttribute("data-face")); });
+    });
+  </script>
+</body>
+</html>

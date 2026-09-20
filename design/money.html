@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NiroVera — قسم المال والأصول كاملة</title>
+<!--
+  موجّه لـ Claude
+  جرد مجموعة 08 · المال والأصول كما تظهر في /app — الملف الكامل:
+    /app/payroll   المسير · البنود · بنود الخصم · قسيمة الراتب · حماية الأجور · القالب
+    /app/expenses  الميزانية · مطالبة جديدة · المطالبات · مراجعة المدير ثم المالية · صرف · مصروفات الفرع
+    /app/assets    السجل · بطاقة الأصل · تسليم بتوقيع الطرفين · سجل العهدة · صيانة · فقدان
+    /app/inventory الأصناف · المشتريات · الطلبات · الصرف للعمل · الحركات
+  لوح أبيض بزوايا 16px · حقول وأزرار كبسولة · حد #DFE3EA · رقم IBM Plex Mono.
+  لا تنفّذ كود إنتاج. قدّم HTML/CSS مستقلًا إن طُلب تصميم مميز.
+
+  القاعدة: كل مسار له سطحه.
+  البصمة تغذي المسير. المصروف والمخزون والأصول والعهد في مسار واحد.
+  لا تُربط بهذا السطح: فواتير اشتراك المالك · التوقيع الرقمي · إثبات العمل · الملفات.
+  /app/custody يعيد إلى الأصول. /app/accounting يعيد إلى الرواتب.
+  مصروفات الفرع نفس سطح المصروفات بنطاق واحد.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Naskh+Arabic:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #14213D;
+    --mid: #4B5567;
+    --muted: #6B7280;
+    --line: #DFE3EA;
+    --hair: #EEF0F4;
+    --row: #F7F8FA;
+    --wash: #F5F6F8;
+    --card: #ffffff;
+    --green: #137A49;
+    --green-soft: #1D9A5B;
+    --warn: #B45309;
+    --bad: #DC2626;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Tahoma, "Segoe UI", Arial, sans-serif;
+    background: #F7F8FA;
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 13px;
+  }
+  .mono { font-family: "IBM Plex Mono", monospace; }
+  .naskh { font-family: "Noto Naskh Arabic", serif; }
+  .app {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    min-height: 100vh;
+  }
+  .rail {
+    background: #14284B;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 0 16px;
+    gap: 10px;
+  }
+  .rail .mark {
+    width: 28px; height: 28px;
+    background: #fff; color: #14284B;
+    display: grid; place-items: center;
+    font: 700 13px Georgia, serif;
+  }
+  .rail i {
+    width: 28px; height: 28px;
+    display: grid; place-items: center;
+    color: #9FB0C8; font-size: 11px; font-style: normal;
+  }
+  .rail i.on { background: #1E3A5F; color: #fff; }
+  .main { padding: 18px 22px 40px; }
+  .top {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .top .scope {
+    height: 34px; padding: 0 14px; border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--card); color: var(--ink);
+    font: 600 12px Tahoma, sans-serif;
+  }
+  .note {
+    font-size: 11px; color: var(--muted); border: 1px dashed var(--line);
+    border-radius: 16px;
+    background: var(--card); padding: 8px 12px; line-height: 1.7;
+  }
+  .board {
+    max-width: 1320px; margin: 0 auto;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .slab {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .head {
+    padding: 18px 22px;
+    display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+  }
+  .kicker {
+    font-size: 11px; letter-spacing: .14em; color: var(--muted);
+    display: flex; gap: 7px; align-items: center;
+  }
+  .head h1 { font-size: 24px; font-weight: 600; margin-top: 5px; }
+  .head p { margin-top: 5px; font-size: 12px; color: var(--mid); line-height: 1.85; max-width: 780px; }
+  .tabs {
+    padding: 9px 14px;
+    display: flex; gap: 5px; flex-wrap: wrap; align-items: center;
+  }
+  .tabs button {
+    font: 400 13px Tahoma, sans-serif;
+    padding: 9px 16px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff; color: var(--mid);
+    cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    white-space: nowrap;
+  }
+  .tabs button.on {
+    border-color: var(--ink); background: var(--ink); color: #fff; font-weight: 700;
+  }
+  .tabs button .num { font-size: 10px; opacity: .75; }
+  .pulse {
+    margin-inline-start: auto;
+    display: inline-flex; align-items: center; gap: 9px;
+    font-size: 12px; font-weight: 600; color: var(--green);
+    background: #F3FBF6; border: 1px solid #CDEAD8;
+    border-radius: 999px;
+    padding: 8px 13px; white-space: nowrap;
+  }
+  .pulse i {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--green-soft);
+    font-style: normal;
+  }
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+    gap: 12px;
+  }
+  .kpi {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--ink);
+    border-radius: 16px;
+    overflow: hidden;
+    padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .kpi.ok { border-top-color: var(--green); }
+  .kpi.warn { border-top-color: var(--warn); }
+  .kpi.bad { border-top-color: var(--bad); }
+  .kpi span { font-size: 12px; color: var(--mid); }
+  .kpi strong {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 30px; font-weight: 500; line-height: 1.05; color: var(--ink);
+  }
+  .kpi.ok strong { color: var(--green); }
+  .kpi.warn strong { color: var(--warn); }
+  .kpi.bad strong { color: var(--bad); }
+  .kpi em { font-style: normal; font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .sec-head {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--hair);
+    display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap;
+  }
+  .sec-head h2 { font-size: 15px; font-weight: 700; }
+  .sec-head p { margin-top: 3px; font-size: 12px; color: var(--muted); line-height: 1.75; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-inline-start: auto; }
+  .btn {
+    font: 600 12px Tahoma, sans-serif;
+    padding: 10px 16px; border: none; border-radius: 999px;
+    cursor: default; white-space: nowrap;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+  }
+  a.btn { cursor: pointer; }
+  .btn.navy { background: var(--ink); color: #fff; }
+  .btn.green { background: var(--green); color: #fff; }
+  .btn.ghost { background: #fff; color: var(--mid); border: 1px solid var(--line); }
+  .btn.warn { background: #fff; color: var(--warn); border: 1px solid #F3D7B0; }
+  .btn.bad { background: #fff; color: var(--bad); border: 1px solid #FECACA; }
+  .inner {
+    padding: 10px 14px 0;
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .inner button {
+    font: 500 12px Tahoma, sans-serif;
+    padding: 7px 13px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff; color: var(--mid);
+    cursor: pointer;
+  }
+  .inner button.on {
+    border-color: var(--ink); color: var(--ink); font-weight: 700;
+    background: var(--wash);
+  }
+  .cites {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px;
+    padding: 14px 20px 0;
+  }
+  .cite {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: var(--wash);
+  }
+  .cite b { display: block; font-size: 11px; color: var(--ink); }
+  .cite span { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .grid3 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    padding: 16px 20px;
+  }
+  .mini {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    background: var(--card);
+  }
+  .mini span { display: block; font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+  .mini strong {
+    display: block; margin-top: 8px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 18px; font-weight: 500; color: var(--ink);
+  }
+  .row {
+    padding: 13px 20px;
+    border-bottom: 1px solid var(--row);
+    display: grid;
+    gap: 11px; align-items: center;
+  }
+  .row:last-child { border-bottom: none; }
+  .row.pay { grid-template-columns: minmax(140px, 1.4fr) 78px repeat(4, minmax(88px, 1fr)); }
+  .row.line { grid-template-columns: minmax(140px, 1.3fr) repeat(6, minmax(72px, 1fr)) auto; }
+  .row.wps { grid-template-columns: minmax(140px, 1.3fr) 110px 150px 100px minmax(140px, 1.2fr); }
+  .row.claim { grid-template-columns: minmax(220px, 1.8fr) 130px 110px 90px 150px; }
+  .row.asset { grid-template-columns: minmax(180px, 1.4fr) 110px 120px minmax(140px, 1fr) auto; }
+  .row.inv { grid-template-columns: repeat(5, minmax(88px, 1fr)); }
+  .row.deduct { grid-template-columns: minmax(160px, 1.2fr) 110px minmax(160px, 1.3fr) 110px auto; }
+  .row.slip { grid-template-columns: minmax(180px, 1.4fr) minmax(120px, 1fr); }
+  .row.review { grid-template-columns: minmax(180px, 1.4fr) 110px 110px auto; }
+  .row.maint { grid-template-columns: 90px 110px minmax(140px, 1fr) 90px auto; }
+  .row.kv { grid-template-columns: 140px minmax(0, 1fr); }
+  .row.head {
+    background: var(--wash);
+    border-bottom: 1px solid var(--line);
+    font-size: 10px; font-weight: 600; color: var(--muted); letter-spacing: .04em;
+    padding: 11px 20px;
+  }
+  .who strong { display: block; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who span { display: block; margin-top: 2px; font-size: 11px; color: var(--mid); line-height: 1.7; }
+  .chip {
+    font-size: 10px; font-weight: 600; color: var(--mid);
+    background: var(--wash); border: 1px solid #E6E9EF;
+    border-radius: 999px;
+    padding: 3px 9px; white-space: nowrap;
+  }
+  .chip.ok { color: var(--green); background: #F3FBF6; border-color: #CDEAD8; }
+  .chip.warn { color: var(--warn); background: #FFF8ED; border-color: #F3D7B0; }
+  .chip.bad { color: var(--bad); background: #FEF2F2; border-color: #FECACA; }
+  .num {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px; font-weight: 500; color: var(--ink);
+    text-align: end;
+  }
+  .rule {
+    padding: 13px 20px;
+    font-size: 11px; color: var(--mid); line-height: 1.9;
+    border-top: 1px solid var(--hair);
+  }
+  .bar-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 20px 12px;
+  }
+  .bar-row:first-of-type { padding-top: 16px; }
+  .bar-row label { width: 88px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+  .track { flex: 1; height: 8px; border-radius: 5px; background: #F1F5F9; overflow: hidden; }
+  .track i { display: block; height: 100%; border-radius: 5px; background: var(--green-soft); }
+  .track i.warn { background: var(--warn); }
+  .budget-sum {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-inline-start: auto;
+  }
+  .budget-sum b {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 26px; font-weight: 500;
+  }
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    padding: 16px 20px;
+  }
+  .fld span { display: block; font-size: 11px; color: var(--muted); }
+  .fld b, .fld em {
+    display: block; margin-top: 6px;
+    min-height: 36px; padding: 8px 12px;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: var(--wash); font-style: normal; font-weight: 500;
+    font-size: 12px; color: var(--ink);
+  }
+  .fld em { font-family: "IBM Plex Mono", monospace; }
+  .fld.full { grid-column: 1 / -1; }
+  .tax-box {
+    grid-column: 1 / -1;
+    border: 1px solid #CDEAD8;
+    background: #F3FBF6;
+    border-radius: 12px;
+    padding: 11px 13px;
+    font-size: 13px; font-weight: 600; color: var(--green);
+  }
+  .sign-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    padding: 0 20px 16px;
+  }
+  .sign {
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    min-height: 88px;
+    padding: 14px 16px;
+    background: var(--wash);
+  }
+  .sign span { display: block; font-size: 11px; color: var(--muted); }
+  .sign strong { display: block; margin-top: 18px; font-size: 16px; font-family: "Noto Naskh Arabic", serif; color: var(--ink); }
+  .trail {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--row);
+  }
+  .trail:last-of-type { border-bottom: none; }
+  .trail strong { display: block; font-size: 13px; }
+  .trail span { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); line-height: 1.7; }
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 132px;
+    gap: 16px;
+    padding: 16px 20px;
+  }
+  .qr {
+    width: 112px; height: 112px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background:
+      repeating-linear-gradient(90deg, #14213D 0 6px, #fff 6px 12px),
+      repeating-linear-gradient(#14213D 0 6px, #fff 6px 12px);
+    background-size: 12px 12px;
+    mix-blend-mode: multiply;
+  }
+  .alert {
+    margin: 0 20px 12px;
+    border: 1px solid #FDE68A;
+    background: #FFFBEB;
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px; color: #92400E; line-height: 1.7;
+  }
+  .pane { display: none; }
+  .pane.on { display: flex; flex-direction: column; gap: 16px; }
+  .layer { display: none; }
+  .layer.on { display: block; }
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    .rail { display: none; }
+    .row.pay, .row.line, .row.wps, .row.claim, .row.asset, .row.inv,
+    .row.deduct, .row.slip, .row.review, .row.maint, .row.kv, .split {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .pulse { margin-inline-start: 0; }
+  }
+  @media print {
+    .rail, .top .note, #save-file { display: none; }
+    .app { grid-template-columns: 1fr; }
+    .pane, .layer { display: flex !important; flex-direction: column; gap: 16px; page-break-inside: avoid; }
+    .pane { break-before: page; }
+    .pane:first-of-type { break-before: auto; }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <aside class="rail" aria-hidden="true">
+      <div class="mark">N</div>
+      <i>ي</i><i>ح</i><i>ط</i><i>ق</i><i>أ</i><i>ش</i><i class="on">م</i>
+    </aside>
+    <div class="main">
+      <div class="top">
+        <div class="scope">النطاق · NiroVera Preview</div>
+        <p class="note">ملف تصميم كامل — مجموعة <b>08 · المال والأصول</b>. أربعة سطوح حيّة للمستأجر: الرواتب · المصروفات · الأصول / العهد · المخزون. ليست فواتير اشتراك المالك.</p>
+        <a class="btn navy" id="save-file" href="money.html" download="nirovera-mal-wa-usul.html">تنزيل الملف الكامل</a>
+      </div>
+
+      <div class="board">
+        <section class="slab">
+          <header class="head">
+            <div>
+              <div class="kicker">
+                <span class="mono" dir="ltr">08</span>
+                <span>·</span>
+                <span>المال والأصول</span>
+              </div>
+              <h1 class="naskh">المال والأصول</h1>
+              <p>البصمة تغذي المسير. المصروف والمخزون والأصول والعهد في مسار واحد. كل مسار له سطحه — لا تُخلط فواتير اشتراك المالك هنا.</p>
+            </div>
+          </header>
+        </section>
+
+        <nav class="slab tabs" aria-label="مسارات المال والأصول">
+          <button type="button" class="on" data-view="payroll">
+            <span class="mono num" dir="ltr">01</span>
+            الرواتب
+          </button>
+          <button type="button" data-view="expenses">
+            <span class="mono num" dir="ltr">02</span>
+            المصروفات
+          </button>
+          <button type="button" data-view="assets">
+            <span class="mono num" dir="ltr">03</span>
+            الأصول / العهد
+          </button>
+          <button type="button" data-view="inventory">
+            <span class="mono num" dir="ltr">04</span>
+            المخزون
+          </button>
+          <span class="pulse"><i></i>الحضور المعتمد يغذي المسير</span>
+        </nav>
+
+        <!-- 01 الرواتب /app/payroll -->
+        <div id="payroll" class="pane on">
+          <div class="kpis">
+            <div class="kpi">
+              <span>موظفًا في المسير</span>
+              <strong dir="ltr">3</strong>
+              <em>أغسطس 2026 · قبل الاعتماد</em>
+            </div>
+            <div class="kpi">
+              <span>مدفوع</span>
+              <strong dir="ltr">0/3</strong>
+              <em>لا دفع قبل اعتماد المسير</em>
+            </div>
+            <div class="kpi ok">
+              <span>إجمالي المسير</span>
+              <strong dir="ltr">34,600</strong>
+              <em>ر.س · أساسي وبدلات وإضافي</em>
+            </div>
+            <div class="kpi warn">
+              <span>بند يحتاج تصحيحًا</span>
+              <strong dir="ltr">1</strong>
+              <em>هوية وآيبان ناقصان في مدى</em>
+            </div>
+          </div>
+
+          <section class="slab">
+            <div class="sec-head">
+              <div>
+                <h2>مسير الأجور</h2>
+                <p>دورة نظامية: تجهيز البنود · المادة 90 و92 و93 و107 · الاعتماد · حماية الأجور خلال 30 يوماً من الاستحقاق. <span class="mono" dir="ltr">/app/payroll</span> — <span class="mono" dir="ltr">/app/accounting</span> يعيد إلى هنا.</p>
+              </div>
+              <div class="actions">
+                <span class="chip">أغسطس 2026</span>
+                <span class="chip">تحديث من الملفات</span>
+                <span class="chip">بانتظار الاعتماد</span>
+                <span class="btn navy">اعتمد المسير</span>
+                <span class="btn ghost">التالي: حماية الأجور</span>
+              </div>
+            </div>
+            <nav class="inner" aria-label="طبقات الرواتب">
+              <button type="button" class="on" data-layer="pay-run">المسير</button>
+              <button type="button" data-layer="pay-lines">البنود</button>
+              <button type="button" data-layer="pay-deduct">بنود الخصم</button>
+              <button type="button" data-layer="pay-slip">قسيمة الراتب</button>
+              <button type="button" data-layer="pay-wps">حماية الأجور</button>
+              <button type="button" data-layer="pay-files">القالب</button>
+            </nav>
+
+            <div id="pay-run" class="layer on">
+              <div class="cites">
+                <div class="cite">
+                  <b>المادة 90</b>
+                  <span>يُدفع الأجر بالعملة الرسمية وفي مواعيده، ويجوز تحويله عبر البنوك المعتمدة.</span>
+                </div>
+                <div class="cite">
+                  <b>المادة 92</b>
+                  <span>استرداد سلفة صاحب العمل: لا يزيد الحسم على عشرة في المائة من الأجر.</span>
+                </div>
+                <div class="cite">
+                  <b>المادة 93</b>
+                  <span>لا يجوز أن يتجاوز مجموع المبالغ المحسومة نصف الأجر المستحق.</span>
+                </div>
+                <div class="cite">
+                  <b>المادة 107</b>
+                  <span>أجر الساعة الإضافية: الأجر الفعلي مضافًا إليه 50٪. سقف السنة 720 ساعة (لائحة 22).</span>
+                </div>
+              </div>
+              <div class="grid3">
+                <div class="mini">
+                  <span>الأساسي والبدلات</span>
+                  <strong dir="ltr">34,300 SAR</strong>
+                </div>
+                <div class="mini">
+                  <span>ساعات إضافية</span>
+                  <strong dir="ltr">500 SAR</strong>
+                </div>
+                <div class="mini">
+                  <span>استقطاعات</span>
+                  <strong dir="ltr">200 SAR</strong>
+                </div>
+              </div>
+              <div class="row head pay">
+                <div>الفرع</div>
+                <div>العدد</div>
+                <div>الأساسي</div>
+                <div>الإضافي</div>
+                <div>الإجمالي</div>
+                <div></div>
+              </div>
+              <div class="row pay">
+                <div class="who"><strong>فرع الخفجي</strong><span>الأساسي والبدلات والإضافي قبل الاعتماد النهائي</span></div>
+                <span class="mono" dir="ltr">2</span>
+                <span class="num" dir="ltr">23,500</span>
+                <span class="num" dir="ltr">500</span>
+                <span class="num" dir="ltr">23,800</span>
+                <span></span>
+              </div>
+              <div class="row pay">
+                <div class="who"><strong>فرع رابغ</strong><span>الأساسي والبدلات والإضافي قبل الاعتماد النهائي</span></div>
+                <span class="mono" dir="ltr">1</span>
+                <span class="num" dir="ltr">10,800</span>
+                <span class="num" dir="ltr">0</span>
+                <span class="num" dir="ltr">10,800</span>
+                <span></span>
+              </div>
+              <p class="rule">الحضور يُقفل في المسير قبل ملف مدى. المبالغ من ملف الموظف. الاعتماد على مستوى المنشأة — نطاق الشريط العلوي يصفّي العرض فقط.</p>
+            </div>
+
+            <div id="pay-lines" class="layer">
+              <div class="row head line">
+                <div>الموظف</div>
+                <div>الأساسي</div>
+                <div>البدلات</div>
+                <div>مكافآت</div>
+                <div>خصومات</div>
+                <div>سقف الخصم</div>
+                <div>الصافي</div>
+                <div>الحالة</div>
+              </div>
+              <div class="row line">
+                <div class="who"><strong>أحمد السالم</strong><span>مدير الفرع · الخفجي</span></div>
+                <span class="num" dir="ltr">12,000</span>
+                <span class="num" dir="ltr">2,500</span>
+                <span class="num" dir="ltr">500</span>
+                <span class="num" dir="ltr">200</span>
+                <span class="num" dir="ltr">7,250</span>
+                <span class="num" dir="ltr">14,800</span>
+                <span class="chip">غير مدفوع</span>
+              </div>
+              <div class="row line">
+                <div class="who"><strong>عمر ناصر</strong><span>فني · الخفجي</span></div>
+                <span class="num" dir="ltr">7,500</span>
+                <span class="num" dir="ltr">1,500</span>
+                <span class="num" dir="ltr">0</span>
+                <span class="num" dir="ltr">0</span>
+                <span class="num" dir="ltr">4,500</span>
+                <span class="num" dir="ltr">9,000</span>
+                <span class="chip">غير مدفوع</span>
+              </div>
+              <div class="row line">
+                <div class="who"><strong>سارة حسن</strong><span>سلامة الفرع · رابغ</span></div>
+                <span class="num" dir="ltr">9,000</span>
+                <span class="num" dir="ltr">1,800</span>
+                <span class="num" dir="ltr">0</span>
+                <span class="num" dir="ltr">0</span>
+                <span class="num" dir="ltr">5,400</span>
+                <span class="num" dir="ltr">10,800</span>
+                <span class="chip">غير مدفوع</span>
+              </div>
+              <p class="rule">الخصم المعتمد يظهر في البند ثم يدخل الصافي. المادة 93 تمنع تجاوز نصف الأجر. لا يمكن الدفع إن تجاوز الخصم السقف أو ساعات الإضافي 720 في السنة. من الصف: بنود الخصم · قسيمة PDF.</p>
+            </div>
+
+            <div id="pay-deduct" class="layer">
+              <div class="sec-head" style="border:0;padding-bottom:0">
+                <div>
+                  <h2>بنود الخصم — أحمد السالم</h2>
+                  <p>كل بند يحمل مصدرًا وسببًا ومؤلفًا وحالة اعتراض. المصادر الحيّة: غياب معتمد · سلفة موثّقة · خصم يدوي مبرَّر · جزاء موقَّع.</p>
+                </div>
+                <div class="actions">
+                  <span class="chip">إجمالي الخصم 200 ر.س</span>
+                  <span class="chip ok">ضمن سقف 7,250</span>
+                </div>
+              </div>
+              <div class="row head deduct">
+                <div>المصدر</div>
+                <div>المبلغ</div>
+                <div>المرجع / السبب</div>
+                <div>المؤلف</div>
+                <div>الاعتراض</div>
+              </div>
+              <div class="row deduct">
+                <div class="who"><strong>غياب معتمد</strong><span>حضور مقفل في المسير</span></div>
+                <span class="num" dir="ltr">120</span>
+                <span class="mono" dir="ltr">ATT-2081</span>
+                <span>النظام</span>
+                <span class="chip">لا اعتراض</span>
+              </div>
+              <div class="row deduct">
+                <div class="who"><strong>خصم يدوي مبرَّر</strong><span>سبب مكتوب إلزامي</span></div>
+                <span class="num" dir="ltr">80</span>
+                <span>تأخير تسليم تقرير السلامة — قُيِّد في التدقيق</span>
+                <span>مدير الفرع</span>
+                <span class="chip warn">اعتراض مفتوح</span>
+              </div>
+              <div class="fields">
+                <div class="fld">
+                  <span>مصدر بند جديد</span>
+                  <b>غياب معتمد · سلفة · يدوي</b>
+                </div>
+                <div class="fld">
+                  <span>المبلغ</span>
+                  <em dir="ltr">0.00</em>
+                </div>
+                <div class="fld full">
+                  <span>مرجع الغياب / السلفة — أو السبب المكتوب إن كان يدويًا</span>
+                  <b>معرّف السجل أو خمسة أحرف على الأقل</b>
+                </div>
+              </div>
+              <p class="rule">السلفة لا تتجاوز 10٪ من الأجر (المادة 92). مجموع البنود لا يتجاوز نصف الأجر (المادة 93). الراتب المدفوع يُغلق البنود. الموظف يعترض قبل الدفع؛ الإدارة تقبل فيُلغى الخصم أو ترفض.</p>
+            </div>
+
+            <div id="pay-slip" class="layer">
+              <div class="sec-head" style="border:0;padding-bottom:0">
+                <div>
+                  <h2>قسيمة راتب — أحمد السالم</h2>
+                  <p>تصدير PDF من صف البند. الأرقام مشتقة من المسير لا تُكتب يدويًا على القسيمة.</p>
+                </div>
+                <div class="actions">
+                  <span class="chip">أغسطس 2026</span>
+                  <span class="btn navy">تنزيل قسيمة PDF</span>
+                </div>
+              </div>
+              <div class="row head slip">
+                <div>البند</div>
+                <div>المبلغ</div>
+              </div>
+              <div class="row slip"><span>الراتب الأساسي</span><span class="num" dir="ltr">12,000 SAR</span></div>
+              <div class="row slip"><span>البدلات</span><span class="num" dir="ltr">2,500 SAR</span></div>
+              <div class="row slip"><span>المكافآت</span><span class="num" dir="ltr">500 SAR</span></div>
+              <div class="row slip"><span>الخصومات</span><span class="num" dir="ltr">− 200 SAR</span></div>
+              <div class="row slip"><span>سقف الخصم (المادة 93)</span><span class="num" dir="ltr">7,250 SAR</span></div>
+              <div class="row slip"><strong>الصافي</strong><strong class="num" dir="ltr">14,800 SAR</strong></div>
+              <div class="row slip"><span>حالة الدفع</span><span class="chip">غير مدفوع</span></div>
+              <p class="rule">هذا إشعار راتب منظَّم من المسير. ليس فاتورة اشتراك منصة، وليس مشهد راتب للبنك — مشهد البنك طلب وثيقة من الطلبات.</p>
+            </div>
+
+            <div id="pay-wps" class="layer">
+              <div class="sec-head" style="border:0;padding-bottom:0">
+                <div>
+                  <h2>حماية الأجور</h2>
+                  <p>نافذة رفع ملف مدى: 30 يوماً من تاريخ الاستحقاق. الإرسال الحي مؤجّل حتى الاعتمادات الرسمية. لا يُنشأ الملف قبل اعتماد المسير.</p>
+                </div>
+                <div class="actions">
+                  <span class="chip warn">بانتظار اعتماد المسير</span>
+                  <span class="btn navy">إنشاء ملف مدى</span>
+                </div>
+              </div>
+              <div class="grid3">
+                <div class="mini">
+                  <span>مهلة الإيداع</span>
+                  <strong dir="ltr">30 سبتمبر 2026</strong>
+                </div>
+                <div class="mini">
+                  <span>صفوف جاهزة</span>
+                  <strong dir="ltr">2/3</strong>
+                </div>
+              </div>
+              <div class="row head wps">
+                <div>الموظف</div>
+                <div>الهوية</div>
+                <div>آيبان</div>
+                <div>الصافي</div>
+                <div>الجاهزية</div>
+              </div>
+              <div class="row wps">
+                <div class="who"><strong>أحمد السالم</strong></div>
+                <span class="mono" dir="ltr">10××××4821</span>
+                <span class="mono" dir="ltr">SA61…9044</span>
+                <span class="num" dir="ltr">14,800</span>
+                <span class="chip ok">ملف جاهز</span>
+              </div>
+              <div class="row wps">
+                <div class="who"><strong>عمر ناصر</strong></div>
+                <span class="mono" dir="ltr">10××××1190</span>
+                <span class="mono" dir="ltr">SA55…2201</span>
+                <span class="num" dir="ltr">9,000</span>
+                <span class="chip ok">ملف جاهز</span>
+              </div>
+              <div class="row wps">
+                <div class="who"><strong>سارة حسن</strong></div>
+                <span class="mono" dir="ltr">—</span>
+                <span class="mono" dir="ltr">—</span>
+                <span class="num" dir="ltr">10,800</span>
+                <span class="chip bad">هوية وآيبان ناقصان</span>
+              </div>
+              <p class="rule">لا مسير على الخادم يُرسل قبل الاعتماد. صف بلا هوية أو آيبان يوقف ملف مدى. بعد الإرسال تُوسم الدورة «مُرسل».</p>
+            </div>
+
+            <div id="pay-files" class="layer">
+              <div class="sec-head" style="border:0">
+                <div>
+                  <h2>قالب الرواتب</h2>
+                  <p>المبالغ من ملف الموظف. تنزيل القالب ثم رفع الملف يُطابق الصفوف على المسير. «تحديث من الملفات» يعيد قراءة الأساسي والبدلات.</p>
+                </div>
+                <div class="actions">
+                  <span class="btn navy">تنزيل القالب</span>
+                  <span class="btn ghost">رفع الملف</span>
+                  <span class="btn ghost">تحديث من الملفات</span>
+                </div>
+              </div>
+              <div class="row">
+                <div class="who">
+                  <strong>إدراج المالك في مسير الرواتب</strong>
+                  <span>مغلق في هذا النطاق — المالك خارج المسير ما لم يُفعَّل صراحة من هذا التبويب.</span>
+                </div>
+                <span class="chip">مغلق</span>
+              </div>
+              <div class="row head">
+                <div>مطابقة الرفع</div>
+              </div>
+              <div class="row">
+                <div class="who"><strong>أحمد السالم</strong><span>طابق ملف الموظف — الأساسي 12,000</span></div>
+                <span class="chip ok">مطابق</span>
+              </div>
+              <p class="rule">هذا التبويب يحدّث البنود من الملفات. لا يرسل مدى ولا يعتمد المسير.</p>
+            </div>
+          </section>
+        </div>
+
+        <!-- 02 المصروفات /app/expenses -->
+        <div id="expenses" class="pane">
+          <div class="kpis">
+            <div class="kpi">
+              <span>إجمالي الطلبات</span>
+              <strong dir="ltr">2</strong>
+              <em>مطالبات مقابل ميزانية كل فرع</em>
+            </div>
+            <div class="kpi warn">
+              <span>بانتظار الاعتماد</span>
+              <strong dir="ltr">1</strong>
+              <em>الإيصال بوابة الاعتماد</em>
+            </div>
+            <div class="kpi ok">
+              <span>استهلاك تشغيلي</span>
+              <strong dir="ltr">570</strong>
+              <em>من 90,000 ر.س للمنشأة</em>
+            </div>
+            <div class="kpi warn">
+              <span>معتمدة لم تُصرف</span>
+              <strong dir="ltr">0</strong>
+              <em>وسم متأخر بعد 48 ساعة</em>
+            </div>
+          </div>
+
+          <section class="slab">
+            <div class="sec-head">
+              <div>
+                <h2>المصروفات</h2>
+                <p>مطالبات مقابل ميزانية كل فرع · الإيصال بوابة الاعتماد. المطالبات المعتمدة تُقابل مسير الرواتب من الحضور المعتمد. <span class="mono" dir="ltr">/app/expenses</span></p>
+              </div>
+              <div class="actions">
+                <span class="btn navy">مطالبة جديدة</span>
+              </div>
+            </div>
+            <nav class="inner" aria-label="طبقات المصروفات">
+              <button type="button" class="on" data-exp="exp-budget">الميزانية</button>
+              <button type="button" data-exp="exp-form">مطالبة جديدة</button>
+              <button type="button" data-exp="exp-claims">المطالبات</button>
+              <button type="button" data-exp="exp-review">مراجعة الاعتماد</button>
+              <button type="button" data-exp="exp-station">مصروفات الفرع</button>
+            </nav>
+
+            <div id="exp-budget" class="layer on">
+              <div class="sec-head" style="border:0">
+                <div>
+                  <h2>استهلاك الميزانية التشغيلية</h2>
+                  <p>يُحدَّث لحظيًا مع كل مطالبة معتمدة. الوسوم: ضمن الحد · مراقبة · قارب النفاد · متجاوز.</p>
+                </div>
+                <div class="budget-sum">
+                  <b class="mono" dir="ltr">570</b>
+                  <span style="font-size:12px;color:var(--muted)">من 90,000 ر.س</span>
+                </div>
+              </div>
+              <div class="bar-row">
+                <label>فرع الخفجي</label>
+                <span class="track"><i style="width:1%"></i></span>
+                <span class="mono" dir="ltr" style="width:40px;font-size:12px;color:var(--muted)">1%</span>
+                <span class="chip ok">ضمن الحد</span>
+              </div>
+              <div class="bar-row">
+                <label>فرع رابغ</label>
+                <span class="track"><i style="width:1%"></i></span>
+                <span class="mono" dir="ltr" style="width:40px;font-size:12px;color:var(--muted)">0%</span>
+                <span class="chip ok">ضمن الحد</span>
+              </div>
+              <p class="rule">لوحة الميزانية هي السطح الأساسي. القائمة التفصيلية نفس المطالبات.</p>
+            </div>
+
+            <div id="exp-form" class="layer">
+              <div class="sec-head" style="border:0;padding-bottom:4px">
+                <div>
+                  <h2>مطالبة جديدة</h2>
+                  <p>الأنواع الحيّة: سفر · سكن · وقود · وجبات العمل الإضافي · أدوات ومعدات · تدريب — أو نوع حر. بلا إيصال لا يُعتمد.</p>
+                </div>
+              </div>
+              <div class="fields">
+                <div class="fld"><span>نوع المصروف</span><b>أدوات ومعدات</b></div>
+                <div class="fld"><span>الفاتورة قبل الضريبة</span><em dir="ltr">391.30</em></div>
+                <div class="fld"><span>قيمة الضريبة</span><em dir="ltr">58.70</em></div>
+                <div class="fld"><span>الفاتورة بعد الضريبة</span><em dir="ltr">450.00</em></div>
+                <div class="fld"><span>تاريخ الفاتورة</span><em dir="ltr">2026-08-12</em></div>
+                <div class="fld"><span>رقم الفاتورة</span><em dir="ltr">INV-4412</em></div>
+                <div class="fld"><span>الكمية</span><em dir="ltr">1</em></div>
+                <div class="fld"><span>الإيصال</span><b>مرفق · JPG</b></div>
+                <div class="fld full"><span>النطاق</span><b>فرع واحد · الخفجي — أو كل الفروع / فروع مختارة إن صُرّح</b></div>
+                <div class="fld full"><span>وصف مختصر</span><b>قطع غيار مضخة — إيصال المورد مرفق</b></div>
+                <div class="tax-box">الإجمالي بعد الضريبة: 450 × 1 فرع = 450 ر.س</div>
+              </div>
+              <p class="rule">بعد الضريبة مشتق (قبل + ضريبة) لا يُكتب. الإجمالي = بعد الضريبة × عدد الفروع. الإيصال إلزامي قبل الإرسال.</p>
+            </div>
+
+            <div id="exp-claims" class="layer">
+              <div class="row head claim">
+                <div>المطالبة</div>
+                <div>صاحبها</div>
+                <div>الفرع</div>
+                <div>المبلغ</div>
+                <div>الحالة</div>
+              </div>
+              <div class="row claim">
+                <div class="who">
+                  <strong>قطع غيار مضخة</strong>
+                  <span class="mono" dir="ltr">أدوات ومعدات · إيصال مرفق · قبل 391.30 · ضريبة 58.70</span>
+                </div>
+                <span>عمر ناصر</span>
+                <span>الخفجي</span>
+                <span class="num" dir="ltr">450</span>
+                <span class="chip warn">مراجعة المدير</span>
+              </div>
+              <div class="row claim">
+                <div class="who">
+                  <strong>مستلزمات سلامة</strong>
+                  <span class="mono" dir="ltr">أدوات ومعدات · إيصال مرفق · فاتورة S-19</span>
+                </div>
+                <span>سارة حسن</span>
+                <span>رابغ</span>
+                <span class="num" dir="ltr">120</span>
+                <span class="chip ok">معتمدة</span>
+              </div>
+              <p class="rule">حالات القائمة التفصيلية: مراجعة المدير · مراجعة المالية · مرفوض من المدير · معتمد · مرفوض من المالية. لوحة الميزانية تستخدم: بانتظار · معتمدة · مرفوضة · مصروفة.</p>
+            </div>
+
+            <div id="exp-review" class="layer">
+              <div class="sec-head" style="border:0;padding-bottom:0">
+                <div>
+                  <h2>مسار الاعتماد والصرف</h2>
+                  <p>مدير الفرع يعتمد أو يرفض · المالية تعتمد نهائيًا · ثم سجّل الصرف. بلا إيصال تُرفض. معتمدة لم تُصرف خلال 48 ساعة تُوسم متأخرة.</p>
+                </div>
+              </div>
+              <div class="row head review">
+                <div>المرحلة</div>
+                <div>من</div>
+                <div>إلى</div>
+                <div>الإجراء</div>
+              </div>
+              <div class="row review">
+                <div class="who"><strong>مراجعة المدير</strong><span>قطع غيار مضخة · عمر ناصر</span></div>
+                <span class="chip warn">مُرسل</span>
+                <span class="chip warn">مراجعة المدير</span>
+                <span><span class="btn navy" style="padding:6px 12px">اعتماد</span> <span class="btn bad" style="padding:6px 12px">رفض</span></span>
+              </div>
+              <div class="row review">
+                <div class="who"><strong>مراجعة المالية</strong><span>بعد اعتماد المدير</span></div>
+                <span class="chip warn">مراجعة المدير</span>
+                <span class="chip">مراجعة المالية</span>
+                <span class="chip">اعتماد نهائي / رفض</span>
+              </div>
+              <div class="row review">
+                <div class="who"><strong>سجّل الصرف</strong><span>مستلزمات سلامة · سارة حسن</span></div>
+                <span class="chip ok">معتمدة</span>
+                <span class="chip">مصروفة</span>
+                <span class="btn ghost" style="padding:6px 12px">سجّل الصرف</span>
+              </div>
+              <p class="rule">اعتماد الميزانية يفحص سقف الفرع والإيصال. صرف المطالبة لا يدخل المسير ولا يخصم من الأجر — المسير من الحضور.</p>
+            </div>
+
+            <div id="exp-station" class="layer">
+              <div class="sec-head" style="border:0">
+                <div>
+                  <h2>مصروفات فرع الخفجي</h2>
+                  <p>نفس المطالبات بنطاق واحد. <span class="mono" dir="ltr">/app/stations/:id/expenses</span> يعود إلى المصروفات.</p>
+                </div>
+                <span class="chip">السجل المالي لهذا الفرع فقط</span>
+              </div>
+              <div class="row claim">
+                <div class="who">
+                  <strong>قطع غيار مضخة</strong>
+                  <span>عمر ناصر · 12 أغسطس 2026</span>
+                </div>
+                <span>الخفجي</span>
+                <span class="num" dir="ltr">450</span>
+                <span class="chip warn">مراجعة المدير</span>
+                <span></span>
+              </div>
+              <p class="rule">لا نموذج اعتماد هنا إن فُتح من نطاق الفرع للقراءة. الاعتماد من سطح المصروفات الكامل.</p>
+            </div>
+          </section>
+        </div>
+
+        <!-- 03 الأصول / العهد /app/assets -->
+        <div id="assets" class="pane">
+          <div class="kpis">
+            <div class="kpi">
+              <span>إجمالي الأصول</span>
+              <strong dir="ltr">4</strong>
+              <em>سجل أصل موسوم</em>
+            </div>
+            <div class="kpi ok">
+              <span>عهد نشطة</span>
+              <strong dir="ltr">2</strong>
+              <em>حائز واحد لكل أصل</em>
+            </div>
+            <div class="kpi">
+              <span>خارج الخدمة</span>
+              <strong dir="ltr">0</strong>
+              <em>صيانة · مفقود · مستبعد</em>
+            </div>
+            <div class="kpi">
+              <span>القيمة الدفترية</span>
+              <strong dir="ltr">18,400</strong>
+              <em>ر.س · دون المستبعد</em>
+            </div>
+          </div>
+
+          <section class="slab">
+            <div class="sec-head">
+              <div>
+                <h2>سجل الأصول والعهد</h2>
+                <p>سجل أصل موسوم · حائز واحد · تسليم بتوقيع الطرفين · الاسترجاع شرط إنهاء الخدمة. <span class="mono" dir="ltr">/app/assets</span> — <span class="mono" dir="ltr">/app/custody</span> يعيد إلى هنا.</p>
+              </div>
+              <div class="actions">
+                <span class="chip">كل الفئات</span>
+                <span class="chip">كل الفروع</span>
+                <span class="chip">كل الحالات</span>
+                <span class="btn ghost">تصدير السجل</span>
+                <span class="btn navy">أصل جديد</span>
+              </div>
+            </div>
+            <nav class="inner" aria-label="طبقات الأصول">
+              <button type="button" class="on" data-ast="ast-reg">السجل</button>
+              <button type="button" data-ast="ast-card">بطاقة الأصل</button>
+              <button type="button" data-ast="ast-hand">تسليم العهدة</button>
+              <button type="button" data-ast="ast-trail">سجل العهدة</button>
+              <button type="button" data-ast="ast-maint">الصيانة</button>
+              <button type="button" data-ast="ast-lost">الفقدان</button>
+            </nav>
+
+            <div id="ast-reg" class="layer on">
+              <div class="row head asset">
+                <div>الأصل والرقم</div>
+                <div>الفئة</div>
+                <div>الحائز</div>
+                <div>الوحدة والمقر</div>
+                <div>الحالة</div>
+              </div>
+              <div class="row asset">
+                <div class="who"><strong>جهاز نقطة بيع</strong><span class="mono" dir="ltr">POS-014</span></div>
+                <span>معدات</span>
+                <span>أحمد السالم</span>
+                <span>فرع الخفجي</span>
+                <span class="chip ok">في العهدة</span>
+              </div>
+              <div class="row asset">
+                <div class="who"><strong>جهاز لوحي للصيانة</strong><span class="mono" dir="ltr">TAB-008</span></div>
+                <span>أجهزة</span>
+                <span>عمر ناصر</span>
+                <span>فرع الخفجي</span>
+                <span class="chip ok">في العهدة</span>
+              </div>
+              <div class="row asset">
+                <div class="who"><strong>مضخة احتياط</strong><span class="mono" dir="ltr">PMP-221</span></div>
+                <span>معدات تشغيل</span>
+                <span>—</span>
+                <span>فرع رابغ</span>
+                <span class="chip">متاح</span>
+              </div>
+              <div class="row asset">
+                <div class="who"><strong>طفاية حريق</strong><span class="mono" dir="ltr">HSE-044</span></div>
+                <span>سلامة</span>
+                <span>سارة حسن</span>
+                <span>فرع رابغ</span>
+                <span class="chip warn">قيد الفحص</span>
+              </div>
+              <p class="rule">الحالات الحيّة: متاح · في العهدة · قيد الفحص · تحت الصيانة · مفقود · مستبعد. التصدير: الأصل · الرقم · الفئة · الحائز · الوحدة · الحالة · الفحص القادم · القيمة. استرجاع العهد شرط إنهاء الخدمة في الموارد البشرية — لا تُغلق الخدمة وعهدة مفتوحة.</p>
+            </div>
+
+            <div id="ast-card" class="layer">
+              <div class="sec-head" style="border:0;padding-bottom:0">
+                <div>
+                  <h2>جهاز نقطة بيع</h2>
+                  <p class="mono" dir="ltr">POS-014 · QR يفتح /app/assets?asset=</p>
+                </div>
+                <span class="chip ok">في العهدة</span>
+              </div>
+              <p class="alert">الفحص القادم خلال 12 يوماً — طفاية حريق في رابغ نموذج للتنبيه على أصل آخر.</p>
+              <div class="split">
+                <div>
+                  <div class="row kv"><span>الفئة</span><strong>معدات</strong></div>
+                  <div class="row kv"><span>الحائز الحالي</span><strong>أحمد السالم</strong></div>
+                  <div class="row kv"><span>الوحدة والمقر</span><strong>فرع الخفجي · منصة 2</strong></div>
+                  <div class="row kv"><span>تاريخ الشراء</span><span class="mono" dir="ltr">2024-03-11</span></div>
+                  <div class="row kv"><span>القيمة</span><span class="num" dir="ltr">4,800</span></div>
+                  <div class="row kv"><span>نهاية الضمان</span><span class="mono" dir="ltr">2027-03-11</span></div>
+                  <div class="row kv"><span>نهاية العمر الافتراضي</span><span class="mono" dir="ltr">2029-03-11</span></div>
+                </div>
+                <div>
+                  <div class="qr" aria-hidden="true"></div>
+                  <span class="mono" dir="ltr" style="display:block;margin-top:8px;font-size:11px;color:var(--muted)">QR-POS-014</span>
+                </div>
+              </div>
+              <div class="sec-head">
+                <div class="actions" style="margin:0">
+                  <span class="btn navy">تسليم العهدة</span>
+                  <span class="btn ghost">تعديل</span>
+                  <span class="btn bad">بلاغ فقدان</span>
+                </div>
+              </div>
+              <p class="rule">أصل جديد يطلب: الاسم · الرقم · الفئة · الفرع · القيمة. الوثيقة المرفقة اختيارية على البطاقة.</p>
+            </div>
+
+            <div id="ast-hand" class="layer">
+              <div class="sec-head" style="border:0">
+                <div>
+                  <h2>نموذج تسليم عهدة</h2>
+                  <p>التسليم لا يُسجَّل إلا بتوقيع الطرفين وحالة الأصل. المستلم شخص أو عهدة الفرع.</p>
+                </div>
+                <span class="btn navy">توثيق التسليم</span>
+              </div>
+              <div class="fields">
+                <div class="fld"><span>الأصل</span><b>جهاز نقطة بيع · POS-014</b></div>
+                <div class="fld"><span>المسلِّم</span><b>أحمد السالم</b></div>
+                <div class="fld"><span>المستلم</span><b>عمر ناصر — أو عهدة الفرع</b></div>
+                <div class="fld full"><span>حالة الأصل عند التسليم</span><b>سليم · خدش خفيف على الشاشة · شاحن مكتمل</b></div>
+              </div>
+              <div class="sign-grid">
+                <div class="sign"><span>توقيع المسلِّم</span><strong>أحمد السالم</strong></div>
+                <div class="sign"><span>توقيع المستلم</span><strong>عمر ناصر</strong></div>
+              </div>
+              <p class="rule">صور الحالة اختيارية. بلا توقيعين لا تُحفظ الحركة. العهدة لا تُحسم من الأجر إلا بحكم أو إقرار — والحسم لا يتجاوز نصف الأجر (المادة 93).</p>
+            </div>
+
+            <div id="ast-trail" class="layer">
+              <div class="sec-head" style="border:0;padding-bottom:0">
+                <div>
+                  <h2>سجل العهدة</h2>
+                  <p>سلسلة تسليم مرتبة بالأحدث. كل حلقة: من → إلى · الحالة · التوقيعان · الوقت.</p>
+                </div>
+              </div>
+              <div class="trail">
+                <strong>أحمد السالم → عمر ناصر</strong>
+                <span>12 أغسطس 2026 · سليم · خدش خفيف على الشاشة · توقيع الطرفين محفوظ</span>
+              </div>
+              <div class="trail">
+                <strong>المستودع → أحمد السالم</strong>
+                <span>11 مارس 2024 · جديد من الصندوق · أول تسليم</span>
+              </div>
+              <p class="rule">لا سجل؟ الأصل متاح في الفرع ولم يُسلَّم بعد.</p>
+            </div>
+
+            <div id="ast-maint" class="layer">
+              <div class="sec-head" style="border:0">
+                <div>
+                  <h2>الصيانة والفحوصات</h2>
+                  <p>وقائية أو طارئة. الفحص يُغلق بإثبات صورة. التسجيل: النوع · التاريخ · المنفّذ · التكلفة · النتيجة.</p>
+                </div>
+                <span class="btn ghost">تسجيل</span>
+              </div>
+              <div class="row head maint">
+                <div>النوع</div>
+                <div>التاريخ</div>
+                <div>المنفّذ</div>
+                <div>التكلفة</div>
+                <div>النتيجة</div>
+              </div>
+              <div class="row maint">
+                <span class="chip">وقائية</span>
+                <span class="mono" dir="ltr">2026-07-02</span>
+                <span>سلامة الفرع</span>
+                <span class="num" dir="ltr">0</span>
+                <span>فحص ربع سنوي — صالح</span>
+              </div>
+              <div class="row maint">
+                <span class="chip warn">طارئة</span>
+                <span class="mono" dir="ltr">2026-05-18</span>
+                <span>فني رابغ</span>
+                <span class="num" dir="ltr">340</span>
+                <span>استبدال خرطوم — أصل عاد للعهدة</span>
+              </div>
+              <p class="rule">تحت الصيانة وسم حالة على السجل. إغلاق الفحص بلا صورة لا يُقبل في السطح الحي.</p>
+            </div>
+
+            <div id="ast-lost" class="layer">
+              <div class="sec-head" style="border:0">
+                <div>
+                  <h2>بلاغ فقدان وإغلاقه</h2>
+                  <p>بلاغ الفقدان يحوّل الحالة إلى مفقود. الإغلاق: وُجد وأُعيد · أو مستبعد مع السبب.</p>
+                </div>
+              </div>
+              <div class="fields">
+                <div class="fld"><span>الأصل</span><b>جهاز لوحي للصيانة · TAB-008</b></div>
+                <div class="fld"><span>الحالة الحالية</span><b>في العهدة — بلاغ تجريبي</b></div>
+                <div class="fld full"><span>سبب البلاغ</span><b>فُقد أثناء نوبة الصيانة المسائية — أُبلغت الإدارة</b></div>
+                <div class="fld"><span>قرار الإغلاق</span><b>وُجد وأُعيد للعهدة / مستبعد</b></div>
+                <div class="fld"><span>سبب القرار</span><b>وُجد في غرفة المعدات بعد الجرد</b></div>
+              </div>
+              <div class="sec-head">
+                <div class="actions" style="margin:0">
+                  <span class="btn bad">بلاغ فقدان</span>
+                  <span class="btn ghost">إغلاق بلاغ الفقدان</span>
+                </div>
+              </div>
+              <p class="rule">أصل مفقود لا يُسلَّم. المستبعد يخرج من القيمة الدفترية. الجرد التشغيلي للمخزون سطح منفصل.</p>
+            </div>
+          </section>
+        </div>
+
+        <!-- 04 المخزون /app/inventory -->
+        <div id="inventory" class="pane">
+          <div class="kpis">
+            <div class="kpi">
+              <span>الأصناف</span>
+              <strong dir="ltr">3</strong>
+              <em>رصيد الفرع من الشريط العلوي</em>
+            </div>
+            <div class="kpi warn">
+              <span>تحت الحد</span>
+              <strong dir="ltr">1</strong>
+              <em>قاطع 32A في الخفجي</em>
+            </div>
+            <div class="kpi">
+              <span>طلبات معلقة</span>
+              <strong dir="ltr">1</strong>
+              <em>من فرع إلى فرع</em>
+            </div>
+            <div class="kpi">
+              <span>الحركات</span>
+              <strong dir="ltr">2</strong>
+              <em>شراء · صرف للعمل</em>
+            </div>
+          </div>
+
+          <section class="slab">
+            <div class="sec-head">
+              <div>
+                <h2>المخزون</h2>
+                <p>شراء للصنف · رصيد الفرع · صرف للعمل. الفرع من الشريط العلوي. <span class="mono" dir="ltr">/app/inventory</span></p>
+              </div>
+            </div>
+            <nav class="inner" aria-label="طبقات المخزون">
+              <button type="button" class="on" data-inv="inv-items">الأصناف</button>
+              <button type="button" data-inv="inv-buy">المشتريات</button>
+              <button type="button" data-inv="inv-req">الطلبات</button>
+              <button type="button" data-inv="inv-issue">الصرف للعمل</button>
+              <button type="button" data-inv="inv-move">الحركات</button>
+            </nav>
+
+            <div id="inv-items" class="layer on">
+              <div class="row head inv">
+                <div>الصنف</div>
+                <div>الكود</div>
+                <div>الكمية</div>
+                <div>الفرع</div>
+                <div>الحالة</div>
+              </div>
+              <div class="row inv">
+                <strong>قفازات عازلة</strong>
+                <span class="mono" dir="ltr">PPE-0120</span>
+                <span class="num" dir="ltr">24</span>
+                <span>الخفجي</span>
+                <span class="chip ok">متوفر</span>
+              </div>
+              <div class="row inv">
+                <strong>قاطع 32A</strong>
+                <span class="mono" dir="ltr">BRK-32A</span>
+                <span class="num" dir="ltr">3</span>
+                <span>الخفجي</span>
+                <span class="chip warn">منخفض</span>
+              </div>
+              <div class="row inv">
+                <strong>كبل XLPE 4×95</strong>
+                <span class="mono" dir="ltr">CBL-495</span>
+                <span class="num" dir="ltr">12</span>
+                <span>رابغ</span>
+                <span class="chip ok">متوفر</span>
+              </div>
+              <p class="rule">لا أصناف؟ أضف شراءً من تبويب المشتريات. هذا السطح لا يخصم من المسير ولا يختم ملفاً ولا يسلّم عهدة.</p>
+            </div>
+
+            <div id="inv-buy" class="layer">
+              <div class="sec-head" style="border:0;padding-bottom:4px">
+                <div>
+                  <h2>تسجيل شراء</h2>
+                  <p>اسم الصنف · كود الصنف · الفرع · الكمية · الحد الأدنى · سعر القطعة · الإجمالي المشتق · المورد · تاريخ الشراء.</p>
+                </div>
+                <span class="btn green">حفظ الشراء</span>
+              </div>
+              <div class="fields">
+                <div class="fld"><span>اسم الصنف</span><b>قفازات عازلة</b></div>
+                <div class="fld"><span>كود الصنف</span><em dir="ltr">PPE-0120</em></div>
+                <div class="fld"><span>الفرع</span><b>الخفجي</b></div>
+                <div class="fld"><span>الكمية</span><em dir="ltr">24</em></div>
+                <div class="fld"><span>الحد الأدنى</span><em dir="ltr">20</em></div>
+                <div class="fld"><span>سعر القطعة</span><em dir="ltr">45.00</em></div>
+                <div class="fld"><span>الإجمالي</span><em dir="ltr">1,080.00</em></div>
+                <div class="fld"><span>المورد</span><b>مستودع السلامة</b></div>
+                <div class="fld"><span>تاريخ الشراء</span><em dir="ltr">2026-08-01</em></div>
+              </div>
+              <div class="row head inv">
+                <div>الصنف</div>
+                <div>المورد</div>
+                <div>الكمية</div>
+                <div>الفرع</div>
+                <div>التكلفة</div>
+              </div>
+              <div class="row inv">
+                <strong>قفازات عازلة</strong>
+                <span>مستودع السلامة</span>
+                <span class="num" dir="ltr">24</span>
+                <span>الخفجي</span>
+                <span class="num" dir="ltr">1,080 SAR</span>
+              </div>
+              <p class="rule">الشراء يفتح الصنف على رصيد الفرع. الإجمالي مشتق (كمية × سعر). لا مسار توريد موازٍ خارج هذا التبويب.</p>
+            </div>
+
+            <div id="inv-req" class="layer">
+              <div class="sec-head" style="border:0;padding-bottom:4px">
+                <div>
+                  <h2>طلب بين فرعين</h2>
+                  <p>من فرع · إلى فرع · الصنف من رصيد المصدر · الكمية · سبب الطلب.</p>
+                </div>
+                <span class="btn navy">إرسال الطلب</span>
+              </div>
+              <div class="row head inv">
+                <div>الصنف</div>
+                <div>الكمية</div>
+                <div>من</div>
+                <div>إلى</div>
+                <div>الحالة</div>
+              </div>
+              <div class="row inv">
+                <strong>قاطع 32A</strong>
+                <span class="num" dir="ltr">4</span>
+                <span>رابغ</span>
+                <span>الخفجي</span>
+                <span class="chip warn">معلق</span>
+              </div>
+              <p class="rule">الطلب ينتقل بين فرعين. المراجعة من صلاحية المخزون — ليست اعتماد مصروف.</p>
+            </div>
+
+            <div id="inv-issue" class="layer">
+              <div class="sec-head" style="border:0;padding-bottom:4px">
+                <div>
+                  <h2>صرف للعمل</h2>
+                  <p>الفرع · الصنف · المستلم · الكمية · مرجع العمل · تاريخ العمل · ملاحظة.</p>
+                </div>
+                <span class="btn navy">صرف</span>
+              </div>
+              <div class="row head inv">
+                <div>الصنف</div>
+                <div>الكمية</div>
+                <div>الفرع</div>
+                <div>المستلم</div>
+                <div>مرجع العمل</div>
+              </div>
+              <div class="row inv">
+                <strong>قفازات عازلة</strong>
+                <span class="num" dir="ltr">2</span>
+                <span>الخفجي</span>
+                <span>عمر ناصر</span>
+                <span class="mono" dir="ltr">WP-184</span>
+              </div>
+              <p class="rule">الصرف للعمل يخصم من رصيد الفرع ويربط بمرجع عمل. ليس تسليم عهدة — العهد في الأصول.</p>
+            </div>
+
+            <div id="inv-move" class="layer">
+              <div class="row head inv">
+                <div>الحركة</div>
+                <div>النوع</div>
+                <div>الصنف</div>
+                <div>الكمية</div>
+                <div>الفرع</div>
+              </div>
+              <div class="row inv">
+                <span class="mono" dir="ltr">MV-1041</span>
+                <span>شراء</span>
+                <strong>قفازات عازلة</strong>
+                <span class="num" dir="ltr">24</span>
+                <span>الخفجي</span>
+              </div>
+              <div class="row inv">
+                <span class="mono" dir="ltr">MV-1042</span>
+                <span>صرف</span>
+                <strong>قفازات عازلة</strong>
+                <span class="num" dir="ltr">2</span>
+                <span>الخفجي</span>
+              </div>
+              <p class="rule">سجل الحركات مشتق من الشراء والطلب والصرف. لا تُختلق حركة يدوية خارج هذه الأنواع.</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    function switchOn(buttons, panes, getId) {
+      buttons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          buttons.forEach((b) => b.classList.remove("on"));
+          panes.forEach((p) => p.classList.remove("on"));
+          btn.classList.add("on");
+          var el = document.getElementById(getId(btn));
+          if (el) el.classList.add("on");
+        });
+      });
+    }
+    switchOn(
+      document.querySelectorAll("[data-view]"),
+      document.querySelectorAll(".pane"),
+      function (btn) { return btn.dataset.view; }
+    );
+    switchOn(
+      document.querySelectorAll("[data-layer]"),
+      ["pay-run", "pay-lines", "pay-deduct", "pay-slip", "pay-wps", "pay-files"].map(function (id) { return document.getElementById(id); }),
+      function (btn) { return btn.dataset.layer; }
+    );
+    switchOn(
+      document.querySelectorAll("[data-exp]"),
+      ["exp-budget", "exp-form", "exp-claims", "exp-review", "exp-station"].map(function (id) { return document.getElementById(id); }),
+      function (btn) { return btn.dataset.exp; }
+    );
+    switchOn(
+      document.querySelectorAll("[data-ast]"),
+      ["ast-reg", "ast-card", "ast-hand", "ast-trail", "ast-maint", "ast-lost"].map(function (id) { return document.getElementById(id); }),
+      function (btn) { return btn.dataset.ast; }
+    );
+    switchOn(
+      document.querySelectorAll("[data-inv]"),
+      ["inv-items", "inv-buy", "inv-req", "inv-issue", "inv-move"].map(function (id) { return document.getElementById(id); }),
+      function (btn) { return btn.dataset.inv; }
+    );
+
+    (function () {
+      var a = document.getElementById("save-file");
+      if (!a) return;
+      a.addEventListener("click", function () {
+        var html = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+        a.href = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+      });
+    })();
+  </script>
+</body>
+</html>

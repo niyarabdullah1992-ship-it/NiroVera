@@ -1,5 +1,6 @@
 import React from "react";
-import { BORDER, BRAND, CARD, MUTED, NAVY } from "@/lib/platformStyles";
+import { docFrame, DS_CONTROL_RADIUS } from "@/lib/designSystem";
+import { BORDER, CARD, CONTROL_RADIUS, MUTED, NAVY, ui } from "@/lib/platformStyles";
 
 function addDays(iso, n) {
   const raw = String(iso || "").slice(0, 10);
@@ -9,19 +10,6 @@ function addDays(iso, n) {
   const pad = (x) => String(x).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
-
-const btn = (fill) => ({
-  height: 36,
-  padding: "0 12px",
-  borderRadius: 9,
-  fontSize: 12,
-  fontWeight: 650,
-  fontFamily: "inherit",
-  cursor: fill ? "pointer" : "not-allowed",
-  border: fill ? "none" : `1px solid ${BORDER}`,
-  background: fill ? BRAND : CARD,
-  color: fill ? "#fff" : NAVY,
-});
 
 /** Manager strip: extend one day or spread the remainder. Sits under pace, above chat. */
 export default function OpsTaskBlockerResolve({
@@ -44,8 +32,15 @@ export default function OpsTaskBlockerResolve({
   const canAct = canManage && !busy;
 
   return (
-    <section data-nv-task-blocker style={{ border: "1px solid #FDE68A", background: "#FFFBEB", borderRadius: 16, padding: 16, flexShrink: 0 }}>
-      <div style={{ fontSize: 12, fontWeight: 650, color: "#B45309" }}>
+    <section
+      data-nv-task-blocker
+      style={{
+        ...docFrame("waiting"),
+        padding: 16,
+        flexShrink: 0,
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 650, color: "var(--nv-warn-ink)" }}>
         {partial
           ? (ar ? `أدخلت ${logged} من تارقت اليوم ${expected} — اختر ماذا تفعل بالمتبقي` : `You entered ${logged} of today's target ${expected} — choose what happens to the remainder`)
           : (ar ? `أدخلت 0 من تارقت اليوم ${expected} — اختر ماذا تفعل بالمتبقي` : `You entered 0 of today's target ${expected} — choose what happens to the remainder`)}
@@ -65,7 +60,14 @@ export default function OpsTaskBlockerResolve({
             type="button"
             disabled={!canAct || !nextDue}
             onClick={() => onExtend?.({ dueAt: nextDue, reason, ...blocker })}
-            style={btn(canAct && !!nextDue)}
+            style={{
+              ...ui.btnMiniBrand,
+              height: 36,
+              padding: "0 12px",
+              borderRadius: CONTROL_RADIUS || DS_CONTROL_RADIUS,
+              opacity: canAct && nextDue ? 1 : 0.5,
+              cursor: canAct && nextDue ? "pointer" : "not-allowed",
+            }}
           >
             {ar ? "تمديد" : "Extend"}
           </button>
@@ -73,7 +75,19 @@ export default function OpsTaskBlockerResolve({
             type="button"
             disabled={!canAct}
             onClick={() => onRedistribute?.({ reason, ...blocker })}
-            style={{ ...btn(canAct), background: CARD, color: NAVY, border: `1px solid ${BORDER}`, height: "auto", minHeight: 36, whiteSpace: "normal", lineHeight: 1.35, padding: "8px 10px" }}
+            style={{
+              ...ui.btnMini,
+              height: "auto",
+              minHeight: 36,
+              whiteSpace: "normal",
+              lineHeight: 1.35,
+              padding: "8px 10px",
+              background: CARD,
+              color: NAVY,
+              border: `1px solid ${BORDER}`,
+              opacity: canAct ? 1 : 0.5,
+              cursor: canAct ? "pointer" : "not-allowed",
+            }}
           >
             {ar ? "توزيع المتبقي على بقية الأيام" : "Spread remainder across remaining days"}
           </button>

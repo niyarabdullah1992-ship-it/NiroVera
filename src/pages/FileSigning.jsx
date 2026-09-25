@@ -10,18 +10,13 @@ import SigningWorkspace from "@/components/files/SigningWorkspace";
 import PublicSignFlow from "@/components/files/PublicSignFlow";
 import { isOpenSigningState, settledState } from "@/lib/multiSignDerivations";
 import { invokeLocalMultiSign, shouldUseLocalMultiSign } from "@/lib/localMultiSignFallback";
-import SigningSectionShell from "@/components/files/SigningSectionShell";
-import { pageKicker } from "@/lib/moduleMeta";
 import { canCreateSignatureRequests, visibleEmployees } from "@/lib/permissions";
 import { updateEmployeeProfile } from "@/lib/store";
 import { MUTED, pageCol } from "@/lib/platformStyles";
-import { formatUiNumber } from "@/lib/dateFormat";
 import { ensureSignatureFonts } from "@/lib/typedSignatureImage";
 import { deskSigningRows, isConsentSignToken } from "@/lib/writtenConsent";
 
-// Signing is one surface now. Status, archive and verify are all filters on the
-// strip above the table — exactly as the tasks board treats its archive — so
-// nothing here needs a tab bar of its own.
+// Old ?tab= bookmarks open the matching surface. Archive is the الأرشيف tab.
 const TAB_FILTERS = { inbox: "status", status: "status", archive: "archive", verify: "verify", mine: "mine", individual: "all", group: "all" };
 
 export default function FileSigning() {
@@ -86,13 +81,9 @@ export default function FileSigning() {
 
   useEffect(() => { reload(); }, [reload]);
 
-  const { active, pendingCount } = useMemo(() => {
-    const rows = requests || [];
-    const open = rows.filter((row) => isOpenSigningState(settledState(row).state));
-    return {
-      active: requests === null ? null : open,
-      pendingCount: open.filter((row) => row.myStatus === "pending").length,
-    };
+  const active = useMemo(() => {
+    if (requests === null) return null;
+    return (requests || []).filter((row) => isOpenSigningState(settledState(row).state));
   }, [requests]);
 
   const canCreate = currentUser && data ? canCreateSignatureRequests(currentUser, data) : false;
@@ -218,51 +209,45 @@ export default function FileSigning() {
   }
 
   return (
-    <SigningSectionShell
-      ar={ar}
-      kicker={pageKicker("/app/signing", lang)}
-      title={ar ? "التوقيع الرقمي" : "Digital signing"}
-      hint={ar
-        ? "ختمك هنا لملفات التوقيع المتوازي. الموافقة الخطية تُختم داخل طلباتي — الملف يبقى هناك لأن الختم غاية ذلك الطلب."
-        : "Your seal lives here for parallel signing files. Written consent is sealed inside My Requests — the file stays there because the seal is that request's purpose."}
-      meta={pendingCount > 0
-        ? (ar ? `بصمة · ${formatUiNumber(pendingCount, true)} بانتظارك` : `SHA-256 · ${pendingCount} awaiting you`)
-        : (ar ? "بصمة · سجل الشركة" : "SHA-256 · company registry")}
+    <div
+      className="nv-sign-frame nv-sign-desk"
+      dir={ar ? "rtl" : "ltr"}
+      style={{ width: "min(1320px, 100%)", margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-        <SigningHome
-          ar={ar}
-          lang={lang}
-          currentUser={currentUser}
-          companyId={company.id}
-          requests={requests}
-          activeRequests={active}
-          loading={loading}
-          canGroup={canCreate}
-          initialFilter={postSend ? "status" : initialFilter}
-          activeFilter={homeFilter}
-          focusRequestId={postSend?.requestId || ""}
-          sentLinks={postSend?.links || []}
-          sealPreview={seal.signatureUrl}
-          sealId={seal.signatureId}
-          sealReady={sealReady}
-          onOpenStudio={() => setStudioOpen(true)}
-          onRemoveSeal={removeSeal}
-          onOpenDocument={({ file, sourceUrl }) => setWorkspace({
-            file,
-            sourceUrl,
-            signature: {
-              signatureUrl: seal.signatureUrl,
-              signatureRawUrl: seal.signatureRawUrl,
-              signatureVariant: seal.signatureVariant,
-              stampConfig: seal.stampConfig,
-              preview: seal.signatureUrl,
-            },
-          })}
-          onOpenRequest={openRequest}
-          onReload={reload}
-        />
-      </div>
-    </SigningSectionShell>
+      <SigningHome
+        ar={ar}
+        lang={lang}
+        currentUser={currentUser}
+        companyId={company.id}
+        companyName={company.name || ""}
+        employees={scopedEmployees}
+        stations={data?.stations || []}
+        requests={requests}
+        activeRequests={active}
+        loading={loading}
+        initialFilter={postSend ? "status" : initialFilter}
+        activeFilter={homeFilter}
+        focusRequestId={postSend?.requestId || ""}
+        sentLinks={postSend?.links || []}
+        sealPreview={seal.signatureUrl}
+        sealId={seal.signatureId}
+        sealReady={sealReady}
+        onOpenStudio={() => setStudioOpen(true)}
+        onRemoveSeal={removeSeal}
+        onOpenDocument={({ file, sourceUrl }) => setWorkspace({
+          file,
+          sourceUrl,
+          signature: {
+            signatureUrl: seal.signatureUrl,
+            signatureRawUrl: seal.signatureRawUrl,
+            signatureVariant: seal.signatureVariant,
+            stampConfig: seal.stampConfig,
+            preview: seal.signatureUrl,
+          },
+        })}
+        onOpenRequest={openRequest}
+        onReload={reload}
+      />
+    </div>
   );
 }

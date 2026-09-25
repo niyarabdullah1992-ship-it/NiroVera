@@ -59,7 +59,7 @@ export default function SigningFinishDialog({
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <span style={{ fontWeight: 700, fontSize: 16, color: INK }}>
-                {group ? (ar ? "إرسال للتوقيع" : "Send for signature") : (ar ? "الإقرار قبل الختم" : "Confirm before sealing")}
+                {group ? (ar ? "إرسال للتوقيع" : "Send for signature") : (ar ? "إنهاء التوقيع؟" : "Finish signing?")}
               </span>
               <span style={{ fontSize: 12, color: MUTED }}>
                 {ar
@@ -91,7 +91,7 @@ export default function SigningFinishDialog({
                   {ar
                     ? (readOk
                       ? "أقرّ بأنني راجعت المستند بالكامل، وأنّ وضع هذا الختم يعبّر عن نيّتي في التوقيع، وفق نظام التعاملات الإلكترونية."
-                      : `مرّ على كل صفحات المستند أولاً — الإقرار يُفتح بعد القراءة (${seenCount} من ${pageCount}).`)
+                      : `تصفّح كل الصفحات قبل الإنهاء — ${seenCount} من ${pageCount}.`)
                     : (readOk
                       ? "I confirm that I reviewed the whole document and that placing this seal expresses my intent to sign, under the Electronic Transactions Law."
                       : `Go through every page first — acknowledgement unlocks after the read (${seenCount} of ${pageCount}).`)}
@@ -126,7 +126,7 @@ export default function SigningFinishDialog({
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {group
                   ? (busy ? (ar ? "جارٍ الإرسال…" : "Sending…") : (ar ? "إرسال الطلبات" : "Send requests"))
-                  : (busy ? (ar ? "جارٍ الختم…" : "Sealing…") : (ar ? "ختم وتسجيل" : "Seal and register"))}
+                  : (busy ? (ar ? "جارٍ الختم…" : "Sealing…") : (ar ? "إنهاء وتوقيع" : "Finish and sign"))}
               </button>
               <button type="button" onClick={onClose} disabled={busy} style={{ ...ghostBtn, opacity: busy ? 0.5 : 1 }}>
                 {ar ? "رجوع" : "Back"}

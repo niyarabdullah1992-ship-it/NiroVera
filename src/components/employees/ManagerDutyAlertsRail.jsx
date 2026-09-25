@@ -13,11 +13,13 @@ import {
 import { managerDutyAlertGroups } from "@/lib/suiteBadges";
 import DutyStripAlertCard from "@/components/employees/DutyStripAlertCard";
 import { PLATFORM_JUDGE_LEDE_AR, PLATFORM_JUDGE_LEDE_EN, PLATFORM_JUDGE_TITLE_AR, PLATFORM_JUDGE_TITLE_EN } from "@/lib/platformJudgment";
-import { docFrame } from "@/lib/designSystem";
+import { statusBannerQuiet } from "@/lib/platformStyles";
+import { stateChip } from "@/lib/designSystem";
 
 /**
  * إدارة on جدول الدوام: platform judgment about each in-scope worker.
- * Title is حكم المنصة. Each card names the worker once.
+ * Title is حكم المنصة. Header once; each soft card names the worker once.
+ * Schedule chrome: soft fill + 1px line — no thick top status ribbon.
  */
 export default function ManagerDutyAlertsRail({
   weekStart,
@@ -50,37 +52,68 @@ export default function ManagerDutyAlertsRail({
   const due = grouped.anyDue;
   const summary = dutyStripPeopleSummary(grouped, ar);
   const hasNightConsent = pack.cards.some((row) => row.gateId === "night_rotate");
+  const railSkin = due
+    ? (grouped.anyBlock ? statusBannerQuiet.bad : statusBannerQuiet.warn)
+    : {
+        background: "var(--nv-card)",
+        border: "1px solid var(--nv-line)",
+        borderRadius: 14,
+        boxShadow: "var(--nv-paper)",
+        padding: "14px 14px 16px",
+      };
+  const countChip = due && summary
+    ? stateChip(grouped.anyBlock ? "blocked" : "waiting", {
+        fontSize: 10,
+        fontWeight: 600,
+        padding: "3px 10px",
+        maxWidth: "100%",
+        whiteSpace: "nowrap",
+      })
+    : null;
 
   return (
     <section
       data-audience="manager"
       style={{
-        ...docFrame(due ? "blocked" : "settled"),
-        ...(due ? { background: "var(--nv-bad-soft)" } : {}),
-        padding: "14px 14px 16px",
+        ...railSkin,
+        ...(due ? {} : { padding: "14px 14px 16px" }),
         display: "flex",
         flexDirection: "column",
         gap: 12,
       }}
     >
-      <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0, color: SW.ink }}>{ar ? PLATFORM_JUDGE_TITLE_AR : PLATFORM_JUDGE_TITLE_EN}</span>
-        <span style={{ fontSize: 12, color: SW.muted, lineHeight: 1.65, letterSpacing: 0 }}>{ar ? PLATFORM_JUDGE_LEDE_AR : PLATFORM_JUDGE_LEDE_EN}</span>
-        {due && summary ? (
-          <span style={{ fontSize: 12, color: SW.muted, letterSpacing: 0 }}>{summary}</span>
-        ) : null}
-      </span>
+      <header style={{ display: "flex", flexDirection: "column", gap: 6, letterSpacing: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: 15, fontWeight: 700, color: SW.ink, letterSpacing: 0 }}>
+            {ar ? PLATFORM_JUDGE_TITLE_AR : PLATFORM_JUDGE_TITLE_EN}
+          </span>
+          {countChip ? <span style={countChip}>{summary}</span> : null}
+        </div>
+        <span style={{ fontSize: 12, color: SW.muted, lineHeight: 1.65, letterSpacing: 0 }}>
+          {ar ? PLATFORM_JUDGE_LEDE_AR : PLATFORM_JUDGE_LEDE_EN}
+        </span>
+      </header>
       {!due && !stationNotes.length ? (
         <span style={{ fontSize: 12, color: SW.muted, lineHeight: 1.7 }}>
           {weekDutyStripEmptyCopy(ar)}
         </span>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 0, borderTop: `1px solid ${SW.line}`, marginTop: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {grouped.people.map((person) => (
             <DutyStripAlertCard
               key={person.id}
               card={person}
               ar={ar}
+              hideJudgment
               onApplyOrdinary={canApplyOrdinary && onApplyOrdinary
                 ? (kind) => {
                   const emp = employees.find((row) => String(row.id) === String(person.employeeId));
@@ -104,8 +137,10 @@ export default function ManagerDutyAlertsRail({
                 display: "flex",
                 flexDirection: "column",
                 gap: 4,
-                paddingTop: 12,
-                borderTop: `1px solid ${SW.line}`,
+                padding: "10px 12px",
+                border: `1px solid ${SW.line}`,
+                borderRadius: 14,
+                background: "var(--nv-card, #fff)",
                 letterSpacing: 0,
               }}
             >
@@ -123,7 +158,7 @@ export default function ManagerDutyAlertsRail({
             </div>
           ) : null}
           {hasNightConsent ? (
-            <Link to="/app/requests/manage" style={{ fontSize: 11, fontWeight: 600, color: SW.ink, textDecoration: "underline", textUnderlineOffset: 3 }}>
+            <Link to="/app/requests/manage" style={{ fontSize: 11, fontWeight: 500, color: SW.muted, textDecoration: "underline", textUnderlineOffset: 3 }}>
               {ar ? "افتح القرار في إدارة طلباتي" : "Open the decision in Requests"}
             </Link>
           ) : null}

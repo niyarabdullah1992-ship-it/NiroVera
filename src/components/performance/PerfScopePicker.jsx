@@ -10,14 +10,15 @@ function Chip({ label, on, onClick, x }) {
       type="button"
       onClick={onClick}
       title={x ? (on ? undefined : undefined) : undefined}
+      className="nv-perf-chip"
       style={{
         fontFamily: "inherit",
         fontSize: 11,
         fontWeight: 600,
         padding: "5px 10px",
         border: `1px solid ${on ? PERF_NAVY : PERF_LINE}`,
-        background: on ? PERF_NAVY : (x ? PERF_WHITE : "#f5f6f8"),
-        color: on ? "#fff" : PERF_BODY,
+        background: on ? PERF_NAVY : (x ? PERF_WHITE : "var(--nv-mute-soft)"),
+        color: on ? "var(--nv-btn-ink)" : PERF_BODY,
         cursor: "pointer",
         whiteSpace: "nowrap",
         display: "inline-flex",
@@ -115,6 +116,7 @@ export default function PerfScopePicker({
                   key={id}
                   type="button"
                   onClick={() => onToggleTeam(id)}
+                  className="nv-perf-chip"
                   style={{
                     fontFamily: "inherit",
                     fontSize: 11,
@@ -122,7 +124,7 @@ export default function PerfScopePicker({
                     padding: "6px 11px",
                     border: `1px solid ${on ? PERF_NAVY : PERF_LINE}`,
                     background: on ? PERF_NAVY : PERF_WHITE,
-                    color: on ? "#fff" : PERF_BODY,
+                    color: on ? "var(--nv-btn-ink)" : PERF_BODY,
                     cursor: "pointer",
                     borderRadius: 999,
                   }}
@@ -132,7 +134,7 @@ export default function PerfScopePicker({
               );
             })}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", border: `1px solid ${PERF_LINE}`, background: PERF_WHITE, maxHeight: 270, overflowY: "auto" }}>
+          <div style={{ display: "flex", flexDirection: "column", border: `1px solid ${PERF_LINE}`, borderRadius: 10, background: PERF_WHITE, maxHeight: 270, overflowY: "auto" }}>
             {view.branches.filter((branch) => byBranch.has(branch.id)).map((branch) => {
               const names = byBranch.get(branch.id) || [];
               const bOn = selB.includes(branch.id);
@@ -145,7 +147,7 @@ export default function PerfScopePicker({
                 <div key={branch.id} style={{ display: "flex", flexDirection: "column" }}>
                   <div style={{ background: PERF_SURFACE, borderBottom: `1px solid ${PERF_SOFT}`, display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto auto", gap: 9, alignItems: "center", paddingInlineEnd: 9 }}>
                     <button type="button" onClick={() => onToggleBranch(branch.id)} title={ar ? "اختر الفرع كوحدة للمقارنة" : "Compare the branch as a unit"} style={{ fontFamily: "inherit", padding: "7px 11px 7px 0", marginInlineStart: 11, border: "none", background: "none", cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
-                      <span style={{ width: 13, height: 13, border: `1px solid ${bOn ? PERF_NAVY : "#c7ccd6"}`, background: bOn ? PERF_NAVY : PERF_WHITE, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>{bOn ? "✓" : ""}</span>
+                      <span style={{ width: 13, height: 13, border: `1px solid ${bOn ? PERF_NAVY : "var(--nv-box)"}`, background: bOn ? PERF_NAVY : PERF_WHITE, color: "var(--nv-btn-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>{bOn ? "✓" : ""}</span>
                     </button>
                     <button type="button" onClick={() => { if (!q) onToggleOpen(branch.id); }} style={{ fontFamily: "inherit", textAlign: "start", padding: "7px 0", border: "none", background: "none", color: PERF_INK, cursor: "pointer", display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
                       <span style={{ fontSize: 9, color: PERF_MUTED, width: 9, flex: "none" }}>{open ? "▾" : "▸"}</span>
@@ -172,8 +174,8 @@ export default function PerfScopePicker({
                           textAlign: "start",
                           padding: "7px 11px",
                           border: "none",
-                          borderBottom: "1px solid #f7f8fa",
-                          background: on ? "#f2faf6" : PERF_WHITE,
+                          borderBottom: `1px solid ${PERF_SOFT}`,
+                          background: on ? "var(--nv-ok-soft)" : PERF_WHITE,
                           color: PERF_INK,
                           cursor: "pointer",
                           display: "grid",
@@ -182,7 +184,7 @@ export default function PerfScopePicker({
                           alignItems: "center",
                         }}
                       >
-                        <span style={{ width: 13, height: 13, border: `1px solid ${on ? PERF_NAVY : "#c7ccd6"}`, background: on ? PERF_NAVY : PERF_WHITE, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>{on ? "✓" : ""}</span>
+                        <span style={{ width: 13, height: 13, border: `1px solid ${on ? PERF_NAVY : "var(--nv-box)"}`, background: on ? PERF_NAVY : PERF_WHITE, color: "var(--nv-btn-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9 }}>{on ? "✓" : ""}</span>
                         <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                           <span style={{ fontSize: 11, fontWeight: on ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{person.name}</span>
                           <span style={{ fontSize: 10, color: PERF_MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{person.job} · {teamLabel(person.team, ar)}</span>

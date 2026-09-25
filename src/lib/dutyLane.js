@@ -1,7 +1,9 @@
-/** Mine / manage lane for attendance, calendar, and shifts. */
+/** Mine / manage lane for attendance, calendar, and shifts. The rail side wins over a stale query. */
 
-export function dutyLaneFromSearch(searchParams, canManage) {
+export function dutyLaneFromSearch(searchParams, canManage, railSide = "") {
   if (!canManage) return "mine";
+  if (railSide === "employee") return "mine";
+  if (railSide === "manage") return "manage";
   if (searchParams?.get?.("lane") === "manage") return "manage";
   const tab = searchParams?.get?.("tab");
   if (tab === "team" || tab === "policy" || tab === "schedule") return "manage";

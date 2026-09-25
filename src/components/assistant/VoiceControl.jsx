@@ -72,7 +72,7 @@ export default function VoiceControl({ onCommand, voiceGender }) {
   return (
     <div className="absolute end-2 top-1/2 z-10 -translate-y-1/2">
       {status && (
-        <span className={`absolute bottom-full end-0 mb-2 w-52 rounded-md border border-[#E2E8F0] bg-white px-2.5 py-2 text-xs font-body leading-relaxed shadow-sm ${awake || directReady ? "text-[#1E9E63] font-semibold" : (denied || micDenied) ? "text-[#DC2626]" : "text-[#5A6B85]"}`}>
+        <span className={`absolute bottom-full end-0 mb-2 w-52 rounded-[10px] border border-[var(--nv-line)] bg-[var(--nv-card)] px-2.5 py-2 text-xs font-body leading-relaxed shadow-sm ${awake || directReady ? "text-[var(--nv-ok-ink)] font-semibold" : (denied || micDenied) ? "text-[var(--nv-bad-ink)]" : "text-[var(--nv-muted)]"}`}>
           {status}
         </span>
       )}
@@ -81,10 +81,10 @@ export default function VoiceControl({ onCommand, voiceGender }) {
         onClick={toggle}
         aria-label={enabled ? (ar ? "إيقاف الاستماع" : "Stop listening") : (ar ? "بدء الاستماع" : "Start listening")}
         title={enabled ? (ar ? "إيقاف الاستماع" : "Stop listening") : (ar ? "بدء الاستماع" : "Start listening")}
-        className={`relative flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+        className={`relative flex h-8 w-8 items-center justify-center rounded-[10px] border transition-colors ${
           enabled
-            ? "bg-[#1E9E63] text-white border-[#1E9E63]"
-            : "bg-[#F7F8FA] text-[#14284B] border-[#E2E8F0] hover:bg-white hover:border-[#14284B]"
+            ? "bg-[var(--nv-ok-fill)] text-[var(--nv-btn-ink)] border-[var(--nv-ok-fill)]"
+            : "bg-[var(--nv-soft)] text-[var(--nv-ink)] border-[var(--nv-line)] hover:bg-[var(--nv-card)] hover:border-[var(--nv-ink)]"
         }`}
       >
         {enabled ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}

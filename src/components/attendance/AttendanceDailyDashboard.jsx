@@ -35,14 +35,14 @@ const miniBtn = (variant = "ghost") => ({
 });
 
 const FLAG = {
-  late: { ar: "متأخر", en: "Late", color: "#8a6516", bg: "#fdf6e8", border: "#ecd9a8" },
-  absent: { ar: "غائب", en: "Absent", color: "#8a1c2b", bg: "#fbf1f2", border: "#e9c4c9" },
-  outside: { ar: "خارج النطاق", en: "Outside range", color: "#8a1c2b", bg: "#fbf1f2", border: "#e9c4c9" },
-  missing: { ar: "بلا انصراف", en: "No checkout", color: "#8a6516", bg: "#fdf6e8", border: "#ecd9a8" },
-  early: { ar: "غادر مبكراً", en: "Left early", color: "#8a6516", bg: "#fdf6e8", border: "#ecd9a8" },
-  present: { ar: "مكتمل", en: "Complete", color: "#137a49", bg: "color-mix(in oklab, #1E9E63 10%, #fff)", border: "color-mix(in oklab, #1E9E63 28%, #fff)" },
-  on_leave: { ar: "إجازة", en: "Leave", color: "#1D4ED8", bg: "#EFF6FF", border: "#BFDBFE" },
-  not_scheduled: { ar: "غير مجدول", en: "Unscheduled", color: "#5A6B85", bg: "#F7F8FA", border: "#E2E8F0" },
+  late: { ar: "متأخر", en: "Late", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)" },
+  absent: { ar: "غائب", en: "Absent", color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)" },
+  outside: { ar: "خارج النطاق", en: "Outside range", color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)" },
+  missing: { ar: "بلا انصراف", en: "No checkout", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)" },
+  early: { ar: "غادر مبكراً", en: "Left early", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)" },
+  present: { ar: "مكتمل", en: "Complete", color: "var(--nv-ok-ink)", bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)" },
+  on_leave: { ar: "إجازة", en: "Leave", color: "var(--nv-ink)", bg: "var(--nv-soft)", border: "var(--nv-line)" },
+  not_scheduled: { ar: "غير مجدول", en: "Unscheduled", color: "var(--nv-muted)", bg: "var(--nv-soft)", border: "var(--nv-line)" },
 };
 
 // Manager-facing daily attendance table — merges the visible employee roster (local
@@ -73,12 +73,12 @@ function shiftWindowElapsed(shift) {
 
 const actBtn = (kind) => {
   if (kind === "approve") {
-    return { fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 13px", border: "none", background: "#137a49", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" };
+    return { fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 13px", border: "none", borderRadius: 10, background: "var(--nv-ok-fill)", color: "var(--nv-btn-ink)", cursor: "pointer", whiteSpace: "nowrap" };
   }
   if (kind === "reject") {
-    return { fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 13px", border: "1px solid #e9c4c9", background: "#fff", color: "#8a1c2b", cursor: "pointer", whiteSpace: "nowrap" };
+    return { fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 13px", border: "1px solid var(--nv-bad-line)", borderRadius: 10, background: "var(--nv-card)", color: "var(--nv-bad-ink)", cursor: "pointer", whiteSpace: "nowrap" };
   }
-  return { fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 13px", border: "none", background: "#14213d", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" };
+  return { fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 13px", border: "none", borderRadius: 10, background: "var(--nv-btn-fill)", color: "var(--nv-btn-ink)", cursor: "pointer", whiteSpace: "nowrap" };
 };
 
 export default function AttendanceDailyDashboard({ employees, currentUser, company, data, t, onQueueCount }) {
@@ -259,9 +259,9 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   }).length;
   const absentClosed = Math.max(0, todayAtt.absent - notYet);
   const kpis = [
-    { label: lang === "ar" ? "مجدولون اليوم" : "Scheduled today", value: todayAtt.scheduled, note: lang === "ar" ? `سجّل ${todayAtt.presentLike} · ${todayAtt.rate}%` : `Logged ${todayAtt.presentLike} · ${todayAtt.rate}%`, accent: "#14213d", color: "#14213d" },
-    { label: lang === "ar" ? "حضر في الوقت" : "On time", value: todayAtt.present, note: lang === "ar" ? "مَن وأين مؤكّدان" : "Who and where confirmed", accent: "#1d9a5b", color: "#137a49" },
-    { label: lang === "ar" ? "متأخر" : "Late", value: todayAtt.late, note: lang === "ar" ? "بصم بعد بداية الوردية" : "Punched after shift start", accent: "#c9962b", color: "#8a6516" },
+    { label: lang === "ar" ? "مجدولون اليوم" : "Scheduled today", value: todayAtt.scheduled, note: lang === "ar" ? `سجّل ${todayAtt.presentLike} · ${todayAtt.rate}%` : `Logged ${todayAtt.presentLike} · ${todayAtt.rate}%`, accent: "var(--nv-ink)", color: "var(--nv-ink)" },
+    { label: lang === "ar" ? "حضر في الوقت" : "On time", value: todayAtt.present, note: lang === "ar" ? "مَن وأين مؤكّدان" : "Who and where confirmed", accent: "var(--nv-ok-fill)", color: "var(--nv-ok-ink)" },
+    { label: lang === "ar" ? "متأخر" : "Late", value: todayAtt.late, note: lang === "ar" ? "بصم بعد بداية الوردية" : "Punched after shift start", accent: "var(--nv-warn-fill)", color: "#8a6516" },
     { label: lang === "ar" ? "بانتظار قرار" : "Awaiting a decision", value: attentionCount, note: lang === "ar" ? "حلقة انكسرت — لا حاضر ولا غائب بعد" : "A link broke — neither present nor absent yet", accent: "#8a6516", color: "#8a6516" },
     { label: lang === "ar" ? "غاب" : "Absent", value: absentClosed, note: lang === "ar" ? "بلا تسجيل ولا إجازة بعد نافذة الوردية" : "No punch and no leave after the shift window", accent: "#8a1c2b", color: "#8a1c2b" },
     { label: lang === "ar" ? "إجازة" : "Leave", value: todayAtt.onLeave, note: lang === "ar" ? "خارج حساب الحضور" : "Outside the attendance count", accent: "#c7ccd6", color: "#4b5567" },
@@ -284,7 +284,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }} dir={lang === "ar" ? "rtl" : "ltr"}>
       {checkoutError ? (
-        <div style={{ border: "1px solid #e9c4c9", background: "#fbf1f2", padding: "10px 14px", fontSize: 12, color: DANGER, lineHeight: 1.7 }}>
+        <div style={{ border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", padding: "10px 14px", fontSize: 12, color: DANGER, lineHeight: 1.7, borderRadius: 10 }}>
           {checkoutError}
         </div>
       ) : null}
@@ -312,7 +312,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
               : `${formatUiNumber(pendingRequestReplies.length)} awaiting a decision — approve and reject in My Requests, not this attendance queue.`}
           </span>
         </div>
-        <Link to={pendingReplyHref} style={{ fontSize: 12, fontWeight: 700, color: "#137a49", textDecoration: "none", whiteSpace: "nowrap", alignSelf: "center" }}>
+        <Link to={pendingReplyHref} style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink)", textDecoration: "none", whiteSpace: "nowrap", alignSelf: "center" }}>
           {requestReplyCopy(lang === "ar")}
         </Link>
       </section>
@@ -333,7 +333,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
         <div style={{ ...emptyState, margin: 16 }}>{t("noAttendanceRecords")}</div>
       ) : queue.length === 0 ? (
         <div style={{ padding: "18px 20px" }}>
-          <span style={{ fontSize: 12, color: "#137a49", fontWeight: 600 }}>
+          <span style={{ fontSize: 12, color: "var(--nv-ok-ink)", fontWeight: 600 }}>
             {lang === "ar" ? "الطابور صفر — كل يوم أُغلق تلقائياً أو بقرار موقّع." : "Queue at zero — every day closed automatically or by a signed decision."}
           </span>
         </div>
@@ -425,7 +425,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                   )
                 )}
                 {(r?.manual_override || r?.location_status === "manual") ? (
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "#137a49", background: "#f2faf6", border: "1px solid #bfe6d2", padding: "6px 11px", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)", background: "var(--nv-ok-soft)", border: "1px solid var(--nv-ok-line)", padding: "6px 11px", whiteSpace: "nowrap" }}>
                     {lang === "ar" ? "اعتُمد حضوراً" : "Approved present"} · {r.override_by || r.excused_by_name || "—"}
                   </span>
                 ) : isManager && !r?.check_in_at && status !== "on_leave" && status !== "not_scheduled" ? (
@@ -438,7 +438,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                     {lang === "ar" ? "اعتمد حضوراً" : "Approve present"}
                   </button>
                 ) : r?.excused ? (
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "#137a49", background: "#f2faf6", border: "1px solid #bfe6d2", padding: "6px 11px", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)", background: "var(--nv-ok-soft)", border: "1px solid var(--nv-ok-line)", padding: "6px 11px", whiteSpace: "nowrap" }}>
                     {lang === "ar" ? "اعتُمد حضوراً" : "Approved present"}
                   </span>
                 ) : null}
@@ -462,7 +462,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
             ? `${row.override_by || row.excused_by_name || currentUser?.name || "المدير"} ${row.excused ? "أعفى" : "اعتمد يدوياً"} ${(employees.find((emp) => String(emp.id) === String(row.employee_id ?? row.employeeId))?.name) || ""}`
             : `${row.override_by || row.excused_by_name || currentUser?.name || "Manager"} ${row.excused ? "excused" : "manually approved"} ${(employees.find((emp) => String(emp.id) === String(row.employee_id ?? row.employeeId))?.name) || ""}`,
           time: row.check_in_at ? formatTime(row.check_in_at, format, "en-GB") : "—",
-          dot: row.excused ? "#c9962b" : "#137a49",
+          dot: row.excused ? "var(--nv-warn-fill)" : "var(--nv-ok-ink)",
         }));
       return (
         <section className="nv-att-card" style={{ background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column" }}>

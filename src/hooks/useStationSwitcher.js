@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { visibleStations } from "@/lib/permissions";
+import { isHrUnit } from "@/lib/stationTree";
 import {
   fallbackStationId,
   headerAllowsAllStations,
@@ -39,7 +40,7 @@ export default function useStationSwitcher() {
   useEffect(() => subscribeStationScope(() => setRecentIds(getRecentStationScopes())), []);
 
   const stations = useMemo(() => {
-    const visible = data && currentUser ? visibleStations(currentUser, data) : [];
+    const visible = (data && currentUser ? visibleStations(currentUser, data) : []).filter((station) => !isHrUnit(station));
     if (!locksToOwn) return visible;
     const own = fallbackStationId({
       employee: currentUser,

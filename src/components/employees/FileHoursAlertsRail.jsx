@@ -5,10 +5,13 @@ import DutyStripAlertCard from "@/components/employees/DutyStripAlertCard";
 import { hoursPolicyOf, checkWorkPostingGate } from "@/lib/laborHoursPolicy.js";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { docFrame } from "@/lib/designSystem";
+import { statusBanner, statusBannerQuiet } from "@/lib/platformStyles";
 
 /**
  * Employee presenter of the same week-check rows as حكم المنصة.
  * Section title is تنبيهاتي. Cards never name a coworker.
+ * Default chrome matches platform تنبيهات (statusBanner + 3px top edge).
+ * Pass quietEdge for جدول — soft fill + 1px line only.
  */
 export default function FileHoursAlertsRail({
   employee,
@@ -23,6 +26,7 @@ export default function FileHoursAlertsRail({
   company,
   canApplyOrdinary = false,
   onApplyOrdinary,
+  quietEdge = false,
 }) {
   const ar = lang === "ar";
   const own = isViewerOwnFile(employee, currentUser);
@@ -98,14 +102,20 @@ export default function FileHoursAlertsRail({
   const due = grouped.anyDue;
   const posting = checkWorkPostingGate({ company, station, settings });
   const table = hoursPolicyOf(company).workPosting || {};
+  const banner = quietEdge ? statusBannerQuiet : statusBanner;
+  const settledSkin = quietEdge
+    ? { background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, boxShadow: "var(--nv-paper)", padding: "12px 14px" }
+    : { ...docFrame("settled"), padding: "12px 14px" };
+  const railSkin = due
+    ? (grouped.anyBlock ? banner.bad : banner.warn)
+    : settledSkin;
 
   return (
     <section
       data-audience={audience}
       style={{
-        ...docFrame(due ? "blocked" : "settled"),
-        ...(due ? { background: "var(--nv-bad-soft)" } : {}),
-        padding: "12px 14px",
+        ...railSkin,
+        ...(due ? {} : { padding: "12px 14px" }),
         display: "flex",
         flexDirection: "column",
         gap: 10,
@@ -115,12 +125,13 @@ export default function FileHoursAlertsRail({
       {!due ? (
         <span style={{ fontSize: 12, color: SW.muted, lineHeight: 1.7 }}>{voice.emptyAlert}</span>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 0, borderTop: `1px solid ${SW.line}`, marginTop: 2 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
           {grouped.people.map((person) => (
             <DutyStripAlertCard
               key={person.id}
               card={person}
               ar={ar}
+              hideJudgment
               onApplyOrdinary={canApplyOrdinary && onApplyOrdinary
                 ? (kind) => {
                   const rotate = [person.gateId, ...(person.items || []).map((row) => row.gateId)]

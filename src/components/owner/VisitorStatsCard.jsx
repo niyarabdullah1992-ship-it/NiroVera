@@ -2,8 +2,8 @@
 import { base44 } from "@/api/base44Client";
 import { BarChart3, Users, Eye, CalendarDays, MapPin, Clock3 } from "lucide-react";
 import VisitorDurationPanel from "@/components/owner/VisitorDurationPanel";
+import { OWNER_MONO, OwnerSectionHead, ownerInset, ownerPaper, ownerStack } from "@/components/owner/ownerUi";
 
-// Owner-only visitor analytics card shown in the Owner Panel.
 export default function VisitorStatsCard({ lang }) {
   const ar = lang === "ar";
   const [stats, setStats] = useState(null);
@@ -29,64 +29,66 @@ export default function VisitorStatsCard({ lang }) {
   const maxDay = stats ? Math.max(1, ...stats.days.map((d) => d.visits)) : 1;
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-xl">
-      <h3 className="font-heading text-lg font-semibold mb-4 flex items-center gap-2 text-[#14284B]">
-        <BarChart3 className="w-4 h-4" /> {ar ? "إحصائيات زوار الموقع" : "Website Visitor Stats"}
-      </h3>
+    <div style={{ ...ownerPaper("mute"), padding: 16, ...ownerStack, gap: 14 }}>
+      <OwnerSectionHead
+        title={(
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+            <BarChart3 className="w-4 h-4" />
+            {ar ? "إحصائيات زوار الموقع" : "Website visitor stats"}
+          </span>
+        )}
+      />
 
       {error ? (
-        <p className="text-sm text-[#14284B]/40 font-body">{ar ? "تعذّر تحميل الإحصائيات." : "Couldn't load stats."}</p>
+        <p style={{ margin: 0, fontSize: 13, color: "var(--nv-muted)" }}>{ar ? "تعذّر تحميل الإحصائيات." : "Couldn't load stats."}</p>
       ) : !stats ? (
-        <p className="text-sm text-[#14284B]/40 font-body">…</p>
+        <p style={{ margin: 0, fontSize: 13, color: "var(--nv-muted)" }}>…</p>
       ) : (
-        <div className="space-y-5">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {tiles.map((tl) => (
-              <div key={tl.label} className="p-3 rounded-lg bg-[#F7F8FA] text-center">
-                <tl.icon className="w-4 h-4 mx-auto text-[#1E9E63] mb-1" />
-                <p className="text-2xl font-heading font-semibold text-[#14284B] leading-none">{tl.value}</p>
-                <p className="text-[11px] text-[#14284B]/50 font-body mt-1">{tl.label}</p>
+        <div style={ownerStack}>
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" }}>
+            {tiles.map((tile) => (
+              <div key={tile.label} style={{ ...ownerInset(), textAlign: "center" }}>
+                <tile.icon className="w-4 h-4 mx-auto mb-1" style={{ color: "var(--nv-accent)" }} />
+                <p dir="ltr" style={{ ...OWNER_MONO, margin: 0, fontSize: 22, fontWeight: 500, color: "var(--nv-ink)", lineHeight: 1 }}>{tile.value}</p>
+                <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--nv-muted)" }}>{tile.label}</p>
               </div>
             ))}
           </div>
 
-          {/* Last 7 days mini bar chart */}
           <div>
-            <p className="text-xs text-[#14284B]/50 font-body mb-2 flex items-center gap-1.5">
+            <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--nv-muted)", display: "inline-flex", alignItems: "center", gap: 6 }}>
               <CalendarDays className="w-3.5 h-3.5" /> {ar ? "آخر 7 أيام" : "Last 7 days"}
             </p>
-            <div className="flex items-end gap-2 h-24">
-              {stats.days.map((d) => (
-                <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
-                  <span className="text-[10px] text-[#14284B]/60 font-body">{d.visits}</span>
-                  <div
-                    className="w-full rounded-t-md bg-[#1E9E63]"
-                    style={{ height: `${Math.max((d.visits / maxDay) * 100, 4)}%` }}
-                  />
-                  <span className="text-[9px] text-[#14284B]/40 font-body">{d.day.slice(5)}</span>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 96 }}>
+              {stats.days.map((day) => (
+                <div key={day.day} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, height: "100%" }}>
+                  <span style={{ fontSize: 10, color: "var(--nv-ink2)" }}>{day.visits}</span>
+                  <div style={{ flex: 1, width: "100%", display: "flex", alignItems: "flex-end" }}>
+                    <div style={{ width: "100%", borderRadius: "6px 6px 0 0", background: "var(--nv-accent)", height: `${Math.max((day.visits / maxDay) * 100, 4)}%` }} />
+                  </div>
+                  <span style={{ fontSize: 9, color: "var(--nv-muted)" }}>{day.day.slice(5)}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Visitor locations */}
           <div>
-            <p className="text-xs text-[#14284B]/50 font-body mb-2 flex items-center gap-1.5">
+            <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--nv-muted)", display: "inline-flex", alignItems: "center", gap: 6 }}>
               <MapPin className="w-3.5 h-3.5" /> {ar ? "مواقع الزوار" : "Visitor locations"}
             </p>
             {(!stats.locations || stats.locations.length === 0) ? (
-              <p className="text-xs text-[#14284B]/40 font-body">
+              <p style={{ margin: 0, fontSize: 12, color: "var(--nv-muted)" }}>
                 {ar ? "لا توجد بيانات مواقع بعد — ستظهر مع الزيارات الجديدة." : "No location data yet — it will appear with new visits."}
               </p>
             ) : (
-              <div className="space-y-1.5">
-                {stats.locations.map((l) => (
-                  <div key={`${l.country}-${l.city}`} className="flex items-center justify-between p-2.5 rounded-lg bg-[#F7F8FA]">
-                    <p className="text-sm font-body text-[#14284B] truncate">
-                      {l.country}{l.city ? ` — ${l.city}` : ""}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {stats.locations.map((loc) => (
+                  <div key={`${loc.country}-${loc.city}`} style={{ ...ownerInset(), display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <p style={{ margin: 0, fontSize: 13, color: "var(--nv-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {loc.country}{loc.city ? ` — ${loc.city}` : ""}
                     </p>
-                    <p className="text-xs text-[#14284B]/50 font-body shrink-0 ms-3">
-                      {l.visits} {ar ? "زيارة" : "visits"} · {l.unique} {ar ? "زائر" : "unique"} · {Math.round((l.averageDurationSeconds || 0) / 60)} {ar ? "د" : "min"}
+                    <p style={{ margin: 0, fontSize: 11, color: "var(--nv-muted)", flexShrink: 0 }}>
+                      {loc.visits} {ar ? "زيارة" : "visits"} · {loc.unique} {ar ? "زائر" : "unique"} · {Math.round((loc.averageDurationSeconds || 0) / 60)} {ar ? "د" : "min"}
                     </p>
                   </div>
                 ))}

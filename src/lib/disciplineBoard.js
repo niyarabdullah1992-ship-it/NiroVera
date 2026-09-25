@@ -29,11 +29,11 @@ const OPEN_FACES = new Set(["notified", "defence", "objected"]);
 const IMPOSED_FACES = new Set(["signed", "objected", "closed"]);
 
 const TONE = {
-  notified: { color: "#8A6516", bg: "#FDF6E8", border: "#ECD9A8", accent: "#C9962B" },
-  defence: { color: "#8A6516", bg: "#FDF6E8", border: "#ECD9A8", accent: "#C9962B" },
-  signed: { color: "#14213D", bg: "#F5F6F8", border: "#DFE3EA", accent: "#14213D" },
-  objected: { color: "#8A1C2B", bg: "#FBF1F2", border: "#E9C4C9", accent: "#8A1C2B" },
-  closed: { color: "#137A49", bg: "#F2FAF6", border: "#BFE6D2", accent: "#1D9A5B" },
+  notified: { color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", accent: "var(--nv-warn-fill)" },
+  defence: { color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", accent: "var(--nv-warn-fill)" },
+  signed: { color: "var(--nv-ink)", bg: "var(--nv-mute-soft)", border: "var(--nv-mute-line)", accent: "var(--nv-ink2)" },
+  objected: { color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)", accent: "var(--nv-bad-fill)" },
+  closed: { color: "var(--nv-ok-ink)", bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)", accent: "var(--nv-ok-fill)" },
 };
 
 function dateOnly(iso) {
@@ -232,10 +232,10 @@ export function collectDisciplineArchive({
       title,
       meta,
       state,
-      stColor: item.rulingLabel ? "#14213D" : (item.signedAt ? "#137A49" : "#4B5567"),
-      stBg: item.rulingLabel ? "#F5F6F8" : (item.signedAt ? "#F2FAF6" : "#F5F6F8"),
-      stBorder: item.rulingLabel ? "#DFE3EA" : (item.signedAt ? "#BFE6D2" : "#DFE3EA"),
-      accent: item.rulingLabel ? "#14213D" : (item.signedAt ? "#1D9A5B" : "#C7CCD6"),
+      stColor: item.rulingLabel ? "var(--nv-ink)" : (item.signedAt ? "var(--nv-ok-ink)" : "var(--nv-ink2)"),
+      stBg: item.rulingLabel ? "var(--nv-mute-soft)" : (item.signedAt ? "var(--nv-ok-soft)" : "var(--nv-mute-soft)"),
+      stBorder: item.rulingLabel ? "var(--nv-mute-line)" : (item.signedAt ? "var(--nv-ok-line)" : "var(--nv-mute-line)"),
+      accent: item.rulingLabel ? "var(--nv-navy)" : (item.signedAt ? "var(--nv-ok-fill)" : "var(--nv-line)"),
       refTag: cutDaysOf(item) > 0 ? (ar ? "أثر مالي" : "Pay effect") : (item.signedAt ? (ar ? "أثر" : "Effect") : ""),
       ref: days
         ? (amount > 0
@@ -276,6 +276,20 @@ export function collectDisciplineArchive({
       ? `${countAr(rows.length, "ملف واحد مستقرّ", "ملفان مستقرّان", "ملفات مستقرّة", "ملفاً مستقرّاً", "لا ملفات مستقرّة")}${selfOnly ? " في ملفك" : " في هذا الفرع"} — لا يُحذف منها شيء.`
       : `${rows.length} settled file(s)${selfOnly ? " on your file" : " on this station"} — none are deleted.`,
   };
+}
+
+/** Settled archive rows → RecordSmartArchive items (search / day groups). */
+export function disciplineArchiveSmartItems(rows = [], { ar = true } = {}) {
+  return (rows || []).map((row) => ({
+    id: row.id,
+    title: row.title,
+    text: [row.meta, row.ref].filter(Boolean).join(" · "),
+    date: row.at,
+    badge: row.state,
+    search: [row.title, row.meta, row.state, row.ref, row.refTag, row.at].filter(Boolean).join(" "),
+    row,
+    ar,
+  }));
 }
 
 export function deriveDisciplineBoard({
@@ -334,12 +348,12 @@ export function deriveDisciplineBoard({
       name: ar ? stage.ar : stage.en,
       n,
       pct: `${Math.round((n / maxStage) * 100)}%`,
-      color: n ? (stage.id === "objected" ? "#8A1C2B" : stage.id === "closed" ? "#137A49" : "#14213D") : "#6B7280",
+      color: n ? (stage.id === "objected" ? "var(--nv-bad-ink)" : stage.id === "closed" ? "var(--nv-ok-ink)" : "var(--nv-navy)") : "var(--nv-muted)",
     };
   });
 
   const stats = [
-    { val: String(cases.length), unit: "", lbl: ar ? "ملفات في نطاقك" : "Files in scope", note: scopeLabel || (ar ? "هذا الفرع" : "This station"), accent: "#14213D", border: "#DFE3EA" },
+    { val: String(cases.length), unit: "", lbl: ar ? "ملفات في نطاقك" : "Files in scope", note: scopeLabel || (ar ? "هذا الفرع" : "This station"), accent: "var(--nv-navy)", border: "var(--nv-line)" },
     {
       val: String(open.length),
       unit: "",
@@ -349,10 +363,10 @@ export function deriveDisciplineBoard({
           ? `${countAr(objected.length, "منها واحد تحت الاعتراض", "منها اثنان تحت الاعتراض", "منها تحت الاعتراض", "منها واحد تحت الاعتراض")} — يقرّر فيه من لم يوقّع`
           : `${objected.length} on objection — decided by whoever did not sign`)
         : (ar ? "لم يستقرّ فيها قرار · لا اعتراض قائم" : "No settled ruling · no open objection"),
-      accent: "#C9962B",
-      border: "#ECD9A8",
+      accent: "var(--nv-warn-fill)",
+      border: "var(--nv-warn-line)",
     },
-    { val: String(imposed.length), unit: "", lbl: ar ? "موقَّعة" : "Signed", note: ar ? "نُفّذت وقُيّدت" : "Executed and written to the file", accent: "#137A49", border: "#BFE6D2" },
+    { val: String(imposed.length), unit: "", lbl: ar ? "موقَّعة" : "Signed", note: ar ? "نُفّذت وقُيّدت" : "Executed and written to the file", accent: "var(--nv-ok-ink)", border: "var(--nv-ok-line)" },
     {
       val: money(cut),
       unit: ar ? "ر.س" : "SAR",
@@ -361,8 +375,8 @@ export function deriveDisciplineBoard({
         ? countAr(cutFiles, "من ملف واحد", "من ملفين", "ملفات بحسم", "ملفاً بحسم", "لا حسم نافذ")
         : (cutFiles ? `From ${cutFiles} file(s)` : "No effective deduction"))
         + (lifted ? (ar ? " · ما أُلغي أو خُفِّض لا يُحسب" : " · voided or reduced cuts are not counted") : ""),
-      accent: "#8A1C2B",
-      border: "#E9C4C9",
+      accent: "var(--nv-bad-ink)",
+      border: "var(--nv-bad-line)",
     },
   ];
 
@@ -427,9 +441,9 @@ export function deriveDisciplineBoard({
     },
   ].map((row) => ({
     ...row,
-    color: row.kind === "bad" ? "#8A1C2B" : row.kind === "mute" ? "#4B5567" : "#137A49",
-    bg: row.kind === "bad" ? "#FBF1F2" : row.kind === "mute" ? "#F5F6F8" : "#F2FAF6",
-    border: row.kind === "bad" ? "#E9C4C9" : row.kind === "mute" ? "#DFE3EA" : "#BFE6D2",
+    color: row.kind === "bad" ? "var(--nv-bad-ink)" : row.kind === "mute" ? "var(--nv-ink2)" : "var(--nv-ok-ink)",
+    bg: row.kind === "bad" ? "var(--nv-bad-soft)" : row.kind === "mute" ? "var(--nv-mute-soft)" : "var(--nv-ok-soft)",
+    border: row.kind === "bad" ? "var(--nv-bad-line)" : row.kind === "mute" ? "var(--nv-mute-line)" : "var(--nv-ok-line)",
   }));
 
   const pulse = objected.length
@@ -457,10 +471,10 @@ export function deriveDisciplineBoard({
     imposedCount: imposed.length,
     pulse,
     pulseKind: objected.length ? "bad" : open.length ? "warn" : "ok",
-    pulseColor: objected.length ? "#8A1C2B" : open.length ? "#8A6516" : "#137A49",
-    pulseBg: objected.length ? "#FBF1F2" : open.length ? "#FDF6E8" : "#F2FAF6",
-    pulseBorder: objected.length ? "#E9C4C9" : open.length ? "#ECD9A8" : "#BFE6D2",
-    pulseDot: objected.length ? "#8A1C2B" : open.length ? "#C9962B" : "#1D9A5B",
+    pulseColor: objected.length ? "var(--nv-bad-ink)" : open.length ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)",
+    pulseBg: objected.length ? "var(--nv-bad-soft)" : open.length ? "var(--nv-warn-soft)" : "var(--nv-ok-soft)",
+    pulseBorder: objected.length ? "var(--nv-bad-line)" : open.length ? "var(--nv-warn-line)" : "var(--nv-ok-line)",
+    pulseDot: objected.length ? "var(--nv-bad-ink)" : open.length ? "var(--nv-warn-fill)" : "var(--nv-ok-fill)",
     stageNote: objected.length
       ? (ar
         ? `${countAr(objected.length, "ملف واحد تحت الاعتراض", "ملفان تحت الاعتراض", "ملفات تحت الاعتراض", "ملفاً تحت الاعتراض")} — الجزاء يبقى نافذاً حتى يصدر القرار.`
@@ -513,8 +527,8 @@ export function decorateDisciplineCase(item, {
     { id: "closed", name: ar ? "أُغلق" : "Closed", when: item.rulingLabel ? `${item.rulingLabel} · ${fmtDisciplineDate(closedAt, ar)}` : (face.id === "closed" ? (ar ? "استقرّ" : "Settled") : (ar ? "مفتوح" : "Open")), done: face.id === "closed" },
   ].map((step) => ({
     ...step,
-    bg: step.done ? "#F7F8FA" : "#fff",
-    color: step.done ? "#14213D" : "#6B7280",
+    bg: step.done ? "var(--nv-soft)" : "var(--nv-card)",
+    color: step.done ? "var(--nv-ink)" : "var(--nv-muted)",
   }));
 
   const actions = [];
@@ -621,9 +635,9 @@ export function decorateDisciplineCase(item, {
       : "Only the employee objects — it is not filed in their name from here. You are previewing their file.",
     hasNews: Boolean(appealNote || item.rulingNote),
     news,
-    newsColor: item.rulingNote ? "#137A49" : "#8A6516",
-    newsBg: item.rulingNote ? "#F2FAF6" : "#FDF6E8",
-    newsBorder: item.rulingNote ? "#BFE6D2" : "#ECD9A8",
+    newsColor: item.rulingNote ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)",
+    newsBg: item.rulingNote ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)",
+    newsBorder: item.rulingNote ? "var(--nv-ok-line)" : "var(--nv-warn-line)",
     mineTitle: `${penaltyShiftLabel(item, ar)} — ${item.note || item.reason || (ar ? "بلا وصف" : "No text")}`,
     mineState: item.rulingLabel
       || (face.id === "objected" ? (ar ? "اعتراضي قيد النظر" : "Objection pending")
@@ -644,7 +658,7 @@ export function decorateDisciplineCase(item, {
         ? `مرفوعة موقَّعة: ${signedPaper.name}${signedPaper.hash ? ` · بصمتها ${shortFileHash(signedPaper.hash)}` : ""}`
         : `Signed copy uploaded: ${signedPaper.name}${signedPaper.hash ? ` · hash ${shortFileHash(signedPaper.hash)}` : ""}`)
       : stageDoc.note,
-    docColor: signedPaper ? "#137A49" : "#6B7280",
+    docColor: signedPaper ? "var(--nv-ok-ink)" : "var(--nv-muted)",
     dlLabel: !signedAt
       ? (ar ? "نزّل الإبلاغ" : "Download the notice")
       : (settled ? (ar ? "نزّل الوثيقة المستقرّة" : "Download the settled document") : (ar ? "نزّل نسخة الجزاء" : "Download the sanction copy")),
@@ -844,8 +858,8 @@ export function deriveDisciplineLawBoard({
         applied: ar ? LAW_APPLIED[row.ruleId].ar : LAW_APPLIED[row.ruleId].en,
         live: n,
         blocked: blockedN,
-        rowBg: blockedN ? "#FBF1F2" : n ? "#FDF6E8" : "#fff",
-        numColor: blockedN ? "#8A1C2B" : n ? "#8A6516" : "#14213D",
+        rowBg: blockedN ? "var(--nv-bad-soft)" : n ? "var(--nv-warn-soft)" : "var(--nv-card)",
+        numColor: blockedN ? "var(--nv-bad-ink)" : n ? "var(--nv-warn-ink)" : "var(--nv-navy)",
         tag: blockedN
           ? (ar
             ? `مُنعت بها ${countAr(blockedN, "حالة واحدة", "حالتان", "حالات", "حالة")}`
@@ -855,9 +869,9 @@ export function deriveDisciplineLawBoard({
               ? `تنطبق الآن على ${countAr(n, "ملف واحد", "ملفين", "ملفات", "ملفاً")}`
               : `Applies now to ${n} file(s)`)
             : (ar ? LAW_KIND[row.kind].ar : LAW_KIND[row.kind].en),
-        tagColor: blockedN ? "#8A1C2B" : n ? "#8A6516" : "#4B5567",
-        tagBg: blockedN || n ? "#fff" : "#F5F6F8",
-        tagBorder: blockedN ? "#E9C4C9" : n ? "#ECD9A8" : "#E6E9EF",
+        tagColor: blockedN ? "var(--nv-bad-ink)" : n ? "var(--nv-warn-ink)" : "var(--nv-ink2)",
+        tagBg: blockedN || n ? "var(--nv-card)" : "var(--nv-mute-soft)",
+        tagBorder: blockedN ? "var(--nv-bad-line)" : n ? "var(--nv-warn-line)" : "var(--nv-line)",
       };
     });
 

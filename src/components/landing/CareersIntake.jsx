@@ -8,6 +8,7 @@ import {
   CAREERS_STEPS,
 } from "@/lib/careersContent";
 import { BORDER, INK, MUTED, SURFACE } from "@/lib/publicChrome";
+import AttachFileButton from "@/components/shared/AttachFileButton";
 
 async function hiringPublic(payload) {
   const res = await base44.functions.invoke("hiring", payload);
@@ -270,8 +271,8 @@ export default function CareersIntake({
                 gap: "7px",
                 padding: "6px 12px",
                 borderRadius: "9px",
-                background: "#fff",
-                border: "1px solid #E2E8F0",
+                background: "var(--nv-card)",
+                border: "1px solid var(--nv-line)",
                 fontSize: "12px",
                 color: "#5A6B85",
               }}
@@ -290,7 +291,7 @@ export default function CareersIntake({
       ) : null}
 
       {isNone ? (
-        <div style={{ marginTop: "18px", background: "#fff", border: "1px solid #E2E8F0", borderRadius: "14px", padding: "26px 24px", maxWidth: "620px" }}>
+        <div style={{ marginTop: "18px", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: "14px", padding: "26px 24px", maxWidth: "620px" }}>
           <div style={{ fontSize: "13px", color: "#5A6B85", lineHeight: 1.8, textWrap: "pretty" }}>
             {T(
               `لا يوجد ما يُقدَّم عليه الآن، ولن نطلب منك بياناتك بلا شاغر قائم. اترك بريدك لنبلغك أول ما يُنشر شاغر يناسبك، أو تابع الصفحة لاحقًا.`,
@@ -311,9 +312,9 @@ export default function CareersIntake({
                 style={{
                   flex: "1 1 220px",
                   height: "40px",
-                  border: "1px solid #E2E8F0",
+                  border: "1px solid var(--nv-line)",
                   borderRadius: "10px",
-                  background: "#F7F8FA",
+                  background: "var(--nv-inset)",
                   padding: "0 11px",
                   fontSize: "13px",
                   color: "#14284B",
@@ -367,7 +368,7 @@ export default function CareersIntake({
           <div style={{ display: "flex", gap: "18px", marginTop: "22px", flexWrap: "wrap", alignItems: "flex-start" }}>
             <div style={{ flex: "1 1 420px", minWidth: 0, display: "flex", flexDirection: "column", gap: "14px" }}>
               {CAREERS_ROLE_SECTIONS.map((section) => (
-                <div key={section.titleEn} style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: "14px", padding: "18px 20px" }}>
+                <div key={section.titleEn} style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: "14px", padding: "18px 20px" }}>
                   <div style={{ fontSize: "14px", fontWeight: 600 }}>{ar ? section.titleAr : section.titleEn}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "9px", marginTop: "11px" }}>
                     {(ar ? section.itemsAr : section.itemsEn).map((item) => (
@@ -380,7 +381,7 @@ export default function CareersIntake({
                 </div>
               ))}
 
-              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: "14px", padding: "18px 20px" }}>
+              <div style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: "14px", padding: "18px 20px" }}>
                 <div style={{ fontSize: "14px", fontWeight: 600 }}>{T("ماذا يحدث بعد أن ترسل طلبك", "What happens after you apply")}</div>
                 <div style={{ fontSize: "12px", color: "#5A6B85", marginTop: "4px", lineHeight: 1.7, textWrap: "pretty" }}>
                   {T(
@@ -401,7 +402,7 @@ export default function CareersIntake({
                 </div>
               </div>
 
-              <div style={{ background: "#fff", border: "1px dashed #E2E8F0", borderRadius: "14px", padding: "16px 18px" }}>
+              <div style={{ background: "var(--nv-card)", border: "1px dashed var(--nv-line)", borderRadius: "14px", padding: "16px 18px" }}>
                 <div style={{ fontSize: "12px", fontWeight: 600, color: "#14284B" }}>{T("بياناتك", "Your data")}</div>
                 <div style={{ fontSize: "12px", color: "#5A6B85", marginTop: "5px", lineHeight: 1.75, textWrap: "pretty" }}>
                   {T(
@@ -413,7 +414,7 @@ export default function CareersIntake({
             </div>
 
             <div style={{ flex: "1 1 320px", minWidth: 0, position: "sticky", top: "18px" }}>
-              <div style={{ background: "#fff", border: "1px solid #E2E8F0", borderRadius: "14px", padding: "18px 20px" }}>
+              <div style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: "14px", padding: "18px 20px" }}>
                 {sentRef ? (
                   <div style={{ textAlign: "center", padding: "8px 0" }}>
                     <div style={{ width: "46px", height: "46px", borderRadius: "50%", background: "#ECFDF3", border: "1px solid #BBF7D0", color: "#15803D", display: "flex", alignItems: "center", justifyContent: "center", marginInline: "auto", fontSize: "20px" }}>✓</div>
@@ -473,31 +474,12 @@ export default function CareersIntake({
 
                       <label style={{ display: "block" }}>
                         <span style={LABEL}>{T("السيرة الذاتية (PDF أو Word)", "CV (PDF or Word)")}</span>
-                        <span
-                          style={{
-                            position: "relative",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            height: "44px",
-                            borderRadius: "10px",
-                            border: `1px dashed ${form.cvName ? "#BBF7D0" : "#CBD5E1"}`,
-                            background: form.cvName ? "#ECFDF3" : "#F7F8FA",
-                          }}
-                        >
-                          <input
-                            type="file"
-                            accept=".pdf,.doc,.docx"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              setForm((f) => ({ ...f, cvName: file?.name || "" }));
-                            }}
-                            style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
-                          />
-                          <span style={{ fontSize: "12px", color: "#5A6B85" }}>
-                            {form.cvName || T("اضغط لاختيار ملف", "Tap to choose a file")}
-                          </span>
-                        </span>
+                        <AttachFileButton
+                          ar={ar}
+                          accept=".pdf,.doc,.docx"
+                          label={form.cvName || T("أرفق السيرة الذاتية", "Attach the CV")}
+                          onPick={(file) => setForm((current) => ({ ...current, cvName: file?.name || "" }))}
+                        />
                       </label>
                     </div>
 

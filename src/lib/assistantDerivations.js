@@ -320,7 +320,7 @@ export function derivePromptAnswer(
       primaryActionEn: "Open performance comparison",
       secondaryActionAr: "جهّز ملخصًا للمدير",
       secondaryActionEn: "Draft a manager summary",
-      goOps: "/app/performance",
+      goOps: "/app/performance?view=manage",
     };
   }
 

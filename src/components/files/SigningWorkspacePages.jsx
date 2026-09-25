@@ -13,6 +13,57 @@ import {
 } from "@/lib/signatureStampGeometry";
 
 const NO_GUIDES = { page: 0, x: null, y: null };
+
+function GoldGlyph({ tool }) {
+  const common = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "#C4A24A", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" };
+  if (tool === "name" || tool === "email") {
+    return <svg {...common} aria-hidden="true"><circle cx="12" cy="8" r="3" /><path d="M5 19c1.5-3 4-4.5 7-4.5S17.5 16 19 19" /></svg>;
+  }
+  if (tool === "date") {
+    return <svg {...common} aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M8 3v4M16 3v4M4 10h16" /></svg>;
+  }
+  if (tool === "seal" || tool === "org") {
+    return <svg {...common} aria-hidden="true"><path d="M12 3l2 4h4l-3 3 1 4-4-2-4 2 1-4-3-3h4z" /><path d="M8 21h8" /></svg>;
+  }
+  if (tool === "check") {
+    return <svg {...common} aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M8 12l3 3 5-6" /></svg>;
+  }
+  return <svg {...common} aria-hidden="true"><path d="M4 20l4-1 10-10-3-3L5 16z" /><path d="M13 6l3 3" /></svg>;
+}
+
+/** Square yes/no box. A yes uses the ok ink; an empty or no box stays a quiet line. */
+function YnChoiceBox({ value }) {
+  const yes = String(value || "").startsWith("✓");
+  const no = String(value || "").startsWith("✗");
+  return (
+    <span
+      aria-hidden="true"
+      data-yn-state={yes ? "yes" : no ? "no" : "empty"}
+      style={{
+        width: 16,
+        height: 16,
+        flex: "none",
+        boxSizing: "border-box",
+        borderRadius: 3,
+        border: `1px solid ${yes ? "var(--nv-ok-line, #BFE6D2)" : "var(--nv-line, #DFE3EA)"}`,
+        background: "#fff",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {yes ? (
+        <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M3.1 8.2 L6.4 11.3 L12.9 4.2" fill="none" stroke="var(--nv-ok-ink, #137A49)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : no ? (
+        <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M4.2 4.2 L11.8 11.8 M11.8 4.2 L4.2 11.8" fill="none" stroke="#14213D" strokeWidth="1.7" strokeLinecap="round" />
+        </svg>
+      ) : null}
+    </span>
+  );
+}
 /** How close a dragged field must come to a neighbour's centre line to snap onto it. */
 const SNAP_PERCENT = 0.7;
 
@@ -150,6 +201,7 @@ export default function SigningWorkspacePages({
   activeFieldId,
   ar,
   placing,
+  appearance = "",
   onPlace,
   onMove,
   onSelect,
@@ -296,6 +348,16 @@ export default function SigningWorkspacePages({
             key={pageNumber}
             ref={(node) => { pageRefs.current[pageNumber] = node; }}
             data-signing-page={pageNumber}
+            onDragOver={(event) => {
+              if (event.dataTransfer?.types?.includes("application/x-nv-field")) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              const raw = event.dataTransfer?.getData("application/x-nv-field");
+              if (!raw) return;
+              event.preventDefault();
+              const point = pointFor(pageNumber, event);
+              if (point) onPlace?.(pageNumber, point, raw);
+            }}
             onClick={(event) => {
               const point = pointFor(pageNumber, event);
               if (point) onPlace?.(pageNumber, point);
@@ -333,7 +395,14 @@ export default function SigningWorkspacePages({
             ) : null}
 
             {pageFields.map((field) => {
-              const box = fieldBox(field, size, stampRatio);
+              const measured = fieldBox(field, size, stampRatio);
+              const yn = field.tool === "yn";
+              const gold = appearance === "gold" && !yn;
+              const box = yn
+                ? { width: Math.max(measured.width, 196), height: Math.max(measured.height, 40) }
+                : gold
+                  ? { width: Math.max(measured.width, isMarkField(field) ? 36 : 132), height: Math.max(measured.height, isMarkField(field) ? 32 : 42) }
+                  : measured;
               const signer = signers[field.signer] || signers[0];
               const active = activeFieldId === field.id;
               const editing = editingId === field.id;
@@ -355,10 +424,13 @@ export default function SigningWorkspacePages({
                     if (isMarkField(field)) {
                       const next = MARK_GLYPHS[(MARK_GLYPHS.indexOf(value) + 1) % MARK_GLYPHS.length];
                       onTextChange?.(field.id, next);
+                    } else if (field.tool === "yn") {
+                      onTextChange?.(field.id, String(value).startsWith("✗") ? "✓ صح" : "✗ خطأ");
                     } else if (field.type === "text") {
                       setEditingId(field.id);
                     }
                   }}
+                  data-signing-tool={field.tool || ""}
                   style={{
                     position: "absolute",
                     left: `${field.x}%`,
@@ -366,11 +438,19 @@ export default function SigningWorkspacePages({
                     width: box.width,
                     height: box.height,
                     transform: "translate(-50%, -50%)",
-                    border: `1.5px ${field.type === "signature" ? "solid" : "dashed"} ${gap ? "#B45309" : signer?.color || BRAND}`,
-                    background: field.type === "signature"
-                      ? "rgba(255,255,255,.92)"
-                      : `color-mix(in oklab, ${gap ? "#B45309" : signer?.color || BRAND} 8%, #fff)`,
-                    borderRadius: 4,
+                    border: yn
+                      ? "1px solid var(--nv-line, #DFE3EA)"
+                      : gold
+                        ? `1px solid ${gap ? "#B45309" : "#E4C56B"}`
+                        : `1.5px ${field.type === "signature" ? "solid" : "dashed"} ${gap ? "#B45309" : signer?.color || BRAND}`,
+                    background: yn
+                      ? "#fff"
+                      : gold
+                        ? "#FBF3D0"
+                        : field.type === "signature"
+                          ? "rgba(255,255,255,.92)"
+                          : `color-mix(in oklab, ${gap ? "#B45309" : signer?.color || BRAND} 8%, #fff)`,
+                    borderRadius: yn || gold ? 10 : 4,
                     boxSizing: "border-box",
                     cursor: editing ? "text" : "move",
                     display: "flex",
@@ -378,20 +458,21 @@ export default function SigningWorkspacePages({
                     justifyContent: "center",
                     overflow: "visible",
                     zIndex: active ? 3 : 1,
-                    boxShadow: active ? "0 6px 16px rgba(20,40,75,.22)" : "none",
+                    boxShadow: active ? "0 6px 16px rgba(20,40,75,.22)" : (gold ? "0 1px 2px rgba(180,140,40,.18)" : "none"),
                   }}
                 >
                   <div style={{
                     position: "absolute",
                     inset: 0,
-                    overflow: "hidden",
-                    borderRadius: 3,
+                    overflow: yn ? "visible" : "hidden",
+                    borderRadius: yn ? 10 : 3,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    padding: yn ? "0 12px" : 0,
                     pointerEvents: editing ? "auto" : "none",
                   }}>
-                  {field.type === "signature" ? (
+                  {field.type === "signature" && !gold ? (
                     field.signer === 0 && sealPreview ? (
                       <img src={sealPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
                     ) : (
@@ -429,6 +510,16 @@ export default function SigningWorkspacePages({
                         color: "#14284B",
                       }}
                     />
+                  ) : yn ? (
+                    <span dir={ar ? "rtl" : "ltr"} style={{ pointerEvents: "none", display: "inline-flex", alignItems: "center", gap: 8, color: "#14213D", fontWeight: 600, fontSize: 13, lineHeight: 1.2, maxWidth: "100%" }}>
+                      <span style={{ whiteSpace: "nowrap" }}>{field.label || (ar ? "صح أو خطأ" : "Yes or no")}</span>
+                      <YnChoiceBox value={value} />
+                    </span>
+                  ) : gold ? (
+                    <span style={{ pointerEvents: "none", display: "inline-flex", alignItems: "center", gap: 8, color: "#8A6A1A", fontWeight: 700, fontSize: 13, padding: "0 10px", maxWidth: "100%" }}>
+                      <GoldGlyph tool={field.tool} />
+                      <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value || field.label}</span>
+                    </span>
                   ) : (
                     <span style={{ pointerEvents: "none", fontSize: 12, color: value ? "#14284B" : MUTED, padding: "0 4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {value || field.label}
@@ -479,7 +570,7 @@ export default function SigningWorkspacePages({
                           height: 14,
                           borderRadius: 4,
                           border: `2px solid ${CARD}`,
-                          background: signer?.color || BRAND,
+                          background: yn ? "#14284B" : (signer?.color || BRAND),
                           cursor: "ew-resize",
                         }}
                       />

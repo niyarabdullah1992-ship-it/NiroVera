@@ -9,6 +9,8 @@ export { previewTodayKey, migratePreviewRotaClock, migratePreviewWeekRota, migra
 
 export const LOCAL_PREVIEW_COMPANY_ID = "local-preview-nirovera";
 export const LOCAL_PREVIEW_FLAG = "powercare_local_preview";
+/** Preview apex identity — opens independent /owner without Base44 admin login. */
+export const LOCAL_PREVIEW_OWNER_ID = "emp_owner_preview";
 
 /** Demo branch labels — free names, not a forced East/West region layer. */
 const PREVIEW_BRANCH_RENAMES = {
@@ -63,7 +65,7 @@ export function enterLocalPreview() {
   const companyId = LOCAL_PREVIEW_COMPANY_ID;
   const stationNorth = "st_north_preview";
   const stationEast = "st_east_preview";
-  const ownerId = "emp_owner_preview";
+  const ownerId = LOCAL_PREVIEW_OWNER_ID;
   const managerId = "emp_manager_preview";
   const employeeId = "emp_field_preview";
   const hseId = "emp_hse_preview";
@@ -101,7 +103,8 @@ export function enterLocalPreview() {
     directorId: ownerId,
     ownerId,
     stations: [
-      { id: stationNorth, name: "فرع الخفجي", createdAt: now, managerId, lat: 28.4391, lng: 48.4912, radiusMeters: 200 },
+      // صوت الموظف / طلباتي level-0: station.managerId is مدير الفرع — نيار for الخفجي test.
+      { id: stationNorth, name: "فرع الخفجي", createdAt: now, managerId: ownerId, lat: 28.4391, lng: 48.4912, radiusMeters: 200 },
       { id: stationEast, name: "فرع رابغ", createdAt: now, lat: 22.7984, lng: 39.0349, radiusMeters: 200 },
     ],
     employees: [
@@ -110,6 +113,7 @@ export function enterLocalPreview() {
         name: "نيار عبدالله",
         email: "preview@nirovera.local",
         role: "director",
+        platformOwner: true,
         stationId: stationNorth,
         managedStations: [stationNorth, stationEast],
         phone: "0595414472",
@@ -122,12 +126,12 @@ export function enterLocalPreview() {
         id: managerId,
         name: "أحمد السالم",
         email: "ahmed@nirovera.local",
-        role: "station_manager",
+        role: "employee",
         stationId: stationNorth,
         phone: "",
         anonymousId: "a_mgr",
         createdAt: now,
-        managedStations: [stationNorth],
+        managedStations: [],
         leaveRequests: [{ id: "lv_1", status: "pending", type: "annual" }],
         otherRequests: [{
           id: "or_1",
@@ -438,8 +442,8 @@ export function enterLocalPreview() {
     payroll: [{ id: "py_1", month: "2026-08" }],
     orgTree: [
       { id: "org_owner", type: "employee", refId: ownerId, title: "المدير", parentId: null, order: 0 },
-      { id: "org_mgr", type: "employee", refId: managerId, title: "مدير الفرع", parentId: "org_owner", order: 0 },
-      { id: "org_st_n", type: "station", refId: stationNorth, title: "فرع الخفجي", parentId: "org_mgr", order: 0 },
+      { id: "org_st_n", type: "station", refId: stationNorth, title: "فرع الخفجي", parentId: "org_owner", order: 0 },
+      { id: "org_mgr", type: "employee", refId: managerId, title: "مشرف تشغيل", parentId: "org_st_n", order: 0 },
       { id: "org_hse", type: "employee", refId: hseId, title: "سلامة الفرع", parentId: "org_owner", order: 1 },
       { id: "org_st_e", type: "station", refId: stationEast, title: "فرع رابغ", parentId: "org_hse", order: 0 },
       { id: "org_field", type: "employee", refId: employeeId, title: "فني", parentId: "org_st_n", order: 0 },
@@ -453,7 +457,7 @@ export function enterLocalPreview() {
         listId: "field",
         gradeId: "",
         employeeId: null,
-        approverId: managerId,
+        approverId: ownerId,
         salaryMin: null,
         salaryMax: null,
         createdAt: now,

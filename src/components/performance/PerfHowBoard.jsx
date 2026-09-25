@@ -11,17 +11,17 @@ export default function PerfHowBoard({ lang }) {
   const rules = [
     { tag: ar ? "إثبات" : "Proof", t: ar ? `من لم يبلغ ${MIN_PROOF} مهام مثبتة معتمدة في المدى تُعرض درجته ولا تدخل المتوسط — نقص إثبات لا حكم.` : `Anyone short of ${MIN_PROOF} approved proofs in the range is shown and kept out of the average — missing proof is not a verdict.` },
     { tag: ar ? "المدى" : "Range", t: ar ? "كل رقم يُحسب بين التاريخين المختارين فقط. غيّر المدى فتتغيّر الدرجات والترتيب والجُمل." : "Every figure is counted only between the two dates. Change the range and the scores, rank, and sentences change." },
-    { tag: ar ? "الشفافية" : "Open", t: ar ? "الأرقام نفسها يراها كل موظف. لا لوحة خاصة بالإدارة ولا درجة مخفيّة." : "Every employee sees the same figures. There is no private management board and no hidden score." },
+    { tag: ar ? "الشفافية" : "Open", t: ar ? "الموظف يرى درجته في أدائي. مقارنة الموظفين والفروع وأرشيف الدورات في وجه الإدارة. الدرجة نفسها لا تُخفى ولا تُعدَّل بالطلب." : "The employee sees their own score on My performance. Comparing people and branches, and the cycle archive, sit on the management face. The score itself is not hidden and is not edited on request." },
     { tag: ar ? "الأوزان" : "Weights", t: ar ? "من وصف الوظيفة. لا يغيّرها مدير لموظف بعينه، ومجموعها 100." : "They come from the job description. A manager does not change them for one person, and they always total 100." },
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-      <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "none", display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 0, alignItems: "stretch", boxSizing: "border-box" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 0, alignItems: "stretch", boxSizing: "border-box" }}>
         <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 9, borderInlineStart: `1px solid ${PERF_SOFT}`, minWidth: 0 }}>
           <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "محرّكات الدرجة وأوزانها" : "Score drivers and weights"}</span>
           {PERF_DRIVERS.map((driver) => (
-            <div key={driver.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) 44px", gap: 11, alignItems: "start", borderBottom: "1px solid #f7f8fa", paddingBottom: 8 }}>
+            <div key={driver.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) 44px", gap: 11, alignItems: "start", borderBottom: `1px solid ${PERF_SOFT}`, paddingBottom: 8 }}>
               <span style={{ width: 12, height: 12, background: driver.color, marginTop: 4 }} />
               <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                 <span style={{ fontSize: 12, fontWeight: 700 }}>{ar ? driver.nameAr : driver.nameEn}</span>
@@ -36,8 +36,8 @@ export default function PerfHowBoard({ lang }) {
           <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "قواعد لا تتغيّر" : "Rules that do not move"}</span>
           {rules.map((rule) => (
             <div key={rule.tag} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 11, alignItems: "start", borderBottom: `1px solid ${PERF_SOFT}`, paddingBottom: 8 }}>
-              <span style={{ fontSize: 10, fontWeight: 600, color: PERF_BODY, background: "#f5f6f8", border: "1px solid #e6e9ef", padding: "2px 9px", whiteSpace: "nowrap", marginTop: 2 }}>{rule.tag}</span>
-              <span style={{ fontSize: 11, color: "#3c4657", lineHeight: 1.9, minWidth: 0 }}>{rule.t}</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: PERF_BODY, background: "var(--nv-mute-soft)", border: "1px solid var(--nv-mute-line)", borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap", marginTop: 2 }}>{rule.tag}</span>
+              <span style={{ fontSize: 11, color: PERF_BODY, lineHeight: 1.9, minWidth: 0 }}>{rule.t}</span>
             </div>
           ))}
           <span style={{ fontSize: 11, color: PERF_MUTED, lineHeight: 1.9 }}>
@@ -49,7 +49,7 @@ export default function PerfHowBoard({ lang }) {
           </span>
         </div>
       </section>
-      <div style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "none", padding: 16 }}>
+      <div style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, padding: 16 }}>
         <JobObjectiveBoard lang={lang} />
       </div>
     </div>

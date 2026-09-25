@@ -187,7 +187,6 @@ export function checkPublishGates({
 
   const onDate = dateKey(year, monthIndex, 1);
   const weeklyCap = ruleValue("hours.week.ordinaryMaxHours", onDate);
-  const restBetween = ruleValue("hours.rest.betweenShiftsHours", onDate);
   const workplaceMax = ruleValue("hours.workplace.maxHours", onDate);
   const ramadanDayCap = ruleValue("hours.ramadan.ordinaryHours", onDate);
   const ramadanWeekCap = ruleValue("hours.ramadan.weekMaxHours", onDate);
@@ -202,22 +201,9 @@ export function checkPublishGates({
 
   const weeklyMaxHours = Math.round(Math.max(0, ...Object.values(wMin).flatMap((o) => Object.values(o)), 0) / 60);
 
-  let restBreach11 = null;
   let workplaceBreach = null;
   for (const id of assignedIds) {
     const sp = spansOf(id, shiftTypes, assignments, year, monthIndex);
-    for (let i = 1; i < sp.length; i++) {
-      const gap = sp[i].start - sp[i - 1].end;
-      if (gap < restBetween * 60) {
-        restBreach11 = {
-          name: namesById[id] || id,
-          gap: Math.max(0, Math.round(gap / 60)),
-          from: { label: sp[i - 1].label, d: sp[i - 1].d },
-          to: { label: sp[i].label, d: sp[i].d },
-        };
-        break;
-      }
-    }
     for (let d = 1; d <= days; d++) {
       const stay = workplaceMinutesOnDay(sp, d);
       if (stay > workplaceMax * 60) {
@@ -229,7 +215,7 @@ export function checkPublishGates({
         break;
       }
     }
-    if (restBreach11 && workplaceBreach) break;
+    if (workplaceBreach) break;
   }
 
   let ramadanDayBreach = null;
@@ -395,19 +381,11 @@ export function checkPublishGates({
         : `No more than ${workplaceMax} h remaining at the workplace in a day`,
     },
     {
-      id: "rest_11h",
-      ok: doubleOk && !restBreach11,
+      id: "double_shift",
+      ok: doubleOk,
       article: null,
-      labelAr: !doubleOk
-        ? "موظف مسند إلى ورديتين في يوم واحد"
-        : restBreach11
-          ? `${restBreach11.name}: ${restBreach11.gap} ساعة فقط بين ورديتين`
-          : `فاصل تشغيلي ${restBetween} ساعة بين ورديتين`,
-      labelEn: !doubleOk
-        ? "Someone is assigned two shifts in one day"
-        : restBreach11
-          ? `${restBreach11.name}: only ${restBreach11.gap} h between shifts`
-          : `Operational ${restBetween} h gap between shifts`,
+      labelAr: doubleOk ? "لا إسناد لورديتين في يوم واحد" : "موظف مسند إلى ورديتين في يوم واحد",
+      labelEn: doubleOk ? "Nobody is assigned two shifts in one day" : "Someone is assigned two shifts in one day",
     },
     {
       id: "rest_5h",
@@ -481,11 +459,29 @@ export function shiftWindowKey(start, end) {
   return `${String(start || "").slice(0, 5)}-${String(end || "").slice(0, 5)}`;
 }
 
-/** Roster cell / aria — the duty window, not the start alone. */
-export function shiftHoursLine(shift, lang = "ar") {
-  const start = String(shift?.start || "").trim().slice(0, 5);
-  const end = String(shift?.end || "").trim().slice(0, 5);
-  if (!start && !end) return "";
+/** HH:MM clock for roster cells — follows the header 12/24 preference. */
+export function formatShiftHm(hm, format = "24", lang = "ar") {
+  const raw = String(hm || "").trim().slice(0, 5);
+  if (!/^\d{1,2}:\d{2}$/.test(raw)) return raw;
+  const [h, m] = raw.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return raw;
+  const date = new Date(2000, 0, 1, h, m);
+  const locale = lang === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB";
+  const twelve = format === "12";
+  return date.toLocaleTimeString(locale, {
+    hour: twelve ? "numeric" : "2-digit",
+    minute: "2-digit",
+    hourCycle: twelve ? "h12" : "h23",
+  });
+}
+
+/** Roster cell / aria — the duty window, not the start alone. Honours header 12/24. */
+export function shiftHoursLine(shift, lang = "ar", format = "24") {
+  const startRaw = String(shift?.start || "").trim().slice(0, 5);
+  const endRaw = String(shift?.end || "").trim().slice(0, 5);
+  if (!startRaw && !endRaw) return "";
+  const start = startRaw ? formatShiftHm(startRaw, format, lang) : "";
+  const end = endRaw ? formatShiftHm(endRaw, format, lang) : "";
   if (start && end) return lang === "ar" ? `من ${start} إلى ${end}` : `${start}–${end}`;
   return start || end;
 }

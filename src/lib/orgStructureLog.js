@@ -75,7 +75,24 @@ export function formatOrgStructureEvent(event, ar = true) {
     return ar ? `«${branch}» أصبح ${kind}` : `${branch} is now a ${kind}`;
   }
   if (event.type === "created") {
-    return ar ? `أُنشئ «${branch}»` : `Created ${branch}`;
+    const count = Number(event.to);
+    if (count > 1 && who) {
+      return ar
+        ? `أُنشئت ${count} وظائف «${branch}» تحت ${who}`
+        : `Created ${count} «${branch}» seats under ${who}`;
+    }
+    return ar ? `أُنشئ «${branch}»${who ? ` تحت ${who}` : ""}` : `Created ${branch}${who ? ` under ${who}` : ""}`;
+  }
+  if (event.type === "end") {
+    return ar
+      ? `أُقفلت فترة ${who || "الشاغل"} على «${event.to || branch || "الوظيفة"}» — الوظيفة شاغرة`
+      : `Closed ${who || "the holder"} on ${event.to || branch || "the seat"} — the seat is vacant`;
+  }
+  if (event.type === "site") {
+    const place = event.toStationName || event.to || "";
+    return ar
+      ? `مكان عمل ${who || "الموظف"}: ${place || "مطابق للتبعية"}`
+      : `Workplace of ${who || "the employee"}: ${place || "matches reporting"}`;
   }
   if (event.type === "deleted") {
     return ar ? `حُذف «${branch}»` : `Deleted ${branch}`;
@@ -95,6 +112,19 @@ export function formatOrgStructureEvent(event, ar = true) {
   }
   if (event.type === "acting_end") {
     return ar ? `انتهت وكالة ${who || "موظف"} على «${branch}»` : `Ended acting on ${branch} for ${who || "employee"}`;
+  }
+  if (event.type === "grade") {
+    return ar ? (event.to || "تغيير في المسار الوظيفي") : (event.toName || event.to || "Career track change");
+  }
+  if (event.type === "seat") {
+    return ar
+      ? `منصب «${event.to || ""}» تحت ${who || branch}`
+      : `Seat «${event.to || ""}» under ${who || branch}`;
+  }
+  if (event.type === "hr") {
+    return ar
+      ? `${who || "—"} مدير الموارد البشرية لـ«${branch}»`
+      : `${who || "—"} is HR manager for ${branch}`;
   }
   return branch || who || event.type;
 }

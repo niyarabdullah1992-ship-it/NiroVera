@@ -20,6 +20,8 @@ import {
   checkAssignGate,
   checkReassignGate,
   checkEndDelegationGate,
+  checkSetMembersGate,
+  applyOpsSetMembers,
   checkRejectReasonGate,
   canEmployeeEscalateOpsTask,
   opsRejectionCount,
@@ -866,6 +868,78 @@ Deno.serve(async (req) => {
       tasks[idx] = task;
       await saveTasks(tasks);
       await audit("ops_task_mode", `Set ${task.ref} mode to ${mode}`);
+      return Response.json({ task, counts: deriveOpsCounts(scopeFilter(tasks, body.scope || null)) });
+    }
+
+    if (action === "setMembers") {
+      if (!isManager) {
+        return Response.json({
+          error: "FORBIDDEN",
+          reason: body.lang === "en"
+            ? "Changing assignees is limited to managers."
+            : "تغيير المسندين مقصور على المشرفين.",
+        }, { status: 403 });
+      }
+      const memberIds = Array.isArray(body.memberIds) ? body.memberIds.map(String).filter(Boolean) : [];
+      const tasks = await listTasksRaw();
+      const idx = tasks.findIndex((t) => t.id === body.taskId);
+      if (idx < 0) return Response.json({ error: "Task not found" }, { status: 404 });
+      const current = { ...tasks[idx] };
+      const escData = await loadEscalationData();
+      const emp = (escData.employees || []).find((e) =>
+        String(e.id || "") === String(auth.userId || "")
+        || String(e.employeeId || "") === String(auth.userId || "")
+      );
+      const reviewer = {
+        ...reviewerUser,
+        role: auth.role || emp?.role,
+        stationId: emp?.stationId ?? reviewerUser.stationId,
+        managedStations: (emp?.managedStations?.length ? emp.managedStations : reviewerUser.managedStations) || [],
+      };
+      const stationPeople = await loadPeople(current.stationId || null);
+      const gate = checkSetMembersGate({
+        task: current,
+        user: reviewer,
+        data: escData,
+        memberIds,
+        people: stationPeople,
+        lang: body.lang === "en" ? "en" : "ar",
+      });
+      if (!gate.ok) {
+        return Response.json({ error: gate.error, reason: gate.reason }, { status: 400 });
+      }
+      if (gate.unchanged) {
+        return Response.json({ task: current, counts: deriveOpsCounts(scopeFilter(tasks, body.scope || null)) });
+      }
+      const assignGate = checkAssignGate({
+        workKind: current.workKind || "gn",
+        assignMode: "some",
+        ownerId: null,
+        memberIds: gate.memberIds,
+        stationId: current.stationId || null,
+        people: stationPeople,
+        lang: body.lang === "en" ? "en" : "ar",
+      });
+      if (!assignGate.ok) {
+        return Response.json({
+          error: "ASSIGN_GATE",
+          reason: assignGate.reason,
+          cert: assignGate.required,
+        }, { status: 403 });
+      }
+      const task = applyOpsSetMembers(current, {
+        memberIds: gate.memberIds,
+        byId: auth.userId,
+        byName: auth.name,
+        reason: String(body.reason || "").trim(),
+        people: stationPeople,
+        lang: body.lang === "en" ? "en" : "ar",
+      });
+      tasks[idx] = task;
+      await saveTasks(tasks);
+      await audit("ops_task_members", `Updated assignees on ${task.ref}`, {
+        newValue: (gate.memberIds || []).join(", "),
+      });
       return Response.json({ task, counts: deriveOpsCounts(scopeFilter(tasks, body.scope || null)) });
     }
 

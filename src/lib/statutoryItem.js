@@ -8,18 +8,18 @@ import {
   performsNightWork,
   pregnancyNightBan,
 } from "./decision18632.js";
-import { isOnApprovedLeave } from "./leaveTypes.js";
 import { nightRotateDue, nightRotateWeeks, pendingNightRotate } from "./nightRotateCycle.js";
 import {
   checkNightCompensateOrReduceGate,
-  employeeShiftOnDay,
+  employeeDutyShiftOnDay,
+  isRosterLeaveDay,
   LEAVE_CITE_STYLE,
+  nightRestPairHits,
   nightStreakWeeks,
-  restGapHours,
   weekDays,
   weekStartDate,
 } from "./shiftWeek.js";
-import { isRamadanHoursSubject, ruleValue } from "./laborRules.js";
+import { isRamadanHoursSubject } from "./laborRules.js";
 
 export const STATUTORY_TONES = ["cite", "entitlement", "warn", "block"];
 export const STATUTORY_GLOWS = ["off", "in_scope", "due"];
@@ -176,14 +176,13 @@ function isUnfitNightMedical(employee) {
   return status === "unfit" || status === "failed" || profile.nightMedicalUnfit === true;
 }
 
-function weekStatutoryFacts({ employee, schedule, weekStart } = {}) {
+function weekStatutoryFacts({ employee, schedule, weekStart, laborCalendar } = {}) {
   const start = weekStartDate(weekStart || new Date());
   const days = weekDays(start);
   let performs = false;
   let worker = false;
   let assigned = 0;
   let restDays = 0;
-  let nightRestFail = false;
   let compensateFail = false;
   let pregnancyAssigned = false;
   let medicalAssigned = false;
@@ -195,17 +194,20 @@ function weekStatutoryFacts({ employee, schedule, weekStart } = {}) {
       assigned,
       restDays,
       missingWeeklyRest: false,
-      nightRestFail,
+      nightRestFail: false,
       compensateFail,
       pregnancyAssigned,
       medicalAssigned,
     };
   }
-  for (let index = 0; index < days.length; index += 1) {
-    const day = days[index];
-    const onLeave = isOnApprovedLeave(employee, day.key);
-    const shift = employeeShiftOnDay(schedule, employee.id, day.key);
-    if (onLeave || !shift) {
+  for (const day of days) {
+    // Art. 112 official holiday + approved leave are not duty endpoints (same as publish gates).
+    if (isRosterLeaveDay(employee, day.key, laborCalendar)) {
+      restDays += 1;
+      continue;
+    }
+    const shift = employeeDutyShiftOnDay(schedule, employee, day.key, laborCalendar);
+    if (!shift) {
       restDays += 1;
       continue;
     }
@@ -221,15 +223,11 @@ function weekStatutoryFacts({ employee, schedule, weekStart } = {}) {
       onDate: day.key,
       employee,
       schedule,
+      laborCalendar,
     }).ok) compensateFail = true;
-    if (index < 6) {
-      const next = employeeShiftOnDay(schedule, employee.id, days[index + 1].key);
-      if (next && (nightWork || performsNightWork(next, days[index + 1].key))) {
-        const need = ruleValue("hours.night.restHours", day.key) || 12;
-        if (restGapHours(shift, next) < need) nightRestFail = true;
-      }
-    }
   }
+  // Decision 18632 pairwise rest — shared with publish; never pairs through leave/rest ghosts.
+  const nightRestFail = nightRestPairHits(schedule, employee, start, laborCalendar).length > 0;
   return {
     start,
     performs,
@@ -268,7 +266,6 @@ export function statutoryGlowState({
   laborCalendar,
   failing = false,
 } = {}) {
-  void laborCalendar;
   if (Array.isArray(employees) && employees.length && !employee) {
     return maxStatutoryGlow(...employees.map((row) => statutoryGlowState({
       kind,
@@ -281,7 +278,7 @@ export function statutoryGlowState({
   }
   const id = glowKind(kind);
   if (!id) return "off";
-  const facts = weekStatutoryFacts({ employee, schedule, weekStart });
+  const facts = weekStatutoryFacts({ employee, schedule, weekStart, laborCalendar });
   const pending = nightConsentWaiting(employee);
   const rotate = employee
     ? nightRotateDue({ employee, schedule, weekStart: facts.start })
@@ -363,17 +360,22 @@ export function quietNightHeaderCite(glow) {
   return normalizeStatutoryGlow(glow) === "in_scope";
 }
 
-const ACCENT = "var(--nv-accent, #1E9E63)";
-const ACCENT_SOFT = "var(--nv-accent-soft, color-mix(in oklab, #1E9E63 16%, #fff))";
-const ACCENT_DEEP = "var(--nv-accent-deep, #14683F)";
-const ACCENT_BORDER = "var(--nv-accent-border, color-mix(in oklab, #1E9E63 38%, #fff))";
-const DANGER = "var(--nv-danger, #DC2626)";
-const DANGER_SOFT = "var(--nv-danger-soft, color-mix(in oklab, #DC2626 10%, #fff))";
-const DANGER_DEEP = "var(--nv-danger-deep, color-mix(in oklab, #DC2626 84%, #000))";
-const DANGER_BORDER = "var(--nv-danger-border, color-mix(in oklab, #DC2626 28%, #fff))";
+/** Match LawGateArticleBadge — soft navy cite, not green/pink glow. */
+const CITE_SOFT = "var(--nv-soft, #F7F8FA)";
+const CITE_INK = "var(--nv-ink2, #334155)";
+const CITE_LINE = "var(--nv-line, #E2E8F0)";
+const WARN_SOFT = "var(--nv-warn-soft, #FDF6E8)";
+const WARN_INK = "var(--nv-warn-ink, #8A6516)";
+const WARN_LINE = "var(--nv-warn-line, #ECD9A8)";
+const BAD_SOFT = "var(--nv-bad-soft, #FBF1F2)";
+const BAD_INK = "var(--nv-bad-ink, #8A1C2B)";
+const BAD_LINE = "var(--nv-bad-line, #E9C4C9)";
+
 /**
- * Glow paint: due = red (owed). Quiet cite / entitlement = green (غير مستحق).
- * `cite` is an alias of entitlement — never a slate or colorless chip.
+ * DS v2 cite chip: soft fill `--nv-*`, 1px line, radius 999, no outer glow.
+ * Quiet cite / entitlement / in_scope → soft navy (article badge).
+ * Due attention → warn soft (تنبيه) — never pink pulse.
+ * Red (bad) only for true block / منع.
  */
 export function statutoryChipStyle(tone = "entitlement", { compact, glow, surface } = {}) {
   const warn = tone === "warn";
@@ -382,15 +384,22 @@ export function statutoryChipStyle(tone = "entitlement", { compact, glow, surfac
   const due = glowState === "due";
   const quietOk = !due && !warn && !block;
   const onLeave = surface === "leave" && quietOk;
-  const glowColor = due
-    ? DANGER
-    : block
-      ? "#D97706"
-      : warn
-        ? "#B45309"
-        : onLeave
-          ? LEAVE_CITE_STYLE.fg
-          : ACCENT;
+  let background = CITE_SOFT;
+  let color = CITE_INK;
+  let border = `1px solid ${CITE_LINE}`;
+  if (block) {
+    background = BAD_SOFT;
+    color = BAD_INK;
+    border = `1px solid ${BAD_LINE}`;
+  } else if (due || warn) {
+    background = WARN_SOFT;
+    color = WARN_INK;
+    border = `1px solid ${WARN_LINE}`;
+  } else if (onLeave) {
+    background = LEAVE_CITE_STYLE.bg;
+    color = LEAVE_CITE_STYLE.fg;
+    border = `1px solid ${LEAVE_CITE_STYLE.color}`;
+  }
   return {
     display: "inline-flex",
     alignItems: "center",
@@ -408,33 +417,10 @@ export function statutoryChipStyle(tone = "entitlement", { compact, glow, surfac
     lineHeight: compact ? 1.55 : 1.6,
     whiteSpace: "nowrap",
     fontFamily: "inherit",
-    background: due
-      ? DANGER_SOFT
-      : onLeave
-        ? LEAVE_CITE_STYLE.bg
-        : quietOk
-          ? ACCENT_SOFT
-          : warn
-            ? "#FFFBEB"
-            : "#FEF2F2",
-    color: due
-      ? DANGER_DEEP
-      : onLeave
-        ? LEAVE_CITE_STYLE.fg
-        : quietOk
-          ? ACCENT_DEEP
-          : warn
-            ? "#B45309"
-            : DANGER,
-    border: due
-      ? `1px solid ${DANGER_BORDER}`
-      : onLeave
-        ? `1px solid ${LEAVE_CITE_STYLE.color}`
-        : quietOk
-          ? `1px solid ${ACCENT_BORDER}`
-          : warn
-            ? "1px solid #FDE68A"
-            : "1px solid #FECACA",
-    "--nv-stat-glow": glowState === "off" ? "transparent" : glowColor,
+    background,
+    color,
+    border,
+    boxShadow: "none",
+    "--nv-stat-glow": "transparent",
   };
 }

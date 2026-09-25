@@ -6,6 +6,7 @@ import {
   remainingLeaveDays,
   statutoryLeaveFloor,
 } from "./leaveTypes.js";
+import { officialHolidayOn } from "./ummAlQuraCalendar.js";
 
 /** Warm approval copy — تهنئة/مباركة, not a cold status line. Compassionate for sick and bereavement. */
 export const LEAVE_APPROVAL_BLESSING = {
@@ -62,8 +63,16 @@ export const LEAVE_APPROVAL_BLESSING = {
     en: "May God accept your Hajj. Hajj leave is approved — a blessed pilgrimage.",
   },
   eid: {
-    ar: "تقبّل الله. اعتُمدت إجازة العيد أو العطلة الرسمية — بأجر كامل ولا تُخصم من السنوية.",
-    en: "Your Eid or official-holiday leave is approved — full pay, and it is not taken from annual leave.",
+    ar: "تقبّل الله. اعتُمدت إجازة العيد — بأجر كامل ولا تُخصم من السنوية.",
+    en: "Your Eid leave is approved — full pay, and it is not taken from annual leave.",
+  },
+  national: {
+    ar: "اعتُمدت إجازة اليوم الوطني — بأجر كامل ولا تُخصم من السنوية.",
+    en: "National Day leave is approved — full pay, and it is not taken from annual leave.",
+  },
+  founding: {
+    ar: "اعتُمدت إجازة يوم التأسيس — بأجر كامل ولا تُخصم من السنوية.",
+    en: "Founding Day leave is approved — full pay, and it is not taken from annual leave.",
   },
   emergency: {
     ar: "يسّر الله أمرك. اعتُمدت إجازتك الاضطرارية. بارك الله وقتك.",
@@ -75,9 +84,16 @@ export const LEAVE_APPROVAL_BLESSING = {
   },
 };
 
-export function leaveApprovalBlessing(type, lang = "ar") {
+export function leaveApprovalBlessing(type, lang = "ar", onDate) {
   const ar = lang === "ar";
   const key = String(type || "").trim().toLowerCase();
+  if (key === "eid" && onDate) {
+    const hit = officialHolidayOn(onDate);
+    if (hit?.id === "national" || hit?.id === "founding") {
+      const row = LEAVE_APPROVAL_BLESSING[hit.id];
+      if (row) return ar ? row.ar : row.en;
+    }
+  }
   const row = LEAVE_APPROVAL_BLESSING[key];
   if (row) return ar ? row.ar : row.en;
   return ar
@@ -87,7 +103,7 @@ export function leaveApprovalBlessing(type, lang = "ar") {
 
 export function leaveApprovalCardNote(request, lang = "ar") {
   const ar = lang === "ar";
-  const blessing = leaveApprovalBlessing(request?.type, lang);
+  const blessing = leaveApprovalBlessing(request?.type, lang, request?.startDate);
   const roster = ar
     ? "تظهر أيامها في التقويم التشغيلي وجدول الدوام."
     : "The days appear on the operational calendar and the week roster.";
@@ -176,7 +192,7 @@ export function leaveDateSpanText(startDate, endDate, lang = "ar") {
 
 export function leaveDecisionNoticeText({ status, type, startDate, endDate, recordedBy, daysUntilStart } = {}, lang = "ar") {
   const ar = lang === "ar";
-  const label = type ? leaveTypeLabel(type, ar) : "";
+  const label = type ? leaveTypeLabel(type, ar, undefined, startDate) : "";
   const span = leaveDateSpanText(startDate, endDate, lang);
   if (status === "rejected") {
     return ar
@@ -193,7 +209,7 @@ export function leaveDecisionNoticeText({ status, type, startDate, endDate, reco
       ? `سُحبت إجازتك المعتمدة${span ? ` ${span}` : ""} قبل موعد بدئها. الرصيد عاد، والجدول يُعدَّل.`
       : `Your approved leave${span ? ` ${span}` : ""} was withdrawn before it started. The balance is restored and the roster will be adjusted.`;
   }
-  const blessing = leaveApprovalBlessing(type, lang);
+  const blessing = leaveApprovalBlessing(type, lang, startDate);
   const noticeNeed = ruleValue("leave.annual.noticeDays");
   if (recordedBy && type === "annual" && Number(daysUntilStart) < noticeNeed) {
     return ar

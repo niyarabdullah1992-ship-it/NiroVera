@@ -3,6 +3,7 @@
 import { profileGender } from "./employeeProfileFields.js";
 import { citeLeaveType, isRamadanHoursSubject, ruleAt, ruleValue } from "./laborRules.js";
 import { chargeableSpanExcludingHolidays } from "./leaveEidOverlap.js";
+import { officialHolidayKindLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
 
 export const LEAVE_TYPES = [
   { key: "annual", defaultTotal: ruleValue("leave.annual.days"), article: citeLeaveType("annual")?.article || null, ar: "سنوية", en: "Annual" },
@@ -18,17 +19,23 @@ export const LEAVE_TYPES = [
   { key: "iddah", defaultTotal: ruleValue("leave.iddah.days"), article: citeLeaveType("iddah")?.article || null, gender: "female", requiresFile: true, ar: "عدّة وفاة الزوج", en: "Iddah" },
   { key: "paternity", defaultTotal: ruleValue("leave.paternity.days"), article: citeLeaveType("paternity")?.article || null, gender: "male", ar: "أبوة", en: "Paternity" },
   { key: "hajj", defaultTotal: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article || null, religion: "muslim", ar: "حج", en: "Hajj" },
-  { key: "eid", defaultTotal: null, article: citeLeaveType("eid")?.article || null, ar: "عيد / عطلة رسمية", en: "Eid / official holiday" },
+  { key: "eid", defaultTotal: null, article: citeLeaveType("eid")?.article || null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
   { key: "emergency", defaultTotal: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
   { key: "unpaid", defaultTotal: null, article: citeLeaveType("unpaid")?.article || null, ar: "بدون راتب", en: "Unpaid" },
 ];
 
-export function leaveTypeLabel(type, ar = true, profile) {
+export function leaveTypeLabel(type, ar = true, profile, onDate, calendar) {
   const key = String(type || "").trim();
   const found = LEAVE_TYPES.find((item) => item.key === key.toLowerCase());
   if (found) {
     if (found.key === "bereavement" && profileGender(profile) === "female") {
       return ar ? "وفاة أصل/فرع" : "Bereavement (parent/child)";
+    }
+    if (found.key === "eid" && onDate) {
+      const hit = officialHolidayOn(onDate, calendar);
+      if (hit?.id === "national" || hit?.id === "founding" || hit?.id === "fitr" || hit?.id === "adha") {
+        return officialHolidayKindLabel(hit.id, ar, calendar);
+      }
     }
     return ar ? found.ar : found.en;
   }
@@ -130,7 +137,7 @@ export function statutoryLeaveFloor(key, profile, onDate) {
 }
 
 /** The catalog row that actually fired for this leave type on this file. */
-export function leaveCiteRuleId(key, profile, onDate) {
+export function leaveCiteRuleId(key, profile, onDate, calendar) {
   const k = String(key || "").trim().toLowerCase();
   if (!k) return "";
   if (k === "annual") {
@@ -145,7 +152,14 @@ export function leaveCiteRuleId(key, profile, onDate) {
   }
   if (k === "exam") return "leave.exam.cite";
   if (k === "unpaid") return "leave.unpaid.cite";
-  if (k === "eid") return "leave.eid.cite";
+  if (k === "eid") {
+    const hit = officialHolidayOn(onDate, calendar);
+    if (hit?.id === "national") return "leave.nationalDay.days";
+    if (hit?.id === "founding") return "leave.foundingDay.days";
+    if (hit?.id === "fitr") return "leave.eid.fitrDays";
+    if (hit?.id === "adha") return "leave.eid.adhaDays";
+    return "leave.eid.cite";
+  }
   if (k === "iddah") return iddahCiteRuleId(profile, onDate);
   if (k === "maternity_extend") return "leave.maternity.unpaidExtendDays";
   if (k === "maternity_companion") return "leave.maternity.disabledChildDays";

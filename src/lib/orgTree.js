@@ -10,6 +10,7 @@ import {
 } from "@/lib/orgDerivations";
 import { rankFromScore, scorePermissions } from "@/lib/smartPositions";
 import { isManagerUnit, normalizeUnitKind } from "@/lib/stationTree";
+import { assignEmployeeNumber } from "@/lib/employeeNumber";
 
 export const orgTreeNodes = (data) => Array.isArray(data?.orgTree) ? data.orgTree : [];
 export const nodeAccess = (data, refId) => data?.smartPositions?.find((item) => item.employeeId === refId)?.permissions || {};
@@ -553,6 +554,7 @@ export function createOrgRecord(companyId, record, permissions = {}) {
       profile: jobTitle ? { position: jobTitle } : {},
       createdAt: new Date().toISOString(),
     });
+    assignEmployeeNumber(data, data.employees[data.employees.length - 1], {});
     data.orgTree.push({ id: `org_${id}`, type: "employee", refId: id, title: jobTitle, parentId, order });
     const score = scorePermissions(permissions);
     data.smartPositions = data.smartPositions || [];

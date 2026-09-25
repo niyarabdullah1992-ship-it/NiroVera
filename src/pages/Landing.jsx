@@ -346,8 +346,8 @@ export default function Landing() {
               <div
                 key={p.name}
                 style={{
-                  background: p.dark ? NAVY : CARD,
-                  border: `1px solid ${p.dark ? NAVY : BORDER}`,
+                  background: p.dark ? NAVY_FILL : CARD,
+                  border: `1px solid ${p.dark ? NAVY_FILL : BORDER}`,
                   borderRadius: 0,
                   padding: "32px",
                   display: "flex",
@@ -385,7 +385,7 @@ export default function Landing() {
                     marginTop: "26px",
                     height: "44px",
                     borderRadius: 0,
-                    background: p.dark ? "#fff" : SURFACE,
+                    background: p.dark ? ON_NAVY : SURFACE,
                     border: p.dark ? "none" : `1px solid ${BORDER}`,
                     color: p.dark ? NAVY_FILL : INK,
                     fontSize: "14px",

@@ -9,5 +9,22 @@ export default function InvoiceAuditTimeline({ invoice, ar }) {
     [ar ? "إلغاء الفاتورة" : "Invoice voided", invoice.voidedAt],
     [ar ? "تعذر التحصيل" : "Marked uncollectible", invoice.uncollectibleAt],
   ].filter((item) => item[1]);
-  return <div className="space-y-3">{events.map(([label, date], index) => <div key={label} className="flex gap-3 text-sm"><span className="mt-0.5 text-accent">{index === events.length - 1 ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}</span><div><p className="font-medium">{label}</p><p className="text-xs text-muted-foreground">{new Date(date).toLocaleString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB")}</p></div></div>)}</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {events.map(([label, date], index) => (
+        <div key={label} style={{ display: "flex", gap: 10, fontSize: 13 }}>
+          <span style={{ marginTop: 2, color: index === events.length - 1 ? "var(--nv-accent)" : "var(--nv-muted)" }}>
+            {index === events.length - 1 ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+          </span>
+          <div>
+            <p style={{ margin: 0, fontWeight: 600, color: "var(--nv-ink)" }}>{label}</p>
+            <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--nv-muted)" }}>
+              {new Date(date).toLocaleString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB")}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }

@@ -26,7 +26,7 @@ const both = judgmentProtects({ gateId: "hours_48" });
 assert.deepEqual(both, { employee: true, company: true });
 assert.equal(judgmentProtectsCopy(both, true), "يحمي العامل والشركة — حكم المنصة");
 
-const station = judgmentProtects({ gateId: "morning_cover" });
+const station = judgmentProtects({ gateId: "not_empty" });
 assert.deepEqual(station, { employee: false, company: true });
 assert.equal(judgmentProtectsCopy(station, true), "يحمي الشركة — حكم المنصة");
 

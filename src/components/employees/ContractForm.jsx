@@ -8,6 +8,7 @@ import {
   isFixedContractType,
 } from "@/lib/employeeProfileFields";
 import PlatformDateField from "@/components/shared/PlatformDateField";
+import AttachFileButton from "@/components/shared/AttachFileButton";
 import { MUTED, NAVY_FILL, field, ui } from "@/lib/platformStyles";
 import IdentityCard from "@/components/shared/IdentityCard";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
@@ -183,14 +184,14 @@ export default function ContractForm({ employee, companyId, contract, ar, onDone
             ) : null}
           </>
         ) : null}
-        <input
-          type="file"
+        <AttachFileButton
+          ar={ar}
           accept="application/pdf,.pdf"
-          onChange={(event) => {
-            setFile(event.target.files?.[0] || null);
+          label={file?.name ? (ar ? `تغيير العقد: ${file.name}` : `Change the contract: ${file.name}`) : (ar ? "أرفق عقد PDF" : "Attach the contract PDF")}
+          onPick={(picked) => {
+            setFile(picked);
             setError("");
           }}
-          style={{ ...field, height: "auto", padding: "8px 12px" }}
         />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))", gap: "12px" }}>
           <label style={{ fontSize: "11px", color: MUTED }}>

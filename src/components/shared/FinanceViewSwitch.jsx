@@ -8,12 +8,12 @@ import { FINANCE_VIEW_COPY, MANAGE, SELF } from "@/lib/financeRights";
  * no control beside it, because there is nothing it could switch to — the view is
  * derived from rights, never claimed by pressing something.
  */
-export default function FinanceViewSwitch({ ar, view, canManage, onChange }) {
+export default function FinanceViewSwitch({ ar, view, canManage, onChange, showSwitch = true }) {
   const copy = FINANCE_VIEW_COPY[view] || FINANCE_VIEW_COPY.self;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span style={{ fontSize: 11, color: MUTED }}>{ar ? copy.ar : copy.en}</span>
-      {canManage ? (
+      {canManage && showSwitch ? (
         <button
           type="button"
           onClick={() => onChange?.(view === MANAGE ? SELF : MANAGE)}

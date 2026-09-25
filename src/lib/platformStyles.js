@@ -5,10 +5,11 @@
  * - /app page → SectionShell / PlatformStampShell
  * - titled module → IdentityCard
  * - nested box / table → cardShell / tableShell
- * - green = meaning only, never card skin
+ * - selected identity and primary actions are #137A49 with white text
+ * - navy structure is #14213D; warn/bad stay gold and crimson
  */
 
-import { DS_CONTROL_RADIUS, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "./designSystem.js";
+import { DS_CONTROL_RADIUS, DS_EDGE_PX, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "./designSystem.js";
 
 /** Document / slab corner. */
 export const RADIUS = DS_RADIUS;
@@ -16,15 +17,15 @@ export const CONTROL_RADIUS = DS_CONTROL_RADIUS;
 export const PILL_RADIUS = DS_PILL_RADIUS;
 export const PAPER_SHADOW = DS_SHADOW;
 
-export const ACCENT = "var(--nv-accent, #1E9E63)";
-/** Navy fill for inverted panels and rails — stays #14284B in dark mode. */
-export const NAVY_FILL = "var(--nv-navy, #14284B)";
-/** Title/body color. In light mode this is navy; in dark mode it follows --nv-ink. */
-export const NAVY = "var(--nv-ink, #14284B)";
-export const INK = "var(--nv-ink, #14284B)";
+export const ACCENT = "var(--nv-accent, #137A49)";
+/** Navy structure from the v4 rail (#14213D). Selected fills use BTN_FILL. */
+export const NAVY_FILL = "var(--nv-navy, #14213D)";
+/** Title/body color. */
+export const NAVY = "var(--nv-ink, #14213D)";
+export const INK = "var(--nv-ink, #14213D)";
 export const MUTED = "var(--nv-muted, var(--nv-ink3, #6B7280))";
 
-export const BRAND = "var(--nv-accent, #1E9E63)";
+export const BRAND = "var(--nv-accent, #137A49)";
 export const BRAND_SOFT = "var(--nv-accent-soft, color-mix(in oklab, #1E9E63 10%, #fff))";
 export const BRAND_DEEP = "var(--nv-accent-deep, color-mix(in oklab, #1E9E63 84%, #000))";
 export const BRAND_BORDER = "var(--nv-accent-border, color-mix(in oklab, #1E9E63 28%, #fff))";
@@ -101,16 +102,16 @@ export const WARN = pill("var(--nv-warn-soft)", "var(--nv-warn-ink)", "var(--nv-
 export const BAD = pill("var(--nv-bad-soft)", "var(--nv-bad-ink)", "var(--nv-bad-line)");
 export const NEUTRAL = pill("var(--nv-mute-soft)", "var(--nv-mute-ink)", "var(--nv-mute-line)");
 
-export const BORDER = "var(--nv-line, #DFE3EA)";
-export const SURFACE = "var(--nv-soft, #EEF2F8)";
+export const BORDER = "var(--nv-line, #E4E8EE)";
+export const SURFACE = "var(--nv-soft, #F5F6F8)";
 export const CARD = "var(--nv-card, #FFFFFF)";
-export const PAGE = "var(--nv-page, #EEF1F5)";
+export const PAGE = "var(--nv-page, #F7F8FA)";
 export const HOVER = "var(--nv-hover, #F5F7FA)";
 /** Recessed stage behind white slabs — the paper table the signing surfaces sit on. */
 export const STAGE = "color-mix(in oklab, var(--nv-navy, #14284B) 5%, var(--nv-soft, #F7F8FA))";
 export const DANGER = "#DC2626";
 /** Active chrome fill — same token Layout uses for section pills. */
-export const BTN_FILL = "var(--nv-btn-fill, #14284B)";
+export const BTN_FILL = "var(--nv-btn-fill, #137A49)";
 export const BTN_INK = "var(--nv-btn-ink, #fff)";
 export const PILL_H = 34;
 
@@ -174,7 +175,42 @@ export function pillCount(active) {
   };
 }
 
+/** Soft fill + status line + 3px top edge — same chrome as EmpAlertsStrip / تنبيهات. */
 export const statusBanner = {
+  ok: {
+    borderRadius: RADIUS,
+    border: "1px solid var(--nv-ok-line)",
+    borderTop: `${DS_EDGE_PX}px solid var(--nv-ok-fill)`,
+    background: "var(--nv-ok-soft)",
+    padding: "12px 14px",
+    fontSize: 13,
+    color: "var(--nv-ok-ink)",
+    lineHeight: 1.7,
+  },
+  warn: {
+    borderRadius: RADIUS,
+    border: "1px solid var(--nv-warn-line)",
+    borderTop: `${DS_EDGE_PX}px solid var(--nv-warn-fill)`,
+    background: "var(--nv-warn-soft)",
+    padding: "12px 14px",
+    fontSize: 13,
+    color: "var(--nv-warn-ink)",
+    lineHeight: 1.7,
+  },
+  bad: {
+    borderRadius: RADIUS,
+    border: "1px solid var(--nv-bad-line)",
+    borderTop: `${DS_EDGE_PX}px solid var(--nv-bad-fill)`,
+    background: "var(--nv-bad-soft)",
+    padding: "12px 14px",
+    fontSize: 13,
+    color: "var(--nv-bad-ink)",
+    lineHeight: 1.7,
+  },
+};
+
+/** Schedule section: soft fill + 1px line only — no thick top status ribbon. */
+export const statusBannerQuiet = {
   ok: {
     borderRadius: RADIUS,
     border: "1px solid var(--nv-ok-line)",
@@ -191,6 +227,15 @@ export const statusBanner = {
     padding: "12px 14px",
     fontSize: 13,
     color: "var(--nv-warn-ink)",
+    lineHeight: 1.7,
+  },
+  bad: {
+    borderRadius: RADIUS,
+    border: "1px solid var(--nv-bad-line)",
+    background: "var(--nv-bad-soft)",
+    padding: "12px 14px",
+    fontSize: 13,
+    color: "var(--nv-bad-ink)",
     lineHeight: 1.7,
   },
 };
@@ -255,9 +300,9 @@ export const ui = {
   btnPrimary: {
     padding: "8px 15px",
     borderRadius: CONTROL_RADIUS,
-    background: NAVY_FILL,
+    background: BTN_FILL,
     color: "#fff",
-    border: `1px solid ${NAVY_FILL}`,
+    border: `1px solid ${BTN_FILL}`,
     fontSize: "12px",
     fontWeight: 500,
     cursor: "pointer",
@@ -307,7 +352,7 @@ export const ui = {
     height: "32px",
     padding: "0 16px",
     borderRadius: CONTROL_RADIUS,
-    background: NAVY_FILL,
+    background: BTN_FILL,
     color: "#fff",
     border: "none",
     fontSize: "12px",
@@ -401,8 +446,8 @@ export const ui = {
     height: 28,
     padding: "0 10px",
     borderRadius: CONTROL_RADIUS,
-    border: `1px solid ${NAVY_FILL}`,
-    background: NAVY_FILL,
+    border: `1px solid ${BTN_FILL}`,
+    background: BTN_FILL,
     color: "#fff",
     fontSize: 11,
     fontWeight: 600,
@@ -433,8 +478,8 @@ export const ui = {
   btnRow: {
     padding: "6px 14px",
     borderRadius: CONTROL_RADIUS,
-    border: `1px solid ${NAVY_FILL}`,
-    background: NAVY_FILL,
+    border: `1px solid ${BTN_FILL}`,
+    background: BTN_FILL,
     color: "#fff",
     fontSize: "12px",
     fontWeight: 500,
@@ -447,9 +492,9 @@ export const ui = {
     marginTop: "18px",
     padding: "10px",
     borderRadius: CONTROL_RADIUS,
-    background: NAVY_FILL,
+    background: BTN_FILL,
     color: "#fff",
-    border: `1px solid ${NAVY_FILL}`,
+    border: `1px solid ${BTN_FILL}`,
     fontSize: "13px",
     fontWeight: 600,
     cursor: "pointer",
@@ -469,6 +514,7 @@ export const tableShell = {
   background: CARD,
   border: `1px solid ${BORDER}`,
   borderRadius: RADIUS,
+  boxShadow: PAPER_SHADOW,
   overflow: "hidden",
 };
 

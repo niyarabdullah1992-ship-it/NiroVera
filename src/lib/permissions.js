@@ -1,4 +1,4 @@
-import { expandStationScope, scopedStationIdsForUser, isWorkplaceStation } from "@/lib/stationTree";
+import { expandStationScope, scopedStationIdsForUser, isHrUnit, isWorkplaceStation } from "@/lib/stationTree";
 
 // Role-based permission helpers for PowerCare.
 // Roles: director | ops_manager | pgm | station_manager | safety_officer | financial_officer | inventory_keeper | employee
@@ -23,7 +23,7 @@ export function canSeeAllStations(user) {
 
 // Stations visible to a user given the company data
 export function visibleStations(user, data) {
-  const stations = stationsInOrder(data?.stations).filter((station) => isWorkplaceStation(station));
+  const stations = stationsInOrder(data?.stations).filter((station) => isWorkplaceStation(station) && !isHrUnit(station));
   if (!user) return [];
   try {
     if (canSeeAllStations(user) || user?.id === data?.ownerId || user.role === "safety_officer") return stations;

@@ -24,6 +24,7 @@ import { calendarOverlayEmployees } from "@/lib/shiftWeek";
 import { isLocalPreviewActive } from "@/lib/localPreview";
 import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, seedPreviewOwnerNightStreak, seedPreviewProofCycle } from "@/lib/previewMigrations";
 import { openDueAnnualLeaveNotices, openDueNightRotateCycles, updateCompany } from "@/lib/store";
+import { useRailSide } from "@/lib/railSide";
 
 const ShiftsPlatformBoard = lazy(() => import("@/components/schedules/ShiftsPlatformBoard"));
 const AttendanceMonthCalendar = lazy(() => import("@/components/attendance/AttendanceMonthCalendar"));
@@ -51,6 +52,7 @@ export default function Attendance() {
   const { data, currentUser, company, refresh } = useAuth();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const railSide = useRailSide();
   const routeTab = tabFromRoute(location.pathname, searchParams.get("tab"));
   const [tab, setTab] = useState(routeTab);
   const [punchAtt, setPunchAtt] = useState(null);
@@ -150,7 +152,7 @@ export default function Attendance() {
   const ar = lang === "ar";
   const canManageDuty = !!(isManager || canManageLeave);
   const canManageHere = focusShifts || focusCalendar ? canManageDuty : !!isManager;
-  const lane = dutyLaneFromSearch(searchParams, canManageHere);
+  const lane = dutyLaneFromSearch(searchParams, canManageHere, railSide);
   const defaultHubTab = "punch";
   const mineTabs = [
     { key: "punch", label: ar ? "بصمتي" : "My punch" },
@@ -266,6 +268,7 @@ export default function Attendance() {
       tabs={hubTabs}
       tool={hubTool}
       onTool={selectTab}
+      lane={lane}
       laneBar={<DutyLaneBar ar={ar} canManage={!!isManager} lane={lane} onLane={setLane} manageCount={queueCount} />}
     >
       <Suspense fallback={<TabLoader />}>

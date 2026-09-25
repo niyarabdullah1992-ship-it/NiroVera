@@ -6,10 +6,10 @@ import { checkArticle90Gate, article90MaxDeduction } from "@/lib/payrollDerivati
 import { normalizeLocalizedNumber } from "@/lib/localizedNumber";
 import { BAD, OK, CARD } from "@/lib/platformStyles";
 
-const NAVY = "#14284B";
-const MUTED = "#5A6B85";
-const BORDER = "#E2E8F0";
-const GREEN = "#1E9E63";
+const NAVY = "var(--nv-ink)";
+const MUTED = "var(--nv-muted)";
+const BORDER = "var(--nv-line)";
+const GREEN = "var(--nv-accent)";
 
 // Money keeps Western digits on every payroll surface so a run reads the same
 // way in the table, the totals, and the exported WPS file.
@@ -34,8 +34,8 @@ export default function PayrollRow({ item, employee, ar, onChange, onTogglePaid,
           width: "100%",
           maxWidth: "96px",
           borderRadius: "8px",
-          border: `1px solid ${invalid ? "#FCA5A5" : BORDER}`,
-          background: item.paid ? "#F7F8FA" : CARD,
+          border: `1px solid ${invalid ? "var(--nv-bad-line)" : BORDER}`,
+          background: item.paid ? "var(--nv-soft)" : CARD,
           color: NAVY,
           padding: "0 8px",
           textAlign: "center",

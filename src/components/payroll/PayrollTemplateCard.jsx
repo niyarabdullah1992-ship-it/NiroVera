@@ -67,15 +67,9 @@ export default function PayrollTemplateCard({ company, data, employees, month, a
             />
             <button
               type="button"
+              className="nv-attach nv-attach--inline"
               onClick={() => inputRef.current?.click()}
               disabled={busy}
-              style={{
-                ...ui.btnSecondary,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                opacity: busy ? 0.55 : 1,
-              }}
             >
               {busy
                 ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" />

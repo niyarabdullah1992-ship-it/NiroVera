@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { PdfPageCanvas, useSigningPdf } from "@/components/files/SigningWorkspacePages";
 import { consentFileKind, defaultConsentMark, normalizeSignMark } from "@/lib/documentReadGate";
 import { STAMP_WIDTH_PERCENT } from "@/lib/signatureStampGeometry";
-import { MUTED, NAVY } from "@/lib/platformStyles";
+import { BORDER, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
 
 function pointOn(node, event) {
   const rect = node.getBoundingClientRect();
@@ -25,7 +25,7 @@ function MarkBox({ mark, page, sealUrl, label }) {
         width: `${width}%`,
         aspectRatio: "900 / 240",
         transform: "translate(-50%, -50%)",
-        border: `1.5px dashed ${sealUrl ? "#137a49" : "#14213d"}`,
+        border: `1.5px dashed ${sealUrl ? "var(--nv-ok-ink)" : "var(--nv-navy)"}`,
         background: sealUrl ? "transparent" : "rgba(20,33,61,.06)",
         pointerEvents: "none",
         display: "flex",
@@ -123,7 +123,7 @@ export default function ConsentDocStage({
   }
 
   const hint = (
-    <div style={{ padding: "10px 12px", borderBottom: "1px solid #eef0f4", display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--nv-line3)", display: "flex", flexDirection: "column", gap: 6 }}>
       <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
         {ar ? "حمّل الملف، وقّعه يدوياً أو عبر قسم التوقيع منفصلاً، ثم ارفع النسخة هنا." : "Download the file, sign it by hand or separately in Digital signing, then upload the copy here."}
       </span>
@@ -135,7 +135,7 @@ export default function ConsentDocStage({
 
   if (kind === "image") {
     return (
-      <div style={{ border: "1px solid #dfe3ea", background: "#fafbfc" }}>
+      <div style={{ border: `1px solid ${BORDER}`, background: SURFACE }}>
         {hint}
         <div
           onClick={(event) => place(1, event)}
@@ -150,7 +150,7 @@ export default function ConsentDocStage({
 
   if (kind === "other" || failed) {
     return (
-      <div style={{ padding: "12px 14px", border: "1px solid #dfe3ea", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ padding: "12px 14px", border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 8 }}>
         <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
           {ar ? "تعذّرت المعاينة المباشرة. حمّل الملف، وقّعه يدوياً أو عبر قسم التوقيع منفصلاً، ثم ارفع النسخة هنا." : "Live preview failed. Download the file, sign it by hand or separately in Digital signing, then upload the copy here."}
         </span>
@@ -171,9 +171,9 @@ export default function ConsentDocStage({
 
   const pages = pdf?.numPages || pageCount || 1;
   return (
-    <div style={{ border: "1px solid #dfe3ea", background: "#fafbfc" }}>
+    <div style={{ border: `1px solid ${BORDER}`, background: SURFACE }}>
       {hint}
-      <div style={{ padding: "8px 12px", borderBottom: "1px solid #eef0f4", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: NAVY }}>{file.name}</span>
         <span dir="ltr" style={{ marginInlineStart: "auto", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: MUTED }}>
           {placing

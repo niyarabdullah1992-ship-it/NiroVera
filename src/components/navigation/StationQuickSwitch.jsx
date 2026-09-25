@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import useStationSwitcher from "@/hooks/useStationSwitcher";
-import { READINESS_COLOR, readinessLabel } from "@/lib/stationReadiness";
-import { CARD, INK, MUTED, SURFACE } from "@/lib/platformStyles";
-import { stationParentId } from "@/lib/stationTree";
+import { useManagerScopeModel } from "@/components/navigation/ManagerScopeChips";
+import { isCompanyRootStation, isManagerUnit, stationParentId } from "@/lib/stationTree";
+import { buildBranchNotices } from "@/lib/managerScopeChips";
+import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
 
-/** Arabic search must ignore diacritics and alef/ya/ta-marbuta spelling. */
 function fold(value) {
   return String(value || "")
     .toLocaleLowerCase()
@@ -15,10 +16,6 @@ function fold(value) {
     .replace(/ى/g, "ي")
     .replace(/ة/g, "ه")
     .trim();
-}
-
-function tokensOf(query) {
-  return fold(query).split(/[\s,،/+\-]+/).filter(Boolean);
 }
 
 function ancestorChain(station, byId) {
@@ -35,330 +32,400 @@ function ancestorChain(station, byId) {
   return chain;
 }
 
-function scoreAgainst(tokens, fields) {
-  if (!tokens.length) return 1;
-  let total = 0;
-  for (const token of tokens) {
-    let hit = 0;
-    for (const field of fields) {
-      const text = field.text;
-      if (!text) continue;
-      if (text === token) hit = Math.max(hit, field.exact);
-      else if (text.startsWith(token)) hit = Math.max(hit, field.start);
-      else if (text.includes(token)) hit = Math.max(hit, field.has);
-    }
-    if (!hit) return 0;
-    total += hit;
-  }
-  return total;
+function regionOf(station, byId) {
+  const chain = ancestorChain(station, byId);
+  const region = chain.find((item) => isManagerUnit(item));
+  if (region?.name) return region.name;
+  const parent = chain[0];
+  if (parent?.name && !isCompanyRootStation(parent) && !isManagerUnit(station)) return parent.name;
+  return "";
 }
 
-const overlay = {
-  position: "fixed",
-  inset: 0,
-  zIndex: 90,
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "center",
-  padding: "10vh 16px 16px",
-  background: "rgba(20,40,75,.38)",
-};
+function shortRegion(name) {
+  return String(name || "").replace(/^المنطقة\s+/, "").trim() || name;
+}
 
-const card = {
-  width: "100%",
-  maxWidth: "400px",
-  background: CARD,
-  border: "1px solid #E2E8F0",
-  borderRadius: "12px",
-  boxShadow: "0 16px 40px rgba(20,40,75,.2)",
-  overflow: "hidden",
-  display: "flex",
-  flexDirection: "column",
-  maxHeight: "min(480px, 70vh)",
-};
-
-const groupLabel = {
-  padding: "10px 16px 4px",
-  fontSize: "9px",
-  letterSpacing: "0.12em",
-  color: MUTED,
+const chip = (on) => ({
+  display: "inline-flex",
+  alignItems: "center",
+  height: 24,
+  padding: "0 9px",
+  borderRadius: 8,
+  fontSize: 11,
   fontWeight: 600,
-};
-
-const kbd = {
-  display: "inline-block",
-  padding: "1px 5px",
-  borderRadius: "5px",
-  border: "1px solid #E2E8F0",
-  background: SURFACE,
-  fontSize: "10px",
-  color: MUTED,
-  fontFamily: "'IBM Plex Mono',monospace",
-};
+  cursor: "pointer",
+  fontFamily: "inherit",
+  border: on ? "none" : "1px solid #D5DCD8",
+  background: on ? "#3C7D50" : "#fff",
+  color: on ? "#fff" : "#3A4048",
+});
 
 /**
- * Station quick-switch palette — changes the header scope in place.
- * It never navigates: the section stays mounted and re-derives on the new
- * station, so tabs, filters and scroll survive the switch.
+ * Header scope menu — one list for every section.
+ * Counts are the open section's derived alerts. A branch with none stays quiet.
  */
-export default function StationQuickSwitch({ open, onClose }) {
+export default function StationQuickSwitch({ open, onClose, anchorRef }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
-  const { data } = useAuth();
-  const { stations, scope, readiness, recents, apply, allowsAll } = useStationSwitcher();
+  const { data, currentUser, company } = useAuth();
+  const { stations, scope, apply, allowsAll } = useStationSwitcher();
+  const model = useManagerScopeModel();
   const [query, setQuery] = useState("");
-  const [cursor, setCursor] = useState(0);
+  const [region, setRegion] = useState("");
+  const [box, setBox] = useState(null);
+  const [cursor, setCursor] = useState(-1);
 
   useEffect(() => {
-    if (open) {
-      setQuery("");
-      setCursor(0);
-    }
+    if (!open) return undefined;
+    setQuery("");
+    setRegion("");
+    return undefined;
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const place = () => {
+      const node = anchorRef?.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const width = Math.min(380, window.innerWidth - 16);
+      let left = rect.right - width;
+      if (left < 8) left = 8;
+      if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+      const top = rect.bottom + 6;
+      setBox({
+        top,
+        left,
+        width,
+        maxHeight: Math.max(280, Math.min(Math.round(window.innerHeight * 0.72), window.innerHeight - top - 8)),
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, anchorRef]);
 
   const tree = data?.stations || stations;
   const byId = useMemo(
     () => new Map(tree.map((station) => [String(station.id), station])),
     [tree],
   );
-  const peopleById = useMemo(
-    () => new Map((data?.employees || []).map((person) => [String(person.id), person])),
-    [data?.employees],
-  );
 
-  const rows = useMemo(() => {
-    const tokens = tokensOf(query);
-    const searching = tokens.length > 0;
-    const allLabel = ar ? "كل الفروع" : "All stations";
+  const workplaces = useMemo(() => {
+    const rows = stations.filter((station) => !isManagerUnit(station));
+    return rows.length ? rows : stations;
+  }, [stations]);
 
-    const stationRow = (station, group, extra = {}) => {
-      const ancestors = ancestorChain(station, byId);
-      const parent = ancestors[0];
-      const manager = peopleById.get(String(station.managerId || ""));
-      const path = ancestors.map((item) => item.name).filter(Boolean).reverse().join(" · ");
-      return {
-        id: String(station.id),
-        group,
-        name: station.name,
-        code: station.code || station.shortCode || "",
-        path,
-        parentName: parent?.name || "",
-        managerName: manager?.name || "",
-        readiness: readiness.get(String(station.id)) || null,
-        ...extra,
-      };
-    };
-
-    const fieldsFor = (station) => {
-      const ancestors = ancestorChain(station, byId);
-      const manager = peopleById.get(String(station.managerId || ""));
-      return [
-        { text: fold(station.name), exact: 100, start: 82, has: 64 },
-        { text: fold(station.code || station.shortCode), exact: 90, start: 74, has: 58 },
-        { text: fold([station.location, station.city, station.region].filter(Boolean).join(" ")), exact: 70, start: 52, has: 44 },
-        { text: fold(ancestors.map((item) => item.name).join(" ")), exact: 56, start: 48, has: 42 },
-        { text: fold(manager?.name), exact: 40, start: 34, has: 28 },
-      ];
-    };
-
-    const allRow = {
-      id: "all",
-      group: "scope",
-      name: allLabel,
-      code: "",
-      path: "",
-      parentName: "",
-      managerName: "",
-      readiness: null,
-      score: searching ? scoreAgainst(tokens, [{ text: fold(allLabel), exact: 90, start: 70, has: 50 }]) : 1,
-    };
-
-    if (!searching) {
-      const recentRows = recents.map((station) => stationRow(station, "recent"));
-      const recentIds = new Set(recentRows.map((row) => row.id));
-      const stationRows = stations
-        .filter((station) => !recentIds.has(String(station.id)))
-        .map((station) => stationRow(station, "station"));
-      return allowsAll ? [allRow, ...recentRows, ...stationRows] : [...recentRows, ...stationRows];
+  const regions = useMemo(() => {
+    const names = [];
+    for (const station of workplaces) {
+      const name = regionOf(station, byId);
+      if (name && !names.includes(name)) names.push(name);
     }
+    return names;
+  }, [workplaces, byId]);
 
-    const hits = stations
-      .map((station) => {
-        const score = scoreAgainst(tokens, fieldsFor(station));
-        if (!score) return null;
-        const ancestors = ancestorChain(station, byId);
-        const parentHit = ancestors.some((item) => tokens.some((token) => fold(item.name).includes(token)));
-        const nameHit = tokens.some((token) => fold(station.name).includes(token));
-        const why = !nameHit && parentHit
-          ? (ar ? `تحت ${ancestors.map((item) => item.name).reverse().join(" · ")}` : `Under ${ancestors.map((item) => item.name).reverse().join(" · ")}`)
-          : "";
-        return stationRow(station, "result", { score, why });
-      })
-      .filter(Boolean)
-      .sort((a, b) => (b.score - a.score) || String(a.name).localeCompare(String(b.name), ar ? "ar" : "en"));
+  const hits = useMemo(() => {
+    const needle = fold(query);
+    return workplaces.filter((station) => {
+      const group = regionOf(station, byId);
+      if (region && group !== region) return false;
+      if (!needle) return true;
+      const blob = fold([
+        station.name,
+        station.code,
+        station.shortCode,
+        station.city,
+        station.location,
+        group,
+      ].filter(Boolean).join(" "));
+      return blob.includes(needle);
+    });
+  }, [workplaces, byId, query, region]);
 
-    return allowsAll && allRow.score ? [allRow, ...hits] : hits;
-  }, [query, stations, recents, readiness, ar, byId, peopleById, tree, allowsAll]);
+  const groups = useMemo(() => {
+    const buckets = new Map();
+    for (const station of hits) {
+      const name = regionOf(station, byId) || (ar ? "الفروع" : "Stations");
+      if (!buckets.has(name)) buckets.set(name, []);
+      buckets.get(name).push(station);
+    }
+    return [...buckets.entries()].map(([name, items]) => ({ name, items }));
+  }, [hits, byId, ar]);
+
+  const attendanceRows = useMemo(
+    () => listLocalTodayAttendance(company?.id, data),
+    [company?.id, data],
+  );
+  const badges = useMemo(() => {
+    const map = new Map();
+    for (const item of buildBranchNotices({ user: currentUser, data, attendanceRows })) {
+      const row = map.get(String(item.stationId)) || { urgent: 0, decision: 0 };
+      if (item.band === "urgent") row.urgent += item.count;
+      else if (item.band === "decision") row.decision += item.count;
+      map.set(String(item.stationId), row);
+    }
+    return map;
+  }, [currentUser, data, attendanceRows]);
+
+  const showAll = (allowsAll || model.visible) && !query && !region;
+  const rowIds = useMemo(() => {
+    const ids = [];
+    if (showAll) ids.push("all");
+    for (const group of groups) {
+      for (const station of group.items) ids.push(String(station.id));
+    }
+    return ids;
+  }, [showAll, groups]);
 
   useEffect(() => {
-    setCursor((c) => Math.min(c, Math.max(0, rows.length - 1)));
-  }, [rows.length]);
+    setCursor(-1);
+  }, [query, region, open]);
 
-  if (!open) return null;
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (!rowIds.length) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        setCursor((index) => {
+          if (index < 0) return step > 0 ? 0 : rowIds.length - 1;
+          return (index + step + rowIds.length) % rowIds.length;
+        });
+        return;
+      }
+      if (event.key === "Enter" && cursor >= 0) {
+        event.preventDefault();
+        const id = rowIds[cursor];
+        if (id) {
+          apply(id);
+          onClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose, rowIds, cursor, apply]);
 
-  const choose = (row) => {
-    apply(row.id);
+  useEffect(() => {
+    if (!open) return undefined;
+    const id = cursor >= 0 ? rowIds[cursor] : "";
+    if (!id) return undefined;
+    const node = document.querySelector(`[data-scope-row="${CSS.escape(id)}"]`);
+    node?.scrollIntoView({ block: "nearest" });
+    return undefined;
+  }, [open, cursor, rowIds]);
+
+  if (!open || !box || typeof document === "undefined") return null;
+
+  const choose = (id) => {
+    apply(id);
     onClose();
   };
 
-  const onKeyDown = (event) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-      return;
-    }
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setCursor((c) => (rows.length ? (c + 1) % rows.length : 0));
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setCursor((c) => (rows.length ? (c - 1 + rows.length) % rows.length : 0));
-      return;
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      const row = rows[cursor];
-      if (row) choose(row);
-    }
-  };
-
-  let lastGroup = null;
-
-  return (
-    <div
-      style={overlay}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div style={card} dir={ar ? "rtl" : "ltr"} role="dialog" aria-modal="true">
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "0 12px", borderBottom: "1px solid #E2E8F0" }}>
-          <span style={{ color: MUTED, fontSize: "12px" }}>⌕</span>
+  return createPortal(
+    <>
+      <div onMouseDown={onClose} style={{ position: "fixed", inset: 0, zIndex: 80 }} />
+      <div
+        dir={ar ? "rtl" : "ltr"}
+        role="dialog"
+        aria-label={ar ? "نطاق الفروع" : "Station scope"}
+        style={{
+          position: "fixed",
+          top: box.top,
+          left: box.left,
+          zIndex: 81,
+          width: box.width,
+          background: "#fff",
+          border: "1px solid #D5DCD8",
+          borderTop: "3px solid #0B8A4F",
+          borderRadius: 8,
+          boxShadow: "0 18px 44px rgba(29,36,32,.2)",
+          display: "flex",
+          flexDirection: "column",
+          maxHeight: box.maxHeight,
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ padding: 10, borderBottom: "1px solid #E4E9E6", display: "flex", flexDirection: "column", gap: 8 }}>
           <input
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={ar ? "ابحث بالاسم أو الرمز أو الفرع الأب أو الموقع" : "Search by name, code, parent branch, or location"}
-            aria-label={ar ? "تبديل الفرع" : "Switch station"}
+            placeholder={ar ? "⌕ ابحث باسم الفرع أو المدينة أو الرمز" : "⌕ Search by branch, city, or code"}
+            aria-label={ar ? "بحث في الفروع" : "Search stations"}
             style={{
-              flex: 1,
-              height: "40px",
-              border: "none",
+              height: 34,
+              minHeight: 34,
+              padding: "0 10px",
+              borderRadius: 8,
+              border: "1px solid #C5CEC9",
+              fontSize: 12.5,
               outline: "none",
-              background: "transparent",
-              fontSize: "13px",
-              color: INK,
+              color: "#111418",
+              width: "100%",
+              boxSizing: "border-box",
               fontFamily: "inherit",
+              background: "#fff",
             }}
           />
-          <span style={kbd}>Esc</span>
+          {regions.length > 0 ? (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              <button type="button" onClick={() => setRegion("")} style={chip(region === "")}>
+                {ar ? "كل المناطق" : "All regions"}
+              </button>
+              {regions.map((name) => (
+                <button key={name} type="button" onClick={() => setRegion(name)} style={chip(region === name)}>
+                  {shortRegion(name)}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
-        <div style={{ overflowY: "auto", padding: "6px" }}>
-          {rows.length === 0 && (
-            <div style={{ padding: "28px 16px", textAlign: "center", fontSize: "12px", color: MUTED }}>
-              {ar ? "لا فرع يطابق هذا البحث ضمن صلاحيتك." : "No station in your permission scope matches this search."}
-            </div>
-          )}
-          {rows.map((row, index) => {
-            const active = index === cursor;
-            const selected = String(scope) === row.id;
-            const header = row.group !== lastGroup && row.group !== "scope"
-              ? (row.group === "recent"
-                ? (ar ? "الأحدث" : "Recent")
-                : row.group === "result"
-                  ? (ar ? "النتائج" : "Results")
-                  : (ar ? "الفروع" : "Stations"))
-              : null;
-            lastGroup = row.group;
-            const level = row.readiness?.level;
-            const blocker = row.readiness?.blockers?.[0];
-            const subtitle = row.id === "all"
-              ? (ar ? `النطاق الكامل · ${stations.length} فروع` : `Full scope · ${stations.length} stations`)
-              : row.why
-                || (row.path ? row.path : "")
-                || (blocker ? (ar ? blocker.ar : blocker.en) : (ar ? "لا بوابة مفتوحة على هذا الفرع" : "No open gate on this station"));
-            return (
-              <React.Fragment key={`${row.group}-${row.id}`}>
-                {header && <div style={groupLabel}>{header}</div>}
-                <button
-                  type="button"
-                  ref={active ? (el) => el?.scrollIntoView({ block: "nearest" }) : null}
-                  onMouseEnter={() => setCursor(index)}
-                  onClick={() => choose(row)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "9px",
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: "8px",
-                    border: "none",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    textAlign: "start",
-                    background: active ? SURFACE : "transparent",
-                  }}
-                >
-                  <span
-                    aria-hidden
+        <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
+          {showAll ? (
+            <button
+              type="button"
+              data-scope-row="all"
+              onClick={() => choose("all")}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                width: "100%",
+                padding: "10px 12px",
+                border: "none",
+                borderBottom: "1px solid #E4E9E6",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "start",
+                background: scope === "all" ? "#E6F4EC" : rowIds[cursor] === "all" ? "#F7FBF8" : "#fff",
+                boxShadow: scope === "all" ? "inset -3px 0 0 #0B8A4F" : "none",
+              }}
+            >
+              <strong style={{ fontSize: 12.5, color: "#111418" }}>{ar ? "كل نطاقي" : "All my scope"}</strong>
+              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 600, color: "#555C66", unicodeBidi: "isolate" }}>
+                {workplaces.length}
+              </span>
+            </button>
+          ) : null}
+
+          {groups.map((group) => (
+            <div key={group.name}>
+              <div style={{
+                padding: "6px 12px",
+                background: "#F2F5F3",
+                borderBottom: "1px solid #E4E9E6",
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 10.5,
+                fontWeight: 700,
+                color: "#555C66",
+                letterSpacing: "0.04em",
+              }}
+              >
+                <span>{group.name}</span>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", unicodeBidi: "isolate" }}>{group.items.length}</span>
+              </div>
+              {group.items.map((station) => {
+                const id = String(station.id);
+                const on = String(scope) === id;
+                const badge = badges.get(id) || { urgent: 0, decision: 0 };
+                const code = [station.code, station.shortCode]
+                  .map((part) => String(part || "").trim())
+                  .find((part) => part && fold(part) !== fold(station.name)) || "";
+                const kind = station.demo === true ? (ar ? "مثال" : "Sample") : (ar ? "بيانات حيّة" : "Live");
+                const hot = rowIds[cursor] === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    data-scope-row={id}
+                    onClick={() => choose(id)}
                     style={{
-                      width: "8px",
-                      height: "8px",
-                      borderRadius: "50%",
-                      flexShrink: 0,
-                      background: level ? READINESS_COLOR[level] : "#CBD5E1",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "100%",
+                      padding: "8px 12px",
+                      border: "none",
+                      borderBottom: "1px solid #F2F5F3",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      textAlign: "start",
+                      background: on ? "#E6F4EC" : hot ? "#F7FBF8" : "#fff",
                     }}
-                  />
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-                      <span style={{ fontSize: "13px", fontWeight: selected ? 600 : 500, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {row.name}
-                      </span>
-                      {row.code && (
-                        <span dir="ltr" style={{ fontSize: "10px", color: MUTED, fontFamily: "'IBM Plex Mono',monospace" }}>
-                          {row.code}
-                        </span>
-                      )}
-                      {selected && (
-                        <span style={{ fontSize: "10px", color: "#1E9E63", fontWeight: 600 }}>
-                          {ar ? "النطاق الحالي" : "current scope"}
-                        </span>
-                      )}
-                    </span>
-                    <span style={{ display: "block", marginTop: "3px", fontSize: "11px", color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {subtitle}
-                    </span>
-                  </span>
-                  {row.readiness && (
-                    <span style={{ textAlign: "end", flexShrink: 0 }}>
-                      <span dir="ltr" style={{ display: "block", fontSize: "13px", fontWeight: 600, color: READINESS_COLOR[level], fontFamily: "'IBM Plex Sans',sans-serif" }}>
-                        {row.readiness.score}%
-                      </span>
-                      <span style={{ display: "block", fontSize: "10px", color: MUTED }}>
-                        {readinessLabel(level, ar)}
+                  >
+                    <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.35, minWidth: 0 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: "#111418" }}>{station.name || "—"}</span>
+                      <span style={{ fontSize: 10.5, color: "#555C66" }}>
+                        {kind}
+                        {code ? " · " : null}
+                        {code ? (
+                          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", unicodeBidi: "isolate" }}>{code}</span>
+                        ) : null}
                       </span>
                     </span>
-                  )}
-                </button>
-              </React.Fragment>
-            );
-          })}
+                    <span style={{ display: "flex", gap: 4, alignItems: "center", flex: "none" }}>
+                      {badge.urgent > 0 ? (
+                        <span title={ar ? "عاجل" : "Urgent"} dir="ltr" style={pill("#9B2335", "#fff", "none")}>{badge.urgent}</span>
+                      ) : null}
+                      {badge.decision > 0 ? (
+                        <span title={ar ? "ينتظر قرارك" : "Awaiting you"} dir="ltr" style={pill("#FBF3E1", "#8A5A12", "1px solid #EAD6A8")}>{badge.decision}</span>
+                      ) : null}
+                      {on ? <span style={{ fontWeight: 700, color: "#0B8A4F" }}>✓</span> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+
+          {hits.length === 0 ? (
+            <div style={{ padding: 18, textAlign: "center", fontSize: 12, color: "#555C66" }}>
+              {ar ? "لا فرع مطابق." : "No matching branch."}
+            </div>
+          ) : null}
+        </div>
+
+        <div style={{ padding: "8px 12px", borderTop: "1px solid #E4E9E6", background: "#FAFBFA", fontSize: 11, color: "#555C66", lineHeight: 1.6 }}>
+          {ar
+            ? "الشارة الحمراء عاجلة، والذهبية تنتظر قرارك."
+            : "Red is urgent. Gold is awaiting your decision."}
         </div>
       </div>
-    </div>
+    </>,
+    document.body,
   );
+}
+
+function pill(background, color, border) {
+  return {
+    minWidth: 18,
+    height: 18,
+    padding: "0 5px",
+    borderRadius: 999,
+    background,
+    color,
+    border,
+    fontFamily: "'IBM Plex Mono', monospace",
+    fontSize: 10.5,
+    fontWeight: 600,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    unicodeBidi: "isolate",
+  };
 }

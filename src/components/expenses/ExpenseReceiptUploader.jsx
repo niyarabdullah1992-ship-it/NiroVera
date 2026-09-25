@@ -38,27 +38,12 @@ export default function ExpenseReceiptUploader({ value, fileName, onChange, ar }
       {!value ? (
         <button
           type="button"
+          className="nv-attach"
           disabled={uploading}
           onClick={() => inputRef.current?.click()}
-          style={{
-            display: "flex",
-            width: "100%",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
-            borderRadius: 10,
-            border: `1px dashed ${BRAND_BORDER}`,
-            background: BRAND_SOFT,
-            padding: "10px 12px",
-            fontSize: "13px",
-            color: NAVY,
-            cursor: uploading ? "not-allowed" : "pointer",
-            opacity: uploading ? 0.5 : 1,
-            fontFamily: "inherit",
-          }}
         >
-          {uploading ? <Loader2 style={{ width: 16, height: 16, color: ACCENT }} className="animate-spin" /> : <Upload style={{ width: 16, height: 16, color: ACCENT }} />}
-          {uploading ? (ar ? "جارٍ رفع الإيصال..." : "Uploading receipt...") : (ar ? "رفع الإيصال — صورة أو PDF" : "Upload receipt — image or PDF")}
+          {uploading ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" /> : <Upload style={{ width: 16, height: 16 }} />}
+          {uploading ? (ar ? "جارٍ رفع الإيصال..." : "Uploading receipt...") : (ar ? "أرفق الإيصال" : "Attach the receipt")}
         </button>
       ) : (
         <div style={{

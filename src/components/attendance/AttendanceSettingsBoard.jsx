@@ -25,15 +25,16 @@ function policyBtn(on, invert) {
     fontSize: 12,
     fontWeight: 600,
     padding: "9px 15px",
-    border: `1px solid ${invert ? "#dfe3ea" : (on ? "#14213d" : "#dfe3ea")}`,
-    background: invert ? "#fff" : (on ? "#14213d" : "#fff"),
-    color: invert ? "#4b5567" : (on ? "#fff" : "#14213d"),
+    borderRadius: 10,
+    border: `1px solid ${invert ? BORDER : (on ? "var(--nv-btn-fill)" : BORDER)}`,
+    background: invert ? CARD : (on ? "var(--nv-btn-fill)" : CARD),
+    color: invert ? "var(--nv-ink2)" : (on ? "var(--nv-btn-ink)" : "var(--nv-ink)"),
     cursor: "pointer",
     whiteSpace: "nowrap",
   };
 }
 
-const row = { padding: "15px 20px", borderBottom: "1px solid #f7f8fa", display: "flex", flexDirection: "column", gap: 5 };
+const row = { padding: "15px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 5 };
 
 /** Attendance policy — HTML row layout. GPS only; no NFC auto-punch. */
 export default function AttendanceSettingsBoard({ company, currentUser, canEditSettings }) {
@@ -130,7 +131,7 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
 
       <div style={row}>
         <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{ar ? "التأخير" : "Lateness"}</span>
-        <span style={{ fontSize: 11, color: "#4b5567", lineHeight: 1.85 }}>
+        <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.85 }}>
           {ar
             ? "يُعدّ متأخراً من بصم بعد بداية الوردية في الجدول المنشور. لا حدّ سماح: الرقم يُسجَّل كما هو، ومعالجته قرار مدير لا إعداد نظام."
             : "A punch after the published shift start is late. There is no grace: the minutes are recorded as they are, and handling them is a manager decision, not a setting."}
@@ -141,7 +142,7 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
           <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{ar ? "شرط الموقع" : "Location requirement"}</span>
-            <span style={{ fontSize: 11, color: "#4b5567", lineHeight: 1.8 }}>
+            <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
               {locationEnabled
                 ? (ar ? "يجب أن يكون الموظف داخل نطاق الفرع عند البصمة." : "The employee must be inside the station range to punch.")
                 : (ar ? "التسجيل بلا دليل موقع — يُوسم السجل ويذهب لطابور قرارك." : "Punch without location proof — the row is flagged for your decision.")}
@@ -155,9 +156,9 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
               fontSize: 12,
               fontWeight: 600,
               padding: "9px 15px",
-              border: `1px solid ${locationEnabled ? "#dfe3ea" : "#137a49"}`,
-              background: locationEnabled ? "#fff" : "#137a49",
-              color: locationEnabled ? "#14213d" : "#fff",
+              border: `1px solid ${locationEnabled ? BORDER : "var(--nv-ok-fill)"}`,
+              background: locationEnabled ? CARD : "var(--nv-ok-fill)",
+              color: locationEnabled ? "var(--nv-ink)" : "var(--nv-btn-ink)",
               cursor: canEditSettings ? "pointer" : "default",
               whiteSpace: "nowrap",
               opacity: canEditSettings ? 1 : 0.55,
@@ -167,7 +168,7 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
           </button>
         </div>
         {!locationEnabled ? (
-          <span style={{ fontSize: 11, color: "#8a1c2b", background: "#fbf1f2", border: "1px solid #e9c4c9", padding: "10px 12px", lineHeight: 1.85 }}>
+          <span style={{ fontSize: 11, color: "var(--nv-bad-ink)", background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)", padding: "10px 12px", lineHeight: 1.85, borderRadius: 10 }}>
             {ar
               ? "إطفاؤه يكسر حلقة النطاق: التسجيل يصبح إقراراً بلا دليل موقع، ويُوسم السجل «بلا موقع» ويذهب لطابور قرارك. اقصره على الفرق الميدانية المتنقّلة."
               : "Turning it off breaks the range link: the punch becomes a declaration without location proof, and the row is flagged. Keep it for mobile field teams only."}
@@ -177,7 +178,7 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
 
       <div style={row}>
         <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{ar ? "شرط جدول اليوم" : "Today's rota"}</span>
-        <span style={{ fontSize: 11, color: "#4b5567", lineHeight: 1.85 }}>
+        <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.85 }}>
           {ar
             ? "إلزامي دائماً. غير المدرج في وردية اليوم لا يبصم — إلا بتسجيل يدوي من المدير. ولا يُحتسب عليه غياب، لأن الغياب بلا وردية منشورة لا معنى له."
             : "Always required. Unscheduled staff cannot punch — except a manager override. Absence without a published shift has no meaning."}
@@ -185,7 +186,7 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
       </div>
 
       <div style={{ padding: "15px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
-        <span style={{ fontSize: 11, color: "#4b5567", lineHeight: 1.85 }}>
+        <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.85 }}>
           {dirty
             ? (ar ? "مسودة — لا تسري حتى الحفظ." : "Draft — not live until you save.")
             : (ar ? "السياسة المحفوظة سارية على بصمة اليوم." : "The saved policy applies to today's punch.")}
@@ -202,8 +203,8 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
               fontWeight: 600,
               padding: "11px 18px",
               border: "none",
-              background: dirty ? "#137a49" : "#8a6516",
-              color: "#fff",
+              background: dirty ? "var(--nv-ok-fill)" : "var(--nv-warn-fill)",
+              color: "var(--nv-btn-ink)",
               cursor: dirty && !saving ? "pointer" : "default",
               whiteSpace: "nowrap",
               opacity: saving ? 0.6 : 1,

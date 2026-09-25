@@ -19,13 +19,14 @@ import PerfHowBoard from "@/components/performance/PerfHowBoard";
 import { PERF_BODY, PERF_INK, PERF_LINE, PERF_MUTED, PERF_SOFT, PERF_SURFACE, PERF_WHITE } from "@/components/performance/PerformanceSectionFrame";
 
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
-const TREND = ["#14213d", "#1d9a5b", "#8a6516", "#6b7280"];
+const TREND = ["var(--nv-ink)", "var(--nv-ok-fill)", "var(--nv-warn-fill)", "var(--nv-ink3)"];
+const QUIET = "var(--nv-mute-fill)";
 
 function SegBar({ segs, height = 14 }) {
   return (
-    <span style={{ display: "flex", height, background: "#f1f4f8", minWidth: 0 }}>
+    <span style={{ display: "flex", height, background: "var(--nv-inset)", borderRadius: 10, overflow: "hidden", minWidth: 0 }}>
       {segs.map((seg) => (
-        <span key={seg.id} title={seg.tip} style={{ width: seg.w, background: seg.color, borderInlineEnd: "1px solid #fff" }} />
+        <span key={seg.id} title={seg.tip} style={{ width: seg.w, background: seg.color, borderInlineEnd: "1px solid var(--nv-card)" }} />
       ))}
     </span>
   );
@@ -33,7 +34,7 @@ function SegBar({ segs, height = 14 }) {
 
 function StatTile({ label, value, unit, note, accent }) {
   return (
-    <div style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: `3px solid ${accent}`, borderInlineStart: "none", padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0, boxSizing: "border-box" }}>
+    <div style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: `3px solid ${accent}`, borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0, boxSizing: "border-box" }}>
       <span style={{ fontSize: 12, color: PERF_BODY }}>{label}</span>
       <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
         <span dir="ltr" style={{ ...mono, fontSize: 30, fontWeight: 500, color: accent, lineHeight: 1.05 }}>{value}</span>
@@ -100,14 +101,14 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
       note: eligible.length
         ? (ar ? `${eligible.length} من ${rowsAll.length} بلغوا ${view.minProof} مهام مثبتة` : `${eligible.length} of ${rowsAll.length} reached ${view.minProof} proven tasks`)
         : (ar ? `لا متوسط — لم يبلغ أحد ${view.minProof} مهام مثبتة في هذا المدى` : `No average — no one reached ${view.minProof} proven tasks`),
-      accent: eligible.length ? "#14213d" : "#8a6516",
+      accent: eligible.length ? "var(--nv-ink)" : "var(--nv-warn-ink)",
     },
     {
       val: top ? String(top.score) : "—",
       unit: "",
       lbl: ar ? "الأعلى في المدى" : "Highest in range",
       note: top ? `${top.name} · ${top.branch}` : (rowsAll.length ? (ar ? `لا صدارة — لم يبلغ أحد ${view.minProof} مهام مثبتة` : `No lead — no one reached ${view.minProof}`) : (ar ? "لا بيانات في المدى" : "No data in range")),
-      accent: top ? "#1d9a5b" : "#8a6516",
+      accent: top ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)",
     },
     {
       val: climbers[0]?.d > 0 ? `+${climbers[0].d}` : "—",
@@ -118,35 +119,35 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
         : (view.months.length < 2
           ? (ar ? `يحتاج شهرين على الأقل — المدى الحالي ${countAr(view.months.length, "شهر واحد", "شهران", "أشهر", "شهراً", "بلا أشهر")}` : `Needs at least two months — this range has ${view.months.length}`)
           : (climbers.length ? (ar ? `لا تحسّن في المدى — أفضل تغيّر ${climbers[0].p.name} (${climbers[0].d > 0 ? "+" : ""}${climbers[0].d})` : `No rise — best change ${climbers[0].p.name} (${climbers[0].d})`) : (ar ? "لا بيانات شهرية في المدى" : "No monthly data"))),
-      accent: climbers[0]?.d > 0 ? "#1d9a5b" : "#8a6516",
+      accent: climbers[0]?.d > 0 ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)",
     },
     {
       val: String(rowsAll.length - eligible.length),
       unit: "",
       lbl: ar ? "بلا إثبات كافٍ" : "Short of proof",
       note: rowsAll.length - eligible.length ? (ar ? "تُعرض درجتهم ولا تدخل المتوسط" : "Shown, but kept out of the average") : (ar ? "الكلّ بلغ الحدّ" : "Everyone reached the floor"),
-      accent: rowsAll.length - eligible.length ? "#8a6516" : "#1d9a5b",
+      accent: rowsAll.length - eligible.length ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)",
     },
   ];
 
   const insights = [
-    top ? { t: ar ? `${top.name} الأعلى بـ${top.score}` : `${top.name} leads at ${top.score}`, d: ar ? `يقود بمحرّك ${(() => { const driver = PERF_DRIVERS.slice().sort((a, b) => (top.a[b.id] * b.w) - (top.a[a.id] * a.w))[0]; return `${driver.nameAr} (${top.a[driver.id]}%)`; })()}.` : `Led by ${(() => { const driver = PERF_DRIVERS.slice().sort((a, b) => (top.a[b.id] * b.w) - (top.a[a.id] * a.w))[0]; return `${driver.nameEn} (${top.a[driver.id]}%)`; })()}.`, accent: "#1d9a5b" } : null,
+    top ? { t: ar ? `${top.name} الأعلى بـ${top.score}` : `${top.name} leads at ${top.score}`, d: ar ? `يقود بمحرّك ${(() => { const driver = PERF_DRIVERS.slice().sort((a, b) => (top.a[b.id] * b.w) - (top.a[a.id] * a.w))[0]; return `${driver.nameAr} (${top.a[driver.id]}%)`; })()}.` : `Led by ${(() => { const driver = PERF_DRIVERS.slice().sort((a, b) => (top.a[b.id] * b.w) - (top.a[a.id] * a.w))[0]; return `${driver.nameEn} (${top.a[driver.id]}%)`; })()}.`, accent: "var(--nv-ok-fill)" } : null,
     climbers[0]?.d > 0 ? {
       t: ar ? `${climbers[0].p.name} الأكثر تحسّناً` : `${climbers[0].p.name} rose most`,
       d: ar
         ? `من ${climbers[0].p.months?.[first] ? scoreOf(climbers[0].p.months[first]) : "—"} إلى ${climbers[0].p.months?.[last] ? scoreOf(climbers[0].p.months[last]) : "—"} بين ${view.monthName(first)} و${view.monthName(last)}.`
         : `From ${climbers[0].p.months?.[first] ? scoreOf(climbers[0].p.months[first]) : "—"} to ${climbers[0].p.months?.[last] ? scoreOf(climbers[0].p.months[last]) : "—"} between ${view.monthName(first)} and ${view.monthName(last)}.`,
-      accent: "#1d9a5b",
+      accent: "var(--nv-ok-fill)",
     } : null,
     (view.low && top && view.low.name !== top.name) ? {
       t: ar ? `${view.low.name} الأدنى بين المكتملين` : `${view.low.name} is lowest among those with enough proof`,
       d: ar ? `أضعف محرّك ${(() => { const driver = PERF_DRIVERS.slice().sort((a, b) => view.low.a[a.id] - view.low.a[b.id])[0]; return `${driver.nameAr} (${view.low.a[driver.id]}%)`; })()} — هنا مكان الرفع.` : `Weakest driver ${(() => { const driver = PERF_DRIVERS.slice().sort((a, b) => view.low.a[a.id] - view.low.a[b.id])[0]; return `${driver.nameEn} (${view.low.a[driver.id]}%)`; })()} — that is the lift.`,
-      accent: "#8a6516",
+      accent: "var(--nv-warn-fill)",
     } : null,
     (rowsAll.length - eligible.length) ? {
       t: ar ? countAr(rowsAll.length - eligible.length, "موظف واحد بلا إثبات كافٍ", "موظفان بلا إثبات كافٍ", "موظفين بلا إثبات كافٍ", "موظفاً بلا إثبات كافٍ") : `${rowsAll.length - eligible.length} short of enough proof`,
       d: ar ? "درجاتهم معروضة لكن لا تدخل المتوسط حتى يُعتمد إثباتهم." : "Their scores are shown but stay out of the average until proof is approved.",
-      accent: "#8a1c2b",
+      accent: "var(--nv-bad-fill)",
     } : null,
   ].filter(Boolean);
 
@@ -155,7 +156,7 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
     : [...selB.map((id) => view.branches.find((row) => row.id === id)?.name || id), ...selT.map((id) => `${ar ? "فريق" : "Team"} ${teamLabel(id, ar)}`), ...selP.map((id) => view.people.find((row) => row.id === id)?.name || id)].join(" · ");
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <PerfScopePicker
         ar={ar}
         view={view}
@@ -180,14 +181,14 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
 
       {tab === "people" ? (
         <>
-          <div className="nv-perf-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 0 }}>
+          <div className="nv-perf-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
             {stats.map((stat) => (
               <StatTile key={stat.lbl} label={stat.lbl} value={stat.val} unit={stat.unit} note={stat.note} accent={stat.accent} />
             ))}
           </div>
 
           {view.hasGroups ? (
-            <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "none", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+            <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
               <div style={{ padding: "16px 20px", borderBottom: `1px solid ${PERF_SOFT}`, display: "flex", flexDirection: "column", gap: 3 }}>
                 <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "مقارنة المجموعات المختارة" : "Selected groups"}</span>
                 <span style={{ fontSize: 12, color: PERF_MUTED, lineHeight: 1.8 }}>{ar ? "كل مجموعة درجتها متوسط أفرادها ذوي الإثبات الكافي في المدى. الفرق بينها مكتوب لا مقروء بالعين." : "Each group's score is the mean of its people with enough proof. The gap is written, not left to the eye."}</span>
@@ -204,10 +205,10 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
                       : `${lead.score - group.score} below ${lead.name} — widest gap in ${biggest.nameEn} (${group.a[biggest.id]}% vs ${lead.a[biggest.id]}%)`)
                     : (ar ? "لا إثبات كافٍ للمقارنة" : "Not enough proof to compare"));
                 return (
-                  <div key={`${group.kind}-${group.name}`} style={{ padding: "13px 20px", borderBottom: "1px solid #f7f8fa", borderInlineEnd: `3px solid ${group.el.length ? accentOf(group.score) : "#c7ccd6"}`, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2.4fr) 92px", gap: 14, alignItems: "center" }}>
+                  <div key={`${group.kind}-${group.name}`} style={{ padding: "13px 20px", borderTop: `3px solid ${group.el.length ? accentOf(group.score) : QUIET}`, borderBottom: `1px solid ${PERF_SOFT}`, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2.4fr) 92px", gap: 14, alignItems: "center" }}>
                     <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: PERF_BODY, background: "#f5f6f8", border: "1px solid #e6e9ef", padding: "1px 7px" }}>{group.kind}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: PERF_BODY, background: "var(--nv-mute-soft)", border: "1px solid var(--nv-mute-line)", borderRadius: 999, padding: "1px 7px" }}>{group.kind}</span>
                         <span style={{ fontSize: 13, fontWeight: 700, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{group.name}</span>
                       </span>
                       <span style={{ fontSize: 10, color: PERF_MUTED }}>{ar ? `${countAr(group.rows.length, "موظف واحد", "موظفان", "موظفين", "موظفاً", "لا أحد")} · ${group.el.length} بإثبات كافٍ` : `${group.rows.length} people · ${group.el.length} with enough proof`}</span>
@@ -226,7 +227,7 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
             </section>
           ) : null}
 
-          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "none", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
             <div style={{ padding: "16px 20px", borderBottom: `1px solid ${PERF_SOFT}`, display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
                 <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? `مقارنة الموظفين — ${scopeLabel}` : `People comparison — ${scopeLabel}`}</span>
@@ -253,7 +254,7 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
               <span>{ar ? "الدرجة" : "Score"}</span>
           </div>
             {view.ranked.map((row, index) => (
-              <div key={row.id} style={{ padding: "11px 20px", borderBottom: "1px solid #f7f8fa", borderInlineEnd: `3px solid ${row.ok ? accentOf(row.score) : "#c7ccd6"}`, background: row.ok ? PERF_WHITE : PERF_SURFACE, display: "grid", gridTemplateColumns: "26px minmax(0,1.3fr) minmax(0,2.2fr) 60px 60px 60px 60px 72px", gap: 11, alignItems: "center" }}>
+              <div key={row.id} style={{ padding: "11px 20px", borderTop: `3px solid ${row.ok ? accentOf(row.score) : QUIET}`, borderBottom: `1px solid ${PERF_SOFT}`, background: row.ok ? PERF_WHITE : PERF_SURFACE, display: "grid", gridTemplateColumns: "26px minmax(0,1.3fr) minmax(0,2.2fr) 60px 60px 60px 60px 72px", gap: 11, alignItems: "center" }}>
                 <span dir="ltr" style={{ ...mono, fontSize: 11, color: PERF_MUTED, textAlign: "right" }}>{index + 1}</span>
                 <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                   <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</span>
@@ -262,7 +263,7 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
                 <SegBar segs={segsOf(row.a)} />
                 <span dir="ltr" style={{ ...mono, fontSize: 12, textAlign: "right" }}>{row.a.done}%</span>
                 <span dir="ltr" style={{ ...mono, fontSize: 12, textAlign: "right" }}>{row.a.time}%</span>
-                <span dir="ltr" style={{ ...mono, fontSize: 12, color: row.a.safe >= 90 ? "#137a49" : "#8a1c2b", textAlign: "right" }}>{row.a.safe}%</span>
+                <span dir="ltr" style={{ ...mono, fontSize: 12, color: row.a.safe >= 90 ? "var(--nv-ok-ink)" : "var(--nv-bad-ink)", textAlign: "right" }}>{row.a.safe}%</span>
                 <span dir="ltr" style={{ ...mono, fontSize: 12, textAlign: "right" }}>{row.a.cover}%</span>
                 <span style={{ display: "flex", alignItems: "baseline", gap: 5, justifyContent: "flex-end" }}>
                   <span dir="ltr" style={{ ...mono, fontSize: 15, fontWeight: 500, color: row.ok ? textOf(row.score) : PERF_BODY }}>{row.score}</span>
@@ -275,7 +276,7 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
             </div>
           </section>
 
-          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "none", display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", gap: 0, alignItems: "stretch", boxSizing: "border-box" }}>
+          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", gap: 0, alignItems: "stretch", boxSizing: "border-box" }}>
             <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12, borderInlineStart: `1px solid ${PERF_SOFT}`, minWidth: 0 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "مسار الدرجة شهراً بشهر" : "Score path, month by month"}</span>
@@ -317,7 +318,7 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
             <div style={{ padding: "16px 20px", background: PERF_SURFACE, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "ما يقوله المدى" : "What the range says"}</span>
               {insights.map((item) => (
-                <div key={item.t} style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderInlineEnd: `3px solid ${item.accent}`, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 3 }}>
+                <div key={item.t} style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: `3px solid ${item.accent}`, borderRadius: 14, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 3 }}>
                   <span style={{ fontSize: 12, fontWeight: 700 }}>{item.t}</span>
                   <span style={{ fontSize: 11, color: PERF_MUTED, lineHeight: 1.85 }}>{item.d}</span>
                 </div>
@@ -328,13 +329,13 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
         </>
       ) : tab === "branches" ? (
         <>
-          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "none", display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
+          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
             <div style={{ padding: "16px 20px", borderBottom: `1px solid ${PERF_SOFT}`, display: "flex", flexDirection: "column", gap: 3 }}>
               <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "مقارنة الفروع" : "Branch comparison"}</span>
               <span style={{ fontSize: 12, color: PERF_MUTED, lineHeight: 1.8 }}>{ar ? "درجة الفرع متوسط موظفيه ذوي الإثبات الكافي في المدى. الشريط الأفقي بمحرّكاته." : "A branch score is the mean of its people with enough proof. The bar is the drivers."}</span>
             </div>
             {view.branchData.map((branch) => (
-              <div key={branch.id} style={{ padding: "14px 20px", borderBottom: "1px solid #f7f8fa", borderInlineEnd: `3px solid ${branch.el.length ? accentOf(branch.score) : "#c7ccd6"}`, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2.6fr) 84px", gap: 14, alignItems: "center" }}>
+              <div key={branch.id} style={{ padding: "14px 20px", borderTop: `3px solid ${branch.el.length ? accentOf(branch.score) : QUIET}`, borderBottom: `1px solid ${PERF_SOFT}`, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2.6fr) 84px", gap: 14, alignItems: "center" }}>
                 <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                   <span style={{ fontSize: 13, fontWeight: 700 }}>{branch.name}</span>
                   <span style={{ fontSize: 10, color: PERF_MUTED }}>{ar ? `${countAr(branch.ps.length, "موظف واحد", "موظفان", "موظفين", "موظفاً")} · ${branch.el.length} بإثبات كافٍ` : `${branch.ps.length} people · ${branch.el.length} with enough proof`}</span>
@@ -366,7 +367,7 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
                           </span>
             </div>
           </section>
-          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "none", display: "grid", gridTemplateColumns: `repeat(${Math.max(1, view.shownBranches.length)},minmax(0,1fr))`, gap: 0 }}>
+          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "grid", gridTemplateColumns: `repeat(${Math.max(1, view.shownBranches.length)},minmax(0,1fr))`, gap: 0 }}>
             {view.branchData.map((branch) => (
               <div key={branch.id} style={{ padding: "16px 20px", borderInlineStart: `1px solid ${PERF_SOFT}`, display: "flex", flexDirection: "column", gap: 9, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
@@ -374,9 +375,9 @@ export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
                   <span style={{ fontSize: 11, color: PERF_MUTED }}>{ar ? countAr(branch.ps.length, "موظف", "موظفان", "موظفين", "موظفاً") : `${branch.ps.length}`}</span>
                 </div>
                 {branch.ps.slice().sort((left, right) => right.score - left.score).map((person) => (
-                  <div key={person.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1.4fr) 34px", gap: 9, alignItems: "center", borderBottom: "1px solid #f7f8fa", paddingBottom: 7 }}>
+                  <div key={person.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1.4fr) 34px", gap: 9, alignItems: "center", borderBottom: `1px solid ${PERF_SOFT}`, paddingBottom: 7 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{person.name}</span>
-                    <span style={{ height: 8, background: "#f1f4f8", minWidth: 0 }}><span style={{ display: "block", height: "100%", width: `${person.score}%`, background: person.ok ? accentOf(person.score) : "#c7ccd6" }} /></span>
+                    <span style={{ height: 8, background: "var(--nv-inset)", borderRadius: 999, overflow: "hidden", minWidth: 0 }}><span style={{ display: "block", height: "100%", width: `${person.score}%`, background: person.ok ? accentOf(person.score) : QUIET }} /></span>
                     <span dir="ltr" style={{ ...mono, fontSize: 12, color: person.ok ? textOf(person.score) : PERF_MUTED, textAlign: "right" }}>{person.score}</span>
                       </div>
                 ))}

@@ -28,17 +28,18 @@ import EmpAlertsStrip from "@/components/employees/EmpAlertsStrip";
 import AssignmentTab from "@/components/employees/AssignmentTab";
 import HoursOnFile from "@/components/employees/HoursOnFile";
 import EmployeeFileSummary from "@/components/employees/EmployeeFileSummary";
-import EmployeeFileTabs from "@/components/employees/EmployeeFileTabs";
 import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employees/EmployeeFileFieldCard";
 import EmployeeFileLeaveBoard from "@/components/employees/EmployeeFileLeaveBoard";
 import EmployeeFileDocsBoard from "@/components/employees/EmployeeFileDocsBoard";
 import EmployeeFileGrowthBoard from "@/components/employees/EmployeeFileGrowthBoard";
+import EmployeeFileVoiceBoard from "@/components/employees/EmployeeFileVoiceBoard";
 import { buildEmployeeFileView, employeeFileDraftSeed, employeeFileVoice, isViewerOwnFile, splitEmployeeFileDraft } from "@/lib/employeeFileView";
-import { BORDER, CARD, MUTED, NAVY, PAPER_SHADOW, RADIUS } from "@/lib/platformStyles";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { BORDER, CARD, MUTED, NAVY, ui } from "@/lib/platformStyles";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import IdentityCard from "@/components/shared/IdentityCard";
-import { pageKicker } from "@/lib/moduleMeta";
+import { OpsControlBar } from "@/components/tasks/OpsToolbarStrip";
 import { applyDueLaborRules, openDueNightRotateCycles, patchEmployeeFile } from "@/lib/store";
 
 const TABS = [
@@ -144,6 +145,7 @@ export default function EmployeeProfile() {
     canEditFile,
     manageRequests: canApproveLeave,
     isSelf,
+    laborCalendar: laborCalendarOf(data),
   });
 
   const openTab = (next) => setTab(next);
@@ -198,139 +200,92 @@ export default function EmployeeProfile() {
     : "The article chip appears only when the source is the Saudi Labour Law. GOSI, wage protection, CCHI and Qiwa are platforms — explained as operational text, never an invented article. This page is an operating tool, not a legal opinion.";
 
   return (
-    <PlatformStampShell ar={ar} bare maxWidth={1320}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <PlatformStampShell
+      ar={ar}
+      maxWidth={1280}
+      kicker={ar ? "مساحتي" : "My space"}
+      title={voice.title}
+      hint={ar
+        ? <>سجلّك في مكان واحد. الطلبات تولد في <Link to="/app/requests" style={{ color: "#FBF3E1" }}>طلباتي</Link>، ودوامك في <Link to="/app/attendance" style={{ color: "#FBF3E1" }}>الدوام والحضور</Link>، وأثرها على <Link to="/app/shifts" style={{ color: "#FBF3E1" }}>جدول الدوام</Link>.</>
+        : <>Your record in one place. Requests are raised in <Link to="/app/requests" style={{ color: "#FBF3E1" }}>My requests</Link>; attendance is in <Link to="/app/attendance" style={{ color: "#FBF3E1" }}>Time & Attendance</Link> and the effect lands on <Link to="/app/shifts" style={{ color: "#FBF3E1" }}>the roster</Link>.</>}
+      sections={TABS.map((item) => ({ value: item.key, label: ar ? item.ar : item.en }))}
+      tool={tab}
+      onTool={openTab}
+      legal={legal}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {company?.id && employee?.id ? <ApplyLaborOnFile companyId={company.id} employeeId={employee.id} /> : null}
 
-        <div style={{ padding: "0 0 10px" }}>
+        {!isSelf ? (
           <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr" />
-        </div>
+        ) : null}
 
-        <section className="nv-paper" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: RADIUS, boxShadow: PAPER_SHADOW, padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-            <span style={{ fontSize: 11, letterSpacing: ".14em", color: MUTED, display: "flex", gap: 7, alignItems: "center" }}>
-              {pageKicker("/app/hr", lang)}
-            </span>
-            <span style={{ fontFamily: "'Noto Naskh Arabic',serif", fontSize: 24, fontWeight: 600, color: NAVY }}>{voice.title}</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>{voice.warnings}</span>
-            <span style={{ fontSize: 12, color: "#4B5567", lineHeight: 1.85 }}>
-              {ar
-                ? <>وجه الإدارة للملف — ما يراه الموظف في يومه، ودوامه في <Link to="/app/attendance" style={{ color: "inherit" }}>الدوام والحضور</Link>. الملف سجلّ لا نموذج طلب: الطلبات تولد في <Link to="/app/requests" style={{ color: "inherit" }}>طلباتي</Link>، وأثرها يظهر في <Link to="/app/shifts" style={{ color: "inherit" }}>جدول الدوام</Link>.</>
-                : <>The management face of the file. Requests are raised in <Link to="/app/requests" style={{ color: "inherit" }}>My requests</Link>; their effect appears on <Link to="/app/shifts" style={{ color: "inherit" }}>the roster</Link> and <Link to="/app/attendance" style={{ color: "inherit" }}>attendance</Link>.</>}
-            </span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <ProfileHero
-              employee={employee}
-              companyId={company.id}
-              canEdit={isSelf || canManage}
-              roleLabel={roleLabel}
-              stationName={stationName}
-              currentUser={currentUser}
-            />
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: ar ? "flex-end" : "flex-start" }}>
-              {canEditFile ? (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={editing ? cancelEdit : startEdit}
-                    style={{
-                      fontFamily: "inherit",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      padding: "9px 15px",
-                      border: `1px solid ${NAVY}`,
-                      borderRadius: 10,
-                      background: editing ? NAVY : CARD,
-                      color: editing ? "#fff" : NAVY,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {editing ? (ar ? "وضع التحرير" : "Editing") : (ar ? "تحرير الملف" : "Edit file")}
-                  </button>
-                  {editing ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={saveEdit}
-                        disabled={!dirty}
-                        style={{
-                          fontFamily: "inherit",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          padding: "9px 15px",
-                          border: "none",
-                          borderRadius: 10,
-                          background: dirty ? NAVY : "#C7CCD6",
-                          color: "#fff",
-                          cursor: dirty ? "pointer" : "default",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {ar ? "حفظ" : "Save"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        style={{
-                          fontFamily: "inherit",
-                          fontSize: 12,
-                          padding: "9px 13px",
-                          border: `1px solid ${BORDER}`,
-                          borderRadius: 10,
-                          background: CARD,
-                          color: "#4B5567",
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {ar ? "تراجع" : "Cancel"}
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                {view.compliance.map((chip) => (
-                  <button
-                    key={chip.id}
-                    type="button"
-                    onClick={() => openTab(chip.tab)}
-                    style={{
-                      fontFamily: "inherit",
-                      textAlign: "start",
-                      border: `1px solid ${chip.border}`,
-                      background: chip.bg,
-                      cursor: "pointer",
-                      padding: "8px 11px",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 2,
-                      minWidth: 120,
-                    }}
-                  >
-                    <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: chip.color }} />
-                      <span style={{ fontSize: 11, fontWeight: 700, color: NAVY }}>{chip.label}</span>
-                    </span>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: chip.color }}>{chip.state}</span>
-                    <span style={{ fontSize: 11, color: "#4B5567", lineHeight: 1.65 }}>{chip.note}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+        <section style={{ background: "#fff", border: "1px solid #E4E9E6", borderRadius: 14, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <ProfileHero
+            employee={employee}
+            companyId={company.id}
+            canEdit={isSelf || canManage}
+            roleLabel={roleLabel}
+            stationName={stationName}
+            currentUser={currentUser}
+          />
         </section>
 
-        <div className="nv-paper" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: RADIUS, boxShadow: PAPER_SHADOW, padding: "10px 16px", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: "#4B5567" }}>{ar ? "الدور" : "Role"}</span>
-          <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7, minWidth: 0 }}>{roleNote}</span>
-        </div>
+        <OpsControlBar>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 10, flexWrap: "wrap", padding: "8px 10px" }}>
+            {canEditFile ? (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <button type="button" onClick={editing ? cancelEdit : startEdit} style={editing ? ui.btnCreateQuiet : ui.btnCreate}>
+                  {editing ? (ar ? "وضع التحرير" : "Editing") : (ar ? "تحرير الملف" : "Edit file")}
+                </button>
+                {editing ? (
+                  <>
+                    <button type="button" onClick={saveEdit} disabled={!dirty} style={{ ...ui.btnCreate, opacity: dirty ? 1 : 0.45, cursor: dirty ? "pointer" : "default" }}>
+                      {ar ? "حفظ" : "Save"}
+                    </button>
+                    <button type="button" onClick={cancelEdit} style={ui.btnGhost}>
+                      {ar ? "تراجع" : "Cancel"}
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#2F6B43", background: "#E6F2EA", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap" }}>{voice.warnings}</span>
+            <span style={{ fontSize: 12, color: "#555C66", lineHeight: 1.6, minWidth: 0 }}>{roleNote}</span>
+          </div>
+        </OpsControlBar>
+
+        {view.compliance.length ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
+            {view.compliance.map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => openTab(chip.tab)}
+                style={{
+                  fontFamily: "inherit",
+                  textAlign: "start",
+                  border: "1px solid #E4E9E6",
+                  borderRadius: 12,
+                  background: "#fff",
+                  borderTop: `3px solid ${chip.color}`,
+                  cursor: "pointer",
+                  padding: "10px 12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 2,
+                  minWidth: 0,
+                }}
+              >
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#111418" }}>{chip.label}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: chip.color }}>{chip.state}</span>
+                <span style={{ fontSize: 11, color: "#555C66", lineHeight: 1.55 }}>{chip.note}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         <EmpAlertsStrip employee={employee} currentUser={currentUser} lang={lang} />
-
-        <EmployeeFileTabs tabs={TABS} value={tab} onChange={openTab} ar={ar} />
 
         {tab === "summary" && <EmployeeFileSummary view={view} ar={ar} onOpenTab={openTab} />}
 
@@ -346,7 +301,7 @@ export default function EmployeeProfile() {
         )}
 
         {tab === "contract" && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,330px),1fr))", gap: 0, alignItems: "stretch" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,330px),1fr))", gap: 14, alignItems: "stretch" }}>
             <EmployeeFileFieldCard
               card={{
                 title: ar ? "عقد العمل" : "Employment contract",
@@ -412,7 +367,7 @@ export default function EmployeeProfile() {
                 }}
               />
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,320px),1fr))", gap: 0, alignItems: "stretch" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,320px),1fr))", gap: 14, alignItems: "stretch" }}>
               {view.platforms.map((card) => (
                 <EmployeeFileFieldCard
                   key={card.name}
@@ -439,6 +394,15 @@ export default function EmployeeProfile() {
         {tab === "growth" && (
           <>
             <EmployeeFileGrowthBoard view={view} ar={ar} />
+            <EmployeeFileVoiceBoard
+              employee={employee}
+              publicReports={data.publicReports || []}
+              employees={data.employees || []}
+              stations={data.stations || []}
+              ar={ar}
+              canManage={canManage}
+              chainIds={data.complaintEscalationChain || []}
+            />
             <AssignmentTab
               employee={employee}
               companyId={company.id}
@@ -488,9 +452,9 @@ export default function EmployeeProfile() {
         )}
 
         {tab === "audit" && (
-          <section className="nv-paper" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: RADIUS, boxShadow: PAPER_SHADOW, overflow: "hidden" }}>
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid #EEF0F4" }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "سجل الملف" : "File log"}</div>
+          <section className="nv-paper" style={{ background: "#fff", border: "1px solid #E4E9E6", borderRadius: 14, overflow: "hidden" }}>
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid #EEF1EF" }}>
+              <div style={{ fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" }}>{ar ? "سجل الملف" : "File log"}</div>
               <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.75, marginTop: 3 }}>
                 {ar ? "كل تغيير ظاهر باسم من أجراه ووقته. لا تعديل صامت." : "Every visible change names who made it and when. No silent edit."}
               </div>
@@ -498,10 +462,10 @@ export default function EmployeeProfile() {
             {view.audit.length === 0 ? (
               <div style={{ padding: "16px 20px", fontSize: 12, color: MUTED }}>{ar ? "لا حركة مثبتة بعد." : "No written movement yet."}</div>
             ) : view.audit.map((row) => (
-              <div key={`${row.text}-${row.at}`} style={{ padding: "12px 20px", borderBottom: "1px solid #F7F8FA", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "start" }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: row.dot || NAVY, marginTop: 6 }} />
+              <div key={`${row.text}-${row.at}`} style={{ padding: "12px 20px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "start" }}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: row.dot || "#3C7D50", marginTop: 6 }} />
                 <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                  <span style={{ fontSize: 12, color: NAVY, lineHeight: 1.8 }}>{row.text}</span>
+                  <span style={{ fontSize: 12, color: "#111418", lineHeight: 1.8 }}>{row.text}</span>
                   <span style={{ fontSize: 10, color: MUTED }}>{row.by}</span>
                 </span>
                 <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}>{row.at}</span>
@@ -526,9 +490,6 @@ export default function EmployeeProfile() {
           </IdentityCard>
         )}
 
-        <section className="nv-paper" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: RADIUS, boxShadow: PAPER_SHADOW, padding: "14px 20px" }}>
-          <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.95 }}>{legal}</span>
-        </section>
       </div>
     </PlatformStampShell>
   );

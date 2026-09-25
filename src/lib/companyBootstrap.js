@@ -3,6 +3,8 @@
  * Pure: no localStorage. store.createCompany and tests share this fixture.
  */
 
+import { assignEmployeeNumber } from "@/lib/employeeNumber";
+
 export function creatorEmployeeRecord({
   ownerId,
   name,
@@ -61,6 +63,7 @@ export function seedCreatedCompanyWorkspace(data, owner = {}) {
     if (!row.companyId) row.companyId = companyId;
     if (!row.role) row.role = "director";
   }
+  assignEmployeeNumber(data, row, { hireDate: row.createdAt || row.profile?.hireDate || "" });
   return data;
 }
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   applyContinue,
   applyCreate,
@@ -10,7 +11,9 @@ import {
   applySubmit,
   canDownloadFinal,
   completionNotice,
+  isArchivedSigningEnvelope,
   isOpenSigningState,
+  splitSigningDesk,
   buildDummySignatureRequests,
   checkCreateGate,
   MAX_PARALLEL_SIGNERS,
@@ -106,6 +109,24 @@ const created = applyCreate([], {
 assert.equal(created.ok, true);
 assert.equal(created.request.status, "pending");
 assert.equal(created.request.signingMode, "parallel");
+const sequenced = applyCreate([], {
+  companyId: "local-preview-nirovera",
+  fileName: "طلب اختبار إرسال.pdf",
+  verificationId: "PWC-SEQ-TEST",
+  docUrl: "local://doc",
+  appUrl: "http://localhost:5173",
+  signingMode: "sequential",
+  signers: [noura, hassan].map((row) => ({
+    name: row.name,
+    email: row.email,
+    employeeId: row.id,
+    role: row.role,
+    stationId: row.stationId,
+  })),
+}, owner, { now, rid: (() => { let n = 0; return () => `seq${++n}`; })() });
+assert.equal(sequenced.ok, true);
+assert.equal(sequenced.request.signingMode, "sequential");
+assert.equal(canSignerSign(sequenced.request, sequenced.request.signers[1]), true);
 assert.equal(canSignerSign(created.request, created.request.signers[0]), true);
 assert.equal(canSignerSign(created.request, created.request.signers[1]), true);
 assert.equal(Object.keys(created.links).length, 2);
@@ -687,4 +708,36 @@ assert.equal(checkCreateGate({
   signers: overflow,
 }).error, "SIGNERS_INVALID");
 
-console.log("multisign dummy employees, send, status, refuse, deadline, reopen, retract, continue, delete, crowd-55 ok");
+const desk = splitSigningDesk([
+  bothZero.request,
+  releasedAll.request,
+  releasedMixed.request,
+  deleted.request,
+]);
+assert.deepEqual(desk.active.map((row) => row.verificationId), [bothZero.request.verificationId]);
+assert.equal(isArchivedSigningEnvelope(bothZero.request), false, "awaiting release stays on the desk");
+assert.equal(desk.archive.length, 3);
+assert.ok(desk.archive.every((row) => isArchivedSigningEnvelope(row)));
+assert.deepEqual(
+  desk.archive.map((row) => settledState(row).state).sort(),
+  ["completed", "completed_with_refusal", "deleted"],
+);
+const refusedClosed = {
+  status: "rejected",
+  releasedAt: now,
+  fileName: "رُفض.pdf",
+  signers: [{ status: "rejected", email: "a@b.c", name: "أ" }],
+};
+assert.equal(settledState(refusedClosed).state, "rejected");
+assert.equal(isArchivedSigningEnvelope(refusedClosed), true, "a released refusal leaves the desk");
+assert.equal(splitSigningDesk([refusedClosed]).archive.length, 1);
+assert.equal(splitSigningDesk([]).archive.length, 0);
+assert.equal(splitSigningDesk(null).active.length, 0);
+
+const homeSrc = readFileSync(new URL("../src/components/files/SigningHome.jsx", import.meta.url), "utf8");
+assert.match(homeSrc, /\["archive",\s*ar \? "الأرشيف"/, "الأرشيف sits with the signing tabs");
+assert.match(homeSrc, /activeRows\.filter/, "the agreements list is the active desk");
+assert.match(homeSrc, /لا مظاريف في الأرشيف/);
+assert.doesNotMatch(homeSrc, /\["done", ar \? "المكتمل"/, "completed leaves the agreements chips");
+
+console.log("multisign dummy employees, send, status, refuse, deadline, reopen, retract, continue, delete, crowd-55, archive ok");

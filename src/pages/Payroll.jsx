@@ -51,6 +51,7 @@ import { BORDER, MUTED, WARN, ui, SURFACE, tableShell } from "@/lib/platformStyl
 import { brandReportColor } from "@/lib/pdfTheme";
 import FinanceViewSwitch from "@/components/shared/FinanceViewSwitch";
 import { MANAGE, SELF, SELF_VIEW_NOTE, canManageSurface, resolveFinanceView } from "@/lib/financeRights";
+import { useRailSide } from "@/lib/railSide";
 import { PAYROLL_DENY, payrollDenyReason } from "@/lib/payrollRights";
 
 const UNASSIGNED_STATION_ID = "__unassigned__";
@@ -72,7 +73,8 @@ export default function Payroll() {
   const [serverMeta, setServerMeta] = useState({ status: "", wps: null, heads: 0 });
   const [searchParams, setSearchParams] = useSearchParams();
   const canManage = canManageSurface("payroll", currentUser, data);
-  const view = resolveFinanceView("payroll", currentUser, data, searchParams.get("view"));
+  const railSide = useRailSide();
+  const view = resolveFinanceView("payroll", currentUser, data, searchParams.get("view"), railSide);
   const layers = view === MANAGE ? MANAGE_LAYERS : SELF_LAYERS;
   const homeTab = layers[0];
   const requested = searchParams.get("tab");
@@ -329,7 +331,7 @@ export default function Payroll() {
       onTool={setTab}
       meta={(
         <>
-          <FinanceViewSwitch ar={ar} view={view} canManage={canManage} onChange={setView} />
+          <FinanceViewSwitch ar={ar} view={view} canManage={canManage} showSwitch={!railSide} onChange={setView} />
           {view === SELF ? (
             <>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>

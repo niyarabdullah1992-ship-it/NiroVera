@@ -20,10 +20,11 @@ import {
 } from "./decision18632.js";
 import { isRamadanHoursSubject } from "./employeeProfileFields.js";
 import { citeLeaveType, citeRule, explainRule, isRamadanDay, laborDayKey, ruleValue } from "./laborRules.js";
-import { deriveNamedOvertime, isJuvenile, isWeeklyRestDay } from "./laborHoursPolicy.js";
+import { ageYearsOn, deriveNamedOvertime, isJuvenile, isWeeklyRestDay } from "./laborHoursPolicy.js";
+import { checkJuvenileHoursGate } from "./laborProtectionGates.js";
 import { approvedLeaveOnDay, isNursingSubject, isOnApprovedLeave, leaveTypeLabel } from "./leaveTypes.js";
 import { isEidHoliday } from "./leaveEidOverlap.js";
-import { isOfficialHoliday } from "./ummAlQuraCalendar.js";
+import { isOfficialHoliday, officialHolidayLeaveLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
 import { checkConsecutiveWorkGate, minutesBetween } from "./shiftDerivations.js";
 import {
   attachPlatformJudgment,
@@ -40,37 +41,38 @@ export {
 };
 
 export const SW = {
-  ink: "#14213d",
-  muted: "#6b7280",
-  mid: "#4b5567",
-  line: "#dfe3ea",
-  soft: "#eef0f4",
-  wash: "#fafbfc",
-  hair: "#f2f4f7",
-  row: "#f7f8fa",
-  card: "#fff",
-  green: "#137a49",
-  greenDot: "#1d9a5b",
-  greenBg: "#f2faf6",
-  greenBd: "#bfe6d2",
-  gold: "#8a6516",
-  goldDot: "#c9962b",
-  goldBg: "#fdf6e8",
-  goldBd: "#ecd9a8",
-  abs: "#8a1c2b",
-  absBg: "#fbf1f2",
-  absBd: "#e9c4c9",
+  ink: "var(--nv-ink)",
+  muted: "var(--nv-muted)",
+  mid: "var(--nv-ink2)",
+  line: "var(--nv-line)",
+  soft: "var(--nv-line3)",
+  wash: "var(--nv-soft)",
+  hair: "var(--nv-line2)",
+  row: "var(--nv-hover)",
+  card: "var(--nv-card)",
+  green: "var(--nv-ok-ink)",
+  greenDot: "var(--nv-ok-fill)",
+  greenBg: "var(--nv-ok-soft)",
+  greenBd: "var(--nv-ok-line)",
+  gold: "var(--nv-warn-ink)",
+  goldDot: "var(--nv-warn-fill)",
+  goldBg: "var(--nv-warn-soft)",
+  goldBd: "var(--nv-warn-line)",
+  abs: "var(--nv-bad-ink)",
+  absBg: "var(--nv-bad-soft)",
+  absBd: "var(--nv-bad-line)",
 };
 
+/** Soft shift fills — border uses *-line (1px), never harsh *-fill chrome. */
 export const SHIFT_PALETTE = [
-  { color: "#1d9a5b", bg: "#f2faf6", fg: "#0f5c37" },
-  { color: "#c9962b", bg: "#fdf6e8", fg: "#6b4f10" },
-  { color: "#4b5567", bg: "#f1f2f5", fg: "#2b3242" },
-  { color: "#8a1c2b", bg: "#fbf1f2", fg: "#5d1620" },
-  { color: "#2f6fa8", bg: "#eef5fb", fg: "#1c4468" },
+  { color: "var(--nv-ok-line)", bg: "var(--nv-ok-soft)", fg: "var(--nv-ok-ink)" },
+  { color: "var(--nv-warn-line)", bg: "var(--nv-warn-soft)", fg: "var(--nv-warn-ink)" },
+  { color: "var(--nv-mute-line)", bg: "var(--nv-mute-soft)", fg: "var(--nv-mute-ink)" },
+  { color: "var(--nv-bad-line)", bg: "var(--nv-bad-soft)", fg: "var(--nv-bad-ink)" },
+  { color: "var(--nv-line)", bg: "var(--nv-soft)", fg: "var(--nv-ink2)" },
 ];
 
-export const REST_STYLE = { color: "#c7ccd6", bg: "#fff", fg: "#6b7280" };
+export const REST_STYLE = { color: "var(--nv-line2)", bg: "var(--nv-soft)", fg: "var(--nv-ink3)" };
 /** Unified leave paint — dark brown, never green (green stays for ملفي decision glow). */
 export const LEAVE_STYLE = { color: "#4a2c14", bg: "#efe0cc", fg: "#3d2410" };
 /** Article chip sitting on a leave mark — light brown, not mint and not navy. */
@@ -125,6 +127,14 @@ export function weekdayLabel(wd, ar = true) {
   return (ar ? WD_AR : WD_EN)[wd] || "";
 }
 
+/** Compact history-strip header — day number + weekday from the full date (never month abbr; «سبتمبر».slice(0,3) is «سبت»). */
+export function historyColumnLabel(day, ar = true) {
+  const wd = Number.isFinite(day?.wd)
+    ? day.wd
+    : (parseDateKey(day?.key) || day?.date)?.getDay?.();
+  return `${day?.day ?? ""} ${weekdayLabel(wd, ar)}`.trim();
+}
+
 export function formatWeekLabel(weekStart, ar = true) {
   const days = weekDays(weekStart);
   const a = days[0];
@@ -151,6 +161,270 @@ export function weekRelativeLabel(weekStart, today = new Date(), ar = true) {
     return diff > 0 ? `بعد ${unit}` : `قبل ${unit}`;
   }
   return diff > 0 ? `in ${n} weeks` : `${n} weeks ago`;
+}
+
+const MONTHS_EN_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+function isIsoDateAssignmentKey(key) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(key || ""));
+}
+
+function dayMapHasPeople(day) {
+  if (!day || typeof day !== "object" || Array.isArray(day)) return false;
+  return Object.values(day).some((ids) => Array.isArray(ids) && ids.length > 0);
+}
+
+/** Primary roster planning unit — calendar month cursor. */
+export function monthCursorOf(date = new Date()) {
+  const day = date instanceof Date ? date : (parseDateKey(date) || new Date());
+  return { year: day.getFullYear(), monthIndex: day.getMonth() };
+}
+
+export function shiftMonthCursor(cursor, delta = 1) {
+  const year = Number(cursor?.year);
+  const monthIndex = Number(cursor?.monthIndex);
+  const d = new Date(
+    Number.isFinite(year) ? year : new Date().getFullYear(),
+    (Number.isFinite(monthIndex) ? monthIndex : new Date().getMonth()) + Number(delta || 0),
+    1,
+  );
+  return { year: d.getFullYear(), monthIndex: d.getMonth() };
+}
+
+export function previousMonthCursor(cursor) {
+  return shiftMonthCursor(cursor, -1);
+}
+
+export function nextMonthCursor(cursor) {
+  return shiftMonthCursor(cursor, 1);
+}
+
+export function monthDaysIn(year, monthIndex) {
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+export function monthDateKeys(year, monthIndex) {
+  const days = monthDaysIn(year, monthIndex);
+  return Array.from({ length: days }, (_, index) => calendarDateKey(new Date(year, monthIndex, index + 1)));
+}
+
+export function monthDays(year, monthIndex) {
+  return monthDateKeys(year, monthIndex).map((key) => {
+    const date = parseDateKey(key);
+    return {
+      date,
+      key,
+      wd: date.getDay(),
+      day: date.getDate(),
+      month: date.getMonth(),
+      year: date.getFullYear(),
+      weekend: date.getDay() === 5 || date.getDay() === 6,
+    };
+  });
+}
+
+export function formatMonthLabel(year, monthIndex, ar = true) {
+  if (ar) return `${MONTHS_AR[monthIndex]} ${year}`;
+  return `${MONTHS_EN_LONG[monthIndex]} ${year}`;
+}
+
+/** Sunday week-starts that intersect the month — week paint stays inside month scope. */
+export function weekStartsInMonth(year, monthIndex) {
+  const seen = new Set();
+  const starts = [];
+  for (const key of monthDateKeys(year, monthIndex)) {
+    const start = weekStartDate(key);
+    const sk = calendarDateKey(start);
+    if (seen.has(sk)) continue;
+    seen.add(sk);
+    starts.push(start);
+  }
+  return starts;
+}
+
+export function weekIntersectsMonth(weekStart, year, monthIndex) {
+  return weekDays(weekStart).some((day) => day.year === year && day.month === monthIndex);
+}
+
+/** Prefer today when it sits in the month; otherwise the first overlapping week. */
+export function defaultWeekStartForMonth(year, monthIndex, today = new Date()) {
+  const starts = weekStartsInMonth(year, monthIndex);
+  if (!starts.length) return weekStartDate(new Date(year, monthIndex, 1));
+  if (today.getFullYear() === year && today.getMonth() === monthIndex) {
+    return weekStartDate(today);
+  }
+  return starts[0];
+}
+
+export function monthHasDatedAssignments(assignments, year, monthIndex) {
+  const prefix = `${year}-${String(monthIndex + 1).padStart(2, "0")}-`;
+  return Object.keys(assignments || {}).some((key) => (
+    isIsoDateAssignmentKey(key)
+    && key.startsWith(prefix)
+    && dayMapHasPeople(assignments[key])
+  ));
+}
+
+/**
+ * Reuse a month: copy dated day→day assignments into another month.
+ * Official holidays in the target stay locked leave (no duty written).
+ * Weekday template keys (0–6) are untouched. 18632 still counts dated night weeks after reuse.
+ */
+export function planCopyMonthAssignments({
+  assignments,
+  sourceYear,
+  sourceMonthIndex,
+  targetYear,
+  targetMonthIndex,
+  laborCalendar,
+  ar = true,
+} = {}) {
+  const empty = {
+    ok: false,
+    writes: [],
+    clearKeys: [],
+    copied: 0,
+    skippedHoliday: 0,
+    skippedMissingDay: 0,
+    sourceDays: 0,
+  };
+  if (
+    !Number.isFinite(Number(sourceYear))
+    || !Number.isFinite(Number(sourceMonthIndex))
+    || !Number.isFinite(Number(targetYear))
+    || !Number.isFinite(Number(targetMonthIndex))
+  ) {
+    return {
+      ...empty,
+      error: "MONTH_SCOPE",
+      reason: ar ? "حدّد شهراً مصدراً وشهراً هدفاً." : "Name a source month and a target month.",
+      reasonEn: "Name a source month and a target month.",
+    };
+  }
+  if (sourceYear === targetYear && sourceMonthIndex === targetMonthIndex) {
+    return {
+      ...empty,
+      error: "SAME_MONTH",
+      reason: ar ? "المصدر والهدف نفس الشهر — اختر شهراً آخر للنسخ." : "Source and target are the same month — pick another month to copy into.",
+      reasonEn: "Source and target are the same month — pick another month to copy into.",
+    };
+  }
+  const sourcePrefix = `${sourceYear}-${String(sourceMonthIndex + 1).padStart(2, "0")}-`;
+  const targetPrefix = `${targetYear}-${String(targetMonthIndex + 1).padStart(2, "0")}-`;
+  const sourceKeys = Object.keys(assignments || {}).filter((key) => (
+    isIsoDateAssignmentKey(key) && key.startsWith(sourcePrefix) && dayMapHasPeople(assignments[key])
+  ));
+  if (!sourceKeys.length) {
+    return {
+      ...empty,
+      error: "SOURCE_MONTH_EMPTY",
+      reason: ar
+        ? `لا تعيينات مؤرخة في ${formatMonthLabel(sourceYear, sourceMonthIndex, true)} — لا شيء يُعاد.`
+        : `No dated assignments in ${formatMonthLabel(sourceYear, sourceMonthIndex, false)} — nothing to reuse.`,
+      reasonEn: `No dated assignments in ${formatMonthLabel(sourceYear, sourceMonthIndex, false)} — nothing to reuse.`,
+    };
+  }
+  const targetDays = monthDaysIn(targetYear, targetMonthIndex);
+  const clearKeys = Object.keys(assignments || {}).filter((key) => (
+    isIsoDateAssignmentKey(key) && key.startsWith(targetPrefix)
+  ));
+  const writes = [];
+  let skippedHoliday = 0;
+  let skippedMissingDay = 0;
+  for (const srcKey of sourceKeys.sort()) {
+    const dayNum = Number(srcKey.slice(8, 10));
+    if (!Number.isFinite(dayNum) || dayNum < 1) continue;
+    if (dayNum > targetDays) {
+      skippedMissingDay += 1;
+      continue;
+    }
+    const tgtKey = `${targetPrefix}${String(dayNum).padStart(2, "0")}`;
+    if (isOfficialHoliday(tgtKey, laborCalendar)) {
+      skippedHoliday += 1;
+      continue;
+    }
+    writes.push({ dateKey: tgtKey, day: cloneDayMap(assignments[srcKey]) });
+  }
+  if (!writes.length) {
+    return {
+      ...empty,
+      error: "TARGET_MONTH_UNWRITABLE",
+      reason: ar
+        ? "تعذّر كتابة التعيينات في الشهر الهدف (عطلة رسمية أو أيام أقصر)."
+        : "Could not write assignments into the target month (official holiday or a shorter month).",
+      reasonEn: "Could not write assignments into the target month (official holiday or a shorter month).",
+      clearKeys,
+      skippedHoliday,
+      skippedMissingDay,
+      sourceDays: sourceKeys.length,
+    };
+  }
+  return {
+    ok: true,
+    error: null,
+    reason: null,
+    reasonEn: null,
+    writes,
+    clearKeys,
+    copied: writes.length,
+    skippedHoliday,
+    skippedMissingDay,
+    sourceDays: sourceKeys.length,
+    sourceYear,
+    sourceMonthIndex,
+    targetYear,
+    targetMonthIndex,
+  };
+}
+
+export function applyCopyMonthAssignments(schedule, plan) {
+  if (!plan?.ok || !schedule) return schedule;
+  schedule.assignments = schedule.assignments || {};
+  const targetYear = plan.targetYear;
+  const targetMonthIndex = plan.targetMonthIndex;
+  if (Number.isFinite(Number(targetYear)) && Number.isFinite(Number(targetMonthIndex))) {
+    const prefix = `${targetYear}-${String(targetMonthIndex + 1).padStart(2, "0")}-`;
+    for (const key of Object.keys(schedule.assignments)) {
+      if (isIsoDateAssignmentKey(key) && key.startsWith(prefix)) {
+        delete schedule.assignments[key];
+      }
+    }
+  } else {
+    for (const key of plan.clearKeys || []) {
+      delete schedule.assignments[key];
+    }
+  }
+  for (const row of plan.writes || []) {
+    schedule.assignments[row.dateKey] = cloneDayMap(row.day);
+  }
+  return schedule;
+}
+
+export function copyMonthReuseNote(plan, ar = true) {
+  if (!plan?.ok) return plan?.reason || (ar ? "تعذّر إعادة الجدول." : "Could not reuse the roster.");
+  const parts = [];
+  if (ar) {
+    parts.push(`نُسخت ${plan.copied} يوماً من ${formatMonthLabel(plan.sourceYear, plan.sourceMonthIndex, true)} إلى ${formatMonthLabel(plan.targetYear, plan.targetMonthIndex, true)}.`);
+    if (plan.skippedHoliday) parts.push(`${plan.skippedHoliday} يوم عطلة رسمية بقي إجازة مقفلة.`);
+    if (plan.skippedMissingDay) parts.push(`${plan.skippedMissingDay} يوم بلا مكافئ في الشهر الأقصر.`);
+    const repair = plan.nightRestRepair;
+    if (repair?.repaired || repair?.cleared) {
+      parts.push(`طُبّق القرار 18632 على النسخ: قفز ${repair.repaired || 0} وأُزيل ${repair.cleared || 0} لتعذر الراحة 12 ساعة.`);
+    } else {
+      parts.push("يمكنك تعديل الخلايا بعد النسخ. قرار 18632 ما زال يعدّ أسابيع الليل المؤرخة.");
+    }
+  } else {
+    parts.push(`Copied ${plan.copied} days from ${formatMonthLabel(plan.sourceYear, plan.sourceMonthIndex, false)} into ${formatMonthLabel(plan.targetYear, plan.targetMonthIndex, false)}.`);
+    if (plan.skippedHoliday) parts.push(`${plan.skippedHoliday} official-holiday day(s) stayed locked leave.`);
+    if (plan.skippedMissingDay) parts.push(`${plan.skippedMissingDay} day(s) had no match in the shorter month.`);
+    const repair = plan.nightRestRepair;
+    if (repair?.repaired || repair?.cleared) {
+      parts.push(`Decision 18632 applied on copy: jumped ${repair.repaired || 0} and cleared ${repair.cleared || 0} where 12h rest failed.`);
+    } else {
+      parts.push("You can edit cells after the copy. Decision 18632 still counts dated night weeks.");
+    }
+  }
+  return parts.join(" ");
 }
 
 export function shiftHours(shift) {
@@ -372,14 +646,40 @@ function neighborDateKey(dateKey, delta) {
   return calendarDateKey(addDays(date, delta));
 }
 
+/**
+ * Duty shift only — Art. 112 official holiday leave, approved leave, and plain rest
+ * are not work-day endpoints for Decision 18632 pairwise rest.
+ */
+export function employeeDutyShiftOnDay(schedule, employee, dateKey, laborCalendar, opts = {}) {
+  if (!employee?.id || !dateKey) return null;
+  if (isRosterLeaveDay(employee, dateKey, laborCalendar)) return null;
+  return employeeShiftOnDay(schedule, employee.id, dateKey, opts);
+}
+
+/** Strip leftover / weekday-template duty on roster leave days so gates never see a ghost shift. */
+export function clearRosterLeaveGhostAssignments(schedule, employees = [], dateKeys = [], laborCalendar) {
+  if (!schedule || !dateKeys.length) return 0;
+  let cleared = 0;
+  for (const dateKey of dateKeys) {
+    for (const employee of employees) {
+      if (!employee?.id || !isRosterLeaveDay(employee, dateKey, laborCalendar)) continue;
+      if (!employeeShiftOnDay(schedule, employee.id, dateKey)) continue;
+      assignEmployeeDayOnSchedule(schedule, dateKey, employee.id, null);
+      cleared += 1;
+    }
+  }
+  return cleared;
+}
+
 /** Decision 18632 — 12-hour rest between work days when either day performs night work. */
-export function checkNightRestApplyGate({ schedule, employee, dateKey, shift } = {}) {
+export function checkNightRestApplyGate({ schedule, employee, dateKey, shift, laborCalendar } = {}) {
   if (!employee?.id || !dateKey || !shift) return { ok: true };
+  if (isRosterLeaveDay(employee, dateKey, laborCalendar)) return { ok: true };
   const need = ruleValue("hours.night.restHours", dateKey) || 12;
   const prevKey = neighborDateKey(dateKey, -1);
   const nextKey = neighborDateKey(dateKey, 1);
-  const prev = prevKey ? employeeShiftOnDay(schedule, employee.id, prevKey) : null;
-  const following = nextKey ? employeeShiftOnDay(schedule, employee.id, nextKey) : null;
+  const prev = prevKey ? employeeDutyShiftOnDay(schedule, employee, prevKey, laborCalendar) : null;
+  const following = nextKey ? employeeDutyShiftOnDay(schedule, employee, nextKey, laborCalendar) : null;
   const win = nightWindowLabel(dateKey);
   const fail = (left, right, leftKey, rightKey) => {
     if (!left || !right) return null;
@@ -397,23 +697,258 @@ export function checkNightRestApplyGate({ schedule, employee, dateKey, shift } =
   return fail(prev, shift, prevKey, dateKey) || fail(shift, following, dateKey, nextKey) || { ok: true };
 }
 
+function shiftStartMinutes(shift) {
+  const [h, m] = String(shift?.start || "0:0").split(":").map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+/** Shift types sorted by clock start — earliest legal paint first within a day. */
+export function shiftTypesByStart(shiftTypes = []) {
+  return [...(shiftTypes || [])].sort((a, b) => shiftStartMinutes(a) - shiftStartMinutes(b));
+}
+
+function shiftAssignLabel(shift, ar = true, onDate) {
+  if (!shift) return ar ? "راحة" : "rest";
+  const mark = shiftCompactMark(shift, { ar, onDate });
+  return shift.label || mark || shift.id || (ar ? "وردية" : "shift");
+}
+
+/** Arabic / English toast when paint jumped for Decision 18632 ≥12h rest. */
+export function nightRestAssignJumpNote({
+  fromDateKey,
+  fromShift,
+  toDateKey,
+  toShift,
+  need = 12,
+  ar = true,
+} = {}) {
+  const fromDay = parseDateKey(fromDateKey);
+  const toDay = parseDateKey(toDateKey);
+  const fromWd = fromDay ? weekdayLabel(fromDay.getDay(), ar) : fromDateKey;
+  const toWd = toDay ? weekdayLabel(toDay.getDay(), ar) : toDateKey;
+  const fromName = shiftAssignLabel(fromShift, ar, fromDateKey);
+  const toName = shiftAssignLabel(toShift, ar, toDateKey);
+  if (ar) {
+    if (fromDateKey === toDateKey) {
+      return `قفزنا تلقائياً (القرار 18632): راحة أقل من ${need} ساعة — أسندنا «${toName}» بدلاً من «${fromName}» يوم ${toWd}.`;
+    }
+    return `قفزنا تلقائياً (القرار 18632): راحة أقل من ${need} ساعة — أسندنا «${toName}» يوم ${toWd} بدلاً من «${fromName}» يوم ${fromWd}.`;
+  }
+  if (fromDateKey === toDateKey) {
+    return `Auto-jumped (decision 18632): under ${need}h rest — assigned “${toName}” instead of “${fromName}” on ${toWd}.`;
+  }
+  return `Auto-jumped (decision 18632): under ${need}h rest — assigned “${toName}” on ${toWd} instead of “${fromName}” on ${fromWd}.`;
+}
+
+/**
+ * Mandatory Decision 18632 ≥12h rest rule on assign: when the chosen slot fails
+ * pairwise rest (either duty day enters 23:00–06:00), jump to the earliest legal
+ * (day, shift type) from that day forward in the week — or refuse with the named
+ * gate. Never a silent illegal place. Publish gates stay strict on real rest.
+ */
+export function resolveNightRestAssignTarget({
+  schedule,
+  employee,
+  dateKey,
+  shiftTypeId,
+  laborCalendar,
+  weekStart,
+  ordinaryOnly = false,
+  employees = [],
+} = {}) {
+  const gate = checkShiftChangeApplyGate({
+    schedule,
+    employee,
+    dateKey,
+    shiftTypeId,
+    laborCalendar,
+    employees,
+  });
+  if (gate.ok) {
+    return { ok: true, jumped: false, dateKey, shiftTypeId, gate };
+  }
+  if (gate.error !== "NIGHT_REST_REQUIRED" || !shiftTypeId) {
+    return { ok: false, jumped: false, dateKey, shiftTypeId, ...gate };
+  }
+
+  const start = weekStartDate(weekStart || dateKey);
+  const horizon = weekDateKeys(start).filter((key) => key >= dateKey);
+  const pool = ordinaryOnly
+    ? ordinaryShiftTypes(schedule?.shiftTypes || [], dateKey)
+    : (schedule?.shiftTypes || []);
+  const ordered = shiftTypesByStart(pool);
+  const fromShift = (schedule?.shiftTypes || []).find((row) => row.id === shiftTypeId) || null;
+  const need = ruleValue("hours.night.restHours", dateKey) || 12;
+
+  for (const dayKey of horizon) {
+    for (const shift of ordered) {
+      if (dayKey === dateKey && shift.id === shiftTypeId) continue;
+      if (dayKey !== dateKey && employeeDutyShiftOnDay(schedule, employee, dayKey, laborCalendar)) {
+        continue;
+      }
+      const candidate = checkShiftChangeApplyGate({
+        schedule,
+        employee,
+        dateKey: dayKey,
+        shiftTypeId: shift.id,
+        laborCalendar,
+        employees,
+      });
+      if (!candidate.ok) continue;
+      return {
+        ok: true,
+        jumped: true,
+        dateKey: dayKey,
+        shiftTypeId: shift.id,
+        fromDateKey: dateKey,
+        fromShiftTypeId: shiftTypeId,
+        fromShift,
+        toShift: shift,
+        need,
+        reason: nightRestAssignJumpNote({
+          fromDateKey: dateKey,
+          fromShift,
+          toDateKey: dayKey,
+          toShift: shift,
+          need,
+          ar: true,
+        }),
+        reasonEn: nightRestAssignJumpNote({
+          fromDateKey: dateKey,
+          fromShift,
+          toDateKey: dayKey,
+          toShift: shift,
+          need,
+          ar: false,
+        }),
+        gate: candidate,
+      };
+    }
+  }
+
+  return { ok: false, jumped: false, dateKey, shiftTypeId, ...gate };
+}
+
+/**
+ * Write one cell with mandatory 18632 auto-jump. Mutates `schedule`.
+ * When the jump lands on another day, the painted day is cleared to rest so an
+ * illegal (or superseded) duty never remains on the clicked cell.
+ */
+export function applyNightRestAwareAssignment(schedule, {
+  employee,
+  dateKey,
+  shiftTypeId,
+  laborCalendar,
+  weekStart,
+  ordinaryOnly = false,
+  employees = [],
+} = {}) {
+  if (!schedule || !employee?.id || !dateKey) {
+    return {
+      ok: false,
+      jumped: false,
+      error: "ASSIGN_REQUIRED",
+      reason: "حدد الموظف واليوم.",
+      reasonEn: "Name the employee and the day.",
+    };
+  }
+  if (!shiftTypeId) {
+    const gate = checkShiftChangeApplyGate({
+      schedule,
+      employee,
+      dateKey,
+      shiftTypeId: null,
+      laborCalendar,
+      employees,
+    });
+    if (!gate.ok) return { ok: false, jumped: false, dateKey, shiftTypeId: null, ...gate };
+    assignEmployeeDayOnSchedule(schedule, dateKey, employee.id, null);
+    return { ok: true, jumped: false, dateKey, shiftTypeId: null, clearedSource: false, gate };
+  }
+  const resolved = resolveNightRestAssignTarget({
+    schedule,
+    employee,
+    dateKey,
+    shiftTypeId,
+    laborCalendar,
+    weekStart,
+    ordinaryOnly,
+    employees,
+  });
+  if (!resolved.ok) return resolved;
+  assignEmployeeDayOnSchedule(schedule, resolved.dateKey, employee.id, resolved.shiftTypeId);
+  let clearedSource = false;
+  if (resolved.jumped && resolved.dateKey !== dateKey) {
+    assignEmployeeDayOnSchedule(schedule, dateKey, employee.id, null);
+    clearedSource = true;
+  }
+  return { ...resolved, clearedSource };
+}
+
+/**
+ * After bulk writes (copy month), never leave illegal 18632 rest pairs on the grid.
+ * Fix the later day of each hit (keep the earlier duty): jump to the first legal
+ * slot, or clear when none exists. Re-scan until the week is clean.
+ */
+export function repairNightRestAssignments(schedule, {
+  employees = [],
+  dateKeys = [],
+  laborCalendar,
+} = {}) {
+  let repaired = 0;
+  let cleared = 0;
+  const keys = [...(dateKeys || [])].filter(Boolean).sort();
+  const weekStarts = [...new Set(keys.map((key) => calendarDateKey(weekStartDate(key))))];
+  for (const employee of employees || []) {
+    if (!employee?.id) continue;
+    for (const weekKey of weekStarts) {
+      let guard = 0;
+      while (guard < 32) {
+        guard += 1;
+        const hits = nightRestPairHits(schedule, employee, weekKey, laborCalendar);
+        if (!hits.length) break;
+        const pair = hits[0];
+        const later = pair.to;
+        if (!later?.id) {
+          assignEmployeeDayOnSchedule(schedule, pair.toKey, employee.id, null);
+          cleared += 1;
+          continue;
+        }
+        const result = applyNightRestAwareAssignment(schedule, {
+          employee,
+          dateKey: pair.toKey,
+          shiftTypeId: later.id,
+          laborCalendar,
+          weekStart: weekKey,
+        });
+        if (result.ok && (result.jumped || result.shiftTypeId !== later.id || result.dateKey !== pair.toKey)) {
+          repaired += 1;
+          continue;
+        }
+        assignEmployeeDayOnSchedule(schedule, pair.toKey, employee.id, null);
+        cleared += 1;
+      }
+    }
+  }
+  return { repaired, cleared };
+}
+
 /** Displayed week plus the civil day before and after — a 4-day duty block can cross Sunday. */
 export function adjacentDutySpanKeys(weekStart) {
   const start = weekStartDate(weekStart);
   return [calendarDateKey(addDays(start, -1)), ...weekDateKeys(start), calendarDateKey(addDays(start, 7))];
 }
 
-/** Consecutive calendar days that both have a duty — rest days are not a pair. */
-export function adjacentDutyPairs(schedule, employee, weekStart) {
+/** Consecutive calendar days that both have a duty — leave and rest days are not a pair. */
+export function adjacentDutyPairs(schedule, employee, weekStart, laborCalendar) {
   if (!employee?.id) return [];
   const span = adjacentDutySpanKeys(weekStart);
   const pairs = [];
   for (let index = 0; index < span.length - 1; index += 1) {
     const fromKey = span[index];
     const toKey = span[index + 1];
-    if (isOnApprovedLeave(employee, fromKey) || isOnApprovedLeave(employee, toKey)) continue;
-    const from = employeeShiftOnDay(schedule, employee.id, fromKey);
-    const to = employeeShiftOnDay(schedule, employee.id, toKey);
+    const from = employeeDutyShiftOnDay(schedule, employee, fromKey, laborCalendar);
+    const to = employeeDutyShiftOnDay(schedule, employee, toKey, laborCalendar);
     if (!from || !to) continue;
     pairs.push({ fromKey, toKey, from, to, gap: restGapHours(from, to) });
   }
@@ -421,9 +956,9 @@ export function adjacentDutyPairs(schedule, employee, weekStart) {
 }
 
 /** 18632: each pair of consecutive duty days, not a weekly 12-hour pot. Four duty days = three gaps. */
-export function nightRestPairHits(schedule, employee, weekStart) {
+export function nightRestPairHits(schedule, employee, weekStart, laborCalendar) {
   const need = ruleValue("hours.night.restHours", weekDateKeys(weekStart)[0]) || 12;
-  return adjacentDutyPairs(schedule, employee, weekStart).filter((pair) => (
+  return adjacentDutyPairs(schedule, employee, weekStart, laborCalendar).filter((pair) => (
     (performsNightWork(pair.from, pair.fromKey) || performsNightWork(pair.to, pair.toKey))
     && pair.gap < need
   ));
@@ -943,6 +1478,8 @@ export function nightStreakWeeks(schedule, employeeId, weekStart, lookback = 40)
 
 /** Workplace on the employee file — not header scope, not the first listed station. */
 export function employeeWorkStationId(employee) {
+  const override = employee?.profile?.workStationId;
+  if (override != null && String(override).trim()) return String(override);
   const id = employee?.stationId;
   return id != null && String(id).trim() ? String(id) : null;
 }
@@ -1137,23 +1674,46 @@ export function weekRosterEmployees(schedule, employees = [], stationId, dateKey
   });
 }
 
-export function leaveOnDayView(employee, dateKey, ar = true) {
+/** Approved طلباتي leave or a fixed Art. 112 official holiday (roster paints leave, not duty). */
+export function isRosterLeaveDay(employee, dateKey, laborCalendar) {
+  if (isOnApprovedLeave(employee, dateKey)) return true;
+  return isOfficialHoliday(dateKey, laborCalendar);
+}
+
+export function leaveOnDayView(employee, dateKey, ar = true, laborCalendar) {
   const request = approvedLeaveOnDay(employee, dateKey);
-  if (!request) return null;
-  const cite = citeLeaveType(request.type, dateKey);
+  if (request) {
+    const cite = citeLeaveType(request.type, dateKey);
+    const hit = request.type === "eid" ? officialHolidayOn(dateKey, laborCalendar) : null;
+    return {
+      request,
+      type: hit
+        ? officialHolidayLeaveLabel(hit.id, ar, laborCalendar)
+        : leaveTypeLabel(request.type, ar, undefined, dateKey, laborCalendar),
+      article: ar ? (cite?.labelAr || "") : (cite?.labelEn || ""),
+      articleId: cite?.article || "",
+      style: LEAVE_STYLE,
+      source: "approved",
+    };
+  }
+  const hit = officialHolidayOn(dateKey, laborCalendar);
+  if (!hit) return null;
+  const cite = citeLeaveType("eid", dateKey);
   return {
-    request,
-    type: leaveTypeLabel(request.type, ar),
+    request: null,
+    official: hit,
+    type: officialHolidayLeaveLabel(hit.id, ar, laborCalendar),
     article: ar ? (cite?.labelAr || "") : (cite?.labelEn || ""),
-    articleId: cite?.article || "",
+    articleId: cite?.article || "112",
     style: LEAVE_STYLE,
+    source: "official_holiday",
   };
 }
 
-export function employeeWeekHours(schedule, employeeId, weekStart, employee) {
+export function employeeWeekHours(schedule, employeeId, weekStart, employee, laborCalendar) {
   const person = employee?.id === employeeId ? employee : null;
   return weekDateKeys(weekStart).reduce((sum, key) => {
-    if (person && isOnApprovedLeave(person, key)) return sum;
+    if (person && isRosterLeaveDay(person, key, laborCalendar)) return sum;
     const shift = employeeShiftOnDay(schedule, employeeId, key);
     return sum + (shift ? actualShiftHours(shift, key, person) : 0);
   }, 0);
@@ -1162,7 +1722,7 @@ export function employeeWeekHours(schedule, employeeId, weekStart, employee) {
 /** Art. 107 named OT from this week's published rota versus 98/99/Ramadan/164. */
 export function weekNamedOvertime(schedule, employee, weekStart, company, laborCalendar, ar = true) {
   const days = weekDays(weekStart).map((day) => {
-    const onLeave = !!(employee && isOnApprovedLeave(employee, day.key));
+    const onLeave = !!(employee && isRosterLeaveDay(employee, day.key, laborCalendar));
     const shift = !onLeave && employee?.id ? employeeShiftOnDay(schedule, employee.id, day.key) : null;
     return {
       key: day.key,
@@ -1247,12 +1807,20 @@ export function checkShiftChangeApplyGate({ schedule, employee, dateKey, shiftTy
       reasonEn: "Someone on approved leave is never assigned a shift.",
     };
   }
+  if (isOfficialHoliday(dateKey, laborCalendar)) {
+    return {
+      ok: false,
+      error: "OFFICIAL_HOLIDAY",
+      reason: "لا تُسند وردية في إجازة اليوم الوطني أو يوم التأسيس أو العيد بأجر كامل — المادة 112. الخلية مقفلة باسمها.",
+      reasonEn: "A shift is not assigned on National Day, Founding Day, or Eid leave at full pay — Article 112. The cell is locked under that leave name.",
+    };
+  }
   const next = shiftTypeId ? (schedule?.shiftTypes || []).find((shift) => shift.id === shiftTypeId) : null;
   if (shiftTypeId && !next) {
     return { ok: false, error: "SHIFT_REQUIRED", reason: "نوع الوردية غير موجود.", reasonEn: "That shift type is missing." };
   }
   if (next && employee?.id) {
-    const restGate = checkNightRestApplyGate({ schedule, employee, dateKey, shift: next });
+    const restGate = checkNightRestApplyGate({ schedule, employee, dateKey, shift: next, laborCalendar });
     if (!restGate.ok) return restGate;
   }
   if (next && performsNightWork(next, dateKey)) {
@@ -1302,13 +1870,15 @@ export function checkShiftChangeApplyGate({ schedule, employee, dateKey, shiftTy
     const stay = checkWorkplaceStayDutyGate({ shift: next, onDate: dateKey, employee });
     if (!stay.ok) return stay;
   }
-  if (next && isOfficialHoliday(dateKey, laborCalendar)) {
-    return {
-      ok: false,
-      error: "OFFICIAL_HOLIDAY",
-      reason: "لا تُسند وردية في عطلة رسمية بأجر كامل — المادة 112.",
-      reasonEn: "A shift is not assigned on a paid official holiday — Article 112.",
-    };
+  if (next && employee) {
+    const juvenile = checkJuvenileRosterGate({
+      employee,
+      shift: next,
+      onDate: dateKey,
+      company: null,
+      laborCalendar,
+    });
+    if (!juvenile.ok) return juvenile;
   }
   if (next && isRamadanDay(dateKey, laborCalendar) && isRamadanHoursSubject(employee) && ramadanUsesDailySixCap(next, dateKey, employee)) {
     const hrs = actualShiftHours(next, dateKey, employee);
@@ -1324,6 +1894,59 @@ export function checkShiftChangeApplyGate({ schedule, employee, dateKey, shiftTy
   }
   void employees;
   return { ok: true };
+}
+
+/** Art. 162–164 roster gate — under-15 ban + juvenile hours/night/rest (same engine as punch). */
+export function checkJuvenileRosterGate({
+  employee,
+  shift,
+  onDate,
+  company,
+  laborCalendar,
+} = {}) {
+  const years = ageYearsOn(employee, onDate);
+  const minAge = ruleValue("hours.juvenile.minAgeYears", onDate) || 15;
+  if (years != null && years < minAge) {
+    const cite = citeRule("hours.juvenile.minAgeYears", onDate);
+    return {
+      ok: false,
+      error: "JUVENILE_UNDER_AGE",
+      reason: `موقوف — المادة 162: لا تشغيل دون ${minAge} من العمر.`,
+      reasonEn: `Blocked — Article 162: no employment under ${minAge} years of age.`,
+      cite,
+      articleKey: "162",
+    };
+  }
+  if (!shift || !isJuvenile(employee, onDate)) return { ok: true, skipped: true };
+  const restMin = shift.restMinutes == null
+    ? (ruleValue("hours.rest.duringShiftMinutes", onDate) || 30)
+    : Number(shift.restMinutes) || 0;
+  const presence = shiftHours(shift);
+  const actual = actualShiftHours(shift, onDate, employee);
+  const restH = restMin / 60;
+  // One mid-shift rest ≥½h splits the day; otherwise the whole presence is one stretch.
+  const consecutiveHours = restMin >= 30
+    ? Math.round(((presence - restH) / 2) * 10) / 10
+    : presence;
+  const nightHours = nightMinutesInWindow(shift.start, shift.end, onDate) / 60;
+  const gate = checkJuvenileHoursGate({
+    employee,
+    onDate,
+    hours: actual,
+    presenceHours: presence,
+    consecutiveHours,
+    nightHours,
+    restDay: isWeeklyRestDay(onDate, company, onDate),
+    holiday: isOfficialHoliday(onDate, laborCalendar),
+    onAnnualLeave: isOnApprovedLeave(employee, onDate),
+    company,
+    laborCalendar,
+  });
+  if (!gate.ok) {
+    const articleKey = gate.error === "JUVENILE_NIGHT_BAN" ? "163" : "164";
+    return { ...gate, articleKey };
+  }
+  return gate;
 }
 
 function articleChip(ruleId, onDate, fallbackAr) {
@@ -1391,7 +2014,6 @@ export function checkWeekPublishGates({
   const exceptionDay = ruleValue("hours.ot.exceptionDayHours", onDate);
   const exceptionWeek = ruleValue("hours.ot.exceptionWeekHours", onDate);
   const workplaceMax = ruleValue("hours.workplace.maxHours", onDate);
-  const gapHours = ruleValue("hours.rest.betweenShiftsHours", onDate);
   const nightRest = ruleValue("hours.night.restHours", onDate);
   const rotateWeeks = ruleValue("hours.night.rotateWeeks", onDate);
   const restMinutesNeed = ruleValue("hours.rest.duringShiftMinutes", onDate);
@@ -1403,17 +2025,30 @@ export function checkWeekPublishGates({
   const perDayOver10 = [];
   const perDayOver12 = [];
   const noBreak = [];
-  const gapUnder11 = [];
   const nightNoRest = [];
   const noWeeklyRest = [];
   const leaveClash = [];
+  const holidayGhostClash = [];
+  const holidayLeaveNames = [];
   const ramadanOverDay = [];
   const ramadanOverWeek = [];
   const holidayWork = [];
   const eidRestDue = [];
+  const juvenileAgeBad = [];
+  const juvenileNightBad = [];
+  const juvenileHoursBad = [];
   let leaveDays = 0;
+  let approvedLeaveDays = 0;
+  let officialHolidayLeaveDays = 0;
   let assigned = 0;
   let totalHours = 0;
+
+  const pushHolidayName = (dateKey) => {
+    const hit = officialHolidayOn(dateKey, laborCalendar);
+    if (!hit) return;
+    const label = officialHolidayLeaveLabel(hit.id, ar, laborCalendar);
+    if (label && !holidayLeaveNames.includes(label)) holidayLeaveNames.push(label);
+  };
 
   for (const employee of roster) {
     let hours = 0;
@@ -1422,14 +2057,27 @@ export function checkWeekPublishGates({
     const keys = days.map((day) => day.key);
     keys.forEach((key, index) => {
       const day = days[index];
-      const onLeave = isOnApprovedLeave(employee, key);
+      const onLeave = isRosterLeaveDay(employee, key, laborCalendar);
       const shift = employeeShiftOnDay(schedule, employee.id, key);
       if (onLeave) {
         leaveDays += 1;
         restDays += 1;
+        const approved = isOnApprovedLeave(employee, key);
+        const holiday = isOfficialHoliday(key, laborCalendar);
+        if (approved) approvedLeaveDays += 1;
+        else if (holiday) {
+          officialHolidayLeaveDays += 1;
+          pushHolidayName(key);
+        }
         if (shift) {
           const label = `${employee.name} (${day.day} ${MONTHS_AR[day.month]} — ${shift.label || shift.id})`;
-          if (!leaveClash.includes(label)) leaveClash.push(label);
+          // Art. 112 leftover under locked holiday ≠ approved طلباتي leave.
+          if (holiday && !approved) {
+            pushHolidayName(key);
+            if (!holidayGhostClash.includes(label)) holidayGhostClash.push(label);
+          } else if (!leaveClash.includes(label)) {
+            leaveClash.push(label);
+          }
         }
         return;
       }
@@ -1441,6 +2089,7 @@ export function checkWeekPublishGates({
       const spanHrs = shiftHours(shift);
       const hrs = actualShiftHours(shift, key, employee);
       hours += hrs;
+      // Unreachable while official holidays are roster leave — kept as a safety net.
       if (isOfficialHoliday(key, laborCalendar)) {
         const label = `${employee.name} (${day.day} ${MONTHS_AR[day.month]})`;
         if (!holidayWork.includes(label)) holidayWork.push(label);
@@ -1457,15 +2106,25 @@ export function checkWeekPublishGates({
       const rest = shift.restMinutes == null ? restMinutesNeed : Number(shift.restMinutes) || 0;
       const consec = checkConsecutiveWorkGate({ start: shift.start, end: shift.end, restMinutes: rest, onDate: key });
       if (!consec.ok && !noBreak.includes(shift.label || shift.id)) noBreak.push(shift.label || shift.id);
-      if (index < 6) {
-        const next = employeeShiftOnDay(schedule, employee.id, keys[index + 1]);
-        if (next) {
-          const gap = restGapHours(shift, next);
-          if (gap < gapHours && !gapUnder11.includes(employee.name)) gapUnder11.push(employee.name);
+      const juvenile = checkJuvenileRosterGate({
+        employee,
+        shift,
+        onDate: key,
+        company,
+        laborCalendar,
+      });
+      if (!juvenile.ok) {
+        const label = employee.name;
+        if (juvenile.error === "JUVENILE_UNDER_AGE") {
+          if (!juvenileAgeBad.includes(label)) juvenileAgeBad.push(label);
+        } else if (juvenile.error === "JUVENILE_NIGHT_BAN") {
+          if (!juvenileNightBad.includes(label)) juvenileNightBad.push(label);
+        } else if (!juvenileHoursBad.includes(label)) {
+          juvenileHoursBad.push(label);
         }
       }
     });
-    if (nightRestPairHits(schedule, employee, weekStart).length && !nightNoRest.includes(employee.name)) {
+    if (nightRestPairHits(schedule, employee, weekStart, laborCalendar).length && !nightNoRest.includes(employee.name)) {
       nightNoRest.push(employee.name);
     }
     totalHours += hours;
@@ -1477,30 +2136,22 @@ export function checkWeekPublishGates({
     if (eidRestDays.length) {
       const otherRest = days.filter((day) => {
         if (isEidHoliday(day.key, laborCalendar)) return false;
-        if (isOnApprovedLeave(employee, day.key)) return true;
+        if (isRosterLeaveDay(employee, day.key, laborCalendar)) return true;
         return !employeeShiftOnDay(schedule, employee.id, day.key);
       });
       if (otherRest.length === 0 && !eidRestDue.includes(employee.name)) eidRestDue.push(employee.name);
     }
   }
 
-  const uncovered = days.filter((day) => {
-    if (day.weekend) return false;
-    return !roster.some((employee) => {
-      if (isOnApprovedLeave(employee, day.key)) return false;
-      return isMorningShift(employeeShiftOnDay(schedule, employee.id, day.key));
-    });
-  });
-
   const nightsThisWeek = roster.filter((employee) =>
     days.some((day) => {
-      if (isOnApprovedLeave(employee, day.key)) return false;
+      if (isRosterLeaveDay(employee, day.key, laborCalendar)) return false;
       return isNightWorker(employeeShiftOnDay(schedule, employee.id, day.key), day.key);
     }),
   );
   const performersThisWeek = roster.filter((employee) =>
     days.some((day) => {
-      if (isOnApprovedLeave(employee, day.key)) return false;
+      if (isRosterLeaveDay(employee, day.key, laborCalendar)) return false;
       return performsNightWork(employeeShiftOnDay(schedule, employee.id, day.key), day.key);
     }),
   );
@@ -1514,7 +2165,7 @@ export function checkWeekPublishGates({
 
   const nightNoRemedy = nightsThisWeek.filter((employee) =>
     days.some((day) => {
-      if (isOnApprovedLeave(employee, day.key)) return false;
+      if (isRosterLeaveDay(employee, day.key, laborCalendar)) return false;
       const shift = employeeShiftOnDay(schedule, employee.id, day.key);
       if (!isNightWorker(shift, day.key)) return false;
       return !checkNightCompensateOrReduceGate({
@@ -1531,7 +2182,7 @@ export function checkWeekPublishGates({
 
   const nightPerformerNoComp = performersThisWeek.filter((employee) =>
     days.some((day) => {
-      if (isOnApprovedLeave(employee, day.key)) return false;
+      if (isRosterLeaveDay(employee, day.key, laborCalendar)) return false;
       const shift = employeeShiftOnDay(schedule, employee.id, day.key);
       if (!performsNightWork(shift, day.key)) return false;
       return !checkNightPerformerCompensationGate({
@@ -1552,7 +2203,7 @@ export function checkWeekPublishGates({
   const nightPayFlag = [];
   for (const employee of roster) {
     for (const day of days) {
-      if (isOnApprovedLeave(employee, day.key)) continue;
+      if (isRosterLeaveDay(employee, day.key, laborCalendar)) continue;
       const shift = employeeShiftOnDay(schedule, employee.id, day.key);
       if (!shift) continue;
       const preg = checkNightPregnancyBan({ employee, shift, onDate: day.key });
@@ -1602,7 +2253,7 @@ export function checkWeekPublishGates({
   if (heatSeason) {
     for (const employee of roster) {
       for (const day of days) {
-        if (!isLiveHeatBanDay(day.key, todayKey) || isOnApprovedLeave(employee, day.key)) continue;
+        if (!isLiveHeatBanDay(day.key, todayKey) || isRosterLeaveDay(employee, day.key, laborCalendar)) continue;
         const shift = employeeShiftOnDay(schedule, employee.id, day.key);
         if (!shift) continue;
         const shiftName = shift.label || shift.id;
@@ -1625,6 +2276,10 @@ export function checkWeekPublishGates({
   const nightWorkerHours = ruleValue("hours.night.workerHours", onDate);
 
   const names = (list) => list.join(ar ? "، " : ", ");
+  const holidayNamesPhrase = holidayLeaveNames.length
+    ? names(holidayLeaveNames)
+    : (ar ? "إجازة اليوم الوطني أو يوم التأسيس أو العيد" : "National Day, Founding Day, or Eid leave");
+
   const gateDefs = [
     {
       id: "hours_48",
@@ -1655,16 +2310,6 @@ export function checkWeekPublishGates({
       note: perDayOver12.length
         ? (ar ? `${names(perDayOver12)} — وردية تتجاوز ${workplaceMax} ساعة بقاء في الموقع.` : `${names(perDayOver12)} — a shift stays longer than ${workplaceMax}h.`)
         : (ar ? `أطول وردية في الجدول ضمن ${workplaceMax} ساعة.` : `Longest shift stays within ${workplaceMax} hours.`),
-    },
-    {
-      id: "gap_11",
-      ok: gapUnder11.length === 0,
-      block: false,
-      ...articleChip("hours.rest.betweenShiftsHours", onDate),
-      title: ar ? `فاصل تشغيلي ${gapHours} ساعة بين ورديتين` : `Operational ${gapHours}-hour gap between shifts`,
-      note: gapUnder11.length
-        ? (ar ? `${names(gapUnder11)} — الفاصل بين ورديتين متتاليتين أقل من ${gapHours} ساعة. سياسة تشغيلية، ليست المادة 101.` : `${names(gapUnder11)} — gap under ${gapHours} hours. Operational, not Art. 101.`)
-        : (ar ? `كل انتقال بين يومين متتاليين فيه ${gapHours} ساعة أو أكثر.` : `Every back-to-back pair has at least ${gapHours} hours.`),
     },
     {
       id: "night_rest",
@@ -1816,23 +2461,10 @@ export function checkWeekPublishGates({
         : (ar ? "يراعى قدر الإمكان كبار السن وذوو المسؤوليات العائلية عند الإسناد الليلي — ملاحظة، ليست مانعاً." : "Older workers and those with family responsibilities are considered as far as possible — a note, not a block."),
     },
     {
-      id: "morning_cover",
-      ok: uncovered.length === 0,
-      block: true,
-      article: null,
-      articleEn: null,
-      title: ar ? "تغطية الوردية الصباحية" : "Morning-shift coverage",
-      note: uncovered.length
-        ? (ar
-          ? `${uncovered.length} يوم عمل بلا وردية صباحية: ${uncovered.map((day) => `${day.day} ${MONTHS_AR[day.month]}`).join("، ")}. النقص عبء جدولة، لا يُحتسب غياباً على أحد.`
-          : `${uncovered.length} workdays without a morning shift. A coverage gap is a roster fault, not an absence.`)
-        : (ar ? "كل يوم عمل فيه صباحي واحد على الأقل." : "Every workday has at least one morning shift."),
-    },
-    {
       id: "heat_ban",
       ok: sunClash.length === 0,
       block: false,
-      ...articleChip("hours.heat.startHour", onDate, "قرار الحظر"),
+      ...articleChip("hours.heat.startHour", onDate, "قرار 3337"),
       title: ar ? "لا يُجبر العامل على العمل في نافذة حظر الشمس" : "A worker may not be compelled to work in the sun-ban window",
       note: sunClash.length
         ? `${weekHeatBanWorkerNotice(names(sunBanPeople.length ? sunBanPeople : sunClash), onDate, { ar })} ${ar ? "تنبيه حماية، وليس مانعاً للنشر." : "A protection notice, not a publish block."}`
@@ -1844,7 +2476,7 @@ export function checkWeekPublishGates({
       id: "heat_place",
       ok: sunUnmarked.length === 0,
       block: false,
-      ...articleChip("hours.heat.startHour", onDate, "قرار الحظر"),
+      ...articleChip("hours.heat.startHour", onDate, "قرار 3337"),
       title: ar ? "وسم الميدان المكشوف قبل حظر الشمس" : "Mark open-air before the sun ban",
       note: sunUnmarked.length
         ? `${weekHeatBanWorkerNotice(names(sunUnmarkedPeople.length ? sunUnmarkedPeople : sunUnmarked), onDate, { ar })} ${ar ? "وسم الميدان مكشوفاً أو داخلياً — الحظر لا يُطبَّق على العمل الداخلي." : "Mark the shift open-air or indoor — the ban does not apply to indoor work."}`
@@ -1870,13 +2502,87 @@ export function checkWeekPublishGates({
     },
     {
       id: "official_holiday",
+      // Leftover duty under Art. 112 leave paint does not block publish (cleared on publish).
+      // holidayWork is a safety net for a non-leave holiday duty path that should not occur.
       ok: holidayWork.length === 0,
       block: true,
       ...articleChip("leave.eid.cite", onDate),
-      title: ar ? "لا وردية في عطلة رسمية" : "No shift on an official holiday",
+      title: ar ? "لا وردية في إجازة العيد أو اليوم الوطني أو يوم التأسيس" : "No shift on Eid, National Day, or Founding Day leave",
       note: holidayWork.length
-        ? (ar ? `${names(holidayWork)} — عطلة بأجر كامل (المادة 112).` : `${names(holidayWork)} — a paid official holiday (Article 112).`)
-        : (ar ? "لا تعيين يمسّ عيداً أو يوماً وطنياً أو يوم التأسيس." : "No assignment falls on an Eid, National Day, or Founding Day."),
+        ? (ar
+          ? `${names(holidayWork)} — ${holidayNamesPhrase} بأجر كامل (المادة 112).`
+          : `${names(holidayWork)} — ${holidayNamesPhrase} at full pay (Article 112).`)
+        : holidayGhostClash.length
+          ? (ar
+            ? `${names(holidayGhostClash)} — بقايا تعيين تحت ${holidayNamesPhrase} المقفلة (المادة 112). الخلية إجازة، والبقايا تُمسح عند النشر.`
+            : `${names(holidayGhostClash)} — leftover duty under locked ${holidayNamesPhrase} (Article 112). The cell stays leave; leftovers clear on publish.`)
+          : (ar ? "لا تعيين يمسّ إجازة العيد أو اليوم الوطني أو يوم التأسيس." : "No assignment falls on Eid, National Day, or Founding Day leave."),
+      ghostClash: holidayGhostClash.length > 0,
+    },
+    {
+      id: "juvenile",
+      ok: juvenileAgeBad.length === 0 && juvenileNightBad.length === 0 && juvenileHoursBad.length === 0,
+      block: true,
+      ...articleChip("hours.juvenile.ordinaryHours", onDate),
+      title: ar ? "تشغيل الأحداث ضمن المواد 162–164" : "Juvenile work within Arts. 162–164",
+      note: (() => {
+        const parts = [];
+        if (juvenileAgeBad.length) {
+          parts.push(ar
+            ? `${names(juvenileAgeBad)} — دون سن التشغيل (المادة 162).`
+            : `${names(juvenileAgeBad)} — under the minimum employment age (Art. 162).`);
+        }
+        if (juvenileNightBad.length) {
+          parts.push(ar
+            ? `${names(juvenileNightBad)} — عمل ليلي محظور على الحدث (المادة 163).`
+            : `${names(juvenileNightBad)} — night work banned for a juvenile (Art. 163).`);
+        }
+        if (juvenileHoursBad.length) {
+          parts.push(ar
+            ? `${names(juvenileHoursBad)} — سقف ساعات/بقاء/راحة الحدث (المادة 164).`
+            : `${names(juvenileHoursBad)} — juvenile hours / presence / rest cap (Art. 164).`);
+        }
+        if (parts.length) return parts.join(" ");
+        return ar
+          ? "لا إسناد يخالف مواد الأحداث 162–164 في هذا الأسبوع."
+          : "No assignment breaches juvenile Arts. 162–164 this week.";
+      })(),
+    },
+    {
+      id: "juvenile_hours",
+      ok: juvenileHoursBad.length === 0,
+      block: true,
+      ...articleChip("hours.juvenile.ordinaryHours", onDate),
+      title: ar ? "ساعات الحدث — المادة 164" : "Juvenile hours — Art. 164",
+      note: juvenileHoursBad.length
+        ? (ar
+          ? `${names(juvenileHoursBad)} — تشغيل الحدث فوق 6 ساعات أو 4 متصلة أو 7 بقاء، أو في راحة/عيد/سنوية.`
+          : `${names(juvenileHoursBad)} — juvenile over 6h / 4 consecutive / 7h presence, or on rest/Eid/annual.`)
+        : (ar ? "لا مخالفة لسقف ساعات الحدث في هذا الأسبوع." : "No juvenile hours breach this week."),
+    },
+    {
+      id: "juvenile_night",
+      ok: juvenileNightBad.length === 0,
+      block: true,
+      ...articleChip("hours.juvenile.nightBanHours", onDate),
+      title: ar ? "حظر ليل الحدث — المادة 163" : "Juvenile night ban — Art. 163",
+      note: juvenileNightBad.length
+        ? (ar
+          ? `${names(juvenileNightBad)} — إسناد داخل فترة ليل محظورة على الحدث.`
+          : `${names(juvenileNightBad)} — assignment inside a night period banned for juveniles.`)
+        : (ar ? "لا إسناد ليلي لحدث في هذا الأسبوع." : "No juvenile night assignment this week."),
+    },
+    {
+      id: "juvenile_age",
+      ok: juvenileAgeBad.length === 0,
+      block: true,
+      ...articleChip("hours.juvenile.minAgeYears", onDate),
+      title: ar ? "سن التشغيل الأدنى — المادة 162" : "Minimum employment age — Art. 162",
+      note: juvenileAgeBad.length
+        ? (ar
+          ? `${names(juvenileAgeBad)} — دون الخامسة عشرة.`
+          : `${names(juvenileAgeBad)} — under fifteen years of age.`)
+        : (ar ? "لا تعيين دون سن التشغيل الأدنى في هذا الأسبوع." : "No under-age assignment this week."),
     },
     {
       id: "not_empty",
@@ -1884,6 +2590,8 @@ export function checkWeekPublishGates({
       block: true,
       article: null,
       articleEn: null,
+      ruleId: null,
+      platformCite: true,
       title: ar ? "الجدول غير فارغ" : "Roster is not empty",
       note: assigned > 0
         ? (ar ? `${assigned} تعيين في هذا الأسبوع.` : `${assigned} assignments this week.`)
@@ -1896,12 +2604,42 @@ export function checkWeekPublishGates({
       article: null,
       articleEn: null,
       ruleId: null,
-      title: ar ? "إجازة معتمدة تبقى إجازة" : "Approved leave stays leave",
-      note: leaveDays
-        ? (ar
-          ? `${leaveClash.length ? `${names(leaveClash)} على إجازة معتمدة. ` : ""}${leaveDays} يوم إجازة في الأسبوع — الإجازة تبقى إجازة، والنشر جائز.`
-          : `${leaveClash.length ? `${names(leaveClash)} are on approved leave. ` : ""}${leaveDays} leave day(s) this week — leave stays leave, and publish is allowed.`)
-        : (ar ? "لا إجازات معتمدة في هذا الأسبوع." : "No approved leave this week."),
+      platformCite: true,
+      title: approvedLeaveDays && officialHolidayLeaveDays
+        ? (ar ? `إجازة معتمدة و${holidayNamesPhrase} تبقيان إجازة` : `Approved leave and ${holidayNamesPhrase} stay leave`)
+        : officialHolidayLeaveDays && !approvedLeaveDays
+          ? (ar ? `${holidayNamesPhrase} تبقى إجازة` : `${holidayNamesPhrase} stays leave`)
+          : (ar ? "إجازة معتمدة تبقى إجازة" : "Approved leave stays leave"),
+      note: (() => {
+        if (!leaveDays) {
+          return ar
+            ? "لا إجازات معتمدة ولا إجازة اليوم الوطني أو يوم التأسيس أو العيد في هذا الأسبوع."
+            : "No approved leave or National Day / Founding Day / Eid leave this week.";
+        }
+        const parts = [];
+        if (ar) {
+          if (leaveClash.length) parts.push(`${names(leaveClash)} على إجازة معتمدة.`);
+          if (holidayGhostClash.length) {
+            parts.push(`${names(holidayGhostClash)} — بقايا تعيين تحت ${holidayNamesPhrase} (المادة 112)، ليست من طلباتي.`);
+          }
+          if (approvedLeaveDays) parts.push(`${approvedLeaveDays} يوم إجازة معتمدة من طلباتي.`);
+          if (officialHolidayLeaveDays) {
+            parts.push(`${officialHolidayLeaveDays} يوم ${holidayNamesPhrase} (المادة 112) — مقفلة بلا طلب.`);
+          }
+          parts.push("الإجازة تبقى إجازة، والنشر جائز.");
+        } else {
+          if (leaveClash.length) parts.push(`${names(leaveClash)} are on approved leave.`);
+          if (holidayGhostClash.length) {
+            parts.push(`${names(holidayGhostClash)} — leftover assignment under ${holidayNamesPhrase} (Article 112), not My Requests leave.`);
+          }
+          if (approvedLeaveDays) parts.push(`${approvedLeaveDays} approved leave day(s) from My Requests.`);
+          if (officialHolidayLeaveDays) {
+            parts.push(`${officialHolidayLeaveDays} day(s) of ${holidayNamesPhrase} (Article 112) — locked without a request.`);
+          }
+          parts.push("Leave stays leave, and publish is allowed.");
+        }
+        return parts.join(" ");
+      })(),
     },
   ];
 
@@ -1918,13 +2656,12 @@ export function checkWeekPublishGates({
   for (const employee of roster) {
     const keys = days.map((day) => day.key);
     keys.forEach((key, index) => {
-      const onLeave = isOnApprovedLeave(employee, key);
+      const onLeave = isRosterLeaveDay(employee, key, laborCalendar);
       const shift = employeeShiftOnDay(schedule, employee.id, key);
       if (onLeave) {
         return;
       }
       if (!shift) return;
-      if (isOfficialHoliday(key, laborCalendar)) markCell(employee.id, key, "official_holiday", "block");
       if (eidRestDue.includes(employee.name) && isEidHoliday(key, laborCalendar) && isWeeklyRestDay(key, company, key)) {
         markCell(employee.id, key, "eid_rest_compensate", "warn");
       }
@@ -1939,16 +2676,6 @@ export function checkWeekPublishGates({
       const rest = shift.restMinutes == null ? restMinutesNeed : Number(shift.restMinutes) || 0;
       if (!checkConsecutiveWorkGate({ start: shift.start, end: shift.end, restMinutes: rest, onDate: key }).ok) {
         markCell(employee.id, key, "rest_5h", "block");
-      }
-      if (index < 6) {
-        const next = employeeShiftOnDay(schedule, employee.id, keys[index + 1]);
-        if (next) {
-          const gap = restGapHours(shift, next);
-          if (gap < gapHours) {
-            markCell(employee.id, key, "gap_11", "warn");
-            markCell(employee.id, keys[index + 1], "gap_11", "warn");
-          }
-        }
       }
       if (overCap.includes(employee.name)) markCell(employee.id, key, "hours_48", "block");
       if (over60.includes(employee.name)) markCell(employee.id, key, "hours_106", "block");
@@ -1965,6 +2692,22 @@ export function checkWeekPublishGates({
         else if (medical.unmet) markCell(employee.id, key, "night_medical", "warn");
       }
       if (facilityGaps.length && performsNightWork(shift, key)) markCell(employee.id, key, "night_facilities", "block");
+      {
+        const juvenile = checkJuvenileRosterGate({
+          employee,
+          shift,
+          onDate: key,
+          company,
+          laborCalendar,
+        });
+        if (!juvenile.ok) {
+          const gateId = juvenile.error === "JUVENILE_UNDER_AGE"
+            ? "juvenile_age"
+            : (juvenile.error === "JUVENILE_NIGHT_BAN" ? "juvenile_night" : "juvenile_hours");
+          markCell(employee.id, key, gateId, "block");
+          markCell(employee.id, key, "juvenile", "block");
+        }
+      }
       if (isLiveHeatBanDay(key, todayKey)) {
         const shiftName = shift.label || shift.id;
         if (sunClash.includes(shiftName)) {
@@ -1983,7 +2726,7 @@ export function checkWeekPublishGates({
         }
       }
     });
-    for (const pair of nightRestPairHits(schedule, employee, weekStart)) {
+    for (const pair of nightRestPairHits(schedule, employee, weekStart, laborCalendar)) {
       if (keys.includes(pair.fromKey)) markCell(employee.id, pair.fromKey, "night_rest", "block");
       if (keys.includes(pair.toKey)) markCell(employee.id, pair.toKey, "night_rest", "block");
     }
@@ -1998,7 +2741,6 @@ export function checkWeekPublishGates({
     blocked: blockers.length > 0,
     assigned,
     totalHours: Math.round(totalHours),
-    uncovered,
     overCap,
     nightsThisWeek,
     performersThisWeek,
@@ -2008,7 +2750,11 @@ export function checkWeekPublishGates({
     rotate,
     rotateBlocking,
     leaveDays,
+    approvedLeaveDays,
+    officialHolidayLeaveDays,
+    holidayLeaveNames,
     leaveClash,
+    holidayGhostClash,
     cellMarks,
   };
 }
@@ -2018,7 +2764,6 @@ export const WEEK_CELL_ALERT_IDS = new Set([
   "hours_48",
   "hours_106",
   "workplace",
-  "gap_11",
   "night_rest",
   "rest_5h",
   "weekly_rest",
@@ -2033,6 +2778,10 @@ export const WEEK_CELL_ALERT_IDS = new Set([
   "ramadan",
   "official_holiday",
   "eid_rest_compensate",
+  "juvenile",
+  "juvenile_hours",
+  "juvenile_night",
+  "juvenile_age",
 ]);
 
 /** Named worker-protection notice — Decision 3337 / Arts. 122+243. Roster alert only, never a publish block. */
@@ -2085,16 +2834,21 @@ export function weekCellAlert(gates, employeeId, dateKey) {
 
 export function weekCellAlertTone(alert) {
   if (!alert?.level) return null;
+  const block = alert.level === "block";
   return {
-    color: alert.level === "block" ? SW.abs : SW.gold,
     level: alert.level,
+    color: block ? SW.abs : SW.gold,
+    fill: block ? "var(--nv-bad-fill)" : "var(--nv-warn-fill)",
+    soft: block ? "var(--nv-bad-soft)" : "var(--nv-warn-soft)",
+    ink: block ? "var(--nv-bad-ink)" : "var(--nv-warn-ink)",
+    line: block ? "var(--nv-bad-line)" : "var(--nv-warn-line)",
   };
 }
 
 /**
  * Week-check ids that light «تنبيهات الإدارة» when unmet.
  * Same derivation as «فحص ما قبل النشر» — selector only.
- * Coverage / empty roster / info-leave / consideration notes stay out.
+ * Empty roster / info-leave / consideration notes stay out.
  */
 export const WEEK_DUTY_STRIP_IDS = new Set([
   ...WEEK_CELL_ALERT_IDS,
@@ -2102,7 +2856,10 @@ export const WEEK_DUTY_STRIP_IDS = new Set([
 ]);
 
 /** Product-only week checks — no Labour Law article and no ministerial decision. */
-export const WEEK_POLICY_ONLY_IDS = new Set(["gap_11"]);
+export const WEEK_POLICY_ONLY_IDS = new Set([
+  "not_empty",
+  "leave_excluded",
+]);
 
 /** Decision 18632 publish blocks — never warn-only. Night stays judged at publish. */
 export const MINISTRY_NIGHT_PUBLISH_BLOCK_IDS = [
@@ -2154,7 +2911,6 @@ const WEEK_DUTY_STRIP_SKIP_IDS = new Set([
   "leave_excluded",
   "night_consideration",
   "night_medical",
-  "morning_cover",
   "not_empty",
 ]);
 
@@ -2272,7 +3028,7 @@ export function presentDutyStrip(pack, {
 }
 
 /** Station publish blocks — named once on the rail, never as a person circular. */
-export const WEEK_STATION_STRIP_IDS = new Set(["morning_cover", "not_empty"]);
+export const WEEK_STATION_STRIP_IDS = new Set(["not_empty"]);
 
 export function weekStationDutyNotes(gates) {
   return (gates?.checks || [])
@@ -2513,7 +3269,6 @@ export const EMPLOYEE_FILE_HOUR_CHECK_IDS = [
   "hours_48",
   "hours_106",
   "workplace",
-  "gap_11",
   "night_rest",
   "rest_5h",
   "weekly_rest",
@@ -2530,6 +3285,10 @@ export const EMPLOYEE_FILE_HOUR_CHECK_IDS = [
   "ramadan",
   "official_holiday",
   "leave_excluded",
+  "juvenile",
+  "juvenile_hours",
+  "juvenile_night",
+  "juvenile_age",
 ];
 
 /** 18632 worker cards — only when THIS person is ≥3h in 23:00–06:00 (or a pending night consent). */
@@ -2724,6 +3483,7 @@ export function buildHistory({
   mode = "emp",
   today = new Date(),
   ar = true,
+  laborCalendar,
 }) {
   const from = parseDateKey(fromKey);
   const to = parseDateKey(toKey);
@@ -2752,7 +3512,7 @@ export function buildHistory({
     const tally = {};
     let hours = 0;
     const cells = published.map((day) => {
-      const leave = leaveOnDayView(employee, day.key, ar);
+      const leave = leaveOnDayView(employee, day.key, ar, laborCalendar);
       if (leave) {
         tally.leave = (tally.leave || 0) + 1;
         return {
@@ -2771,12 +3531,13 @@ export function buildHistory({
         hours += shiftHours(shift);
       }
       const style = shiftTypeStyle(shift, types.findIndex((row) => row.id === shift?.id));
+      const paint = shift ? style : REST_STYLE;
       return {
         mark: shiftHistMark(shift, { ar }),
         night: !!(shift && isNightShift(shift, day.key)),
-        bg: shift ? style.bg : "#fafbfc",
-        border: shift ? style.color : "#eef0f4",
-        color: shift ? style.fg : "#6b7280",
+        bg: paint.bg,
+        border: paint.color,
+        color: paint.fg,
         tip: `${day.day} ${MONTHS_AR[day.month]} — ${shift ? shift.label : (ar ? "راحة" : "Rest")}`,
       };
     });

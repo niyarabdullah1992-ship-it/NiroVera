@@ -8,10 +8,10 @@ import { taskBelongsTo, taskIsProven } from "./hcmDerivations.js";
 export const MIN_PROOF = 5;
 
 export const PERF_DRIVERS = [
-  { id: "done", w: Math.round(PERF_WEIGHTS.pts * 100), color: "#14213d", nameAr: "الإنجاز", nameEn: "Done", srcAr: "المهام المثبتة المعتمدة من إثبات العمل، نسبةً إلى المسنَدة", srcEn: "Approved proven tasks from work proof, as a share of those assigned" },
-  { id: "time", w: Math.round(PERF_WEIGHTS.ontime * 100), color: "#1d9a5b", nameAr: "الموعد", nameEn: "On time", srcAr: "ما أُغلق قبل موعده أو فيه، والتأخير بعذر مسجّل لا يُخصم", srcEn: "Closed on or before the due date; excused delay is not deducted" },
-  { id: "safe", w: Math.round(PERF_WEIGHTS.hse * 100), color: "#8a6516", nameAr: "السلامة", nameEn: "Safety", srcAr: "بلاغات السلامة المغلقة مقابل المخالفات المسجّلة", srcEn: "Closed safety reports versus recorded breaches" },
-  { id: "cover", w: Math.round(PERF_WEIGHTS.cover * 100), color: "#6b7280", nameAr: "التغطية", nameEn: "Coverage", srcAr: "الحضور المطابق للجدول المنشور، والإجازة المعتمدة لا تخفضها", srcEn: "Attendance matching the published roster; approved leave does not lower it" },
+  { id: "done", w: Math.round(PERF_WEIGHTS.pts * 100), color: "var(--nv-ink)", nameAr: "الإنجاز", nameEn: "Done", srcAr: "المهام المثبتة المعتمدة من إثبات العمل، نسبةً إلى المسنَدة", srcEn: "Approved proven tasks from work proof, as a share of those assigned" },
+  { id: "time", w: Math.round(PERF_WEIGHTS.ontime * 100), color: "var(--nv-ok-fill)", nameAr: "الموعد", nameEn: "On time", srcAr: "ما أُغلق قبل موعده أو فيه، والتأخير بعذر مسجّل لا يُخصم", srcEn: "Closed on or before the due date; excused delay is not deducted" },
+  { id: "safe", w: Math.round(PERF_WEIGHTS.hse * 100), color: "var(--nv-warn-fill)", nameAr: "السلامة", nameEn: "Safety", srcAr: "بلاغات السلامة المغلقة مقابل المخالفات المسجّلة", srcEn: "Closed safety reports versus recorded breaches" },
+  { id: "cover", w: Math.round(PERF_WEIGHTS.cover * 100), color: "var(--nv-ink3)", nameAr: "التغطية", nameEn: "Coverage", srcAr: "الحضور المطابق للجدول المنشور، والإجازة المعتمدة لا تخفضها", srcEn: "Attendance matching the published roster; approved leave does not lower it" },
 ];
 
 export const TEAM_IDS = ["supervision", "field", "customers"];

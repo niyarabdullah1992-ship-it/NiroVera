@@ -322,6 +322,43 @@ const scoped = deriveDisciplineLawBoard({ ar: true, today: "2026-09-12", filter:
 assert.ok(scoped.rows.every((row) => row.kind === "scope"));
 assert.equal(archive.rows.find((row) => row.id === "a3")?.href, "/app/employees/e1?tab=growth");
 
+const smart = disciplineArchiveSmartItems(archive.rows, { ar: true });
+assert.equal(smart.length, archive.rows.length);
+assert.equal(smart[0].id, archive.rows[0].id);
+assert.ok(smart[0].title);
+assert.ok(smart[0].date);
+assert.ok(smart[0].search.includes(archive.rows[0].title.split(" — ")[0]));
+
+const mineOnly = collectDisciplineArchive({
+  ar: true,
+  today: "2026-09-12",
+  employees,
+  stations,
+  selfOnly: true,
+  userId: "e1",
+  cases: [
+    { id: "a1", employeeId: "e1", status: "notify", note: "تأخير", penalty: "حسم يوم", cutDays: 1, signedAt: "2026-09-08" },
+    { id: "b1", employeeId: "e2", status: "notify", note: "آخر", penalty: "إنذار", signedAt: "2026-09-08" },
+  ],
+});
+assert.equal(mineOnly.rows.length, 1);
+assert.equal(mineOnly.rows[0].id, "a1");
+assert.match(mineOnly.note, /في ملفك/);
+
+const manageScope = collectDisciplineArchive({
+  ar: true,
+  today: "2026-09-12",
+  employees,
+  stations,
+  selfOnly: false,
+  cases: [
+    { id: "a1", employeeId: "e1", status: "notify", note: "تأخير", penalty: "حسم يوم", cutDays: 1, signedAt: "2026-09-08" },
+    { id: "open", employeeId: "e1", status: "hearing", note: "مفتوح", penalty: "إنذار" },
+  ],
+});
+assert.equal(manageScope.rows.length, 1, "manage archive is settled-only");
+assert.ok(!manageScope.rows.some((row) => row.id === "open"));
+
 assert.equal(checkWorkplaceDisciplineGate({ offSite: true }, { today: "2026-09-12" }).error, "DISCIPLINE_OFFSITE_UNRELATED");
 assert.equal(checkWorkplaceDisciplineGate({ offSite: true, workConnected: "إساءة لمدير الفرع خارج المحطة" }, { today: "2026-09-12" }).ok, true);
 assert.equal(checkRaiseDisciplineGate({

@@ -1,21 +1,44 @@
 import React from "react";
 import { CheckCircle2, Clock3 } from "lucide-react";
+import { ownerPaper } from "@/components/owner/ownerUi";
 
-const styles = {
-  completed: "border-primary/20 bg-primary/5 text-primary",
-  current: "border-accent/45 bg-accent/15 text-accent-foreground",
-  future: "border-border bg-muted text-muted-foreground",
-};
+function toneState(tone) {
+  if (tone === "completed") return "ok";
+  if (tone === "current") return "warn";
+  return "mute";
+}
 
 export default function RoadmapPhase({ data }) {
   return (
-    <article className="rounded-xl border border-border bg-card p-5 shadow-soft">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div><p className="text-xs font-semibold uppercase tracking-widest text-accent">{data.phase}</p><h3 className="mt-1 font-heading text-2xl font-semibold text-card-foreground">{data.title}</h3></div>
-        <span className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${styles[data.tone]}`}><Clock3 className="h-3.5 w-3.5" />{data.period}</span>
+    <article style={{ ...ownerPaper(toneState(data.tone)), padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "var(--nv-muted)" }}>{data.phase}</p>
+          <h3 className="nv-h" style={{ margin: "4px 0 0", fontSize: 18, fontWeight: 700, color: "var(--nv-ink)" }}>{data.title}</h3>
+        </div>
+        <span style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 11,
+          fontWeight: 600,
+          padding: "4px 10px",
+          borderRadius: 999,
+          border: "1px solid var(--nv-line)",
+          background: "var(--nv-soft)",
+          color: "var(--nv-ink2)",
+        }}>
+          <Clock3 className="h-3.5 w-3.5" />
+          {data.period}
+        </span>
       </div>
-      <div className="mt-5 space-y-3">
-        {data.items.map((item) => <div key={item} className="flex items-start gap-2.5 text-sm leading-6 text-foreground/70"><CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-accent" /><span>{item}</span></div>)}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {data.items.map((item) => (
+          <div key={item} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, lineHeight: 1.65, color: "var(--nv-ink2)" }}>
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" style={{ color: "var(--nv-accent)" }} />
+            <span>{item}</span>
+          </div>
+        ))}
       </div>
     </article>
   );

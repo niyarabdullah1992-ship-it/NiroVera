@@ -1,15 +1,15 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { collectRequestFiles } from "@/lib/requestWorkspace";
-import { CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, NAVY, NAVY_FILL } from "@/lib/platformStyles";
 
 function chip(on) {
   return {
     fontFamily: "inherit",
     fontSize: 11,
     padding: "7px 12px",
-    border: `1px solid ${on ? "#14213d" : "#dfe3ea"}`,
-    background: on ? "#14213d" : "#fff",
+    border: `1px solid ${on ? NAVY_FILL : BORDER}`,
+    background: on ? NAVY_FILL : CARD,
     color: on ? "#fff" : MUTED,
     fontWeight: on ? 700 : 400,
     cursor: "pointer",
@@ -24,11 +24,11 @@ export default function RequestFilesBoard({ employees, ar }) {
   const issued = all.filter((row) => row.side === "out").length;
 
   return (
-    <section style={{ background: CARD, border: "1px solid #dfe3ea", overflow: "hidden" }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid #eef0f4", display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-          <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "ملفات طلباتي" : "My request files"}</span>
-          <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.8 }}>
+    <section style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, boxShadow: "var(--nv-paper)", overflow: "hidden" }}>
+      <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
+          <span className="nv-req-title" style={{ fontSize: 14 }}>{ar ? "ملفات طلباتي" : "My request files"}</span>
+          <span style={{ fontSize: 11, color: MUTED }}>
             {ar
               ? `${all.length} · ${attached} أرفقتها · ${issued} صدرت لك`
               : `${all.length} · ${attached} attached · ${issued} issued`}
@@ -40,43 +40,45 @@ export default function RequestFilesBoard({ employees, ar }) {
           ))}
         </span>
       </div>
-      {rows.length ? (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.7fr) max-content minmax(0,1.5fr) auto", gap: 12, padding: "10px 20px", fontSize: 11, color: MUTED, background: SURFACE, borderBottom: "1px solid #eef0f4", alignItems: "center" }}>
-          <span>{ar ? "الملف" : "File"}</span>
-          <span>{ar ? "نوعه" : "Kind"}</span>
-          <span>{ar ? "مرجعه" : "Reference"}</span>
-          <span />
-        </div>
-      ) : null}
       {rows.length === 0 ? (
         <div style={{ padding: "18px 20px", fontSize: 11, color: MUTED, lineHeight: 1.9 }}>
           {all.length === 0
             ? (ar ? "لا ملفات بعد. ما ترفعه مع طلب وما يصدر لك من وثائق يظهر هنا ببصمته أو برقم تحققه — لا مجلّد مرفوعات عام." : "No files yet. What you attach and what the company issues appear here by fingerprint or verify id — not a general uploads folder.")
             : (ar ? "لا ملف في هذا الترشيح." : "Nothing in this filter.")}
         </div>
-      ) : rows.map((row) => (
-        <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1.7fr) max-content minmax(0,1.5fr) auto", gap: 12, padding: "12px 20px", borderBottom: "1px solid #f7f8fa", alignItems: "center" }}>
-          <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-            <span style={{ fontSize: 12, fontWeight: 700 }}>{row.name}</span>
-            <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.7 }}>{row.meta}</span>
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", fontSize: 10, fontWeight: 600, color: row.side === "out" ? "#137a49" : "#8a6516", background: row.side === "out" ? "#f2faf6" : "#fdf6e8", border: `1px solid ${row.side === "out" ? "#bfe6d2" : "#ecd9a8"}`, padding: "2px 8px", alignSelf: "center", justifySelf: "start", whiteSpace: "nowrap", lineHeight: 1.4, width: "max-content", height: "fit-content" }}>
-            {ar ? row.kindAr : row.kindEn}
-          </span>
-          <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-            <span style={{ fontSize: 10, color: MUTED }}>{row.refTag}</span>
-            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: MUTED, wordBreak: "break-all" }}>{row.ref}</span>
-          </span>
-          <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {row.downloadUrl ? (
-              <a href={row.downloadUrl} download={row.name} style={{ fontSize: 11, fontWeight: 600, color: NAVY, textDecoration: "none" }}>
-                {ar ? "نزّل" : "Download"}
-              </a>
-            ) : null}
-            <Link to={row.href || "/verify"} style={{ fontSize: 11, fontWeight: 600, color: "#137a49", textDecoration: "none" }}>{ar ? "تحقّق ←" : "Verify ←"}</Link>
-          </span>
+      ) : (
+        <div style={{ overflow: "auto" }}>
+          <div style={{ minWidth: 560, display: "grid", gridTemplateColumns: "minmax(0,1.7fr) 90px minmax(0,1.3fr) 80px", gap: 12, padding: "9px 18px", background: "var(--nv-mute-soft, #F5F6F8)", borderBottom: "1px solid var(--nv-line3)", fontSize: 10.5, color: MUTED, fontWeight: 600, alignItems: "center" }}>
+            <span>{ar ? "الملف" : "File"}</span>
+            <span>{ar ? "نوعه" : "Kind"}</span>
+            <span>{ar ? "مرجعه" : "Reference"}</span>
+            <span />
+          </div>
+          {rows.map((row) => (
+            <div key={row.id} style={{ minWidth: 560, display: "grid", gridTemplateColumns: "minmax(0,1.7fr) 90px minmax(0,1.3fr) 80px", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--nv-line3, #F5F6F8)", alignItems: "center", fontSize: 12 }}>
+              <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                <strong dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, textAlign: "end", unicodeBidi: "isolate" }}>{row.name}</strong>
+                <span style={{ fontSize: 10.5, color: MUTED }}>{row.meta}</span>
+              </span>
+              <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 9px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap", width: "fit-content", color: row.side === "out" ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)", background: row.side === "out" ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)", border: `1px solid ${row.side === "out" ? "var(--nv-ok-line)" : "var(--nv-warn-line)"}` }}>
+                {ar ? row.kindAr : row.kindEn}
+              </span>
+              <span style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ fontSize: 10, color: MUTED }}>{row.refTag}</span>
+                <span dir="ltr" style={{ font: "500 11px 'IBM Plex Mono', monospace", textAlign: "end", unicodeBidi: "isolate" }}>{row.ref}</span>
+              </span>
+              <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {row.downloadUrl ? (
+                  <a href={row.downloadUrl} download={row.name} style={{ fontSize: 11, fontWeight: 600, color: NAVY, textDecoration: "none" }}>
+                    {ar ? "نزّل" : "Download"}
+                  </a>
+                ) : null}
+                <Link to={row.href || "/verify"} style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)", textDecoration: "none" }}>{ar ? "تحقّق ←" : "Verify ←"}</Link>
+              </span>
+            </div>
+          ))}
         </div>
-      ))}
+      )}
       <div style={{ padding: "13px 20px", fontSize: 11, color: MUTED, lineHeight: 1.95 }}>
         {ar
           ? "كل ملف هنا تابع لطلب. المستند الذي أرفقته تُحسب بصمته، والوثيقة التي أصدرتها الشركة تحمل رقم تحقق مربوطاً بها في صفحة التحقق."

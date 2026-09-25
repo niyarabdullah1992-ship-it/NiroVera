@@ -1,17 +1,20 @@
 import React from "react";
+import Nv7SectionHead, { nv7Tab } from "@/components/shared/Nv7SectionHead";
 
 const NASKH = "'Noto Naskh Arabic', 'Amiri', serif";
 const MONO = "'IBM Plex Mono', monospace";
 
-export const PERF_LINE = "#dfe3ea";
-export const PERF_SOFT = "#eef0f4";
-export const PERF_NAVY = "#14213d";
-export const PERF_INK = "#14213d";
-export const PERF_MUTED = "#6b7280";
-export const PERF_BODY = "#4b5567";
-export const PERF_GREEN = "#137a49";
-export const PERF_SURFACE = "#fafbfc";
-export const PERF_WHITE = "#fff";
+/** Theme tokens — navy fill stays dark so light labels stay readable. */
+export const PERF_LINE = "var(--nv-line)";
+export const PERF_SOFT = "var(--nv-line3)";
+export const PERF_NAVY = "var(--nv-navy)";
+export const PERF_INK = "var(--nv-ink)";
+export const PERF_MUTED = "var(--nv-muted)";
+export const PERF_BODY = "var(--nv-ink2)";
+export const PERF_GREEN = "var(--nv-ok-ink)";
+export const PERF_SURFACE = "var(--nv-soft)";
+export const PERF_WHITE = "var(--nv-card)";
+const PERF_ON = "var(--nv-btn-ink)";
 
 export function perfTab(on) {
   return {
@@ -21,7 +24,7 @@ export function perfTab(on) {
     padding: "9px 16px",
     border: `1px solid ${on ? PERF_NAVY : PERF_LINE}`,
     background: on ? PERF_NAVY : PERF_WHITE,
-    color: on ? "#fff" : PERF_BODY,
+    color: on ? PERF_ON : PERF_BODY,
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
@@ -38,8 +41,8 @@ export function perfBtn(on = false, fill = false) {
     fontWeight: 600,
     padding: "8px 13px",
     border: fill ? "none" : `1px solid ${on ? PERF_NAVY : PERF_LINE}`,
-    background: fill ? PERF_GREEN : (on ? PERF_NAVY : PERF_WHITE),
-    color: fill || on ? "#fff" : PERF_INK,
+    background: fill ? "var(--nv-ok-fill)" : (on ? PERF_NAVY : PERF_WHITE),
+    color: fill || on ? PERF_ON : PERF_INK,
     cursor: "pointer",
     whiteSpace: "nowrap",
     borderRadius: 10,
@@ -86,75 +89,29 @@ export default function PerformanceSectionFrame({
         fontFamily: "'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif",
       }}
     >
-      <style>{`@media (max-width: 920px) { .nv-perf-head { flex-wrap: wrap; } }`}</style>
-      <section
-        className="nv-perf-head"
-        style={{
-          background: PERF_WHITE,
-          border: `1px solid ${PERF_LINE}`,
-          padding: "18px 22px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 18,
-          flexWrap: "nowrap",
-          boxSizing: "border-box",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-          <KickerLine kicker={kicker} />
-          <h1 style={{ margin: 0, fontFamily: NASKH, fontSize: 24, fontWeight: 600, color: PERF_INK, lineHeight: 1.35 }}>
-            {title}
-          </h1>
-          {hint ? (
-            <p style={{ margin: 0, fontSize: 12, color: PERF_BODY, lineHeight: 1.85, maxWidth: 820 }}>{hint}</p>
-          ) : null}
-        </div>
-        {range}
-      </section>
-
-      {tabs.length ? (
-        <div
-          className="nv-perf-tabs"
-          style={{
-            background: PERF_WHITE,
-            border: `1px solid ${PERF_LINE}`,
-            borderTop: "none",
-            padding: "9px 14px",
-            display: "flex",
-            gap: 5,
-            flexWrap: "wrap",
-            alignItems: "center",
-            boxSizing: "border-box",
-          }}
-        >
-          {tabs.map((item) => {
-            const on = tool === item.value;
-            return (
-              <button key={item.value} type="button" onClick={() => onTool?.(item.value)} style={perfTab(on)}>
-                {item.num ? (
-                  <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, opacity: 0.75 }}>{item.num}</span>
-                ) : null}
-                {item.label}
-                {item.count > 0 ? (
-                  <span
-                    dir="ltr"
-                    style={{
-                      fontFamily: MONO,
-                      fontSize: 11,
-                      background: on ? "#1d9a5b" : "#f5f6f8",
-                      color: on ? "#fff" : PERF_BODY,
-                      padding: "1px 7px",
-                    }}
-                  >
-                    {item.count}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      <Nv7SectionHead
+        kicker={kicker}
+        title={title}
+        hint={hint}
+        meta={range}
+        tabs={tabs.length ? (
+          <div className="nv-perf-tabs" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            {tabs.map((item) => {
+              const on = tool === item.value;
+              return (
+                <button key={item.value} type="button" onClick={() => onTool?.(item.value)} style={nv7Tab(on)}>
+                  {item.label}
+                  {item.count > 0 ? (
+                    <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10.5, background: on ? "#0B3D27" : "rgba(255,255,255,.24)", color: "#fff", padding: "1px 6px", borderRadius: 3 }}>
+                      {item.count}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      />
 
       {children}
     </div>

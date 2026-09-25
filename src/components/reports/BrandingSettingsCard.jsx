@@ -3,6 +3,7 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { updateCompany } from "@/lib/store";
 import { base44 } from "@/api/base44Client";
 import { ChromeBox } from "@/components/shared/IdentityCard";
+import AttachFileButton from "@/components/shared/AttachFileButton";
 import { ACCENT, BORDER, MUTED, NAVY, SURFACE, field, ui } from "@/lib/platformStyles";
 import { brandReportColor, PDF_THEME } from "@/lib/pdfTheme";
 import { canEditPlatformTheme } from "@/lib/platformTheme";
@@ -102,10 +103,13 @@ export default function BrandingSettingsCard({ lang = "ar" }) {
           )}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={{ ...ui, fontSize: 12 }}>
-            {ar ? "رفع الشعار" : "Upload mark"}
-            <input type="file" accept="image/*" disabled={!canEdit || busy} onChange={onFile} style={{ display: "block", marginTop: 6 }} />
-          </label>
+          <AttachFileButton
+            ar={ar}
+            accept="image/*"
+            disabled={!canEdit || busy}
+            label={ar ? "أرفق الشعار" : "Attach the mark"}
+            onPick={(file) => onFile({ target: { files: file ? [file] : [] } })}
+          />
           <label style={{ ...ui, fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
             {ar ? "لون الأعمدة" : "Column color"}
             <input

@@ -115,7 +115,7 @@ export default function StationLocationEditor({ t, station, onSave, onCancel, in
         <button
           type="button"
           onClick={locating ? stopTracking : useMyLocation}
-          className="flex items-center gap-1.5 px-3 py-1.5 border border-[#E2E8F0] bg-[#F7F8FA] text-[#14284B] text-xs font-body hover:bg-white shrink-0"
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--nv-line)] bg-[var(--nv-inset)] text-[var(--nv-ink)] text-xs font-body hover:bg-[var(--nv-card)] shrink-0"
         >
           {locating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LocateFixed className="w-3.5 h-3.5" />}
           {locating ? `${t("locating")}${accuracy != null ? ` ±${accuracy}${t("metersUnit")}` : ""}` : t("useMyLocation")}

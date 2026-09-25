@@ -27,6 +27,21 @@ export function isOpenSigningState(state) {
   return state === "pending" || state === "awaiting_release";
 }
 
+/** Completed, refused, and voided envelopes leave the active desk. */
+export function isArchivedSigningEnvelope(request, now = Date.now()) {
+  return !isOpenSigningState(settledState(request, now).state);
+}
+
+export function splitSigningDesk(requests = [], now = Date.now()) {
+  const active = [];
+  const archive = [];
+  for (const row of requests || []) {
+    if (isArchivedSigningEnvelope(row, now)) archive.push(row);
+    else active.push(row);
+  }
+  return { active, archive };
+}
+
 /** Legacy rows closed before the creator-release gate still count as released. */
 export function isReleased(request) {
   if (!request || isDeletedRequest(request)) return false;
@@ -583,7 +598,7 @@ export function applyCreate(store, payload, actor = {}, { now = new Date().toISO
     verificationId,
     finalHash: null,
     status: "pending",
-    signingMode: "parallel",
+    signingMode: payload.signingMode === "sequential" ? "sequential" : "parallel",
     currentSignerIndex: 0,
     stationId: actor.stationId || payload.stationId || null,
     expiresAt: new Date(Date.parse(now) + 30 * 86400000).toISOString(),

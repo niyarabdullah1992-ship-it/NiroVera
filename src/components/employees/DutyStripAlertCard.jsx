@@ -3,25 +3,29 @@ import { Link } from "react-router-dom";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { citeRule, explainRule } from "@/lib/laborRules";
 import { BORDER, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
+import { DS_RADIUS } from "@/lib/designSystem";
 import { cardAwaitsNightConsent, nightConsentWaitCopy } from "@/lib/shiftWeek";
+import LawGateStatusPill, { LawGateArticleBadge } from "@/components/shared/LawGateStatusPill";
 
 export const DUTY_ALERT_DUE = "var(--nv-bad-fill)";
 export const DUTY_ALERT_BLOCK = "var(--nv-bad-ink)";
 
 const AR = { letterSpacing: 0 };
 
+/** Quiet secondary action — underline, muted, not a primary CTA. */
 export function dutyAlertActionStyle() {
   return {
     fontFamily: "inherit",
-    fontSize: 12,
-    fontWeight: 600,
+    fontSize: 11,
+    fontWeight: 500,
     padding: "2px 0",
     border: "none",
     background: "transparent",
-    color: NAVY,
+    color: MUTED,
     cursor: "pointer",
     textDecoration: "underline",
     textUnderlineOffset: 3,
+    textDecorationColor: "color-mix(in oklab, var(--nv-muted, #6B7280) 55%, transparent)",
     display: "inline-flex",
     alignItems: "center",
     lineHeight: 1.4,
@@ -70,13 +74,18 @@ function dutyRequestsLabel(card, ar) {
   return ar ? "افتح القرار في طلباتي" : "Open the decision in My Requests";
 }
 
-function itemCiteLabel(item, masthead, ar) {
+/** Article code for LawGate badge — not the full «المادة ٩٨» sentence. */
+function itemArticleCode(item, masthead) {
   const own = String(item?.instrument || "").trim();
-  if (own && own !== masthead) return own;
+  if (own && own !== masthead) {
+    const digits = own.match(/\d[\d/.-]*/);
+    if (digits) return digits[0];
+  }
   if (item?.ruleId) {
     const cite = citeRule(item.ruleId);
-    if (cite?.article) return ar ? `المادة ${cite.article}` : `Art. ${cite.article}`;
+    if (cite?.article) return String(cite.article);
   }
+  if (item?.decisionId) return String(item.decisionId);
   return "";
 }
 
@@ -85,10 +94,17 @@ function cardGateIds(card) {
 }
 
 /**
- * Quiet person register inside حكم المنصة — not a second stamped document.
- * Name, derived hours, named reason, one file link. Arabic letter-spacing stays 0.
+ * Quiet person register inside حكم المنصة — soft card, not a second stamped document.
+ * Name + status pill, compact alert rows, quiet secondary links. Arabic letter-spacing stays 0.
  */
-export default function DutyStripAlertCard({ card, ar = true, children, onApplyOrdinary, onNightRemedy }) {
+export default function DutyStripAlertCard({
+  card,
+  ar = true,
+  children,
+  onApplyOrdinary,
+  onNightRemedy,
+  hideJudgment = false,
+}) {
   const [readOpen, setReadOpen] = useState(false);
   const [cutOpen, setCutOpen] = useState(false);
   const [allowOpen, setAllowOpen] = useState(false);
@@ -129,22 +145,30 @@ export default function DutyStripAlertCard({ card, ar = true, children, onApplyO
         gap: 8,
         width: "100%",
         boxSizing: "border-box",
-        padding: "12px 0 2px",
-        border: "none",
-        borderRadius: 0,
+        padding: "11px 12px",
+        border: "1px solid var(--nv-line, #E2E8F0)",
+        borderRadius: DS_RADIUS,
         boxShadow: "none",
-        background: "transparent",
+        background: "var(--nv-card, #fff)",
         color: NAVY,
         ...AR,
       }}
     >
       {showName ? (
-        <strong data-duty-name="1" style={{ fontSize: 15, fontWeight: 700, color: NAVY, lineHeight: 1.4, ...AR }}>
-          {personName}
-        </strong>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <strong data-duty-name="1" style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.4, ...AR }}>
+            {personName}
+          </strong>
+          <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} />
+        </div>
       ) : card.subject ? (
-        <span style={{ fontSize: 13, fontWeight: 600, color: NAVY, lineHeight: 1.45, ...AR }}>{card.subject}</span>
-      ) : null}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: NAVY, lineHeight: 1.45, ...AR }}>{card.subject}</span>
+          <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} />
+        </div>
+      ) : (
+        <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} />
+      )}
 
       {items.length ? (
         <ul
@@ -155,25 +179,43 @@ export default function DutyStripAlertCard({ card, ar = true, children, onApplyO
             listStyle: "none",
             display: "flex",
             flexDirection: "column",
-            gap: 6,
+            gap: 4,
           }}
         >
           {items.map((item) => {
-            const citeLabel = itemCiteLabel(item, masthead, ar);
+            const article = itemArticleCode(item, masthead);
             return (
               <li
                 key={item.id}
                 data-gate={item.gateId || undefined}
-                style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}
+                dir={ar ? "rtl" : "ltr"}
+                style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  minWidth: 0,
+                  padding: "6px 8px",
+                  borderRadius: 10,
+                  background: "var(--nv-inset, var(--nv-soft, #F7F8FA))",
+                  border: "1px solid var(--nv-line, #E2E8F0)",
+                }}
               >
-                <strong style={{ fontSize: 13, fontWeight: 600, color: NAVY, lineHeight: 1.5, ...AR }}>
+                <span
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: "var(--nv-ink2, #334155)",
+                    lineHeight: 1.55,
+                    textAlign: ar ? "right" : "left",
+                    ...AR,
+                  }}
+                >
                   {item.headline || item.title}
-                </strong>
-                {citeLabel ? (
-                  <span style={{ fontSize: 10, fontWeight: 500, color: MUTED, ...AR }}>
-                    {citeLabel}
-                  </span>
-                ) : null}
+                </span>
+                {article ? <LawGateArticleBadge article={article} /> : null}
               </li>
             );
           })}
@@ -189,8 +231,8 @@ export default function DutyStripAlertCard({ card, ar = true, children, onApplyO
         </span>
       )}
 
-      {card.judgment ? (
-        <span data-judgment="1" style={{ fontSize: 12, fontWeight: 400, color: MUTED, lineHeight: 1.6, ...AR }}>
+      {!hideJudgment && card.judgment ? (
+        <span data-judgment="1" style={{ fontSize: 11, fontWeight: 400, color: MUTED, lineHeight: 1.55, ...AR }}>
           {card.judgment}
         </span>
       ) : null}
@@ -206,7 +248,7 @@ export default function DutyStripAlertCard({ card, ar = true, children, onApplyO
       ) : null}
 
       {hasActions ? (
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", paddingTop: 2 }}>
           {hasStatute ? (
             <button
               type="button"

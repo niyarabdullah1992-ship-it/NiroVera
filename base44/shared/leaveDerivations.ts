@@ -4,7 +4,7 @@
  */
 
 import { articleOfficialText } from "./laborArticleTexts.ts";
-import { addLaborDays, citeLeaveType, citeRule, isRamadanHoursSubject, lastRamadanDay, RAMADAN_WINDOWS, ruleAt, ruleValue } from "./laborRules.ts";
+import { addLaborDays, citeLeaveType, citeRule, isRamadanHoursSubject, lastRamadanDay, ownerHolidayBag, RAMADAN_WINDOWS, rulingCivicDate, rulingEidSpan, ruleAt, ruleValue, type LaborCalendar } from "./laborRules.ts";
 import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAVE_TRACK_PAID, type ExamConsentExtras } from "./otherRequestDerivations.ts";
 
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
@@ -26,7 +26,7 @@ export const LEAVE_TYPES = [
   { key: "bereavement", total: ruleValue("leave.bereavement.days"), article: citeLeaveType("bereavement")?.article ?? null, ar: "وفاة زوج/أصل/فرع", en: "Bereavement" },
   { key: "bereavement_sibling", total: ruleValue("leave.bereavement_sibling.days"), article: citeLeaveType("bereavement_sibling")?.article ?? null, ar: "وفاة أخ/أخت", en: "Sibling bereavement" },
   { key: "hajj", total: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article ?? null, ar: "حج", en: "Hajj" },
-  { key: "eid", total: null, article: citeLeaveType("eid")?.article ?? null, ar: "عيد / عطلة رسمية", en: "Eid / official holiday" },
+  { key: "eid", total: null, article: citeLeaveType("eid")?.article ?? null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
   { key: "exam", total: null, article: citeLeaveType("exam")?.article ?? null, ar: "امتحان", en: "Exam", requiresFile: true },
   { key: "emergency", total: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article ?? null, ar: "اضطرارية", en: "Emergency" },
   { key: "unpaid", total: null, article: citeLeaveType("unpaid")?.article ?? null, ar: "بدون راتب", en: "Unpaid" },
@@ -56,6 +56,7 @@ export type LeaveRequestLike = {
   createdAt?: string;
   requestedAt?: string;
   recordedBy?: string;
+  requestedById?: string;
   noOtherEmployerAck?: boolean;
   deferConsentAt?: string;
   decisionSeenAt?: string;
@@ -84,14 +85,18 @@ export type LeaveApproveExtras = {
   onDate?: string;
   today?: string;
   actor?: string;
+  actorId?: string;
+  requestedById?: string;
+  employeeId?: string;
   nextStatus?: string;
   action?: string;
   status?: string;
   recordedBy?: string | boolean;
   employerRecorded?: boolean;
   companyId?: string;
+  laborCalendar?: LaborCalendar | null;
   otherRequests?: ExamConsentExtras["otherRequests"];
-  employee?: ExamConsentExtras["employee"];
+  employee?: ExamConsentExtras["employee"] & { id?: string };
 };
 
 export function addCalendarDays(iso: string | undefined, n: number) {
@@ -505,45 +510,63 @@ function overlapInclusiveDays(a0: string, a1: string, b0: string, b1: string) {
 
 const ARAFAH_DAYS = ["2025-06-05", "2026-05-26", "2027-05-16", "2028-05-04"];
 
-function officialHolidayOnDay(value: string) {
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function officialHolidayOnDay(value: string, calendar?: LaborCalendar | null) {
   const day = dateOnly(value);
   if (!day) return null;
   const year = Number(day.slice(0, 4));
-  const win = RAMADAN_WINDOWS.find((row) => Number(String(row.from).slice(0, 4)) === year);
+  const ownerFitr = rulingEidSpan("fitr", calendar);
+  const ownerAdha = rulingEidSpan("adha", calendar);
   let eid: { id: string; from: string } | null = null;
-  if (win) {
-    const last = lastRamadanDay(win);
-    const from = addLaborDays(last, 1);
-    const days = Number(ruleValue("leave.eid.fitrDays", from) || 4);
-    const to = addLaborDays(from, days - 1);
-    if (from && from <= day && day <= to) eid = { id: "fitr", from };
+  if (ownerFitr && ownerFitr.from <= day && day <= ownerFitr.to) eid = { id: "fitr", from: ownerFitr.from };
+  else if (ownerAdha && ownerAdha.from <= day && day <= ownerAdha.to) eid = { id: "adha", from: ownerAdha.from };
+  if (!eid && !ownerFitr) {
+    const win = RAMADAN_WINDOWS.find((row) => Number(String(row.from).slice(0, 4)) === year)
+      || RAMADAN_WINDOWS.find((row) => Number(String(row.from).slice(0, 4)) === year - 1);
+    if (win) {
+      const last = lastRamadanDay(win, calendar);
+      const from = addLaborDays(last, 1);
+      const days = Number(ruleValue("leave.eid.fitrDays", from) || 4);
+      const to = addLaborDays(from, days - 1);
+      if (from && from <= day && day <= to) eid = { id: "fitr", from };
+    }
   }
-  if (!eid) {
-    const arafah = ARAFAH_DAYS.find((row) => row.startsWith(String(year)));
+  if (!eid && !ownerAdha) {
+    const arafah = ARAFAH_DAYS.find((row) => row.startsWith(String(year)))
+      || ARAFAH_DAYS.find((row) => row.startsWith(String(year - 1)));
     if (arafah) {
       const days = Number(ruleValue("leave.eid.adhaDays", arafah) || 4);
       const to = addLaborDays(arafah, days - 1);
       if (arafah <= day && day <= to) eid = { id: "adha", from: arafah };
     }
   }
+  const national = rulingCivicDate("national", calendar);
+  const founding = rulingCivicDate("founding", calendar);
   const md = day.slice(5);
-  const civic = md === "09-23" ? { id: "national", from: day } : md === "02-22" ? { id: "founding", from: day } : null;
+  const civic = national && md === `${pad2(national.month)}-${pad2(national.day)}`
+    ? { id: "national", from: day }
+    : founding && md === `${pad2(founding.month)}-${pad2(founding.day)}`
+      ? { id: "founding", from: day }
+      : null;
   if (eid && civic) return { ...eid, absorbedCivic: civic.id };
   return eid || civic;
 }
 
-function isOfficialHolidayDay(value?: string) {
-  return !!officialHolidayOnDay(String(value || ""));
+function isOfficialHolidayDay(value?: string, calendar?: LaborCalendar | null) {
+  return !!officialHolidayOnDay(String(value || ""), calendar);
 }
 
-function chargeableSpanExcludingHolidays(startDate?: string, endDate?: string) {
+function chargeableSpanExcludingHolidays(startDate?: string, endDate?: string, calendar?: LaborCalendar | null) {
   const start = dateOnly(startDate);
   const end = dateOnly(endDate);
   if (!start || !end || end < start) return 0;
   let n = 0;
   let cursor: string | null = start;
   while (cursor && cursor <= end) {
-    if (!isOfficialHolidayDay(cursor)) n += 1;
+    if (!isOfficialHolidayDay(cursor, calendar)) n += 1;
     cursor = addLaborDays(cursor, 1);
   }
   return n;
@@ -568,39 +591,69 @@ function liveLeaveRequests(request: LeaveRequestLike | null | undefined, extras:
   });
 }
 
+function officialHolidayKindLabelTs(id: string, calendar?: LaborCalendar | null) {
+  const key = String(id || "").trim().toLowerCase();
+  const row = ownerHolidayBag(calendar)?.[key];
+  const custom = row?.overridden === true ? String(row.nameAr || "").trim().replace(/^إجازة\s+/, "") : "";
+  if (custom) return custom;
+  if (key === "national") return "اليوم الوطني";
+  if (key === "founding") return "يوم التأسيس";
+  if (key === "fitr") return "عيد الفطر";
+  if (key === "adha") return "عيد الأضحى";
+  return "";
+}
+
 export function checkOfficialHolidayLeaveGate(request: LeaveRequestLike | null | undefined, extras: LeaveApproveExtras = {}) {
   if (!isOfficialHolidayLeave(request?.type)) return { ok: true as const };
   const start = dateOnly(request?.startDate);
   const end = dateOnly(request?.endDate);
-  const cite = citeRule("leave.eid.cite", start || extras.onDate);
+  const calendar = extras.laborCalendar;
+  const startHit = start ? officialHolidayOnDay(start, calendar) : null;
+  const cite = citeRule(
+    startHit?.id === "national" ? "leave.nationalDay.days"
+      : startHit?.id === "founding" ? "leave.foundingDay.days"
+        : "leave.eid.cite",
+    start || extras.onDate,
+  ) || citeRule("leave.eid.cite", start || extras.onDate);
+  const named = (id: string) => {
+    const kind = officialHolidayKindLabelTs(id, calendar);
+    return kind ? `إجازة ${kind}` : "العطلة الرسمية";
+  };
   if (!start || !end || end < start) {
     return {
       ok: false as const,
       error: "OFFICIAL_HOLIDAY_DATES",
-      reason: "موقوف — إجازة العيد أو العطلة الرسمية لأيام العطل فقط.",
-      reasonEn: "Blocked — Eid or official-holiday leave is only for official holiday dates.",
+      reason: "موقوف — إجازة العيد لأيامها الثابتة فقط. إجازة اليوم الوطني ويوم التأسيس مقفلتان في الجدول بلا طلب.",
+      reasonEn: "Blocked — Eid leave is only for its fixed dates. National Day and Founding Day leave lock on the roster with no request.",
       cite,
     };
   }
   let span: { id: string; from: string } | null = null;
   let cursor: string | null = start;
   while (cursor && cursor <= end) {
-    const hit = officialHolidayOnDay(cursor);
-    if (!hit) {
-      return {
-        ok: false as const,
-        error: "OFFICIAL_HOLIDAY_DATES",
-        reason: "موقوف — اطلب العيد أو العطلة الرسمية على أيامها فقط (الفطر أو الأضحى أو الوطني أو التأسيس).",
-        reasonEn: "Blocked — request Eid or official-holiday leave only on those holiday dates (Fitr, Adha, National Day, or Founding Day).",
-        cite,
-      };
-    }
+    const hit = officialHolidayOnDay(cursor, calendar);
+      if (!hit) {
+        const national = rulingCivicDate("national", calendar);
+        const founding = rulingCivicDate("founding", calendar);
+        const moved = !!(national?.overridden || founding?.overridden);
+        return {
+          ok: false as const,
+          error: "OFFICIAL_HOLIDAY_DATES",
+          reason: moved
+            ? `موقوف — إجازة ${officialHolidayKindLabelTs("national", calendar)} و${officialHolidayKindLabelTs("founding", calendar)} مقفلتان في الجدول بلا طلب؛ اطلب العيد على أيامه فقط.`
+            : "موقوف — إجازة اليوم الوطني (23 سبتمبر) وإجازة يوم التأسيس (22 فبراير) مقفلتان في الجدول بلا طلب؛ اطلب العيد على أيامه فقط.",
+          reasonEn: moved
+            ? `Blocked — National Day and Founding Day leave lock on the roster with no request; request Eid on its dates only.`
+            : "Blocked — National Day leave (23 September) and Founding Day leave (22 February) lock on the roster with no request; request Eid on its dates only.",
+          cite,
+        };
+      }
     if (!span) span = hit;
     else if (hit.id !== span.id || hit.from !== span.from) {
       return {
         ok: false as const,
         error: "OFFICIAL_HOLIDAY_MIX",
-        reason: "موقوف — اطلب كل عطلة رسمية في طلب مستقل.",
+        reason: `موقوف — اطلب ${named(span.id)} في طلب مستقل عن ${named(hit.id)}.`,
         reasonEn: "Blocked — request each official holiday in its own request.",
         cite,
       };
@@ -626,8 +679,8 @@ export function checkOfficialHolidayOverlapGate(request: LeaveRequestLike | null
   return {
     ok: false as const,
     error: "LEAVE_OVERLAP",
-    reason: "موقوف — المدة تتقاطع مع طلب عيد أو إجازة قائم. اطلب العيد بطلب مستقل خارج السنوية.",
-    reasonEn: "Blocked — these dates overlap an existing Eid or leave request. Request Eid separately, outside annual leave.",
+    reason: "موقوف — المدة تتقاطع مع طلب إجازة قائم. إجازة اليوم الوطني ويوم التأسيس مقفلتان بلا طلب؛ اطلب العيد بطلب مستقل خارج السنوية.",
+    reasonEn: "Blocked — these dates overlap an existing leave request. National Day and Founding Day lock with no request; request Eid separately, outside annual leave.",
     cite,
   };
 }
@@ -860,7 +913,26 @@ export function deriveExamLeaveSettlement(request: LeaveRequestLike | null | und
   };
 }
 
+/**
+ * Leave raise belongs on ملفي — the worker files their own request.
+ * A manager/HR actor id that differs from the subject must not invent leave on the file.
+ */
+export function checkLeaveSelfRaiseGate(request: LeaveRequestLike | null | undefined, extras: LeaveApproveExtras = {}) {
+  const actorId = String(request?.requestedById || extras.requestedById || extras.actorId || "").trim();
+  const subjectId = String(extras.employee?.id || extras.employeeId || request?.employeeId || "").trim();
+  if (!actorId || !subjectId) return { ok: true as const };
+  if (actorId === subjectId) return { ok: true as const };
+  return {
+    ok: false as const,
+    error: "LEAVE_EMPLOYEE_ONLY",
+    reason: "الإجازة تُرفع من ملفي فقط — الموظف يطلب، والإدارة تعتمد أو ترفض.",
+    reasonEn: "Leave is raised from My file only — the worker requests; management approves or refuses.",
+  };
+}
+
 export function checkSubmitLeaveGate(request: LeaveRequestLike | null | undefined, extras: LeaveApproveExtras = {}) {
+  const selfRaise = checkLeaveSelfRaiseGate(request, extras);
+  if (!selfRaise.ok) return selfRaise;
   const gate = checkApproveLeaveGate({ ...(request || {}), status: "pending" }, extras);
   if (!gate.ok) return gate;
   const ack = checkNoOtherEmployerGate(request);
@@ -924,7 +996,7 @@ export function checkApproveLeaveGate(
   if (!gender.ok) return gender;
   const rawDays = Number(request.days) > 0 ? Number(request.days) : computed;
   const days = (type === "annual" || type === "sick")
-    ? chargeableSpanExcludingHolidays(start, end)
+    ? chargeableSpanExcludingHolidays(start, end, extras.laborCalendar)
     : rawDays;
   const onDate = request.startDate || extras.onDate;
   const cite = citeLeaveType(type, onDate);

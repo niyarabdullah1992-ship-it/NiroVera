@@ -30,7 +30,7 @@ export default function LeaveRequestItem({ request, canApprove, profile, request
     <div className="p-4 rounded-xl border border-border bg-card space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-body font-medium">
-          {leaveTypeLabel(request.type, ar)} · {formatDate(request.startDate, lang, { day: "numeric", month: "long", year: "numeric" })} → {formatDate(request.endDate, lang, { day: "numeric", month: "long", year: "numeric" })} ({request.days || 1} {t("days")})
+          {leaveTypeLabel(request.type, ar, undefined, request.startDate)} · {formatDate(request.startDate, lang, { day: "numeric", month: "long", year: "numeric" })} → {formatDate(request.endDate, lang, { day: "numeric", month: "long", year: "numeric" })} ({request.days || 1} {t("days")})
         </p>
         <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-body ${tone}`}>
           <StatusIcon className="w-3 h-3" /> {t(request.status)}

@@ -116,16 +116,18 @@ assert.equal(omarGlow, "due", "عمر ناصر — 13 dated night-worker weeks g
 assert.equal(isNightDueEmployee(omar, data, WEEK), true);
 
 const omarChip = statutoryChipStyle("entitlement", { glow: omarGlow });
-assert.match(String(omarChip["--nv-stat-glow"]), /nv-danger|#DC2626/, "Omar due chip is red");
-assert.match(String(omarChip.color), /nv-danger|#DC2626/);
-assert.match(String(omarChip.background), /nv-danger|#DC2626/);
+assert.equal(omarChip["--nv-stat-glow"], "transparent", "Omar due cite has no outer glow");
+assert.match(String(omarChip.color), /nv-warn|#8A6516/, "Omar due chip is warn — not منع red");
+assert.match(String(omarChip.background), /nv-warn|#FDF6E8/);
+assert.doesNotMatch(String(omarChip.background), /nv-danger|#DC2626|nv-bad/);
 
 const niyarGlow = statutoryGlowState({ kind: "18632", employee: niyar, schedule, weekStart: WEEK });
 assert.equal(niyarGlow, "off", "نيار stays morning — 18632 not due on his file");
 assert.equal(isNightDueEmployee(niyar, data, WEEK), false);
 const niyarChip = statutoryChipStyle("entitlement", { glow: niyarGlow });
-assert.doesNotMatch(String(niyarChip["--nv-stat-glow"]), /nv-danger|#DC2626/, "Niyar 18632 chip is not red");
-assert.match(String(niyarChip.background), /nv-accent|#1E9E63/, "Niyar quiet 18632 stays green");
+assert.equal(niyarChip["--nv-stat-glow"], "transparent", "Niyar 18632 chip has no glow");
+assert.match(String(niyarChip.background), /nv-soft|#F7F8FA/, "Niyar quiet 18632 is soft navy");
+assert.doesNotMatch(String(niyarChip.background), /nv-danger|#DC2626|nv-accent|#1E9E63/);
 
 const niyarHours = employeeFileHoursView({
   employee: niyar,

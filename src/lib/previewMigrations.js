@@ -16,6 +16,61 @@ export function migratePreviewCompanyHeadWorkplace(data) {
 }
 
 /**
+ * Preview voice / branch review: نيار عبدالله is مدير الفرع on فرع الخفجي
+ * (stations[].managerId). Older seeds had أحمد السالم there.
+ */
+export function migratePreviewVoiceBranchManager(data) {
+  if (!data || data.previewVoiceBranchManagerNiyar) return false;
+  const stations = Array.isArray(data.stations) ? data.stations : [];
+  const people = Array.isArray(data.employees) ? data.employees : [];
+  const north = stations.find((row) => row.id === "st_north_preview")
+    || stations.find((row) => String(row.name || "").includes("الخفجي"));
+  const owner = people.find((row) => row.id === "emp_owner_preview")
+    || people.find((row) => row.id === data.ownerId)
+    || people.find((row) => row.role === "director");
+  const ahmed = people.find((row) => row.id === "emp_manager_preview")
+    || people.find((row) => row.name === "أحمد السالم");
+  if (!north?.id || !owner?.id) {
+    data.previewVoiceBranchManagerNiyar = true;
+    return false;
+  }
+  let changed = false;
+  if (String(north.managerId || "") !== String(owner.id)) {
+    north.managerId = owner.id;
+    changed = true;
+  }
+  const northId = String(north.id);
+  const owned = new Set((owner.managedStations || []).map(String));
+  if (!owned.has(northId)) {
+    owner.managedStations = [...owned, northId];
+    changed = true;
+  }
+  if (ahmed && String(ahmed.id) !== String(owner.id)) {
+    const nextManaged = (ahmed.managedStations || []).map(String).filter((id) => id !== northId);
+    if (nextManaged.length !== (ahmed.managedStations || []).length) {
+      ahmed.managedStations = nextManaged;
+      changed = true;
+    }
+    if (ahmed.role === "station_manager" && !nextManaged.length) {
+      ahmed.role = "employee";
+      changed = true;
+    }
+  }
+  const orgMgr = (data.orgTree || []).find((row) => row.id === "org_mgr");
+  if (orgMgr && orgMgr.title === "مدير الفرع" && String(orgMgr.refId) !== String(owner.id)) {
+    orgMgr.title = "مشرف تشغيل";
+    changed = true;
+  }
+  const seat = (data.orgSeats || []).find((row) => row.id === "seat_vac_tech");
+  if (seat && String(seat.approverId || "") === String(ahmed?.id || "")) {
+    seat.approverId = owner.id;
+    changed = true;
+  }
+  data.previewVoiceBranchManagerNiyar = true;
+  return changed;
+}
+
+/**
  * Preview fixtures authored as open-air work, seeded before `mode` had a place
  * for it. Only these known demo ids are corrected — a store's own tasks keep
  * whatever their supervisor stated, since nobody can tell after the fact where

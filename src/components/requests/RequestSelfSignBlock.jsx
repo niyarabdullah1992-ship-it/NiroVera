@@ -1,20 +1,10 @@
 import React, { useRef } from "react";
 import ConsentFileLink from "@/components/requests/ConsentFileLink";
+import AttachFileButton from "@/components/shared/AttachFileButton";
 import { CONSENT_MINISTRY_HINT_AR, CONSENT_MINISTRY_HINT_EN } from "@/lib/writtenConsent";
-import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED } from "@/lib/platformStyles";
 
 const OK = "#137a49";
-
-const fileBox = (ready) => ({
-  fontFamily: "inherit",
-  fontSize: 11,
-  padding: "8px 9px",
-  border: `1px dashed ${ready ? "#bfe6d2" : BORDER}`,
-  background: ready ? "#f2faf6" : CARD,
-  color: NAVY,
-  width: "100%",
-  boxSizing: "border-box",
-});
 
 function FileMeta({ file, ar, linkLabel, onClear, busy, idle }) {
   if (file?.name) {
@@ -71,12 +61,13 @@ export default function RequestSelfSignBlock({
       <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         <span style={{ fontSize: 11, color: MUTED }}>{fileLabel || (ar ? "أرفق الملف" : "Attach the file")}</span>
         {showSourceInput ? (
-          <input
+          <AttachFileButton
             ref={fileInputRef}
-            type="file"
+            ar={ar}
             accept={accept}
-            onChange={(e) => onPickFile?.(e.target.files?.[0])}
-            style={fileBox(false)}
+            busy={fileBusy}
+            label={fileLabel || (ar ? "أرفق الملف" : "Attach the file")}
+            onPick={onPickFile}
           />
         ) : null}
         <FileMeta
@@ -97,12 +88,13 @@ export default function RequestSelfSignBlock({
         <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <span style={{ fontSize: 11, color: MUTED }}>{paperLabel || (ar ? "ارفع النسخة الموقّعة" : "Upload the signed copy")}</span>
           {showPaperInput ? (
-            <input
+            <AttachFileButton
               ref={paperRef}
-              type="file"
+              ar={ar}
               accept={accept}
-              onChange={(e) => onPickPaper?.(e.target.files?.[0])}
-              style={fileBox(false)}
+              busy={paperBusy}
+              label={paperLabel || (ar ? "أرفق النسخة الموقّعة" : "Attach the signed copy")}
+              onPick={onPickPaper}
             />
           ) : null}
           <FileMeta

@@ -29,7 +29,8 @@ function employeeFileStatus(employee, ar) {
   return { label: ar ? "نشط" : "Active", kind: "ok" };
 }
 import { eosGratuity } from "./offboardingDerivations.js";
-import { citeRule, ruleValue } from "./laborRules.js";
+import { citeRule, laborDayKey, ruleValue } from "./laborRules.js";
+import { officialHolidayList } from "./ummAlQuraCalendar.js";
 import { effectiveCutDays, effectivePenalty, faceOf, fmtDisciplineDate, isErasedFromEmployeeRecord, penaltyShiftLabel } from "./disciplineBoard.js";
 
 export function countAr(n, one, two, few, many, zero) {
@@ -308,7 +309,22 @@ export function employeeCustodyRows(assets = [], employeeId, ar = true) {
     });
 }
 
-export function leaveCatalogFor(profile, ar = true) {
+function art112Rows(ar, calendar, onDate) {
+  return officialHolidayList(onDate || laborDayKey(new Date()), calendar).map((row) => {
+    const leaveName = ar ? row.ar : row.en;
+    return {
+      name: leaveName,
+      art: "112",
+      ent: ar ? row.noteAr : row.noteEn,
+      wage: ar ? "بأجر كامل — لا تُخصم من السنوية" : "Full pay — not taken from annual",
+      cond: ar
+        ? `${leaveName} — مقفلة في الجدول (${row.from}) بلا طلب من طلباتي · المادة 112`
+        : `${leaveName} — locked on the roster (${row.from}), not a My Requests leave · Art. 112`,
+    };
+  });
+}
+
+export function leaveCatalogFor(profile, ar = true, calendar, onDate) {
   const gender = profileGender(profile);
   const female = gender === "female";
   const male = gender === "male";
@@ -333,7 +349,7 @@ export function leaveCatalogFor(profile, ar = true) {
         ...(male ? [{ name: leaveTypeLabel("paternity", ar), art: "113", ent: ar ? "3 أيام" : "3 days", wage: ar ? "بأجر كامل" : "Full pay", cond: ar ? "شهادة الميلاد" : "Birth certificate" }] : []),
         ...(muslim ? [{ name: ar ? "حج" : "Hajj", art: "114", ent: ar ? "10 إلى 15 يوماً — مرة في الخدمة" : "10 to 15 days — once in service", wage: ar ? "بأجر كامل" : "Full pay", cond: ar ? "سنتان خدمة متصلة، ولم يؤدِّه قبلاً" : "Two continuous years, and Hajj not performed before" }] : []),
         { name: ar ? "امتحان" : "Exam", art: "115", ent: ar ? "أيام الامتحان الفعلية" : "The actual exam days", wage: ar ? "بأجر كامل — وبغير أجر إن كان معاداً" : "Full pay — unpaid if a repeat", cond: ar ? "طلب قبل 15 يوماً أو ورقة مواعيد متأخرة في يوم صدورها. إثبات أداء بعد الامتحان. صاحب العمل لا يرفض المستوفي" : "Request 15 days ahead or a late timetable paper that day. Sitting proof after the exam. Employer cannot refuse a qualifying file" },
-        { name: ar ? "أعياد وعطل رسمية" : "Eids and official holidays", art: "112", ent: ar ? "الفطر 4 · الأضحى 4 · الوطني 1 · التأسيس 1" : "Fitr 4 · Adha 4 · National 1 · Founding 1", wage: ar ? "بأجر كامل — لا تُخصم من السنوية" : "Full pay — not taken from annual", cond: ar ? "بطلب على أيام العطلة" : "Requested on the holiday dates" },
+        ...art112Rows(ar, calendar, onDate),
       ],
     },
     {
@@ -410,6 +426,7 @@ export function buildEmployeeFileView({
   canEditFile = false,
   manageRequests = false,
   isSelf = false,
+  laborCalendar,
 } = {}) {
   const day = today || localDateKey();
   const profile = employee?.profile || {};
@@ -536,7 +553,7 @@ export function buildEmployeeFileView({
   const filed = leaveOnFile(employee?.leaveRequests)
     .sort((a, b) => String(b.reviewedAt || b.updatedAt || b.createdAt || "").localeCompare(String(a.reviewedAt || a.updatedAt || a.createdAt || "")))
     .map((row) => ({
-      type: leaveTypeLabel(row.type, ar),
+      type: leaveTypeLabel(row.type, ar, undefined, row.startDate),
       art: citeRule(`leave.${row.type}.days`)?.article || citeRule(`leave.${row.type}.cite`)?.article || "—",
       days: ar ? countAr(Number(row.days) || 0, "يوم واحد", "يومان", "أيام", "يوماً") : `${row.days || 0}d`,
       meta: `${niceFileDate(row.startDate, ar)} → ${niceFileDate(row.endDate, ar)}${row.decidedByName ? ` · ${ar ? "اعتمدها" : "approved by"} ${row.decidedByName}` : ""}`,
@@ -714,7 +731,7 @@ export function buildEmployeeFileView({
   ].map((item) => ({
     ...item,
     v: moneySar(item.val, ar),
-    bg: item.derived ? "#FAFBFC" : "#fff",
+    bg: item.derived ? "var(--nv-soft)" : "var(--nv-card)",
   }));
 
   const platforms = [
@@ -848,7 +865,7 @@ export function buildEmployeeFileView({
     contract,
     eos,
     wageRows,
-    leaveGroups: leaveCatalogFor(profile, ar),
+    leaveGroups: leaveCatalogFor(profile, ar, laborCalendar, day),
     leaveScope: ar ? "أربع مجموعات بحسب سلوك الإجازة لا بحسب اسمها — لأن الرصيد والشرط وأثر الأجر يختلف بين المجموعات." : "Grouped by how leave behaves, not by its name — balance, condition, and wage effect differ.",
     balances,
     balanceNote: ar ? "الرصيد مشتق من تاريخ التعيين والإجازات المعتمدة — لا يُكتب يدوياً." : "The balance is derived from hire date and approved leave — it is not typed by hand.",

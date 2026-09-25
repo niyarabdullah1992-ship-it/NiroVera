@@ -27,6 +27,7 @@ import { FileSelfBadge } from "@/components/employees/ProfileHero";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import StatutoryItem from "@/components/labor/StatutoryItem";
 import { showStatutoryHeaderCite, statutoryGlowState } from "@/lib/statutoryItem";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 
 const NASKH = "'Noto Naskh Arabic', 'Amiri', serif";
 
@@ -45,6 +46,7 @@ export default function HoursOnFile({ employee, data, lang = "ar" }) {
   const stationId = employeeWorkStationId(employee);
   const stationName = stationDisplayName(findStationById(data?.stations || [], stationId));
   const mineScope = rosterMineScopeCopy({ stationName, ar });
+  const laborCalendar = laborCalendarOf(data);
   const schedule = useMemo(
     () => (data?.schedules || []).find((row) => String(row.stationId) === String(stationId)) || { shiftTypes: [], assignments: {} },
     [data?.schedules, stationId],
@@ -59,9 +61,9 @@ export default function HoursOnFile({ employee, data, lang = "ar" }) {
       station: findStationById(data?.stations || [], stationId),
       settings: data?.settings,
       company: data,
-      laborCalendar: data?.laborCalendar,
+      laborCalendar,
     }),
-    [employee, schedule, weekStart, ar, data, stationId],
+    [employee, schedule, weekStart, ar, data, stationId, laborCalendar],
   );
   const days = useMemo(() => weekDays(weekStart), [weekStart]);
   const roster = useMemo(
@@ -77,7 +79,7 @@ export default function HoursOnFile({ employee, data, lang = "ar" }) {
     : (ar ? "جدول الفرع" : "Branch roster");
   return (
     <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: 16, color: SW.ink, fontSize: 13, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>
-      <section className="nv-paper" style={{ background: "#fff", border: `1px solid ${SW.line}`, padding: "16px 18px", display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+      <section className="nv-paper" style={{ background: SW.card, border: `1px solid ${SW.line}`, padding: "16px 18px", display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
           <span style={{ fontFamily: NASKH, fontSize: 18, fontWeight: 600 }}>{boardTitle}</span>
           <span style={{ fontSize: 12, color: SW.mid, lineHeight: 1.8 }}>
@@ -105,14 +107,14 @@ export default function HoursOnFile({ employee, data, lang = "ar" }) {
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", border: `1px solid ${SW.line}`, borderRadius: 10, overflow: "hidden" }}>
-          <button type="button" onClick={() => setWeekStart(weekStartDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() - 7)))} style={{ fontFamily: "inherit", padding: "9px 12px", border: "none", background: "#fff", color: SW.mid, cursor: "pointer" }}>{ar ? "›" : "‹"}</button>
+          <button type="button" onClick={() => setWeekStart(weekStartDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() - 7)))} style={{ fontFamily: "inherit", padding: "9px 12px", border: "none", background: SW.card, color: SW.mid, cursor: "pointer" }}>{ar ? "›" : "‹"}</button>
           <span style={{ padding: "7px 14px", borderInline: `1px solid ${SW.line}`, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{thisWeek}</span>
-          <button type="button" onClick={() => setWeekStart(weekStartDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 7)))} style={{ fontFamily: "inherit", padding: "9px 12px", border: "none", background: "#fff", color: SW.mid, cursor: "pointer" }}>{ar ? "‹" : "›"}</button>
+          <button type="button" onClick={() => setWeekStart(weekStartDate(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + 7)))} style={{ fontFamily: "inherit", padding: "9px 12px", border: "none", background: SW.card, color: SW.mid, cursor: "pointer" }}>{ar ? "‹" : "›"}</button>
         </div>
       </section>
 
       <div className="nv-ops-cal-board">
-      <section className="nv-paper" style={{ background: "#fff", border: `1px solid ${SW.line}`, display: "flex", flexDirection: "column" }}>
+      <section className="nv-paper" style={{ background: SW.card, border: `1px solid ${SW.line}`, display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "12px 16px", borderBottom: `1px solid ${SW.soft}`, display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, fontWeight: 700 }}>{boardTitle}</span>
           <span style={{ fontSize: 11, color: SW.muted }}>
@@ -148,16 +150,17 @@ export default function HoursOnFile({ employee, data, lang = "ar" }) {
               const hours = employeeWeekHours(schedule, row.id, weekStart, row);
               return (
                 <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(96px,1.1fr) repeat(7,minmax(72px,1fr))", gap: 1, background: SW.soft, borderBottom: `1px solid ${SW.row}`, minWidth: 640 }}>
-                  <span style={{ background: mine ? SW.greenBg : SW.card, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 1, minWidth: 0, borderInlineStart: mine ? `3px solid ${SW.green}` : "3px solid transparent" }}>
+                  <span style={{ background: SW.card, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                     <span
-                      style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                      style={{ fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, maxWidth: "100%", overflow: "visible" }}
                     >
-                      {row.name}{mine && isSelf ? <>{" "}<FileSelfBadge ar={ar} kind="file" /></> : null}
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: "1 1 auto" }}>{row.name}</span>
+                      {mine && isSelf ? <FileSelfBadge ar={ar} kind="file" /> : null}
                     </span>
                     <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: SW.muted }}>{hours} {ar ? "س" : "h"}</span>
                   </span>
                   {days.map((day) => {
-                    const leave = leaveOnDayView(row, day.key, ar);
+                    const leave = leaveOnDayView(row, day.key, ar, laborCalendar);
                     const shift = leave ? null : employeeShiftOnDay(schedule, row.id, day.key);
                     const style = leave ? leave.style : (shift ? shiftTypeStyle(shift, types.findIndex((item) => item.id === shift.id)) : REST_STYLE);
                     return (
@@ -174,8 +177,6 @@ export default function HoursOnFile({ employee, data, lang = "ar" }) {
                           gap: 1,
                           minHeight: 44,
                           justifyContent: "center",
-                          outline: mine ? `1px solid ${SW.greenBd}` : "none",
-                          outlineOffset: -1,
                         }}
                       >
                         <span style={{ fontSize: 11, fontWeight: 600 }}>{leave ? leave.type : (shift ? shift.label : (ar ? "راحة" : "Rest"))}</span>
@@ -215,18 +216,18 @@ export default function HoursOnFile({ employee, data, lang = "ar" }) {
           weekStart={weekStart}
           currentUser={currentUser}
           lang={lang}
-          laborCalendar={data?.laborCalendar}
+          laborCalendar={laborCalendar}
         />
       </div>
 
-      <section className="nv-paper" style={{ background: "#fff", border: `1px solid ${SW.line}`, display: "flex", flexDirection: "column" }}>
+      <section className="nv-paper" style={{ background: SW.card, border: `1px solid ${SW.line}`, display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "14px 18px", borderBottom: `1px solid ${SW.soft}`, display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "فحوصات هذا الملف" : "Checks on this file"}</span>
             <span style={{ fontSize: 12, color: SW.muted, lineHeight: 1.7 }}>
               {ar
-                ? `${pack.hours} ساعة هذا الأسبوع · تغطية الصباح وامتلاء الجدول يبقيان في جدول الدوام.`
-                : `${pack.hours} hours this week · morning coverage and an empty roster stay on the duty board.`}
+                ? `${pack.hours} ساعة هذا الأسبوع · امتلاء الجدول يبقى في جدول الدوام.`
+                : `${pack.hours} hours this week · an empty roster stays on the duty board.`}
             </span>
           </div>
           <span style={{
@@ -259,7 +260,7 @@ export default function HoursOnFile({ employee, data, lang = "ar" }) {
                     employee,
                     schedule,
                     weekStart,
-                    laborCalendar: data?.laborCalendar,
+                    laborCalendar,
                     failing: !check.ok,
                   }) : "off";
                   const showEssay = !!(check.ruleId && showStatutoryHeaderCite(glow, { ok: check.ok, failing: !check.ok }));

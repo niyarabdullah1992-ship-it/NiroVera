@@ -17,9 +17,9 @@ const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "ima
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 const LEVELS = [
-  { key: "green", ar: "آمنة", en: "Safe", accent: "#1E9E63", soft: "#ECFDF3", border: "#BBF7D0", fg: "#15803D" },
-  { key: "amber", ar: "تحت المراقبة", en: "Watch", accent: "#F59E0B", soft: "#FFFBEB", border: "#FDE68A", fg: "#B45309" },
-  { key: "red", ar: "حرجة", en: "Critical", accent: "#DC2626", soft: "#FEF2F2", border: "#FECACA", fg: "#DC2626" },
+  { key: "green", ar: "آمنة", en: "Safe", accent: "var(--nv-ok-fill)", soft: "var(--nv-ok-soft)", border: "var(--nv-ok-line)", fg: "var(--nv-ok-ink)" },
+  { key: "amber", ar: "تحت المراقبة", en: "Watch", accent: "var(--nv-warn-fill)", soft: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", fg: "var(--nv-warn-ink)" },
+  { key: "red", ar: "حرجة", en: "Critical", accent: "var(--nv-bad-fill)", soft: "var(--nv-bad-soft)", border: "var(--nv-bad-line)", fg: "var(--nv-bad-ink)" },
 ];
 
 function hazardLabel(h) {
@@ -40,9 +40,9 @@ function newHazardId() {
 
 const cardShell = {
   borderRadius: 14,
-  border: "1px solid #E2E8F0",
+  border: `1px solid var(--nv-line)`,
   background: CARD,
-  boxShadow: "0 1px 0 #E2E8F0",
+  boxShadow: "var(--nv-paper)",
 };
 
 export default function SafetyOverviewTab({
@@ -209,7 +209,7 @@ export default function SafetyOverviewTab({
               position: "relative",
               borderRadius: 11,
               border: "1px solid #BBF7D0",
-              background: "#ECFDF3",
+              background: "var(--nv-ok-soft)",
               overflow: "hidden",
             }}
           >
@@ -313,7 +313,7 @@ export default function SafetyOverviewTab({
                   height: 22,
                   padding: "0 7px",
                   borderRadius: 20,
-                  background: openHazardCount ? "#FFFBEB" : "#ECFDF3",
+                  background: openHazardCount ? "var(--tint-amber-bg)" : "var(--nv-ok-soft)",
                   color: openHazardCount ? "#B45309" : "#15803D",
                   border: `1px solid ${openHazardCount ? "#FDE68A" : "#BBF7D0"}`,
                   fontSize: 11,
@@ -334,7 +334,7 @@ export default function SafetyOverviewTab({
                   margin: "0 0 10px",
                   padding: "8px 10px",
                   borderRadius: 9,
-                  background: "#FFFBEB",
+                  background: "var(--tint-amber-bg)",
                   border: "1px solid #FDE68A",
                   fontSize: 11,
                   color: "#92400E",
@@ -386,7 +386,7 @@ export default function SafetyOverviewTab({
                           width: 44,
                           height: 44,
                           borderRadius: 9,
-                          background: "#FFFBEB",
+                          background: "var(--tint-amber-bg)",
                           border: "1px solid #FDE68A",
                           color: "#B45309",
                           display: "inline-flex",

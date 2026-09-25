@@ -23,6 +23,8 @@ import {
   checkDeleteOpsTaskGate,
   checkReassignGate,
   checkEndDelegationGate,
+  checkSetMembersGate,
+  applyOpsSetMembers,
   canEmployeeEscalateOpsTask,
   nextOpsEscalation,
   planHorizonFromDue,
@@ -463,6 +465,47 @@ export function reassignLocalOpsTask(companyId, taskId, {
       lang,
     });
   }, { seed: current });
+}
+
+export function setLocalOpsMembers(companyId, taskId, {
+  memberIds = [], reviewer, data, employees = [], lang = "ar", task, reason = "",
+} = {}) {
+  const people = (employees || []).map((e) => ({
+    employeeId: e.employeeId || e.id,
+    id: e.id || e.employeeId,
+    name: e.name,
+    stationId: e.stationId || e.station_id || e.homeStationId || null,
+  }));
+  const current = (getCompanyData(companyId)?.tasks || []).find((t) => String(t.id) === String(taskId))
+    || (task && String(task.id) === String(taskId) ? task : null);
+  const preview = current ? normalizeLocalTask(current) : { status: "active", ownerId: null, assignMode: "one", memberIds: [] };
+  const gate = checkSetMembersGate({
+    task: preview,
+    user: reviewer,
+    data,
+    memberIds,
+    people,
+    lang,
+  });
+  if (!gate.ok) {
+    const err = new Error(gate.reason || gate.error);
+    err.code = gate.error;
+    throw err;
+  }
+  if (gate.unchanged) {
+    return buildLocalOpsBoard({
+      tasks: getCompanyData(companyId)?.tasks || [],
+      scope: "all",
+    });
+  }
+  return mutateLocalOpsTask(companyId, taskId, (t) => applyOpsSetMembers(t, {
+    memberIds: gate.memberIds,
+    byId: reviewer?.id || reviewer?.employeeId || null,
+    byName: reviewer?.name || "",
+    reason,
+    people,
+    lang,
+  }), { seed: current });
 }
 
 export function endLocalOpsDelegation(companyId, taskId, {

@@ -1,6 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
-import SectionBackLink from "@/components/shared/SectionBackLink";
+import {
+  Building2,
+  CalendarDays,
+  CaseSensitive,
+  CircleCheck,
+  IdCard,
+  Loader2,
+  Mail,
+  PenLine,
+  SquareCheck,
+  Stamp,
+  Type,
+  UserRound,
+} from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { getCompanyToken } from "@/lib/store";
 import { MARK_GLYPHS, isMarkField, signPdfFile } from "@/lib/signPdf";
@@ -21,20 +33,56 @@ import { renderStampDataUrl, stampAspect } from "@/lib/stampStudio";
 import { appParams } from "@/lib/app-params";
 import SigningWorkspacePages, { SigningWorkspaceThumbs, useSigningPdf } from "@/components/files/SigningWorkspacePages";
 import SigningFinishDialog from "@/components/files/SigningFinishDialog";
-import SigningStepRail from "@/components/files/SigningStepRail";
-import { signGhostBtn, signMono as mono, signPrimaryBtn } from "@/components/files/signingUi";
-import SignMarkGlyph from "@/components/files/SignMarkGlyph";
-import { BORDER, BRAND, CARD, INK, MUTED, SURFACE } from "@/lib/platformStyles";
+import SigningStudioFrame from "@/components/files/SigningStudioFrame";
+import { envelopeCode, signGhostBtn, signMono as mono, signPrimaryBtn, signingDocTitle } from "@/components/files/signingUi";
+import { BORDER, CARD, INK, MUTED, SURFACE } from "@/lib/platformStyles";
 const SIGNER_COLORS = ["#1d9a5b", "#14213d", "#6b7280", "#8a6516"];
 
 const TOOLS = [
-  { id: "sig", type: "signature", glyph: "SIG", ar: "توقيع", en: "Signature", scale: 100 },
-  { id: "txt", type: "text", glyph: "TXT", ar: "نص حر", en: "Free text", scale: 100 },
-  { id: "date", type: "text", glyph: "DD/MM", ar: "التاريخ", en: "Date", scale: 70 },
+  { id: "sig", type: "signature", glyph: "SIG", ar: "التوقيع", chipAr: "توقيع", en: "Signature", scale: 100 },
+  { id: "init", type: "text", glyph: "IN", ar: "الأحرف الأولى", en: "Initials", scale: 70 },
+  { id: "seal", type: "signature", glyph: "SEAL", ar: "الختم", chipAr: "ختم", en: "Stamp", scale: 100 },
+  { id: "date", type: "text", glyph: "DD/MM", ar: "تاريخ التوقيع", chipAr: "التاريخ", en: "Signing date", chipEn: "Date", scale: 70 },
   { id: "name", type: "text", glyph: "Aa", ar: "الاسم", en: "Name", scale: 100 },
-  { id: "role", type: "text", glyph: "TTL", ar: "الصفة", en: "Capacity", scale: 90 },
-  { id: "check", type: "text", glyph: "✓", ar: "صح أو خطأ", en: "Check or cross", scale: 50 },
+  { id: "email", type: "text", glyph: "MAIL", ar: "البريد الإلكتروني", en: "Email", scale: 110 },
+  { id: "org", type: "text", glyph: "ORG", ar: "الجهة", en: "Organisation", scale: 100 },
+  { id: "role", type: "text", glyph: "TTL", ar: "الصفة", en: "Title", scale: 90 },
+  { id: "txt", type: "text", glyph: "TXT", ar: "نص", en: "Text", scale: 100 },
+  { id: "check", type: "text", glyph: "✓", ar: "مربع اختيار", en: "Checkbox", scale: 50 },
+  { id: "yn", type: "text", glyph: "YN", ar: "صح أو خطأ", en: "Yes or no", scale: 80 },
 ];
+
+const FIELD_GROUPS = [
+  { id: "sign", ar: "التوقيع", en: "Signature", tools: ["sig", "init", "seal", "date"] },
+  { id: "who", ar: "بيانات الموقّع", en: "Signer details", tools: ["name", "email", "org", "role"] },
+  { id: "input", ar: "إدخال", en: "Input", tools: ["txt", "check", "yn"] },
+];
+
+const TOOL_ICONS = {
+  sig: PenLine,
+  init: CaseSensitive,
+  seal: Stamp,
+  date: CalendarDays,
+  name: UserRound,
+  email: Mail,
+  org: Building2,
+  role: IdCard,
+  txt: Type,
+  check: SquareCheck,
+  yn: CircleCheck,
+};
+
+function toolIcon(id) {
+  const Icon = TOOL_ICONS[id] || PenLine;
+  return <Icon aria-hidden="true" strokeWidth={1.75} style={{ width: 16, height: 16 }} />;
+}
+
+function personInitials(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "·";
+  if (parts.length === 1) return parts[0].slice(0, 1);
+  return `${parts[0].slice(0, 1)}.${parts[1].slice(0, 1)}`;
+}
 
 const clampPercent = (value) => Math.min(96, Math.max(4, value));
 // Arabic counts inflect the noun: one, a dual, a small plural (3–10) and a large one.
@@ -58,18 +106,6 @@ const chipBtn = {
   color: INK,
   cursor: "pointer",
   lineHeight: 1.4,
-};
-
-const iconBtn = {
-  fontFamily: "inherit",
-  width: 26,
-  height: 26,
-  borderRadius: 10,
-  border: `1px solid ${BORDER}`,
-  background: CARD,
-  color: INK,
-  cursor: "pointer",
-  lineHeight: 1,
 };
 
 export default function SigningWorkspace({
@@ -111,7 +147,14 @@ export default function SigningWorkspace({
   }, [file, sourceUrl]);
   const [intent, setIntent] = useState(false);
   const [leaveAsk, setLeaveAsk] = useState(false);
-  const consentRef = useRef(null);
+  const [finishAsk, setFinishAsk] = useState(false);
+  const [studioStep, setStudioStep] = useState(1);
+  const [rail, setRail] = useState("");
+  const [orderMode, setOrderMode] = useState("parallel");
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const [openIdentity, setOpenIdentity] = useState(null);
+  const [focusAdd, setFocusAdd] = useState(false);
+  const addRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -135,15 +178,21 @@ export default function SigningWorkspace({
   const group = signers.length > 1;
   const activeTool = TOOLS.find((item) => item.id === tool) || TOOLS[0];
 
-  const employeeOptions = useMemo(() => (employees || [])
-    .filter((employee) => employee?.email)
-    .map((employee) => ({
-      id: employee.id || employee.employeeId,
-      name: employee.name || "",
-      email: String(employee.email).toLowerCase(),
-      role: employee.role || "",
-      stationId: employee.stationId || null,
-    })), [employees]);
+  const roster = useMemo(() => (employees || [])
+    .filter((employee) => employee?.name || employee?.email)
+    .map((employee) => {
+      const profile = employee.profile || {};
+      return {
+        id: employee.id || employee.employeeId,
+        name: employee.name || "",
+        email: String(employee.email || "").toLowerCase(),
+        role: employee.role || "",
+        stationId: employee.stationId || null,
+        title: profile.jobTitle || employee.jobTitle || profile.position || "",
+        code: employee.employeeNo || profile.employeeNo || employee.employeeNumber || profile.employeeNumber || profile.nationalId || employee.nationalId || "",
+      };
+    }), [employees]);
+  const employeeOptions = useMemo(() => roster.filter((employee) => employee.email), [roster]);
 
   useEffect(() => () => { if (receipt?.downloadUrl) URL.revokeObjectURL(receipt.downloadUrl); }, [receipt?.downloadUrl]);
 
@@ -151,6 +200,8 @@ export default function SigningWorkspace({
     const name = currentUser?.profile?.signatureName || currentUser?.name || "";
     if (toolId === "date") return new Date().toLocaleDateString("en-GB");
     if (toolId === "name") return name;
+    if (toolId === "email") return currentUser?.email || "";
+    if (toolId === "init") return String(name).trim().split(/\s+/).filter(Boolean).map((word) => word[0]).slice(0, 2).join(".");
     if (toolId === "check") return mark;
     return "";
   }, [currentUser, mark]);
@@ -170,7 +221,7 @@ export default function SigningWorkspace({
     id: `${item.id}-${Date.now()}-${Math.round(Math.random() * 1e4)}`,
     tool: item.id,
     type: item.type,
-    label: ar ? item.ar : item.en,
+    label: ar ? (item.chipAr || item.ar) : (item.chipEn || item.en),
     page,
     x: clampPercent(x),
     y: clampPercent(y),
@@ -179,11 +230,13 @@ export default function SigningWorkspace({
     required: item.type === "text",
   }), [ar]);
 
-  const placeField = (page, point) => {
-    const field = makeField(activeTool, page, point.x, point.y, signerIndex);
+  const placeField = (page, point, toolId) => {
+    const item = TOOLS.find((entry) => entry.id === toolId) || activeTool;
+    if (toolId) setTool(item.id);
+    const field = makeField(item, page, point.x, point.y, signerIndex);
     setFields((current) => [...current, field]);
-    if (activeTool.type === "text" && signerIndex === 0) {
-      setTextValues((current) => ({ ...current, [field.id]: defaultValueFor(activeTool.id) }));
+    if (item.type === "text" && signerIndex === 0) {
+      setTextValues((current) => ({ ...current, [field.id]: defaultValueFor(item.id) }));
     }
     setActiveFieldId(field.id);
   };
@@ -432,12 +485,6 @@ export default function SigningWorkspace({
     setActivePage(n);
   }, []);
 
-  const scrollToPage = (page) => {
-    const node = stageRef.current?.querySelector(`[data-signing-page="${page}"]`);
-    if (node) node.scrollIntoView({ behavior: "smooth", block: "start" });
-    noteVisiblePage(page);
-  };
-
   const spotsFor = (index) => fields
     .filter((field) => field.signer === index)
     .map((field) => ({
@@ -508,7 +555,7 @@ export default function SigningWorkspace({
       } else {
         registry = "none";
         registryNote = ar
-          ? `تعذّر التسجيل (${reason}) — احتفظ بالبصمة أدناه يدويًا.`
+          ? `تعذّر إيداع البصمة (${reason}) — احتفظ بها أدناه يدويًا.`
           : `Registration failed (${reason}) — keep the fingerprint below yourself.`;
       }
     }
@@ -568,6 +615,7 @@ export default function SigningWorkspace({
       fileName: file.name,
       verificationId,
       signatureTheme: OFFICIAL_STAMP_THEME,
+      signingMode: orderMode === "sequential" ? "sequential" : "parallel",
       signers: signers.map((signer, index) => ({
         name: signer.name.trim(),
         email: signer.email.trim(),
@@ -641,20 +689,19 @@ export default function SigningWorkspace({
 
   const signed = group ? everySignerPlaced : Boolean(signatureUrl && mySignature);
   const consentReady = signed && !missingReason && Boolean(pdf);
-  const proceedBlock = placeBlock
-    || (!group && !intent ? (ar ? "أشّر على الإقرار في الشريط الجانبي أولاً." : "Tick the acknowledgement in the side rail first.") : "");
-  const canConfirm = !proceedBlock;
+  const canSend = !placeBlock;
 
   useEffect(() => {
     if (!consentReady && intent) setIntent(false);
   }, [consentReady, intent]);
 
-  const focusConsent = () => {
-    consentRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  };
-  const refuseAdvance = (reason) => {
-    focusConsent();
-    setError(reason || proceedBlock || (ar ? "لا انتقال إلى التسجيل إلا بعد التوقيع." : "Registry opens only after you sign."));
+  const requestFinish = () => {
+    if (!canSend) {
+      setError(placeBlock || (ar ? "أكمل الحقول على الصفحات أولاً." : "Finish the fields on the pages first."));
+      return;
+    }
+    setError("");
+    setFinishAsk(true);
   };
   const requestLeave = () => {
     if (busy) return;
@@ -664,22 +711,49 @@ export default function SigningWorkspace({
     }
     setLeaveAsk(true);
   };
-  const step = receipt ? 3 : (consentReady ? 2 : 1);
-  const steps = [
-    { number: 1, label: ar ? "الحقول" : "Fields" },
-    { number: 2, label: ar ? "الإقرار" : "Consent", onClick: () => focusConsent() },
-    {
-      number: 3,
-      label: ar ? "التسجيل" : "Registry",
-      onClick: receipt ? undefined : () => refuseAdvance(signed
-        ? proceedBlock
-        : (ar ? "لا انتقال إلى التسجيل إلا بعد التوقيع." : "Registry opens only after you sign.")),
-    },
-  ].map((item) => ({
-    ...item,
-    done: item.number === 3 ? Boolean(receipt) : (receipt || (item.number === 1 && consentReady) || (item.number === 2 && canConfirm)),
-    current: step === item.number,
-  }));
+  const addFromEmployee = (person) => {
+    if (!canGroup || !emailValid(person.email) || signers.length >= MAX_PARALLEL_SIGNERS) return;
+    setSigners((current) => {
+      if (current.some((signer) => signer.email.trim().toLowerCase() === person.email)) return current;
+      return [...current, {
+        key: `emp-${person.id}-${Date.now()}`,
+        name: person.name,
+        email: person.email,
+        contact: person.title || (ar ? "من المنشأة" : "From the company"),
+        color: SIGNER_COLORS[current.length % SIGNER_COLORS.length],
+        external: true,
+        employeeId: person.id,
+        role: person.role,
+        stationId: person.stationId,
+      }];
+    });
+  };
+
+  const downloadSource = () => {
+    const url = sourceUrl || (file ? URL.createObjectURL(file) : "");
+    if (!url) return;
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file?.name || "document.pdf";
+    link.click();
+    if (!sourceUrl && file) URL.revokeObjectURL(url);
+  };
+
+  const printSource = () => {
+    const url = sourceUrl || (file ? URL.createObjectURL(file) : "");
+    if (!url) return;
+    const win = window.open(url, "_blank", "noopener");
+    if (!win) return;
+    const kick = () => { try { win.focus(); win.print(); } catch { /* the browser blocked print */ } };
+    win.addEventListener("load", kick);
+    window.setTimeout(kick, 800);
+  };
+
+  useEffect(() => {
+    if (studioStep !== 1 || !focusAdd) return;
+    addRef.current?.scrollIntoView({ block: "start" });
+    setFocusAdd(false);
+  }, [studioStep, focusAdd]);
 
   const fileMeta = [
     file?.name,
@@ -687,615 +761,436 @@ export default function SigningWorkspace({
     file?.size ? `${Math.round(file.size / 1024)} KB` : null,
   ].filter(Boolean).join(" · ");
 
-  return (
-    <div
-      dir={ar ? "rtl" : "ltr"}
-      className="nv-signing-workspace nv-sign-frame"
-      style={{
-        display: "grid",
-        gridTemplateRows: "56px minmax(0, 1fr)",
-        height: "calc(100dvh - 132px)",
-        minHeight: 520,
-        background: "#fafbfc",
-        border: "1px solid #dfe3ea",
-        borderRadius: 14,
-        boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
-        overflow: "hidden",
-        fontSize: 13,
-        color: "#14213d",
-        width: "min(1320px, 100%)",
-        margin: "0 auto",
-      }}
-    >
-      <header style={{ background: CARD, borderBottom: `1px solid ${BORDER}`, display: "flex", alignItems: "center", gap: 16, padding: "0 16px", minWidth: 0 }}>
-        <SectionBackLink
-          ar={ar}
-          label={ar ? "التوقيع الرقمي" : "Digital signing"}
-          onClick={requestLeave}
-        />
+  const docTitle = signingDocTitle(file?.name) || (ar ? "مستند" : "Document");
+  const envId = envelopeCode(docVerificationId);
+  const pageLabel = pageCount
+    ? (ar ? countAr(pageCount, ["صفحة واحدة", "صفحتان", "صفحات", "صفحة"]) : `${pageCount} page${pageCount > 1 ? "s" : ""}`)
+    : "";
+  const nextLabel = studioStep === 1
+    ? (ar ? "التالي: التوقيع" : "Next: signing")
+    : studioStep === 2
+      ? (ar ? "التالي: حقول" : "Next: fields")
+      : (group ? (ar ? "إرسال للتوقيع" : "Send for signature") : (ar ? "إنهاء التوقيع" : "Finish signing"));
+  const takenEmails = new Set(signers.map((signer) => signer.email.trim().toLowerCase()).filter(Boolean));
+  const takenIds = new Set(signers.map((signer) => signer.employeeId).filter(Boolean).map(String));
+  const availablePeople = roster.filter((person) => {
+    if (person.email && takenEmails.has(person.email)) return false;
+    if (person.id && takenIds.has(String(person.id))) return false;
+    return true;
+  });
+  const peopleNeedle = peopleQuery.trim().toLowerCase();
+  const shownPeople = availablePeople.filter((person) => !peopleNeedle || `${person.name} ${person.title} ${person.code} ${person.email}`.toLowerCase().includes(peopleNeedle));
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
-          <span style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {file?.name?.replace(/\.[^.]+$/, "") || (ar ? "مستند" : "Document")}
-          </span>
-          <span dir="ltr" style={{ ...mono, fontSize: 11, color: MUTED, textAlign: ar ? "right" : "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {fileMeta}
-          </span>
-        </div>
+  const goHeaderNext = () => {
+    if (studioStep === 1) {
+      setStudioStep(2);
+      return;
+    }
+    if (studioStep === 2) {
+      setStudioStep(3);
+      return;
+    }
+    requestFinish();
+  };
 
-        <div style={{ marginInlineStart: "auto" }}>
-          <SigningStepRail className="nv-signing-steps-rail" steps={steps} />
-        </div>
+  const toolButton = (item) => {
+    const on = tool === item.id;
+    return (
+      <button
+        key={item.id}
+        type="button"
+        draggable
+        aria-pressed={on}
+        onDragStart={(event) => {
+          setTool(item.id);
+          event.dataTransfer.setData("application/x-nv-field", item.id);
+          event.dataTransfer.effectAllowed = "copy";
+        }}
+        onClick={() => setTool(item.id)}
+        style={{
+          fontFamily: "inherit",
+          boxSizing: "border-box",
+          width: "100%",
+          height: 40,
+          minWidth: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-start",
+          gap: 6,
+          padding: "0 8px",
+          border: on ? "1px solid #14213D" : `1px solid ${BORDER}`,
+          borderRadius: 10,
+          background: on ? "#14213D" : "#fff",
+          color: on ? "#fff" : MUTED,
+          fontSize: 12,
+          fontWeight: 600,
+          lineHeight: 1.2,
+          cursor: "grab",
+          textAlign: "start",
+        }}
+      >
+        <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none", color: on ? "#fff" : "#14213D" }}>{toolIcon(item.id)}</span>
+        <span style={{ minWidth: 0, whiteSpace: "nowrap" }}>{ar ? item.ar : item.en}</span>
+      </button>
+    );
+  };
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flex: "none" }}>
-          <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
-            {ar
-              ? countAr(fields.length, ["حقل واحد", "حقلان", "حقول", "حقلًا"])
-              : `${fields.length} field${fields.length === 1 ? "" : "s"}`}
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              if (canConfirm) {
-                setError("");
-                confirm();
-              } else {
-                refuseAdvance();
-              }
-            }}
-            disabled={busy}
-            title={proceedBlock || undefined}
-            style={{
-              ...signPrimaryBtn,
-              cursor: !canConfirm || busy ? "not-allowed" : "pointer",
-              opacity: !canConfirm || busy ? 0.45 : 1,
-            }}
-          >
-            {group ? (ar ? "إرسال للتوقيع" : "Send for signature") : (ar ? "إنهاء وتوقيع" : "Finish and sign")}
-          </button>
-        </div>
-      </header>
-
-      <div className="nv-signing-workspace-body" style={{ display: "grid", gridTemplateColumns: "288px minmax(0, 1fr) 120px", minHeight: 0 }}>
-        <aside style={{ background: CARD, borderInlineEnd: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", minHeight: 0, overflow: "auto" }}>
-          <div style={{ padding: "16px 16px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
-            <span style={{ fontWeight: 600 }}>{ar ? "الحقول" : "Fields"}</span>
-            <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-              {ar
-                ? "اختر حقلاً ثم اضغط على الصفحة لوضعه، أو اسحبه لتحريكه. علامة صح أو خطأ تنقلب بضغطة عليها."
-                : "Pick a field, click the page to place it, drag to move it. A tick flips to a cross with one click."}
-            </span>
+  const fieldsPanel = (
+    <>
+      <div style={{ padding: "16px 16px 4px" }}>
+        <strong style={{ fontSize: 15 }}>{ar ? "الحقول" : "Fields"}</strong>
+        <p style={{ margin: "6px 0 0", fontSize: 11.5, color: MUTED, lineHeight: 1.65 }}>
+          {ar
+            ? "توقيع، تاريخ، نص، وغيرها توضع باسم الموقّع المختار أعلاه وبأونه."
+            : "Signature, date, text and the rest land under the signer selected above, in their color."}
+        </p>
+      </div>
+      {FIELD_GROUPS.map((group) => (
+        <section key={group.id} style={{ padding: "8px 10px 2px" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, margin: "0 0 6px" }}>{ar ? group.ar : group.en}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+            {group.tools.map((id) => toolButton(TOOLS.find((item) => item.id === id)))}
           </div>
-
-          <div style={{ padding: "6px 12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {TOOLS.map((item) => {
-              const on = tool === item.id;
-              const tile = {
-                fontFamily: "inherit",
-                fontSize: 12,
-                padding: "10px 8px",
-                borderRadius: 10,
-                border: `1px solid ${on ? "#14213d" : BORDER}`,
-                background: on ? SURFACE : CARD,
-                color: INK,
-                fontWeight: on ? 600 : 400,
-                cursor: "pointer",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 6,
-              };
-              if (item.id === "check") {
-                return (
-                  <div
-                    key={item.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setTool(item.id)}
-                    onKeyDown={(event) => { if (event.key === "Enter") setTool(item.id); }}
-                    style={tile}
-                  >
-                    <span style={{ display: "inline-flex", borderRadius: 4, overflow: "hidden", border: `1.5px solid ${on ? "var(--nv-navy, #14284B)" : MUTED}` }}>
-                      {MARK_GLYPHS.map((glyph, index) => {
-                        const picked = on && mark === glyph;
-                        return (
-                          <button
-                            key={glyph}
-                            type="button"
-                            aria-pressed={picked}
-                            aria-label={glyph === "✓" ? (ar ? "علامة صح" : "Tick") : (ar ? "علامة إلغاء" : "Cross")}
-                            onClick={(event) => { event.stopPropagation(); chooseMark(glyph); }}
-                            style={{
-                              fontFamily: "inherit",
-                              width: 25,
-                              height: 22,
-                              padding: 0,
-                              border: "none",
-                              borderInlineStart: index ? `1.5px solid ${on ? "var(--nv-navy, #14284B)" : MUTED}` : "none",
-                              background: picked ? "var(--nv-navy, #14284B)" : "transparent",
-                              color: picked ? "#fff" : MUTED,
-                              display: "inline-flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <SignMarkGlyph glyph={glyph} size={12} color="currentColor" />
-                          </button>
-                        );
-                      })}
-                    </span>
-                    {ar ? item.ar : item.en}
-                  </div>
-                );
-              }
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setTool(item.id)}
-                  style={tile}
-                >
-                  <span style={{
-                    width: 34,
-                    height: 22,
-                    borderRadius: 4,
-                    border: `1.5px ${on ? "solid" : "dashed"} ${on ? "var(--nv-navy, #14284B)" : MUTED}`,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 10,
-                    ...mono,
-                    color: on ? INK : MUTED,
-                  }}
-                  >
-                    {item.glyph}
-                  </span>
-                  {ar ? item.ar : item.en}
+          {group.id === "input" && tool === "check" ? (
+            <div style={{ display: "flex", gap: 6, padding: "6px 0 0" }}>
+              {MARK_GLYPHS.map((glyph) => (
+                <button key={glyph} type="button" aria-pressed={mark === glyph} onClick={() => chooseMark(glyph)} style={{ fontFamily: "inherit", height: 28, minWidth: 28, borderRadius: 8, border: `1px solid ${mark === glyph ? "#14213D" : BORDER}`, background: mark === glyph ? "#14213D" : "#fff", color: mark === glyph ? "#fff" : INK, cursor: "pointer" }}>
+                  {glyph}
                 </button>
-              );
-            })}
-          </div>
-
-          {selectedField ? (
-            <div style={{ margin: "10px 12px 0", border: `1px solid ${BORDER}`, borderRadius: 10, padding: "10px 11px", display: "flex", flexDirection: "column", gap: 8, background: SURFACE }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                {selectedField.tool === "txt" ? (
-                  // A free field is only useful if it can say what it wants — the
-                  // label is the prompt the other signer reads on the page.
-                  <input
-                    className="nv-signing-field"
-                    value={selectedField.label}
-                    onChange={(event) => patchField(selectedField.id, { label: event.target.value })}
-                    placeholder={ar ? "سمِّ الحقل — مثال: رقم الهوية" : "Name the field — e.g. ID number"}
-                    style={{ flex: 1, minWidth: 0, fontWeight: 600 }}
-                  />
-                ) : (
-                  <span style={{ fontSize: 12, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedField.label}</span>
-                )}
-                <span dir="ltr" style={{ ...mono, fontSize: 10, color: MUTED, flex: "none" }}>P{selectedField.page} · {selectedField.scale}%</span>
-              </div>
-              {selectedField.type === "text" ? (
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: MUTED, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedField.required !== false}
-                    onChange={(event) => patchField(selectedField.id, { required: event.target.checked })}
-                  />
-                  {ar ? "مطلوب قبل الإرسال" : "Required before sending"}
-                </label>
-              ) : null}
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <button type="button" style={chipBtn} onClick={() => duplicateField(selectedField.id)}>
-                  {ar ? "نسخة" : "Duplicate"}
-                </button>
-                {pageCount > 1 ? (
-                  <button type="button" style={chipBtn} onClick={() => repeatOnEveryPage(selectedField.id)}>
-                    {ar ? "على كل الصفحات" : "On every page"}
-                  </button>
-                ) : null}
-                <button type="button" style={chipBtn} onClick={() => removeField(selectedField.id)}>
-                  {ar ? "حذف" : "Delete"}
-                </button>
-              </div>
-              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
-                {ar
-                  ? "الأسهم تحرّك الحقل، Shift خطوة أكبر، Ctrl+D ينسخه، Delete يحذفه."
-                  : "Arrows nudge it, Shift for a bigger step, Ctrl+D copies, Delete removes."}
-              </span>
+              ))}
             </div>
           ) : null}
-
-          <div style={{ padding: "12px 12px 0", display: "flex", flexDirection: "column", gap: 7 }}>
-            <button
-              type="button"
-              onClick={suggestSpots}
-              disabled={!pdf || detecting}
-              style={{ ...chipBtn, fontSize: 12, padding: "7px 10px", opacity: !pdf || detecting ? 0.5 : 1, cursor: !pdf || detecting ? "wait" : "pointer" }}
-            >
-              {detecting
-                ? (ar ? "جارٍ قراءة نص المستند…" : "Reading the document text…")
-                : (ar ? "اقترح مواضع من نص المستند" : "Suggest spots from the document text")}
-            </button>
-
-            {naming ? (
-              <div style={{ display: "flex", gap: 6 }}>
-                <input
-                  autoFocus
-                  className="nv-signing-field"
-                  value={templateName}
-                  onChange={(event) => setTemplateName(event.target.value)}
-                  onKeyDown={(event) => { if (event.key === "Enter") storeTemplate(); if (event.key === "Escape") setNaming(false); }}
-                  placeholder={ar ? "اسم القالب" : "Template name"}
-                  style={{ flex: 1, minWidth: 0, fontFamily: "inherit", fontSize: 12, border: `1px solid ${BORDER}`, borderRadius: 10, background: CARD, padding: "5px 8px", outline: "none", color: INK }}
-                />
-                <button type="button" style={chipBtn} onClick={storeTemplate}>{ar ? "حفظ" : "Save"}</button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setNaming(true)}
-                disabled={!fields.length}
-                style={{ ...chipBtn, fontSize: 12, padding: "7px 10px", opacity: fields.length ? 1 : 0.5 }}
-              >
-                {ar ? "احفظ هذا التوزيع كقالب" : "Save this layout as a template"}
-              </button>
-            )}
-
-            {templates.length ? (
-              <>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {templates.map((template) => (
-                    <span key={template.id} style={{ display: "inline-flex", alignItems: "center", border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden", background: CARD }}>
-                      <button
-                        type="button"
-                        onClick={() => applyTemplate(template)}
-                        style={{ fontFamily: "inherit", fontSize: 11, padding: "4px 8px", border: "none", background: "none", color: INK, cursor: "pointer" }}
-                      >
-                        {template.name} · {template.fields.length}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={ar ? "حذف القالب" : "Delete template"}
-                        onClick={() => dropTemplate(template.id)}
-                        style={{ fontFamily: "inherit", fontSize: 12, lineHeight: 1, padding: "4px 7px", border: "none", borderInlineStart: `1px solid ${BORDER}`, background: "none", color: MUTED, cursor: "pointer" }}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-                <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
-                  {ar ? "تطبيق قالب يستبدل الحقول الموضوعة الآن." : "Applying a template replaces the fields placed now."}
-                </span>
-              </>
-            ) : null}
-
-            {note ? <span style={{ fontSize: 11, color: BRAND, lineHeight: 1.6 }}>{note}</span> : null}
-          </div>
-
-          <div style={{ padding: "16px 16px 4px", marginTop: 10, borderTop: `1px solid ${BORDER}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontWeight: 600 }}>{ar ? "الموقّعون" : "Signers"}</span>
-            {canGroup && signers.length < MAX_PARALLEL_SIGNERS ? (
-              <button type="button" onClick={addSigner} style={{ fontFamily: "inherit", fontSize: 12, background: "none", border: "none", color: INK, cursor: "pointer", textDecoration: "underline" }}>
-                {ar ? "إضافة موقّع" : "Add signer"}
-              </button>
-            ) : null}
-          </div>
-          <p style={{ margin: 0, padding: "0 16px 10px", fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-            {group
-              ? (ar
-                ? `${countAr(signers.length, ["موقّع واحد", "موقّعان", "موقّعين", "موقّعًا"])} — يصل كل واحد رابطه الخاص ويوقّع متى شاء بلا ترتيب. ولو رفض أحدهم يواصل الباقون.`
-                : `${signers.length} signers — each gets a private link and may sign first. If one refuses the rest carry on.`)
-              : (ar
-                ? "أنت وحدك الآن. أضف موقّعًا لتحويله إلى مستند متعدد الأطراف."
-                : "Just you for now. Add a signer to turn this into a multi-party document.")}
-          </p>
-
-          <div style={{ padding: "0 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-            {signers.map((signer, index) => {
-              const on = signerIndex === index;
-              const count = fields.filter((field) => field.signer === index).length;
-              // The creator's row turns editable when group sending needs an email we don't have.
-              const editable = signer.external || (group && !emailValid(signer.email));
-              // Once a signer is named and reachable the row folds back to the same
-              // one-line shape as yours; "تغيير" reopens it.
-              const known = signer.name.trim() && emailValid(signer.email);
-              const editing = editable && (editingSigner === index || !known);
-              return (
-                <div
-                  key={signer.key}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSignerIndex(index)}
-                  onKeyDown={(event) => { if (event.key === "Enter") setSignerIndex(index); }}
-                  style={{
-                    textAlign: "start",
-                    padding: "8px 10px",
-                    borderRadius: 10,
-                    border: `1px solid ${on ? "#14213d" : BORDER}`,
-                    background: on ? SURFACE : CARD,
-                    cursor: "pointer",
-                    display: "grid",
-                    gridTemplateColumns: "10px minmax(0, 1fr) auto",
-                    gap: 10,
-                    alignItems: "center",
-                  }}
-                >
-                  <span style={{ width: 10, height: 10, borderRadius: "50%", background: signer.color }} />
-                  <span style={{ display: "flex", flexDirection: "column", gap: editing ? 5 : 3, minWidth: 0 }}>
-                    {editing ? (
-                      <>
-                        {employeeOptions.length ? (
-                          <select
-                            className="nv-signing-field"
-                            value={signer.employeeId || ""}
-                            onChange={(event) => pickEmployee(index, event.target.value)}
-                            onClick={(event) => event.stopPropagation()}
-                            style={{ fontFamily: "inherit", border: `1px solid ${BORDER}`, background: CARD, outline: "none", color: signer.employeeId ? INK : MUTED, maxWidth: "100%" }}
-                          >
-                            <option value="">{ar ? "من الفريق أو بريد خارجي…" : "From the team, or an external email…"}</option>
-                            {employeeOptions.map((employee) => (
-                              <option key={employee.id} value={employee.id}>{employee.name}</option>
-                            ))}
-                          </select>
-                        ) : null}
-                        <input
-                          className="nv-signing-inline nv-signing-inline--underline"
-                          value={signer.name}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={(event) => patchSigner(index, { name: event.target.value })}
-                          placeholder={ar ? "اسم الموقّع" : "Signer name"}
-                          style={{ fontFamily: "inherit", fontSize: 13, outline: "none", color: INK }}
-                        />
-                        <input
-                          dir="ltr"
-                          className="nv-signing-inline nv-signing-inline--underline"
-                          value={signer.email}
-                          onClick={(event) => event.stopPropagation()}
-                          onChange={(event) => patchSigner(index, { email: event.target.value, employeeId: null, role: "", stationId: null })}
-                          onBlur={() => { if (known) setEditingSigner(null); }}
-                          placeholder="name@example.com"
-                          list="nv-signing-emails"
-                          style={{ ...mono, fontSize: 11, outline: "none", color: MUTED, textAlign: ar ? "right" : "left" }}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <span style={{ fontWeight: 500, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{signer.name}</span>
-                        <span dir="ltr" style={{ ...mono, fontSize: 11, color: MUTED, textAlign: ar ? "right" : "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {signer.external ? signer.email : signer.contact}
-                        </span>
-                      </>
-                    )}
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                    {editable && !editing ? (
-                      <button
-                        type="button"
-                        onClick={(event) => { event.stopPropagation(); setEditingSigner(index); }}
-                        style={{ fontFamily: "inherit", border: "none", background: "none", color: MUTED, cursor: "pointer", fontSize: 11, padding: 0, textDecoration: "underline" }}
-                      >
-                        {ar ? "تغيير" : "Change"}
-                      </button>
-                    ) : null}
-                    <span style={{ ...mono, fontSize: 11, color: MUTED }}>{count}</span>
-                    {signer.external ? (
-                      <button
-                        type="button"
-                        aria-label={ar ? "حذف الموقّع" : "Remove signer"}
-                        onClick={(event) => { event.stopPropagation(); removeSigner(index); }}
-                        style={{ fontFamily: "inherit", border: "none", background: "none", color: MUTED, cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0 }}
-                      >
-                        ×
-                      </button>
-                    ) : null}
-                  </span>
-                </div>
-              );
-            })}
-            <datalist id="nv-signing-emails">
-              {employees.filter((employee) => employee?.email).map((employee) => (
-                <option key={employee.id} value={employee.email}>{employee.name}</option>
-              ))}
-            </datalist>
-          </div>
-
-          <div style={{ marginTop: "auto", padding: "14px 16px", borderTop: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 8 }}>
-            <span style={{ fontSize: 12, color: MUTED }}>{ar ? "ختمك المحفوظ — لكل إرسال وللمنصة" : "Your saved seal — send and platform"}</span>
-            <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: "8px 10px", background: SURFACE, display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: 10, alignItems: "center" }}>
-              {sealPreview || signatureUrl ? (
-                <img src={sealPreview || signatureUrl} alt="" style={{ width: 46, height: 34, objectFit: "contain" }} />
-              ) : (
-                <span style={{ width: 46, height: 34, borderRadius: 10, border: `1px dashed ${BORDER}`, display: "inline-block" }} />
-              )}
-              <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                <span style={{ fontSize: 13, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {currentUser?.profile?.signatureName || currentUser?.name}
-                </span>
-                <span dir="ltr" style={{ ...mono, fontSize: 9, color: signatureUrl ? BRAND : MUTED, textAlign: ar ? "right" : "left" }}>
-                  {signatureUrl ? docVerificationId : (ar ? "بلا ختم" : "no seal")}
-                </span>
-              </div>
-            </div>
-            {onOpenStudio ? (
-              <button type="button" onClick={onOpenStudio} style={{ ...signGhostBtn, width: "100%" }}>
-                {signatureUrl ? (ar ? "ستوديو الختم — تعديل" : "Stamp studio — edit") : (ar ? "فتح ستوديو الختم" : "Open stamp studio")}
-              </button>
-            ) : null}
-
-            <div ref={consentRef} style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
-              <span style={{ fontWeight: 600 }}>{ar ? "الإقرار" : "Consent"}</span>
-              {group ? (
-                <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
-                  {ar
-                    ? "يُرسَل رابط خاص لكل موقّع. لا ترتيب: أي طرف يوقّع أولًا أو ثانيًا أو ثالثًا."
-                    : "Each signer gets a private link. No queue: any party may sign first, second, or third."}
-                </p>
-              ) : (
-                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", cursor: consentReady ? "pointer" : "default", border: `1px solid ${BORDER}`, borderRadius: 10, padding: 10, opacity: consentReady ? 1 : 0.55 }}>
-                  <input
-                    type="checkbox"
-                    checked={intent && consentReady}
-                    disabled={!consentReady}
-                    onChange={(event) => consentReady && setIntent(event.target.checked)}
-                    style={{ marginTop: 3, accentColor: BRAND }}
-                  />
-                  <span style={{ lineHeight: 1.65, fontSize: 12, color: INK }}>
-                    {ar
-                      ? (!signed
-                        ? "ضع ختمك على الصفحة أولاً — الإقرار يُفتح بعد التوقيع."
-                        : "أقرّ بأنني راجعت المستند بالكامل، وأنّ وضع هذا الختم يعبّر عن نيّتي في التوقيع، وفق نظام التعاملات الإلكترونية.")
-                      : (!signed
-                        ? "Place your seal on the page first — acknowledgement unlocks after you sign."
-                        : "I confirm that I reviewed the whole document and that placing this seal expresses my intent to sign, under the Electronic Transactions Law.")}
-                  </span>
-                </label>
-              )}
-              {proceedBlock ? <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>{proceedBlock}</span> : null}
-              {error && !receipt ? <p style={{ margin: 0, fontSize: 12, color: "#DC2626", lineHeight: 1.6 }}>{error}</p> : null}
-              <button
-                type="button"
-                onClick={() => {
-                  if (!canConfirm) {
-                    refuseAdvance(proceedBlock);
-                    return;
-                  }
-                  setError("");
-                  confirm();
-                }}
-                disabled={!canConfirm || busy}
-                style={{ ...signPrimaryBtn, width: "100%", opacity: !canConfirm || busy ? 0.45 : 1, cursor: !canConfirm || busy ? "not-allowed" : "pointer" }}
-              >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {group
-                  ? (busy ? (ar ? "جارٍ الإرسال…" : "Sending…") : (ar ? "إرسال الطلبات" : "Send requests"))
-                  : (busy ? (ar ? "جارٍ الختم…" : "Sealing…") : (ar ? "ختم وتسجيل" : "Seal and register"))}
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        <section style={{ display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0 }}>
-          <div style={{ height: 40, background: CARD, borderBottom: `1px solid ${BORDER}`, display: "flex", alignItems: "center", gap: 10, padding: "0 14px", fontSize: 12, color: MUTED, minWidth: 0 }}>
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {ar
-                ? `الحقل: ${activeTool.ar} · الموقّع: ${signers[signerIndex]?.name || "—"}. اضغط على الصفحة للوضع، واضغط على حقلك النصي لتعبئته.`
-                : `Field: ${activeTool.en} · Signer: ${signers[signerIndex]?.name || "—"}. Click the page to place, click your text field to fill it.`}
-            </span>
-            <div style={{ marginInlineStart: "auto", display: "flex", alignItems: "center", gap: 6, flex: "none" }}>
-              <button type="button" onClick={() => setZoom((value) => Math.max(0.6, +(value - 0.1).toFixed(2)))} style={iconBtn}>−</button>
-              <span dir="ltr" style={{ ...mono, width: 44, textAlign: "center" }}>{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => setZoom((value) => Math.min(1.6, +(value + 0.1).toFixed(2)))} style={iconBtn}>+</button>
-            </div>
-          </div>
-
-          <div
-            ref={stageRef}
-            style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "28px 0 60px", display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}
-          >
-            {pdf ? (
-              <SigningWorkspacePages
-                pdf={pdf}
-                pageCount={pageCount}
-                pageWidth={pageWidth}
-                fields={fields}
-                textValues={textValues}
-                signers={signers}
-                sealPreview={sealPreview || signatureUrl}
-                stampRatio={stampAspect(stampConfig?.design)}
-                activeFieldId={activeFieldId}
-                ar={ar}
-                placing
-                onPlace={placeField}
-                onMove={patchField}
-                onSelect={setActiveFieldId}
-                onRemove={removeField}
-                onTextChange={(id, value) => setTextValues((current) => ({ ...current, [id]: value }))}
-                onVisiblePage={noteVisiblePage}
-              />
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, color: MUTED, paddingTop: 40 }}>
-                {failed ? null : <Loader2 className="h-5 w-5 animate-spin" />}
-                <span style={{ fontSize: 13 }}>
-                  {failed
-                    ? (failReason === "not-pdf"
-                      ? (ar ? "الملف المرفوع ليس PDF صالحاً. ارفع PDF، أو صورة PNG/JPEG تُغلَّف تلقائياً في صفحة واحدة." : "That file is not a valid PDF. Upload a PDF, or a PNG/JPEG which is wrapped into one page.")
-                      : (ar ? "تعذّر قراءة هذا الـ PDF. إن كان محمياً بكلمة مرور أو تالفاً فصدّره من جديد ثم ارفعه." : "This PDF could not be read. If it is password-protected or damaged, export a new PDF and upload that."))
-                    : (ar ? "جارٍ فتح المستند…" : "Opening the document…")}
-                </span>
-              </div>
-            )}
-          </div>
         </section>
+      ))}
 
-        <aside className="nv-signing-thumbs" style={{ background: CARD, borderInlineStart: `1px solid ${BORDER}`, padding: "14px 12px", display: "flex", flexDirection: "column", gap: 12, overflow: "auto", alignItems: "center" }}>
-          {pdf ? (
+      <div style={{ padding: "10px 16px 0" }}>
+        <button type="button" onClick={suggestSpots} disabled={!pdf || detecting} style={{ width: "100%", height: 36, borderRadius: 8, border: `1px solid ${BORDER}`, background: "#fff", fontFamily: "inherit", fontSize: 12.5, fontWeight: 600, cursor: !pdf || detecting ? "wait" : "pointer", opacity: !pdf || detecting ? 0.55 : 1 }}>
+          {detecting ? (ar ? "جارٍ قراءة النص…" : "Reading the text…") : (ar ? "اقترح المواضع من نص المستند" : "Suggest positions from the document text")}
+        </button>
+      </div>
+      <div style={{ display: "flex", gap: 8, padding: "8px 16px 12px" }}>
+        <select
+          className="nv-signing-field"
+          value=""
+          onChange={(event) => {
+            const found = templates.find((item) => item.id === event.target.value);
+            if (found) applyTemplate(found);
+          }}
+          style={{ flex: 1, minWidth: 0, height: 34, borderRadius: 8, border: `1px solid ${BORDER}`, background: "#fff", fontFamily: "inherit", fontSize: 12, color: MUTED, padding: "0 8px" }}
+        >
+          <option value="">{ar ? "تطبيق قالب…" : "Apply a template…"}</option>
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>{template.name}</option>
+          ))}
+        </select>
+        {naming ? (
+          <input
+            autoFocus
+            className="nv-signing-field"
+            value={templateName}
+            onChange={(event) => setTemplateName(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") storeTemplate(); if (event.key === "Escape") setNaming(false); }}
+            placeholder={ar ? "اسم القالب" : "Template name"}
+            style={{ width: 120, height: 34, borderRadius: 8, border: `1px solid ${BORDER}`, padding: "0 8px", fontFamily: "inherit", fontSize: 12 }}
+          />
+        ) : (
+          <button type="button" onClick={() => fields.length && setNaming(true)} disabled={!fields.length} style={{ height: 34, padding: "0 10px", borderRadius: 8, border: `1px solid ${BORDER}`, background: "#fff", fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: fields.length ? "pointer" : "not-allowed", whiteSpace: "nowrap", opacity: fields.length ? 1 : 0.5 }}>
+            {ar ? "حفظ كقالب" : "Save as template"}
+          </button>
+        )}
+      </div>
+      {templates.length ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 16px 8px" }}>
+          {templates.map((template) => (
+            <button key={template.id} type="button" onClick={() => dropTemplate(template.id)} style={{ fontFamily: "inherit", fontSize: 11, border: `1px solid ${BORDER}`, background: "#fff", borderRadius: 8, padding: "2px 8px", color: MUTED, cursor: "pointer" }}>
+              {template.name} ×
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <section style={{ padding: "8px 16px 16px", borderTop: `1px solid ${BORDER}` }}>
+        <strong style={{ fontSize: 15 }}>{ar ? "الموقّعون" : "Signers"}</strong>
+        <p style={{ margin: "6px 0 8px", fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
+          {ar ? "لكل موقّع لون يُعرف به حقوله" : "Each signer has a color that marks their fields"}
+        </p>
+        <div style={{ display: "flex", background: "#F3F4F6", borderRadius: 10, padding: 3, marginBottom: 10 }}>
+          <button type="button" onClick={() => setOrderMode("parallel")} style={{ flex: 1, height: 32, border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: orderMode === "parallel" ? "#14213D" : "transparent", color: orderMode === "parallel" ? "#fff" : MUTED }}>
+            {ar ? "بالتوازي" : "Parallel"}
+          </button>
+          <button type="button" onClick={() => setOrderMode("sequential")} style={{ flex: 1, height: 32, border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: orderMode === "sequential" ? "#14213D" : "transparent", color: orderMode === "sequential" ? "#fff" : MUTED }}>
+            {ar ? "بالتسلسل" : "Sequential"}
+          </button>
+        </div>
+        {signers.map((signer, index) => {
+          const on = signerIndex === index;
+          const known = signer.name.trim() && emailValid(signer.email);
+          const editing = signer.external && (editingSigner === index || !known);
+          return (
+            <div key={signer.key} onClick={() => setSignerIndex(index)} style={{ border: `1px solid ${on ? "#D5DCE6" : "#EEF1F4"}`, borderRadius: 12, padding: "10px 10px 6px", marginBottom: 8, background: "#fff", cursor: "pointer" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#F3F4F6", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{index + 1}</span>
+                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: signer.color, flex: "none" }} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{signer.name || (ar ? "موقّع جديد" : "New signer")}</span>
+                  </span>
+                  <span style={{ fontSize: 11, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {index === 0 && !signer.external ? (ar ? "أنت · صاحب الختم" : "You · seal owner") : signer.email}
+                  </span>
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 600, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "3px 8px", flex: "none" }}>{ar ? "يوقّع" : "Signs"}</span>
+                {signer.external ? (
+                  <button type="button" aria-label={ar ? "حذف الموقّع" : "Remove signer"} onClick={(event) => { event.stopPropagation(); removeSigner(index); }} style={{ border: "none", background: "none", color: MUTED, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>×</button>
+                ) : (
+                  <button type="button" aria-label={ar ? "تعديل" : "Edit"} onClick={(event) => { event.stopPropagation(); setEditingSigner(editing ? null : index); }} style={{ border: "none", background: "none", color: MUTED, cursor: "pointer", fontSize: 12 }}>▾</button>
+                )}
+              </div>
+              {editing ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }} onClick={(event) => event.stopPropagation()}>
+                  {employeeOptions.length ? (
+                    <select className="nv-signing-field" value={signer.employeeId || ""} onChange={(event) => pickEmployee(index, event.target.value)} style={{ height: 32, borderRadius: 8, border: `1px solid ${BORDER}`, fontFamily: "inherit", fontSize: 12 }}>
+                      <option value="">{ar ? "من الفريق…" : "From the team…"}</option>
+                      {employeeOptions.map((employee) => <option key={employee.id} value={employee.id}>{employee.name}</option>)}
+                    </select>
+                  ) : null}
+                  <input className="nv-signing-field" value={signer.name} onChange={(event) => patchSigner(index, { name: event.target.value })} placeholder={ar ? "اسم الموقّع" : "Signer name"} style={{ height: 32, borderRadius: 8, border: `1px solid ${BORDER}`, padding: "0 8px", fontFamily: "inherit" }} />
+                  <input dir="ltr" className="nv-signing-field" value={signer.email} onChange={(event) => patchSigner(index, { email: event.target.value, employeeId: null })} placeholder="name@example.com" style={{ height: 32, borderRadius: 8, border: `1px solid ${BORDER}`, padding: "0 8px", fontFamily: mono.fontFamily, fontSize: 12 }} />
+                </div>
+              ) : null}
+              <button type="button" onClick={(event) => { event.stopPropagation(); setOpenIdentity(openIdentity === index ? null : index); }} style={{ marginTop: 6, width: "100%", textAlign: "start", border: "none", background: "transparent", color: MUTED, fontSize: 11.5, cursor: "pointer", fontFamily: "inherit", padding: "4px 0" }}>
+                ▾ {ar ? "التحقق من الهوية — بلا – داخل المنصة" : "Identity check — none, inside the platform"}
+              </button>
+              {openIdentity === index ? (
+                <p style={{ margin: "0 0 6px", fontSize: 11.5, color: MUTED, lineHeight: 1.65 }}>
+                  {ar
+                    ? "يُعرَف الموقّع بحسابه داخل المنصة. لا يُطلب تحقق هوية خارجي على هذا المظروف."
+                    : "The signer is known by their account inside the platform. This envelope does not ask for an outside identity check."}
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
+      </section>
+
+      <section ref={addRef} style={{ padding: "12px 16px 20px", borderTop: `1px solid ${BORDER}` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+          <strong style={{ fontSize: 14 }}>{ar ? "إضافة موقّع من المنشأة" : "Add a signer from the company"}</strong>
+          <span style={{ fontSize: 11, color: MUTED }}>{ar ? `${availablePeople.length} متاح` : `${availablePeople.length} available`}</span>
+        </div>
+        <input
+          className="nv-signing-field"
+          value={peopleQuery}
+          onChange={(event) => setPeopleQuery(event.target.value)}
+          placeholder={ar ? "الاسم أو الصفة أو الرقم الوظيفي" : "Name, title, or employee number"}
+          style={{ width: "100%", height: 34, marginTop: 8, borderRadius: 8, border: `1px solid ${BORDER}`, padding: "0 10px", fontFamily: "inherit", fontSize: 12, boxSizing: "border-box" }}
+        />
+        <div style={{ marginTop: 8 }}>
+          {shownPeople.length ? shownPeople.map((person) => (
+            <div key={person.id || person.email} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid #F1F3F6` }}>
+              <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#F3F4F6", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flex: "none" }}>{personInitials(person.name)}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{person.name}</span>
+                <span style={{ display: "block", fontSize: 11, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {[person.title, person.code].filter(Boolean).join(" · ") || person.email || (ar ? "من المنشأة" : "From the company")}
+                </span>
+              </span>
+              <button
+                type="button"
+                disabled={!canGroup || !emailValid(person.email) || signers.length >= MAX_PARALLEL_SIGNERS}
+                onClick={() => addFromEmployee(person)}
+                style={{ height: 28, padding: "0 10px", borderRadius: 8, border: `1px solid ${BORDER}`, background: "#fff", fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer", flex: "none" }}
+              >
+                {ar ? "إضافة" : "Add"}
+              </button>
+            </div>
+          )) : (
+            <p style={{ margin: "8px 0", fontSize: 12, color: MUTED }}>{ar ? "لا موظفون مطابقون." : "No matching employees."}</p>
+          )}
+        </div>
+        {canGroup && signers.length < MAX_PARALLEL_SIGNERS ? (
+          <button type="button" onClick={addSigner} style={{ marginTop: 8, border: "none", background: "none", color: INK, fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>
+            {ar ? "إضافة بريد خارجي" : "Add an external email"}
+          </button>
+        ) : null}
+      </section>
+    </>
+  );
+
+  const signStep = (
+    <section style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+      <strong style={{ fontSize: 15 }}>{ar ? "التوقيع" : "Signing"}</strong>
+      <span style={{ color: "#137A49", fontWeight: 700, fontSize: 12.5 }}>{ar ? "توقيع آمن · بصمة التراث" : "Secure Sign · heritage fingerprint"}</span>
+      <p style={{ margin: 0, fontSize: 12.5, color: MUTED, lineHeight: 1.7 }}>
+        {ar
+          ? "يُدمج الختم في ملف PDF، وتُحسب بصمة SHA-256، ويُسجَّل رقم التحقق في سجل الشركة. ليست شهادة حكومية مؤهلة."
+          : "The seal is merged into the PDF, a SHA-256 fingerprint is computed, and the verification id is written to the company registry."}
+      </p>
+      <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: 10, display: "flex", gap: 10, alignItems: "center" }}>
+        {sealPreview || signatureUrl ? <img src={sealPreview || signatureUrl} alt="" style={{ width: 64, height: 44, objectFit: "contain" }} /> : <span style={{ width: 64, height: 44, border: `1px dashed ${BORDER}`, borderRadius: 8 }} />}
+        <span dir="ltr" style={{ ...mono, fontSize: 11 }}>{docVerificationId}</span>
+      </div>
+      {!group ? (
+        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, lineHeight: 1.65 }}>
+          <input type="checkbox" checked={intent} onChange={(event) => setIntent(event.target.checked)} style={{ marginTop: 3 }} />
+          {ar
+            ? "أقرّ بأنني راجعت المستند، وأن وضع هذا الختم يعبّر عن نيّتي في التوقيع."
+            : "I confirm I reviewed the document and that this seal expresses my intent to sign."}
+        </label>
+      ) : (
+        <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
+          {orderMode === "sequential"
+            ? (ar ? "يُحفظ الترتيب على المظروف. أي طرف معلّق يستطيع التوقيع من رابطه." : "The order is stored on the envelope. Any pending party can still sign from their link.")
+            : (ar ? "بالتوازي: كل طرف يوقّع من رابطه دون انتظار الباقين." : "Parallel: each party signs from their link without waiting.")}
+        </p>
+      )}
+      {placeBlock ? <p style={{ margin: 0, fontSize: 12, color: "#8A1C2B" }}>{placeBlock}</p> : null}
+      <button type="button" onClick={requestFinish} disabled={busy} style={{ height: 36, border: "none", borderRadius: 8, background: "#14213D", color: "#fff", fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>
+        {group ? (ar ? "إرسال للتوقيع" : "Send for signature") : (ar ? "إنهاء وتوقيع" : "Finish and sign")}
+      </button>
+    </section>
+  );
+
+  const fieldsStep = (
+    <section style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+      <strong style={{ fontSize: 15 }}>{ar ? "حقول" : "Fields"}</strong>
+      <p style={{ margin: 0, fontSize: 12, color: MUTED }}>{ar ? `${fields.length} حقول على الصفحات` : `${fields.length} fields on the pages`}</p>
+      {fields.length ? fields.map((field) => {
+        const owner = signers[field.signer];
+        return (
+          <button key={field.id} type="button" onClick={() => { setActiveFieldId(field.id); setActivePage(field.page); }} style={{ textAlign: "start", fontFamily: "inherit", border: `1px solid ${BORDER}`, background: "#fff", borderRadius: 10, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: owner?.color || "#1d9a5b", flex: "none" }} />
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: "block", fontWeight: 700, fontSize: 12.5 }}>{field.label}</span>
+              <span style={{ display: "block", fontSize: 11, color: MUTED }}>{owner?.name} · {ar ? `صفحة ${field.page}` : `Page ${field.page}`}</span>
+            </span>
+          </button>
+        );
+      }) : <p style={{ margin: 0, fontSize: 12, color: MUTED }}>{ar ? "لم تُوضع حقول بعد. ارجع إلى الخطوة الأولى." : "No fields yet. Go back to the first step."}</p>}
+    </section>
+  );
+
+  return (
+    <>
+      <SigningStudioFrame
+        ar={ar}
+        title={docTitle}
+        envelopeId={envId}
+        pageLabel={pageLabel}
+        step={studioStep}
+        fieldCount={fields.length}
+        nextLabel={nextLabel}
+        onBack={requestLeave}
+        onStep={setStudioStep}
+        onNext={goHeaderNext}
+        onAutoPlace={suggestSpots}
+        autoPlaceBusy={!pdf || detecting}
+        signers={signers}
+        signerIndex={signerIndex}
+        onPickSigner={setSignerIndex}
+        onAddSigners={() => { setStudioStep(1); setFocusAdd(true); }}
+        people={shownPeople}
+        peopleQuery={peopleQuery}
+        onPeopleQuery={setPeopleQuery}
+        onAddPerson={(person) => addFromEmployee(person)}
+        rail={rail}
+        onRail={(mode) => setRail((current) => (current === mode ? "" : mode))}
+        zoom={zoom}
+        onZoom={(dir) => setZoom((value) => (dir > 0 ? Math.min(1.6, +(value + 0.1).toFixed(2)) : Math.max(0.6, +(value - 0.1).toFixed(2))))}
+        onDownload={downloadSource}
+        onPrint={printSource}
+        note={note}
+        error={error && !finishAsk && !receipt ? error : ""}
+        toolbarExtra={selectedField ? (
+          <div style={{ padding: "8px 14px", borderBottom: `1px solid ${BORDER}`, background: SURFACE, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontWeight: 700, fontSize: 12 }}>{selectedField.label}</span>
+            {selectedField.type === "text" ? (
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: MUTED }}>
+                <input type="checkbox" checked={selectedField.required !== false} onChange={(event) => patchField(selectedField.id, { required: event.target.checked })} />
+                {ar ? "مطلوب" : "Required"}
+              </label>
+            ) : null}
+            <button type="button" onClick={() => duplicateField(selectedField.id)} style={chipBtn}>{ar ? "نسخة" : "Duplicate"}</button>
+            {pageCount > 1 ? <button type="button" onClick={() => repeatOnEveryPage(selectedField.id)} style={chipBtn}>{ar ? "على كل الصفحات" : "On every page"}</button> : null}
+            <button type="button" onClick={() => removeField(selectedField.id)} style={chipBtn}>{ar ? "حذف" : "Delete"}</button>
+          </div>
+        ) : null}
+        thumbs={rail === "pages" && pdf ? (
+          <div style={{ width: 96, flex: "none", overflow: "auto", background: "#fff", borderInlineStart: `1px solid ${BORDER}`, padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
             <SigningWorkspaceThumbs
               pdf={pdf}
               pageCount={pageCount}
               fields={fields}
               activePage={activePage}
-              onSelect={scrollToPage}
               ar={ar}
+              onSelect={(page) => {
+                setActivePage(page);
+                document.querySelector(`[data-signing-page="${page}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
             />
-          ) : null}
-        </aside>
-      </div>
+          </div>
+        ) : null}
+        panel={studioStep === 2 ? signStep : studioStep === 3 ? fieldsStep : fieldsPanel}
+      >
+        {rail === "summary" ? (
+          <aside style={{ position: "absolute", top: 12, insetInlineEnd: 12, zIndex: 4, width: 240, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: 12, boxShadow: "0 8px 24px rgba(20,33,61,.08)" }}>
+            <strong style={{ display: "block", marginBottom: 4 }}>{docTitle}</strong>
+            <span style={{ display: "block", fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>{fileMeta}</span>
+            <span style={{ display: "block", fontSize: 12, marginTop: 6 }}>{ar ? `${fields.length} حقول · ${signers.length} موقّعين` : `${fields.length} fields · ${signers.length} signers`}</span>
+            <span style={{ display: "block", fontSize: 12, color: MUTED }}>{orderMode === "sequential" ? (ar ? "بالتسلسل" : "Sequential") : (ar ? "بالتوازي" : "Parallel")}</span>
+          </aside>
+        ) : null}
+        {pdf ? (
+          <SigningWorkspacePages
+            pdf={pdf}
+            pageCount={pageCount}
+            pageWidth={pageWidth}
+            fields={fields}
+            textValues={textValues}
+            signers={signers}
+            sealPreview={sealPreview || signatureUrl}
+            stampRatio={stampAspect(stampConfig?.design)}
+            activeFieldId={activeFieldId}
+            ar={ar}
+            placing={Boolean(tool)}
+            appearance="gold"
+            onPlace={placeField}
+            onMove={patchField}
+            onSelect={setActiveFieldId}
+            onRemove={removeField}
+            onTextChange={(id, value) => setTextValues((current) => ({ ...current, [id]: value }))}
+            onVisiblePage={noteVisiblePage}
+          />
+        ) : (
+          <div style={{ width: "min(100%, 640px)", aspectRatio: "1 / 1.3", background: "#fff", border: "1px solid #D5D9E0", boxShadow: "0 1px 3px rgba(0,0,0,.08)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: MUTED, padding: "10%", textAlign: "center", boxSizing: "border-box" }}>
+            {failed ? null : <Loader2 className="h-5 w-5 animate-spin" />}
+            <span style={{ fontSize: 13, lineHeight: 1.8, color: "#4B5567" }}>
+              {failed
+                ? (failReason === "not-pdf"
+                  ? (ar ? "الملف المرفوع ليس PDF صالحاً. ارفع PDF، أو صورة PNG/JPEG تُغلَّف تلقائياً في صفحة واحدة." : "That file is not a valid PDF. Upload a PDF, or a PNG/JPEG which is wrapped into one page.")
+                  : (ar ? "تعذّر قراءة هذا الـ PDF. إن كان محمياً بكلمة مرور أو تالفاً فصدّره من جديد ثم ارفعه." : "This PDF could not be read. If it is password-protected or damaged, export a new PDF and upload that."))
+                : (ar ? "جارٍ فتح المستند…" : "Opening the document…")}
+            </span>
+          </div>
+        )}
+      </SigningStudioFrame>
 
       {leaveAsk && !receipt ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={(event) => { if (event.target === event.currentTarget) setLeaveAsk(false); }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(20,40,75,.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 20,
-            zIndex: 60,
-          }}
-        >
-          <div
-            dir={ar ? "rtl" : "ltr"}
-            style={{
-              width: "min(420px, 100%)",
-              background: CARD,
-              border: "1px solid #dfe3ea",
-              padding: 24,
-              display: "flex",
-              flexDirection: "column",
-              gap: 14,
-            }}
-          >
-            <span style={{ fontWeight: 700, fontSize: 16, color: INK }}>
-              {ar ? "الملف لم يُوقَّع بعد" : "The file is not signed yet"}
-            </span>
+        <div role="dialog" aria-modal="true" onClick={(event) => { if (event.target === event.currentTarget) setLeaveAsk(false); }} style={{ position: "fixed", inset: 0, background: "rgba(20,40,75,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 80 }}>
+          <div dir={ar ? "rtl" : "ltr"} style={{ width: "min(420px, 100%)", background: CARD, border: "1px solid #dfe3ea", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+            <span style={{ fontWeight: 700, fontSize: 16, color: INK }}>{ar ? "هل أنت متأكد؟" : "Are you sure?"}</span>
             <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.7 }}>
-              {ar
-                ? "لا انتقال إلى التسجيل إلا بعد وضع الختم والإقرار. المغادرة تُلغي الحقول على الصفحة."
-                : "Registry opens only after you sign and acknowledge. Leaving discards the marks on the page."}
+              {ar ? "مغادرة التحضير تُلغي الحقول التي وضعتها على الصفحات." : "Leaving prepare discards the fields you placed on the pages."}
             </p>
             <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" onClick={() => setLeaveAsk(false)} style={signPrimaryBtn}>
-                {ar ? "البقاء والتوقيع" : "Stay and sign"}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setLeaveAsk(false); onClose?.(); }}
-                style={signGhostBtn}
-              >
-                {ar ? "مغادرة دون توقيع" : "Leave unsigned"}
-              </button>
+              <button type="button" onClick={() => setLeaveAsk(false)} style={signPrimaryBtn}>{ar ? "البقاء" : "Stay"}</button>
+              <button type="button" onClick={() => { setLeaveAsk(false); onClose?.(); }} style={signGhostBtn}>{ar ? "مغادرة دون توقيع" : "Leave unsigned"}</button>
             </div>
           </div>
         </div>
       ) : null}
 
-      {receipt ? (
+      {(finishAsk || receipt) ? (
         <SigningFinishDialog
           ar={ar}
           mode={group ? "group" : "self"}
@@ -1309,6 +1204,7 @@ export default function SigningWorkspace({
             fieldCount: fields.filter((field) => field.signer === index).length,
           }))}
           intent={intent}
+          onIntentChange={setIntent}
           busy={busy}
           error={error}
           receipt={receipt}
@@ -1316,9 +1212,10 @@ export default function SigningWorkspace({
           onClose={() => {
             if (busy) return;
             if (receipt) onClose?.();
+            else setFinishAsk(false);
           }}
         />
       ) : null}
-    </div>
+    </>
   );
 }

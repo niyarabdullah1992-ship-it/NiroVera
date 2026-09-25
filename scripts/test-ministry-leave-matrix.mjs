@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { articleOfficialText } from "../src/lib/laborArticleTexts.js";
-import { citeLeaveType, isRamadanHoursSubject, ruleValue } from "../src/lib/laborRules.js";
-import { getLeaveTotal, isNursingSubject, iddahPaidDays, iddahSpanFromEvent, leaveTypeLabel, leaveTypesForProfile, maternityFollowOnSpan, statutoryLeaveFloor } from "../src/lib/leaveTypes.js";
+import { citeLeaveType, isRamadanHoursSubject, ruleValue, explainRule } from "../src/lib/laborRules.js";
+import { getLeaveTotal, isNursingSubject, iddahPaidDays, iddahSpanFromEvent, leaveCiteRuleId, leaveTypeLabel, leaveTypesForProfile, maternityFollowOnSpan, statutoryLeaveFloor } from "../src/lib/leaveTypes.js";
 import { checkApproveLeaveGate, checkExamSittingSettleGate, checkLeaveGenderGate, checkRejectLeaveGate, checkSubmitLeaveGate, examStatuteOf, leaveNeedsAttachment } from "../src/lib/leaveDerivations.js";
 import {
   checkRevokeStudyConsentGate,
@@ -387,6 +387,39 @@ assert.equal(checkSubmitLeaveGate({
   files: medFile,
   noOtherEmployerAck: true,
 }, { profile: muslimMale, requests: [] }).ok, true, "sick leave stays independent of study consent");
+
+assert.equal(leaveTypeLabel("eid", true, undefined, "2026-09-23"), "اليوم الوطني");
+assert.equal(leaveTypeLabel("eid", false, undefined, "2026-09-23"), "National Day");
+assert.equal(leaveTypeLabel("eid", true, undefined, "2026-02-22"), "يوم التأسيس");
+assert.equal(leaveTypeLabel("eid", false, undefined, "2026-02-22"), "Founding Day");
+assert.equal(leaveCiteRuleId("eid", {}, "2026-09-23"), "leave.nationalDay.days");
+assert.equal(leaveCiteRuleId("eid", {}, "2026-02-22"), "leave.foundingDay.days");
+assert.match(explainRule("leave.nationalDay.days")?.hintAr || "", /إجازة اليوم الوطني/);
+assert.match(explainRule("leave.nationalDay.days")?.hintAr || "", /23 سبتمبر/);
+assert.match(explainRule("leave.foundingDay.days")?.hintAr || "", /إجازة يوم التأسيس/);
+assert.match(explainRule("leave.foundingDay.days")?.hintAr || "", /22 فبراير/);
+assert.equal(leaveCiteRuleId("eid", {}, "2026-09-06"), "leave.eid.cite");
+
+const catalog = leaveCatalogFor(muslimMale, true);
+const catalogNames = catalog.flatMap((group) => group.rows.map((row) => row.name));
+const catalogEnt = catalog.flatMap((group) => group.rows.map((row) => row.ent));
+assert.ok(catalogNames.includes("إجازة اليوم الوطني"), catalogNames.join(" | "));
+assert.ok(catalogNames.includes("إجازة يوم التأسيس"), catalogNames.join(" | "));
+assert.ok(catalogEnt.some((ent) => String(ent).includes("23 سبتمبر")), catalogEnt.join(" | "));
+assert.ok(catalogEnt.some((ent) => String(ent).includes("22 فبراير")), catalogEnt.join(" | "));
+assert.ok(!catalogNames.includes("أعياد وعطل رسمية"));
+
+const kinds = leaveKindsFor(muslimMale, true, []);
+const nationalKind = kinds.find((row) => row.key === "eid");
+assert.equal(nationalKind?.ar, "اليوم الوطني · يوم التأسيس · العيد");
+assert.match(nationalKind?.cap || "", /الوطني 1/);
+assert.match(nationalKind?.cap || "", /التأسيس 1/);
+assert.match(nationalKind?.cap || "", /مقفلان في الجدول/);
+assert.match(nationalKind?.cap || "", /بطلب/);
+
+const catalogConds = catalog.flatMap((group) => group.rows.map((row) => row.cond));
+assert.ok(catalogConds.some((c) => /إجازة اليوم الوطني/.test(String(c)) && /بلا طلب/.test(String(c))), catalogConds.join(" | "));
+assert.ok(catalogConds.some((c) => /إجازة يوم التأسيس/.test(String(c)) && /بلا طلب/.test(String(c))), catalogConds.join(" | "));
 
 console.log("ministry leave matrix ok");
 console.log("muslim female:", keysOf(muslimFemale).join(", "));

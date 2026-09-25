@@ -25,6 +25,7 @@ import { ACCENT, MUTED, SURFACE, cardShell, ui } from "@/lib/platformStyles";
 import KpiStrip from "@/components/shared/KpiStrip";
 import FinanceViewSwitch from "@/components/shared/FinanceViewSwitch";
 import { MANAGE, SELF, SELF_VIEW_NOTE, canManageSurface, resolveFinanceView } from "@/lib/financeRights";
+import { useRailSide } from "@/lib/railSide";
 
 // The register and the vessel are the branch's book; transfers are a decision.
 // What is left for the holder is the custody in their own hands and the move they
@@ -51,7 +52,8 @@ export default function Assets() {
   const [seeAll, setSeeAll] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const canManage = canManageSurface("assets", currentUser, data);
-  const view = resolveFinanceView("assets", currentUser, data, searchParams.get("view"));
+  const railSide = useRailSide();
+  const view = resolveFinanceView("assets", currentUser, data, searchParams.get("view"), railSide);
   const layers = view === MANAGE ? MANAGE_LAYERS : SELF_LAYERS;
   const homeTab = layers[0];
   const requested = searchParams.get("tab");
@@ -107,12 +109,9 @@ export default function Assets() {
 
   const rights = useMemo(() => assetRights(currentUser, data), [currentUser, data]);
   const stations = data && currentUser ? visibleStations(currentUser, data) : [];
-  const activeStationId = stationScope && stationScope !== "all"
-    ? String(stationScope)
-    : (stations[0]?.id ? String(stations[0].id) : "");
+  const activeStationId = stationScope && stationScope !== "all" ? String(stationScope) : "";
 
   useEffect(() => {
-    if (!activeStationId) return;
     setFilters((prev) => (prev.stationId === activeStationId ? prev : { ...prev, stationId: activeStationId }));
   }, [activeStationId]);
 
@@ -247,7 +246,7 @@ export default function Assets() {
       onTool={setTab}
       meta={(
         <>
-          <FinanceViewSwitch ar={ar} view={view} canManage={canManage} onChange={setView} />
+          <FinanceViewSwitch ar={ar} view={view} canManage={canManage} showSwitch={!railSide} onChange={setView} />
           <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
             <span style={{ fontSize: 10, color: MUTED }}>
               {view === MANAGE ? (ar ? "عهد نشطة" : "Active custody") : (ar ? "أصول بحوزتي" : "Assets I hold")}

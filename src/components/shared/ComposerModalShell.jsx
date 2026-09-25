@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, X } from "lucide-react";
-import { BRAND, CARD, INK, MUTED, NAVY } from "@/lib/platformStyles";
+import { CARD, MUTED } from "@/lib/platformStyles";
 
 /**
  * Shared create-card chrome — same identity as «مهمة جديدة».
@@ -36,12 +36,12 @@ export default function ComposerModalShell({
 
   const cardStyle = {
     width: "100%",
-    maxWidth: 640,
+    maxWidth: 680,
     maxHeight: "calc(100vh - 32px)",
-    background: CARD,
-    borderRadius: 22,
-    border: "1px solid var(--nv-glass-line, var(--nv-line, #E2E8F0))",
-    boxShadow: "var(--nv-glass-shadow, 0 24px 60px rgba(20,40,75,.22))",
+    background: "#fff",
+    borderRadius: 8,
+    border: "1px solid #D5DCD8",
+    boxShadow: "0 1px 2px rgba(12,20,16,.04), 0 4px 14px rgba(12,20,16,.05)",
     overflow: "hidden",
     display: "flex",
     flexDirection: "column",
@@ -53,9 +53,9 @@ export default function ComposerModalShell({
         data-nv-composer-header
         style={{
           flexShrink: 0,
-          padding: "20px 24px 16px",
-          borderBottom: "1px solid var(--nv-line, #E2E8F0)",
-          background: "var(--nv-card, #fff)",
+          padding: "14px 16px",
+          borderBottom: "1px solid #EEF1EF",
+          background: "#fff",
         }}
       >
         {back ? <div style={{ marginBottom: 10 }}>{back}</div> : null}
@@ -63,12 +63,12 @@ export default function ComposerModalShell({
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
               data-nv-composer-title
-              style={{ fontSize: 20, fontWeight: 650, letterSpacing: "-0.02em", color: INK || NAVY, lineHeight: 1.3 }}
+              style={{ fontFamily: "var(--font-heading, 'Readex Pro', sans-serif)", fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em", color: "#111418", lineHeight: 1.4 }}
             >
               {title}
             </div>
             {hint ? (
-              <div style={{ fontSize: 12, color: MUTED, marginTop: 4, lineHeight: 1.6 }}>
+              <div style={{ fontSize: 12, color: "#555C66", marginTop: 2, lineHeight: 1.7 }}>
                 {hint}
               </div>
             ) : null}
@@ -114,12 +114,12 @@ export default function ComposerModalShell({
         data-nv-composer-footer
         style={{
           flexShrink: 0,
-          padding: customFooter ? "12px 24px 16px" : "16px 24px 20px",
-          borderTop: "1px solid var(--nv-line, #E2E8F0)",
+          padding: customFooter ? "10px 16px" : "10px 16px",
+          borderTop: "1px solid #EEF1EF",
           display: "flex",
           flexDirection: customFooter ? "column" : "row",
           gap: 10,
-          background: CARD,
+          background: "#FAFBFA",
         }}
       >
         {customFooter ? footer : (
@@ -128,12 +128,12 @@ export default function ComposerModalShell({
               type="button"
               onClick={onClose}
               style={{
-                height: 44,
-                padding: "0 18px",
-                borderRadius: 12,
-                background: CARD,
-                border: "1px solid var(--nv-line, #E2E8F0)",
-                color: MUTED,
+                height: 34,
+                padding: "0 14px",
+                borderRadius: 8,
+                background: "#fff",
+                border: "1px solid #D5DCD8",
+                color: "#3A4048",
                 fontSize: 13,
                 fontWeight: 500,
                 cursor: "pointer",
@@ -147,10 +147,10 @@ export default function ComposerModalShell({
               disabled={!enabled}
               style={{
                 flex: 1,
-                height: 44,
-                borderRadius: 12,
-                background: enabled ? BRAND : "var(--nv-soft, #E2E8F0)",
-                color: enabled ? "#fff" : MUTED,
+                height: 34,
+                borderRadius: 8,
+                background: enabled ? "#3C7D50" : "#D5DCD8",
+                color: enabled ? "#fff" : "#8E9A93",
                 border: "none",
                 fontSize: 14,
                 fontWeight: 650,
@@ -178,7 +178,7 @@ export default function ComposerModalShell({
         position: "fixed",
         inset: 0,
         zIndex,
-        background: "color-mix(in oklab, var(--nv-navy, #14284B) 42%, transparent)",
+        background: "rgba(12,20,16,.42)",
         backdropFilter: "blur(8px)",
         display: "flex",
         alignItems: "center",

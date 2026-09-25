@@ -5,7 +5,7 @@ import { PERF_BODY, PERF_LINE, PERF_MUTED, PERF_NAVY, PERF_SOFT, PERF_WHITE } fr
 export default function PerfRangeBar({ ar, from, to, presets = [], onFrom, onTo, onPreset, note, valid = true }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: ar ? "flex-end" : "flex-start" }}>
-      <div style={{ display: "flex", gap: 0, alignItems: "stretch", border: `1px solid ${PERF_LINE}`, background: PERF_WHITE }}>
+      <div className="nv-perf-seg" style={{ display: "flex", gap: 0, alignItems: "stretch", border: `1px solid ${PERF_LINE}`, borderRadius: 10, background: PERF_WHITE, overflow: "hidden" }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 2, padding: "7px 12px", borderInlineEnd: `1px solid ${PERF_SOFT}` }}>
           <span style={{ fontSize: 10, color: PERF_MUTED }}>{ar ? "من" : "From"}</span>
           <PlatformDateField compact ar={ar} value={from} onChange={onFrom} />
@@ -29,7 +29,7 @@ export default function PerfRangeBar({ ar, from, to, presets = [], onFrom, onTo,
                 border: "none",
                 borderInlineEnd: `1px solid ${PERF_SOFT}`,
                 background: on ? PERF_NAVY : PERF_WHITE,
-                color: on ? "#fff" : PERF_BODY,
+                color: on ? "var(--nv-btn-ink)" : PERF_BODY,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
               }}
@@ -40,7 +40,7 @@ export default function PerfRangeBar({ ar, from, to, presets = [], onFrom, onTo,
         })}
       </div>
       {note ? (
-        <span style={{ fontSize: 11, color: valid ? PERF_BODY : "#8a1c2b", lineHeight: 1.7, textAlign: "start" }}>{note}</span>
+        <span style={{ fontSize: 11, color: valid ? PERF_BODY : "var(--nv-bad-ink)", lineHeight: 1.7, textAlign: "start" }}>{note}</span>
       ) : null}
     </div>
   );

@@ -1,5 +1,5 @@
 import React from "react";
-import { BORDER, CARD, INK, MUTED, STAGE, SURFACE } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, RADIUS, STAGE, SURFACE } from "@/lib/platformStyles";
 import { StampNestContext } from "@/components/shared/stampNestContext";
 
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
@@ -9,16 +9,19 @@ function sectionTab(on) {
     fontFamily: "inherit",
     display: "inline-flex",
     alignItems: "center",
+    justifyContent: "center",
     gap: 7,
     height: 34,
-    padding: "0 12px",
-    borderRadius: 10,
-    fontSize: 13,
+    minWidth: 96,
+    padding: "0 13px",
+    borderRadius: 7,
+    fontSize: 12,
     cursor: "pointer",
-    border: `1px solid ${on ? "var(--nv-navy, #14284B)" : BORDER}`,
-    background: on ? SURFACE : CARD,
-    color: on ? INK : MUTED,
-    fontWeight: on ? 600 : 400,
+    border: on ? "none" : "1px solid rgba(255,255,255,.35)",
+    background: on ? "#FFFFFF" : "transparent",
+    color: on ? "#0B3D27" : "#FFFFFF",
+    fontWeight: on ? 700 : 500,
+    boxShadow: on ? "0 1px 2px rgba(12,20,16,.12)" : "none",
   };
 }
 
@@ -69,7 +72,7 @@ export default function SectionShell({
           display: "flex",
           flexDirection: "column",
           border: `1px solid ${BORDER}`,
-          borderRadius: 14,
+          borderRadius: RADIUS,
           overflow: "hidden",
           background: STAGE,
           boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
@@ -78,24 +81,28 @@ export default function SectionShell({
         <header
           className="nv-stamp-head"
           style={{
-            background: CARD,
+            background: "linear-gradient(135deg,#0B3D27 0%,#0F5535 100%)",
             display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 16,
-            padding: "16px 18px",
-            flexWrap: "wrap",
+            flexDirection: "column",
+            gap: 12,
+            padding: "14px 18px",
             flexShrink: 0,
             textAlign: "start",
-            borderBottom: sections.length ? "none" : `1px solid ${BORDER}`,
+            boxShadow: "0 6px 18px rgba(6,61,38,.16)",
           }}
         >
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12, minWidth: 0, flex: 1 }}>
             {lead ? <div style={{ flexShrink: 0, paddingTop: 2 }}>{lead}</div> : null}
             <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: 1 }}>
-              <h1 className="nv-h" style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em", color: INK }}>{title}</h1>
+              {kicker ? (
+                <span data-nv="kicker" style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#A9CDB8", fontWeight: 600, fontSize: 10.5 }}>
+                  <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", display: "inline-block" }} />
+                  {kicker}
+                </span>
+              ) : null}
+              <h1 className="nv-h" style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: 0, color: "#FFFFFF" }}>{title}</h1>
               {subtitle ? (
-                <p style={{ margin: "3px 0 0", fontSize: 13, lineHeight: 1.7, color: MUTED, maxWidth: 720 }}>{subtitle}</p>
+                <p style={{ margin: "3px 0 0", fontSize: 12, lineHeight: 1.7, color: "#C5DBCD", maxWidth: 680 }}>{subtitle}</p>
               ) : null}
             </div>
           </div>
@@ -108,15 +115,11 @@ export default function SectionShell({
                 flexWrap: "wrap",
                 flexShrink: 0,
                 paddingTop: 4,
-                color: MUTED,
+                color: "#C5DBCD",
                 fontSize: 13,
                 lineHeight: 1.5,
               }}
             >
-              {kicker ? <span data-nv="kicker">{kicker}</span> : null}
-              {kicker && headerMeta != null && headerMeta !== false && (typeof headerMeta === "string" || typeof headerMeta === "number") ? (
-                <span aria-hidden>·</span>
-              ) : null}
               {headerMeta != null && headerMeta !== false ? (
                 typeof headerMeta === "string" || typeof headerMeta === "number" ? (
                   <span>{headerMeta}</span>
@@ -126,19 +129,15 @@ export default function SectionShell({
               ) : null}
             </div>
           ) : null}
-        </header>
 
         {sections.length ? (
           <nav
             aria-label={title}
             className="nv-stamp-tabs nv-signing-section-tabs"
             style={{
-              background: CARD,
-              borderTop: `1px solid ${BORDER}`,
-              borderBottom: `1px solid ${BORDER}`,
+              background: "transparent",
               display: "flex",
               gap: 6,
-              padding: "8px 14px",
               flexWrap: "wrap",
               flexShrink: 0,
             }}
@@ -167,8 +166,8 @@ export default function SectionShell({
                         justifyContent: "center",
                         fontSize: 10,
                         fontWeight: 700,
-                        background: on ? "var(--nv-navy, #14284B)" : SURFACE,
-                        color: on ? "#fff" : MUTED,
+                        background: on ? "#fff" : "rgba(255,255,255,.2)",
+                        color: on ? "#0B3D27" : "#FFFFFF",
                       }}
                     >
                       {step}
@@ -178,7 +177,7 @@ export default function SectionShell({
                   ) : null}
                   {label}
                   {count > 0 ? (
-                    <span dir="ltr" style={{ ...mono, fontSize: 10, padding: "1px 5px", borderRadius: 0, background: "var(--nv-navy, #14284B)", color: "#fff" }}>
+                    <span dir="ltr" style={{ ...mono, fontSize: 10, padding: "1px 5px", borderRadius: 3, background: on ? "#0B3D27" : "rgba(255,255,255,.24)", color: "#fff" }}>
                       {count}
                     </span>
                   ) : null}
@@ -187,6 +186,7 @@ export default function SectionShell({
             })}
           </nav>
         ) : null}
+        </header>
 
         {metaInBar ? (
           <div

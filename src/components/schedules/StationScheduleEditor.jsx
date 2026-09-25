@@ -8,7 +8,8 @@ import ScheduleStatsBar from "./ScheduleStatsBar";
 import RotaPublishPanel from "./RotaPublishPanel";
 import { MUTED, NAVY, SURFACE, ui, CARD } from "@/lib/platformStyles";
 import { uiDateLocale } from "@/lib/dateFormat";
-import { duplicateShiftGroups, nextDistinctShift, checkConsecutiveWorkGate } from "@/lib/shiftDerivations";
+import { duplicateShiftGroups, nextDistinctShift, checkConsecutiveWorkGate, formatShiftHm } from "@/lib/shiftDerivations";
+import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { ruleValue } from "@/lib/laborRules";
 import { toast } from "@/components/ui/use-toast";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
@@ -75,6 +76,7 @@ function timeChoices(current) {
 export default function StationScheduleEditor({ companyId, stationId, canManage }) {
   const { data } = useAuth();
   const { t, lang } = useI18n();
+  const { format: timeFormat } = useTimeFormat();
   const ar = lang === "ar";
   const [cursor, setCursor] = useState(() => {
     const now = new Date();
@@ -231,7 +233,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                           onChange={(e) => updateShiftType(companyId, stationId, st.id, { ...st, start: e.target.value })}
                         >
                           {timeChoices(st.start).map((hm) => (
-                            <option key={`s-${hm}`} value={hm}>{hm}</option>
+                            <option key={`s-${hm}`} value={hm}>{formatShiftHm(hm, timeFormat, lang)}</option>
                           ))}
                         </select>
                         <span className="nv-shift-window-sep">–</span>
@@ -243,7 +245,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                           onChange={(e) => updateShiftType(companyId, stationId, st.id, { ...st, end: e.target.value })}
                         >
                           {timeChoices(st.end).map((hm) => (
-                            <option key={`e-${hm}`} value={hm}>{hm}</option>
+                            <option key={`e-${hm}`} value={hm}>{formatShiftHm(hm, timeFormat, lang)}</option>
                           ))}
                         </select>
                       </div>
@@ -279,7 +281,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                               <option value="outdoor">{ar ? "ميدان مكشوف" : "Open-air"}</option>
                             </select>
                             {!gate.ok ? (
-                              <PolicyDeviationAlert gate={gate} ruleId="hours.rest.maxConsecutiveHours" ar={ar} />
+                              <PolicyDeviationAlert gate={gate} ruleId="hours.rest.maxConsecutiveHours" ar={ar} quietEdge />
                             ) : null}
                           </div>
                         );
@@ -311,9 +313,9 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                     <div className="nv-shift-meta">
                       <span className="nv-shift-field nv-shift-field--name" style={{ display: "inline-block", lineHeight: "28px" }}>{st.label}</span>
                       <span className="nv-shift-window" dir="ltr">
-                        <span className="nv-shift-field nv-shift-field--time" style={{ display: "inline-block" }}>{st.start}</span>
+                        <span className="nv-shift-field nv-shift-field--time" style={{ display: "inline-block" }}>{formatShiftHm(st.start, timeFormat, lang)}</span>
                         <span className="nv-shift-window-sep">–</span>
-                        <span className="nv-shift-field nv-shift-field--time" style={{ display: "inline-block" }}>{st.end}</span>
+                        <span className="nv-shift-field nv-shift-field--time" style={{ display: "inline-block" }}>{formatShiftHm(st.end, timeFormat, lang)}</span>
                       </span>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
                         <LaborArticleCite ruleId="hours.rest.maxConsecutiveHours" ar={ar} />

@@ -186,7 +186,7 @@ function BranchEscalationRow({
   );
 }
 
-export default function OrgEscalationBoard({ lang = "ar", canWrite = false }) {
+export default function OrgEscalationBoard({ lang = "ar", canWrite = false, embedded = false }) {
   const ar = lang === "ar";
   const { data, company } = useAuth();
   const [escalationEdit, setEscalationEdit] = useState(null);
@@ -233,7 +233,8 @@ export default function OrgEscalationBoard({ lang = "ar", canWrite = false }) {
   );
 
   return (
-    <OrgPanel ar={ar}>
+    <OrgPanel ar={ar} embedded={embedded}>
+      {embedded ? null : (
       <OrgToolbar>
         {canWrite ? (
           <button
@@ -246,6 +247,20 @@ export default function OrgEscalationBoard({ lang = "ar", canWrite = false }) {
           </button>
         ) : null}
       </OrgToolbar>
+      )}
+
+      {embedded && canWrite ? (
+        <div style={{ padding: "10px 12px", borderBottom: `1px solid ${BORDER}` }}>
+          <button
+            type="button"
+            style={{ ...orgBtnPrimary(), display: "inline-flex", alignItems: "center" }}
+            onClick={() => setAssignForStation(stations[0]?.id || "")}
+          >
+            <Plus style={{ width: 14, height: 14, marginInlineEnd: 6 }} />
+            {ar ? "مسؤول واحد لعدة فروع" : "One handler · many branches"}
+          </button>
+        </div>
+      ) : null}
 
       {!canWrite ? (
         <OrgNotice ar={ar}>

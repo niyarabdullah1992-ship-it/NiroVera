@@ -1,5 +1,5 @@
 import React from "react";
-import { NAVY, MUTED, CARD, BORDER } from "@/lib/platformStyles";
+import { NAVY_FILL, MUTED, CARD, BORDER } from "@/lib/platformStyles";
 
 export default function EmployeeFileTabs({ tabs, value, onChange, ar }) {
   return (
@@ -28,8 +28,8 @@ export default function EmployeeFileTabs({ tabs, value, onChange, ar }) {
               fontSize: 13,
               fontWeight: on ? 700 : 400,
               padding: "9px 16px",
-              border: `1px solid ${on ? NAVY : BORDER}`,
-              background: on ? NAVY : CARD,
+              border: `1px solid ${on ? NAVY_FILL : BORDER}`,
+              background: on ? NAVY_FILL : CARD,
               color: on ? "#fff" : MUTED,
               cursor: "pointer",
               whiteSpace: "nowrap",

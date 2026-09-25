@@ -67,12 +67,13 @@ function pill(on) {
     fontFamily: "inherit",
     fontSize: 12,
     padding: "9px 15px",
-    border: `1px solid ${on ? OC.ink : OC.line}`,
-    background: on ? OC.ink : "#fff",
-    color: on ? "#fff" : OC.mid,
+    border: `1px solid ${on ? "var(--nv-btn-fill)" : OC.line}`,
+    background: on ? "var(--nv-btn-fill)" : "var(--nv-card)",
+    color: on ? "var(--nv-btn-ink)" : OC.mid,
     fontWeight: on ? 600 : 400,
     cursor: "pointer",
     whiteSpace: "nowrap",
+    borderRadius: 10,
   };
 }
 
@@ -81,12 +82,13 @@ function chip(on) {
     fontFamily: "inherit",
     fontSize: 11,
     padding: "6px 11px",
-    border: `1px solid ${on ? OC.ink : OC.line}`,
-    background: on ? OC.ink : "#fff",
-    color: on ? "#fff" : OC.mid,
+    border: `1px solid ${on ? "var(--nv-btn-fill)" : OC.line}`,
+    background: on ? "var(--nv-btn-fill)" : "var(--nv-card)",
+    color: on ? "var(--nv-btn-ink)" : OC.mid,
     fontWeight: on ? 600 : 400,
     cursor: "pointer",
     whiteSpace: "nowrap",
+    borderRadius: 10,
   };
 }
 
@@ -407,7 +409,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
     return {
       id, label, value: String(value ?? 0), color,
       cursor: rangeOn ? "default" : "pointer",
-      bg: act && !rangeOn ? "#f7f8fa" : "#fff",
+      bg: act && !rangeOn ? "var(--nv-hover)" : "var(--nv-card)",
       border: act && !rangeOn ? "#c7ccd6" : OC.soft,
       weight: act && !rangeOn ? 700 : 500,
       select: () => {
@@ -445,15 +447,15 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
   ] : [];
 
   const cellItems = (rec) => (rec ? [
-    rec.tasksMine && { label: ar ? "مهامي" : "Mine", count: rec.tasksMine, color: OC.ink, bg: "#f5f6f8", border: OC.line },
-    rec.tasksTeam && { label: ar ? "الفريق" : "Team", count: rec.tasksTeam, color: OC.mid, bg: "#fff", border: OC.line },
+    rec.tasksMine && { label: ar ? "مهامي" : "Mine", count: rec.tasksMine, color: OC.ink, bg: "var(--nv-mute-soft)", border: OC.line },
+    rec.tasksTeam && { label: ar ? "الفريق" : "Team", count: rec.tasksTeam, color: OC.mid, bg: "var(--nv-card)", border: OC.line },
     rec.proofWork && { label: ar ? "إثبات" : "Proof", count: rec.proofWork, color: OC.greenText, bg: OC.greenBg, border: OC.greenBd },
     rec.proofVisit && { label: ar ? "زائر" : "Visit", count: rec.proofVisit, color: OC.goldText, bg: OC.goldBg, border: OC.goldBd },
     rec.hse && { label: ar ? "سلامة" : "HSE", count: rec.hse, color: OC.abs, bg: OC.absBg, border: OC.absBd },
     rec.leave && { label: ar ? "إجازة" : "Leave", count: rec.leave, color: OC.leave, bg: OC.leaveBg, border: OC.leaveBd },
   ].filter(Boolean) : []);
 
-  const shell = { background: "#fff", border: `1px solid ${OC.line}` };
+  const shell = { background: "var(--nv-card)", border: `1px solid ${OC.line}`, borderRadius: 14, boxShadow: "var(--nv-paper)" };
 
   const leaveDays = real.filter((cell) => cell.rec.leave).length;
   const clashDays = real.filter((cell) => cell.rec.leaveClash).length;
@@ -504,7 +506,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
         </div>
         <div className="nv-ops-cal-head-tools" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", border: `1px solid ${OC.line}` }}>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => goMonth(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1)} style={{ fontFamily: "inherit", padding: "10px 14px", border: "none", background: "#fff", color: OC.mid, cursor: "pointer", fontSize: 14 }}>{ar ? "›" : "‹"}</button>
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => goMonth(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1)} style={{ fontFamily: "inherit", padding: "10px 14px", border: "none", background: "var(--nv-card)", color: OC.mid, cursor: "pointer", fontSize: 14 }}>{ar ? "›" : "‹"}</button>
             <div style={{ width: 220, borderInline: `1px solid ${OC.line}` }}>
               <PlatformDateField
                 compact
@@ -518,9 +520,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                 }}
               />
             </div>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => goMonth(month === 11 ? year + 1 : year, month === 11 ? 0 : month + 1)} style={{ fontFamily: "inherit", padding: "10px 14px", border: "none", background: "#fff", color: OC.mid, cursor: "pointer", fontSize: 14 }}>{ar ? "‹" : "›"}</button>
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => goMonth(month === 11 ? year + 1 : year, month === 11 ? 0 : month + 1)} style={{ fontFamily: "inherit", padding: "10px 14px", border: "none", background: "var(--nv-card)", color: OC.mid, cursor: "pointer", fontSize: 14 }}>{ar ? "‹" : "›"}</button>
           </div>
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { goMonth(now.getFullYear(), now.getMonth(), now.getDate()); setQuery(""); setQuick(""); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "9px 15px", border: `1px solid ${OC.line}`, background: "#fff", color: OC.ink, cursor: "pointer", whiteSpace: "nowrap" }}>{ar ? "اليوم" : "Today"}</button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { goMonth(now.getFullYear(), now.getMonth(), now.getDate()); setQuery(""); setQuick(""); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "9px 15px", border: `1px solid ${OC.line}`, background: "var(--nv-card)", color: OC.ink, cursor: "pointer", whiteSpace: "nowrap" }}>{ar ? "اليوم" : "Today"}</button>
           {!lane ? (
             <div style={{ display: "flex", gap: 3 }}>
               {[["team", ar ? "الفريق" : "Team"], ["me", ar ? "سجلّي" : "Mine"]].map(([id, label]) => (
@@ -540,8 +542,8 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
         return (
           <div style={{
             padding: "11px 18px",
-            background: mineScope.emphasize ? "#fdf6e8" : "#fff",
-            border: `1px solid ${mineScope.emphasize ? "#ecd9a8" : OC.line}`,
+            background: mineScope.emphasize ? "var(--nv-warn-soft)" : "var(--nv-card)",
+            border: `1px solid ${mineScope.emphasize ? "var(--nv-warn-line)" : OC.line}`,
             fontSize: 12,
             color: mineScope.emphasize ? "#8a6516" : OC.mid,
             lineHeight: 1.7,
@@ -586,7 +588,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
 
       {sheet && selRec && !rangeOn && (
         <div onClick={() => setSheet(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(20,33,61,.42)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 20px", overflow: "auto" }}>
-          <div dir={ar ? "rtl" : "ltr"} onClick={(e) => e.stopPropagation()} style={{ width: "min(720px,100%)", background: "#fff", border: `1px solid ${OC.line}`, display: "flex", flexDirection: "column" }}>
+          <div dir={ar ? "rtl" : "ltr"} onClick={(e) => e.stopPropagation()} style={{ width: "min(720px,100%)", background: "var(--nv-card)", border: `1px solid ${OC.line}`, display: "flex", flexDirection: "column" }}>
             <DayPanel
               ar={ar}
               dayTitle={dayTitle}
@@ -644,7 +646,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                         border: "none",
                         borderInlineStart: `1px solid ${OC.soft}`,
                         borderBottom: `1px solid ${OC.soft}`,
-                        background: !hit ? "#fbfbfc" : (rec?.leave ? OC.leaveBg : (cell.weekend ? OC.wash : (on ? OC.greenBg : "#fff"))),
+                        background: !hit ? "var(--nv-soft)" : (rec?.leave ? OC.leaveBg : (cell.weekend ? OC.wash : (on ? OC.greenBg : "var(--nv-card)"))),
                         cursor: "pointer",
                         display: "flex",
                         flexDirection: "column",
@@ -655,7 +657,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 7, width: "100%" }}>
-                        <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, fontWeight: cell.today ? 700 : 500, color: cell.weekend ? "#a6adbb" : (cell.future ? OC.muted : OC.ink) }}>{cell.d}</span>
+                        <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, fontWeight: cell.today ? 700 : 500, color: cell.weekend ? "var(--nv-box)" : (cell.future ? OC.muted : OC.ink) }}>{cell.d}</span>
                         {cell.today ? <span style={{ fontSize: 10, fontWeight: 700, color: OC.greenText, background: OC.greenBg, border: `1px solid ${OC.greenBd}`, padding: "1px 6px" }}>{ar ? "اليوم" : "Today"}</span> : null}
                         {rec?.broke ? <span title={ar ? BROKE[rec.broke]?.ar : BROKE[rec.broke]?.en} dir="ltr" style={{ marginInlineStart: "auto", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fontWeight: 700, color: OC.goldText, background: OC.goldBg, border: `1px solid ${OC.goldBd}`, padding: "1px 5px" }}>{rec.broke}</span> : null}
                       </div>
@@ -716,7 +718,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                     key={cell.key}
                     type="button"
                     onClick={() => pickDay(cell.d, !!rec)}
-                    style={{ fontFamily: "inherit", textAlign: "start", display: "grid", gridTemplateColumns: "120px minmax(0,2.4fr) 54px 54px 54px 54px 74px", gap: 14, padding: "11px 18px", alignItems: "center", border: "none", borderBottom: "1px solid #f2f4f7", background: rec?.leave ? OC.leaveBg : (on ? OC.greenBg : "#fff"), cursor: "pointer", outline: on ? `2px solid ${OC.green}` : "none", outlineOffset: -2, width: "100%", boxSizing: "border-box" }}
+                    style={{ fontFamily: "inherit", textAlign: "start", display: "grid", gridTemplateColumns: "120px minmax(0,2.4fr) 54px 54px 54px 54px 74px", gap: 14, padding: "11px 18px", alignItems: "center", border: "none", borderBottom: "1px solid var(--nv-line2)", background: rec?.leave ? OC.leaveBg : (on ? OC.greenBg : "var(--nv-card)"), cursor: "pointer", outline: on ? `2px solid ${OC.green}` : "none", outlineOffset: -2, width: "100%", boxSizing: "border-box" }}
                   >
                     <span style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
                       <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 14, fontWeight: cell.today ? 700 : 500, color: cell.weekend || cell.future ? OC.muted : OC.ink }}>{cell.d}</span>
@@ -770,7 +772,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                     value={cmpQuery}
                     onChange={(e) => setCmpQuery(e.target.value)}
                     placeholder={ar ? "ابحث في أسماء النطاق" : "Search names in scope"}
-                    style={{ fontFamily: "inherit", fontSize: 12, padding: "7px 10px", border: `1px solid ${OC.line}`, outline: "none", background: "#fff", color: OC.ink, minWidth: "min(240px,100%)" }}
+                    style={{ fontFamily: "inherit", fontSize: 12, padding: "7px 10px", border: `1px solid ${OC.line}`, outline: "none", background: "var(--nv-card)", color: OC.ink, minWidth: "min(240px,100%)" }}
                   />
                 ) : null}
                 <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -816,7 +818,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                 {cmpSorted.map((row) => {
                   const tot = Math.max(1, row.on + row.late + row.abs + row.leave);
                   return (
-                    <div key={row.id} style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 8, padding: "11px 20px", alignItems: "center", borderBottom: "1px solid #f7f8fa" }}>
+                    <div key={row.id} style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 8, padding: "11px 20px", alignItems: "center", borderBottom: "1px solid var(--nv-hover)" }}>
                       <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
                         {row.name}{isViewerOwnFile(row, currentUser) ? <>{" "}<FileSelfBadge ar={ar} /></> : null}
                       </span>
@@ -885,7 +887,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
               <div style={{ borderBottom: `1px solid ${OC.soft}`, display: "flex", flexDirection: "column" }}>
                 <div style={{ padding: "11px 18px 7px" }}><span style={{ fontSize: 12, fontWeight: 700 }}>{rangeDays.length ? (ar ? `أيام المدى · ${rangeDays.length}` : `Range days · ${rangeDays.length}`) : (ar ? "لا يوم مسجّل في هذا المدى" : "No recorded day")}</span></div>
                 {rangeDays.map((day) => (
-                  <button key={`${day.y}-${day.m}-${day.d}`} type="button" onClick={() => { goMonth(day.y, day.m, day.d); setRange(null); setSheet(true); }} style={{ fontFamily: "inherit", textAlign: "start", padding: "8px 18px", border: "none", borderTop: "1px solid #f7f8fa", background: "#fff", cursor: "pointer", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto auto", gap: 9, alignItems: "baseline", width: "100%", boxSizing: "border-box" }}>
+                  <button key={`${day.y}-${day.m}-${day.d}`} type="button" onClick={() => { goMonth(day.y, day.m, day.d); setRange(null); setSheet(true); }} style={{ fontFamily: "inherit", textAlign: "start", padding: "8px 18px", border: "none", borderTop: "1px solid var(--nv-hover)", background: "var(--nv-card)", cursor: "pointer", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto auto", gap: 9, alignItems: "baseline", width: "100%", boxSizing: "border-box" }}>
                     <span style={{ fontSize: 11, color: OC.ink, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{weekdays[day.wd]} {day.d} {months[day.m]}</span>
                     <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: OC.greenText }}>{day.rec.on}</span>
                     <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: day.rec.late ? OC.goldText : OC.muted }}>{day.rec.late}</span>
@@ -940,7 +942,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
               { label: ar ? "إجازة على وردية منشورة" : "Leave on a published shift", value: String(clashDays), note: clashDays ? (ar ? "تحتاج بديلاً في جدول الدوام — الجدول والملف يتناقضان في هذه الأيام" : "Needs a substitute on the duty roster — the roster and the file disagree") : (ar ? "لا تناقض بين الجدول والملف" : "No clash between the roster and the file"), color: clashDays ? OC.goldText : OC.greenText },
               { label: ar ? "أيام فيها بلاغ سلامة" : "Days with HSE", value: String(hseDays), note: hseDays ? (ar ? "كل بلاغ يراه موظفو الفرع" : "Each report is visible to the branch") : (ar ? "لا بلاغات هذا الشهر" : "No reports this month"), color: hseDays ? OC.abs : OC.greenText },
             ]).map((item) => (
-              <div key={item.label} style={{ padding: "12px 18px", borderBottom: "1px solid #f2f4f7", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "baseline" }}>
+              <div key={item.label} style={{ padding: "12px 18px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "baseline" }}>
                 <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{item.label}</span>
                   <span style={{ fontSize: 11, color: OC.muted, lineHeight: 1.7 }}>{item.note}</span>
@@ -985,7 +987,7 @@ function MatrixView({ ar, cells, weekdays, selected, pickDay }) {
     { label: ar ? "أقل" : "Low", color: "#e2a3a3" },
   ];
   return (
-    <section style={{ background: "#fff", border: `1px solid ${OC.line}`, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+    <section style={{ background: "var(--nv-card)", border: `1px solid ${OC.line}`, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "نمط الأسبوع" : "Week pattern"}</span>
         <span style={{ fontSize: 12, color: OC.muted }}>{ar ? "أيام الأسبوع في الأعمدة، أسابيع الشهر في الصفوف. التكرار يظهر عموداً، لا صدفة." : "Weekdays in columns, month weeks in rows. A weak column is a cause, not chance."}</span>
@@ -1014,7 +1016,7 @@ function MatrixView({ ar, cells, weekdays, selected, pickDay }) {
                     type="button"
                     title={rec ? `${cell.d} — ${ar ? "حضر" : "on"} ${rec.on} / ${rec.head}` : String(cell.d)}
                     onClick={() => pickDay(cell.d, !!rec)}
-                    style={{ fontFamily: "'IBM Plex Mono', monospace", border: `1px solid ${OC.line}`, background: rec?.leave ? OC.leaveBg : (rec ? sh.bg : (cell.weekend ? "#f2f4f7" : OC.wash)), color: rec?.leave ? OC.leave : (rec ? sh.fg : OC.muted), cursor: "pointer", padding: 0, height: 46, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, fontSize: 12, fontWeight: rec ? 600 : 400, outline: selected === cell.d ? `2px solid ${OC.ink}` : "none", outlineOffset: -2 }}
+                    style={{ fontFamily: "'IBM Plex Mono', monospace", border: `1px solid ${OC.line}`, background: rec?.leave ? OC.leaveBg : (rec ? sh.bg : (cell.weekend ? "var(--nv-line2)" : OC.wash)), color: rec?.leave ? OC.leave : (rec ? sh.fg : OC.muted), cursor: "pointer", padding: 0, height: 46, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1, fontSize: 12, fontWeight: rec ? 600 : 400, outline: selected === cell.d ? `2px solid ${OC.ink}` : "none", outlineOffset: -2 }}
                   >
                     <span>{cell.d}</span>
                     {rec ? <span dir="ltr" style={{ fontSize: 9, opacity: 0.85 }}>{Math.round(rate * 100)}%</span> : null}
@@ -1051,7 +1053,7 @@ function MatrixView({ ar, cells, weekdays, selected, pickDay }) {
 function StripView({ ar, cells, selected, pickDay, filtering, matchCell, legend }) {
   const days = cells.filter((cell) => !cell.blank);
   return (
-    <section style={{ background: "#fff", border: `1px solid ${OC.line}`, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
+    <section style={{ background: "var(--nv-card)", border: `1px solid ${OC.line}`, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "شريط الشهر" : "Month strip"}</span>
         <span style={{ fontSize: 12, color: OC.muted }}>{ar ? "عمود لكل يوم، بارتفاع نسبته من الفريق. النمط يُقرأ قبل الأرقام." : "One column per day, height by team share. Read the pattern before the numbers."}</span>
@@ -1070,7 +1072,7 @@ function StripView({ ar, cells, selected, pickDay, filtering, matchCell, legend 
               onClick={() => pickDay(cell.d, !!rec)}
               style={{ fontFamily: "inherit", flex: 1, minWidth: 0, border: "none", background: "none", padding: 0, cursor: "pointer", display: "flex", flexDirection: "column", gap: 5, alignItems: "stretch", opacity: hit ? 1 : 0.48 }}
             >
-              <div style={{ height: 120, display: "flex", flexDirection: "column", justifyContent: "flex-end", background: cell.weekend ? "#f2f4f7" : OC.soft, outline: on ? `2px solid ${OC.green}` : "none", outlineOffset: 1 }}>
+              <div style={{ height: 120, display: "flex", flexDirection: "column", justifyContent: "flex-end", background: cell.weekend ? "var(--nv-line2)" : OC.soft, outline: on ? `2px solid ${OC.green}` : "none", outlineOffset: 1 }}>
                 <div style={{ height: h(rec?.abs || 0), background: OC.abs }} />
                 <div style={{ height: h(rec?.late || 0), background: OC.gold }} />
                 <div style={{ height: h(rec?.on || 0), background: OC.green }} />
@@ -1107,7 +1109,7 @@ function DayPanel({
             {daySub ? <span style={{ fontSize: 12, color: OC.muted }}>{daySub}</span> : null}
           </div>
           {modal ? (
-            <button type="button" onClick={onClose} style={{ marginInlineStart: "auto", fontFamily: "inherit", fontSize: 12, border: `1px solid ${OC.line}`, background: "#fff", color: OC.ink, cursor: "pointer", padding: "7px 13px" }}>{ar ? "إغلاق" : "Close"}</button>
+            <button type="button" onClick={onClose} style={{ marginInlineStart: "auto", fontFamily: "inherit", fontSize: 12, border: `1px solid ${OC.line}`, background: "var(--nv-card)", color: OC.ink, cursor: "pointer", padding: "7px 13px" }}>{ar ? "إغلاق" : "Close"}</button>
           ) : null}
         </div>
       )}
@@ -1147,7 +1149,7 @@ function DayPanel({
               <span style={{ fontSize: 11, color: OC.muted }}>{rosterPack.rosterHint}</span>
             </div>
             {rosterPack.roster.map((person) => (
-              <div key={person.id} style={{ padding: modal ? "0 20px 7px" : "8px 18px", borderTop: modal ? "none" : "1px solid #f7f8fa", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 9, alignItems: "baseline" }}>
+              <div key={person.id} style={{ padding: modal ? "0 20px 7px" : "8px 18px", borderTop: modal ? "none" : "1px solid var(--nv-hover)", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 9, alignItems: "baseline" }}>
                 <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
                   {person.name}{currentUserId && String(person.id) === String(currentUserId) ? <>{" "}<FileSelfBadge ar={ar} /></> : null}
                 </span>
@@ -1156,17 +1158,17 @@ function DayPanel({
               </div>
             ))}
             {rosterPack.hasQuiet ? (
-              <div style={{ padding: "10px 18px", borderTop: "1px solid #f7f8fa", display: "flex", flexDirection: "column", gap: 8, background: OC.wash }}>
+              <div style={{ padding: "10px 18px", borderTop: "1px solid var(--nv-hover)", display: "flex", flexDirection: "column", gap: 8, background: OC.wash }}>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: OC.mid }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: OC.green }} />{rosterPack.quietLine}</span>
-                  <button type="button" onClick={() => setQuietOpen((v) => !v)} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, border: `1px solid ${OC.line}`, background: "#fff", color: OC.ink, cursor: "pointer", padding: "4px 10px" }}>{quietOpen ? (ar ? "إخفاء" : "Hide") : (ar ? "عرض الأسماء" : "Show names")}</button>
+                  <button type="button" onClick={() => setQuietOpen((v) => !v)} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, border: `1px solid ${OC.line}`, background: "var(--nv-card)", color: OC.ink, cursor: "pointer", padding: "4px 10px" }}>{quietOpen ? (ar ? "إخفاء" : "Hide") : (ar ? "عرض الأسماء" : "Show names")}</button>
                 </div>
                 {quietOpen ? (
                   <>
-                    <input value={nameQuery} onChange={(e) => setNameQuery(e.target.value)} placeholder={ar ? "ابحث بالاسم" : "Search by name"} style={{ fontFamily: "inherit", fontSize: 11, padding: "6px 9px", border: `1px solid ${OC.line}`, outline: "none", background: "#fff", color: OC.ink, width: "100%", boxSizing: "border-box" }} />
+                    <input value={nameQuery} onChange={(e) => setNameQuery(e.target.value)} placeholder={ar ? "ابحث بالاسم" : "Search by name"} style={{ fontFamily: "inherit", fontSize: 11, padding: "6px 9px", border: `1px solid ${OC.line}`, outline: "none", background: "var(--nv-card)", color: OC.ink, width: "100%", boxSizing: "border-box" }} />
                     <span style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
                       {rosterPack.quiet.map((person) => (
-                        <span key={person.id} title={person.time} style={{ fontSize: 11, color: OC.ink, background: "#fff", border: "1px solid #e6e9ef", padding: "3px 8px", whiteSpace: "nowrap" }}>{person.name}</span>
+                        <span key={person.id} title={person.time} style={{ fontSize: 11, color: OC.ink, background: "var(--nv-card)", border: "1px solid var(--nv-mute-line)", padding: "3px 8px", whiteSpace: "nowrap" }}>{person.name}</span>
                       ))}
                     </span>
                     {rosterPack.noQuietMatch ? <span style={{ fontSize: 11, color: OC.muted }}>{ar ? "لا اسم يطابق البحث." : "No name matches."}</span> : null}
@@ -1182,7 +1184,7 @@ function DayPanel({
               <span style={{ fontSize: 10, color: OC.muted }}>{ar ? "من يراها مكتوب بجانبها" : "Who can see them is written beside"}</span>
             </div>
             {events.map((group) => (
-              <div key={group.title} style={{ display: "flex", flexDirection: "column", gap: 6, border: "1px solid #f2f4f7", padding: "9px 10px" }}>
+              <div key={group.title} style={{ display: "flex", flexDirection: "column", gap: 6, border: "1px solid var(--nv-line2)", padding: "9px 10px" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
                   <span style={{ width: 7, height: 7, borderRadius: 2, background: group.color }} />
                   <span style={{ fontSize: 12, fontWeight: 700, minWidth: 0 }}>{group.title}</span>
@@ -1211,7 +1213,7 @@ function DayPanel({
                 </div>
               );
             })}
-            <span style={{ fontSize: 11, color: OC.mid, lineHeight: 1.8, borderTop: "1px solid #f2f4f7", paddingTop: 9 }}>
+            <span style={{ fontSize: 11, color: OC.mid, lineHeight: 1.8, borderTop: "1px solid var(--nv-line2)", paddingTop: 9 }}>
               {rec.broke
                 ? `${ar ? BROKE[rec.broke]?.ar : BROKE[rec.broke]?.en} — ${ar ? "راجعها في الحضور." : "Review it on Attendance."}`
                 : (ar ? "كل الحلقات سليمة. السجل مختوم ودخل كشف الراتب." : "Every ring is intact. The record is sealed into payroll.")}

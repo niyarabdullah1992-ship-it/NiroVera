@@ -1,15 +1,17 @@
 import React from "react";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
-import { BAD } from "@/lib/platformStyles";
+import LawGateStatusPill from "@/components/shared/LawGateStatusPill";
+import { statusBanner, statusBannerQuiet } from "@/lib/platformStyles";
 
-/** Named ministry-policy block: the article appears when the action would break it. */
-export default function PolicyDeviationAlert({ gate, ruleId, leaveType, profile, ar = true }) {
+/** Named ministry-policy block: quiet LawGates row — pill, reason, article cite. */
+export default function PolicyDeviationAlert({ gate, ruleId, leaveType, profile, ar = true, quietEdge = false }) {
   if (!gate || gate.ok) return null;
+  const skin = quietEdge ? statusBannerQuiet.bad : statusBanner.bad;
   return (
     <div
       role="alert"
       style={{
-        ...BAD,
+        ...skin,
         display: "flex",
         flexDirection: "column",
         alignItems: "flex-start",
@@ -18,8 +20,20 @@ export default function PolicyDeviationAlert({ gate, ruleId, leaveType, profile,
         boxSizing: "border-box",
       }}
     >
-      <div style={{ fontSize: 12, lineHeight: 1.65 }}>
-        {ar ? gate.reason : (gate.reasonEn || gate.reason)}
+      <div
+        dir={ar ? "rtl" : "ltr"}
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "flex-start",
+          gap: 10,
+          width: "100%",
+        }}
+      >
+        <LawGateStatusPill status="blocked" ar={ar} />
+        <div style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.65, color: "var(--nv-ink2, #334155)" }}>
+          {ar ? gate.reason : (gate.reasonEn || gate.reason)}
+        </div>
       </div>
       <LaborArticleCite cite={gate.cite} ruleId={ruleId} leaveType={leaveType} profile={profile} ar={ar} showText tone="block" />
     </div>

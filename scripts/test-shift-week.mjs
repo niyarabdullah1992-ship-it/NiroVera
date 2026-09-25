@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { buildLawGatesBoard } from "../src/lib/lawGatesBoard.js";
 import {
   checkShiftChangeApplyGate,
   checkWeekPublishGates,
@@ -18,6 +19,7 @@ import {
   weekHeatBanStripCopy,
   dutyStripBody,
   WEEK_DUTY_STRIP_IDS,
+  WEEK_STATION_STRIP_IDS,
   employeeFileLaborWeek,
   employeeFileNightPanel,
   cycleShiftId,
@@ -30,11 +32,16 @@ import {
   employeeNeedsNightRotateChoice,
   MINISTRY_NIGHT_PUBLISH_BLOCK_IDS,
   checkNightRestApplyGate,
+  resolveNightRestAssignTarget,
+  applyNightRestAwareAssignment,
+  repairNightRestAssignments,
   checkWorkplaceStayDutyGate,
   checkFourOnFourDutyPattern,
   isTwelveStayDuty,
   ramadanUsesDailySixCap,
   employeeOnCompressedTwelveWeek,
+  employeeDutyShiftOnDay,
+  clearRosterLeaveGhostAssignments,
   adjacentDutyPairs,
   nightRestPairHits,
   employeeShiftOnDay,
@@ -80,8 +87,23 @@ import {
   rosterMineScopeCopy,
   rosterTableHeading,
   rosterTableStation,
+  applyCopyMonthAssignments,
+  copyMonthReuseNote,
+  defaultWeekStartForMonth,
+  formatMonthLabel,
+  historyColumnLabel,
+  buildHistory,
+  monthCursorOf,
+  monthDateKeys,
+  monthHasDatedAssignments,
+  nextMonthCursor,
+  planCopyMonthAssignments,
+  previousMonthCursor,
+  shiftMonthCursor,
+  weekIntersectsMonth,
+  weekStartsInMonth,
 } from "../src/lib/shiftWeek.js";
-import { checkPublishGates } from "../src/lib/shiftDerivations.js";
+import { checkPublishGates, formatShiftHm, shiftHoursLine } from "../src/lib/shiftDerivations.js";
 import { calendarDateKey, datedDayAssignmentMap } from "../src/lib/attendanceCalendar.js";
 import {
   nightMedicalDutyState,
@@ -94,7 +116,7 @@ import { heatBanWindow, isHeatBanDate } from "../src/lib/contractLawDerivations.
 import { riyadhClock } from "../src/lib/opsDerivations.js";
 import { heatBanDecisionLabel } from "../src/lib/heatBanDecision.js";
 import { approvedLeaveOnDay } from "../src/lib/leaveTypes.js";
-import { statutoryChipStyle } from "../src/lib/statutoryItem.js";
+import { statutoryChipStyle, statutoryGlowState } from "../src/lib/statutoryItem.js";
 import { checkSubmitOtherRequestGate, OTHER_REQUEST_TYPES, pendingManagerDecideCount } from "../src/lib/otherRequestDerivations.js";
 import {
   answeredNightRotateThisMonth,
@@ -212,11 +234,11 @@ const gapGates = checkWeekPublishGates({
   weekStart: weekStartDate("2026-09-13"),
   ar: true,
 });
-assert.equal(gapGates.checks.find((row) => row.id === "gap_11")?.ok, false);
-assert.equal(gapGates.checks.find((row) => row.id === "gap_11")?.block, false);
+assert.equal(gapGates.checks.find((row) => row.id === "gap_11"), undefined, "11h operational gap rule is removed");
+assert.ok(!gapGates.warnings.some((row) => row.id === "gap_11"));
 assert.ok(!gapGates.blockers.some((row) => row.id === "gap_11"));
-assert.equal(weekCellAlert(gapGates, "ahmed", "2026-09-13")?.id, "gap_11");
-assert.equal(weekCellAlert(gapGates, "ahmed", "2026-09-13")?.level, "warn");
+assert.equal(weekCellAlert(gapGates, "ahmed", "2026-09-13"), null, "short non-night gap does not paint a cell");
+assert.equal(gapGates.checks.find((row) => row.id === "night_rest")?.ok, true, "evening then morning is not Decision 18632 night rest");
 
 assert.equal(checkShiftChangeApplyGate({
   schedule,
@@ -274,7 +296,8 @@ assert.equal(blocked.checks.find((row) => row.id === "heat_ban")?.block, false);
 for (const id of MINISTRY_NIGHT_PUBLISH_BLOCK_IDS) {
   assert.equal(blocked.checks.find((row) => row.id === id)?.block, true, `${id} stays a Decision 18632 publish block`);
 }
-assert.equal(blocked.checks.find((row) => row.id === "gap_11")?.block, false, "11h gap stays product policy");
+assert.equal(blocked.checks.find((row) => row.id === "gap_11"), undefined, "11h operational gap rule is removed");
+assert.equal(blocked.checks.find((row) => row.id === "morning_cover"), undefined, "morning coverage is not a publish gate");
 
 assert.equal(hasNightConsent({ profile: { nightConsentAt: "2026-01-01" } }, weekStart), true, "18632 consent stays on file until withdrawn");
 assert.equal(hasNightConsent({ profile: { nightConsentAt: "2026-09-12" } }, weekStart), true);
@@ -291,7 +314,8 @@ const allowed = checkWeekPublishGates({
 assert.equal(allowed.checks.find((row) => row.id === "night_rotate").ok, true);
 
 const onFile = employeeFileLaborWeek({ employee: omar, schedule, weekStart, ar: true });
-assert.ok(onFile.checks.every((row) => row.id !== "morning_cover" && row.id !== "not_empty"));
+assert.ok(onFile.checks.every((row) => row.id !== "not_empty"));
+assert.ok(!onFile.checks.some((row) => row.id === "morning_cover"), "morning coverage is not a publish gate");
 assert.ok(onFile.checks.some((row) => row.id === "hours_48"));
 assert.ok(onFile.checks.some((row) => row.id === "night_rotate"));
 const payEq = onFile.checks.find((row) => row.id === "night_pay_equality");
@@ -347,10 +371,10 @@ assert.equal(employeeNeedsNightRotateChoice({ id: "omar", profile: { nightConsen
 assert.equal(employeeNeedsNightRotateChoice({ id: "omar", profile: {} }, schedule, "2026-09-07"), false);
 assert.equal(cardWantsOrdinaryChoice({ gateId: "night_rotate" }), true);
 assert.equal(cardWantsOrdinaryChoice({ gateId: "night_rest" }), false);
-assert.equal(cardWantsOrdinaryChoice({ gateId: "gap_11" }), false);
+assert.equal(cardWantsOrdinaryChoice({ gateId: "weekly_rest" }), false);
 assert.equal(cardAwaitsNightConsent({ gateId: "night_rotate" }), true);
 assert.equal(cardAwaitsNightConsent({ items: [{ gateId: "night_rotate" }] }), true);
-assert.equal(cardAwaitsNightConsent({ gateId: "gap_11" }), false);
+assert.equal(cardAwaitsNightConsent({ gateId: "weekly_rest" }), false);
 assert.match(nightConsentWaitCopy(true), /تجاوز ثلاثة أشهر/);
 assert.match(nightConsentWaitCopy(true), /لا تُحذف وردية الليل/);
 assert.match(nightConsentWaitCopy(true, { audience: "employee" }), /وافق من طلباتي/);
@@ -369,6 +393,16 @@ const sara = {
 };
 assert.ok(approvedLeaveOnDay(sara, "2026-09-07"));
 assert.equal(leaveOnDayView(sara, "2026-09-07", true).type, "سنوية");
+assert.equal(leaveOnDayView({ id: "x", leaveRequests: [] }, "2026-09-23", true)?.type, "إجازة اليوم الوطني");
+assert.equal(leaveOnDayView({ id: "x", leaveRequests: [] }, "2026-09-23", true)?.source, "official_holiday");
+assert.equal(leaveOnDayView({ id: "x", leaveRequests: [] }, "2026-02-22", true)?.type, "إجازة يوم التأسيس");
+assert.equal(leaveOnDayView({ id: "x", leaveRequests: [] }, "2026-02-22", true)?.source, "official_holiday");
+assert.equal(
+  leaveOnDayView({ id: "x", leaveRequests: [] }, "2026-09-24", true, {
+    ownerHolidays: { national: { overridden: true, nameAr: "إجازة الوطن", nameEn: "Homeland leave", month: 9, day: 24 } },
+  })?.type,
+  "إجازة الوطن",
+);
 
 const chapterLeaveDays = [
   ["annual", "2026-09-13", "سنوية"],
@@ -756,6 +790,8 @@ assert.equal(dutyLaneFromSearch(new URLSearchParams("lane=manage"), false), "min
 assert.equal(dutyLaneFromSearch(new URLSearchParams("lane=manage"), true), "manage");
 assert.equal(dutyLaneFromSearch(new URLSearchParams("tab=team"), true), "manage");
 assert.equal(dutyLaneFromSearch(new URLSearchParams("tab=punch"), true), "mine");
+assert.equal(dutyLaneFromSearch(new URLSearchParams("lane=manage"), true, "employee"), "mine", "the employee rail wins over lane=manage");
+assert.equal(dutyLaneFromSearch(new URLSearchParams(""), true, "manage"), "manage", "the manage rail opens the admin face");
 assert.equal(writeDutyLane(new URLSearchParams("tab=punch"), "manage").get("lane"), "manage");
 assert.equal(writeDutyLane(new URLSearchParams("lane=manage&tab=team"), "mine").get("lane"), null);
 
@@ -870,7 +906,8 @@ assert.equal(leaveCiteChip.color, "#6b4423");
 assert.equal(leaveCiteChip.background, "#f3e6d4");
 assert.ok(!/nv-accent|#1E9E63|#14683F|#14213d/i.test(String(leaveCiteChip.background) + String(leaveCiteChip.color)));
 const quietRight = statutoryChipStyle("entitlement", { glow: "off" });
-assert.match(String(quietRight.background), /nv-accent|#1E9E63/, "non-leave entitlement chip stays green");
+assert.match(String(quietRight.background), /nv-soft|#F7F8FA/, "non-leave entitlement chip is soft navy cite");
+assert.doesNotMatch(String(quietRight.background), /nv-accent|#1E9E63/);
 
 const mineOverlay = calendarOverlayEmployees({
   lane: "mine",
@@ -1078,6 +1115,164 @@ assert.equal(checkShiftChangeApplyGate({
   dateKey: "2026-09-14",
   shiftTypeId: "morning",
 }).error, "NIGHT_REST_REQUIRED");
+
+const nightRestJumpMorning = resolveNightRestAssignTarget({
+  schedule: nightThenMorning,
+  employee: ahmed,
+  dateKey: "2026-09-14",
+  shiftTypeId: "morning",
+  weekStart: weekStartDate("2026-09-14"),
+});
+assert.equal(nightRestJumpMorning.ok, true, "18632 rest jump finds a legal slot");
+assert.equal(nightRestJumpMorning.jumped, true);
+assert.equal(nightRestJumpMorning.dateKey, "2026-09-14", "same calendar day after night ending 07:00");
+assert.equal(nightRestJumpMorning.shiftTypeId, "night", "prefer ليلي 23:00 over صباحي/مسائي");
+assert.match(nightRestJumpMorning.reason, /قفزنا تلقائياً/);
+assert.match(nightRestJumpMorning.reason, /ليلي/);
+
+const nightRestJumpEvening = resolveNightRestAssignTarget({
+  schedule: nightThenMorning,
+  employee: ahmed,
+  dateKey: "2026-09-14",
+  shiftTypeId: "evening",
+  weekStart: weekStartDate("2026-09-14"),
+});
+assert.equal(nightRestJumpEvening.shiftTypeId, "night", "مسائي 15:00 also jumps to ليلي same day");
+
+const jumpWithoutPaintingNight = resolveNightRestAssignTarget({
+  schedule: {
+    stationId: "st",
+    shiftTypes: [morning, { id: "evening", label: "مسائي", start: "15:00", end: "23:00", restMinutes: 30 }],
+    assignments: {
+      "2026-09-13": { morning: ["ahmed"] },
+    },
+  },
+  employee: ahmed,
+  dateKey: "2026-09-14",
+  shiftTypeId: "morning",
+  weekStart: weekStartDate("2026-09-14"),
+});
+assert.equal(jumpWithoutPaintingNight.jumped, false);
+assert.equal(jumpWithoutPaintingNight.ok, true, "no 18632 trigger → place as requested");
+
+const ordinaryOnlyJump = resolveNightRestAssignTarget({
+  schedule: {
+    stationId: "st",
+    shiftTypes: [morning, { id: "evening", label: "مسائي", start: "15:00", end: "23:00", restMinutes: 30 }, night],
+    assignments: { "2026-09-13": { night: ["ahmed"] } },
+  },
+  employee: ahmed,
+  dateKey: "2026-09-14",
+  shiftTypeId: "morning",
+  weekStart: weekStartDate("2026-09-14"),
+  ordinaryOnly: true,
+});
+assert.equal(ordinaryOnlyJump.ok, true);
+assert.equal(ordinaryOnlyJump.jumped, true);
+assert.equal(ordinaryOnlyJump.dateKey, "2026-09-15", "ordinary-only skips night → rest + later morning");
+assert.equal(ordinaryOnlyJump.shiftTypeId, "morning");
+
+const saturdayBlocked = resolveNightRestAssignTarget({
+  schedule: {
+    stationId: "st",
+    shiftTypes: [morning, night],
+    assignments: { "2026-09-18": { night: ["ahmed"] } },
+  },
+  employee: ahmed,
+  dateKey: "2026-09-19",
+  shiftTypeId: "morning",
+  weekStart: weekStartDate("2026-09-13"),
+  ordinaryOnly: true,
+});
+assert.equal(saturdayBlocked.ok, false, "no legal jump left in week keeps the block");
+assert.equal(saturdayBlocked.jumped, false);
+assert.equal(saturdayBlocked.error, "NIGHT_REST_REQUIRED");
+
+// Mandatory write path: auto-jump places ليلي and never leaves the illegal صباحي.
+const paintAfterNight = {
+  stationId: "st",
+  shiftTypes: [morning, { id: "evening", label: "مسائي", start: "15:00", end: "23:00", restMinutes: 30 }, night],
+  assignments: { "2026-09-13": { night: ["ahmed"] } },
+};
+const awareJump = applyNightRestAwareAssignment(paintAfterNight, {
+  employee: ahmed,
+  dateKey: "2026-09-14",
+  shiftTypeId: "morning",
+  weekStart: weekStartDate("2026-09-14"),
+});
+assert.equal(awareJump.ok, true, "aware assign jumps instead of placing illegal morning");
+assert.equal(awareJump.jumped, true);
+assert.equal(awareJump.shiftTypeId, "night");
+assert.equal(awareJump.dateKey, "2026-09-14");
+assert.equal(employeeShiftOnDay(paintAfterNight, "ahmed", "2026-09-14")?.id, "night", "cell holds ليلي 23:00 after jump");
+assert.equal(checkNightRestApplyGate({
+  schedule: paintAfterNight,
+  employee: ahmed,
+  dateKey: "2026-09-14",
+  shift: night,
+}).ok, true, "jumped ليلي satisfies 12h rest after night ending 07:00");
+
+const ordinaryAware = {
+  stationId: "st",
+  shiftTypes: [morning, { id: "evening", label: "مسائي", start: "15:00", end: "23:00", restMinutes: 30 }, night],
+  assignments: {
+    "2026-09-13": { night: ["ahmed"] },
+    "2026-09-14": { evening: ["ahmed"] },
+  },
+};
+const ordinaryCrossDay = applyNightRestAwareAssignment(ordinaryAware, {
+  employee: ahmed,
+  dateKey: "2026-09-14",
+  shiftTypeId: "morning",
+  weekStart: weekStartDate("2026-09-14"),
+  ordinaryOnly: true,
+});
+assert.equal(ordinaryCrossDay.ok, true);
+assert.equal(ordinaryCrossDay.jumped, true);
+assert.equal(ordinaryCrossDay.dateKey, "2026-09-15", "ordinary-only jump clears source and lands later");
+assert.equal(ordinaryCrossDay.clearedSource, true);
+assert.equal(employeeShiftOnDay(ordinaryAware, "ahmed", "2026-09-14"), null, "illegal/superseded source day is rest");
+assert.equal(employeeShiftOnDay(ordinaryAware, "ahmed", "2026-09-15")?.id, "morning");
+
+const noJumpLeft = applyNightRestAwareAssignment({
+  stationId: "st",
+  shiftTypes: [morning, night],
+  assignments: { "2026-09-18": { night: ["ahmed"] } },
+}, {
+  employee: ahmed,
+  dateKey: "2026-09-19",
+  shiftTypeId: "morning",
+  weekStart: weekStartDate("2026-09-13"),
+  ordinaryOnly: true,
+});
+assert.equal(noJumpLeft.ok, false, "aware assign refuses when no legal period remains");
+assert.equal(noJumpLeft.error, "NIGHT_REST_REQUIRED");
+
+const copyIllegal = {
+  stationId: "st",
+  shiftTypes: [morning, night],
+  assignments: {
+    "2026-09-13": { night: ["ahmed"] },
+    "2026-09-14": { morning: ["ahmed"] },
+  },
+};
+const repairedCopy = repairNightRestAssignments(copyIllegal, {
+  employees: [ahmed],
+  dateKeys: ["2026-09-13", "2026-09-14", "2026-09-15"],
+});
+assert.ok(repairedCopy.repaired >= 1, "copy repair jumps illegal morning after night");
+assert.equal(employeeShiftOnDay(copyIllegal, "ahmed", "2026-09-14")?.id, "night");
+assert.equal(nightRestPairHits(copyIllegal, ahmed, weekStartDate("2026-09-13")).length, 0, "repair leaves no 18632 rest hit");
+assert.match(copyMonthReuseNote({
+  ok: true,
+  copied: 2,
+  sourceYear: 2026,
+  sourceMonthIndex: 7,
+  targetYear: 2026,
+  targetMonthIndex: 8,
+  nightRestRepair: { repaired: 1, cleared: 0 },
+}, true), /طُبّق القرار 18632/);
+
 assert.equal(checkShiftChangeApplyGate({
   schedule: nightThenMorning,
   employee: ahmed,
@@ -1135,6 +1330,159 @@ assert.equal(weekCellAlert(checkWeekPublishGates({
   weekStart: fourDutyWeekStart,
   ar: true,
 }), "ahmed", "2026-09-13")?.id, "night_rest");
+
+// Art. 112 National Day is not a work-day endpoint for Decision 18632 12h rest.
+const nationalWeekStart = weekStartDate("2026-09-20");
+assert.equal(weekDateKeys(nationalWeekStart)[3], "2026-09-23", "Wed 23 Sep 2026 is National Day week slot");
+const nationalGhostNight = {
+  stationId: "st",
+  shiftTypes: [morning, night],
+  assignments: {
+    "2026-09-23": { night: ["ahmed"] },
+    "2026-09-24": { night: ["ahmed"] },
+  },
+};
+assert.equal(leaveOnDayView(ahmed, "2026-09-23", true)?.source, "official_holiday");
+assert.equal(employeeDutyShiftOnDay(nationalGhostNight, ahmed, "2026-09-23"), null, "holiday leave is not a duty endpoint");
+assert.equal(employeeShiftOnDay(nationalGhostNight, "ahmed", "2026-09-23")?.id, "night", "dated ghost may still sit under the leave paint");
+assert.equal(adjacentDutyPairs(nationalGhostNight, ahmed, nationalWeekStart).some((pair) => pair.fromKey === "2026-09-23" || pair.toKey === "2026-09-23"), false);
+assert.equal(nightRestPairHits(nationalGhostNight, ahmed, nationalWeekStart).length, 0, "Wed holiday + Thu night is not a 12h-rest pair");
+assert.equal(checkNightRestApplyGate({
+  schedule: nationalGhostNight,
+  employee: ahmed,
+  dateKey: "2026-09-24",
+  shift: night,
+}).ok, true, "painting night on Thu after National Day leave must not toast راحة 12 ساعة");
+assert.notEqual(checkShiftChangeApplyGate({
+  schedule: {
+    stationId: "st",
+    shiftTypes: [morning, night],
+    assignments: { "2026-09-23": { night: ["ahmed"] } },
+  },
+  employee: ahmed,
+  dateKey: "2026-09-24",
+  shiftTypeId: "night",
+}).error, "NIGHT_REST_REQUIRED");
+assert.equal(checkWeekPublishGates({
+  schedule: nationalGhostNight,
+  employees: [ahmed],
+  weekStart: nationalWeekStart,
+  ar: true,
+}).checks.find((row) => row.id === "night_rest")?.ok, true);
+
+{
+  const nationalGhostGates = checkWeekPublishGates({
+    schedule: nationalGhostNight,
+    employees: [ahmed],
+    weekStart: nationalWeekStart,
+    ar: true,
+  });
+  const holidayGate = nationalGhostGates.checks.find((row) => row.id === "official_holiday");
+  const leaveGate = nationalGhostGates.checks.find((row) => row.id === "leave_excluded");
+  assert.equal(holidayGate?.ok, true, "Art. 112 leftover under leave paint does not block publish");
+  assert.match(holidayGate?.note || "", /بقايا تعيين تحت إجازة اليوم الوطني/, "official_holiday note names National Day leave");
+  assert.doesNotMatch(holidayGate?.note || "", /لا تعيين يمسّ/, "must not claim no holiday touch while a ghost sits");
+  assert.doesNotMatch(leaveGate?.note || "", /على إجازة معتمدة/, "National Day leftover is not approved طلباتي leave");
+  assert.doesNotMatch(leaveGate?.note || "", /من الدولة|عطلة رسمية من الدولة/, "no generic state-holiday label");
+  assert.match(leaveGate?.note || "", /بقايا تعيين تحت إجازة اليوم الوطني/, "leave_excluded names إجازة اليوم الوطني");
+  assert.match(leaveGate?.note || "", /المادة 112/, "leave_excluded cites Article 112");
+  assert.match(leaveGate?.note || "", /ليست من طلباتي|بلا طلب/, "holiday leftover is not framed as طلباتي leave");
+  assert.ok((nationalGhostGates.officialHolidayLeaveDays || 0) >= 1, "official holiday days counted separately");
+  assert.equal(nationalGhostGates.approvedLeaveDays || 0, 0, "National Day is not approved طلباتي leave");
+  assert.ok((nationalGhostGates.holidayLeaveNames || []).some((n) => /اليوم الوطني/.test(n)));
+  assert.ok(nationalGhostGates.holidayGhostClash?.length >= 1);
+  assert.equal(nationalGhostGates.leaveClash?.length || 0, 0, "holiday leftover is not leaveClash");
+}
+
+const nationalThenRest = {
+  stationId: "st",
+  shiftTypes: [morning, night],
+  assignments: {
+    "2026-09-23": { night: ["ahmed"] },
+  },
+};
+assert.equal(nightRestPairHits(nationalThenRest, ahmed, nationalWeekStart).length, 0, "leave then rest is not a night-rest conflict");
+assert.equal(checkShiftChangeApplyGate({
+  schedule: nationalThenRest,
+  employee: ahmed,
+  dateKey: "2026-09-24",
+  shiftTypeId: null,
+}).ok, true, "rest on Thu after National Day is free on its own merits");
+
+const nationalWeekdayTemplate = {
+  stationId: "st",
+  shiftTypes: [morning, night],
+  assignments: {
+    3: { night: ["ahmed"] },
+    "2026-09-24": { morning: ["ahmed"] },
+  },
+};
+assert.equal(employeeShiftOnDay(nationalWeekdayTemplate, "ahmed", "2026-09-23")?.id, "night", "weekday template can ghost under National Day");
+assert.equal(employeeDutyShiftOnDay(nationalWeekdayTemplate, ahmed, "2026-09-23"), null);
+assert.equal(checkNightRestApplyGate({
+  schedule: nationalWeekdayTemplate,
+  employee: ahmed,
+  dateKey: "2026-09-24",
+  shift: morning,
+}).ok, true, "weekday-template night on National Day is not a rest-pair endpoint");
+assert.equal(nightRestPairHits(nationalWeekdayTemplate, ahmed, nationalWeekStart).length, 0);
+
+const ghostClearSched = {
+  stationId: "st",
+  shiftTypes: [morning, night],
+  assignments: {
+    "2026-09-23": { night: ["ahmed"] },
+    3: { night: ["ahmed"] },
+  },
+};
+assert.ok(clearRosterLeaveGhostAssignments(ghostClearSched, [ahmed], ["2026-09-23"]) >= 1);
+assert.equal(employeeShiftOnDay(ghostClearSched, "ahmed", "2026-09-23"), null, "clear stamps a dated rest under the holiday");
+
+const niyarNational = { id: "niyar", name: "نيار عبدالله", stationId: "st", profile: {}, leaveRequests: [] };
+const niyarRotateNational = {
+  stationId: "st",
+  shiftTypes: [morning, night],
+  assignments: {
+    ...datedNightWeeks("niyar", nationalWeekStart, 14),
+    "2026-09-23": { night: ["niyar"] },
+  },
+};
+assert.equal(checkNightRestApplyGate({
+  schedule: niyarRotateNational,
+  employee: niyarNational,
+  dateKey: "2026-09-24",
+  shift: night,
+}).ok, true, "National Day still excluded from 12h rest when rotate history exists");
+assert.equal(checkShiftChangeApplyGate({
+  schedule: niyarRotateNational,
+  employee: niyarNational,
+  dateKey: "2026-09-24",
+  shiftTypeId: "night",
+}).error, "NIGHT_CONSENT_REQUIRED", "18632 rotate-due may still block night on Thu");
+
+// Ghost morning under Art. 112 must not light hours.night.restHours glow (statutory used to
+// treat official holidays as duty because it only checked approved طلباتي leave).
+const nationalGhostMorningGlow = {
+  stationId: "st",
+  shiftTypes: [morning, night],
+  assignments: {
+    "2026-09-22": { night: ["ahmed"] },
+    "2026-09-23": { morning: ["ahmed"] },
+  },
+};
+assert.equal(checkWeekPublishGates({
+  schedule: nationalGhostMorningGlow,
+  employees: [ahmed],
+  weekStart: nationalWeekStart,
+  ar: true,
+}).checks.find((row) => row.id === "night_rest")?.ok, true, "publish excludes National Day ghost from 12h rest");
+assert.equal(statutoryGlowState({
+  kind: "hours.night.restHours",
+  employee: ahmed,
+  schedule: nationalGhostMorningGlow,
+  weekStart: nationalWeekStart,
+}), "in_scope", "statutory rest glow must not go due on National Day ghost morning");
+assert.equal(nightRestPairHits(nationalGhostMorningGlow, ahmed, nationalWeekStart).length, 0);
 
 const twelveStay = { id: "twelve", label: "12 بقاء", start: "07:00", end: "19:00", restMinutes: 120 };
 const twelveThin = { id: "twelve", label: "12 بلا راحة كافية", start: "07:00", end: "19:00", restMinutes: 30 };
@@ -1322,11 +1670,12 @@ assert.equal(outsideFive.checks.find((row) => row.id === "hours_48")?.ok, true);
 assert.equal(applyHours("morning", ramadanDay).error, "RAMADAN_DAY_CAP");
 assert.equal(applyHours("morning", ramadanDay, { ...muslimEmp, profile: {} }).error, "RAMADAN_DAY_CAP");
 assert.equal(applyHours("morning", ramadanDay, otherEmp).ok, true, "recorded non-Muslim keeps 8h in Ramadan");
-assert.equal(applyHours("morning", ramadanDay, juvenileEmp).error, "RAMADAN_DAY_CAP", "juvenile still on the daily Ramadan cap");
+assert.equal(applyHours("morning", ramadanDay, juvenileEmp).error, "JUVENILE_DAY_CAP", "juvenile day cap fires before the adult Ramadan 6h paint");
 assert.equal(applyHours("twelve", ramadanDay).ok, true, "Muslim 12h stay stays 12 in Ramadan");
 assert.equal(applyHours("n12", ramadanDay).ok, true, "Muslim night 12h stay stays 12 in Ramadan");
 assert.equal(applyHours("twelve", ramadanDay, otherEmp).ok, true);
 assert.equal(applyHours("twelve", ramadanDay, juvenileEmp).ok, false, "juvenile 12h stay stays on the daily/juvenile cap");
+assert.equal(applyHours("twelve", ramadanDay, juvenileEmp).error, "JUVENILE_DAY_CAP", "12h stay exceeds the juvenile daily hours cap first");
 assert.equal(ramadanUsesDailySixCap(twelveStay, ramadanDay, juvenileEmp), true);
 assert.equal(applyHours("twelve", ramadanDay).error == null, true);
 
@@ -1429,8 +1778,7 @@ assert.match(platformSrc, /\/app\/shifts\?lane=manage/, "other rosters open إد
 assert.doesNotMatch(platformSrc, /تبديل النطاق في الهيدر/, "header-scope essay is not the ملفي lock");
 
 const boardSrc = readFileSync(new URL("../src/components/schedules/ShiftWeekBoard.jsx", import.meta.url), "utf8");
-assert.match(boardSrc, /showStatutoryHeaderCite/, "publish checks keep the essay behind the due/failing gate");
-assert.match(boardSrc, /showEssay \? \(/, "passing checks still print the article number; essay is gated");
+assert.match(boardSrc, /LawGatesPanels/, "publish law gates render as the three-panel board");
 assert.match(boardSrc, /decisionId="18632"/, "night header always prints قرار 18632");
 assert.match(boardSrc, /entitlement glow=\{nightGlow\}/, "header 18632 stays a green worker-right chip when not due");
 assert.match(boardSrc, /surface="leave"/, "leave-day article chip is light brown, not mint on the cell");
@@ -1441,20 +1789,25 @@ const fileRailSrc = readFileSync(new URL("../src/components/employees/FileHoursA
 const cardSrc = readFileSync(new URL("../src/components/employees/DutyStripAlertCard.jsx", import.meta.url), "utf8");
 assert.match(railSrc, /DutyStripAlertCard/, "إدارة strip uses the shared إنذار card");
 assert.match(railSrc, /PLATFORM_JUDGE_TITLE_AR/, "إدارة strip title is حكم المنصة");
-assert.match(railSrc, /docFrame\(due \? "blocked" : "settled"\)/, "حكم المنصة due frame is platform red, not gold");
-assert.match(railSrc, /--nv-bad-soft/, "حكم المنصة due wash matches attendance broken-row red");
+assert.match(railSrc, /statusBannerQuiet\.(bad|warn)/, "حكم المنصة uses quiet تنبيهات chrome on جدول");
+assert.match(railSrc, /statusBannerQuiet\.bad/, "حكم المنصة block wash matches quiet bad");
 assert.match(railSrc, /groupDutyStripByPerson/, "إدارة strip groups alerts by person");
 assert.match(railSrc, /weekStationDutyNotes/, "station publish blocks sit once under the person circulars");
 assert.doesNotMatch(railSrc, /to=\{person\.href\}/, "person circular is not a whole-card link");
 assert.match(fileRailSrc, /DutyStripAlertCard/, "ملفي strip uses the shared إنذار card");
+assert.match(fileRailSrc, /banner\.(bad|warn)/, "ملفي strip uses تنبيهات statusBanner chrome");
 assert.match(fileRailSrc, /groupDutyStripByPerson/, "ملفي strip groups the same person once");
 assert.match(cardSrc, /data-duty-items/, "circular can list several duties under one person");
 assert.match(cardSrc, /nv-duty-circular/, "strip card is the shared person register");
-assert.doesNotMatch(cardSrc, /docFrame/, "person register is not a nested 14px stamp");
+assert.doesNotMatch(cardSrc, /docFrame/, "person register is not a nested stamped document");
+assert.match(cardSrc, /DS_RADIUS/, "person card soft shell is 14px radius");
+assert.match(cardSrc, /LawGateArticleBadge/, "person alerts use compact article badges");
 assert.match(cardSrc, /letterSpacing: 0/, "duty Arabic keeps letter-spacing 0 so letters join");
 assert.doesNotMatch(cardSrc, /letterSpacing: ["']0\.\d+em["']/, "duty card does not track Arabic copy");
 assert.doesNotMatch(cardSrc, /card\.classification/, "administrative kicker is not a second masthead");
 assert.doesNotMatch(railSrc, /letterSpacing: ["']0\.\d+em["']/, "حكم المنصة Arabic copy is not tracked");
+assert.match(railSrc, /hideJudgment/, "حكم المنصة does not reprint يحمي العامل on every person");
+assert.match(railSrc, /stateChip/, "حكم المنصة summary is a count chip");
 assert.match(cardSrc, /LaborArticleCite/, "circular reuses statute chrome");
 assert.match(cardSrc, /showChip=\{false\}/, "circular does not mint a green قرار pill");
 assert.doesNotMatch(cardSrc, /StatutoryItem/, "circular does not use the entitlement chip");
@@ -1462,15 +1815,28 @@ assert.match(cardSrc, /nightConsentWaitCopy/, "night block tells the manager to 
 assert.match(cardSrc, /data-night-consent-wait/, "consent wait copy is marked on the circular");
 assert.doesNotMatch(railSrc, /تنبيه بشأن/, "إدارة card does not stack تنبيه بشأن under the section title");
 assert.doesNotMatch(fileRailSrc, /تنبيهك/, "ملفي card does not repeat تنبيهك under تنبيهاتي");
+assert.match(fileRailSrc, /hideJudgment/, "ملفي strip keeps judgment off the person cards");
 assert.match(fileRailSrc, /own \? "employee" : "manager"/, "ملفي uses the employee presenter");
+assert.match(boardSrc, /setEmployeeDayShift\(companyId, stationId, day\.key/, "click/brush paint goes through store assign");
+assert.match(boardSrc, /ordinaryOnly/, "rotate-due paint still limits the jump pool to ordinary hours");
+assert.doesNotMatch(boardSrc, /resolveNightRestAssignTarget/, "board must not re-implement jump — store enforces 18632");
+const storeSrc = readFileSync(new URL("../src/lib/store.js", import.meta.url), "utf8");
+assert.match(storeSrc, /resolveNightRestAssignTarget/, "setEmployeeDayShift applies mandatory 18632 auto-jump");
+assert.match(storeSrc, /repairNightRestAssignments/, "copy month repairs illegal 18632 rest pairs");
+assert.match(storeSrc, /clearedSource/, "cross-day jump clears the painted source cell");
 assert.match(boardSrc, /تعويض ليلي لهذا الجدول/, "station compensation stays on roster manage");
 assert.match(boardSrc, /mode === "mine" \? \(/, "ملفي does not share the manage night rail");
 assert.doesNotMatch(boardSrc, /entitlement=\{nightGlow !== "off"\}/, "header must not strip 18632 color when glow is off");
-assert.doesNotMatch(boardSrc, /if \(!showStatutoryHeaderCite/, "passing checks must not hide the cite chip");
+assert.doesNotMatch(boardSrc, /showStatutoryHeaderCite/, "essay cite helper is not on the week board anymore");
 assert.doesNotMatch(boardSrc, /القرار 18632: الليل 23:00/, "clock-source paragraph is not a 18632 essay");
 assert.match(boardSrc, /outdoor === true \? "outdoor"/, "open-air mark is settable on the week board");
-assert.match(boardSrc, /weekPublishSubmitBlock/, "publish control names the first derived blocker");
-assert.match(boardSrc, /publishSubmitBlock/, "disabled publish keeps a submitBlock reason beside the button");
+assert.match(boardSrc, /data-publish-gate-strip/, "publish chrome keeps a quiet blocker alert strip");
+assert.match(boardSrc, /PublishGateAlertStrip/, "named blockers render as a slim count + reasons strip");
+assert.match(boardSrc, /gates\.blockers/, "publish strip is fed from derived week blockers");
+assert.match(boardSrc, /قبل النشر/, "count chip keeps the blocker tally wording");
+assert.match(boardSrc, /انشر الجدول/, "primary publish label stays an action, not a status pill");
+assert.doesNotMatch(boardSrc, /publishSubmitBlock/, "blocker reasons are chips, not a stacked submitBlock banner");
+assert.doesNotMatch(boardSrc, /weekPublishSubmitBlock/, "board no longer dumps weekPublishSubmitBlock under the button");
 assert.match(boardSrc, /weekCellAlert/, "failing week cells carry a derived mark");
 assert.match(boardSrc, /weekCellAlertTone/, "cell mark reuses the panel red/gold tokens");
 assert.match(boardSrc, /cellAlert\?\.hint/, "sun-ban cell tooltip is the named worker notice");
@@ -1584,7 +1950,8 @@ assert.equal(offSeasonGate.checks.find((row) => row.id === "heat_ban")?.note, "�
 assert.ok(WEEK_DUTY_STRIP_IDS.has("heat_place"));
 assert.ok(WEEK_DUTY_STRIP_IDS.has("night_compensate"));
 assert.ok(!WEEK_DUTY_STRIP_IDS.has("leave_excluded"), "info-leave is not a glowing strip violation");
-assert.ok(!WEEK_DUTY_STRIP_IDS.has("morning_cover"), "coverage is not an employee entitlement card");
+assert.ok(!WEEK_DUTY_STRIP_IDS.has("morning_cover"), "morning coverage gate is removed");
+assert.ok(!WEEK_STATION_STRIP_IDS.has("morning_cover"), "morning coverage is not a station strip note");
 assert.equal(
   weekDutyStripEmptyCopy(true),
   "لا حكم مستحق. لا مخالفة ساعات أو راحة، ولا واجب حماية غير ملبّى هذا الأسبوع.",
@@ -1891,7 +2258,7 @@ assert.match(fileSrc, /افتح لياقة ليلية في طلباتي/, "unmet
 assert.match(readFileSync(new URL("../src/components/employees/ProfessionalInfoTab.jsx", import.meta.url), "utf8"), /NightMedicalFileField/);
 assert.match(hoursSrc, /NightMedicalFileField/, "file hours unmet medical is a طلباتي notice");
 assert.doesNotMatch(hoursSrc, /uploadFileOrLocal|type=["']file["']/, "file hours check does not embed upload");
-assert.match(boardSrc, /NightMedicalFileField/, "week board unmet medical is a طلباتي notice");
+assert.doesNotMatch(boardSrc, /NightMedicalFileField/, "week board defers medical notice off the grid chrome");
 assert.doesNotMatch(boardSrc, /uploadFileOrLocal/, "week board medical check does not embed upload");
 assert.doesNotMatch(railSrc, /NightMedicalFileField|uploadFileOrLocal|type=["']file["']/, "manager duty rail does not embed upload");
 assert.doesNotMatch(fileRailSrc, /NightMedicalFileField|uploadFileOrLocal|type=["']file["']/, "file hours rail does not embed upload");
@@ -1955,18 +2322,18 @@ assert.ok(
 assert.deepEqual(
   weekStationDutyNotes({
     checks: [
-      { id: "morning_cover", ok: false, block: true, title: "تغطية الوردية الصباحية" },
+      { id: "not_empty", ok: false, block: true, title: "جدول غير فارغ" },
       { id: "hours_48", ok: false, block: true, title: "أعلى حمل أسبوعي 48 ساعة" },
       { id: "night_medical", ok: false, title: "تقرير طبي" },
+      { id: "morning_cover", ok: false, block: true, title: "تغطية الوردية الصباحية" },
     ],
   }),
-  [{ id: "morning_cover", title: "تغطية الوردية الصباحية", note: "", level: "block" }],
+  [{ id: "not_empty", title: "جدول غير فارغ", note: "", level: "block" }],
 );
 
 const ahmedHours = groupDutyStripByPerson({
   cards: [
     { id: "hours_48:ahmed", gateId: "hours_48", employeeId: "ahmed", name: "أحمد السالم", headline: "أعلى حمل أسبوعي 48 ساعة", level: "block", instrument: "", classification: "تنبيه إداري" },
-    { id: "gap_11:ahmed", gateId: "gap_11", employeeId: "ahmed", name: "أحمد السالم", headline: "فاصل تشغيلي 11 ساعة", level: "warn", instrument: "", classification: "تنبيه إداري" },
     { id: "night_rest:ahmed", gateId: "night_rest", employeeId: "ahmed", name: "أحمد السالم", headline: "راحة 12 ساعة بعد عمل ليلي", level: "warn", decisionId: "18632", instrument: "قرار 18632", classification: "إنذار حماية" },
     { id: "weekly_rest:ahmed", gateId: "weekly_rest", employeeId: "ahmed", name: "أحمد السالم", headline: "راحة أسبوعية 24 ساعة متصلة", level: "warn", instrument: "", classification: "تنبيه إداري" },
     { id: "hours_48:nasser", gateId: "hours_48", employeeId: "nasser", name: "ناصر عمر", headline: "أعلى حمل أسبوعي 48 ساعة", level: "warn", instrument: "", classification: "تنبيه إداري" },
@@ -1974,7 +2341,7 @@ const ahmedHours = groupDutyStripByPerson({
 }, { ar: true, audience: "manager" });
 assert.equal(ahmedHours.people.length, 2, "one circular per person, not per gate");
 assert.equal(ahmedHours.people[0].name, "أحمد السالم");
-assert.equal(ahmedHours.people[0].itemCount, 4);
+assert.equal(ahmedHours.people[0].itemCount, 3);
 assert.equal(ahmedHours.people[0].level, "block");
 assert.equal(ahmedHours.people[0].subject, "بشأن: أحمد السالم");
 assert.equal(ahmedHours.people[0].classification, "إنذار حماية");
@@ -1982,28 +2349,258 @@ assert.equal(ahmedHours.people[0].instrument, "قرار 18632");
 assert.equal(ahmedHours.people[0].items[0].gateId, "hours_48");
 assert.equal(ahmedHours.people[1].name, "ناصر عمر");
 assert.equal(ahmedHours.people[1].itemCount, 1);
-assert.equal(ahmedHours.people[0].lede, "4 تنبيهات على جدوله");
+assert.equal(ahmedHours.people[0].lede, "3 تنبيهات على جدوله");
 assert.equal(ahmedHours.people[0].judgment, "يحمي العامل والشركة — حكم المنصة");
 assert.equal(ahmedHours.people[0].protects.employee, true);
 assert.equal(ahmedHours.people[0].protects.company, true);
-assert.equal(dutyStripPeopleSummary(ahmedHours, true), "5 تنبيهات · شخصان");
+assert.equal(dutyStripPeopleSummary(ahmedHours, true), "4 تنبيهات · شخصان");
 const ahmedMine = groupDutyStripByPerson({
   cards: ahmedHours.cards.filter((row) => row.employeeId === "ahmed"),
 }, { ar: true, audience: "employee" });
 assert.equal(ahmedMine.people.length, 1);
 assert.equal(ahmedMine.people[0].subject, "", "employee group does not name the self as بشأن");
-assert.equal(ahmedMine.people[0].lede, "4 تنبيهات على جدولك");
-assert.equal(dutyStripPeopleSummary(ahmedMine, true), "4 تنبيهات · شخص واحد");
+assert.equal(ahmedMine.people[0].lede, "3 تنبيهات على جدولك");
+assert.equal(dutyStripPeopleSummary(ahmedMine, true), "3 تنبيهات · شخص واحد");
 
 const twoBlock = { blockers: [{ title: "راحة أسبوعية متصلة" }, { title: "أعلى حمل أسبوعي" }] };
 assert.equal(
   weekPublishSubmitBlock(twoBlock, { ar: true }),
   "راحة أسبوعية متصلة — وأعلى حمل أسبوعي.",
 );
-const threeBlock = { blockers: [...twoBlock.blockers, { title: "تغطية الوردية الصباحية" }] };
+const threeBlock = { blockers: [...twoBlock.blockers, { title: "جدول غير فارغ" }] };
 assert.equal(
   weekPublishSubmitBlock(threeBlock, { ar: true }),
   "راحة أسبوعية متصلة — و2 موانع أخرى.",
 );
+
+const morningWindow = { start: "07:00", end: "15:00" };
+assert.equal(formatShiftHm("07:00", "24", "ar"), "07:00");
+assert.equal(formatShiftHm("15:00", "24", "ar"), "15:00");
+assert.equal(shiftHoursLine(morningWindow, "ar", "24"), "من 07:00 إلى 15:00");
+assert.equal(shiftHoursLine(morningWindow, "en", "24"), "07:00–15:00");
+assert.equal(formatShiftHm("07:00", "12", "ar"), "7:00 ص");
+assert.equal(formatShiftHm("15:00", "12", "ar"), "3:00 م");
+assert.equal(shiftHoursLine(morningWindow, "ar", "12"), "من 7:00 ص إلى 3:00 م");
+assert.equal(shiftHoursLine(morningWindow, "en", "12"), "7:00 am–3:00 pm");
+assert.equal(shiftHoursLine({ start: "23:00", end: "07:00" }, "ar", "12"), "من 11:00 م إلى 7:00 ص");
+assert.equal(shiftHoursLine({ start: "07:00" }, "ar", "24"), "07:00");
+assert.equal(shiftHoursLine({}, "ar", "24"), "");
+
+const sepCursor = { year: 2026, monthIndex: 8 };
+assert.equal(formatMonthLabel(2026, 8, true), "سبتمبر 2026");
+assert.equal(formatMonthLabel(2026, 8, false), "September 2026");
+assert.deepEqual(shiftMonthCursor(sepCursor, 1), { year: 2026, monthIndex: 9 });
+assert.deepEqual(previousMonthCursor(sepCursor), { year: 2026, monthIndex: 7 });
+assert.deepEqual(nextMonthCursor(sepCursor), { year: 2026, monthIndex: 9 });
+assert.equal(monthDateKeys(2026, 8).length, 30);
+assert.equal(monthDateKeys(2026, 8)[0], "2026-09-01");
+assert.equal(monthDateKeys(2026, 8).at(-1), "2026-09-30");
+assert.ok(weekStartsInMonth(2026, 8).length >= 4);
+assert.equal(weekIntersectsMonth(weekStartDate("2026-09-06"), 2026, 8), true);
+assert.equal(weekIntersectsMonth(weekStartDate("2026-08-02"), 2026, 8), false);
+assert.deepEqual(monthCursorOf("2026-09-23"), { year: 2026, monthIndex: 8 });
+assert.equal(weekKeyFromDate(defaultWeekStartForMonth(2026, 8, new Date(2026, 8, 10))), "2026-09-06");
+
+const copySource = {
+  "2026-08-01": { morning: ["ahmed"], night: ["omar"] },
+  "2026-08-02": { morning: ["sara"] },
+  "2026-08-15": { night: ["omar"] },
+  "2026-08-23": { morning: ["ahmed"] },
+  "2026-08-31": { morning: ["ahmed"] },
+  0: { morning: ["template"] },
+};
+assert.equal(monthHasDatedAssignments(copySource, 2026, 7), true);
+assert.equal(monthHasDatedAssignments(copySource, 2026, 8), false);
+const emptyPlan = planCopyMonthAssignments({
+  assignments: copySource,
+  sourceYear: 2026,
+  sourceMonthIndex: 8,
+  targetYear: 2026,
+  targetMonthIndex: 9,
+  ar: true,
+});
+assert.equal(emptyPlan.ok, false);
+assert.equal(emptyPlan.error, "SOURCE_MONTH_EMPTY");
+assert.match(emptyPlan.reason, /لا تعيينات مؤرخة/);
+
+const samePlan = planCopyMonthAssignments({
+  assignments: copySource,
+  sourceYear: 2026,
+  sourceMonthIndex: 7,
+  targetYear: 2026,
+  targetMonthIndex: 7,
+  ar: true,
+});
+assert.equal(samePlan.error, "SAME_MONTH");
+
+const sepPlan = planCopyMonthAssignments({
+  assignments: copySource,
+  sourceYear: 2026,
+  sourceMonthIndex: 7,
+  targetYear: 2026,
+  targetMonthIndex: 8,
+  ar: true,
+});
+assert.equal(sepPlan.ok, true, "August → September copy");
+assert.ok(sepPlan.copied >= 3);
+assert.ok(sepPlan.writes.every((row) => row.dateKey.startsWith("2026-09-")));
+assert.equal(sepPlan.writes.some((row) => row.dateKey === "2026-09-23"), false, "23 Sep national day stays locked leave");
+assert.ok(sepPlan.skippedHoliday >= 1, "source day 23 maps onto national day and is skipped");
+const sepSched = { shiftTypes: [morning], assignments: { ...copySource, "2026-09-10": { morning: ["old"] } } };
+applyCopyMonthAssignments(sepSched, sepPlan);
+assert.equal(sepSched.assignments[0]?.morning?.[0], "template", "weekday template keys survive month reuse");
+assert.equal(sepSched.assignments["2026-09-10"], undefined, "target month dated keys are replaced");
+assert.deepEqual(sepSched.assignments["2026-09-01"], { morning: ["ahmed"], night: ["omar"] });
+assert.equal(sepSched.assignments["2026-09-23"], undefined, "official holiday day is not written");
+assert.match(copyMonthReuseNote(sepPlan, true), /نُسخت/);
+assert.match(copyMonthReuseNote(sepPlan, true), /18632/);
+
+const febPlan = planCopyMonthAssignments({
+  assignments: {
+    "2026-01-31": { morning: ["ahmed"] },
+    "2026-01-22": { night: ["omar"] },
+    "2026-01-15": { morning: ["sara"] },
+  },
+  sourceYear: 2026,
+  sourceMonthIndex: 0,
+  targetYear: 2026,
+  targetMonthIndex: 1,
+  ar: true,
+});
+assert.equal(febPlan.ok, true);
+assert.equal(febPlan.skippedMissingDay >= 1, true, "31 Jan has no Feb match");
+assert.equal(febPlan.writes.some((row) => row.dateKey === "2026-02-22"), false, "22 Feb founding day stays locked leave");
+assert.ok(febPlan.writes.some((row) => row.dateKey === "2026-02-15"));
+
+const longNightFromReuse = {
+  shiftTypes: [nightDuty],
+  assignments: datedNightWeeks("omar", weekStartDate("2026-09-06"), 14),
+};
+const reuseOntoOct = planCopyMonthAssignments({
+  assignments: longNightFromReuse.assignments,
+  sourceYear: 2026,
+  sourceMonthIndex: 8,
+  targetYear: 2026,
+  targetMonthIndex: 9,
+  ar: true,
+});
+assert.equal(reuseOntoOct.ok, true);
+const afterReuseNight = { shiftTypes: [nightDuty], assignments: { ...longNightFromReuse.assignments } };
+applyCopyMonthAssignments(afterReuseNight, reuseOntoOct);
+assert.ok(
+  nightStreakWeeks(afterReuseNight, "omar", weekStartDate("2026-10-04")) >= 13,
+  "reusing a night-heavy month does not wipe the 18632 dated-week streak",
+);
+
+assert.match(boardSrc, /manageMonth/, "إدارة roster uses month as primary scope");
+assert.match(boardSrc, /أعد الشهر السابق/, "reuse previous month action is on the manage board");
+assert.match(boardSrc, /كرر هذا الشهر/, "repeat this month action is on the manage board");
+assert.match(boardSrc, /copyScheduleMonth/, "board calls store month reuse");
+assert.match(boardSrc, /نطاق التخطيط الشهري/, "month strip names monthly planning scope");
+assert.match(boardSrc, /أسبوع داخل الشهر/, "week chips stay inside the month");
+assert.match(
+  boardSrc,
+  /سريان الجدول[\s\S]{0,900}شهري[\s\S]{0,1200}أعد الشهر السابق[\s\S]{0,800}كرر هذا الشهر/,
+  "سريان الجدول is monthly-only and hosts reuse / repeat month actions",
+);
+assert.doesNotMatch(boardSrc, /هذا الأسبوع فقط/, "weekly validity cards are gone from the board");
+assert.doesNotMatch(boardSrc, /مفتوح بلا نهاية/, "open-ended weekly validity card is gone");
+assert.doesNotMatch(boardSrc, /weekValidityOptions/, "board no longer renders weekly validity options");
+
+assert.match(boardSrc, /historyColumnLabel/, "history strip headers use weekday helper, not month abbr");
+assert.match(
+  boardSrc,
+  /h-head-[\s\S]{0,900}whiteSpace:\s*"nowrap"[\s\S]{0,80}weekdayLabel\(day\.wd/,
+  "history day headers keep weekday on one line (الخميس)",
+);
+assert.match(
+  boardSrc,
+  /h-head-[\s\S]{0,500}flexDirection:\s*"column"/,
+  "history day headers use fixed two-line layout",
+);
+assert.doesNotMatch(
+  boardSrc,
+  /h-head-[\s\S]{0,120}MONTHS_AR[\s\S]{0,40}\.slice\(0,\s*3\)/,
+  "history headers must not truncate سبتمبر to سبت",
+);
+
+{
+  const sepSun = { day: 6, wd: 0, key: "2026-09-06", month: 8 };
+  const sepMon = { day: 7, wd: 1, key: "2026-09-07", month: 8 };
+  const sepSat = { day: 5, wd: 6, key: "2026-09-05", month: 8 };
+  assert.equal(historyColumnLabel(sepSun, true), "6 الأحد");
+  assert.equal(historyColumnLabel(sepMon, true), "7 الاثنين");
+  assert.equal(historyColumnLabel(sepSat, true), "5 السبت");
+  assert.notEqual(historyColumnLabel(sepSun, true), historyColumnLabel(sepMon, true), "September columns must not all read as سبت");
+  const hist = buildHistory({
+    schedule: { shiftTypes: [{ id: "m", label: "صباحي", start: "07:00", end: "15:00" }], assignments: { "2026-09-06": { omar: "m" }, "2026-09-07": { omar: "m" }, "2026-09-08": { omar: "m" } } },
+    employees: [{ id: "omar", name: "عمر", stationId: "st1" }],
+    stationId: "st1",
+    fromKey: "2026-09-06",
+    toKey: "2026-09-10",
+    ar: true,
+    today: new Date(2026, 8, 22),
+  });
+  const labels = hist.days.map((day) => historyColumnLabel(day, true));
+  assert.deepEqual(labels, ["6 الأحد", "7 الاثنين", "8 الثلاثاء", "9 الأربعاء", "10 الخميس"]);
+  assert.equal(new Set(labels.map((l) => l.split(" ")[1])).size, 5, "each September workday shows a distinct weekday");
+}
+
+
+{
+  const shortSix = { id: "six", label: "ست ساعات", start: "08:00", end: "14:00", restMinutes: 30 };
+  const underAge = { id: "kid", name: "طفل", stationId: "st", profile: { birthDate: "2015-01-01" }, leaveRequests: [] };
+  assert.equal(checkShiftChangeApplyGate({
+    schedule: { stationId: "st", shiftTypes: [shortSix, morning, nightTwelve] },
+    employee: juvenileEmp,
+    dateKey: outsideDay,
+    shiftTypeId: "six",
+  }).ok, true, "6h presence with mid rest is within Art. 164");
+  assert.equal(checkShiftChangeApplyGate({
+    schedule: { stationId: "st", shiftTypes: [shortSix, morning, nightTwelve] },
+    employee: juvenileEmp,
+    dateKey: outsideDay,
+    shiftTypeId: "morning",
+  }).error, "JUVENILE_DAY_CAP");
+  assert.equal(checkShiftChangeApplyGate({
+    schedule: { stationId: "st", shiftTypes: [shortSix, morning, nightTwelve] },
+    employee: juvenileEmp,
+    dateKey: outsideDay,
+    shiftTypeId: "n12",
+  }).error, "JUVENILE_NIGHT_BAN");
+  assert.equal(checkShiftChangeApplyGate({
+    schedule: { stationId: "st", shiftTypes: [shortSix, morning, nightTwelve] },
+    employee: underAge,
+    dateKey: outsideDay,
+    shiftTypeId: "six",
+  }).error, "JUVENILE_UNDER_AGE");
+  const juvWeek = weekHours(
+    { [outsideDay]: { morning: ["ahmed"] } },
+    [morning],
+    juvenileEmp,
+    outsideSun,
+  );
+  assert.equal(juvWeek.checks.find((row) => row.id === "juvenile_hours")?.ok, false);
+  assert.equal(juvWeek.checks.find((row) => row.id === "juvenile")?.ok, false);
+  assert.equal(juvWeek.checks.find((row) => row.id === "juvenile_night")?.ok, true);
+  const board = buildLawGatesBoard({ gates: juvWeek, ar: true });
+  assert.equal(board.labour.rows.find((row) => row.article === "164")?.status, "blocked");
+  assert.equal(board.labour.rows.find((row) => row.article === "163")?.status, "settled");
+  const holidayGhost = checkWeekPublishGates({
+    schedule: {
+      stationId: "st",
+      shiftTypes: [morning],
+      assignments: { "2026-09-23": { morning: ["ahmed"] } },
+    },
+    employees: [muslimEmp],
+    weekStart: weekStartDate("2026-09-23"),
+    stationId: "st",
+    ar: true,
+  });
+  const art112 = buildLawGatesBoard({ gates: holidayGhost, ar: true }).labour.rows.find((row) => row.article === "112");
+  assert.equal(art112?.status, "waiting", "Art. 112 leftover duty is waiting, not settled");
+  assert.match(art112?.pillLabel || "", /بقايا/);
+  console.log("juvenile publish gates: PASS");
+}
 
 console.log("shift-week derivations ok");

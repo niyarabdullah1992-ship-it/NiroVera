@@ -42,10 +42,11 @@ import { pageKicker } from "@/lib/moduleMeta";
 import ComposerModalShell from "@/components/shared/ComposerModalShell";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
-import { Archive, Clock, LayoutList, Search } from "lucide-react";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import ProofSurfaceNote from "@/components/proof/ProofSurfaceNote";
+import OpsLaneTiles from "@/components/tasks/OpsLaneTiles";
+import OpsToolbarStrip, { OpsControlBar, OpsStripSearch } from "@/components/tasks/OpsToolbarStrip";
 import ProofRecordsTable from "@/components/proof/ProofRecordsTable";
 import ProofAttachments from "@/components/proof/ProofAttachments";
 import ProofAuditTimeline from "@/components/proof/ProofAuditTimeline";
@@ -681,10 +682,10 @@ export default function WorkProof() {
     date: workProofArchiveDate(p),
     badge: ar ? (STAGE_LABEL[p.stage || deriveProofStage(p)]?.ar) : (STAGE_LABEL[p.stage || deriveProofStage(p)]?.en),
   }));
-  const tabKeys = [
-    ["all", liveProofs.length, ar ? "الكل" : "All", LayoutList],
-    ["await", scopedCounts.await, ar ? "بانتظار" : "Awaiting", Clock],
-    ["archive", archiveProofs.length, ar ? "الأرشيف" : "Archive", Archive],
+  const filterChips = [
+    { id: "all", label: ar ? `الكل · ${liveProofs.length}` : `All · ${liveProofs.length}` },
+    { id: "await", label: ar ? `بانتظار · ${scopedCounts.await}` : `Awaiting · ${scopedCounts.await}` },
+    { id: "archive", label: ar ? `الأرشيف · ${archiveProofs.length}` : `Archive · ${archiveProofs.length}` },
   ];
 
   const proofAccess = (p) => {
@@ -738,6 +739,9 @@ export default function WorkProof() {
       dueTone: "ok",
       statusKind: stageKind(access.stage),
       statusLabel: ar ? STAGE_LABEL[access.stage]?.ar : STAGE_LABEL[access.stage]?.en,
+      before: !!p.beforeUrl,
+      after: !!p.afterUrl,
+      workers: workers.map((person) => person.name).filter(Boolean),
       progress: {
         done: photos,
         target: 2,
@@ -764,38 +768,17 @@ export default function WorkProof() {
       hint={ar
         ? "جهة خارج الشركة وعمالها — ليس أمر عمل لموظف، وليس إثبات زائر على الفرع."
         : "An outside company and its workers — not a task for an employee, and not a guest at the station."}
-      sections={tabKeys.map(([value, count, label, icon]) => ({ value, label, icon, count }))}
-      tool={boardFilter}
-      onTool={(value) => setFilter(normalizeWorkProofFilter(value))}
-      meta={(
-        <button
-          type="button"
-          onClick={() => {
-            if (raising || editingProof) {
-              cancelForm();
-              return;
-            }
-            setEditingProof(null);
-            resetForm();
-            setRaising(true);
-          }}
-          style={raising || editingProof ? ui.btnCreateQuiet : ui.btnCreate}
-        >
-          {raising || editingProof
-            ? (ar ? "إخفاء النموذج" : "Hide form")
-            : (ar ? "إثبات جديد" : "New proof")}
-        </button>
-      )}
     >
+      <OpsLaneTiles ar={ar} current="work-proof" />
       <ProofSurfaceNote ar={ar} current="work-proof" />
 
       {(raising || editingProof) && (
       <ComposerModalShell
         ar={ar}
-        title={editingProof ? (ar ? "تعديل الإثبات" : "Edit proof") : (ar ? "إثبات جديد" : "New proof")}
+        title={editingProof ? (ar ? "تعديل الإثبات" : "Edit proof") : (ar ? "إثبات عمل جديد" : "New work proof")}
         hint={editingProof
           ? (remainingEditLabel(editingProof, ar) || (ar ? "مهلة يوم واحد من الرفع." : "One day from the original raise."))
-          : (ar ? "جهة خارج الشركة، وهويات عمالها وسياراتهم — الإنهاء وصورة البعد لاحقًا." : "An outside company, its workers’ IDs and vehicles — end later with the after photo.")}
+          : (ar ? "لجهة خارج الشركة — يصل للمشرف للاعتماد، ثم يُختم ويُرسل للجهة برابط تحقق." : "For an outside party — the supervisor approves, then it is sealed and sent with a verify link.")}
         onClose={cancelForm}
         onSubmit={editingProof ? saveEdit : raise}
         submitLabel={editingProof ? (ar ? "حفظ التعديل" : "Save edit") : (ar ? "حفظ الإثبات" : "Save proof")}
@@ -813,29 +796,33 @@ export default function WorkProof() {
       </ComposerModalShell>
       )}
 
-      {boardFilter !== "archive" && (query || liveProofs.length > 0) ? (
-      <div style={{ position: "relative" }}>
-        <Search
-          style={{
-            position: "absolute",
-            top: "50%",
-            insetInlineStart: 12,
-            transform: "translateY(-50%)",
-            width: 14,
-            height: 14,
-            color: MUTED,
-            pointerEvents: "none",
+      <OpsControlBar>
+        <OpsToolbarStrip
+          ar={ar}
+          dir={ar ? "rtl" : "ltr"}
+          filter={boardFilter}
+          onFilterChange={(value) => setFilter(normalizeWorkProofFilter(value))}
+          chips={filterChips}
+          showCreate={raising || !!editingProof}
+          onToggleCreate={() => {
+            if (raising || editingProof) {
+              cancelForm();
+              return;
+            }
+            setEditingProof(null);
+            resetForm();
+            setRaising(true);
           }}
+          createLabel={ar ? "إثبات جديد" : "New proof"}
         />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={ar ? "بحث في الإثباتات…" : "Search proofs…"}
-          className="nv-search-field"
-          style={{ ...field, padding: 0, paddingInlineStart: 36, paddingInlineEnd: 12 }}
-        />
-      </div>
-      ) : null}
+        {boardFilter !== "archive" ? (
+          <OpsStripSearch
+            value={query}
+            onChange={setQuery}
+            placeholder={ar ? "بحث في الإثباتات…" : "Search proofs…"}
+          />
+        ) : null}
+      </OpsControlBar>
 
       {boardFilter === "archive" ? (
         <RecordSmartArchive
@@ -848,6 +835,7 @@ export default function WorkProof() {
       ) : (
         <ProofRecordsTable
           ar={ar}
+          variant="work"
           rows={tableRows}
           heads={ar ? ["الإثبات", "الفرع", "المسؤول", "الحالة", "الصور"] : ["PROOF", "STATION", "OWNER", "STATUS", "PHOTOS"]}
           emptyLabel={ar ? "لا إثباتات بعد." : "No proofs yet."}

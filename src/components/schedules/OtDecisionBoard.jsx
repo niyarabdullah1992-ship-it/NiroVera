@@ -5,6 +5,7 @@ import { formatOtPremiumLabel } from "@/lib/laborHoursPolicy.js";
 import { weekNamedOvertime } from "@/lib/shiftWeek";
 import { formatRuleFigure, ruleValue } from "@/lib/laborRules.js";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import LawGateAlertRow from "@/components/shared/LawGateAlertRow";
 import { toast } from "@/components/ui/use-toast";
 import { SW } from "@/lib/shiftWeek";
 
@@ -54,8 +55,14 @@ export default function OtDecisionBoard({
   if (!visible.length) {
     return (
       <section style={{ background: SW.card, border: `1px solid ${SW.line}`, padding: "14px 16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, fontWeight: 700 }}>{ar ? "قرار الإضافي — المادة 107" : "Overtime decision — Art. 107"}</span>
+        <LawGateAlertRow
+          ar={ar}
+          article="107"
+          status="void"
+          pillLabel={ar ? "بلا أثر" : "No effect"}
+          summary={ar ? "قرار الإضافي — المادة 107" : "Overtime decision — Art. 107"}
+        />
+        <div style={{ marginTop: 8 }}>
           <LaborArticleCite ruleId="hours.ot.premium" ar={ar} />
         </div>
         <p style={{ margin: "8px 0 0", fontSize: 12, color: SW.muted, lineHeight: 1.7 }}>
@@ -96,9 +103,15 @@ export default function OtDecisionBoard({
 
   return (
     <section style={{ background: SW.card, border: `1px solid ${SW.line}`, display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "14px 16px", borderBottom: `1px solid ${SW.line}`, display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ padding: "14px 16px", borderBottom: `1px solid ${SW.line}`, display: "flex", flexDirection: "column", gap: 8 }}>
+        <LawGateAlertRow
+          ar={ar}
+          article="107"
+          status="waiting"
+          pillLabel={ar ? "ينتظر" : "Waiting"}
+          summary={ar ? "قرار الإضافي — أجر الساعة + 50% أو إجازة تعويضية بموافقة العامل" : "Overtime decision — hourly + 50% or compensatory leave with consent"}
+        />
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, fontWeight: 700 }}>{ar ? "قرار الإضافي — المادة 107" : "Overtime decision — Art. 107"}</span>
           <LaborArticleCite ruleId="hours.ot.premium" ar={ar} />
           <LaborArticleCite ruleId="hours.ot.compLeave.cite" ar={ar} />
         </div>
@@ -180,7 +193,7 @@ export default function OtDecisionBoard({
                       type="button"
                       disabled={busy === key}
                       onClick={() => decide(row.employee.id, item.dateKey, "approve", item.overtimeMinutes, [item.kind])}
-                      style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "6px 10px", border: `1px solid ${SW.ink}`, background: SW.ink, color: "#fff", cursor: "pointer" }}
+                      style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "6px 10px", border: "1px solid var(--nv-btn-fill)", background: "var(--nv-btn-fill)", color: "var(--nv-btn-ink)", cursor: "pointer", borderRadius: 10 }}
                     >
                       {premium}
                     </button>

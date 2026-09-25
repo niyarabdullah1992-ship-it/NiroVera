@@ -15,7 +15,7 @@ function letterOf(name) {
 }
 
 /** Task-thread bubble — long-press / right-click / chevron, then copy or delete. */
-export default function ChatBubble({ msg, isMine, lang, onDelete, allowDeleteAnytime = false }) {
+export default function ChatBubble({ msg, isMine, lang, onDelete, allowDeleteAnytime = false, alignStart = false }) {
   const ar = lang === "ar";
   const profileId = String(msg.user_id || msg.authorId || msg.employeeId || "").trim();
   const displayName = String(msg.user_name || "").trim() || (isMine ? (ar ? "أنت" : "You") : "");
@@ -169,7 +169,7 @@ export default function ChatBubble({ msg, isMine, lang, onDelete, allowDeleteAny
       dir={ar ? "rtl" : "ltr"}
       style={{
         display: "flex",
-        justifyContent: isMine ? "flex-start" : "flex-end",
+        justifyContent: alignStart || isMine ? "flex-start" : "flex-end",
         width: "100%",
       }}
     >

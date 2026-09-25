@@ -3,7 +3,7 @@
 import { profileGender } from "./employeeProfileFields.js";
 import { citeLeaveType, citeRule, isRamadanHoursSubject, ruleAt, ruleValue } from "./laborRules.js";
 import { daysUntilLeaveStart } from "./leaveEntitlementCycle.js";
-import { officialHolidayOn } from "./ummAlQuraCalendar.js";
+import { officialHolidayKindLabel, officialHolidayList, officialHolidayOn } from "./ummAlQuraCalendar.js";
 import { chargeableSpanExcludingHolidays, deriveEidOverlap } from "./leaveEidOverlap.js";
 import { annualBalanceSplit, anniversaryYearWindow, getLeaveTotal, leftoverGrantDays, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, usedLeaveDays, serviceYearsFromHire, iddahPaidDays, lastApprovedMaternity } from "./leaveTypes.js";
 import { articleOfficialText } from "./laborArticleTexts.js";
@@ -29,7 +29,7 @@ export const LEAVE_TYPES = [
   { key: "bereavement", total: ruleValue("leave.bereavement.days"), article: citeLeaveType("bereavement")?.article || null, ar: "وفاة زوج/أصل/فرع", en: "Bereavement" },
   { key: "bereavement_sibling", total: ruleValue("leave.bereavement_sibling.days"), article: citeLeaveType("bereavement_sibling")?.article || null, ar: "وفاة أخ/أخت", en: "Sibling bereavement" },
   { key: "hajj", total: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article || null, ar: "حج", en: "Hajj" },
-  { key: "eid", total: null, article: citeLeaveType("eid")?.article || null, ar: "عيد / عطلة رسمية", en: "Eid / official holiday" },
+  { key: "eid", total: null, article: citeLeaveType("eid")?.article || null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
   { key: "exam", total: null, article: citeLeaveType("exam")?.article || null, ar: "امتحان", en: "Exam", requiresFile: true },
   { key: "emergency", total: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
   { key: "unpaid", total: null, article: citeLeaveType("unpaid")?.article || null, ar: "بدون راتب", en: "Unpaid" },
@@ -79,14 +79,24 @@ export function checkOfficialHolidayLeaveGate(request, extras = {}) {
   if (!isOfficialHolidayLeave(request?.type)) return { ok: true };
   const start = String(request?.startDate || "").slice(0, 10);
   const end = String(request?.endDate || "").slice(0, 10);
-  const cite = citeRule("leave.eid.cite", start || extras.onDate);
   const calendar = extras.laborCalendar || extras.calendar;
+  const startHit = officialHolidayOn(start, calendar);
+  const cite = citeRule(
+    startHit?.id === "national" ? "leave.nationalDay.days"
+      : startHit?.id === "founding" ? "leave.foundingDay.days"
+        : "leave.eid.cite",
+    start || extras.onDate,
+  ) || citeRule("leave.eid.cite", start || extras.onDate);
+  const named = (id) => {
+    const kind = officialHolidayKindLabel(id, true, calendar);
+    return kind === "عطلة رسمية" ? "العطلة الرسمية" : `إجازة ${kind}`;
+  };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) {
     return {
       ok: false,
       error: "OFFICIAL_HOLIDAY_DATES",
-      reason: "موقوف — إجازة العيد أو العطلة الرسمية لأيام العطل فقط.",
-      reasonEn: "Blocked — Eid or official-holiday leave is only for official holiday dates.",
+      reason: "موقوف — إجازة العيد لأيامها الثابتة فقط. إجازة اليوم الوطني ويوم التأسيس مقفلتان في الجدول بلا طلب.",
+      reasonEn: "Blocked — Eid leave is only for its fixed dates. National Day and Founding Day leave lock on the roster with no request.",
       cite,
     };
   }
@@ -95,11 +105,19 @@ export function checkOfficialHolidayLeaveGate(request, extras = {}) {
   while (cursor && cursor <= end) {
     const hit = officialHolidayOn(cursor, calendar);
     if (!hit) {
+      const list = officialHolidayList(start || extras.onDate, calendar);
+      const national = list.find((row) => row.id === "national");
+      const founding = list.find((row) => row.id === "founding");
+      const moved = !!(national?.ownerRuled || founding?.ownerRuled);
       return {
         ok: false,
         error: "OFFICIAL_HOLIDAY_DATES",
-        reason: "موقوف — اطلب العيد أو العطلة الرسمية على أيامها فقط (الفطر أو الأضحى أو الوطني أو التأسيس).",
-        reasonEn: "Blocked — request Eid or official-holiday leave only on those holiday dates (Fitr, Adha, National Day, or Founding Day).",
+        reason: moved
+          ? `موقوف — ${national?.ar || "إجازة اليوم الوطني"} (${national?.from || ""}) و${founding?.ar || "إجازة يوم التأسيس"} (${founding?.from || ""}) مقفلتان في الجدول بلا طلب؛ اطلب العيد على أيامه فقط.`
+          : "موقوف — إجازة اليوم الوطني (23 سبتمبر) وإجازة يوم التأسيس (22 فبراير) مقفلتان في الجدول بلا طلب؛ اطلب العيد على أيامه فقط.",
+        reasonEn: moved
+          ? `Blocked — ${national?.en || "National Day leave"} (${national?.from || ""}) and ${founding?.en || "Founding Day leave"} (${founding?.from || ""}) lock on the roster with no request; request Eid on its dates only.`
+          : "Blocked — National Day leave (23 September) and Founding Day leave (22 February) lock on the roster with no request; request Eid on its dates only.",
         cite,
       };
     }
@@ -108,7 +126,7 @@ export function checkOfficialHolidayLeaveGate(request, extras = {}) {
       return {
         ok: false,
         error: "OFFICIAL_HOLIDAY_MIX",
-        reason: "موقوف — اطلب كل عطلة رسمية في طلب مستقل.",
+        reason: `موقوف — اطلب ${named(span.id)} في طلب مستقل عن ${named(hit.id)}.`,
         reasonEn: "Blocked — request each official holiday in its own request.",
         cite,
       };
@@ -132,13 +150,14 @@ export function checkOfficialHolidayOverlapGate(request, extras = {}) {
     return isOfficialHolidayLeave(row.type);
   });
   if (!hit) return { ok: true };
-  const other = leaveTypeLabel(hit.type, true);
-  const otherEn = leaveTypeLabel(hit.type, false);
+  const other = leaveTypeLabel(hit.type, true, undefined, hit.startDate);
+  const otherEn = leaveTypeLabel(hit.type, false, undefined, hit.startDate);
+  const named = /اليوم الوطني|يوم التأسيس|عيد|عطلة رسمية/.test(String(other || "")) ? "العطلة" : other;
   return {
     ok: false,
     error: "LEAVE_OVERLAP",
-    reason: `موقوف — المدة تتقاطع مع طلب ${other} قائم. اطلب العيد بطلب مستقل خارج السنوية.`,
-    reasonEn: `Blocked — these dates overlap an existing ${otherEn} request. Request Eid separately, outside annual leave.`,
+    reason: `موقوف — المدة تتقاطع مع طلب ${named} قائم. إجازة اليوم الوطني ويوم التأسيس مقفلتان بلا طلب؛ اطلب العيد بطلب مستقل خارج السنوية.`,
+    reasonEn: `Blocked — these dates overlap an existing ${otherEn} request. National Day and Founding Day lock with no request; request Eid separately, outside annual leave.`,
     cite,
   };
 }
@@ -892,8 +911,27 @@ export function deriveExamLeaveSettlement(request, extras = {}) {
   };
 }
 
+/**
+ * Leave raise belongs on ملفي — the worker files their own request.
+ * A manager/HR actor id that differs from the subject must not invent leave on the file.
+ */
+export function checkLeaveSelfRaiseGate(request, extras = {}) {
+  const actorId = String(request?.requestedById || extras.requestedById || extras.actorId || "").trim();
+  const subjectId = String(extras.employee?.id || extras.employeeId || request?.employeeId || "").trim();
+  if (!actorId || !subjectId) return { ok: true };
+  if (actorId === subjectId) return { ok: true };
+  return {
+    ok: false,
+    error: "LEAVE_EMPLOYEE_ONLY",
+    reason: "الإجازة تُرفع من ملفي فقط — الموظف يطلب، والإدارة تعتمد أو ترفض.",
+    reasonEn: "Leave is raised from My file only — the worker requests; management approves or refuses.",
+  };
+}
+
 /** Statutory + balance gates for raising a request — no pending-status requirement. Art. 118 ack is submit-only. */
 export function checkSubmitLeaveGate(request, extras = {}) {
+  const selfRaise = checkLeaveSelfRaiseGate(request, extras);
+  if (!selfRaise.ok) return selfRaise;
   const gate = checkApproveLeaveGate({ ...(request || {}), status: "pending" }, false, extras);
   if (!gate.ok) return gate;
   const ack = checkNoOtherEmployerGate(request);

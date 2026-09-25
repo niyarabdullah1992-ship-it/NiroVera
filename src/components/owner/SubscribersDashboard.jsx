@@ -6,6 +6,16 @@ import SubscriberAnalytics from "@/components/owner/SubscriberAnalytics";
 import SubscriptionRevenueSummary from "@/components/owner/SubscriptionRevenueSummary";
 import SubscriptionBulkExport from "@/components/owner/SubscriptionBulkExport";
 import { subscriptionTotals, subscriptionBillableAmount, formatSubscriptionMoney } from "@/lib/subscriptionTax";
+import {
+  OwnerSectionHead,
+  OwnerStatTile,
+  ownerChip,
+  ownerField,
+  ownerGhostBtn,
+  ownerGrid,
+  ownerPaper,
+  ownerStack,
+} from "@/components/owner/ownerUi";
 
 export default function SubscribersDashboard({ ar }) {
   const [data, setData] = useState(null);
@@ -30,13 +40,13 @@ export default function SubscribersDashboard({ ar }) {
 
   const summary = data?.summary;
   const allRows = [...(data?.subscriptions || []), ...(data?.companiesWithoutSubscription || [])];
-  const rows = allRows.filter((r) => {
-    if (statusFilter === "active" && !(r.status === "active" || r.status === "trialing" || r.status === "manual_active")) return false;
-    if (statusFilter === "problem" && !(r.status === "past_due" || r.status === "unpaid" || r.status === "canceled")) return false;
-    if (statusFilter === "none" && r.status !== "no_subscription") return false;
-    if (statusFilter === "frozen" && !r.frozen) return false;
+  const rows = allRows.filter((row) => {
+    if (statusFilter === "active" && !(row.status === "active" || row.status === "trialing" || row.status === "manual_active")) return false;
+    if (statusFilter === "problem" && !(row.status === "past_due" || row.status === "unpaid" || row.status === "canceled")) return false;
+    if (statusFilter === "none" && row.status !== "no_subscription") return false;
+    if (statusFilter === "frozen" && !row.frozen) return false;
     const q = search.trim().toLowerCase();
-    if (q && !(r.companyName || "").toLowerCase().includes(q) && !(r.email || "").toLowerCase().includes(q)) return false;
+    if (q && !(row.companyName || "").toLowerCase().includes(q) && !(row.email || "").toLowerCase().includes(q)) return false;
     return true;
   });
   const tableTotals = subscriptionTotals(rows.reduce((sum, row) => sum + subscriptionBillableAmount(row), 0));
@@ -48,95 +58,112 @@ export default function SubscribersDashboard({ ar }) {
     { label: ar ? "الاشتراكات المجمّدة" : "Frozen subscriptions", value: summary.frozen || 0, warn: summary.frozen > 0 },
   ] : [];
 
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between rounded-xl border border-border bg-card px-5 py-4 shadow-soft">
-        <div><p className="text-xs font-semibold uppercase tracking-widest text-accent">{ar ? "مركز العمليات المالية" : "Financial operations"}</p><h1 className="mt-1 font-heading text-2xl font-semibold text-card-foreground">{ar ? "إدارة الاشتراكات" : "Subscription management"}</h1></div>
-        <button onClick={load} disabled={loading} className="rounded-md border border-border bg-card p-2 text-accent hover:bg-muted" title={ar ? "تحديث" : "Refresh"}>
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-        </button>
-      </div>
+  const filters = [
+    { key: "all", ar: "الكل", en: "All" },
+    { key: "active", ar: "نشط", en: "Active" },
+    { key: "problem", ar: "متعثر/ملغى", en: "Issues" },
+    { key: "frozen", ar: "مجمّد", en: "Frozen" },
+    { key: "none", ar: "بدون اشتراك", en: "No sub" },
+  ];
 
-      {loading && !data && (
-        <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+  return (
+    <div style={ownerStack}>
+      <OwnerSectionHead
+        kicker={ar ? "مركز العمليات المالية" : "Financial operations"}
+        title={ar ? "إدارة الاشتراكات" : "Subscription management"}
+        meta={(
+          <button type="button" onClick={load} disabled={loading} title={ar ? "تحديث" : "Refresh"} style={ownerGhostBtn()}>
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        )}
+      />
+
+      {loading && !data ? (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "24px 0", fontSize: 13, color: "var(--nv-muted)" }}>
           <Loader2 className="w-4 h-4 animate-spin" /> {ar ? "جارٍ التحميل…" : "Loading…"}
         </div>
-      )}
-      {error && <p className="text-sm text-red-500 font-body">{error}</p>}
+      ) : null}
+      {error ? <p style={{ margin: 0, fontSize: 13, color: "var(--nv-bad-ink)" }}>{error}</p> : null}
 
-      {summary && (
+      {summary ? (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {stats.map((s) => (
-              <div key={s.label} className={`ops-kpi-card rounded-xl border bg-card p-4 text-center shadow-soft ${s.warn ? "border-destructive/40" : "border-border"}`}>
-                <p className={`font-heading text-3xl font-semibold ${s.warn ? "text-destructive" : "text-card-foreground"}`}>{s.value}</p>
-                <p className="mt-1 text-[11px] leading-tight text-muted-foreground">{s.label}</p>
-              </div>
+          <div style={ownerGrid}>
+            {stats.map((stat) => (
+              <OwnerStatTile key={stat.label} label={stat.label} value={stat.value} warn={stat.warn} state={stat.warn ? "warn" : "mute"} />
             ))}
           </div>
 
           <SubscriptionRevenueSummary amount={summary.mrr} ar={ar} />
-          <div className="flex justify-end"><SubscriptionBulkExport rows={allRows} ar={ar} /></div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <SubscriptionBulkExport rows={allRows} ar={ar} />
+          </div>
           <SubscriberAnalytics data={data} ar={ar} />
 
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ position: "relative" }}>
+              <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "var(--nv-muted)" }} />
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(event) => setSearch(event.target.value)}
                 placeholder={ar ? "بحث باسم الشركة أو الإيميل…" : "Search by company or email…"}
-                className="w-full rounded-md border border-input bg-card py-2.5 pe-3 ps-9 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                style={{ ...ownerField(), paddingInlineStart: 36 }}
               />
             </div>
-            <div className="flex gap-1.5">
-              {[
-                { key: "all", ar: "الكل", en: "All" },
-                { key: "active", ar: "نشط", en: "Active" },
-                { key: "problem", ar: "متعثر/ملغى", en: "Issues" },
-                { key: "frozen", ar: "مجمّد", en: "Frozen" },
-                { key: "none", ar: "بدون اشتراك", en: "No sub" },
-              ].map((f) => (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {filters.map((filter) => (
                 <button
-                  key={f.key}
-                  onClick={() => setStatusFilter(f.key)}
-                  className={`px-3 py-2 rounded-xl text-xs font-body font-semibold transition-colors ${
-                    statusFilter === f.key ? "bg-primary text-primary-foreground" : "border border-border bg-card text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
-                  }`}
+                  key={filter.key}
+                  type="button"
+                  onClick={() => setStatusFilter(filter.key)}
+                  style={ownerChip(statusFilter === filter.key)}
                 >
-                  {ar ? f.ar : f.en}
+                  {ar ? filter.ar : filter.en}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-soft">
-            <table className="w-full text-sm font-body mobile-cards">
+          <div style={{ ...ownerPaper("mute"), overflow: "hidden", padding: 0 }}>
+            <table className="w-full text-sm mobile-cards" style={{ borderCollapse: "collapse" }}>
               <thead>
-                <tr className="border-b border-border bg-secondary text-start text-[11px] uppercase tracking-wide text-secondary-foreground/70">
-                  <th className="px-4 py-3 text-start">{ar ? "الشركة" : "Company"}</th>
-                  <th className="px-4 py-3 text-start">{ar ? "الباقة" : "Plan"}</th>
-                  <th className="px-4 py-3 text-start">{ar ? "الحالة" : "Status"}</th>
-                  <th className="px-4 py-3 text-start">{ar ? "بداية الاشتراك" : "Start"}</th>
-                  <th className="px-4 py-3 text-start">{ar ? "نهاية الاشتراك" : "End"}</th>
-                  <th className="px-4 py-3 text-start">{ar ? "المتبقي" : "Left"}</th>
-                  <th className="px-4 py-3 text-start">{ar ? "بيان الاشتراك" : "Account statement"}</th>
-                  <th className="px-4 py-3 text-start">{ar ? "إجراءات" : "Actions"}</th>
+                <tr style={{ borderBottom: "1px solid var(--nv-line)", background: "var(--nv-soft)", textAlign: "start", fontSize: 11, color: "var(--nv-muted)" }}>
+                  <th style={{ padding: "12px 14px", fontWeight: 600 }}>{ar ? "الشركة" : "Company"}</th>
+                  <th style={{ padding: "12px 14px", fontWeight: 600 }}>{ar ? "الباقة" : "Plan"}</th>
+                  <th style={{ padding: "12px 14px", fontWeight: 600 }}>{ar ? "الحالة" : "Status"}</th>
+                  <th style={{ padding: "12px 14px", fontWeight: 600 }}>{ar ? "بداية الاشتراك" : "Start"}</th>
+                  <th style={{ padding: "12px 14px", fontWeight: 600 }}>{ar ? "نهاية الاشتراك" : "End"}</th>
+                  <th style={{ padding: "12px 14px", fontWeight: 600 }}>{ar ? "المتبقي" : "Left"}</th>
+                  <th style={{ padding: "12px 14px", fontWeight: 600 }}>{ar ? "بيان الاشتراك" : "Account statement"}</th>
+                  <th style={{ padding: "12px 14px", fontWeight: 600 }}>{ar ? "إجراءات" : "Actions"}</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">{ar ? "لا يوجد مشتركون بعد." : "No subscribers yet."}</td></tr>
-                )}
-                {rows.map((r, i) => (
-                  <SubscriberRow key={r.id || r.accountId || i} row={r} ar={ar} onChanged={load} />
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: "24px 14px", textAlign: "center", color: "var(--nv-muted)" }}>
+                      {ar ? "لا يوجد مشتركون بعد." : "No subscribers yet."}
+                    </td>
+                  </tr>
+                ) : null}
+                {rows.map((row, index) => (
+                  <SubscriberRow key={row.id || row.accountId || index} row={row} ar={ar} onChanged={load} />
                 ))}
               </tbody>
-              <tfoot><tr className="border-t-2 border-[#E2E8F0]/40 bg-secondary"><td colSpan={8} className="px-4 py-4"><div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-2 text-xs"><span>{ar ? "قبل الضريبة" : "Before VAT"}: <strong dir="ltr">{formatSubscriptionMoney(tableTotals.subtotal, "USD", ar)}</strong></span><span>{ar ? "الضريبة 15%" : "VAT 15%"}: <strong dir="ltr">{formatSubscriptionMoney(tableTotals.vat, "USD", ar)}</strong></span><span className="text-sm text-accent-foreground">{ar ? "الإجمالي شامل الضريبة" : "Total including VAT"}: <strong dir="ltr">{formatSubscriptionMoney(tableTotals.total, "USD", ar)}</strong></span></div></td></tr></tfoot>
-              </table>
+              <tfoot>
+                <tr style={{ borderTop: "1px solid var(--nv-line)", background: "var(--nv-soft)" }}>
+                  <td colSpan={8} style={{ padding: "14px" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: "8px 20px", fontSize: 12, color: "var(--nv-ink2)" }}>
+                      <span>{ar ? "قبل الضريبة" : "Before VAT"}: <strong dir="ltr">{formatSubscriptionMoney(tableTotals.subtotal, "USD", ar)}</strong></span>
+                      <span>{ar ? "الضريبة 15%" : "VAT 15%"}: <strong dir="ltr">{formatSubscriptionMoney(tableTotals.vat, "USD", ar)}</strong></span>
+                      <span style={{ color: "var(--nv-ok-ink)" }}>{ar ? "الإجمالي شامل الضريبة" : "Total including VAT"}: <strong dir="ltr">{formatSubscriptionMoney(tableTotals.total, "USD", ar)}</strong></span>
+                    </div>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -1746,31 +1746,45 @@ function formatAuditWhen(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function normalizeHistoryKind(kind) {
+  const raw = String(kind || "").trim();
+  if (raw === "transfer" || raw === "ownership_transfer") return "transfer";
+  if (raw === "acting") return "acting";
+  if (raw === "end" || raw === "end_delegation") return "end";
+  if (raw === "members" || raw === "set_members") return "members";
+  if (raw === "delegate") return "delegate";
+  return raw || "delegate";
+}
+
 export function assignmentHistoryNote(entry, lang = "ar") {
   if (!entry) return "";
   const from = entry.fromName || "—";
   const to = entry.toName || "—";
   const reason = String(entry.reason || "").trim();
-  const kind = entry.kind === "transfer"
-    ? "transfer"
-    : (entry.kind === "acting" ? "acting" : (entry.kind === "end" ? "end" : "delegate"));
+  const kind = normalizeHistoryKind(entry.kind);
   const until = stampLabel(entry.actingUntil);
   const when = stampLabel(entry.delegatedAt || entry.transferredAt || entry.at);
   const ended = String(entry.endedAt || (kind === "end" ? entry.at : "") || "").slice(0, 10);
   if (lang === "en") {
+    if (kind === "members") {
+      const base = reason
+        ? `Assignees changed from ${from} to ${to} — ${reason}`
+        : `Assignees changed from ${from} to ${to}`;
+      return when ? `${base} · ${when}` : base;
+    }
     if (kind === "end") {
       const base = reason
         ? `Delegation ended — returned from ${from} to ${to} — ${reason}`
         : `Delegation ended — returned from ${from} to ${to}`;
       return ended ? `${base} · ${ended}` : base;
     }
-  if (kind === "transfer") {
-    const base = reason
-      ? `Ownership transferred from ${from} to ${to} — ${reason}`
-      : `Ownership transferred from ${from} to ${to}`;
-    const by = entry.byName ? ` · by ${entry.byName}` : "";
-    return when ? `${base}${by} · ${when}` : `${base}${by}`;
-  }
+    if (kind === "transfer") {
+      const base = reason
+        ? `Ownership transferred from ${from} to ${to} — ${reason}`
+        : `Ownership transferred from ${from} to ${to}`;
+      const by = entry.byName ? ` · by ${entry.byName}` : "";
+      return when ? `${base}${by} · ${when}` : `${base}${by}`;
+    }
     if (kind === "acting" || kind === "delegate") {
       const base = reason
         ? `Delegated from ${from} to ${to} — ${reason}`
@@ -1779,6 +1793,12 @@ export function assignmentHistoryNote(entry, lang = "ar") {
       return range ? `${base} · ${range}` : base;
     }
     return reason ? `Delegated from ${from} to ${to} — ${reason}` : `Delegated from ${from} to ${to}`;
+  }
+  if (kind === "members") {
+    const base = reason
+      ? `تغيّر المسندون من ${from} إلى ${to} — ${reason}`
+      : `تغيّر المسندون من ${from} إلى ${to}`;
+    return when ? `${base} · ${when}` : base;
   }
   if (kind === "end") {
     const base = reason
@@ -2047,6 +2067,129 @@ export function applyOpsReassign(task, input = {}) {
     transferredAt: task.transferredAt || null,
     transferredById: task.transferredById || null,
     transferredByName: task.transferredByName || null,
+  };
+}
+
+function sameIdSet(a, b) {
+  const left = [...new Set((a || []).map(String).filter(Boolean))].sort();
+  const right = [...new Set((b || []).map(String).filter(Boolean))].sort();
+  if (left.length !== right.length) return false;
+  return left.every((id, i) => id === right[i]);
+}
+
+function personNamesJoined(ids, people, lang = "ar") {
+  const sep = lang === "en" ? ", " : "، ";
+  const names = (ids || []).map((id) => {
+    const hit = matchOpsPerson(people, id);
+    return String(hit?.name || "").trim() || String(id);
+  }).filter(Boolean);
+  return names.length ? names.join(sep) : "—";
+}
+
+/** Manager may reshape the station team on an open task — not ownership transfer. */
+export function checkSetMembersGate(input = {}) {
+  const lang = input.lang === "en" ? "en" : "ar";
+  const task = input.task;
+  const memberIds = [...new Set((input.memberIds || []).map(String).filter(Boolean))];
+  if (!canReassignOpsTask(task, input.user, input.data)) {
+    return {
+      ok: false,
+      error: "REASSIGN_FORBIDDEN",
+      reason: lang === "ar"
+        ? "تغيير المسندين للمدير فقط — وبعد الإنجاز أو الاعتماد لا يُعاد تشكيل الفريق."
+        : "Only a manager can change assignees, and a completed or approved task cannot be reshaped.",
+    };
+  }
+  if (!memberIds.length) {
+    return {
+      ok: false,
+      error: "MEMBERS_REQUIRED",
+      reason: lang === "ar" ? "اختر شخصًا واحدًا على الأقل." : "Pick at least one person.",
+    };
+  }
+  const people = Array.isArray(input.people) ? input.people : [];
+  if (people.length && memberIds.some((id) => !matchOpsPerson(people, id))) {
+    return {
+      ok: false,
+      error: "ASSIGNEE_OUT_OF_SCOPE",
+      reason: lang === "ar"
+        ? "أحد المحددين خارج طاقم الفرع الظاهر."
+        : "A selected member is outside the visible station crew.",
+    };
+  }
+  const current = taskAssigneeIds(task);
+  if (sameIdSet(current, memberIds)) {
+    return { ok: true, memberIds, unchanged: true };
+  }
+  return { ok: true, memberIds, unchanged: false };
+}
+
+/** Replace the task's assignee list (station-scoped). Owner stays if still on the list. */
+export function applyOpsSetMembers(task, input = {}) {
+  const memberIds = [...new Set((input.memberIds || []).map(String).filter(Boolean))];
+  const people = Array.isArray(input.people) ? input.people : [];
+  const lang = input.lang === "en" ? "en" : "ar";
+  const prevIds = taskAssigneeIds(task);
+  if (!memberIds.length || sameIdSet(prevIds, memberIds)) return task;
+
+  const at = input.at && String(input.at).includes("T")
+    ? String(input.at)
+    : new Date().toISOString();
+  const ownerStill = memberIds.includes(String(task.ownerId || task.employee_id || task.assignedTo || ""));
+  const nextOwnerId = ownerStill
+    ? String(task.ownerId || task.employee_id || task.assignedTo)
+    : memberIds[0];
+  const nextOwner = matchOpsPerson(people, nextOwnerId);
+  const fromName = personNamesJoined(prevIds, people, lang);
+  const toName = personNamesJoined(memberIds, people, lang);
+  const entry = {
+    fromId: prevIds[0] || null,
+    toId: nextOwnerId,
+    fromIds: prevIds,
+    toIds: memberIds,
+    byId: input.byId || null,
+    reason: String(input.reason || "").trim(),
+    at,
+    kind: "members",
+    fromName,
+    toName,
+    byName: input.byName || "",
+  };
+  const note = assignmentHistoryNote(entry, lang);
+  const comments = Array.isArray(task.comments) ? task.comments : [];
+  return {
+    ...task,
+    assignMode: "some",
+    memberIds,
+    ownerId: nextOwnerId,
+    assignedTo: nextOwnerId,
+    employee_id: nextOwnerId,
+    ownerName: nextOwner?.name || task.ownerName || "",
+    assignmentHistory: [...(Array.isArray(task.assignmentHistory) ? task.assignmentHistory : []), entry],
+    actionLog: [
+      ...(Array.isArray(task.actionLog) ? task.actionLog : []),
+      {
+        id: `members_${at}`,
+        type: "members",
+        at,
+        byId: entry.byId,
+        byName: entry.byName,
+        fromIds: prevIds,
+        toIds: memberIds,
+        fromName,
+        toName,
+        reason: entry.reason,
+      },
+    ],
+    comments: [...comments, {
+      id: `members_${at}`,
+      authorId: entry.byId,
+      authorName: entry.byName,
+      text: note,
+      isIssue: false,
+      is_reassignment: true,
+      at,
+    }],
   };
 }
 
@@ -2450,6 +2593,11 @@ export function buildTaskAuditTimeline(task, lang = "ar") {
         ? `نُقلت الملكية من ${from} إلى ${to}`
         : `Ownership transferred from ${from} to ${to}`;
       tone = "#B91C1C";
+    } else if (kind === "members") {
+      text = ar
+        ? `تغيّر المسندون من ${from} إلى ${to}`
+        : `Assignees changed from ${from} to ${to}`;
+      tone = "#0F766E";
     } else {
       text = ar ? `وُكِّل من ${from} إلى ${to}` : `Delegated from ${from} to ${to}`;
       if (until) text = ar ? `${text} حتى ${until}` : `${text} until ${until}`;
@@ -2514,6 +2662,7 @@ function normalizeAssignKind(type) {
   const raw = String(type || "").trim();
   if (raw === "ownership_transfer" || raw === "transfer") return "transfer";
   if (raw === "end_delegation" || raw === "end") return "end";
+  if (raw === "members" || raw === "set_members") return "members";
   if (raw === "acting" || raw === "delegate") return "delegate";
   return "";
 }

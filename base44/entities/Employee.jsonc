@@ -49,6 +49,10 @@
       "type": "string",
       "description": "Public anonymous handle. Never the same as employeeId."
     },
+    "employeeNo": {
+      "type": "string",
+      "description": "Job number issued once inside this company (NV-year-sequence). Not the national ID, and not shared with another company."
+    },
     "points": {
       "type": "number",
       "default": 0,

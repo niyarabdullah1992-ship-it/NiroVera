@@ -1,16 +1,20 @@
 import React from "react";
 import { boardPaceCopy, dailyPaceCopy } from "@/lib/opsDerivations";
+import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
 import { BORDER, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 
 const NUM = {
-  fontFamily: "'IBM Plex Sans',sans-serif",
+  fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)",
   fontSize: 22,
   fontWeight: 600,
   lineHeight: 1,
   letterSpacing: "-0.02em",
+  fontVariantNumeric: "tabular-nums",
+  direction: "ltr",
+  unicodeBidi: "isolate",
 };
 
-export default function DailyPaceStrip({ ar = true, pace, board, compact = false, emptyHint = "" }) {
+export default function DailyPaceStrip({ ar = true, pace, board, compact = false, embedded = false, emptyHint = "" }) {
   const copy = board ? boardPaceCopy(board, ar) : dailyPaceCopy(pace, ar);
   if (!copy) {
     if (!emptyHint) return null;
@@ -19,7 +23,7 @@ export default function DailyPaceStrip({ ar = true, pace, board, compact = false
         style={{
           border: `1px solid ${BORDER}`,
           background: SURFACE,
-          borderRadius: 9,
+          borderRadius: DS_CONTROL_RADIUS,
           padding: "7px 12px",
         }}
       >
@@ -33,7 +37,7 @@ export default function DailyPaceStrip({ ar = true, pace, board, compact = false
     );
   }
 
-  const valueColor = copy.tone === "warn" ? "#B45309" : copy.tone === "done" ? MUTED : NAVY;
+  const valueColor = copy.tone === "warn" ? "var(--nv-warn-ink)" : copy.tone === "done" ? MUTED : NAVY;
 
   if (compact) {
     return (
@@ -43,7 +47,7 @@ export default function DailyPaceStrip({ ar = true, pace, board, compact = false
           alignItems: "baseline",
           gap: 5,
           padding: "2px 8px",
-          borderRadius: 20,
+          borderRadius: 999,
           border: `1px solid ${BORDER}`,
           background: SURFACE,
           whiteSpace: "nowrap",
@@ -59,37 +63,38 @@ export default function DailyPaceStrip({ ar = true, pace, board, compact = false
     <div
       title={copy.hint}
       style={{
-        border: `1px solid ${BORDER}`,
-        background: SURFACE,
-        borderRadius: 9,
-        padding: "7px 12px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-start",
+        gap: 18,
+        flexWrap: "wrap",
+        padding: embedded ? "8px 12px" : "10px 14px",
+        border: embedded ? "none" : `1px solid ${BORDER}`,
+        borderTop: embedded ? `1px solid ${BORDER}` : undefined,
+        background: embedded ? "transparent" : SURFACE,
+        borderRadius: embedded ? 0 : DS_CONTROL_RADIUS,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.01em", whiteSpace: "nowrap" }}>
-          {copy.kicker}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, copy.metrics.length)}, minmax(0, 1fr))`, gap: 0, flex: 1, minWidth: 0 }}>
-          {copy.metrics.map((metric, index) => (
-            <div
-              key={metric.label}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-                paddingInline: 12,
-                borderInlineStart: index === 0 ? "none" : `1px solid ${BORDER}`,
-                minWidth: 0,
-              }}
-            >
-              <span style={{ fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}>{metric.label}</span>
-              <span dir="ltr" style={{ ...NUM, fontSize: 16, color: index === 0 ? valueColor : NAVY }}>{metric.value}</span>
-            </div>
-          ))}
-        </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: NAVY, whiteSpace: "nowrap" }}>{copy.kicker}</span>
+        <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.45 }}>{copy.hint}</span>
       </div>
-      <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.4, marginTop: 4 }}>
-        {copy.hint}
+      <div style={{ display: "flex", alignItems: "center", flex: "0 0 auto" }}>
+        {copy.metrics.map((metric, index) => (
+          <div
+            key={metric.label}
+            style={{
+              display: "inline-flex",
+              alignItems: "baseline",
+              gap: 6,
+              paddingInline: 12,
+              borderInlineStart: index === 0 ? "none" : `1px solid ${BORDER}`,
+            }}
+          >
+            <span style={{ fontSize: 11, fontWeight: 700, color: MUTED, whiteSpace: "nowrap" }}>{metric.label}</span>
+            <span dir="ltr" style={{ ...NUM, fontSize: 18, color: index === 0 ? valueColor : NAVY }}>{metric.value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

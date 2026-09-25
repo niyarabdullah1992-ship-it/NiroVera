@@ -62,13 +62,13 @@ export function ProofAttachPicker({ files = [], onChange, ar = true }) {
           </button>
         </span>
       ))}
-      <label style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 13px", borderRadius: 10, border: "1px dashed #CBD5E1", background: CARD, fontSize: 12, color: MUTED, cursor: "pointer" }}>
+      <label className="nv-attach nv-attach--inline">
         <span>{ar ? "أرفق مستندًا" : "Attach a document"}</span>
         <input
           type="file"
           multiple
           accept={ACCEPT}
-          style={{ display: "none" }}
+          className="nv-attach-native"
           onChange={(event) => {
             const picked = Array.from(event.target.files || []);
             event.target.value = "";

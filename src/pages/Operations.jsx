@@ -20,8 +20,6 @@ import {
   deriveDailyTaskPace,
   taskPaceInput,
   taskPaceLoggedOnDay,
-  taskDelegationMeta,
-  taskTransferMeta,
   taskPlanHorizon,
   taskPoints,
   taskRecurrenceFromForm,
@@ -36,7 +34,8 @@ import {
   opsVisitorStamp,
   taskAssignScopeLabel,
   taskCreatorName,
-  workKindLabel,
+  taskAssigneeIds,
+  taskAssigneePeople,
   checkTaskModeGate,
   taskModeLabel,
 } from "@/lib/opsDerivations";
@@ -57,6 +56,7 @@ import {
   logLocalCompletion,
   setLocalTaskMode,
   reassignLocalOpsTask,
+  setLocalOpsMembers,
   redistributeLocalOpsPace,
   rejectLocalTask,
   escalateLocalOpsByEmployee,
@@ -68,27 +68,21 @@ import OpsTransferModal from "@/components/tasks/OpsTransferModal";
 import OpsDeleteModal from "@/components/tasks/OpsDeleteModal";
 import OpsModeConfirmModal from "@/components/tasks/OpsModeConfirmModal";
 import OpsTaskDetail from "@/components/tasks/OpsTaskDetail";
-import OpsTasksTable from "@/components/tasks/OpsTasksTable";
-import OpsToolbarStrip from "@/components/tasks/OpsToolbarStrip";
-import OpsAssignmentRefChip from "@/components/tasks/OpsAssignmentRefChip";
+import OpsTasksTable, { OpsTaskCards } from "@/components/tasks/OpsTasksTable";
+import OpsToolbarStrip, { OpsControlBar } from "@/components/tasks/OpsToolbarStrip";
 import DailyPaceStrip from "@/components/tasks/DailyPaceStrip";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
 import { pageKicker } from "@/lib/moduleMeta";
+import { useRailSide } from "@/lib/railSide";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import ProofSurfaceNote from "@/components/proof/ProofSurfaceNote";
+import OpsLaneTiles from "@/components/tasks/OpsLaneTiles";
 import {
   INK,
   MUTED,
-  BORDER,
-  BRAND,
-  OK,
-  WARN,
-  NEUTRAL,
-  SURFACE,
   dialogCard,
   dialogOverlay,
   statusBanner,
-  tableShell,
   textarea,
   ui,
 } from "@/lib/platformStyles";
@@ -1608,6 +1602,106 @@ export default function Operations() {
     }
   };
 
+  const stationCrewFor = (task) => {
+    const sid = String(task?.stationId || "").trim();
+    const homeIdOf = (emp) => String(emp?.stationId || emp?.station_id || emp?.homeStationId || "");
+    const isLinkedTo = (emp, want) => {
+      if (!want) return true;
+      if (homeIdOf(emp) === want) return true;
+      const managed = Array.isArray(emp?.managedStations)
+        ? emp.managedStations
+        : String(emp?.managedStations || "").split(/[،,]/);
+      return managed.map(String).map((id) => id.trim()).filter(Boolean).includes(want);
+    };
+    return (data?.employees || [])
+      .filter((emp) => isLinkedTo(emp, sid))
+      .map((emp) => ({
+        id: String(emp.employeeId || emp.id || ""),
+        name: emp.name || "",
+      }))
+      .filter((m) => m.id);
+  };
+
+  const setMembers = async (task, memberIds) => {
+    if (!task || !canReassign(task)) {
+      toast({
+        title: ar ? "غير مسموح" : "Not allowed",
+        description: ar
+          ? "تغيير المسندين للمدير فقط، وعلى مهمة مفتوحة."
+          : "Only a manager can change assignees on an open task.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    const nextIds = [...new Set((memberIds || []).map(String).filter(Boolean))];
+    const prev = taskAssigneeIds(task);
+    if (prev.length === nextIds.length && prev.every((id) => nextIds.includes(id))) return true;
+    setBusy(true);
+    const crew = stationCrewFor(task);
+    const applyLocal = () => {
+      const board = setLocalOpsMembers(company.id, task.id, {
+        memberIds: nextIds,
+        reviewer: currentUser,
+        data,
+        employees: crew.length ? crew : (data?.employees || []),
+        lang: ar ? "ar" : "en",
+        task,
+      });
+      setLocalMode(true);
+      setTasks(buildLocalOpsBoard({ tasks: board.tasks, scope, stations: data?.stations || [] }).tasks);
+      setCounts(board.counts);
+      return board;
+    };
+    try {
+      if (localMode || isLocalPreviewActive()) {
+        applyLocal();
+        toast({ title: ar ? "تحدّث المسندون" : "Assignees updated" });
+        return true;
+      }
+      const res = await ops({
+        action: "setMembers",
+        taskId: task.id,
+        memberIds: nextIds,
+        lang: ar ? "ar" : "en",
+      });
+      const body = res?.data || res;
+      if (body?.error) {
+        const err = new Error(body.reason || body.error);
+        err.code = body.error;
+        throw err;
+      }
+      setCounts(body.counts || null);
+      toast({ title: ar ? "تحدّث المسندون" : "Assignees updated" });
+      await reload();
+      return true;
+    } catch (err) {
+      const code = err?.code || err?.response?.data?.error || "";
+      const assignBlocked = code === "ASSIGN_GATE" || code === "REASSIGN_FORBIDDEN" || code === "MEMBERS_REQUIRED" || code === "ASSIGNEE_OUT_OF_SCOPE";
+      if (company?.id && !assignBlocked) {
+        try {
+          applyLocal();
+          toast({ title: ar ? "تحدّث المسندون" : "Assignees updated" });
+          return true;
+        } catch (localErr) {
+          toast({
+            title: ar ? "تعذّر تحديث المسندين" : "Could not update assignees",
+            description: localErr.message,
+            variant: "destructive",
+          });
+          return false;
+        }
+      }
+      toast({
+        title: ar ? "تعذّر تحديث المسندين" : "Could not update assignees",
+        description: err.message,
+        variant: "destructive",
+      });
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const applyLocalEndDelegation = (task, { reason }) => {
     const board = endLocalOpsDelegation(company.id, task.id, {
       reason,
@@ -1770,24 +1864,6 @@ export default function Operations() {
     completed: { ar: "مكتملة", en: "Done" },
     pending_review: { ar: "مراجعة", en: "Review" },
   };
-  const priColor = (p) => (p === "high" || p === "urgent" ? "#DC2626" : p === "low" ? "#94A3B8" : "#F59E0B");
-  const statusChip = (status) => {
-    if (status === "completed") return OK;
-    if (status === "awaiting_approval" || status === "pending_review") return WARN;
-    return NEUTRAL;
-  };
-
-  const kindStyle = {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "2px 8px",
-    borderRadius: 999,
-    fontSize: "11px",
-    background: SURFACE,
-    color: MUTED,
-    border: `1px solid ${BORDER}`,
-  };
-
   const planGroups = deriveHorizonGroups(visible).map((h) => ({
     ...h,
     rows: visible.filter((t) => taskPlanHorizon(t) === h.id),
@@ -1864,7 +1940,7 @@ export default function Operations() {
           )}
         </div>
         {logBlocked && task.status !== "completed" && !isAwaitingApproval(task) && (
-          <span className="max-w-[220px] text-[10px] leading-snug" style={{ color: "#B45309" }}>
+          <span className="max-w-[220px] text-[10px] leading-snug" style={{ color: "var(--nv-warn-ink)" }}>
             {attendanceGate?.reason || (ar ? "موقوف حتى بصمة اليوم" : "Blocked until today's check-in")}
           </span>
         )}
@@ -1872,17 +1948,17 @@ export default function Operations() {
     );
   };
 
+  const kickerNum = String(pageKicker("/app/tasks", "en")).slice(0, 2) || "01";
+  const employeeFace = useRailSide() === "employee";
   return (
     <PlatformStampShell
       ar={ar}
-      kicker={pageKicker("/app/tasks", lang)}
-      title={ar ? "المهام والعمليات" : "Tasks & operations"}
-      hint={
-        ar
-          ? "أمر عمل لموظف الشركة. الحضور يفتح التسجيل، والاعتماد يمنح النقاط."
-          : "A work order for a company employee. Attendance opens logging; review awards the points."
-      }
       maxWidth={1280}
+      kicker={`${kickerNum} · ${ar ? "التشغيل اليومي" : "Daily operations"}`}
+      title={employeeFace ? (ar ? "مهامي" : "My tasks") : (ar ? "المهام والعمليات" : "Tasks & operations")}
+      hint={ar
+        ? "أمر عمل لموظف الشركة. الحضور يفتح التسجيل، والاعتماد يمنح النقاط."
+        : "A work order for a company employee. Attendance opens logging; approval awards the points."}
       sections={[
         { value: "list", label: ar ? "قائمة" : "List" },
         { value: "plan", label: ar ? "الخطة" : "Plan" },
@@ -1890,21 +1966,23 @@ export default function Operations() {
       tool={viewMode === "plan" ? "plan" : "list"}
       onTool={setViewMode}
     >
-      <div className="space-y-3.5">
+      <OpsLaneTiles ar={ar} current="tasks" />
       <ProofSurfaceNote ar={ar} current="tasks" />
+      <div className="space-y-3.5">
 
-      <OpsToolbarStrip
-        ar={ar}
-        dir={dir}
-        filter={boardFilter}
-        onFilterChange={setFilter}
-        chips={chips}
-        showCreate={showCreate}
-        onToggleCreate={() => setShowCreate((v) => !v)}
-        canCreate={isOpsManager}
-      />
-
-      {boardFilter !== "archive" && boardPace.active > 0 ? <DailyPaceStrip ar={ar} board={boardPace} /> : null}
+      <OpsControlBar>
+        <OpsToolbarStrip
+          ar={ar}
+          dir={dir}
+          filter={boardFilter}
+          onFilterChange={setFilter}
+          chips={chips}
+          showCreate={showCreate}
+          onToggleCreate={() => setShowCreate((v) => !v)}
+          canCreate={isOpsManager}
+        />
+        {boardFilter !== "archive" && boardPace.active > 0 ? <DailyPaceStrip ar={ar} board={boardPace} embedded /> : null}
+      </OpsControlBar>
 
       {!checkedIn && (
       <div style={warnBanner}>
@@ -1952,92 +2030,51 @@ export default function Operations() {
       ) : viewMode === "plan" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {planGroups.map((g) => (
-            <div key={g.id} style={tableShell}>
+            <section key={g.id} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{
                 display: "flex",
                 alignItems: "center",
-                gap: "12px",
-                padding: "14px 18px",
-                borderBottom: `1px solid ${BORDER}`,
+                gap: 12,
                 flexWrap: "wrap",
+                padding: "2px 2px 0",
               }}
               >
-                <div style={{ flex: "1 1 200px", fontSize: "13px", fontWeight: 600, color: INK }}>
+                <div style={{ flex: "1 1 200px", fontFamily: "var(--font-heading)", fontSize: 15, fontWeight: 700, color: "#111418" }}>
                   {ar ? HORIZON_LABEL[g.id]?.ar : HORIZON_LABEL[g.id]?.en}
                 </div>
-                <div style={{ fontSize: "11px", color: MUTED }}>
+                <div style={{ fontSize: 12, color: "#555C66", fontWeight: 600 }}>
                   {ar ? `${g.rows.length} مهام` : `${g.rows.length} tasks`}
                 </div>
-                <div dir="ltr" style={{ fontSize: "11px", color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right" }}>
+                <div dir="ltr" style={{ fontSize: 12, color: "#111418", fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums" }}>
                   {g.unitsDone}/{g.unitsTarget}
                 </div>
-                <span style={{ width: "96px", height: "5px", borderRadius: "4px", background: SURFACE, overflow: "hidden" }}>
-                  <span style={{ display: "block", width: `${g.pct || 0}%`, height: "100%", background: BRAND, borderRadius: "4px" }} />
+                <span style={{ width: 96, height: 6, borderRadius: 999, background: "#E6F2EA", overflow: "hidden" }}>
+                  <span style={{ display: "block", width: `${g.pct || 0}%`, height: "100%", background: "#3C7D50", borderRadius: 999 }} />
                 </span>
-                <span dir="ltr" style={{ fontSize: "11px", color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", width: "34px", textAlign: "right" }}>
+                <span dir="ltr" style={{ fontSize: 11, color: "#555C66", fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums" }}>
                   {g.pct || 0}%
                 </span>
               </div>
               {g.rows.length === 0 ? (
-                <div style={{ padding: "16px 18px", fontSize: "12px", color: MUTED }}>
+                <div style={{ padding: "14px 16px", fontSize: 12, color: MUTED, background: "#fff", border: "1px dashed #E4E9E6", borderRadius: 12 }}>
                   {ar ? "لا مهام في هذا الأفق ضمن التصفية." : "No tasks in this horizon for the current filter."}
                 </div>
               ) : (
-                g.rows.map((task) => {
-                  const owner = ownerName(task);
-                  return (
-                    <div
-                      key={task.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setOpenTaskId(task.id)}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setOpenTaskId(task.id); }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "#F7F8FA"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "12px",
-                        padding: "12px 18px",
-                        borderBottom: "1px solid #F1F5F9",
-                        cursor: "pointer",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: priColor(task.priority), flexShrink: 0 }} />
-                      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
-                        <div style={{ fontSize: "13px", fontWeight: 500, color: INK }}>{task.title}</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px", flexWrap: "wrap" }}>
-                          <span style={{ fontSize: "11px", color: MUTED, fontFamily: "'IBM Plex Mono',monospace" }} dir="ltr">{task.ref}</span>
-                          <span style={kindStyle}>
-                            {workKindLabel(task.workKind, ar ? "ar" : "en")}
-                          </span>
-                          <span style={{ fontSize: "11px", color: MUTED }}>
-                            {stationName(task.stationId)}
-                            {" · "}
-                            {owner}
-                          </span>
-                          {taskTransferMeta(task) ? (
-                            <OpsAssignmentRefChip task={task} ar={ar} kind="transfer" compact />
-                          ) : null}
-                          {taskDelegationMeta(task) ? (
-                            <OpsAssignmentRefChip task={task} ar={ar} kind="delegation" compact />
-                          ) : null}
-                        </div>
-                      </div>
-                      <span style={{ fontSize: "12px", color: MUTED }}>{task.dueAt ? String(task.dueAt).slice(0, 10) : "—"}</span>
-                      <span style={statusChip(task.status)}>
-                        {ar ? STATUS_LABEL[task.status]?.ar : STATUS_LABEL[task.status]?.en || task.status}
-                      </span>
-                      <span dir="ltr" style={{ fontSize: "11px", color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right" }}>
-                        {task.completedCount}/{task.targetCount}
-                      </span>
-                      <div onClick={(e) => e.stopPropagation()}>{renderActions(task)}</div>
-                    </div>
-                  );
-                })
+                <OpsTaskCards
+                  tasks={g.rows.map((task) => ({
+                    ...task,
+                    homeStationId: task.homeStationId || homeStationOf(task),
+                  }))}
+                  lang={lang}
+                  stationName={stationName}
+                  ownerName={ownerName}
+                  ownerInitials={ownerInitials}
+                  onOpen={(task) => setOpenTaskId(task.id)}
+                  createdIds={createdIds}
+                  renderActions={renderActions}
+                />
               )}
-            </div>
+            </section>
           ))}
         </div>
       ) : (
@@ -2097,6 +2134,19 @@ export default function Operations() {
           onOpenTransfer={() => { const t = openTask; setOpenTaskId(null); setTransferFor(t); }}
           onEndDelegation={() => { const t = openTask; setOpenTaskId(null); endDelegation(t); }}
           onSetMode={(mode) => { const t = openTask; setOpenTaskId(null); setModeFor({ task: t, mode }); }}
+          canEditAssignees={!isOpsTaskDeleted(openTask) && canReassign(openTask)}
+          stationMembers={(() => {
+            const crew = stationCrewFor(openTask);
+            const seen = new Set(crew.map((m) => m.id));
+            for (const person of taskAssigneePeople(openTask, data?.employees || [])) {
+              const id = String(person.id || "");
+              if (!id || seen.has(id)) continue;
+              seen.add(id);
+              crew.push({ id, name: person.name || id });
+            }
+            return crew;
+          })()}
+          onSetMembers={(ids) => setMembers(openTask, ids)}
           onExtendDue={(opts) => extendDue(openTask, opts)}
           onRedistributePace={(opts) => redistributePace(openTask, opts)}
           onOpenDelete={() => { const t = openTask; setOpenTaskId(null); setDeleteFor(t); }}

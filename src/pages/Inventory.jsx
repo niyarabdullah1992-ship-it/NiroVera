@@ -17,6 +17,7 @@ import PlatformDateField from "@/components/shared/PlatformDateField";
 import { MUTED, NAVY, cardShell, field, labelMuted, tableShell, ui, SURFACE } from "@/lib/platformStyles";
 import FinanceViewSwitch from "@/components/shared/FinanceViewSwitch";
 import { MANAGE, SELF, SELF_VIEW_NOTE, canManageSurface, resolveFinanceView } from "@/lib/financeRights";
+import { useRailSide } from "@/lib/railSide";
 
 // Buying, issuing and reviewing are decisions; asking for material and reading what
 // was issued to you are not. Balances stay on both sides because the surface is built
@@ -123,7 +124,8 @@ export default function Inventory() {
   const scopedToOne = scope !== "all";
   const [searchParams, setSearchParams] = useSearchParams();
   const canManage = canManageSurface("inventory", currentUser, data);
-  const view = resolveFinanceView("inventory", currentUser, data, searchParams.get("view"));
+  const railSide = useRailSide();
+  const view = resolveFinanceView("inventory", currentUser, data, searchParams.get("view"), railSide);
   const tabDefs = view === MANAGE ? MANAGE_TABS : SELF_TABS;
   const tabKeys = new Set(tabDefs.map(([key]) => key));
   const requested = searchParams.get("tab");
@@ -318,7 +320,7 @@ export default function Inventory() {
       onTool={setTab}
       meta={(
         <>
-          <FinanceViewSwitch ar={ar} view={view} canManage={canManage} onChange={setView} />
+          <FinanceViewSwitch ar={ar} view={view} canManage={canManage} showSwitch={!railSide} onChange={setView} />
           <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
             <span style={{ fontSize: 10, color: MUTED }}>{ar ? "تحت الحدّ" : "Below minimum"}</span>
             <span style={{ fontSize: 15, fontWeight: 700, color: low ? "#8A6516" : "#137A49" }}>{low}</span>

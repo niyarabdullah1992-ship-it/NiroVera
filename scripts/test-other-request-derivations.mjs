@@ -23,13 +23,16 @@ import {
   studyConsentState,
   applyAnnualLeaveTopup,
   archivedOtherCount,
+  checkAdminLeaveCreditGate,
   checkLeaveTopupDaysGate,
   checkApproveOtherRequestGate,
   checkSubmitOtherRequestGate,
+  DISCRETIONARY_GRANT_CAP,
   flattenOtherRequests,
   hasPendingLeaveTopup,
   incrementAnnualLeaveTotal,
   isManagerDecideOtherRequest,
+  LEAVE_CREDIT_POOLS,
   otherRequestTypeLabel,
   pendingLeaveCount,
   pendingManagerDecideCount,
@@ -131,6 +134,12 @@ assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظر
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "لا", days: 3 }).error, "REASON_REQUIRED");
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 3 }).ok, true);
 assert.equal(checkLeaveTopupDaysGate({ days: 3 }).days, 3);
+assert.equal(DISCRETIONARY_GRANT_CAP, 5);
+assert.ok(LEAVE_CREDIT_POOLS.some((row) => row.key === "annual" && row.ar === "رصيد سنوي"));
+assert.ok(LEAVE_CREDIT_POOLS.some((row) => row.key === "grant" && row.ar === "أيام تقديرية"));
+assert.equal(checkAdminLeaveCreditGate({ pool: "annual", days: 3, reason: "إضافة من الإدارة" }).ok, true);
+assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "إضافة من الإدارة", profile: {} }).ok, true);
+assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "إضافة من الإدارة", canCredit: false }).error, "ROLE_REQUIRED");
 
 const hired = { hireDate: "2024-01-15" };
 assert.equal(getLeaveTotal(hired, "annual", "2026-09-13"), 21);

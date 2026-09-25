@@ -53,12 +53,12 @@ export default function OpsTaskDiscussion({
       style={{ minHeight: (rows.length || createdAt) ? 80 : 120, overflow: "visible", padding: 0, background: "transparent", display: "flex", flexDirection: "column", gap: 8 }}
     >
       {task.rejectReason ? (
-        <div style={{ borderRadius: 10, background: "#FEF2F2", padding: "8px 12px", fontSize: 12, color: "#B91C1C" }}>
+        <div style={{ borderRadius: 10, background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)", padding: "8px 12px", fontSize: 12, color: "var(--nv-bad-ink)" }}>
           {ar ? "سبب الرفض:" : "Rejection reason:"} {task.rejectReason}
         </div>
       ) : null}
       {escalationNote ? (
-        <div style={{ borderRadius: 10, background: "#FFFBEB", padding: "8px 12px", fontSize: 12, color: "#92400E" }}>
+        <div style={{ borderRadius: 10, background: "var(--nv-warn-soft)", border: "1px solid var(--nv-warn-line)", padding: "8px 12px", fontSize: 12, color: "var(--nv-warn-ink)" }}>
           {ar ? "سبب التصعيد:" : "Escalation reason:"} {escalationNote.text}
         </div>
       ) : null}
@@ -66,6 +66,7 @@ export default function OpsTaskDiscussion({
         <ChatBubble
           lang={ar ? "ar" : "en"}
           isMine={createIsMine}
+          alignStart
           onDelete={createIsMine && onUndoCreate ? () => onUndoCreate() : undefined}
           msg={{
             id: `create_${task.id}`,

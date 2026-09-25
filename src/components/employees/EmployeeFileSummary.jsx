@@ -1,11 +1,11 @@
 import React from "react";
-import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
+import { CARD, MUTED, NAVY } from "@/lib/platformStyles";
 
 const paper = {
-  background: CARD,
-  border: `1px solid ${BORDER}`,
+  background: "#fff",
+  border: "1px solid #E4E9E6",
   borderRadius: 14,
-  boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
+  overflow: "hidden",
   display: "flex",
   flexDirection: "column",
 };
@@ -15,7 +15,7 @@ export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
     <div className="nv-emp-summary" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.35fr) minmax(0,1fr)", gap: 16, alignItems: "stretch" }}>
       <section style={paper}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #EEF0F4", display: "flex", flexDirection: "column", gap: 3 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "الحقائق الحاكمة" : "Governing facts"}</span>
+          <span style={{ fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" }}>{ar ? "الحقائق الحاكمة" : "Governing facts"}</span>
           <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
             {ar ? "ستّ حقائق تجيب أكثر ما يُسأل عن الملف." : "Six facts that answer what is asked most about the file."}
           </span>
@@ -33,7 +33,7 @@ export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
 
       <section style={paper}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #EEF0F4", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "ما يحتاج إجراءً" : "Needs action"}</span>
+          <span style={{ fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" }}>{ar ? "ما يحتاج إجراءً" : "Needs action"}</span>
           <span style={{ marginInlineStart: "auto", fontSize: 11, color: MUTED }}>{view.todoNote}</span>
         </div>
         {(view.todos || []).length === 0 ? (
@@ -52,7 +52,7 @@ export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
               boxSizing: "border-box",
               padding: "12px 20px",
               border: "none",
-              borderBottom: "1px solid #F7F8FA",
+              borderBottom: "1px solid var(--nv-line2)",
               background: CARD,
               cursor: "pointer",
               display: "grid",

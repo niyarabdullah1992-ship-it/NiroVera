@@ -12,7 +12,7 @@ import {
   readConsentFile,
 } from "@/lib/writtenConsent";
 import { todayRiyadh } from "@/lib/requestWorkspace";
-import { CARD, MUTED, NAVY } from "@/lib/platformStyles";
+import { CARD, MUTED, NAVY, BORDER, SURFACE, NAVY_FILL } from "@/lib/platformStyles";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { toast } from "@/components/ui/use-toast";
 import ConsentSignRow from "@/components/requests/ConsentSignRow";
@@ -24,8 +24,8 @@ const field = {
   fontFamily: "inherit",
   fontSize: 12,
   padding: "9px 10px",
-  border: "1px solid #dfe3ea",
-  background: "#fff",
+  border: `1px solid ${BORDER}`,
+  background: CARD,
   color: NAVY,
   outline: "none",
   width: "100%",
@@ -110,8 +110,8 @@ export default function WrittenConsentRaise({ employees, stations = [], ar, refr
   };
 
   return (
-    <section style={{ background: CARD, border: "1px solid #dfe3ea", overflow: "hidden" }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid #eef0f4", display: "flex", flexDirection: "column", gap: 3 }}>
+    <section style={{ background: CARD, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+      <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 3 }}>
         <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "إرسال طلب موافقة" : "Send a consent request"}</span>
         <LaborArticleCite
           article={consentTopicMeta(topic).article}
@@ -167,11 +167,11 @@ export default function WrittenConsentRaise({ employees, stations = [], ar, refr
           <span style={{ fontSize: 11, color: MUTED }}>{ar ? "نص الطلب كما سيقرؤه الموظف" : "The text the worker will read"}</span>
           <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} style={{ ...field, resize: "vertical", lineHeight: 1.9 }} />
         </label>
-        <button type="button" disabled={!gate.ok || fileBusy || paperBusy} onClick={send} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "11px 16px", border: "none", background: gate.ok ? "#14213d" : "#eef0f4", color: gate.ok ? "#fff" : MUTED, cursor: gate.ok ? "pointer" : "default", alignSelf: "flex-start" }}>
+        <button type="button" disabled={!gate.ok || fileBusy || paperBusy} onClick={send} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "11px 16px", border: "none", background: gate.ok ? NAVY_FILL : "var(--nv-line3)", color: gate.ok ? "#fff" : MUTED, cursor: gate.ok ? "pointer" : "default", alignSelf: "flex-start" }}>
           {gate.ok ? (ar ? "أرسل طلب الموافقة" : "Send the consent request") : (ar ? gate.reason : gate.reasonEn)}
         </button>
       </div>
-      <div style={{ padding: "13px 20px", borderTop: "1px solid #eef0f4", display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ padding: "13px 20px", borderTop: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{ fontSize: 13, fontWeight: 700 }}>{ar ? "ما أرسلتُه — الحالة تُستنبط من النسخة الموقّعة" : "What I sent — status is derived from the signed copy"}</span>
         <span style={{ fontSize: 11, color: MUTED }}>{sent.length}</span>
       </div>
@@ -179,7 +179,7 @@ export default function WrittenConsentRaise({ employees, stations = [], ar, refr
         <div style={{ padding: "16px 20px", fontSize: 11, color: MUTED, lineHeight: 1.9 }}>{ar ? "لم تُرسل طلب موافقة بعد." : "No consent request sent yet."}</div>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(200px, 2.2fr) minmax(0, 1.2fr) 140px 118px", gap: 16, padding: "11px 18px", background: "#fafbfc", borderTop: "1px solid #eef0f4", borderBottom: "1px solid #eef0f4", fontSize: 10, letterSpacing: "0.06em", color: MUTED, fontWeight: 600 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(200px, 2.2fr) minmax(0, 1.2fr) 140px 118px", gap: 16, padding: "11px 18px", background: SURFACE, borderTop: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}`, fontSize: 10, letterSpacing: "0.06em", color: MUTED, fontWeight: 600 }}>
             <span>{ar ? "الملف" : "File"}</span>
             <span>{ar ? "الموظف" : "Worker"}</span>
             <span>{ar ? "الحالة" : "Status"}</span>

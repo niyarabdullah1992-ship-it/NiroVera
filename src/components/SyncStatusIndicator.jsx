@@ -27,7 +27,7 @@ export default function SyncStatusIndicator({ isSyncing }) {
     display: "inline-flex",
     alignItems: "center",
     gap: 5,
-    height: 32,
+    height: 34,
     padding: "0 9px",
     borderRadius: 10,
     border: "1px solid var(--nv-line, #E2E8F0)",

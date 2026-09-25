@@ -5,7 +5,7 @@ export default function AssistantImageUpload({ file, onSelect, disabled, ar }) {
   const inputRef = useRef(null);
   return (
     <>
-      <button type="button" disabled={disabled} onClick={() => inputRef.current?.click()} className="absolute start-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-[#E2E8F0] bg-[#F7F8FA] text-[#14284B] hover:bg-white hover:border-[#14284B] disabled:opacity-50" aria-label={ar ? "إضافة صورة أو ملف" : "Add image or file"} title={ar ? "إضافة صورة أو ملف" : "Add image or file"}>
+      <button type="button" disabled={disabled} onClick={() => inputRef.current?.click()} className="absolute start-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[10px] border border-[var(--nv-line)] bg-[var(--nv-soft)] text-[var(--nv-ink)] hover:bg-[var(--nv-card)] hover:border-[var(--nv-ink)] disabled:opacity-50" aria-label={ar ? "إضافة صورة أو ملف" : "Add image or file"} title={ar ? "إضافة صورة أو ملف" : "Add image or file"}>
         <Plus className="h-5 w-5" strokeWidth={2} />
       </button>
       <input ref={inputRef} type="file" accept="image/*,.pdf,.csv,.xlsx,.xls,audio/*" className="hidden" onChange={(event) => onSelect(event.target.files?.[0] || null)} />

@@ -1,15 +1,29 @@
 import { deriveSaudiStatus, checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
+import { assignEmployeeNumber, employeeNumberTaken } from "@/lib/employeeNumber";
 import { checkProbationGate, workPatternForcesFixed } from "@/lib/contractLawDerivations";
 import { getCompanyData, logAudit, updateCompany } from "@/lib/store";
 import { createOrgRecord } from "@/lib/orgTree";
 import { canAddStation } from "@/lib/planLimits";
-import { gradeSalaryRange, gradesForList, jobGradeLabel, orderedJobGrades } from "@/lib/jobGrades";
+import { gradeSalaryRange, gradesForList, gradesForTitle, jobGradeLabel, orderedJobGrades } from "@/lib/jobGrades";
 import { LEAVE_TYPES, statutoryLeaveFloor } from "@/lib/leaveTypes";
 import { listedPacks } from "@/lib/permissionPackTemplate";
 import { templateById, templateLabel } from "@/lib/permissionTemplates";
 import { rankFromScore, scorePermissions } from "@/lib/smartPositions";
 import { applyWorkplaceManagerRule, seatCompanyHeadOnRoot } from "@/lib/peopleTreeGraph";
+import { isHrDirector, isHrUnit, linkBranchHr, unlinkBranchHr, hrManagerForStation, hrTitleBlob } from "@/lib/hrTree";
 import { appendOrgStructureEvent } from "@/lib/orgStructureLog";
+import {
+  createVacantSeatsUnderManagerOn,
+  cycleSeatAccessOn,
+  drawerGrades,
+  endSeatTenureOn,
+  HTML_JOB_TITLES,
+  jobTitleCatalog,
+  SEAT_ACCESS_ROWS,
+  seatAccessOf,
+  seatDrawerReason,
+  setActualWorkSiteOn,
+} from "./seatUnderManager.js";
 import {
   applyExtraCoverageStrip,
   checkSetStationParentGate,
@@ -175,6 +189,56 @@ export function vacateEmployeeSeats(data, employeeId) {
     seat.vacatedAt = new Date().toISOString();
     seat.hireOpen = true;
   });
+}
+
+export {
+  createVacantSeatsUnderManagerOn,
+  cycleSeatAccessOn,
+  drawerGrades,
+  endSeatTenureOn,
+  HTML_JOB_TITLES,
+  jobTitleCatalog,
+  SEAT_ACCESS_ROWS,
+  seatAccessOf,
+  seatDrawerReason,
+  setActualWorkSiteOn,
+};
+
+export function cycleSeatAccess(companyId, employeeId, rowId, options) {
+  let result = { ok: false, error: "MISSING" };
+  if (!companyId) return result;
+  updateCompany(companyId, (data) => {
+    result = cycleSeatAccessOn(data, employeeId, rowId, options);
+  });
+  return result;
+}
+
+export function endSeatTenure(companyId, employeeId) {
+  let result = { ok: false, error: "MISSING" };
+  if (!companyId) return result;
+  updateCompany(companyId, (data) => {
+    result = endSeatTenureOn(data, employeeId);
+    if (result.ok) syncStationManagersFromSeats(data);
+  });
+  return result;
+}
+
+export function createVacantSeatsUnderManager(companyId, input) {
+  let result = { ok: false, error: "MISSING" };
+  if (!companyId) return result;
+  updateCompany(companyId, (data) => {
+    result = createVacantSeatsUnderManagerOn(data, input);
+  });
+  return result;
+}
+
+export function setActualWorkSite(companyId, employeeId, stationId) {
+  let result = { ok: false, error: "MISSING" };
+  if (!companyId) return result;
+  updateCompany(companyId, (data) => {
+    result = setActualWorkSiteOn(data, employeeId, stationId);
+  });
+  return result;
 }
 
 export function syncStationManagersFromSeats(data) {
@@ -463,6 +527,10 @@ export function setOrgUnitKind(companyId, stationId, unitKind) {
       error = "COMPANY_ROOT";
       return;
     }
+    if (isHrUnit(station)) {
+      error = "FIXED_HR";
+      return;
+    }
     const previous = station.unitKind;
     station.unitKind = kind;
     appendOrgStructureEvent(data, {
@@ -488,6 +556,10 @@ export function setOrgBranchParent(companyId, stationId, parentStationId) {
     }
     if (isCompanyRootStation(station)) {
       error = "COMPANY_ROOT";
+      return;
+    }
+    if (isHrUnit(station)) {
+      error = "FIXED_HR";
       return;
     }
     const root = companyRootStation(data.stations || []);
@@ -517,6 +589,86 @@ export function setOrgBranchParent(companyId, stationId, parentStationId) {
   return { ok: true };
 }
 
+function hrTitle(employee, data) {
+  return hrTitleBlob(employee, data);
+}
+
+/** People who can serve a group of branches. The HR director and a branch manager stay out of this list. */
+export function listBranchHrManagers(data) {
+  return (data?.employees || []).filter((employee) => {
+    if (!employee?.name || employee.role === "system" || employee.active === false) return false;
+    if (employee.profile?.employmentStatus === "terminated") return false;
+    if (isHrDirector(employee, data)) return false;
+    const managesField = (data?.stations || []).some((station) => (
+      String(station.managerId || "") === String(employee.id)
+      && !isHrUnit(station)
+      && !isCompanyRootStation(station)
+    ));
+    if (managesField) return false;
+    if (employee.hrLevelId || employee.role === "hr_manager") return true;
+    return /م\.ب|موارد\s*بشر/i.test(hrTitle(employee, data));
+  });
+}
+
+export function branchHrManager(data, stationId) {
+  return hrManagerForStation(data, stationId);
+}
+
+/** Point one regional HR manager at this branch. The same person can serve up to three branches. */
+export function assignBranchHrManager(companyId, stationId, employeeId) {
+  const sid = String(stationId || "").trim();
+  const eid = String(employeeId || "").trim();
+  if (!companyId || !sid || !eid) return { ok: false, error: "FIELDS" };
+  let error = "";
+  updateCompany(companyId, (data) => {
+    const linked = linkBranchHr(data, sid, eid);
+    if (!linked.ok) {
+      error = linked.error;
+      return;
+    }
+    const station = (data.stations || []).find((item) => String(item.id) === sid);
+    const employee = (data.employees || []).find((item) => String(item.id) === eid);
+    const level = (data.hrLevels || []).find((item) => item.role === "manager" && item.scope === "station" && item.active !== false);
+    if (level && employee && !employee.hrLevelId) employee.hrLevelId = level.id;
+    applyWorkplaceManagerRule(data);
+    appendOrgStructureEvent(data, {
+      type: "hr",
+      stationId: sid,
+      stationName: station?.name || "",
+      employeeId: eid,
+      employeeName: employee?.name || "",
+    });
+  });
+  if (error) return { ok: false, error };
+  logAudit(companyId, "branch_hr_manager", `${sid} → ${eid}`);
+  return { ok: true };
+}
+
+export function clearBranchHrManager(companyId, stationId) {
+  const sid = String(stationId || "").trim();
+  if (!companyId || !sid) return { ok: false, error: "FIELDS" };
+  let error = "";
+  updateCompany(companyId, (data) => {
+    const cleared = unlinkBranchHr(data, sid);
+    if (!cleared.ok) {
+      error = cleared.error;
+      return;
+    }
+    applyWorkplaceManagerRule(data);
+    const station = (data.stations || []).find((item) => String(item.id) === sid);
+    appendOrgStructureEvent(data, {
+      type: "hr",
+      stationId: sid,
+      stationName: station?.name || "",
+      employeeId: "",
+      employeeName: "",
+    });
+  });
+  if (error) return { ok: false, error };
+  logAudit(companyId, "branch_hr_manager_cleared", sid);
+  return { ok: true };
+}
+
 export function renameOrgBranch(companyId, stationId, name) {
   const title = String(name || "").trim();
   if (!companyId || !stationId || !title) return { ok: false, error: "NAME" };
@@ -530,6 +682,10 @@ export function renameOrgBranch(companyId, stationId, name) {
     }
     if (isCompanyRootStation(station)) {
       error = "COMPANY_ROOT";
+      return;
+    }
+    if (isHrUnit(station)) {
+      error = "FIXED_HR";
       return;
     }
     const taken = stations.some((item) => {
@@ -595,6 +751,14 @@ export function toggleEmployeeExtraBranch(companyId, employeeId, stationId) {
   return { ok: true, added };
 }
 
+function ladderForNewSeat(data, title, listId, gradeId) {
+  const owned = gradesForTitle(data, title);
+  const ladder = owned.length ? owned : gradesForList(data, listId);
+  if (!ladder.length) return "";
+  if (gradeId && ladder.some((grade) => grade.id === gradeId)) return "";
+  return owned.length ? "GRADE_TITLE" : "GRADE_LIST";
+}
+
 export function createOrgSeat(companyId, input) {
   const title = String(input?.title || "").trim();
   const stationId = String(input?.stationId || "").trim();
@@ -607,9 +771,9 @@ export function createOrgSeat(companyId, input) {
       error = "SEAT_FIELDS";
       return;
     }
-    const ladder = gradesForList(data, listId);
-    if (ladder.length && (!input.gradeId || !ladder.some((grade) => grade.id === input.gradeId))) {
-      error = "GRADE_LIST";
+    const ladderIssue = ladderForNewSeat(data, title, listId, input.gradeId);
+    if (ladderIssue) {
+      error = ladderIssue;
       return;
     }
     data.orgSeats = data.orgSeats || [];
@@ -750,6 +914,11 @@ export function hireFromSeat(companyId, input) {
     const approver = unitOwner(data, seat.stationId, seat.approverId);
     const missing = missingDocKinds(nationalId, nationality);
     if (missing.length) warnings.push("DOCS");
+    const importedNo = String(input.employeeNo || input.profile?.employeeNo || "").trim();
+    if (importedNo && employeeNumberTaken(data, importedNo)) {
+      error = "EMPLOYEE_NO_TAKEN";
+      return;
+    }
 
     employeeId = uid("emp");
     inviteToken = uid("inv");
@@ -809,6 +978,13 @@ export function hireFromSeat(companyId, input) {
       },
       createdAt: new Date().toISOString(),
     });
+    const numbered = data.employees[data.employees.length - 1];
+    if (!importedNo && numbered?.profile) {
+      delete numbered.employeeNo;
+      delete numbered.profile.employeeNo;
+      delete numbered.profile.employeeNumber;
+    }
+    assignEmployeeNumber(data, numbered, { imported: importedNo, hireDate });
 
     data.orgTree = data.orgTree || [];
     const parentId = stationNode?.id || null;
@@ -872,19 +1048,25 @@ export function placeExistingEmployee(companyId, employeeId, input) {
       error = "MISSING";
       return;
     }
+    const keptNo = String(employee.employeeNo || employee.profile?.employeeNo || employee.profile?.employeeNumber || employee.employeeNumber || "").trim();
+    const importedNo = keptNo ? "" : String(input?.employeeNo || input?.profile?.employeeNo || "").trim();
+    if (importedNo && employeeNumberTaken(data, importedNo, employeeId)) {
+      error = "EMPLOYEE_NO_TAKEN";
+      return;
+    }
     data.orgSeats = data.orgSeats || [];
     let seatId = String(input?.seatId || "").trim();
     if (!seatId && input?.newSeat) {
       const title = String(input.newSeat.title || "").trim();
       const stationId = String(input.newSeat.stationId || "").trim();
       const listId = String(input.newSeat.listId || "").trim();
-      const ladder = gradesForList(data, listId);
       if (!title || !stationId || !listId) {
         error = "SEAT_FIELDS";
         return;
       }
-      if (ladder.length && (!input.newSeat.gradeId || !ladder.some((grade) => grade.id === input.newSeat.gradeId))) {
-        error = "GRADE_LIST";
+      const ladderIssue = ladderForNewSeat(data, title, listId, input.newSeat.gradeId);
+      if (ladderIssue) {
+        error = ladderIssue;
         return;
       }
       const station = stationById(data, stationId);
@@ -987,6 +1169,20 @@ export function placeExistingEmployee(companyId, employeeId, input) {
           || (input.ar ? "أُدخل خارج نطاق الدرجة مع التوثيق." : "Entered outside the grade range, with a note."))
         : (employee.profile?.salaryOutOfRangeNote || ""),
     };
+    if (keptNo) {
+      employee.employeeNo = keptNo;
+      employee.profile.employeeNo = keptNo;
+      employee.profile.employeeNumber = keptNo;
+    } else if (importedNo) {
+      assignEmployeeNumber(data, employee, { imported: importedNo, hireDate });
+    } else {
+      delete employee.employeeNo;
+      delete employee.profile.employeeNo;
+      delete employee.profile.employeeNumber;
+      assignEmployeeNumber(data, employee, { hireDate });
+    }
+    delete employee.profile.unseatedAt;
+    delete employee.profile.chartReleased;
     data.orgTree = data.orgTree || [];
     const parentId = stationNode?.id || null;
     const node = data.orgTree.find((item) => item.type === "employee" && item.refId === employeeId);

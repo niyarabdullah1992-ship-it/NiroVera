@@ -6,18 +6,18 @@ import { canCreateTasks, hasHRPermission, hrScopeStations, visibleEmployees, vis
 import { requestInboxEmployees, requestInboxMaySee } from "@/lib/dutyScope";
 import { nightDueAdminEmployees } from "@/lib/suiteBadges";
 import useStationScope from "@/hooks/useStationScope";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
+import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { pageKicker } from "@/lib/moduleMeta";
 import RequestsWorkspace from "@/components/requests/RequestsWorkspace";
 import { pendingManagerDecideCount, pendingRequestsCount } from "@/lib/otherRequestDerivations";
 import {
   openWrittenConsentCount,
 } from "@/lib/writtenConsent";
-import { annualRemainingWithGrants, flattenWorkspaceRows, isUnseenApprovedLeave, manageArchiveRows, managerPendingInbox, mineArchiveRows } from "@/lib/requestWorkspace";
+import { annualRemainingWithGrants, flattenWorkspaceRows, isUnseenApprovedLeave, managerPendingInbox, requestEmployeeStationId } from "@/lib/requestWorkspace";
 import { requestSelfEmployee } from "@/lib/employeeFileView";
 import { hydrateEmployeesLeave } from "@/lib/leaveDerivations";
 import { openDueAnnualLeaveNotices, openDueNightRotateCycles } from "@/lib/store";
-import { setStationScope } from "@/lib/stationScopeStore";
+import { railLaneTabs, useRailSide } from "@/lib/railSide";
 
 function canManageRequests(user, data) {
   if (!user || !data) return false;
@@ -50,6 +50,7 @@ export default function Requests() {
   const { data, currentUser, company, refresh } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const railSide = useRailSide();
   const headerScope = useStationScope();
   const ar = lang === "ar";
   useEffect(() => {
@@ -77,6 +78,9 @@ export default function Requests() {
     return true;
   });
   const inboxFocusStationId = headerScope && headerScope !== "all" ? headerScope : "";
+  const scopedAdminEmployees = inboxFocusStationId
+    ? adminEmployees.filter((employee) => requestEmployeeStationId(employee) === String(inboxFocusStationId))
+    : adminEmployees;
 
   const minePending = pendingRequestsCount([self]);
   const adminInbox = managerPendingInbox(adminEmployees, lang, { stations: adminStations });
@@ -92,235 +96,125 @@ export default function Requests() {
   if (path.endsWith("/manage") && !canManage) {
     return <Navigate to="/app/requests" replace />;
   }
+  // Deep-link: archive lives inside ملفي / إدارة — open ملفي on the archive chip.
+  if (path.endsWith("/archive")) {
+    return <Navigate to="/app/requests" replace state={{ requestFilter: "archive" }} />;
+  }
 
-  const manageLane = canManage && path.endsWith("/manage");
-  const archiveLane = path.endsWith("/archive");
+  const manageLane = railSide === "employee"
+    ? false
+    : railSide === "manage"
+      ? canManage
+      : canManage && path.endsWith("/manage");
   const initialKind = path.endsWith("/other") ? "other" : "leave";
-  const lane = archiveLane ? "archive" : manageLane ? "manage" : "mine";
-  const archiveEmployees = canManage
-    ? [self, ...adminEmployees.filter((row) => row.id !== self.id)]
-    : [self];
-  const archiveCount = (canManage
-    ? manageArchiveRows(archiveEmployees, lang, { stations: adminStations, stationId: inboxFocusStationId || "all" })
-    : mineArchiveRows(archiveEmployees, currentUser, lang)
-  ).rows.length;
+  const lane = manageLane ? "manage" : "mine";
+  const initialFilter = location.state?.requestFilter === "archive" ? "archive" : undefined;
 
   const tabs = canManage
     ? [
       { key: "mine", num: "01", ar: "ملفي", en: "My file", count: minePending + mineConsent + mineUnseenLeave, href: "/app/requests" },
       { key: "manage", num: "02", ar: "إدارة", en: "Manage", count: adminPending, href: "/app/requests/manage" },
-      { key: "archive", num: "03", ar: "الأرشيف", en: "Archive", count: archiveCount, href: "/app/requests/archive" },
     ]
     : [
       { key: "mine", num: "01", ar: "ملفي", en: "My file", count: minePending + mineConsent + mineUnseenLeave, href: "/app/requests" },
-      { key: "archive", num: "02", ar: "الأرشيف", en: "Archive", count: archiveCount, href: "/app/requests/archive" },
     ];
+  const laneTabs = railLaneTabs(tabs, railSide);
 
-  const viewNote = archiveLane
-    ? (ar ? "ما استقرّ من الطلبات والموافقات، مجمّعة يومًا بيوم حسب تاريخ الإغلاق. لا يُحذف منه شيء." : "Settled requests and consents, grouped day by day by close date. Nothing is deleted from here.")
-    : manageLane
-      ? (ar ? "القرار يُسجَّل باسمك." : "The ruling is recorded in your name.")
-      : (ar ? "ترفع طلباتك. الاعتماد والرفض في إدارة." : "You raise your requests. Approve and reject sit in Manage.");
+  const viewNote = manageLane
+    ? (ar ? "الإجازات والوثائق يرفعها الموظف؛ التكليف والرصيد من الإدارة." : "Leave and documents are raised by the worker; assignment and credit come from Manage.")
+    : (ar ? "ترفع طلباتك. الاعتماد والرفض في إدارة." : "You raise your requests. Approve and reject sit in Manage.");
   const pageTitle = manageLane
-    ? (ar ? "سجل الطلبات" : "Request register")
+    ? (ar ? "سجل الطلبات — قرار المسؤول" : "Request register — the manager's decision")
     : (ar ? "طلباتي" : "My Requests");
-  const pagePurpose = manageLane
-    ? (ar ? "استقبل وقرر من ملف الموظف." : "Receive and decide from the employee file.")
+  const pageLede = manageLane
+    ? (ar ? "القرار يُسجَّل باسمك. يُفتح من له طلب فقط؛ الأرشيف داخل الفلتر." : "The ruling is recorded in your name. Only someone with a request opens; the archive sits inside the filter.")
     : null;
 
-  const kicker = pageKicker("/app/requests", lang);
-  const kickerNum = String(pageKicker("/app/requests", "en")).slice(0, 2) || "03";
-  const kickerName = kicker.replace(/^\d+\s*·\s*/, "");
+  const scopeRows = flattenWorkspaceRows(manageLane ? scopedAdminEmployees : [self], lang);
+  const riyadhYear = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric" }).format(new Date());
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const decidedAt = (row) => new Date(row.approvedAt || row.decidedAt || row.reviewedAt || row.createdAt || 0).getTime();
+  const approvedThisYear = scopeRows.filter((row) => row.status === "approved" && String(row.approvedAt || row.decidedAt || row.reviewedAt || row.createdAt || "").startsWith(riyadhYear)).length;
+  const approvedThisWeek = scopeRows.filter((row) => row.status === "approved" && decidedAt(row) >= weekAgo).length;
+  const refusedCount = scopeRows.filter((row) => row.status === "rejected" || row.status === "no" || row.status === "refused_by_employee").length;
+  const lateCount = scopeRows.filter((row) => {
+    if (row.status !== "pending" || !row.createdAt) return false;
+    return Date.now() - new Date(row.createdAt).getTime() >= 48 * 60 * 60 * 1000;
+  }).length;
+  const pendingShown = manageLane ? adminPending : minePending;
+  const linkInk = { color: "#fff", fontWeight: 600 };
+
+  const headStats = manageLane
+    ? [
+      { label: ar ? "بانتظار قرارك" : "Awaiting you", value: pendingShown, note: ar ? "في فروعك" : "In your branches" },
+      { label: ar ? "معتمدة هذا الأسبوع" : "Approved this week", value: approvedThisWeek },
+      { label: ar ? "مرفوضة" : "Refused", value: refusedCount, note: ar ? "بسبب مكتوب" : "With a written reason" },
+      { label: ar ? "متأخرة 48 س" : "Late 48h", value: lateCount, note: ar ? "تصعد تلقائياً" : "Escalates on its own" },
+    ]
+    : [
+      { label: ar ? "الرصيد السنوي" : "Annual balance", value: annual.remaining, note: ar ? "يوماً" : "days" },
+      { label: ar ? "بانتظار قرار" : "Awaiting a decision", value: pendingShown },
+      { label: ar ? "معتمدة هذا العام" : "Approved this year", value: approvedThisYear },
+    ];
 
   return (
-    <PlatformStampShell ar={ar} bare maxWidth={1320}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink, #14213D)", fontSize: 13 }}>
-        <section className="nv-doc" style={{ padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-            <span style={{ fontSize: 11, letterSpacing: ".14em", color: "var(--nv-ink3)", display: "flex", gap: 7, alignItems: "center" }}>
-              <span dir="ltr" style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)" }}>{kickerNum}</span>
-              <span>·</span>
-              <span>{kickerName}</span>
-            </span>
-            <span className="nv-h" style={{ fontSize: 24, fontWeight: 700 }}>{pageTitle}</span>
-            <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.85 }}>
-              {manageLane ? pagePurpose : archiveLane ? (
-                <>
-                  {ar ? "ما استقرّ من طلب أو موافقة خطية يبقى هنا بمرجعه. قيد النظر في " : "Settled requests and written consents stay here with their reference. Open items sit in "}
-                  <Link to="/app/requests" style={{ color: "inherit", fontWeight: 600 }}>{ar ? "ملفي" : "My file"}</Link>
-                  {ar ? "، والأثر في " : ", and the effect lands on "}
-                  <Link to="/app/calendar?lane=manage" style={{ color: "inherit", fontWeight: 600 }}>{ar ? "التقويم التشغيلي" : "the operational calendar"}</Link>
-                  {ar ? " و" : " and "}
-                  <Link to="/verify" style={{ color: "inherit", fontWeight: 600 }}>{ar ? "التحقق" : "Verify"}</Link>
-                  .
-                </>
-              ) : (
-                <>
-                  {ar ? "ترفع طلبك هنا ويستقرّ في " : "You raise the request here and it settles on "}
-                  <Link to="/app/employees" style={{ color: "inherit", fontWeight: 600 }}>{ar ? "ملف الموظف" : "the employee file"}</Link>
-                  {ar ? ". القرار في " : ". The decision sits in "}
-                  {canManage
-                    ? <Link to="/app/requests/manage" style={{ color: "inherit", fontWeight: 600 }}>{ar ? "إدارة" : "Manage"}</Link>
-                    : (ar ? "يحتاج قرار المسؤول" : "the manager's decision")}
-                  {ar ? "، والأثر في " : ", and the effect lands on "}
-                  <Link to="/app/shifts" style={{ color: "inherit", fontWeight: 600 }}>{ar ? "جدول الدوام" : "the shift schedule"}</Link>
-                  {ar ? " و" : " and "}
-                  <Link to="/app/calendar?lane=manage" style={{ color: "inherit", fontWeight: 600 }}>{ar ? "التقويم التشغيلي" : "the operational calendar"}</Link>
-                  .
-                </>
-              )}
-            </span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            {archiveLane ? (
-              <div className="nv-req-stat">
-                <span style={{ fontSize: 10, color: "var(--nv-ink3)" }}>{ar ? "بنود مستقرّة" : "Settled items"}</span>
-                <span dir="ltr" style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", fontSize: 15, fontWeight: 700, color: "var(--nv-ink)" }}>{archiveCount}</span>
+    <SuiteWorkspaceFrame
+      ar={ar}
+      kicker={pageKicker("/app/requests", lang)}
+      title={pageTitle}
+      hint={manageLane ? pageLede : (
+        <>
+          {ar ? "ترفع طلبك هنا ويستقرّ في " : "You raise the request here and it settles on "}
+          <Link to="/app/employees" style={linkInk}>{ar ? "ملف الموظف" : "the employee file"}</Link>
+          {ar ? ". القرار في «" : ". The decision sits in «"}
+          {canManage && railSide !== "employee"
+            ? <Link to="/app/requests/manage" style={linkInk}>{ar ? "إدارة" : "Manage"}</Link>
+            : (ar ? "إدارة" : "Manage")}
+          {ar ? "»، والأثر في " : "», and the effect lands on "}
+          <Link to="/app/shifts" style={linkInk}>{ar ? "جدول الدوام" : "the duty roster"}</Link>
+          {ar ? " و" : " and "}
+          <Link to={railSide === "manage" ? "/app/calendar?lane=manage" : "/app/calendar"} style={linkInk}>{ar ? "التقويم التشغيلي" : "the operational calendar"}</Link>
+          .
+        </>
+      )}
+      viewNote={viewNote}
+      tabs={laneTabs.map((item) => ({
+        value: item.key,
+        label: ar ? item.ar : item.en,
+        count: item.count,
+      }))}
+      tool={lane}
+      onTool={(value) => {
+        const next = laneTabs.find((item) => item.key === value);
+        if (next?.href) navigate(next.href);
+      }}
+      meta={(
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          {headStats.map((item, index) => (
+            <React.Fragment key={item.label}>
+              {index > 0 ? <span aria-hidden style={{ width: 1, height: 28, background: "rgba(255,255,255,.28)" }} /> : null}
+              <div style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-start" }}>
+                <span style={{ fontSize: 10.5, color: "#A9CDB8" }}>{item.label}</span>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 18, fontWeight: 600, color: "#fff", unicodeBidi: "isolate" }}>{item.value}</span>
+                {item.note ? <span style={{ fontSize: 10, color: "#C5DBCD" }}>{item.note}</span> : null}
               </div>
-            ) : manageLane ? (
-              <div className="nv-req-stat">
-                <span style={{ fontSize: 10, color: "var(--nv-ink3)" }}>{ar ? "بانتظار قرارك" : "Awaiting your decision"}</span>
-                <span dir="ltr" style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", fontSize: 15, fontWeight: 700, color: adminPending ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)" }}>{adminPending}</span>
-              </div>
-            ) : (
-              <>
-                <div className="nv-req-stat">
-                  <span style={{ fontSize: 10, color: "var(--nv-ink3)" }}>{ar ? "الرصيد السنوي" : "Annual balance"}</span>
-                  <span style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-                    <span dir="ltr" style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", fontSize: 15, fontWeight: 700, color: "var(--nv-ink)" }}>{annual.remaining}</span>
-                    <span style={{ fontSize: 11, color: "var(--nv-ink)" }}>{ar ? "يوماً متبقياً" : "days left"}</span>
-                  </span>
-                </div>
-                <div className="nv-req-stat">
-                  <span style={{ fontSize: 10, color: "var(--nv-ink3)" }}>{ar ? "بانتظار قرار" : "Awaiting a decision"}</span>
-                  <span dir="ltr" style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", fontSize: 15, fontWeight: 700, color: minePending ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)" }}>{minePending}</span>
-                </div>
-              </>
-            )}
-          </div>
-        </section>
-
-        <nav className="nv-doc nv-req-tabs" style={{ padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-          {tabs.filter((item) => item.key !== "archive").map((item) => {
-            const on = lane === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => navigate(item.href)}
-                aria-current={on ? "page" : undefined}
-                style={{
-                  fontFamily: "inherit",
-                  fontSize: 13,
-                  fontWeight: on ? 700 : 400,
-                  padding: "9px 16px",
-                  border: `1px solid ${on ? "var(--nv-ink)" : "var(--nv-line)"}`,
-                  background: on ? "var(--nv-ink)" : "var(--nv-card)",
-                  color: on ? "#fff" : "var(--nv-ink2)",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  whiteSpace: "nowrap",
-                  borderRadius: 10,
-                }}
-              >
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.75 }}>{item.num}</span>
-                {ar ? item.ar : item.en}
-                {item.count ? (
-                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, background: on ? "#1D9A5B" : "#F5F6F8", color: on ? "#fff" : "#4B5567", padding: "1px 7px", borderRadius: 999 }}>
-                    {item.count}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-          {canManage ? (adminInbox.groups || []).filter((group) => group.count > 0).map((group) => {
-            const on = inboxFocusStationId && String(group.stationId) === String(inboxFocusStationId);
-            return (
-              <button
-                key={group.stationId || group.stationName}
-                type="button"
-                data-branch-alert="1"
-                onClick={() => {
-                  setStationScope(on ? "all" : group.stationId);
-                  navigate("/app/requests/manage");
-                }}
-                aria-pressed={on}
-                style={{
-                  fontFamily: "inherit",
-                  fontSize: 12,
-                  fontWeight: on ? 700 : 600,
-                  padding: "8px 12px",
-                  border: `1px solid ${on ? "var(--nv-bad-ink)" : "var(--nv-bad-line)"}`,
-                  background: on ? "var(--nv-bad-ink)" : "var(--nv-bad-soft)",
-                  color: on ? "#fff" : "var(--nv-bad-ink)",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 7,
-                  whiteSpace: "nowrap",
-                  borderRadius: 10,
-                }}
-              >
-                {group.stationName}
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, background: on ? "rgba(255,255,255,.18)" : "#fff", color: on ? "#fff" : "#8A1C2B", padding: "1px 6px", borderRadius: 999 }}>
-                  {group.count}
-                </span>
-              </button>
-            );
-          }) : null}
-          {tabs.filter((item) => item.key === "archive").map((item) => {
-            const on = lane === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => navigate(item.href)}
-                aria-current={on ? "page" : undefined}
-                style={{
-                  fontFamily: "inherit",
-                  fontSize: 13,
-                  fontWeight: on ? 700 : 400,
-                  padding: "9px 16px",
-                  border: `1px solid ${on ? "var(--nv-ink)" : "var(--nv-line)"}`,
-                  background: on ? "var(--nv-ink)" : "var(--nv-card)",
-                  color: on ? "#fff" : "var(--nv-ink2)",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  whiteSpace: "nowrap",
-                  borderRadius: 10,
-                }}
-              >
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.75 }}>{item.num}</span>
-                {ar ? item.ar : item.en}
-                {item.count ? (
-                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, background: on ? "#1D9A5B" : "#F5F6F8", color: on ? "#fff" : "#4B5567", padding: "1px 7px", borderRadius: 999 }}>
-                    {item.count}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-          <span style={{ marginInlineStart: "auto", fontSize: 11, color: "#4B5567", lineHeight: 1.7, maxWidth: 380, textAlign: "start" }}>
-            {viewNote}
-          </span>
-        </nav>
-
-        <RequestsWorkspace
-          employees={archiveLane ? archiveEmployees : manageLane ? adminEmployees : [self]}
-          stations={adminStations}
-          lang={lang}
-          mode={lane}
-          canDecide={manageLane}
-          selfOnly={!manageLane && !archiveLane}
-          showAdminLink={canManage}
-          initialKind={initialKind}
-          focusStationId={(manageLane || archiveLane) && canManage ? inboxFocusStationId : ""}
-        />
-      </div>
-    </PlatformStampShell>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    >
+      <RequestsWorkspace
+        employees={manageLane ? scopedAdminEmployees : [self]}
+        stations={adminStations}
+        lang={lang}
+        mode={lane}
+        canDecide={manageLane}
+        selfOnly={!manageLane}
+        showAdminLink={canManage && railSide !== "employee"}
+        initialKind={initialKind}
+        initialFilter={initialFilter}
+        focusStationId={manageLane && canManage ? inboxFocusStationId : ""}
+      />
+    </SuiteWorkspaceFrame>
   );
 }

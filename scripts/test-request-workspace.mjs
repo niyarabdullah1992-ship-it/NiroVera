@@ -48,6 +48,9 @@ import {
   officialHolidays,
   REQUEST_KINDS,
   composeRequestKinds,
+  isManageRaiseKind,
+  checkAdminLeaveCreditGate,
+  composeAdminLeaveCreditGates,
   composeStudyConsentRaiseGates,
   uniqueNamedGates,
   isOwnMineLaneRow,
@@ -76,6 +79,7 @@ import {
   checkNoOtherEmployerGate,
   checkSeeLeaveDecisionGate,
   checkSubmitLeaveGate,
+  checkLeaveSelfRaiseGate,
   hasLeaveAttachment,
   isRealSupportingFile,
   leaveNeedsArticle118Ack,
@@ -100,6 +104,8 @@ import {
   STUDY_CONSENT_TYPE,
   NIGHT_FITNESS_TYPE,
   NIGHT_FITNESS_LABEL_AR,
+  appendRequestAudit,
+  hasRequestAudit,
 } from "../src/lib/otherRequestDerivations.js";
 import { consentRowHref, nightWrittenConsentGlow } from "../src/lib/writtenConsent.js";
 import { checkRaiseSignableGate, isSignableRequestType } from "../src/lib/requestSigning.js";
@@ -129,14 +135,97 @@ assert.equal(canManageRequests({ id: "h2", hrLevelId: "hr" }, { hrLevels: [{ id:
 
 assert.ok(REQUEST_KINDS.some((row) => row.id === "leave"));
 assert.ok(REQUEST_KINDS.some((row) => row.id === "study_consent" && row.type === STUDY_CONSENT_TYPE && row.ar === STUDY_CONSENT_LABEL_AR && row.ar === "موافقة دراسية"));
-assert.ok(REQUEST_KINDS.some((row) => row.id === "night_fitness" && row.type === NIGHT_FITNESS_TYPE && row.ar === NIGHT_FITNESS_LABEL_AR && !row.manageFiled));
+assert.ok(REQUEST_KINDS.some((row) => row.id === "night_fitness" && row.type === NIGHT_FITNESS_TYPE && row.ar === NIGHT_FITNESS_LABEL_AR && row.employeeOnly));
 assert.ok(composeRequestKinds("mine").some((row) => row.id === "night_fitness"));
 assert.ok(!composeRequestKinds("manage").some((row) => row.id === "night_fitness"), "الإدارة does not compose لياقة ليلية");
 assert.ok(composeRequestKinds("mine").some((row) => row.id === "leave"));
 assert.ok(!composeRequestKinds("mine").some((row) => row.manageOnly));
-assert.ok(composeRequestKinds("manage").every((row) => row.manageFiled || row.manageOnly));
-assert.ok(!composeRequestKinds("manage").some((row) => row.id === "leave"));
-assert.ok(!composeRequestKinds("manage").some((row) => row.id === "study_consent"));
+assert.ok(composeRequestKinds("manage").every((row) => !row.employeeOnly));
+assert.ok(!composeRequestKinds("manage").some((row) => row.id === "leave"), "إدارة must not raise leave as the employee");
+assert.ok(!composeRequestKinds("manage").some((row) => row.id === "study_consent"), "إدارة must not raise study consent");
+assert.ok(composeRequestKinds("manage").some((row) => row.id === "other"), "إدارة raises طلب آخر as management");
+assert.ok(!composeRequestKinds("manage").some((row) => row.id === "doc"));
+assert.ok(!composeRequestKinds("manage").some((row) => row.id === "money"));
+assert.ok(!composeRequestKinds("manage").some((row) => row.id === "custody"));
+assert.ok(!composeRequestKinds("manage").some((row) => row.id === "manual"));
+assert.ok(!composeRequestKinds("manage").some((row) => row.id === "leave_topup"), "إدارة must not raise رصيد as worker balance request");
+assert.ok(composeRequestKinds("manage").some((row) => row.id === "leave_credit" && row.manageOnly), "إدارة composes إضافة رصيد as admin credit");
+assert.ok(!composeRequestKinds("mine").some((row) => row.id === "leave_credit"), "ملفي does not compose admin credit");
+assert.ok(composeRequestKinds("manage").some((row) => row.id === "ot_assign"));
+assert.ok(!composeRequestKinds("mine").some((row) => row.id === "ot_assign"));
+assert.deepEqual(composeRequestKinds("manage").map((row) => row.id).sort(), ["leave_credit", "ot_assign", "other"], "manage raise is OT + credit + other");
+assert.equal(isManageRaiseKind("ot_assign"), true);
+assert.equal(isManageRaiseKind("leave_credit"), true);
+assert.equal(isManageRaiseKind("other"), true);
+assert.equal(isManageRaiseKind("leave"), false);
+assert.equal(isManageRaiseKind("leave_topup"), false);
+
+/** Manager raises طلب آخر on the employee's file — same audit helpers store uses on raise. */
+{
+  const subject = { id: "emp-ahmed", name: "أحمد السالم", otherRequests: [] };
+  const raised = {
+    id: "oreq-mgr-1",
+    type: "other_request",
+    title: "نقل وردية تجريبي",
+    reason: "نقل وردية تجريبي — طلب الإدارة",
+    status: "pending",
+    requestedBy: "مدير الفرع",
+    requestedById: "mgr-1",
+    employeeId: subject.id,
+    createdAt: "2026-09-21T10:00:00.000Z",
+  };
+  const raiseAudit = buildRequestAudit({
+    actor: "مدير الفرع",
+    employeeId: subject.id,
+    employeeName: subject.name,
+    request: raised,
+    family: "other",
+    verb: "raise",
+    reason: raised.reason,
+    at: raised.createdAt,
+  });
+  raised.auditTrail = appendRequestAudit(raised, raiseAudit);
+  subject.otherRequests = [raised];
+  assert.equal(subject.otherRequests[0].employeeId, "emp-ahmed", "manager raise lands on the employee file");
+  assert.equal(subject.otherRequests[0].requestedById, "mgr-1", "manager is the actor who sent it");
+  assert.equal(hasRequestAudit(subject.otherRequests[0], "raise"), true, "raise writes an audit row");
+  assert.match(raiseAudit.details, /مدير الفرع.*raised other_request on أحمد السالم's file/);
+  assert.equal(raiseAudit.verb, "raise");
+  assert.equal(raiseAudit.employeeId, "emp-ahmed");
+}
+
+/** Manager must not invent leave on the employee file — LEAVE_EMPLOYEE_ONLY. */
+{
+  const blocked = checkSubmitLeaveGate(
+    {
+      type: "annual",
+      startDate: "2026-10-01",
+      endDate: "2026-10-03",
+      days: 3,
+      reason: "تسجيل من الإدارة",
+      requestedById: "mgr-1",
+      noOtherEmployerAck: true,
+    },
+    {
+      profile: { hireDate: "2020-01-01", gender: "male" },
+      requests: [],
+      employee: { id: "emp-ahmed", name: "أحمد السالم" },
+      employeeId: "emp-ahmed",
+      actorId: "mgr-1",
+      requestedById: "mgr-1",
+    },
+  );
+  assert.equal(blocked.ok, false, "manager cannot submit annual leave for the employee");
+  assert.equal(blocked.error, "LEAVE_EMPLOYEE_ONLY");
+  const selfOk = checkLeaveSelfRaiseGate(
+    { type: "annual", requestedById: "emp-ahmed" },
+    { employeeId: "emp-ahmed", employee: { id: "emp-ahmed" } },
+  );
+  assert.equal(selfOk.ok, true, "worker may raise own leave");
+  assert.ok(!composeRequestKinds("manage").some((row) => row.id === "night_fitness"));
+  assert.ok(REQUEST_KINDS.find((row) => row.id === "night_fitness")?.employeeOnly, "18632 fitness stays employee-only");
+}
+
 assert.equal(requestReplyHref({ mine: true }), "/app/requests", "worker follows the reply on ملفي");
 assert.equal(requestReplyHref({ manage: true }), "/app/requests/manage", "manager decides on إدارة");
 assert.equal(requestReplyHref({ mine: false }), "/app/requests/manage", "not-mine reply opens إدارة");
@@ -146,6 +235,7 @@ assert.equal(isWorkspaceDeskDecision({ family: "leave", type: "exam" }), true);
 assert.equal(isWorkspaceDeskDecision({ type: STUDY_CONSENT_TYPE }), true);
 assert.equal(isWorkspaceDeskDecision({ type: "advance" }), false);
 assert.ok(REQUEST_KINDS.some((row) => row.id === "leave_topup" && row.type === LEAVE_TOPUP_TYPE && row.ar === "رفع رصيد إجازة"));
+assert.ok(REQUEST_KINDS.some((row) => row.id === "leave_credit" && row.manageOnly && row.ar === "إضافة رصيد"));
 assert.ok(REQUEST_KINDS.some((row) => row.id === "ot_assign" && row.type === "overtime" && row.assignment && row.manageOnly && row.ar === "تكليف إضافي"));
 assert.ok(REQUEST_KINDS.some((row) => row.type === "manual_punch"));
 assert.ok(REQUEST_KINDS.some((row) => row.id === "other" && row.type === "other_request"));
@@ -351,9 +441,21 @@ assert.equal(consentRowHref({ id: "wcon_1", signToken: "sig.tok" }), "/app/reque
 assert.doesNotMatch(consentRowHref({ id: "wcon_1", signToken: "sig.tok" }), /signing/);
 assert.match(leaveKindsFor({ hireDate: "2024-01-15", gender: "female" }, true, []).find((row) => row.key === "maternity")?.cap || "", /84 يوماً/);
 assert.equal(DISCRETIONARY_GRANT_CAP, 5);
+assert.equal(checkAdminLeaveCreditGate({ pool: "annual", days: 2, reason: "منحة تشغيل" }).ok, true);
+assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "منحة تشغيل", profile: {} }).ok, true);
+assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "منحة تشغيل", canCredit: false }).error, "ROLE_REQUIRED");
+assert.equal(checkAdminLeaveCreditGate({ days: 2, reason: "منحة تشغيل" }).error, "POOL_REQUIRED");
+assert.equal(checkAdminLeaveCreditGate({ pool: "annual", days: 2, reason: "لا" }).error, "REASON_REQUIRED");
+assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 6, reason: "منحة تشغيل", profile: {} }).error, "GRANT_CAP");
+assert.ok(composeAdminLeaveCreditGates({ pool: "annual", days: 2, reason: "منحة تشغيل" }, "ar").some((row) => row.id === "NO_EMPLOYEE_LEAVE" && row.ok));
 
 const holidays = officialHolidays("2026-09-11");
 assert.ok(holidays.find((row) => row.id === "national")?.from === "2026-09-23");
+assert.equal(holidays.find((row) => row.id === "national")?.ar, "إجازة اليوم الوطني");
+assert.equal(holidays.find((row) => row.id === "founding")?.ar, "إجازة يوم التأسيس");
+assert.equal(holidays.find((row) => row.id === "founding")?.from?.slice(5), "02-22");
+assert.match(holidays.find((row) => row.id === "national")?.noteAr || "", /23 سبتمبر/);
+assert.match(holidays.find((row) => row.id === "founding")?.noteAr || "", /22 فبراير/);
 assert.ok(holidays.find((row) => row.id === "fitr")?.days === 4);
 
 const law = lawArticleCards("leave", "109", "ar");
@@ -402,30 +504,43 @@ assert.match(kinds.find((row) => row.key === "annual")?.cite || "", /الماد�
 assert.equal(kinds.find((row) => row.key === "sick")?.article, "117");
 assert.match(kinds.find((row) => row.key === "sick")?.cite || "", /المادة 117/);
 assert.equal(kinds.find((row) => row.key === "eid")?.article, "112");
+assert.match(kinds.find((row) => row.key === "eid")?.cap || "", /مقفلان في الجدول/);
 assert.match(kinds.find((row) => row.key === "eid")?.cap || "", /بطلب/);
+assert.equal(leaveKindMeta("eid", "2026-09-23").ar, "اليوم الوطني");
+assert.equal(leaveKindMeta("eid", "2026-02-22").ar, "يوم التأسيس");
+assert.equal(flattenWorkspaceRows([{
+  id: "e1",
+  name: "ن",
+  leaveRequests: [{ type: "eid", status: "pending", startDate: "2026-09-23", endDate: "2026-09-23", days: 1 }],
+}], "ar")[0]?.title, "إجازة اليوم الوطني");
+assert.equal(flattenWorkspaceRows([{
+  id: "e1",
+  name: "ن",
+  leaveRequests: [{ type: "eid", status: "pending", startDate: "2026-02-22", endDate: "2026-02-22", days: 1 }],
+}], "ar")[0]?.title, "إجازة يوم التأسيس");
 assert.ok(!kinds.some((row) => row.key === "iddah" || row.key === "maternity"));
 assert.ok(kinds.some((row) => row.key === "hajj"));
 assert.ok(!leaveKindsFor({ hireDate: "2024-01-15" }, true, []).some((row) => ["maternity", "iddah", "paternity"].includes(row.key)));
 for (const row of kinds) {
   const tone = inferStatutoryTone({ article: row.article, entitlement: !!row.article });
-  assert.equal(tone, "entitlement", `${row.key} ${row.cite || row.article} is green when not due`);
+  assert.equal(tone, "entitlement", `${row.key} ${row.cite || row.article} is quiet cite when not due`);
   const chip = statutoryChipStyle(tone, { glow: "off" });
-  assert.match(String(chip.background), /nv-accent|#1E9E63/, `${row.key} stays green when not due`);
-  assert.doesNotMatch(String(chip.background), /64748B/);
+  assert.match(String(chip.background), /nv-soft|#F7F8FA/, `${row.key} stays soft navy when not due`);
+  assert.doesNotMatch(String(chip.background), /nv-accent|#1E9E63|nv-danger/);
 }
 const cap98 = statutoryChipStyle(inferStatutoryTone({ article: "98" }), { glow: "off" });
 assert.equal(inferStatutoryTone({ article: "98" }), "entitlement");
-assert.match(String(cap98.background), /nv-accent|#1E9E63/, "Art. 98 is green when not due");
-assert.doesNotMatch(String(cap98.background), /transparent|64748B/);
+assert.match(String(cap98.background), /nv-soft|#F7F8FA/, "Art. 98 is soft navy when not due");
+assert.doesNotMatch(String(cap98.background), /transparent|nv-accent|#1E9E63/);
 const cap101 = statutoryChipStyle(inferStatutoryTone({ article: "101" }), { glow: "off" });
 assert.equal(inferStatutoryTone({ article: "101" }), "entitlement");
-assert.match(String(cap101.background), /nv-accent|#1E9E63/, "Art. 101 is green when not due");
+assert.match(String(cap101.background), /nv-soft|#F7F8FA/, "Art. 101 is soft navy when not due");
 const duty118 = statutoryChipStyle(inferStatutoryTone({ article: "118" }), { glow: "off" });
 assert.equal(inferStatutoryTone({ article: "118" }), "entitlement");
-assert.match(String(duty118.background), /nv-accent|#1E9E63/, "Art. 118 is green when not due");
+assert.match(String(duty118.background), /nv-soft|#F7F8FA/, "Art. 118 is soft navy when not due");
 const opsChip = statutoryChipStyle(inferStatutoryTone({}), { glow: "off" });
 assert.equal(inferStatutoryTone({}), "entitlement");
-assert.match(String(opsChip.background), /nv-accent|#1E9E63/, "قرار تشغيلي / unlabeled cite is green");
+assert.match(String(opsChip.background), /nv-soft|#F7F8FA/, "قرار تشغيلي / unlabeled cite is soft navy");
 const idle106 = lawArticleCards("work", "", "ar").find((row) => row.art === "106");
 assert.equal(idle106?.warn, false, "idle 106 cite is not an employer-power warning");
 assert.equal(inferStatutoryTone({ article: "106", warn: idle106?.warn }), "entitlement");
@@ -433,7 +548,7 @@ const live106 = lawArticleCards("work", "106", "ar").find((row) => row.art === "
 assert.equal(live106?.warn, true, "106 stays amber only while the assignment is firing");
 assert.equal(inferStatutoryTone({ article: "106", warn: live106?.warn }), "warn");
 const nightQuiet = statutoryChipStyle(inferStatutoryTone({ decisionId: "18632", entitlement: true }), { glow: "off" });
-assert.match(String(nightQuiet.background), /nv-accent|#1E9E63/, "18632 is green when not due");
+assert.match(String(nightQuiet.background), /nv-soft|#F7F8FA/, "18632 is soft navy when not due");
 assert.ok(kinds.some((row) => row.key === "grant" && row.ar === "رصيد"));
 assert.ok(kinds.find((row) => row.key === "grant")?.cap.includes("2"));
 assert.equal(kinds.find((row) => row.key === "paternity")?.ar, "أبوة");
@@ -1027,6 +1142,11 @@ assert.equal(filterPendingRequests({ rows: flattenWorkspaceRows([{ id: "x", leav
 assert.match(workspaceSrc, /<RequestInboxSlab/, "إشعاراتي stays on ملفي");
 assert.match(workspaceSrc, /mode !== "manage"/, "إدارة hides إشعاراتي and leftover slabs");
 assert.match(workspaceSrc, /StatutoryItem article=\{row\.article\}/, "leave kinds keep المادة chips");
+assert.match(workspaceSrc, /isRosterLockedCivicHoliday/, "civic holidays are not raised from the official-holiday strip");
+assert.match(workspaceSrc, /مقفلة بلا طلب/, "National Day and Founding Day read as roster-locked");
+assert.match(workspaceSrc, /مقفلان في الجدول بلا طلب/, "طلباتي stipulates National and Founding lock on the roster with no request");
+assert.doesNotMatch(workspaceSrc, /اضغط لطلبها/, "civic holidays are not «tap to request»");
+assert.match(workspaceSrc, /اضغط لطلب العيد/, "Eid remains requestable from the strip");
 assert.match(workspaceSrc, /decisionId="18632"/, "night consent keeps قرار 18632");
 assert.match(consentInboxSrc, /nightWrittenConsentGlow/, "open night consent paints the inbox 18632 due glow");
 assert.equal(nightWrittenConsentGlow([{
@@ -1035,23 +1155,28 @@ assert.equal(nightWrittenConsentGlow([{
 assert.equal(nightWrittenConsentGlow([{
   otherRequests: [{ type: "written_consent", topic: "night", status: "yes" }],
 }]), "off");
-assert.match(String(statutoryChipStyle("entitlement", { glow: "due" })["--nv-stat-glow"]), /nv-danger|#DC2626/);
+assert.equal(statutoryChipStyle("entitlement", { glow: "due" })["--nv-stat-glow"], "transparent");
+assert.match(String(statutoryChipStyle("entitlement", { glow: "due" }).background), /nv-warn/);
+assert.doesNotMatch(String(statutoryChipStyle("entitlement", { glow: "due" }).background), /nv-danger|#DC2626/);
 assert.match(workspaceSrc, /PendingRequestFinder/, "إدارة typeahead finds a pending request");
 assert.match(workspaceSrc, /ManagerEmployeeRegister/, "إدارة shows a due-inbox column");
 assert.match(src("src/components/requests/ManagerEmployeeRegister.jsx"), /بانتظار القرار/, "register heading is the due inbox");
 assert.match(workspaceSrc, /القرار/, "decision pane heading");
 assert.match(workspaceSrc, /managerPersonEmptyReason/, "selected-file empty copy");
 assert.match(workspaceSrc, /openRegister\(row\.employee\.id\)/, "finder still opens that سجل");
-assert.match(workspaceSrc, /سجّل في ملف الموظف/, "file record is a text action on the selected row");
+assert.match(workspaceSrc, /تكليف أو رصيد أو طلب من الإدارة|من الإدارة — تكليف أو رصيد/, "manage raise is labeled as management act");
 assert.match(workspaceSrc, /showRaiseForm/, "raise form is gated off the manage inbox");
-assert.doesNotMatch(workspaceSrc, /تسجيل لموظف/, "manage no longer presents raise-for-another as the heading");
+assert.doesNotMatch(workspaceSrc, /بنفس أنواع ملفي/, "manage must not claim the same kinds as ملفي");
+assert.doesNotMatch(workspaceSrc, /يُحفظ في ملفه باسمك/, "manage must not imply the request is saved as the employee");
 assert.match(requestsPageSrc, /سجل الطلبات/, "إدارة masthead is سجل الطلبات");
-assert.match(requestsPageSrc, /استقبل وقرر من ملف الموظف/, "إدارة purpose is one line");
+assert.match(requestsPageSrc, /يُفتح من له طلب فقط/, "إدارة lede opens only people with a request");
 assert.match(requestsPageSrc, /ترفع طلباتك/, "ملفي copy raises");
 assert.match(requestsPageSrc, /mineUnseenLeave/, "ملفي tab counts unseen approved leave");
 assert.match(workspaceSrc, /RequestEmployeePicker/, "file-record still uses the employee typeahead");
 assert.doesNotMatch(workspaceSrc, /<select value=\{employeeId\}/, "employee field is no longer a rigid select");
-assert.match(workspaceSrc, /رصيده السنوي/, "leave-balance footer stays on the file-record picker");
+assert.match(workspaceSrc, /رصيده السنوي/, "ملفي still shows annual remaining on self raise");
+assert.match(workspaceSrc, /mode === "manage" \? \([\s\S]*?الفاعل هو المدير/, "manage raise hides remaining-balance hero");
+assert.match(src("src/components/requests/ManagerEmployeeRegister.jsx"), /تكليف أو رصيد أو طلب من الإدارة/, "register opens management act, not ملفي masquerade");
 assert.match(pickerSrc, /role="combobox"/, "picker is a typeahead, not a native select");
 assert.match(pickerSrc, /اكتب الاسم أو الفرع/, "picker accepts a typed name or branch");
 assert.match(pickerSrc, /branchLineAr/, "rows show the branch line");
@@ -1084,15 +1209,33 @@ assert.doesNotMatch(workspaceSrc, /الاعتماد يعيد الأسبوع مس
 assert.doesNotMatch(workspaceSrc, /Approval returns the week to draft/, "approval must not claim it auto-rewrites the roster");
 assert.match(workspaceSrc, /إجازة على وردية منشورة — يحتاج بديلاً/, "clash copy keeps the published assignment and asks for a substitute");
 assert.match(workspaceSrc, /submitLeaveRequest/, "leave raise stays in RequestsWorkspace");
+assert.match(workspaceSrc, /requestedBy:\s*currentUser\?\.name/, "raiser name is stamped on leave raise");
+assert.match(workspaceSrc, /requestedById:\s*currentUser\?\.id/, "raiser id is stamped on leave raise");
+assert.match(workspaceSrc, /isManageRaiseKind\(kind\)/, "manage send path rejects non-manager kinds");
+assert.match(workspaceSrc, /LEAVE_EMPLOYEE_ONLY|checkLeaveSelfRaiseGate|employeeId: subject\.id/, "leave submit carries subject id for self-raise gate");
+assert.match(storeSrc, /requestedById/, "store persists who raised leave on whose file");
+assert.match(storeSrc, /raiserName/, "leave raise audit uses the raiser, not only recordedBy");
+assert.match(storeSrc, /actorId:\s*requestedById/, "store leave gate receives the actor id");
 assert.match(workspaceSrc, /حكم المنصة على طلبك/, "request law slab is platform judgment, not ministry-as-operator");
+assert.match(workspaceSrc, /a\.live \? "var\(--nv-ok-soft\)" : CARD/, "live law row wash follows --nv-ok-soft in dark mode");
+assert.match(workspaceSrc, /color: "var\(--nv-ink2\)"/, "law article body uses --nv-ink2 so it flips with theme");
+assert.doesNotMatch(workspaceSrc, /background: a\.live \? "#f7faf8"/, "live law row must not hard-code a light wash");
+assert.doesNotMatch(workspaceSrc, /color: "#3c4657", lineHeight: 1\.95/, "law article body must not hard-code dark ink");
 assert.doesNotMatch(workspaceSrc, /أنظمة الوزارة — ما يُطبَّق على طلبك/);
 assert.match(workspaceSrc, /approvedLeaveWithdrawWindow/, "approved leave can be withdrawn only before it starts");
 assert.match(workspaceSrc, /LEAVE_APPROVED_LOCKED|حق ثابت/, "approved leave stays locked against a unilateral cancel");
 assert.match(workspaceSrc, /leaveNeedsArticle118Ack/, "workspace leave raise keeps Article 118");
 assert.match(workspaceSrc, /leave_topup/, "workspace can raise a leave-balance top-up");
+assert.match(workspaceSrc, /leave_credit/, "إدارة composes admin leave credit");
+assert.match(workspaceSrc, /creditEmployeeLeaveBalance/, "admin credit uses the store helper");
+assert.match(workspaceSrc, /composeAdminLeaveCreditGates/, "admin credit uses named gates");
+assert.match(workspaceSrc, /إضافة رصيد/, "manage chip names إضافة رصيد");
 assert.match(workspaceSrc, /الموظف يطلب زيادة/, "one Balance card covers worker request and manager add");
 assert.doesNotMatch(workspaceSrc, /أيام تُضاف للسنوي — ليست أخذ إجازة/, "duplicate raise-balance card is gone");
-assert.match(workspaceSrc, /row\.id !== "leave_topup"/, "top-up is not a second kind chip");
+assert.match(workspaceSrc, /row\.id !== "leave_topup"/, "top-up is never a kind chip — Balance card on ملفي only");
+assert.doesNotMatch(workspaceSrc, /row\.id !== "leave_topup" \|\| mode === "manage"/, "top-up is not re-opened as a manage chip");
+assert.match(storeSrc, /creditEmployeeLeaveBalance/, "store exports admin leave credit");
+assert.match(storeSrc, /leave_balance_credit|discretionary_leave_grant/, "admin credit writes an audit event");
 assert.match(workspaceSrc, /لك حرية إرفاق ملف/, "every leave type offers optional unsigned attach");
 assert.match(workspaceSrc, /طلب زيادة الرصيد|زيادة رصيد الموظف/, "workspace names the single balance slot");
 assert.match(workspaceSrc, /PlatformDateField/, "طلباتي date fields are not a bare US-locale input");
@@ -1113,9 +1256,17 @@ assert.match(workspaceSrc, /!isSignableKind && \(/, "optional unsigned attach is
 assert.doesNotMatch(signBlockSrc, /1 — أرفق الملف|ملف ثم توقيع في قسم التوقيع ثم رفع/, "self-sign block does not restack the ministry path as heading plus numbered step");
 assert.match(signBlockSrc, /showSourceInput/, "only one native file control is visible at a time");
 assert.match(workspaceSrc, /ارفع النسخة الموقّعة يدوياً/, "raise happens in My Requests after the hand-signed copy is uploaded");
-assert.match(workspaceSrc, /يُحفظ في سجل التدقيق/, "refuse writes a named reason on the audit trail");
+const decisionSrc = readFileSync(new URL("../src/components/requests/RequestDecisionComposer.jsx", import.meta.url), "utf8");
+assert.match(workspaceSrc, /RequestDecisionComposer/, "إدارة decision cell is the calm composer");
+assert.match(decisionSrc, /يُحفظ في سجل التدقيق/, "refuse writes a named reason on the audit trail");
+assert.match(decisionSrc, /<textarea/, "refusal reason is a textarea, required only to refuse or return");
+assert.match(decisionSrc, /أرفق النسخة المختومة/, "issued copy uses an Arabic attachment control");
+assert.match(decisionSrc, /nv-req-file-native/, "the native file input stays off-screen");
+assert.doesNotMatch(decisionSrc, /Choose File/, "the decision cell does not show the English file chrome");
+assert.match(decisionSrc, /اعتمد وأصدر الملف/, "primary outcome issues the file");
+assert.match(decisionSrc, /أعده للتعديل/, "secondary outcome returns the request");
 assert.match(workspaceSrc, /issuedFile/, "decide counts a manager-issued file on letter approve");
-assert.match(workspaceSrc, /ملف الإصدار/, "decide offers an issued-file upload on letters");
+assert.match(workspaceSrc, /isLetterSignableType/, "letter approve still offers the stamped copy");
 assert.match(workspaceSrc, /status === "revise" && !noteVal\.trim/, "return-for-change still needs the note");
 assert.match(storeSrc, /checkRefuseRequestReasonGate/, "leave and other refuse require a named reason");
 assert.match(storeSrc, /stampRefuseAudit/, "refuse stamps AuditLog on the decide path");
@@ -1576,8 +1727,18 @@ assert.equal(
   "Niyar إشعاراتي own-only does not reprint أحمد's pending",
 );
 
-assert.match(requestsPageSrc, /data-branch-alert/, "إدارة tab rail keeps a branch alert next to الأرشيف");
-assert.match(requestsPageSrc, /setStationScope/, "a branch alert changes النطاق");
+assert.doesNotMatch(requestsPageSrc, /data-branch-alert/, "branch alerts are not peer top tabs");
+assert.doesNotMatch(requestsPageSrc, /key:\s*["']archive["']/, "الأرشيف is not a peer top-level tab");
+assert.match(requestsPageSrc, /requestFilter:\s*["']archive["']/, "deep-link /archive opens the nested archive chip");
+assert.match(workspaceSrc, /\["archive",\s*ar \? "الأرشيف"/, "الأرشيف is the filter chip after يحتاج تعديلاً");
+assert.match(workspaceSrc, /stFilter === "archive"/, "ملفي/إدارة swap the inbox for the nested archive board");
+assert.match(workspaceSrc, /RequestArchiveBoard/, "archive board nests inside the lane workspace");
+assert.match(workspaceSrc, /scope=\{mode === "manage" \? "manage" : "mine"\}/, "ملفي archive is self-scoped and إدارة archive is station-scoped");
+assert.match(workspaceSrc, /manageArchiveRows\(employees, lang, \{ stations, stationId: focusStationId/, "إدارة archive count stays station-scoped");
+assert.match(workspaceSrc, /mineArchiveRows\(employees, currentUser \|\| self, lang\)/, "ملفي archive count stays self-only");
+assert.match(src("src/pages/Requests.jsx"), /focusStationId=\{manageLane && canManage \? inboxFocusStationId/, "إدارة archive keeps branch scope");
+assert.doesNotMatch(workspaceSrc, /nv-req-branch-alerts/, "إدارة does not repeat the header النطاق as a branch chip row");
+assert.match(workspaceSrc, /setStationScope/, "the employee register can still move النطاق");
 assert.equal(firstPendingRegisterPerson([twoStationMgr, noraKhafji, fahdRabigh], "ar", "khf")?.id, "nora", "فرع الخفجي opens the first pending person there");
 assert.equal(firstPendingRegisterPerson([twoStationMgr, noraKhafji, fahdRabigh], "ar", "rbg")?.id, "fahd", "فرع رابغ opens the first pending person there");
 assert.equal(firstPendingRegisterPerson([twoStationMgr], "ar", "khf")?.id, "mgr2", "a branch with no pending still opens someone seated there");
@@ -1946,8 +2107,7 @@ assert.match(src("src/components/requests/RequestArchiveBoard.jsx"), /filterRequ
 assert.match(src("src/components/requests/RequestArchiveBoard.jsx"), /requestArchiveSmartItems/, "archive maps rows to the shared item shape");
 assert.match(src("src/components/requests/RequestArchiveBoard.jsx"), /renderOpen/, "open row shows the audit trail");
 assert.match(src("src/components/shared/RecordSmartArchive.jsx"), /peopleQueryMatches/, "shared archive search is the people engine");
-assert.match(src("src/pages/Requests.jsx"), /archiveLane\) && canManage \? inboxFocusStationId/, "إدارة archive keeps branch scope");
-assert.match(src("src/pages/Requests.jsx"), /mineArchiveRows/, "ملفي archive count is self-only");
-assert.match(src("src/pages/Requests.jsx"), /manageArchiveRows/, "إدارة archive count is station-scoped");
+assert.match(src("src/components/requests/RequestsWorkspace.jsx"), /mineArchiveRows/, "ملفي archive count is self-only");
+assert.match(src("src/components/requests/RequestsWorkspace.jsx"), /manageArchiveRows/, "إدارة archive count is station-scoped");
 
 console.log("request workspace ok");

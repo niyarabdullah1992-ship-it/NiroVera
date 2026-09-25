@@ -1,16 +1,20 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import {
-  ACCENT, BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE, bar, dot,
+  BORDER, CARD, INK, MUTED, NAVY, SURFACE, bar, dot,
 } from "@/lib/platformStyles";
 import { LEAVE_STYLE } from "@/lib/shiftWeek";
 import { setStationScope } from "@/lib/stationScopeStore";
 import useStationScope from "@/hooks/useStationScope";
 
 const MONO = "'IBM Plex Mono', monospace";
-const LINE = "var(--nv-line, #DFE3EA)";
-const HAIR = "#EEF0F4";
-const ROW = "#F7F8FA";
+const LINE = "#E4E9E6";
+const HAIR = "#EEF1EF";
+const ROW = "#F4F7F5";
+const OK = "#3C7D50";
+const WARN = "#C8A45A";
+const BAD = "#9B2335";
+const HEAD = { fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" };
 
 function inferAlertLevel(to) {
   if (!to) return "warn";
@@ -21,10 +25,10 @@ function inferAlertLevel(to) {
 }
 
 function alertDot(level) {
-  if (level === "critical" || level === "bad") return "#B91C1C";
-  if (level === "ok") return ACCENT;
-  if (level === "info") return NAVY;
-  return "#B45309";
+  if (level === "critical" || level === "bad") return BAD;
+  if (level === "ok") return OK;
+  if (level === "info") return "#0B3D27";
+  return WARN;
 }
 
 function leaveTag() {
@@ -43,17 +47,17 @@ function leaveTag() {
 
 function kpiAccent(key, value) {
   if (key === "attendance") {
-    if (value < 60) return "#B91C1C";
-    if (value < 80) return "#B45309";
-    return "#137A49";
+    if (value < 60) return BAD;
+    if (value < 80) return WARN;
+    return OK;
   }
-  if (key === "decisions") return value > 0 ? "#B91C1C" : NAVY;
+  if (key === "decisions") return value > 0 ? BAD : "#111418";
   if (key === "readiness") {
-    if (value < 40) return "#B91C1C";
-    if (value < 70) return "#B45309";
-    return "#137A49";
+    if (value < 40) return BAD;
+    if (value < 70) return WARN;
+    return OK;
   }
-  return NAVY;
+  return "#111418";
 }
 
 export default function HandoffCommandBoard({
@@ -115,15 +119,15 @@ export default function HandoffCommandBoard({
   const absent = absentCount || 0;
   const bandTotal = Math.max(1, present + late + onLeave + absent);
   const shiftBands = [
-    { label: ar ? "حاضر" : "Present", count: present, color: ACCENT, flex: present },
-    { label: ar ? "متأخر" : "Late", count: late, color: "#B45309", flex: Math.max(late, 0) },
+    { label: ar ? "حاضر" : "Present", count: present, color: OK, flex: present },
+    { label: ar ? "متأخر" : "Late", count: late, color: WARN, flex: Math.max(late, 0) },
     { label: ar ? "إجازة" : "On leave", count: onLeave, color: LEAVE_STYLE.color, flex: Math.max(onLeave, 0) },
-    { label: ar ? "غائب" : "Absent", count: absent, color: "#B91C1C", flex: Math.max(absent, 0) },
+    { label: ar ? "غائب" : "Absent", count: absent, color: BAD, flex: Math.max(absent, 0) },
   ];
 
   const hseRows = [
-    { count: criticalHazards, label: ar ? "مخاطر حرجة مفتوحة" : "Critical hazards open", tone: "#B91C1C" },
-    { count: Math.max(0, openHazards - criticalHazards), label: ar ? "ملاحظات سلامة بانتظار الإغلاق" : "Observations pending closure", tone: "#B45309" },
+    { count: criticalHazards, label: ar ? "مخاطر حرجة مفتوحة" : "Critical hazards open", tone: BAD },
+    { count: Math.max(0, openHazards - criticalHazards), label: ar ? "ملاحظات سلامة بانتظار الإغلاق" : "Observations pending closure", tone: WARN },
   ];
 
   const decisionsCountLabel = queue.length === 0
@@ -222,7 +226,7 @@ export default function HandoffCommandBoard({
         <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
           <div style={{ ...paperHead, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "ما يحتاج قرارك اليوم" : "Needs your decision today"}</span>
+              <span style={HEAD}>{ar ? "ما يحتاج قرارك اليوم" : "Needs your decision today"}</span>
               <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
                 {ar
                   ? <>مرتّبة بأثرها على التشغيل — الإجازة تغذي <Link to="/app/shifts" style={{ color: "inherit", fontWeight: 600 }}>الجدول</Link> و<Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>الحضور</Link>.</>
@@ -271,12 +275,12 @@ export default function HandoffCommandBoard({
                     fontSize: 12,
                     fontWeight: 600,
                     padding: "8px 14px",
-                    border: `1px solid ${NAVY_FILL}`,
-                    background: NAVY_FILL,
+                    border: "none",
+                    background: OK,
                     color: "#fff",
                     textDecoration: "none",
                     whiteSpace: "nowrap",
-                    borderRadius: 10,
+                    borderRadius: 8,
                   }}
                 >
                   {r.action}
@@ -288,7 +292,7 @@ export default function HandoffCommandBoard({
 
         <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
           <div style={paperHead}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "تنبيهات استباقية" : "Proactive alerts"}</span>
+            <span style={HEAD}>{ar ? "تنبيهات استباقية" : "Proactive alerts"}</span>
             <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
               {ar ? "كل تنبيه يفتح القسم الذي يصلحه." : "Each alert opens the section that fixes it."}
             </span>
@@ -331,22 +335,22 @@ export default function HandoffCommandBoard({
           )}
 
           <div style={{ ...paperHead, borderBottom: "none", borderTop: `1px solid ${HAIR}` }}>
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "مكونات الجاهزية" : "Readiness components"}</div>
-                <div style={{ fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.75 }}>
-                  {ar ? "نفس عوامل المؤشر أعلاه — مشتقّة لا تقدير." : "Same factors as the index — derived, not estimated."}
-                </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <div style={{ display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                <span style={HEAD}>{ar ? "مكونات الجاهزية" : "Readiness components"}</span>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 18, fontWeight: 500, color: "#111418", lineHeight: 1, unicodeBidi: "isolate" }}>
+                  {score}
+                  <span style={{ fontSize: 12, fontWeight: 500, color: MUTED }}> /100</span>
+                </span>
               </div>
-              <span dir="ltr" style={{ fontFamily: MONO, fontSize: 22, fontWeight: 500, color: NAVY, lineHeight: 1 }}>
-                {score}
-                <span style={{ fontSize: 12, fontWeight: 500, color: MUTED }}> /100</span>
-              </span>
+              <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
+                {ar ? "نفس عوامل المؤشر أعلاه — مشتقّة لا تقدير." : "Same factors as the index — derived, not estimated."}
+              </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
               {factorBars.map((f) => {
                 const pct = Math.max(0, Math.min(100, Number(f.pct) || 0));
-                const barColor = pct < 70 ? "#B45309" : ACCENT;
+                const barColor = pct < 70 ? WARN : OK;
                 return (
                   <div key={f.label} style={{ display: "grid", gridTemplateColumns: "minmax(72px,auto) minmax(0,1fr) 36px", alignItems: "center", gap: 10 }}>
                     <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>{f.label}</span>
@@ -367,7 +371,7 @@ export default function HandoffCommandBoard({
       <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
         <div style={{ ...paperHead, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "الفروع" : "Stations"}</span>
+            <span style={HEAD}>{ar ? "الفروع" : "Stations"}</span>
             <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
               {ar
                 ? "اضغط فرعاً لتضييق اللوحة — النطاق نفسه في الحضور والمسير. إدارة = فرع واحد."
@@ -395,11 +399,11 @@ export default function HandoffCommandBoard({
             </button>
           ) : null}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(210px,1fr))", gap: 0 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 10, padding: 12 }}>
           {(stations || []).map((s) => {
             const open = Number(s.open ?? 0);
             const crew = Number(s.crew ?? 0);
-            const tone = open >= 8 ? "#B91C1C" : open >= 4 ? "#B45309" : ACCENT;
+            const tone = open >= 8 ? BAD : open >= 4 ? WARN : OK;
             const active = String(scope) === String(s.id);
             return (
               <button
@@ -409,11 +413,11 @@ export default function HandoffCommandBoard({
                 aria-pressed={active}
                 title={ar ? "اجعل هذا الفرع نطاق الصفحة" : "Scope this page to this station"}
                 style={{
-                  background: active ? "color-mix(in oklab, var(--nv-accent) 8%, var(--nv-card))" : CARD,
-                  border: "none",
-                  borderInlineEnd: `1px solid ${LINE}`,
-                  borderBottom: `1px solid ${LINE}`,
-                  padding: "16px 20px",
+                  background: active ? "#F2F7F4" : CARD,
+                  border: `1px solid ${active ? "#C5DBCD" : LINE}`,
+                  borderTop: `3px solid ${tone}`,
+                  borderRadius: 12,
+                  padding: "12px 14px",
                   cursor: "pointer",
                   color: "inherit",
                   display: "block",
@@ -432,15 +436,15 @@ export default function HandoffCommandBoard({
                     <span dir="ltr" style={{ fontSize: 10, color: MUTED, fontFamily: MONO }}>{s.code}</span>
                   ) : null}
                 </div>
-                <div style={{ display: "flex", alignItems: "flex-end", gap: 18, marginTop: 14 }}>
-                  <div>
-                    <div dir="ltr" style={{ fontFamily: MONO, fontSize: 20, fontWeight: 500, lineHeight: 1, color: NAVY }}>{crew}</div>
-                    <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{ar ? "في الوردية" : "on shift"}</div>
-                  </div>
-                  <div>
-                    <div dir="ltr" style={{ fontFamily: MONO, fontSize: 20, fontWeight: 500, lineHeight: 1, color: tone }}>{open}</div>
-                    <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>{ar ? "بند مفتوح" : "open"}</div>
-                  </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
+                  <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5 }}>
+                    <span dir="ltr" style={{ fontFamily: MONO, fontSize: 16, fontWeight: 500, lineHeight: 1, color: "#111418", unicodeBidi: "isolate" }}>{crew}</span>
+                    <span style={{ fontSize: 11, color: MUTED }}>{ar ? "في الوردية" : "on shift"}</span>
+                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5 }}>
+                    <span dir="ltr" style={{ fontFamily: MONO, fontSize: 16, fontWeight: 500, lineHeight: 1, color: tone, unicodeBidi: "isolate" }}>{open}</span>
+                    <span style={{ fontSize: 11, color: MUTED }}>{ar ? "بند مفتوح" : "open"}</span>
+                  </span>
                 </div>
               </button>
             );
@@ -451,7 +455,7 @@ export default function HandoffCommandBoard({
       <div className="nv-emp-summary" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,1fr)", gap: 16, alignItems: "stretch" }}>
         <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
           <div style={paperHead}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "حضور اليوم" : "Today's attendance"}</span>
+            <span style={HEAD}>{ar ? "حضور اليوم" : "Today's attendance"}</span>
             <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
               {ar
                 ? <>{employeesCount} متوقعاً اليوم · نفس رقم <Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>شاشة الحضور</Link> · يغذّي <Link to="/app/payroll" style={{ color: "inherit", fontWeight: 600 }}>المسير</Link></>
@@ -486,21 +490,21 @@ export default function HandoffCommandBoard({
         <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
           <div style={{ ...paperHead, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>{ar ? "السلامة" : "Safety"}</span>
+              <span style={HEAD}>{ar ? "السلامة" : "Safety"}</span>
               <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
                 {ar
                   ? <>بنود مفتوحة بانتظار الإغلاق — داخل <Link to="/app/safety" style={{ color: "inherit", fontWeight: 600 }}>سلسلة الثقة</Link>.</>
                   : <>Open items awaiting closure — inside the <Link to="/app/safety" style={{ color: "inherit", fontWeight: 600 }}>trust chain</Link>.</>}
               </span>
             </div>
-            <div style={{ textAlign: ar ? "left" : "right", flexShrink: 0 }}>
-              <div dir="ltr" style={{ fontFamily: MONO, fontSize: 28, fontWeight: 500, lineHeight: 1, color: openHazards ? "#B91C1C" : ACCENT }}>
+            <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, flexShrink: 0 }}>
+              <span dir="ltr" style={{ fontFamily: MONO, fontSize: 20, fontWeight: 500, lineHeight: 1, color: openHazards ? BAD : OK, unicodeBidi: "isolate" }}>
                 {openHazards}
-              </div>
-              <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>
+              </span>
+              <span style={{ fontSize: 11, color: MUTED }}>
                 {ar ? "بنداً مفتوحاً" : "open items"}
-              </div>
-            </div>
+              </span>
+            </span>
           </div>
           <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
             {hseRows.map((r) => (

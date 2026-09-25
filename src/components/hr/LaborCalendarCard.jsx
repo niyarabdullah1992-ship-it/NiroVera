@@ -3,10 +3,7 @@ import { announceRamadanLength, announceRamadanStart } from "@/lib/store";
 import { ramadanAnnouncementOf, ramadanWindowForYear } from "@/lib/ummAlQuraCalendar";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { toast } from "@/components/ui/use-toast";
-
-const NAVY = "#14213d";
-const MUTED = "#6b7280";
-const LINE = "#dfe3ea";
+import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 
 function startShiftLabel(shift, ar) {
   if (shift === -1) return ar ? "يوماً قبل أم القرى" : "one day before Umm al-Qura";
@@ -55,8 +52,8 @@ export default function LaborCalendarCard({
   };
 
   return (
-    <section style={{ background: "#fff", border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "14px 18px", borderBottom: `1px solid ${LINE}`, display: "flex", flexDirection: "column", gap: 6 }}>
+    <section style={{ background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "14px 18px", borderBottom: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 6 }}>
         <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "تقويم أم القرى — رمضان والأعياد" : "Umm al-Qura — Ramadan and Eids"}</span>
         <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
           {ar
@@ -83,13 +80,13 @@ export default function LaborCalendarCard({
             </span>
             {canEdit && status.startPending ? (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" onClick={() => announceStart(-1)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: `1px solid ${LINE}`, background: "#fff", color: NAVY, cursor: "pointer" }}>
+                <button type="button" onClick={() => announceStart(-1)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: `1px solid ${BORDER}`, background: CARD, color: NAVY, cursor: "pointer" }}>
                   {ar ? "بدأ يوماً قبل" : "Started one day early"}
                 </button>
-                <button type="button" onClick={() => announceStart(0)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: `1px solid ${LINE}`, background: "#fff", color: NAVY, cursor: "pointer" }}>
+                <button type="button" onClick={() => announceStart(0)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: `1px solid ${BORDER}`, background: CARD, color: NAVY, cursor: "pointer" }}>
                   {ar ? "كما في أم القرى" : "As Umm al-Qura"}
                 </button>
-                <button type="button" onClick={() => announceStart(1)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: `1px solid ${LINE}`, background: "#fff", color: NAVY, cursor: "pointer" }}>
+                <button type="button" onClick={() => announceStart(1)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: `1px solid ${BORDER}`, background: CARD, color: NAVY, cursor: "pointer" }}>
                   {ar ? "بدأ يوماً بعد" : "Started one day late"}
                 </button>
               </div>
@@ -101,10 +98,10 @@ export default function LaborCalendarCard({
             </span>
             {canEdit && status.pending ? (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" onClick={() => announce(29)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: `1px solid ${LINE}`, background: "#fff", color: NAVY, cursor: "pointer" }}>
+                <button type="button" onClick={() => announce(29)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: `1px solid ${BORDER}`, background: CARD, color: NAVY, cursor: "pointer" }}>
                   {ar ? "أعلن 29 يوماً" : "Announce 29 days"}
                 </button>
-                <button type="button" onClick={() => announce(30)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: `1px solid ${LINE}`, background: "#fff", color: NAVY, cursor: "pointer" }}>
+                <button type="button" onClick={() => announce(30)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: `1px solid ${BORDER}`, background: CARD, color: NAVY, cursor: "pointer" }}>
                   {ar ? "أعلن 30 يوماً" : "Announce 30 days"}
                 </button>
               </div>

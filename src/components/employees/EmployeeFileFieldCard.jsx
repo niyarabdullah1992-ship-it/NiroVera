@@ -1,14 +1,14 @@
 import React from "react";
 import PlatformDateField from "@/components/shared/PlatformDateField";
-import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
+import { MUTED, NAVY } from "@/lib/platformStyles";
 
 const input = {
   fontFamily: "inherit",
   fontSize: 12,
   padding: "6px 8px",
-  border: "1px solid #C7CCD6",
+  border: "1px solid var(--nv-line)",
   borderRadius: 10,
-  background: "#FFFDF8",
+  background: "var(--nv-card)",
   color: NAVY,
   outline: "none",
   width: "100%",
@@ -20,7 +20,7 @@ export function FileRow({ row, editing, draft, onDraft, ar = true }) {
   const editable = Boolean(editing && row.field);
   const value = editable ? String(draft?.[row.field] ?? row.raw ?? "") : row.v;
   return (
-    <div style={{ padding: "10px 18px", borderBottom: "1px solid #F7F8FA", display: "grid", gridTemplateColumns: "minmax(88px,1fr) minmax(0,1.3fr)", gap: 12, alignItems: "baseline" }}>
+    <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "minmax(88px,1fr) minmax(0,1.3fr)", gap: 12, alignItems: "baseline" }}>
       <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{row.k}</span>
       <span style={{ display: "flex", alignItems: "baseline", gap: 7, flexWrap: "wrap", minWidth: 0 }}>
         {editable && row.options?.length ? (
@@ -57,11 +57,11 @@ export function FileRow({ row, editing, draft, onDraft, ar = true }) {
 
 export default function EmployeeFileFieldCard({ card, editing, draft, onDraft, children, ar = true }) {
   return (
-    <section className="nv-paper" style={{ background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column" }}>
+    <section className="nv-paper" style={{ background: "#fff", border: "1px solid #E4E9E6", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "14px 18px", borderBottom: "1px solid #EEF0F4", display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
           {card.kicker ? <span style={{ fontSize: 11, letterSpacing: ".1em", color: MUTED }}>{card.kicker}</span> : null}
-          <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{card.title}</span>
+          <span style={{ fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" }}>{card.title}</span>
           {card.what ? <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{card.what}</span> : null}
         </div>
         {card.tag || card.state ? (
@@ -89,15 +89,15 @@ const wageInput = {
 
 export function EmployeeFileWageCard({ title, what, rows = [], note, editing, draft, onDraft, canEditWage }) {
   return (
-    <section className="nv-paper" style={{ background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid #EEF0F4", display: "flex", flexDirection: "column", gap: 3 }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{title}</span>
+    <section className="nv-paper" style={{ background: "#fff", border: "1px solid #E4E9E6", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", flexDirection: "column", gap: 3 }}>
+        <span style={{ fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" }}>{title}</span>
         {what ? <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>{what}</span> : null}
       </div>
       {rows.map((item) => {
         const open = Boolean(editing && canEditWage && item.field && !item.derived);
         return (
-          <div key={item.k} style={{ padding: "11px 20px", borderBottom: "1px solid #F7F8FA", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "baseline", background: item.bg || "#fff" }}>
+          <div key={item.k} style={{ padding: "11px 20px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "baseline", background: item.bg || "var(--nv-card)" }}>
             <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
               <span style={{ fontSize: 12, fontWeight: item.weight || 500, color: NAVY }}>{item.k}</span>
               <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.6 }}>{item.note}</span>
@@ -115,7 +115,7 @@ export function EmployeeFileWageCard({ title, what, rows = [], note, editing, dr
           </div>
         );
       })}
-      {note ? <div style={{ padding: "13px 20px", fontSize: 11, color: "#4B5567", lineHeight: 1.9 }}>{note}</div> : null}
+      {note ? <div style={{ padding: "13px 20px", fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.9 }}>{note}</div> : null}
     </section>
   );
 }

@@ -1,13 +1,14 @@
 import { actingAtStation } from "./orgStructureLog.js";
 import { companyLists } from "./permissionTemplates.js";
 import { deriveBranchEscalationChain } from "./orgDerivations.js";
+import { orgSeats, vacantSeats } from "./orgHire.js";
 import { isWorkplaceStation } from "./stationTree.js";
 
 export const ORG_CHAIN = [
-  { value: "branches", step: 1, ar: "المكان", en: "Place" },
+  { value: "branches", step: 1, ar: "الشجرة", en: "Tree" },
   { value: "people", step: 2, ar: "الناس", en: "People" },
-  { value: "lists", step: 3, ar: "الصلاحية", en: "Access" },
-  { value: "escalation", step: 4, ar: "التصعيد", en: "Escalation" },
+  { value: "lists", step: 3, ar: "الصلاحيات", en: "Access" },
+  { value: "escalation", step: 4, ar: "سلسلة التصعيد", en: "Escalation" },
 ];
 
 export function orgChainHealth(data) {
@@ -32,9 +33,13 @@ export function orgChainHealth(data) {
     const sid = String(station.id || station.stationId || "");
     return sid && deriveBranchEscalationChain(sid, data).length > 0;
   }).length;
+  const seats = orgSeats(data);
+  const emptySeats = vacantSeats(data);
 
   return {
     vacant,
+    vacantSeats: emptySeats.length,
+    seats: seats.length,
     acting,
     unpublished: !data?.settings?.orgPublishedAt,
     publishedAt: data?.settings?.orgPublishedAt || "",

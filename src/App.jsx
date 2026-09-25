@@ -1,9 +1,9 @@
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, Navigate, useLocation, Outlet } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
-import { AuthProvider } from '@/lib/AuthContext';
+import { AuthProvider, useAuth as useBase44Auth } from '@/lib/AuthContext';
 import ScrollToTop from './components/ScrollToTop';
 import PlatformMusicButton from '@/components/PlatformMusicButton';
 import SyncFailureAlerts from '@/components/SyncFailureAlerts';
@@ -11,7 +11,6 @@ import { I18nProvider } from '@/lib/i18n';
 import { PeriodProvider } from '@/lib/PeriodContext';
 import { AuthProvider as PowerCareAuthProvider, useAuth as usePowerCareAuth } from '@/lib/PowerCareAuth';
 import Layout from '@/components/Layout';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import TrialExpiryGate from '@/components/TrialExpiryGate';
 import AppErrorBoundary from '@/components/AppErrorBoundary';
 import { canAccessPath, canAccessPlanPath } from '@/lib/navVisibility';
@@ -33,7 +32,7 @@ const Assistant = lazy(() => import('./pages/Assistant'));
 const Register = lazy(() => import('./pages/Register'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
-const OwnerPanel = lazy(() => import('./pages/OwnerPanel'));
+const CompanyOwnerBoard = lazy(() => import('./pages/CompanyOwnerBoard'));
 const Pricing = lazy(() => import('./pages/Pricing'));
 const PricingSuccess = lazy(() => import('./pages/PricingSuccess'));
 const Mobile = lazy(() => import('./pages/Mobile'));
@@ -136,6 +135,50 @@ function RequireAuth({ children }) {
   );
 }
 
+/**
+ * Independent لوحة المالك — not inside /app Layout.
+ * Accepts the same powercare_session preview door as /app, or Base44 platform auth.
+ * Role gate stays on the page (named OWNER_BOARD reason).
+ */
+function RequireOwnerSurface() {
+  const { session } = usePowerCareAuth();
+  const location = useLocation();
+  const { isAuthenticated, isLoadingAuth, authChecked, authError, checkUserAuth } = useBase44Auth();
+
+  useEffect(() => {
+    if (session) return;
+    if (!authChecked && !isLoadingAuth) checkUserAuth();
+  }, [session, authChecked, isLoadingAuth, checkUserAuth]);
+
+  if (session) {
+    return (
+      <Suspense fallback={<PageLoader variant="full" />}>
+        <Outlet />
+      </Suspense>
+    );
+  }
+
+  if (isLoadingAuth || !authChecked) {
+    return <PageLoader variant="full" />;
+  }
+
+  if (authError || !isAuthenticated) {
+    return (
+      <Navigate
+        to={isBase44BackendConfigured() ? "/login" : "/preview"}
+        replace
+        state={{ from: location.pathname }}
+      />
+    );
+  }
+
+  return (
+    <Suspense fallback={<PageLoader variant="full" />}>
+      <Outlet />
+    </Suspense>
+  );
+}
+
 function AppRoutes() {
   const path = useLocation().pathname;
   const isPlatform = path.startsWith("/app");
@@ -181,8 +224,9 @@ function AppRoutes() {
       <Route path="/manual" element={<Navigate to="/" replace />} />
       <Route path="/tiktok-ad" element={<TiktokAd />} />
       <Route path="/true-performance" element={<TruePerformanceDoc />} />
-      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
-        <Route path="/owner-panel" element={<OwnerPanel />} />
+      <Route element={<RequireOwnerSurface />}>
+        <Route path="/owner" element={<CompanyOwnerBoard />} />
+        <Route path="/owner-panel" element={<Navigate to="/owner" replace />} />
       </Route>
       <Route path="/app" element={<RequireAuth><Dashboard /></RequireAuth>} />
       <Route path="/app/executive" element={<Navigate to="/app" replace />} />
@@ -199,8 +243,8 @@ function AppRoutes() {
       <Route path="/app/employees/:employeeId" element={<RequireAuth><EmployeeProfile /></RequireAuth>} />
       <Route path="/app/hr" element={<RequireAuth><HRStructureManagement /></RequireAuth>} />
       <Route path="/app/org" element={<RequireAuth><OrgStructure /></RequireAuth>} />
+      <Route path="/app/owner" element={<Navigate to="/owner" replace />} />
       <Route path="/app/settings" element={<RequireAuth><CompanySettings /></RequireAuth>} />
-      <Route path="/app/hiring" element={<Navigate to="/app/hr" replace />} />
       <Route path="/app/payroll" element={<RequireAuth><Payroll /></RequireAuth>} />
       <Route path="/app/performance" element={<RequireAuth><Performance /></RequireAuth>} />
       <Route path="/app/safety" element={<RequireAuth><Safety /></RequireAuth>} />

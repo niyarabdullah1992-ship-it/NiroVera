@@ -1,11 +1,8 @@
 import React from "react";
 import { dutyLaneFromSearch, writeDutyLane } from "@/lib/dutyLane";
+import { useRailSide } from "@/lib/railSide";
 
 export { dutyLaneFromSearch, writeDutyLane };
-
-const LINE = "#dfe3ea";
-const INK = "#14213d";
-const MID = "#4b5567";
 
 function laneBtn(on) {
   return {
@@ -13,20 +10,22 @@ function laneBtn(on) {
     fontSize: 13,
     fontWeight: on ? 700 : 400,
     padding: "9px 16px",
-    border: `1px solid ${on ? INK : LINE}`,
-    background: on ? INK : "#fff",
-    color: on ? "#fff" : MID,
+    border: `1px solid ${on ? "var(--nv-navy)" : "var(--nv-line)"}`,
+    background: on ? "var(--nv-navy)" : "transparent",
+    color: on ? "#fff" : "var(--nv-ink2)",
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
+    borderRadius: 10,
   };
 }
 
 /**
  * Shared mine / manage split for duty surfaces.
  * Hidden when the person has no branches or permission to administer.
+ * Active fill stays navy (`--nv-navy`) in both themes so the label stays light-on-dark.
  */
 export default function DutyLaneBar({
   ar,
@@ -35,9 +34,22 @@ export default function DutyLaneBar({
   onLane,
   manageCount = 0,
 }) {
+  const railSide = useRailSide();
+  // The rail tabs are the only switch. This bar stays only when no rail side is published yet.
+  if (railSide === "employee" || railSide === "manage") return null;
   if (!canManage) return null;
   return (
-    <div style={{ background: "#fff", border: `1px solid ${LINE}`, padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap" }}>
+    <div
+      className="nv-doc"
+      style={{
+        background: "var(--nv-card)",
+        border: "1px solid var(--nv-line)",
+        padding: "9px 14px",
+        display: "flex",
+        gap: 5,
+        flexWrap: "wrap",
+      }}
+    >
       <button type="button" onClick={() => onLane?.("mine")} style={laneBtn(lane === "mine")}>
         {ar ? "ملفي" : "My file"}
       </button>
@@ -49,9 +61,10 @@ export default function DutyLaneBar({
             style={{
               fontFamily: "'IBM Plex Mono', monospace",
               fontSize: 11,
-              background: lane === "manage" ? "#1d9a5b" : "#f5f6f8",
-              color: lane === "manage" ? "#fff" : MID,
+              background: lane === "manage" ? "var(--nv-ok-fill, #1D9A5B)" : "var(--nv-mute-soft)",
+              color: lane === "manage" ? "#fff" : "var(--nv-ink2)",
               padding: "1px 7px",
+              borderRadius: 999,
             }}
           >
             {manageCount}
@@ -61,4 +74,3 @@ export default function DutyLaneBar({
     </div>
   );
 }
-

@@ -80,7 +80,7 @@ assert.ok(openGate.openCells > 0);
 assert.ok(openGate.weeklyMaxHours <= 48);
 assert.equal(openGate.checks.find((c) => c.id === "rest_5h")?.ok, true);
 
-// Double shift same day fails rest_11h / double.
+// Double shift same day fails double_shift.
 const doubleAssign = {
   "2026-08-02": { am: ["e1"], pm: ["e1"], nt: [] },
 };
@@ -91,7 +91,8 @@ const doubleGate = checkPublishGates({
   assignments: doubleAssign,
   namesById: { e1: "Emp" },
 });
-assert.equal(doubleGate.checks.find((c) => c.id === "rest_11h")?.ok, false);
+assert.equal(doubleGate.checks.find((c) => c.id === "double_shift")?.ok, false);
+assert.equal(doubleGate.checks.find((c) => c.id === "rest_11h"), undefined);
 
 assert.equal(checkConsecutiveWorkGate({ start: "07:00", end: "15:00", restMinutes: 30 }).ok, true);
 assert.equal(checkConsecutiveWorkGate({ start: "07:00", end: "15:00", restMinutes: 0 }).error, "REST_5H_REQUIRED");

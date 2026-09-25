@@ -40,7 +40,7 @@ export function isOnApprovedLeave(
 
 export function isOnLeaveToday(employee: EmployeeLeaveProfile | null | undefined): boolean;
 
-export function leaveTypeLabel(type: string | undefined, ar?: boolean): string;
+export function leaveTypeLabel(type: string | undefined, ar?: boolean, profile?: unknown, onDate?: string): string;
 export function isSaudiWeekend(date?: Date | string | null): boolean;
 export function approvedLeaveOnDay(
   employee: EmployeeLeaveProfile | null | undefined,

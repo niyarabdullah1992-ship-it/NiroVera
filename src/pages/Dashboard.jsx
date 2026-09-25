@@ -12,7 +12,7 @@ import { listLocalTodayAttendance, mergeAttendanceRows } from "@/lib/localAttend
 import { isOnLeaveToday, leaveTypeLabel } from "@/lib/leaveTypes";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import PullToRefresh from "@/components/mobile/PullToRefresh";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import EmployeeDashboard from "@/components/dashboard/EmployeeDashboard";
 import HandoffCommandBoard from "@/components/dashboard/HandoffCommandBoard";
 import OperationsModuleGrid from "@/components/dashboard/OperationsModuleGrid";
@@ -24,7 +24,7 @@ import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { hasSeenSuiteWelcome } from "@/lib/suiteApps";
 import { pageKicker } from "@/lib/moduleMeta";
 import { openWrittenConsentCount } from "@/lib/writtenConsent";
-import { BORDER, MUTED } from "@/lib/platformStyles";
+import { useRailSide } from "@/lib/railSide";
 
 function pendingSigningCount(data) {
   return (data?.signatureRequests || []).filter((row) => {
@@ -89,7 +89,15 @@ export default function Dashboard() {
   const [attendanceRows, setAttendanceRows] = useState([]);
   const [targetRows, setTargetRows] = useState([]);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
-  const [face, setFace] = useState("decide");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const railSide = useRailSide();
+  const face = searchParams.get("face") === "map" ? "map" : "decide";
+  const setFace = (next) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "map") params.set("face", "map");
+    else params.delete("face");
+    setSearchParams(params, { replace: true });
+  };
   const ar = lang === "ar";
   const signingSnap = useCommandSigningSnapshot(company, currentUser, data);
 
@@ -180,6 +188,7 @@ export default function Dashboard() {
   const stationIds = new Set(stations.map((s) => s.id));
   const anonOpenCount = (data.anonymousReports || []).filter((a) => stationIds.has(a.stationId) && a.status === "open").length;
   const isEmployee = currentUser.role === "employee";
+  const personalFace = isEmployee || railSide === "employee";
   const teamEmployees = visibleEmployees(currentUser, data).filter((employee) =>
     matchesStationScope(employee.stationId, headerScope, tree),
   );
@@ -219,7 +228,7 @@ export default function Dashboard() {
           tabs={[
             {
               value: "decide",
-              label: isEmployee ? (ar ? "يومي" : "My day") : (ar ? "قرار اليوم" : "Today's decision"),
+              label: personalFace ? (ar ? "يومي" : "My day") : (ar ? "قرار اليوم" : "Today's decision"),
               count: isEmployee ? signingSnap.mine : pendingLeaveEarly,
             },
             { value: "map", label: ar ? "دورة الإثبات" : "Proof cycle" },
@@ -231,34 +240,36 @@ export default function Dashboard() {
             ? "الأرقام مشتقّة من السجل والنطاق المعروض — ليست تقديراً ولا تُختلق. ملفي = محطة العمل · إدارة = فرع واحد."
             : "Figures are derived from the registry and the current scope — not estimated or invented. My file = work station · Manage = one branch."}
           meta={(
-            <>
-              <DashboardPersonaBar lang={lang} />
-              <span style={{ width: 1, height: 30, background: BORDER }} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
-                <span style={{ fontSize: 10, color: MUTED }}>{ar ? "حضور اليوم" : "Today's attendance"}</span>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{Math.round(attendanceRate)}%</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <DashboardPersonaBar lang={lang} onGreen />
+              <span style={{ width: 1, height: 28, background: "rgba(255,255,255,.28)" }} />
+              <div style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+                <span style={{ fontSize: 11, color: "#C5DBCD" }}>{ar ? "حضور اليوم" : "Today's attendance"}</span>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, fontWeight: 600, color: "#fff", unicodeBidi: "isolate" }}>{Math.round(attendanceRate)}%</span>
               </div>
-              {!isEmployee && pendingLeaveEarly > 0 ? (
+              {!personalFace && pendingLeaveEarly > 0 ? (
                 <>
-                  <span style={{ width: 1, height: 30, background: BORDER }} />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
-                    <span style={{ fontSize: 10, color: MUTED }}>{ar ? "بانتظار قرارك" : "Awaiting you"}</span>
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>{pendingLeaveEarly}</span>
+                  <span style={{ width: 1, height: 28, background: "rgba(255,255,255,.28)" }} />
+                  <div style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+                    <span style={{ fontSize: 11, color: "#C5DBCD" }}>{ar ? "بانتظار قرارك" : "Awaiting you"}</span>
+                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, fontWeight: 600, color: "#fff", unicodeBidi: "isolate" }}>{pendingLeaveEarly}</span>
                   </div>
                 </>
               ) : null}
-            </>
+            </div>
           )}
         >
           {face === "map" ? (
             <OperationsModuleGrid metrics={mapMetrics} lang={lang} user={currentUser} data={data} company={company} />
-          ) : decideBody}
+          ) : (
+            decideBody
+          )}
         </SuiteWorkspaceFrame>
       </PullToRefresh>
     </>
   );
 
-  if (isEmployee) {
+  if (personalFace) {
     return wrapBoard(
       <EmployeeDashboard user={currentUser} company={company} data={data} />,
       buildModuleMetrics(data, attendanceExtras),

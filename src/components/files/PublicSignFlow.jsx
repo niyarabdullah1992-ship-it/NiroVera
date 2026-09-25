@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import PublicSignShell from "@/components/files/PublicSignShell";
 import PublicSignSteps from "@/components/files/PublicSignSteps";
 import PublicSignStateCard from "@/components/files/PublicSignStateCard";
-import PublicSignWorkspace from "@/components/files/PublicSignWorkspace";
+import RecipientSignStudio from "@/components/files/RecipientSignStudio";
 import StampStudio from "@/components/files/StampStudio";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import SigningSectionFrame, { SIGN_LINE, SIGN_WHITE, signTab } from "@/components/files/SigningSectionFrame";
@@ -36,7 +36,7 @@ export default function PublicSignFlow({ token, variant = "public", onBack, home
   const live = !loading && !failure && !expired && !deleted && !waiting && !skipped && !rejected && !success;
   const step = success ? 3 : live ? 2 : 1;
   const remaining = !live ? "" : (ar ? "بانتظار ختمك" : "Awaiting your seal");
-  const tip = !live ? "" : (ar ? "أقرّ في الشريط الجانبي بعد وضع الختم. لا انتقال إلى التسجيل إلا بعد التوقيع." : "Acknowledge in the side rail after placing your seal. Registry opens only after you sign.");
+  const tip = !live ? "" : (ar ? "راجع المستند ثم اضغط ابدأ. الإنهاء يختم بتوقيعك الآمن وبصمة التراث." : "Review the document, then press Start. Finishing seals it with Secure Sign and the heritage fingerprint.");
   const leaveDialog = leaveAsk && live ? (
     <div
       role="dialog"
@@ -50,7 +50,7 @@ export default function PublicSignFlow({ token, variant = "public", onBack, home
         alignItems: "center",
         justifyContent: "center",
         padding: 20,
-        zIndex: 60,
+        zIndex: 200,
       }}
     >
       <div dir={ar ? "rtl" : "ltr"} style={{ width: "min(420px, 100%)", background: CARD, border: `1px solid ${BORDER}`, padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
@@ -59,8 +59,8 @@ export default function PublicSignFlow({ token, variant = "public", onBack, home
         </span>
         <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.7 }}>
           {ar
-            ? "لا انتقال إلى التسجيل إلا بعد وضع الختم والإقرار في الشريط الجانبي."
-            : "Registry opens only after you sign and acknowledge in the side rail."}
+            ? "مغادرة الصفحة قبل الإنهاء تُبقي المستند بلا توقيعك."
+            : "Leaving before you finish keeps the document unsigned."}
         </p>
         <div style={{ display: "flex", gap: 8 }}>
           <button type="button" onClick={() => setLeaveAsk(false)} style={signPrimaryBtn}>
@@ -89,12 +89,7 @@ export default function PublicSignFlow({ token, variant = "public", onBack, home
     : skipped ? <PublicSignStateCard ar={ar} type="skipped" info={info} />
     : rejected ? <PublicSignStateCard ar={ar} type="rejected" info={info} done={done} />
     : success ? <PublicSignStateCard ar={ar} type="success" info={info} done={done} onRetract={retract} retracting={busy} retractError={error} />
-    : (
-      <PublicSignWorkspace
-        signing={signing}
-        onOpenStudio={persist ? () => setStudioOpen(true) : undefined}
-      />
-    );
+    : null;
 
   if (studioOpen && persist) {
     return (
@@ -109,6 +104,19 @@ export default function PublicSignFlow({ token, variant = "public", onBack, home
           setStudioOpen(false);
         }}
       />
+    );
+  }
+
+  if ((live || success || rejected) && info) {
+    return (
+      <>
+        <RecipientSignStudio
+          signing={signing}
+          onBack={requestBack}
+          onOpenStudio={persist ? () => setStudioOpen(true) : undefined}
+        />
+        {leaveDialog}
+      </>
     );
   }
 

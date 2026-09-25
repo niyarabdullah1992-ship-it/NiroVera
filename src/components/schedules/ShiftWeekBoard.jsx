@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import {
   addShiftType,
+  copyScheduleMonth,
   publishWeek,
   removeShiftType,
   setEmployeeDayShift,
@@ -10,32 +11,39 @@ import {
   decideNightRemedy,
   withdrawNightRemedy,
   setNightFacilityFlag,
-  setWeekValidity,
   submitOtherRequest,
   openDueNightRotateCycles,
   updateShiftType,
 } from "@/lib/store";
-import { nextDistinctShift, repairedShiftWindow, STANDARD_SHIFT_WINDOWS, shiftHoursLine, shiftWindowKey } from "@/lib/shiftDerivations";
+import { nextDistinctShift, repairedShiftWindow, STANDARD_SHIFT_WINDOWS, formatShiftHm, shiftHoursLine, shiftWindowKey } from "@/lib/shiftDerivations";
+import { useTimeFormat } from "@/hooks/useTimeFormat";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import {
   buildHistory,
   checkShiftChangeApplyGate,
   checkWeekPublishGates,
+  copyMonthReuseNote,
   cycleShiftId,
+  defaultWeekStartForMonth,
   employeeNeedsNightRotateChoice,
+  formatMonthLabel,
   ordinaryShiftId,
   weekNightDateKeys,
   employeeShiftOnDay,
   employeeWeekHours,
   formatWeekLabel,
+  historyColumnLabel,
   LEAVE_STYLE,
   leaveOnDayView,
+  monthCursorOf,
+  monthHasDatedAssignments,
+  nextMonthCursor,
+  previousMonthCursor,
   REST_STYLE,
   shiftHours,
+  shiftMonthCursor,
   shiftTypeStyle,
   SW,
-  weekValidityNote,
-  weekValidityOptions,
   weekDateKeys,
   weekDays,
   weekKeyFromDate,
@@ -44,8 +52,9 @@ import {
   weekRosterEmployees,
   rosterBranchPhrase,
   weekStartDate,
+  weekStartsInMonth,
+  weekIntersectsMonth,
   weekdayLabel,
-  weekPublishSubmitBlock,
   weekCellAlert,
   weekCellAlertTone,
   activeNightRemedy,
@@ -56,27 +65,166 @@ import {
 import { checkSubmitOtherRequestGate } from "@/lib/otherRequestDerivations";
 import { calendarDateKey } from "@/lib/attendanceCalendar";
 import { toast } from "@/components/ui/use-toast";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import StatutoryItem from "@/components/labor/StatutoryItem";
+import { canEditOwnerBoard } from "@/lib/ownerBoard";
 import LaborCalendarCard from "@/components/hr/LaborCalendarCard";
 import { NIGHT_FACILITY_FLAGS } from "@/lib/decision18632";
-import { rosterNightRowMark, showStatutoryHeaderCite, statutoryGlowState } from "@/lib/statutoryItem";
+import { rosterNightRowMark, statutoryGlowState } from "@/lib/statutoryItem";
 import { isRamadanDay, ruleValue } from "@/lib/laborRules";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import FileHoursAlertsRail from "@/components/employees/FileHoursAlertsRail";
 import ManagerDutyAlertsRail from "@/components/employees/ManagerDutyAlertsRail";
-import NightMedicalFileField from "@/components/employees/NightMedicalFileField";
 import { FileSelfBadge } from "@/components/employees/ProfileHero";
 import PlatformDateField from "@/components/shared/PlatformDateField";
+import { BAD, WARN, statusBannerQuiet } from "@/lib/platformStyles";
+import LawGatesPanels from "@/components/shared/LawGatesPanels";
+import LawGateAlertRow from "@/components/shared/LawGateAlertRow";
+import LawGateStatusPill, { LawGateArticleBadge } from "@/components/shared/LawGateStatusPill";
+import { DS_CONTROL_RADIUS, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
 
 const HEADING = "var(--font-heading)";
 const LINK = { color: SW.ink, fontWeight: 600, textDecoration: "none" };
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
-const slab = { background: SW.card, border: `1px solid ${SW.line}` };
+const clockMono = { ...mono, fontVariantNumeric: "tabular-nums" };
+const slab = {
+  background: "var(--nv-card, #fff)",
+  border: "1px solid var(--nv-line, #E2E8F0)",
+  borderRadius: DS_RADIUS,
+  boxShadow: DS_SHADOW,
+};
 
 const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Compact week chip label — readable range without year clutter. */
+function formatWeekTabLabel(weekStart, ar = true) {
+  const days = weekDays(weekStart);
+  const a = days[0];
+  const b = days[6];
+  if (a.month === b.month) return `${a.day} → ${b.day}`;
+  if (ar) return `${a.day} ${MONTHS_AR[a.month]} → ${b.day} ${MONTHS_AR[b.month]}`;
+  return `${a.day} ${MONTHS_EN[a.month]} → ${b.day} ${MONTHS_EN[b.month]}`;
+}
+
+function publishActionBtn({ published, locked }) {
+  return {
+    fontFamily: "inherit",
+    fontSize: 13,
+    fontWeight: 600,
+    padding: "10px 18px",
+    border: published || !locked ? "none" : "1px solid var(--nv-line, #E2E8F0)",
+    background: published
+      ? "var(--nv-navy)"
+      : locked
+        ? "var(--nv-soft, #F7F8FA)"
+        : "var(--nv-accent)",
+    color: published || !locked
+      ? "var(--nv-btn-ink, #fff)"
+      : "var(--nv-ink3, var(--nv-muted))",
+    cursor: locked ? "default" : "pointer",
+    whiteSpace: "nowrap",
+    flex: "0 0 auto",
+    borderRadius: DS_CONTROL_RADIUS,
+  };
+}
+
+/** Soft DS v2 meaning chips — count (warn) + named blockers (bad). */
+function publishGateChip(tone = "warn") {
+  const base = tone === "bad" ? BAD : WARN;
+  return {
+    ...base,
+    display: "inline-flex",
+    alignItems: "center",
+    fontWeight: 600,
+    fontSize: 11,
+    lineHeight: 1.45,
+    maxWidth: "100%",
+  };
+}
+
+/** Quiet RTL strip under planning chrome: count chip + named publish blockers. */
+function PublishGateAlertStrip({ blockers = [], countLabel, ar = true }) {
+  const list = Array.isArray(blockers) ? blockers.filter((row) => String(row?.title || "").trim()) : [];
+  if (!list.length) return null;
+  return (
+    <div
+      role="alert"
+      data-publish-gate-strip=""
+      dir={ar ? "rtl" : "ltr"}
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        gap: 6,
+        minWidth: 0,
+        width: "100%",
+      }}
+    >
+      <span style={publishGateChip("warn")}>{countLabel}</span>
+      {list.map((row) => (
+        <span
+          key={row.id || row.title}
+          title={String(row.note || row.title || "").trim() || undefined}
+          style={publishGateChip("bad")}
+        >
+          {row.title}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Quiet toggle row — LawGateAlertRow slab: card fill, control radius 10, status only on 999 chip. */
+function nightSettingRowStyle() {
+  return {
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+    boxSizing: "border-box",
+    margin: 0,
+    padding: "9px 11px",
+    border: "1px solid var(--nv-line, #E2E8F0)",
+    borderRadius: DS_CONTROL_RADIUS,
+    background: "var(--nv-card, #fff)",
+    fontFamily: "inherit",
+    fontSize: 11.5,
+    lineHeight: 1.8,
+    color: "var(--nv-ink2, #334155)",
+    cursor: "pointer",
+    textAlign: "inherit",
+  };
+}
+
+function nightSettingGhostBtn() {
+  return {
+    fontFamily: "inherit",
+    fontSize: 11,
+    fontWeight: 600,
+    padding: "5px 10px",
+    border: "1px solid var(--nv-line, #E2E8F0)",
+    borderRadius: DS_CONTROL_RADIUS,
+    background: "var(--nv-card, #fff)",
+    color: "var(--nv-ink, #14284B)",
+    cursor: "pointer",
+  };
+}
+
+/** Literary duty window with LTR mono clocks — follows header 12/24. */
+function ShiftHoursLabel({ shift, lang, format }) {
+  const start = formatShiftHm(shift?.start, format, lang);
+  const end = formatShiftHm(shift?.end, format, lang);
+  if (!start && !end) return null;
+  const clock = (label) => <span dir="ltr" style={clockMono}>{label}</span>;
+  if (lang === "ar") {
+    if (start && end) return <>من {clock(start)} إلى {clock(end)}</>;
+    return clock(start || end);
+  }
+  if (start && end) return <>{clock(start)}–{clock(end)}</>;
+  return clock(start || end);
+}
 
 function KickerLine({ kicker }) {
   const parts = String(kicker || "").split("·").map((part) => part.trim()).filter(Boolean);
@@ -100,17 +248,17 @@ function chipBtn(on) {
   return {
     fontFamily: "inherit",
     fontSize: 11,
-    padding: "6px 11px",
-    border: `1px solid ${on ? SW.ink : SW.line}`,
-    background: on ? SW.ink : SW.card,
-    color: on ? "#fff" : SW.mid,
-    fontWeight: on ? 600 : 400,
+    padding: "6px 12px",
+    border: `1px solid ${on ? "var(--nv-navy)" : "var(--nv-line, #E2E8F0)"}`,
+    background: on ? "var(--nv-navy)" : "var(--nv-card, #fff)",
+    color: on ? "var(--nv-btn-ink, #fff)" : "var(--nv-ink2, #334155)",
+    fontWeight: on ? 700 : 500,
     cursor: "pointer",
     whiteSpace: "nowrap",
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    borderRadius: 10,
+    borderRadius: DS_PILL_RADIUS,
   };
 }
 
@@ -143,11 +291,19 @@ export default function ShiftWeekBoard({
   gridLead,
 }) {
   const ar = lang === "ar";
+  const { format: timeFormat } = useTimeFormat();
   const { refresh, data } = useAuth();
   const laborCalendar = laborCalendarOf(data);
   const station = (data?.stations || []).find((row) => String(row.id) === String(stationId));
-  const [weekStart, setWeekStart] = useState(() => weekStartDate(new Date()));
+  const manageMonth = mode === "manage";
+  const [monthCursor, setMonthCursor] = useState(() => monthCursorOf(new Date()));
+  const [weekStart, setWeekStart] = useState(() => (
+    manageMonth
+      ? defaultWeekStartForMonth(new Date().getFullYear(), new Date().getMonth())
+      : weekStartDate(new Date())
+  ));
   const [brush, setBrush] = useState(null);
+  const [restJumpNote, setRestJumpNote] = useState("");
   const [histFrom, setHistFrom] = useState(() => calendarDateKey(new Date(Date.now() - 18 * 86400000)));
   const [histTo, setHistTo] = useState(() => calendarDateKey(new Date()));
   const [histMode, setHistMode] = useState("emp");
@@ -243,28 +399,36 @@ export default function ShiftWeekBoard({
   );
   const pub = weekPublishState(schedule, weekStart);
   const history = useMemo(
-    () => buildHistory({ schedule, employees, stationId, fromKey: histFrom, toKey: histTo, query: histQuery, mode: histMode, ar }),
-    [schedule, employees, stationId, histFrom, histTo, histQuery, histMode, ar],
+    () => buildHistory({ schedule, employees, stationId, fromKey: histFrom, toKey: histTo, query: histQuery, mode: histMode, ar, laborCalendar }),
+    [schedule, employees, stationId, histFrom, histTo, histQuery, histMode, ar, laborCalendar],
   );
 
   const published = pub.kind === "published" || pub.kind === "implicit";
   const blockers = gates.blockers.length;
+  const publishBlockerLabel = blockers
+    ? (ar
+      ? `${countAr(blockers, "مانع واحد", "مانعان", "موانع", "مانعاً")} قبل النشر`
+      : `${blockers} blockers before publish`)
+    : "";
   const publishLabel = published && pub.kind === "published"
     ? (ar ? "منشور — التقويم يقرأ منه" : "Published — calendar reads this")
-    : blockers
-      ? (ar
-        ? `${countAr(blockers, "مانع واحد", "مانعان", "موانع", "مانعاً")} قبل النشر`
-        : `${blockers} blockers before publish`)
-      : pub.kind === "edited"
-        ? (ar ? "انشر التعديل" : "Publish the edit")
-        : pub.kind === "implicit"
-          ? (ar ? "أسبوع ماضٍ — منشور تلقائياً" : "Past week — auto-published")
-          : (ar ? "انشر الجدول" : "Publish the roster");
+    : pub.kind === "edited"
+      ? (ar ? "انشر التعديل" : "Publish the edit")
+      : pub.kind === "implicit"
+        ? (ar ? "أسبوع ماضٍ — منشور تلقائياً" : "Past week — auto-published")
+        : (ar ? "انشر الجدول" : "Publish the roster");
   const publishLocked = !!blockers || pub.kind === "implicit" || (published && pub.kind === "published");
-  const publishSubmitBlock = blockers ? weekPublishSubmitBlock(gates, { ar }) : "";
   const thisWeek = weekRelativeLabel(weekStart, new Date(), ar);
   const thisWeekNow = thisWeek === (ar ? "الأسبوع الجاري" : "This week");
-  const validityKind = schedule?.validity || "week";
+  const monthLabel = formatMonthLabel(monthCursor.year, monthCursor.monthIndex, ar);
+  const monthWeeks = useMemo(
+    () => weekStartsInMonth(monthCursor.year, monthCursor.monthIndex),
+    [monthCursor.year, monthCursor.monthIndex],
+  );
+  const prevMonth = previousMonthCursor(monthCursor);
+  const nextMonth = nextMonthCursor(monthCursor);
+  const sourcePrevHas = monthHasDatedAssignments(schedule?.assignments, prevMonth.year, prevMonth.monthIndex);
+  const sourceCurrentHas = monthHasDatedAssignments(schedule?.assignments, monthCursor.year, monthCursor.monthIndex);
 
   const countsNote = ar
     ? `${countAr(gates.assigned, "تعيين واحد", "تعيينان", "تعيينات", "تعييناً")} · ${countAr(gates.totalHours, "ساعة واحدة", "ساعتان", "ساعات", "ساعة")} · ${countAr(roster.length, "موظف واحد", "موظفان", "موظفين", "موظفاً")}`
@@ -302,18 +466,50 @@ export default function ShiftWeekBoard({
         ? `الورديات الليلية في المدى: ${history.nightMarks}. الأرقام من النسخة المنشورة وقت كل أسبوع — تعديلات المسودة لا تدخل هنا حتى تُنشر.`
         : `Night marks in range: ${history.nightMarks}. Figures come from the published copy — draft edits stay out until you publish.`));
 
-  const checksBadge = blockers
-    ? (ar
-      ? `${countAr(blockers, "مانع واحد", "مانعان", "موانع", "مانعاً")} · ${countAr(gates.warnings.length, "تنبيه واحد", "تنبيهان", "تنبيهات", "تنبيهاً")}`
-      : `${blockers} blockers · ${gates.warnings.length} warnings`)
-    : gates.warnings.length
-      ? (ar
-        ? `لا موانع · ${countAr(gates.warnings.length, "تنبيه واحد", "تنبيهان", "تنبيهات", "تنبيهاً")}`
-        : `No blockers · ${gates.warnings.length} warnings`)
-      : (ar ? "كل الفحوص مستوفاة" : "Every check passed");
+  useEffect(() => {
+    if (!manageMonth) return;
+    if (weekIntersectsMonth(weekStart, monthCursor.year, monthCursor.monthIndex)) return;
+    setMonthCursor(monthCursorOf(weekStart));
+  }, [manageMonth, weekStart, monthCursor.year, monthCursor.monthIndex]);
 
   const moveWeek = (delta) => setWeekStart((cur) => weekStartDate(new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + delta * 7)));
 
+  const moveMonth = (delta) => {
+    const next = shiftMonthCursor(monthCursor, delta);
+    setMonthCursor(next);
+    setWeekStart(defaultWeekStartForMonth(next.year, next.monthIndex));
+  };
+
+  const jumpToThisMonth = () => {
+    const now = new Date();
+    const next = monthCursorOf(now);
+    setMonthCursor(next);
+    setWeekStart(defaultWeekStartForMonth(next.year, next.monthIndex, now));
+  };
+
+  const doReuseMonth = (kind) => {
+    if (!canEdit || !companyId || !stationId) return;
+    const source = kind === "prev" ? prevMonth : monthCursor;
+    const target = kind === "prev" ? monthCursor : nextMonth;
+    const result = copyScheduleMonth(companyId, stationId, {
+      sourceYear: source.year,
+      sourceMonthIndex: source.monthIndex,
+      targetYear: target.year,
+      targetMonthIndex: target.monthIndex,
+      ar,
+    });
+    if (!result.ok) {
+      toast({
+        description: result.reason || (ar ? "تعذّر إعادة الجدول." : "Could not reuse the roster."),
+        variant: "destructive",
+      });
+      return;
+    }
+    setMonthCursor(target);
+    setWeekStart(defaultWeekStartForMonth(target.year, target.monthIndex));
+    refresh?.();
+    toast({ description: copyMonthReuseNote(result, ar) });
+  };
   const shiftOn = (employee, day) => {
     const key = `${employee.id}:${day.key}`;
     if (Object.prototype.hasOwnProperty.call(draft, key)) {
@@ -326,25 +522,35 @@ export default function ShiftWeekBoard({
   const cycleCell = (employee, day) => {
     if (!canEdit || !companyId || !stationId) return;
     const current = shiftOn(employee, day);
+    const ordinaryOnly = employeeNeedsNightRotateChoice(employee, schedule, day.key);
     const nextId = cycleShiftId(types, current?.id || null, brush, {
       onDate: day.key,
-      ordinaryOnly: employeeNeedsNightRotateChoice(employee, schedule, day.key),
+      ordinaryOnly,
     });
-    const gate = checkShiftChangeApplyGate({ schedule, employee, dateKey: day.key, shiftTypeId: nextId });
-    if (!gate.ok) {
-      toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
+    // Store enforces Decision 18632 auto-jump (or named refuse) on every paint/brush write.
+    const result = setEmployeeDayShift(companyId, stationId, day.key, employee.id, nextId, {
+      weekStart,
+      ordinaryOnly,
+    });
+    if (!result.ok) {
+      setRestJumpNote("");
+      toast({ description: ar ? result.reason : result.reasonEn, variant: "destructive" });
       return;
     }
-    const key = `${employee.id}:${day.key}`;
-    setDraft((prev) => ({ ...prev, [key]: nextId }));
-    const result = setEmployeeDayShift(companyId, stationId, day.key, employee.id, nextId);
-    if (!result.ok) {
-      setDraft((prev) => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-      toast({ description: ar ? result.reason : result.reasonEn, variant: "destructive" });
+    const placeKey = result.dateKey;
+    const placeId = result.shiftTypeId;
+    const draftKey = `${employee.id}:${placeKey}`;
+    setDraft((prev) => {
+      const next = { ...prev, [draftKey]: placeId };
+      if (result.clearedSource) next[`${employee.id}:${day.key}`] = null;
+      return next;
+    });
+    if (result.jumped) {
+      const note = ar ? result.reason : result.reasonEn;
+      setRestJumpNote(note);
+      toast({ description: note });
+    } else {
+      setRestJumpNote("");
     }
   };
 
@@ -360,6 +566,7 @@ export default function ShiftWeekBoard({
       });
       return { ok: false };
     }
+    let jumpNote = "";
     for (const key of dates) {
       const nextId = ordinaryShiftId(types, kind, key);
       if (!nextId) {
@@ -369,27 +576,33 @@ export default function ShiftWeekBoard({
         });
         return { ok: false };
       }
-      const gate = checkShiftChangeApplyGate({ schedule, employee, dateKey: key, shiftTypeId: nextId });
-      if (!gate.ok) {
-        toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
-        return gate;
-      }
-      const result = setEmployeeDayShift(companyId, stationId, key, employee.id, nextId);
+      const result = setEmployeeDayShift(companyId, stationId, key, employee.id, nextId, {
+        weekStart,
+        ordinaryOnly: true,
+      });
       if (!result.ok) {
+        setRestJumpNote("");
         toast({ description: ar ? result.reason : result.reasonEn, variant: "destructive" });
         return result;
       }
+      if (result.jumped) jumpNote = ar ? result.reason : result.reasonEn;
     }
     decideNightRemedy(companyId, employee.id, "rotate", {
       actorId: currentUser?.id,
       ordinaryKind: kind,
       applyRoster: false,
     });
-    toast({
-      description: kind === "evening"
-        ? (ar ? "دُوِّر هذا الموظف إلى مسائي لتجاوز ثلاثة أشهر دون موافقة. وردية الليل بقيت على الجدول." : "This person was rotated to evening after three months without consent. The night shift stayed on the roster.")
-        : (ar ? "دُوِّر هذا الموظف إلى صباحي لتجاوز ثلاثة أشهر دون موافقة. وردية الليل بقيت على الجدول." : "This person was rotated to morning after three months without consent. The night shift stayed on the roster."),
-    });
+    if (jumpNote) {
+      setRestJumpNote(jumpNote);
+      toast({ description: jumpNote });
+    } else {
+      setRestJumpNote("");
+      toast({
+        description: kind === "evening"
+          ? (ar ? "دُوِّر هذا الموظف إلى مسائي لتجاوز ثلاثة أشهر دون موافقة. وردية الليل بقيت على الجدول." : "This person was rotated to evening after three months without consent. The night shift stayed on the roster.")
+          : (ar ? "دُوِّر هذا الموظف إلى صباحي لتجاوز ثلاثة أشهر دون موافقة. وردية الليل بقيت على الجدول." : "This person was rotated to morning after three months without consent. The night shift stayed on the roster."),
+      });
+    }
     refresh?.();
     return { ok: true };
   };
@@ -474,6 +687,7 @@ export default function ShiftWeekBoard({
       employee: employees.find((row) => row.id === currentUser.id) || currentUser,
       dateKey: reqForm.date,
       shiftTypeId: reqForm.shiftTypeId || null,
+      laborCalendar,
     });
     if (!applyGate.ok) {
       toast({ description: ar ? applyGate.reason : applyGate.reasonEn, variant: "destructive" });
@@ -508,11 +722,12 @@ export default function ShiftWeekBoard({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <section style={{ ...slab, padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+      <section style={{ ...slab, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {/* Identity — one job: name the board */}
+        <div style={{ padding: "18px 22px 14px", display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
           <KickerLine kicker={kicker} />
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <h1 className="nv-h" style={{ margin: 0, fontFamily: HEADING, fontSize: 24, fontWeight: 700, lineHeight: 1.35 }}>{boardTitle}</h1>
+            <h1 className="nv-h" style={{ margin: 0, fontFamily: HEADING, fontSize: 24, fontWeight: 700, lineHeight: 1.35, color: "var(--nv-ink)" }}>{boardTitle}</h1>
             <StatutoryItem decisionId="18632" ar={ar} entitlement glow={nightGlow} compact />
           </div>
           <span style={{ fontSize: 13, color: SW.mid, lineHeight: 1.8 }}>
@@ -539,56 +754,193 @@ export default function ShiftWeekBoard({
             )}
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", border: `1px solid ${SW.line}` }}>
-            <button type="button" onClick={() => moveWeek(-1)} style={{ fontFamily: "inherit", padding: "10px 14px", border: "none", background: SW.card, color: SW.mid, cursor: "pointer" }}>{ar ? "›" : "‹"}</button>
-            <button type="button" onClick={() => setWeekStart(weekStartDate(new Date()))} title={ar ? "ارجع للأسبوع الجاري" : "Back to this week"} style={{ fontFamily: "inherit", padding: "7px 16px", border: "none", borderInline: `1px solid ${SW.line}`, background: SW.card, cursor: "pointer", color: SW.ink, display: "flex", flexDirection: "column", gap: 1, alignItems: "center", whiteSpace: "nowrap" }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: thisWeekNow ? SW.ink : SW.mid }}>{thisWeek}</span>
-              <span style={{ fontSize: 11, color: SW.muted }}>{formatWeekLabel(weekStart, ar)}</span>
-            </button>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px", borderInlineEnd: `1px solid ${SW.line}`, whiteSpace: "nowrap" }}>
-              <span style={{ fontSize: 10, color: SW.muted }}>{ar ? "اقفز" : "Jump"}</span>
-              <div style={{ width: 168 }}>
-                <PlatformDateField
-                  compact
-                  ar={ar}
-                  allowClear={false}
-                  value={weekDateKeys(weekStart)[0]}
-                  onChange={(next) => {
-                    if (!next) return;
-                    setWeekStart(weekStartDate(next));
+
+        {/* Planning chrome — month → week → publish */}
+        <div
+          style={{
+            padding: "14px 22px 16px",
+            borderTop: "1px solid var(--nv-line2, #EEF2F7)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            minWidth: 0,
+          }}
+        >
+          {manageMonth ? (
+            <>
+              {/* 1. Pick month */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "stretch",
+                    border: "1px solid var(--nv-line, #E2E8F0)",
+                    borderRadius: DS_CONTROL_RADIUS,
+                    overflow: "hidden",
+                    background: "var(--nv-card, #fff)",
+                    flex: "0 1 auto",
+                    maxWidth: "100%",
                   }}
-                />
+                >
+                  <button type="button" onClick={() => moveMonth(-1)} style={{ fontFamily: "inherit", padding: "10px 12px", border: "none", background: "transparent", color: "var(--nv-ink2)", cursor: "pointer" }} aria-label={ar ? "الشهر السابق" : "Previous month"}>{ar ? "›" : "‹"}</button>
+                  <button
+                    type="button"
+                    onClick={jumpToThisMonth}
+                    title={ar ? "ارجع للشهر الجاري" : "Back to this month"}
+                    style={{
+                      fontFamily: "inherit",
+                      padding: "8px 14px",
+                      border: "none",
+                      borderInline: "1px solid var(--nv-line, #E2E8F0)",
+                      background: "transparent",
+                      cursor: "pointer",
+                      color: "var(--nv-ink)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 1,
+                      alignItems: "center",
+                      whiteSpace: "nowrap",
+                      minWidth: 132,
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>{monthLabel}</span>
+                    <span style={{ fontSize: 10, color: "var(--nv-ink3, var(--nv-muted))" }}>{ar ? "نطاق التخطيط الشهري" : "Monthly planning scope"}</span>
+                  </button>
+                  <button type="button" onClick={() => moveMonth(1)} style={{ fontFamily: "inherit", padding: "10px 12px", border: "none", background: "transparent", color: "var(--nv-ink2)", cursor: "pointer" }} aria-label={ar ? "الشهر التالي" : "Next month"}>{ar ? "‹" : "›"}</button>
+                </div>
               </div>
-            </label>
-            <button type="button" onClick={() => moveWeek(1)} style={{ fontFamily: "inherit", padding: "10px 14px", border: "none", background: SW.card, color: SW.mid, cursor: "pointer" }}>{ar ? "‹" : "›"}</button>
-          </div>
-          {canEdit && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", maxWidth: 280, minWidth: 0 }}>
-              <button
-                type="button"
-                onClick={doPublish}
-                disabled={publishLocked}
+
+              {/* 2. Pick week */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0 }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: "var(--nv-ink3, var(--nv-muted))", letterSpacing: ".02em" }}>
+                  {ar ? "أسبوع داخل الشهر" : "Week in month"}
+                </span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    minWidth: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      flex: "1 1 auto",
+                      minWidth: 0,
+                      flexWrap: "wrap",
+                      overflowX: "auto",
+                      scrollbarWidth: "thin",
+                      WebkitOverflowScrolling: "touch",
+                      paddingBottom: 1,
+                    }}
+                  >
+                    {monthWeeks.map((start) => {
+                      const key = weekKeyFromDate(start);
+                      const on = weekKeyFromDate(weekStart) === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setWeekStart(weekStartDate(start))}
+                          style={chipBtn(on)}
+                          title={formatWeekLabel(start, ar)}
+                        >
+                          <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatWeekTabLabel(start, ar)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "inline-flex", gap: 4, flex: "0 0 auto" }}>
+                    <button type="button" onClick={() => moveWeek(-1)} style={{ ...chipBtn(false), padding: "6px 10px" }} aria-label={ar ? "الأسبوع السابق" : "Previous week"}>{ar ? "›" : "‹"}</button>
+                    <button type="button" onClick={() => moveWeek(1)} style={{ ...chipBtn(false), padding: "6px 10px" }} aria-label={ar ? "الأسبوع التالي" : "Next week"}>{ar ? "‹" : "›"}</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Publish — month reuse lives under سريان الجدول */}
+              {(canEdit) ? (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    paddingTop: 10,
+                    borderTop: "1px solid var(--nv-line2, #EEF2F7)",
+                    marginTop: 2,
+                    minWidth: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      justifyContent: "flex-end",
+                      gap: 10,
+                      minWidth: 0,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={doPublish}
+                      disabled={publishLocked}
+                      style={publishActionBtn({
+                        published: published && pub.kind === "published",
+                        locked: publishLocked,
+                      })}
+                    >
+                      {publishLabel}
+                    </button>
+                  </div>
+                  {blockers ? (
+                    <PublishGateAlertStrip
+                      blockers={gates.blockers}
+                      countLabel={publishBlockerLabel}
+                      ar={ar}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div
                 style={{
-                  fontFamily: "inherit",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  padding: "10px 18px",
-                  border: "none",
-                  background: published && pub.kind === "published" ? SW.mid : blockers ? SW.gold : SW.green,
-                  color: "#fff",
-                  cursor: publishLocked ? "default" : "pointer",
-                  whiteSpace: "nowrap",
-                  flex: "0 0 auto",
+                  display: "inline-flex",
+                  alignItems: "stretch",
+                  border: "1px solid var(--nv-line, #E2E8F0)",
+                  borderRadius: DS_CONTROL_RADIUS,
+                  overflow: "hidden",
+                  background: "var(--nv-card, #fff)",
+                  maxWidth: "100%",
                 }}
               >
-                {publishLabel}
-              </button>
-              {publishSubmitBlock ? (
-                <span style={{ fontSize: 11, color: SW.abs, lineHeight: 1.6, textAlign: "end" }}>
-                  {publishSubmitBlock}
-                </span>
-              ) : null}
+                <button type="button" onClick={() => moveWeek(-1)} style={{ fontFamily: "inherit", padding: "10px 12px", border: "none", background: "transparent", color: "var(--nv-ink2)", cursor: "pointer" }}>{ar ? "›" : "‹"}</button>
+                <button type="button" onClick={() => setWeekStart(weekStartDate(new Date()))} title={ar ? "ارجع للأسبوع الجاري" : "Back to this week"} style={{ fontFamily: "inherit", padding: "8px 14px", border: "none", borderInline: "1px solid var(--nv-line, #E2E8F0)", background: "transparent", cursor: "pointer", color: "var(--nv-ink)", display: "flex", flexDirection: "column", gap: 1, alignItems: "center", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: thisWeekNow ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{thisWeek}</span>
+                  <span style={{ fontSize: 10, color: "var(--nv-ink3, var(--nv-muted))" }}>{formatWeekLabel(weekStart, ar)}</span>
+                </button>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px", borderInlineEnd: "1px solid var(--nv-line, #E2E8F0)", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: 10, color: "var(--nv-ink3, var(--nv-muted))" }}>{ar ? "اقفز" : "Jump"}</span>
+                  <div style={{ width: 168 }}>
+                    <PlatformDateField
+                      compact
+                      ar={ar}
+                      allowClear={false}
+                      value={weekDateKeys(weekStart)[0]}
+                      onChange={(next) => {
+                        if (!next) return;
+                        setWeekStart(weekStartDate(next));
+                      }}
+                    />
+                  </div>
+                </label>
+                <button type="button" onClick={() => moveWeek(1)} style={{ fontFamily: "inherit", padding: "10px 12px", border: "none", background: "transparent", color: "var(--nv-ink2)", cursor: "pointer" }}>{ar ? "‹" : "›"}</button>
+              </div>
             </div>
           )}
         </div>
@@ -605,20 +957,20 @@ export default function ShiftWeekBoard({
               {canEdit ? (
               <div style={{ marginInlineStart: "auto", display: "flex", gap: 5, flexWrap: "wrap" }}>
                 <button type="button" onClick={() => setBrush(null)} style={chipBtn(brush === null)}>
-                  <span style={{ width: 8, height: 8, background: "#c7ccd6" }} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--nv-mute-fill)" }} />
                   {ar ? "تبديل بالترتيب" : "Cycle in order"}
                 </button>
                 {types.map((shift, index) => {
                   const style = shiftTypeStyle(shift, index);
                   return (
                     <button key={shift.id} type="button" onClick={() => setBrush(shift.id)} style={chipBtn(brush === shift.id)}>
-                      <span style={{ width: 8, height: 8, background: style.color }} />
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: style.fg }} />
                       {shift.label}
                     </button>
                   );
                 })}
                 <button type="button" onClick={() => setBrush("")} style={chipBtn(brush === "")}>
-                  <span style={{ width: 8, height: 8, background: REST_STYLE.color }} />
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: REST_STYLE.fg }} />
                   {ar ? "راحة" : "Rest"}
                 </button>
               </div>
@@ -642,23 +994,41 @@ export default function ShiftWeekBoard({
                 </div>
               )}
               {roster.map((employee) => {
-                const hours = employeeWeekHours(schedule, employee.id, weekStart, employee);
+                const hours = employeeWeekHours(schedule, employee.id, weekStart, employee, laborCalendar);
                 const mineRow = isViewerOwnFile(employee, currentUser);
                 const nightMark = rosterNightRowMark({ employee, schedule, weekStart, laborCalendar });
                 return (
                   <div key={employee.id} style={{ display: "grid", gridTemplateColumns: "minmax(96px,1.1fr) repeat(7,minmax(72px,1fr))", gap: 1, background: SW.soft, borderBottom: `1px solid ${SW.row}`, minWidth: 640 }}>
-                    <span style={{ background: mineRow ? SW.greenBg : SW.card, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 1, minWidth: 0, borderInlineStart: mineRow ? `3px solid ${SW.green}` : "3px solid transparent" }}>
+                    <span
+                      className="nv-roster-person"
+                      data-glow={nightMark.nameGlow ? "due" : "off"}
+                      title={nightMark.nameGlow
+                        ? (ar ? "تنبيه: يحتاج متابعة قبل العمل الليلي" : "Alert: needs attention before night work")
+                        : undefined}
+                      style={{
+                        background: nightMark.nameGlow
+                          ? "var(--nv-bad-soft)"
+                          : SW.card,
+                        padding: nightMark.nameGlow ? "5px 10px 8px" : "8px 10px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1,
+                        minWidth: 0,
+                        boxShadow: "none",
+                      }}
+                    >
                       <span
                         className="nv-roster-name"
-                        data-glow={nightMark.nameGlow ? "due" : "off"}
-                        style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                        style={{ fontSize: 12, fontWeight: 600, color: SW.ink, display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0, maxWidth: "100%", overflow: "visible" }}
                       >
-                        {employee.name}{mineRow ? <>{" "}<FileSelfBadge ar={ar} /></> : null}
+                        {nightMark.nameGlow ? <span className="nv-roster-alert-dot" aria-hidden /> : null}
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: "1 1 auto" }}>{employee.name}</span>
+                        {mineRow ? <FileSelfBadge ar={ar} /> : null}
                       </span>
                       <span dir="ltr" style={{ ...mono, fontSize: 10, color: SW.muted }}>{hours} {ar ? "س" : "h"}</span>
                     </span>
                     {days.map((day) => {
-                      const leave = leaveOnDayView(employee, day.key, ar);
+                      const leave = leaveOnDayView(employee, day.key, ar, laborCalendar);
                       const shift = leave ? null : shiftOn(employee, day);
                       const style = leave ? leave.style : (shift ? shiftTypeStyle(shift, types.findIndex((row) => row.id === shift.id)) : REST_STYLE);
                       const locked = !!leave;
@@ -668,9 +1038,12 @@ export default function ShiftWeekBoard({
                         || (cellAlert
                           ? (gates.checks.find((row) => row.id === cellAlert.id)?.title || "")
                           : "");
+                      const leaveLockNote = leave?.source === "official_holiday"
+                        ? (ar ? `${leave.type} · مقفلة` : `${leave.type} · locked`)
+                        : (ar ? "اعتُمدت في طلباتي · مقفلة" : "approved in My Requests · locked");
                       const baseTitle = locked
-                        ? `${employee.name} — ${day.key} — ${ar ? "إجازة" : "Leave"} ${leave.type}${leave.article ? ` · ${leave.article}` : ""} · ${ar ? "اعتُمدت في طلباتي · مقفلة" : "approved in My Requests · locked"}`
-                        : `${employee.name} — ${day.key} — ${shift ? `${shift.label} ${shiftHoursLine(shift, lang)}` : (ar ? "راحة" : "Rest")}`;
+                        ? `${employee.name} — ${day.key} — ${leave.type}${leave.article ? ` · ${leave.article}` : ""} · ${leaveLockNote}`
+                        : `${employee.name} — ${day.key} — ${shift ? `${shift.label} ${shiftHoursLine(shift, lang, timeFormat)}` : (ar ? "راحة" : "Rest")}`;
                       return (
                         <button
                           key={`${employee.id}-${day.key}`}
@@ -680,9 +1053,9 @@ export default function ShiftWeekBoard({
                           title={cellReason ? `${baseTitle} · ${cellReason}` : baseTitle}
                           style={{
                             fontFamily: "inherit",
-                            border: "none",
-                            background: style.bg,
-                            color: style.fg,
+                            border: cellTone ? `1px solid ${cellTone.line || SW.line}` : "none",
+                            background: cellTone ? cellTone.soft : style.bg,
+                            color: cellTone ? cellTone.ink : style.fg,
                             cursor: canEdit && !locked ? "pointer" : locked ? "not-allowed" : "default",
                             padding: "7px 2px",
                             display: "flex",
@@ -692,29 +1065,15 @@ export default function ShiftWeekBoard({
                             minHeight: 44,
                             justifyContent: "center",
                             position: "relative",
-                            boxShadow: cellTone ? `inset 0 0 0 1.5px ${cellTone.color}` : undefined,
+                            boxShadow: "none",
                           }}
                         >
-                          {cellTone ? (
-                            <span
-                              aria-hidden
-                              style={{
-                                position: "absolute",
-                                top: 4,
-                                insetInlineStart: 4,
-                                width: 6,
-                                height: 6,
-                                borderRadius: "50%",
-                                background: cellTone.color,
-                              }}
-                            />
-                          ) : null}
                           <span style={{ fontSize: 11, fontWeight: 600 }}>{leave ? leave.type : (shift ? shift.label : (ar ? "راحة" : "Rest"))}</span>
                           {leave?.articleId ? (
                             <StatutoryItem article={leave.articleId} ar={ar} entitlement compact surface="leave" />
                           ) : (
                             <span style={{ fontSize: 9, opacity: 0.85, lineHeight: 1.45, fontWeight: 500 }} dir={ar ? "rtl" : "ltr"}>
-                              {shift ? shiftHoursLine(shift, lang) : ""}
+                              {shift ? <ShiftHoursLabel shift={shift} lang={lang} format={timeFormat} /> : ""}
                             </span>
                           )}
                         </button>
@@ -728,19 +1087,23 @@ export default function ShiftWeekBoard({
               {types.map((shift, index) => {
                 const style = shiftTypeStyle(shift, index);
                 return (
-                  <span key={shift.id} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 11, color: SW.mid }}>
-                    <span style={{ width: 11, height: 11, background: style.bg, border: `1px solid ${style.color}` }} />
+                  <span key={shift.id} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 10, color: "var(--nv-ink3)" }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 4, background: style.bg, border: `1px solid ${style.color}`, boxSizing: "border-box" }} />
                     {shift.label}
                   </span>
                 );
               })}
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 11, color: SW.mid }}>
-                <span style={{ width: 11, height: 11, background: "#fff", border: `1px solid ${SW.line}` }} />
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 10, color: "var(--nv-ink3)" }}>
+                <span style={{ width: 12, height: 12, borderRadius: 4, background: REST_STYLE.bg, border: `1px solid ${REST_STYLE.color}`, boxSizing: "border-box" }} />
                 {ar ? "راحة" : "Rest"}
               </span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 11, color: SW.mid }}>
-                <span style={{ width: 11, height: 11, background: LEAVE_STYLE.bg, border: `1px solid ${LEAVE_STYLE.color}` }} />
-                {ar ? "إجازة معتمدة" : "Approved leave"}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 10, color: "var(--nv-ink3)" }}>
+                <span style={{ width: 12, height: 12, borderRadius: 4, background: LEAVE_STYLE.bg, border: `1px solid ${LEAVE_STYLE.color}`, boxSizing: "border-box" }} />
+                {ar ? "إجازة معتمدة (طلباتي)" : "Approved leave (My Requests)"}
+              </span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 10, color: "var(--nv-ink3)" }}>
+                <span style={{ width: 12, height: 12, borderRadius: 4, background: LEAVE_STYLE.bg, border: `1px solid ${LEAVE_STYLE.color}`, boxSizing: "border-box" }} />
+                {ar ? "إجازة اليوم الوطني · يوم التأسيس · العيد" : "National Day · Founding Day · Eid leave"}
               </span>
               <Link
                 to="/app/requests"
@@ -755,7 +1118,7 @@ export default function ShiftWeekBoard({
                   whiteSpace: "nowrap",
                 }}
               >
-                {ar ? "الإجازات من طلباتي" : "Leave from My Requests"}
+                {ar ? "الإجازات المعتمدة من طلباتي" : "Approved leave from My Requests"}
               </Link>
               <span style={{ marginInlineStart: "auto", fontSize: 11, color: SW.muted }}>
                 {brush != null
@@ -763,6 +1126,18 @@ export default function ShiftWeekBoard({
                   : (ar ? "اضغط الخلية للتبديل بين الورديات بما فيها الليل. من تجاوز ثلاثة أشهر دون موافقة: صباحي أو مسائي من التنبيه. خلايا الإجازة مقفلة." : "Click a cell to cycle every shift, including night. After three months without consent, use morning or evening on the alert. Leave cells stay locked.")}
               </span>
             </div>
+            {restJumpNote ? (
+              <div role="status" style={{ ...statusBannerQuiet.warn, margin: "0 20px 12px", fontSize: 12, display: "flex", alignItems: "flex-start", gap: 10, justifyContent: "space-between" }}>
+                <span style={{ flex: 1, textAlign: "start" }}>{restJumpNote}</span>
+                <button
+                  type="button"
+                  onClick={() => setRestJumpNote("")}
+                  style={{ fontFamily: "inherit", border: "none", background: "transparent", color: "inherit", cursor: "pointer", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}
+                >
+                  {ar ? "إخفاء" : "Dismiss"}
+                </button>
+              </div>
+            ) : null}
             <div style={{ padding: "0 20px 14px", display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button type="button" onClick={() => setReqOpen((v) => !v)} style={chipBtn(reqOpen)}>
                 {ar ? "اطلب تغيير وردية" : "Request a shift change"}
@@ -781,14 +1156,14 @@ export default function ShiftWeekBoard({
                   <span style={{ fontSize: 10, color: SW.muted }}>{ar ? "الوردية المطلوبة" : "Requested shift"}</span>
                   <select value={reqForm.shiftTypeId} onChange={(e) => setReqForm((f) => ({ ...f, shiftTypeId: e.target.value }))} style={{ fontFamily: "inherit", fontSize: 12, padding: 8, border: `1px solid ${SW.line}`, background: SW.card, color: SW.ink }}>
                     <option value="">{ar ? "راحة" : "Rest"}</option>
-                    {types.map((shift) => <option key={shift.id} value={shift.id}>{shift.label} · {shiftHoursLine(shift, lang)}</option>)}
+                    {types.map((shift) => <option key={shift.id} value={shift.id}>{shift.label} · {shiftHoursLine(shift, lang, timeFormat)}</option>)}
                   </select>
                 </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "1 / -1" }}>
                   <span style={{ fontSize: 10, color: SW.muted }}>{ar ? "السبب" : "Reason"}</span>
                   <input value={reqForm.reason} onChange={(e) => setReqForm((f) => ({ ...f, reason: e.target.value }))} placeholder={ar ? "لماذا هذا التغيير؟" : "Why this change?"} style={{ fontFamily: "inherit", fontSize: 12, padding: 8, border: `1px solid ${SW.line}`, background: SW.card, color: SW.ink }} />
                 </label>
-                <button type="button" onClick={submitShiftRequest} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 14px", border: "none", background: SW.green, color: "#fff", cursor: "pointer" }}>
+                <button type="button" onClick={submitShiftRequest} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 14px", border: "none", borderRadius: 10, background: "var(--nv-ok-fill)", color: "var(--nv-btn-ink)", cursor: "pointer" }}>
                   {ar ? "أرسل للاعتماد" : "Submit for approval"}
                 </button>
               </div>
@@ -811,41 +1186,58 @@ export default function ShiftWeekBoard({
                 </div>
                 <button type="button" onClick={() => setHistMode("emp")} style={chipBtn(histMode === "emp")}>{ar ? "حسب الموظف" : "By person"}</button>
                 <button type="button" onClick={() => setHistMode("day")} style={chipBtn(histMode === "day")}>{ar ? "حسب اليوم" : "By day"}</button>
-                <input value={histQuery} onChange={(e) => setHistQuery(e.target.value)} placeholder={ar ? "ابحث بالاسم" : "Search a name"} style={{ fontFamily: "inherit", fontSize: 11, padding: "6px 9px", border: `1px solid ${SW.line}`, background: SW.card, color: SW.ink, outline: "none", width: 120 }} />
+                <input value={histQuery} onChange={(e) => setHistQuery(e.target.value)} placeholder={ar ? "ابحث بالاسم" : "Search a name"} style={{ fontFamily: "inherit", fontSize: 11, padding: "6px 9px", border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", outline: "none", width: 120, borderRadius: DS_CONTROL_RADIUS }} />
               </div>
             </div>
             {histMode === "emp" && history.workDays > 0 && history.rows.length > 0 ? (
               <div style={{ padding: "12px 20px 4px", display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(92px,1.2fr) minmax(0,4fr) 50px", gap: 10, alignItems: "center" }}>
-                  <span style={{ fontSize: 11, color: SW.muted }}>{ar ? "الموظف" : "Employee"}</span>
-                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${history.days.length},minmax(0,1fr))`, gap: 2 }}>
+                  <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{ar ? "الموظف" : "Employee"}</span>
+                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${history.days.length},minmax(0,1fr))`, gap: 3 }}>
                     {history.days.map((day) => (
-                      <span key={`h-head-${day.key}`} style={{ textAlign: "center", fontSize: 9, color: SW.muted, lineHeight: 1.3 }}>
-                        {day.day} {(ar ? MONTHS_AR : MONTHS_EN)[day.month].slice(0, 3)}
+                      <span
+                        key={`h-head-${day.key}`}
+                        title={historyColumnLabel(day, ar)}
+                        style={{
+                          textAlign: "center",
+                          color: "var(--nv-ink3)",
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "flex-start",
+                          gap: 1,
+                          minHeight: 28,
+                          minWidth: 0,
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        <span dir="ltr" style={{ fontSize: 10, fontWeight: 600 }}>{day.day}</span>
+                        <span style={{ fontSize: 9, fontWeight: 500, whiteSpace: "nowrap" }}>{weekdayLabel(day.wd, ar)}</span>
                       </span>
                     ))}
                   </div>
-                  <span style={{ fontSize: 11, color: SW.muted, textAlign: "left" }}>{ar ? "ساعات" : "Hours"}</span>
+                  <span style={{ fontSize: 11, color: "var(--nv-ink3)", textAlign: "left" }}>{ar ? "ساعات" : "Hours"}</span>
                 </div>
                 {history.rows.map((row) => (
                   <div key={row.employee.id} style={{ display: "grid", gridTemplateColumns: "minmax(92px,1.2fr) minmax(0,4fr) 50px", gap: 10, alignItems: "center" }}>
                     <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</span>
-                      <span style={{ fontSize: 10, color: SW.muted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.summary}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</span>
+                      <span style={{ fontSize: 10, color: "var(--nv-ink3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.summary}</span>
                     </span>
-                    <div style={{ display: "grid", gridTemplateColumns: `repeat(${history.days.length},minmax(0,1fr))`, gap: 2 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: `repeat(${history.days.length},minmax(0,1fr))`, gap: 3 }}>
                       {row.cells.map((cell, index) => (
                         <span
                           key={`${row.employee.id}-h-${index}`}
                           title={cell.tip}
                           style={{
-                            height: 26,
+                            height: 28,
                             background: cell.bg,
                             border: `1px solid ${cell.border}`,
+                            borderRadius: DS_CONTROL_RADIUS,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            fontSize: 9,
+                            fontSize: 10,
                             fontWeight: 600,
                             color: cell.color,
                           }}
@@ -854,25 +1246,25 @@ export default function ShiftWeekBoard({
                         </span>
                       ))}
                     </div>
-                    <span dir="ltr" style={{ ...mono, fontSize: 12, color: SW.ink, textAlign: "left" }}>{row.hours}</span>
+                    <span dir="ltr" style={{ ...mono, fontSize: 12, color: "var(--nv-ink)", textAlign: "left" }}>{row.hours}</span>
                   </div>
                 ))}
-                <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", paddingTop: 6 }}>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", paddingTop: 8 }}>
                   {types.map((shift, index) => {
                     const style = shiftTypeStyle(shift, index);
                     return (
-                      <span key={`hist-leg-${shift.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: SW.mid }}>
-                        <span style={{ width: 11, height: 11, background: style.bg, border: `1px solid ${style.color}` }} />
+                      <span key={`hist-leg-${shift.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--nv-ink3)" }}>
+                        <span style={{ width: 12, height: 12, borderRadius: 4, background: style.bg, border: `1px solid ${style.color}`, boxSizing: "border-box" }} />
                         {shift.label}
                       </span>
                     );
                   })}
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: SW.mid }}>
-                    <span style={{ width: 11, height: 11, background: LEAVE_STYLE.bg, border: `1px solid ${LEAVE_STYLE.color}` }} />
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--nv-ink3)" }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 4, background: LEAVE_STYLE.bg, border: `1px solid ${LEAVE_STYLE.color}`, boxSizing: "border-box" }} />
                     {ar ? "إجازة" : "Leave"}
                   </span>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: SW.mid }}>
-                    <span style={{ width: 11, height: 11, background: SW.wash, border: `1px solid ${SW.soft}` }} />
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--nv-ink3)" }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 4, background: REST_STYLE.bg, border: `1px solid ${REST_STYLE.color}`, boxSizing: "border-box" }} />
                     {ar ? "راحة" : "Rest"}
                   </span>
                 </div>
@@ -881,17 +1273,17 @@ export default function ShiftWeekBoard({
             {histMode === "day" && history.workDays > 0 ? (
               <div style={{ display: "flex", flexDirection: "column" }}>
                 {history.dayRows.map((day) => (
-                  <div key={day.label} style={{ padding: "11px 20px", borderBottom: `1px solid ${SW.row}`, display: "grid", gridTemplateColumns: "minmax(84px,auto) minmax(0,1fr)", gap: 14, alignItems: "start" }}>
+                  <div key={day.label} style={{ padding: "11px 20px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "minmax(84px,auto) minmax(0,1fr)", gap: 14, alignItems: "start" }}>
                     <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{day.label}</span>
-                      <span style={{ fontSize: 10, color: SW.muted }}>{day.count} {ar ? "على وردية" : "on shift"}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ink)", whiteSpace: "nowrap" }}>{day.label}</span>
+                      <span style={{ fontSize: 10, color: "var(--nv-ink3)" }}>{day.count} {ar ? "على وردية" : "on shift"}</span>
                     </span>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-                      {day.empty && <span style={{ fontSize: 11, color: SW.muted }}>{ar ? "لا أحد على وردية" : "Nobody on shift"}</span>}
+                      {day.empty && <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{ar ? "لا أحد على وردية" : "Nobody on shift"}</span>}
                       {day.groups.map((group) => (
                         <div key={group.name} style={{ display: "grid", gridTemplateColumns: "78px minmax(0,1fr)", gap: 9, alignItems: "start" }}>
-                          <span style={{ fontSize: 11, fontWeight: 600, color: group.fg, background: group.bg, border: `1px solid ${group.color}`, padding: "2px 7px", textAlign: "center", whiteSpace: "nowrap" }}>{group.name}</span>
-                          <span style={{ fontSize: 11, color: SW.ink, lineHeight: 1.8 }}>{group.names}</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: group.fg, background: group.bg, border: `1px solid ${group.color}`, borderRadius: DS_PILL_RADIUS, padding: "2px 9px", textAlign: "center", whiteSpace: "nowrap" }}>{group.name}</span>
+                          <span style={{ fontSize: 11, color: "var(--nv-ink)", lineHeight: 1.8 }}>{group.names}</span>
                         </div>
                       ))}
                     </div>
@@ -900,84 +1292,16 @@ export default function ShiftWeekBoard({
               </div>
             ) : null}
             <div style={{ padding: "12px 20px" }}>
-              <span style={{ fontSize: 11, color: SW.mid, lineHeight: 1.85 }}>{histNote}</span>
+              <span style={{ fontSize: 10, color: "var(--nv-ink3)", lineHeight: 1.85 }}>{histNote}</span>
             </div>
           </section>
 
-          <section style={{ ...slab, display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "14px 20px", borderBottom: `1px solid ${SW.soft}`, display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "فحص ما قبل النشر" : "Pre-publish checks"}</span>
-                <span style={{ fontSize: 12, color: SW.muted, lineHeight: 1.7 }}>{ar ? "كل فحص من الجدول أعلاه — لا يُنشر جدول يخالف أيًّا من الموانع." : "Every check is derived from the grid — a blocking fail stops publish."}</span>
-              </div>
-              <span style={{
-                marginInlineStart: "auto",
-                fontSize: 11,
-                fontWeight: 600,
-                color: blockers ? SW.abs : gates.warnings.length ? SW.gold : SW.green,
-                background: blockers ? SW.absBg : gates.warnings.length ? SW.goldBg : SW.greenBg,
-                border: `1px solid ${blockers ? SW.absBd : gates.warnings.length ? SW.goldBd : SW.greenBd}`,
-                padding: "6px 11px",
-                whiteSpace: "nowrap",
-              }}>
-                {checksBadge}
-              </span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,250px),1fr))" }}>
-              {gates.checks.map((check) => (
-                <div key={check.id} style={{ padding: "13px 18px", borderInlineStart: `1px solid ${SW.hair}`, borderBottom: `1px solid ${SW.hair}`, display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 10, alignItems: "start" }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: check.ok ? SW.greenDot : check.block ? SW.abs : SW.goldDot, marginTop: 6 }} />
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, minWidth: 0, width: "100%" }}>
-                    {(() => {
-                      const glow = check.ruleId ? statutoryGlowState({
-                        kind: check.ruleId,
-                        employees: roster,
-                        schedule,
-                        weekStart,
-                        laborCalendar,
-                        failing: !check.ok,
-                      }) : "off";
-                      const showEssay = !!(check.ruleId && showStatutoryHeaderCite(glow, { ok: check.ok, failing: !check.ok }));
-                      return (
-                        <>
-                          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                            <span style={{ fontSize: 12.5, fontWeight: 700, color: check.ok ? SW.ink : check.block ? SW.abs : SW.gold, lineHeight: 1.5 }}>{check.title}</span>
-                            {check.ruleId ? (
-                              <LaborArticleCite
-                                ruleId={check.ruleId}
-                                ar={ar}
-                                tone={check.block && !check.ok ? "block" : (!check.ok ? "warn" : undefined)}
-                                glow={glow}
-                              />
-                            ) : null}
-                          </div>
-                          {showEssay ? (
-                            <LaborArticleCite
-                              ruleId={check.ruleId}
-                              ar={ar}
-                              showText
-                              showChip={false}
-                              tone={check.block && !check.ok ? "block" : (!check.ok ? "warn" : undefined)}
-                              glow={glow}
-                            />
-                          ) : null}
-                        </>
-                      );
-                    })()}
-                    <span style={{ fontSize: 11, color: SW.mid, lineHeight: 1.8 }}>{check.note}</span>
-                    {check.id === "night_medical" && !check.ok ? (
-                      <NightMedicalFileField
-                        ar={ar}
-                        compact
-                        unmet
-                        requestsHref={mode === "mine" ? "/app/requests" : "/app/requests/manage"}
-                      />
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          <LawGatesPanels
+            gates={gates}
+            company={data}
+            onDate={days[0]?.key || weekStart}
+            ar={ar}
+          />
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
@@ -986,7 +1310,7 @@ export default function ShiftWeekBoard({
               companyId={companyId}
               laborCalendar={laborCalendar}
               year={Number(String(days[0]?.key || "").slice(0, 4))}
-              canEdit={canEdit}
+              canEdit={canEditOwnerBoard(currentUser, data)}
               ar={ar}
               onSaved={() => refresh?.()}
             />
@@ -1005,6 +1329,7 @@ export default function ShiftWeekBoard({
               company={data}
               canApplyOrdinary={canEdit}
               onApplyOrdinary={(employee, kind, dateKey) => applyOrdinaryHours(employee, kind, dateKey)}
+              quietEdge
             />
           ) : (
             <ManagerDutyAlertsRail
@@ -1028,7 +1353,7 @@ export default function ShiftWeekBoard({
               [ar ? "مصدر الساعة" : "The clock", ar ? "الجدول المنشور — لا ساعة شركة افتراضية." : "The published roster — no company default hour."],
               [ar ? "شرط الوردية" : "Shift required", ar ? "إلزامي للفروع الثابتة، اختياري للمواقع الميدانية المتنقلة." : "Required at fixed stations; optional at mobile field sites."],
               [ar ? "التأخير" : "Lateness", ar ? "من أول دقيقة بعد بداية الوردية المنشورة. لا حدّ سماح." : "From the first minute after the published shift start. No grace."],
-              [ar ? "الغياب" : "Absence", ar ? "وردية منشورة بلا تسجيل ولا إجازة معتمدة." : "A published shift with no punch and no approved leave."],
+              [ar ? "الغياب" : "Absence", ar ? "وردية منشورة بلا تسجيل ولا إجازة معتمدة ولا إجازة اليوم الوطني أو يوم التأسيس أو العيد." : "A published shift with no punch, no approved leave, and no National Day / Founding Day / Eid leave."],
               [ar ? "العمل الليلي" : "Night work", ar ? "التنبيه عند الاستحقاق في الشريط وطلباتي — لا يُرسم على صف الجدول." : "Due alerts live on the rail and in My Requests — not on roster rows."],
             ].map(([label, value]) => (
               <div key={label} style={{ padding: "12px 18px", borderBottom: `1px solid ${SW.row}`, display: "flex", flexDirection: "column", gap: 3 }}>
@@ -1043,74 +1368,114 @@ export default function ShiftWeekBoard({
             </div>
           </section>
 
-          <section style={{ ...slab, display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "14px 18px", borderBottom: `1px solid ${SW.soft}` }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "إعداد الليل" : "Night settings"}</span>
+          <section data-night-settings="1" style={{ ...slab, display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--nv-line, #E2E8F0)" }}>
+              <strong style={{ fontSize: 14, fontWeight: 700, color: "var(--nv-ink, #14284B)" }}>
+                {ar ? "إعداد الليل" : "Night settings"}
+              </strong>
             </div>
             {canEdit ? (
-              <div style={{ padding: "12px 18px", borderBottom: `1px solid ${SW.row}`, display: "flex", flexDirection: "column", gap: 7 }}>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? "تعويض ليلي لهذا الجدول" : "Night compensation on this roster"}</span>
-                <span style={{ fontSize: 11, color: SW.mid, lineHeight: 1.75 }}>{ar ? "للإدارة اختيار تقليص ساعة أو ساعتين أو ثلاث من وردية الموظف، أو بدل أجر أو نقل بمبلغ يُصرف مع الراتب، أو تغيير العمل الليلي. التقليص والبدل يُسحبان للبدء من جديد. زر الجدول أدناه يسجّل سياسة الفرع فقط. بعد ثلاثة أشهر يبقى التدوير أو موافقة الموظف الخطية." : "Management chooses a cut of one, two, or three hours from this person's shift, a pay or transport allowance that pays with salary, or a change of night work. A reduction or allowance can be withdrawn to start over. The roster button below only records the station policy. After three months, rotation or the worker's written consent still applies."}</span>
+              <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--nv-line, #E2E8F0)", display: "flex", flexDirection: "column", gap: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink, #14284B)" }}>
+                  {ar ? "تعويض ليلي لهذا الجدول" : "Night compensation on this roster"}
+                </span>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--nv-ink2, #334155)", lineHeight: 1.7 }}>
+                  {ar
+                    ? "للإدارة اختيار تقليص ساعة أو ساعتين أو ثلاث من وردية الموظف، أو بدل أجر أو نقل بمبلغ يُصرف مع الراتب، أو تغيير العمل الليلي. التقليص والبدل يُسحبان للبدء من جديد. زر الجدول أدناه يسجّل سياسة الفرع فقط. بعد ثلاثة أشهر يبقى التدوير أو موافقة الموظف الخطية."
+                    : "Management chooses a cut of one, two, or three hours from this person's shift, a pay or transport allowance that pays with salary, or a change of night work. A reduction or allowance can be withdrawn to start over. The roster button below only records the station policy. After three months, rotation or the worker's written consent still applies."}
+                </p>
                 <button
                   type="button"
+                  dir={ar ? "rtl" : "ltr"}
                   onClick={() => {
                     setScheduleNightCompensation(companyId, stationId, !schedule?.nightCompensation);
                     refresh?.();
                   }}
-                  style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "6px 10px", border: `1px solid ${SW.line}`, background: schedule?.nightCompensation ? SW.greenBg : SW.card, color: schedule?.nightCompensation ? SW.green : SW.ink, cursor: "pointer", textAlign: "start", alignSelf: "start" }}
+                  style={nightSettingRowStyle()}
                 >
-                  {schedule?.nightCompensation
-                    ? (ar ? "تعويض ليلي مسجّل — اضغط للإلغاء" : "Night compensation on file — click to clear")
-                    : (ar ? "سجّل تعويضاً ليلياً لهذا الجدول" : "Record night compensation on this roster")}
+                  <LawGateStatusPill
+                    status={schedule?.nightCompensation ? "settled" : "void"}
+                    label={schedule?.nightCompensation ? (ar ? "مسجّل" : "On file") : (ar ? "بلا أثر" : "No effect")}
+                    ar={ar}
+                  />
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, lineHeight: 1.7, color: "var(--nv-ink2, #334155)", textAlign: ar ? "right" : "left" }}>
+                    {schedule?.nightCompensation
+                      ? (ar ? "تعويض ليلي مسجّل — اضغط للإلغاء" : "Night compensation on file — click to clear")
+                      : (ar ? "سجّل تعويضاً ليلياً لهذا الجدول" : "Record night compensation on this roster")}
+                  </span>
+                  <LawGateArticleBadge article="18632" />
                 </button>
                 {withdrawableNightRemedyEmployees(roster).map((emp) => {
                   const remedy = activeNightRemedy(emp);
+                  const remedySummary = remedy?.kind === "reduce"
+                    ? (ar
+                      ? `تقليص ${nightCutHoursLabel(remedy.cutHours, true) || "ساعات"}`
+                      : `${nightCutHoursLabel(remedy.cutHours, false) || "hours"} reduced`)
+                    : (ar
+                      ? nightAllowancePayLabel(remedy.amount, remedy.allowanceKind, true)
+                      : nightAllowancePayLabel(remedy.amount, remedy.allowanceKind, false));
                   return (
-                    <div key={emp.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-                      <span style={{ fontSize: 11, color: SW.ink }}>
-                        {emp.name}
-                        {" — "}
-                        {remedy?.kind === "reduce"
-                          ? (ar
-                            ? `تقليص ${nightCutHoursLabel(remedy.cutHours, true) || "ساعات"} مسجّل`
-                            : `${nightCutHoursLabel(remedy.cutHours, false) || "hours"} reduced on file`)
-                          : (ar
-                            ? `${nightAllowancePayLabel(remedy.amount, remedy.allowanceKind, true)} مسجّل`
-                            : `${nightAllowancePayLabel(remedy.amount, remedy.allowanceKind, false)} on file`)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => applyNightRemedy(emp, "withdraw")}
-                        style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "4px 8px", border: `1px solid ${SW.line}`, background: SW.card, color: SW.ink, cursor: "pointer" }}
-                      >
+                    <LawGateAlertRow
+                      key={emp.id}
+                      slab
+                      ar={ar}
+                      status="settled"
+                      pillLabel={ar ? "مسجّل" : "On file"}
+                      summary={(
+                        <span>
+                          <strong style={{ color: "var(--nv-ink, #14284B)" }}>{emp.name}</strong>
+                          {" — "}
+                          {remedySummary}
+                        </span>
+                      )}
+                    >
+                      <button type="button" onClick={() => applyNightRemedy(emp, "withdraw")} style={{ ...nightSettingGhostBtn(), alignSelf: "start" }}>
                         {ar ? "سحب والبدء من جديد" : "Withdraw and start over"}
                       </button>
-                    </div>
+                    </LawGateAlertRow>
                   );
                 })}
               </div>
             ) : schedule?.nightCompensation ? (
-              <div style={{ padding: "12px 18px", borderBottom: `1px solid ${SW.row}` }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: SW.green }}>{ar ? "تعويض ليلي مسجّل على هذا الجدول." : "Night compensation is on file for this roster."}</span>
+              <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--nv-line, #E2E8F0)" }}>
+                <LawGateAlertRow
+                  slab
+                  ar={ar}
+                  status="settled"
+                  pillLabel={ar ? "مسجّل" : "On file"}
+                  article="18632"
+                  summary={ar ? "تعويض ليلي مسجّل على هذا الجدول." : "Night compensation is on file for this roster."}
+                />
               </div>
             ) : null}
             {canEdit ? (
-              <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 7 }}>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? "التزامات المنشأة لليل" : "Night workplace duties"}</span>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink, #14284B)" }}>
+                  {ar ? "التزامات المنشأة لليل" : "Night workplace duties"}
+                </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {NIGHT_FACILITY_FLAGS.map((flag) => {
                     const on = !!(schedule?.[flag.key] || data?.nightFacilities?.[flag.key]);
                     return (
                       <button
                         key={flag.key}
                         type="button"
+                        dir={ar ? "rtl" : "ltr"}
                         onClick={() => {
                           setNightFacilityFlag(companyId, { stationId, key: flag.key, on: !schedule?.[flag.key] });
                           refresh?.();
                         }}
-                        style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "6px 10px", border: `1px solid ${SW.line}`, background: on ? SW.greenBg : SW.card, color: on ? SW.green : SW.ink, cursor: "pointer" }}
+                        style={nightSettingRowStyle()}
                       >
-                        {on ? (ar ? `${flag.ar} — مسجّل` : `${flag.en} — on`) : (ar ? flag.ar : flag.en)}
+                        <LawGateStatusPill
+                          status={on ? "settled" : "void"}
+                          label={on ? (ar ? "مسجّل" : "On file") : (ar ? "بلا أثر" : "No effect")}
+                          ar={ar}
+                        />
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, lineHeight: 1.7, color: "var(--nv-ink2, #334155)", textAlign: ar ? "right" : "left" }}>
+                          {ar ? flag.ar : flag.en}
+                        </span>
+                        <LawGateArticleBadge article="18632" />
                       </button>
                     );
                   })}
@@ -1155,7 +1520,7 @@ export default function ShiftWeekBoard({
                           <span>{ar ? "د" : "m"}</span>
                         </label>
                       ) : (
-                        <span style={{ fontSize: 10, color: SW.mid, background: "#f5f6f8", border: "1px solid #e6e9ef", borderRadius: 9, padding: "1px 7px" }}>
+                        <span style={{ fontSize: 10, color: SW.mid, background: "var(--nv-mute-soft)", border: "1px solid var(--nv-mute-line)", borderRadius: 999, padding: "1px 7px" }}>
                           {ar ? `راحة ${shift.restMinutes ?? 30} د` : `${shift.restMinutes ?? 30}m rest`}
                         </span>
                       )}
@@ -1164,8 +1529,8 @@ export default function ShiftWeekBoard({
                       <ConfirmDeleteDialog
                         title={ar ? "حذف نوع الوردية؟" : "Delete this shift type?"}
                         description={ar
-                          ? `سيُحذف «${shift.label || "الوردية"}» من ${shift.start || "—"} إلى ${shift.end || "—"}، وتُرفع تعييناتها من الجدول.`
-                          : `“${shift.label || "Shift"}” from ${shift.start || "—"} to ${shift.end || "—"} will be removed, and its assignments cleared.`}
+                          ? `سيُحذف «${shift.label || "الوردية"}» ${shiftHoursLine(shift, lang, timeFormat) || "—"}، وتُرفع تعييناتها من الجدول.`
+                          : `“${shift.label || "Shift"}” ${shiftHoursLine(shift, lang, timeFormat) || "—"} will be removed, and its assignments cleared.`}
                         confirmLabel={ar ? "تأكيد الحذف" : "Confirm delete"}
                         trigger={(
                           <button type="button" title={ar ? "حذف النوع" : "Delete type"} aria-label={ar ? "حذف نوع الوردية" : "Delete shift type"} style={{ fontFamily: "inherit", fontSize: 12, border: `1px solid ${SW.line}`, background: SW.card, color: SW.abs, cursor: "pointer", width: 24, height: 24, padding: 0, flex: "none" }}>×</button>
@@ -1233,45 +1598,86 @@ export default function ShiftWeekBoard({
             )}
             {canEdit && (
               <div style={{ padding: "14px 18px", borderTop: `1px solid ${SW.soft}`, display: "flex", flexDirection: "column", gap: 9 }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>{ar ? "سريان الجدول" : "Roster validity"}</span>
-                {weekValidityOptions(ar).map((option) => {
-                  const on = validityKind === option.id;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => { setWeekValidity(companyId, stationId, option.id, schedule?.validUntil); refresh?.(); }}
-                      style={{
-                        fontFamily: "inherit",
-                        textAlign: "start",
-                        fontSize: 12,
-                        padding: "8px 10px",
-                        border: `1px solid ${on ? SW.greenBd : SW.soft}`,
-                        background: on ? SW.greenBg : SW.card,
-                        color: SW.ink,
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 2,
-                      }}
-                    >
-                      <span style={{ fontWeight: on ? 700 : 500 }}>{option.label}</span>
-                      <span style={{ fontSize: 10, color: SW.muted, lineHeight: 1.6 }}>{option.note}</span>
-                    </button>
-                  );
-                })}
-                {validityKind === "until" && (
-                  <label style={{ display: "grid", gridTemplateColumns: "36px minmax(0,1fr)", gap: 6, alignItems: "center" }}>
-                    <span style={{ fontSize: 10, color: SW.muted }}>{ar ? "حتى" : "Until"}</span>
-                    <PlatformDateField
-                      compact
-                      ar={ar}
-                      value={schedule?.validUntil || ""}
-                      onChange={(next) => { setWeekValidity(companyId, stationId, "until", next); refresh?.(); }}
-                    />
-                  </label>
-                )}
-                <span style={{ fontSize: 11, color: SW.mid, lineHeight: 1.8 }}>{weekValidityNote(schedule, weekStart, ar)}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>{ar ? "سريان الجدول" : "Roster validity"}</span>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "3px 10px",
+                      borderRadius: DS_PILL_RADIUS,
+                      border: `1px solid ${SW.greenBd}`,
+                      background: SW.greenBg,
+                      color: SW.ink,
+                    }}
+                  >
+                    {ar ? "شهري" : "Monthly"}
+                  </span>
+                </div>
+                <span style={{ fontSize: 11, color: SW.mid, lineHeight: 1.7 }}>
+                  {ar
+                    ? "نمط الشهر المعروض هو مصدر السريان. انسخه أو أعد الشهر السابق — نشر الأسابيع وقرار 18632 لا يتغيّران."
+                    : "This month's pattern is the validity source. Copy it or reuse the previous month — weekly publish and Decision 18632 stay the same."}
+                </span>
+                {[
+                  {
+                    id: "prev",
+                    ready: sourcePrevHas,
+                    label: ar ? "أعد الشهر السابق" : "Reuse previous month",
+                    note: ar
+                      ? `ينسخ تعيينات ${formatMonthLabel(prevMonth.year, prevMonth.monthIndex, true)} إلى ${monthLabel}`
+                      : `Copies ${formatMonthLabel(prevMonth.year, prevMonth.monthIndex, false)} into ${monthLabel}`,
+                    empty: ar
+                      ? `لا تعيينات مؤرخة في ${formatMonthLabel(prevMonth.year, prevMonth.monthIndex, true)}`
+                      : `No dated assignments in ${formatMonthLabel(prevMonth.year, prevMonth.monthIndex, false)}`,
+                    onClick: () => doReuseMonth("prev"),
+                  },
+                  {
+                    id: "repeat",
+                    ready: sourceCurrentHas,
+                    label: ar ? "كرر هذا الشهر" : "Repeat this month",
+                    note: ar
+                      ? `ينسخ ${monthLabel} إلى ${formatMonthLabel(nextMonth.year, nextMonth.monthIndex, true)}`
+                      : `Copies ${monthLabel} into ${formatMonthLabel(nextMonth.year, nextMonth.monthIndex, false)}`,
+                    empty: ar
+                      ? `لا تعيينات مؤرخة في ${monthLabel}`
+                      : `No dated assignments in ${monthLabel}`,
+                    onClick: () => doReuseMonth("repeat"),
+                  },
+                ].map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={option.onClick}
+                    title={option.ready ? option.note : option.empty}
+                    style={{
+                      fontFamily: "inherit",
+                      textAlign: "start",
+                      fontSize: 12,
+                      padding: "10px 12px",
+                      border: `1px solid ${option.ready ? SW.greenBd : SW.soft}`,
+                      background: option.ready ? SW.greenBg : SW.card,
+                      color: SW.ink,
+                      cursor: "pointer",
+                      borderRadius: DS_RADIUS,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 2,
+                    }}
+                  >
+                    <span style={{ fontWeight: option.ready ? 700 : 600 }}>{option.label}</span>
+                    <span style={{ fontSize: 10, color: SW.muted, lineHeight: 1.6 }}>
+                      {option.ready ? option.note : option.empty}
+                    </span>
+                  </button>
+                ))}
+                <span style={{ fontSize: 11, color: SW.mid, lineHeight: 1.8 }}>
+                  {ar
+                    ? "تغيير الوقت يعيد حساب الساعات ويعيد الجدول إلى مسودة — الوردية المنشورة لا تتغيّر بأثر رجعي."
+                    : "Changing the time recalculates hours and returns the roster to draft — a published shift never changes retroactively."}
+                </span>
               </div>
             )}
           </section>
@@ -1283,9 +1689,25 @@ export default function ShiftWeekBoard({
             {[
               [ar ? "ساعات مجدولة" : "Scheduled hours", String(gates.totalHours), ar ? "مجموع الأسبوع" : "Week sum", SW.ink],
               [ar ? "تعيينات" : "Assignments", String(gates.assigned), ar ? "خلية غير «راحة»" : "Non-rest cells", SW.ink],
-              [ar ? "أيام بلا صباحي" : "Days without morning", String(gates.uncovered.length), gates.uncovered.length ? (ar ? "تمنع النشر" : "Blocks publish") : (ar ? "التغطية مكتملة" : "Coverage complete"), gates.uncovered.length ? SW.abs : SW.green],
               [ar ? "تجاوز السقف" : "Over the cap", String(gates.overCap.length), ar ? "أكثر من 48 ساعة" : "Over 48 hours", gates.overCap.length ? SW.abs : SW.green],
-              [ar ? "أيام إجازة معتمدة" : "Approved leave days", String(gates.leaveDays || 0), gates.leaveDays ? (ar ? "من طلباتي · خارج حساب الساعات" : "From My Requests · outside hours") : (ar ? "لا إجازات هذا الأسبوع" : "No leave this week"), gates.leaveDays ? "#6b5730" : SW.green],
+              (() => {
+                const approved = gates.approvedLeaveDays || 0;
+                const holiday = gates.officialHolidayLeaveDays || 0;
+                const total = gates.leaveDays || 0;
+                if (!total) {
+                  return [ar ? "أيام إجازة خارج الساعات" : "Leave days outside hours", "0", ar ? "لا إجازات هذا الأسبوع" : "No leave this week", SW.green];
+                }
+                const note = [
+                  approved ? (ar ? `${approved} معتمدة من طلباتي` : `${approved} approved from My Requests`) : "",
+                  holiday
+                    ? (ar
+                      ? `${holiday} ${(gates.holidayLeaveNames || []).join(" · ") || "إجازة اليوم الوطني / يوم التأسيس / العيد"} (م112)`
+                      : `${holiday} ${(gates.holidayLeaveNames || []).join(" · ") || "National Day / Founding Day / Eid leave"} (Art. 112)`)
+                    : "",
+                ].filter(Boolean).join(ar ? " · " : " · ")
+                  || (ar ? "خارج حساب الساعات" : "Outside hours");
+                return [ar ? "أيام إجازة خارج الساعات" : "Leave days outside hours", String(total), note, "#6b5730"];
+              })(),
             ].map(([label, value, note, color]) => (
               <div key={label} style={{ padding: "12px 18px", borderBottom: `1px solid ${SW.row}`, display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "baseline" }}>
                 <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
@@ -1296,13 +1718,13 @@ export default function ShiftWeekBoard({
               </div>
             ))}
             <div style={{ padding: "12px 18px" }}>
-              <span style={{ fontSize: 11, color: SW.mid, lineHeight: 1.85 }}>
+              <div role="status" style={blockers ? statusBannerQuiet.warn : published ? statusBannerQuiet.ok : statusBannerQuiet.warn}>
                 {blockers
-                  ? (ar ? `النشر متوقّف: ${gates.blockers.map((row) => row.title).join("، ")}.` : `Publish is stopped: ${gates.blockers.map((row) => row.title).join(", ")}.`)
+                  ? (ar ? "النشر متوقّف — الموانع ظاهرة في شريط التخطيط أعلاه." : "Publish is stopped — blockers sit in the planning strip above.")
                   : published
                     ? (ar ? "الجدول منشور — التقويم التشغيلي يحسب التأخير والغياب منه." : "Published — the operational calendar measures lateness and absence from it.")
                     : (ar ? "لا موانع. انشر ليصبح هذا الجدول مصدر الوقت للأسبوع." : "No blockers. Publish to make this week the clock.")}
-              </span>
+              </div>
             </div>
           </section>
           </>

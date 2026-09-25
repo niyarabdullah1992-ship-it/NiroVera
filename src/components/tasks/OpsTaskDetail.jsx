@@ -11,6 +11,7 @@ import OpsTaskAttachments from "@/components/tasks/detail/OpsTaskAttachments";
 import OpsTaskDiscussion from "@/components/tasks/detail/OpsTaskDiscussion";
 import OpsTaskBlockerResolve from "@/components/tasks/detail/OpsTaskBlockerResolve";
 import OpsTaskComposer from "@/components/tasks/detail/OpsTaskComposer";
+import { DS_RADIUS } from "@/lib/designSystem";
 import { NAVY_FILL } from "@/lib/platformStyles";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 
@@ -57,6 +58,9 @@ export default function OpsTaskDetail({
   canEndDelegation = false,
   onEndDelegation,
   onSetMode,
+  canEditAssignees = false,
+  stationMembers = [],
+  onSetMembers,
   onExtendDue,
   onRedistributePace,
   onOpenDelete,
@@ -245,6 +249,9 @@ export default function OpsTaskDetail({
         onOpenTransfer={onOpenTransfer}
         onEndDelegation={onEndDelegation}
         onSetMode={deleted ? undefined : onSetMode}
+        canEditAssignees={!deleted && canEditAssignees}
+        stationMembers={stationMembers}
+        onSetMembers={deleted ? undefined : onSetMembers}
         onOpenDelete={onOpenDelete}
         paceStrip={pace.active ? <DailyPaceStrip ar={ar} pace={pace} /> : null}
         employees={employees}
@@ -252,7 +259,7 @@ export default function OpsTaskDetail({
 
       {deleted && (
         <OpsTaskSection tone="bad" title={ar ? "محذوفة — تبقى في السجل" : "Deleted — stays in the record"}>
-          <div style={{ fontSize: 12, color: "#991B1B", lineHeight: 1.65 }}>
+          <div style={{ fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.65 }}>
             {doneN > 0
               ? (ar
                 ? `الإنجاز المسجّل ${doneN}/${targetN} يبقى في السجل مع التعليقات والمرفقات.`
@@ -289,7 +296,7 @@ export default function OpsTaskDetail({
       )}
           {approved && (
         <OpsTaskSection tone="ok" title={ar ? "اعتُمد الإنجاز" : "Completion approved"}>
-          <div style={{ fontSize: 12, color: "#15803D", lineHeight: 1.65 }}>
+          <div style={{ fontSize: 12, color: "var(--nv-ok-ink)", lineHeight: 1.65 }}>
             {ar ? `مُنحت ${task.pointsAwarded ?? points} نقطة — دخلت في نسبة الأداء وسجل التدقيق.` : `${task.pointsAwarded ?? points} points granted — in the performance score and audit trail.`}
             </div>
         </OpsTaskSection>
@@ -309,15 +316,15 @@ export default function OpsTaskDetail({
         onSaveSteps={onSaveSteps}
       />
       <OpsTaskAuditTimeline task={task} ar={ar} />
-      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: 16, background: NAVY_FILL, color: "#fff", flexWrap: "wrap" }}>
-            <div>
-          <div style={{ fontSize: 10, color: "#6EE7B7", letterSpacing: "0.1em", fontWeight: 600 }}>{ar ? "قيمة المهمة بالنقاط" : "TASK WORTH"}</div>
-          <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 28, fontWeight: 600, lineHeight: 1, marginTop: 6 }}>{points}</div>
-              </div>
-        <div style={{ flex: "1 1 220px", fontSize: 12, color: "#A8B4C8", lineHeight: 1.65, textWrap: "pretty" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: DS_RADIUS, background: NAVY_FILL, color: "#fff", flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 10, color: "rgba(255,255,255,.72)", letterSpacing: "0.1em", fontWeight: 600 }}>{ar ? "قيمة المهمة بالنقاط" : "TASK WORTH"}</div>
+          <div dir="ltr" style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", fontSize: 28, fontWeight: 600, lineHeight: 1, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{points}</div>
+        </div>
+        <div style={{ flex: "1 1 220px", fontSize: 12, color: "rgba(255,255,255,.78)", lineHeight: 1.65, textWrap: "pretty" }}>
           {ar ? "النقاط = الأولوية × وزن الجهد — تُمنح بعد اعتماد المشرف للإثبات." : "Points = priority × effort — granted after the supervisor approves the proof."}
-            </div>
-          </div>
+        </div>
+      </div>
 
       <OpsTaskSection
         title={ar ? "المحادثة" : "Discussion"}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -6,66 +6,125 @@ import { OPEN_HIRE_EVENT } from "@/lib/orgHire";
 import { isManagerUnit } from "@/lib/stationTree";
 import { toast } from "@/components/ui/use-toast";
 import { syncWorkplaceManagers } from "@/lib/peopleTree";
-import { orgChainHealth, orgChainNext } from "@/lib/orgChain";
-import OrgChainStrip from "@/components/hr/OrgChainStrip";
+import { orgChainHealth } from "@/lib/orgChain";
+import OrgWorkforceHero from "@/components/hr/OrgWorkforceHero";
+import OrgWorkforceAdminPanels from "@/components/hr/OrgWorkforceAdminPanels";
 import OrgTemplateBoard from "@/components/hr/OrgTemplateBoard";
 import OrgPeopleTree from "@/components/hr/OrgPeopleTree";
-import OrgListAccessBoard from "@/components/hr/OrgListAccessBoard";
-import OrgEscalationBoard from "@/components/hr/OrgEscalationBoard";
 import HireSeatDrawer from "@/components/hr/HireSeatDrawer";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import { pageKicker } from "@/lib/moduleMeta";
 import { MUTED } from "@/lib/platformStyles";
+import { useRailSide } from "@/lib/railSide";
 
-const ORG_TABS = new Set(["branches", "people", "lists", "escalation"]);
-
-/** Place → people → access. One workplace tree; people derived; lists grant permission. */
+/**
+ * Workforce /org — HTML composition: view toggle · hero toolbar · tree stage ·
+ * escalation / permissions / event log below (admin). Design System v2 tokens.
+ */
 export default function OrgStructure() {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const { data, currentUser, company } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [hire, setHire] = useState(null);
-  const requested = searchParams.get("tab");
-  const tool = ORG_TABS.has(requested) ? requested : "branches";
+  const [addBranchSignal, setAddBranchSignal] = useState(0);
+  const [query, setQuery] = useState("");
+  const [trunkSignal, setTrunkSignal] = useState(0);
+  const [fullSignal, setFullSignal] = useState(0);
+  const [printSignal, setPrintSignal] = useState(0);
+  const [hrSignal, setHrSignal] = useState(0);
+  const [pickHit, setPickHit] = useState(null);
+  const [fullActive, setFullActive] = useState(false);
+  const [searchHits, setSearchHits] = useState([]);
+  const [openEsc, setOpenEsc] = useState(false);
+  const [openPerm, setOpenPerm] = useState(false);
+  const [openLog, setOpenLog] = useState(false);
+  const [openGrades, setOpenGrades] = useState(false);
+  const [byGrade, setByGrade] = useState(false);
+  const escRef = useRef(null);
+  const permRef = useRef(null);
+  const logRef = useRef(null);
+  const gradesRef = useRef(null);
 
-  const setTool = (value) => {
-    const next = new URLSearchParams(searchParams);
-    if (value === "branches") next.delete("tab");
-    else next.set("tab", value);
-    setSearchParams(next, { replace: true });
+  const canWrite = Boolean(currentUser && (
+    currentUser.id === data?.ownerId
+    || ["owner", "director", "admin", "pgm", "hr_manager", "ops_manager"].includes(currentUser.role)
+  ));
+
+  const railSide = useRailSide();
+  const requestedView = searchParams.get("view");
+  const requestedTab = searchParams.get("tab");
+  const view = railSide === "employee"
+    ? "employee"
+    : railSide === "manage"
+      ? (canWrite ? "admin" : "employee")
+      : (requestedView === "employee" || (!canWrite && requestedView !== "admin")
+        ? "employee"
+        : (requestedView === "admin" || canWrite ? "admin" : "employee"));
+  const isAdminView = view === "admin" && canWrite && railSide !== "employee";
+
+  const setView = (next) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "admin") params.set("view", "admin");
+    else params.set("view", "employee");
+    params.delete("tab");
+    setSearchParams(params, { replace: true });
+    setQuery("");
+    setSearchHits([]);
+    setPickHit(null);
   };
 
   const health = useMemo(() => orgChainHealth(data), [data]);
-  const next = useMemo(() => orgChainNext(data, ar), [data, ar]);
 
-  const sections = useMemo(() => [
-    {
-      value: "branches",
-      step: 1,
-      label: ar ? "المكان" : "Place",
-      count: health.branches,
-    },
-    {
-      value: "people",
-      step: 2,
-      label: ar ? "الناس" : "People",
-      count: health.people,
-    },
-    {
-      value: "lists",
-      step: 3,
-      label: ar ? "الصلاحية" : "Access",
-      count: health.lists,
-    },
-    {
-      value: "escalation",
-      step: 4,
-      label: ar ? "التصعيد" : "Escalation",
-      count: health.escalationBranches || 0,
-    },
-  ], [ar, health.branches, health.people, health.lists, health.escalationBranches]);
+  const scrollPanel = (ref) => {
+    requestAnimationFrame(() => {
+      ref.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    });
+  };
+
+  const handleSearchHits = useCallback((hits) => {
+    setSearchHits((prev) => {
+      const next = Array.isArray(hits) ? hits : [];
+      if (
+        prev.length === next.length
+        && prev.every((row, index) => String(row.id || row.stationId || "") === String(next[index]?.id || next[index]?.stationId || ""))
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
+  const goEsc = () => {
+    setOpenEsc(true);
+    scrollPanel(escRef);
+  };
+  const goPerm = () => {
+    setOpenPerm(true);
+    scrollPanel(permRef);
+  };
+  const goLog = () => {
+    setOpenLog(true);
+    scrollPanel(logRef);
+  };
+
+  useEffect(() => {
+    if (!requestedTab) return;
+    const params = new URLSearchParams(searchParams);
+    if (requestedTab === "escalation") {
+      setOpenEsc(true);
+      if (canWrite) params.set("view", "admin");
+    } else if (requestedTab === "lists") {
+      setOpenPerm(true);
+      if (canWrite) params.set("view", "admin");
+    } else if (requestedTab === "people") {
+      params.set("view", "employee");
+    } else if (requestedTab === "branches" || requestedTab === "seats" || requestedTab === "template") {
+      if (canWrite) params.set("view", "admin");
+    }
+    params.delete("tab");
+    setSearchParams(params, { replace: true });
+  }, [requestedTab, canWrite, searchParams, setSearchParams]);
 
   const openHire = (detail = {}) => {
     const station = (data?.stations || []).find((item) => String(item.id) === String(detail.stationId || ""));
@@ -89,10 +148,6 @@ export default function OrgStructure() {
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
     let changed = false;
-    if (nextParams.get("tab") === "seats" || nextParams.get("tab") === "template") {
-      nextParams.delete("tab");
-      changed = true;
-    }
     if (nextParams.get("hire")) {
       setHire({
         stationId: nextParams.get("station") || "",
@@ -118,21 +173,10 @@ export default function OrgStructure() {
         listId: detail.listId || "",
         listName: detail.listName || "",
       });
-      setSearchParams((prev) => {
-        const nextParams = new URLSearchParams(prev);
-        nextParams.delete("tab");
-        nextParams.delete("hire");
-        return nextParams;
-      }, { replace: true });
     };
     window.addEventListener(OPEN_HIRE_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_HIRE_EVENT, onOpen);
-  }, [setSearchParams]);
-
-  const canWrite = Boolean(currentUser && (
-    currentUser.id === data?.ownerId
-    || ["owner", "director", "admin", "pgm", "hr_manager", "ops_manager"].includes(currentUser.role)
-  ));
+  }, []);
 
   useEffect(() => {
     if (!company?.id || !canWrite) return;
@@ -143,40 +187,115 @@ export default function OrgStructure() {
     <>
       <PlatformStampShell
         ar={ar}
-        kicker={pageKicker("/app/org", lang)}
-        title={ar ? "الهيكل التنظيمي" : "Org structure"}
-        sections={sections}
-        tool={tool}
-        onTool={setTool}
+        bare
         maxWidth={1400}
         flushBody
-        metaBar={tool === "branches" ? (
-          <OrgChainStrip ar={ar} onTool={setTool} health={health} next={next} />
-        ) : null}
       >
         {!data || !currentUser || !company ? (
           <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "جارٍ تحميل الهيكل…" : "Loading org structure…"}</p>
         ) : (
           <div className="nv-org-page">
-          <PageErrorBoundary resetKey={tool}>
-            {tool === "people" ? (
-              <OrgPeopleTree lang={lang} canWrite={canWrite} />
-            ) : tool === "lists" ? (
-              <OrgListAccessBoard
+            <OrgWorkforceHero
+              ar={ar}
+              data={data}
+              health={health}
+              canWrite={canWrite}
+              isAdminView={isAdminView}
+              query={query}
+              onQueryChange={setQuery}
+              searchHits={searchHits}
+              onPickHit={(hit) => {
+                setPickHit(hit);
+                setQuery("");
+                setSearchHits([]);
+              }}
+              renderHit={(hit) => (
+                <>
+                  {hit.name || hit.label}
+                  <span style={{ color: MUTED }}>
+                    {" · "}
+                    {hit.managerName || hit.job || hit.branch || ""}
+                  </span>
+                </>
+              )}
+              onTrunk={() => setTrunkSignal((n) => n + 1)}
+              onFocusHr={() => setHrSignal((n) => n + 1)}
+              onToggleFull={() => setFullSignal((n) => n + 1)}
+              fullActive={fullActive}
+              onAddBranch={isAdminView ? () => setAddBranchSignal((n) => n + 1) : undefined}
+              onPrint={() => setPrintSignal((n) => n + 1)}
+              onGoEsc={goEsc}
+              onGoPerm={goPerm}
+              onGoGrades={() => {
+                setOpenGrades(true);
+                scrollPanel(gradesRef);
+              }}
+              onToggleByGrade={() => setByGrade((value) => !value)}
+              byGrade={byGrade}
+              onGoLog={goLog}
+            />
+
+            <PageErrorBoundary resetKey={view}>
+              {isAdminView ? (
+                <OrgTemplateBoard
+                  lang={lang}
+                  onHire={openHire}
+                  addBranchSignal={addBranchSignal}
+                  embedded
+                  query={query}
+                  onQueryChange={setQuery}
+                  pickHit={pickHit}
+                  onPickHitConsumed={() => setPickHit(null)}
+                  trunkSignal={trunkSignal}
+                  fullSignal={fullSignal}
+                  printSignal={printSignal}
+                  hrSignal={hrSignal}
+                  onFullChange={setFullActive}
+                  onSearchHits={handleSearchHits}
+                  byGrade={byGrade}
+                />
+              ) : (
+                <OrgPeopleTree
+                  lang={lang}
+                  canWrite={false}
+                  embedded
+                  query={query}
+                  onQueryChange={setQuery}
+                  pickHit={pickHit}
+                  onPickHitConsumed={() => setPickHit(null)}
+                  trunkSignal={trunkSignal}
+                  fullSignal={fullSignal}
+                  printSignal={printSignal}
+                  hrSignal={hrSignal}
+                  onFullChange={setFullActive}
+                  onSearchHits={handleSearchHits}
+                  byGrade={byGrade}
+                />
+              )}
+            </PageErrorBoundary>
+
+            {isAdminView ? (
+              <OrgWorkforceAdminPanels
+                ar={ar}
                 data={data}
                 companyId={company.id}
-                ar={ar}
                 canWrite={canWrite}
                 ownerMode={currentUser.id === data.ownerId || currentUser.role === "owner"}
-                wide
                 onHire={openHire}
+                openEsc={openEsc}
+                openPerm={openPerm}
+                openLog={openLog}
+                openGrades={openGrades}
+                onToggleGrades={() => setOpenGrades((value) => !value)}
+                gradesRef={gradesRef}
+                onToggleEsc={() => setOpenEsc((v) => !v)}
+                onTogglePerm={() => setOpenPerm((v) => !v)}
+                onToggleLog={() => setOpenLog((v) => !v)}
+                escRef={escRef}
+                permRef={permRef}
+                logRef={logRef}
               />
-            ) : tool === "escalation" ? (
-              <OrgEscalationBoard lang={lang} canWrite={canWrite} />
-            ) : (
-              <OrgTemplateBoard lang={lang} onHire={openHire} />
-            )}
-          </PageErrorBoundary>
+            ) : null}
           </div>
         )}
       </PlatformStampShell>
@@ -191,7 +310,11 @@ export default function OrgStructure() {
           listId={hire?.listId || ""}
           listName={hire?.listName || ""}
           onClose={() => setHire(null)}
-          onNeedAccess={() => { setHire(null); setTool("lists"); }}
+          onNeedAccess={() => {
+            setHire(null);
+            setView("admin");
+            goPerm();
+          }}
         />
       ) : null}
     </>

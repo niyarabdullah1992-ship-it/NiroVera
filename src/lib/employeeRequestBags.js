@@ -3,6 +3,8 @@
  * Cloud hydrate must project both; a redacted pull must not wipe a local pending row.
  */
 
+import { readEmployeeNo } from "./employeeNumber.js";
+
 export function mergeRequestLists(...lists) {
   const byKey = new Map();
   for (const list of lists) {
@@ -32,8 +34,10 @@ export function mergeRequestBag(incoming, local) {
 
 export function projectDirectoryEmployee(record) {
   if (!record || typeof record !== "object") return null;
+  const employeeNo = readEmployeeNo(record);
   return {
     id: record.employeeId || record.id,
+    employeeNo: employeeNo || undefined,
     name: record.name,
     email: record.email,
     role: record.role,
@@ -109,8 +113,13 @@ export function mergeEmployeeRequestBags(localEmployees = [], incomingEmployees 
     if (!local) return employee;
     const leaveRequests = mergeRequestBag(employee.leaveRequests, local.leaveRequests);
     const otherRequests = mergeRequestBag(employee.otherRequests, local.otherRequests);
-    if (leaveRequests === employee.leaveRequests && otherRequests === employee.otherRequests) return employee;
-    return { ...employee, leaveRequests, otherRequests };
+    const employeeNo = readEmployeeNo(employee) || readEmployeeNo(local);
+    const bagsSame = leaveRequests === employee.leaveRequests && otherRequests === employee.otherRequests;
+    if (bagsSame && (!employeeNo || readEmployeeNo(employee) === employeeNo)) return employee;
+    const profile = employeeNo
+      ? { ...(employee.profile || {}), employeeNo, employeeNumber: employee.profile?.employeeNumber || employeeNo }
+      : employee.profile;
+    return { ...employee, leaveRequests, otherRequests, employeeNo: employeeNo || employee.employeeNo, profile };
   });
 }
 

@@ -16,10 +16,10 @@ export const VOICE_CHANNELS = [
     id: "suggestion",
     ar: "اقتراح",
     en: "Suggestion",
-    accent: "#1D9A5B",
-    color: "#137A49",
-    bg: "#F2FAF6",
-    border: "#BFE6D2",
+    accent: "var(--nv-ok-fill)",
+    color: "var(--nv-ok-ink)",
+    bg: "var(--nv-ok-soft)",
+    border: "var(--nv-ok-line)",
     identityAr: "باسمك",
     identityEn: "In your name",
     blurbAr: "تحسين عمل أو إجراء أو بيئة فرع.",
@@ -33,10 +33,10 @@ export const VOICE_CHANNELS = [
     id: "complaint",
     ar: "شكوى",
     en: "Complaint",
-    accent: "#C9962B",
-    color: "#8A6516",
-    bg: "#FDF6E8",
-    border: "#ECD9A8",
+    accent: "var(--nv-warn-fill)",
+    color: "var(--nv-warn-ink)",
+    bg: "var(--nv-warn-soft)",
+    border: "var(--nv-warn-line)",
     identityAr: "بهوية ظاهرة",
     identityEn: "Named",
     blurbAr: "حقّ تطلبه أو ضرر وقع عليك.",
@@ -50,10 +50,10 @@ export const VOICE_CHANNELS = [
     id: "anonymous",
     ar: "بلاغ مجهول",
     en: "Anonymous report",
-    accent: "#8A1C2B",
-    color: "#8A1C2B",
-    bg: "#FBF1F2",
-    border: "#E9C4C9",
+    accent: "var(--nv-bad-fill)",
+    color: "var(--nv-bad-ink)",
+    bg: "var(--nv-bad-soft)",
+    border: "var(--nv-bad-line)",
     identityAr: "بلا هويّة",
     identityEn: "No identity",
     blurbAr: "خطر أو تجاوز تخشى كشف نفسك فيه.",
@@ -216,8 +216,8 @@ export function decorateVoiceItem(item, {
       : step.state === "current"
         ? (ar ? "عنده الآن" : "With them now")
         : (ar ? "لم يبلغه" : "Not reached"),
-    bg: step.state === "pending" ? "#fff" : "#F7F8FA",
-    color: step.state === "pending" ? "#6B7280" : "#14213D",
+    bg: step.state === "pending" ? "var(--nv-card)" : "var(--nv-inset)",
+    color: step.state === "pending" ? "var(--nv-muted)" : "var(--nv-ink)",
   }));
   return {
     item,
@@ -231,10 +231,10 @@ export function decorateVoiceItem(item, {
     title: item.title,
     body: item.body,
     channel: ar ? ch.ar : ch.en,
-    accent: settled ? (outcome === "adopt" ? "#1D9A5B" : "#C7CCD6") : (overdue ? "#8A1C2B" : "#C9962B"),
-    stColor: settled ? (outcome === "adopt" ? "#137A49" : "#8A6516") : (overdue ? "#8A1C2B" : "#8A6516"),
-    stBg: settled ? (outcome === "adopt" ? "#F2FAF6" : "#FDF6E8") : (overdue ? "#FBF1F2" : "#FDF6E8"),
-    stBorder: settled ? (outcome === "adopt" ? "#BFE6D2" : "#ECD9A8") : (overdue ? "#E9C4C9" : "#ECD9A8"),
+    accent: settled ? (outcome === "adopt" ? "var(--nv-ok-fill)" : "var(--nv-box)") : (overdue ? "var(--nv-bad-ink)" : "var(--nv-warn-fill)"),
+    stColor: settled ? (outcome === "adopt" ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)") : (overdue ? "var(--nv-bad-ink)" : "var(--nv-warn-ink)"),
+    stBg: settled ? (outcome === "adopt" ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)") : (overdue ? "var(--nv-bad-soft)" : "var(--nv-warn-soft)"),
+    stBorder: settled ? (outcome === "adopt" ? "var(--nv-ok-line)" : "var(--nv-warn-line)") : (overdue ? "var(--nv-bad-line)" : "var(--nv-warn-line)"),
     state: label,
     slaLabel: overdue ? (ar ? "تجاوز المهلة" : "Past the window") : (ar ? "المتبقي للمراجعة" : "Time left"),
     slaVal: left == null
@@ -275,6 +275,61 @@ export function decorateVoiceItem(item, {
     atTop: enriched.atTop,
     level: enriched.escalationLevel,
   };
+}
+
+/** Settled cards → RecordSmartArchive rows (search / day groups). */
+export function voiceArchiveSmartItems(cards = [], { ar = true } = {}) {
+  return (cards || [])
+    .filter((card) => card.settled)
+    .map((card) => ({
+      id: card.item.id,
+      title: card.title,
+      text: [card.meta, card.reply].filter(Boolean).join(" · "),
+      date: card.item.closedAt || card.item.decidedAt || card.item.createdAt,
+      badge: card.state,
+      search: [
+        card.title,
+        card.meta,
+        card.reply,
+        card.channel,
+        card.item?.anonymousId,
+        card.author?.name,
+        card.state,
+      ].filter(Boolean).join(" "),
+      card,
+      ar,
+    }));
+}
+
+/**
+ * Named settled voice trail for one employee file.
+ * Anonymous reports never appear on a personal file.
+ */
+export function employeeVoiceArchiveCards({
+  publicReports = [],
+  employeeId,
+  employees = [],
+  stations = [],
+  ar = true,
+  nowMs = Date.now(),
+  chain = defaultEscalationChain(),
+  canManage = false,
+} = {}) {
+  const want = String(employeeId || "").trim();
+  if (!want) return [];
+  const items = collectVoiceItems({ publicReports, anonymousReports: [] })
+    .filter((row) => String(row.authorId) === want && row.channel !== "anonymous");
+  return items
+    .map((item) => decorateVoiceItem(item, {
+      employees,
+      stations,
+      ar,
+      nowMs,
+      chain,
+      canManage,
+      currentUser: { id: want },
+    }))
+    .filter((card) => card.settled);
 }
 
 export function deriveVoiceBoard({
@@ -332,18 +387,18 @@ export function deriveVoiceBoard({
     pulse,
     pulseKind: overdue.length ? "bad" : open.length ? "warn" : "ok",
     pulseColor: overdue.length ? "#8A1C2B" : open.length ? "#8A6516" : "#137A49",
-    pulseBg: overdue.length ? "#FBF1F2" : open.length ? "#FDF6E8" : "#F2FAF6",
-    pulseBorder: overdue.length ? "#E9C4C9" : open.length ? "#ECD9A8" : "#BFE6D2",
-    pulseDot: overdue.length ? "#8A1C2B" : open.length ? "#C9962B" : "#1D9A5B",
+    pulseBg: overdue.length ? "var(--nv-bad-soft)" : open.length ? "var(--nv-warn-soft)" : "var(--nv-ok-soft)",
+    pulseBorder: overdue.length ? "var(--nv-bad-line)" : open.length ? "var(--nv-warn-line)" : "var(--nv-ok-line)",
+    pulseDot: overdue.length ? "var(--nv-bad-ink)" : open.length ? "var(--nv-warn-fill)" : "var(--nv-ok-fill)",
     openCount: open.length,
     mineOpen: mine.filter((card) => !card.settled).length,
     chain: chain.map((tier, idx) => ({
       num: `0${idx + 1}`,
       name: ar ? tier.labelAr : tier.labelEn,
       mark: idx === 0 ? "✓" : "",
-      bg: idx === 0 ? "#137A49" : "#fff",
-      border: idx === 0 ? "#137A49" : "#C7CCD6",
-      color: idx === 0 ? "#14213D" : "#4B5567",
+      bg: idx === 0 ? "var(--nv-ok-ink)" : "var(--nv-card)",
+      border: idx === 0 ? "var(--nv-ok-ink)" : "var(--nv-box)",
+      color: idx === 0 ? "var(--nv-ink)" : "var(--nv-ink2)",
       weight: idx === 0 ? 700 : 400,
     })),
     chainNote: ar

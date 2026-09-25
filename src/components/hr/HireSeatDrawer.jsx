@@ -19,7 +19,7 @@ import {
   vacantSeats,
 } from "@/lib/orgHire";
 import { downloadHireTemplate } from "@/lib/hireTemplate";
-import { gradesForList, jobGradeLabel } from "@/lib/jobGrades";
+import { gradesForList, gradesForTitle, jobGradeLabel } from "@/lib/jobGrades";
 import { companyLists, listPositions, templateLabel } from "@/lib/permissionTemplates";
 import {
   PROFILE_GROUPS,
@@ -29,7 +29,7 @@ import {
 } from "@/lib/employeeProfileFields";
 import { checkSaudiIdentityGate, checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
 import { checkProbationGate } from "@/lib/contractLawDerivations";
-import { BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE, field, labelMuted, ui } from "@/lib/platformStyles";
+import { BORDER, CARD, INK, MUTED, NAVY, SURFACE, field, labelMuted, ui } from "@/lib/platformStyles";
 import { isManagerUnit, workplaceStations } from "@/lib/stationTree";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -119,6 +119,11 @@ export default function HireSeatDrawer({
   const pool = stationId || resolvedListId || listName ? vacancies : allVacancies;
   const listKey = newSeat.listId || resolvedListId;
   const listGrades = useMemo(() => gradesForList(data, listKey), [data, listKey]);
+  const titleGrades = useMemo(
+    () => (String(newSeat.title || "").trim() ? gradesForTitle(data, newSeat.title) : []),
+    [data, newSeat.title],
+  );
+  const offerGrades = titleGrades.length ? titleGrades : listGrades;
   const listPack = packs.find((pack) => pack.id === listKey);
   const stations = workplaceStations(data?.stations || []);
   const lockedSeat = Boolean(seatId);
@@ -197,7 +202,8 @@ export default function HireSeatDrawer({
     const seatHomeId = stationId || newSeat.stationId;
     if (!seatHomeId || !newSeat.title.trim()) return false;
     if (!newSeat.listId && !resolvedListId) return false;
-    if (listGrades.length && !newSeat.gradeId) return false;
+    if (listGrades.length && !newSeat.gradeId && !titleGrades.length) return false;
+    if (titleGrades.length && !newSeat.gradeId) return false;
     if (creating && hasManager && isBranchManagerTitle(newSeat.title)) return false;
     return true;
   };
@@ -332,8 +338,10 @@ export default function HireSeatDrawer({
         SEAT_FIELDS: ar ? "أكمل الفرع والقائمة واسم المنصب." : "Finish the branch, list, and job title.",
         NO_GRADES: ar ? "لا درجات على هذه القائمة — اختر قائمة أخرى أو أضف درجة من قوائم الفروع." : "This list has no grades — pick another list or add a grade on branch lists.",
         GRADE_LIST: ar ? "اختر درجة من سلّم هذه القائمة." : "Pick a grade from this list’s ladder.",
+        GRADE_TITLE: ar ? "اختر درجة من سلّم هذا المسمّى." : "Pick a grade from this title’s ladder.",
         ADMIN_NO_HIRE: ar ? ADMIN_HIRE.ar : ADMIN_HIRE.en,
         MANAGER_TAKEN: ar ? "هذا الفرع له مدير. لا يُضاف مدير فرع ثانٍ." : "This branch already has a manager. A second branch manager cannot be added.",
+        EMPLOYEE_NO_TAKEN: ar ? "الرقم الوظيفي مستخدم في هذه الشركة." : "That job number is already used in this company.",
         LIMIT: ar ? "بلغت حد الفروع في الخطة." : "The plan’s branch limit was reached.",
         CONTRACT_END: ar ? "العقد محدد المدة يحتاج تاريخ نهاية (المادة 55)." : "A fixed-term contract needs an end date (Article 55).",
         CONTRACT_EXPIRED: ar ? "لا يُعيَّن بعقد محدد المدة منتهٍ." : "A hire cannot use an expired fixed-term contract.",
@@ -624,10 +632,10 @@ export default function HireSeatDrawer({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 90,
+        zIndex: 480,
         display: "flex",
-        justifyContent: ar ? "flex-start" : "flex-end",
-        background: "rgba(20,40,75,.38)",
+        justifyContent: "flex-start",
+        background: "rgba(15,26,48,.28)",
       }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose?.();
@@ -636,18 +644,17 @@ export default function HireSeatDrawer({
       <aside
         dir={ar ? "rtl" : "ltr"}
         style={{
-          width: 460,
+          width: "min(94vw, 420px)",
           maxWidth: "100vw",
           height: "100%",
-          background: CARD,
-          borderInlineStart: `1px solid ${BORDER}`,
-          boxShadow: "-18px 0 40px rgba(20,40,75,.12)",
+          background: "var(--nv-card, #fff)",
+          borderInlineEnd: "1px solid var(--nv-line, #DFE3EA)",
+          boxShadow: "0 0 40px rgba(20,33,61,.18)",
           display: "flex",
           flexDirection: "column",
         }}
       >
-        <div aria-hidden style={{ height: 3, background: NAVY_FILL, flexShrink: 0 }} />
-        <header style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "14px 16px 12px", borderBottom: `1px solid ${BORDER}` }}>
+        <header style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "16px 18px", borderBottom: `1px solid ${BORDER}`, background: "var(--nv-hover, #F5F6FA)" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 10, letterSpacing: "0.14em", fontWeight: 600, color: MUTED }}>
               {ar ? "إغلاق السلسلة" : "Close the chain"}
@@ -769,49 +776,47 @@ export default function HireSeatDrawer({
                           ))}
                         </select>
                       </Field>
-                      {listKey && !listGrades.length ? (
+                      <Field label={ar ? "المنصب من القائمة" : "Title from the list"}>
+                        {catalogTitles.length ? (
+                          <select
+                            value={newSeat.title}
+                            onChange={(e) => setNewSeat((current) => ({ ...current, title: e.target.value, gradeId: "" }))}
+                            style={{ ...field, appearance: "auto" }}
+                          >
+                            <option value="">{ar ? "اختر منصبًا من القائمة" : "Pick a title from the list"}</option>
+                            {catalogTitles.map((item) => (
+                              <option key={item.id} value={item.title}>{item.title}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            value={newSeat.title}
+                            onChange={(e) => setNewSeat((current) => ({ ...current, title: e.target.value, gradeId: "" }))}
+                            placeholder={ar ? "أضف المناصب في قائمة المنشأة أولًا، أو اكتب مسمّى" : "Add titles on the company list first, or type one"}
+                            style={field}
+                          />
+                        )}
+                      </Field>
+                      {listKey && String(newSeat.title || "").trim() && !titleGrades.length && !listGrades.length ? (
                         <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
                           {ar
-                            ? "لا درجات على هذه القائمة. صاحب الشركة يضعها من قوائم الفروع."
-                            : "This list has no grades. The company owner adds them on branch lists."}
+                            ? "هذا المسمّى بلا درجات. أضفها من سلّم الدرجات الوظيفية."
+                            : "This title has no grades. Add them on the job-grade ladder."}
                         </p>
-                      ) : listKey ? (
-                        <Field label={ar ? "الدرجة — نطاق الأجر" : "Grade — pay range"}>
+                      ) : listKey && offerGrades.length ? (
+                        <Field label={ar ? "درجة هذا المسمّى" : "This title’s grade"}>
                           <select
                             value={newSeat.gradeId}
                             onChange={(e) => setNewSeat((current) => ({ ...current, gradeId: e.target.value }))}
                             style={{ ...field, appearance: "auto" }}
                           >
-                            <option value="">{ar ? "اختر درجة من هذه القائمة" : "Pick a grade from this list"}</option>
-                            {listGrades.map((grade) => (
-                              <option key={grade.id} value={grade.id}>{grade.title || jobGradeLabel(grade)}</option>
+                            <option value="">{ar ? "اختر درجة من سلّم المسمّى" : "Pick a grade from this title"}</option>
+                            {offerGrades.map((grade) => (
+                              <option key={grade.id} value={grade.id}>{grade.gradeNumber ? `${grade.gradeNumber} · ` : ""}{grade.title || jobGradeLabel(grade)}</option>
                             ))}
                           </select>
                         </Field>
                       ) : null}
-                      {(listGrades.length > 0 || newSeat.gradeId || !listKey) && (
-                        <Field label={ar ? "المنصب من القائمة" : "Title from the list"}>
-                          {catalogTitles.length ? (
-                            <select
-                              value={newSeat.title}
-                              onChange={(e) => setNewSeat((current) => ({ ...current, title: e.target.value }))}
-                              style={{ ...field, appearance: "auto" }}
-                            >
-                              <option value="">{ar ? "اختر منصبًا من القائمة" : "Pick a title from the list"}</option>
-                              {catalogTitles.map((item) => (
-                                <option key={item.id} value={item.title}>{item.title}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              value={newSeat.title}
-                              onChange={(e) => setNewSeat((current) => ({ ...current, title: e.target.value }))}
-                              placeholder={ar ? "أضف المناصب في قائمة المنشأة أولًا، أو اكتب مسمّى" : "Add titles on the company list first, or type one"}
-                              style={field}
-                            />
-                          )}
-                        </Field>
-                      )}
                     </div>
                   ) : (
                     <>

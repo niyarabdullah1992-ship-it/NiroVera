@@ -19,6 +19,8 @@ import {
   employeeHomeStationId,
   canReassignOpsTask,
   applyOpsReassign,
+  checkSetMembersGate,
+  applyOpsSetMembers,
   assignmentHistoryNote,
   CERT_FOR,
   CERT_LABELS,
@@ -362,6 +364,60 @@ assert.equal(next.assignmentHistory[0].toId, "e2");
 assert.equal(next.assignmentHistory[0].byId, "mgr1");
 assert.match(assignmentHistoryNote(next.assignmentHistory[0], "ar"), /وُكِّل من First إلى Second/);
 assert.match(assignmentHistoryNote(next.assignmentHistory[0], "ar"), /لم يُنجز في الوقت/);
+
+const teamTask = {
+  ...openTask,
+  assignMode: "some",
+  memberIds: ["e1", "e2"],
+  ownerId: "e1",
+  ownerName: "First",
+};
+const membersPeople = [
+  { id: "e1", employeeId: "e1", name: "First" },
+  { id: "e2", employeeId: "e2", name: "Second" },
+  { id: "e3", employeeId: "e3", name: "Third" },
+];
+const emptyMembers = checkSetMembersGate({
+  task: teamTask,
+  user: manager,
+  memberIds: [],
+  people: membersPeople,
+  lang: "ar",
+});
+assert.equal(emptyMembers.ok, false);
+assert.equal(emptyMembers.error, "MEMBERS_REQUIRED");
+const outOfScope = checkSetMembersGate({
+  task: teamTask,
+  user: manager,
+  memberIds: ["e1", "ghost"],
+  people: membersPeople,
+  lang: "ar",
+});
+assert.equal(outOfScope.ok, false);
+assert.equal(outOfScope.error, "ASSIGNEE_OUT_OF_SCOPE");
+const reshaped = checkSetMembersGate({
+  task: teamTask,
+  user: manager,
+  memberIds: ["e1", "e3"],
+  people: membersPeople,
+  lang: "ar",
+});
+assert.equal(reshaped.ok, true);
+assert.equal(reshaped.unchanged, false);
+const membersNext = applyOpsSetMembers(teamTask, {
+  memberIds: ["e1", "e3"],
+  byId: "mgr1",
+  byName: "Manager",
+  people: membersPeople,
+  at: "2026-08-15T09:00:00.000Z",
+  lang: "ar",
+});
+assert.deepEqual(membersNext.memberIds, ["e1", "e3"]);
+assert.equal(membersNext.assignMode, "some");
+assert.equal(membersNext.ownerId, "e1");
+assert.equal(membersNext.assignmentHistory.at(-1).kind, "members");
+assert.match(assignmentHistoryNote(membersNext.assignmentHistory.at(-1), "ar"), /تغيّر المسندون/);
+assert.match(assignmentHistoryNote(membersNext.assignmentHistory.at(-1), "ar"), /Third/);
 
 // ── Auto escalation sweep ───────────────────────────────────────────────────
 const escData = {

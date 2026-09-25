@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import PerfScoreBoard from "@/components/performance/PerfScoreBoard";
+import PerfMineBoard from "@/components/performance/PerfMineBoard";
 import PerfRangeBar from "@/components/performance/PerfRangeBar";
 import PerformanceSectionFrame, { PERF_LINE, PERF_WHITE } from "@/components/performance/PerformanceSectionFrame";
 import usePerformanceTargets from "@/hooks/usePerformanceTargets";
@@ -13,11 +15,22 @@ import { CYCLE_STATUS_LABELS } from "@/lib/hcmDerivations";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { formatDayMonthYear } from "@/lib/dateFormat";
 import { countAr, isoDay, monthsInRange, rangePresets } from "@/lib/perfRange";
+import { canManagePerformance } from "@/lib/suiteRailFrame";
+import { useRailSide } from "@/lib/railSide";
 
 /** Performance is a derived judgment of approved proof between two dates. */
 export default function Performance() {
   const { lang, dir } = useI18n();
   const { data, currentUser, company, refresh } = useAuth();
+  const [searchParams] = useSearchParams();
+  const canManage = canManagePerformance(currentUser, data);
+  const railSide = useRailSide();
+  const requested = searchParams.get("view");
+  const face = railSide === "employee" || !canManage
+    ? "self"
+    : railSide === "manage"
+      ? "manage"
+      : ((requested === "self") ? "self" : ((requested === "manage" || !requested) ? "manage" : "self"));
   const targets = usePerformanceTargets(company, currentUser);
   const headerScope = useStationScope();
   const ar = lang === "ar";
@@ -35,7 +48,7 @@ export default function Performance() {
   }, [company?.id]);
 
   useEffect(() => {
-    if (!company?.id) return;
+    if (face !== "manage" || !company?.id) return;
     let alive = true;
     hcmCall({
       action: "objectiveBoard",
@@ -49,7 +62,7 @@ export default function Performance() {
       if (alive) setCycles([]);
     });
     return () => { alive = false; };
-  }, [company?.id, company?.name, headerScope]);
+  }, [face, company?.id, company?.name, headerScope]);
 
   const scopedTargets = targets || [];
   const empName = (id) => (data?.employees || []).find((e) => String(e.id) === String(id))?.name || "";
@@ -99,13 +112,17 @@ export default function Performance() {
     <PerformanceSectionFrame
       ar={ar}
       kicker={pageKicker("/app/performance", lang)}
-      title={ar ? "الأداء" : "Performance"}
-      hint={tab === "archive"
-        ? (ar ? "دورات مقفلة وأهداف منجزة — مجمّعة حسب السنة ثم الشهر." : "Closed cycles and completed goals — grouped by year, then month.")
-        : (ar
-          ? "الأداء هو حكم التقييم: درجة تُشتقّ من الإثبات المعتمد بين تاريخين، وتُقارَن بين الموظفين والفروع. مفتوح لكل موظف — الأرقام نفسها يراها الجميع."
-          : "Performance is a judgment of evaluation: a score derived from approved proof between two dates, compared across people and branches. Open to every employee — the same figures for everyone.")}
-      range={tab !== "archive" ? (
+      title={face === "self" ? (ar ? "أدائي" : "My performance") : (ar ? "الأداء" : "Performance")}
+      hint={face === "self"
+        ? (ar
+          ? "درجتك تُشتقّ من إثباتك المعتمد بين هذين التاريخين."
+          : "Your score is derived from your approved proof between these two dates.")
+        : (tab === "archive"
+          ? (ar ? "دورات مقفلة وأهداف منجزة — مجمّعة حسب السنة ثم الشهر." : "Closed cycles and completed goals — grouped by year, then month.")
+          : (ar
+            ? "مقارنة الموظفين والفروع على الدرجة المشتقّة من الإثبات المعتمد بين تاريخين، مع قاعدة الحساب وأرشيف الدورات المقفلة."
+            : "People and branches compared on the score derived from approved proof between two dates, with the scoring rule and the archive of closed cycles."))}
+      range={(face === "self" || tab !== "archive") ? (
         <PerfRangeBar
           ar={ar}
           from={from}
@@ -118,17 +135,19 @@ export default function Performance() {
           valid={valid}
         />
       ) : null}
-      tabs={[
+      tabs={face === "manage" ? [
         { value: "people", num: "01", label: ar ? "الموظفون" : "People" },
         { value: "branches", num: "02", label: ar ? "الفروع" : "Branches" },
         { value: "how", num: "03", label: ar ? "كيف تُحسب" : "How it is scored" },
         { value: "archive", num: "04", label: ar ? "الأرشيف" : "Archive", count: archiveItems.length },
-      ]}
+      ] : []}
       tool={tab}
       onTool={setTab}
     >
-      {tab === "archive" ? (
-        <div style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "none", padding: 16 }}>
+      {face === "self" ? (
+        <PerfMineBoard lang={lang} from={from} to={to} employee={currentUser} data={data} />
+      ) : tab === "archive" ? (
+        <div style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, padding: 16 }}>
           <RecordSmartArchive
             items={archiveItems}
             lang={lang === "ar" ? "ar" : "en"}

@@ -26,6 +26,7 @@ export default function PendingRequestFinder({
   onChange,
   ar = true,
   label,
+  compact = false,
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -86,8 +87,8 @@ export default function PendingRequestFinder({
   };
 
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 11, color: MUTED }}>{label || (ar ? "ابحث في ملفات الموظفين" : "Search employee files")}</span>
+    <label style={{ display: "flex", flexDirection: "column", gap: compact ? 0 : 4, minWidth: compact ? 220 : 0 }}>
+      {compact ? null : <span style={{ fontSize: 11, color: MUTED }}>{label || (ar ? "ابحث في ملفات الموظفين" : "Search employee files")}</span>}
       <div ref={boxRef} style={{ position: "relative" }}>
         <input
           role="combobox"
@@ -105,8 +106,8 @@ export default function PendingRequestFinder({
             event.target.select();
           }}
           onKeyDown={onKey}
-          placeholder={ar ? "اكتب الاسم أو نوع الطلب" : "Type a name or request type"}
-          style={fieldStyle()}
+          placeholder={ar ? "⌕ ابحث باسم موظف أو نوع طلب" : "Search by name or request type"}
+          style={compact ? { ...fieldStyle(), height: 30, borderRadius: 10, fontSize: 11.5, padding: "0 12px" } : fieldStyle()}
         />
         {open ? (
           <div

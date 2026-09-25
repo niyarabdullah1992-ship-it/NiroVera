@@ -1,5 +1,5 @@
 import { updateCompany } from "@/lib/store";
-import { hangOrphanStationsUnderCompany, isCompanyRootStation, stationParentId } from "@/lib/stationTree";
+import { hangOrphanStationsUnderCompany, isCompanyRootStation, isHrUnit, stationParentId } from "@/lib/stationTree";
 import { appendOrgStructureEvent } from "@/lib/orgStructureLog";
 import { applyWorkplaceManagerRule } from "@/lib/peopleTreeGraph";
 
@@ -13,7 +13,7 @@ export function deleteStationWithData(companyId, stationId, { mode, targetStatio
   let blocked = false;
   updateCompany(companyId, (data) => {
     const station = (data.stations || []).find((item) => String(item.id) === String(stationId));
-    if (isCompanyRootStation(station)) {
+    if (isCompanyRootStation(station) || isHrUnit(station)) {
       blocked = true;
       return;
     }

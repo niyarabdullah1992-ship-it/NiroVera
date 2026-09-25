@@ -217,7 +217,7 @@ export default function SectionReportPicker({ lang = "ar" }) {
                       height: 36,
                       borderRadius: 10,
                       border: `1px solid ${BORDER}`,
-                      background: "#fff",
+                      background: "var(--nv-card)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",

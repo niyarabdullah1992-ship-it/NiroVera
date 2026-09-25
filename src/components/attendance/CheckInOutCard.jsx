@@ -28,7 +28,7 @@ import AppliedLawList from "@/components/shared/AppliedLawList";
 
 const STATUS_PILL = {
   present: { bg: "#ECFDF3", fg: "#15803D", bd: "#BBF7D0", ar: "حاضر", en: "Present" },
-  late: { bg: "#FFFBEB", fg: "#B45309", bd: "#FDE68A", ar: "متأخر", en: "Late" },
+  late: { bg: "var(--tint-amber-bg)", fg: "var(--tint-amber-fg)", bd: "var(--nv-warn-line)", ar: "متأخر", en: "Late" },
   absent: { bg: "#FEF2F2", fg: "#DC2626", bd: "#FECACA", ar: "غائب", en: "Absent" },
 };
 
@@ -344,7 +344,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         : (ar ? `في الوقت · الوردية تبدأ ${toWesternDigits(shift?.start || "—")}` : `On time · shift starts ${shift?.start || "—"}`),
       time: inTime,
       dot: isLate ? "#8a6516" : "#137a49",
-      bg: isLate ? "#fdf6e8" : "#f2faf6",
+      bg: isLate ? "var(--nv-warn-soft)" : "var(--nv-ok-soft)",
       border: isLate ? "#ecd9a8" : "#bfe6d2",
     });
   }
@@ -432,7 +432,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         </button>
 
         {forgotten ? (
-          <div style={{ border: "1px solid #ecd9a8", background: "#fdf6e8", padding: "13px 15px", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ border: "1px solid var(--nv-warn-line)", background: "var(--nv-warn-soft)", padding: "13px 15px", display: "flex", flexDirection: "column", gap: 8, borderRadius: 10 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#8a6516" }}>{ar ? "انصراف منسي — أُحيل إلى مديرك" : "Forgotten checkout — sent to your manager"}</span>
             <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.85 }}>
               {ar
@@ -443,7 +443,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         ) : null}
 
         {error ? (
-          <div style={{ border: "1px solid #e9c4c9", background: "#fbf1f2", padding: "13px 15px", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", padding: "13px 15px", display: "flex", flexDirection: "column", gap: 8, borderRadius: 10 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#8a1c2b" }}>
               {locationFailed
                 ? (ar ? "النطاق — لم يُستوفَ" : "Range — not met")
@@ -456,7 +456,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.85 }}>{error}</span>
           </div>
         ) : onLeaveToday && phase === "awaiting_in" ? (
-          <div style={{ border: "1px solid #BFDBFE", background: "#EFF6FF", padding: "13px 15px" }}>
+          <div style={{ border: "1px solid var(--nv-line)", background: "var(--nv-soft)", padding: "13px 15px", borderRadius: 10 }}>
             <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.85 }}>
               {ar ? "إجازة معتمدة اليوم — البصمة غير متاحة." : "Approved leave today — punch is closed."}
             </span>
@@ -601,7 +601,7 @@ function ManualPunchRequest({
               type="time"
               value={reqTime}
               onChange={(event) => setReqTime(event.target.value)}
-              style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, padding: "7px 8px", border: `1px solid ${BORDER}`, background: "#fff", color: NAVY, outline: "none", width: "100%", boxSizing: "border-box", minWidth: 0 }}
+              style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, padding: "7px 8px", border: `1px solid ${BORDER}`, background: "var(--nv-card)", color: NAVY, outline: "none", width: "100%", boxSizing: "border-box", minWidth: 0 }}
             />
           </div>
           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
@@ -616,12 +616,13 @@ function ManualPunchRequest({
                     fontFamily: "inherit",
                     fontSize: 11,
                     padding: "5px 10px",
-                    border: `1px solid ${on ? "#14213d" : "#dfe3ea"}`,
-                    background: on ? "#14213d" : "#fff",
-                    color: on ? "#fff" : "#4b5567",
+                    border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`,
+                    background: on ? "var(--nv-btn-fill)" : "var(--nv-card)",
+                    color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
                     fontWeight: on ? 600 : 400,
                     cursor: "pointer",
                     whiteSpace: "nowrap",
+                    borderRadius: 10,
                   }}
                 >
                   {item}
@@ -633,7 +634,7 @@ function ManualPunchRequest({
             value={reqNote}
             onChange={(event) => { setReqNote(event.target.value); setReqError(""); }}
             placeholder={ar ? "تفصيل السبب — إلزامي" : "Reason detail — required"}
-            style={{ fontFamily: "inherit", fontSize: 12, padding: "9px 10px", border: `1px solid ${BORDER}`, background: "#fff", color: NAVY, outline: "none", width: "100%", boxSizing: "border-box" }}
+            style={{ fontFamily: "inherit", fontSize: 12, padding: "9px 10px", border: `1px solid ${BORDER}`, background: "var(--nv-card)", color: NAVY, outline: "none", width: "100%", boxSizing: "border-box" }}
           />
           {reqError ? <span style={{ fontSize: 11, color: "#8a1c2b" }}>{reqError}</span> : null}
           <button

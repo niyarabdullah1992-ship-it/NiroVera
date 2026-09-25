@@ -32,12 +32,13 @@ import {
   Megaphone,
 } from "lucide-react";
 import { SUITE_APPS, SUITE_GROUPS, suiteAppLabel } from "@/lib/suiteApps";
-import { RAIL_CLUSTERS, railBadgeKind, railBadgeTone, buildSuiteRailClusters } from "@/lib/suiteRailFrame";
+import { RAIL_SIDES, railBadgeKind, railBadgeTone, buildSuiteRailClusters, activeSuiteRailKey } from "@/lib/suiteRailFrame";
 
-export { RAIL_CLUSTERS, railBadgeKind, railBadgeTone, buildSuiteRailClusters };
+export { RAIL_SIDES, railBadgeKind, railBadgeTone, buildSuiteRailClusters, activeSuiteRailKey };
 
-/** Sidebar group-rail order (production nirovera.sa/app). */
+/** Sidebar group-rail order — v4 section split. Owner board is not a company group. */
 export const SUITE_GROUP_ORDER = [
+  "decide",
   "daily",
   "signing",
   "duty",
@@ -45,6 +46,7 @@ export const SUITE_GROUP_ORDER = [
   "workforce",
   "performance",
   "complaints",
+  "people",
   "discipline",
   "compliance",
   "money",
@@ -87,17 +89,19 @@ const ICON_OVERRIDES = {
 
 /** Group-level icons for the compact sidebar rail. */
 const RAIL_ICONS = {
-  daily: LayoutDashboard,
+  decide: LayoutDashboard,
+  daily: ListTodo,
   signing: PenLine,
   duty: CalendarClock,
   requests: ClipboardList,
   workforce: UserCog,
   performance: Trophy,
   complaints: Megaphone,
+  people: Network,
   discipline: Scale,
   compliance: ShieldQuestion,
   money: Banknote,
-  admin: Network,
+  admin: FolderOpen,
 };
 
 /** @param {import("@/lib/suiteApps").SuiteApp} app */
@@ -112,21 +116,24 @@ export function suiteNavGroupLabels(lang = "ar") {
   );
 }
 
-/** Labels used on the group rail (production wording). */
-export function suiteRailGroupMeta(lang = "ar") {
+/** Labels used on the group rail — v4 nav items, not the platform owner board. */
+export function suiteRailGroupMeta(lang = "ar", role = "") {
   const ar = lang !== "en";
+  const employee = role === "employee";
   return {
-    daily: { icon: RAIL_ICONS.daily, label: ar ? "التشغيل اليومي" : "Daily Ops" },
-    signing: { icon: RAIL_ICONS.signing, label: ar ? "التوقيع الرقمي" : "Digital Signing" },
-    duty: { icon: RAIL_ICONS.duty, label: ar ? "الدوام والحضور" : "Time & Attendance" },
-    requests: { icon: RAIL_ICONS.requests, label: ar ? "طلباتي" : "My Requests" },
+    decide: { icon: RAIL_ICONS.decide, label: ar ? "لوحة القيادة" : "Dashboard" },
+    daily: { icon: RAIL_ICONS.daily, label: ar ? (employee ? "مهامي" : "المهام والعمليات") : (employee ? "My tasks" : "Operations") },
+    signing: { icon: RAIL_ICONS.signing, label: ar ? (employee ? "توقيعاتي" : "التوقيع الرقمي") : (employee ? "My signing" : "Digital Signing") },
+    duty: { icon: RAIL_ICONS.duty, label: ar ? (employee ? "بصمتي" : "الحضور والدوام") : (employee ? "My punch" : "Time & Attendance") },
+    requests: { icon: RAIL_ICONS.requests, label: ar ? (employee ? "طلباتي" : "الطلبات") : "Requests" },
     workforce: { icon: RAIL_ICONS.workforce, label: ar ? "القوى العاملة" : "Workforce" },
-    performance: { icon: RAIL_ICONS.performance, label: ar ? "الأداء" : "Performance" },
+    performance: { icon: RAIL_ICONS.performance, label: ar ? (employee ? "أدائي" : "الأداء") : "Performance" },
     complaints: { icon: RAIL_ICONS.complaints, label: ar ? "صوت الموظف" : "Employee Voice" },
+    people: { icon: RAIL_ICONS.people, label: ar ? "المحطات التي أديرها" : "Stations I manage" },
     discipline: { icon: RAIL_ICONS.discipline, label: ar ? "الجزاءات" : "Sanctions" },
-    compliance: { icon: RAIL_ICONS.compliance, label: ar ? "الالتزام والرعاية" : "Care & Compliance" },
+    compliance: { icon: RAIL_ICONS.compliance, label: ar ? (employee ? "بلاغ سلامة" : "السلامة HSE") : (employee ? "Safety report" : "Safety HSE") },
     money: { icon: RAIL_ICONS.money, label: ar ? "المال والأصول" : "Money & Assets" },
-    admin: { icon: RAIL_ICONS.admin, label: ar ? "المؤسسة" : "Institution" },
+    admin: { icon: RAIL_ICONS.admin, label: ar ? "الملفات والمساعد" : "Files & assistant" },
   };
 }
 
@@ -181,8 +188,8 @@ export function buildSuiteNavItems(lang, options = {}) {
  * @param {ReturnType<typeof buildSuiteNavItems>} visibleItems
  * @param {string} lang
  */
-export function buildSuiteRailGroups(visibleItems, lang = "ar") {
-  const meta = suiteRailGroupMeta(lang);
+export function buildSuiteRailGroups(visibleItems, lang = "ar", role = "") {
+  const meta = suiteRailGroupMeta(lang, role);
   return SUITE_GROUP_ORDER.map((key) => {
     const items = visibleItems.filter((item) => item.category === key);
     if (!items.length) return null;

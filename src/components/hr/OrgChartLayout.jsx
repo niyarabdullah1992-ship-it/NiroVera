@@ -1,12 +1,13 @@
 import React from "react";
+import { ORG_TREE_LINE } from "@/components/hr/orgUi";
 
-/** Navy-tinted orthogonal lines — org chart, not UI chrome. */
-export const ORG_LINE = "color-mix(in oklab, #14284B 28%, #D7DDE6)";
-export const ORG_DOT = "color-mix(in oklab, #14284B 42%, #E8EDF3)";
-export const ORG_COL_PAD = 16;
-export const ORG_STEM_H = 26;
-export const ORG_CAP_H = 22;
-export const ORG_LINE_W = 2;
+/** HTML workforce connectors — 1px #7C8BA3 stems, not thick navy chrome. */
+export const ORG_LINE = ORG_TREE_LINE;
+export const ORG_DOT = ORG_TREE_LINE;
+export const ORG_COL_PAD = 7;
+export const ORG_STEM_H = 18;
+export const ORG_CAP_H = 18;
+export const ORG_LINE_W = 1;
 
 export function OrgStem({ height = ORG_STEM_H }) {
   return (
@@ -17,7 +18,6 @@ export function OrgStem({ height = ORG_STEM_H }) {
         height,
         marginBottom: -1,
         background: ORG_LINE,
-        borderRadius: 99,
         flex: "none",
       }}
     />
@@ -38,7 +38,6 @@ export function OrgCap({ index, total }) {
           insetInlineStart: first ? "50%" : -ORG_COL_PAD,
           insetInlineEnd: last ? "50%" : -ORG_COL_PAD,
           background: ORG_LINE,
-          borderRadius: 99,
         }}
       />
       <span
@@ -50,36 +49,24 @@ export function OrgCap({ index, total }) {
           height: ORG_CAP_H,
           marginInlineStart: -ORG_LINE_W / 2,
           background: ORG_LINE,
-          borderRadius: 99,
-        }}
-      />
-      <span
-        style={{
-          position: "absolute",
-          top: -2,
-          insetInlineStart: "50%",
-          width: 6,
-          height: 6,
-          marginInlineStart: -3,
-          borderRadius: 99,
-          background: ORG_DOT,
-          boxShadow: "0 0 0 2px hsl(220 20% 98%)",
         }}
       />
     </div>
   );
 }
 
-export function OrgColumn({ children, pad = true }) {
+export function OrgColumn({ children, pad = true, width }) {
   return (
     <div
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
+        width: width || undefined,
         minWidth: "max-content",
         flex: "none",
         paddingInline: pad ? ORG_COL_PAD : 0,
+        marginInline: pad ? 0 : undefined,
       }}
     >
       {children}

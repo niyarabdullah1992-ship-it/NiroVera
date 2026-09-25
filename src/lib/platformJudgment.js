@@ -31,15 +31,15 @@ export const ARBITRATION_DISCLAIMER_EN =
 export const REQUESTS_LAW_TITLE_AR = "حكم المنصة على طلبك";
 export const REQUESTS_LAW_TITLE_EN = "Platform judgment on your request";
 
-export const REQUESTS_LAW_LEDE_AR = "المواد والقرارات مصدر الحكم. المنصة تقرر القبول أو الوقف. الوزارة تراقب السجل.";
-export const REQUESTS_LAW_LEDE_EN = "Articles and decisions are the source. The platform decides accept or hold. The ministry inspects the trail.";
+export const REQUESTS_LAW_LEDE_AR = "مواد نظام العمل مصدر الحكم. المنصة تقرّر القبول أو الوقف داخل الشركة، والوزارة تراقب السجل.";
+export const REQUESTS_LAW_LEDE_EN = "Labour Law articles are the source of the verdict. The platform decides accept or hold inside the company, and the ministry inspects the trail.";
 
 export const REQUESTS_LAW_FOOT_AR =
-  "شارة المادة تظهر فقط إن كان المصدر نظام العمل السعودي. المنصة تحكم داخل الشركة. الوزارة تراقب السجل. النزاع الخارج يبقى لهيئة التسوية.";
+  "شارة المادة تظهر فقط إن كان المصدر نظام العمل السعودي أو قراراً وزارياً. ما عداه قرار تشغيلي داخل الشركة.";
 export const REQUESTS_LAW_FOOT_EN =
-  "An article chip appears only when the source is the Saudi Labour Law. The platform judges inside the company. The ministry inspects the trail. A dispute that leaves the company stays with the labour disputes body.";
+  "An article chip appears only when the source is the Saudi Labour Law or a ministerial decision. Anything else is an operational decision inside the company.";
 
-const STATION_ONLY_GATES = new Set(["morning_cover", "not_empty"]);
+const STATION_ONLY_GATES = new Set(["not_empty"]);
 
 /** Who a named gate protects. Labour / ministerial / hours rest → both. Station coverage → company. */
 export function judgmentProtects({ source, gateId, entitled } = {}) {

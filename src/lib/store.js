@@ -8,7 +8,7 @@ import { toRiyadhDateKey } from "./riyadhDate";
 import { reconcileStationReferences } from "./stationConsistency";
 import { clearStationScope } from "./stationScopeStore";
 import { planDuplicateShiftMerge, shiftWindowKey } from "./shiftDerivations";
-import { checkShiftChangeApplyGate, checkWeekPublishGates, cloneDayMap, employeeShiftOnDay, isNightWorker, nightAllowanceAmount, nightAllowanceKind, nightAllowancePayLabel, nightCutHoursLabel, nightReduceCutHours, payableNightAllowance, shiftHours, weekDateKeys, weekKeyFromDate, weekStartDate } from "./shiftWeek";
+import { applyCopyMonthAssignments, checkShiftChangeApplyGate, checkWeekPublishGates, clearRosterLeaveGhostAssignments, cloneDayMap, employeeShiftOnDay, isNightWorker, monthDateKeys, nightAllowanceAmount, nightAllowanceKind, nightAllowancePayLabel, nightCutHoursLabel, nightReduceCutHours, payableNightAllowance, planCopyMonthAssignments, repairNightRestAssignments, resolveNightRestAssignTarget, shiftHours, weekDateKeys, weekKeyFromDate, weekStartDate, weekStartsInMonth } from "./shiftWeek";
 import {
   applyNightWorkerDecision,
   checkDecideNightRemedyGate,
@@ -32,14 +32,14 @@ import {
   leaveDateSpanText,
   leaveDecisionNoticeText,
 } from "./leaveEntitlementCycle";
-import { dayAssignmentMap } from "./attendanceCalendar";
+import { calendarDateKey, dayAssignmentMap } from "./attendanceCalendar";
 import { applyWorkplaceManagerRule } from "./peopleTreeGraph";
 import { isWorkplaceStation } from "./stationTree";
 import { appendOrgStructureEvent } from "./orgStructureLog";
 import { leaveCoverRange, leaveTypeLabel, statutoryLeaveFloor } from "./leaveTypes";
 import { EXAM_NOTICE_KIND, EXAM_SAT_KIND, LEAVE_ROSTER_BLOB, chargeableLeaveDays, checkAlterApprovedLeaveGate, checkApproveLeaveGate, checkAttachExamSatGate, checkRejectLeaveGate, checkSeeLeaveDecisionGate, checkSubmitLeaveGate, computeLeaveDays, leaveDecisionNoticeKey, leaveRosterFromEmployees } from "./leaveDerivations";
 import { mergeEmployeeRequestBags, projectDirectoryEmployee, rosterEmployeeById } from "./employeeRequestBags";
-import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_TYPE, STUDY_CONSENT_TYPE, appendRequestAudit, appendRequestRefuseAudit, buildRequestAudit, buildRequestRefuseAudit, checkApproveOtherRequestGate, checkApproveStudyConsentGate, checkLeaveTopupDaysGate, checkRefuseRequestReasonGate, checkRejectNightFitnessGate, checkRejectStudyConsentGate, checkRevokeStudyConsentGate, checkSubmitOtherRequestGate, composeStudyConsentReason, otherRequestTypeLabel, requestAuditFileLog, requestRefuseFileLog, stampLeaveTopupOnEmployee, stampNightFitnessOnEmployee } from "./otherRequestDerivations";
+import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_TYPE, STUDY_CONSENT_TYPE, appendRequestAudit, appendRequestRefuseAudit, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkApproveOtherRequestGate, checkApproveStudyConsentGate, checkLeaveTopupDaysGate, checkRefuseRequestReasonGate, checkRejectNightFitnessGate, checkRejectStudyConsentGate, checkRevokeStudyConsentGate, checkSubmitOtherRequestGate, composeStudyConsentReason, otherRequestTypeLabel, requestAuditFileLog, requestRefuseFileLog, stampLeaveTopupOnEmployee, stampNightFitnessOnEmployee } from "./otherRequestDerivations";
 import {
   attendanceOnDate,
   buildManualAttendanceRow,
@@ -61,11 +61,14 @@ import {
   stampOvertimePayOnDraft,
 } from "./overtimeAssignment";
 import { approvedCompLeaveDaysForYear, approvedOvertimeHoursForYear, checkOtDecisionGate } from "./attendanceDerivations";
-import { laborCalendarOf, ramadanWindowForYear } from "./ummAlQuraCalendar";
+import { laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePlatformOwnerBoard } from "./ummAlQuraCalendar";
+import { dashboardSubscription, platformOwnerGate, persistHolidayRulings, persistRamadanRuling, persistSubscriptionPlans } from "./ownerBoard";
 import { addLaborDays, ruleValue } from "./laborRules";
 import { art55FilePatch, laborFilePatch } from "./contractLawDerivations";
-import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, migratePreviewSigningNotices, migratePreviewEmployeeGenders, migratePreviewAssets, migratePreviewFieldTasks, seedPreviewOwnerNightStreak, seedPreviewProofCycle, seedPreviewWrittenConsent, seedPreviewDiscipline, seedPreviewVoice, seedPreviewPerformance } from "./previewMigrations";
+import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, migratePreviewVoiceBranchManager, migratePreviewSigningNotices, migratePreviewEmployeeGenders, migratePreviewAssets, migratePreviewFieldTasks, seedPreviewOwnerNightStreak, seedPreviewProofCycle, seedPreviewWrittenConsent, seedPreviewDiscipline, seedPreviewVoice, seedPreviewPerformance } from "./previewMigrations";
+import { assignEmployeeNumber, ensureEmployeeNumbers } from "./employeeNumber";
 import { migratePreviewStationPins } from "./previewStationPins";
+import { attachSharedGradesToTitles, ensureProductLadder } from "./jobGradeTitles";
 import { assertWritableCategory, isDoNotWrite } from "./canonicalStore";
 import { visibleArbitrationOutcomes } from "./arbitrationEngine";
 import {
@@ -520,6 +523,7 @@ function emptyCompanyData(meta) {
     orgStructureLog: [],
     complaintEscalationChain: [],
     branchEscalationChains: {},
+    branchEscalationSla: {},
     workProofs: [],
     visitorProofs: [],
     disciplinaryCases: [],
@@ -548,6 +552,9 @@ function normalizeCompanyData(data) {
   }
   if (!data.branchEscalationChains || typeof data.branchEscalationChains !== "object") {
     data.branchEscalationChains = {};
+  }
+  if (!data.branchEscalationSla || typeof data.branchEscalationSla !== "object" || Array.isArray(data.branchEscalationSla)) {
+    data.branchEscalationSla = {};
   }
   if (!data.settings || typeof data.settings !== "object") {
     data.settings = { rateLimitDaily: 3, rateLimitWeekly: 10, rateLimitMonthly: 30, orgType: "company" };
@@ -588,6 +595,9 @@ export function getCompanyData(id) {
     persist = true;
   }
   if (purgePresetLadders(data)) persist = true;
+  if (attachSharedGradesToTitles(data)) persist = true;
+  if (ensureProductLadder(data)) persist = true;
+  if (ensureEmployeeNumbers(data)) persist = true;
   // Local preview used to seed compass names (شمال/شرق) — those were labels only,
   // not a forced region layer. Rewrite once so the org tree shows free branch names.
   if (isLocalPreviewWorkspace(id) && Array.isArray(data.stations)) {
@@ -615,6 +625,7 @@ export function getCompanyData(id) {
     if (migratePreviewRotaClock(data)) persist = true;
     if (migratePreviewWeekRota(data)) persist = true;
     if (migratePreviewCompanyHeadWorkplace(data)) persist = true;
+    if (migratePreviewVoiceBranchManager(data)) persist = true;
     if (migratePreviewEmployeeGenders(data)) persist = true;
     if (migratePreviewOwnerMorningRota(data)) persist = true;
     if (seedPreviewOwnerNightStreak(data)) persist = true;
@@ -761,6 +772,7 @@ function pushCompanyDataToCloud(id, data) {
     stationChatGroups: data.stationChatGroups,
     crossStationChatEnabled: data.crossStationChatEnabled,
     settings: data.settings,
+    employeeNoSeq: data.employeeNoSeq || data.settings?.employeeNoSeq || 0,
     reportBranding: data.reportBranding,
     orgStructureLog: data.orgStructureLog || [],
   }]);
@@ -830,7 +842,7 @@ export const BLOB_CATEGORIES = [
   "tasks", "reports", "anonymousReports", "publicReports", "safety", "plans",
   "schedules", "hrLevels", "jobGrades", "hrClusters", "files", "notifications", "templates", "targets",
   "personalPlaces", "personalAttendance", "plannerItems", "journalEntries", "payrollRuns", "assetTransfers", "smartPositions",
-  "complaintEscalationChain", "branchEscalationChains", "orgTree", "orgSeats", "workProofs", "visitorProofs", "disciplinaryCases",
+  "complaintEscalationChain", "branchEscalationChains", "branchEscalationSla", "orgTree", "orgSeats", "workProofs", "visitorProofs", "disciplinaryCases",
   "arbitrationOutcomes", "stationBudgets",
   ];
 const lastSyncedBlobJSON = {};
@@ -989,6 +1001,7 @@ function ensureOwnerUser(companyId, company) {
       if (!d.directorId) d.directorId = owner.id;
       if (!d.ownerId) d.ownerId = owner.id;
     }
+    assignEmployeeNumber(d, owner, { hireDate: owner.profile?.hireDate || owner.createdAt || "" });
     ownerId = owner.id;
   });
   return ownerId;
@@ -1270,7 +1283,10 @@ export function setStationManager(companyId, stationId, employeeId) {
       applyWorkplaceManagerRule(data);
       return;
     }
-    next.role = "station_manager";
+    // Keep director / ops / pgm — managerId alone makes them مدير الفرع for voice & requests.
+    if (!["director", "ops_manager", "pgm", "owner"].includes(next.role)) {
+      next.role = "station_manager";
+    }
     next.managedStations = [...new Set([...(next.managedStations || []).map(String), sid])];
     if (!next.stationId) next.stationId = sid;
     applyWorkplaceManagerRule(data);
@@ -1296,8 +1312,10 @@ export function assignStationManager(companyId, employeeId, stationIds) {
       other.managedStations = (other.managedStations || []).filter((id) => !ids.includes(id));
       if (other.role === "station_manager" && !other.managedStations.length) { other.role = "employee"; other.stationId = null; }
     });
-    emp.role = ids.length ? "station_manager" : "employee";
-    emp.stationId = ids.length === 1 ? ids[0] : null;
+    if (!["director", "ops_manager", "pgm", "owner"].includes(emp.role)) {
+      emp.role = ids.length ? "station_manager" : "employee";
+    }
+    emp.stationId = ids.length === 1 ? ids[0] : (emp.stationId || null);
     emp.managedStations = ids;
     ids.forEach((sid) => {
       const s = d.stations.find((x) => x.id === sid);
@@ -2218,8 +2236,8 @@ export function addDisciplineMessage(companyId, caseId, { from, text, files, sen
   }
 }
 
-// Leave requests: employee submits, an authorized manager/HR approves or rejects.
-export function submitLeaveRequest(companyId, employeeId, { type, startDate, endDate, reason, files, eventDate, examRepeat, examNoticeIssuedAt, iddahPregnant, companionUnpaidExtend, days: requestedDays, status, recordedBy, noOtherEmployerAck, deferConsentAt }) {
+// Leave requests: the worker raises on ملفي; an authorized manager/HR decides on إدارة.
+export function submitLeaveRequest(companyId, employeeId, { type, startDate, endDate, reason, files, eventDate, examRepeat, examNoticeIssuedAt, iddahPregnant, companionUnpaidExtend, days: requestedDays, status, recordedBy, requestedBy, requestedById, noOtherEmployerAck, deferConsentAt }) {
   const live = getCompanyData(companyId);
   const subject = rosterEmployeeById(live?.employees, employeeId);
   if (!subject) return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
@@ -2241,6 +2259,8 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
     companionUnpaidExtend,
     status: "pending",
     recordedBy,
+    requestedById,
+    employeeId,
     noOtherEmployerAck,
     deferConsentAt,
   }, {
@@ -2248,13 +2268,18 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
     requests: subject.leaveRequests,
     otherRequests: subject.otherRequests,
     employee: subject,
+    employeeId,
     companyId,
     recordedBy,
+    requestedById,
+    actorId: requestedById,
     employerRecorded: status === "approved" && !!recordedBy,
     laborCalendar: laborCalendarOf(live),
   });
   if (!gate.ok) return gate;
   let createdRequest = null;
+  const raiserId = requestedById || (status === "approved" ? "" : employeeId);
+  const raiserName = recordedBy || requestedBy || subject.name || auditActor;
   updateCompany(companyId, (d) => {
     const emp = rosterEmployeeById(d.employees, employeeId);
     if (!emp) return;
@@ -2281,6 +2306,8 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
         : (files || []),
       status: approved ? "approved" : "pending",
       recordedBy: recordedBy || undefined,
+      requestedBy: requestedBy || recordedBy || undefined,
+      requestedById: raiserId || undefined,
       reviewedBy: approved ? recordedBy : undefined,
       reviewedAt: approved ? now : undefined,
       approvedAt: approved ? now : undefined,
@@ -2290,7 +2317,7 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
       companyId,
     };
     const raiseStamp = stampRequestAudit(companyId, emp, createdRequest, {
-      actor: recordedBy || emp.name || auditActor,
+      actor: raiserName,
       family: "leave",
       verb: "raise",
       note: reason,
@@ -2299,7 +2326,7 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
     pushEmployeeFileLog(emp, raiseStamp.log);
     if (approved) {
       const approveStamp = stampRequestAudit(companyId, emp, createdRequest, {
-        actor: recordedBy || auditActor,
+        actor: recordedBy || raiserName || auditActor,
         family: "leave",
         verb: "approve",
       });
@@ -2314,7 +2341,7 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
   if (createdRequest?.status === "pending") {
     const emp = rosterEmployeeById(data?.employees, filedId) || subject;
     const lang = getUiLang();
-    const label = leaveTypeLabel(type, lang === "ar");
+    const label = leaveTypeLabel(type, lang === "ar", undefined, startDate || createdRequest?.startDate);
     notifyRequestManagers(
       companyId,
       filedId,
@@ -2370,10 +2397,16 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
   }
   if (status === "approved") {
     const typeRequiresFile = ["sick", "exam"].includes(req?.type);
-    const gate = checkApproveLeaveGate(req, typeRequiresFile, {
+    const issuedAt = String(extras.examNoticeIssuedAt || req?.examNoticeIssuedAt || "").slice(0, 10);
+    const approveRow = issuedAt && String(req?.type || "").toLowerCase() === "exam"
+      ? { ...req, examNoticeIssuedAt: issuedAt }
+      : req;
+    const gate = checkApproveLeaveGate(approveRow, typeRequiresFile, {
       profile: emp?.profile,
       requests: emp?.leaveRequests,
       laborCalendar: laborCalendarOf(data),
+      examNoticeIssuedAt: issuedAt || undefined,
+      onDate: extras.onDate,
     });
     if (!gate.ok) return gate;
   }
@@ -2407,6 +2440,10 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
     }
     if (status === "approved") {
       leaveReq.approvedAt = new Date().toISOString();
+      const issuedStamp = String(extras.examNoticeIssuedAt || leaveReq.examNoticeIssuedAt || "").slice(0, 10);
+      if (String(leaveReq.type || "").toLowerCase() === "exam" && /^\d{4}-\d{2}-\d{2}$/.test(issuedStamp)) {
+        leaveReq.examNoticeIssuedAt = issuedStamp;
+      }
       if (leaveReq.type === "annual") {
         const span = leaveCoverRange(leaveReq);
         if (span.start && span.end) {
@@ -3574,6 +3611,48 @@ export function grantDiscretionaryDays(companyId, employeeId, { days, reason, by
   return { ok: true, days: n };
 }
 
+/**
+ * إدارة → إضافة رصيد: credit annual or discretionary balance without the employee raising leave.
+ * Annual reuses the leave_topup stamp as an approved management act; grant uses discretionaryGrants.
+ */
+export function creditEmployeeLeaveBalance(companyId, employeeId, { pool, days, reason, by, byId, canCredit = true } = {}) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((e) => e.id === employeeId);
+  if (!emp) {
+    return { ok: false, error: "EMPLOYEE_REQUIRED", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
+  }
+  const gate = checkAdminLeaveCreditGate({
+    pool,
+    days,
+    reason,
+    profile: emp.profile,
+    canCredit,
+  });
+  if (!gate.ok) return gate;
+  const actor = String(by || "").trim();
+  const why = gate.reason;
+  if (gate.pool === "grant") {
+    const granted = grantDiscretionaryDays(companyId, employeeId, { days: gate.days, reason: why, by: actor });
+    if (!granted.ok) return granted;
+    addNotification(companyId, employeeId, `أُضيف ${granted.days} أيام تقديرية إلى رصيدك${why ? ` — ${why}` : ""}.`);
+    return { ok: true, pool: "grant", days: granted.days };
+  }
+  const saved = submitOtherRequest(companyId, employeeId, {
+    type: LEAVE_TOPUP_TYPE,
+    reason: why,
+    days: gate.days,
+    status: "approved",
+    recordedBy: actor || undefined,
+    requestedBy: actor || undefined,
+    requestedById: byId || undefined,
+    stationId: emp.stationId,
+  });
+  if (saved && saved.ok === false) return saved;
+  addNotification(companyId, employeeId, `أُضيف ${gate.days} أيام إلى رصيدك السنوي${why ? ` — ${why}` : ""}.`);
+  audit(companyId, "leave_balance_credit", `${gate.days} annual days for ${emp.name} by ${actor}${why ? ` — ${why}` : ""}`);
+  return { ok: true, pool: "annual", days: gate.days };
+}
+
 export function addPoints(companyId, employeeId, points, reason) {
   const empName = getCompanyData(companyId)?.employees.find((e) => e.id === employeeId)?.name || "";
   audit(companyId, "points_adjusted", `${Number(points) >= 0 ? "+" : ""}${points} points for ${empName}${reason ? ` — ${reason}` : ""}`);
@@ -3825,22 +3904,95 @@ function applyEmployeeDayShift(entry, dateKey, employeeId, shiftTypeId) {
   markWeekDirty(entry, dateKey);
 }
 
-export function setEmployeeDayShift(companyId, stationId, dateKey, employeeId, shiftTypeId) {
+export function setEmployeeDayShift(companyId, stationId, dateKey, employeeId, shiftTypeId, {
+  weekStart,
+  ordinaryOnly = false,
+} = {}) {
   const data = getCompanyData(companyId);
   const employee = data?.employees?.find((row) => row.id === employeeId);
   const schedule = (data?.schedules || []).find((row) => row.stationId === stationId) || getOrCreateSchedule({ schedules: data?.schedules || [], ...data }, stationId);
-  const gate = checkShiftChangeApplyGate({
+  const laborCalendar = laborCalendarOf(data);
+  // Decision 18632: auto-jump to first legal period, or refuse with named gate — never silent illegal duty.
+  const resolved = resolveNightRestAssignTarget({
     schedule,
     employee,
     dateKey,
     shiftTypeId,
-    laborCalendar: laborCalendarOf(data),
+    laborCalendar,
+    weekStart: weekStart || weekStartDate(dateKey),
+    ordinaryOnly,
   });
-  if (!gate.ok) return gate;
+  if (!resolved.ok) return resolved;
+  const placeKey = resolved.dateKey;
+  const placeId = resolved.shiftTypeId;
+  const clearedSource = !!(resolved.jumped && placeKey !== dateKey);
   updateCompany(companyId, (d) => {
-    applyEmployeeDayShift(getOrCreateSchedule(d, stationId), dateKey, employeeId, shiftTypeId);
+    const entry = getOrCreateSchedule(d, stationId);
+    const emp = (d.employees || []).find((row) => row.id === employeeId);
+    const calendar = laborCalendarOf(d);
+    // Stamp leave days as rest so weekday templates cannot leave a ghost night on Art. 112 days.
+    clearRosterLeaveGhostAssignments(entry, emp ? [emp] : [], weekDateKeys(weekStartDate(dateKey)), calendar);
+    applyEmployeeDayShift(entry, placeKey, employeeId, placeId);
+    if (clearedSource) applyEmployeeDayShift(entry, dateKey, employeeId, null);
   }, { sync: "schedules" });
-  return { ok: true };
+  return {
+    ok: true,
+    jumped: !!resolved.jumped,
+    dateKey: placeKey,
+    shiftTypeId: placeId,
+    clearedSource,
+    reason: resolved.reason,
+    reasonEn: resolved.reasonEn,
+  };
+}
+
+/** Reuse a month's dated roster into another month — manager can edit cells after. */
+export function copyScheduleMonth(companyId, stationId, {
+  sourceYear,
+  sourceMonthIndex,
+  targetYear,
+  targetMonthIndex,
+  ar = true,
+} = {}) {
+  const live = getCompanyData(companyId);
+  if (!live) {
+    return {
+      ok: false,
+      error: "NO_COMPANY",
+      reason: ar ? "لا شركة." : "No company.",
+      reasonEn: "No company.",
+    };
+  }
+  const schedule = (live.schedules || []).find((row) => row.stationId === stationId);
+  const laborCalendar = laborCalendarOf(live);
+  const plan = planCopyMonthAssignments({
+    assignments: schedule?.assignments || {},
+    sourceYear,
+    sourceMonthIndex,
+    targetYear,
+    targetMonthIndex,
+    laborCalendar,
+    ar,
+  });
+  if (!plan.ok) return plan;
+  let nightRestRepair = { repaired: 0, cleared: 0 };
+  updateCompany(companyId, (d) => {
+    const entry = getOrCreateSchedule(d, stationId);
+    applyCopyMonthAssignments(entry, plan);
+    const calendar = laborCalendarOf(d);
+    const keys = monthDateKeys(targetYear, targetMonthIndex);
+    clearRosterLeaveGhostAssignments(entry, d.employees || [], keys, calendar);
+    // Copy must not leave illegal 18632 rest pairs — jump or clear before publish sees them.
+    nightRestRepair = repairNightRestAssignments(entry, {
+      employees: d.employees || [],
+      dateKeys: keys,
+      laborCalendar: calendar,
+    });
+    for (const start of weekStartsInMonth(targetYear, targetMonthIndex)) {
+      markWeekDirty(entry, calendarDateKey(start));
+    }
+  }, { sync: "schedules" });
+  return { ok: true, ...plan, nightRestRepair };
 }
 
 export function setWeekValidity(companyId, stationId, validity, validUntil) {
@@ -3884,6 +4036,12 @@ export function publishWeek(companyId, stationId, weekStartKey, { by } = {}) {
     const weekKey = weekKeyFromDate(weekStartKey || new Date());
     const validity = entry.validity || "week";
     const validUntil = validity === "until" ? (entry.validUntil || "") : "";
+    clearRosterLeaveGhostAssignments(
+      entry,
+      d.employees || [],
+      weekDateKeys(weekStartKey || new Date()),
+      laborCalendarOf(d),
+    );
     entry.publishedWeeks = entry.publishedWeeks || {};
     entry.publishedWeeks[weekKey] = {
       at: new Date().toISOString(),
@@ -3949,6 +4107,121 @@ export function announceRamadanLength(companyId, year, length, { by } = {}) {
     };
   });
   return { ok: true, year: y, ramadanLength: n };
+}
+
+function ownerBoardDenied(companyId, actor) {
+  const live = companyId ? getCompanyData(companyId) : null;
+  if (companyId && !live) return { ok: false, error: "NO_COMPANY", reason: "لا شركة.", reasonEn: "No company." };
+  const gate = platformOwnerGate(actor);
+  if (!gate.ok) return gate;
+  return { ok: true, live };
+}
+
+function ownerPlatformDenied(actor) {
+  const gate = platformOwnerGate(actor);
+  if (!gate.ok) return gate;
+  return { ok: true };
+}
+
+export function saveOwnerSubscriptions(companyId, draft, { actor } = {}) {
+  const access = ownerBoardDenied(companyId, actor);
+  if (!access.ok) return access;
+  const checked = persistSubscriptionPlans(draft);
+  if (!checked.ok) return checked;
+  updateCompany(companyId, (d) => {
+    d.settings = { ...(d.settings || {}) };
+    d.settings.ownerBoard = {
+      ...(d.settings.ownerBoard || {}),
+      plans: checked.plans,
+      plansSavedAt: new Date().toISOString(),
+      plansSavedBy: actor?.id || "",
+    };
+  });
+  const live = getCompanyData(companyId);
+  return { ok: true, plans: checked.plans, dashboard: dashboardSubscription({ plan: access.live?.plan || live?.plan }, live) };
+}
+
+export function saveOwnerHolidays(companyId, draft, { actor } = {}) {
+  const access = ownerPlatformDenied(actor);
+  if (!access.ok) return access;
+  const checked = persistHolidayRulings(draft);
+  if (!checked.ok) return checked;
+  const prev = readPlatformOwnerBoard() || {};
+  writePlatformOwnerBoard({
+    ...prev,
+    holidays: checked.holidays,
+    holidaysSavedAt: new Date().toISOString(),
+    holidaysSavedBy: actor?.id || actor?.email || "",
+  });
+  // Twin into the selected company when present — laborCalendarOf still prefers platform.
+  if (companyId && getCompanyData(companyId)) {
+    updateCompany(companyId, (d) => {
+      d.settings = { ...(d.settings || {}) };
+      d.settings.ownerBoard = {
+        ...(d.settings.ownerBoard || {}),
+        holidays: checked.holidays,
+        holidaysSavedAt: new Date().toISOString(),
+        holidaysSavedBy: actor?.id || "",
+      };
+      d.laborCalendar = { ...(d.laborCalendar || {}), ownerHolidays: checked.holidays };
+    });
+  }
+  return { ok: true, holidays: checked.holidays };
+}
+
+export function saveOwnerRamadan(companyId, draft, { actor } = {}) {
+  const access = ownerPlatformDenied(actor);
+  if (!access.ok) return access;
+  const platform = readPlatformOwnerBoard() || {};
+  const calendar = laborCalendarOf({ laborCalendar: {}, settings: { ownerBoard: { holidays: platform.holidays } } });
+  if (platform.ramadan) {
+    for (const [year, row] of Object.entries(platform.ramadan)) {
+      if (row && typeof row === "object") calendar[year] = { ...(calendar[year] || {}), ...row };
+    }
+  }
+  const checked = persistRamadanRuling(draft, calendar);
+  if (!checked.ok) return checked;
+  const yearKey = String(checked.year);
+  const yearBag = {
+    ...(platform.ramadan?.[yearKey] || {}),
+    ownerRamadanFrom: checked.from,
+    ownerRamadanAt: new Date().toISOString(),
+    ownerRamadanBy: actor?.id || actor?.email || "",
+  };
+  if (checked.to) {
+    yearBag.ownerRamadanTo = checked.to;
+    yearBag.ramadanLength = checked.length;
+  } else {
+    delete yearBag.ownerRamadanTo;
+    delete yearBag.ramadanLength;
+  }
+  writePlatformOwnerBoard({
+    ...platform,
+    ramadan: {
+      ...(platform.ramadan || {}),
+      [yearKey]: yearBag,
+    },
+    ramadanSavedAt: new Date().toISOString(),
+    ramadanSavedBy: actor?.id || actor?.email || "",
+  });
+  if (companyId && getCompanyData(companyId)) {
+    updateCompany(companyId, (d) => {
+      d.laborCalendar = d.laborCalendar || {};
+      const prev = { ...(d.laborCalendar[yearKey] || {}) };
+      prev.ownerRamadanFrom = checked.from;
+      prev.ownerRamadanAt = new Date().toISOString();
+      prev.ownerRamadanBy = actor?.id || "";
+      if (checked.to) {
+        prev.ownerRamadanTo = checked.to;
+        prev.ramadanLength = checked.length;
+      } else {
+        delete prev.ownerRamadanTo;
+        delete prev.ramadanLength;
+      }
+      d.laborCalendar[yearKey] = prev;
+    });
+  }
+  return { ok: true, year: checked.year, from: checked.from, to: checked.to, length: checked.length };
 }
 
 export function setOtDecision(companyId, employeeId, dateKey, {

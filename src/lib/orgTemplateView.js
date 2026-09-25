@@ -3,7 +3,7 @@ import { listedPacks } from "@/lib/permissionPackTemplate";
 import { companyLists, templateLabel } from "@/lib/permissionTemplates";
 import { rankLabel, SMART_DEPARTMENTS } from "@/lib/smartPositions";
 import { activeActingAssignments, ownerEmployee, seatForEmployee } from "@/lib/orgHire";
-import { extraCoverageStationIds, effectiveUnitKind, isTreeManagerTitle, scopeStationsForDisplay, stationParentId, stationSubtreeIds } from "@/lib/stationTree";
+import { extraCoverageStationIds, effectiveUnitKind, isHrUnit, isTreeManagerTitle, scopeStationsForDisplay, stationParentId, stationSubtreeIds } from "@/lib/stationTree";
 import { workplaceManagerDisplay } from "@/lib/orgStructureLog";
 
 const GREEN = "hsl(154 79% 27%)";
@@ -179,6 +179,7 @@ export function buildOrgDiagram(people, openMap = {}, onToggle, stations = []) {
     }
   });
   (stations || []).forEach((station) => {
+    if (isHrUnit(station)) return;
     const name = station.name || "";
     if (!name) return;
     if (!byBranch[name]) byBranch[name] = { lists: {}, head: "", homeId: station.id };

@@ -9,20 +9,17 @@ import {
 } from "@/lib/localVisitorProofFallback";
 import { getCompanyData } from "@/lib/store";
 import { toast } from "@/components/ui/use-toast";
-import {
-  MUTED,
-  field,
-  ui,
-} from "@/lib/platformStyles";
+import { ui } from "@/lib/platformStyles";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
 import { pageKicker } from "@/lib/moduleMeta";
 import ComposerModalShell from "@/components/shared/ComposerModalShell";
-import { Archive, Search, Users } from "lucide-react";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import VisitorProofFields from "@/components/proof/VisitorProofFields";
 import VisitorProofCard from "@/components/proof/VisitorProofCard";
 import ProofSurfaceNote from "@/components/proof/ProofSurfaceNote";
+import OpsLaneTiles from "@/components/tasks/OpsLaneTiles";
+import OpsToolbarStrip, { OpsControlBar, OpsStripSearch } from "@/components/tasks/OpsToolbarStrip";
 import ProofRecordsTable from "@/components/proof/ProofRecordsTable";
 import { EMPTY_PERSON, EMPTY_VEHICLE } from "@/lib/workProofCrew";
 import { proofVehicleText } from "@/components/proof/WorkProofRaiseFields";
@@ -208,9 +205,9 @@ export default function VisitorProof() {
       badge: ar ? STAGE_LABEL.left.ar : STAGE_LABEL.left.en,
     };
   });
-  const tabKeys = [
-    ["all", liveProofs.length, ar ? "في الفرع" : "On site", Users],
-    ["left", archiveProofs.length, ar ? "الأرشيف" : "Archive", Archive],
+  const filterChips = [
+    { id: "all", label: ar ? `في الفرع · ${liveProofs.length}` : `On site · ${liveProofs.length}` },
+    { id: "left", label: ar ? `الأرشيف · ${archiveProofs.length}` : `Archive · ${archiveProofs.length}` },
   ];
 
   const tableRows = visible.map((p) => {
@@ -268,36 +265,18 @@ export default function VisitorProof() {
       hint={ar
         ? "ضيف على الفرع — موظف الشركة الذي ينفّذ في فرع آخر يبقى على المهمة، والجهة الخارجية في إثبات العمل."
         : "A guest at the station — a company employee executing at another branch stays on the task; an outside company belongs on Work proof."}
-      sections={tabKeys.map(([value, count, label, icon]) => ({ value, label, icon, count }))}
-      tool={filter === "left" ? "left" : "all"}
-      onTool={setFilter}
-      meta={(
-        <button
-          type="button"
-          onClick={() => {
-            if (raising) {
-              setRaising(false);
-              return;
-            }
-            resetForm();
-            setRaising(true);
-          }}
-          style={raising ? ui.btnCreateQuiet : ui.btnCreate}
-        >
-          {raising ? (ar ? "إخفاء النموذج" : "Hide form") : (ar ? "إثبات زائر جديد" : "New visitor proof")}
-        </button>
-      )}
     >
+      <OpsLaneTiles ar={ar} current="visitor-proof" />
       <ProofSurfaceNote ar={ar} current="visitor-proof" />
       {raising && (
         <ComposerModalShell
           ar={ar}
           zIndex={110}
           dataNv="task"
-          title={ar ? "إثبات زائر جديد" : "New visitor proof"}
+          title={ar ? "تسجيل زائر" : "Register a visitor"}
           hint={ar
-            ? "حدد الفترة والفروع — تُحفظ بطاقة في كل فرع مختار — ثم الزوّار والسيارات."
-            : "Set the dates and stations — a card is saved on each chosen station — then visitors and vehicles."}
+            ? "ضيف على الفرع — ليس موظفاً من فرع آخر وليس جهة خارجية. حدّد الفترة والفروع ثم الزوّار والسيارات."
+            : "A guest at the station. Set the dates and stations, then the visitors and vehicles."}
           onClose={() => setRaising(false)}
           onSubmit={raise}
           submitLabel={ar ? "حفظ الإثبات" : "Save proof"}
@@ -314,29 +293,32 @@ export default function VisitorProof() {
         </ComposerModalShell>
       )}
 
-      {filter !== "left" && (query || scopedProofs.length > 0) ? (
-        <div style={{ position: "relative" }}>
-          <Search
-            style={{
-              position: "absolute",
-              top: "50%",
-              insetInlineStart: 12,
-              transform: "translateY(-50%)",
-              width: 14,
-              height: 14,
-              color: MUTED,
-              pointerEvents: "none",
-            }}
-          />
-          <input
+      <OpsControlBar>
+        <OpsToolbarStrip
+          ar={ar}
+          dir={ar ? "rtl" : "ltr"}
+          filter={filter === "left" ? "left" : "all"}
+          onFilterChange={setFilter}
+          chips={filterChips}
+          showCreate={raising}
+          onToggleCreate={() => {
+            if (raising) {
+              setRaising(false);
+              return;
+            }
+            resetForm();
+            setRaising(true);
+          }}
+          createLabel={ar ? "إثبات زائر جديد" : "New visitor proof"}
+        />
+        {filter !== "left" ? (
+          <OpsStripSearch
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={setQuery}
             placeholder={ar ? "بحث في إثباتات الزائر…" : "Search visitor proofs…"}
-            className="nv-search-field"
-            style={{ ...field, padding: 0, paddingInlineStart: 36, paddingInlineEnd: 12 }}
           />
-        </div>
-      ) : null}
+        ) : null}
+      </OpsControlBar>
 
       {filter === "left" ? (
         <RecordSmartArchive

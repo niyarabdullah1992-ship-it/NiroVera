@@ -2,14 +2,18 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { canAccessPath } from "@/lib/navVisibility";
 import { formatUiNumber } from "@/lib/dateFormat";
-import { ACCENT, BORDER, CARD, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 import useCommandSigningSnapshot from "@/hooks/useCommandSigningSnapshot";
 import { pendingWorkProofBadgeCount } from "@/lib/suiteBadges";
 
 const MONO = "'IBM Plex Mono', monospace";
-const LINE = "var(--nv-line, #DFE3EA)";
-const HAIR = "#EEF0F4";
-const ROW = "#F7F8FA";
+const LINE = "#E4E9E6";
+const HAIR = "#EEF1EF";
+const ROW = "#F4F7F5";
+const OK = "#3C7D50";
+const WARN = "#C8A45A";
+const BAD = "#9B2335";
+const HEAD = { fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" };
 
 function n(value) {
   return Number(value) || 0;
@@ -40,18 +44,19 @@ function toneOf(key, waiting) {
 function tabBtn(on) {
   return {
     fontFamily: "inherit",
-    fontSize: 13,
-    fontWeight: on ? 700 : 400,
-    padding: "9px 16px",
-    border: `1px solid ${on ? NAVY_FILL : BORDER}`,
-    background: on ? NAVY_FILL : CARD,
-    color: on ? "#fff" : MUTED,
+    fontSize: 12.5,
+    fontWeight: on ? 700 : 500,
+    height: 32,
+    padding: "0 14px",
+    border: on ? "none" : `1px solid ${LINE}`,
+    background: on ? OK : "#fff",
+    color: on ? "#fff" : "#3A4048",
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
     whiteSpace: "nowrap",
-    borderRadius: 10,
+    borderRadius: 8,
   };
 }
 
@@ -140,7 +145,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
         { key: "leave", title: ar ? "طلباتي" : "My Requests", note: ar ? "إجازة وموافقة خطية — الختم غاية الطلب" : "Leave and written consent — the seal is the request's purpose", value: metrics.pendingLeave, to: "/app/requests" },
         { key: "org", title: ar ? "الهيكل" : "Org", note: ar ? "صلاحيات وتصعيد" : "Permissions and escalation", value: metrics.stations, to: "/app/org" },
         { key: "hr", title: ar ? "الموارد البشرية" : "HR", note: ar ? `${metrics.activeMembers} نشط اليوم` : `${metrics.activeMembers} active today`, value: metrics.employees, to: "/app/hr" },
-        { key: "performance", title: ar ? "الأداء" : "Performance", note: ar ? "درجة من الإثبات المعتمد بين تاريخين" : "A score from approved proof between two dates", value: `${metrics.performance}%`, to: "/app/performance" },
+        { key: "performance", title: ar ? "الأداء" : "Performance", note: ar ? "درجة من الإثبات المعتمد بين تاريخين" : "A score from approved proof between two dates", value: `${metrics.performance}%`, to: "/app/performance?view=manage" },
         { key: "complaints", title: ar ? "صوت الموظف" : "Employee Voice", note: ar ? "اقتراح · شكوى · مجهول" : "Suggest · complain · anon", value: metrics.complaints, to: "/app/complaints" },
         { key: "discipline", title: ar ? "الجزاءات" : "Sanctions", note: ar ? "واقعة ثم قرار وتظلم — 66–73" : "Incident, decision, appeal — 66–73", value: "—", to: "/app/discipline" },
       ],
@@ -220,7 +225,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
             width: 7,
             height: 7,
             borderRadius: "50%",
-            background: urgent ? "#DC2626" : item.tone ? "#B45309" : SURFACE,
+            background: urgent ? BAD : item.tone ? WARN : SURFACE,
             border: item.tone ? "none" : `1px solid ${BORDER}`,
             marginTop: 6,
             flexShrink: 0,
@@ -236,7 +241,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
             fontFamily: MONO,
             fontSize: 18,
             fontWeight: 500,
-            color: urgent ? "#DC2626" : NAVY,
+            color: urgent ? BAD : "#111418",
             flexShrink: 0,
             lineHeight: 1.1,
           }}
@@ -252,7 +257,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "سلسلة الإثبات" : "Proof cycle"}</span>
+            <span style={HEAD}>{ar ? "سلسلة الإثبات" : "Proof cycle"}</span>
             <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
               {ar
                 ? "حضور → مهمة → مراجعة → تصعيد → توقيع → إثبات للعميل. كل رقم من السجل والنطاق المعروض."
@@ -260,13 +265,13 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
             </span>
           </div>
           {cycleWaiting > 0 ? (
-            <span style={{ fontSize: 10, fontWeight: 600, color: "#fff", background: ACCENT, padding: "3px 9px", fontFamily: MONO, borderRadius: 999 }}>
+            <span dir="ltr" style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: OK, padding: "2px 8px", fontFamily: MONO, borderRadius: 999, unicodeBidi: "isolate" }}>
               {cycleWaiting}
             </span>
           ) : null}
         </div>
         <div className="nv-dash-cycle">
-          {cycle.map((item, index) => {
+          {cycle.map((item) => {
             const urgent = item.tone === "urgent";
             const watch = item.tone === "watch";
             return (
@@ -277,8 +282,10 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
                   display: "flex",
                   flexDirection: "column",
                   gap: 6,
-                  padding: "16px 18px",
-                  borderInlineStart: index ? `1px solid ${LINE}` : "none",
+                  padding: "14px 14px",
+                  border: `1px solid ${LINE}`,
+                  borderTop: `3px solid ${urgent ? BAD : watch ? WARN : OK}`,
+                  borderRadius: 12,
                   textDecoration: "none",
                   minWidth: 0,
                   background: CARD,
@@ -286,12 +293,12 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
               >
                 <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: MUTED }}>{item.step}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{item.title}</span>
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 26, fontWeight: 500, color: urgent ? "#DC2626" : NAVY, lineHeight: 1.05 }}>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 26, fontWeight: 500, color: urgent ? BAD : "#111418", lineHeight: 1.05, unicodeBidi: "isolate" }}>
                   {item.value}
                 </span>
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{item.note}</span>
                 {urgent || watch ? (
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: urgent ? "#DC2626" : "#B45309" }} />
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: urgent ? BAD : WARN }} />
                 ) : null}
               </Link>
             );
@@ -302,7 +309,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "باقي المنصة" : "The rest of the suite"}</span>
+            <span style={HEAD}>{ar ? "باقي المنصة" : "The rest of the suite"}</span>
             <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
               {ar ? "ناس والتزام ومال وثقة — يظهر ما ينتظرك أولاً." : "People, care, money, and trust — what is waiting appears first."}
             </span>

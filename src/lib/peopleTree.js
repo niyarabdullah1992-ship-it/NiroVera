@@ -1,33 +1,44 @@
 import { updateCompany } from "@/lib/store";
 import { seatForEmployee } from "@/lib/orgHire";
-import { applyCompanyOwnershipTransfer, applyWorkplaceManagerRule, checkSetReportsToGate } from "@/lib/peopleTreeGraph";
+import {
+  applyCompanyOwnershipTransfer,
+  checkTransferCompanyOwnershipGate,
+  hasOrgSuperior,
+  isCompanyOwner,
+  isTopAuthority,
+  sameCompanyScope,
+} from "@/lib/orgDerivations";
+import { applyWorkplaceManagerRule, checkSetReportsToGate } from "@/lib/peopleTreeGraph";
 
 export {
   allowedReportsTo,
-  applyCompanyOwnershipTransfer,
   buildPeopleTree,
   checkSetReportsToGate,
-  checkTransferCompanyOwnershipGate,
   descendantEmployeeIds,
   explainWorkplaceManager,
   workplaceManagerCardMark,
   filterPeopleHits,
   flattenPeopleTree,
-  hasOrgSuperior,
-  isCompanyOwner,
-  isTopAuthority,
   peopleQueryMatches,
   peopleSearchHay,
   pathToPerson,
   reportsToId,
   reportsWord,
-  sameCompanyScope,
   stationsManagedBy,
   teamsByManager,
   applyWorkplaceManagerRule,
   workplaceReportsToId,
   wouldCreateReportsCycle,
 } from "@/lib/peopleTreeGraph";
+
+export {
+  applyCompanyOwnershipTransfer,
+  checkTransferCompanyOwnershipGate,
+  hasOrgSuperior,
+  isCompanyOwner,
+  isTopAuthority,
+  sameCompanyScope,
+};
 
 export function setEmployeeReportsTo(companyId, employeeId, managerId) {
   let error = "";

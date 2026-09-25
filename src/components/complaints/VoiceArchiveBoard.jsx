@@ -1,97 +1,115 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { countAr } from "@/lib/disciplineBoard";
-import { fmtVoiceDate } from "@/lib/voiceBoard";
+import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import VoiceAuditTrail from "@/components/complaints/VoiceAuditTrail";
+import { countAr } from "@/lib/disciplineBoard";
+import { voiceArchiveSmartItems } from "@/lib/voiceBoard";
+import { BORDER, CARD, MUTED, NAVY, PILL_RADIUS } from "@/lib/platformStyles";
 
 function chip(on) {
   return {
     fontFamily: "inherit",
     fontSize: 11,
     padding: "7px 12px",
-    border: `1px solid ${on ? "#14213D" : "#DFE3EA"}`,
-    background: on ? "#14213D" : "#fff",
-    color: on ? "#fff" : "#4B5567",
+    border: `1px solid ${on ? "var(--nv-navy, #14213d)" : BORDER}`,
+    background: on ? "var(--nv-navy, #14213d)" : CARD,
+    color: on ? "#fff" : MUTED,
     fontWeight: on ? 700 : 400,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    borderRadius: 10,
+    borderRadius: PILL_RADIUS,
   };
 }
 
-export default function VoiceArchiveBoard({ cards, ar, canManage }) {
+/**
+ * Settled voice archive — search + day groups via RecordSmartArchive.
+ * scope: "manage" | "mine" | "employee"
+ */
+export default function VoiceArchiveBoard({
+  cards,
+  ar,
+  canManage = false,
+  scope = canManage ? "manage" : "mine",
+  employeeName = "",
+}) {
   const [filter, setFilter] = useState("all");
-  const rows = cards.filter((card) => card.settled && (filter === "all" || card.item.channel === filter));
+  const settled = useMemo(() => (cards || []).filter((card) => card.settled), [cards]);
+  const filtered = useMemo(
+    () => settled.filter((card) => filter === "all" || card.item.channel === filter),
+    [settled, filter],
+  );
+  const items = useMemo(() => voiceArchiveSmartItems(filtered, { ar }), [filtered, ar]);
+
   const filters = [
     ["all", ar ? "الكل" : "All"],
     ["suggestion", ar ? "اقتراحات" : "Suggestions"],
     ["complaint", ar ? "شكاوى" : "Complaints"],
     ["anonymous", ar ? "مجهولة" : "Anonymous"],
   ];
+  const channelFilters = scope === "employee"
+    ? filters.filter(([id]) => id !== "anonymous")
+    : filters;
+
+  const subtitle = scope === "employee"
+    ? (ar
+      ? `أصوات ${employeeName || "الموظف"} المستقرّة فقط — مجمّعة يومًا بيوم. البلاغ المجهول لا يظهر في الملف.`
+      : `Only ${employeeName || "this employee"}'s settled voices — grouped day by day. Anonymous reports do not appear on the file.`)
+    : scope === "manage"
+      ? (ar
+        ? "ما استقرّ في نطاق فرعك — مجمّع يومًا بيوم. قيد المراجعة يبقى في طابور الإدارة. اضغط السطر لمسار القرار."
+        : "What settled in your station scope — grouped day by day. Open items stay in the manage queue. Open a row for the decision path.")
+      : (ar
+        ? "أصواتك المستقرّة وما نُشر من مجهول فرعك بالرقم — مجمّعة يومًا بيوم. اضغط السطر لمسار القرار."
+        : "Your settled voices and station anonymous rulings by number — grouped day by day. Open a row for the decision path.");
+
+  const emptyText = ar
+    ? "لا أصوات مؤرشفة بعد. ما يُعتمد أو يُعاد بملاحظة أو يُعالَج ينتقل إلى هنا بقراره وأثره."
+    : "No archived voices yet. What is adopted, returned with a note, or handled moves here with its ruling.";
+
+  const countHint = ar
+    ? `${countAr(settled.length, "صوت واحد مستقرّ", "صوتان مستقرّان", "أصوات مستقرّة", "صوتاً مستقرّاً", "لا أصوات مستقرّة")}${scope === "manage" ? " في هذا الفرع" : scope === "employee" ? " في الملف" : " في أصواتك"} — لا يُحذف منها شيء.`
+    : `${settled.length} settled voice(s)${scope === "manage" ? " on this station" : scope === "employee" ? " on the file" : " of yours"} — nothing is deleted.`;
 
   return (
-    <section className="nv-paper" style={{ background: "#fff", border: "1px solid #DFE3EA", display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid #EEF0F4", display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-          <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "الأرشيف" : "Archive"}</span>
-          <span style={{ fontSize: 12, color: "#6B7280", lineHeight: 1.8 }}>
-            {ar
-              ? `${countAr(rows.length, "صوت واحد مستقرّ", "صوتان مستقرّان", "أصوات مستقرّة", "صوتاً مستقرّاً", "لا أصوات مستقرّة")}${canManage ? " في هذا الفرع" : " في أصواتك"} — لا يُحذف منها شيء.`
-              : `${rows.length} settled voice(s)${canManage ? " on this station" : " of yours"} — nothing is deleted.`}
-          </span>
-        </div>
-        <span style={{ marginInlineStart: "auto", display: "flex", gap: 5, flexWrap: "wrap" }}>
-          {filters.map(([id, label]) => (
+    <RecordSmartArchive
+      items={items}
+      lang={ar ? "ar" : "en"}
+      dir={ar ? "rtl" : "ltr"}
+      emptyLabel={emptyText}
+      searchPlaceholder={ar ? "بحث في الأرشيف…" : "Search archive…"}
+      subtitle={`${countHint} ${subtitle}`}
+      meta={(
+        <span style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+          {channelFilters.map(([id, label]) => (
             <button key={id} type="button" onClick={() => setFilter(id)} style={chip(filter === id)}>{label}</button>
           ))}
         </span>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.7fr) minmax(104px,1fr) minmax(0,1.3fr) minmax(90px,auto)", gap: 12, padding: "10px 20px", background: "#FAFBFC", borderBottom: "1px solid #EEF0F4", fontSize: 11, color: "#6B7280" }}>
-        <span>{ar ? "الصوت" : "Voice"}</span>
-        <span>{ar ? "القرار" : "Ruling"}</span>
-        <span>{ar ? "ما تغيّر" : "What changed"}</span>
-        <span>{ar ? "التاريخ" : "Date"}</span>
-      </div>
-      {rows.length === 0 ? (
-        <div style={{ padding: "18px 20px", fontSize: 11, color: "#6B7280", lineHeight: 1.9 }}>
-          {ar
-            ? "لا أصوات مؤرشفة بعد. ما يُعتمد أو يُعاد بملاحظة أو يُعالَج ينتقل إلى هنا بقراره وأثره."
-            : "No archived voices yet. What is adopted, returned with a note, or handled moves here with its ruling."}
-        </div>
-      ) : rows.map((row) => (
-        <div
-          key={row.item.id}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0,1.7fr) minmax(104px,1fr) minmax(0,1.3fr) minmax(90px,auto)",
-            gap: 12,
-            padding: "12px 20px",
-            alignItems: "start",
-            borderBottom: "1px solid #F7F8FA",
-            borderInlineEnd: `3px solid ${row.accent}`,
-          }}
-        >
-          <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-            {row.item.authorId ? (
-              <Link to={`/app/employees/${encodeURIComponent(row.item.authorId)}`} style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.6, color: "#14213D", textDecoration: "none" }}>{row.title}</Link>
-            ) : (
-              <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.6 }}>{row.title}</span>
-            )}
-            <span style={{ fontSize: 10, color: "#6B7280", lineHeight: 1.75 }}>{row.meta}</span>
-          </span>
-          <span style={{ fontSize: 10, fontWeight: 600, color: row.stColor, background: row.stBg, border: `1px solid ${row.stBorder}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap", justifySelf: "start", alignSelf: "start", height: "fit-content" }}>{row.state}</span>
-          <span style={{ fontSize: 11, color: "#4B5567", lineHeight: 1.8, minWidth: 0 }}>{row.reply || "—"}</span>
-          <span style={{ fontSize: 11, color: "#4B5567", whiteSpace: "nowrap" }}>{fmtVoiceDate(row.item.closedAt || row.item.decidedAt || row.item.createdAt, ar)}</span>
-          <div style={{ gridColumn: "1 / -1" }}>
+      )}
+      renderOpen={(item) => {
+        const row = item.card;
+        if (!row) return null;
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: 2, borderTop: `1px solid ${BORDER}` }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: NAVY, paddingTop: 10 }}>
+              {ar ? "مسار القرار" : "Decision path"}
+            </span>
+            {row.item?.authorId && scope !== "employee" ? (
+              <Link
+                to={`/app/employees/${encodeURIComponent(row.item.authorId)}`}
+                style={{ fontSize: 11, fontWeight: 600, color: NAVY, textDecoration: "none" }}
+              >
+                {ar ? "ملف الموظف ←" : "Employee file →"}
+              </Link>
+            ) : null}
             <VoiceAuditTrail events={row.audit} ar={ar} />
+            <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.85 }}>
+              {ar
+                ? "لا يُحذف من الأرشيف صوت. والبلاغ المجهول يبقى مجهولاً فيه — يُحفظ قراره وأثره دون هويّة مُبلِّغه."
+                : "Nothing is deleted. An anonymous report stays anonymous here — its ruling and effect are kept without the reporter's identity."}
+            </span>
           </div>
-        </div>
-      ))}
-      <div style={{ padding: "13px 20px", fontSize: 11, color: "#4B5567", lineHeight: 1.95 }}>
-        {ar
-          ? "لا يُحذف من الأرشيف صوت. والبلاغ المجهول يبقى مجهولاً فيه — يُحفظ قراره وأثره دون هويّة مُبلِّغه."
-          : "Nothing is deleted. An anonymous report stays anonymous here — its ruling and effect are kept without the reporter's identity."}
-      </div>
-    </section>
+        );
+      }}
+    />
   );
 }

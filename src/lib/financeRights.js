@@ -74,9 +74,11 @@ export function canManageSurface(surface, user, data) {
  * a preference, never as a grant: an account without management rights is pinned
  * to its own view whatever the URL says.
  */
-export function resolveFinanceView(surface, user, data, requested) {
+export function resolveFinanceView(surface, user, data, requested, railSide = "") {
   const canManage = canManageSurface(surface, user, data);
   if (!canManage) return SELF;
+  if (railSide === "employee") return SELF;
+  if (railSide === "manage") return MANAGE;
   return requested === SELF ? SELF : MANAGE;
 }
 

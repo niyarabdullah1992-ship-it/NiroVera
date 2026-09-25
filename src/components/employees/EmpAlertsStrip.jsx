@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
-import { OK, WARN, BAD } from "@/lib/platformStyles";
+import { OK, WARN, BAD, statusBanner } from "@/lib/platformStyles";
 import { checkContractTermGate, collectEmployeeValidityDocs, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { deriveProbationProgress, deriveArt55Conversion } from "@/lib/contractLawDerivations";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
@@ -148,10 +148,7 @@ export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
     <section
       className="nv-file-card"
       style={{
-        background: "#FDF6E8",
-        border: "1px solid #ECD9A8",
-        borderTop: "3px solid var(--nv-warn-fill, #D97706)",
-        borderRadius: 14,
+        ...statusBanner.warn,
         boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
         padding: "13px 20px",
         display: "flex",
@@ -160,21 +157,21 @@ export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
       }}
       dir={ar ? "rtl" : "ltr"}
     >
-      <span style={{ fontSize: 12, fontWeight: 700, color: "#8A6516" }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-warn-ink)" }}>
         {voice.warnings}
       </span>
       {alerts.map((a) => (
         <div key={`${a.label}-${a.value}`} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ display: "grid", gridTemplateColumns: "6px minmax(0,1fr) auto", gap: 11, alignItems: "start" }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: a.chipStyle?.color || "#8A6516", marginTop: 6 }} />
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: a.chipStyle?.color || "var(--nv-warn-ink)", marginTop: 6 }} />
             {a.href ? (
-              <Link to={a.href} style={{ fontSize: 11, color: "#3C4657", lineHeight: 1.85, minWidth: 0, fontWeight: 600 }}>
+              <Link to={a.href} style={{ fontSize: 11, color: "var(--nv-ink2, #3C4657)", lineHeight: 1.85, minWidth: 0, fontWeight: 600 }}>
                 {a.label} — {a.value}
               </Link>
             ) : (
-              <span style={{ fontSize: 11, color: "#3C4657", lineHeight: 1.85, minWidth: 0 }}>{a.label} — {a.value}</span>
+              <span style={{ fontSize: 11, color: "var(--nv-ink2, #3C4657)", lineHeight: 1.85, minWidth: 0 }}>{a.label} — {a.value}</span>
             )}
-            <span style={{ fontSize: 10, fontWeight: 600, color: a.chipStyle?.color || "#8A6516", whiteSpace: "nowrap" }}>{a.chipText}</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: a.chipStyle?.color || "var(--nv-warn-ink)", whiteSpace: "nowrap" }}>{a.chipText}</span>
           </div>
           {a.ruleId ? <LaborArticleCite ruleId={a.ruleId} ar={ar} /> : null}
         </div>

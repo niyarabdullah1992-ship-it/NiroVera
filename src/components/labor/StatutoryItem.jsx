@@ -8,8 +8,8 @@ import {
 
 /**
  * Compact statutory chip — never a full-width bar.
- * Green = غير مستحق (quiet article / in_scope). Red + pulse = استحقاق / due.
- * Cite aliases entitlement. Glow off never strips the tint.
+ * DS v2: soft navy cite (LawGateArticleBadge). Due = warn soft, no glow.
+ * Red only for true block / منع. Cite aliases entitlement.
  */
 export default function StatutoryItem({
   article,

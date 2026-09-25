@@ -24,8 +24,8 @@ const headRow = {
   gap: "12px",
   padding: "10px 18px",
   background: SURFACE,
-  borderTop: "1px solid #E2E8F0",
-  borderBottom: "1px solid #E2E8F0",
+  borderTop: "1px solid var(--nv-line)",
+  borderBottom: "1px solid var(--nv-line)",
   fontSize: "10px",
   letterSpacing: "0.06em",
   color: MUTED,
@@ -198,7 +198,7 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
                   <div style={{ fontSize: "11px", color: MUTED }}>
                     {r.jobTitle || (ar ? "بلا وظيفة" : "No job")}
                     {!r.planCustom ? (
-                      <span style={{ display: "block", fontSize: "10px", color: "#B45309" }}>{ar ? "الخطة الافتراضية" : "default plan"}</span>
+                      <span style={{ display: "block", fontSize: "10px", color: "var(--nv-warn-ink)" }}>{ar ? "الخطة الافتراضية" : "default plan"}</span>
                     ) : null}
                   </div>
                   <div dir="ltr" style={{ fontSize: "12px", fontFamily: "'IBM Plex Sans',sans-serif", color: NAVY, textAlign: ar ? "right" : "left" }}>{r.points}</div>
@@ -206,7 +206,7 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
                     {r.provenTasks}/{r.assignedTasks}
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ flex: 1, height: "5px", borderRadius: "4px", background: "#F1F5F9", overflow: "hidden" }}>
+                    <span style={{ flex: 1, height: "5px", borderRadius: 999, background: "var(--nv-inset)", overflow: "hidden" }}>
                       <span style={bar(r.score, ACCENT)} />
                     </span>
                     <span dir="ltr" style={{ fontSize: "12px", fontWeight: 600, fontFamily: "'IBM Plex Sans',sans-serif", width: "24px", textAlign: "right", color: NAVY }}>{r.score}</span>
@@ -216,7 +216,7 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
                   </div>
                 </div>
                 {expanded === r.employeeId && (
-                  <div style={{ padding: "12px 18px 16px", background: SURFACE, borderBottom: "1px solid #E2E8F0" }}>
+                  <div style={{ padding: "12px 18px 16px", background: SURFACE, borderBottom: "1px solid var(--nv-line)" }}>
                     {r.objectives.map((o) => (
                       <div key={o.objectiveId} style={{ display: "flex", gap: "12px", alignItems: "center", padding: "7px 0", flexWrap: "wrap" }}>
                         <span style={{ flex: "1 1 170px", fontSize: "11px", color: NAVY }}>
@@ -231,8 +231,8 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
                             </span>
                           ) : null}
                         </span>
-                        <span style={{ flex: "1 1 140px", height: "5px", borderRadius: "4px", background: "#E2E8F0", overflow: "hidden" }}>
-                          <span style={bar(o.attainmentPct, o.source === "task" ? ACCENT : "#94A3B8")} />
+                        <span style={{ flex: "1 1 140px", height: "5px", borderRadius: 999, background: "var(--nv-inset)", overflow: "hidden" }}>
+                          <span style={bar(o.attainmentPct, o.source === "task" ? ACCENT : "var(--nv-ink3)")} />
                         </span>
                         <span dir="ltr" style={{ flex: "0 0 76px", fontSize: "11px", color: MUTED, textAlign: "end", fontFamily: "'IBM Plex Sans',sans-serif" }}>
                           +{o.contribution}
@@ -276,7 +276,7 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
               {jobs.map((j) => <option key={j.id} value={j.id}>{j.code} · {j.title}</option>)}
             </select>
             {jobs.length === 0 ? (
-              <div style={{ fontSize: "11px", color: "#B45309", marginTop: "6px" }}>
+              <div style={{ fontSize: "11px", color: "var(--nv-warn-ink)", marginTop: "6px" }}>
                 {ar ? "لا وظائف في الكتالوج." : "No jobs in the catalogue."}
               </div>
             ) : null}
@@ -285,7 +285,7 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
           {planJobId ? (
             <div style={{ marginTop: "14px" }}>
               {draft.map((o, i) => (
-                <div key={o.id || i} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "10px", padding: "11px 0", borderTop: "1px solid #F1F5F9" }}>
+                <div key={o.id || i} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "10px", padding: "11px 0", borderTop: "1px solid var(--nv-line2)" }}>
                   <label>
                     <span style={labelText}>{ar ? "العنوان" : "Title"}</span>
                     <input
@@ -350,7 +350,7 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
                   <div style={{ display: "flex", alignItems: "flex-end" }}>
                     <button
                       type="button"
-                      style={{ ...ui.btnRow, background: CARD, color: MUTED, border: "1px solid #E2E8F0" }}
+                      style={{ ...ui.btnRow, background: CARD, color: MUTED, border: "1px solid var(--nv-line)", borderRadius: 10 }}
                       onClick={() => setDraft((rows) => rows.filter((_, idx) => idx !== i))}
                     >
                       {ar ? "احذف" : "Remove"}
@@ -360,10 +360,10 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
               ))}
 
               <div style={{ display: "flex", gap: "12px", alignItems: "center", marginTop: "13px", flexWrap: "wrap" }}>
-                <button type="button" style={{ ...ui.btnRow, background: CARD, color: NAVY, border: "1px solid #E2E8F0" }} onClick={() => setDraft((rows) => [...rows, newObjective(rows.length + 1)])}>
+                <button type="button" style={{ ...ui.btnRow, background: CARD, color: NAVY, border: "1px solid var(--nv-line)", borderRadius: 10 }} onClick={() => setDraft((rows) => [...rows, newObjective(rows.length + 1)])}>
                   {ar ? "+ هدف" : "+ Objective"}
                 </button>
-                <span style={{ flex: "1 1 200px", fontSize: "11px", color: draftGate && !draftGate.ok ? "#B45309" : MUTED, lineHeight: 1.7 }}>
+                <span style={{ flex: "1 1 200px", fontSize: "11px", color: draftGate && !draftGate.ok ? "var(--nv-warn-ink)" : MUTED, lineHeight: 1.7 }}>
                   {draftGate && !draftGate.ok
                     ? (ar ? draftGate.reason : draftGate.reasonEn)
                     : (ar ? `المجموع ${draftTotal}%` : `Total ${draftTotal}%`)}

@@ -1,11 +1,19 @@
 /** Other HR service requests — letters, permission, overtime, advance. Not leave. */
 
-import { getLeaveTotal } from "./leaveTypes.js";
+import { getLeaveTotal, grantDaysOf } from "./leaveTypes.js";
 import { checkPunchRecordGate, parsePunchClock } from "./attendancePunch.js";
 import { checkIssuedLetterFileGate, checkRaiseSignableGate, isLetterSignableType } from "./requestSigning.js";
 
 export const LEAVE_TOPUP_TYPE = "leave_topup";
 export const LEAVE_TOPUP_MAX_DAYS = 30;
+/** Same cap as requestWorkspace DISCRETIONARY_GRANT_CAP — admin credit + grantDiscretionaryDays. */
+export const DISCRETIONARY_GRANT_CAP = 5;
+
+/** Pools إدارة may credit without the employee raising leave. */
+export const LEAVE_CREDIT_POOLS = [
+  { key: "annual", ar: "رصيد سنوي", en: "Annual balance" },
+  { key: "grant", ar: "أيام تقديرية", en: "Discretionary days" },
+];
 export const STUDY_CONSENT_TYPE = "study_consent";
 export const STUDY_CONSENT_LABEL_AR = "موافقة دراسية";
 export const STUDY_CONSENT_LABEL_EN = "Study consent";
@@ -976,6 +984,72 @@ export function checkLeaveTopupDaysGate(input) {
     };
   }
   return { ok: true, days };
+}
+
+/**
+ * Named gate for إدارة → إضافة رصيد.
+ * Credits annual (leaveTotals) or discretionary (grant) without the employee raising leave.
+ */
+export function checkAdminLeaveCreditGate(input = {}) {
+  if (input.canCredit === false) {
+    return {
+      ok: false,
+      error: "ROLE_REQUIRED",
+      reason: "إضافة الرصيد لمن يقرر على الطلبات فقط.",
+      reasonEn: "Only managers who decide on requests may credit leave balance.",
+    };
+  }
+  const pool = String(input.pool || "").trim();
+  if (pool !== "annual" && pool !== "grant") {
+    return {
+      ok: false,
+      error: "POOL_REQUIRED",
+      reason: "اختر الرصيد السنوي أو الأيام التقديرية.",
+      reasonEn: "Pick the annual balance or discretionary days.",
+    };
+  }
+  const why = String(input.reason || "").trim();
+  if (why.length < 3) {
+    return {
+      ok: false,
+      error: "REASON_REQUIRED",
+      reason: "اكتب سبب إضافة الرصيد.",
+      reasonEn: "Write why the balance is being credited.",
+    };
+  }
+  if (pool === "annual") {
+    const daysGate = checkLeaveTopupDaysGate({ days: input.days });
+    if (!daysGate.ok) return daysGate;
+    return { ok: true, pool, days: daysGate.days, reason: why };
+  }
+  const n = Math.round(Number(input.days) || 0);
+  if (!Number.isFinite(n) || n < 1) {
+    return {
+      ok: false,
+      error: "DAYS_INVALID",
+      reason: "حدد عدد الأيام — رقماً صحيحاً أكبر من صفر.",
+      reasonEn: "Set the days — a whole number greater than zero.",
+    };
+  }
+  if (n > 30) {
+    return {
+      ok: false,
+      error: "DAYS_INVALID",
+      reason: "لا تُضاف أكثر من 30 يوماً في المنحة الواحدة.",
+      reasonEn: "A single grant may not add more than 30 days.",
+    };
+  }
+  const used = grantDaysOf(input.profile);
+  if (used + n > DISCRETIONARY_GRANT_CAP) {
+    return {
+      ok: false,
+      error: "GRANT_CAP",
+      reason: `يتجاوز سقف ${DISCRETIONARY_GRANT_CAP} أيام تقديرية في السنة — المتاح ${Math.max(0, DISCRETIONARY_GRANT_CAP - used)}.`,
+      reasonEn: `Exceeds the ${DISCRETIONARY_GRANT_CAP}-day discretionary cap — ${Math.max(0, DISCRETIONARY_GRANT_CAP - used)} left.`,
+      leftover: Math.max(0, DISCRETIONARY_GRANT_CAP - used),
+    };
+  }
+  return { ok: true, pool, days: n, reason: why, leftover: Math.max(0, DISCRETIONARY_GRANT_CAP - used) };
 }
 
 /** Extra annual days after approve — same catalog field as the 21/30 statutory floor. */

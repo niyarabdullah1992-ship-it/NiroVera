@@ -270,7 +270,6 @@ export function checkPublishGates(input: {
 
   const onDate = dateKey(year, monthIndex, 1);
   const weeklyCap = ruleValue("hours.week.ordinaryMaxHours", onDate);
-  const restBetween = ruleValue("hours.rest.betweenShiftsHours", onDate);
   const workplaceMax = ruleValue("hours.workplace.maxHours", onDate);
   const ramadanDayCap = ruleValue("hours.ramadan.ordinaryHours", onDate);
   const ramadanWeekCap = ruleValue("hours.ramadan.weekMaxHours", onDate);
@@ -287,22 +286,9 @@ export function checkPublishGates(input: {
     Math.max(0, ...Object.values(wMin).flatMap((o) => Object.values(o)), 0) / 60,
   );
 
-  let restBreach11: { name: string; gap: number; from: { label: string; d: number }; to: { label: string; d: number } } | null = null;
   let workplaceBreach: { name: string; hours: number; d: number } | null = null;
   for (const id of assignedIds) {
     const sp = spansOf(id, shiftTypes, assignments, year, monthIndex);
-    for (let i = 1; i < sp.length; i++) {
-      const gap = sp[i].start - sp[i - 1].end;
-      if (gap < restBetween * 60) {
-        restBreach11 = {
-          name: names[id] || id,
-          gap: Math.max(0, Math.round(gap / 60)),
-          from: { label: sp[i - 1].label, d: sp[i - 1].d },
-          to: { label: sp[i].label, d: sp[i].d },
-        };
-        break;
-      }
-    }
     for (let d = 1; d <= days; d++) {
       const stay = workplaceMinutesOnDay(sp, d);
       if (stay > workplaceMax * 60) {
@@ -310,7 +296,7 @@ export function checkPublishGates(input: {
         break;
       }
     }
-    if (restBreach11 && workplaceBreach) break;
+    if (workplaceBreach) break;
   }
 
   let ramadanDayBreach: { name: string; hours: number; d: number } | null = null;
@@ -485,20 +471,12 @@ export function checkPublishGates(input: {
       noteEn: "Article 101: a worker may not remain at the workplace more than the in-force daily cap (12 hours after the 1436 amendment).",
     },
     {
-      id: "rest_11h",
-      ok: doubleOk && !restBreach11,
-      labelAr: !doubleOk
-        ? "موظف مسند إلى ورديتين في يوم واحد"
-        : restBreach11
-          ? `${restBreach11.name}: ${restBreach11.gap === 0 ? "بلا فاصل" : `${restBreach11.gap} ساعة فقط`} بين ${restBreach11.from.label} يوم ${restBreach11.from.d} و${restBreach11.to.label} يوم ${restBreach11.to.d}`
-          : `فاصل تشغيلي ${restBetween} ساعة بين ورديتين`,
-      labelEn: !doubleOk
-        ? "Someone is assigned two shifts in one day"
-        : restBreach11
-          ? `${restBreach11.name}: only ${restBreach11.gap} h between ${restBreach11.from.label} on day ${restBreach11.from.d} and ${restBreach11.to.label} on day ${restBreach11.to.d}`
-          : `Operational ${restBetween} h gap between shifts`,
-      noteAr: "فاصل تشغيلي للمنصة — ليست المادة 101.",
-      noteEn: "An operational gap — not Article 101.",
+      id: "double_shift",
+      ok: doubleOk,
+      labelAr: doubleOk ? "لا إسناد لورديتين في يوم واحد" : "موظف مسند إلى ورديتين في يوم واحد",
+      labelEn: doubleOk ? "Nobody is assigned two shifts in one day" : "Someone is assigned two shifts in one day",
+      noteAr: "إسناد تشغيلي — ليست المادة 101.",
+      noteEn: "An operational assignment check — not Article 101.",
     },
     {
       id: "rest_5h",

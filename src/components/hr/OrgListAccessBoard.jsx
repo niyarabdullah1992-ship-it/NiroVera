@@ -43,7 +43,7 @@ function grantedModules(permissions, ar) {
     .map((department) => (ar ? department.ar : department.en));
 }
 
-export default function OrgListAccessBoard({ data, companyId, ar, canWrite, ownerMode = false, treeLists = [], wide = false, onHire }) {
+export default function OrgListAccessBoard({ data, companyId, ar, canWrite, ownerMode = false, treeLists = [], wide = false, onHire, embedded = false }) {
   const stored = companyLists(data);
   const packs = useMemo(() => {
     const rows = [...stored];

@@ -3,22 +3,32 @@ import { useI18n } from "@/lib/i18n";
 import { base44 } from "@/api/base44Client";
 import { updateEmployeeProfile } from "@/lib/store";
 import { Loader2 } from "lucide-react";
-import { MUTED, NAVY, BORDER } from "@/lib/platformStyles";
 import { employeeFileStatus } from "@/lib/employeeFileBoard";
 import { employeeFileVoice } from "@/lib/employeeFileView";
+import { readEmployeeNo } from "@/lib/employeeNumber";
 
-/** Small «أنت» / «ملفي» chip — one restrained green accent. */
+const STATUS = {
+  ok: { bg: "#E6F2EA", fg: "#2F6B43" },
+  bad: { bg: "#FBEBED", fg: "#9B2335" },
+  warn: { bg: "#FBF3E1", fg: "#8A5A12" },
+};
+
+/** Small «أنت» / «ملفي» chip — calm accent identity, never status red/ok. */
 export function FileSelfBadge({ ar, kind = "you" }) {
   const label = kind === "file" ? (ar ? "ملفي" : "My file") : (ar ? "أنت" : "You");
   return (
     <span
       style={{
-        fontSize: 10,
-        fontWeight: 600,
-        color: "#137A49",
-        background: "#F2FAF6",
-        border: "1px solid #BFE6D2",
-        padding: "1px 7px",
+        display: "inline-block",
+        width: "fit-content",
+        flexShrink: 0,
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: 1.35,
+        color: "#2F6B43",
+        background: "#E6F2EA",
+        borderRadius: 999,
+        padding: "2px 8px",
         whiteSpace: "nowrap",
       }}
     >
@@ -27,7 +37,13 @@ export function FileSelfBadge({ ar, kind = "you" }) {
   );
 }
 
-/** Platform isEmpFile hero — L2623–2646 (inline styles AS-IS). */
+function markOf(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "—";
+  return parts.slice(0, 2).map((part) => part[0]).join("");
+}
+
+/** Identity row on the file — same monogram as the daily-ops cards. */
 export default function ProfileHero({ employee, companyId, canEdit, roleLabel, grade, stationName, currentUser }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
@@ -35,19 +51,11 @@ export default function ProfileHero({ employee, companyId, canEdit, roleLabel, g
   const avatarInput = useRef(null);
   const profile = employee.profile || {};
   const voice = employeeFileVoice({ employee, currentUser, ar });
-
   const status = employeeFileStatus(employee, ar);
-
-  const initials = (employee.name || "?")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase();
-
+  const paint = STATUS[status.kind] || STATUS.warn;
+  const employeeNo = readEmployeeNo(employee);
   const dept = profile.department || grade?.label || grade?.name || "";
-  const meta = [roleLabel, dept, stationName].filter(Boolean).join(" · ");
+  const meta = [roleLabel, dept, stationName].filter(Boolean);
 
   const upload = async (file) => {
     if (!file || !canEdit) return;
@@ -61,26 +69,27 @@ export default function ProfileHero({ employee, companyId, canEdit, roleLabel, g
   };
 
   return (
-    <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+    <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0, flex: "1 1 240px" }}>
       <button
         type="button"
         onClick={() => canEdit && avatarInput.current?.click()}
         disabled={!canEdit || uploading}
         title={canEdit ? (ar ? "تحديث الصورة" : "Update photo") : undefined}
         style={{
-          width: 46,
-          height: 46,
-          borderRadius: "50%",
-          background: "#F5F6F8",
-          color: NAVY,
+          width: 42,
+          height: 42,
+          borderRadius: 12,
+          background: "#0B3D27",
+          color: "#FBF3E1",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: 16,
+          fontSize: 13,
           fontWeight: 700,
           fontFamily: "inherit",
           flexShrink: 0,
-          border: `1px solid ${BORDER}`,
+          border: "none",
+          boxShadow: "inset 0 0 0 1px rgba(200,164,90,.35)",
           padding: 0,
           cursor: canEdit ? "pointer" : "default",
           overflow: "hidden",
@@ -89,11 +98,11 @@ export default function ProfileHero({ employee, companyId, canEdit, roleLabel, g
       >
         {profile.avatarUrl
           ? <img src={profile.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          : initials}
+          : markOf(employee.name)}
         {uploading && (
           <span style={{
-            position: "absolute", inset: 0, background: "rgba(0,0,0,.4)",
-            display: "flex", alignItems: "center", justifyContent: "center",
+            position: "absolute", inset: 0, background: "rgba(11,61,39,.55)",
+            display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
           }}
           >
             <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />
@@ -108,26 +117,30 @@ export default function ProfileHero({ employee, companyId, canEdit, roleLabel, g
         onChange={(e) => upload(e.target.files?.[0])}
       />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, letterSpacing: ".08em", color: MUTED }}>{voice.title}</span>
-        </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 17, fontWeight: 700, color: NAVY }}>{employee.name}</span>
+          <span style={{ fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418", lineHeight: 1.35 }}>{employee.name || "—"}</span>
           {voice.own ? <FileSelfBadge ar={ar} kind="file" /> : null}
           <span style={{
             fontSize: 11,
-            fontWeight: 600,
-            color: status.kind === "ok" ? "#137A49" : status.kind === "bad" ? "#8A1C2B" : "#8A6516",
-            background: status.kind === "ok" ? "#F2FAF6" : status.kind === "bad" ? "#FBF1F2" : "#FDF6E8",
-            border: `1px solid ${status.kind === "ok" ? "#BFE6D2" : status.kind === "bad" ? "#E9C4C9" : "#ECD9A8"}`,
-            padding: "2px 9px",
+            fontWeight: 700,
+            color: paint.fg,
+            background: paint.bg,
+            borderRadius: 999,
+            padding: "2px 8px",
           }}
           >
             {status.label}
           </span>
         </span>
-        <span style={{ fontSize: 12, color: MUTED }}>{meta || "—"}</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {employeeNo ? (
+            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: "#555C66", unicodeBidi: "isolate" }}>{employeeNo}</span>
+          ) : null}
+          {meta.map((part) => (
+            <span key={part} style={{ fontSize: 11, fontWeight: 600, color: "#3A4048", background: "#F4F7F5", borderRadius: 999, padding: "2px 8px" }}>{part}</span>
+          ))}
+        </span>
       </div>
     </div>
   );

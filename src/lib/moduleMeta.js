@@ -10,14 +10,14 @@ export function metaForPath(path) {
   if (!app) return null;
 
   const group = SUITE_GROUPS.find((g) => g.id === app.group);
-  const groupIndex = SUITE_GROUPS.findIndex((g) => g.id === app.group) + 1;
+  const num = String(group?.num || "");
 
   return {
     appId: app.id,
     path: app.path,
     group: app.group,
-    kickerAr: `${formatUiNumber(String(groupIndex).padStart(2, "0"), true)} · ${group?.ar || ""}`,
-    kickerEn: `${String(groupIndex).padStart(2, "0")} · ${group?.en || ""}`,
+    kickerAr: num ? `${formatUiNumber(num, true)} · ${group?.ar || ""}` : (group?.ar || ""),
+    kickerEn: num ? `${num} · ${group?.en || ""}` : (group?.en || ""),
   };
 }
 

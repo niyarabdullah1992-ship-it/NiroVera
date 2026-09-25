@@ -77,11 +77,11 @@ export default function OpsTaskAttachments({
                     await onSaveSteps?.(draft);
                     setEditing(false);
                   }}
-                  style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: BRAND, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                  style={{ padding: "7px 12px", borderRadius: 10, border: "none", background: BRAND, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
                 >
                   {ar ? "حفظ الخطوات" : "Save steps"}
                 </button>
-                <button type="button" onClick={() => { setDraft(stepText); setEditing(false); }} style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, background: CARD, color: MUTED, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                <button type="button" onClick={() => { setDraft(stepText); setEditing(false); }} style={{ padding: "7px 12px", borderRadius: 10, border: `1px solid ${BORDER}`, background: CARD, color: MUTED, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
                   {ar ? "إلغاء" : "Cancel"}
                 </button>
               </div>

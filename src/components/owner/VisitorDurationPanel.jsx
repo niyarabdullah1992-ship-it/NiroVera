@@ -1,5 +1,6 @@
 ﻿import React from "react";
 import { Clock3 } from "lucide-react";
+import { OWNER_MONO, ownerPaper } from "@/components/owner/ownerUi";
 
 const duration = (seconds, ar) => {
   const value = Math.max(0, Number(seconds) || 0);
@@ -11,36 +12,40 @@ const duration = (seconds, ar) => {
 
 export default function VisitorDurationPanel({ stats, ar }) {
   return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="flex items-center gap-1.5 text-xs text-[#5A6B85]">
+    <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <p style={{ margin: 0, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--nv-muted)" }}>
           <Clock3 className="h-3.5 w-3.5" />
           {ar ? "مدة الزيارات" : "Visit duration"}
         </p>
-        <p className="text-xs font-semibold text-[#14284B]">
+        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "var(--nv-ink)" }}>
           {ar ? "المتوسط" : "Average"}: {duration(stats.averageVisitSeconds, ar)}
         </p>
       </div>
-      <div className="overflow-x-auto rounded-xl border border-[#E2E8F0]">
-        <table className="w-full min-w-[520px] text-xs">
-          <thead className="bg-[#F7F8FA] text-[#5A6B85]">
-            <tr>
-              <th className="px-3 py-2 text-start">{ar ? "التاريخ" : "Date"}</th>
-              <th className="px-3 py-2 text-start">{ar ? "الدولة" : "Country"}</th>
-              <th className="px-3 py-2 text-start">{ar ? "الجهاز" : "Device"}</th>
-              <th className="px-3 py-2 text-end">{ar ? "المدة" : "Duration"}</th>
+      <div style={{ ...ownerPaper("mute"), overflow: "auto", padding: 0 }}>
+        <table style={{ width: "100%", minWidth: 520, borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: "var(--nv-soft)", color: "var(--nv-muted)", textAlign: "start" }}>
+              <th style={{ padding: "8px 12px", fontWeight: 600 }}>{ar ? "التاريخ" : "Date"}</th>
+              <th style={{ padding: "8px 12px", fontWeight: 600 }}>{ar ? "الدولة" : "Country"}</th>
+              <th style={{ padding: "8px 12px", fontWeight: 600 }}>{ar ? "الجهاز" : "Device"}</th>
+              <th style={{ padding: "8px 12px", fontWeight: 600, textAlign: "end" }}>{ar ? "المدة" : "Duration"}</th>
             </tr>
           </thead>
           <tbody>
             {stats.recentVisits?.map((visit) => (
-              <tr key={visit.id} className="border-t border-[#E2E8F0] text-[#14284B]">
-                <td className="px-3 py-2">{new Date(visit.createdAt).toLocaleString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB")}</td>
-                <td className="px-3 py-2">
+              <tr key={visit.id} style={{ borderTop: "1px solid var(--nv-line)", color: "var(--nv-ink)" }}>
+                <td style={{ padding: "8px 12px" }}>
+                  {new Date(visit.createdAt).toLocaleString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB")}
+                </td>
+                <td style={{ padding: "8px 12px" }}>
                   {visit.country || (ar ? "غير معروف" : "Unknown")}
                   {visit.city ? ` — ${visit.city}` : ""}
                 </td>
-                <td className="px-3 py-2">{visit.device || "—"}</td>
-                <td className="px-3 py-2 text-end font-semibold">{duration(visit.durationSeconds, ar)}</td>
+                <td style={{ padding: "8px 12px" }}>{visit.device || "—"}</td>
+                <td style={{ ...OWNER_MONO, padding: "8px 12px", textAlign: "end", fontWeight: 600 }}>
+                  {duration(visit.durationSeconds, ar)}
+                </td>
               </tr>
             ))}
           </tbody>

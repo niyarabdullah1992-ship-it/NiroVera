@@ -5,10 +5,9 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { updateCompany, getCompanyData, getCompanyToken } from "@/lib/store";
 import { base44 } from "@/api/base44Client";
 import {
-  Search, Bell, ChevronDown, MessageSquare,
+  Search, ChevronDown, MessageSquare,
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
-import NotificationPanel from "@/components/notifications/NotificationPanel";
 import SyncStatusIndicator from "@/components/SyncStatusIndicator";
 import ThemeToggle from "@/components/ThemeToggle";
 import { allowedNavFor } from "@/lib/navVisibility";
@@ -20,26 +19,29 @@ import BackButton from "@/components/mobile/BackButton";
 import ProductFeedbackPrompt from "@/components/ProductFeedbackPrompt";
 import { shouldShowNotification } from "@/lib/notificationFilters";
 import { isChatNotification } from "@/lib/notificationKind";
+import { NOTIFICATION_PREFS_EVENT, notificationKindAllowed } from "@/lib/notificationPrefs";
 import { routeForNotification } from "@/lib/notificationRoute";
 import GlobalSearch from "@/components/navigation/GlobalSearch";
 import {
   buildSuiteNavItems,
   buildSuiteRailGroups,
   buildSuiteRailClusters,
+  activeSuiteRailKey,
   matchSuiteNavItem,
   SUITE_GROUP_ORDER,
 } from "@/lib/suiteNav";
+import { canManagePerformance } from "@/lib/suiteRailFrame";
 import SuiteRail from "@/components/navigation/SuiteRail";
-import StationScopeControl from "@/components/navigation/StationScopeControl";
+import { RailSideProvider, routeRailSide } from "@/lib/railSide";
+import ScopeBar from "@/components/navigation/ScopeBar";
 import SectionReportPicker from "@/components/reports/SectionReportPicker";
-import StationQuickSwitch from "@/components/navigation/StationQuickSwitch";
 import HeaderDateTime from "@/components/navigation/HeaderDateTime";
-import { OPEN_STATION_SWITCH_EVENT } from "@/hooks/useStationSwitcher";
+import { openStationSwitcher } from "@/hooks/useStationSwitcher";
 import { setStationScope, getStationScope } from "@/lib/stationScopeStore";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { visibleStations } from "@/lib/permissions";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
-import { BORDER, CARD, INK, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
+import { BORDER, BTN_FILL, BTN_INK, CARD, INK, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 import { canSeeMinistryAlerts, deriveMinistryAlerts } from "@/lib/ministryAlertDerivations";
 import { THEME_CHANGE_EVENT, applyPlatformTheme, applyStoredPlatformTheme, persistPlatformTheme } from "@/lib/platformTheme";
 import PlatformBoot from "@/components/shared/PlatformBoot";
@@ -52,12 +54,17 @@ export default function Layout({ children }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const notifRef = useRef(null);
   const userRef = useRef(null);
   const notificationPollInFlightRef = useRef(false);
-  const [scopeSwitchOpen, setScopeSwitchOpen] = useState(false);
   const [ministryDismissTick, setMinistryDismissTick] = useState(0);
+  const [notifPrefTick, setNotifPrefTick] = useState(0);
   const stationScope = useStationScope();
+
+  useEffect(() => {
+    const refresh = () => setNotifPrefTick((n) => n + 1);
+    window.addEventListener(NOTIFICATION_PREFS_EVENT, refresh);
+    return () => window.removeEventListener(NOTIFICATION_PREFS_EVENT, refresh);
+  }, []);
 
   useEffect(() => {
     applyStoredPlatformTheme(company?.id);
@@ -84,7 +91,6 @@ export default function Layout({ children }) {
 
   useEffect(() => {
     const onClick = (e) => {
-      if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
       if (userRef.current && !userRef.current.contains(e.target)) setUserOpen(false);
     };
     document.addEventListener("mousedown", onClick);
@@ -107,7 +113,7 @@ export default function Layout({ children }) {
       if (chord && event.shiftKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setSearchOpen(false);
-        setScopeSwitchOpen(true);
+        openStationSwitcher();
         return;
       }
       if (chord && event.shiftKey && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
@@ -124,12 +130,9 @@ export default function Layout({ children }) {
         setSearchOpen(false);
       }
     };
-    const openSwitch = () => setScopeSwitchOpen(true);
     window.addEventListener("keydown", onKey);
-    window.addEventListener(OPEN_STATION_SWITCH_EVENT, openSwitch);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener(OPEN_STATION_SWITCH_EVENT, openSwitch);
     };
   }, [data, currentUser]);
 
@@ -151,6 +154,7 @@ export default function Layout({ children }) {
         const remote = (res.data?.notifications || []).filter((notification) =>
           !dismissedIds.has(String(notification.id))
           && shouldShowNotification(notification.message, data)
+          && notificationKindAllowed(notification.message, company.id, currentUser.id)
           && !isChatNotification(notification.message)
         );
         const current = getCompanyData(company.id);
@@ -233,14 +237,16 @@ export default function Layout({ children }) {
   const sectionPages = location.pathname.startsWith("/app/settings")
     ? []
     : orderedNavItems.filter((item) => item.category === activeCategory && item.to !== "/app/settings");
-  const railGroups = buildSuiteRailGroups(orderedNavItems, lang);
-  const railClusters = buildSuiteRailClusters(railGroups, lang);
+  const railGroups = buildSuiteRailGroups(orderedNavItems, lang, currentUser.role);
+  const railClusters = buildSuiteRailClusters(railGroups, lang, { user: currentUser, data });
+  const activeRailKey = activeSuiteRailKey(railClusters, activeCategory, location.pathname, location.search);
   const canOpenSettings = allowedNav.has("/app/settings");
 
   const myStoredNotifs = (data.notifications || []).filter(
     (notification) =>
       notification.userId === currentUser?.id
       && shouldShowNotification(notification.text, data)
+      && notificationKindAllowed(notification.text, company?.id, currentUser?.id)
       && !isChatNotification(notification.text)
   );
   let dismissedMinistry = new Set();
@@ -262,8 +268,8 @@ export default function Layout({ children }) {
       }))
     : [];
   void ministryDismissTick;
+  void notifPrefTick;
   const myNotifs = [...ministryNotifs, ...myStoredNotifs];
-  const unread = myNotifs.filter((n) => !n.read).length;
 
   const markAllRead = () => {
     updateCompany(company.id, (d) => {
@@ -309,6 +315,7 @@ export default function Layout({ children }) {
       if (target) target.read = true;
     });
     setNotifOpen(false);
+    if (n.stationId) setStationScope(n.stationId);
     navigate(n.to || routeForNotification(n.text));
   };
 
@@ -370,8 +377,8 @@ export default function Layout({ children }) {
       sub: lang === "ar" ? "تستقبل وتقرر — القرار يُسجَّل باسمك" : "You receive and decide — the ruling is recorded in your name",
     },
     "/app/requests/archive": {
-      title: lang === "ar" ? "الأرشيف" : "Archive",
-      sub: lang === "ar" ? "ما استقرّ من طلب أو موافقة يبقى بمرجعه — والأثر في التقويم والتحقق" : "Settled requests and consents stay with their reference — the effect lands on the calendar and verify",
+      title: lang === "ar" ? "طلباتي" : "My Requests",
+      sub: lang === "ar" ? "الأرشيف داخل ملفي بعد يحتاج تعديلاً" : "Archive sits inside My file after Needs a change",
     },
     "/app/leave": {
       title: lang === "ar" ? "طلباتي" : "My Requests",
@@ -387,10 +394,19 @@ export default function Layout({ children }) {
         ? "دورة نظامية: تجهيز البنود · المادة 90 و92 و93 و107 · الاعتماد · حماية الأجور خلال 30 يوماً من الاستحقاق"
         : "Statutory cycle: prepare lines · Art. 90, 92, 93 & 107 · approve · wage protection within 30 days of entitlement",
     },
-    "/app/performance": {
-      title: lang === "ar" ? "الأداء" : "Performance",
-      sub: lang === "ar" ? "درجة مشتقّة من الإثبات المعتمد بين تاريخين — مقارنة بين الموظفين والفروع" : "A score derived from approved proof between two dates — compared across people and branches",
-    },
+    "/app/performance": (() => {
+      const requested = new URLSearchParams(location.search).get("view");
+      const manage = requested !== "self" && (requested === "manage" || !requested) && canManagePerformance(currentUser, data);
+      return manage
+        ? {
+          title: lang === "ar" ? "الأداء" : "Performance",
+          sub: lang === "ar" ? "مقارنة الموظفين والفروع على درجة مشتقّة من الإثبات المعتمد" : "People and branches compared on a score derived from approved proof",
+        }
+        : {
+          title: lang === "ar" ? "أدائي" : "My performance",
+          sub: lang === "ar" ? "درجتك من إثباتك المعتمد بين تاريخين" : "Your score from your approved proof between two dates",
+        };
+    })(),
     "/app/tasks": {
       title: lang === "ar" ? "المهام والعمليات" : "Operations",
       sub: lang === "ar" ? "جهد وإثبات · مراجعة بسبب · تصعيد عند احتراق المهلة" : "Effort and proof · review with reason · escalate when the quota burns",
@@ -477,16 +493,22 @@ export default function Layout({ children }) {
     return <PlatformBoot variant="shell" />;
   }
 
+  const routeSide = routeRailSide(railClusters, activeRailKey, location.pathname);
+
   return (
+    <RailSideProvider routeSide={routeSide}>
     <div className="powercare-shell flex h-dvh max-h-dvh min-h-0 overflow-hidden" dir={dir}>
       <SuiteRail
-        clusters={railClusters}
-        activeCategory={activeCategory}
+        sides={railClusters}
+        activeKey={activeRailKey}
+        pathname={location.pathname}
         lang={lang}
         sidebarSide={sidebarSide}
         canOpenSettings={canOpenSettings}
         onSettings={() => navigate("/app/settings")}
         onLogout={() => { logout(); navigate("/"); }}
+        user={currentUser}
+        data={data}
       />
 
 
@@ -514,8 +536,15 @@ export default function Layout({ children }) {
           </div>
           <div style={{ flex: 1, minWidth: 0 }} />
 
-            {/* One station picker for the live scope */}
-            <StationScopeControl />
+            <ScopeBar
+              notifOpen={notifOpen}
+              onToggleNotif={() => setNotifOpen((open) => !open)}
+              onCloseNotif={() => setNotifOpen(false)}
+              notifItems={myNotifs}
+              onOpenNotif={openNotification}
+              onDismissNotif={dismissNotification}
+              onMarkAllNotifs={markAllRead}
+            />
 
             <div className="hidden md:flex" style={{ alignItems: "center", minWidth: 0, flexShrink: 1 }}>
               <SectionReportPicker lang={lang} compact />
@@ -586,10 +615,11 @@ export default function Layout({ children }) {
               aria-label={t("language")}
               style={{
                 flexShrink: 0,
-                height: "34px",
+                height: 34,
+                minHeight: 34,
                 minWidth: "38px",
                 padding: "0 11px",
-                borderRadius: 0,
+                borderRadius: 10,
                 border: `1px solid ${BORDER}`,
                 background: CARD,
                 fontSize: "11px",
@@ -612,73 +642,6 @@ export default function Layout({ children }) {
             )}
 
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginInlineStart: "auto" }}>
-              <div className="relative" ref={notifRef}>
-                <button
-                  type="button"
-                  onClick={() => setNotifOpen((o) => !o)}
-                  aria-label={t("notifications")}
-                  style={{
-                    position: "relative",
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
-                    border: notifOpen ? `1px solid ${NAVY}` : `1px solid ${BORDER}`,
-                    background: notifOpen ? NAVY : CARD,
-                    color: notifOpen ? "#fff" : MUTED,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                  }}
-                >
-                  <Bell style={{ width: 16, height: 16 }} strokeWidth={1.75} />
-                  {unread > 0 && (
-                    <span
-                      style={{
-                        position: "absolute",
-                        top: -4,
-                        insetInlineEnd: -4,
-                        minWidth: 16,
-                        height: 16,
-                        padding: "0 4px",
-                        borderRadius: 20,
-                        background: "#DC2626",
-                        color: "#fff",
-                        fontSize: 9,
-                        fontWeight: 700,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontFamily: "'IBM Plex Sans',sans-serif",
-                        border: "2px solid #fff",
-                      }}
-                    >
-                      {unread > 9 ? "9+" : unread}
-                    </span>
-                  )}
-                </button>
-                {notifOpen && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      marginTop: 8,
-                      [dir === "rtl" ? "left" : "right"]: 0,
-                      zIndex: 50,
-                    }}
-                  >
-                    <NotificationPanel
-                      items={myNotifs}
-                      unread={unread}
-                      lang={lang}
-                      t={t}
-                      onOpen={openNotification}
-                      onDismiss={dismissNotification}
-                      onMarkAll={markAllRead}
-                    />
-                  </div>
-                )}
-              </div>
-
               <div className="relative" ref={userRef}>
                 <button
                   type="button"
@@ -688,7 +651,8 @@ export default function Layout({ children }) {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 6,
-                    height: 36,
+                    height: 34,
+                    minHeight: 34,
                     padding: "0 6px 0 4px",
                     borderRadius: 10,
                     border: userOpen ? "1px solid var(--nv-accent-border)" : `1px solid ${BORDER}`,
@@ -701,7 +665,7 @@ export default function Layout({ children }) {
                       width: 28,
                       height: 28,
                       borderRadius: 10,
-                      background: NAVY_FILL,
+                      background: BTN_FILL,
                       color: "#fff",
                       display: "inline-flex",
                       alignItems: "center",
@@ -757,7 +721,7 @@ export default function Layout({ children }) {
                           width: 40,
                           height: 40,
                           borderRadius: 10,
-                          background: NAVY_FILL,
+                          background: BTN_FILL,
                           color: "#fff",
                           display: "inline-flex",
                           alignItems: "center",
@@ -852,17 +816,17 @@ export default function Layout({ children }) {
                       display: "inline-flex",
                       alignItems: "center",
                       gap: 7,
-                      height: 36,
+                      height: 32,
                       padding: "0 13px",
-                      borderRadius: 10,
+                      borderRadius: 6,
                       textDecoration: "none",
                       whiteSpace: "nowrap",
-                      fontSize: 12,
+                      fontSize: 12.5,
                       fontWeight: active ? 700 : 500,
-                      color: active ? NAVY_FILL : MUTED,
+                      color: active ? BTN_INK : MUTED,
                       flexShrink: 0,
-                      background: active ? SURFACE : "transparent",
-                      borderInlineEnd: `2px solid ${active ? NAVY_FILL : "transparent"}`,
+                      background: active ? BTN_FILL : "transparent",
+                      borderInlineEnd: "2px solid transparent",
                     }}
                   >
                     <page.icon style={{ position: "relative", width: 14, height: 14, color: "inherit" }} strokeWidth={active ? 2 : 1.7} />
@@ -876,7 +840,7 @@ export default function Layout({ children }) {
                           height: 16,
                           padding: "0 4px",
                           borderRadius: 10,
-                          background: page.appId === "complaints" ? "#C9962B" : NAVY_FILL,
+                          background: page.appId === "complaints" ? "#C9962B" : BTN_FILL,
                           color: "#fff",
                           fontSize: 9,
                           fontWeight: 700,
@@ -903,10 +867,10 @@ export default function Layout({ children }) {
       </div>
 
       <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} items={orderedNavItems} data={data} currentUser={currentUser} lang={lang} />
-      <StationQuickSwitch open={scopeSwitchOpen} onClose={() => setScopeSwitchOpen(false)} />
       {/* Native-style bottom tab bar (mobile only) */}
       <BottomTabBar />
       <ProductFeedbackPrompt companyId={company.id} role={currentUser.role} />
     </div>
+    </RailSideProvider>
   );
 }

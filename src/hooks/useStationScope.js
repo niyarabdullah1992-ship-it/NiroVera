@@ -41,24 +41,25 @@ export function useRawStationScope() {
 }
 
 /**
- * Page-aware header scope. Duty / care / money (except inventory) never
- * return `all` — each section is one workplace. Consumers must still
- * enforce companyId on the server.
+ * Page-aware scope. A personal face stays on one workplace.
+ * An admin face may be `all` — «كل نطاق» across the stations that viewer manages.
+ * Consumers must still enforce companyId on the server.
  */
 export default function useStationScope() {
   const raw = useRawStationScope();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const { data, currentUser } = useAuth();
   return useMemo(
     () => resolvePageStationScope({
       pathname,
+      search,
       headerScope: raw,
       employee: currentUser,
       stations: data?.stations,
       visible: currentUser && data ? visibleStations(currentUser, data) : data?.stations,
       data,
     }),
-    [pathname, raw, data, currentUser],
+    [pathname, search, raw, data, currentUser],
   );
 }
 

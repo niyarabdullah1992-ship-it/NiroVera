@@ -56,8 +56,8 @@ export const LABOR_RULES = [
   row("leave.eid.cite", 1, "days", "112", "labour", "إجازة الأعياد والمناسبات بأجر كامل وفق ما تحدده اللائحة.", "Paid leave on the Eids and occasions specified in the Regulations."),
   row("leave.eid.fitrDays", 4, "days", null, "ministerial", "اللائحة التنفيذية مادة 24: عيد الفطر أربعة أيام تبدأ من اليوم التالي لـ 29 رمضان حسب تقويم أم القرى. ليست شارة مادة.", "Implementing regulations Art. 24: Eid al-Fitr is four days starting the day after 29 Ramadan on the Umm al-Qura calendar. No Labour Law chip."),
   row("leave.eid.adhaDays", 4, "days", null, "ministerial", "اللائحة التنفيذية مادة 24: عيد الأضحى أربعة أيام تبدأ من يوم الوقوف بعرفة.", "Implementing regulations Art. 24: Eid al-Adha is four days starting on the Day of Arafah."),
-  row("leave.nationalDay.days", 1, "days", null, "ministerial", "اللائحة التنفيذية مادة 24: اليوم الوطني يوم واحد في أول يوم من برج الميزان حسب أم القرى.", "Implementing regulations Art. 24: National Day is one day on the first day of Libra on the Umm al-Qura calendar."),
-  row("leave.foundingDay.days", 1, "days", null, "ministerial", "اللائحة التنفيذية مادة 24: يوم التأسيس يوم واحد في 22 فبراير.", "Implementing regulations Art. 24: Founding Day is one day on 22 February."),
+  row("leave.nationalDay.days", 1, "days", null, "ministerial", "إجازة اليوم الوطني — يوم واحد في 23 سبتمبر (أول يوم من برج الميزان حسب أم القرى). اللائحة التنفيذية مادة 24.", "National Day leave — one day on 23 September (first day of Libra on the Umm al-Qura calendar). Implementing regulations Art. 24."),
+  row("leave.foundingDay.days", 1, "days", null, "ministerial", "إجازة يوم التأسيس — يوم واحد في 22 فبراير. اللائحة التنفيذية مادة 24.", "Founding Day leave — one day on 22 February. Implementing regulations Art. 24."),
   row("leave.eid.overlap.cite", 1, "days", null, "ministerial", "اللائحة مادة 24 ثانياً: تداخل العيد مع الراحة الأسبوعية يُعوَّض، ومع السنوية تُمدَّد، ومع المرضية يُدفع الأجر الكامل. اليوم الوطني أو التأسيس مع أحد العيدين لا يُعوَّض.", "Implementing regulations Art. 24(2): overlap with weekly rest is compensated, annual leave is extended, sick leave still pays full wage for the Eid days. National or Founding Day falling in an Eid is not extra-compensated."),
   row("leave.noOtherEmployer.cite", 1, "days", "118", "labour", "لا يعمل العامل لدى صاحب عمل آخر أثناء أي إجازة في هذا الفصل، وإلا جاز حرمانه من أجر الإجازة أو استرداده.", "A worker may not work for another employer during any leave in this chapter; otherwise leave pay may be withheld or recovered."),
   row("leave.nursing.dailyMinutes", 60, "minutes", "154", "labour", "بعد العودة من إجازة الوضع: فترات إرضاع لا تزيد في مجموعها على ساعة في اليوم، ضمن ساعات العمل الفعلية وبلا تخفيض أجر.", "After returning from maternity leave: nursing rest totalling not more than one hour a day, counted as actual hours with no wage cut."),
@@ -72,7 +72,6 @@ export const LABOR_RULES = [
   row("hours.ramadan.ordinaryHours", 6, "hours", "98", "labour", "في رمضان تُخفَّض ساعات العمل الفعلية للمسلمين إلى ست ساعات في اليوم. الفراغ على الملف = مسلم. غير المسلم المسجّل مستثنى.", "In Ramadan, actual hours for Muslims are reduced to six a day. An empty file is treated as Muslim. A recorded non-Muslim is exempt."),
   row("hours.ramadan.weekMaxHours", 36, "hours", "98", "labour", "في رمضان تُخفَّض ساعات العمل الفعلية للمسلمين إلى ست وثلاثين ساعة في الأسبوع. الفراغ على الملف = مسلم. غير المسلم المسجّل مستثنى.", "In Ramadan, actual hours for Muslims are reduced to thirty-six a week. An empty file is treated as Muslim. A recorded non-Muslim is exempt."),
   row("hours.ramadan.compressedTwelveStay.cite", 1, "days", "98", "labour", "المادة 98 معياران: خمسة أيام وثماني ساعات معيار يومي فينزل في رمضان إلى ست ساعات. أربعة أيام بقاء 12 ساعة وأربعة راحة معيار أسبوعي فتبقى الـ12 ساعة بقاء.", "Article 98 has two criteria: five days × eight hours is daily, so Ramadan drops to six. Four 12h-stay days + four rest is weekly, so the 12h stay remains."),
-  row("hours.rest.betweenShiftsHours", 11, "hours", null, "product", "فاصل تشغيلي 11 ساعة بين نهاية وردية وبداية التالية — ليس حكم المادة 101.", "Operational 11-hour gap between shifts — not Article 101."),
   row("hours.workplace.maxHours", 11, "hours", "101", "labour", "لا يجوز أن يبقى العامل في مكان العمل أكثر من إحدى عشرة ساعة في اليوم.", "A worker may not remain at the workplace more than eleven hours a day.", { to: "2015-03-24" }),
   row("hours.workplace.maxHours", 12, "hours", "101", "labour", "لا يجوز أن يبقى العامل في مكان العمل أكثر من اثنتي عشرة ساعة في اليوم.", "A worker may not remain at the workplace more than twelve hours a day.", { from: "2015-03-25" }),
   row("hours.rest.maxConsecutiveHours", 5, "hours", "101", "labour", "لا يجوز تشغيل العامل أكثر من خمس ساعات متواصلة دون راحة.", "A worker may not work more than five consecutive hours without a rest."),
@@ -200,9 +199,9 @@ export const LABOR_RULES = [
   row("hours.art100.averageWeeks", 3, "count", "100", "labour", "إن زاد اليوم أو الأسبوع عن سقف المادة 98 في منشأة لا تقف يومياً، لا يزيد المتوسط على ثلاثة أسابيع أو أقل عن ثماني ساعات في اليوم أو 48 في الأسبوع.", "Where daily stop is impossible, a rise above Article 98 still may not average, over three weeks or less, more than eight hours a day or 48 a week."),
   row("hours.art103.cite", 1, "days", "103", "labour", "إن حتّم استمرار العمل دون توقف، تُمنح فترات راحة بديلة وتُحسب من ساعات العمل الفعلية.", "Where continuity of work is required, alternative rest periods are granted and counted as actual hours."),
   row("hours.art105.bankMaxWeeks", 8, "weeks", "105", "labour", "تجميع الراحة الأسبوعية في الأماكن النائية لا يزيد على ثمانية أسابيع، بموافقة العامل كتابة وموافقة الوزارة.", "Banking weekly rest in remote places may not exceed eight weeks, with the worker's written consent and the Ministry's approval."),
-  row("hours.art108.cite", 1, "days", "108", "labour", "استثناء فئات من أحكام الساعات بقرار وزاري — يُوسَم الملف ولا يُخترع سقف.", "Exemption of categories from the hours chapter by ministerial decision — a file flag, not an invented cap."),
-  row("hours.juvenile.minAgeYears", 15, "years", "161", "labour", "الحدث من أتم الخامسة عشرة ولم يتم الثامنة عشرة.", "A juvenile has completed fifteen years and has not completed eighteen."),
-  row("hours.juvenile.maxAgeYears", 18, "years", "161", "labour", "حدّ الحدث الأعلى: دون الثامنة عشرة.", "The juvenile ceiling: under eighteen."),
+  row("hours.art108.cite", 1, "days", "108", "labour", "المادة 108: لا تسري أحكام المادتين 98 و101 على مناصب الإدارة العالية ذات سلطة صاحب العمل، والأعمال التجهيزية أو التكميلية، والعمل المتقطع بالضرورة، وعمال الحراسة والنظافة عدا الحراسة الأمنية المدنية — ويُحدَّد في اللائحة الحد الأقصى لساعات الفقرات 2–4. ليست استثناءً من المادة 104.", "Article 108: Arts 98 and 101 do not apply to senior management posts with the employer's authority, preparatory or complementary work, necessarily intermittent work, and guards/cleaners except civil security guards — the Regulations set the hour ceilings for paragraphs 2–4. Not an exemption from Article 104."),
+  row("hours.juvenile.minAgeYears", 15, "years", "162", "labour", "لا تشغيل دون الخامسة عشرة من العمر (المادة 162).", "No employment under fifteen years of age (Article 162)."),
+  row("hours.juvenile.maxAgeYears", 18, "years", "162", "labour", "الحدث دون الثامنة عشرة — حدّ السن في المادة 162 وما يتصل بها.", "A juvenile is under eighteen — the age ceiling in Article 162 and related rules."),
   row("hours.juvenile.ordinaryHours", 6, "hours", "164", "labour", "تشغيل الحدث الفعلي لا يزيد على ست ساعات في اليوم.", "A juvenile's actual work may not exceed six hours a day."),
   row("hours.juvenile.ramadanHours", 4, "hours", "164", "labour", "في رمضان لا يزيد تشغيل الحدث الفعلي على أربع ساعات.", "In Ramadan a juvenile's actual work may not exceed four hours."),
   row("hours.juvenile.maxStretchHours", 4, "hours", "164", "labour", "لا يعمل الحدث أكثر من أربع ساعات متصلة دون راحة.", "A juvenile may not work more than four consecutive hours without a rest."),
@@ -266,6 +265,113 @@ function laborCalendarYear(win, calendar) {
   return calendar[year] || calendar[String(year)] || null;
 }
 
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+function calendarYearBag(calendar, year) {
+  if (!calendar || !/^\d{4}$/.test(String(year))) return null;
+  const bag = calendar[String(year)] || calendar[Number(year)] || null;
+  return bag && typeof bag === "object" ? bag : null;
+}
+
+/**
+ * Company-head Ramadan ruling. Null when unset (ministry window stays).
+ * A stored but invalid date does not invent a window — the gate names the block.
+ */
+export function ownerRamadanRuling(calendar, year) {
+  const bag = calendarYearBag(calendar, year);
+  if (!bag) return null;
+  const hasFrom = Object.prototype.hasOwnProperty.call(bag, "ownerRamadanFrom");
+  const hasTo = Object.prototype.hasOwnProperty.call(bag, "ownerRamadanTo");
+  if (!hasFrom && !hasTo) return null;
+  const from = String(bag.ownerRamadanFrom || "").slice(0, 10);
+  const to = String(bag.ownerRamadanTo || "").slice(0, 10);
+  if (!ISO_DAY.test(from)) {
+    return {
+      ok: false,
+      error: "RAMADAN_DATE",
+      reason: "موعد بداية رمضان ناقص أو غير صالح — اكتبه سنة-شهر-يوم ثم احفظ ليصبح حكماً.",
+      reasonEn: "Ramadan start is missing or invalid — enter YYYY-MM-DD, then save so it rules.",
+    };
+  }
+  if (to && !ISO_DAY.test(to)) {
+    return {
+      ok: false,
+      error: "RAMADAN_END",
+      reason: "موعد نهاية رمضان غير صالح — اكتبه سنة-شهر-يوم أو اتركه حتى يُعلن 29 أو 30.",
+      reasonEn: "Ramadan end is not a valid date — enter YYYY-MM-DD or leave it until 29 or 30 is announced.",
+    };
+  }
+  if (ISO_DAY.test(to) && to < from) {
+    return {
+      ok: false,
+      error: "RAMADAN_SPAN",
+      reason: "نهاية رمضان قبل بدايته — صحّح الموعد قبل أن يحكم التقويم.",
+      reasonEn: "Ramadan end is before the start — correct the dates before they rule the calendar.",
+    };
+  }
+  let length = null;
+  if (ISO_DAY.test(to)) {
+    const span = laborDaysBetween(from, to) + 1;
+    if (span !== 29 && span !== 30) {
+      return {
+        ok: false,
+        error: "RAMADAN_LENGTH",
+        reason: "رمضان 29 أو 30 يوماً — النهاية يجب أن تقع على اليوم 29 أو 30 من البداية.",
+        reasonEn: "Ramadan is 29 or 30 days — the end must fall on day 29 or 30 from the start.",
+      };
+    }
+    length = span;
+  }
+  return { ok: true, year: Number(year), from, to: ISO_DAY.test(to) ? to : "", length };
+}
+
+export function ownerHolidayBag(calendar) {
+  const bag = calendar?.ownerHolidays;
+  return bag && typeof bag === "object" ? bag : null;
+}
+
+/** Civic Art. 112 date. Ministry 23 Sep / 22 Feb unless the owner saved an explicit override. */
+export function rulingCivicDate(id, calendar) {
+  const base = id === "national" ? { month: 9, day: 23 } : id === "founding" ? { month: 2, day: 22 } : null;
+  if (!base) return null;
+  const row = ownerHolidayBag(calendar)?.[id];
+  if (!row || row.overridden !== true) return { ...base, overridden: false, nameAr: "", nameEn: "" };
+  const month = Number(row.month);
+  const day = Number(row.day);
+  const probe = new Date(2024, month - 1, day);
+  const valid = Number.isInteger(month) && month >= 1 && month <= 12 && probe.getMonth() === month - 1 && probe.getDate() === day;
+  if (!valid) {
+    return {
+      ...base,
+      overridden: false,
+      invalid: true,
+      error: "HOLIDAY_DATE",
+      reason: "موعد الإجازة الرسمية المحفوظ غير صالح — اليوم والشهر لا يكوّنان تاريخاً.",
+      reasonEn: "The saved official-holiday date is not a real day — month and day do not form a date.",
+      nameAr: "",
+      nameEn: "",
+    };
+  }
+  return {
+    month,
+    day,
+    overridden: true,
+    nameAr: String(row.nameAr || "").trim(),
+    nameEn: String(row.nameEn || "").trim(),
+  };
+}
+
+/** Explicit Eid span. Null keeps the Umm al-Qura span — an override must name its dates. */
+export function rulingEidSpan(id, calendar) {
+  if (id !== "fitr" && id !== "adha") return null;
+  const row = ownerHolidayBag(calendar)?.[id];
+  if (!row || row.overridden !== true) return null;
+  const from = String(row.from || "").slice(0, 10);
+  const to = String(row.to || "").slice(0, 10);
+  if (!ISO_DAY.test(from) || !ISO_DAY.test(to) || to < from) return null;
+  return { id, from, to, days: laborDaysBetween(from, to) + 1, locked: true, ownerRuled: true };
+}
+
 /** -1 / 0 / +1 after sighting. Null until the company records the start. */
 export function announcedRamadanStartShift(win, calendar) {
   const bag = laborCalendarYear(win, calendar);
@@ -282,6 +388,9 @@ export function announcedRamadanStartShift(win, calendar) {
 
 export function announcedRamadanFrom(win, calendar) {
   if (!win) return "";
+  const year = Number(String(win.from).slice(0, 4));
+  const ruling = ownerRamadanRuling(calendar, year);
+  if (ruling?.ok && ruling.from) return ruling.from;
   const shift = announcedRamadanStartShift(win, calendar);
   if (shift == null) return win.from;
   return addLaborDays(win.from, shift);
@@ -290,8 +399,10 @@ export function announcedRamadanFrom(win, calendar) {
 export function ramadanWindowOn(value, calendar) {
   const day = laborDayKey(value);
   return RAMADAN_WINDOWS.find((w) => {
+    const year = Number(String(w.from).slice(0, 4));
+    const ruling = ownerRamadanRuling(calendar, year);
     const from = announcedRamadanFrom(w, calendar);
-    const startPending = calendar != null && announcedRamadanStartShift(w, calendar) == null;
+    const startPending = !(ruling && ruling.ok) && calendar != null && announcedRamadanStartShift(w, calendar) == null;
     const first = startPending ? addLaborDays(w.from, -1) : from;
     const last = addLaborDays(from, 29);
     return first <= day && day <= last;
@@ -301,6 +412,8 @@ export function ramadanWindowOn(value, calendar) {
 export function announcedRamadanLength(win, calendar) {
   if (!win) return null;
   const year = Number(String(win.from).slice(0, 4));
+  const ruling = ownerRamadanRuling(calendar, year);
+  if (ruling?.ok && (ruling.length === 29 || ruling.length === 30)) return ruling.length;
   const fromCal = calendar?.[year]?.ramadanLength ?? calendar?.[String(year)]?.ramadanLength;
   if (fromCal === 29 || fromCal === 30) return fromCal;
   if (win.announcedLength === 29 || win.announcedLength === 30) return win.announcedLength;
@@ -328,8 +441,10 @@ export function isRamadanDay(value, calendar) {
   const win = ramadanWindowOn(day, calendar);
   if (!win) return false;
   const from = announcedRamadanFrom(win, calendar);
+  const year = Number(String(win.from).slice(0, 4));
+  const ruling = ownerRamadanRuling(calendar, year);
   const idx = laborDaysBetween(from, day) + 1;
-  if (idx < 1) return calendar != null && announcedRamadanStartShift(win, calendar) == null;
+  if (idx < 1) return !(ruling && ruling.ok) && calendar != null && announcedRamadanStartShift(win, calendar) == null;
   if (idx <= 29) return true;
   if (idx === 30) return announcedRamadanLength(win, calendar) !== 29;
   return false;
@@ -431,8 +546,20 @@ export function explainRule(id, onDate, catalog) {
     article: labour ? row.article : null,
     value: row.value,
     unit: row.unit,
-    labelAr: labour ? `المادة ${row.article}` : (String(row.id).startsWith("hours.night.") ? "قرار 18632" : (row.source === "ministerial" ? "قرار وزاري" : null)),
-    labelEn: labour ? `Art. ${row.article}` : (String(row.id).startsWith("hours.night.") ? "Decision 18632" : (row.source === "ministerial" ? "Ministerial decision" : null)),
+    labelAr: labour
+      ? `المادة ${row.article}`
+      : (String(row.id).startsWith("hours.night.")
+        ? "قرار 18632"
+        : (String(row.id).startsWith("hours.heat.")
+          ? "قرار 3337"
+          : (row.source === "ministerial" ? "قرار وزاري" : null))),
+    labelEn: labour
+      ? `Art. ${row.article}`
+      : (String(row.id).startsWith("hours.night.")
+        ? "Decision 18632"
+        : (String(row.id).startsWith("hours.heat.")
+          ? "Decision 3337"
+          : (row.source === "ministerial" ? "Ministerial decision" : null))),
     hintAr: row.hintAr,
     hintEn: row.hintEn,
     sourceUrl: HRSD_CATALOGUE_URL,

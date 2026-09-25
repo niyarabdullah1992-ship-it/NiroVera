@@ -487,7 +487,7 @@ Deno.serve(async (req) => {
         verificationId: String(body.verificationId || '').slice(0, 40),
         finalHash: null,
         status: 'pending',
-        signingMode: 'parallel',
+        signingMode: body.signingMode === 'sequential' ? 'sequential' : 'parallel',
         currentSignerIndex: 0,
         stationId: actor.stationId || null,
         appUrl: resolveAppOrigin(body.appUrl),

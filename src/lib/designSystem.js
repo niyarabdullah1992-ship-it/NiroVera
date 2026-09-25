@@ -1,16 +1,16 @@
 /** Design system law for /app — Design System v2.
  *  Six form rules + two behaviour rules + named surfaces.
- *  Document cards: 14px radius, 1px line, soft paper shadow.
+ *  Document cards: 12px radius, 1px line, soft paper shadow.
  *  Status lives on the top 3px edge. Controls 10px. Chips 999.
  *  Tokens live in CSS `--nv-*`.
  */
 
-export const DS_RADIUS = 14;
-export const DS_CONTROL_RADIUS = 10;
+export const DS_RADIUS = 12;
+export const DS_CONTROL_RADIUS = 8;
 export const DS_PILL_RADIUS = 999;
 export const DS_EDGE_PX = 3;
 export const DS_ARABIC_FLOOR = 10;
-export const DS_SHADOW = "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)";
+export const DS_SHADOW = "0 1px 2px var(--nv-shadow2)";
 
 export const DS_STATES = {
   settled: { id: "settled", token: "ok", ar: "استقرّ", en: "Settled", jobAr: "اعتُمد · نُفّذ · سليم ومطابق", jobEn: "Approved · done · matches" },

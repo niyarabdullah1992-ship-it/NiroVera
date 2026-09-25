@@ -63,8 +63,75 @@ export function fallbackStationId({ employee, stations, visible } = {}) {
   return root?.id ? String(root.id) : null;
 }
 
+function searchParamsOf(search) {
+  const raw = String(search || "");
+  return new URLSearchParams(raw.startsWith("?") ? raw.slice(1) : raw);
+}
+
+function pathIsBase(pathname, base) {
+  return pathIs(pathname, base);
+}
+
+function sectionFromManagePath(path) {
+  if (pathIsBase(path, "/app/attendance") || pathIsBase(path, "/app/shifts") || pathIsBase(path, "/app/calendar")) return "attendance";
+  if (pathIsBase(path, "/app/requests")) return "requests";
+  if (pathIsBase(path, "/app/discipline")) return "discipline";
+  if (pathIsBase(path, "/app/complaints")) return "complaints";
+  if (pathIsBase(path, "/app/performance")) return "performance";
+  if (pathIsBase(path, "/app/payroll")) return "payroll";
+  if (pathIsBase(path, "/app/expenses")) return "expenses";
+  if (pathIsBase(path, "/app/assets")) return "assets";
+  if (pathIsBase(path, "/app/inventory")) return "inventory";
+  if (pathIsBase(path, "/app/safety")) return "safety";
+  if (pathIsBase(path, "/app/escalation")) return "escalation";
+  if (pathIsBase(path, "/app/files")) return "files";
+  if (pathIsBase(path, "/app/org") || pathIsBase(path, "/app/hr")) return "org";
+  return "";
+}
+
+function sectionFromUrl(path, params) {
+  if (/\/requests\/manage$/.test(path)) return "requests";
+  if (pathIsBase(path, "/app/discipline") && params.get("tab") === "manage") return "discipline";
+  if (pathIsBase(path, "/app/complaints") && params.get("tab") === "manage") return "complaints";
+  const duty = pathIsBase(path, "/app/attendance") || pathIsBase(path, "/app/shifts") || pathIsBase(path, "/app/calendar");
+  if (duty && params.get("lane") === "manage") return "attendance";
+  if (pathIsBase(path, "/app/performance")) {
+    return params.get("view") === "self" ? "" : "performance";
+  }
+  const money = [
+    ["/app/payroll", "payroll"],
+    ["/app/expenses", "expenses"],
+    ["/app/assets", "assets"],
+    ["/app/inventory", "inventory"],
+  ];
+  for (const [base, id] of money) {
+    if (pathIsBase(path, base)) return params.get("view") === "self" ? "" : id;
+  }
+  if (pathIsBase(path, "/app/safety")) return "safety";
+  if (pathIsBase(path, "/app/escalation")) return "escalation";
+  if (pathIsBase(path, "/app/files")) return "files";
+  if (pathIsBase(path, "/app/org") || pathIsBase(path, "/app/hr")) return "org";
+  return "";
+}
+
+/**
+ * Admin face where «كل نطاق» is the section filter.
+ * Mine / personal faces return "" so they stay on one workplace.
+ * The الموظف rail hides the row even when the address still says manage.
+ * The الإدارة rail shows it for the section even before the address catches up.
+ */
+export function managerScopeSection(pathname, search = "", railSide = "") {
+  if (railSide === "employee") return "";
+  const path = String(pathname || "").replace(/\/+$/, "") || "/";
+  const params = searchParamsOf(search);
+  const fromUrl = sectionFromUrl(path, params);
+  if (railSide === "manage") return fromUrl || sectionFromManagePath(path);
+  return fromUrl;
+}
+
 export function resolvePageStationScope({
   pathname,
+  search = "",
   headerScope,
   employee,
   stations,
@@ -79,6 +146,7 @@ export function resolvePageStationScope({
     return fallbackStationId({ employee, stations: list, visible }) || raw;
   }
   if (headerAllowsAllStations(pathname)) return raw;
+  if (raw === "all" && managerScopeSection(pathname, search)) return "all";
   if (raw !== "all" && list.some((row) => String(row.id) === raw)) return raw;
   return fallbackStationId({ employee, stations: list, visible }) || raw;
 }

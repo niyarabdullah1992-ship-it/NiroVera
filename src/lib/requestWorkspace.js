@@ -20,7 +20,7 @@ import {
 import { officialHolidayList } from "./ummAlQuraCalendar.js";
 import { approvedLeaveWithdrawWindow, computeLeaveDays, examSatState, hasExamSatProof, isRealSupportingFile, LEAVE_TYPES } from "./leaveDerivations.js";
 import { nightRotateStage } from "./nightRotateCycle.js";
-import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_LABEL_AR, NIGHT_FITNESS_LABEL_EN, NIGHT_FITNESS_PERMANENT_AR, NIGHT_FITNESS_TYPE, buildRequestAudit, buildRequestRefuseAudit, checkRefuseRequestReasonGate, checkSubmitStudyConsentGate, collectRequestAuditLogs, collectRequestRefuseLogs, hasRequestRefuseAudit, isManagerDecideOtherRequest, nightFitnessState, otherRequestTypeLabel, reconstructRequestAudit, requestAuditEventType, requestAuditFileLog, resolveStudyConsentFields, STUDY_CONSENT_FILE_REQUIRED_AR, STUDY_CONSENT_FILE_REQUIRED_EN, STUDY_CONSENT_LABEL_AR, STUDY_CONSENT_LABEL_EN, STUDY_CONSENT_TYPE, studyConsentState } from "./otherRequestDerivations.js";
+import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_LABEL_AR, NIGHT_FITNESS_LABEL_EN, NIGHT_FITNESS_PERMANENT_AR, NIGHT_FITNESS_TYPE, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkRefuseRequestReasonGate, checkSubmitStudyConsentGate, collectRequestAuditLogs, collectRequestRefuseLogs, DISCRETIONARY_GRANT_CAP as OTHER_DISCRETIONARY_GRANT_CAP, hasRequestRefuseAudit, isManagerDecideOtherRequest, LEAVE_CREDIT_POOLS, nightFitnessState, otherRequestTypeLabel, reconstructRequestAudit, requestAuditEventType, requestAuditFileLog, resolveStudyConsentFields, STUDY_CONSENT_FILE_REQUIRED_AR, STUDY_CONSENT_FILE_REQUIRED_EN, STUDY_CONSENT_LABEL_AR, STUDY_CONSENT_LABEL_EN, STUDY_CONSENT_TYPE, studyConsentState } from "./otherRequestDerivations.js";
 import { nightMedicalReportOf } from "./decision18632.js";
 import {
   assignmentFileName,
@@ -69,26 +69,104 @@ export async function readSupportingFile(file) {
   });
 }
 
-export const DISCRETIONARY_GRANT_CAP = 5;
+export const DISCRETIONARY_GRANT_CAP = OTHER_DISCRETIONARY_GRANT_CAP;
+
+export { checkAdminLeaveCreditGate, LEAVE_CREDIT_POOLS };
 
 export const REQUEST_KINDS = [
   { id: "leave", ar: "إجازة", en: "Leave" },
   { id: "study_consent", ar: STUDY_CONSENT_LABEL_AR, en: STUDY_CONSENT_LABEL_EN, type: STUDY_CONSENT_TYPE },
-  { id: "night_fitness", ar: NIGHT_FITNESS_LABEL_AR, en: NIGHT_FITNESS_LABEL_EN, type: NIGHT_FITNESS_TYPE },
-  { id: "leave_topup", ar: "رفع رصيد إجازة", en: "Leave balance top-up", type: LEAVE_TOPUP_TYPE, manageFiled: true },
+  /** 18632 medical fitness — worker files from ملفي; الإدارة does not raise it. */
+  { id: "night_fitness", ar: NIGHT_FITNESS_LABEL_AR, en: NIGHT_FITNESS_LABEL_EN, type: NIGHT_FITNESS_TYPE, employeeOnly: true },
+  /** Worker requests from ملفي (Balance card); manager decides — not a manage raise. */
+  { id: "leave_topup", ar: "رفع رصيد إجازة", en: "Leave balance top-up", type: LEAVE_TOPUP_TYPE },
+  /** Admin credit from إدارة — no employee raise, no self-decide leave. */
+  { id: "leave_credit", ar: "إضافة رصيد", en: "Add leave balance", manageOnly: true, manageFiled: true, credit: true },
   { id: "ot_assign", ar: "تكليف إضافي", en: "Overtime assignment", type: "overtime", assignment: true, manageOnly: true, manageFiled: true },
   { id: "manual", ar: "تسجيل حضور يدوي", en: "Manual punch", type: "manual_punch" },
   { id: "outfix", ar: "تصحيح انصراف", en: "Checkout correction", type: "checkout_fix" },
   { id: "doc", ar: "وثيقة أو شهادة", en: "Document or letter" },
   { id: "money", ar: "سلفة أو بدل", en: "Advance or allowance", type: "advance" },
   { id: "custody", ar: "عهدة", en: "Custody", type: "custody" },
-  { id: "other", ar: "طلب آخر", en: "Other request", type: "other_request" },
+  /** Manager may raise from إدارة as an establishment act; worker may also raise from ملفي. */
+  { id: "other", ar: "طلب آخر", en: "Other request", type: "other_request", manageFiled: true },
 ];
 
-/** ملفي: worker self-types. إدارة compose: only establishment-filed records. */
+/**
+ * ملفي: worker self-types (no establishment-only OT assignment / admin credit).
+ * إدارة: manager-initiated — تكليف إضافي + إضافة رصيد + طلب آخر.
+ * Leave / study / docs / punches / worker top-up stay on ملفي; manager decides (اعتمد/ارفض).
+ */
 export function composeRequestKinds(lane = "mine") {
-  if (lane === "manage") return REQUEST_KINDS.filter((row) => row.manageFiled || row.manageOnly);
+  if (lane === "manage") {
+    return REQUEST_KINDS.filter((row) => row.id === "ot_assign" || row.id === "leave_credit" || row.id === "other");
+  }
   return REQUEST_KINDS.filter((row) => !row.manageOnly);
+}
+
+/** True when إدارة may compose this kind as a manager-side raise (not ملفي masquerade). */
+export function isManageRaiseKind(kindId) {
+  return kindId === "ot_assign" || kindId === "leave_credit" || kindId === "other";
+}
+
+/** Checklist rows for the إدارة credit form. */
+export function composeAdminLeaveCreditGates(input = {}, lang = "ar") {
+  const ar = lang === "ar";
+  const gate = checkAdminLeaveCreditGate(input);
+  const pool = String(input.pool || "").trim();
+  const days = Math.round(Number(input.days) || 0);
+  const why = String(input.reason || "").trim();
+  const used = grantDaysOf(input.profile);
+  return uniqueNamedGates([
+    {
+      id: "ROLE_REQUIRED",
+      ok: input.canCredit !== false,
+      text: input.canCredit !== false
+        ? (ar ? "تُسجَّل الإضافة باسم من يقرر على الطلبات." : "The credit is recorded in the deciding manager's name.")
+        : (ar ? "إضافة الرصيد لمن يقرر على الطلبات فقط." : "Only managers who decide on requests may credit leave balance."),
+    },
+    {
+      id: "POOL_REQUIRED",
+      ok: pool === "annual" || pool === "grant",
+      text: pool === "annual"
+        ? (ar ? "يُزاد الرصيد السنوي (نفس حقل 21/30 يوماً)." : "The annual balance (the same 21/30-day field) increases.")
+        : pool === "grant"
+          ? (ar ? `أيام تقديرية فوق المستحق — سقف ${DISCRETIONARY_GRANT_CAP} في السنة.` : `Discretionary days above the statutory floor — cap ${DISCRETIONARY_GRANT_CAP} a year.`)
+          : (ar ? "اختر الرصيد السنوي أو الأيام التقديرية." : "Pick the annual balance or discretionary days."),
+    },
+    {
+      id: "DAYS_INVALID",
+      ok: gate.ok || (gate.error !== "DAYS_INVALID" && days >= 1),
+      text: gate.error === "DAYS_INVALID"
+        ? (ar ? gate.reason : gate.reasonEn)
+        : pool === "annual"
+          ? (ar ? `يُضاف ${days || "—"} يوماً إلى الرصيد السنوي.` : `${days || "—"} days will be added to the annual balance.`)
+          : (ar ? `تُمنح ${days || "—"} أيام تقديرية.` : `${days || "—"} discretionary days will be granted.`),
+    },
+    {
+      id: "GRANT_CAP",
+      ok: pool !== "grant" || gate.ok || gate.error !== "GRANT_CAP",
+      text: pool !== "grant"
+        ? (ar ? "سقف الأيام التقديرية لا يسري على الرصيد السنوي." : "The discretionary cap does not apply to the annual balance.")
+        : gate.error === "GRANT_CAP"
+          ? (ar ? gate.reason : gate.reasonEn)
+          : (ar ? `الممنوح سابقاً ${used} · المتاح ${Math.max(0, DISCRETIONARY_GRANT_CAP - used)}.` : `Already granted ${used} · ${Math.max(0, DISCRETIONARY_GRANT_CAP - used)} left.`),
+    },
+    {
+      id: "REASON_REQUIRED",
+      ok: why.length >= 3,
+      text: why.length >= 3
+        ? (ar ? "السبب مكتوب — يظهر في سجل التدقيق." : "The reason is written — it appears on the audit trail.")
+        : (ar ? "اكتب سبب إضافة الرصيد." : "Write why the balance is being credited."),
+    },
+    {
+      id: "NO_EMPLOYEE_LEAVE",
+      ok: true,
+      text: ar
+        ? "ليست إجازة باسم الموظف — لا موافقة ذاتية ولا خصم من الجدول."
+        : "Not leave raised as the employee — no self-approval and no rota deduction.",
+    },
+  ]);
 }
 
 /** Leave, exam leave, and study_consent are decided only in طلباتي. */
@@ -499,12 +577,12 @@ export function rangeDates(from, to) {
   return out;
 }
 
-export function leaveKindMeta(key) {
+export function leaveKindMeta(key, onDate) {
   const found = LEAVE_TYPES.find((row) => row.key === key) || LEAVE_TYPES[0];
   return {
     ...found,
-    ar: leaveTypeLabel(found.key, true),
-    en: leaveTypeLabel(found.key, false),
+    ar: leaveTypeLabel(found.key, true, undefined, onDate),
+    en: leaveTypeLabel(found.key, false, undefined, onDate),
   };
 }
 
@@ -520,7 +598,7 @@ export function leaveKindsFor(profile, ar = true, requests) {
           ? (ar ? `${leftover} أيام تقديرية متبقية` : `${leftover} discretionary days left`)
           : (ar ? "لا رصيد تقديري بعد" : "No discretionary days left"))
       : row.key === "eid"
-        ? (ar ? "الفطر 4 · الأضحى 4 · الوطني 1 · التأسيس 1 — بطلب" : "Fitr 4 · Adha 4 · National 1 · Founding 1 — by request")
+        ? (ar ? "الوطني 1 · التأسيس 1 مقفلان في الجدول بلا طلب · الفطر 4 · الأضحى 4 بطلب" : "National 1 · Founding 1 locked on the roster · Fitr 4 · Adha 4 by request")
       : row.key === "iddah"
         ? (isRamadanHoursSubject({ profile })
           ? (ar ? "130 يوماً بأجر — تمديد بلا أجر للحامل حتى الوضع" : "130 paid days — unpaid extension if pregnant until birth")
@@ -707,7 +785,9 @@ export function flattenWorkspaceRows(employees = [], lang = "ar") {
     ...request,
     employee,
     family: "leave",
-    title: ar ? `إجازة ${leaveKindMeta(request.type)?.ar || ""}` : `${leaveKindMeta(request.type)?.en || ""} leave`,
+    title: ar
+      ? `إجازة ${leaveKindMeta(request.type, request.startDate)?.ar || ""}`
+      : `${leaveKindMeta(request.type, request.startDate)?.en || ""} leave`,
     article: leaveKindMeta(request.type)?.article || "",
   })));
   const other = (employees || []).flatMap((employee) => (employee.otherRequests || []).filter((request) => request.type !== "written_consent").map((request) => ({
@@ -1432,8 +1512,8 @@ export function requestArchiveSearchHay(row, stations = []) {
     row?.type,
     row?.family,
     row?.kind,
-    leave ? leaveTypeLabel(row?.type, true) : otherRequestTypeLabel(row?.type, true),
-    leave ? leaveTypeLabel(row?.type, false) : otherRequestTypeLabel(row?.type, false),
+    leave ? leaveTypeLabel(row?.type, true, undefined, row?.startDate || row?.from) : otherRequestTypeLabel(row?.type, true),
+    leave ? leaveTypeLabel(row?.type, false, undefined, row?.startDate || row?.from) : otherRequestTypeLabel(row?.type, false),
     row?.status,
     row?.statusKey,
     row?.statusLabel,

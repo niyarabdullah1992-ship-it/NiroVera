@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import ConsentFileLink from "@/components/requests/ConsentFileLink";
 import { consentRowHref, consentSealFace, consentStatus, consentTopicMeta } from "@/lib/writtenConsent";
 import { BORDER, BRAND, CARD, INK, MUTED, NAVY } from "@/lib/platformStyles";
+import AttachFileButton from "@/components/shared/AttachFileButton";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 const GRID = "minmax(200px, 2.2fr) minmax(0, 1.2fr) 140px 118px";
@@ -106,15 +107,13 @@ export default function ConsentSignRow({
             <>
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span style={{ fontSize: 11, color: MUTED }}>{ar ? "ارفع النسخة الموقّعة على هذا الطلب" : "Upload the signed copy on this request"}</span>
-                <input
+                <AttachFileButton
                   ref={paperRef}
-                  type="file"
+                  ar={ar}
                   accept="application/pdf,image/jpeg,image/png,image/webp"
-                  onChange={(event) => {
-                    onPaper?.(event.target.files?.[0]);
-                    if (paperRef.current) paperRef.current.value = "";
-                  }}
-                  style={{ fontFamily: "inherit", fontSize: 11, padding: "8px 9px", border: `1px dashed ${BORDER}`, background: CARD, color: NAVY }}
+                  busy={paperBusy}
+                  label={ar ? "أرفق النسخة الموقّعة" : "Attach the signed copy"}
+                  onPick={onPaper}
                 />
                 {paperBusy ? <span style={{ fontSize: 10, color: MUTED }}>{ar ? "جارٍ رفع النسخة…" : "Uploading the copy…"}</span> : null}
               </label>

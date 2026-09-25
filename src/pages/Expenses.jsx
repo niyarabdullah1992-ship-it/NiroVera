@@ -16,6 +16,7 @@ import { pageKicker } from "@/lib/moduleMeta";
 import { INK, MUTED, SURFACE, cardShell, ui } from "@/lib/platformStyles";
 import FinanceViewSwitch from "@/components/shared/FinanceViewSwitch";
 import { MANAGE, SELF, SELF_VIEW_NOTE, canManageSurface, resolveFinanceView } from "@/lib/financeRights";
+import { useRailSide } from "@/lib/railSide";
 
 // The vessel and the review queue are decisions; raising a claim, watching its path
 // and reading the derived policy are not. That is where the surface divides.
@@ -33,7 +34,8 @@ export default function Expenses() {
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
   const canManage = canManageSurface("expenses", currentUser, data);
-  const view = resolveFinanceView("expenses", currentUser, data, searchParams.get("view"));
+  const railSide = useRailSide();
+  const view = resolveFinanceView("expenses", currentUser, data, searchParams.get("view"), railSide);
   const layers = view === MANAGE ? MANAGE_LAYERS : SELF_LAYERS;
   const homeTab = layers[0];
   const requested = searchParams.get("tab");
@@ -156,7 +158,7 @@ export default function Expenses() {
       onTool={setTab}
       meta={(
         <>
-          <FinanceViewSwitch ar={ar} view={view} canManage={canManage} onChange={setView} />
+          <FinanceViewSwitch ar={ar} view={view} canManage={canManage} showSwitch={!railSide} onChange={setView} />
           <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
             <span style={{ fontSize: 10, color: MUTED }}>
               {view === MANAGE ? (ar ? "بانتظار الاعتماد" : "Awaiting approval") : (ar ? "مطالباتي المفتوحة" : "My open claims")}

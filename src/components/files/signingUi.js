@@ -11,7 +11,7 @@ export const signPrimaryBtn = {
   borderRadius: 10,
   border: "none",
   background: SIGN_NAVY,
-  color: "#fff",
+  color: "var(--nv-btn-ink)",
   cursor: "pointer",
   display: "inline-flex",
   alignItems: "center",
@@ -39,6 +39,20 @@ export const signGhostBtn = {
 
 export const signMono = { fontFamily: "'IBM Plex Mono', monospace" };
 
+export function signingDocTitle(name = "") {
+  const raw = String(name || "").trim();
+  const stripped = raw.replace(/\.(pdf|png|jpe?g)$/i, "").trim();
+  return stripped || raw;
+}
+
+/** Display envelope id for the studio header. Stable for a verification id, never a sample document. */
+export function envelopeCode(verificationId, date = new Date()) {
+  const tail = String(verificationId || "").replace(/[^a-zA-Z0-9]/g, "").slice(-4).toUpperCase().padStart(4, "0");
+  const y = date.getFullYear();
+  const md = `${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+  return `ENV-${y}-${md}-${tail}`;
+}
+
 export const signKicker = {
   fontSize: 10,
   letterSpacing: "0.14em",
@@ -56,8 +70,8 @@ export function signTipStrip(tone = "neutral") {
     padding: "9px 16px",
     fontSize: 12,
     lineHeight: 1.65,
-    borderBottom: `1px solid ${warn ? "#e6d7b0" : ok ? "#cdead8" : SIGN_LINE}`,
-    background: warn ? "#faf7f0" : ok ? "#f3fbf6" : SIGN_SURFACE,
+    borderBottom: `1px solid ${warn ? "var(--nv-warn-line)" : ok ? "var(--nv-ok-line)" : SIGN_LINE}`,
+    background: warn ? "var(--nv-warn-soft)" : ok ? "var(--nv-ok-soft)" : SIGN_SURFACE,
     color: warn ? "#8a6516" : ok ? SIGN_GREEN : SIGN_BODY,
   };
 }

@@ -4,6 +4,15 @@ export function isCompanyRootStation(station) {
   return Boolean(station?.isCompanyRoot);
 }
 
+/** Fixed HR unit: it belongs to no branch and is not a parent of field branches. */
+export function isHrUnit(station) {
+  if (!station || isCompanyRootStation(station)) return false;
+  if (station.fixedUnit === "hr") return true;
+  const code = String(station.code || "").trim().toUpperCase();
+  if (code === "HR") return true;
+  return /وحدة\s*الموارد\s*البشرية|موارد\s*بشر/.test(String(station.name || ""));
+}
+
 export function normalizeUnitKind(value) {
   return String(value || "").trim() === "manager" ? "manager" : "branch";
 }
@@ -81,8 +90,25 @@ export function checkSetStationParentGate(stations, stationId, newParentId) {
       reasonEn: "The company is the main branch and cannot hang under another branch.",
     };
   }
+  if (current && isHrUnit(current)) {
+    return {
+      ok: false,
+      error: "FIXED_HR",
+      reason: "وحدة الموارد البشرية ثابتة ولا تُنقل.",
+      reasonEn: "The HR unit is fixed and cannot be moved.",
+    };
+  }
   if (!parent) return { ok: true, parentStationId: null };
-  if (!(stations || []).some((station) => String(station.id) === parent)) {
+  const parentStation = (stations || []).find((station) => String(station.id) === parent);
+  if (parentStation && isHrUnit(parentStation)) {
+    return {
+      ok: false,
+      error: "HR_NOT_PARENT",
+      reason: "الفروع لا تتبع وحدة الموارد البشرية.",
+      reasonEn: "Branches do not report to the HR unit.",
+    };
+  }
+  if (!parentStation) {
     return { ok: false, error: "PARENT_NOT_FOUND", reason: "الفرع الأب غير موجود.", reasonEn: "Parent branch not found." };
   }
   if (wouldCreateStationCycle(stations, id, parent)) {
@@ -216,7 +242,7 @@ export function resolveEmployeeSelectedStation(employee, selectedIds, stations) 
 
 export function allowedStationParents(stations, stationId) {
   const blocked = new Set([String(stationId || ""), ...descendantStationIds(stations, stationId)]);
-  return (stations || []).filter((station) => station?.id && !blocked.has(String(station.id)));
+  return (stations || []).filter((station) => station?.id && !blocked.has(String(station.id)) && !isHrUnit(station));
 }
 
 export function userManagesStation(user, data, stationId) {

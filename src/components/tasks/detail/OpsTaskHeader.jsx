@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
-import { ACCENT, BRAND, BRAND_DEEP, BRAND_SOFT, CARD, MUTED, NAVY, field } from "@/lib/platformStyles";
+import MemberMultiSelect from "@/components/tasks/MemberMultiSelect";
+import { ACCENT, CARD, MUTED, NAVY, field } from "@/lib/platformStyles";
 import { taskRecurrenceLabel, isOpsVisitorTask, taskCreatorName, taskAssigneePeople, taskPeopleCountLabel, normalizeTaskMode, deriveTaskHeatBanNotice, TASK_MODES } from "@/lib/opsDerivations";
 import OpsDispatchChip from "@/components/tasks/OpsDispatchChip";
 import HeatBanNotice from "@/components/shared/HeatBanNotice";
@@ -9,9 +10,9 @@ const FIELD = { ...field, height: 40 };
 const LABEL_SPAN = { fontSize: 12, fontWeight: 600, color: MUTED };
 
 const PRIORITIES = [
-  { id: "high", ar: "عالية", en: "High", color: "#DC2626" },
-  { id: "medium", ar: "متوسطة", en: "Medium", color: "#F59E0B" },
-  { id: "low", ar: "منخفضة", en: "Low", color: MUTED },
+  { id: "high", ar: "عالية", en: "High", ink: "var(--nv-bad-ink)", soft: "var(--nv-bad-soft)", line: "var(--nv-bad-line)", dot: "var(--nv-bad-fill)" },
+  { id: "medium", ar: "متوسطة", en: "Medium", ink: "var(--nv-warn-ink)", soft: "var(--nv-warn-soft)", line: "var(--nv-warn-line)", dot: "var(--nv-warn-fill)" },
+  { id: "low", ar: "منخفضة", en: "Low", ink: "var(--nv-mute-ink, #4B5567)", soft: "var(--nv-mute-soft, #F5F6F8)", line: "var(--nv-line)", dot: "var(--nv-mute-fill, #C7CCD6)" },
 ];
 
 const WEIGHTS = [
@@ -30,10 +31,10 @@ const actionBtn = (busy, tone) => ({
   padding: "0 12px",
   margin: 0,
   boxSizing: "border-box",
-  borderRadius: 9,
-  border: tone === "danger" ? "1px solid #FECACA" : "1px solid var(--nv-line, #E2E8F0)",
-  background: tone === "danger" ? "#FEF2F2" : CARD,
-  color: tone === "danger" ? "#B91C1C" : NAVY,
+  borderRadius: 10,
+  border: tone === "danger" ? "1px solid var(--nv-bad-line)" : "1px solid var(--nv-line)",
+  background: tone === "danger" ? "var(--nv-bad-soft)" : CARD,
+  color: tone === "danger" ? "var(--nv-bad-ink)" : NAVY,
   fontSize: 12,
   fontWeight: 600,
   lineHeight: 1,
@@ -52,7 +53,7 @@ function ReadField({ label, children }) {
   );
 }
 
-function priorityStyle(active, color) {
+function priorityStyle(active, tone) {
   return {
     display: "flex",
     alignItems: "center",
@@ -65,10 +66,17 @@ function priorityStyle(active, color) {
     fontSize: 12,
     cursor: "default",
     ...(active
-      ? { border: `1px solid ${color}`, background: `${color}14`, color, fontWeight: 600 }
+      ? { border: `1px solid ${tone.line}`, background: tone.soft, color: tone.ink, fontWeight: 600 }
       : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
   };
 }
+
+const selectedNavy = {
+  border: "1px solid var(--nv-navy)",
+  background: "var(--nv-navy)",
+  color: "#fff",
+  fontWeight: 600,
+};
 
 function weightStyle(active) {
   return {
@@ -84,7 +92,7 @@ function weightStyle(active) {
     fontFamily: "inherit",
     cursor: "default",
     ...(active
-      ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND_DEEP }
+      ? selectedNavy
       : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
   };
 }
@@ -105,7 +113,7 @@ function modeStyle(active, clickable) {
     textAlign: "center",
     cursor: clickable ? "pointer" : "default",
     ...(active
-      ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND_DEEP, fontWeight: 600 }
+      ? selectedNavy
       : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
   };
 }
@@ -115,6 +123,9 @@ export default function OpsTaskHeader({
   task, ar, busy, approved, awaiting, doneN, targetN,
   canReassign, canTransfer, canEndDelegation, canManage, canDelete,
   onOpenReassign, onOpenTransfer, onEndDelegation, onSetMode, onOpenDelete,
+  canEditAssignees = false,
+  stationMembers = [],
+  onSetMembers,
   paceStrip = null,
   employees = [],
 }) {
@@ -129,12 +140,20 @@ export default function OpsTaskHeader({
   const workType = String(task.workTypeText || task.workType || "").trim();
   const assignees = taskAssigneePeople(task, employees);
   const [showPeople, setShowPeople] = useState(false);
+  const peopleNames = assignees.map((person) => String(person.name || "").trim()).filter(Boolean).join(ar ? "، " : ", ");
+  const branchName = String(task.stationName || "").trim();
+  const ownerFace = String(task.ownerName || task.assigneeName || "").trim() || peopleNames || branchName || "—";
+  const peopleFace = assignees.length
+    ? (peopleNames || taskPeopleCountLabel(assignees.length, ar))
+    : (branchName || "—");
+  const canEditPeople = canEditAssignees && !approved && !awaiting && typeof onSetMembers === "function";
+  const selectedIds = assignees.map((p) => String(p.id));
 
   return (
     <>
       <OpsTaskSection title={ar ? "الإسناد" : "Assignment"}>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <ReadField label={ar ? "الفرع" : "Station"}>{task.stationName || task.stationId || "—"}</ReadField>
+          <ReadField label={ar ? "الفرع" : "Station"}>{branchName || task.stationId || "—"}</ReadField>
           <ReadField label={ar ? "أنشأها" : "Created by"}>
             {task.createdByName || taskCreatorName(task) || "—"}
           </ReadField>
@@ -142,35 +161,41 @@ export default function OpsTaskHeader({
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 160px", minWidth: 0 }}>
             <span style={LABEL_SPAN}>{ar ? "عدد الأشخاص" : "People"}</span>
-            <button
-              type="button"
-              onClick={() => assignees.length && setShowPeople((open) => !open)}
-              aria-expanded={showPeople}
-              style={{
-                ...FIELD,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                cursor: assignees.length ? "pointer" : "default",
-                fontFamily: "inherit",
-                textAlign: "start",
-                background: CARD,
-              }}
-            >
-              <span>{taskPeopleCountLabel(assignees.length, ar)}</span>
-              {assignees.length ? (
-                <span style={{ color: MUTED, fontSize: 11, flexShrink: 0 }} aria-hidden>
-                  {showPeople ? "▴" : "▾"}
-                </span>
-              ) : null}
-            </button>
+            {canEditPeople ? (
+              <div style={{ ...FIELD, display: "flex", alignItems: "center", background: CARD }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{peopleFace}</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => assignees.length && setShowPeople((open) => !open)}
+                aria-expanded={showPeople}
+                style={{
+                  ...FIELD,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  cursor: assignees.length ? "pointer" : "default",
+                  fontFamily: "inherit",
+                  textAlign: "start",
+                  background: CARD,
+                }}
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{peopleFace}</span>
+                {assignees.length ? (
+                  <span style={{ color: MUTED, fontSize: 11, flexShrink: 0 }} aria-hidden>
+                    {showPeople ? "▴" : "▾"}
+                  </span>
+                ) : null}
+              </button>
+            )}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 auto", minWidth: 160 }}>
             <span style={LABEL_SPAN}>{ar ? "المسؤول" : "Owner"}</span>
             <div style={{ ...FIELD, display: "flex", alignItems: "center", overflow: "hidden" }}>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 }}>
-                {task.ownerName || task.assigneeName || "—"}
+                {ownerFace}
               </span>
             </div>
           </div>
@@ -183,7 +208,18 @@ export default function OpsTaskHeader({
             </div>
           ) : null}
         </div>
-        {showPeople && assignees.length ? (
+        {canEditPeople ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={LABEL_SPAN}>{ar ? "المسند إليهم" : "Assignees"}</span>
+            <MemberMultiSelect
+              members={stationMembers}
+              selected={selectedIds}
+              onChange={(ids) => { if (!busy) onSetMembers?.(ids); }}
+              lang={ar ? "ar" : "en"}
+              emptyLabel={ar ? "لا يوجد أعضاء في هذا الفرع." : "No members in this station."}
+            />
+          </div>
+        ) : showPeople && assignees.length ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {assignees.map((person) => (
               <div
@@ -219,8 +255,8 @@ export default function OpsTaskHeader({
           <span style={LABEL_SPAN}>{ar ? "الأولوية" : "Priority"}</span>
           <div style={{ display: "flex", gap: 8 }}>
             {PRIORITIES.map((p) => (
-              <div key={p.id} style={priorityStyle(pri === p.id, p.color)}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: p.color, flexShrink: 0 }} />
+              <div key={p.id} style={priorityStyle(pri === p.id, p)}>
+                <span style={{ width: 7, height: 7, borderRadius: "50%", background: pri === p.id ? p.dot : "var(--nv-mute-fill, #C7CCD6)", flexShrink: 0 }} />
                 <span>{ar ? p.ar : p.en}</span>
               </div>
             ))}

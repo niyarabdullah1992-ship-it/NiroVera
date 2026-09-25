@@ -6,12 +6,16 @@ import { getCompanyToken } from "@/lib/store";
 import PresenceStatusPicker from "@/components/employees/PresenceStatusPicker";
 import QuickCheckInCard from "@/components/attendance/QuickCheckInCard";
 import EmployeeTour from "@/components/onboarding/EmployeeTour";
-import { ACCENT, BORDER, CARD, MUTED, NAVY, SURFACE, bar } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, NAVY, SURFACE, bar } from "@/lib/platformStyles";
 
 const MONO = "'IBM Plex Mono', monospace";
-const LINE = "var(--nv-line, #DFE3EA)";
-const HAIR = "#EEF0F4";
-const ROW = "#F7F8FA";
+const LINE = "#E4E9E6";
+const HAIR = "#EEF1EF";
+const ROW = "#F4F7F5";
+const OK = "#3C7D50";
+const WARN = "#C8A45A";
+const BAD = "#9B2335";
+const HEAD = { fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" };
 
 export default function EmployeeDashboard({ user, company, data }) {
   const { lang } = useI18n();
@@ -83,7 +87,7 @@ export default function EmployeeDashboard({ user, company, data }) {
     status: tg.status === "awaiting_approval"
       ? (ar ? "بانتظار الاعتماد" : "Awaiting approval")
       : (overdue.some((o) => o.id === tg.id) ? (ar ? "متأخرة" : "Overdue") : (ar ? "نشطة" : "Active")),
-    tone: tg.status === "awaiting_approval" ? "#B45309" : (overdue.some((o) => o.id === tg.id) ? "#B91C1C" : "#137A49"),
+    tone: tg.status === "awaiting_approval" ? WARN : (overdue.some((o) => o.id === tg.id) ? BAD : OK),
   }));
 
   const alerts = [
@@ -93,10 +97,10 @@ export default function EmployeeDashboard({ user, company, data }) {
   ].slice(0, 4);
 
   const kpis = [
-    { key: "open", label: ar ? "مهام مفتوحة" : "Open tasks", value: open.length, hint: ar ? "للتنفيذ" : "To execute", to: "/app/tasks", accent: open.length ? NAVY : "#137A49" },
-    { key: "await", label: ar ? "بانتظار الاعتماد" : "Awaiting approval", value: awaiting.length, hint: ar ? "بعد الإثبات" : "After proof", to: "/app/tasks", accent: awaiting.length ? "#B45309" : NAVY },
-    { key: "late", label: ar ? "متأخرة" : "Overdue", value: overdue.length, hint: ar ? "تحتاج متابعة" : "Need follow-up", to: "/app/tasks", accent: overdue.length ? "#B91C1C" : NAVY },
-    { key: "points", label: ar ? "نقاطي" : "My points", value: points, hint: ar ? "تُمنح عند الاعتماد فقط" : "Awarded on approval only", to: "/app/performance", accent: NAVY },
+    { key: "open", label: ar ? "مهام مفتوحة" : "Open tasks", value: open.length, hint: ar ? "للتنفيذ" : "To execute", to: "/app/tasks", accent: open.length ? "#111418" : OK },
+    { key: "await", label: ar ? "بانتظار الاعتماد" : "Awaiting approval", value: awaiting.length, hint: ar ? "بعد الإثبات" : "After proof", to: "/app/tasks", accent: awaiting.length ? WARN : "#111418" },
+    { key: "late", label: ar ? "متأخرة" : "Overdue", value: overdue.length, hint: ar ? "تحتاج متابعة" : "Need follow-up", to: "/app/tasks", accent: overdue.length ? BAD : "#111418" },
+    { key: "points", label: ar ? "نقاطي" : "My points", value: points, hint: ar ? "تُمنح عند الاعتماد فقط" : "Awarded on approval only", to: "/app/performance?view=self", accent: "#111418" },
   ];
 
   return (
@@ -147,7 +151,7 @@ export default function EmployeeDashboard({ user, company, data }) {
         <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "مهامي النشطة" : "My active tasks"}</span>
+              <span style={HEAD}>{ar ? "مهامي النشطة" : "My active tasks"}</span>
               <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
                 {ar ? "كل إنجاز يحتاج إثباتاً قبل النقاط." : "Every completion needs proof before points."}
               </span>
@@ -159,12 +163,12 @@ export default function EmployeeDashboard({ user, company, data }) {
                 fontSize: 12,
                 fontWeight: 600,
                 padding: "8px 14px",
-                border: `1px solid ${BORDER}`,
-                background: CARD,
-                color: NAVY,
+                border: "none",
+                background: OK,
+                color: "#fff",
                 textDecoration: "none",
                 whiteSpace: "nowrap",
-                borderRadius: 10,
+                borderRadius: 8,
               }}
             >
               {ar ? "العمليات" : "Operations"}
@@ -190,24 +194,24 @@ export default function EmployeeDashboard({ user, company, data }) {
         </section>
 
         <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "جاهزية اليوم" : "Day readiness"}</div>
-              <div style={{ fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.75 }}>
-                {ar ? `${open.length} مفتوحة · ${points} نقطة معتمدة` : `${open.length} open · ${points} awarded points`}
-              </div>
+          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}` }}>
+            <div style={{ display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <span style={HEAD}>{ar ? "جاهزية اليوم" : "Day readiness"}</span>
+              <span dir="ltr" style={{ fontFamily: MONO, fontSize: 18, fontWeight: 500, color: "#111418", unicodeBidi: "isolate" }}>
+                {readiness}
+                <span style={{ fontSize: 12, fontWeight: 500, color: MUTED }}> /100</span>
+              </span>
             </div>
-            <span dir="ltr" style={{ fontFamily: MONO, fontSize: 22, fontWeight: 500, color: NAVY }}>
-              {readiness}
-              <span style={{ fontSize: 12, fontWeight: 500, color: MUTED }}> /100</span>
-            </span>
+            <div style={{ fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.75 }}>
+              {ar ? `${open.length} مفتوحة · ${points} نقطة معتمدة` : `${open.length} open · ${points} awarded points`}
+            </div>
           </div>
           <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
             {factors.map((f) => (
               <div key={f.label} style={{ display: "grid", gridTemplateColumns: "72px 1fr 36px", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 12, color: MUTED }}>{f.label}</span>
                 <div style={{ height: 10, overflow: "hidden", background: SURFACE, borderRadius: 10 }}>
-                  <span style={bar(f.pct, ACCENT)} />
+                  <span style={bar(f.pct, OK)} />
                 </div>
                 <span dir="ltr" style={{ fontSize: 12, fontFamily: MONO, color: NAVY, textAlign: "end" }}>{f.pct}%</span>
               </div>
@@ -218,13 +222,13 @@ export default function EmployeeDashboard({ user, company, data }) {
 
       <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}` }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "تنبيهات اليوم" : "Today's alerts"}</div>
+          <div style={HEAD}>{ar ? "تنبيهات اليوم" : "Today's alerts"}</div>
           <div style={{ fontSize: 12, color: MUTED, marginTop: 3, lineHeight: 1.75 }}>{ar ? "كل تنبيه يفتح القسم الذي يصلحه." : "Each alert opens the section that fixes it."}</div>
         </div>
         <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column" }}>
           {alerts.map((line, i) => (
             <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "13px 20px", borderBottom: `1px solid ${ROW}` }}>
-              <span style={{ width: 7, height: 7, marginTop: 6, borderRadius: "50%", background: "#B45309", flexShrink: 0 }} />
+              <span style={{ width: 7, height: 7, marginTop: 6, borderRadius: "50%", background: WARN, flexShrink: 0 }} />
               <Link to={line.to} style={{ fontSize: 13, color: NAVY, textDecoration: "none", lineHeight: 1.55 }}>{line.text}</Link>
             </li>
           ))}

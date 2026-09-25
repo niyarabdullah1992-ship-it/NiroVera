@@ -470,13 +470,13 @@ function SlideModules({ slide, ar }) {
           <div
             key={mod.en}
             style={{
-              background: mod.featured ? "#14284B" : "#F7F8FA",
-              border: mod.featured ? "1px solid #14284B" : "1px solid #E2E8F0",
+              background: mod.featured ? "var(--nv-navy)" : "var(--nv-inset)",
+              border: mod.featured ? "1px solid var(--nv-navy)" : "1px solid var(--nv-line)",
               borderRadius: 14,
               padding: "26px 22px",
               fontSize: 27,
               fontWeight: 500,
-              color: mod.featured ? "#FFFFFF" : "#14284B",
+              color: mod.featured ? "#FFFFFF" : "var(--nv-ink)",
             }}
           >
             {ar ? mod.ar : mod.en}
@@ -947,13 +947,13 @@ function SlidePlans({ slide, ar }) {
           <div
             key={plan.nameEn}
             style={{
-              background: plan.featured ? "#14284B" : "#FFFFFF",
-              border: plan.featured ? "1px solid #14284B" : "1px solid #E2E8F0",
+              background: plan.featured ? "var(--nv-navy)" : "var(--nv-card)",
+              border: plan.featured ? "1px solid var(--nv-navy)" : "1px solid var(--nv-line)",
               borderRadius: 20,
               padding: 48,
               display: "flex",
               flexDirection: "column",
-              color: plan.featured ? "#FFFFFF" : "#14284B",
+              color: plan.featured ? "#FFFFFF" : "var(--nv-ink)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -999,7 +999,7 @@ function SlidePlans({ slide, ar }) {
                   <span
                     style={{
                       fontSize: 28,
-                      color: plan.featured ? "#94A3B8" : "#5A6B85",
+                      color: plan.featured ? "#94A3B8" : "var(--nv-muted)",
                     }}
                   >
                     {ar ? plan.priceUnitAr : plan.priceUnitEn}
@@ -1015,7 +1015,7 @@ function SlidePlans({ slide, ar }) {
               style={{
                 margin: "32px 0 0",
                 fontSize: 30,
-                color: plan.featured ? "#CBD5E1" : "#5A6B85",
+                color: plan.featured ? "#CBD5E1" : "var(--nv-muted)",
                 lineHeight: 1.65,
               }}
             >

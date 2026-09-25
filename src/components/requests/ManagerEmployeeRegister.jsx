@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { CARD, MUTED, NAVY, PAPER_SHADOW, RADIUS, SURFACE } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, PAPER_SHADOW, RADIUS, SURFACE } from "@/lib/platformStyles";
 import { managerEmployeeRegister } from "@/lib/requestWorkspace";
 
 /**
@@ -32,17 +32,18 @@ export default function ManagerEmployeeRegister({
 
   return (
     <section
+      className="nv-req-people"
       style={{
         background: CARD,
-        border: "1px solid #d4dae6",
-        borderInlineStart: `2px solid ${NAVY}`,
+        border: `1px solid ${BORDER}`,
+        borderInlineStart: `2px solid ${NAVY_FILL}`,
         borderRadius: RADIUS,
         boxShadow: PAPER_SHADOW,
         overflow: "hidden",
       }}
     >
-      <div style={{ padding: "14px 18px", borderBottom: "1px solid #eef0f4", display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "بانتظار القرار" : "Awaiting a decision"}</span>
+      <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line3)", display: "flex", flexDirection: "column", gap: 4 }}>
+        <span className="nv-req-title" style={{ fontSize: 14, color: NAVY }}>{ar ? "بانتظار القرار" : "Awaiting a decision"}</span>
         <span style={{ fontSize: 12, fontWeight: 600, color: NAVY, lineHeight: 1.6 }}>{rail.standing}</span>
         <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.75 }}>{rail.note}</span>
         {rail.others ? (
@@ -75,7 +76,7 @@ export default function ManagerEmployeeRegister({
                 textAlign: "start",
                 background: groupOn ? SURFACE : CARD,
                 border: "none",
-                borderBottom: "1px solid #eef0f4",
+                borderBottom: "1px solid var(--nv-line3)",
                 cursor: "pointer",
                 fontFamily: "inherit",
                 color: NAVY,
@@ -95,7 +96,7 @@ export default function ManagerEmployeeRegister({
                 <div
                   key={row.id}
                   style={{
-                    borderBottom: "1px solid #f7f8fa",
+                    borderBottom: "1px solid var(--nv-line2)",
                     background: on ? SURFACE : CARD,
                     borderInlineStart: on ? `2px solid ${NAVY}` : "2px solid transparent",
                   }}
@@ -121,7 +122,7 @@ export default function ManagerEmployeeRegister({
                     <span style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
                       <span style={{ fontSize: 13, fontWeight: 700 }}>{row.name}</span>
                       {row.pendingCount ? (
-                        <span dir="ltr" style={{ fontFamily: "var(--font-mono)", fontSize: 11, background: "var(--nv-warn-soft)", color: "var(--nv-warn-ink)", padding: "1px 7px" }}>
+                        <span dir="ltr" style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 7px", borderRadius: 999, font: "600 10.5px var(--font-mono), monospace", background: "var(--nv-warn-soft)", color: "var(--nv-warn-ink)" }}>
                           {row.pendingCount}
                         </span>
                       ) : null}
@@ -147,8 +148,8 @@ export default function ManagerEmployeeRegister({
                         }}
                       >
                         {recording
-                          ? (ar ? "أخفِ التسجيل في الملف" : "Hide the file record")
-                          : (ar ? "سجّل في ملف الموظف" : "Record on the employee file")}
+                          ? (ar ? "أخفِ فعل الإدارة" : "Hide the management act")
+                          : (ar ? "تكليف أو رصيد أو طلب من الإدارة" : "Assignment, credit, or other from management")}
                       </button>
                     </div>
                   ) : null}

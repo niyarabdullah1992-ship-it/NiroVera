@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { taskDelegationMeta, taskTransferMeta } from "@/lib/opsDerivations";
+import { DS_RADIUS, DS_CONTROL_RADIUS, DS_PILL_RADIUS, DS_SHADOW } from "@/lib/designSystem";
 import { MUTED, NAVY } from "@/lib/platformStyles";
 
 function Field({ label, value, mono = false }) {
@@ -39,9 +40,9 @@ export default function OpsAssignmentRefChip({ task, ar = true, kind, compact = 
   const delegation = kind === "delegation" ? taskDelegationMeta(task) : null;
   const meta = transfer || delegation;
   const isTransfer = kind === "transfer";
-  const panelBd = isTransfer ? "#FECACA" : "#FDBA74";
-  const panelBg = isTransfer ? "#FFF7F7" : "#FFFBF5";
-  const titleFg = isTransfer ? "#991B1B" : "#9A3412";
+  const panelBd = isTransfer ? "var(--nv-bad-line)" : "var(--nv-warn-line)";
+  const panelBg = isTransfer ? "var(--nv-bad-soft)" : "var(--nv-warn-soft)";
+  const titleFg = isTransfer ? "var(--nv-bad-ink)" : "var(--nv-warn-ink)";
 
   useEffect(() => {
     if (!open) return undefined;
@@ -93,9 +94,9 @@ export default function OpsAssignmentRefChip({ task, ar = true, kind, compact = 
 
   if (!meta) return null;
 
-  const chipBg = isTransfer ? "#FEF2F2" : (meta.active ? "#FFF7ED" : "#F8FAFC");
-  const chipFg = isTransfer ? "#991B1B" : (meta.active ? "#9A3412" : "#64748B");
-  const chipBd = isTransfer ? "#FECACA" : (meta.active ? "#FDBA74" : "#E2E8F0");
+  const chipBg = isTransfer ? "var(--nv-bad-soft)" : (meta.active ? "var(--nv-warn-soft)" : "var(--nv-mute-soft)");
+  const chipFg = isTransfer ? "var(--nv-bad-ink)" : (meta.active ? "var(--nv-warn-ink)" : "var(--nv-mute-ink)");
+  const chipBd = isTransfer ? "var(--nv-bad-line)" : (meta.active ? "var(--nv-warn-line)" : "var(--nv-mute-line)");
 
   let label = "";
   if (isTransfer) {
@@ -126,10 +127,10 @@ export default function OpsAssignmentRefChip({ task, ar = true, kind, compact = 
         data-nv-ref-panel={kind}
         style={{
           ...menuStyle,
-          borderRadius: "12px",
+          borderRadius: DS_RADIUS,
           border: `1px solid ${panelBd}`,
           background: panelBg,
-          boxShadow: "0 10px 28px rgba(15, 23, 42, 0.18)",
+          boxShadow: DS_SHADOW,
           padding: "12px 13px",
           display: "flex",
           flexDirection: "column",
@@ -147,9 +148,9 @@ export default function OpsAssignmentRefChip({ task, ar = true, kind, compact = 
 
         {meta.reason ? (
           <div style={{
-            borderRadius: "10px",
+            borderRadius: DS_CONTROL_RADIUS,
             border: `1px solid ${panelBd}`,
-            background: "#FFFFFF",
+            background: "var(--nv-card)",
             padding: "8px 10px",
           }}
           >
@@ -248,7 +249,7 @@ export default function OpsAssignmentRefChip({ task, ar = true, kind, compact = 
           gap: "4px",
           maxWidth: "100%",
           padding: compact ? "2px 7px" : "2px 8px",
-          borderRadius: "8px",
+          borderRadius: DS_PILL_RADIUS,
           border: `1px solid ${chipBd}`,
           background: chipBg,
           color: chipFg,

@@ -4,8 +4,8 @@
 
 const NAMES = {
   1: {
-    manager: { en: "Site HR Manager", ar: "مدير الموارد البشرية بالفرع", de: "Standort-HR-Manager", fr: "Responsable RH de site", es: "Gerente de RH del sitio", pt: "Gerente de RH do site", ru: "HR-менеджер площадки", ja: "拠点HRマネージャー", ko: "현장 HR 매니저" },
-    assistant: { en: "Site HR Assistant", ar: "مساعد الموارد البشرية بالفرع", de: "Standort-HR-Assistent", fr: "Assistant RH de site", es: "Asistente de RH del sitio", pt: "Assistente de RH do site", ru: "Ассистент HR площадки", ja: "拠点HRアシスタント", ko: "현장 HR 어시스턴트" },
+    manager: { en: "Regional HR Manager", ar: "مدير م.ب. لمجموعة فروع", de: "Standort-HR-Manager", fr: "Responsable RH de site", es: "Gerente de RH del sitio", pt: "Gerente de RH do site", ru: "HR-менеджер площадки", ja: "拠点HRマネージャー", ko: "현장 HR 매니저" },
+    assistant: { en: "HR Specialist", ar: "أخصائي موارد بشرية", de: "Standort-HR-Assistent", fr: "Assistant RH de site", es: "Asistente de RH del sitio", pt: "Assistente de RH do site", ru: "Ассистент HR площадки", ja: "拠点HRアシスタント", ko: "현장 HR 어시스턴트" },
   },
   2: {
     manager: { en: "Cluster HR Manager", ar: "مدير الفروع", de: "Cluster-HR-Manager", fr: "Responsable RH de cluster", es: "Gerente de RH de clúster", pt: "Gerente de RH de cluster", ru: "Менеджер HR кластера", ja: "クラスターHRマネージャー", ko: "클러스터 HR 매니저" },
@@ -28,7 +28,7 @@ const NAMES = {
 const NOTES = {
   1: {
     en: "Handles local station technician attendance, local leave forms, and daily corrective/safety task distribution.",
-    ar: "يتولى متابعة حضور تقنيي الفرع محليًا، ونماذج الإجازات المحلية، وتوزيع المهام التصحيحية والسلامة اليومية.",
+    ar: "يخدم فرعين أو ثلاثة. لا يرأس موظفي الفرع. التعيين والنقل لمديرة الموارد البشرية، والجدول يعتده مدير الفرع.",
   },
   2: {
     en: "Oversees a group of stations, balances staff shortages, and acts as the first escalation review for open reports.",

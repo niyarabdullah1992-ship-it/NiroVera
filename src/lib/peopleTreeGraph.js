@@ -1,4 +1,5 @@
 import { companyRootStation, descendantStationIds, isCompanyRootStation, isManagerUnit, stationParentId, stationSubtreeIds } from "./stationTree.js";
+import { ensureHrPosts, ensureHrUnit, hrSolidManager, hrUnitStation, isHrStaff, nonHrManagerId, seatsOnHrUnit } from "./hrTree.js";
 import { normalizeArabicQuery } from "./workspaceDerivations.js";
 
 const DEPTH_TONE = [
@@ -232,27 +233,38 @@ function ancestorManagerId(data, station, selfId) {
   return null;
 }
 
-/** People tree follows the branch tree: the station manager is the branch. */
+/** People tree follows the branch tree: the station manager is the branch. HR staff follow the HR line instead. */
 export function workplaceReportsToId(employee, data) {
   if (!employee?.id) return null;
+  const ruled = hrSolidManager(employee, data);
+  if (ruled.handled) return ruled.managerId;
   const id = String(employee.id);
   const managed = stationsManagedBy(data, id);
+  let next = null;
   if (managed.length) {
     const managedIds = new Set(managed.map((station) => String(station.id)));
     const top = managed.find((station) => {
       const parent = stationParentId(station);
       return !parent || !managedIds.has(String(parent));
     }) || managed[0];
-    return ancestorManagerId(data, top, id);
+    next = ancestorManagerId(data, top, id);
+  } else {
+    const home = stationById(data, homeStationId(employee, data));
+    if (home) {
+      const managerId = String(home.managerId || "");
+      next = managerId && managerId !== id ? managerId : ancestorManagerId(data, home, id);
+    } else {
+      const root = (data?.stations || []).find((item) => isCompanyRootStation(item));
+      next = ancestorManagerId(data, root, id);
+    }
   }
-  const home = stationById(data, homeStationId(employee, data));
-  if (home) {
-    const managerId = String(home.managerId || "");
-    if (managerId && managerId !== id) return managerId;
-    return ancestorManagerId(data, home, id);
+  if (!next) return null;
+  const manager = (data?.employees || []).find((item) => String(item.id) === String(next));
+  if (manager && isHrStaff(manager, data)) {
+    const home = stationById(data, homeStationId(employee, data));
+    return nonHrManagerId(data, home, id);
   }
-  const root = (data?.stations || []).find((item) => isCompanyRootStation(item));
-  return ancestorManagerId(data, root, id);
+  return next;
 }
 
 function writeReportsTo(data, employee, manager) {
@@ -334,13 +346,23 @@ export function seatCompanyHeadOnRoot(data) {
   return seatEmployeeOnStation(data, head, root.id);
 }
 
-/** Branch manager is the branch. People at that workplace report to them; child-branch managers report to the parent manager. */
+/** Branch manager is the branch. People at that workplace report to them; child-branch managers report to the parent manager. HR staff keep the HR line. */
 export function applyWorkplaceManagerRule(data) {
   if (!data) return false;
   let changed = seatCompanyHeadOnRoot(data);
+  if (ensureHrUnit(data)) changed = true;
   const stations = data.stations || [];
   const people = activeEmployees(data);
   const byId = new Map(people.map((employee) => [String(employee.id), employee]));
+  const bossFor = (employee, station, manager) => {
+    if (!manager) return null;
+    if (hrSolidManager(employee, data).handled) return null;
+    if (isHrStaff(manager, data)) {
+      const fallback = nonHrManagerId(data, station, employee.id);
+      return fallback ? byId.get(String(fallback)) || null : null;
+    }
+    return manager;
+  };
   stations.forEach((station) => {
     const manager = byId.get(String(station.managerId || ""));
     if (!manager) return;
@@ -348,21 +370,36 @@ export function applyWorkplaceManagerRule(data) {
     people.forEach((employee) => {
       if (String(employee.id) === String(manager.id)) return;
       if (homeStationId(employee, data) !== sid) return;
-      if (writeReportsTo(data, employee, manager)) changed = true;
+      const boss = bossFor(employee, station, manager);
+      if (boss && writeReportsTo(data, employee, boss)) changed = true;
     });
     stations.forEach((child) => {
       if (String(stationParentId(child) || "") !== sid) return;
       const childManager = byId.get(String(child.managerId || ""));
-      if (childManager && writeReportsTo(data, childManager, manager)) changed = true;
+      if (!childManager) return;
+      const boss = bossFor(childManager, child, manager);
+      if (boss && writeReportsTo(data, childManager, boss)) changed = true;
     });
   });
   stations.forEach((station) => {
     if (isCompanyRootStation(station)) return;
     const manager = byId.get(String(station.managerId || ""));
-    if (!manager) return;
+    if (!manager || hrSolidManager(manager, data).handled) return;
     const parent = stations.find((item) => String(item.id) === String(stationParentId(station) || ""));
     const parentManager = parent ? byId.get(String(parent.managerId || "")) : null;
-    if (parentManager && writeReportsTo(data, manager, parentManager)) changed = true;
+    const boss = parentManager && isHrStaff(parentManager, data)
+      ? (byId.get(String(nonHrManagerId(data, station, manager.id) || "")) || null)
+      : parentManager;
+    if (boss && writeReportsTo(data, manager, boss)) changed = true;
+  });
+  if (ensureHrPosts(data)) changed = true;
+  const unit = hrUnitStation(data);
+  people.forEach((employee) => {
+    const ruled = hrSolidManager(employee, data);
+    if (!ruled.handled) return;
+    const boss = ruled.managerId ? byId.get(String(ruled.managerId)) || null : null;
+    if (writeReportsTo(data, employee, boss)) changed = true;
+    if (unit && seatsOnHrUnit(employee, data) && seatEmployeeOnStation(data, employee, unit.id)) changed = true;
   });
   return changed;
 }
@@ -370,7 +407,10 @@ export function applyWorkplaceManagerRule(data) {
 export function buildPeopleTree(data) {
   const owner = ownerOf(data);
   const ownerId = owner?.id ? String(owner.id) : "";
-  const people = activeEmployees(data);
+  const people = activeEmployees(data).filter((employee) => {
+    if (!employee.profile?.unseatedAt) return true;
+    return Boolean(seatOf(data, employee.id));
+  });
   const byId = new Map(people.map((employee) => [String(employee.id), employee]));
 
   const managerOf = (employee) => {

@@ -2,9 +2,29 @@ import React from "react";
 import { BORDER, NAVY, SURFACE } from "@/lib/platformStyles";
 import { orgPanelShell } from "@/lib/orgWorkspaceStyles";
 
-export function OrgPanel({ ar, fullscreen = false, children }) {
+export function OrgPanel({ ar, fullscreen = false, embedded = false, children, style }) {
   return (
-    <div dir={ar ? "rtl" : "ltr"} className="nv-org-panel" style={orgPanelShell(fullscreen)}>
+    <div
+      dir={ar ? "rtl" : "ltr"}
+      className={`nv-org-panel${embedded ? " nv-org-panel--embedded" : ""}`}
+      style={{
+        ...orgPanelShell(fullscreen),
+            ...(embedded && !fullscreen
+          ? {
+              borderRadius: 0,
+              overflow: "hidden",
+              padding: 0,
+              boxSizing: "border-box",
+              border: "1px solid #D5DCD8",
+              background: "#fff",
+              display: "flex",
+              flexDirection: "column",
+              height: 720,
+            }
+          : null),
+        ...style,
+      }}
+    >
       {children}
     </div>
   );
@@ -43,7 +63,7 @@ export function OrgInspectorField({ label, children }) {
   );
 }
 
-export function OrgTreeCanvas({ viewportRef, gestures, fullscreen, children }) {
+export function OrgTreeCanvas({ viewportRef, gestures, fullscreen, children, embedded = false }) {
   return (
     <div
       ref={viewportRef}
@@ -52,9 +72,21 @@ export function OrgTreeCanvas({ viewportRef, gestures, fullscreen, children }) {
       style={{
         position: "relative",
         flex: 1,
-        minHeight: fullscreen ? 0 : 440,
-        height: fullscreen ? "100%" : "68vh",
-        maxHeight: fullscreen ? "none" : 720,
+        minHeight: fullscreen ? 0 : (embedded ? 0 : 440),
+        height: fullscreen ? "100%" : (embedded ? "auto" : "68vh"),
+        maxHeight: fullscreen ? "none" : (embedded ? "none" : 720),
+        overflow: "auto",
+        cursor: "grab",
+        backgroundColor: embedded ? "#F7F9F8" : undefined,
+        backgroundImage: embedded ? "radial-gradient(#D7E0DB 1px, transparent 1px)" : undefined,
+        backgroundSize: embedded ? "22px 22px" : undefined,
+        border: embedded ? "1px solid #D5DCD8" : undefined,
+        borderRadius: embedded ? 0 : undefined,
+        width: "100%",
+        boxSizing: "border-box",
+        padding: embedded ? 12 : undefined,
+        display: embedded ? "grid" : undefined,
+        placeContent: embedded ? "safe center" : undefined,
       }}
     >
       {children}

@@ -5,7 +5,7 @@ import { useI18n } from "@/lib/i18n";
 import { isOnApprovedLeave } from "@/lib/leaveTypes";
 import { checkPublishGates } from "@/lib/shiftDerivations";
 import { ShieldCheck } from "lucide-react";
-import { ACCENT, MUTED, NAVY, cardShell, dot } from "@/lib/platformStyles";
+import { ACCENT, MUTED, NAVY, RADIUS, PAPER_SHADOW, dot, statusBannerQuiet } from "@/lib/platformStyles";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 async function workforce(payload) {
@@ -18,9 +18,13 @@ const CHECK_NOTES = {
     ar: "محسوب لكل أسبوع تقويمي على حدة من المصفوفة نفسها — أثقل أسبوع لأثقل موظف، لا متوسط الشهر.",
     en: "Computed per calendar week from the matrix itself — the heaviest week for the heaviest employee, never a monthly average.",
   },
-  rest_11h: {
-    ar: "فاصل تشغيلي 11 ساعة بين الورديات — ليست المادة 101.",
-    en: "Operational 11-hour gap between shifts — not Article 101.",
+  rest_5h: {
+    ar: "لا يجوز تشغيل العامل أكثر من خمس ساعات متواصلة دون راحة وصلاة وطعام لا تقل عن نصف ساعة — المادة 101. والراحة ليست ساعات عمل — المادة 102.",
+    en: "A worker may not work more than five consecutive hours without a rest of at least half an hour — Art. 101. Rest periods are not working hours — Art. 102.",
+  },
+  double_shift: {
+    ar: "لا يُسند الموظف إلى ورديتين في يوم واحد.",
+    en: "A person is not assigned two shifts on the same day.",
   },
   workplace_hours: {
     ar: "لا يبقى العامل في مكان العمل أكثر من 12 ساعة في اليوم — المادة 101.",
@@ -29,10 +33,6 @@ const CHECK_NOTES = {
   hours_ramadan: {
     ar: "في رمضان تُخفَّض ساعات المسلمين إلى 6 يومياً أو 36 أسبوعياً — المادة 98. الفراغ على الملف = مسلم. غير مسلم مسجّل مستثنى.",
     en: "In Ramadan, Muslim hours drop to 6 a day or 36 a week — Art. 98. An empty file is treated as Muslim. A recorded non-Muslim is exempt.",
-  },
-  rest_5h: {
-    ar: "لا يجوز تشغيل العامل أكثر من خمس ساعات متواصلة دون راحة وصلاة وطعام لا تقل عن نصف ساعة — المادة 101. والراحة ليست ساعات عمل — المادة 102.",
-    en: "A worker may not work more than five consecutive hours without a rest of at least half an hour — Art. 101. Rest periods are not working hours — Art. 102.",
   },
   weekly_rest: {
     ar: "يوم راحة كامل لكل موظف في كل أسبوع، ولا يُستبدل بأجر.",
@@ -43,8 +43,8 @@ const CHECK_NOTES = {
     en: "Press + in any empty cell in the matrix above to assign someone — a gap is closed by assignment, never by extending an existing shift.",
   },
   leave_excluded: {
-    ar: "إجازة معتمدة تبقى إجازة. تعيين متبقٍ على يوم الإجازة يُذكر ولا يمنع النشر.",
-    en: "Approved leave stays leave. A leftover assignment on a leave day is noted and does not block publish.",
+    ar: "إجازة معتمدة من طلباتي تبقى إجازة. تعيين متبقٍ على يومها يُذكر ولا يمنع النشر. إجازة اليوم الوطني ويوم التأسيس والعيد مسار منفصل (المادة 112).",
+    en: "Approved leave from My Requests stays leave. A leftover assignment on that day is noted and does not block publish. National Day, Founding Day, and Eid leave are a separate path (Article 112).",
   },
 };
 
@@ -157,7 +157,7 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
     ? {
         height: "38px",
         padding: "0 16px",
-        borderRadius: "9px",
+        borderRadius: 10,
         background: "#E2E8F0",
         color: MUTED,
         border: "none",
@@ -169,7 +169,7 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
     : {
         height: "38px",
         padding: "0 16px",
-        borderRadius: "9px",
+        borderRadius: 10,
         background: ACCENT,
         color: "#fff",
         border: "none",
@@ -183,9 +183,12 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
     <div
       dir={ar ? "rtl" : "ltr"}
       style={{
-        ...cardShell,
+        background: "var(--nv-card)",
+        border: blocked ? "1px solid var(--nv-bad-line)" : "1px solid var(--nv-line)",
+        borderRadius: RADIUS,
+        boxShadow: PAPER_SHADOW,
         maxWidth: 1320,
-        boxShadow: "0 1px 0 #E2E8F0",
+        padding: 16,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -193,12 +196,12 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
           style={{
             width: 32,
             height: 32,
-            borderRadius: 9,
+            borderRadius: 10,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "#ECFDF3",
-            color: ACCENT,
+            background: blocked ? "var(--nv-bad-soft)" : "var(--nv-ok-soft)",
+            color: blocked ? "var(--nv-bad-ink)" : ACCENT,
             flexShrink: 0,
           }}
         >
@@ -221,14 +224,14 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
           {checks.map((c) => {
             const note = CHECK_NOTES[c.id];
             return (
-              <div key={c.id} style={{ display: "flex", gap: "10px", padding: "10px 0", borderTop: "1px solid #F1F5F9" }}>
-                <span style={dot(c.ok ? ACCENT : "#DC2626")} />
+              <div key={c.id} style={{ display: "flex", gap: "10px", padding: "10px 0", borderTop: "1px solid var(--nv-line2)" }}>
+                <span style={dot(c.ok ? ACCENT : "var(--nv-bad-fill)")} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span
                     style={{
                       fontSize: "12px",
                       fontWeight: 600,
-                      color: c.ok ? NAVY : "#B91C1C",
+                      color: c.ok ? NAVY : "var(--nv-bad-ink)",
                       display: "inline-flex",
                       alignItems: "center",
                       gap: "7px",
@@ -262,7 +265,9 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
         )}
 
         {message && (
-          <div style={{ marginTop: "10px", fontSize: "11px", color: MUTED, lineHeight: 1.65 }}>{message}</div>
+          <div role="status" style={{ ...(blocked ? statusBannerQuiet.bad : statusBannerQuiet.ok), marginTop: 10, fontSize: 12 }}>
+            {message}
+          </div>
         )}
       </div>
     </div>

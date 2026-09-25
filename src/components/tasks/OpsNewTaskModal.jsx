@@ -1,7 +1,21 @@
 import React, { useEffect, useRef, useState } from "react";
-import { X, Play, Pause, ChevronLeft, ChevronRight } from "lucide-react";
-import { BRAND, BRAND_SOFT, BRAND_DEEP, MUTED, NAVY, dot, field, CARD, SURFACE, INK } from "@/lib/platformStyles";
+import { X, Play, Pause, ChevronLeft, ChevronRight, File } from "lucide-react";
+import {
+  MUTED,
+  NAVY,
+  NAVY_FILL,
+  dot,
+  field,
+  CARD,
+  SURFACE,
+  BORDER,
+  CONTROL_RADIUS,
+  PILL_RADIUS,
+  RADIUS,
+  PAPER_SHADOW,
+} from "@/lib/platformStyles";
 import HeatBanNotice from "@/components/shared/HeatBanNotice";
+import ComposerModalShell from "@/components/shared/ComposerModalShell";
 import {
   CERT_FOR,
   CERT_LABELS,
@@ -29,8 +43,14 @@ import PlatformDateField from "@/components/shared/PlatformDateField";
 import OpsStationMultiSelect from "@/components/tasks/OpsStationMultiSelect";
 import MemberMultiSelect from "@/components/tasks/MemberMultiSelect";
 
-const FIELD = { ...field, height: 40 };
+const CONTROL_H = 40;
+const FIELD = { ...field, height: CONTROL_H, boxSizing: "border-box" };
 const SELECT = { ...FIELD, padding: "0 10px" };
+
+const OK_FILL = "var(--nv-ok-fill)";
+const MUTE_SOFT = "var(--nv-mute-soft, #F5F6F8)";
+const MUTE_INK = "var(--nv-mute-ink, #4B5567)";
+const MONO = "var(--font-mono, 'IBM Plex Mono', monospace)";
 
 const LABEL_SPAN = {
   fontSize: "12px",
@@ -38,10 +58,23 @@ const LABEL_SPAN = {
   color: MUTED,
 };
 
+const selectedControl = {
+  border: "1px solid #3C7D50",
+  background: "#3C7D50",
+  color: "#fff",
+  fontWeight: 600,
+};
+
+const idleControl = {
+  border: `1px solid ${BORDER}`,
+  background: CARD,
+  color: MUTED,
+};
+
 const PRIORITIES = [
-  { id: "high", ar: "عالية", en: "High", color: "#DC2626" },
-  { id: "medium", ar: "متوسطة", en: "Medium", color: "#F59E0B" },
-  { id: "low", ar: "منخفضة", en: "Low", color: MUTED },
+  { id: "high", ar: "عالية", en: "High", ink: "var(--nv-bad-ink)", soft: "var(--nv-bad-soft)", line: "var(--nv-bad-line)", dot: "var(--nv-bad-fill)" },
+  { id: "medium", ar: "متوسطة", en: "Medium", ink: "var(--nv-warn-ink)", soft: "var(--nv-warn-soft)", line: "var(--nv-warn-line)", dot: "var(--nv-warn-fill)" },
+  { id: "low", ar: "منخفضة", en: "Low", ink: "var(--nv-mute-ink, #4B5567)", soft: "var(--nv-mute-soft, #F5F6F8)", line: "var(--nv-line)", dot: "var(--nv-mute-fill, #C7CCD6)" },
 ];
 
 const PLAN_HORIZONS = [
@@ -87,18 +120,20 @@ function assignBtnStyle(active) {
   return {
     flex: 1,
     minWidth: 0,
-    height: "36px",
+    height: CONTROL_H,
+    boxSizing: "border-box",
     padding: "0 6px",
-    borderRadius: "9px",
+    borderRadius: CONTROL_RADIUS,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
     cursor: "pointer",
     fontFamily: "inherit",
     fontSize: "12px",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
-    ...(active
-      ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND_DEEP, fontWeight: 600 }
-      : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
+    ...(active ? selectedControl : idleControl),
   };
 }
 
@@ -108,7 +143,7 @@ function chipBtnStyle(active) {
     minWidth: 36,
     height: 32,
     padding: "0 8px",
-    borderRadius: 9,
+    borderRadius: PILL_RADIUS,
     cursor: "pointer",
     fontFamily: "inherit",
     fontSize: 12,
@@ -116,8 +151,8 @@ function chipBtnStyle(active) {
     whiteSpace: "nowrap",
     lineHeight: 1,
     ...(active
-      ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND_DEEP }
-      : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: NAVY }),
+      ? selectedControl
+      : { border: `1px solid ${BORDER}`, background: CARD, color: NAVY }),
   };
 }
 
@@ -164,8 +199,8 @@ function PaceRangeCalendar({ ar, startAt, dueAt, picked, onToggle }) {
   const navBtn = {
     width: 28,
     height: 28,
-    borderRadius: 8,
-    border: "1px solid var(--nv-line, #E2E8F0)",
+    borderRadius: CONTROL_RADIUS,
+    border: `1px solid ${BORDER}`,
     background: CARD,
     color: NAVY,
     display: "grid",
@@ -178,9 +213,10 @@ function PaceRangeCalendar({ ar, startAt, dueAt, picked, onToggle }) {
   return (
     <div
       style={{
-        border: "1px solid var(--nv-line, #E2E8F0)",
+        border: `1px solid ${BORDER}`,
         background: CARD,
-        borderRadius: 12,
+        borderRadius: RADIUS,
+        boxShadow: PAPER_SHADOW,
         padding: 10,
       }}
     >
@@ -224,17 +260,18 @@ function PaceRangeCalendar({ ar, startAt, dueAt, picked, onToggle }) {
               onClick={() => inRange && onToggle(key)}
               style={{
                 height: 32,
-                borderRadius: 8,
+                borderRadius: CONTROL_RADIUS,
                 border: on ? "none" : "1px solid transparent",
-                background: on ? "var(--nv-navy, #14284B)" : "transparent",
+                background: on ? "#3C7D50" : "transparent",
                 color: !inRange ? "#CBD5E1" : on ? "#fff" : NAVY,
                 fontSize: 12,
                 fontWeight: on ? 700 : 500,
                 cursor: inRange ? "pointer" : "default",
-                fontFamily: "inherit",
+                fontFamily: MONO,
+                direction: "ltr",
               }}
             >
-              {day}
+              <span dir="ltr">{day}</span>
             </button>
           );
         })}
@@ -243,21 +280,22 @@ function PaceRangeCalendar({ ar, startAt, dueAt, picked, onToggle }) {
   );
 }
 
-function priorityBtnStyle(active, color) {
+function priorityBtnStyle(active) {
   return {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     gap: "7px",
     flex: 1,
-    height: "36px",
-    borderRadius: "9px",
+    height: CONTROL_H,
+    boxSizing: "border-box",
+    borderRadius: CONTROL_RADIUS,
     cursor: "pointer",
     fontFamily: "inherit",
     fontSize: "12px",
     ...(active
-      ? { border: `1px solid ${color}`, background: `${color}14`, color, fontWeight: 600 }
-      : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
+      ? { border: "1px solid #3C7D50", background: "#3C7D50", color: "#fff", fontWeight: 600 }
+      : idleControl),
   };
 }
 
@@ -270,59 +308,44 @@ function weightBtnStyle(active) {
     gap: "2px",
     flex: 1,
     minWidth: 0,
+    minHeight: CONTROL_H,
+    boxSizing: "border-box",
     padding: "7px 4px",
-    borderRadius: "9px",
+    borderRadius: CONTROL_RADIUS,
     cursor: "pointer",
     fontFamily: "inherit",
-    ...(active
-      ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND_DEEP }
-      : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
+    ...(active ? selectedControl : idleControl),
   };
 }
 
 function modeBtnStyle(active) {
   return {
     flex: 1,
-    height: "36px",
-    borderRadius: "9px",
+    height: CONTROL_H,
+    boxSizing: "border-box",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: CONTROL_RADIUS,
     cursor: "pointer",
     fontFamily: "inherit",
     fontSize: "12px",
-    ...(active
-      ? { border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: BRAND_DEEP, fontWeight: 600 }
-      : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
+    ...(active ? selectedControl : idleControl),
   };
 }
 
 function teamChipStyle(on) {
-  return on
-    ? {
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        padding: "7px 11px 7px 8px",
-        borderRadius: "20px",
-        cursor: "pointer",
-        fontFamily: "inherit",
-        fontSize: "12px",
-        border: `1px solid ${BRAND}`,
-        background: BRAND_SOFT,
-        color: BRAND_DEEP,
-        fontWeight: 600,
-      }
-    : {
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        padding: "7px 11px 7px 8px",
-        borderRadius: "20px",
-        cursor: "pointer",
-        fontFamily: "inherit",
-        fontSize: "12px",
-        border: "1px solid var(--nv-line, #E2E8F0)",
-        background: CARD,
-        color: MUTED,
-      };
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "7px 11px 7px 8px",
+    borderRadius: PILL_RADIUS,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    fontSize: "12px",
+    ...(on ? selectedControl : idleControl),
+  };
 }
 
 function avatarStyle(on) {
@@ -335,8 +358,8 @@ function avatarStyle(on) {
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    fontFamily: "'IBM Plex Sans',sans-serif",
-    ...(on ? { background: BRAND, color: "#fff" } : { background: SURFACE, color: MUTED }),
+    fontFamily: MONO,
+    ...(on ? { background: "#3C7D50", color: "#fff" } : { background: SURFACE, color: MUTED }),
   };
 }
 
@@ -344,9 +367,9 @@ function SectionCard({ title, hint, children }) {
   return (
     <section
       style={{
-        borderRadius: 16,
-        border: "1px solid var(--nv-line, #E2E8F0)",
-        background: "var(--nv-inset, var(--nv-soft, #F7F8FA))",
+        borderRadius: 8,
+        border: "1px solid #D5DCD8",
+        background: "#fff",
         padding: 16,
         display: "flex",
         flexDirection: "column",
@@ -356,7 +379,7 @@ function SectionCard({ title, hint, children }) {
       {(title || hint) && (
         <div>
           {title ? (
-            <div style={{ fontSize: 12, fontWeight: 650, color: MUTED, letterSpacing: "0.01em" }}>{title}</div>
+            <div style={{ fontSize: 12, fontWeight: 650, color: "var(--nv-ink)", letterSpacing: "0.01em" }}>{title}</div>
           ) : null}
           {hint ? (
             <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 4 }}>{hint}</div>
@@ -379,6 +402,26 @@ function formatClipTime(sec) {
   const n = Number.isFinite(sec) ? Math.max(0, Math.floor(sec)) : 0;
   return `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
 }
+
+/** Shared with the voice header circle and the clip-row play control. */
+const CLIP_CIRCLE = 28;
+
+const clipCircleStyle = {
+  width: CLIP_CIRCLE,
+  height: CLIP_CIRCLE,
+  borderRadius: 999,
+  border: "none",
+  background: NAVY_FILL,
+  color: "#fff",
+  display: "grid",
+  placeItems: "center",
+  padding: 0,
+  margin: 0,
+  flexShrink: 0,
+  boxSizing: "border-box",
+  lineHeight: 0,
+  cursor: "pointer",
+};
 
 /** Compact voice row inside a shared platform field box. */
 function VoiceNoteBubble({ src, index, ar, onRemove, isLast }) {
@@ -443,8 +486,8 @@ function VoiceNoteBubble({ src, index, ar, onRemove, isLast }) {
         gap: 10,
         width: "100%",
         minHeight: 40,
-        padding: "6px 2px",
-        borderBottom: isLast ? "none" : "1px solid var(--nv-line, #E2E8F0)",
+        padding: "6px 0",
+        borderBottom: isLast ? "none" : `1px solid ${BORDER}`,
         boxSizing: "border-box",
       }}
     >
@@ -455,16 +498,9 @@ function VoiceNoteBubble({ src, index, ar, onRemove, isLast }) {
         disabled={!src}
         aria-label={playing ? (ar ? "إيقاف" : "Pause") : (ar ? "تشغيل" : "Play")}
         style={{
-          width: 28,
-          height: 28,
-          borderRadius: 8,
-          border: "none",
-          background: playing ? BRAND : "var(--nv-navy, #14284B)",
-          color: "#fff",
-          display: "grid",
-          placeItems: "center",
+          ...clipCircleStyle,
+          background: playing ? OK_FILL : NAVY_FILL,
           cursor: src ? "pointer" : "default",
-          flexShrink: 0,
           opacity: src ? 1 : 0.45,
         }}
       >
@@ -502,7 +538,7 @@ function VoiceNoteBubble({ src, index, ar, onRemove, isLast }) {
                 height: h,
                 borderRadius: 1,
                 background: active
-                  ? BRAND
+                  ? OK_FILL
                   : "color-mix(in oklab, var(--nv-navy, #14284B) 16%, transparent)",
                 minWidth: 2,
               }}
@@ -512,10 +548,12 @@ function VoiceNoteBubble({ src, index, ar, onRemove, isLast }) {
       </button>
 
       <span
+        dir="ltr"
         style={{
           fontSize: 11,
           fontWeight: 600,
           color: MUTED,
+          fontFamily: MONO,
           fontVariantNumeric: "tabular-nums",
           flexShrink: 0,
           minWidth: 34,
@@ -532,7 +570,7 @@ function VoiceNoteBubble({ src, index, ar, onRemove, isLast }) {
         style={{
           width: 24,
           height: 24,
-          borderRadius: 6,
+          borderRadius: CONTROL_RADIUS,
           border: "none",
           background: "transparent",
           color: MUTED,
@@ -554,8 +592,8 @@ const FIELD_BOX = {
   flex: 1,
   display: "flex",
   flexDirection: "column",
-  border: "1px solid var(--nv-line, #E2E8F0)",
-  borderRadius: 9,
+  border: `1px solid ${BORDER}`,
+  borderRadius: CONTROL_RADIUS,
   background: CARD,
   overflow: "hidden",
   boxSizing: "border-box",
@@ -569,7 +607,7 @@ const FIELD_TOOLBAR = {
   flexWrap: "wrap",
   minHeight: 40,
   padding: "6px 10px",
-  borderBottom: "1px solid var(--nv-line, #E2E8F0)",
+  borderBottom: `1px solid ${BORDER}`,
   background: SURFACE,
   boxSizing: "border-box",
   flexShrink: 0,
@@ -614,6 +652,8 @@ export default function OpsNewTaskModal({
   const [files, setFiles] = useState([]);
   const [previewUrls, setPreviewUrls] = useState([]);
   const [showSend, setShowSend] = useState(false);
+  const [holdBranchPicker, setHoldBranchPicker] = useState(false);
+  const peopleMemory = useRef([]);
 
   useEffect(() => {
     const created = [];
@@ -705,45 +745,49 @@ export default function OpsNewTaskModal({
   const canSubmit = !submitBlock;
 
   const submitEnabled = canSubmit && !busy;
-  const submitStyle = submitEnabled
-    ? {
-        flex: 1,
-        height: "44px",
-        borderRadius: "12px",
-        background: BRAND,
-        color: "#fff",
-        border: "none",
-        fontSize: "14px",
-        fontWeight: 650,
-        cursor: "pointer",
-        fontFamily: "inherit",
-      }
-    : {
-        flex: 1,
-        height: "44px",
-        borderRadius: "12px",
-        background: "var(--nv-soft, #E2E8F0)",
-        color: MUTED,
-        border: "none",
-        fontSize: "14px",
-        fontWeight: 650,
-        cursor: "not-allowed",
-        fontFamily: "inherit",
-      };
+  const submitStyle = {
+    flex: 1,
+    height: CONTROL_H,
+    boxSizing: "border-box",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: CONTROL_RADIUS,
+    background: submitEnabled ? "#3C7D50" : "#D5DCD8",
+    color: submitEnabled ? "#fff" : MUTE_INK,
+    border: "none",
+    fontSize: "14px",
+    fontWeight: 650,
+    cursor: submitEnabled ? "pointer" : "not-allowed",
+    fontFamily: "inherit",
+  };
 
   const stationCrew = teamMembers.length;
 
   const setStations = (ids) => {
     const next = [...new Set((ids || []).map(String).filter(Boolean))];
+    const crew = employees
+      .filter((e) => next.length && next.some((sid) => isLinkedTo(e, sid)))
+      .map((e) => String(e.employeeId || e.id))
+      .filter(Boolean);
+    const crewSet = new Set(crew);
     setShowSend(false);
-    setForm((f) => ({
-      ...f,
-      stationIds: next,
-      stationId: next[0] || "",
-      memberIds: (f.assignMode === "all" ? f.memberIds : []),
-      dispatchStationId: "",
-    }));
+    setForm((f) => {
+      const remembered = (f.assignMode === "all" ? peopleMemory.current : (f.memberIds || []))
+        .map(String)
+        .filter((id) => crewSet.has(id));
+      if (f.assignMode !== "all") peopleMemory.current = remembered;
+      return {
+        ...f,
+        stationIds: next,
+        stationId: next[0] || "",
+        memberIds: f.assignMode === "all" ? crew : remembered,
+        dispatchStationId: "",
+      };
+    });
   };
+
+  const showBranchPicker = assignMode === "all" || !selectedStationIds.length || holdBranchPicker;
 
   const setWorkTypeText = (value) => {
     setForm((f) => ({
@@ -765,91 +809,52 @@ export default function OpsNewTaskModal({
   ];
 
   return (
-    <>
-    <div
-      dir={dir}
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 100,
-        background: "color-mix(in oklab, var(--nv-navy, #14284B) 42%, transparent)",
-        backdropFilter: "blur(8px)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-      }}
-      onClick={onClose}
-      role="presentation"
-    >
-      <form
-        onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 640,
-          maxHeight: "calc(100vh - 32px)",
-          background: CARD,
-          borderRadius: 22,
-          border: "1px solid var(--nv-glass-line, var(--nv-line, #E2E8F0))",
-          boxShadow: "var(--nv-glass-shadow, 0 24px 60px rgba(20,40,75,.22))",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div
-          style={{
-            flexShrink: 0,
-            padding: "20px 24px 16px",
-            borderBottom: "1px solid var(--nv-line, #E2E8F0)",
-            background: "var(--nv-card, #fff)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 20, fontWeight: 650, letterSpacing: "-0.02em", color: INK || NAVY, lineHeight: 1.3 }}>
-                {ar ? "مهمة جديدة" : "New task"}
-              </div>
-              <div style={{ fontSize: 12, color: MUTED, marginTop: 4, lineHeight: 1.6 }}>
-                {ar
-                  ? "تُسند فورًا لفريق الفرع المختار، وتصل إشعارًا للمسؤول."
-                  : "Assigned immediately to the selected station team, and sent to the owner."}
-              </div>
-            </div>
+    <ComposerModalShell
+      ar={ar}
+      title={ar ? "أمر عمل جديد" : "New work order"}
+      hint={ar
+        ? "يُسند لموظف من الفرع. إثبات العمل لجهة خارج الشركة، وإثبات الزائر لضيف على الفرع."
+        : "Assigned to an employee of the branch. Work proof is for an outside party; visitor proof is for a guest."}
+      onClose={onClose}
+      onSubmit={handleSubmit}
+      footer={(
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
+          <div style={{ display: "flex", gap: 10, width: "100%", alignItems: "center" }}>
             <button
               type="button"
               onClick={onClose}
-              aria-label={ar ? "إغلاق" : "Close"}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: "50%",
-                border: "1px solid var(--nv-line, #E2E8F0)",
+                height: CONTROL_H,
+                boxSizing: "border-box",
+                padding: "0 18px",
+                borderRadius: CONTROL_RADIUS,
                 background: CARD,
+                border: `1px solid ${BORDER}`,
                 color: MUTED,
-                display: "grid",
-                placeItems: "center",
+                fontSize: 13,
+                fontWeight: 500,
                 cursor: "pointer",
+                fontFamily: "inherit",
                 flexShrink: 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              <X size={16} strokeWidth={1.75} />
+              {ar ? "إلغاء" : "Cancel"}
+            </button>
+            <button type="submit" disabled={!submitEnabled} style={submitStyle}>
+              {ar ? "أنشئ المهمة وأسندها" : "Create and assign"}
             </button>
           </div>
+          {submitBlock ? (
+            <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, textAlign: "center" }}>
+              {submitBlock}
+            </span>
+          ) : null}
         </div>
-
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            padding: 24,
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
+      )}
+    >
           <label style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <span style={LABEL_SPAN}>{ar ? "عنوان المهمة" : "Task title"}</span>
             <input
@@ -857,61 +862,44 @@ export default function OpsNewTaskModal({
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder={ar ? "مثال: استبدال فلتر الهواء — المرحلة الثالثة" : "e.g. Air filter replacement — phase 3"}
-              style={{ ...FIELD, height: 44, fontSize: 15 }}
+              style={{ ...FIELD, fontSize: 15 }}
             />
           </label>
 
           <SectionCard title={ar ? "الإسناد" : "Assignment"}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <span style={LABEL_SPAN}>
-                {allowMultiStation
-                  ? (ar ? "الفروع" : "Stations")
-                  : (ar ? "الفرع" : "Station")}
-              </span>
-
-              {allowMultiStation ? (
-                <OpsStationMultiSelect
-                  stations={stationOptions}
-                  value={selectedStationIds}
-                  onChange={setStations}
-                  ar={ar}
-                />
-              ) : (
-                <select
-                  value={form.stationId}
-                  onChange={(e) => setStations(e.target.value ? [e.target.value] : [])}
-                  style={SELECT}
-                >
-                  <option value="">{ar ? "اختر الفرع" : "Select station"}</option>
-                  {stations.map((s) => {
-                    const sid = stationPrimaryId(s);
-                    return (
-                      <option key={sid} value={sid}>{s.name}</option>
-                    );
-                  })}
-                </select>
-              )}
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }} data-assign-slot>
               <span style={LABEL_SPAN}>{ar ? "لمن تُسند؟" : "Assign to"}</span>
               <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
                 {ar
-                  ? "اختر فرع الفريق ثم الأعضاء. التنفيذ في نفس الفرع إلا إذا اخترت تنفيذ في فرع آخر."
-                  : "Pick the team’s station then its people. Work stays here unless you choose to execute at another station."}
+                  ? "كامل الفريق يُسند للفرع. عدد من الفريق يُسند لأشخاص من ذلك الفرع."
+                  : "Whole team assigns the branch. Several of the team assigns people from that branch."}
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 {assignModes.map((m) => (
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => setForm((f) => ({
-                      ...f,
-                      assignMode: m.id,
-                      memberIds: m.id === "all"
-                        ? teamMembers.map((t) => t.id)
-                        : (m.id === "some" ? f.memberIds : []),
-                    }))}
+                    onClick={() => {
+                      if (m.id === assignMode) return;
+                      if (m.id === "all") {
+                        peopleMemory.current = selectedTeam;
+                        setHoldBranchPicker(false);
+                        setForm((f) => ({
+                          ...f,
+                          assignMode: "all",
+                          memberIds: teamMembers.map((t) => t.id),
+                        }));
+                        return;
+                      }
+                      setHoldBranchPicker(false);
+                      const crewIds = new Set(teamMembers.map((t) => t.id));
+                      const restored = peopleMemory.current.map(String).filter((id) => crewIds.has(id));
+                      setForm((f) => ({
+                        ...f,
+                        assignMode: "some",
+                        memberIds: restored,
+                      }));
+                    }}
                     style={assignBtnStyle(assignMode === m.id)}
                   >
                     {m.label}
@@ -919,19 +907,45 @@ export default function OpsNewTaskModal({
                 ))}
               </div>
 
-              {assignMode === "some" && (
-                selectedStationIds.length ? (
-                  <MemberMultiSelect
-                    members={teamMembers}
-                    selected={selectedTeam}
-                    onChange={(ids) => setForm((f) => ({ ...f, memberIds: ids }))}
-                    lang={ar ? "ar" : "en"}
+              {showBranchPicker ? (
+                allowMultiStation ? (
+                  <OpsStationMultiSelect
+                    stations={stationOptions}
+                    value={selectedStationIds}
+                    onChange={(ids) => {
+                      if (assignMode === "some") setHoldBranchPicker(true);
+                      setStations(ids);
+                    }}
+                    onDone={() => {
+                      if (assignMode === "some") setHoldBranchPicker(false);
+                    }}
+                    ar={ar}
                   />
                 ) : (
-                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-                    {ar ? "حدّد الفروع أولًا" : "Pick stations first"}
-                  </div>
+                  <select
+                    value={form.stationId}
+                    onChange={(e) => setStations(e.target.value ? [e.target.value] : [])}
+                    style={SELECT}
+                  >
+                    <option value="">{ar ? "اختر الفرع" : "Select station"}</option>
+                    {stations.map((s) => {
+                      const sid = stationPrimaryId(s);
+                      return (
+                        <option key={sid} value={sid}>{s.name}</option>
+                      );
+                    })}
+                  </select>
                 )
+              ) : (
+                <MemberMultiSelect
+                  members={teamMembers}
+                  selected={selectedTeam}
+                  onChange={(ids) => {
+                    peopleMemory.current = ids.map(String);
+                    setForm((f) => ({ ...f, memberIds: ids }));
+                  }}
+                  lang={ar ? "ar" : "en"}
+                />
               )}
 
               {assignMode === "all" && (
@@ -939,9 +953,9 @@ export default function OpsNewTaskModal({
                   style={{
                     marginTop: 2,
                     padding: "12px 14px",
-                    borderRadius: 11,
+                    borderRadius: CONTROL_RADIUS,
                     background: SURFACE,
-                    border: "1px solid var(--nv-line, #E2E8F0)",
+                    border: `1px solid ${BORDER}`,
                     fontSize: 12,
                     color: MUTED,
                     lineHeight: 1.65,
@@ -949,8 +963,8 @@ export default function OpsNewTaskModal({
                 >
                   {selectedStationIds.length
                     ? (ar
-                      ? `تُسند إلى فريق الفرع كاملًا (${stationCrew || teamMembers.length || "—"} موظفًا) كمهمة واحدة يراها الجميع.`
-                      : `Assigned to the whole station team (${stationCrew || teamMembers.length || "—"} people) as one shared work order.`)
+                      ? <>تُسند إلى فريق الفرع كاملًا (<span dir="ltr" style={{ fontFamily: MONO }}>{stationCrew || teamMembers.length || "—"}</span> موظفًا) كمهمة واحدة يراها الجميع.</>
+                      : <>Assigned to the whole station team (<span dir="ltr" style={{ fontFamily: MONO }}>{stationCrew || teamMembers.length || "—"}</span> people) as one shared work order.</>)
                     : (ar ? "اختر الفرع أولًا لتحديد الفريق." : "Pick a station first to resolve the team.")}
                 </div>
               )}
@@ -1051,9 +1065,9 @@ export default function OpsNewTaskModal({
                     key={p.id}
                     type="button"
                     onClick={() => setForm((f) => ({ ...f, priority: p.id }))}
-                    style={priorityBtnStyle(form.priority === p.id, p.color)}
+                    style={priorityBtnStyle(form.priority === p.id)}
                   >
-                    <span style={dot(p.color)} />
+                    <span style={dot(form.priority === p.id ? p.dot : "var(--nv-mute-fill, #C7CCD6)")} />
                     <span>{ar ? p.ar : p.en}</span>
                   </button>
                 ))}
@@ -1070,7 +1084,7 @@ export default function OpsNewTaskModal({
                     onClick={() => setForm((f) => ({ ...f, effortWeight: w.w }))}
                     style={weightBtnStyle(Number(form.effortWeight) === w.w)}
                   >
-                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 14, fontWeight: 600 }}>
+                    <span dir="ltr" style={{ fontFamily: MONO, fontSize: 14, fontWeight: 600 }}>
                       ×{w.w}
                     </span>
                     <span style={{ fontSize: 9, opacity: 0.85, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
@@ -1330,8 +1344,12 @@ export default function OpsNewTaskModal({
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ fontSize: 11, color: MUTED }}>
                       {ar
-                        ? (picked.length ? `${picked.length} يوم مختار داخل الفترة.` : "انقر الأيام داخل الفترة على التقويم.")
-                        : (picked.length ? `${picked.length} day${picked.length === 1 ? "" : "s"} picked in the window.` : "Tap days inside the window on the calendar.")}
+                        ? (picked.length
+                          ? <><span dir="ltr" style={{ fontFamily: MONO }}>{picked.length}</span> يوم مختار داخل الفترة.</>
+                          : "انقر الأيام داخل الفترة على التقويم.")
+                        : (picked.length
+                          ? <><span dir="ltr" style={{ fontFamily: MONO }}>{picked.length}</span> day{picked.length === 1 ? "" : "s"} picked in the window.</>
+                          : "Tap days inside the window on the calendar.")}
                     </div>
                     <PaceRangeCalendar
                       ar={ar}
@@ -1354,8 +1372,8 @@ export default function OpsNewTaskModal({
               onChange={(e) => setForm((f) => ({ ...f, steps: e.target.value }))}
               placeholder={ar ? "خطوة في كل سطر — تظهر مرقّمة في بطاقة المهمة" : "One step per line — they appear numbered on the task card"}
               style={{
-                border: "1px solid var(--nv-line, #E2E8F0)",
-                borderRadius: 9,
+                border: `1px solid ${BORDER}`,
+                borderRadius: CONTROL_RADIUS,
                 background: SURFACE,
                 padding: "9px 12px",
                 fontFamily: "inherit",
@@ -1383,6 +1401,8 @@ export default function OpsNewTaskModal({
                 <div style={FIELD_TOOLBAR}>
                   <VoiceRecorder
                     disabled={busy}
+                    circle
+                    label={ar ? "تسجيل صوتي" : "Record voice"}
                     onRecorded={(voice) => setFiles((prev) => [...prev, voice])}
                   />
                 </div>
@@ -1424,26 +1444,16 @@ export default function OpsNewTaskModal({
               <div style={FIELD_BOX}>
                 <div style={FIELD_TOOLBAR}>
                   <label
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 7,
-                      height: 28,
-                      padding: "0 11px",
-                      borderRadius: 8,
-                      border: "1px dashed #CBD5E1",
-                      background: CARD,
-                      fontSize: 12,
-                      color: MUTED,
-                      cursor: "pointer",
-                      boxSizing: "border-box",
-                    }}
+                    title={ar ? "أرفق ملفًا" : "Attach a file"}
+                    aria-label={ar ? "أرفق ملفًا" : "Attach a file"}
+                    style={clipCircleStyle}
                   >
-                    <span>{ar ? "أرفق ملفًا / صوتًا" : "Attach file / audio"}</span>
+                    <File size={14} aria-hidden="true" />
                     <input
                       type="file"
                       multiple
                       accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.webm,.m4a,.ogg,.mp3,.wav"
+                      aria-label={ar ? "أرفق ملفًا" : "Attach a file"}
                       style={{ display: "none" }}
                       onChange={(e) => {
                         const picked = Array.from(e.target.files || []);
@@ -1479,8 +1489,8 @@ export default function OpsNewTaskModal({
                               maxWidth: "100%",
                               height: 30,
                               padding: "0 8px 0 10px",
-                              borderRadius: 8,
-                              border: "1px solid var(--nv-line, #E2E8F0)",
+                              borderRadius: PILL_RADIUS,
+                              border: `1px solid ${BORDER}`,
                               background: SURFACE,
                               fontSize: 12,
                               color: NAVY,
@@ -1496,7 +1506,7 @@ export default function OpsNewTaskModal({
                               style={{
                                 width: 18,
                                 height: 18,
-                                borderRadius: 5,
+                                borderRadius: CONTROL_RADIUS,
                                 border: "none",
                                 background: "transparent",
                                 color: MUTED,
@@ -1517,50 +1527,6 @@ export default function OpsNewTaskModal({
               </div>
             </div>
           </div>
-        </div>
-
-        <div
-          style={{
-            flexShrink: 0,
-            padding: "16px 24px 20px",
-            borderTop: "1px solid var(--nv-line, #E2E8F0)",
-            display: "flex",
-            gap: 10,
-            background: CARD,
-          }}
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              height: 44,
-              padding: "0 18px",
-              borderRadius: 12,
-              background: CARD,
-              border: "1px solid var(--nv-line, #E2E8F0)",
-              color: MUTED,
-              fontSize: 13,
-              fontWeight: 500,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            {ar ? "إلغاء" : "Cancel"}
-          </button>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 0 }}>
-            <button type="submit" disabled={!submitEnabled} style={submitStyle}>
-              {ar ? "أنشئ المهمة" : "Create task"}
-            </button>
-            {submitBlock ? (
-              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, textAlign: "center" }}>
-                {submitBlock}
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </form>
-    </div>
-
-    </>
+    </ComposerModalShell>
   );
 }

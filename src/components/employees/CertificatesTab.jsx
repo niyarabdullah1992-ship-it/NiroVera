@@ -274,15 +274,8 @@ export default function CertificatesTab({ employee, companyId, canEdit, canAppro
               <input ref={inputRef} type="file" style={{ display: "none" }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
               <button
                 type="button"
+                className="nv-attach"
                 onClick={() => inputRef.current?.click()}
-                style={{
-                  ...inputStyle,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  cursor: "pointer",
-                  width: "100%",
-                }}
               >
                 <Paperclip style={{ width: 12, height: 12 }} />
                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

@@ -4,6 +4,7 @@ import SwipeToDeleteItem from "@/components/notifications/SwipeToDeleteItem";
 import {
   formatNotificationText,
   kindForNotification,
+  notificationEscalated,
   relativeNotificationTime,
 } from "@/lib/notificationKind";
 import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, PAPER_SHADOW, PILL_RADIUS, RADIUS, SURFACE, ui } from "@/lib/platformStyles";
@@ -19,11 +20,10 @@ export default function NotificationPanel({
   onOpen,
   onDismiss,
   onMarkAll,
+  title,
 }) {
   const ar = lang === "ar";
-  const rows = [...items]
-    .sort((a, b) => Number(!!a.read) - Number(!!b.read))
-    .slice(0, 12);
+  const rows = groupedNotices(items, lang);
 
   return (
     <div
@@ -55,7 +55,7 @@ export default function NotificationPanel({
             NIROVERA
           </span>
           <h2 style={{ margin: 0, fontFamily: NASKH, fontSize: 18, fontWeight: 600, lineHeight: 1.35, color: NAVY }}>
-            {t("notifications")}
+            {title || t("notifications")}
           </h2>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, paddingTop: 2 }}>
@@ -101,8 +101,9 @@ export default function NotificationPanel({
             const kind = kindForNotification(item.text);
             const title = formatNotificationText(item, lang) || (ar ? kind.ar : kind.en);
             const unreadRow = !item.read;
+            const dismiss = () => (item.ids || [item.id]).forEach((id) => onDismiss(id));
             return (
-              <SwipeToDeleteItem key={item.id} onDelete={() => onDismiss(item.id)}>
+              <SwipeToDeleteItem key={item.ids?.[0] || item.id} onDelete={dismiss}>
                 <div
                   style={{
                     display: "flex",
@@ -149,12 +150,16 @@ export default function NotificationPanel({
                     </span>
                     <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
                       {ar ? kind.ar : kind.en}
+                      {item.count > 1 ? (
+                        <span dir="ltr" style={{ fontFamily: MONO, unicodeBidi: "isolate" }}>{` · ${item.count}`}</span>
+                      ) : null}
+                      {item.escalated ? (ar ? " · تصعيد" : " · Escalated") : null}
                       {unreadRow ? (ar ? " · غير مقروء" : " · Unread") : (ar ? " · مقروء" : " · Read")}
                     </span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => onDismiss(item.id)}
+                    onClick={dismiss}
                     aria-label={ar ? "إخفاء" : "Dismiss"}
                     style={{
                       width: 26,
@@ -181,4 +186,42 @@ export default function NotificationPanel({
       </div>
     </div>
   );
+}
+
+function noticeRank(item) {
+  const tone = kindForNotification(item.text).tone;
+  const escalated = notificationEscalated(item);
+  const band = escalated ? 0 : tone === "bad" ? 1 : tone === "warn" ? 2 : 3;
+  return (item.read ? 10 : 0) + band;
+}
+
+/** Same wording collapses into one row. Urgent, then awaiting a decision, then the rest. */
+function groupedNotices(items, lang) {
+  const sorted = [...items].sort((a, b) => {
+    const diff = noticeRank(a) - noticeRank(b);
+    if (diff) return diff;
+    return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
+  const groups = [];
+  const index = new Map();
+  for (const item of sorted) {
+    const key = formatNotificationText(item, lang) || String(item.id);
+    const at = index.get(key);
+    if (at == null) {
+      index.set(key, groups.length);
+      groups.push({
+        ...item,
+        count: 1,
+        ids: [item.id],
+        escalated: notificationEscalated(item),
+      });
+    } else {
+      const row = groups[at];
+      row.count += 1;
+      row.ids.push(item.id);
+      if (!item.read) row.read = false;
+      if (notificationEscalated(item)) row.escalated = true;
+    }
+  }
+  return groups.slice(0, 12);
 }

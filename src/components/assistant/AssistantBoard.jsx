@@ -115,7 +115,7 @@ export default function AssistantBoard({ lang = "ar", onPickPrompt }) {
   return (
     <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }} dir={ar ? "rtl" : "ltr"}>
       {gateHint && (
-        <p style={{ margin: 0, fontSize: 12, color: "#DC2626", border: "1px solid #FECACA", background: "#FEF2F2", borderRadius: 9, padding: "10px 12px" }}>
+        <p style={{ margin: 0, fontSize: 12, color: "var(--nv-bad-ink)", border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", borderRadius: 10, padding: "10px 12px" }}>
           {gateHint}
         </p>
       )}
@@ -173,8 +173,8 @@ export default function AssistantBoard({ lang = "ar", onPickPrompt }) {
               style={{
                 padding: "7px 12px",
                 borderRadius: 9,
-                border: active ? `1px solid ${BRAND}` : "1px solid #E2E8F0",
-                background: active ? "color-mix(in oklab, #1E9E63 10%, #fff)" : CARD,
+                border: active ? `1px solid ${BRAND}` : "1px solid var(--nv-line)",
+                background: active ? "var(--nv-accent-soft)" : CARD,
                 color: active ? "#14683F" : NAVY,
                 fontSize: 12,
                 fontWeight: 500,

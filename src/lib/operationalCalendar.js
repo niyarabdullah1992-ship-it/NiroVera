@@ -23,23 +23,24 @@ import {
 } from "./opsDerivations.js";
 
 export const OC = {
-  ink: "#14213d",
-  muted: "#6b7280",
-  mid: "#4b5567",
-  line: "#dfe3ea",
-  soft: "#eef0f4",
-  wash: "#fafbfc",
-  green: "#1d9a5b",
-  greenText: "#137a49",
-  greenBg: "#f2faf6",
-  greenBd: "#bfe6d2",
-  gold: "#c9962b",
-  goldText: "#8a6516",
-  goldBg: "#fdf6e8",
-  goldBd: "#ecd9a8",
-  abs: "#8a1c2b",
-  absBg: "#fbf1f2",
-  absBd: "#e9c4c9",
+  ink: "var(--nv-ink)",
+  muted: "var(--nv-muted)",
+  mid: "var(--nv-ink2)",
+  line: "var(--nv-line)",
+  soft: "var(--nv-line3)",
+  wash: "var(--nv-soft)",
+  card: "var(--nv-card)",
+  green: "var(--nv-ok-fill)",
+  greenText: "var(--nv-ok-ink)",
+  greenBg: "var(--nv-ok-soft)",
+  greenBd: "var(--nv-ok-line)",
+  gold: "var(--nv-warn-fill)",
+  goldText: "var(--nv-warn-ink)",
+  goldBg: "var(--nv-warn-soft)",
+  goldBd: "var(--nv-warn-line)",
+  abs: "var(--nv-bad-ink)",
+  absBg: "var(--nv-bad-soft)",
+  absBd: "var(--nv-bad-line)",
   leave: LEAVE_STYLE.fg,
   leaveBg: LEAVE_STYLE.bg,
   leaveBd: LEAVE_STYLE.color,
@@ -348,7 +349,7 @@ export function filedLeaveInMonth(employees = [], year, month, ar = true, data) 
       if (reqs.has(id)) continue;
       reqs.set(id, {
         name: employee.name || employee.id,
-        type: leaveTypeLabel(request.type, ar),
+        type: leaveTypeLabel(request.type, ar, undefined, dateKey),
         art: citeLeaveType(request.type, dateKey)?.article || "",
       });
     }
@@ -466,7 +467,7 @@ export function eventGroups(rec, ar, currentUser) {
       scopeBg: OC.leaveBg,
       scopeBorder: OC.leaveBd,
       rows: filedPeople.map((person) => {
-        const type = leaveTypeLabel(person.filed.type, ar);
+        const type = leaveTypeLabel(person.filed.type, ar, undefined, rec.dateKey);
         const art = citeLeaveType(person.filed.type, rec.dateKey)?.article;
         return {
           text: `${person.name} — ${type}`,
@@ -585,7 +586,7 @@ export function rosterFor(rec, { view, filter, nameQuery, ar }) {
 }
 
 export function shadeRate(rate) {
-  if (rate == null) return { bg: "#fafbfc", fg: "#6b7280" };
+  if (rate == null) return { bg: "var(--nv-soft)", fg: "var(--nv-muted)" };
   if (rate >= 0.98) return { bg: "#137a49", fg: "#fff" };
   if (rate >= 0.92) return { bg: "#5cb98a", fg: "#0d2e1e" };
   if (rate >= 0.85) return { bg: "#a8dcc2", fg: "#0d2e1e" };

@@ -19,7 +19,7 @@ export const ARBITRATION_DISCLAIMER_AR =
 export const ARBITRATION_DISCLAIMER_EN =
   "An operational verdict from the platform on the Labour Law and adopted decisions. It protects worker and company, and cannot be overridden inside the company. The ministry inspects the trail. A dispute that leaves the company stays with the labour disputes body.";
 
-const STATION_ONLY_GATES = new Set(["morning_cover", "not_empty"]);
+const STATION_ONLY_GATES = new Set(["not_empty"]);
 
 export function judgmentProtects({ source, gateId, entitled }: {
   source?: string;

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import {
   collectRequestArchive,
@@ -60,8 +60,13 @@ export default function RequestArchiveBoard({
 }) {
   const lang = ar ? "ar" : "en";
   const [query, setQuery] = useState("");
-  const [scope, setScope] = useState(scopeProp || (canManage ? "manage" : "mine"));
+  const lockedScope = scopeProp === "mine" || scopeProp === "manage" ? scopeProp : "";
+  const [scope, setScope] = useState(lockedScope || (canManage ? "manage" : "mine"));
   const [withdrawAck, setWithdrawAck] = useState({});
+
+  useEffect(() => {
+    if (lockedScope) setScope(lockedScope);
+  }, [lockedScope]);
 
   const packed = useMemo(() => collectRequestArchive(employees, lang), [employees, lang]);
   const result = useMemo(() => filterRequestArchive({
@@ -83,6 +88,8 @@ export default function RequestArchiveBoard({
     ? "لا بنود مستقرّة بعد. ما يُعتمد أو يُرفض أو يُسحب ينتقل إلى الأرشيف."
     : "Nothing has settled yet. Approved, refused, or withdrawn moves here.");
 
+  const showScopeToggle = canManage && !lockedScope;
+
   return (
     <RecordSmartArchive
       items={items}
@@ -97,7 +104,7 @@ export default function RequestArchiveBoard({
       subtitle={scope === "mine"
         ? (ar ? "طلباتك المستقرّة فقط — مجمّعة يومًا بيوم. قيد النظر يبقى في ملفي. اضغط السطر لسجل التدقيق." : "Only your settled requests — grouped day by day. Pending stays on My file. Open a row for the audit trail.")
         : (ar ? "ما استقرّ في نطاق فروعك — مجمّعة يومًا بيوم. قيد النظر يبقى في صندوق القرار. اضغط السطر لسجل التدقيق." : "What settled in your branch scope — grouped day by day. Pending stays in the decision inbox. Open a row for the audit trail.")}
-      meta={canManage ? (
+      meta={showScopeToggle ? (
         <span style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
           <button type="button" onClick={() => setScope("manage")} style={chip(scope === "manage")}>{ar ? "إدارة" : "Manage"}</button>
           <button type="button" onClick={() => setScope("mine")} style={chip(scope === "mine")}>{ar ? "ملفي" : "My file"}</button>

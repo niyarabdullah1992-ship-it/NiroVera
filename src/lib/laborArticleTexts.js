@@ -357,6 +357,12 @@ export const LABOR_ARTICLE_TEXTS = [
   ),
 
   v(
+    "108",
+    "لا تسري أحكام المادتين الثامنة والتسعين والأولى بعد المائة من هذا النظام على الحالات الآتية:\n1 - الأشخاص الذين يشغلون مناصب عالية ذات مسؤولية في الإدارة والتوجيه، إذا كان من شأن هذه المناصب أن يتمتع شاغلوها بسلطات صاحب العمل على العمال.\n2 - الأعمال التجهيزية أو التكميلية التي يجب إنجازها قبل ابتداء العمل أو بعده.\n3 - العمل الذي يكون متقطعاً بالضرورة.\n4 - العمال المخصصون للحراسة والنظافة، عدا عمال الحراسة الأمنية المدنية.\nوتحدد اللائحة الأعمال المبينة في الفقرات 2 و3 و4 من هذه المادة والحد الأقصى لساعات العمل فيها.",
+    "The provisions of Articles 98 and 101 of this Law do not apply to the following cases:\n1 - Persons who occupy high posts of responsibility in management and direction, if the nature of such posts is such that their holders enjoy the employer's authority over the workers.\n2 - Preparatory or complementary work that must be performed before work begins or after it ends.\n3 - Work that is necessarily intermittent.\n4 - Workers assigned to guarding and cleaning, except civil security guards.\nThe Regulations shall specify the work in paragraphs 2, 3 and 4 and the maximum working hours therein.",
+      ),
+
+  v(
     "103",
     "يجوز للوزير تحديد الحالات والأعمال التي يتحتم فيها استمرار العمل دون توقف لأسباب فنية أو بسبب طبيعة الإنتاج أو الخدمة التي تقدمها المنشأة. وفي هذه الحالات يجب على صاحب العمل أن يمنح العمال فترات راحة بديلة تحسب من ساعات العمل الفعلية.",
     "The Minister may specify the cases and work in which continuity of work without interruption is required for technical reasons or because of the nature of the production or service the establishment provides. In those cases the employer must grant the workers alternative rest periods that count as actual working hours.",
@@ -480,6 +486,13 @@ export const LABOR_ARTICLE_TEXTS = [
   ),
 
   v(
+    "149",
+    "ملغاة.",
+    "Repealed.",
+    { from: AMEND_2025, amendedBy: "M/44" },
+  ),
+
+  v(
     "151",
     "1 - للمرأة العاملة الحق في إجازة وضع بأجر كامل لمدة عشرة أسابيع توزعها كيف تشاء؛ تبدأ بحدٍّ أقصى بأربعة أسابيع قبل التاريخ المرجح للوضع، ويحدد التاريخ المرجح للوضع بموجب شهادة طبية مصدقة من جهة صحية. 2 - يحظر تشغيل المرأة بعد الوضع بأي حال من الأحوال خلال الستة أسابيع التالية له، ولها الحق في تمديد الإجازة مدة شهر دون أجر. 3 - للمرأة العاملة - في حالة إنجاب طفل مريض أو من ذوي الاحتياجات الخاصة وتتطلب حالته الصحية مرافقاً مستمراً له - الحق في إجازة مدتها شهر بأجر كامل تبدأ بعد انتهاء مدة إجازة الوضع، ولها الحق في تمديد الإجازة لمدة شهر دون أجر.",
     "1 - A female worker is entitled to maternity leave with full pay of ten weeks, which she may allocate as she wishes, starting at most four weeks before the expected date of delivery, determined by a medical certificate authenticated by a health authority. 2 - A woman may not in any case be employed during the six weeks following childbirth, and she may extend the leave by one month without pay. 3 - A female worker who gives birth to a sick child or a child with special needs whose health condition requires a constant companion is entitled to leave of one month with full pay starting after maternity leave ends, and she may extend that leave by one month without pay.",
@@ -522,6 +535,18 @@ export const LABOR_ARTICLE_TEXTS = [
     "159",
     "على صاحب العمل في جميع الأماكن التي يعمل فيها نساء وفي جميع المهن أن يوفر لهن مقاعد لاستراحة النساء العاملات. وعلى كل صاحب عمل يشغّل خمسين عاملة فأكثر أن يهيئ مكاناً مناسباً يتوافر فيه العدد الكافي من المربيات لرعاية أطفال العاملات الذين تقل أعمارهم عن ست سنوات، وذلك إذا بلغ عدد الأطفال عشرة فأكثر.",
     "In every place where women work, and in every occupation, the employer shall provide seats for women workers to rest. An employer who employs fifty or more female workers shall prepare a suitable place with a sufficient number of attendants to care for the workers' children under six years of age, if the number of such children is ten or more.",
+  ),
+
+  v(
+    "161",
+    "لا يجوز تشغيل الأحداث في الأعمال الخطرة أو الصناعات الضارة، أو في المهن والأعمال التي يحتمل أن تعرض صحتهم أو سلامتهم أو أخلاقهم للخطر، بسبب طبيعتها أو الظروف التي تؤدى فيها. ويحدد الوزير بقرار منه الأعمال والصناعات والمهن المشار إليها.",
+    "Juveniles may not be employed in hazardous work or harmful industries, or in occupations and work that may endanger their health, safety or morals by reason of their nature or the conditions in which they are performed. The Minister shall, by decision, specify the work, industries and occupations referred to.",
+  ),
+
+  v(
+    "162",
+    "1 - لا يجوز تشغيل أي شخص لم يتم الخامسة عشرة من عمره ولا يسمح له بدخول أماكن العمل، وللوزير أن يرفع هذه السن في بعض الصناعات أو المناطق أو بالنسبة لبعض فئات الأحداث بقرار منه.\n2 - استثناءً من الفقرة (1) من هذه المادة يجوز للوزير أن يسمح بتشغيل أو عمل الأشخاص الذين تتراوح أعمارهم ما بين (13) و(15) سنة في أعمال خفيفة، يراعى فيها الآتي:\n2/1 - ألا يحتمل أن تكون ضارة بصحتهم أو نموهم.\n2/2 - ألا تعطل مواظبتهم في المدرسة واشتراكهم في برامج التوجيه أو التدريب المهني، أو تضعف قدرتهم على الاستفادة من التعليم الذي يتلقونه.",
+    "1 - No person who has not completed fifteen years of age may be employed, nor may he be allowed to enter workplaces. The Minister may raise that age in certain industries or regions or for certain categories of juveniles by decision.\n2 - By way of exception from paragraph (1), the Minister may permit the employment or work of persons aged between thirteen and fifteen years in light work, provided that:\n2/1 - it is not likely to be harmful to their health or development;\n2/2 - it does not prejudice their school attendance or participation in vocational guidance or training programmes, or reduce their ability to benefit from the education they receive.",
   ),
 
   v(

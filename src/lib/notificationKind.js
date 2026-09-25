@@ -24,10 +24,10 @@ const KINDS = [
 ];
 
 const TONE = {
-  ok: { bg: "#ECFDF3", fg: "#15803D" },
-  warn: { bg: "#FFFBEB", fg: "#B45309" },
-  bad: { bg: "#FEF2F2", fg: "#DC2626" },
-  navy: { bg: "#F1F5F9", fg: "#14284B" },
+  ok: { bg: "var(--nv-ok-soft)", fg: "var(--nv-ok-ink)" },
+  warn: { bg: "var(--tint-amber-bg)", fg: "var(--tint-amber-fg)" },
+  bad: { bg: "var(--nv-bad-soft)", fg: "var(--nv-bad-ink)" },
+  navy: { bg: "var(--nv-mute-soft)", fg: "var(--nv-ink)" },
 };
 
 const ISO_DAY = /\b(\d{4}-\d{2}-\d{2})\b/g;
@@ -100,6 +100,24 @@ export function kindForNotification(text) {
 
 export function isChatNotification(text) {
   return kindForNotification(text).id === "chat";
+}
+
+/** Red pill on the scope bar — overdue, safety, and compliance only. */
+export function isUrgentNotification(text) {
+  return kindForNotification(text).tone === "bad";
+}
+
+const ESCALATE_MS = 48 * 60 * 60 * 1000;
+
+/** An urgent notice with no action rises after 48 hours. */
+export function notificationEscalated(note) {
+  if (!note || note.read || !isUrgentNotification(note.text)) return false;
+  const then = new Date(note.createdAt || 0).getTime();
+  return Number.isFinite(then) && Date.now() - then >= ESCALATE_MS;
+}
+
+export function notificationKindChoices() {
+  return KINDS.filter((kind) => kind.id !== "chat").map((kind) => ({ id: kind.id, ar: kind.ar, en: kind.en }));
 }
 
 export function notificationTone(kind) {

@@ -1,5 +1,6 @@
 import { getCompanyData, updateCompany } from "@/lib/store";
 import { applyPreviewStationPin } from "@/lib/previewStationPins";
+import { assignEmployeeNumber } from "@/lib/employeeNumber";
 import { ownerEmployee, syncStationManagersFromSeats } from "@/lib/orgHire";
 import { applyWorkplaceManagerRule, seatCompanyHeadOnRoot } from "@/lib/peopleTreeGraph";
 import { applyExtraCoverageStrip, companyRootStation, hangOrphanStationsUnderCompany, isCompanyRootStation, stationParentId, stripDescendantCoverage } from "@/lib/stationTree";
@@ -268,6 +269,7 @@ export function seedDemoOrgTree(companyId, { ar = true } = {}) {
         },
         createdAt: now,
       });
+      assignEmployeeNumber(data, data.employees[data.employees.length - 1], { hireDate: row.hireDate });
       const stationNode = ensureStationNode(data, home.id);
       data.orgTree.push({
         id: `org_${employeeId}`,

@@ -28,10 +28,10 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
             fontSize: "11px",
             fontWeight: 600,
             padding: "4px 11px",
-            borderRadius: "20px",
-            background: status === "closed" ? "#F7F8FA" : "#ECFDF3",
-            color: status === "closed" ? MUTED : "#15803D",
-            border: `1px solid ${status === "closed" ? "#E2E8F0" : "#BBF7D0"}`,
+            borderRadius: 999,
+            background: status === "closed" ? "var(--nv-mute-soft)" : "var(--nv-ok-soft)",
+            color: status === "closed" ? MUTED : "var(--nv-ok-ink)",
+            border: `1px solid ${status === "closed" ? "var(--nv-mute-line)" : "var(--nv-ok-line)"}`,
           }}
           >
             {cycle.period} · {ar ? CYCLE_STATUS_LABELS[status]?.ar || status : CYCLE_STATUS_LABELS[status]?.en || status}
@@ -161,7 +161,7 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
       )}
 
       {cycles.length > 1 ? (
-        <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px dashed #E2E8F0", fontSize: "11px", color: MUTED }}>
+        <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px dashed var(--nv-line)", fontSize: "11px", color: MUTED }}>
           {ar ? "دورات سابقة: " : "Earlier cycles: "}
           {cycles.filter((c) => c.id !== cycle?.id).map((c) => `${c.period} (${ar ? CYCLE_STATUS_LABELS[c.status]?.ar || c.status : CYCLE_STATUS_LABELS[c.status]?.en || c.status})`).join(" · ")}
         </div>

@@ -197,11 +197,12 @@ const gates = checkPublishGates({
   assignments: {},
 });
 const hours = gates.checks.find((c) => c.id === "hours_48");
-const rest = gates.checks.find((c) => c.id === "rest_11h");
+const doubleShift = gates.checks.find((c) => c.id === "double_shift");
 const rest5 = gates.checks.find((c) => c.id === "rest_5h");
 const weekly = gates.checks.find((c) => c.id === "weekly_rest");
 assert.equal(hours.article, "98");
-assert.ok(!rest.article);
+assert.ok(!doubleShift.article);
+assert.equal(gates.checks.find((c) => c.id === "rest_11h"), undefined, "11h operational gap check is removed");
 assert.equal(gates.checks.find((c) => c.id === "workplace_hours")?.article, "101");
 assert.equal(rest5.article, "101");
 assert.equal(rest5.ok, true);
@@ -278,9 +279,9 @@ assert.equal(inferStatutoryTone({ ruleId: "hours.night.rotateWeeks", block: true
 assert.equal(inferStatutoryTone({ ruleId: "hours.week.ordinaryMaxHours" }), "entitlement");
 assert.equal(inferStatutoryTone({ article: "109" }), "entitlement", "leave article stays a worker-right chip");
 assert.equal(inferStatutoryTone({ decisionId: "18632" }), "entitlement", "قرار 18632 is a worker-right chip");
-assert.equal(inferStatutoryTone({ article: "98" }), "entitlement", "Art. 98 cap is green when not due");
-assert.equal(inferStatutoryTone({ article: "101" }), "entitlement", "Art. 101 cap is green when not due");
-assert.equal(inferStatutoryTone({ article: "118" }), "entitlement", "Art. 118 duty is green when not due");
+assert.equal(inferStatutoryTone({ article: "98" }), "entitlement", "Art. 98 cap is quiet cite when not due");
+assert.equal(inferStatutoryTone({ article: "101" }), "entitlement", "Art. 101 cap is quiet cite when not due");
+assert.equal(inferStatutoryTone({ article: "118" }), "entitlement", "Art. 118 duty is quiet cite when not due");
 assert.match(decision18632RightsNote(true), /حق التراجع/);
 assert.doesNotMatch(decision18632RightsNote(true), /جدّد كل شهر|إعادة شهرية واجبة/);
 assert.doesNotMatch(decision18632RightsNote(false), /must renew monthly|monthly re-consent required|renew each month/i);
@@ -521,6 +522,10 @@ assert.equal(statutoryLeaveFloor("maternity", {}, "2024-06-01"), 70);
 assert.equal(statutoryLeaveFloor("maternity", {}, "2026-09-06"), 84);
 assert.equal(statutoryLeaveFloor("maternity", { maternityDisabledChild: true }, "2026-09-06"), 114);
 assert.equal(leaveCiteRuleId("eid", {}, "2026-09-06"), "leave.eid.cite");
+assert.equal(leaveCiteRuleId("eid", {}, "2026-09-23"), "leave.nationalDay.days");
+assert.equal(leaveCiteRuleId("eid", {}, "2026-02-22"), "leave.foundingDay.days");
+assert.match(explainRule("leave.nationalDay.days")?.hintAr || "", /إجازة اليوم الوطني/);
+assert.match(explainRule("leave.foundingDay.days")?.hintAr || "", /إجازة يوم التأسيس/);
 assert.equal(leaveCiteRuleId("iddah", { gender: "female" }, "2026-09-06"), "leave.iddah.days");
 assert.equal(leaveCiteRuleId("iddah", { gender: "female", religion: "non_muslim" }, "2026-09-06"), "leave.iddah.nonMuslimDays");
 assert.equal(statutoryLeaveFloor("iddah", { gender: "female" }, "2026-09-06"), 130);
@@ -629,6 +634,7 @@ const overBalanceNoFile = checkApproveLeaveGate(
 assert.equal(overBalanceNoFile.error, "LEAVE_BALANCE_EXCEEDED");
 
 assert.equal(citeRule("hours.rest.betweenShiftsHours"), null);
+assert.ok(!LABOR_RULES.some((row) => row.id === "hours.rest.betweenShiftsHours"), "no product 11h inter-shift gap rule");
 assert.equal(citeRule("hours.workplace.maxHours", "2014-01-01")?.value, 11);
 assert.equal(ruleValue("hours.workplace.maxHours", "2026-09-06"), 12);
 assert.equal(citeRule("leave.unpaid.suspendAfterDays")?.article, "116");
@@ -1289,7 +1295,16 @@ const holidayBlocked = checkWeekPublishGates({
   stationId: "st",
   ar: true,
 });
-assert.equal(holidayBlocked.checks.find((c) => c.id === "official_holiday")?.ok, false);
+// Fixed Art. 112 days paint as holiday leave — leftover duty does not block publish as «وردية في عطلة».
+assert.equal(holidayBlocked.checks.find((c) => c.id === "official_holiday")?.ok, true);
+assert.match(holidayBlocked.checks.find((c) => c.id === "official_holiday")?.note || "", /بقايا تعيين تحت إجازة اليوم الوطني/);
+assert.doesNotMatch(holidayBlocked.checks.find((c) => c.id === "leave_excluded")?.note || "", /على إجازة معتمدة/);
+assert.match(holidayBlocked.checks.find((c) => c.id === "leave_excluded")?.note || "", /بقايا تعيين تحت إجازة اليوم الوطني/);
+assert.doesNotMatch(holidayBlocked.checks.find((c) => c.id === "leave_excluded")?.note || "", /من الدولة/);
+assert.equal(holidayBlocked.approvedLeaveDays || 0, 0);
+assert.ok((holidayBlocked.officialHolidayLeaveDays || 0) >= 1);
+assert.ok((holidayBlocked.holidayLeaveNames || []).some((n) => /اليوم الوطني/.test(n)));
+assert.equal(holidayBlocked.cellMarks?.["e1:2026-09-23"]?.id, undefined);
 
 const glowEmp = { id: "omar", name: "عمر", stationId: "st", profile: {}, leaveRequests: [], otherRequests: [] };
 const glowMorning = { id: "morning", label: "صباحي", start: "07:00", end: "15:00", restMinutes: 30 };
@@ -1450,31 +1465,37 @@ assert.equal(quietNightHeaderCite("due"), false);
 assert.equal(quietNightHeaderCite("off"), false);
 
 const dueChip = statutoryChipStyle("entitlement", { glow: "due" });
-assert.match(String(dueChip["--nv-stat-glow"]), /nv-danger|#DC2626/, "due glow uses the danger/red token");
-assert.match(String(dueChip.color), /nv-danger|#DC2626/, "due chip text is red");
-assert.match(String(dueChip.background), /nv-danger|#DC2626/, "due chip fill is red");
+assert.equal(dueChip["--nv-stat-glow"], "transparent", "due cite has no outer glow chrome");
+assert.match(String(dueChip.color), /nv-warn|#8A6516/, "due chip text is warn — not منع red");
+assert.match(String(dueChip.background), /nv-warn|#FDF6E8/, "due chip fill is warn soft");
+assert.doesNotMatch(String(dueChip.background), /nv-danger|#DC2626|nv-bad/);
+assert.equal(dueChip.boxShadow, "none");
 assert.equal(dueChip.width, "fit-content");
 assert.equal(dueChip.maxWidth, "max-content");
 assert.equal(dueChip.flex, "0 0 auto");
 const scopeChip = statutoryChipStyle("entitlement", { glow: "in_scope" });
-assert.match(String(scopeChip["--nv-stat-glow"]), /nv-accent|#1E9E63/, "in_scope glow stays green");
-assert.match(String(scopeChip.color), /nv-accent|#14683F/, "in_scope chip is green");
-assert.doesNotMatch(String(scopeChip["--nv-stat-glow"]), /nv-danger|#DC2626/);
+assert.equal(scopeChip["--nv-stat-glow"], "transparent", "in_scope cite has no glow");
+assert.match(String(scopeChip.color), /nv-ink2|#334155/, "in_scope chip is quiet navy");
+assert.match(String(scopeChip.background), /nv-soft|#F7F8FA/, "in_scope chip matches article badge");
+assert.doesNotMatch(String(scopeChip.background), /nv-danger|#DC2626|nv-accent|#1E9E63/);
 assert.equal(scopeChip.width, "fit-content");
 assert.equal(scopeChip.maxWidth, "max-content");
 const offRight = statutoryChipStyle("entitlement", { glow: "off" });
-assert.match(String(offRight.background), /nv-accent|#1E9E63/, "quiet entitlement stays a green chip");
-assert.match(String(offRight.color), /nv-accent|#14683F/, "quiet entitlement text stays green");
-assert.doesNotMatch(String(offRight.background), /transparent/);
+assert.match(String(offRight.background), /nv-soft|#F7F8FA/, "quiet entitlement is soft navy cite");
+assert.match(String(offRight.color), /nv-ink2|#334155/, "quiet entitlement text is muted ink");
+assert.doesNotMatch(String(offRight.background), /transparent|nv-accent|#1E9E63/);
 const offCite = statutoryChipStyle("cite", { glow: "off" });
 assert.equal(offCite["--nv-stat-glow"], "transparent");
-assert.match(String(offCite.background), /nv-accent|#1E9E63/, "generic cite is green, not slate");
-assert.match(String(offCite.color), /nv-accent|#14683F/, "generic cite text stays green");
-assert.doesNotMatch(String(offCite.background), /64748B|transparent/);
+assert.match(String(offCite.background), /nv-soft|#F7F8FA/, "generic cite is soft navy");
+assert.match(String(offCite.color), /nv-ink2|#334155/, "generic cite text stays muted");
+assert.doesNotMatch(String(offCite.background), /nv-accent|#1E9E63|transparent/);
 assert.equal(statutoryGlowState({ kind: "18632", employee: glowEmp, schedule: nightDueWeek, weekStart: glowWeek }), "due");
-assert.match(String(statutoryChipStyle("entitlement", {
+assert.equal(statutoryChipStyle("entitlement", {
   glow: statutoryGlowState({ kind: "18632", employee: glowEmp, schedule: nightDueWeek, weekStart: glowWeek }),
-})["--nv-stat-glow"]), /nv-danger|#DC2626/, "13-week night fixture paints the red due token");
+})["--nv-stat-glow"], "transparent", "13-week night fixture keeps cite without glow chrome");
+const blockChip = statutoryChipStyle("block", { glow: "off" });
+assert.match(String(blockChip.background), /nv-bad|#FBF1F2/, "منع uses bad soft only");
+assert.match(String(blockChip.color), /nv-bad|#8A1C2B/, "منع text is bad ink");
 const passingPay = checkWeekPublishGates({
   schedule: { ...nightInScopeWeek, nightCompensation: true },
   employees: [glowEmp],

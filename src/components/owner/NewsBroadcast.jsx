@@ -1,17 +1,26 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useI18n } from "@/lib/i18n";
-import { Megaphone, Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import {
+  ownerField,
+  ownerGateBanner,
+  ownerOkBanner,
+  ownerPaper,
+  ownerPrimaryBtn,
+  OwnerSectionHead,
+  ownerStack,
+} from "@/components/owner/ownerUi";
 
-// Platform-owner tool: compose site news and email it to every subscriber.
 export default function NewsBroadcast() {
   const { lang } = useI18n();
+  const ar = lang === "ar";
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const [status, setStatus] = useState(null); // null | "sending" | {sent, total} | "error"
+  const [status, setStatus] = useState(null);
 
-  const handleSend = async (e) => {
-    e.preventDefault();
+  const handleSend = async (event) => {
+    event.preventDefault();
     setStatus("sending");
     try {
       const res = await base44.functions.invoke("subscriberEmails", {
@@ -30,52 +39,40 @@ export default function NewsBroadcast() {
   };
 
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-xl">
-      <h3 className="font-heading text-lg font-semibold mb-1 flex items-center gap-2 text-[#14284B]">
-        <Megaphone className="w-4 h-4 text-[#1E9E63]" />
-        {lang === "ar" ? "إرسال أخبار الموقع للمشتركين" : "Email Site News to Subscribers"}
-      </h3>
-      <p className="text-xs text-[#14284B]/50 font-body mb-4">
-        {lang === "ar"
+    <div style={{ ...ownerPaper("mute"), padding: 16, ...ownerStack }}>
+      <OwnerSectionHead
+        title={ar ? "إرسال أخبار الموقع للمشتركين" : "Email site news to subscribers"}
+      />
+      <p style={{ margin: 0, fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.7 }}>
+        {ar
           ? "تُرسل الرسالة إلى البريد الإلكتروني المسجل لكل شركة مشتركة."
           : "The message is sent to the registered email of every subscribed company."}
       </p>
-      <form onSubmit={handleSend} className="space-y-3">
+      <form onSubmit={handleSend} style={ownerStack}>
         <input
           value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder={lang === "ar" ? "عنوان الرسالة" : "Subject"}
+          onChange={(event) => setSubject(event.target.value)}
+          placeholder={ar ? "عنوان الرسالة" : "Subject"}
           required
-          className="w-full px-3 py-2 rounded-lg bg-[#F7F8FA] text-[#14284B] text-sm font-body focus:outline-none focus:ring-2 focus:ring-[#14284B]"
+          style={ownerField()}
         />
         <textarea
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder={lang === "ar" ? "نص الخبر..." : "News content..."}
+          onChange={(event) => setMessage(event.target.value)}
+          placeholder={ar ? "نص الخبر..." : "News content..."}
           required
           rows={4}
-          className="w-full px-3 py-2 rounded-lg bg-[#F7F8FA] text-[#14284B] text-sm font-body focus:outline-none focus:ring-2 focus:ring-[#14284B] resize-none"
+          style={{ ...ownerField(), resize: "vertical", minHeight: 96 }}
         />
-        <button
-          type="submit"
-          disabled={status === "sending"}
-          className="w-full py-2.5 rounded-lg bg-gradient-to-b from-[#1E9E63] to-[#15803D] text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {status === "sending" && <Loader2 className="w-4 h-4 animate-spin" />}
-          {lang === "ar" ? "إرسال للجميع" : "Send to all subscribers"}
+        <button type="submit" disabled={status === "sending"} style={{ ...ownerPrimaryBtn(), opacity: status === "sending" ? 0.55 : 1 }}>
+          {status === "sending" ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          {ar ? "إرسال للجميع" : "Send to all subscribers"}
         </button>
       </form>
-      {status && typeof status === "object" && (
-        <p className="mt-3 text-sm text-green-600 font-body flex items-center gap-1.5">
-          <CheckCircle2 className="w-4 h-4" />
-          {lang === "ar" ? `تم الإرسال إلى ${status.sent} من ${status.total} مشترك.` : `Sent to ${status.sent} of ${status.total} subscribers.`}
-        </p>
-      )}
-      {status === "error" && (
-        <p className="mt-3 text-sm text-red-500 font-body">
-          {lang === "ar" ? "تعذر إرسال الرسالة — حاول مجددًا." : "Could not send the message — try again."}
-        </p>
-      )}
+      {status && typeof status === "object" ? ownerOkBanner(
+        ar ? `تم الإرسال إلى ${status.sent} من ${status.total} مشترك.` : `Sent to ${status.sent} of ${status.total} subscribers.`,
+      ) : null}
+      {status === "error" ? ownerGateBanner({ ok: false, reason: "تعذر إرسال الرسالة — حاول مجددًا.", reasonEn: "Could not send the message — try again." }, ar) : null}
     </div>
   );
 }

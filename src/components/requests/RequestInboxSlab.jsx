@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { collectRequestInbox, derivedAlertCount, formatArDate, inboxNoticeShowsBody } from "@/lib/requestWorkspace";
-import { CARD, MUTED, NAVY } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 
 function AlertBadge({ count, mark }) {
   const number = mark?.number || (count != null ? derivedAlertCount(count) : "");
@@ -36,8 +36,8 @@ export default function RequestInboxSlab({ employees, notifications, userId, vie
   const total = inbox.length;
 
   return (
-    <section style={{ background: CARD, border: "1px solid #dfe3ea", overflow: "hidden" }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid #eef0f4", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+    <section style={{ background: CARD, border: `1px solid ${BORDER}`, overflow: "hidden" }}>
+      <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}`, display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "إشعاراتي" : "My notices"}</span>
         <AlertBadge count={total} />
         <span style={{ marginInlineStart: "auto", fontSize: 11, fontWeight: 600, color: fresh ? "#137a49" : MUTED }}>
@@ -49,7 +49,7 @@ export default function RequestInboxSlab({ employees, notifications, userId, vie
           {ar ? "لا إشعارات. كل قرار على طلبك يصل هنا مع أثره وموضعه في المنصة." : "No notices. Every decision on your request lands here with its effect and place."}
         </div>
       ) : inbox.map((row) => (
-        <div key={row.id} style={{ padding: "12px 20px", borderBottom: "1px solid #f7f8fa", display: "flex", flexDirection: "column", gap: 5 }}>
+        <div key={row.id} style={{ padding: "12px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 5 }}>
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 10, alignItems: "baseline" }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: row.color, minWidth: 0 }}>{row.head}</span>
             <AlertBadge mark={{ number: row.alertNumber, label: row.alertLabel, kind: row.decisionId ? "decision" : (row.article ? "article" : "") }} />

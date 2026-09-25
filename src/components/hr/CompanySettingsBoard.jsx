@@ -11,8 +11,10 @@ import { toast } from "@/components/ui/use-toast";
 import { renameCompany } from "@/lib/companySettings";
 import { ACCENT, MUTED, NAVY, pageCol, ui, field, CARD, SURFACE } from "@/lib/platformStyles";
 import { ChromeBox } from "@/components/shared/IdentityCard";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import SettingsPermDelegation from "@/components/hr/SettingsPermDelegation";
+import { canEditOwnerBoard } from "@/lib/ownerBoard";
 import LaborCalendarCard from "@/components/hr/LaborCalendarCard";
 
 async function settingsApi(payload) {
@@ -405,7 +407,7 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
         companyId={company?.id}
         laborCalendar={data?.laborCalendar}
         year={new Date().getFullYear()}
-        canEdit={canManage}
+        canEdit={canEditOwnerBoard(currentUser, data)}
         ar={ar}
         onSaved={() => refresh?.()}
       />

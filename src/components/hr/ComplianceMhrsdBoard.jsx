@@ -337,6 +337,80 @@ export default function ComplianceMhrsdBoard() {
 
   return (
     <div id="compliance-center" style={{ display: "flex", flexDirection: "column", gap: "16px" }} dir={ar ? "rtl" : "ltr"}>
+      {/* L2234–2268 Nitaqat card — primary glance at top of compliance centre */}
+      <ChromeBox>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
+              {ar ? "نطاقات — نسبة التوطين" : "Nitaqat — Saudization rate"}
+            </div>
+            <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", maxWidth: "620px", lineHeight: 1.65 }}>
+              {ar
+                ? "نسبة مشتقة من سجل الموظفين — بلا إدخال يدوي للنطاق. برنامج نطاقات ضمن التزامات الوزارة."
+                : "Rate derived from the employee register — no manual band entry. Nitaqat programme under ministry obligations."}
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+            <div
+              dir="ltr"
+              style={{
+                fontFamily: "'IBM Plex Sans',sans-serif",
+                fontSize: "30px",
+                fontWeight: 600,
+                lineHeight: 1,
+                color: ACCENT,
+              }}
+            >
+              {rate}%
+            </div>
+            <span style={bandStyle}>{bandLabel}</span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: "3px", marginTop: "18px", borderRadius: "5px", overflow: "hidden" }}>
+          {bands.map((b) => (
+            <span key={b.label} style={b.style} />
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: "18px", flexWrap: "wrap", marginTop: "12px" }}>
+          {bands.map((b) => (
+            <div key={b.label} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+              <span style={{ fontSize: "11px", color: MUTED }}>{b.label}</span>
+              <span dir="ltr" style={{ fontSize: "10px", color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right" }}>{b.range}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: "26px", flexWrap: "wrap", marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #F1F5F9" }}>
+          <div>
+            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: NAVY }}>
+              {n?.saudi ?? "—"}
+            </div>
+            <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "سعوديون" : "Saudis"}</div>
+          </div>
+          <div>
+            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: NAVY }}>
+              {n?.nonSaudi ?? "—"}
+            </div>
+            <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "غير سعوديين" : "Non-Saudis"}</div>
+          </div>
+          <div>
+            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: NAVY }}>
+              {n?.total ?? "—"}
+            </div>
+            <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "الإجمالي" : "Total"}</div>
+          </div>
+          {n?.mismatch > 0 ? (
+            <div>
+              <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: "#DC2626" }}>
+                {n.mismatch}
+              </div>
+              <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "تعارض جنسية/هوية" : "Nationality / ID mismatch"}</div>
+            </div>
+          ) : null}
+        </div>
+      </ChromeBox>
+
       {/* Ministry rails — stamp already carries the centre title. */}
       <ChromeBox>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -436,80 +510,6 @@ export default function ComplianceMhrsdBoard() {
               <StatutoryItem article={row.article} ar={ar} entitlement={String(row.ruleId || "").startsWith("leave.")} />
             </span>
           ))}
-        </div>
-      </ChromeBox>
-
-      {/* L2234–2268 Nitaqat card */}
-      <ChromeBox>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
-              {ar ? "نطاقات — نسبة التوطين" : "Nitaqat — Saudization rate"}
-            </div>
-            <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", maxWidth: "620px", lineHeight: 1.65 }}>
-              {ar
-                ? "نسبة مشتقة من سجل الموظفين — بلا إدخال يدوي للنطاق. برنامج نطاقات ضمن التزامات الوزارة."
-                : "Rate derived from the employee register — no manual band entry. Nitaqat programme under ministry obligations."}
-            </div>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
-            <div
-              dir="ltr"
-              style={{
-                fontFamily: "'IBM Plex Sans',sans-serif",
-                fontSize: "30px",
-                fontWeight: 600,
-                lineHeight: 1,
-                color: ACCENT,
-              }}
-            >
-              {rate}%
-            </div>
-            <span style={bandStyle}>{bandLabel}</span>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: "3px", marginTop: "18px", borderRadius: "5px", overflow: "hidden" }}>
-          {bands.map((b) => (
-            <span key={b.label} style={b.style} />
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: "18px", flexWrap: "wrap", marginTop: "12px" }}>
-          {bands.map((b) => (
-            <div key={b.label} style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              <span style={{ fontSize: "11px", color: MUTED }}>{b.label}</span>
-              <span dir="ltr" style={{ fontSize: "10px", color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right" }}>{b.range}</span>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", gap: "26px", flexWrap: "wrap", marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #F1F5F9" }}>
-          <div>
-            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: NAVY }}>
-              {n?.saudi ?? "—"}
-            </div>
-            <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "سعوديون" : "Saudis"}</div>
-          </div>
-          <div>
-            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: NAVY }}>
-              {n?.nonSaudi ?? "—"}
-            </div>
-            <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "غير سعوديين" : "Non-Saudis"}</div>
-          </div>
-          <div>
-            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: NAVY }}>
-              {n?.total ?? "—"}
-            </div>
-            <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "الإجمالي" : "Total"}</div>
-          </div>
-          {n?.mismatch > 0 ? (
-            <div>
-              <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: "#DC2626" }}>
-                {n.mismatch}
-              </div>
-              <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "تعارض جنسية/هوية" : "Nationality / ID mismatch"}</div>
-            </div>
-          ) : null}
         </div>
       </ChromeBox>
 

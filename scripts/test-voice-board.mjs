@@ -3,7 +3,9 @@ import {
   collectVoiceItems,
   decorateVoiceItem,
   deriveVoiceBoard,
+  employeeVoiceArchiveCards,
   hoursAr,
+  voiceArchiveSmartItems,
   voiceRelatedLinks,
 } from "../src/lib/voiceBoard.js";
 import { defaultEscalationChain } from "../src/lib/complaintDerivations.js";
@@ -163,5 +165,94 @@ const workerStationBoard = deriveVoiceBoard({
 });
 assert.ok(!workerStationBoard.cards.some((card) => card.item.anonymousId === "AN-9999"));
 assert.ok(!workerStationBoard.mine.some((card) => card.item.stationId === "hq"));
+
+const archivePublic = [
+  {
+    id: "p-closed",
+    authorId: "e1",
+    stationId: "st",
+    type: "suggestion",
+    kind: "suggestion",
+    title: "تحسين تسليم الوردية",
+    message: "نموذج موحّد لتسليم الوردية.",
+    status: "closed",
+    resolution: "approved",
+    closedAt: "2026-09-10T12:00:00",
+    createdAt: "2026-09-08T08:00:00",
+    replies: [{ text: "اعتُمد.", createdAt: "2026-09-10T12:00:00" }],
+  },
+  {
+    id: "p-open",
+    authorId: "e1",
+    stationId: "st",
+    type: "complaint",
+    title: "بدل متأخر",
+    message: "بدل الوردية لم يُصرف.",
+    status: "open",
+    createdAt: "2026-09-11T14:00:00",
+  },
+  {
+    id: "p-other",
+    authorId: "e2",
+    stationId: "st",
+    type: "suggestion",
+    title: "صوت زميل",
+    message: "اقتراح زميل آخر.",
+    status: "closed",
+    resolution: "approved",
+    closedAt: "2026-09-09T10:00:00",
+    createdAt: "2026-09-07T08:00:00",
+  },
+];
+const archiveAnon = [
+  {
+    id: "a-closed",
+    kind: "anonymous",
+    anonymous: true,
+    anonymousId: "AN-7777",
+    title: "بلاغ مستقرّ",
+    message: "واقعة مجهولة مغلقة.",
+    status: "closed",
+    stationId: "st",
+    closedAt: "2026-09-10T15:00:00",
+    createdAt: "2026-09-09T21:10:00",
+  },
+];
+
+const fileCards = employeeVoiceArchiveCards({
+  publicReports: archivePublic,
+  employeeId: "e1",
+  employees: [...employees, { id: "e2", name: "سارة", stationId: "st" }],
+  stations,
+  ar: true,
+  nowMs: now,
+  chain: defaultEscalationChain("أحمد"),
+});
+assert.equal(fileCards.length, 1, "employee file archive is settled named only");
+assert.equal(fileCards[0].item.id, "p-closed");
+assert.ok(fileCards.every((card) => card.settled && card.item.channel !== "anonymous"));
+assert.ok(!fileCards.some((card) => card.item.authorId === "e2"));
+
+const smart = voiceArchiveSmartItems(fileCards, { ar: true });
+assert.equal(smart.length, 1);
+assert.ok(smart[0].search.includes("تحسين"));
+assert.ok(smart[0].date);
+
+const manageArchive = deriveVoiceBoard({
+  items: collectVoiceItems({ publicReports: archivePublic, anonymousReports: archiveAnon }),
+  employees: [...employees, { id: "e2", name: "سارة", stationId: "st" }],
+  stations,
+  ar: true,
+  nowMs: now,
+  canManage: true,
+  userId: "mgr",
+  chain: defaultEscalationChain("أحمد"),
+});
+assert.ok(manageArchive.settled.length >= 2);
+assert.ok(manageArchive.settled.some((card) => card.item.channel === "anonymous"));
+assert.equal(
+  voiceArchiveSmartItems(manageArchive.settled).length,
+  manageArchive.settled.length,
+);
 
 console.log("voice board ok");

@@ -3,7 +3,7 @@ import { Paperclip, Send } from "lucide-react";
 import VoiceRecorder from "@/components/tasks/VoiceRecorder";
 import { BORDER, BRAND, CARD, MUTED, SURFACE, field } from "@/lib/platformStyles";
 
-const round = { ...field, height: 40, borderRadius: 20, padding: "8px 14px" };
+const round = { ...field, height: 40, borderRadius: 10, padding: "8px 14px" };
 const iconBtn = {
   width: 40,
   height: 40,
@@ -105,7 +105,7 @@ export default function OpsTaskComposer({
           placeholder={missed
             ? (ar ? "سبب عدم الإنجاز اليوم…" : "Why nothing was finished today…")
             : (ar ? "سبب عدم إكمال الحصة (مثال: أُنجز 1 من 2)…" : "Why the quota was short (e.g. 1 of 2)…")}
-          style={{ ...round, borderColor: "#FDE68A", background: "#FFFBEB", width: "100%" }}
+          style={{ ...round, borderColor: "var(--nv-warn-line)", background: "var(--nv-warn-soft)", width: "100%" }}
         />
       ) : null}
 
@@ -161,7 +161,7 @@ export default function OpsTaskComposer({
               fontSize: 11,
               fontWeight: 650,
               fontFamily: "inherit",
-              ...(issue ? { border: "1px solid #FECACA", background: "#FEF2F2", color: "#DC2626" } : {}),
+              ...(issue ? { border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)" } : {}),
             }}
           >
             {ar ? "بلا إنجاز" : "Missed"}

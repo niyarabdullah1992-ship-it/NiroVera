@@ -3,6 +3,7 @@ import { suiteAppForPath } from "../src/lib/suiteApps.js";
 import {
   fallbackStationId,
   headerAllowsAllStations,
+  managerScopeSection,
   matchesExactStation,
   pageLocksToOwnWorkplace,
   resolvePageStationScope,
@@ -79,7 +80,40 @@ assert.equal(resolvePageStationScope({
   headerScope: "all",
   employee: owner,
   stations,
-}), "hq");
+}), "all", "money manage face: كل نطاق clears the station filter");
+
+assert.equal(resolvePageStationScope({
+  pathname: "/app/assets",
+  search: "?view=self",
+  headerScope: "all",
+  employee: owner,
+  stations,
+}), "hq", "personal money face stays on one workplace");
+
+assert.equal(managerScopeSection("/app/requests/manage"), "requests");
+assert.equal(managerScopeSection("/app/requests"), "");
+assert.equal(managerScopeSection("/app/discipline", "?tab=manage"), "discipline");
+assert.equal(managerScopeSection("/app/discipline", "?tab=mine"), "");
+assert.equal(managerScopeSection("/app/attendance", "?lane=manage"), "attendance");
+assert.equal(managerScopeSection("/app/attendance"), "");
+assert.equal(managerScopeSection("/app/performance", "?view=self"), "");
+assert.equal(managerScopeSection("/app/attendance", "?lane=manage", "employee"), "", "الموظف hides scopes even if the address still says manage");
+assert.equal(managerScopeSection("/app/attendance", "", "manage"), "attendance", "الإدارة shows scopes before the address catches up");
+assert.equal(managerScopeSection("/app/requests", "", "manage"), "requests");
+assert.equal(managerScopeSection("/app/discipline", "?tab=manage", "employee"), "");
+assert.equal(resolvePageStationScope({
+  pathname: "/app/requests/manage",
+  headerScope: "all",
+  employee: owner,
+  stations,
+}), "all");
+assert.equal(resolvePageStationScope({
+  pathname: "/app/attendance",
+  search: "?lane=manage",
+  headerScope: "all",
+  employee: owner,
+  stations,
+}), "all");
 
 assert.equal(matchesExactStation("khf", "all"), true);
 assert.equal(matchesExactStation("khf", "khf"), true);

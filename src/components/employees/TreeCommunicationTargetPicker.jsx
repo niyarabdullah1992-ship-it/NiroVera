@@ -42,7 +42,7 @@ export default function TreeCommunicationTargetPicker({ targets, value, onChange
         <p style={{
           margin: 0,
           borderRadius: "9px",
-          border: "1px solid #E2E8F0",
+          border: "1px solid var(--nv-line)",
           background: SURFACE,
           padding: "8px 12px",
           fontSize: "11px",

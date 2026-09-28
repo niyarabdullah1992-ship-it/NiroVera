@@ -15,14 +15,14 @@ export default function PayrollTableRows({ items, stations, getStationId, employ
   return groups.map((group) => (
     <React.Fragment key={group.id}>
       <tr style={{
-        borderTop: `1px solid ${group.unassigned ? "#FDE68A" : BORDER}`,
-        borderBottom: `1px solid ${group.unassigned ? "#FDE68A" : BORDER}`,
-        background: group.unassigned ? "#FFFBEB" : SURFACE,
+        borderTop: `1px solid ${group.unassigned ? "var(--nv-line)" : BORDER}`,
+        borderBottom: `1px solid ${group.unassigned ? "var(--nv-line)" : BORDER}`,
+        background: group.unassigned ? "var(--nv-warn-soft)" : SURFACE,
       }}>
         <td colSpan={9} style={{ padding: "12px 16px", textAlign: "start" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {group.unassigned
-              ? <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, color: "#B45309" }} />
+              ? <AlertCircle style={{ width: 16, height: 16, flexShrink: 0, color: "var(--nv-warn-ink)" }} />
               : <MapPin style={{ width: 16, height: 16, flexShrink: 0, color: ACCENT }} />}
             <div>
               <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: NAVY }}>{group.name}</p>

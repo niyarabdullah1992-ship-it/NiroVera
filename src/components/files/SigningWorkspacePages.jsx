@@ -46,7 +46,7 @@ function YnChoiceBox({ value }) {
         boxSizing: "border-box",
         borderRadius: 3,
         border: `1px solid ${yes ? "var(--nv-ok-line, #BFE6D2)" : "var(--nv-line, #DFE3EA)"}`,
-        background: "#fff",
+        background: "var(--nv-card)",
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
@@ -58,7 +58,7 @@ function YnChoiceBox({ value }) {
         </svg>
       ) : no ? (
         <svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M4.2 4.2 L11.8 11.8 M11.8 4.2 L4.2 11.8" fill="none" stroke="#14213D" strokeWidth="1.7" strokeLinecap="round" />
+          <path d="M4.2 4.2 L11.8 11.8 M11.8 4.2 L4.2 11.8" fill="none" stroke="var(--nv-ink)" strokeWidth="1.7" strokeLinecap="round" />
         </svg>
       ) : null}
     </span>
@@ -441,15 +441,15 @@ export default function SigningWorkspacePages({
                     border: yn
                       ? "1px solid var(--nv-line, #DFE3EA)"
                       : gold
-                        ? `1px solid ${gap ? "#B45309" : "#E4C56B"}`
+                        ? `1px solid ${gap ? "var(--nv-warn-line)" : "var(--nv-line)"}`
                         : `1.5px ${field.type === "signature" ? "solid" : "dashed"} ${gap ? "#B45309" : signer?.color || BRAND}`,
                     background: yn
-                      ? "#fff"
+                      ? "var(--nv-card)"
                       : gold
                         ? "#FBF3D0"
                         : field.type === "signature"
                           ? "rgba(255,255,255,.92)"
-                          : `color-mix(in oklab, ${gap ? "#B45309" : signer?.color || BRAND} 8%, #fff)`,
+                          : `color-mix(in oklab, ${gap ? "var(--nv-warn-ink)" : signer?.color || BRAND} 8%, #fff)`,
                     borderRadius: yn || gold ? 10 : 4,
                     boxSizing: "border-box",
                     cursor: editing ? "text" : "move",
@@ -486,7 +486,7 @@ export default function SigningWorkspacePages({
                   ) : isMarkField(field) ? (
                     <span
                       title={field.signer === 0 ? (ar ? "اضغط للتبديل بين صح وخطأ" : "Click to flip between tick and cross") : undefined}
-                      style={{ pointerEvents: "none", lineHeight: 1, color: value ? "#14284B" : MUTED }}
+                      style={{ pointerEvents: "none", lineHeight: 1, color: value ? "var(--nv-ink)" : MUTED }}
                     >
                       <SignMarkGlyph glyph={value || MARK_GLYPHS[0]} size={Math.max(14, box.height * 0.62)} color="currentColor" />
                     </span>
@@ -507,11 +507,11 @@ export default function SigningWorkspacePages({
                         textAlign: "center",
                         fontFamily: "inherit",
                         fontSize: 12,
-                        color: "#14284B",
+                        color: "var(--nv-ink)",
                       }}
                     />
                   ) : yn ? (
-                    <span dir={ar ? "rtl" : "ltr"} style={{ pointerEvents: "none", display: "inline-flex", alignItems: "center", gap: 8, color: "#14213D", fontWeight: 600, fontSize: 13, lineHeight: 1.2, maxWidth: "100%" }}>
+                    <span dir={ar ? "rtl" : "ltr"} style={{ pointerEvents: "none", display: "inline-flex", alignItems: "center", gap: 8, color: "var(--nv-ink)", fontWeight: 600, fontSize: 13, lineHeight: 1.2, maxWidth: "100%" }}>
                       <span style={{ whiteSpace: "nowrap" }}>{field.label || (ar ? "صح أو خطأ" : "Yes or no")}</span>
                       <YnChoiceBox value={value} />
                     </span>
@@ -521,7 +521,7 @@ export default function SigningWorkspacePages({
                       <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value || field.label}</span>
                     </span>
                   ) : (
-                    <span style={{ pointerEvents: "none", fontSize: 12, color: value ? "#14284B" : MUTED, padding: "0 4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <span style={{ pointerEvents: "none", fontSize: 12, color: value ? "var(--nv-ink)" : MUTED, padding: "0 4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {value || field.label}
                     </span>
                   )}
@@ -542,7 +542,7 @@ export default function SigningWorkspacePages({
                           height: 20,
                           borderRadius: "50%",
                           border: `1.5px solid ${CARD}`,
-                          background: "#14284B",
+                          background: "var(--nv-navy)",
                           color: "#fff",
                           fontSize: 15,
                           lineHeight: 1,
@@ -570,7 +570,7 @@ export default function SigningWorkspacePages({
                           height: 14,
                           borderRadius: 4,
                           border: `2px solid ${CARD}`,
-                          background: yn ? "#14284B" : (signer?.color || BRAND),
+                          background: yn ? "var(--nv-navy)" : (signer?.color || BRAND),
                           cursor: "ew-resize",
                         }}
                       />
@@ -611,7 +611,7 @@ export function SigningWorkspaceThumbs({ pdf, pageCount, fields, activePage, onS
               fontFamily: "inherit",
             }}
           >
-            <div style={{ position: "relative", border: `1.5px solid ${current ? "#14284B" : BORDER}`, borderRadius: 3, overflow: "hidden", background: CARD }}>
+            <div style={{ position: "relative", border: `1.5px solid ${current ? "var(--nv-navy)" : BORDER}`, borderRadius: 3, overflow: "hidden", background: CARD }}>
               <PdfPageCanvas pdf={pdf} pageNumber={pageNumber} width={72} />
               {hasFields ? (
                 <span style={{ position: "absolute", bottom: 5, insetInlineEnd: 5, width: 8, height: 8, borderRadius: "50%", background: BRAND }} />

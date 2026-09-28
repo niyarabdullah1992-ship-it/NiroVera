@@ -309,7 +309,7 @@ export default function OpsTaskHeader({
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span style={LABEL_SPAN}>{ar ? "التقدّم" : "Progress"}</span>
           <div style={{ ...FIELD, display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ flex: 1, height: 6, borderRadius: 4, background: "#E2E8F0", overflow: "hidden" }}>
+            <span style={{ flex: 1, height: 6, borderRadius: 4, background: "var(--nv-line)", overflow: "hidden" }}>
               <span style={{ display: "block", width: `${pct}%`, height: "100%", background: ACCENT, borderRadius: 4 }} />
             </span>
             <span dir="ltr" style={{ fontSize: 12, color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", flexShrink: 0 }}>

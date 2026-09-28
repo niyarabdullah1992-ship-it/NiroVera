@@ -64,6 +64,26 @@ function isOpGradeCode(value) {
   return /^OP\d+$/i.test(String(value || "").trim());
 }
 
+/** OP1–OP7 are the old ladder codes. The card shows م1–م7; stored rows stay as they are. */
+export function productGradeLabel(gradeNumber) {
+  const raw = String(gradeNumber || "").trim();
+  const match = raw.match(/^OP(\d+)$/i);
+  if (!match) return raw;
+  const rank = Number(match[1]);
+  if (rank < 1 || rank > 7) return raw;
+  return `م${rank}`;
+}
+
+/** Ladder color index for م1–م7, after OP codes are read as the same step. */
+export function productGradeIndex(gradeNumber) {
+  const label = productGradeLabel(gradeNumber);
+  const match = label.match(/^م(\d+)$/);
+  if (!match) return -1;
+  const rank = Number(match[1]);
+  if (rank < 1 || rank > 7) return -1;
+  return rank - 1;
+}
+
 function isProductMeemCode(value, rank) {
   const raw = String(value || "").trim();
   return raw === `م${rank}` || raw === `${rank}م`;

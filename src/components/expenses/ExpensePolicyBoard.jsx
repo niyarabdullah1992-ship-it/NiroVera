@@ -44,7 +44,7 @@ export default function ExpensePolicyBoard({ ar }) {
                 gridTemplateColumns: "minmax(140px,1fr) minmax(200px,1.6fr) minmax(180px,1.4fr)",
                 gap: 12,
                 padding: "12px 16px",
-                borderTop: "1px solid #F1F5F9",
+                borderTop: "1px solid var(--nv-line)",
                 color: NAVY,
               }}
             >

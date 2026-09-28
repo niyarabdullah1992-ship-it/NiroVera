@@ -1,4 +1,5 @@
 import { logAudit } from "@/lib/auditLog";
+import { readSubscriberNumber, readWageFields } from "@/lib/facts";
 import {
   BUILT_IN_TEMPLATES,
   deleteCompanyTemplate,
@@ -277,10 +278,10 @@ export function downloadPermissionPackTemplate(data, ar = true) {
       pack: pack ? templateLabel(pack, true) : "",
       start: profile.startDate || profile.hiredAt || "",
       iban: profile.iban || "",
-      salary: profile.baseSalary || "",
-      allowances: profile.allowances || "",
+      salary: readWageFields(employee).baseSalary ?? "",
+      allowances: readWageFields(employee).allowances ?? "",
       currency: profile.currency || "SAR",
-      gosi: profile.gosiNumber || "",
+      gosi: readSubscriberNumber(employee),
       contract: profile.contractNumber || "",
     }));
   });

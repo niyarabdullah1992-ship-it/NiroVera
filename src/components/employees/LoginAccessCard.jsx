@@ -29,7 +29,7 @@ export default function LoginAccessCard({ employee, companyId }) {
       </div>
       <p style={{ margin: "0 0 12px", fontSize: "11px", color: MUTED, lineHeight: 1.6 }}>{t("loginAccessNote")}</p>
       {!employee.email ? (
-        <p style={{ margin: 0, fontSize: "12px", color: "#DC2626" }}>{t("emailRequiredForLogin")}</p>
+        <p style={{ margin: 0, fontSize: "12px", color: "var(--nv-bad-ink)" }}>{t("emailRequiredForLogin")}</p>
       ) : (
         <form onSubmit={save} style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
           <input

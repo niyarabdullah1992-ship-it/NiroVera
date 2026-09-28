@@ -9,7 +9,7 @@ const matchRow = {
   gridTemplateColumns: "minmax(140px,1.4fr) minmax(120px,1fr) 88px",
   gap: "12px",
   padding: "12px 18px",
-  borderBottom: "1px solid #F1F5F9",
+  borderBottom: "1px solid var(--nv-line)",
   alignItems: "center",
 };
 
@@ -87,14 +87,14 @@ export default function PayrollTemplateCard({ company, data, employees, month, a
         <div>
           <div style={{ overflowX: "auto" }}>
             <div style={{ minWidth: 520 }}>
-              <div style={{ ...matchRow, background: SURFACE, borderBottom: "1px solid #E2E8F0", fontSize: 10, letterSpacing: "0.06em", color: MUTED, fontWeight: 600, padding: "11px 18px" }}>
+              <div style={{ ...matchRow, background: SURFACE, borderBottom: "1px solid var(--nv-line)", fontSize: 10, letterSpacing: "0.06em", color: MUTED, fontWeight: 600, padding: "11px 18px" }}>
                 <div>{ar ? "الموظف" : "Employee"}</div>
                 <div>{ar ? "المطابقة" : "Match"}</div>
                 <div>{ar ? "المبلغ" : "Amount"}</div>
               </div>
               <div style={{ maxHeight: 260, overflowY: "auto" }}>
                 {matches.map(({ row, employee }, idx) => (
-                  <div key={idx} style={{ ...matchRow, borderBottom: idx < matches.length - 1 ? "1px solid #F1F5F9" : "none" }}>
+                  <div key={idx} style={{ ...matchRow, borderBottom: idx < matches.length - 1 ? "1px solid var(--nv-line)" : "none" }}>
                     <div style={{ minWidth: 0 }}>
                       <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: NAVY, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {row.name || row.email}

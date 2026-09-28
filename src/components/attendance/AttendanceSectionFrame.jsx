@@ -17,20 +17,22 @@ export default function AttendanceSectionFrame({
     <div className="nv-att-frame" style={{ width: "min(1320px, 100%)", margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
       <Nv7SectionHead
         kicker={kicker}
-        title={ar ? "الحضور — مَن وأين" : "Attendance — who and where"}
+        title={ar ? "الحضور" : "Attendance"}
         hint={ar ? (
           <>
+            سؤالان: مَن يسجّل، وأين هو. البصمة من الجدول فقط.{" "}
             <Link to={lane === "manage" ? "/app/shifts?lane=manage" : "/app/shifts"} style={{ color: "#C5DBCD", fontWeight: 700, textDecoration: "underline" }}>جدول الدوام</Link>
-            {" "}يقرّر · الحضور يلتقط ·{" "}
+            {" "}و{" "}
             <Link to={lane === "manage" ? "/app/calendar?lane=manage" : "/app/calendar"} style={{ color: "#C5DBCD", fontWeight: 700, textDecoration: "underline" }}>التقويم التشغيلي</Link>
-            {" "}يثبت. هذه الشاشة لليوم الجاري.
+            {" "}سطحان في المجموعة نفسها.
           </>
         ) : (
           <>
+            Two questions: who punches, and where. The punch follows the roster only.{" "}
             <Link to={lane === "manage" ? "/app/shifts?lane=manage" : "/app/shifts"} style={{ color: "#C5DBCD", fontWeight: 700, textDecoration: "underline" }}>The duty roster</Link>
-            {" "}decides · attendance captures ·{" "}
+            {" and "}
             <Link to={lane === "manage" ? "/app/calendar?lane=manage" : "/app/calendar"} style={{ color: "#C5DBCD", fontWeight: 700, textDecoration: "underline" }}>the operational calendar</Link>
-            {" "}confirms. This screen is for today.
+            {" are surfaces in the same group."}
           </>
         )}
         tabs={tabs.length > 1 ? (

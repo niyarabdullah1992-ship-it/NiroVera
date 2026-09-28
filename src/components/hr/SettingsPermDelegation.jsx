@@ -71,9 +71,9 @@ function scopeChipStyle(scope) {
       borderRadius: "20px",
       fontSize: "11px",
       fontWeight: 600,
-      background: "#EFF6FF",
+      background: "var(--nv-accent-soft)",
       color: "#1D4ED8",
-      border: "1px solid #BFDBFE",
+      border: "1px solid var(--nv-line)",
     };
   }
   if (scope === SCOPE.REGION) {
@@ -86,7 +86,7 @@ function scopeChipStyle(scope) {
       fontWeight: 600,
       background: "#F5F3FF",
       color: "#6D28D9",
-      border: "1px solid #DDD6FE",
+      border: "1px solid var(--nv-line)",
     };
   }
   if (scope === SCOPE.DELEGATED) return WARN;
@@ -292,8 +292,8 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
                 gap: "10px",
                 padding: "10px 20px",
                 background: SURFACE,
-                borderTop: "1px solid #E2E8F0",
-                borderBottom: "1px solid #E2E8F0",
+                borderTop: "1px solid var(--nv-line)",
+                borderBottom: "1px solid var(--nv-line)",
                 fontSize: "10px",
                 letterSpacing: "0.04em",
                 color: MUTED,
@@ -323,7 +323,7 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
                         display: "inline-flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        border: "1px solid #E2E8F0",
+                        border: "1px solid var(--nv-line)",
                         borderRadius: 6,
                         background: CARD,
                         color: MUTED,
@@ -348,7 +348,7 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
                   gridTemplateColumns: colTemplate,
                   gap: "10px",
                   padding: "11px 20px",
-                  borderBottom: "1px solid #F1F5F9",
+                  borderBottom: "1px solid var(--nv-line)",
                   alignItems: "center",
                 }}
               >
@@ -394,7 +394,7 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
             })}
           </div>
         </div>
-        <div style={{ padding: "14px 20px 16px", borderTop: "1px solid #F1F5F9" }}>
+        <div style={{ padding: "14px 20px 16px", borderTop: "1px solid var(--nv-line)" }}>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             {[SCOPE.OWN, SCOPE.STATION, SCOPE.REGION, SCOPE.COMPANY].map((s) => {
               const lab = SCOPE_LABEL[s];
@@ -406,7 +406,7 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
               );
             })}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "7px", marginTop: "9px", paddingTop: "9px", borderTop: "1px dashed #E2E8F0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "7px", marginTop: "9px", paddingTop: "9px", borderTop: "1px dashed var(--nv-line)" }}>
             <span style={scopeChipStyle(SCOPE.DELEGATED)}>{ar ? SCOPE_LABEL[SCOPE.DELEGATED].ar : SCOPE_LABEL[SCOPE.DELEGATED].en}</span>
             <span style={{ fontSize: "11px", color: MUTED }}>
               {ar ? "مشتقة من سجل التفويض أدناه — لا تُضبط بالضغط" : "Derived from the delegation register below — not set by clicking"}
@@ -426,7 +426,7 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
                 style={{
                   padding: "6px 13px",
                   borderRadius: "8px",
-                  border: "1px solid #E2E8F0",
+                  border: "1px solid var(--nv-line)",
                   background: CARD,
                   color: MUTED,
                   fontSize: "11px",
@@ -473,9 +473,9 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
               style={{
                 padding: "7px 14px",
                 borderRadius: "9px",
-                border: "1px solid #1E9E63",
+                border: "1px solid var(--nv-accent-border)",
                 background: CARD,
-                color: "#14683F",
+                color: "var(--nv-ok-ink)",
                 fontSize: "12px",
                 fontWeight: 600,
                 cursor: "pointer",
@@ -496,7 +496,7 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
               padding: "15px 16px",
               borderRadius: "12px",
               background: SURFACE,
-              border: "1px solid #E2E8F0",
+              border: "1px solid var(--nv-line)",
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))",
               gap: "11px",
@@ -580,7 +580,7 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
                 padding: "0 16px",
                 borderRadius: "9px",
                 border: "none",
-                background: "#1E9E63",
+                background: "var(--nv-btn-fill)",
                 color: "#fff",
                 fontSize: "12px",
                 fontWeight: 600,
@@ -607,7 +607,7 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
               alignItems: "center",
               gap: "12px",
               padding: "13px 0",
-              borderTop: "1px solid #F1F5F9",
+              borderTop: "1px solid var(--nv-line)",
               flexWrap: "wrap",
               opacity: d.expired ? 0.7 : 1,
             }}
@@ -633,9 +633,9 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
                 borderRadius: "20px",
                 fontSize: "11px",
                 fontWeight: 600,
-                background: "#F1F5F9",
+                background: "var(--nv-soft)",
                 color: MUTED,
-                border: "1px solid #E2E8F0",
+                border: "1px solid var(--nv-line)",
               }
               : d.status === "scheduled"
                 ? {
@@ -665,7 +665,7 @@ export default function SettingsPermDelegation({ lang = "ar" }) {
                 style={{
                   padding: "5px 11px",
                   borderRadius: "8px",
-                  border: "1px solid #E2E8F0",
+                  border: "1px solid var(--nv-line)",
                   background: CARD,
                   color: MUTED,
                   fontSize: "11px",

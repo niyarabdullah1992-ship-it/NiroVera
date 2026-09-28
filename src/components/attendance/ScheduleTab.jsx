@@ -35,7 +35,7 @@ export default function ScheduleTab({ preferredStationId = null, hidePickerWhenS
               onClick={() => setSelectedStation(s.id)}
               style={{
                 borderRadius: 13,
-                border: "1px solid #E2E8F0",
+                border: "1px solid var(--nv-line)",
                 background: CARD,
                 padding: "14px 16px",
                 textAlign: "start",
@@ -44,7 +44,7 @@ export default function ScheduleTab({ preferredStationId = null, hidePickerWhenS
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
-                boxShadow: "0 1px 0 #E2E8F0",
+                boxShadow: "0 1px 0 var(--nv-line)",
               }}
             >
               <span
@@ -55,7 +55,7 @@ export default function ScheduleTab({ preferredStationId = null, hidePickerWhenS
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  background: "#ECFDF3",
+                  background: "var(--nv-accent-soft)",
                   color: ACCENT,
                   flexShrink: 0,
                 }}
@@ -88,7 +88,7 @@ export default function ScheduleTab({ preferredStationId = null, hidePickerWhenS
             marginBottom: 4,
             padding: "10px 12px",
             borderRadius: 12,
-            border: "1px solid #E2E8F0",
+            border: "1px solid var(--nv-line)",
             background: SURFACE,
           }}
         >
@@ -96,7 +96,7 @@ export default function ScheduleTab({ preferredStationId = null, hidePickerWhenS
             type="button"
             onClick={() => setSelectedStation(null)}
             style={{
-              border: "1px solid #E2E8F0",
+              border: "1px solid var(--nv-line)",
               background: CARD,
               color: MUTED,
               borderRadius: 9,

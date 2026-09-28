@@ -6,6 +6,7 @@ import {
   approvedLeavePeopleOnDay,
   isOnApprovedLeave,
   isSaudiWeekend,
+  isStatutoryOffDay,
   LEAVE_TYPES,
   leaveTypeLabel,
   weekendLeavePeople,
@@ -307,8 +308,8 @@ const rosterMarriage = hydrateEmployeesLeave(
 assert.equal(approvedLeaveOnDay(rosterMarriage[0], "2026-09-17")?.type, "marriage");
 assert.equal(leaveOnDayView(rosterMarriage[0], "2026-09-17", true)?.type, "زواج");
 
-assert.equal(LEAVE_STYLE.color, "#4a2c14");
-assert.equal(leaveOnDayView(allTypesPerson, overlayDays[0], true)?.style.color, "#4a2c14");
+assert.equal(LEAVE_STYLE.color, "var(--nv-warn-fill)");
+assert.equal(leaveOnDayView(allTypesPerson, overlayDays[0], true)?.style.color, "var(--nv-warn-fill)");
 assert.ok(!/#15803D|#137a49|#ECFDF3/i.test(`${LEAVE_STYLE.color}${LEAVE_STYLE.bg}`));
 
 const hqHead = { id: "niyar", name: "نيار", stationId: "hq" };
@@ -372,5 +373,19 @@ assert.match(calPage, /dayHeadPhrase\(selRec\.head/);
 assert.doesNotMatch(calPage, /موظف مجدول/);
 assert.match(calLib, /من ظهرت لهم حالة/);
 assert.match(calLib, /with a recorded status/);
+
+const nationalOff = isStatutoryOffDay({ id: "e", name: "نورة" }, "2026-09-23");
+assert.equal(nationalOff?.kind, "official");
+assert.match(nationalOff.labelAr, /وطني/);
+assert.equal(isStatutoryOffDay({ id: "e" }, "2026-09-26"), null);
+assert.equal(dayAttendanceStatus({
+  employee: { id: "e" },
+  row: null,
+  dateKey: "2026-09-23",
+  schedules: [{ shiftTypes: [{ id: "m" }], assignments: { "2026-09-23": { m: ["e"] } } }],
+  todayKey: "2026-09-26",
+  onLeave: !!isStatutoryOffDay({ id: "e" }, "2026-09-23"),
+}), "on_leave", "National Day is leave, not absence, even with a leftover assignment");
+assert.match(calLib, /off\?\.kind !== \"official\"/, "official holiday does not ask for a substitute");
 
 console.log("calendar leave overlay ok");

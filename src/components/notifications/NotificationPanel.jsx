@@ -47,7 +47,7 @@ export default function NotificationPanel({
           gap: 12,
           padding: "16px 20px",
           background: CARD,
-          borderBottom: "1px solid #eef0f4",
+          borderBottom: "1px solid var(--nv-line)",
         }}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
@@ -110,7 +110,7 @@ export default function NotificationPanel({
                     alignItems: "flex-start",
                     gap: 8,
                     padding: "12px 16px 12px 12px",
-                    borderBottom: "1px solid #f7f8fa",
+                    borderBottom: "1px solid var(--nv-line)",
                     background: unreadRow ? SURFACE : CARD,
                     borderInlineStart: unreadRow ? `3px solid ${NAVY_FILL}` : "3px solid transparent",
                   }}

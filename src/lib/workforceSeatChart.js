@@ -6,7 +6,8 @@
 
 import { buildPeopleTree } from "./peopleTreeGraph.js";
 import { isCompanyRootStation, isManagerUnit } from "./stationTree.js";
-import { coordinateLine, isHrDirector, isHrUnit, regionalSeatLine } from "./hrTree.js";
+import { coordinateLine, hrManagerForStation, isHrDirector, isHrUnit, isRegionalHr, regionalSeatLine, servedStationIds } from "./hrTree.js";
+import { productGradeIndex, productGradeLabel } from "./jobGradeTitles.js";
 
 function todayKey() {
   const d = new Date();
@@ -22,12 +23,60 @@ function activeActing(employee, day = todayKey()) {
   });
 }
 
+const HIRE_MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+
+function stripLock(value) {
+  return String(value || "").replace(/🔒/g, "").replace(/\s+/g, " ").trim();
+}
+
+function hireFace(employee, acting, ar) {
+  const raw = String(employee?.profile?.hireDate || employee?.hireDate || "").slice(0, 10);
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return { hireStamp: "", hireTip: "" };
+  const full = ar
+    ? `${Number(match[3])} ${HIRE_MONTHS[Number(match[2]) - 1] || ""} ${match[1]}`.trim()
+    : raw;
+  const kind = acting ? (ar ? "تكليف" : "acting") : (ar ? "دائم" : "permanent");
+  return {
+    hireStamp: `${match[2]}/${match[1]}`,
+    hireTip: ar ? `تاريخ التعيين: ${full} · ${kind}` : `Hire date: ${full} · ${kind}`,
+  };
+}
+
+function bandLabelFor({ role, vacant, acting, actingText, tone, station, ar }) {
+  const tag = stripLock(role?.kindTag);
+  if (role?.kindLock && role?.kind === "branch") return tag || (ar ? "فرع · HQ" : "Branch · HQ");
+  if (vacant) return ar ? "شاغرة" : "Vacant";
+  if (acting) {
+    const short = String(actingText || "").split("·")[0].trim();
+    return short || (ar ? "تكليف ساري" : "Acting");
+  }
+  if (role?.kind === "branch" || role?.kindLock) return tag || "—";
+  if (tone === "warn" || tone === "block") return ar ? "تنبيه نظامي" : "Compliance alert";
+  const place = arabicPlaceName(station).replace(/^فرع\s+/, "");
+  return place || "—";
+}
+
+function fixedCoordinate(role, ar) {
+  if (!role?.kindLock) return "";
+  if (role.kind === "person") {
+    return ar
+      ? "وحدة ثابتة لا تُحذف · منها يُعيَّن مدير موارد بشرية لكل فرع"
+      : "Fixed unit. An HR manager for each branch is appointed here.";
+  }
+  return ar
+    ? "الفرع الأول · المقر الرئيسي — ثابت لا يُحذف ولا يُنقل"
+    : "First branch · headquarters — fixed, not moved";
+}
+
 function branchCode(station) {
   const code = String(station?.code || "").trim();
-  if (code) return code;
-  const parts = String(station?.name || "").trim().split(/\s+/).filter(Boolean);
+  if (code && !/\bpreview\b/i.test(code)) return code;
+  if (isCompanyRootStation(station)) return "HQ";
+  const parts = String(station?.name || "").trim().split(/\s+/).filter((part) => part && !/\bpreview\b/i.test(part));
   const last = parts[parts.length - 1] || "";
-  return last.slice(0, 8) || "—";
+  if (/[\u0600-\u06FF]/.test(last)) return last.slice(0, 8);
+  return "—";
 }
 
 function empNoOf(employee) {
@@ -70,7 +119,7 @@ function classify(node, station, employee, data, ar) {
     && String(station.managerId || "") === String(node?.id || "")
   );
   if (rootHead) {
-    return { kind: "branch", kindTag: ar ? `فرع · ${branchCode(station)} 🔒` : `Branch · ${branchCode(station)}`, kindLock: false };
+    return { kind: "branch", kindTag: ar ? `فرع · ${branchCode(station)} 🔒` : `Branch · ${branchCode(station)}`, kindLock: true };
   }
   if (!station || isCompanyRootStation(station) || isHrStation(station)) {
     return { kind: "person", kindTag: ar ? "موظف" : "Employee", kindLock: false };
@@ -96,26 +145,58 @@ function gradeRow(data, gradeId) {
 }
 
 function gradeChip(data, gradeId) {
-  const grades = [...(data?.jobGrades || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
-  const index = grades.findIndex((item) => gradeId && String(item.id) === String(gradeId));
-  if (index < 0) return { grade: "", gradeTip: "", gradeIndex: -1 };
-  const grade = grades[index];
+  const grade = gradeRow(data, gradeId);
+  if (!grade) return { grade: "", gradeTip: "", gradeIndex: -1 };
+  const stored = String(grade.gradeNumber || "").trim();
   return {
-    grade: String(grade.gradeNumber || "").trim(),
+    grade: productGradeLabel(stored),
     gradeTip: String(grade.title || "").trim(),
-    gradeIndex: index,
+    gradeIndex: productGradeIndex(stored),
   };
+}
+
+/** Arabic station name for the card face. Latin tokens such as Preview are not a branch name. */
+function arabicPlaceName(station) {
+  const name = String(station?.name || "").trim();
+  return /[\u0600-\u06FF]/.test(name) ? name : "";
+}
+
+function stationFaceName(data, id) {
+  const station = (data?.stations || []).find((row) => String(row.id) === String(id));
+  return String(station?.name || "")
+    .replace(/^فرع\s+/, "")
+    .replace("المقر الرئيسي", "المقر")
+    .trim();
+}
+
+function hrCardLines(employee, station, data) {
+  if (!employee?.id) return { servesText: "", hrLine: "" };
+  const served = isRegionalHr(employee, data) ? servedStationIds(data, employee.id) : [];
+  const servesText = served.length
+    ? served.slice(0, 3).map((id) => stationFaceName(data, id)).filter(Boolean).join(" + ")
+    : "";
+  const branchManager = Boolean(
+    station
+    && !isHrUnit(station)
+    && !isCompanyRootStation(station)
+    && String(station.managerId || "") === String(employee.id)
+  );
+  let hrLine = "";
+  if (branchManager) {
+    const hr = hrManagerForStation(data, station.id);
+    hrLine = hr?.name || "شاغر";
+  }
+  return { servesText, hrLine };
 }
 
 function unitChip(station, ar, show) {
   if (!show || !station) return { unit: "", unitTip: "", unitNavy: false };
-  const code = branchCode(station);
-  const navy = code === "HQ" || code === "HR";
-  const name = String(station.name || "").trim();
+  const name = arabicPlaceName(station);
+  if (!name) return { unit: "", unitTip: "", unitNavy: false };
   return {
-    unit: code,
-    unitTip: ar ? `يتبع: ${name || "—"} · ${code}` : `Reports to: ${name || "—"} · ${code}`,
-    unitNavy: navy,
+    unit: name,
+    unitTip: ar ? `يتبع: ${name}` : `Reports to: ${name}`,
+    unitNavy: false,
   };
 }
 
@@ -200,9 +281,11 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
     const held = gradeRow(data, gradeId);
     const grade = gradeChip(data, gradeId);
     const unit = unitChip(station, ar, role.kind === "person" && !role.kindLock);
+    const branchFace = role.kind === "branch" ? arabicPlaceName(station) : "";
     const coordinate = role.kindLock
-      ? (ar ? "وحدة ثابتة · تتبع الرئيس التنفيذي" : "Fixed unit · reports to the CEO")
+      ? fixedCoordinate(role, ar)
       : coordinateLine(employee, data, ar);
+    const hired = hireFace(employee, banner.acting, ar);
     return [{
       id: String(node.id),
       employeeId: String(node.id),
@@ -215,9 +298,12 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
       fixedTag: role.fixedTag || "",
       hrPost: seat?.hrPost || "",
       kindLock: Boolean(role.kindLock),
+      bandLabel: bandLabelFor({ role, vacant: false, acting: banner.acting, actingText: banner.actingText, tone: banner.tone || "ok", station, ar }),
       empLine: empNoOf(employee),
+      ...hired,
       ...grade,
       ...unit,
+      branchFace,
       vacant: false,
       acting: banner.acting,
       actingText: banner.actingText,
@@ -225,6 +311,7 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
       avatarUrl: node.avatar || "",
       isMe: Boolean(meId) && String(node.id) === String(meId),
       coordinate,
+      ...hrCardLines(employee, station, data),
       children,
     }];
   };
@@ -249,7 +336,12 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
       kindTag: seat.hrPost === "director" ? (ar ? "قسم ثابت · HR" : "Fixed unit · HR") : (ar ? "شاغرة" : "Vacant"),
       kindLock: seat.hrPost === "director",
       hrPost: seat.hrPost || "",
+      bandLabel: seat.hrPost === "director"
+        ? (ar ? "قسم ثابت · HR" : "Fixed unit · HR")
+        : (ar ? "شاغرة" : "Vacant"),
       empLine: "",
+      hireStamp: "",
+      hireTip: "",
       ...gradeChip(data, seat.gradeId),
       ...unitChip(station, ar, seat.hrPost !== "director"),
       vacant: true,
@@ -259,7 +351,9 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
       avatarUrl: "",
       isMe: false,
       coordinate: seat.hrPost === "director"
-        ? (ar ? "وحدة ثابتة · تتبع الرئيس التنفيذي" : "Fixed unit · reports to the CEO")
+        ? (ar
+          ? "وحدة ثابتة لا تُحذف · منها يُعيَّن مدير موارد بشرية لكل فرع"
+          : "Fixed unit. An HR manager for each branch is appointed here.")
         : regionalSeatLine(seat, data, ar),
       children: [],
       direct: 0,
@@ -301,7 +395,10 @@ export function buildWorkforceSeatChart(data, { ar = true, meId = "" } = {}) {
       title: ar ? "مدير الفرع" : "Branch manager",
       kind: "vacant",
       kindTag: ar ? "شاغرة" : "Vacant",
+      bandLabel: ar ? "شاغرة" : "Vacant",
       empLine: "",
+      hireStamp: "",
+      hireTip: "",
       grade: "",
       gradeTip: "",
       gradeIndex: -1,

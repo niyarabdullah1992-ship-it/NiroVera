@@ -9,7 +9,7 @@ const STYLE = {
   background: "none",
   border: "none",
   padding: 0,
-  color: "#64748B",
+  color: "var(--nv-muted)",
   fontSize: 13,
   lineHeight: 1.2,
   cursor: "pointer",

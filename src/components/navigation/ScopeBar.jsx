@@ -1,7 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { Bell } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { useRailSide } from "@/lib/railSide";
@@ -9,12 +8,14 @@ import useStationSwitcher, { OPEN_STATION_SWITCH_EVENT } from "@/hooks/useStatio
 import StationQuickSwitch from "@/components/navigation/StationQuickSwitch";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import BranchNoticePanel from "@/components/notifications/BranchNoticePanel";
+import { Bell, MapPin } from "lucide-react";
 import { isUrgentNotification } from "@/lib/notificationKind";
-import { isManagerUnit, stationParentId } from "@/lib/stationTree";
-import { requestSelfEmployee } from "@/lib/employeeFileView";
+import { isManagerUnit } from "@/lib/stationTree";
 import { buildBranchNotices } from "@/lib/managerScopeChips";
 import { setStationScope } from "@/lib/stationScopeStore";
 import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
+import { hrManagerForStation } from "@/lib/hrTree";
+import { actingAtStation, workplaceManagerDisplay } from "@/lib/orgStructureLog";
 
 const MONO = "'IBM Plex Mono', monospace";
 
@@ -29,52 +30,44 @@ function branchWord(count, ar) {
 function CountPhrase({ count, ar }) {
   const word = branchWord(count, ar);
   if (ar && (count === 1 || count === 2)) {
-    return <span style={{ color: "#555C66", fontSize: 12 }}>{count === 1 ? "فرع واحد" : "فرعان"}</span>;
+    return <span style={{ color: "var(--nv-ink3)", fontSize: 12 }}>{count === 1 ? "فرع واحد" : "فرعان"}</span>;
   }
   return (
-    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4, color: "#555C66", fontSize: 12 }}>
+    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4, color: "var(--nv-ink3)", fontSize: 12 }}>
       <span dir="ltr" style={{ fontFamily: MONO, unicodeBidi: "isolate" }}>{count}</span>
       <span>{word}</span>
     </span>
   );
 }
 
-function administrationName(employee, stations) {
-  const list = Array.isArray(stations) ? stations : [];
-  const byId = new Map(list.map((station) => [String(station.id), station]));
-  const stationId = String(employee?.stationId || "").trim();
-  const home = stationId ? byId.get(stationId) : null;
-  const department = String(employee?.profile?.department || "").trim();
-  if (department) return department;
-  if (home && isManagerUnit(home) && home.name) return String(home.name);
-  let cursor = home;
-  const seen = new Set();
-  while (cursor) {
-    const parentId = stationParentId(cursor);
-    if (!parentId || seen.has(parentId)) break;
-    seen.add(parentId);
-    const parent = byId.get(String(parentId));
-    if (!parent) break;
-    if (isManagerUnit(parent) && parent.name) return String(parent.name);
-    cursor = parent;
-  }
-  return home?.name ? String(home.name) : "";
-}
-
 const face = {
   display: "inline-flex",
   alignItems: "center",
   gap: 8,
-  height: 34,
-  minHeight: 34,
+  height: 32,
+  minHeight: 32,
   padding: "0 12px",
-  borderRadius: 10,
-  border: "1px solid #C5CEC9",
-  background: "#fff",
+  borderRadius: 9,
+  border: "1px solid var(--nv-line, #E4E9E6)",
+  background: "var(--nv-card)",
   cursor: "pointer",
   fontFamily: "inherit",
-  color: "#111418",
+  color: "var(--nv-ink)",
 };
+
+function myStationLine(data, user, ar) {
+  const vacant = ar ? "شاغر" : "Vacant";
+  const station = (data?.stations || []).find((item) => String(item.id) === String(user?.stationId || ""));
+  const people = data?.employees || [];
+  const acting = station ? actingAtStation(data, station.id) : null;
+  const manager = workplaceManagerDisplay(station, people);
+  const hr = station ? hrManagerForStation(data, station.id) : null;
+  return {
+    station: station?.name || vacant,
+    manager: acting?.employee?.name || manager.managerName || vacant,
+    hr: hr?.name || vacant,
+  };
+}
 
 /**
  * One scope bar for every section.
@@ -88,6 +81,7 @@ export default function ScopeBar({
   onOpenNotif,
   onDismissNotif,
   onMarkAllNotifs,
+  violationCount = 0,
 }) {
   const { t, lang } = useI18n();
   const ar = lang === "ar";
@@ -164,21 +158,24 @@ export default function ScopeBar({
   const urgent = manage
     ? branchNotices.filter((item) => item.band === "urgent").reduce((total, item) => total + item.count, 0)
     : notifItems.filter((item) => !item.read && isUrgentNotification(item.text)).length;
-
-  const employeeScope = administrationName(
-    requestSelfEmployee(currentUser, data?.employees || []) || currentUser,
-    data?.stations || stations,
+  const personalUnread = notifItems.filter((item) => !item.read).length;
+  const badgeCount = manage ? urgent : personalUnread;
+  const mine = useMemo(
+    () => (manage ? null : myStationLine(data, currentUser, ar)),
+    [manage, data, currentUser, ar],
   );
+
   const openBranchNotice = (item) => {
     if (item?.stationId) setStationScope(item.stationId);
     onCloseNotif?.();
     if (item?.route) navigate(item.route);
   };
+  const violated = violationCount > 0;
   return (
-    <div className="nv-scope-bar" style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 1, minWidth: 0 }}>
+    <div className="nv-scope-bar" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flex: "1 1 auto", minWidth: 0, width: "100%" }}>
       {manage ? (
         <>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#555C66", flexShrink: 0 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-muted)", flexShrink: 0 }}>
             {ar ? "نطاقك" : "Your scope"}
           </span>
           <div ref={rootRef} style={{ position: "relative", flexShrink: 0 }}>
@@ -189,36 +186,21 @@ export default function ScopeBar({
               aria-expanded={open}
               aria-haspopup="dialog"
               title={ar ? "نطاق الفروع · Ctrl+Shift+K" : "Station scope · Ctrl+Shift+K"}
-              style={{ ...face, maxWidth: 280, fontWeight: 700 }}
+              style={{ ...face, maxWidth: 320, minWidth: 200, fontWeight: 700 }}
             >
-              <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: "#0B8A4F", flexShrink: 0 }} />
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: "#111418", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--nv-btn-fill)", flexShrink: 0 }} />
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {label}
               </span>
               {scope === "all" ? <CountPhrase count={branchCount} ar={ar} /> : stationCode ? (
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: "#555C66", unicodeBidi: "isolate", flexShrink: 0 }}>{stationCode}</span>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: "var(--nv-muted)", unicodeBidi: "isolate", flexShrink: 0 }}>{stationCode}</span>
               ) : null}
-              <span style={{ color: "#555C66", fontSize: 10, flexShrink: 0 }}>▾</span>
+              <span style={{ color: "var(--nv-muted)", fontSize: 10, flexShrink: 0 }}>▾</span>
             </button>
             <StationQuickSwitch anchorRef={rootRef} open={open && canSwitch} onClose={() => setOpen(false)} />
           </div>
         </>
-      ) : (
-        <>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#555C66", flexShrink: 0 }}>
-            {ar ? "نطاقك" : "Your scope"}
-          </span>
-          <span
-            title={ar ? "الإدارة التي تتبعها" : "The administration you belong to"}
-            style={{ ...face, maxWidth: 280, fontWeight: 700, cursor: "default" }}
-          >
-            <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: "#0B8A4F", flexShrink: 0 }} />
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: "#111418", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {employeeScope || "—"}
-            </span>
-          </span>
-        </>
-      )}
+      ) : null}
 
       <button
         ref={notifBtnRef}
@@ -230,14 +212,14 @@ export default function ScopeBar({
       >
         <Bell style={{ width: 15, height: 15 }} strokeWidth={1.75} />
         <span>{manage ? (ar ? "الإشعارات" : "Notifications") : (ar ? "إشعاراتي" : "My notifications")}</span>
-        {urgent > 0 ? (
+        {badgeCount > 0 ? (
           <span dir="ltr" style={{
             minWidth: 18,
             height: 18,
             padding: "0 5px",
             borderRadius: 999,
-            background: "#9B2335",
-            color: "#fff",
+            background: manage ? "#9B2335" : "#C8A45A",
+            color: manage ? "#fff" : "#111418",
             fontFamily: MONO,
             fontSize: 10.5,
             fontWeight: 600,
@@ -247,13 +229,56 @@ export default function ScopeBar({
             unicodeBidi: "isolate",
           }}
           >
-            {urgent > 9 ? "9+" : urgent}
+            {badgeCount > 9 ? "9+" : badgeCount}
           </span>
         ) : null}
       </button>
+      {!manage && mine ? (
+        <span
+          title={ar ? "المحطة التي تتبع لها" : "The station you belong to"}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            height: 32,
+            padding: "0 12px",
+            borderRadius: 9,
+            border: "1px solid var(--nv-line, #E4E9E6)",
+            background: "var(--nv-card)",
+            fontSize: 12.5,
+            color: "var(--nv-ink, #111418)",
+            whiteSpace: "nowrap",
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <MapPin style={{ width: 14, height: 14, flexShrink: 0 }} strokeWidth={2.2} />
+          <span style={{ fontSize: 11, color: "var(--nv-ok-ink, #2F6B43)" }}>{ar ? "محطتي" : "My station"}</span>
+          <strong style={{ fontWeight: 700 }}>{mine.station}</strong>
+          <span aria-hidden style={{ width: 1, height: 14, background: "var(--nv-ok-line, #BCDFCB)", flexShrink: 0 }} />
+          <span style={{ fontSize: 11, color: "var(--nv-ink3, #555C66)" }}>{ar ? "مدير الفرع" : "Branch manager"}</span>
+          <strong style={{ fontWeight: 600, fontSize: 12 }}>{mine.manager}</strong>
+          <span aria-hidden style={{ width: 1, height: 14, background: "var(--nv-ok-line, #BCDFCB)", flexShrink: 0 }} />
+          <span style={{ fontSize: 11, color: "var(--nv-ink3, #555C66)" }}>{ar ? "الموارد البشرية" : "Human resources"}</span>
+          <strong style={{ fontWeight: 600, fontSize: 12 }}>{mine.hr}</strong>
+        </span>
+      ) : null}
       {notifOpen && notifBox && typeof document !== "undefined"
         ? createPortal(
-          <div ref={notifPanelRef} style={{ position: "fixed", top: notifBox.top, left: notifBox.left, width: notifBox.width, zIndex: 82 }}>
+          <div
+            ref={notifPanelRef}
+            style={{
+              position: "fixed",
+              top: notifBox.top,
+              left: notifBox.left,
+              width: notifBox.width,
+              zIndex: 82,
+              borderTop: `3px solid ${manage ? "#0B3D27" : "#C8A45A"}`,
+              borderRadius: 8,
+              overflow: "hidden",
+              boxShadow: "0 18px 44px rgba(12,20,16,.18)",
+            }}
+          >
             {manage ? (
               <BranchNoticePanel
                 items={branchNotices}
@@ -282,6 +307,27 @@ export default function ScopeBar({
           document.body,
         )
         : null}
+      <span
+        className="nv-compliance"
+        data-violated={violated ? "true" : "false"}
+        style={{
+          marginInlineStart: "auto",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 7,
+          height: 28,
+          padding: "0 12px",
+          borderRadius: 999,
+          fontSize: 11.5,
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+        }}
+      >
+        <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: violated ? "#9B2335" : "#3C7D50", flexShrink: 0 }} />
+        {violated
+          ? (ar ? `${violationCount} مخالفة` : `${violationCount} ${violationCount === 1 ? "violation" : "violations"}`)
+          : (ar ? "متوافق مع نظام العمل ولائحته التنفيذية" : "Compliant with the Saudi Labor Law")}
+      </span>
     </div>
   );
 }

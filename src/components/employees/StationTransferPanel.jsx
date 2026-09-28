@@ -196,7 +196,7 @@ export default function StationTransferPanel({
                   flexWrap: "wrap",
                   alignItems: "baseline",
                   padding: "8px 0",
-                  borderTop: "1px solid #F1F5F9",
+                  borderTop: "1px solid var(--nv-line)",
                   fontSize: "11px",
                   color: MUTED,
                 }}

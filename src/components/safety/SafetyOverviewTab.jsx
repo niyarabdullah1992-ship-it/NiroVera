@@ -49,6 +49,7 @@ export default function SafetyOverviewTab({
   station, rec, canEdit, canApprove, approvalIssues, lang,
   onUpdate, onCloseHazard, onApprove, onRevokeApproval, onIncident,
   pane = "all",
+  listReports = true,
 }) {
   const ar = lang === "ar";
   const L = (a, e) => (ar ? a : e);
@@ -208,7 +209,7 @@ export default function SafetyOverviewTab({
             style={{
               position: "relative",
               borderRadius: 11,
-              border: "1px solid #BBF7D0",
+              border: "1px solid var(--nv-ok-line)",
               background: "var(--nv-ok-soft)",
               overflow: "hidden",
             }}
@@ -227,12 +228,12 @@ export default function SafetyOverviewTab({
                 padding: "7px 9px",
               }}
             >
-              <span style={{ fontSize: 11, fontWeight: 600, color: "#15803D" }}>{label} ✓</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)" }}>{label} ✓</span>
               {!locked && (
                 <button
                   type="button"
                   onClick={onClear}
-                  style={{ border: "none", background: "transparent", color: "#DC2626", cursor: "pointer", padding: 2 }}
+                  style={{ border: "none", background: "transparent", color: "var(--nv-bad-ink)", cursor: "pointer", padding: 2 }}
                   aria-label={L("إزالة", "Remove")}
                 >
                   <Trash2 style={{ width: 13, height: 13 }} strokeWidth={1.75} />
@@ -254,7 +255,7 @@ export default function SafetyOverviewTab({
               justifyContent: "center",
               gap: 6,
               borderRadius: 11,
-              border: "1px dashed #CBD5E1",
+              border: "1px dashed var(--nv-line)",
               background: CARD,
               color: MUTED,
               cursor: busy || locked ? "not-allowed" : "pointer",
@@ -264,9 +265,9 @@ export default function SafetyOverviewTab({
             }}
           >
             {busy ? (
-              <Loader2 style={{ width: 18, height: 18, color: "#1E9E63" }} className="animate-spin" strokeWidth={1.75} />
+              <Loader2 style={{ width: 18, height: 18, color: "var(--nv-ok-ink)" }} className="animate-spin" strokeWidth={1.75} />
             ) : (
-              <Camera style={{ width: 18, height: 18, color: "#1E9E63" }} strokeWidth={1.75} />
+              <Camera style={{ width: 18, height: 18, color: "var(--nv-ok-ink)" }} strokeWidth={1.75} />
             )}
             <span style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>
               {busy ? L("جارٍ الرفع…", "Uploading…") : label}
@@ -301,7 +302,7 @@ export default function SafetyOverviewTab({
             flexDirection: "column",
             gap: 16,
             minWidth: 0,
-            outline: openHazardCount ? "1px solid #FDE68A" : "none",
+            outline: openHazardCount ? "1px solid var(--nv-line)" : "none",
           }}
         >
           <div>
@@ -314,8 +315,8 @@ export default function SafetyOverviewTab({
                   padding: "0 7px",
                   borderRadius: 20,
                   background: openHazardCount ? "var(--tint-amber-bg)" : "var(--nv-ok-soft)",
-                  color: openHazardCount ? "#B45309" : "#15803D",
-                  border: `1px solid ${openHazardCount ? "#FDE68A" : "#BBF7D0"}`,
+                  color: openHazardCount ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)",
+                  border: `1px solid ${openHazardCount ? "var(--nv-line)" : "var(--nv-ok-line)"}`,
                   fontSize: 11,
                   fontWeight: 700,
                   display: "inline-flex",
@@ -335,9 +336,9 @@ export default function SafetyOverviewTab({
                   padding: "8px 10px",
                   borderRadius: 9,
                   background: "var(--tint-amber-bg)",
-                  border: "1px solid #FDE68A",
+                  border: "1px solid var(--nv-line)",
                   fontSize: 11,
-                  color: "#92400E",
+                  color: "var(--nv-warn-ink)",
                   lineHeight: 1.5,
                 }}
               >
@@ -363,7 +364,7 @@ export default function SafetyOverviewTab({
                       gap: 10,
                       padding: "11px 12px",
                       borderRadius: 11,
-                      border: "1px solid #E2E8F0",
+                      border: "1px solid var(--nv-line)",
                       background: SURFACE,
                     }}
                   >
@@ -376,7 +377,7 @@ export default function SafetyOverviewTab({
                           height: 44,
                           borderRadius: 9,
                           objectFit: "cover",
-                          border: "1px solid #E2E8F0",
+                          border: "1px solid var(--nv-line)",
                           flexShrink: 0,
                         }}
                       />
@@ -387,8 +388,8 @@ export default function SafetyOverviewTab({
                           height: 44,
                           borderRadius: 9,
                           background: "var(--tint-amber-bg)",
-                          border: "1px solid #FDE68A",
-                          color: "#B45309",
+                          border: "1px solid var(--nv-line)",
+                          color: "var(--nv-warn-ink)",
                           display: "inline-flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -411,9 +412,9 @@ export default function SafetyOverviewTab({
                               height: 20,
                               padding: "0 7px",
                               borderRadius: 20,
-                              background: "#EFF6FF",
-                              border: "1px solid #BFDBFE",
-                              color: "#1D4ED8",
+                              background: "var(--nv-accent-soft)",
+                              border: "1px solid var(--nv-line)",
+                              color: "var(--nv-ok-ink)",
                               fontSize: 10,
                               fontWeight: 700,
                               fontFamily: "'IBM Plex Sans',sans-serif",
@@ -452,7 +453,7 @@ export default function SafetyOverviewTab({
                   style={{
                     padding: "22px 14px",
                     borderRadius: 11,
-                    border: "1px dashed #CBD5E1",
+                    border: "1px dashed var(--nv-line)",
                     background: SURFACE,
                     textAlign: "center",
                   }}
@@ -467,13 +468,53 @@ export default function SafetyOverviewTab({
               )}
             </div>
 
+            {listReports ? <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: NAVY }}>{L("بلاغات السلامة", "Safety reports")}</p>
+              {(rec?.incidentLog || []).filter((item) => item?.status !== "closed").length ? (
+                (rec.incidentLog || []).filter((item) => item?.status !== "closed").map((item) => {
+                  const card = item.card || {};
+                  const level = ar ? card.levelAr : (card.levelEn || card.levelAr);
+                  const category = ar ? card.categoryAr : (card.categoryEn || card.categoryAr);
+                  const who = item.anonymous ? L("بلاغ بلا اسم", "Anonymous") : (item.by || "—");
+                  const tone = card.levelTone === "crit"
+                    ? { color: "#fff", background: "#9B2335" }
+                    : card.levelTone === "bad"
+                      ? { color: "var(--nv-bad-ink)", background: "var(--nv-bad-soft)" }
+                      : card.levelTone === "ok"
+                        ? { color: "var(--nv-ok-ink)", background: "var(--nv-ok-soft)" }
+                        : { color: "var(--nv-warn-ink)", background: "var(--nv-warn-soft)" };
+                  return (
+                    <div key={item.id || item.at} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 12px", borderRadius: 12, border: "1px solid var(--nv-line)", background: SURFACE }}>
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{item.description || card.what || "—"}</span>
+                        <span style={{ fontSize: 11, color: MUTED }}>
+                          <span style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", direction: "ltr", unicodeBidi: "isolate" }}>{card.code || "—"}</span>
+                          {" · "}
+                          {category || "—"}
+                          {" · "}
+                          {card.where || "—"}
+                          {" · "}
+                          {who}
+                        </span>
+                      </div>
+                      <span style={{ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none", ...tone }}>
+                        {level || L("مفتوح", "Open")}
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <p style={{ margin: 0, padding: "14px 12px", textAlign: "center", fontSize: 14, color: MUTED, border: "1px dashed var(--nv-line)", borderRadius: 12 }}>—</p>
+              )}
+            </div> : null}
+
             {canEdit && (
               <div
                 style={{
                   marginTop: 12,
                   padding: 12,
                   borderRadius: 12,
-                  border: "1px solid #E2E8F0",
+                  border: "1px solid var(--nv-line)",
                   background: CARD,
                   display: "flex",
                   flexDirection: "column",
@@ -526,7 +567,7 @@ export default function SafetyOverviewTab({
             <div
               style={{
                 borderRadius: 12,
-                border: "1px solid #E2E8F0",
+                border: "1px solid var(--nv-line)",
                 background: SURFACE,
                 padding: 14,
                 display: "flex",
@@ -541,7 +582,7 @@ export default function SafetyOverviewTab({
                   </p>
                   <p style={{ margin: "3px 0 0", fontSize: 11, color: MUTED }}>{hazardLabel(closingHazard)}</p>
                   {typeof closingHazard === "object" && closingHazard.openedAt ? (
-                    <p style={{ margin: "4px 0 0", fontSize: 11, fontWeight: 600, color: "#1D4ED8" }}>
+                    <p style={{ margin: "4px 0 0", fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)" }}>
                       {L(
                         `مدة الفتح: ${formatOpenDuration(closingHazard.openedAt, lang, nowTick)}`,
                         `Open duration: ${formatOpenDuration(closingHazard.openedAt, lang, nowTick)}`
@@ -628,18 +669,18 @@ export default function SafetyOverviewTab({
 
           {canEdit && (
             <div style={{
-              borderTop: "1px solid #F1F5F9",
+              borderTop: "1px solid var(--nv-bad-line)",
               paddingTop: 14,
               padding: 12,
               borderRadius: 12,
-              border: "1px solid #FECACA",
-              background: "#FEF2F2",
+              border: "1px solid var(--nv-bad-line)",
+              background: "var(--nv-bad-soft)",
               display: "flex",
               flexDirection: "column",
               gap: 8,
             }}
             >
-              <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#991B1B" }}>
+              <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--nv-bad-ink)" }}>
                 <Siren style={{ width: 15, height: 15 }} strokeWidth={1.75} />
                 {L("تسجيل حادث", "Log incident")}
               </p>
@@ -668,7 +709,7 @@ export default function SafetyOverviewTab({
                   {L("تسجيل", "Log")}
                 </button>
               </div>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11, lineHeight: 1.5, color: "#7F1D1D", cursor: "pointer" }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11, lineHeight: 1.5, color: "var(--nv-bad-ink)", cursor: "pointer" }}>
                 <input
                   type="checkbox"
                   checked={incidentAck}
@@ -740,7 +781,7 @@ export default function SafetyOverviewTab({
                   display: "flex",
                   flexDirection: "column",
                   borderRadius: 11,
-                  border: "1px solid #E2E8F0",
+                  border: "1px solid var(--nv-line)",
                   overflow: "hidden",
                   background: SURFACE,
                 }}
@@ -761,7 +802,7 @@ export default function SafetyOverviewTab({
                         width: "100%",
                         padding: "11px 12px",
                         border: "none",
-                        borderTop: i === 0 ? "none" : "1px solid #E2E8F0",
+                        borderTop: i === 0 ? "none" : "1px solid var(--nv-line)",
                         background: on ? lv.soft : "transparent",
                         color: on ? lv.fg : MUTED,
                         fontSize: 12,

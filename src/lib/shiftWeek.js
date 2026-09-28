@@ -72,9 +72,9 @@ export const SHIFT_PALETTE = [
   { color: "var(--nv-line)", bg: "var(--nv-soft)", fg: "var(--nv-ink2)" },
 ];
 
-export const REST_STYLE = { color: "var(--nv-line2)", bg: "var(--nv-soft)", fg: "var(--nv-ink3)" };
-/** Unified leave paint — dark brown, never green (green stays for ملفي decision glow). */
-export const LEAVE_STYLE = { color: "#4a2c14", bg: "#efe0cc", fg: "#3d2410" };
+export const REST_STYLE = { color: "var(--nv-line)", bg: "var(--nv-shift-rest)", fg: "var(--nv-ink3)" };
+/** Leave cells use the gold warning pair. */
+export const LEAVE_STYLE = { color: "var(--nv-warn-fill)", bg: "var(--nv-warn-soft)", fg: "var(--nv-warn-ink)" };
 /** Article chip sitting on a leave mark — light brown, not mint and not navy. */
 export const LEAVE_CITE_STYLE = { color: "#6b4423", bg: "#f3e6d4", fg: "#6b4423" };
 
@@ -599,9 +599,15 @@ export function isEveningShift(shift) {
 export function shiftTypeStyle(shift, index = 0) {
   if (!shift) return REST_STYLE;
   const label = String(shift.label || "");
-  if (isNightShift(shift) || /ليل|night/i.test(label)) return SHIFT_PALETTE[2];
-  if (/مساء|evening/i.test(label)) return SHIFT_PALETTE[1];
-  if (/صباح|morning/i.test(label)) return SHIFT_PALETTE[0];
+  if (isNightShift(shift) || /ليل|night/i.test(label)) {
+    return { color: "var(--nv-line)", bg: "var(--nv-shift-night)", fg: "var(--nv-ink)" };
+  }
+  if (/مساء|evening/i.test(label) || isEveningShift(shift)) {
+    return { color: "var(--nv-warn-line)", bg: "var(--nv-shift-evening)", fg: "var(--nv-ink)" };
+  }
+  if (/صباح|morning/i.test(label) || isMorningShift(shift)) {
+    return { color: "var(--nv-ok-line)", bg: "var(--nv-shift-morning)", fg: "var(--nv-ok-ink)" };
+  }
   return SHIFT_PALETTE[index % SHIFT_PALETTE.length];
 }
 

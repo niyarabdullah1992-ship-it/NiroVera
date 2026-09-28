@@ -116,7 +116,7 @@ export default function ConsentDocStage({
 
   if (!file?.url) {
     return (
-      <div style={{ padding: "12px 14px", border: "1px dashed #c7ccd6", fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
+      <div style={{ padding: "12px 14px", border: "1px dashed var(--nv-line)", fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
         {ar ? "لا ملف للعرض." : "No file to show."}
       </div>
     );
@@ -127,7 +127,7 @@ export default function ConsentDocStage({
       <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
         {ar ? "حمّل الملف، وقّعه يدوياً أو عبر قسم التوقيع منفصلاً، ثم ارفع النسخة هنا." : "Download the file, sign it by hand or separately in Digital signing, then upload the copy here."}
       </span>
-      <a href={file.url} download={file.name || (ar ? "مرفق-الموافقة" : "consent-file")} style={{ fontSize: 11, fontWeight: 600, color: "#137a49", textDecoration: "none" }}>
+      <a href={file.url} download={file.name || (ar ? "مرفق-الموافقة" : "consent-file")} style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)", textDecoration: "none" }}>
         {ar ? "نزّل الملف المصدر" : "Download the source file"}
       </a>
     </div>
@@ -154,14 +154,14 @@ export default function ConsentDocStage({
         <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
           {ar ? "تعذّرت المعاينة المباشرة. حمّل الملف، وقّعه يدوياً أو عبر قسم التوقيع منفصلاً، ثم ارفع النسخة هنا." : "Live preview failed. Download the file, sign it by hand or separately in Digital signing, then upload the copy here."}
         </span>
-        {file.url ? <a href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 600, color: "#137a49" }}>{ar ? "افتح الملف" : "Open the file"}</a> : null}
+        {file.url ? <a href={file.url} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)" }}>{ar ? "افتح الملف" : "Open the file"}</a> : null}
         {placing && onMark && !placed ? (
-          <button type="button" onClick={() => onMark(defaultConsentMark())} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 12px", border: "1px solid #14213d", background: "#14213d", color: "#fff", cursor: "pointer", alignSelf: "flex-start" }}>
+          <button type="button" onClick={() => onMark(defaultConsentMark())} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 12px", border: "1px solid var(--nv-navy)", background: "var(--nv-navy)", color: "#fff", cursor: "pointer", alignSelf: "flex-start" }}>
             {ar ? "ضع التوقيع أسفل الصفحة" : "Place the mark at the foot"}
           </button>
         ) : null}
         {!placing && !readAt && onRead ? (
-          <button type="button" onClick={onRead} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 12px", border: "1px solid #14213d", background: "#14213d", color: "#fff", cursor: "pointer", alignSelf: "flex-start" }}>
+          <button type="button" onClick={onRead} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 12px", border: "1px solid var(--nv-navy)", background: "var(--nv-navy)", color: "#fff", cursor: "pointer", alignSelf: "flex-start" }}>
             {ar ? "قرأت الملف" : "I read the file"}
           </button>
         ) : null}

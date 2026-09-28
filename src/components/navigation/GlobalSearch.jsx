@@ -7,6 +7,7 @@ import { BORDER, MUTED, NAVY, NAVY_FILL, dialogOverlay, CARD } from "@/lib/platf
 import { identityFrame } from "@/components/shared/IdentityCard";
 import { openHireDrawer } from "@/lib/orgHire";
 import { searchGroupLabel } from "@/lib/suiteNav";
+import { employeeMoneyHref, useRailSide } from "@/lib/railSide";
 
 function groupLabel(category, ar) {
   return searchGroupLabel(category, ar ? "ar" : "en");
@@ -16,6 +17,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const navigate = useNavigate();
+  const railSide = useRailSide();
   const ar = lang === "ar";
 
   useEffect(() => {
@@ -59,7 +61,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
         label: item.label,
         subtitle: groupLabel(item.category, ar),
         icon: item.icon,
-        to: item.to,
+        to: railSide === "employee" ? (employeeMoneyHref(item.appId || item.to) || item.to) : item.to,
       }));
 
     const employeeScope = canPeople ? visibleEmployees(currentUser, data) : [currentUser].filter(Boolean);
@@ -89,7 +91,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
       : [];
 
     return [...(hireHit ? hireAction : []), ...pages, ...employees, ...stations].slice(0, 8);
-  }, [query, items, data, lang, currentUser, ar]);
+  }, [query, items, data, lang, currentUser, ar, railSide]);
 
   useEffect(() => {
     setActive(0);

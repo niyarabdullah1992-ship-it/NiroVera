@@ -13,8 +13,11 @@ import {
   setOwnerPayrollEnabled,
   updatePayrollItem,
   setItemPaid,
+  refreshOwnPayrollDerivation,
   syncPayrollFromProfiles,
 } from "@/lib/payroll";
+import { facePayrollItem } from "@/lib/payrollWageSync";
+import { slipRows } from "@/components/payroll/PayrollSlipBoard";
 import { printReport } from "@/lib/printReport";
 import PayrollTableRows from "@/components/payroll/PayrollTableRows";
 import OwnerPayrollToggle from "@/components/payroll/OwnerPayrollToggle";
@@ -38,19 +41,18 @@ import {
   backfillLegacyDeduction,
   disputeDeductionLine,
   deductionLines,
-  sourceLabel,
 } from "@/lib/payrollDeductions";
-import DeductionDisputeForm from "@/components/payroll/DeductionDisputeForm";
+import PayrollMineDeductions from "@/components/payroll/PayrollMineDeductions";
 import { notifyMoney } from "@/lib/moneyNotifications";
 import useStationScope from "@/hooks/useStationScope";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { pageKicker } from "@/lib/moduleMeta";
-import { article90MaxDeduction, lineComponents, OT_RATE } from "@/lib/payrollDerivations";
+import { article90MaxDeduction, lineComponents } from "@/lib/payrollDerivations";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { BORDER, MUTED, WARN, ui, SURFACE, tableShell } from "@/lib/platformStyles";
 import { brandReportColor } from "@/lib/pdfTheme";
 import FinanceViewSwitch from "@/components/shared/FinanceViewSwitch";
-import { MANAGE, SELF, SELF_VIEW_NOTE, canManageSurface, resolveFinanceView } from "@/lib/financeRights";
+import { MANAGE, SELF, canManageSurface, resolveFinanceView } from "@/lib/financeRights";
 import { useRailSide } from "@/lib/railSide";
 import { PAYROLL_DENY, payrollDenyReason } from "@/lib/payrollRights";
 
@@ -77,7 +79,8 @@ export default function Payroll() {
   const view = resolveFinanceView("payroll", currentUser, data, searchParams.get("view"), railSide);
   const layers = view === MANAGE ? MANAGE_LAYERS : SELF_LAYERS;
   const homeTab = layers[0];
-  const requested = searchParams.get("tab");
+  const requestedRaw = searchParams.get("tab");
+  const requested = requestedRaw === "payslip" ? "slip" : requestedRaw;
   const tab = layers.includes(requested) ? requested : homeTab;
   const month = liveMonth;
 
@@ -102,6 +105,7 @@ export default function Payroll() {
     // Materialising the month's run is a management write. The personal view reads
     // whatever run already exists and says so plainly when there is none.
     if (canView && view === MANAGE && company) ensurePayrollRun(company.id, liveMonth);
+    if (company && view === SELF) refreshOwnPayrollDerivation(company.id, liveMonth);
   }, [company?.id, liveMonth, canView, includeOwner, view]);
 
   useEffect(() => {
@@ -117,7 +121,7 @@ export default function Payroll() {
   const employeeStationId = (employee) => stationIdOf(stationIdForTreeEmployee(data, employee.id) || employee.stationId);
   const payrollEmployees = (data.employees || []).filter((employee) => isPayrollEmployee(employee, includeOwner) && (payrollScope === null || payrollScope.includes(employeeStationId(employee))));
   const ownerIds = new Set(includeOwner ? [] : (data.employees || []).filter((employee) => employee.role === "owner").map((employee) => employee.id));
-  const employeeForItem = (item) => payrollEmployees.find((employee) => employee.id === item.employeeId) || {
+  const employeeForItem = (item) => (data.employees || []).find((employee) => employee.id === item.employeeId) || payrollEmployees.find((employee) => employee.id === item.employeeId) || {
     id: item.employeeId,
     name: item.employeeName || (ar ? "موظف سابق" : "Former employee"),
     position: item.employeePosition || "",
@@ -136,9 +140,14 @@ export default function Payroll() {
   // The personal view is a single line: the one charged to the signed-in person.
   // Station scope has nothing to do with it, and nobody else's wage passes through.
   const myItems = items.filter((item) => String(item.employeeId || "") === String(currentUser?.id || ""));
-  const visible = view === MANAGE ? managedVisible : myItems;
-  const myItem = myItems[0] || null;
-  const myDeductionCount = deductionLines(myItem).length;
+  const faceOf = (item) => facePayrollItem(
+    item,
+    (data.employees || []).find((employee) => employee.id === item.employeeId),
+    { otDecisions: data?.otDecisions, month },
+  );
+  const myFaced = myItems.map(faceOf);
+  const visible = view === MANAGE ? managedVisible : myFaced;
+  const myItem = myFaced[0] || null;
   const paidCount = visible.filter((i) => i.paid).length;
   const issueCount = visible.filter((i) => payrollItemIssues(i).length).length;
   const branding = data.reportBranding || {};
@@ -162,8 +171,8 @@ export default function Payroll() {
       ? "كل بند يحمل مصدراً وسبباً. الغياب مشتقّ من الحضور — تصحيحه من التقويم."
       : "Every line carries a source and a reason. Absence is derived from attendance — correct it on the calendar.",
     gosi: ar
-      ? "الأجر الخاضع = الأساسي + البدلات بسقف 45,000. السعودي 9.75٪ و11.75٪. الوافد: 2٪ أخطار مهنية على الشركة."
-      : "Contributory wage = base + allowances, capped at 45,000. Saudi 9.75% / 11.75%. Expat: 2% occupational hazard on the company.",
+      ? "الأجر الخاضع = الأساسي + السكن + النقل + أخرى + الليلي، بسقف 45,000. الإضافي والمكافأة خارجه. المشترك القديم 9.75٪ و11.75٪. المشترك الجديد بحسب جدول المعاشات الساري في شهر المسير. تاريخ التسجيل الفارغ يُبقي حصة السعودي 9.75٪. الوافد: 2٪ أخطار مهنية على الشركة."
+      : "Contributory wage = base + housing + transport + other + night, capped at 45,000. Overtime and bonus stay outside. Old subscriber 9.75% / 11.75%. A new subscriber uses the annuity band in force for the payroll month. An empty registration date keeps a Saudi at 9.75%. Expat: 2% occupational hazard on the company.",
     eos: ar
       ? "نصف أجر شهر لكل سنة من الخمس الأولى، وأجر شهر لكل سنة تالية — التزام يُراكم ولا يُصرف إلا بانتهاء الخدمة."
       : "Half a month per year for the first five, a full month thereafter — accrued, paid only at exit.",
@@ -206,8 +215,9 @@ export default function Payroll() {
   };
 
   const exportPayslip = (item) => {
-    const e = employeeForItem(item);
-    const parts = lineComponents(item);
+    const faced = faceOf(item);
+    const e = employeeForItem(faced);
+    const parts = lineComponents(faced);
     printReport({
       title: ar ? "قسيمة راتب" : "Payslip",
       companyName: company.name,
@@ -215,36 +225,20 @@ export default function Payroll() {
       dir,
       logoUrl: branding.logoUrl || "",
       color: brandReportColor(branding.color),
-      // Payment status is a state, not an amount: left inside the amounts table it was
-      // charted as a zero next to real money in the printed summary.
       stats: [
-        { value: `${netOf(item).toLocaleString("en-US")} ${item.currency}`, label: ar ? "الصافي المحوَّل" : "Net transferred" },
-        { value: item.paid ? (ar ? "مدفوع" : "Paid") : (ar ? "غير مدفوع" : "Unpaid"), label: ar ? "حالة الدفع" : "Payment status" },
+        { value: `${netOf(faced).toLocaleString("en-US")} ${faced.currency}`, label: ar ? "الصافي المحوَّل" : "Net transferred" },
+        { value: faced.paid ? (ar ? "مدفوع" : "Paid") : (ar ? "غير مدفوع" : "Unpaid"), label: ar ? "حالة الدفع" : "Payment status" },
       ],
       sections: [{
         heading: ar ? "تفاصيل الراتب" : "Salary breakdown",
         headers: ar ? ["البند", "المبلغ"] : ["Item", "Amount"],
-        // The printed slip carries the same components as the on-screen one, or the two
-        // documents would disagree about the same wage.
         rows: [
-          [ar ? "الراتب الأساسي" : "Base salary", `${Number(item.base).toLocaleString("en-US")} ${item.currency}`],
-          [ar ? "البدلات" : "Allowances", `${Number(item.allowances).toLocaleString("en-US")} ${item.currency}`],
-          [ar ? "المكافآت" : "Bonus", `${Number(item.bonus).toLocaleString("en-US")} ${item.currency}`],
-          ...(parts.overtimePay > 0
-            ? [[
-                ar
-                  ? `أجر الساعات الإضافية المعتمدة (${parts.overtimeHours} × ${OT_RATE} — المادة 107)`
-                  : `Approved overtime (${parts.overtimeHours}h × ${OT_RATE} — Art. 107)`,
-                `${parts.overtimePay.toLocaleString("en-US")} ${item.currency}`,
-              ]]
-            : []),
-          [ar ? "الخصومات" : "Deductions", `- ${Number(item.deductions).toLocaleString("en-US")} ${item.currency}`],
-          [ar ? "سقف الخصم (المادة 93)" : "Deduction cap (Art. 93)", `${article90MaxDeduction(item).toLocaleString("en-US")} ${item.currency}`],
-          [
-            ar ? "التأمينات — حصة الموظف (خارج سقف المادة 93)" : "GOSI — employee share (outside the Art. 93 cap)",
-            `- ${parts.gosiEmployee.toLocaleString("en-US")} ${item.currency}`,
-          ],
-          [ar ? "الصافي المحوَّل" : "Net transferred", `${netOf(item).toLocaleString("en-US")} ${item.currency}`],
+          ...slipRows(faced, e, parts, ar).map((row) => [
+            row.label,
+            `${row.minus ? "- " : ""}${Number(row.amount || 0).toLocaleString("en-US")} ${faced.currency}`,
+          ]),
+          [ar ? "سقف الخصم (المادة 93)" : "Deduction cap (Art. 93)", `${article90MaxDeduction(faced).toLocaleString("en-US")} ${faced.currency}`],
+          [ar ? "الصافي المحوَّل" : "Net transferred", `${netOf(faced).toLocaleString("en-US")} ${faced.currency}`],
         ],
       }],
     });
@@ -298,20 +292,19 @@ export default function Payroll() {
     <SuiteWorkspaceFrame
       ar={ar}
       kicker={pageKicker("/app/payroll", lang)}
-      title={ar ? "مسير الأجور" : "Wage run"}
-      hint={ar
-        ? "الحضور يغذّي المسير. المسير لا يمسّ أوعية المصروفات والمخزون والأصول، ومطالبة مصروف لا تُصرف من المسير."
-        : "Attendance feeds the run. The run does not touch expense, stock, or asset vessels, and an expense claim is never paid from payroll."}
-      viewNote={view === SELF
-        ? (tab === "slip"
-          ? (ar ? SELF_VIEW_NOTE.payroll.ar : SELF_VIEW_NOTE.payroll.en)
-          : (ar
-            ? "كل بند خصم يحمل مصدره وسببه. إن رأيت بندًا غير صحيح فاعترض عليه هنا — الاعتراض يُسجَّل باسمك ويُبتّ فيه من الإدارة."
-            : "Every deduction line carries its source and reason. If a line looks wrong, object here — the objection is logged in your name and settled by management."))
-        : hints[tab]}
-      legal={ar
+      title={view === SELF ? (ar ? "قسيمتي" : "My payslip") : (ar ? "مسير الأجور" : "Wage run")}
+      hint={view === SELF
+        ? (ar
+          ? "البصمة تغذّي المسير. المصروف والمخزون والعهد في مسار واحد، ولكل مسار سطحه."
+          : "The punch feeds the run. Expenses, stock, and custody each have their own surface.")
+        : (ar
+          ? "الحضور يغذّي المسير. المسير لا يمسّ أوعية المصروفات والمخزون والأصول، ومطالبة مصروف لا تُصرف من المسير."
+          : "Attendance feeds the run. The run does not touch expense, stock, or asset vessels, and an expense claim is never paid from payroll.")}
+      tabTone={view === SELF ? "gold" : "white"}
+      viewNote={view === SELF ? "" : hints[tab]}
+      legal={view === SELF && tab === "slip" ? "" : (ar
         ? "دورة نظامية: تجهيز البنود · المواد 90 و92 و93 و107 · الاعتماد · حماية الأجور خلال 30 يوماً من الاستحقاق."
-        : "Statutory cycle: prepare lines · Art. 90, 92, 93 and 107 · approve · wage protection within 30 days of entitlement."}
+        : "Statutory cycle: prepare lines · Art. 90, 92, 93 and 107 · approve · wage protection within 30 days of entitlement.")}
       tabs={view === MANAGE ? [
         { value: "run", label: ar ? "المسير" : "Run" },
         { value: "att", label: ar ? "الحضور المقفل" : "Locked attendance", count: issueCount },
@@ -325,27 +318,14 @@ export default function Payroll() {
         { value: "archive", label: ar ? "الأرشيف" : "Archive", count: (data?.payrollRuns || []).filter((entry) => entry.month < liveMonth).length },
       ] : [
         { value: "slip", label: ar ? "قسيمتي" : "My payslip" },
-        { value: "deduct", label: ar ? "خصوماتي" : "My deductions", count: myDeductionCount },
+        { value: "deduct", label: ar ? "خصوماتي" : "My deductions" },
       ]}
       tool={tab}
       onTool={setTab}
-      meta={(
+      meta={view === SELF && railSide ? null : (
         <>
           <FinanceViewSwitch ar={ar} view={view} canManage={canManage} showSwitch={!railSide} onChange={setView} />
-          {view === SELF ? (
-            <>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
-                <span style={{ fontSize: 10, color: MUTED }}>{ar ? "صافي راتبي" : "My net"}</span>
-                <span dir="ltr" style={{ fontSize: 15, fontWeight: 700 }}>
-                  {myItem ? `${netOf(myItem).toLocaleString("en-US")} ${myItem.currency}` : "—"}
-                </span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
-                <span style={{ fontSize: 10, color: MUTED }}>{ar ? "دورة هذا الشهر" : "This month’s cycle"}</span>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{monthLabel}</span>
-              </div>
-            </>
-          ) : tab !== "archive" ? (
+          {view === SELF ? null : tab !== "archive" ? (
             <>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
                 <span style={{ fontSize: 10, color: MUTED }}>{ar ? "الموظفون في النطاق" : "People in scope"}</span>
@@ -354,7 +334,7 @@ export default function Payroll() {
               <span style={{ width: 1, height: 30, background: BORDER }} />
               <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
                 <span style={{ fontSize: 10, color: MUTED }}>{ar ? "مدفوع" : "Paid"}</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: paidCount === visible.length && visible.length ? "#137A49" : MUTED }}>{paidCount}/{visible.length}</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: paidCount === visible.length && visible.length ? "var(--nv-ok-ink)" : MUTED }}>{paidCount}/{visible.length}</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
                 <span style={{ fontSize: 10, color: MUTED }}>{ar ? "دورة هذا الشهر" : "This month’s cycle"}</span>
@@ -403,7 +383,7 @@ export default function Payroll() {
       )}
 
       {tab === "gosi" && view === MANAGE && (
-        <PayrollGosiBoard items={visible} employeeForItem={employeeForItem} ar={ar} />
+        <PayrollGosiBoard items={visible} employeeForItem={employeeForItem} ar={ar} month={month} />
       )}
 
       {tab === "eos" && view === MANAGE && (
@@ -411,42 +391,30 @@ export default function Payroll() {
       )}
 
       {tab === "deduct" && view === SELF && (
-        <div style={{ ...tableShell, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <LaborArticleCite ruleId="payroll.deduction.capRatio" ar={ar} showText />
-          {!myItem ? (
-            <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.8 }}>
-              {ar ? "لا بند لك في مسير هذا الشهر بعد." : "You have no line in this month’s run yet."}
-            </p>
-          ) : myDeductionCount === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.8 }}>
-              {ar ? "لا خصم على راتبك هذا الشهر." : "No deduction is charged to your wage this month."}
-            </p>
-          ) : deductionLines(myItem).map((line) => (
-            <div key={line.id} style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{sourceLabel(line.source, ar)}</span>
-                <span dir="ltr" style={{ fontSize: 13, fontWeight: 700 }}>{Number(line.amount || 0).toLocaleString("en-US")} {myItem.currency}</span>
-              </div>
-              <p style={{ margin: "4px 0 0", fontSize: 12, color: MUTED, lineHeight: 1.7 }}>{line.reason || "—"}</p>
-              {line.disputeStatus && line.disputeStatus !== "none" ? (
-                <p style={{ margin: "4px 0 0", fontSize: 11, color: MUTED }}>
-                  {ar ? "حالة الاعتراض: " : "Dispute: "}
-                  {{
-                    open: ar ? "مفتوح — بانتظار الإدارة" : "Open — awaiting management",
-                    accepted: ar ? "قُبل وأُلغي الخصم" : "Accepted — deduction cancelled",
-                    rejected: ar ? "رُفض" : "Rejected",
-                  }[line.disputeStatus] || line.disputeStatus}
-                </p>
-              ) : myItem.paid ? (
-                <p style={{ margin: "4px 0 0", fontSize: 11, color: MUTED }}>
-                  {ar ? "الراتب مدفوع — لا يُفتح اعتراض بعد الصرف." : "The wage is paid — a dispute cannot be opened after payment."}
-                </p>
-              ) : (
-                <DeductionDisputeForm ar={ar} onSubmit={(note) => disputeLine(line.id, note)} />
-              )}
-            </div>
-          ))}
-        </div>
+        <PayrollMineDeductions
+          ar={ar}
+          item={myItem}
+          employee={myItem ? employeeForItem(myItem) : null}
+          onDispute={(lineId, note) => disputeLine(lineId, note)}
+          onExport={(rows) => printReport({
+            title: ar ? "خصوماتي" : "My deductions",
+            companyName: company.name,
+            periodLabel: `${currentUser?.name || ""} — ${monthLabel}`,
+            dir,
+            logoUrl: branding.logoUrl || "",
+            color: brandReportColor(branding.color),
+            sections: [{
+              heading: ar ? "بنود الخصم" : "Deduction lines",
+              headers: ar ? ["البند", "المبلغ", "السبب والسند", "الحالة"] : ["Line", "Amount", "Reason", "Status"],
+              rows: rows.map((row) => [
+                row.sub ? `${row.title} · ${row.sub}` : row.title,
+                row.amountText || `SAR ${Number(row.amount || 0).toLocaleString("en-US")}`,
+                row.reason,
+                row.status.label,
+              ]),
+            }],
+          })}
+        />
       )}
 
       {tab === "slip" && (
@@ -457,6 +425,7 @@ export default function Payroll() {
           employeeForItem={employeeForItem}
           data={data}
           ar={ar}
+          personal={view === SELF}
           onExport={exportPayslip}
         />
       )}

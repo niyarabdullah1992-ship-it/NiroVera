@@ -15,8 +15,8 @@ function chip(on) {
     fontFamily: "inherit",
     fontSize: 11,
     padding: "7px 12px",
-    border: `1px solid ${on ? "var(--nv-navy, #14213d)" : BORDER}`,
-    background: on ? "var(--nv-navy, #14213d)" : CARD,
+    border: `1px solid ${on ? "var(--nv-navy)" : BORDER}`,
+    background: on ? "var(--nv-navy)" : CARD,
     color: on ? "#fff" : MUTED,
     fontWeight: on ? 700 : 400,
     cursor: "pointer",
@@ -132,7 +132,7 @@ export default function RequestArchiveBoard({
                   <input type="checkbox" checked={!!withdrawAck[row.id]} onChange={(e) => setWithdrawAck((m) => ({ ...m, [row.id]: e.target.checked }))} style={{ marginTop: 2 }} />
                   <span>{ar ? "أقرّ بسحب إجازتي المعتمدة قبل موعد بدئها، وإشعار الإدارة لتعديل الجدول." : "I withdraw my approved leave before it starts, and notify operations to adjust the roster."}</span>
                 </span>
-                <button type="button" disabled={!withdrawAck[row.id]} onClick={() => onWithdrawLeave(row)} style={{ fontFamily: "inherit", fontSize: 10, fontWeight: 600, padding: "5px 9px", border: `1px solid ${withdrawAck[row.id] ? "#e9c4c9" : BORDER}`, background: CARD, color: withdrawAck[row.id] ? "#8a1c2b" : MUTED, cursor: withdrawAck[row.id] ? "pointer" : "default", alignSelf: "flex-start", borderRadius: CONTROL_RADIUS }}>
+                <button type="button" disabled={!withdrawAck[row.id]} onClick={() => onWithdrawLeave(row)} style={{ fontFamily: "inherit", fontSize: 10, fontWeight: 600, padding: "5px 9px", border: `1px solid ${withdrawAck[row.id] ? "var(--nv-bad-line)" : BORDER}`, background: CARD, color: withdrawAck[row.id] ? "var(--nv-bad-ink)" : MUTED, cursor: withdrawAck[row.id] ? "pointer" : "default", alignSelf: "flex-start", borderRadius: CONTROL_RADIUS }}>
                   {ar ? "اسحب الإجازة المعتمدة" : "Withdraw approved leave"}
                 </button>
               </label>

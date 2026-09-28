@@ -210,10 +210,10 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
       gap: "10px",
       padding: "13px 16px",
       borderRadius: "12px",
-      background: "#ECFDF3",
-      border: "1px solid #BBF7D0",
+      background: "var(--nv-accent-soft)",
+      border: "1px solid var(--nv-ok-line)",
       fontSize: "13px",
-      color: "#15803D",
+      color: "var(--nv-ok-ink)",
       fontWeight: 500,
     }
     : {
@@ -222,10 +222,10 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
       gap: "10px",
       padding: "13px 16px",
       borderRadius: "12px",
-      background: "#FEF2F2",
-      border: "1px solid #FECACA",
+      background: "var(--nv-bad-soft)",
+      border: "1px solid var(--nv-line)",
       fontSize: "13px",
-      color: "#991B1B",
+      color: "var(--nv-bad-ink)",
       fontWeight: 500,
     };
 
@@ -302,7 +302,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                   alignItems: "center",
                   gap: "12px",
                   padding: "12px 0",
-                  borderTop: "1px solid #F1F5F9",
+                  borderTop: "1px solid var(--nv-line)",
                   flexWrap: "wrap",
                 }}
               >
@@ -360,10 +360,10 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
               marginTop: "12px",
               padding: "11px 13px",
               borderRadius: "10px",
-              background: "#FFFBEB",
-              border: "1px solid #FDE68A",
+              background: "var(--nv-warn-soft)",
+              border: "1px solid var(--nv-line)",
               fontSize: "11px",
-              color: "#92400E",
+              color: "var(--nv-warn-ink)",
               lineHeight: 1.7,
               textWrap: "pretty",
             }}
@@ -400,7 +400,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                     justifyContent: "space-between",
                     gap: "12px",
                     paddingBottom: "10px",
-                    borderBottom: "1px solid #F1F5F9",
+                    borderBottom: "1px solid var(--nv-line)",
                   }}
                 >
                   <span style={{ fontSize: "12px", color: MUTED }}>{r.label}</span>
@@ -420,7 +420,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                     justifyContent: "space-between",
                     gap: "12px",
                     paddingBottom: "10px",
-                    borderBottom: "1px solid #F1F5F9",
+                    borderBottom: "1px solid var(--nv-line)",
                   }}
                   >
                     <span style={{ fontSize: "12px", color: MUTED }}>
@@ -437,7 +437,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
               ) : null}
               <div style={{ marginTop: 10 }}>
                 <LaborArticleCite ruleId={settlement.workerEnded ? "eos.settlement.workerDays" : "eos.settlement.employerDays"} ar={ar} showText />
-                <div style={{ fontSize: 12, color: settlement.late ? "#B45309" : MUTED, marginTop: 6, lineHeight: 1.65 }}>
+                <div style={{ fontSize: 12, color: settlement.late ? "var(--nv-warn-ink)" : MUTED, marginTop: 6, lineHeight: 1.65 }}>
                   {settlement.pending
                     ? (ar ? "مهلة التصفية تبدأ من آخر يوم عمل." : "The settlement window starts from the last working day.")
                     : settlement.late
@@ -486,7 +486,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                   alignItems: "center",
                   gap: "12px",
                   padding: "11px 0",
-                  borderTop: "1px solid #F1F5F9",
+                  borderTop: "1px solid var(--nv-line)",
                 }}
               >
                 <span style={{ flex: 1, fontSize: "13px", color: NAVY }}>{ar ? label.ar : label.en}</span>

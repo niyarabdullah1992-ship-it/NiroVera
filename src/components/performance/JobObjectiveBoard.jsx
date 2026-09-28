@@ -37,7 +37,7 @@ const bodyRow = {
   gridTemplateColumns: gridCols,
   gap: "12px",
   padding: "12px 18px",
-  borderBottom: "1px solid #F1F5F9",
+  borderBottom: "1px solid var(--nv-line)",
   alignItems: "center",
   cursor: "pointer",
 };
@@ -136,12 +136,12 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
       {loadError ? (
         <div style={{
           borderRadius: "12px",
-          border: "1px solid #FDE68A",
-          background: "#FFFBEB",
+          border: "1px solid var(--nv-line)",
+          background: "var(--nv-warn-soft)",
           padding: "12px 16px",
           fontSize: "12px",
           lineHeight: 1.7,
-          color: "#B45309",
+          color: "var(--nv-warn-ink)",
         }}
         >
           <span style={{ fontWeight: 600 }}>{ar ? "الدرجة موقوفة · " : "Scoring held · "}</span>

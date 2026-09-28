@@ -16,6 +16,7 @@ export default function SuiteWorkspaceFrame({
   meta,
   laneBar = null,
   tabs = [],
+  tabTone = "white",
   tool,
   onTool,
   viewNote,
@@ -44,7 +45,7 @@ export default function SuiteWorkspaceFrame({
                     type="button"
                     onClick={() => onTool?.(item.value)}
                     aria-current={on ? "page" : undefined}
-                    style={nv7Tab(on)}
+                    style={tabTone === "gold" && on ? { ...nv7Tab(true), background: "#C8A45A", color: "#3A2A08" } : nv7Tab(on)}
                   >
                     {item.label}
                     {item.count > 0 ? (

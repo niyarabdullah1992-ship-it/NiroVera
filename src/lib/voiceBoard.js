@@ -24,8 +24,10 @@ export const VOICE_CHANNELS = [
     identityEn: "In your name",
     blurbAr: "تحسين عمل أو إجراء أو بيئة فرع.",
     blurbEn: "Improve a process, a practice, or a station.",
-    promiseAr: "يصل باسمك حتى يمكن التواصل معك، ويُراجع ثم يُعتمد أو يُعاد بملاحظة مكتوبة.",
-    promiseEn: "It arrives in your name so you can be reached, then it is adopted or returned with a written note.",
+    lawAr: "لائحة تنظيم العمل",
+    lawEn: "Work regulations",
+    promiseAr: "يصل باسمك ليُمكن التواصل معك. يُراجَع ويُعتمد أو يُعاد بملاحظة مكتوبة.",
+    promiseEn: "It arrives in your name so you can be reached. It is reviewed, then adopted or returned with a written note.",
     hours: 96,
     defaultPrio: "low",
   },
@@ -41,8 +43,10 @@ export const VOICE_CHANNELS = [
     identityEn: "Named",
     blurbAr: "حقّ تطلبه أو ضرر وقع عليك.",
     blurbEn: "A right you claim, or a harm that fell on you.",
-    promiseAr: "تُعالَج بالاسم لأن معالجتها تحتاج تفصيلاً منك، ولا تُتخذ سبباً لجزاء.",
-    promiseEn: "It is handled in the open because it needs your detail, and it is not a ground for a sanction.",
+    lawAr: "المادة 220 · التسوية الودية",
+    lawEn: "Article 220 · amicable settlement",
+    promiseAr: "تُعالَج بالاسم لأن معالجتها تحتاج تفصيلاً منك. لا تُتخذ سبباً لجزاء، ولك بعد المسار الداخلي التسوية الودية ثم المحكمة العمالية.",
+    promiseEn: "It is handled in your name because it needs your detail. It is not a ground for a sanction. After the internal path you may seek amicable settlement, then the labour court.",
     hours: 48,
     defaultPrio: "medium",
   },
@@ -58,8 +62,10 @@ export const VOICE_CHANNELS = [
     identityEn: "No identity",
     blurbAr: "خطر أو تجاوز تخشى كشف نفسك فيه.",
     blurbEn: "A risk or a breach you fear naming yourself over.",
-    promiseAr: "يصل برقم لا باسم. لا تُسجَّل هويّتك ولا يُمكن ردّها من الرقم — ولذلك لا يصلك ردّ شخصي.",
-    promiseEn: "It arrives as a number, not a name. Your identity is not stored, so there is no personal reply.",
+    lawAr: "الباب الثامن · السلامة",
+    lawEn: "Chapter eight · safety",
+    promiseAr: "يصل برقم لا باسم. لا تُسجَّل هويّتك ولا يُمكن ردّها من الرقم، ولذلك لا يصلك ردّ شخصي بل يُنشر القرار بالرقم.",
+    promiseEn: "It arrives as a number, not a name. Your identity is not stored and cannot be recovered from the number, so there is no personal reply — the ruling is published by number.",
     hours: 24,
     defaultPrio: "high",
   },
@@ -71,8 +77,28 @@ export const VOICE_PRIOs = [
   { id: "high", hours: 24, ar: "عالية — 24 ساعة", en: "High — 24 hours" },
 ];
 
+export const VOICE_TOPICS = [
+  { id: "wage", ar: "الأجر والمستحقات", en: "Wage and dues", cite: "المادة 90 · 93", ruleAr: "الأجر في موعده، والخصم لا يتجاوز نصف الأجر", ruleEn: "Wages are paid on time, and a deduction may not exceed half the wage" },
+  { id: "hours", ar: "ساعات العمل والراحة", en: "Hours and rest", cite: "المادة 98 · 101 · 104", ruleAr: "8 ساعات يومياً، راحة كل 5 ساعات، ويوم راحة أسبوعي", ruleEn: "Eight hours a day, a rest every five hours, and a weekly rest day" },
+  { id: "leave", ar: "الإجازات", en: "Leave", cite: "المادة 109 · 117", ruleAr: "21 يوماً سنوية، والمرضية بتقرير", ruleEn: "Twenty-one days of annual leave, and sick leave with a report" },
+  { id: "safety", ar: "السلامة والصحة", en: "Safety and health", cite: "المادة 121 · 125", ruleAr: "حماية العمال ووسائل الإسعاف", ruleEn: "Protection of workers and first-aid means" },
+  { id: "conduct", ar: "سلوك أو إساءة", en: "Conduct or abuse", cite: "المادة 61", ruleAr: "حسن معاملة العمال والامتناع عما يمسّ كرامتهم", ruleEn: "Decent treatment, and nothing that touches a worker's dignity" },
+  { id: "place", ar: "بيئة العمل", en: "Workplace", cite: "المادة 122", ruleAr: "توفير بيئة عمل آمنة", ruleEn: "A safe workplace is required" },
+  { id: "contract", ar: "العقد والوثائق", en: "Contract and papers", cite: "المادة 51 · 53", ruleAr: "عقد مكتوب وفترة تجربة محدودة", ruleEn: "A written contract and a limited probation" },
+  { id: "other", ar: "أخرى", en: "Other", cite: "لائحة تنظيم العمل", ruleAr: "ما لا يندرج تحت مادة محدّدة", ruleEn: "What does not fall under one article" },
+];
+
 export function channelOf(id) {
   return VOICE_CHANNELS.find((row) => row.id === id) || VOICE_CHANNELS[0];
+}
+
+export function topicOf(id) {
+  return VOICE_TOPICS.find((row) => row.id === id) || VOICE_TOPICS[0];
+}
+
+export function voicePublicId(item) {
+  const ref = String(item?.voiceRef || item?.anonymousId || item?.id || "").trim();
+  return ref || "—";
 }
 
 export function hoursAr(n, gen = false) {
@@ -242,19 +268,25 @@ export function decorateVoiceItem(item, {
       : (ar
         ? (overdue ? `بـ${hoursAr(left, true)}` : hoursAr(left))
         : (overdue ? `${Math.abs(Math.round(left))}h over` : `${Math.round(left)}h`)),
-    slaColor: overdue ? "#8A1C2B" : (left != null && left <= 24 ? "#8A6516" : "#137A49"),
+    slaColor: overdue ? "var(--nv-bad-ink)" : (left != null && left <= 24 ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)"),
     tier: enriched.escalationLevel > 0
-      ? (ar ? `رُفع تلقائياً · ${enriched.currentTierLabelAr || ""}` : `Raised · ${enriched.currentTierLabelEn || ""}`)
-      : (ar ? `لدى ${enriched.currentTierLabelAr || chain[0]?.labelAr || ""}` : `With ${enriched.currentTierLabelEn || chain[0]?.labelEn || ""}`),
-    tierColor: enriched.escalationLevel > 0 ? "#8A1C2B" : "#4B5567",
-    tierBg: enriched.escalationLevel > 0 ? "#FBF1F2" : "#F5F6F8",
-    tierBorder: enriched.escalationLevel > 0 ? "#E9C4C9" : "#DFE3EA",
+      ? (ar ? `رُفع تلقائياً · ${enriched.currentTierLabelAr || "—"}` : `Raised · ${enriched.currentTierLabelEn || "—"}`)
+      : (ar ? `لدى ${enriched.currentTierLabelAr || chain[0]?.labelAr || "—"}` : `With ${enriched.currentTierLabelEn || chain[0]?.labelEn || "—"}`),
+    tierColor: enriched.escalationLevel > 0 ? "var(--nv-bad-ink)" : "var(--nv-ink2)",
+    tierBg: enriched.escalationLevel > 0 ? "var(--nv-bad-soft)" : "var(--nv-mute-soft)",
+    tierBorder: enriched.escalationLevel > 0 ? "var(--nv-bad-line)" : "var(--nv-line)",
     meta: [
       ar ? ch.ar : ch.en,
+      (() => {
+        const topic = VOICE_TOPICS.find((row) => row.id === item.topicId);
+        return topic ? (ar ? topic.ar : topic.en) : "";
+      })(),
       item.channel === "anonymous"
-        ? (ar ? `برقم ${item.anonymousId} بلا هويّة` : `Ref ${item.anonymousId} — no identity`)
+        ? (ar ? `برقم ${item.anonymousId || "—"} بلا هويّة` : `Ref ${item.anonymousId || "—"} — no identity`)
         : (author?.name ? (ar ? `رفعه ${author.name}` : `Raised by ${author.name}`) : (ar ? "باسمك" : "In your name")),
       station?.name || "",
+      item.incidentDate ? fmtVoiceDate(item.incidentDate, ar) : "",
+      item.requestText ? (ar ? `يطلب: ${item.requestText}` : `Asks: ${item.requestText}`) : "",
       fmtVoiceDate(item.createdAt, ar),
       item.file?.name || (item.files?.[0]?.name ? (ar ? `مرفق: ${item.files[0].name}` : `Attached: ${item.files[0].name}`) : ""),
     ].filter(Boolean).join(" · "),
@@ -379,14 +411,14 @@ export function deriveVoiceBoard({
     overdue,
     settled,
     stats: [
-      { val: String(stats.openCount), unit: "", lbl: ar ? "بانتظار المراجعة" : "Awaiting review", note: ar ? "في نطاقك" : "In your scope", accent: "#8A6516" },
-      { val: String(stats.breachedCount), unit: "", lbl: ar ? "تجاوزت مهلتها" : "Past the window", note: stats.breachedCount ? (ar ? "رُفعت للمدير التالي تلقائياً" : "Raised to the next manager") : (ar ? "لا تجاوز" : "On time"), accent: "#8A1C2B" },
-      { val: String(stats.avgResponseHours), unit: ar ? "ساعة" : "h", lbl: ar ? "متوسط زمن المراجعة" : "Average review time", note: settled.length ? (ar ? "محسوب على ما استقرّ" : "On what has settled") : (ar ? "محسوب على المفتوح — لا قرار بعد" : "On the open set — no ruling yet"), accent: "#137A49" },
-      { val: String(scoped.filter((row) => row.channel === "anonymous").length), unit: "", lbl: ar ? "بلاغات مجهولة" : "Anonymous reports", note: ar ? "بلا هويّة — لا ردّ شخصي" : "No identity — no personal reply", accent: "#14213D" },
+      { val: String(stats.openCount), unit: "", lbl: ar ? "بانتظار المراجعة" : "Awaiting review", note: ar ? "في نطاقك" : "In your scope", accent: "var(--nv-warn-fill)" },
+      { val: String(stats.breachedCount), unit: "", lbl: ar ? "تجاوزت مهلتها" : "Past the window", note: stats.breachedCount ? (ar ? "رُفعت للمدير التالي تلقائياً" : "Raised to the next manager") : (ar ? "لا تجاوز" : "On time"), accent: "var(--nv-bad-fill)" },
+      { val: String(stats.avgResponseHours), unit: ar ? "ساعة" : "h", lbl: ar ? "متوسط زمن المراجعة" : "Average review time", note: settled.length ? (ar ? "محسوب على ما استقرّ" : "On what has settled") : (ar ? "محسوب على المفتوح — لا قرار بعد" : "On the open set — no ruling yet"), accent: "var(--nv-ok-fill)" },
+      { val: String(scoped.filter((row) => row.channel === "anonymous").length), unit: "", lbl: ar ? "بلاغات مجهولة" : "Anonymous reports", note: ar ? "بلا هويّة — لا ردّ شخصي" : "No identity — no personal reply", accent: "var(--nv-navy)" },
     ],
     pulse,
     pulseKind: overdue.length ? "bad" : open.length ? "warn" : "ok",
-    pulseColor: overdue.length ? "#8A1C2B" : open.length ? "#8A6516" : "#137A49",
+    pulseColor: overdue.length ? "var(--nv-bad-ink)" : open.length ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)",
     pulseBg: overdue.length ? "var(--nv-bad-soft)" : open.length ? "var(--nv-warn-soft)" : "var(--nv-ok-soft)",
     pulseBorder: overdue.length ? "var(--nv-bad-line)" : open.length ? "var(--nv-warn-line)" : "var(--nv-ok-line)",
     pulseDot: overdue.length ? "var(--nv-bad-ink)" : open.length ? "var(--nv-warn-fill)" : "var(--nv-ok-fill)",

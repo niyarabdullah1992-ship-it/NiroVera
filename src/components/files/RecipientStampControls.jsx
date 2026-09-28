@@ -38,7 +38,7 @@ function Swatches({ options, value, onPick, onFree, ar }) {
             width: 22,
             height: 22,
             borderRadius: "50%",
-            background: value || "#14284B",
+            background: value || "var(--nv-navy)",
             boxShadow: `0 0 0 1px ${BORDER}`,
             cursor: "pointer",
             overflow: "hidden",
@@ -46,7 +46,7 @@ function Swatches({ options, value, onPick, onFree, ar }) {
         >
           <input
             type="color"
-            value={value || "#14284B"}
+            value={value || "#0B3D27"}
             onChange={(event) => onFree(event.target.value)}
             style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
           />
@@ -92,7 +92,7 @@ export default function RecipientStampControls({ ar, config, onPatch }) {
                     width: wide >= 1 ? 32 : Math.max(12, 22 * wide),
                     height: wide >= 1 ? Math.max(10, 32 / wide) : 22,
                     background: on ? config.paper : CARD,
-                    border: `1.5px solid ${on ? config.accent : "#C7CCD6"}`,
+                    border: `1.5px solid ${on ? config.accent : "var(--nv-line)"}`,
                     borderRadius: item.id === "seal" ? "50%" : item.id === "line" ? 0 : 4,
                     clipPath: item.id === "hex" ? "polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)" : "none",
                     display: "block",

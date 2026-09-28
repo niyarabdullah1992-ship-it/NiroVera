@@ -152,8 +152,18 @@ export default function Requests() {
       { label: ar ? "متأخرة 48 س" : "Late 48h", value: lateCount, note: ar ? "تصعد تلقائياً" : "Escalates on its own" },
     ]
     : [
-      { label: ar ? "الرصيد السنوي" : "Annual balance", value: annual.remaining, note: ar ? "يوماً" : "days" },
-      { label: ar ? "بانتظار قرار" : "Awaiting a decision", value: pendingShown },
+      {
+        label: ar ? "الرصيد السنوي" : "Annual balance",
+        value: annual.remaining,
+        note: (annual.total || annual.statutory)
+          ? (ar ? `من ${annual.total || annual.statutory} · المادة 109` : `of ${annual.total || annual.statutory} · Art. 109`)
+          : "—",
+      },
+      {
+        label: ar ? "بانتظار قرار" : "Awaiting a decision",
+        value: pendingShown,
+        note: pendingShown ? (ar ? "لدى مديرك · تصعد بعد 48 س" : "With your manager · escalates after 48h") : "—",
+      },
       { label: ar ? "معتمدة هذا العام" : "Approved this year", value: approvedThisYear },
     ];
 

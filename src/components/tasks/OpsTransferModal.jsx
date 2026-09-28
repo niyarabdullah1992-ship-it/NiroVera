@@ -61,7 +61,7 @@ export default function OpsTransferModal({
 
         <div
           className="mt-3 rounded-xl border px-3 py-2.5 text-[11px] leading-6"
-          style={{ borderColor: "#FECACA", background: "#FEF2F2", color: "#991B1B" }}
+          style={{ borderColor: "var(--nv-line)", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)" }}
         >
           <strong style={{ display: "block", marginBottom: 4 }}>
             {ar ? "تنبيه — لا يمكن التراجع" : "Warning — irreversible"}
@@ -91,7 +91,7 @@ export default function OpsTransferModal({
         </label>
 
         {options.length === 0 && (
-          <div className="mt-2 text-[11px] leading-6" style={{ color: "#B45309" }}>
+          <div className="mt-2 text-[11px] leading-6" style={{ color: "var(--nv-warn-ink)" }}>
             {ar
               ? "لا موظف آخر ظاهر في نطاق هذا الفرع."
               : "No other visible employee in this station scope."}
@@ -141,7 +141,7 @@ export default function OpsTransferModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[#E2E8F0] px-3 py-1.5 text-xs"
+            className="rounded-lg border border-[var(--nv-line)] px-3 py-1.5 text-xs"
             style={{ color: MUTED, background: CARD }}
           >
             {ar ? "إلغاء" : "Cancel"}
@@ -156,7 +156,7 @@ export default function OpsTransferModal({
               kind: "transfer",
             })}
             className="rounded-lg px-3 py-1.5 text-xs text-white disabled:opacity-50"
-            style={{ background: "#B91C1C" }}
+            style={{ background: "var(--nv-bad-fill)" }}
           >
             {ar ? "تأكيد النقل" : "Confirm transfer"}
           </button>

@@ -95,7 +95,7 @@ export default function PublicSignDocumentPanel({ ar, info, textValues, onTextCh
                 position: "relative",
                 width: pageWidth,
                 margin: "0 auto",
-                background: "#fff",
+                background: "var(--nv-card)",
                 border: `1px solid ${BORDER}`,
                 boxShadow: "0 8px 24px rgba(20,40,75,.06)",
                 borderRadius: 4,
@@ -147,7 +147,7 @@ export default function PublicSignDocumentPanel({ ar, info, textValues, onTextCh
                       transform: "translate(-50%, -50%)",
                       borderRadius: 8,
                       border: liveSeal ? "none" : `1.5px ${filled ? "solid" : "dashed"} ${field.type === "text" ? NAVY : ACCENT}`,
-                      background: liveSeal ? "transparent" : filled ? "#fff" : field.type === "text" ? "rgba(247,248,250,.95)" : "rgba(30,158,99,.10)",
+                      background: liveSeal ? "transparent" : filled ? "var(--nv-card)" : field.type === "text" ? "rgba(247,248,250,.95)" : "rgba(30,158,99,.10)",
                       padding: field.type === "text" && !isMark ? 4 : 0,
                       boxSizing: "border-box",
                       overflow: liveSeal ? "hidden" : undefined,
@@ -176,7 +176,7 @@ export default function PublicSignDocumentPanel({ ar, info, textValues, onTextCh
                         <input
                           value={textValues[field.id] || ""}
                           onChange={(event) => onTextChange(field.id, event.target.value)}
-                          style={{ height: 28, width: "100%", borderRadius: 8, border: `1px solid ${BORDER}`, background: "#fff", padding: "0 6px", fontSize: 10, color: NAVY, outline: "none" }}
+                          style={{ height: 28, width: "100%", borderRadius: 8, border: `1px solid ${BORDER}`, background: "var(--nv-card)", padding: "0 6px", fontSize: 10, color: NAVY, outline: "none" }}
                         />
                       </label>
                     ) : liveSeal ? (

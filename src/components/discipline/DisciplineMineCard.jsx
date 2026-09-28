@@ -5,86 +5,126 @@ import AttachFileButton from "@/components/shared/AttachFileButton";
 
 const field = {
   fontFamily: "inherit",
-  fontSize: 12,
-  padding: "9px 10px",
+  fontSize: 14,
+  height: 44,
+  padding: "0 14px",
   border: "1px solid var(--nv-line)",
   borderRadius: 10,
-  background: "var(--nv-card)",
+  background: "var(--nv-page)",
   color: "var(--nv-ink)",
   outline: "none",
   width: "100%",
   boxSizing: "border-box",
 };
 
+const noteLine = {
+  fontSize: 12.5,
+  lineHeight: 1.7,
+  padding: "10px 14px",
+  color: "var(--nv-ink2)",
+  background: "var(--nv-card)",
+  border: "1px solid var(--nv-line)",
+  borderRadius: 8,
+};
+
 export default function DisciplineMineCard({ card, ar, draft, onDraft, onObject, onWithdraw }) {
   const [file, setFile] = useState(null);
   const ready = Boolean(String(draft || "").trim());
+  const extra = card.objectBlocked || card.hasObjGate || card.hasNews || card.canWithdraw || (card.related || []).length;
+  if (!card.canObject && !extra) return null;
+
   return (
-    <article style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", borderTop: `3px solid ${card.tone.accent}`, display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "baseline" }}>
-        <span style={{ fontSize: 13, fontWeight: 700, minWidth: 0, color: "var(--nv-ink)" }}>{card.mineTitle}</span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: card.tone.color, whiteSpace: "nowrap" }}>{card.mineState}</span>
-      </div>
-      <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.9 }}>{card.mineLine}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {card.objectBlocked ? (
-        <span style={{ fontSize: 11, color: "var(--nv-bad-ink)", background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)", borderRadius: 10, padding: "9px 11px", lineHeight: 1.9 }}>{card.objectBlocked}</span>
+        <span style={{ ...noteLine, color: "var(--nv-bad-ink)", borderColor: "var(--nv-bad-line)" }}>{card.objectBlocked}</span>
       ) : null}
       {card.hasObjGate ? (
-        <span style={{ fontSize: 11, color: "var(--nv-ink2)", background: "var(--nv-mute-soft)", border: "1px solid var(--nv-line)", borderRadius: 10, padding: "9px 11px", lineHeight: 1.9 }}>{card.objGate}</span>
+        <span style={noteLine}>{card.objGate}</span>
       ) : null}
       {card.canObject ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 7, background: "var(--nv-warn-soft)", border: "1px solid var(--nv-warn-line)", borderRadius: 10, padding: "11px 12px" }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-warn-ink)" }}>{ar ? "اعتراضي على هذا الجزاء" : "My objection to this sanction"}</span>
-          <input
-            value={draft}
-            onChange={(event) => onDraft?.(event.target.value)}
-            placeholder={ar ? "اكتب اعتراضك — يُحال إلى من لم يوقّع الجزاء" : "Write your objection — it goes to whoever did not sign"}
-            style={field}
-          />
-          <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            <span style={{ fontSize: 10, color: "var(--nv-muted)" }}>{ar ? "أرفق مستنداً يسند اعتراضك — اختياري" : "Attach a document that supports your objection — optional"}</span>
-            <AttachFileButton
-              ar={ar}
-              label={file ? (ar ? `المختار: ${file.name}` : `Chosen: ${file.name}`) : (ar ? "أرفق المستند" : "Attach the document")}
-              onPick={setFile}
-            />
-            <span style={{ fontSize: 10, color: file ? "var(--nv-ok-ink)" : "var(--nv-muted)", lineHeight: 1.8 }}>
-              {file
-                ? (ar ? `مرفق: ${file.name}` : `Attached: ${file.name}`)
-                : (ar ? "تُحسب بصمته على جهازك، ويُحال مع اعتراضك كما هو." : "Its hash is taken on your device, and it travels with your objection as it is.")}
-            </span>
-          </label>
-          <button
-            type="button"
-            onClick={() => ready && onObject?.(card.item, file)}
-            style={{
-              fontFamily: "inherit",
+        <article
+          data-discipline-objection=""
+          style={{
+            maxWidth: 760,
+            width: "100%",
+            background: "var(--nv-card)",
+            border: "1px solid var(--nv-line)",
+            borderRadius: 10,
+            overflow: "hidden",
+            boxShadow: "var(--nv-paper)",
+          }}
+        >
+          <header style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+              <strong style={{ fontSize: 17, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "اعتراضي على هذا الجزاء" : "My objection to this sanction"}</strong>
+              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
+                {ar ? "يُحال إلى من لم يوقّع الجزاء، ويُبتّ فيه خلال 15 يوماً (المادة 72)." : "It goes to whoever did not sign, and is decided within 15 days (Article 72)."}
+              </span>
+            </div>
+            <span style={{
+              display: "inline-flex",
+              alignItems: "center",
+              height: 28,
+              padding: "0 12px",
+              borderRadius: 999,
               fontSize: 12,
-              fontWeight: 600,
-              padding: "9px 13px",
-              border: "none",
-              background: ready ? "var(--nv-warn-fill)" : "var(--nv-line3)",
-              color: ready ? "var(--nv-btn-ink)" : "var(--nv-muted)",
-              cursor: ready ? "pointer" : "default",
-              alignSelf: "flex-start",
-              borderRadius: 10,
+              fontWeight: 700,
+              flex: "none",
+              color: ready ? "var(--nv-ok-ink)" : "var(--nv-ink2)",
+              background: "transparent",
+              border: `1px solid ${ready ? "var(--nv-ok-line)" : "var(--nv-line)"}`,
             }}
-          >
-            {ready ? (ar ? "أرسل الاعتراض" : "Send the objection") : (ar ? "اكتب اعتراضك أولاً" : "Write the objection first")}
-          </button>
-        </div>
+            >
+              {ready ? (ar ? "جاهز للإرسال" : "Ready to send") : (ar ? "اكتب اعتراضك أولاً" : "Write the objection first")}
+            </span>
+          </header>
+          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "نص الاعتراض" : "Objection text"}</span>
+              <input
+                value={draft}
+                onChange={(event) => onDraft?.(event.target.value)}
+                placeholder={ar ? "اكتب اعتراضك ووقائعه" : "Write your objection and its facts"}
+                style={field}
+              />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "مستند يسند الاعتراض — اختياري" : "A document that supports the objection — optional"}</span>
+              <AttachFileButton
+                ar={ar}
+                label={file ? (ar ? `المختار: ${file.name}` : `Chosen: ${file.name}`) : (ar ? "أرفق المستند" : "Attach the document")}
+                onPick={setFile}
+              />
+              <span style={{ fontSize: 11.5, color: file ? "var(--nv-ok-ink)" : "var(--nv-muted)", lineHeight: 1.7 }}>
+                {file
+                  ? (ar ? `مرفق: ${file.name}` : `Attached: ${file.name}`)
+                  : (ar ? "تُحسب بصمته على جهازك، ويُحال مع اعتراضك كما هو." : "Its hash is taken on your device, and it travels with your objection as it is.")}
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={() => ready && onObject?.(card.item, file)}
+              style={{
+                fontFamily: "inherit",
+                fontSize: 14,
+                fontWeight: 700,
+                height: 40,
+                padding: "0 18px",
+                border: "none",
+                borderRadius: 8,
+                background: ready ? "#3C7D50" : "var(--nv-line)",
+                color: ready ? "var(--nv-btn-ink)" : "var(--nv-muted)",
+                cursor: ready ? "pointer" : "default",
+                alignSelf: "flex-start",
+              }}
+            >
+              {ready ? (ar ? "أرسل الاعتراض" : "Send the objection") : (ar ? "اكتب اعتراضك أولاً" : "Write the objection first")}
+            </button>
+          </div>
+        </article>
       ) : null}
       {card.hasNews ? (
-        <span style={{
-          fontSize: 11,
-          lineHeight: 1.9,
-          padding: "9px 11px",
-          color: card.newsColor || (card.item.rulingNote ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)"),
-          background: card.newsBg || (card.item.rulingNote ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)"),
-          border: `1px solid ${card.newsBorder || (card.item.rulingNote ? "var(--nv-ok-line)" : "var(--nv-warn-line)")}`,
-          borderRadius: 10,
-        }}
-        >
+        <span style={{ ...noteLine, color: "var(--nv-ink)", borderInlineStart: `3px solid ${card.item.rulingNote ? "var(--nv-ok-fill)" : "#C8A45A"}` }}>
           {card.news}
           {card.appealFile?.url ? (
             <>
@@ -98,12 +138,12 @@ export default function DisciplineMineCard({ card, ar, draft, onDraft, onObject,
         <button
           type="button"
           onClick={() => onWithdraw?.(card.item)}
-          style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 12px", border: "1px solid var(--nv-line)", borderRadius: 10, background: "var(--nv-card)", color: "var(--nv-ink2)", cursor: "pointer", alignSelf: "flex-start" }}
+          style={{ fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, height: 36, padding: "0 14px", border: "1px solid var(--nv-line)", borderRadius: 8, background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", alignSelf: "flex-start" }}
         >
           {ar ? "اسحب اعتراضي" : "Withdraw my objection"}
         </button>
       ) : null}
       <DisciplineRelatedLinks links={card.related} ar={ar} />
-    </article>
+    </div>
   );
 }

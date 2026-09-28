@@ -14,6 +14,7 @@ import {
   workProofArchiveDate,
 } from "@/lib/workProofDerivations";
 import { updateCompany } from "@/lib/store";
+import { readWorkProofs } from "@/lib/facts";
 import { cleanedPeople, cleanedVehicles, peopleFromProof, vehiclesFromProof } from "@/lib/workProofCrew";
 import { cleanProofAttachments, makeProofAttachment } from "@/lib/proofAttachments";
 
@@ -50,7 +51,7 @@ function withStage(proof) {
 }
 
 export function listLocalWorkProofs(data) {
-  const proofs = (Array.isArray(data?.workProofs) ? data.workProofs : []).map(withStage);
+  const proofs = readWorkProofs(data).map(withStage);
   return { proofs, counts: deriveProofCounts(proofs), source: "local" };
 }
 
@@ -129,7 +130,7 @@ export function raiseLocalWorkProof(companyId, input, actor = {}) {
   };
   proof.auditTrail = appendWorkProofAudit(proof, "raise", actor, { at: proof.createdAt });
   updateCompany(companyId, (data) => {
-    data.workProofs = [proof, ...(Array.isArray(data.workProofs) ? data.workProofs : [])];
+    data.workProofs = [proof, ...(readWorkProofs(data))];
   });
   return { ok: true, proof: withStage(proof) };
 }
@@ -149,7 +150,7 @@ export function endLocalWorkProof(companyId, proof, actor, extra = {}) {
   }
   let next = null;
   updateCompany(companyId, (data) => {
-    const list = Array.isArray(data.workProofs) ? data.workProofs : [];
+    const list = readWorkProofs(data);
     const idx = list.findIndex((item) => item.id === proof.id || item.ref === proof.ref);
     if (idx < 0) return;
     next = {
@@ -212,7 +213,7 @@ export function editLocalWorkProof(companyId, proof, actor, input = {}) {
   const entityStationId = "";
   let next = null;
   updateCompany(companyId, (data) => {
-    const list = Array.isArray(data.workProofs) ? data.workProofs : [];
+    const list = readWorkProofs(data);
     const idx = list.findIndex((item) => item.id === proof.id || item.ref === proof.ref);
     if (idx < 0) return;
     next = {
@@ -264,7 +265,7 @@ export function approveLocalWorkProof(companyId, proof, actor, geoClearReason) {
   if (!gate.ok) return { error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn };
   let next = null;
   updateCompany(companyId, (data) => {
-    const list = Array.isArray(data.workProofs) ? data.workProofs : [];
+    const list = readWorkProofs(data);
     const idx = list.findIndex((item) => item.id === proof.id || item.ref === proof.ref);
     if (idx < 0) return;
     const current = list[idx];
@@ -293,7 +294,7 @@ export function acceptLocalWorkProof(companyId, proof) {
   if (!gate.ok) return { error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn };
   let next = null;
   updateCompany(companyId, (data) => {
-    const list = Array.isArray(data.workProofs) ? data.workProofs : [];
+    const list = readWorkProofs(data);
     const idx = list.findIndex((item) => item.id === proof.id || item.ref === proof.ref);
     if (idx < 0) return;
     next = {
@@ -316,7 +317,7 @@ export function rejectLocalWorkProof(companyId, proof, actor, reason) {
   }
   let next = null;
   updateCompany(companyId, (data) => {
-    const list = Array.isArray(data.workProofs) ? data.workProofs : [];
+    const list = readWorkProofs(data);
     const idx = list.findIndex((item) => item.id === proof.id || item.ref === proof.ref);
     if (idx < 0) return;
     next = {
@@ -344,7 +345,7 @@ export function attachLocalWorkProof(companyId, proof, entry, extra = {}) {
   if (!file) return { error: "FILE_REQUIRED", reason: "أرفق مستندًا أولًا.", reasonEn: "Attach a document first." };
   let next = null;
   updateCompany(companyId, (data) => {
-    const list = Array.isArray(data.workProofs) ? data.workProofs : [];
+    const list = readWorkProofs(data);
     const idx = list.findIndex((item) => item.id === proof.id || item.ref === proof.ref);
     if (idx < 0) return;
     const current = Array.isArray(list[idx].attachments) ? list[idx].attachments : [];

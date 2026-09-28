@@ -17,7 +17,7 @@ export default function VoiceAuditTrail({ events = [], ar }) {
             style={{ display: "grid", gridTemplateColumns: "14px 1fr", gap: 10, padding: "6px 0" }}
           >
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: row.tone || "#94A3B8", marginTop: 4, flexShrink: 0 }} />
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: row.tone || "var(--nv-muted)", marginTop: 4, flexShrink: 0 }} />
               {index < events.length - 1 ? <span style={{ flex: 1, width: 1, background: BORDER, marginTop: 4 }} /> : null}
             </div>
             <div style={{ minWidth: 0 }}>

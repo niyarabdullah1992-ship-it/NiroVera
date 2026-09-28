@@ -1,6 +1,7 @@
 /**
  * Company rail is two sides, switched at the top — never one mixed list.
- * الموظف — the personal face: the employee file, punch, tasks, requests, signatures.
+ * الموظف — the personal face: punch, tasks, requests, signatures.
+ * The signed-in file opens from the identity bar, not a rail pill.
  * الإدارة — sections this person administers. Omitted entirely when they manage nothing.
  * A destination is listed on one side only. «لوحة المالك» is not a company side.
  */
@@ -17,18 +18,16 @@ export const RAIL_SIDE_COLOR = {
 };
 
 const EMPLOYEE_GROUPS = [
-  { id: "space", ar: "مساحتي", en: "My space", sections: ["file", "org", "duty", "signing", "performance"] },
-  { id: "daily", ar: "التشغيل اليومي", en: "Daily operations", sections: ["daily"] },
-  { id: "relations", ar: "الطلبات والعلاقات", en: "Requests and relations", sections: ["requests", "discipline", "complaints"] },
-  { id: "safety", ar: "سلامتي", en: "My safety", sections: ["compliance"] },
+  { id: "day", ar: "يومي", en: "Today", sections: ["duty", "daily", "compliance"] },
+  { id: "asks", ar: "طلباتي", en: "My requests", sections: ["requests", "signing", "complaints"] },
+  { id: "mine", ar: "ملفي", en: "My file", sections: ["payslip", "performance", "discipline", "org"] },
 ];
 
 const MANAGE_GROUPS = [
-  { id: "decide", ar: "القرار", en: "Decision", sections: ["overview", "decide", "duty"] },
-  { id: "relations", ar: "الطلبات والعلاقات", en: "Requests and relations", sections: ["requests", "discipline", "complaints"] },
-  { id: "people", ar: "الناس والامتثال", en: "People and compliance", sections: ["people", "workforce", "ministry", "money"] },
-  { id: "daily", ar: "التشغيل اليومي", en: "Daily operations", sections: ["daily"] },
-  { id: "shared", ar: "مشتركة", en: "Shared", sections: ["signing", "performance", "hse", "files"] },
+  { id: "home", ar: "الرئيسية", en: "Home", sections: ["decide"] },
+  { id: "daily", ar: "العمل اليومي", en: "Daily work", sections: ["duty", "daily", "hse"] },
+  { id: "staff", ar: "الموظفون", en: "People", sections: ["workforce", "people", "requests", "discipline", "complaints", "performance"] },
+  { id: "money", ar: "الامتثال والمال", en: "Compliance and pay", sections: ["ministry", "money", "signing"] },
 ];
 
 const ROLE_RANK = {
@@ -246,6 +245,7 @@ export function activeSuiteRailKey(sides, category, pathname, search) {
     || params.get("view") === "manage"
     || params.get("view") === "admin"
     || params.get("tab") === "manage"
+    || (category === "discipline" && ["raise", "calc"].includes(params.get("tab") || ""))
   );
 
   if (path === "/app/employees" || path.startsWith("/app/employees/")) {
@@ -255,6 +255,9 @@ export function activeSuiteRailKey(sides, category, pathname, search) {
     if (params.get("face") === "map" && has("overview:manage")) return "overview:manage";
     if (has("decide:manage")) return "decide:manage";
     return "";
+  }
+  if (path === "/app/escalation" || path.startsWith("/app/escalation/")) {
+    return has("daily:manage") ? "daily:manage" : "";
   }
   if (path.startsWith("/app/work-proof") || path.startsWith("/app/visitor-proof") || path === "/app/tasks" || path.startsWith("/app/tasks/")) {
     const dailyKey = params.get("lane") === "manage" && has("daily:manage") ? "daily:manage" : "daily:employee";
@@ -269,9 +272,13 @@ export function activeSuiteRailKey(sides, category, pathname, search) {
 
   const moneyPath = category === "money" || ["/app/payroll", "/app/expenses", "/app/assets", "/app/inventory"].some((base) => path === base || path.startsWith(`${base}/`));
   if (moneyPath) {
+    const slip = params.get("tab") === "slip" || params.get("tab") === "payslip";
+    const personal = params.get("view") === "self" || (slip && params.get("view") !== "manage");
+    if (personal && has("payslip:employee")) return "payslip:employee";
     if (params.get("view") === "self" && has("money:employee")) return "money:employee";
     if ((params.get("view") === "manage" || !params.get("view")) && has("money:manage")) return "money:manage";
     if (has("money:employee")) return "money:employee";
+    if (has("payslip:employee")) return "payslip:employee";
   }
   if (path === "/app/org" || path.startsWith("/app/org/")) {
     if (params.get("view") === "employee" && has("org:employee")) return "org:employee";
@@ -309,22 +316,13 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
   const employee = new Map();
   const manage = new Map();
 
-  const fileTo = user?.id ? `/app/employees/${encodeURIComponent(user.id)}` : "/app/employees";
   employee.set("org", faceItem({
     section: "org",
     lane: "employee",
     iconKey: "org",
-    label: ar ? "الهيكل التنظيمي" : "Org chart",
+    label: ar ? "الهيكل" : "Org chart",
     to: "/app/org?view=employee",
     signal: ownedSignal(null, "org", false),
-  }));
-  employee.set("file", faceItem({
-    section: "file",
-    lane: "employee",
-    iconKey: "file",
-    label: ar ? "ملفي" : "My file",
-    to: fileTo,
-    signal: ownedSignal(null, "file", false),
   }));
 
   const duty = byKey.get("duty");
@@ -411,7 +409,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
         section: "daily",
         lane: "employee",
         iconKey: "tasks",
-        label: ar ? "التشغيل اليومي" : "Daily operations",
+        label: ar ? "مهامي" : "My tasks",
         to: tasksTo,
         signal: ownedSignal(daily, "tasks", true),
       }));
@@ -420,8 +418,8 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
           section: "daily",
           lane: "manage",
           iconKey: "tasks",
-          label: ar ? "التشغيل اليومي" : "Daily operations",
-          to: withQuery(tasksTo, { lane: "manage" }),
+        label: ar ? "المهام والإثبات" : "Tasks and proof",
+        to: withQuery(tasksTo, { lane: "manage" }),
           signal: ownedSignal(daily, "tasks", false),
         }));
       }
@@ -524,7 +522,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
         section: "hse",
         lane: "manage",
         iconKey: "compliance",
-        label: ar ? "السلامة HSE" : "Safety HSE",
+        label: ar ? "السلامة" : "Safety",
         to: withQuery(safetyTo, { lane: "manage" }),
         signal: ownedSignal(safety, "safety", false),
       }));
@@ -533,14 +531,6 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
 
   const decide = byKey.get("decide");
   if (decide && user?.role && user.role !== "employee") {
-    manage.set("overview", faceItem({
-      section: "overview",
-      lane: "manage",
-      iconKey: "overview",
-      label: ar ? "نظرة عامة" : "Overview",
-      to: "/app?face=map",
-      signal: ownedSignal(decide, "command", false),
-    }));
     manage.set("decide", faceItem({
       section: "decide",
       lane: "manage",
@@ -572,7 +562,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
         section: "workforce",
         lane: "manage",
         iconKey: "workforce",
-        label: ar ? "القوى العاملة" : "Workforce",
+        label: ar ? "الهيكل والفروع" : "Org and branches",
         to,
         signal: ownedSignal(workforce, "hr", true),
       }));
@@ -589,30 +579,28 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
 
   const money = byKey.get("money");
   if (money) {
+    const payrollPath = appPath(money, "payroll") || String(money.to || "/app/payroll").split("?")[0];
+    if (payrollPath) {
+      employee.set("payslip", faceItem({
+        section: "payslip",
+        lane: "employee",
+        iconKey: "money",
+        label: ar ? "قسيمتي" : "My payslip",
+        to: withQuery(payrollPath, { view: "self", tab: "payslip" }),
+        signal: ownedSignal(money, "payroll", false),
+      }));
+    }
     const manageTo = moneyManageTo(user, data, money);
     if (manageTo) {
       manage.set("money", faceItem({
         section: "money",
         lane: "manage",
         iconKey: "money",
-        label: ar ? "المال والأصول" : "Money & assets",
+        label: ar ? "المال والرواتب" : "Pay and money",
         to: manageTo,
         signal: ownedSignal(money, "payroll", true),
       }));
     }
-  }
-
-  const files = byKey.get("admin");
-  const filesTo = files ? (appPath(files, "files") || String(files.to || "").split("?")[0]) : "";
-  if (filesTo && canCreateTasks(user, data)) {
-    manage.set("files", faceItem({
-      section: "files",
-      lane: "manage",
-      iconKey: "files",
-      label: ar ? "الملفات والمساعد" : "Files & assistant",
-      to: filesTo,
-      signal: ownedSignal(files, "files", true),
-    }));
   }
 
   const sides = [];
@@ -686,6 +674,11 @@ function branchCountLabel(count, ar) {
   return `${n} فرعاً`;
 }
 
+function shown(value) {
+  const text = String(value || "").trim();
+  return text || "—";
+}
+
 export function personInitials(name) {
   const parts = String(name || "").split(/\s+/).filter(Boolean);
   const first = parts[0]?.[0] || "";
@@ -700,13 +693,15 @@ export function railFooter(person, data, lang = "ar", mode = "employee") {
   const name = String(row?.name || "").trim();
   const title = personTitle(row, data);
   const ar = lang !== "en";
-  const line = mode === "manage"
-    ? [title, branchCountLabel(workplaceCount(row, data), ar)].filter(Boolean).join(" · ")
-    : [title, stationPhrase(stationName(row, data), ar)].filter(Boolean).join(" · ");
+  const branch = mode === "manage"
+    ? branchCountLabel(workplaceCount(row, data), ar)
+    : stationPhrase(stationName(row, data), ar);
+  const id = String(row?.id || "").trim();
   return {
     name,
     title,
-    line,
+    line: `${shown(title)} · ${shown(branch)}`,
     initials: personInitials(name),
+    to: id ? `/app/employees/${encodeURIComponent(id)}` : "",
   };
 }

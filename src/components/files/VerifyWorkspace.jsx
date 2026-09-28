@@ -3,7 +3,7 @@ import VerifyDocumentCard from "@/components/files/VerifyDocumentCard";
 import VerifyGuide from "@/components/files/VerifyGuide";
 import { BORDER, CARD, INK, MUTED } from "@/lib/platformStyles";
 
-const LINE = "#eef0f4";
+const LINE = "var(--nv-line)";
 
 /**
  * Shared verify board — public /verify and the signing-home Verify tab.

@@ -186,7 +186,7 @@ export default function OpsTasksTable({
             ? "لم تستجب خدمة العمليات — لا يمكن تأكيد وجود مهام أو عدمها في هذا النطاق."
             : "The operations service did not respond — whether tasks exist in this scope cannot be confirmed.")
           : (ar
-            ? "لا مهام تطابق هذا التصفية في النطاق الحالي."
+            ? "لا مهام تطابق هذه التصفية في النطاق الحالي."
             : "No tasks match this filter in the current scope.")}
       </div>
     );

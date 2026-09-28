@@ -14,7 +14,7 @@ const segment = (active, compact) => ({
   fontSize: "11px",
   fontWeight: 600,
   cursor: "pointer",
-  fontFamily: "'IBM Plex Sans',sans-serif",
+  fontFamily: "'IBM Plex Mono', monospace",
 });
 
 export default function TimeFormatToggle({ lang, compact = false }) {

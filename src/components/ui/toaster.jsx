@@ -18,10 +18,10 @@ const ICONS = {
 };
 
 const ICON_CLASS = {
-  default: "text-[#14284B]",
-  success: "text-[#1E9E63]",
-  warning: "text-[#D97706]",
-  destructive: "text-[#DC2626]",
+  default: "text-[var(--nv-ink)]",
+  success: "text-[var(--nv-ok-ink)]",
+  warning: "text-[var(--nv-warn-ink)]",
+  destructive: "text-[var(--nv-bad-ink)]",
 };
 
 const DISMISS_OFFSET = 88;
@@ -82,7 +82,7 @@ function SwipeToast({ id, title, description, action, variant = "default", onDis
         <div className="grid min-w-0 flex-1 gap-0.5">
           {title && <ToastTitle>{title}</ToastTitle>}
           {description && (
-            <ToastDescription className={title ? undefined : "text-[#14284B] group-[.destructive]:text-[#991B1B]"}>
+            <ToastDescription className={title ? undefined : "text-[var(--nv-ink)] group-[.destructive]:text-[var(--nv-bad-ink)]"}>
               {description}
             </ToastDescription>
           )}

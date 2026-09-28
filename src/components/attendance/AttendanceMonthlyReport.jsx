@@ -17,10 +17,10 @@ const RANGES = [
 ];
 
 const PILL = {
-  present: { bg: "#ECFDF3", fg: "#15803D", bd: "#BBF7D0" },
-  late: { bg: "#FFFBEB", fg: "#B45309", bd: "#FDE68A" },
-  absent: { bg: "#FEF2F2", fg: "#DC2626", bd: "#FECACA" },
-  excused: { bg: "#EFF6FF", fg: "#1D4ED8", bd: "#BFDBFE" },
+  present: { bg: "var(--nv-accent-soft)", fg: "var(--nv-ok-ink)", bd: "var(--nv-ok-line)" },
+  late: { bg: "var(--nv-warn-soft)", fg: "var(--nv-warn-ink)", bd: "var(--nv-warn-line)" },
+  absent: { bg: "var(--nv-bad-soft)", fg: "var(--nv-bad-ink)", bd: "var(--nv-bad-line)" },
+  excused: { bg: "var(--nv-soft)", fg: "var(--nv-ink)", bd: "var(--nv-line)" },
 };
 
 const statusPill = (kind) => ({
@@ -144,10 +144,10 @@ export default function AttendanceMonthlyReport({ employees, defaultEmployeeId, 
 
   return (
     <div
-      style={{ background: CARD, border: "1px solid #E2E8F0", borderRadius: 14, overflow: "hidden" }}
+      style={{ background: CARD, border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden" }}
       dir={ar ? "rtl" : "ltr"}
     >
-      <div style={{ padding: "11px 14px", borderBottom: "1px solid #E2E8F0", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+      <div style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
         <div style={{ flex: "1 1 200px" }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{t("monthlyAttendanceReport")}</div>
           <div style={{ fontSize: 10, color: MUTED, marginTop: 3 }}>
@@ -162,7 +162,7 @@ export default function AttendanceMonthlyReport({ employees, defaultEmployeeId, 
         />
       </div>
 
-      <div style={{ padding: "10px 14px", borderBottom: "1px solid #F1F5F9", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+      <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
         <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} style={{ ...field, minWidth: 160, maxWidth: 240 }}>
           <option value="all">{allEmployeesLabel}</option>
           {employees.map((e) => (
@@ -180,8 +180,8 @@ export default function AttendanceMonthlyReport({ employees, defaultEmployeeId, 
                 style={{
                   padding: "4px 11px",
                   borderRadius: 20,
-                  border: `1px solid ${on ? "#BBF7D0" : "#E2E8F0"}`,
-                  background: on ? "#ECFDF3" : CARD,
+                  border: `1px solid ${on ? "var(--nv-ok-line)" : "var(--nv-line)"}`,
+                  background: on ? "var(--nv-accent-soft)" : CARD,
                   color: on ? NAVY : MUTED,
                   fontSize: 11,
                   fontWeight: on ? 600 : 400,
@@ -215,7 +215,7 @@ export default function AttendanceMonthlyReport({ employees, defaultEmployeeId, 
           <div style={{ overflowX: "auto", marginTop: 12 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 640 }}>
               <thead>
-                <tr style={{ borderBottom: "1px solid #E2E8F0", fontSize: 9, letterSpacing: "0.05em", color: MUTED, fontWeight: 600 }}>
+                <tr style={{ borderBottom: "1px solid var(--nv-line)", fontSize: 9, letterSpacing: "0.05em", color: MUTED, fontWeight: 600 }}>
                   {allEmployeesSelected && <th style={{ padding: "7px 8px", textAlign: "start" }}>{t("employeeName")}</th>}
                   <th style={{ padding: "7px 8px", textAlign: "start" }}>{t("date")}</th>
                   <th style={{ padding: "7px 8px", textAlign: "start" }}>{t("status")}</th>
@@ -229,7 +229,7 @@ export default function AttendanceMonthlyReport({ employees, defaultEmployeeId, 
                 {rows.map((r) => {
                   const kind = statusKind(r);
                   return (
-                    <tr key={`${r.employeeId || employeeId}-${r.id}`} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                    <tr key={`${r.employeeId || employeeId}-${r.id}`} style={{ borderBottom: "1px solid var(--nv-line)" }}>
                       {allEmployeesSelected && (
                         <td style={{ padding: "7px 8px", fontWeight: 500, color: NAVY }}>{r.employeeName || "—"}</td>
                       )}
@@ -246,7 +246,7 @@ export default function AttendanceMonthlyReport({ employees, defaultEmployeeId, 
                       <td style={{ padding: "7px 8px", color: NAVY, fontWeight: 500, fontFamily: "'IBM Plex Sans',sans-serif" }}>
                         {r.work_hours ?? "—"}
                       </td>
-                      <td style={{ padding: "7px 8px", color: r.status === "late" ? "#B45309" : MUTED, fontFamily: "'IBM Plex Sans',sans-serif" }}>
+                      <td style={{ padding: "7px 8px", color: r.status === "late" ? "var(--nv-warn-ink)" : MUTED, fontFamily: "'IBM Plex Sans',sans-serif" }}>
                         {r.status === "late" ? (r.late_minutes ?? "—") : "—"}
                       </td>
                     </tr>

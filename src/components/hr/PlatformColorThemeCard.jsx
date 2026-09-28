@@ -88,8 +88,8 @@ export default function PlatformColorThemeCard({ lang = "ar" }) {
       </div>
       <p style={{ margin: "6px 0 0", fontSize: "12px", color: MUTED, lineHeight: 1.7, maxWidth: 640 }}>
         {ar
-          ? "لوحة رسمية واحدة: أساس كحلي ولون تمييز واحد. الوضع الليلي يبقى من أيقونة القمر في الشريط العلوي، والحضور/الغياب يبقيان أخضر وأحمر."
-          : "One official palette: a navy base and a single accent. Dark mode stays on the header moon icon, and present/absent stay green and red."}
+          ? "لوحة رسمية واحدة: أساس أخضر ولون تمييز واحد. وضعية الليل من الشريط العلوي، والحضور والغياب يبقيان أخضر وأحمر."
+          : "One official palette: a green base and a single accent. Night mode stays on the header control, and present/absent stay green and red."}
       </p>
 
       <div

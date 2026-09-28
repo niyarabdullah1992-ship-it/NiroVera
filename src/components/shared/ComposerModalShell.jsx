@@ -38,9 +38,9 @@ export default function ComposerModalShell({
     width: "100%",
     maxWidth: 680,
     maxHeight: "calc(100vh - 32px)",
-    background: "#fff",
+    background: "var(--nv-card)",
     borderRadius: 8,
-    border: "1px solid #D5DCD8",
+    border: "1px solid var(--nv-line)",
     boxShadow: "0 1px 2px rgba(12,20,16,.04), 0 4px 14px rgba(12,20,16,.05)",
     overflow: "hidden",
     display: "flex",
@@ -54,8 +54,8 @@ export default function ComposerModalShell({
         style={{
           flexShrink: 0,
           padding: "14px 16px",
-          borderBottom: "1px solid #EEF1EF",
-          background: "#fff",
+          borderBottom: "1px solid var(--nv-line)",
+          background: "var(--nv-card)",
         }}
       >
         {back ? <div style={{ marginBottom: 10 }}>{back}</div> : null}
@@ -63,12 +63,12 @@ export default function ComposerModalShell({
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
               data-nv-composer-title
-              style={{ fontFamily: "var(--font-heading, 'Readex Pro', sans-serif)", fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em", color: "#111418", lineHeight: 1.4 }}
+              style={{ fontFamily: "var(--font-heading, 'Readex Pro', sans-serif)", fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--nv-ink)", lineHeight: 1.4 }}
             >
               {title}
             </div>
             {hint ? (
-              <div style={{ fontSize: 12, color: "#555C66", marginTop: 2, lineHeight: 1.7 }}>
+              <div style={{ fontSize: 12, color: "var(--nv-muted)", marginTop: 2, lineHeight: 1.7 }}>
                 {hint}
               </div>
             ) : null}
@@ -115,11 +115,11 @@ export default function ComposerModalShell({
         style={{
           flexShrink: 0,
           padding: customFooter ? "10px 16px" : "10px 16px",
-          borderTop: "1px solid #EEF1EF",
+          borderTop: "1px solid var(--nv-line)",
           display: "flex",
           flexDirection: customFooter ? "column" : "row",
           gap: 10,
-          background: "#FAFBFA",
+          background: "var(--nv-soft)",
         }}
       >
         {customFooter ? footer : (
@@ -131,9 +131,9 @@ export default function ComposerModalShell({
                 height: 34,
                 padding: "0 14px",
                 borderRadius: 8,
-                background: "#fff",
-                border: "1px solid #D5DCD8",
-                color: "#3A4048",
+                background: "var(--nv-card)",
+                border: "1px solid var(--nv-line)",
+                color: "var(--nv-ink2)",
                 fontSize: 13,
                 fontWeight: 500,
                 cursor: "pointer",
@@ -149,8 +149,8 @@ export default function ComposerModalShell({
                 flex: 1,
                 height: 34,
                 borderRadius: 8,
-                background: enabled ? "#3C7D50" : "#D5DCD8",
-                color: enabled ? "#fff" : "#8E9A93",
+                background: enabled ? "var(--nv-btn-fill)" : "var(--nv-line)",
+                color: enabled ? "#fff" : "var(--nv-muted)",
                 border: "none",
                 fontSize: 14,
                 fontWeight: 650,

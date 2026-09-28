@@ -6,6 +6,7 @@ const stations = [
   { id: "reg", name: "منطقة الشرقية", unitKind: "manager", parentStationId: "hq" },
   { id: "khf", name: "فرع الخفجي", parentStationId: "hq" },
   { id: "dmm", name: "فرع الدمام", parentStationId: "hq" },
+  { id: "port", name: "ميناء الدمام", parentStationId: "dmm" },
 ];
 const owner = { id: "own", role: "director", stationId: "hq" };
 const clerk = { id: "emp", name: "عمر", role: "employee", stationId: "khf", leaveRequests: [{ id: "lv1", status: "pending" }] };
@@ -27,7 +28,7 @@ const data = {
 };
 
 const names = administeredWorkplaceStations(owner, data).map((row) => row.name);
-assert.deepEqual(names, ["المقر الرئيسي", "فرع الخفجي", "فرع الدمام"], "director chips are workplaces, not hard-coded, and skip manager seats");
+assert.deepEqual(names, ["المقر الرئيسي", "فرع الخفجي", "فرع الدمام"], "director chips are branches; a site under a branch stays inside that branch");
 assert.equal(administeredWorkplaceStations(clerk, data).length, 0, "an employee who manages nothing has no chips");
 
 const mine = buildManagerScopeModel({ pathname: "/app/requests", user: owner, data, scope: "all" });

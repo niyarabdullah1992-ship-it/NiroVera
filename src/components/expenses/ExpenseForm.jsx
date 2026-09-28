@@ -176,7 +176,7 @@ export default function ExpenseForm({ stations, canPickStations, onSubmit, ar, h
         {ar ? `الإجمالي بعد الضريبة: ${afterTax.toLocaleString()} × ${count} فرع = ${total.toLocaleString()} ر.س · مسار: ${steps}` : `After-tax total: ${afterTax.toLocaleString()} × ${count} stations = ${total.toLocaleString()} SAR · path: ${steps}`}
       </div>
       {!stocky.ok && (
-        <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "#8a1c2b", lineHeight: 1.7 }}>
+        <div style={{ gridColumn: "1 / -1", fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.7 }}>
           {ar ? stocky.reason : stocky.reasonEn}
           {" "}
           {ar ? "افتح المخزون › شراء الفرع." : "Open Inventory › station purchase."}

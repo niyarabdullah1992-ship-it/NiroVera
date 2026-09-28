@@ -1,7 +1,8 @@
 import { base44 } from "@/api/base44Client";
 import { employeeScheduledOn, hasPublishedScheduleOn } from "@/lib/attendanceCalendar";
-import { isOnLeaveToday } from "@/lib/leaveTypes";
+import { isStatutoryOffDay } from "@/lib/leaveTypes";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 
 // Thin helpers around the supabaseAttendance backend function, shared by the
 // check-in widget, manager dashboards, and the task-gating check in Operations.
@@ -40,7 +41,7 @@ export function checkedInToday(att) {
 
 export function getAttendanceStatus(employee, attRow, data) {
   if (checkedInToday(attRow)) return attRow.status === "late" ? "late" : "present";
-  if (isOnLeaveToday(employee)) return "on_leave";
+  if (isStatutoryOffDay(employee, toRiyadhDateKey(), laborCalendarOf(data))) return "on_leave";
   if (hasPublishedScheduleToday(data) && !isScheduledToday(employee, data)) return "not_scheduled";
   return "absent";
 }
@@ -59,7 +60,8 @@ export function deriveTeamAttendanceToday(employees = [], attendanceRows = [], d
     else if (status === "late") counts.late += 1;
     else counts.present += 1;
   }
-  const scheduled = Math.max(0, employees.length - counts.notScheduled);
+  const rostered = Math.max(0, employees.length - counts.notScheduled);
+  const scheduled = Math.max(0, rostered - counts.onLeave);
   const presentLike = counts.present + counts.late;
   const rate = scheduled > 0 ? Math.round((presentLike / scheduled) * 100) : 0;
   return { ...counts, scheduled, presentLike, rate };

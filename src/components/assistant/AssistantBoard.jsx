@@ -131,7 +131,7 @@ export default function AssistantBoard({ lang = "ar", onPickPrompt }) {
             {ar ? answer.answerAr : answer.answerEn}
           </div>
           {(answer.evidence || []).length > 0 && (
-            <div className="nv-kpi-strip" style={{ marginTop: 12, border: "1px solid #E2E8F0", borderRadius: 12, overflow: "hidden" }}>
+            <div className="nv-kpi-strip" style={{ marginTop: 12, border: "1px solid var(--nv-line)", borderRadius: 12, overflow: "hidden" }}>
               {(answer.evidence || []).map((e, i) => (
                 <div key={i} style={{ padding: "10px 14px", minWidth: 0, background: SURFACE }}>
                   <div style={{ fontSize: 10, color: MUTED }}>{ar ? e.sourceAr : e.sourceEn}</div>
@@ -175,7 +175,7 @@ export default function AssistantBoard({ lang = "ar", onPickPrompt }) {
                 borderRadius: 9,
                 border: active ? `1px solid ${BRAND}` : "1px solid var(--nv-line)",
                 background: active ? "var(--nv-accent-soft)" : CARD,
-                color: active ? "#14683F" : NAVY,
+                color: active ? "var(--nv-ok-ink)" : NAVY,
                 fontSize: 12,
                 fontWeight: 500,
                 cursor: "pointer",

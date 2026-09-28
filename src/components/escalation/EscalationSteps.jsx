@@ -19,9 +19,9 @@ export default function EscalationSteps({ steps, t, lang }) {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: s.reply ? ACCENT : s.state === "current" ? "#FFFBEB" : SURFACE,
-            color: s.reply ? "#fff" : s.state === "current" ? "#B45309" : MUTED,
-            border: s.state === "current" && !s.reply ? "1px solid #FDE68A" : `1px solid ${BORDER}`,
+            background: s.reply ? ACCENT : s.state === "current" ? "var(--nv-warn-soft)" : SURFACE,
+            color: s.reply ? "#fff" : s.state === "current" ? "var(--nv-warn-ink)" : MUTED,
+            border: s.state === "current" && !s.reply ? "1px solid var(--nv-line)" : `1px solid ${BORDER}`,
           }}
           >
             {s.reply ? <CheckCircle2 style={{ width: 12, height: 12 }} /> : <span style={{ fontSize: "9px" }}>{s.idx + 1}</span>}
@@ -29,7 +29,7 @@ export default function EscalationSteps({ steps, t, lang }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontWeight: 600, color: s.state === "current" ? NAVY : MUTED, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
               {s.label}
-              {s.state === "current" && !s.reply ? <span style={{ fontWeight: 400, color: "#B45309" }}>— {t("waitingReply")}</span> : null}
+              {s.state === "current" && !s.reply ? <span style={{ fontWeight: 400, color: "var(--nv-warn-ink)" }}>— {t("waitingReply")}</span> : null}
               {!s.hasHandler && s.state !== "done" ? (
                 <span title={t("noHandlerAssigned")} style={{ ...BAD, display: "inline-flex", alignItems: "center", gap: "4px" }}>
                   <AlertTriangle style={{ width: 10, height: 10 }} /> {t("noHandlerAssigned")}

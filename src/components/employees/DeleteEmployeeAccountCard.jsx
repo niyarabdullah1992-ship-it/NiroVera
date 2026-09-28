@@ -29,7 +29,7 @@ export default function DeleteEmployeeAccountCard({ employee, companyId }) {
   return (
     <div style={{
       borderRadius: "14px",
-      border: "1px solid #FECACA",
+      border: "1px solid var(--nv-line)",
       background: CARD,
       padding: "16px 18px",
       display: "flex",
@@ -37,7 +37,7 @@ export default function DeleteEmployeeAccountCard({ employee, companyId }) {
       gap: "10px",
     }}
     >
-      <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 600, color: "#DC2626" }}>
+      <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 600, color: "var(--nv-bad-ink)" }}>
         <Trash2 style={{ width: 16, height: 16 }} />
         {ar ? "حذف حساب الموظف" : "Delete employee account"}
       </h3>
@@ -59,9 +59,9 @@ export default function DeleteEmployeeAccountCard({ employee, companyId }) {
               alignItems: "center",
               gap: "8px",
               borderRadius: "9px",
-              border: "1px solid #DC2626",
+              border: "1px solid var(--nv-bad-line)",
               background: CARD,
-              color: "#DC2626",
+              color: "var(--nv-bad-ink)",
               fontSize: "13px",
               padding: "8px 12px",
               cursor: deleting ? "not-allowed" : "pointer",
@@ -74,7 +74,7 @@ export default function DeleteEmployeeAccountCard({ employee, companyId }) {
           </button>
         )}
       />
-      {error && <p style={{ margin: 0, fontSize: "12px", color: "#DC2626" }}>{error}</p>}
+      {error && <p style={{ margin: 0, fontSize: "12px", color: "var(--nv-bad-ink)" }}>{error}</p>}
     </div>
   );
 }

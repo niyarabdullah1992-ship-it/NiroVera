@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from "react";
 
-const NAVY = "#14213D";
-const LINE = "#E6E9EF";
-const MUTED = "#6B7280";
-const INK = "#14213D";
+const NAVY = "var(--nv-navy)";
+const LINE = "var(--nv-line)";
+const MUTED = "var(--nv-muted)";
+const INK = "var(--nv-ink)";
 
 const STEPS = [
   { id: 1, ar: "الموقّعون والحقول", en: "Signers and fields" },
@@ -62,7 +62,7 @@ function RailIcon({ name }) {
   );
 }
 
-const RAIL_LINE = "#DFE3EA";
+const RAIL_LINE = "var(--nv-line)";
 
 function railCell(on) {
   return {
@@ -78,7 +78,7 @@ function railCell(on) {
     padding: "0 8px",
     border: on ? `1px solid ${NAVY}` : `1px solid ${RAIL_LINE}`,
     borderRadius: 10,
-    background: on ? NAVY : "#fff",
+    background: on ? NAVY : "var(--nv-card)",
     color: on ? "#fff" : MUTED,
     fontSize: 12,
     fontWeight: 600,
@@ -142,19 +142,19 @@ export default function SigningStudioFrame({
   );
   const fieldsStep = step === 1;
   return (
-    <div dir={ar ? "rtl" : "ltr"} className="nv-sign-workshop nv-sign-studio" style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", height: "100dvh", background: "#EEF1F5", overflow: "hidden", color: INK, fontSize: 13 }}>
+    <div dir={ar ? "rtl" : "ltr"} className="nv-sign-workshop nv-sign-studio" style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", height: "100dvh", background: "var(--nv-page)", overflow: "hidden", color: INK, fontSize: 13 }}>
       <header style={{ background: NAVY, color: "#fff", height: 56, padding: "0 18px", display: "flex", alignItems: "center", gap: 14, flex: "none" }}>
-        <button type="button" onClick={onBack} style={{ fontFamily: "inherit", border: "none", background: "transparent", color: "#B8C4D6", cursor: "pointer", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 2px", whiteSpace: "nowrap" }}>
+        <button type="button" onClick={onBack} style={{ fontFamily: "inherit", border: "none", background: "transparent", color: "#C5DBCD", cursor: "pointer", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 2px", whiteSpace: "nowrap" }}>
           <span aria-hidden="true">{ar ? "→" : "←"}</span>
           {ar ? "العودة إلى التوقيع" : "Back to signing"}
         </button>
         <span style={{ width: 1, height: 26, background: "rgba(255,255,255,.18)", flex: "none" }} />
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1, lineHeight: 1.4 }}>
           <strong style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</strong>
-          <span style={{ fontSize: 10.5, color: "#9AA8BF", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <span style={{ fontSize: 10.5, color: "#C5DBCD", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {pageLabel ? <span>{pageLabel} · </span> : null}
             {ar ? "مظروف " : "Envelope "}
-            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", unicodeBidi: "isolate", color: "#7FD1A6" }}>{envelopeId}</span>
+            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", unicodeBidi: "isolate", color: "#A9CDB8" }}>{envelopeId}</span>
           </span>
         </div>
         <ol style={{ listStyle: "none", display: "flex", alignItems: "center", gap: 0, margin: 0, padding: 0, flex: "none" }}>
@@ -171,7 +171,7 @@ export default function SigningStudioFrame({
             );
           })}
         </ol>
-        <span style={{ fontSize: 11, color: "#9AA8BF", whiteSpace: "nowrap", flex: "none" }}>
+        <span style={{ fontSize: 11, color: "#C5DBCD", whiteSpace: "nowrap", flex: "none" }}>
           <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, color: "#fff" }}>{fieldCount}</span>
           {ar ? " حقول" : " fields"}
         </span>
@@ -181,25 +181,25 @@ export default function SigningStudioFrame({
       </header>
 
       {fieldsStep ? (
-      <div style={{ background: "#fff", borderBottom: `1px solid ${LINE}`, height: 48, padding: "0 18px", display: "flex", alignItems: "center", gap: 8, flex: "none", minWidth: 0 }}>
+      <div style={{ background: "var(--nv-card)", borderBottom: `1px solid ${LINE}`, height: 48, padding: "0 18px", display: "flex", alignItems: "center", gap: 8, flex: "none", minWidth: 0 }}>
         <span style={{ fontSize: 11.5, color: MUTED, fontWeight: 600, whiteSpace: "nowrap" }}>{ar ? "الحقول لـ:" : "Fields for:"}</span>
         <div style={{ display: "flex", gap: 6, overflowX: "auto", minWidth: 0, maxWidth: "50%" }}>
           {signers.map((signer, index) => {
             const on = signerIndex === index;
             return (
-              <button key={signer.key || index} type="button" onClick={() => onPickSigner?.(index)} style={{ fontFamily: "inherit", height: 30, padding: "0 10px", borderRadius: 4, border: `1px solid ${on ? NAVY : LINE}`, background: on ? "#EEF2F8" : "#fff", color: INK, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", flex: "none" }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: signer.color || "#1d9a5b", flex: "none" }} />
+              <button key={signer.key || index} type="button" onClick={() => onPickSigner?.(index)} style={{ fontFamily: "inherit", height: 30, padding: "0 10px", borderRadius: 4, border: `1px solid ${on ? NAVY : LINE}`, background: on ? "var(--nv-accent-soft)" : "var(--nv-card)", color: INK, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", flex: "none" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: signer.color || "var(--nv-ok-ink)", flex: "none" }} />
                 <span style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }}>{signer.name || (ar ? "موقّع" : "Signer")}</span>
               </button>
             );
           })}
         </div>
         <div style={{ position: "relative", flex: "none" }}>
-          <button type="button" onClick={() => setAddOpen((value) => !value)} style={{ fontFamily: "inherit", height: 30, padding: "0 12px", borderRadius: 4, border: "1px dashed #9AA8BF", background: "#fff", color: INK, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+          <button type="button" onClick={() => setAddOpen((value) => !value)} style={{ fontFamily: "inherit", height: 30, padding: "0 12px", borderRadius: 4, border: "1px dashed var(--nv-line)", background: "var(--nv-card)", color: INK, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
             ＋ {ar ? "إضافة موقّعين" : "Add signers"}
           </button>
           {addOpen ? (
-            <div style={{ position: "absolute", top: 36, insetInlineStart: 0, zIndex: 30, width: "min(340px, 90vw)", boxSizing: "border-box", background: "#fff", border: `1px solid ${LINE}`, borderRadius: 6, boxShadow: "0 14px 36px rgba(20,33,61,.18)", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ position: "absolute", top: 36, insetInlineStart: 0, zIndex: 30, width: "min(340px, 90vw)", boxSizing: "border-box", background: "var(--nv-card)", border: `1px solid ${LINE}`, borderRadius: 6, boxShadow: "0 14px 36px rgba(20,33,61,.18)", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={{ fontSize: 10.5, letterSpacing: ".08em", color: NAVY, fontWeight: 700 }}>{ar ? "من المنشأة — اختر واحداً أو أكثر" : "From the company"}</span>
               <input value={peopleQuery} onChange={(event) => onPeopleQuery?.(event.target.value)} placeholder={ar ? "⌕ ابحث بالاسم أو الصفة أو الرقم الوظيفي" : "Search name, title, or number"} style={{ height: 32, padding: "0 10px", borderRadius: 4, border: `1px solid ${LINE}`, fontSize: 12, color: INK, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit" }} />
               <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 196, overflowY: "auto" }}>
@@ -217,7 +217,7 @@ export default function SigningStudioFrame({
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button type="button" onClick={() => { setAddOpen(false); onAddSigners?.(); }} style={{ flex: 1, height: 34, borderRadius: 4, border: 0, background: NAVY, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{ar ? "موقّع خارجي" : "External signer"}</button>
-                <button type="button" onClick={() => setAddOpen(false)} style={{ height: 34, padding: "0 14px", borderRadius: 4, border: `1px solid ${LINE}`, background: "#fff", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>{ar ? "إلغاء" : "Cancel"}</button>
+                <button type="button" onClick={() => setAddOpen(false)} style={{ height: 34, padding: "0 14px", borderRadius: 4, border: `1px solid ${LINE}`, background: "var(--nv-card)", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>{ar ? "إلغاء" : "Cancel"}</button>
               </div>
             </div>
           ) : null}
@@ -225,18 +225,18 @@ export default function SigningStudioFrame({
         <span style={{ flex: 1, minWidth: 12, fontSize: 11, color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>
           {ar ? "اسحب «التوقيع» أو اضغط على الصفحة لوضعه" : "Drag a signature or click the page to place it"}
         </span>
-        <button type="button" onClick={onAutoPlace} disabled={autoPlaceBusy} style={{ fontFamily: "inherit", height: 30, padding: "0 12px", borderRadius: 4, border: `1px solid ${LINE}`, background: "#fff", color: INK, fontSize: 12, cursor: autoPlaceBusy ? "wait" : "pointer", whiteSpace: "nowrap", opacity: autoPlaceBusy ? 0.6 : 1 }}>
+        <button type="button" onClick={onAutoPlace} disabled={autoPlaceBusy} style={{ fontFamily: "inherit", height: 30, padding: "0 12px", borderRadius: 4, border: `1px solid ${LINE}`, background: "var(--nv-card)", color: INK, fontSize: 12, cursor: autoPlaceBusy ? "wait" : "pointer", whiteSpace: "nowrap", opacity: autoPlaceBusy ? 0.6 : 1 }}>
           {autoPlaceBusy ? (ar ? "جارٍ الوضع…" : "Placing…") : (ar ? "وضع الحقول تلقائياً" : "Place fields automatically")}
         </button>
       </div>
       ) : null}
 
       {toolbarExtra}
-      {note ? <p style={{ margin: 0, padding: "6px 14px", background: "#F3FAF6", color: "#137A49", fontSize: 12 }}>{note}</p> : null}
-      {error ? <p style={{ margin: 0, padding: "6px 14px", background: "#FBF1F2", color: "#8A1C2B", fontSize: 12 }}>{error}</p> : null}
+      {note ? <p style={{ margin: 0, padding: "6px 14px", background: "var(--nv-accent-soft)", color: "var(--nv-ok-ink)", fontSize: 12 }}>{note}</p> : null}
+      {error ? <p style={{ margin: 0, padding: "6px 14px", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)", fontSize: 12 }}>{error}</p> : null}
 
-      <div className="nv-sign-body" style={{ flex: 1, minHeight: 0, display: "flex", background: "#F3F4F6" }}>
-        <aside className="nv-sign-panel" style={{ width: 300, flex: "none", background: "#FAFBFC", borderInlineEnd: `1px solid ${LINE}`, overflow: "auto", minHeight: 0 }}>
+      <div className="nv-sign-body" style={{ flex: 1, minHeight: 0, display: "flex", background: "var(--nv-page)" }}>
+        <aside className="nv-sign-panel" style={{ width: 300, flex: "none", background: "var(--nv-soft)", borderInlineEnd: `1px solid ${LINE}`, overflow: "auto", minHeight: 0 }}>
           {panel}
         </aside>
         <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
@@ -245,7 +245,7 @@ export default function SigningStudioFrame({
           </div>
           {thumbs}
         </main>
-        <nav className="nv-sign-rail" aria-label={ar ? "أدوات المستند" : "Document tools"} style={{ width: 156, flex: "none", alignSelf: "stretch", background: "#fff", borderInlineStart: `1px solid ${LINE}`, display: "flex", flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", gap: 12, padding: 8, boxSizing: "border-box" }}>
+        <nav className="nv-sign-rail" aria-label={ar ? "أدوات المستند" : "Document tools"} style={{ width: 156, flex: "none", alignSelf: "stretch", background: "var(--nv-card)", borderInlineStart: `1px solid ${LINE}`, display: "flex", flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", gap: 12, padding: 8, boxSizing: "border-box" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <button type="button" style={railCell(rail === "summary")} aria-pressed={rail === "summary"} onClick={() => onRail?.("summary")}>
               <RailGlyph name="summary" on={rail === "summary"} />

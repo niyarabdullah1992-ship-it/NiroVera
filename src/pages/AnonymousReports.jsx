@@ -274,12 +274,12 @@ export default function AnonymousReports({ underQueue = false }) {
             display: "flex",
             alignItems: "center",
             gap: "10px",
-            borderColor: "color-mix(in oklab, #1E9E63 28%, #fff)",
-            background: "color-mix(in oklab, #1E9E63 8%, #fff)",
+            borderColor: "color-mix(in oklab, var(--nv-ok-ink) 28%, #fff)",
+            background: "color-mix(in oklab, var(--nv-ok-ink) 8%, #fff)",
           }}
           >
             <ShieldCheck style={{ width: 18, height: 18, color: ACCENT, flexShrink: 0 }} />
-            <p style={{ margin: 0, flex: 1, fontSize: "13px", color: "#14683F" }}>{t("identityProtected")}</p>
+            <p style={{ margin: 0, flex: 1, fontSize: "13px", color: "var(--nv-ok-ink)" }}>{t("identityProtected")}</p>
             <Lock style={{ width: 14, height: 14, color: ACCENT }} />
           </div>
 
@@ -296,7 +296,7 @@ export default function AnonymousReports({ underQueue = false }) {
                 <MobileSelect value={effectiveReportStationId} onChange={setReportStationId} searchable searchPlaceholder={t("search")} placeholder={t("selectStation")} className="w-full" options={assignedStations.map((station) => ({ value: station.id, label: station.location ? `${station.name} — ${station.location}` : station.name }))} />
               </div>
             ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: effectiveReportStationId ? MUTED : "#DC2626" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: effectiveReportStationId ? MUTED : "var(--nv-bad-ink)" }}>
                 <Building2 style={{ width: 14, height: 14 }} />
                 {t("station")}: {effectiveReportStationId ? stationName(effectiveReportStationId) : (lang === "ar" ? "لا توجد فرع معيّنة" : "No assigned station")}
               </div>
@@ -348,7 +348,7 @@ export default function AnonymousReports({ underQueue = false }) {
                     <CommentAttachments files={r.files} />
                     {renderTimeline(r)}
                     {!isAtTop(r) && r.status === "rejected" && (
-                      <button type="button" onClick={() => escalate(r.id)} style={{ ...ui.btnGhost, display: "inline-flex", alignItems: "center", gap: "6px", borderColor: "#FDE68A", color: "#B45309", alignSelf: "flex-start" }}>
+                      <button type="button" onClick={() => escalate(r.id)} style={{ ...ui.btnGhost, display: "inline-flex", alignItems: "center", gap: "6px", borderColor: "var(--nv-line)", color: "var(--nv-warn-ink)", alignSelf: "flex-start" }}>
                         <ArrowUpCircle style={{ width: 14, height: 14 }} /> {t("notConvinced")}
                       </button>
                     )}

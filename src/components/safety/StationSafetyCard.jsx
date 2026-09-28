@@ -50,11 +50,11 @@ export default function StationSafetyCard({ station, rec, canEdit, canApprove, c
         : {
             display: "flex",
             flexDirection: "column",
-            borderRadius: 16,
+            borderRadius: 14,
             border: `1px solid ${BORDER}`,
             background: CARD,
             overflow: "hidden",
-            boxShadow: "0 8px 24px rgba(20,40,75,.06)",
+            boxShadow: "var(--nv-paper)",
           }}
       dir={ar ? "rtl" : "ltr"}
     >
@@ -128,7 +128,7 @@ export default function StationSafetyCard({ station, rec, canEdit, canApprove, c
               width: 32,
               height: 32,
               borderRadius: 9,
-              border: "1px solid #E2E8F0",
+              border: "1px solid var(--nv-line)",
               background: SURFACE,
               color: MUTED,
               display: "inline-flex",
@@ -168,9 +168,9 @@ export default function StationSafetyCard({ station, rec, canEdit, canApprove, c
                     gap: 5,
                     borderRadius: 9,
                     border: active
-                      ? `1px solid color-mix(in oklab, ${ACCENT} 40%, #fff)`
-                      : "1px solid #E2E8F0",
-                    background: active ? "color-mix(in oklab, #1E9E63 10%, #fff)" : CARD,
+                      ? `1px solid ${ACCENT}`
+                      : "1px solid var(--nv-line)",
+                    background: active ? "var(--nv-ok-soft)" : CARD,
                     boxShadow: active ? `inset 3px 0 0 ${ACCENT}` : "none",
                     color: active ? NAVY : MUTED,
                     padding: "6px 11px",
@@ -208,6 +208,7 @@ export default function StationSafetyCard({ station, rec, canEdit, canApprove, c
                 onRevokeApproval={onRevokeApproval}
                 onIncident={onIncident}
                 pane={layer === "work" ? "work" : layer === "approve" ? "status" : "all"}
+                listReports={layer !== "work"}
               />
             )}
             {(layer === "full" || layer === "comply") && tab === "risks" && <RiskAssessmentTab items={rec?.riskItems || []} canEdit={canEdit} lang={lang} onChange={(riskItems) => onUpdate({ riskItems })} />}

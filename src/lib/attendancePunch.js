@@ -4,7 +4,7 @@ import { isOnApprovedLeave } from "./leaveTypes.js";
 import { toRiyadhDateKey } from "./riyadhDate.js";
 import { checkJuvenileHoursGate } from "./laborProtectionGates.js";
 import { isWeeklyRestDay } from "./laborHoursPolicy.js";
-import { isOfficialHoliday } from "./ummAlQuraCalendar.js";
+import { isOfficialHoliday, officialHolidayLeaveLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
 import { ruleValue } from "./laborRules.js";
 
 export function parsePunchClock(value) {
@@ -112,6 +112,21 @@ export function checkPunchRecordGate({
       reasonEn: kind === "checkout_fix"
         ? "Checkout correction blocked — you have approved leave for this day."
         : "Check-in blocked — you have approved leave for this day.",
+    };
+  }
+  const holiday = officialHolidayOn(day, laborCalendar);
+  if (holiday) {
+    const arName = officialHolidayLeaveLabel(holiday.id, true, laborCalendar);
+    const enName = officialHolidayLeaveLabel(holiday.id, false, laborCalendar);
+    return {
+      ok: false,
+      error: "OFFICIAL_HOLIDAY",
+      reason: kind === "checkout_fix"
+        ? `${arName} بأجر كامل — لا تصحيح انصراف (المادة 112).`
+        : `${arName} بأجر كامل — لا تسجيل حضور (المادة 112).`,
+      reasonEn: kind === "checkout_fix"
+        ? `${enName} is full-pay leave — checkout is not corrected (Article 112).`
+        : `${enName} is full-pay leave — no punch (Article 112).`,
     };
   }
   if (kind === "manual_punch") {

@@ -23,6 +23,14 @@ import { requestSelfEmployee } from "./employeeFileView.js";
 import { nightRotateDue, pendingNightRotate } from "./nightRotateCycle.js";
 import { scheduleForEmployee } from "./nightDueNotify.js";
 import { statutoryGlowState } from "./statutoryItem.js";
+import {
+  readExpenseClaims,
+  readPayrollRuns,
+  readSafety,
+  readSignatureRequests,
+  readTasks,
+  readWorkProofs,
+} from "./facts/index.js";
 import { employeeWorkStationId, weekStartDate } from "./shiftWeek.js";
 
 export function asSuiteBadge(n) {
@@ -343,14 +351,14 @@ export function collectSuiteBadges(input = {}) {
   const byApp = {
     requests: asSuiteBadge(pendingRequestsBadgeCount(user, data, employees, weekStart)),
     attendance: asSuiteBadge(pendingPunchQueueCount(duty, attendanceRows) + nightDueDuty),
-    signing: asSuiteBadge(pendingSigningBadgeCount((data.signatureRequests || []).filter((row) => !row.stationId || scoped(row.stationId)), user)),
-    tasks: asSuiteBadge(pendingOpsBadgeCount((data.tasks || []).filter((row) => scoped(row.stationId)), user, data)),
-    "work-proof": asSuiteBadge(pendingWorkProofBadgeCount((data.workProofs || []).filter((row) => scoped(row.stationId)), user)),
+    signing: asSuiteBadge(pendingSigningBadgeCount(readSignatureRequests(data).filter((row) => !row.stationId || scoped(row.stationId)), user)),
+    tasks: asSuiteBadge(pendingOpsBadgeCount(readTasks(data).filter((row) => scoped(row.stationId)), user, data)),
+    "work-proof": asSuiteBadge(pendingWorkProofBadgeCount(readWorkProofs(data).filter((row) => scoped(row.stationId)), user)),
     complaints: asSuiteBadge(pendingVoiceBadgeCount(data, user)),
     discipline: asSuiteBadge(pendingDisciplineBadgeCount(data, user)),
-    expenses: asSuiteBadge(pendingExpenseBadgeCount((data.expenseClaims || data.expenses || []).filter((row) => scoped(row.stationId)), user, data)),
-    payroll: asSuiteBadge(pendingPayrollBadgeCount(data.payrollRuns, user, data)),
-    safety: asSuiteBadge(pendingSafetyBadgeCount((data.safety || []).filter((row) => scoped(row.stationId)), user, data)),
+    expenses: asSuiteBadge(pendingExpenseBadgeCount(readExpenseClaims(data).filter((row) => scoped(row.stationId)), user, data)),
+    payroll: asSuiteBadge(pendingPayrollBadgeCount(readPayrollRuns(data), user, data)),
+    safety: asSuiteBadge(pendingSafetyBadgeCount(readSafety(data).filter((row) => scoped(row.stationId)), user, data)),
   };
 
   const glowByApp = {

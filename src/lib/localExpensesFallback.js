@@ -18,6 +18,7 @@ import {
 import { notifyMoneyMany, notifyMoneyReviewers, stationManagerIds } from "@/lib/moneyNotifications";
 import { EXPENSE_DENY, checkExpenseSelfReview, expenseRights, reachableStationIds, visibleClaims } from "@/lib/expenseRights";
 import { moneyActor } from "@/lib/financeRights";
+import { readExpenseClaims, readStationBudgets } from "@/lib/facts";
 
 const TYPES = ["travel", "accommodation", "fuel", "overtime_meals", "tools_equipment", "training", "other"];
 const DEFAULT_STATION_LIMIT = 50000;
@@ -145,7 +146,7 @@ function refuseOnVessel(companyId, auth, claimId, stage, gate) {
 function ensureLedger(data) {
   const stations = stationRows(data);
   const merged = [
-    ...(Array.isArray(data.expenseClaims) ? data.expenseClaims : []),
+    ...readExpenseClaims(data),
     ...(Array.isArray(data.expenses) ? data.expenses : []),
   ];
   const byId = new Map();
@@ -154,13 +155,15 @@ function ensureLedger(data) {
     if (!byId.has(claim.id)) byId.set(claim.id, claim);
   });
   data.expenseClaims = [...byId.values()].map(annotateLegacyStockSurface);
-  if (!Array.isArray(data.stationBudgets) || !data.stationBudgets.length) {
+  if (!readStationBudgets(data).length) {
     data.stationBudgets = stations.map((station) => ({
       stationId: station.stationId,
       stationName: station.name,
       limit: DEFAULT_STATION_LIMIT,
       currency: "SAR",
     }));
+  } else {
+    data.stationBudgets = readStationBudgets(data);
   }
   return data;
 }

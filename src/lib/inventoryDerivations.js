@@ -1,19 +1,11 @@
 /** Client mirror of base44/shared/inventoryDerivations.ts */
+import { qtyAtLocation } from "./facts/money.js";
 
 export const CRITICAL_RATIO = 0.5;
 
 /** On-hand at one station. Zero is zero — do not fall through to company total. */
 export function qtyAtStation(item, stationId) {
-  if (!item || stationId == null || stationId === "") return 0;
-  const balances = item.locationBalances;
-  if (Array.isArray(balances) && balances.length) {
-    const row = balances.find((entry) => String(entry.locationId) === String(stationId));
-    return row ? Math.max(0, Number(row.quantity) || 0) : 0;
-  }
-  if (String(item.currentLocationId || item.stationId) === String(stationId)) {
-    return Math.max(0, Number(item.quantity ?? item.onHand) || 0);
-  }
-  return 0;
+  return qtyAtLocation(item, stationId);
 }
 
 export function fillRatio(onHand, reorder) {

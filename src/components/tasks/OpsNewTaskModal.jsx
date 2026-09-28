@@ -59,8 +59,8 @@ const LABEL_SPAN = {
 };
 
 const selectedControl = {
-  border: "1px solid #3C7D50",
-  background: "#3C7D50",
+  border: "1px solid var(--nv-accent-border)",
+  background: "var(--nv-btn-fill)",
   color: "#fff",
   fontWeight: 600,
 };
@@ -262,7 +262,7 @@ function PaceRangeCalendar({ ar, startAt, dueAt, picked, onToggle }) {
                 height: 32,
                 borderRadius: CONTROL_RADIUS,
                 border: on ? "none" : "1px solid transparent",
-                background: on ? "#3C7D50" : "transparent",
+                background: on ? "var(--nv-btn-fill)" : "transparent",
                 color: !inRange ? "#CBD5E1" : on ? "#fff" : NAVY,
                 fontSize: 12,
                 fontWeight: on ? 700 : 500,
@@ -294,7 +294,7 @@ function priorityBtnStyle(active) {
     fontFamily: "inherit",
     fontSize: "12px",
     ...(active
-      ? { border: "1px solid #3C7D50", background: "#3C7D50", color: "#fff", fontWeight: 600 }
+      ? { border: "1px solid var(--nv-accent-border)", background: "var(--nv-btn-fill)", color: "#fff", fontWeight: 600 }
       : idleControl),
   };
 }
@@ -359,7 +359,7 @@ function avatarStyle(on) {
     justifyContent: "center",
     flexShrink: 0,
     fontFamily: MONO,
-    ...(on ? { background: "#3C7D50", color: "#fff" } : { background: SURFACE, color: MUTED }),
+    ...(on ? { background: "var(--nv-btn-fill)", color: "#fff" } : { background: SURFACE, color: MUTED }),
   };
 }
 
@@ -368,8 +368,8 @@ function SectionCard({ title, hint, children }) {
     <section
       style={{
         borderRadius: 8,
-        border: "1px solid #D5DCD8",
-        background: "#fff",
+        border: "1px solid var(--nv-line)",
+        background: "var(--nv-card)",
         padding: 16,
         display: "flex",
         flexDirection: "column",
@@ -753,7 +753,7 @@ export default function OpsNewTaskModal({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: CONTROL_RADIUS,
-    background: submitEnabled ? "#3C7D50" : "#D5DCD8",
+    background: submitEnabled ? "var(--nv-btn-fill)" : "#D5DCD8",
     color: submitEnabled ? "#fff" : MUTE_INK,
     border: "none",
     fontSize: "14px",

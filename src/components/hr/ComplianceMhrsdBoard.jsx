@@ -3,12 +3,14 @@ import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { base44 } from "@/api/base44Client";
+import { updateCompany } from "@/lib/store";
+import { readCompanyEstablishment, writeCompanyEstablishment } from "@/lib/facts";
+import { isLocalPreviewActive, LOCAL_PREVIEW_COMPANY_ID } from "@/lib/localPreview";
 import { toast } from "@/components/ui/use-toast";
-import { ACCENT, BAD, MUTED, NAVY, NAVY_FILL, NEUTRAL, OK, WARN, field, CARD, SURFACE } from "@/lib/platformStyles";
-import { ChromeBox } from "@/components/shared/IdentityCard";
+import { ACCENT, BAD, MUTED, NEUTRAL, OK, WARN, field } from "@/lib/platformStyles";
 import { visibleStations } from "@/lib/permissions";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
-import { deriveStationReadiness, READINESS_COLOR, readinessLabel } from "@/lib/stationReadiness";
+import { deriveStationReadiness, readinessLabel } from "@/lib/stationReadiness";
 import { deriveExpiringDocs, deriveNitaqat, nitaqatBandLabel, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { formatDate } from "@/lib/dateFormat";
 import { printReport } from "@/lib/printReport";
@@ -64,6 +66,52 @@ function expiryWording(days, ar) {
 
 /* A rail that is only derived is not a rail that is connected — the fill has to say
    which of the two it is, otherwise five identical green chips claim five live links. */
+const PAPER = {
+  background: "var(--nv-card)",
+  border: "1px solid var(--nv-line)",
+  borderRadius: 14,
+  padding: "16px 18px",
+  boxShadow: "var(--nv-paper)",
+};
+
+const HAIRLINE = "1px solid var(--nv-line)";
+
+const FIGURE = {
+  fontFamily: "'IBM Plex Sans', sans-serif",
+  fontWeight: 600,
+  lineHeight: 1,
+  color: "var(--nv-ink)",
+  textAlign: "right",
+};
+
+function bandBarColor(id) {
+  if (id === "red") return "var(--nv-bad-fill)";
+  if (id === "low_green") return "var(--nv-warn-fill)";
+  if (id === "mid_green") return "var(--nv-ok-fill)";
+  if (id === "high_green") return "var(--nv-ok-ink)";
+  return "var(--nv-ink)";
+}
+
+function bandMute(id) {
+  if (id === "red") return "var(--nv-bad-soft)";
+  if (id === "low_green") return "var(--nv-warn-soft)";
+  if (id === "platinum") return "var(--nv-mute-soft)";
+  return "var(--nv-ok-soft)";
+}
+
+function bandEdge(id) {
+  if (id === "red") return "var(--nv-bad-fill)";
+  if (id === "low_green") return "var(--nv-warn-fill)";
+  return "var(--nv-ok-fill)";
+}
+
+function readinessSignal(level, clear) {
+  if (clear) return "var(--nv-mute-fill)";
+  if (level === "ready") return "var(--nv-ok-fill)";
+  if (level === "watch") return "var(--nv-warn-fill)";
+  return "var(--nv-bad-fill)";
+}
+
 function LiveChip({ on, label, ar }) {
   const live = !!on;
   return (
@@ -71,15 +119,15 @@ function LiveChip({ on, label, ar }) {
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: "6px",
-        height: "28px",
+        gap: 6,
+        height: 28,
         padding: "0 11px",
-        borderRadius: "20px",
-        fontSize: "11px",
+        borderRadius: 999,
+        fontSize: 11,
         fontWeight: 600,
-        background: live ? "#ECFDF3" : SURFACE,
-        border: `1px solid ${live ? "#BBF7D0" : "#E2E8F0"}`,
-        color: live ? "#15803D" : MUTED,
+        background: live ? "var(--nv-ok-soft)" : "var(--nv-mute-soft)",
+        border: `1px solid ${live ? "var(--nv-ok-line)" : "var(--nv-mute-line)"}`,
+        color: live ? "var(--nv-ok-ink)" : "var(--nv-mute-ink)",
       }}
     >
       <span
@@ -87,7 +135,7 @@ function LiveChip({ on, label, ar }) {
           width: 6,
           height: 6,
           borderRadius: "50%",
-          background: live ? ACCENT : "#CBD5E1",
+          background: live ? "var(--nv-ok-fill)" : "var(--nv-mute-fill)",
           flexShrink: 0,
         }}
       />
@@ -150,7 +198,7 @@ export default function ComplianceMhrsdBoard() {
     const localFallback = {
       nitaqat: localNitaqat,
       expiring: registerExpiring,
-      gosiEstablishment: "",
+      gosiEstablishment: readCompanyEstablishment(register),
       liveIntegrations: {
         qiwa: false,
         gosi: false,
@@ -160,7 +208,10 @@ export default function ComplianceMhrsdBoard() {
         noteEn: "Local preview — deploy the compliance function for full wiring. Live Qiwa/GOSI/Mudad send deferred until credentials.",
       },
     };
-    const applyLocal = () => setData(localFallback);
+    const applyLocal = () => {
+      setData(localFallback);
+      setGosiNo(localFallback.gosiEstablishment || "");
+    };
     if (!company?.id) {
       applyLocal();
       return;
@@ -177,13 +228,36 @@ export default function ComplianceMhrsdBoard() {
     } catch {
       applyLocal();
     }
-  }, [company?.id, localNitaqat, registerExpiring, scopedEmployees.length, scope]);
+  }, [company?.id, localNitaqat, registerExpiring, register?.gosiEstablishment, scopedEmployees.length, scope]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const saveEstablishment = async () => {
+    const number = String(gosiNo || "").trim();
+    const preview = isLocalPreviewActive() || company?.id === LOCAL_PREVIEW_COMPANY_ID;
+    if (preview) {
+      setBusy(true);
+      try {
+        if (!company?.id || !number) {
+          toast({
+            title: ar ? "مرفوض" : "Blocked",
+            description: ar ? "يلزم رقم منشأة غير فارغ." : "A non-empty establishment number is required.",
+            variant: "destructive",
+          });
+          return;
+        }
+        updateCompany(company.id, (draft) => {
+          writeCompanyEstablishment(draft, number);
+        });
+        setData((prev) => ({ ...(prev || {}), gosiEstablishment: number }));
+        toast({ title: ar ? "حُفظ رقم المنشأة" : "Establishment saved" });
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setBusy(true);
     try {
       const res = await base44.functions.invoke("compliance", {
@@ -262,14 +336,14 @@ export default function ComplianceMhrsdBoard() {
   const bandStyle = bandId === "red" ? BAD : bandId === "low_green" ? WARN : bandId === "platinum" ? NEUTRAL : OK;
 
   const bands = [
-    { id: "red", label: nitaqatBandLabel("red", ar), range: "0–10%", color: "#DC2626", mute: "#FEE2E2" },
-    { id: "low_green", label: nitaqatBandLabel("low_green", ar), range: "10–20%", color: "#4ADE80", mute: "#DCFCE7" },
-    { id: "mid_green", label: nitaqatBandLabel("mid_green", ar), range: "20–30%", color: ACCENT, mute: "#DCFCE7" },
-    { id: "high_green", label: nitaqatBandLabel("high_green", ar), range: "30–40%", color: "#15803D", mute: "#DCFCE7" },
-    { id: "platinum", label: nitaqatBandLabel("platinum", ar), range: "≥ 40%", color: NAVY, mute: "#E2E8F0" },
+    { id: "red", label: nitaqatBandLabel("red", ar), range: "0–10%" },
+    { id: "low_green", label: nitaqatBandLabel("low_green", ar), range: "10–20%" },
+    { id: "mid_green", label: nitaqatBandLabel("mid_green", ar), range: "20–30%" },
+    { id: "high_green", label: nitaqatBandLabel("high_green", ar), range: "30–40%" },
+    { id: "platinum", label: nitaqatBandLabel("platinum", ar), range: "≥ 40%" },
   ].map((b) => ({
     ...b,
-    style: { flex: 1, height: "8px", background: bandId === b.id ? b.color : b.mute },
+    style: { flex: 1, height: "8px", background: bandId === b.id ? bandBarColor(b.id) : bandMute(b.id) },
   }));
 
   const fieldInput = {
@@ -323,28 +397,45 @@ export default function ComplianceMhrsdBoard() {
   };
 
   const btnGhost = {
-    height: "38px",
+    height: 36,
     padding: "0 14px",
-    borderRadius: "9px",
-    border: "1px solid #E2E8F0",
-    background: CARD,
-    color: MUTED,
-    fontSize: "12px",
+    borderRadius: 8,
+    border: "1px solid var(--nv-line)",
+    background: "var(--nv-card)",
+    color: "var(--nv-ink2)",
+    fontSize: 12,
+    fontWeight: 600,
     cursor: busy ? "wait" : "pointer",
     fontFamily: "inherit",
     opacity: busy ? 0.6 : 1,
   };
+  const btnPrimary = {
+    ...btnGhost,
+    border: "none",
+    background: "var(--nv-btn-fill)",
+    color: "var(--nv-btn-ink)",
+  };
+  const readinessEdge = readinessRows.some((row) => row.readiness.level === "blocked")
+    ? "var(--nv-bad-fill)"
+    : readinessRows.some((row) => row.readiness.blockers.length > 0)
+      ? "var(--nv-warn-fill)"
+      : "var(--nv-ok-fill)";
+  const expiryEdge = expiringList.some((row) => Number(row.days) < 0)
+    ? "var(--nv-bad-fill)"
+    : expiringList.length
+      ? "var(--nv-warn-fill)"
+      : "var(--nv-ok-fill)";
 
   return (
     <div id="compliance-center" style={{ display: "flex", flexDirection: "column", gap: "16px" }} dir={ar ? "rtl" : "ltr"}>
       {/* L2234–2268 Nitaqat card — primary glance at top of compliance centre */}
-      <ChromeBox>
+      <section style={{ ...PAPER, borderTop: `3px solid ${bandEdge(bandId)}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
+            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
               {ar ? "نطاقات — نسبة التوطين" : "Nitaqat — Saudization rate"}
             </div>
-            <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", maxWidth: "620px", lineHeight: 1.65 }}>
+            <div style={{ fontSize: "11px", color: "var(--nv-ink3)", marginTop: "4px", maxWidth: "620px", lineHeight: 1.65 }}>
               {ar
                 ? "نسبة مشتقة من سجل الموظفين — بلا إدخال يدوي للنطاق. برنامج نطاقات ضمن التزامات الوزارة."
                 : "Rate derived from the employee register — no manual band entry. Nitaqat programme under ministry obligations."}
@@ -358,7 +449,7 @@ export default function ComplianceMhrsdBoard() {
                 fontSize: "30px",
                 fontWeight: 600,
                 lineHeight: 1,
-                color: ACCENT,
+                color: "var(--nv-ok-fill)",
               }}
             >
               {rate}%
@@ -381,38 +472,38 @@ export default function ComplianceMhrsdBoard() {
           ))}
         </div>
 
-        <div style={{ display: "flex", gap: "26px", flexWrap: "wrap", marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #F1F5F9" }}>
+        <div style={{ display: "flex", gap: "26px", flexWrap: "wrap", marginTop: "16px", paddingTop: "14px", borderTop: HAIRLINE }}>
           <div>
-            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: NAVY }}>
+            <div dir="ltr" style={{ ...FIGURE, fontSize: 20 }}>
               {n?.saudi ?? "—"}
             </div>
-            <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "سعوديون" : "Saudis"}</div>
+            <div style={{ fontSize: "11px", color: "var(--nv-ink3)", marginTop: "3px" }}>{ar ? "سعوديون" : "Saudis"}</div>
           </div>
           <div>
-            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: NAVY }}>
+            <div dir="ltr" style={{ ...FIGURE, fontSize: 20 }}>
               {n?.nonSaudi ?? "—"}
             </div>
-            <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "غير سعوديين" : "Non-Saudis"}</div>
+            <div style={{ fontSize: "11px", color: "var(--nv-ink3)", marginTop: "3px" }}>{ar ? "غير سعوديين" : "Non-Saudis"}</div>
           </div>
           <div>
-            <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: NAVY }}>
+            <div dir="ltr" style={{ ...FIGURE, fontSize: 20 }}>
               {n?.total ?? "—"}
             </div>
-            <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "الإجمالي" : "Total"}</div>
+            <div style={{ fontSize: "11px", color: "var(--nv-ink3)", marginTop: "3px" }}>{ar ? "الإجمالي" : "Total"}</div>
           </div>
           {n?.mismatch > 0 ? (
             <div>
-              <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, textAlign: "right", color: "#DC2626" }}>
+              <div dir="ltr" style={{ ...FIGURE, fontSize: 20, color: "var(--nv-bad-ink)" }}>
                 {n.mismatch}
               </div>
-              <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>{ar ? "تعارض جنسية/هوية" : "Nationality / ID mismatch"}</div>
+              <div style={{ fontSize: "11px", color: "var(--nv-ink3)", marginTop: "3px" }}>{ar ? "تعارض جنسية/هوية" : "Nationality / ID mismatch"}</div>
             </div>
           ) : null}
         </div>
-      </ChromeBox>
+      </section>
 
       {/* Ministry rails — stamp already carries the centre title. */}
-      <ChromeBox>
+      <section style={PAPER}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
           <LiveChip on={!!live?.qiwa} label={ar ? "قوى" : "Qiwa"} ar={ar} />
           <LiveChip on={!!live?.gosi} label={ar ? "التأمينات" : "GOSI"} ar={ar} />
@@ -430,36 +521,36 @@ export default function ComplianceMhrsdBoard() {
             ? `مصدر الساعات والإجازات والعقود: نظام العمل ${HRSD_LABOUR_LAW_EDITION.decree} المعدّل بـ ${HRSD_LABOUR_LAW_EDITION.lastAmend} (${HRSD_LABOUR_LAW_EDITION.lastAmendHijri}).`
             : `Hours, leave and contracts follow Labour Law ${HRSD_LABOUR_LAW_EDITION.decree} as amended by ${HRSD_LABOUR_LAW_EDITION.lastAmend} (${HRSD_LABOUR_LAW_EDITION.lastAmendGregorian}).`}
           {" "}
-          <a href={HRSD_LABOUR_LAW_PDF} target="_blank" rel="noreferrer" style={{ color: NAVY, fontWeight: 600 }}>
+          <a href={HRSD_LABOUR_LAW_PDF} target="_blank" rel="noreferrer" style={{ color: "var(--nv-ok-ink)", fontWeight: 600 }}>
             {ar ? "ملف الوزارة" : "Ministry PDF"}
           </a>
           {" · "}
-          <a href={BOE_LABOUR_LAW_URL} target="_blank" rel="noreferrer" style={{ color: NAVY }}>
+          <a href={BOE_LABOUR_LAW_URL} target="_blank" rel="noreferrer" style={{ color: "var(--nv-ok-ink)" }}>
             {ar ? "هيئة الخبراء" : "BOE"}
           </a>
           {" · "}
-          <a href={HRSD_IMPLEMENTING_REGS_URL} target="_blank" rel="noreferrer" style={{ color: NAVY }}>
+          <a href={HRSD_IMPLEMENTING_REGS_URL} target="_blank" rel="noreferrer" style={{ color: "var(--nv-ok-ink)" }}>
             {ar ? "اللائحة التنفيذية" : "Implementing regs"}
           </a>
         </div>
 
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "14px", paddingTop: "14px", borderTop: "1px solid #F1F5F9" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "14px", paddingTop: "14px", borderTop: HAIRLINE }}>
           {SURFACE_LINKS.map((s) => (
             <Link
               key={s.to}
               to={s.to}
               style={{
-                height: "32px",
+                height: 32,
                 padding: "0 12px",
-                borderRadius: "8px",
-                border: "1px solid #E2E8F0",
-                background: SURFACE,
-                color: NAVY,
-                fontSize: "12px",
-                fontWeight: 500,
+                borderRadius: 999,
+                border: "1px solid var(--nv-line)",
+                background: "var(--nv-card)",
+                color: "var(--nv-ink)",
+                fontSize: 12,
+                fontWeight: 600,
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "8px",
+                gap: 8,
                 textDecoration: "none",
               }}
             >
@@ -487,38 +578,26 @@ export default function ComplianceMhrsdBoard() {
               }],
             });
           }}
-          style={{
-            marginTop: 12,
-            height: 32,
-            padding: "0 12px",
-            borderRadius: 8,
-            border: "1px solid #E2E8F0",
-            background: NAVY_FILL,
-            color: "#fff",
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
+          style={{ ...btnPrimary, marginTop: 12, height: 32 }}
         >
           {ar ? "ملف التفتيش — مشتق من الأقسام" : "Inspection pack — derived from modules"}
         </button>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
           {deriveInspectionPack(register || {}).registers.filter((row) => row.article).map((row) => (
             <span key={row.id} style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-              <Link to={row.to} style={{ fontSize: 12, color: NAVY, textDecoration: "none" }}>{ar ? row.ar : row.en}</Link>
+              <Link to={row.to} style={{ fontSize: 12, color: "var(--nv-ink)", textDecoration: "none" }}>{ar ? row.ar : row.en}</Link>
               <StatutoryItem article={row.article} ar={ar} entitlement={String(row.ruleId || "").startsWith("leave.")} />
             </span>
           ))}
         </div>
-      </ChromeBox>
+      </section>
 
       {/* Per-station readiness — the same derivation the quick-switch palette shows */}
       {readinessRows.length > 0 && (
-        <ChromeBox>
+        <section style={{ ...PAPER, borderTop: `3px solid ${readinessEdge}` }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
             <div style={{ flex: "1 1 320px", minWidth: 0 }}>
-              <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
                 {readinessNews.blockedCount === 0
                   ? (ar ? "لا فرع بمانع مفتوح في هذا النطاق" : "No station has an open blocker in this scope")
                   : ar
@@ -550,7 +629,7 @@ export default function ComplianceMhrsdBoard() {
               /* A clear station asks for nothing, so it is written quietly. Saturation is
                  spent only where the register still owes the ministry something. */
               const clear = readiness.blockers.length === 0;
-              const signal = clear ? "#E2E8F0" : READINESS_COLOR[readiness.level];
+              const signal = readinessSignal(readiness.level, clear);
               return (
                 <div
                   key={station.id}
@@ -559,7 +638,7 @@ export default function ComplianceMhrsdBoard() {
                     alignItems: "flex-start",
                     gap: "12px",
                     padding: "12px 0",
-                    borderTop: "1px solid #F1F5F9",
+                    borderTop: HAIRLINE,
                     flexWrap: "wrap",
                   }}
                 >
@@ -574,7 +653,7 @@ export default function ComplianceMhrsdBoard() {
                     }}
                   />
                   <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-                    <div style={{ fontSize: "12px", fontWeight: 600, color: clear ? MUTED : NAVY }}>
+                    <div style={{ fontSize: "12px", fontWeight: 600, color: clear ? "var(--nv-ink3)" : "var(--nv-ink)" }}>
                       {station.name || station.id}
                     </div>
                     <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>
@@ -596,9 +675,9 @@ export default function ComplianceMhrsdBoard() {
                                 alignItems: "baseline",
                                 flexWrap: "wrap",
                                 gap: "6px",
-                                color: NAVY,
+                                color: "var(--nv-ink)",
                                 textDecoration: "none",
-                                borderBottom: "1px solid #E2E8F0",
+                                borderBottom: HAIRLINE,
                               }}
                             >
                               <span>{ar ? blocker.ar : blocker.en}</span>
@@ -619,7 +698,7 @@ export default function ComplianceMhrsdBoard() {
                       fontFamily: "'IBM Plex Sans',sans-serif",
                       fontSize: "18px",
                       fontWeight: 600,
-                      color: clear ? MUTED : READINESS_COLOR[readiness.level],
+                      color: signal,
                       flexShrink: 0,
                     }}
                   >
@@ -629,12 +708,12 @@ export default function ComplianceMhrsdBoard() {
               );
             })}
           </div>
-      </ChromeBox>
+      </section>
       )}
 
       {/* App GOSI / expiry extras — same card chrome */}
-      <ChromeBox>
-        <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
+      <section style={{ ...PAPER, borderTop: `3px solid ${expiryEdge}` }}>
+        <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
           {ar ? "التأمينات الاجتماعية (GOSI) والوثائق المنتهية" : "GOSI & expiring documents"}
         </div>
         <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px" }}>
@@ -651,24 +730,7 @@ export default function ComplianceMhrsdBoard() {
             dir="ltr"
             aria-label={ar ? "رقم منشأة التأمينات" : "GOSI establishment number"}
           />
-          <button
-            type="button"
-            disabled={busy}
-            onClick={saveEstablishment}
-            style={{
-              height: "38px",
-              padding: "0 16px",
-              borderRadius: "9px",
-              border: "none",
-              background: NAVY_FILL,
-              color: "#fff",
-              fontSize: "12px",
-              fontWeight: 600,
-              cursor: busy ? "wait" : "pointer",
-              fontFamily: "inherit",
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
+          <button type="button" disabled={busy} onClick={saveEstablishment} style={btnPrimary}>
             {ar ? "حفظ" : "Save"}
           </button>
           <button type="button" disabled={busy} onClick={() => runGosi(false)} style={btnGhost}>
@@ -679,8 +741,8 @@ export default function ComplianceMhrsdBoard() {
           </button>
         </div>
 
-        <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #F1F5F9" }}>
-          <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
+        <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: HAIRLINE }}>
+          <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
             {ar ? `وثائق بتاريخ صلاحية تنتهي خلال ${EXPIRY_WARN_DAYS} يوماً` : `Dated documents expiring within ${EXPIRY_WARN_DAYS} days`}
           </div>
           {expiringList.length === 0 ? (
@@ -701,15 +763,15 @@ export default function ComplianceMhrsdBoard() {
                         flexWrap: "wrap",
                         gap: "4px 10px",
                         fontSize: "12px",
-                        color: NAVY,
+                        color: "var(--nv-ink)",
                         padding: "8px 0",
-                        borderTop: "1px solid #F1F5F9",
+                        borderTop: HAIRLINE,
                       }}
                     >
                       <span style={{ fontWeight: 600 }}>{row.name || (ar ? "بلا اسم على السجل" : "Unnamed on the register")}</span>
                       <span style={{ color: MUTED }}>{ar ? row.docLabelAr : row.docLabelEn}</span>
                       <span style={{ color: MUTED }}>{formatDate(row.expiryDate, lang, { year: "numeric", month: "short", day: "numeric" })}</span>
-                      <span style={{ color: gone ? "#DC2626" : MUTED, fontWeight: gone ? 600 : 400 }}>
+                      <span style={{ color: gone ? "var(--nv-bad-ink)" : MUTED, fontWeight: gone ? 600 : 400 }}>
                         {expiryWording(row.days, ar)}
                       </span>
                     </li>
@@ -728,11 +790,11 @@ export default function ComplianceMhrsdBoard() {
         </div>
 
         {live && (
-          <div style={{ marginTop: "14px", borderRadius: "11px", background: SURFACE, border: "1px solid #E2E8F0", padding: "12px 14px", fontSize: "11px", color: MUTED, lineHeight: 1.6 }}>
+          <div style={{ marginTop: 14, borderRadius: 12, background: "var(--nv-soft)", border: HAIRLINE, padding: "12px 14px", fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.6 }}>
             {ar ? live.noteAr : live.noteEn}
           </div>
         )}
-      </ChromeBox>
+      </section>
     </div>
   );
 }

@@ -32,7 +32,7 @@
     },
     "locationBalances": {
       "type": "array",
-      "description": "Per-location quantity. InventoryUnit is a parallel typed table; live inventory stores balances here.",
+      "description": "Sole per-location quantity home. InventoryUnit is retired do-not-write.",
       "items": {
         "type": "object",
         "additionalProperties": true

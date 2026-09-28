@@ -8,7 +8,6 @@ import { hasHRPermission } from "@/lib/permissions";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { pageKicker } from "@/lib/moduleMeta";
 import { sha256HexOfFile } from "@/lib/fileHash";
-import AttachFileButton from "@/components/shared/AttachFileButton";
 import {
   appendVoiceAudit,
   applySlaAutoEscalate,
@@ -21,10 +20,8 @@ import {
   defaultEscalationChain,
   deriveEscalationChain,
 } from "@/lib/complaintDerivations";
-import { countAr } from "@/lib/disciplineBoard";
+import { getRoleLabel } from "@/lib/roles";
 import {
-  VOICE_CHANNELS,
-  VOICE_PRIOs,
   channelOf,
   collectVoiceItems,
   deriveVoiceBoard,
@@ -32,8 +29,13 @@ import {
 } from "@/lib/voiceBoard";
 import VoiceArchiveBoard from "@/components/complaints/VoiceArchiveBoard";
 import VoiceAuditTrail from "@/components/complaints/VoiceAuditTrail";
+import VoiceChainBoard from "@/components/complaints/VoiceChainBoard";
+import VoiceGuaranteeList from "@/components/complaints/VoiceGuaranteeList";
+import VoiceLawPanel from "@/components/complaints/VoiceLawPanel";
+import VoiceMineBoard from "@/components/complaints/VoiceMineBoard";
+import VoiceRaiseCard from "@/components/complaints/VoiceRaiseCard";
 import VoiceRelatedLinks from "@/components/complaints/VoiceRelatedLinks";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
+import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { railLaneTabs, useRailSide } from "@/lib/railSide";
 
 const field = {
@@ -41,7 +43,7 @@ const field = {
   fontSize: 12,
   padding: "9px 10px",
   border: "1px solid var(--nv-line)",
-  borderRadius: 10,
+  borderRadius: 8,
   background: "var(--nv-card)",
   color: "var(--nv-ink)",
   outline: "none",
@@ -50,13 +52,13 @@ const field = {
 };
 
 function actionStyle(kind, off) {
-  if (off) return { background: "var(--nv-card)", color: "var(--nv-muted)", border: "1px solid var(--nv-line)", borderRadius: 10, cursor: "default" };
-  if (kind === "go") return { background: "var(--nv-ok-fill)", color: "var(--nv-btn-ink)", border: "1px solid var(--nv-ok-fill)", borderRadius: 10, cursor: "pointer" };
-  return { background: "var(--nv-card)", color: "var(--nv-ink)", border: "1px solid var(--nv-line)", borderRadius: 10, cursor: "pointer" };
+  if (off) return { background: "var(--nv-card)", color: "var(--nv-muted)", border: "1px solid var(--nv-line)", borderRadius: 999, cursor: "default" };
+  if (kind === "go") return { background: "#3C7D50", color: "#fff", border: "1px solid #3C7D50", borderRadius: 999, cursor: "pointer" };
+  return { background: "var(--nv-card)", color: "var(--nv-ink)", border: "1px solid var(--nv-line)", borderRadius: 999, cursor: "pointer" };
 }
 
 export default function Complaints() {
-  const { lang } = useI18n();
+  const { lang, t } = useI18n();
   const ar = lang === "ar";
   const { data, company, currentUser } = useAuth();
   const railSide = useRailSide();
@@ -122,8 +124,13 @@ export default function Complaints() {
   };
   const [channel, setChannel] = useState("suggestion");
   const [prio, setPrio] = useState("low");
+  const [topicId, setTopicId] = useState("wage");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [when, setWhen] = useState("");
+  const [want, setWant] = useState("");
+  const [wit, setWit] = useState(false);
+  const [ack, setAck] = useState(false);
   const [file, setFile] = useState(null);
   const [notes, setNotes] = useState({});
   const [queueFilter, setQueueFilter] = useState("due");
@@ -142,9 +149,17 @@ export default function Complaints() {
   }, [company?.id, data?.publicReports, data?.anonymousReports, chain]);
 
   const picked = channelOf(channel);
-  const titleOk = title.trim().length > 4;
-  const bodyOk = body.trim().length > 14;
-  const canSend = titleOk && bodyOk && Boolean(company?.id);
+  const titleOk = title.trim().length >= 6;
+  const bodyOk = body.trim().length >= 15;
+  const dateOk = channel === "suggestion" || /^\d{4}-\d{2}-\d{2}$/.test(when);
+  const wantOk = want.trim().length > 0;
+  const ackOk = channel === "anonymous" || ack;
+  const canSend = titleOk && bodyOk && dateOk && wantOk && ackOk && Boolean(company?.id);
+  const firstTier = ar ? (chain[0]?.labelAr || "مدير الفرع") : (chain[0]?.labelEn || "the station manager");
+  const roleLabel = currentUser?.role ? getRoleLabel(company, currentUser.role, t) : "";
+  const reporter = channel === "anonymous"
+    ? (ar ? "يصل برقم — لا يُسجَّل اسمك" : "It arrives as a number — your name is not stored")
+    : `${currentUser?.name || "—"} · ${roleLabel || "—"}`;
   let activeFace = ["mine", "manage"].includes(tab) && (canManage || tab !== "manage") ? tab : "mine";
   if (railSide === "employee") activeFace = "mine";
   else if (railSide === "manage" && canManage) activeFace = "manage";
@@ -194,6 +209,12 @@ export default function Complaints() {
     const station = stations.find((row) => row.id === stationId);
     const managerId = station?.managerId;
     const notice = { outcome: "raised", channel, title: gate.title };
+    const voiceFields = {
+      topicId,
+      requestText: want.trim(),
+      witnesses: wit,
+      incidentDate: channel === "suggestion" ? "" : when,
+    };
     if (channel === "anonymous") {
       const anonymousId = `AN-${String(Date.now()).slice(-4)}`;
       updateCompany(company.id, (row) => {
@@ -210,6 +231,7 @@ export default function Complaints() {
             priority: prio,
             status: "open",
             stationId,
+            ...voiceFields,
             files: file ? [file] : [],
             escalationLevel: 0,
             createdAt: now,
@@ -232,11 +254,14 @@ export default function Complaints() {
             stationId,
             type: channel === "suggestion" ? "suggestion" : "complaint",
             kind: channel === "suggestion" ? "suggestion" : "public",
+            voiceRef: `VO-${String(Date.now()).slice(-4)}`,
             title: gate.title,
             message: gate.message,
             priority: prio,
             status: "open",
+            acknowledged: true,
             files: file ? [file] : [],
+            ...voiceFields,
             escalationLevel: 0,
             replies: [],
             createdAt: now,
@@ -252,6 +277,10 @@ export default function Complaints() {
     }
     setTitle("");
     setBody("");
+    setWhen("");
+    setWant("");
+    setWit(false);
+    setAck(false);
     setFile(null);
   };
 
@@ -349,83 +378,43 @@ export default function Complaints() {
     ["archive", ar ? "الأرشيف" : "Archive", manageSettledCount],
   ];
 
-  const gates = [
-    { ok: titleOk, text: titleOk ? (ar ? "العنوان مكتوب — هو ما يُقرأ في الطابور أولاً." : "The title is written — it is what the queue reads first.") : (ar ? "اكتب عنواناً مختصراً قبل الإرسال." : "Write a short title before sending.") },
-    { ok: bodyOk, text: bodyOk ? (ar ? "التفصيل كافٍ للمراجعة." : "The detail is enough to review.") : (ar ? "اكتب التفصيل — بلا واقعة لا يُمكن مراجعة الصوت." : "Write the detail — a voice without an incident cannot be reviewed.") },
-    {
-      ok: true,
-      text: channel === "anonymous"
-        ? (ar ? "يُرسَل برقم مرجعي بلا هويّة، ولن يصلك ردّ شخصي — تابع قراره في أرشيف ملفي بالرقم." : "It is sent as a reference number with no identity. Follow the ruling in My file archive by that number.")
-        : (ar
-          ? `يُرسَل باسم ${currentUser?.name || ""} إلى ${chain[0]?.labelAr || "مدير الفرع"} · مهلة المراجعة ${VOICE_PRIOs.find((row) => row.id === prio)?.hours || picked.hours} ساعة.`
-          : `Sent as ${currentUser?.name || ""} to ${chain[0]?.labelEn || "the station manager"} · review window ${VOICE_PRIOs.find((row) => row.id === prio)?.hours || picked.hours} hours.`),
-    },
+  const checks = [
+    { ok: titleOk, text: ar ? "عنوان يُقرأ في الطابور (6 أحرف على الأقل)" : "A title the queue can read (at least 6 characters)" },
+    { ok: bodyOk, text: ar ? "الواقعة مكتوبة بتفصيل كافٍ" : "The incident is written in enough detail" },
+    { ok: dateOk, text: channel === "suggestion" ? (ar ? "التاريخ غير لازم للاقتراح" : "A date is not required for a suggestion") : (ar ? "تاريخ الواقعة محدّد" : "The incident date is set") },
+    { ok: wantOk, text: ar ? "ما تطلبه واضح" : "What you are asking for is clear" },
+    { ok: ackOk, text: channel === "anonymous" ? (ar ? "بلا هويّة — لا إقرار" : "No identity — no acknowledgement") : (ar ? "أقررت بصحة ما كتبت" : "You confirmed what you wrote") },
   ];
+  const submitText = canSend
+    ? (ar ? `أرسل ${picked.ar} إلى ${firstTier}` : `Send ${picked.en} to ${firstTier}`)
+    : (ar ? `أكمل البنود لإرسال ${picked.ar}` : `Complete the items to send ${picked.en}`);
+  const slaLine = ar
+    ? `المهلة ${picked.hours} ساعة. ما لا يُراجع فيها يُرفع للمدير التالي تلقائياً، ولا يُغلق بلا قرار مكتوب.`
+    : `The window is ${picked.hours} hours. What is not reviewed in time is raised to the next manager, and nothing closes without a written ruling.`;
+  const mineBreaches = board.mine.filter((card) => card.overdue).length;
 
   return (
-    <PlatformStampShell ar={ar} bare maxWidth={1320}>
+    <SuiteWorkspaceFrame
+      ar={ar}
+      kicker={pageKicker("/app/complaints", lang)}
+      title={ar ? "صوت الموظف" : "Employee Voice"}
+      hint={ar
+        ? <>ثلاث قنوات لصوت واحد: <b>اقتراح</b> للتحسين باسم صاحبه · <b>شكوى</b> للمعالجة بهوية ظاهرة · <b>بلاغ مجهول</b> للحماية. القناة تحدّد الهوية والمهلة والتصعيد — لا الشكل.</>
+        : <>Three channels, one voice: a <b>suggestion</b> in your name · a named <b>complaint</b> to resolve · an <b>anonymous report</b> to protect. The channel sets identity, window, and escalation — not the look.</>}
+      viewNote={adminVoice
+        ? (ar ? "إدارة — تراجع وتعتمد أو تُعيد بملاحظة. ما تجاوز مهلته يُرفع لمن بعدك تلقائياً، ولا يُغلق بلا قرار مكتوب." : "Management — you adopt or return with a note. What misses its window is raised to whoever follows you. Nothing closes without a written ruling.")
+        : (ar ? "موظف — ترفع صوتك في القناة التي تختارها وتتابع قرارها. لا ترى أصوات غيرك، ولا تُعرف هويّتك في القناة المجهولة." : "Employee — you raise a voice on the channel you choose and follow its ruling. You do not see others' voices, and the anonymous channel does not name you.")}
+      tabs={tabs.map((item) => ({ value: item.key, label: ar ? item.ar : item.en, count: item.count }))}
+      tool={activeFace}
+      onTool={setTab}
+      meta={(
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 9, fontSize: 12, fontWeight: 600, color: board.pulseColor, background: board.pulseBg, border: `1px solid ${board.pulseBorder}`, borderRadius: 999, padding: "6px 12px", whiteSpace: "nowrap" }}>
+          <span style={{ width: 7, height: 7, borderRadius: "50%", background: board.pulseDot }} />
+          {board.pulse}
+        </span>
+      )}
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink)", fontSize: 13 }}>
-        <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-            <span style={{ fontSize: 11, letterSpacing: ".14em", color: "var(--nv-muted)", display: "flex", gap: 7, alignItems: "center" }}>
-              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace" }}>{String(pageKicker("/app/complaints", "en")).slice(0, 2) || "06"}</span>
-              <span>·</span>
-              <span>{pageKicker("/app/complaints", lang).replace(/^\d+\s*·\s*/, "")}</span>
-            </span>
-            <span style={{ fontFamily: "'Noto Naskh Arabic',serif", fontSize: 24, fontWeight: 600 }}>{ar ? "صوت الموظف" : "Employee Voice"}</span>
-            <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.85 }}>
-              {ar
-                ? <>ثلاث قنوات لصوت واحد: <b>اقتراح</b> للتحسين باسم صاحبه · <b>شكوى</b> للمعالجة بهوية ظاهرة · <b>بلاغ مجهول</b> للحماية. القناة تحدّد الهوية والمهلة والتصعيد — لا الشكل.</>
-                : <>Three channels, one voice: a <b>suggestion</b> in your name · a named <b>complaint</b> to resolve · an <b>anonymous report</b> to protect. The channel sets identity, window, and escalation — not the look.</>}
-            </span>
-          </div>
-          <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.7, maxWidth: 340 }}>
-            {adminVoice
-              ? (ar ? "إدارة — تراجع وتعتمد أو تُعيد بملاحظة. ما تجاوز مهلته يُرفع لمن بعدك تلقائياً، ولا يُغلق بلا قرار مكتوب." : "Management — you adopt or return with a note. What misses its window is raised to whoever follows you. Nothing closes without a written ruling.")
-              : (ar ? "موظف — ترفع صوتك في القناة التي تختارها وتتابع قرارها. لا ترى أصوات غيرك، ولا تُعرف هويّتك في القناة المجهولة." : "Employee — you raise a voice on the channel you choose and follow its ruling. You do not see others' voices, and the anonymous channel does not name you.")}
-          </span>
-        </section>
-
-        <div className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-          {tabs.map((item) => {
-            const on = activeFace === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setTab(item.key)}
-                aria-current={on ? "page" : undefined}
-                style={{
-                  fontFamily: "inherit",
-                  fontSize: 13,
-                  fontWeight: on ? 700 : 400,
-                  padding: "9px 16px",
-                  border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`,
-                  background: on ? "var(--nv-btn-fill)" : "var(--nv-card)",
-                  color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  whiteSpace: "nowrap",
-                  borderRadius: 10,
-                }}
-              >
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.75 }}>{item.num}</span>
-                {ar ? item.ar : item.en}
-                {item.count ? (
-                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, background: on ? "color-mix(in oklab, var(--nv-btn-ink) 28%, transparent)" : "var(--nv-mute-soft)", color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)", padding: "1px 7px", borderRadius: 999 }}>
-                    {item.count}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-          <span style={{ marginInlineStart: "auto", display: "inline-flex", alignItems: "center", gap: 9, fontSize: 12, fontWeight: 600, color: board.pulseColor, background: board.pulseBg, border: `1px solid ${board.pulseBorder}`, borderRadius: 10, padding: "8px 13px", whiteSpace: "nowrap" }}>
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: board.pulseDot }} />
-            {board.pulse}
-          </span>
-        </div>
 
         {activeFace === "mine" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -445,7 +434,7 @@ export default function Complaints() {
                       fontSize: 11,
                       padding: "7px 12px",
                       border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`,
-                      borderRadius: 10,
+                      borderRadius: 999,
                       background: on ? "var(--nv-btn-fill)" : "var(--nv-card)",
                       color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
                       fontWeight: on ? 700 : 400,
@@ -476,196 +465,51 @@ export default function Complaints() {
                 scope="mine"
               />
             ) : (
-          <div className="nv-emp-summary" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,1fr)", gap: 16, alignItems: "stretch" }}>
-            <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", display: "flex", flexDirection: "column" }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", flexDirection: "column", gap: 3 }}>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "ارفع صوتك" : "Raise your voice"}</span>
-                <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.8 }}>
-                  {ar ? "اختر القناة أولاً — هي التي تحدّد هل يظهر اسمك، وكم مهلة الردّ، ولمن يُرفع إن تجاوزها." : "Choose the channel first — it sets whether your name appears, how long the reply window is, and who it is raised to if that window is missed."}
-                </span>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 0, borderBottom: "1px solid var(--nv-line3)" }}>
-                {VOICE_CHANNELS.map((row) => {
-                  const on = channel === row.id;
-                  return (
-                    <button
-                      key={row.id}
-                      type="button"
-                      onClick={() => pickChannel(row.id)}
-                      style={{
-                        fontFamily: "inherit",
-                        textAlign: "start",
-                        padding: "13px 15px",
-                        border: "none",
-                        borderInlineStart: "1px solid var(--nv-line2)",
-                        borderTop: `3px solid ${on ? row.accent : "var(--nv-line3)"}`,
-                        background: on ? "var(--nv-soft)" : "var(--nv-card)",
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 4,
-                        minWidth: 0,
-                      }}
-                    >
-                      <span style={{ fontSize: 13, fontWeight: on ? 700 : 600, color: on ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{ar ? row.ar : row.en}</span>
-                      <span style={{ fontSize: 10, color: "var(--nv-muted)", lineHeight: 1.7 }}>{ar ? row.blurbAr : row.blurbEn}</span>
-                      <span style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: row.color, background: row.bg, border: `1px solid ${row.border}`, padding: "2px 8px", whiteSpace: "nowrap" }}>
-                          {ar ? row.identityAr : row.identityEn}
-                        </span>
-                        <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "var(--nv-ink2)", background: "var(--nv-mute-soft)", border: "1px solid var(--nv-mute-line)", padding: "2px 8px" }}>
-                          {row.hours} {ar ? "ساعة" : "h"}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div style={{ padding: "15px 20px", background: "var(--nv-soft)", borderBottom: "1px solid var(--nv-line3)", display: "flex", flexDirection: "column", gap: 11 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,190px),1fr))", gap: 10 }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                    <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "عنوان مختصر" : "Short title"}</span>
-                    <input
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      placeholder={channel === "suggestion" ? (ar ? "ما الذي تقترح تحسينه؟" : "What do you want to improve?") : channel === "complaint" ? (ar ? "ما الحقّ الذي تطلبه؟" : "What right are you claiming?") : (ar ? "ما الخطر أو التجاوز؟" : "What is the risk or the breach?")}
-                      style={field}
-                    />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                    <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "الأولوية" : "Priority"}</span>
-                    <select value={prio} onChange={(event) => setPrio(event.target.value)} style={field}>
-                      {VOICE_PRIOs.map((row) => <option key={row.id} value={row.id}>{ar ? row.ar : row.en}</option>)}
-                    </select>
-                  </label>
-                </div>
-                <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "التفصيل" : "Detail"}</span>
-                  <textarea
-                    value={body}
-                    onChange={(event) => setBody(event.target.value)}
-                    rows={4}
-                    placeholder={channel === "anonymous"
-                      ? (ar ? "اكتب الواقعة بلا ما يدلّ عليك — ولا تذكر اسمك، فالبلاغ يصل برقم لا باسم." : "Write the incident without what names you — it arrives as a number, not a name.")
-                      : (ar ? "الواقعة وتاريخها وأثرها على العمل." : "The incident, its date, and its effect on the work.")}
-                    style={{ ...field, resize: "vertical", lineHeight: 1.9, padding: 10 }}
-                  />
-                </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "أرفق ملفاً — اختياري" : "Attach a file — optional"}</span>
-                  <AttachFileButton
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 16, alignItems: "start" }}>
+                  <VoiceRaiseCard
                     ar={ar}
-                    label={ar ? "أرفق الملف" : "Attach the file"}
-                    onPick={(file) => pickFile({ target: { files: file ? [file] : [], value: "" } })}
+                    channel={channel}
+                    onChannel={pickChannel}
+                    topicId={topicId}
+                    onTopic={setTopicId}
+                    title={title}
+                    onTitle={setTitle}
+                    body={body}
+                    onBody={setBody}
+                    when={when}
+                    onWhen={setWhen}
+                    want={want}
+                    onWant={setWant}
+                    wit={wit}
+                    onWit={() => setWit((value) => !value)}
+                    ack={ack}
+                    onAck={() => setAck((value) => !value)}
+                    file={file}
+                    onFile={(next) => pickFile({ target: { files: next ? [next] : [], value: "" } })}
+                    checks={checks}
+                    canSend={canSend}
+                    onSend={send}
+                    submitText={submitText}
+                    slaLine={slaLine}
+                    reporter={reporter}
+                    channelRow={picked}
+                    receipt={anonReceipt ? (ar
+                      ? `أُرسل بلا هويّة. رقم المتابعة ${anonReceipt} — تابع القرار في الأرشيف بهذا الرقم، ولن يصلك ردّ شخصي.`
+                      : `Sent with no identity. Follow-up number ${anonReceipt} — watch the archive for that number; there is no personal reply.`) : ""}
                   />
-                  <span style={{ fontSize: 10, color: file ? "var(--nv-ok-ink)" : "var(--nv-muted)", lineHeight: 1.8 }}>
-                    {file
-                      ? (ar ? `مرفق: ${file.name} · بصمته ${file.hash.slice(0, 16)}…` : `Attached: ${file.name} · hash ${file.hash.slice(0, 16)}…`)
-                      : (channel === "anonymous"
-                        ? (ar ? "تُحسب بصمته على جهازك. تجنّب ما يحمل اسمك — صورة أو مستند باسمك يكشفك." : "Its hash is taken on your device. Avoid anything that names you.")
-                        : (ar ? "تُحسب بصمته على جهازك ويُحال مع صوتك كما هو." : "Its hash is taken on your device and travels with the voice as it is."))}
-                  </span>
-                </label>
-                {gates.map((gate) => (
-                  <div key={gate.text} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 10, alignItems: "start" }}>
-                    <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: gate.ok ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)", border: `1px solid ${gate.ok ? "var(--nv-ok-line)" : "var(--nv-warn-line)"}`, background: gate.ok ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)", marginTop: 2 }}>
-                      {gate.ok ? "✓" : ""}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.85 }}>{gate.text}</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+                    <VoiceMineBoard cards={board.mine} chain={chain} ar={ar} onEscalate={(card) => escalate(card, true)} />
+                    <VoiceGuaranteeList rows={board.promises} ar={ar} />
                   </div>
-                ))}
-                {anonReceipt ? (
-                  <span style={{ fontSize: 12, color: "#8A1C2B", background: "#FBF1F2", border: "1px solid #E9C4C9", padding: "9px 11px", lineHeight: 1.9 }}>
-                    {ar
-                      ? `أُرسل بلا هويّة. رقم المتابعة ${anonReceipt} — تابع القرار في أرشيف ملفي بهذا الرقم، ولن يصلك ردّ شخصي.`
-                      : `Sent with no identity. Follow-up number ${anonReceipt} — watch My file archive for that number; there is no personal reply.`}
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={send}
-                  style={{
-                    fontFamily: "inherit",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    padding: "11px 16px",
-                    border: "none",
-                    background: canSend ? "var(--nv-ok-fill)" : "var(--nv-line3)",
-                    color: canSend ? "var(--nv-btn-ink)" : "var(--nv-muted)",
-                    cursor: canSend ? "pointer" : "default",
-                    alignSelf: "flex-start",
-                  }}
-                >
-                  {!titleOk
-                    ? (ar ? "اكتب العنوان" : "Write the title")
-                    : (!bodyOk
-                      ? (ar ? "اكتب التفصيل" : "Write the detail")
-                      : (ar ? `أرسل ${picked.ar}${channel === "anonymous" ? " بلا هويّة" : " باسمك"}` : `Send ${picked.en}${channel === "anonymous" ? " with no identity" : " in your name"}`))}
-                </button>
-              </div>
-              <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>{canManage ? (ar ? "ما أرسلتَه بنفسك" : "What you sent yourself") : (ar ? "ما أرسلتُه" : "What I sent")}</span>
-                <span style={{ marginInlineStart: "auto", fontSize: 11, color: "var(--nv-muted)" }}>
-                  {ar
-                    ? `${countAr(board.mine.length, "صوت واحد", "صوتان", "أصوات", "صوتاً", "لا شيء")}${canManage ? " — أصواتك أنت، لا ما تراجعه" : ""}`
-                    : `${board.mine.length} voice(s)${canManage ? " — yours, not the queue" : ""}`}
-                </span>
-              </div>
-              {board.mine.length === 0 ? (
-                <div style={{ padding: "18px 20px", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.9 }}>
-                  {canManage
-                    ? (ar ? "لم ترفع صوتاً بنفسك. هذا اللوح شخصي — ما تراجعه في تبويب «إدارة». والبلاغات المجهولة لا تظهر في أي لوح شخصي." : "You have not raised a voice yourself. This board is personal — what you review sits on Manage. Anonymous reports do not appear on a personal board.")
-                    : (ar ? "لا شيء بعد. ابدأ بفكرة واحدة لتحسين العمل — أو شكوى إن كان لك حقّ يُطلب. والبلاغ المجهول لا يظهر هنا، فمتابعته بالرقم في أرشيف ملفي." : "Nothing yet. Start with one idea to improve the work — or a complaint if a right is due. An anonymous report does not appear here; follow it by number in My file archive.")}
                 </div>
-              ) : board.mine.map((card) => (
-                <article key={card.item.id} style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", borderInlineEnd: `3px solid ${card.accent}`, display: "flex", flexDirection: "column", gap: 7 }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "baseline" }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, minWidth: 0, lineHeight: 1.5 }}>{card.title}</span>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: card.stColor, background: card.stBg, border: `1px solid ${card.stBorder}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>{card.state}</span>
-                  </div>
-                  <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.8 }}>{card.meta}</span>
-                  {card.reply ? (
-                    <span style={{ fontSize: 11, color: card.outcome === "adopt" ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)", background: card.outcome === "adopt" ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)", border: `1px solid ${card.outcome === "adopt" ? "var(--nv-ok-line)" : "var(--nv-warn-line)"}`, borderRadius: 10, padding: "9px 11px", lineHeight: 1.9 }}>{card.reply}</span>
-                  ) : null}
-                  {card.canEscalate ? (
-                    <button type="button" onClick={() => escalate(card, true)} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 12px", border: "1px solid var(--nv-line)", borderRadius: 10, background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", alignSelf: "flex-start" }}>
-                      {ar ? `لم أقتنع — ارفعه إلى ${chain[card.level + 1]?.labelAr || "المستوى التالي"}` : `I do not accept this — raise it to ${chain[card.level + 1]?.labelEn || "the next level"}`}
-                    </button>
-                  ) : null}
-                  <VoiceAuditTrail events={card.audit} ar={ar} />
-                  <VoiceRelatedLinks links={card.related} ar={ar} />
-                </article>
-              ))}
-            </section>
-
-            <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", display: "flex", flexDirection: "column" }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", fontSize: 15, fontWeight: 700 }}>
-                {ar ? "ما تضمنه لك القناة" : "What the channel guarantees"}
-              </div>
-              {board.promises.map((row) => (
-                <div key={row.tag} style={{ padding: "13px 20px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 11, alignItems: "start" }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: "var(--nv-ink2)", background: "var(--nv-mute-soft)", border: "1px solid var(--nv-mute-line)", borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap", marginTop: 2 }}>{row.tag}</span>
-                  <span style={{ fontSize: 11, color: "#3C4657", lineHeight: 1.9, minWidth: 0 }}>{row.t}</span>
-                </div>
-              ))}
-              <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700 }}>{ar ? "سلسلة المراجعة" : "Review chain"}</span>
-                {board.chain.map((step) => (
-                  <div key={step.num} style={{ display: "grid", gridTemplateColumns: "20px minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-                    <span style={{ width: 18, height: 18, border: `1px solid ${step.border}`, background: step.bg, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "var(--nv-ink)" }}>{step.mark}</span>
-                    <span style={{ fontSize: 11, fontWeight: step.weight, color: step.color, minWidth: 0 }}>{step.name}</span>
-                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "var(--nv-muted)" }}>{step.num}</span>
-                  </div>
-                ))}
-                <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.9, borderTop: "1px solid var(--nv-line2)", paddingTop: 9 }}>{board.chainNote}</span>
-                <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.9 }}>
+                <VoiceChainBoard chain={board.chain} note={board.chainNote} ar={ar} />
+                <p style={{ margin: 0, fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
                   {ar
                     ? <>الاعتراض على جزاء موقَّع مسار آخر: <Link to="/app/discipline" style={{ color: "inherit" }}>الجزاءات</Link>.</>
                     : <>Objecting to a signed sanction is a different path: <Link to="/app/discipline" style={{ color: "inherit" }}>Sanctions</Link>.</>}
-                </span>
+                </p>
               </div>
-            </section>
-          </div>
             )}
           </div>
         ) : null}
@@ -674,7 +518,7 @@ export default function Complaints() {
           <>
             <div className="nv-disc-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
               {board.stats.map((stat) => (
-                <div key={stat.lbl} className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderTop: `3px solid ${stat.accent}`, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                <div key={stat.lbl} className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, borderTop: `3px solid ${stat.accent}`, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
                   <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{stat.lbl}</span>
                   <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
                     <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 28, fontWeight: 500, color: stat.accent, lineHeight: 1.05 }}>{stat.val}</span>
@@ -697,7 +541,7 @@ export default function Complaints() {
                     {queueFilters.map(([id, label, n]) => {
                       const on = queueFilter === id;
                       return (
-                        <button key={id} type="button" onClick={() => setQueueFilter(id)} style={{ fontFamily: "inherit", fontSize: 11, padding: "7px 12px", border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`, borderRadius: 10, background: on ? "var(--nv-btn-fill)" : "var(--nv-card)", color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)", fontWeight: on ? 700 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        <button key={id} type="button" onClick={() => setQueueFilter(id)} style={{ fontFamily: "inherit", fontSize: 11, padding: "7px 12px", border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`, borderRadius: 999, background: on ? "var(--nv-btn-fill)" : "var(--nv-card)", color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)", fontWeight: on ? 700 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", gap: 6, alignItems: "center" }}>
                           {label}
                           <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.8 }}>{n}</span>
                         </button>
@@ -713,7 +557,7 @@ export default function Complaints() {
                 />
               </>
             ) : (
-            <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", display: "flex", flexDirection: "column" }}>
+            <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" }}>
               <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
                   <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "طابور المراجعة" : "Review queue"}</span>
@@ -725,7 +569,7 @@ export default function Complaints() {
                   {queueFilters.map(([id, label, n]) => {
                     const on = queueFilter === id;
                     return (
-                      <button key={id} type="button" onClick={() => setQueueFilter(id)} style={{ fontFamily: "inherit", fontSize: 11, padding: "7px 12px", border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`, borderRadius: 10, background: on ? "var(--nv-btn-fill)" : "var(--nv-card)", color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)", fontWeight: on ? 700 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", gap: 6, alignItems: "center" }}>
+                      <button key={id} type="button" onClick={() => setQueueFilter(id)} style={{ fontFamily: "inherit", fontSize: 11, padding: "7px 12px", border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`, borderRadius: 999, background: on ? "var(--nv-btn-fill)" : "var(--nv-card)", color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)", fontWeight: on ? 700 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", gap: 6, alignItems: "center" }}>
                         {label}
                         <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.8 }}>{n}</span>
                       </button>
@@ -765,10 +609,10 @@ export default function Complaints() {
                       ))}
                     </div>
                     {card.item.channel === "anonymous" ? (
-                      <span style={{ fontSize: 11, color: "#8A1C2B", background: "#FBF1F2", border: "1px solid #E9C4C9", padding: "9px 11px", lineHeight: 1.9 }}>
+                      <span style={{ fontSize: 11, color: "var(--nv-bad-ink)", background: "var(--nv-bad-soft)", border: "1px solid var(--nv-line)", padding: "9px 11px", lineHeight: 1.9 }}>
                         {ar
-                          ? `بلاغ مجهول: لا تُطلب هويّة مُبلِّغه ولا يُراسَل شخصياً. يُعالَج بوقائعه، ويُنشر قراره بالرقم ${card.item.anonymousId}.`
-                          : `Anonymous: the reporter is not named or written to. It is handled on its facts, and the ruling is published under ${card.item.anonymousId}.`}
+                          ? `بلاغ مجهول: لا تُطلب هويّة مُبلِّغه ولا يُراسَل شخصياً. يُعالَج بوقائعه، ويُنشر قراره بالرقم ${card.item.anonymousId || "—"}.`
+                          : `Anonymous: the reporter is not named or written to. It is handled on its facts, and the ruling is published under ${card.item.anonymousId || "—"}.`}
                       </span>
                     ) : null}
                     <input
@@ -781,13 +625,13 @@ export default function Complaints() {
                     />
                     <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
                       <button type="button" onClick={() => decide(card, "adopt")} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 13px", whiteSpace: "nowrap", ...actionStyle("go") }}>
-                        {card.item.channel === "anonymous" ? (ar ? "عالِج البلاغ" : "Handle the report") : (ar ? "اعتمد" : "Adopt")}
+                        {ar ? "اعتماد بقرار مكتوب" : "Adopt with a written ruling"}
                       </button>
                       <button type="button" onClick={() => decide(card, "return")} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 13px", whiteSpace: "nowrap", ...actionStyle("plain", !noteReady) }}>
                         {noteReady ? (ar ? "أَعِد بملاحظة" : "Return with a note") : (ar ? "الإعادة تحتاج ملاحظة" : "A return needs a note")}
                       </button>
                       <button type="button" onClick={() => escalate(card)} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 13px", whiteSpace: "nowrap", ...actionStyle("plain", card.atTop) }}>
-                        {card.atTop ? (ar ? "بلغ آخر السلسلة" : "End of the chain") : (ar ? `صعّد إلى ${chain[card.level + 1]?.labelAr || "التالي"}` : `Raise to ${chain[card.level + 1]?.labelEn || "next"}`)}
+                        {card.atTop ? (ar ? "بلغ آخر السلسلة" : "End of the chain") : (ar ? "صعّد للمستوى التالي" : "Escalate to the next level")}
                       </button>
                     </div>
                     <VoiceAuditTrail events={card.audit} ar={ar} />
@@ -804,7 +648,9 @@ export default function Complaints() {
             )}
           </>
         ) : null}
+
+        <VoiceLawPanel ar={ar} breached={activeFace === "manage" ? board.overdue.length : mineBreaches} />
       </div>
-    </PlatformStampShell>
+    </SuiteWorkspaceFrame>
   );
 }

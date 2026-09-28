@@ -13,6 +13,16 @@ import {
   movementReversalBlock,
   qtyAtStation,
 } from "@/lib/inventoryDerivations";
+import {
+  adjustLocationBalance,
+  locationBalancesOf,
+  qtyAtLocation,
+  readInventoryItems,
+  readMaterialRequests,
+  readStockMovements,
+  syncItemQuantityFromBalances,
+  totalQtyFromBalances,
+} from "@/lib/facts";
 import { notifyMoneyMany, stationManagerIds } from "@/lib/moneyNotifications";
 import { INVENTORY_DENY, checkStockReviewGate, inventoryReach, inventoryRights, reversalDeny } from "@/lib/inventoryRights";
 import { moneyActor } from "@/lib/financeRights";
@@ -55,43 +65,35 @@ function stationRows(data) {
 }
 
 function balancesOf(item) {
-  if (Array.isArray(item.locationBalances) && item.locationBalances.length) {
-    return item.locationBalances.map((entry) => ({
-      locationId: entry.locationId,
-      quantity: Number(entry.quantity) || 0,
-    }));
-  }
-  const locationId = item.currentLocationId || item.stationId;
-  const quantity = Number(item.quantity ?? item.qty) || 0;
-  return locationId ? [{ locationId, quantity }] : [];
+  return locationBalancesOf(item);
 }
 
 function balanceAt(item, stationId) {
-  return balancesOf(item).find((entry) => entry.locationId === stationId)?.quantity || 0;
+  return qtyAtLocation(item, stationId);
 }
 
 function adjustBalance(item, stationId, delta) {
-  const next = balancesOf(item);
-  const index = next.findIndex((entry) => entry.locationId === stationId);
-  if (index < 0) next.push({ locationId: stationId, quantity: Math.max(0, delta) });
-  else next[index] = { ...next[index], quantity: Math.max(0, next[index].quantity + delta) };
-  return next;
+  return locationBalancesOf(adjustLocationBalance(item, stationId, delta));
 }
 
 function normalizeItem(raw, stations) {
   const fallbackStation = raw.currentLocationId || raw.stationId || stations[0]?.stationId || stations[0]?.id;
   const quantity = Number(raw.quantity ?? raw.qty) || 0;
-  const locationBalances = balancesOf({ ...raw, currentLocationId: fallbackStation, quantity });
+  const synced = syncItemQuantityFromBalances({
+    ...raw,
+    currentLocationId: fallbackStation,
+    quantity,
+  });
   return {
     ...raw,
     id: raw.id || uid("ivi"),
     itemCode: String(raw.itemCode || raw.sku || raw.id || uid("sku")).trim(),
     name: String(raw.name || "").trim() || "صنف",
-    quantity: locationBalances.reduce((sum, entry) => sum + entry.quantity, 0),
+    quantity: totalQtyFromBalances(synced),
     minimumStock: Math.max(0, Number(raw.minimumStock ?? raw.minQty) || 0),
     leadDays: Math.max(0, Number(raw.leadDays) || 7),
     currentLocationId: fallbackStation,
-    locationBalances,
+    locationBalances: locationBalancesOf(synced),
     archived: raw.archived === true,
   };
 }
@@ -102,7 +104,7 @@ function ensureLedger(data) {
   // ledger. It has to be emptied below, because ensureLedger runs on every read
   // and every write — re-merging it would add its quantities again each time.
   const fromLegacy = [
-    ...(Array.isArray(data.inventoryItems) ? data.inventoryItems : []),
+    ...readInventoryItems(data),
     ...(Array.isArray(data.inventory) ? data.inventory : []),
   ];
   const byCode = new Map();
@@ -115,14 +117,15 @@ function ensureLedger(data) {
       return;
     }
     item.locationBalances.forEach((entry) => {
-      prev.locationBalances = adjustBalance(prev, entry.locationId, entry.quantity);
+      const merged = adjustLocationBalance(prev, entry.locationId, entry.quantity);
+      prev.locationBalances = locationBalancesOf(merged);
+      prev.quantity = totalQtyFromBalances(merged);
     });
-    prev.quantity = prev.locationBalances.reduce((sum, entry) => sum + entry.quantity, 0);
   });
   data.inventoryItems = [...byCode.values()];
   if (Array.isArray(data.inventory) && data.inventory.length) data.inventory = [];
-  data.stockMovements = Array.isArray(data.stockMovements) ? data.stockMovements : [];
-  data.materialRequests = Array.isArray(data.materialRequests) ? data.materialRequests : [];
+  data.stockMovements = readStockMovements(data);
+  data.materialRequests = readMaterialRequests(data);
   data.stockPurchaseOrders = Array.isArray(data.stockPurchaseOrders) ? data.stockPurchaseOrders : [];
   data.stockRaisedScopes = data.stockRaisedScopes && typeof data.stockRaisedScopes === "object" ? data.stockRaisedScopes : {};
   return data;

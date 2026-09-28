@@ -7,11 +7,14 @@ import { canCreateTasks, isCompanyOwner, hasHRPermission } from "@/lib/permissio
 import { managedDutyEmployees } from "@/lib/dutyScope";
 import { Loader2 } from "lucide-react";
 import CheckInOutCard from "@/components/attendance/CheckInOutCard";
+import AttendancePunchWeek from "@/components/attendance/AttendancePunchWeek";
 import { AttendanceProofChain, punchChainFromAttendance } from "@/components/attendance/AttendanceTrustChrome";
 import AttendanceSectionFrame from "@/components/attendance/AttendanceSectionFrame";
 import { getTodaysShift } from "@/lib/attendance";
 import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
-import { isOnLeaveToday } from "@/lib/leaveTypes";
+import { isStatutoryOffDay } from "@/lib/leaveTypes";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import PullToRefresh from "@/components/mobile/PullToRefresh";
 import { queryClientInstance } from "@/lib/query-client";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
@@ -56,6 +59,7 @@ export default function Attendance() {
   const routeTab = tabFromRoute(location.pathname, searchParams.get("tab"));
   const [tab, setTab] = useState(routeTab);
   const [punchAtt, setPunchAtt] = useState(null);
+  const [manualAsk, setManualAsk] = useState(0);
   const [queueCount, setQueueCount] = useState(0);
 
   useEffect(() => {
@@ -258,7 +262,7 @@ export default function Attendance() {
 
   const hubTool = hubTabs.some((item) => item.key === activeTab) ? activeTab : defaultHubTab;
   const todayShift = getTodaysShift(data, currentUser);
-  const chain = punchChainFromAttendance(punchAtt, { scheduled: !!todayShift, onLeave: isOnLeaveToday(currentUser) });
+  const chain = punchChainFromAttendance(punchAtt, { scheduled: !!todayShift, onLeave: !!isStatutoryOffDay(currentUser, toRiyadhDateKey(), laborCalendarOf(data)) });
 
   return (
     <PullToRefresh onRefresh={handleRefresh}>
@@ -274,8 +278,11 @@ export default function Attendance() {
       <Suspense fallback={<TabLoader />}>
           {(activeTab === "roster" || activeTab === "punch") && (
             <div className="nv-att-punch-grid">
-              <CheckInOutCard currentUser={currentUser} company={company} t={t} onStatusChange={setPunchAtt} />
-              <AttendanceProofChain ar={ar} {...chain} />
+              <CheckInOutCard currentUser={currentUser} company={company} t={t} onStatusChange={setPunchAtt} manualAsk={manualAsk} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+                <AttendancePunchWeek employee={currentUser} company={company} data={data} lang={lang} />
+                <AttendanceProofChain ar={ar} {...chain} onManual={() => setManualAsk((n) => n + 1)} />
+              </div>
             </div>
           )}
           {activeTab === "team" && isManager && (

@@ -67,7 +67,7 @@ export default function StampHandMark({ ar, name = "", markUrl = "", onMark }) {
           <button
             type="button"
             onClick={() => { onMark(""); setHand(""); }}
-            style={{ ...signGhostBtn, color: "#DC2626" }}
+            style={{ ...signGhostBtn, color: "var(--nv-bad-ink)" }}
             title={ar ? "إزالة الشارة" : "Remove mark"}
           >
             <Trash2 style={{ width: 14, height: 14 }} />

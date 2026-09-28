@@ -6,6 +6,8 @@ import {
   orgKindChip,
   orgNavChip,
 } from "@/components/hr/orgUi";
+import OrgLookupField from "@/components/hr/OrgLookupField";
+import { personLookupOption } from "@/lib/orgLookup";
 import AssignEscalationDialog from "@/components/hr/AssignEscalationDialog";
 import { deriveBranchEscalationChain } from "@/lib/orgDerivations";
 import { setBranchEscalationChain } from "@/lib/orgTree";
@@ -13,6 +15,7 @@ import { isHrUnit, workplaceStations } from "@/lib/stationTree";
 import { SMART_DEPARTMENTS, saveSmartPosition } from "@/lib/smartPositions";
 import { formatOrgStructureEvent, orgStructureEvents } from "@/lib/orgStructureLog";
 import { updateCompany } from "@/lib/store";
+import { readBranchEscalationSla } from "@/lib/facts";
 import {
   addHigherLadderGrade,
   catalogMatchKey,
@@ -83,7 +86,7 @@ function accessStyle(value) {
     return { background: "var(--nv-ok-ink)", color: "#fff", border: "1px solid var(--nv-ok-ink)" };
   }
   if (value === "hidden") {
-    return { background: "var(--nv-inset, #F5F6F8)", color: "var(--nv-bad-ink)", border: "1px solid var(--nv-bad-line, #E9C4C9)" };
+    return { background: "var(--nv-inset, var(--nv-soft))", color: "var(--nv-bad-ink)", border: "1px solid var(--nv-bad-line)" };
   }
   return { background: "var(--nv-card)", color: "var(--nv-ink2)", border: "1px solid var(--nv-line)" };
 }
@@ -101,7 +104,7 @@ function kindStyle(tone) {
   if (tone === "navy") return { color: "#fff", background: "var(--nv-navy)", border: "1px solid var(--nv-navy)" };
   if (tone === "warn") return { color: "#5C4300", background: "#F6E2A8", border: "1px solid var(--nv-warn-fill)" };
   if (tone === "bad") return { color: "#fff", background: "var(--nv-bad-ink)", border: "1px solid var(--nv-bad-ink)" };
-  return { color: "var(--nv-ink)", background: "#DDE4F0", border: "1px solid #7C8BA3" };
+  return { color: "var(--nv-ink)", background: "var(--nv-soft)", border: "1px solid var(--nv-line)" };
 }
 
 function dotColor(tone) {
@@ -177,7 +180,7 @@ const ladderNum = {
   borderRadius: 4,
   padding: "0 6px",
   flex: "none",
-  background: "#fff",
+  background: "var(--nv-card)",
   fontSize: 12,
   fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
 };
@@ -189,8 +192,8 @@ const ladderUnit = {
   height: 22,
   padding: "0 6px",
   borderRadius: 4,
-  border: "1px solid var(--nv-line, #E6E9EF)",
-  background: "#fff",
+  border: "1px solid var(--nv-line)",
+  background: "var(--nv-card)",
   fontSize: 11,
   color: "var(--nv-ink2)",
   flex: "none",
@@ -202,7 +205,7 @@ const ladderLevel = {
   width: "auto",
   maxWidth: "100%",
   borderRadius: 8,
-  background: "#fff",
+  background: "var(--nv-card)",
   padding: "0 10px",
   justifySelf: "start",
 };
@@ -271,7 +274,7 @@ function GradeLadderTable({ ar, data, companyId, canWrite }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ overflow: "auto" }}>
-        <div style={{ minWidth: 860, display: "grid", gridTemplateColumns: ladderCols, gap: 10, padding: "9px 10px", background: "var(--nv-inset, #F5F6F8)", border: "1px solid var(--nv-soft, #EEF1F5)", borderRadius: 6, fontSize: 11, color: "var(--nv-ink2)", fontWeight: 700 }}>
+        <div style={{ minWidth: 860, display: "grid", gridTemplateColumns: ladderCols, gap: 10, padding: "9px 10px", background: "var(--nv-inset, var(--nv-soft))", border: "1px solid var(--nv-soft, var(--nv-line3))", borderRadius: 6, fontSize: 11, color: "var(--nv-ink2)", fontWeight: 700 }}>
           <span>{ar ? "الدرجة" : "Grade"}</span>
           <span>{ar ? "المستوى الوظيفي" : "Level"}</span>
           <span>{ar ? "الحدّ الأدنى للراتب" : "Pay from"}</span>
@@ -297,13 +300,13 @@ function GradeLadderTable({ ar, data, companyId, canWrite }) {
                 disabled={!canWrite}
                 placeholder="—"
                 onBlur={(event) => saveDigits(head, key, event.target.value)}
-                style={{ ...ladderNum, borderColor: warn ? "#8A1C2B" : undefined }}
+                style={{ ...ladderNum, borderColor: warn ? "var(--nv-bad-ink)" : undefined }}
               />
               <span style={ladderUnit}>{ar ? "رس" : "SAR"}</span>
             </span>
           );
           return (
-            <div key={band.key} style={{ minWidth: 860, display: "grid", gridTemplateColumns: ladderCols, gap: 10, padding: "8px 10px", borderBottom: "1px solid #F1F4F8", alignItems: "center", fontSize: 12 }}>
+            <div key={band.key} style={{ minWidth: 860, display: "grid", gridTemplateColumns: ladderCols, gap: 10, padding: "8px 10px", borderBottom: "1px solid var(--nv-line)", alignItems: "center", fontSize: 12 }}>
               <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 22, minWidth: 34, padding: "0 6px", borderRadius: 6, font: "700 11px 'Readex Pro', sans-serif", color: "#fff", background: orgGradeColor(Math.max(0, (band.rank || 1) - 1)), justifySelf: "start" }}>
                 <GradeCode code={band.gradeNumber} />
               </span>
@@ -333,7 +336,7 @@ function GradeLadderTable({ ar, data, companyId, canWrite }) {
               </span>
               <div style={{ display: "flex", gap: 4, flexWrap: "nowrap", overflow: "hidden", minWidth: 0, alignItems: "center" }} title={band.ranks.map((rank) => rank.label).join(" · ")}>
                 {shownRanks.map((rank) => (
-                  <span key={rank.id} style={{ display: "inline-flex", alignItems: "center", height: 22, maxWidth: "100%", padding: "0 7px", borderRadius: 4, background: "var(--nv-inset, #F5F6F8)", border: "1px solid var(--nv-line)", fontSize: 10.5, color: "var(--nv-ink2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <span key={rank.id} style={{ display: "inline-flex", alignItems: "center", height: 22, maxWidth: "100%", padding: "0 7px", borderRadius: 4, background: "var(--nv-inset, var(--nv-soft))", border: "1px solid var(--nv-line)", fontSize: 10.5, color: "var(--nv-ink2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {rank.label}
                   </span>
                 ))}
@@ -341,9 +344,9 @@ function GradeLadderTable({ ar, data, companyId, canWrite }) {
                 {more > 0 ? <span style={{ fontSize: 10.5, color: "var(--nv-muted)", whiteSpace: "nowrap" }}>{`+${more}`}</span> : null}
               </div>
               <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: seats ? "var(--nv-ok-ink, #137A49)" : "var(--nv-muted)", textDecoration: seats ? "underline" : "none" }}>{jobCountLabel(seats, ar)}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: seats ? "var(--nv-ok-ink)" : "var(--nv-muted)", textDecoration: seats ? "underline" : "none" }}>{jobCountLabel(seats, ar)}</span>
                 {canDrop ? (
-                  <button type="button" title={ar ? "حذف الدرجة" : "Delete grade"} onClick={() => removeListGrade(companyId, head.id)} style={{ width: 24, height: 24, borderRadius: 6, border: "1px solid #E9C4C9", background: "#FBF1F2", color: "#8A1C2B", cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+                  <button type="button" title={ar ? "حذف الدرجة" : "Delete grade"} onClick={() => removeListGrade(companyId, head.id)} style={{ width: 24, height: 24, borderRadius: 6, border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)", cursor: "pointer", fontFamily: "inherit" }}>✕</button>
                 ) : null}
               </span>
             </div>
@@ -358,7 +361,7 @@ function GradeLadderTable({ ar, data, companyId, canWrite }) {
         <button
           type="button"
           onClick={() => addHigherLadderGrade(companyId)}
-          style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", height: 32, padding: "0 12px", borderRadius: 9, border: "1px solid var(--nv-navy, #14213D)", background: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", color: "var(--nv-ink)" }}
+          style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-navy)", background: "var(--nv-card)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", color: "var(--nv-ink)" }}
         >
           {ar ? "+ درجة أعلى" : "+ Higher grade"}
         </button>
@@ -412,7 +415,7 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <GradeLadderTable ar={ar} data={data} companyId={companyId} canWrite={canWrite} />
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", paddingTop: 10, borderTop: "1px solid var(--nv-soft, #EEF1F5)" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", paddingTop: 10, borderTop: "1px solid var(--nv-soft, var(--nv-line3))" }}>
           <strong style={{ fontSize: 13 }}>{ar ? "المسارات الوظيفية" : "Career tracks"}</strong>
           <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>
             <span dir="ltr" style={ORG_MONO}>{titles.length}</span>
@@ -425,7 +428,7 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
             const expanded = openKey === item.key;
             const slipped = grades.some((grade, index) => index > 0 && (gradeRank(grade) ?? 0) < (gradeRank(grades[index - 1]) ?? 0));
             return (
-              <div key={item.key} style={{ borderBottom: "1px solid #F1F4F8" }}>
+              <div key={item.key} style={{ borderBottom: "1px solid var(--nv-line)" }}>
                 <button
                   type="button"
                   onClick={() => setOpenKey(expanded ? "" : item.key)}
@@ -437,7 +440,7 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
                     alignItems: "center",
                     padding: "10px 12px",
                     border: 0,
-                    background: expanded ? "#F8F9FB" : "#fff",
+                    background: expanded ? "var(--nv-soft)" : "var(--nv-card)",
                     cursor: "pointer",
                     fontFamily: "inherit",
                     textAlign: "start",
@@ -456,7 +459,7 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
                   <span style={{ fontSize: 11, color: "var(--nv-muted)", whiteSpace: "nowrap" }}>{rankSummary(grades.length, ar)}</span>
                 </button>
                 {expanded ? (
-                  <div style={{ padding: "8px 12px 12px", background: "#FAFBFC", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ padding: "8px 12px 12px", background: "var(--nv-soft)", display: "flex", flexDirection: "column", gap: 8 }}>
                     {grades.map((grade, index) => {
                       const rank = gradeRank(grade);
                       const draft = rankDraft[grade.id];
@@ -466,9 +469,9 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
                         <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--nv-muted)" }}>{text}</span>
                       );
                       return (
-                        <div key={grade.id} style={{ background: "#fff", border: "1px solid var(--nv-line, #E6E9EF)", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div key={grade.id} style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
                           <div style={{ display: "grid", gridTemplateColumns: "28px minmax(0,1fr) auto auto", gap: 8, alignItems: "center" }}>
-                            <span dir="ltr" style={{ ...ORG_MONO, fontSize: 11, color: "#9AA8BF", textAlign: "center" }}>{index + 1}</span>
+                            <span dir="ltr" style={{ ...ORG_MONO, fontSize: 11, color: "var(--nv-ink3)", textAlign: "center" }}>{index + 1}</span>
                             <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
                               {fieldLabel(ar ? "المرتبة" : "Rank")}
                               <input
@@ -485,8 +488,8 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
                             <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                               {fieldLabel(ar ? "الدرجة" : "Grade")}
                               <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ display: "flex", alignItems: "center", border: "1px solid var(--nv-line)", borderRadius: 5, background: "#fff", overflow: "hidden", height: 30 }}>
-                                  <span style={{ padding: "0 7px", font: "700 11px 'Readex Pro', sans-serif", color: "var(--nv-muted)", borderInlineEnd: "1px solid #EEF1F5", height: "100%", display: "inline-flex", alignItems: "center" }}>م</span>
+                                <span style={{ display: "flex", alignItems: "center", border: "1px solid var(--nv-line)", borderRadius: 5, background: "var(--nv-card)", overflow: "hidden", height: 30 }}>
+                                  <span style={{ padding: "0 7px", font: "700 11px 'Readex Pro', sans-serif", color: "var(--nv-muted)", borderInlineEnd: "1px solid var(--nv-line3)", height: "100%", display: "inline-flex", alignItems: "center" }}>م</span>
                                   <input
                                     inputMode="numeric"
                                     value={draft != null ? draft : (rank ? String(rank) : "")}
@@ -510,8 +513,8 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
                               </span>
                             </label>
                             <div style={{ display: "flex", gap: 4, alignSelf: "end", paddingBottom: 2 }}>
-                              <button type="button" title={ar ? "أعلى" : "Up"} disabled={!canWrite || index === 0} onClick={() => moveTitleGrade(companyId, grade.id, -1)} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid var(--nv-line)", background: "#fff", cursor: index ? "pointer" : "default", color: index ? "var(--nv-ink2)" : "#DFE3EA", fontFamily: "inherit" }}>▲</button>
-                              <button type="button" title={ar ? "حذف المرتبة" : "Delete rank"} disabled={!canWrite || grades.length <= 1 || seats > 0} onClick={() => setPendingDelete({ id: grade.id, name: grade.title || grade.gradeNumber, title: item.label })} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid #E9C4C9", background: "#FBF1F2", color: grades.length > 1 && !seats ? "#8A1C2B" : "#DFE3EA", cursor: grades.length > 1 && !seats ? "pointer" : "default", fontFamily: "inherit" }}>✕</button>
+                              <button type="button" title={ar ? "أعلى" : "Up"} disabled={!canWrite || index === 0} onClick={() => moveTitleGrade(companyId, grade.id, -1)} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", cursor: index ? "pointer" : "default", color: index ? "var(--nv-ink2)" : "var(--nv-line)", fontFamily: "inherit" }}>▲</button>
+                              <button type="button" title={ar ? "حذف المرتبة" : "Delete rank"} disabled={!canWrite || grades.length <= 1 || seats > 0} onClick={() => setPendingDelete({ id: grade.id, name: grade.title || grade.gradeNumber, title: item.label })} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", color: grades.length > 1 && !seats ? "var(--nv-bad-ink)" : "var(--nv-line)", cursor: grades.length > 1 && !seats ? "pointer" : "default", fontFamily: "inherit" }}>✕</button>
                             </div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(132px, 1fr))", gap: 8 }}>
@@ -543,26 +546,26 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
                             </label>
                             <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
                               {fieldLabel(ar ? "الراتب إلى" : "Pay to")}
-                              <input defaultValue={moneyOrBlank(grade.maxSalary)} key={`${grade.id}:max:${grade.maxSalary ?? ""}`} disabled={!canWrite} onBlur={(event) => saveNumber(grade, "maxSalary", event.target.value)} style={{ ...gradeNumInput, borderColor: badPay ? "#8A1C2B" : undefined }} />
+                              <input defaultValue={moneyOrBlank(grade.maxSalary)} key={`${grade.id}:max:${grade.maxSalary ?? ""}`} disabled={!canWrite} onBlur={(event) => saveNumber(grade, "maxSalary", event.target.value)} style={{ ...gradeNumInput, borderColor: badPay ? "var(--nv-bad-ink)" : undefined }} />
                             </label>
                             <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
                               {fieldLabel(ar ? "الإجازة" : "Leave")}
                               <input defaultValue={grade.annualLeaveDays ? String(grade.annualLeaveDays) : ""} key={`${grade.id}:leave:${grade.annualLeaveDays ?? ""}`} disabled={!canWrite} onBlur={(event) => saveNumber(grade, "annualLeaveDays", event.target.value, { leave: true })} style={gradeNumInput} />
                             </label>
                           </div>
-                          <span style={{ fontSize: 11, color: seats ? "var(--nv-ok-ink)" : "#9AA8BF" }}>{seats ? (ar ? `${seats} وظائف على هذه المرتبة` : `${seats} seats on this rank`) : (ar ? "لا وظائف على هذه المرتبة" : "No seats on this rank")}</span>
+                          <span style={{ fontSize: 11, color: seats ? "var(--nv-ok-ink)" : "var(--nv-ink3)" }}>{seats ? (ar ? `${seats} وظائف على هذه المرتبة` : `${seats} seats on this rank`) : (ar ? "لا وظائف على هذه المرتبة" : "No seats on this rank")}</span>
                         </div>
                       );
                     })}
                     {!grades.length ? (
                       <span style={{ fontSize: 12, color: "var(--nv-muted)" }}>{ar ? "لا مراتب بعد. أضف مرتبة على سلّم هذا المنصب وحده." : "No ranks yet. Add one on this title’s own ladder."}</span>
                     ) : null}
-                    {slipped ? <span style={{ fontSize: 11, color: "#8A1C2B" }}>{ar ? "تنبيه: مرتبة بدرجة أقل من المرتبة التي قبلها." : "A rank sits below the grade before it."}</span> : null}
+                    {slipped ? <span style={{ fontSize: 11, color: "var(--nv-bad-ink)" }}>{ar ? "تنبيه: مرتبة بدرجة أقل من المرتبة التي قبلها." : "A rank sits below the grade before it."}</span> : null}
                     {canWrite ? (
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingTop: 4 }}>
-                        <button type="button" onClick={() => addRank(item)} style={{ height: 28, padding: "0 11px", borderRadius: 5, border: "1px dashed #9AA8BF", background: "#fff", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{ar ? "＋ مرتبة" : "+ Rank"}</button>
+                        <button type="button" onClick={() => addRank(item)} style={{ height: 28, padding: "0 11px", borderRadius: 5, border: "1px dashed var(--nv-ink3)", background: "var(--nv-card)", fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{ar ? "＋ مرتبة" : "+ Rank"}</button>
                         {item.pack ? (
-                          <button type="button" onClick={() => setPendingDelete({ track: item, name: item.label })} style={{ border: 0, background: "transparent", fontSize: 11, color: "#8A1C2B", cursor: "pointer", fontFamily: "inherit" }}>{ar ? "حذف المسار" : "Delete track"}</button>
+                          <button type="button" onClick={() => setPendingDelete({ track: item, name: item.label })} style={{ border: 0, background: "transparent", fontSize: 11, color: "var(--nv-bad-ink)", cursor: "pointer", fontFamily: "inherit" }}>{ar ? "حذف المسار" : "Delete track"}</button>
                         ) : null}
                       </div>
                     ) : null}
@@ -605,8 +608,8 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
         </span>
       </div>
       {pendingDelete ? (
-        <div style={{ background: "#FBF1F2", border: "1px solid #E9C4C9", borderRadius: 10, padding: "10px 12px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 12, color: "#8A1C2B", flex: 1 }}>
+        <div style={{ background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)", borderRadius: 12, padding: "10px 12px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", flex: 1 }}>
             {pendingDelete.track
               ? (ar ? `حذف مسار «${pendingDelete.name}» من الدليل؟ الوظائف القائمة تبقى.` : `Remove the “${pendingDelete.name}” track from the catalog? Seats already created stay.`)
               : (ar ? `حذف المرتبة «${pendingDelete.name}» من مسار ${pendingDelete.title}؟` : `Delete rank “${pendingDelete.name}” from ${pendingDelete.title}?`)}
@@ -624,11 +627,11 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
               }
               setPendingDelete(null);
             }}
-            style={{ height: 32, padding: "0 12px", borderRadius: 9, border: 0, background: "#8A1C2B", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+            style={{ height: 32, padding: "0 12px", borderRadius: 8, border: 0, background: "var(--nv-bad-ink)", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
           >
             {ar ? "نعم، احذف" : "Yes, delete"}
           </button>
-          <button type="button" onClick={() => setPendingDelete(null)} style={{ height: 32, padding: "0 12px", borderRadius: 9, border: "1px solid var(--nv-line)", background: "#fff", cursor: "pointer", fontFamily: "inherit" }}>
+          <button type="button" onClick={() => setPendingDelete(null)} style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", cursor: "pointer", fontFamily: "inherit" }}>
             {ar ? "إلغاء" : "Cancel"}
           </button>
         </div>
@@ -665,6 +668,22 @@ export default function OrgWorkforceAdminPanels({
     [data?.stations],
   );
   const people = useMemo(() => activePeople(data), [data]);
+  const stationName = (stationIdValue) => {
+    const station = (data?.stations || []).find((item) => String(item.id) === String(stationIdValue));
+    return station?.name || "";
+  };
+  const personOptions = useMemo(
+    () => people.map((employee) => personLookupOption(employee, stationName(employee.stationId), ar)),
+    [people, data?.stations, ar],
+  );
+  const branchOptions = useMemo(
+    () => stations.map((station) => ({
+      id: String(station.id),
+      primary: station.name || "—",
+      search: station.name || "",
+    })),
+    [stations],
+  );
   const [stationId, setStationId] = useState("");
   const [permEmployeeId, setPermEmployeeId] = useState("");
   const [logView, setLogView] = useState("live");
@@ -676,7 +695,7 @@ export default function OrgWorkforceAdminPanels({
     () => (selectedStation ? deriveBranchEscalationChain(selectedStation, data) : []),
     [selectedStation, data],
   );
-  const slaList = data?.branchEscalationSla?.[selectedStation] || [];
+  const slaList = readBranchEscalationSla(data)[selectedStation] || [];
 
   const permEmployee = people.find((employee) => String(employee.id) === String(permEmployeeId)) || people[0] || null;
   const position = (data?.smartPositions || []).find((item) => String(item.employeeId) === String(permEmployee?.id || ""));
@@ -783,18 +802,14 @@ export default function OrgWorkforceAdminPanels({
               : "Escalation sits on the seat, not the person. Each level has a window before the case climbs."}
           </p>
           {stations.length > 1 ? (
-            <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "var(--nv-muted)" }}>
-              {ar ? "الفرع" : "Branch"}
-              <select
-                value={selectedStation}
-                onChange={(event) => setStationId(event.target.value)}
-                style={{ height: 34, padding: "0 10px", borderRadius: 10, border: "1px solid var(--nv-line)", fontSize: 12, color: "var(--nv-ink)", background: "var(--nv-card)", fontFamily: "inherit" }}
-              >
-                {stations.map((station) => (
-                  <option key={station.id} value={station.id}>{station.name}</option>
-                ))}
-              </select>
-            </label>
+            <OrgLookupField
+              ar={ar}
+              label={ar ? "الفرع" : "Branch"}
+              value={selectedStation}
+              onChange={setStationId}
+              options={branchOptions}
+              placeholder={ar ? "ابحث عن الفرع" : "Search for a branch"}
+            />
           ) : null}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {chain.map((step, index) => {
@@ -812,7 +827,7 @@ export default function OrgWorkforceAdminPanels({
                     gap: 10,
                     alignItems: "center",
                     background: "var(--nv-card)",
-                    border: "1px solid #E7E9EF",
+                    border: "1px solid var(--nv-line)",
                     borderRadius: 14,
                     padding: "12px 14px",
                     boxShadow: "0 1px 2px var(--nv-shadow2), 0 8px 20px var(--nv-shadow)",
@@ -822,7 +837,7 @@ export default function OrgWorkforceAdminPanels({
                     <span style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--nv-soft)", color: "var(--nv-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", font: "600 12px 'Readex Pro', sans-serif" }}>
                       {initials(name)}
                     </span>
-                    <span style={{ position: "absolute", bottom: -4, insetInlineStart: -4, width: 20, height: 20, borderRadius: "50%", border: "2px solid #fff", background: index === chain.length - 1 ? "var(--nv-navy)" : "var(--nv-soft)", color: index === chain.length - 1 ? "#fff" : "var(--nv-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", font: "600 10px 'IBM Plex Mono', monospace" }}>
+                    <span style={{ position: "absolute", bottom: -4, insetInlineStart: -4, width: 20, height: 20, borderRadius: "50%", border: "2px solid var(--nv-line)", background: index === chain.length - 1 ? "var(--nv-navy)" : "var(--nv-soft)", color: index === chain.length - 1 ? "#fff" : "var(--nv-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", font: "600 10px 'IBM Plex Mono', monospace" }}>
                       {index + 1}
                     </span>
                   </div>
@@ -832,20 +847,14 @@ export default function OrgWorkforceAdminPanels({
                     {empNo ? (
                       <span dir="ltr" style={{ ...ORG_MONO, fontSize: 9.5, color: "var(--nv-muted)", textAlign: "end" }}>{empNo}</span>
                     ) : null}
-                    <select
+                    <OrgLookupField
+                      ar={ar}
                       value={String(step.employeeId)}
                       disabled={!canWrite}
-                      onChange={(event) => setLevel(index, event.target.value)}
-                      style={{ marginTop: 4, height: 28, padding: "0 8px", borderRadius: 8, border: "1px solid var(--nv-line)", fontSize: 11, color: "var(--nv-ink2)", background: "var(--nv-inset, #F7F8FA)", maxWidth: "100%", fontFamily: "inherit" }}
-                    >
-                      {people.map((employeeOption) => (
-                        <option key={employeeOption.id} value={employeeOption.id}>
-                          {(employeeOption.profile?.position || employeeOption.jobTitle || (ar ? "موظف" : "Employee"))}
-                          {" — "}
-                          {employeeOption.name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(employeeId) => setLevel(index, employeeId)}
+                      options={personOptions}
+                      placeholder={ar ? "ابحث بالاسم أو الوظيفة أو الرقم" : "Search name, title, or number"}
+                    />
                   </div>
                   <label style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 9.5, color: "var(--nv-muted)" }}>
                     {ar ? "المهلة (ساعة)" : "Window (h)"}
@@ -856,7 +865,7 @@ export default function OrgWorkforceAdminPanels({
                       placeholder="24"
                       disabled={!canWrite}
                       onChange={(event) => setSla(index, event.target.value)}
-                      style={{ height: 30, padding: "0 8px", borderRadius: 9, border: "1px solid var(--nv-line)", font: "500 12px 'IBM Plex Mono', monospace", direction: "ltr", color: "var(--nv-ink)", outline: "none" }}
+                      style={{ height: 30, padding: "0 8px", borderRadius: 8, border: "1px solid var(--nv-line)", font: "500 12px 'IBM Plex Mono', monospace", direction: "ltr", color: "var(--nv-ink)", outline: "none" }}
                     />
                   </label>
                 </div>
@@ -888,24 +897,16 @@ export default function OrgWorkforceAdminPanels({
           open={openPerm}
           onToggle={onTogglePerm}
         >
-          <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "var(--nv-muted)" }}>
-            {ar ? "الوظيفة" : "Seat"}
-            <select
-              value={permEmployee ? String(permEmployee.id) : ""}
-              onChange={(event) => setPermEmployeeId(event.target.value)}
-              style={{ height: 34, padding: "0 10px", borderRadius: 10, border: "1px solid var(--nv-line)", fontSize: 12, color: "var(--nv-ink)", background: "var(--nv-card)", fontFamily: "inherit" }}
-            >
-              {people.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {(employee.profile?.position || employee.jobTitle || (ar ? "موظف" : "Employee"))}
-                  {" — "}
-                  {employee.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <OrgLookupField
+            ar={ar}
+            label={ar ? "الوظيفة" : "Seat"}
+            value={permEmployee ? String(permEmployee.id) : ""}
+            onChange={setPermEmployeeId}
+            options={personOptions}
+            placeholder={ar ? "ابحث بالاسم أو الوظيفة أو الرقم أو الفرع" : "Search name, title, number, or branch"}
+          />
           {permEmployee ? (
-            <div style={{ display: "flex", gap: 11, alignItems: "center", background: "var(--nv-card)", border: "1px solid #E7E9EF", borderRadius: 14, padding: "12px 14px", boxShadow: "0 1px 2px var(--nv-shadow2), 0 8px 20px var(--nv-shadow)" }}>
+            <div style={{ display: "flex", gap: 11, alignItems: "center", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, padding: "12px 14px", boxShadow: "0 1px 2px var(--nv-shadow2), 0 8px 20px var(--nv-shadow)" }}>
               <span style={{ width: 40, height: 40, borderRadius: "50%", background: "var(--nv-soft)", color: "var(--nv-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", font: "600 12px 'Readex Pro', sans-serif", flex: "none" }}>
                 {initials(permEmployee.name)}
               </span>
@@ -927,7 +928,7 @@ export default function OrgWorkforceAdminPanels({
               const locked = Boolean(department?.ownerOnly && !ownerMode);
               const value = accessOf(permissions, row.id);
               return (
-                <div key={row.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", border: "1px solid var(--nv-line)", borderRadius: 10 }}>
+                <div key={row.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 11px", border: "1px solid var(--nv-line)", borderRadius: 12 }}>
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
                     <strong style={{ fontSize: 12 }}>{ar ? row.ar : row.en}</strong>
                     <span style={{ fontSize: 10, color: "var(--nv-muted)" }}>{ar ? row.hintAr : row.hintEn}</span>
@@ -943,7 +944,7 @@ export default function OrgWorkforceAdminPanels({
                       minWidth: 76,
                       height: 28,
                       padding: "0 12px",
-                      borderRadius: 999,
+                      borderRadius: 899,
                       fontSize: 11,
                       fontWeight: 700,
                       cursor: canWrite && !locked ? "pointer" : "default",

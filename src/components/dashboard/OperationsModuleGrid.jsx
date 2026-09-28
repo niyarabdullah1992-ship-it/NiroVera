@@ -5,15 +5,17 @@ import { formatUiNumber } from "@/lib/dateFormat";
 import { BORDER, CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 import useCommandSigningSnapshot from "@/hooks/useCommandSigningSnapshot";
 import { pendingWorkProofBadgeCount } from "@/lib/suiteBadges";
+import { employeeMoneyHref } from "@/lib/railSide";
+import { readWorkProofs } from "@/lib/facts";
 
 const MONO = "'IBM Plex Mono', monospace";
-const LINE = "#E4E9E6";
-const HAIR = "#EEF1EF";
-const ROW = "#F4F7F5";
-const OK = "#3C7D50";
-const WARN = "#C8A45A";
-const BAD = "#9B2335";
-const HEAD = { fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" };
+const LINE = "var(--nv-line)";
+const HAIR = "var(--nv-line2)";
+const ROW = "var(--nv-page)";
+const OK = "var(--nv-btn-fill)";
+const WARN = "var(--nv-warn-fill)";
+const BAD = "var(--nv-bad-ink)";
+const HEAD = { fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "var(--nv-ink)" };
 
 function n(value) {
   return Number(value) || 0;
@@ -49,8 +51,8 @@ function tabBtn(on) {
     height: 32,
     padding: "0 14px",
     border: on ? "none" : `1px solid ${LINE}`,
-    background: on ? OK : "#fff",
-    color: on ? "#fff" : "#3A4048",
+    background: on ? OK : "var(--nv-card)",
+    color: on ? "#fff" : "var(--nv-ink2)",
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
@@ -63,12 +65,12 @@ function tabBtn(on) {
 /**
  * Proof-cycle map — a connected chain first, then quieter destinations.
  */
-export default function OperationsModuleGrid({ metrics, lang, user, data, company }) {
+export default function OperationsModuleGrid({ metrics, lang, user, data, company, personal = false }) {
   const ar = lang === "ar";
   const [view, setView] = React.useState("attention");
   const signing = useCommandSigningSnapshot(company, user, data);
   // Work proof carries its own figure — the signing snapshot says nothing about it.
-  const proofsAwaiting = pendingWorkProofBadgeCount(data?.workProofs || [], user);
+  const proofsAwaiting = pendingWorkProofBadgeCount(readWorkProofs(data), user);
   const mapMetrics = {
     ...metrics,
     signing: signing.mine,
@@ -188,7 +190,8 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
         .filter((item) => canAccessPath(item.to, user, data, company))
         .map((item) => {
           const waiting = waitingOf(item.key, mapMetrics);
-          return { ...item, waiting, tone: toneOf(item.key, waiting) };
+          const to = personal ? (employeeMoneyHref(item.key) || item.to) : item.to;
+          return { ...item, to, waiting, tone: toneOf(item.key, waiting) };
         }),
     }))
     .filter((group) => group.items.length > 0);
@@ -241,7 +244,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
             fontFamily: MONO,
             fontSize: 18,
             fontWeight: 500,
-            color: urgent ? BAD : "#111418",
+            color: urgent ? BAD : "var(--nv-ink)",
             flexShrink: 0,
             lineHeight: 1.1,
           }}
@@ -293,7 +296,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
               >
                 <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: MUTED }}>{item.step}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{item.title}</span>
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 26, fontWeight: 500, color: urgent ? BAD : "#111418", lineHeight: 1.05, unicodeBidi: "isolate" }}>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 26, fontWeight: 500, color: urgent ? BAD : "var(--nv-ink)", lineHeight: 1.05, unicodeBidi: "isolate" }}>
                   {item.value}
                 </span>
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{item.note}</span>

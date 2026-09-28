@@ -74,16 +74,16 @@ export default function OrgWorkforceHero({
           display: "flex",
           gap: 10,
           alignItems: "flex-start",
-          background: "#fff",
-          border: "1px solid #D5DCD8",
+          background: "var(--nv-card)",
+          border: "1px solid var(--nv-line)",
           borderRadius: 8,
           padding: "11px 16px",
           fontSize: 12.5,
-          color: "#3A4048",
+          color: "var(--nv-ink2)",
           lineHeight: 1.8,
         }}
         >
-          <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: "#C8A45A", flex: "none", marginTop: 7 }} />
+          <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--nv-warn-fill)", flex: "none", marginTop: 7 }} />
           <span>
             {ar
               ? "هيكل الشركة للاطلاع فقط: ترى موقعك ومديرك وزملاءك ومن يعلوك حتى الرئيس التنفيذي. التوظيف والتكليف والصلاحيات لدى الإدارة."
@@ -94,10 +94,10 @@ export default function OrgWorkforceHero({
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
             {stats.map((stat) => (
-              <div key={stat.id} style={{ position: "relative", overflow: "hidden", background: "#fff", border: "1px solid #D5DCD8", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 2 }}>
-                <span aria-hidden style={{ position: "absolute", top: 0, insetInline: 0, height: 3, background: kpiTone[stat.tone] || "#0B3D27" }} />
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: "#555C66" }}>{stat.label}</span>
-                <strong dir="ltr" style={{ ...ORG_MONO, fontSize: 18, fontWeight: 700, color: "#111418" }}>{stat.value}</strong>
+              <div key={stat.id} style={{ position: "relative", overflow: "hidden", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 2 }}>
+                <span aria-hidden style={{ position: "absolute", top: 0, insetInline: 0, height: 3, background: kpiTone[stat.tone] || "var(--nv-navy)" }} />
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-muted)" }}>{stat.label}</span>
+                <strong dir="ltr" style={{ ...ORG_MONO, fontSize: 18, fontWeight: 700, color: "var(--nv-ink)" }}>{stat.value}</strong>
               </div>
             ))}
           </div>

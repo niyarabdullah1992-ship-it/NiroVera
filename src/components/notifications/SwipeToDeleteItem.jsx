@@ -40,7 +40,7 @@ export default function SwipeToDeleteItem({ onDelete, children }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#FEF2F2",
+          background: "var(--nv-bad-soft)",
           color: DANGER,
           borderRadius: RADIUS,
         }}

@@ -89,7 +89,7 @@ export default function ExpenseList({ claims, stations, canManagerReview, canFin
           </div>
           {claim.description && <p style={{ margin: "12px 0 0", fontSize: "13px", color: MUTED }}>{claim.description}</p>}
           {claim.rejectReason ? (
-            <p style={{ margin: "8px 0 0", fontSize: 12, color: "#8A1C2B", lineHeight: 1.6 }}>
+            <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.6 }}>
               {ar ? `سبب الرفض: ${claim.rejectReason}` : `Rejection reason: ${claim.rejectReason}`}
             </p>
           ) : null}

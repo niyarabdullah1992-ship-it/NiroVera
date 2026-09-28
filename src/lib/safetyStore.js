@@ -1,5 +1,7 @@
 import { getCompanyData, logAudit, updateCompany } from "@/lib/store";
 import { checkHazardCloseGate } from "@/lib/hseDerivations";
+import { buildSafetyReportCard } from "@/lib/safetyReportCard";
+import { readSafety } from "@/lib/facts";
 
 const uid = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`;
 const stationExists = (data, stationId) => (data?.stations || []).some((station) => station.id === stationId);
@@ -9,7 +11,7 @@ const normalize = (value) => String(value || "").trim().toLocaleLowerCase().repl
 export function updateSafetyRecord(companyId, stationId, updates, actorName = "") {
   updateCompany(companyId, (data) => {
     if (!stationExists(data, stationId)) return;
-    data.safety = data.safety || [];
+    data.safety = readSafety(data);
     let rec = data.safety.find((item) => item.stationId === stationId);
     if (!rec) {
       rec = { id: uid("safe"), stationId, hazards: [], level: null, riskItems: [], dailyHours: [], ltiEntries: [], checklistResults: {}, permits: [], disabledTabs: [], createdAt: new Date().toISOString() };
@@ -101,7 +103,7 @@ export function approveSafetyRecord(companyId, stationId, approvedBy) {
   let blocked = null;
   updateCompany(companyId, (data) => {
     if (!stationExists(data, stationId)) return;
-    data.safety = data.safety || [];
+    data.safety = readSafety(data);
     let rec = data.safety.find((item) => item.stationId === stationId);
     if (!rec) {
       rec = { id: uid("safe"), stationId, hazards: [], level: null, riskItems: [], dailyHours: [], ltiEntries: [], checklistResults: {}, permits: [], disabledTabs: [], createdAt: new Date().toISOString() };
@@ -140,7 +142,7 @@ export function approveSafetyRecord(companyId, stationId, approvedBy) {
 export function revokeSafetyApproval(companyId, stationId, revokedBy) {
   let revoked = false;
   updateCompany(companyId, (data) => {
-    const rec = (data.safety || []).find((item) => item.stationId === stationId);
+    const rec = readSafety(data).find((item) => item.stationId === stationId);
     const approvedAt = new Date(rec?.approvedAt).getTime();
     const elapsed = Date.now() - approvedAt;
     if (!rec?.approvedBy || !Number.isFinite(approvedAt) || elapsed < 0 || elapsed > 24 * 60 * 60 * 1000) return;
@@ -155,14 +157,56 @@ export function revokeSafetyApproval(companyId, stationId, revokedBy) {
   return revoked;
 }
 
-export function recordSafetyIncident(companyId, stationId, description, actorName = "") {
-  const text = String(description || "").trim();
+export function patchSafetyIncident(companyId, stationId, incidentId, patch, actorName = "") {
+  if (!incidentId || !patch || typeof patch !== "object") return false;
+  let saved = false;
+  updateCompany(companyId, (data) => {
+    const rec = readSafety(data).find((item) => item.stationId === stationId);
+    const index = (rec?.incidentLog || []).findIndex((item) => item.id === incidentId);
+    if (!rec || index < 0) return;
+    const current = rec.incidentLog[index];
+    const next = { ...current, card: current.card ? { ...current.card } : current.card };
+    const now = new Date().toISOString();
+    if (patch.escalate) {
+      next.escalated = true;
+      next.escalatedAt = now;
+      next.escalatedBy = actorName;
+      next.step = Math.max(Number(next.step) || 0, 1);
+    }
+    if (patch.approveAction) {
+      next.actionApprovedBy = actorName;
+      next.actionApprovedAt = now;
+      next.step = Math.max(Number(next.step) || 0, 2);
+    }
+    if (patch.afterPhotoName) {
+      const name = String(patch.afterPhotoName || "").trim().slice(0, 180);
+      if (!name) return;
+      next.afterPhoto = { name, at: now };
+      next.status = "closed";
+      next.step = 3;
+      next.reviewedBy = actorName;
+      next.reviewedAt = now;
+    }
+    rec.incidentLog[index] = next;
+    if (next.card) next.card.step = next.step;
+    rec.lastActionBy = actorName;
+    rec.lastActionAt = now;
+    saved = true;
+  });
+  return saved;
+}
+
+export function recordSafetyIncident(companyId, stationId, description, actorName = "", detail = null) {
+  const card = buildSafetyReportCard(detail);
+  const text = String((card?.what || description) || "").trim();
   const data = getCompanyData(companyId);
   if (!text || !stationExists(data, stationId)) return false;
-  const existing = (data.safety || []).find((item) => item.stationId === stationId);
+  const existing = readSafety(data).find((item) => item.stationId === stationId);
   if ((existing?.incidentLog || []).some((item) => dayKey(item.at) === dayKey(new Date()) && normalize(item.description) === normalize(text))) return false;
   const stationName = data.stations.find((station) => station.id === stationId)?.name || stationId;
+  const anonymous = Boolean(card?.anonymous);
   logAudit(companyId, "safety_incident_logged", `Safety incident logged at station "${stationName}" — ${text}.`);
+  let saved = false;
   updateCompany(companyId, (current) => {
     current.safety = current.safety || [];
     let rec = current.safety.find((item) => item.stationId === stationId);
@@ -172,13 +216,27 @@ export function recordSafetyIncident(companyId, stationId, description, actorNam
     }
     rec.lastIncidentAt = new Date().toISOString();
     rec.incidentLog = rec.incidentLog || [];
-    rec.incidentLog.unshift({ id: uid("inc"), description: text, at: rec.lastIncidentAt, by: actorName, status: "open" });
-    rec.lastActionBy = actorName;
+    rec.incidentLog.unshift({
+      id: uid("inc"),
+      description: text,
+      at: rec.lastIncidentAt,
+      by: anonymous ? "" : actorName,
+      reporterId: card?.reporterId || "",
+      anonymous,
+      status: "open",
+      step: 0,
+      ...(card ? { card } : {}),
+    });
+    rec.lastActionBy = anonymous ? "" : actorName;
     rec.lastActionAt = rec.lastIncidentAt;
     rec.incidents = rec.incidentLog.length;
-    if (rec.level !== "red") rec.level = "amber";
-    rec.approvedBy = null;
-    rec.approvedAt = null;
+    if (!card?.positive) {
+      if ((card?.score || 0) >= 15) rec.level = "red";
+      else if (rec.level !== "red") rec.level = "amber";
+      rec.approvedBy = null;
+      rec.approvedAt = null;
+    }
+    saved = true;
   });
-  return true;
+  return saved;
 }

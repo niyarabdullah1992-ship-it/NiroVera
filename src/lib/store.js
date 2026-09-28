@@ -8,6 +8,7 @@ import { toRiyadhDateKey } from "./riyadhDate";
 import { reconcileStationReferences } from "./stationConsistency";
 import { clearStationScope } from "./stationScopeStore";
 import { planDuplicateShiftMerge, shiftWindowKey } from "./shiftDerivations";
+import { employeeWageSplit } from "./employeeFileView";
 import { applyCopyMonthAssignments, checkShiftChangeApplyGate, checkWeekPublishGates, clearRosterLeaveGhostAssignments, cloneDayMap, employeeShiftOnDay, isNightWorker, monthDateKeys, nightAllowanceAmount, nightAllowanceKind, nightAllowancePayLabel, nightCutHoursLabel, nightReduceCutHours, payableNightAllowance, planCopyMonthAssignments, repairNightRestAssignments, resolveNightRestAssignTarget, shiftHours, weekDateKeys, weekKeyFromDate, weekStartDate, weekStartsInMonth } from "./shiftWeek";
 import {
   applyNightWorkerDecision,
@@ -65,11 +66,13 @@ import { laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePla
 import { dashboardSubscription, platformOwnerGate, persistHolidayRulings, persistRamadanRuling, persistSubscriptionPlans } from "./ownerBoard";
 import { addLaborDays, ruleValue } from "./laborRules";
 import { art55FilePatch, laborFilePatch } from "./contractLawDerivations";
-import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, migratePreviewVoiceBranchManager, migratePreviewSigningNotices, migratePreviewEmployeeGenders, migratePreviewAssets, migratePreviewFieldTasks, seedPreviewOwnerNightStreak, seedPreviewProofCycle, seedPreviewWrittenConsent, seedPreviewDiscipline, seedPreviewVoice, seedPreviewPerformance } from "./previewMigrations";
+import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, migratePreviewVoiceBranchManager, migratePreviewSigningNotices, migratePreviewEmployeeGenders, migratePreviewOwnerGosiIdentity, migratePreviewGosiEstablishment, migratePreviewAssets, migratePreviewFieldTasks, seedPreviewOwnerNightStreak, seedPreviewProofCycle, seedPreviewWrittenConsent, seedPreviewDiscipline, seedPreviewVoice, seedPreviewPerformance } from "./previewMigrations";
+import { readCompanyEstablishment } from "./facts/company.js";
+import { canonicalizePlatformFacts } from "./facts/migrate.js";
 import { assignEmployeeNumber, ensureEmployeeNumbers } from "./employeeNumber";
 import { migratePreviewStationPins } from "./previewStationPins";
 import { attachSharedGradesToTitles, ensureProductLadder } from "./jobGradeTitles";
-import { assertWritableCategory, isDoNotWrite } from "./canonicalStore";
+import { assertWritableCategory, isDoNotWrite, normalizeBlobPayload } from "./canonicalStore";
 import { visibleArbitrationOutcomes } from "./arbitrationEngine";
 import {
   WRITTEN_CONSENT_TYPE,
@@ -598,6 +601,7 @@ export function getCompanyData(id) {
   if (attachSharedGradesToTitles(data)) persist = true;
   if (ensureProductLadder(data)) persist = true;
   if (ensureEmployeeNumbers(data)) persist = true;
+  if (canonicalizePlatformFacts(data)) persist = true;
   // Local preview used to seed compass names (شمال/شرق) — those were labels only,
   // not a forced region layer. Rewrite once so the org tree shows free branch names.
   if (isLocalPreviewWorkspace(id) && Array.isArray(data.stations)) {
@@ -627,6 +631,8 @@ export function getCompanyData(id) {
     if (migratePreviewCompanyHeadWorkplace(data)) persist = true;
     if (migratePreviewVoiceBranchManager(data)) persist = true;
     if (migratePreviewEmployeeGenders(data)) persist = true;
+    if (migratePreviewOwnerGosiIdentity(data)) persist = true;
+    if (migratePreviewGosiEstablishment(data)) persist = true;
     if (migratePreviewOwnerMorningRota(data)) persist = true;
     if (seedPreviewOwnerNightStreak(data)) persist = true;
     if (migratePreviewSigningNotices(data)) persist = true;
@@ -745,7 +751,7 @@ function persistCompanyData(id, data, sync = "all") {
   // Preview has no cloud write ACL — keep the local workspace and skip Base44.
   if (isLocalPreviewWorkspace(id) || sync === "none") return;
   if (typeof sync === "string" && sync !== "all") {
-    syncBlobToEntity(id, sync, data[sync] || []);
+    syncBlobToEntity(id, sync, data[sync]);
     return;
   }
   scheduleCompanyPush(id, data);
@@ -775,6 +781,7 @@ function pushCompanyDataToCloud(id, data) {
     employeeNoSeq: data.employeeNoSeq || data.settings?.employeeNoSeq || 0,
     reportBranding: data.reportBranding,
     orgStructureLog: data.orgStructureLog || [],
+    ...(readCompanyEstablishment(data) ? { gosiEstablishment: readCompanyEstablishment(data) } : {}),
   }]);
 }
 
@@ -844,18 +851,20 @@ export const BLOB_CATEGORIES = [
   "personalPlaces", "personalAttendance", "plannerItems", "journalEntries", "payrollRuns", "assetTransfers", "smartPositions",
   "complaintEscalationChain", "branchEscalationChains", "branchEscalationSla", "orgTree", "orgSeats", "workProofs", "visitorProofs", "disciplinaryCases",
   "arbitrationOutcomes", "stationBudgets",
+  "hcmFoundation", "hcmPerformance", "attendancePolicy", "attendanceEmergency", "hseCredits",
   ];
 const lastSyncedBlobJSON = {};
 async function syncBlobToEntity(companyId, category, payload) {
   if (isLocalPreviewWorkspace(companyId)) return;
   if (isDoNotWrite(category)) return;
   assertWritableCategory(category);
+  const normalized = normalizeBlobPayload(category, payload);
   const key = `${companyId}_${category}`;
-  const json = JSON.stringify(payload || []);
+  const json = JSON.stringify(normalized);
   if (lastSyncedBlobJSON[key] === json) return;
   lastSyncedBlobJSON[key] = json;
   try {
-    await invokeDirectory({ action: "syncBlob", companyId, category, payload: payload || [] });
+    await invokeDirectory({ action: "syncBlob", companyId, category, payload: normalized });
     markSynced(companyId);
   } catch (error) {
     const status = error?.response?.status || error?.status;
@@ -1523,6 +1532,7 @@ export function updateEmployeeProfile(companyId, employeeId, profile) {
     if (patch.contract) {
       emp.profile.contract = { ...(merged.contract || {}), ...patch.contract };
     }
+    canonicalizePlatformFacts(d);
   });
 }
 
@@ -1539,6 +1549,7 @@ export function patchEmployeeFile(companyId, employeeId, { profile, phone, name,
       const { patch } = laborFilePatch({ ...emp, profile: merged });
       emp.profile = { ...merged, ...patch };
       if (patch.contract) emp.profile.contract = { ...(merged.contract || {}), ...patch.contract };
+      canonicalizePlatformFacts(d);
     }
     if (phone != null) emp.phone = phone;
     if (name != null && String(name).trim()) emp.name = String(name).trim();
@@ -1874,9 +1885,14 @@ function syncNightAllowanceOnPayrollDraft(draft, employee) {
   if (!run) return;
   const item = (run.items || []).find((row) => row.employeeId === employee.id);
   if (!item || item.paid) return;
-  const contract = Number(employee.profile?.allowances) || 0;
-  item.allowances = contract + payableNightAllowance(employee);
-  item.nightAllowance = payableNightAllowance(employee);
+  const wage = employeeWageSplit(employee.profile || {}, employee);
+  item.allowances = wage.allowances;
+  item.nightAllowance = wage.night;
+  if (wage.split) {
+    item.housingAllowance = wage.housing;
+    item.transportAllowance = wage.transport;
+    item.otherAllowances = wage.other;
+  }
   if (item.qiwaWage != null) item.qiwaWage = (Number(item.base) || 0) + item.allowances;
 }
 

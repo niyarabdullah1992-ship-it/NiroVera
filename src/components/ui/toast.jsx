@@ -32,13 +32,13 @@ const toastVariants = cva(
     variants: {
       variant: {
         default:
-          "border-[#E2E8F0] bg-white text-[#14284B] before:absolute before:inset-y-0 before:start-0 before:w-[3px] before:bg-[#14284B]",
+          "border-[var(--nv-line)] bg-[var(--nv-card)] text-[var(--nv-ink)] before:absolute before:inset-y-0 before:start-0 before:w-[3px] before:bg-[var(--nv-navy)]",
         success:
-          "border-[color-mix(in_oklab,#1E9E63_32%,#fff)] bg-[color-mix(in_oklab,#1E9E63_9%,#fff)] text-[#14284B] before:absolute before:inset-y-0 before:start-0 before:w-[3px] before:bg-[#1E9E63]",
+          "border-[color-mix(in_oklab,var(--nv-ok-ink)_32%,#fff)] bg-[color-mix(in_oklab,var(--nv-ok-ink)_9%,#fff)] text-[var(--nv-ink)] before:absolute before:inset-y-0 before:start-0 before:w-[3px] before:bg-[var(--nv-btn-fill)]",
         warning:
-          "border-[#FDE68A] bg-[#FFFBEB] text-[#14284B] before:absolute before:inset-y-0 before:start-0 before:w-[3px] before:bg-[#D97706]",
+          "border-[var(--nv-line)] bg-[var(--nv-warn-soft)] text-[var(--nv-ink)] before:absolute before:inset-y-0 before:start-0 before:w-[3px] before:bg-[var(--nv-warn-fill)]",
         destructive:
-          "destructive border-[#FECACA] bg-[#FEF2F2] text-[#991B1B] before:absolute before:inset-y-0 before:start-0 before:w-[3px] before:bg-[#DC2626]",
+          "destructive border-[var(--nv-line)] bg-[var(--nv-bad-soft)] text-[var(--nv-bad-ink)] before:absolute before:inset-y-0 before:start-0 before:w-[3px] before:bg-[var(--nv-bad-fill)]",
       },
     },
     defaultVariants: {
@@ -64,8 +64,8 @@ const ToastAction = React.forwardRef(({ className, ...props }, ref) => (
     type="button"
     ref={ref}
     className={cn(
-      "inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-[#E2E8F0] bg-white px-3 text-xs font-medium text-[#14284B]",
-      "transition-colors hover:bg-[#F7F8FA] focus:outline-none focus:ring-2 focus:ring-[#1E9E63]/40",
+      "inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-[var(--nv-line)] bg-[var(--nv-card)] px-3 text-xs font-medium text-[var(--nv-ink)]",
+      "transition-colors hover:bg-[var(--nv-soft)] focus:outline-none focus:ring-2 focus:ring-[var(--nv-accent-border)]/40",
       "disabled:pointer-events-none disabled:opacity-50",
       className
     )}
@@ -79,9 +79,9 @@ const ToastClose = React.forwardRef(({ className, ...props }, ref) => (
     type="button"
     ref={ref}
     className={cn(
-      "absolute end-2 top-2 rounded-md p-1 text-[#5A6B85]/70 transition-opacity",
-      "opacity-70 hover:opacity-100 hover:text-[#14284B] focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#14284B]/20",
-      "group-[.destructive]:text-[#B91C1C]/70 group-[.destructive]:hover:text-[#991B1B]",
+      "absolute end-2 top-2 rounded-md p-1 text-[var(--nv-muted)]/70 transition-opacity",
+      "opacity-70 hover:opacity-100 hover:text-[var(--nv-ink)] focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[var(--nv-navy)]/20",
+      "group-[.destructive]:text-[var(--nv-bad-ink)]/70 group-[.destructive]:hover:text-[var(--nv-bad-ink)]",
       className
     )}
     toast-close=""
@@ -104,7 +104,7 @@ ToastTitle.displayName = "ToastTitle";
 const ToastDescription = React.forwardRef(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("text-[12.5px] leading-[1.55] text-start text-[#5A6B85] group-[.destructive]:text-[#991B1B]/90", className)}
+    className={cn("text-[12.5px] leading-[1.55] text-start text-[var(--nv-muted)] group-[.destructive]:text-[var(--nv-bad-ink)]/90", className)}
     {...props}
   />
 ));

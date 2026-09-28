@@ -71,7 +71,7 @@ import LaborCalendarCard from "@/components/hr/LaborCalendarCard";
 import { NIGHT_FACILITY_FLAGS } from "@/lib/decision18632";
 import { rosterNightRowMark, statutoryGlowState } from "@/lib/statutoryItem";
 import { isRamadanDay, ruleValue } from "@/lib/laborRules";
-import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import FileHoursAlertsRail from "@/components/employees/FileHoursAlertsRail";
 import ManagerDutyAlertsRail from "@/components/employees/ManagerDutyAlertsRail";
@@ -79,9 +79,12 @@ import { FileSelfBadge } from "@/components/employees/ProfileHero";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { BAD, WARN, statusBannerQuiet } from "@/lib/platformStyles";
 import LawGatesPanels from "@/components/shared/LawGatesPanels";
+import PublishedWeekMinistryStrip from "@/components/schedules/PublishedWeekMinistryStrip";
+import { publishedWeekMinistryFacts } from "@/lib/rosterMinistrySurface";
 import LawGateAlertRow from "@/components/shared/LawGateAlertRow";
 import LawGateStatusPill, { LawGateArticleBadge } from "@/components/shared/LawGateStatusPill";
 import { DS_CONTROL_RADIUS, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
+import { WEEK_HINT_ADMIN_AR, WEEK_HINT_EMP_AR } from "@/lib/packageMinistryCatalog";
 
 const HEADING = "var(--font-heading)";
 const LINK = { color: SW.ink, fontWeight: 600, textDecoration: "none" };
@@ -229,7 +232,7 @@ function ShiftHoursLabel({ shift, lang, format }) {
 function KickerLine({ kicker }) {
   const parts = String(kicker || "").split("·").map((part) => part.trim()).filter(Boolean);
   return (
-    <span style={{ fontSize: 11, letterSpacing: ".14em", color: SW.muted, display: "flex", gap: 7, alignItems: "center" }}>
+    <span style={{ fontSize: 11, letterSpacing: ".14em", color: "#A9CDB8", display: "flex", gap: 7, alignItems: "center" }}>
       {parts[0] ? <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{parts[0]}</span> : null}
       {parts[1] ? <span>·</span> : null}
       <span>{parts.slice(1).join(" · ") || (!parts[0] ? kicker : "")}</span>
@@ -397,6 +400,19 @@ export default function ShiftWeekBoard({
     }),
     [schedule, employees, weekStart, stationId, station, data, ar, laborCalendar],
   );
+  const ministryFacts = useMemo(() => {
+    const viewer = mode === "mine"
+      ? (roster.find((row) => isViewerOwnFile(row, currentUser)) || currentUser)
+      : null;
+    const viewerHours = viewer?.id
+      ? employeeWeekHours(schedule, viewer.id, weekStart, viewer, laborCalendar)
+      : undefined;
+    return publishedWeekMinistryFacts(gates, {
+      ar,
+      viewerName: viewer?.name || "",
+      viewerHours,
+    });
+  }, [mode, roster, currentUser, schedule, weekStart, laborCalendar, gates, ar]);
   const pub = weekPublishState(schedule, weekStart);
   const history = useMemo(
     () => buildHistory({ schedule, employees, stationId, fromKey: histFrom, toKey: histTo, query: histQuery, mode: histMode, ar, laborCalendar }),
@@ -724,32 +740,30 @@ export default function ShiftWeekBoard({
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <section style={{ ...slab, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {/* Identity — one job: name the board */}
-        <div style={{ padding: "18px 22px 14px", display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+        <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6, minWidth: 0, background: "linear-gradient(135deg,#0B3D27,#0F5535)", color: "#fff" }}>
           <KickerLine kicker={kicker} />
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <h1 className="nv-h" style={{ margin: 0, fontFamily: HEADING, fontSize: 24, fontWeight: 700, lineHeight: 1.35, color: "var(--nv-ink)" }}>{boardTitle}</h1>
+            <h1 className="nv-h" style={{ margin: 0, fontFamily: HEADING, fontSize: 20, fontWeight: 700, lineHeight: 1.35, color: "#fff" }}>{boardTitle}</h1>
             <StatutoryItem decisionId="18632" ar={ar} entitlement glow={nightGlow} compact />
           </div>
-          <span style={{ fontSize: 13, color: SW.mid, lineHeight: 1.8 }}>
+          <span style={{ fontSize: 12.5, color: "#C5DBCD", lineHeight: 1.7 }}>
             {ar ? (
               <>
-                الوردية المنشورة هي مصدر الوقت: منها يُعرف من يجب أن يحضر، ومتى يُعدّ متأخراً.{" "}
-                <Link to="/app/attendance" style={LINK}>الحضور</Link>
-                {" يلتقط و"}
-                <Link to="/app/calendar" style={LINK}>التقويم التشغيلي</Link>
-                {" يثبت. الإجازات مصدرها "}
-                <Link to="/app/requests" style={LINK}>طلباتي</Link>
-                {" وملف الموظف."}
+                {canEdit ? "جدول الفرع الذي تديره" : "جدول فرعك فقط — الجداول الأخرى من الإدارة"}
+                {" · "}
+                <Link to="/app/attendance" style={{ color: "#fff", fontWeight: 700 }}>الحضور</Link>
+                {" يلتقط · "}
+                <Link to="/app/calendar" style={{ color: "#fff", fontWeight: 700 }}>التقويم التشغيلي</Link>
+                {" يثبت."}
               </>
             ) : (
               <>
-                The published shift is the clock: who must attend, and when lateness starts.{" "}
-                <Link to="/app/attendance" style={LINK}>Attendance</Link>
-                {" captures and "}
-                <Link to="/app/calendar" style={LINK}>the operational calendar</Link>
-                {" confirms. Leave comes from "}
-                <Link to="/app/requests" style={LINK}>My Requests</Link>
-                {" and the employee file."}
+                {canEdit ? "The branch you manage" : "Your branch only — other rosters stay with management"}
+                {" · "}
+                <Link to="/app/attendance" style={{ color: "#fff", fontWeight: 700 }}>Attendance</Link>
+                {" captures · "}
+                <Link to="/app/calendar" style={{ color: "#fff", fontWeight: 700 }}>the operational calendar</Link>
+                {" confirms."}
               </>
             )}
           </span>
@@ -976,15 +990,21 @@ export default function ShiftWeekBoard({
               </div>
               ) : null}
             </div>
+            <div style={{ padding: "12px 16px 4px" }}>
+              <PublishedWeekMinistryStrip facts={ministryFacts} ar={ar} />
+            </div>
             <div style={{ overflowX: "auto" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "minmax(96px,1.1fr) repeat(7,minmax(72px,1fr))", gap: 1, background: SW.soft, borderBottom: `1px solid ${SW.line}`, minWidth: 640 }}>
-                <span style={{ background: SW.wash, padding: "9px 10px", fontSize: 11, color: SW.muted }}>{ar ? "الموظف" : "Employee"}</span>
-                {days.map((day) => (
-                  <span key={day.key} style={{ background: SW.wash, padding: "9px 4px", textAlign: "center", display: "flex", flexDirection: "column", gap: 1 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: day.weekend ? SW.muted : SW.mid }}>{weekdayLabel(day.wd, ar)}</span>
-                    <span dir="ltr" style={{ ...mono, fontSize: 10, color: SW.muted }}>{day.day}</span>
-                  </span>
-                ))}
+              <div style={{ display: "grid", gridTemplateColumns: "128px repeat(7,minmax(70px,1fr))", background: "var(--nv-card)", borderBottom: `1px solid ${SW.line}`, minWidth: 620 }}>
+                <span style={{ background: "var(--nv-soft)", padding: "8px 14px", fontSize: 11, color: SW.muted, borderTop: `1px solid ${SW.line}` }}>{ar ? "الموظف" : "Employee"}</span>
+                {days.map((day) => {
+                  const holiday = !!isOfficialHoliday(day.key, laborCalendar);
+                  return (
+                    <span key={day.key} style={{ background: holiday ? "var(--nv-shift-head-holiday)" : "var(--nv-soft)", padding: "8px 4px", textAlign: "center", display: "flex", flexDirection: "column", gap: 1, alignItems: "center", borderTop: `1px solid ${SW.line}`, borderBottom: `1px solid ${SW.line}`, borderInlineStart: `1px solid var(--nv-line2)` }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: holiday ? "var(--nv-shift-holiday-ink)" : (day.weekend ? SW.muted : SW.mid) }}>{weekdayLabel(day.wd, ar)}</span>
+                      <span dir="ltr" style={{ ...mono, fontSize: 10, color: SW.muted }}>{day.day}</span>
+                    </span>
+                  );
+                })}
               </div>
               {roster.length === 0 && (
                 <div style={{ padding: "18px 20px", background: SW.card, fontSize: 13, color: SW.mid, lineHeight: 1.8 }}>
@@ -998,7 +1018,7 @@ export default function ShiftWeekBoard({
                 const mineRow = isViewerOwnFile(employee, currentUser);
                 const nightMark = rosterNightRowMark({ employee, schedule, weekStart, laborCalendar });
                 return (
-                  <div key={employee.id} style={{ display: "grid", gridTemplateColumns: "minmax(96px,1.1fr) repeat(7,minmax(72px,1fr))", gap: 1, background: SW.soft, borderBottom: `1px solid ${SW.row}`, minWidth: 640 }}>
+                  <div key={employee.id} style={{ display: "grid", gridTemplateColumns: "128px repeat(7,minmax(70px,1fr))", background: "var(--nv-card)", borderBottom: "1px solid var(--nv-line2)", minWidth: 620 }}>
                     <span
                       className="nv-roster-person"
                       data-glow={nightMark.nameGlow ? "due" : "off"}
@@ -1025,7 +1045,7 @@ export default function ShiftWeekBoard({
                         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: "1 1 auto" }}>{employee.name}</span>
                         {mineRow ? <FileSelfBadge ar={ar} /> : null}
                       </span>
-                      <span dir="ltr" style={{ ...mono, fontSize: 10, color: SW.muted }}>{hours} {ar ? "س" : "h"}</span>
+                      <span dir="ltr" style={{ ...mono, fontSize: 10, color: hours > 48 ? "var(--nv-bad-ink)" : SW.muted }}>{hours} {ar ? "س" : "h"}{hours > 48 ? (ar ? " · تجاوز 48" : " · over 48") : ""}</span>
                     </span>
                     {days.map((day) => {
                       const leave = leaveOnDayView(employee, day.key, ar, laborCalendar);
@@ -1041,9 +1061,11 @@ export default function ShiftWeekBoard({
                       const leaveLockNote = leave?.source === "official_holiday"
                         ? (ar ? `${leave.type} · مقفلة` : `${leave.type} · locked`)
                         : (ar ? "اعتُمدت في طلباتي · مقفلة" : "approved in My Requests · locked");
+                      const unpublishedCell = !published && !canEdit && !shift && !leave;
+                      const restLabel = unpublishedCell ? (ar ? "بلا جدول" : "No roster") : (ar ? "راحة" : "Rest");
                       const baseTitle = locked
                         ? `${employee.name} — ${day.key} — ${leave.type}${leave.article ? ` · ${leave.article}` : ""} · ${leaveLockNote}`
-                        : `${employee.name} — ${day.key} — ${shift ? `${shift.label} ${shiftHoursLine(shift, lang, timeFormat)}` : (ar ? "راحة" : "Rest")}`;
+                        : `${employee.name} — ${day.key} — ${shift ? `${shift.label} ${shiftHoursLine(shift, lang, timeFormat)}` : restLabel}`;
                       return (
                         <button
                           key={`${employee.id}-${day.key}`}
@@ -1053,22 +1075,37 @@ export default function ShiftWeekBoard({
                           title={cellReason ? `${baseTitle} · ${cellReason}` : baseTitle}
                           style={{
                             fontFamily: "inherit",
-                            border: cellTone ? `1px solid ${cellTone.line || SW.line}` : "none",
-                            background: cellTone ? cellTone.soft : style.bg,
-                            color: cellTone ? cellTone.ink : style.fg,
+                            border: leave?.source === "official_holiday"
+                              ? "1.5px solid var(--nv-shift-holiday-ink, #6B5320)"
+                              : leave
+                                ? "1.5px dashed var(--nv-shift-leave-line, #B99656)"
+                                : cellTone
+                                  ? `1px solid ${cellTone.line || SW.line}`
+                                  : "none",
+                            borderInlineStart: leave || cellTone ? undefined : "1px solid var(--nv-line2)",
+                            borderRadius: leave ? 8 : 0,
+                            margin: leave ? 3 : 0,
+                            background: leave?.source === "official_holiday"
+                              ? "var(--nv-shift-holiday)"
+                              : leave
+                                ? "var(--nv-shift-leave)"
+                                : (cellTone ? cellTone.soft : style.bg),
+                            color: leave?.source === "official_holiday"
+                              ? "var(--nv-shift-holiday-ink)"
+                              : (cellTone ? cellTone.ink : style.fg),
                             cursor: canEdit && !locked ? "pointer" : locked ? "not-allowed" : "default",
-                            padding: "7px 2px",
+                            padding: "6px 4px",
                             display: "flex",
                             flexDirection: "column",
                             alignItems: "center",
-                            gap: 1,
-                            minHeight: 44,
+                            gap: 3,
+                            minHeight: 60,
                             justifyContent: "center",
                             position: "relative",
                             boxShadow: "none",
                           }}
                         >
-                          <span style={{ fontSize: 11, fontWeight: 600 }}>{leave ? leave.type : (shift ? shift.label : (ar ? "راحة" : "Rest"))}</span>
+                          <span style={{ fontSize: 11, fontWeight: 600 }}>{leave ? leave.type : (shift ? shift.label : restLabel)}</span>
                           {leave?.articleId ? (
                             <StatutoryItem article={leave.articleId} ar={ar} entitlement compact surface="leave" />
                           ) : (
@@ -1120,10 +1157,14 @@ export default function ShiftWeekBoard({
               >
                 {ar ? "الإجازات المعتمدة من طلباتي" : "Approved leave from My Requests"}
               </Link>
-              <span style={{ marginInlineStart: "auto", fontSize: 11, color: SW.muted }}>
-                {brush != null
-                  ? (ar ? `اضغط أي خلية لتعيين «${brushLabel}»` : `Click a cell to assign “${brushLabel}”`)
-                  : (ar ? "اضغط الخلية للتبديل بين الورديات بما فيها الليل. من تجاوز ثلاثة أشهر دون موافقة: صباحي أو مسائي من التنبيه. خلايا الإجازة مقفلة." : "Click a cell to cycle every shift, including night. After three months without consent, use morning or evening on the alert. Leave cells stay locked.")}
+              <span style={{ marginInlineStart: "auto", fontSize: 11, color: SW.muted, lineHeight: 1.7 }}>
+                {canEdit
+                  ? (brush != null
+                    ? (ar ? `اضغط أي خلية لتعيين «${brushLabel}». ${WEEK_HINT_ADMIN_AR}` : `Click a cell to assign “${brushLabel}”. Leave and holiday cells stay locked. The week does not publish over 48 hours or a morning shift straight after a night.`)
+                    : (ar ? WEEK_HINT_ADMIN_AR : "Click a cell to cycle rest, morning, evening, night. Holiday and leave cells stay locked. The week does not publish over 48 hours or a morning shift straight after a night."))
+                  : (published
+                    ? (ar ? WEEK_HINT_EMP_AR : "This is your published roster. Ask for a shift change or leave from My Requests. Leave cells stay locked.")
+                    : (ar ? "هذا الأسبوع لم يُنشر بعد — لا وردية منشورة اليوم، و«حضر» يبقى مغلقاً. الإجازة من «طلباتي»." : "This week is not published yet — no published shift today, and check-in stays closed. Leave is requested from My Requests."))}
               </span>
             </div>
             {restJumpNote ? (
@@ -1589,7 +1630,7 @@ export default function ShiftWeekBoard({
                     addShiftType(companyId, stationId, { ...next, restMinutes: next.restMinutes ?? ruleValue("hours.rest.duringShiftMinutes") });
                     refresh?.();
                   }}
-                  style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: "1px dashed #c7ccd6", background: SW.card, color: SW.ink, cursor: "pointer" }}
+                  style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 12px", border: "1px dashed var(--nv-line)", background: SW.card, color: SW.ink, cursor: "pointer" }}
                 >
                   {ar ? "+ أضف نوع وردية" : "+ Add a shift type"}
                 </button>

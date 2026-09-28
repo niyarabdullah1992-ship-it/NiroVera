@@ -12,8 +12,8 @@ function PhotoSlot({ filled, label, caption }) {
         flex: "1 1 120px",
         minHeight: 72,
         borderRadius: 10,
-        border: filled ? "1px solid #C5DBCD" : "1px dashed #D5DCD8",
-        background: filled ? "linear-gradient(165deg, #E6F2EA 0%, #F7FBF8 70%)" : "#FAFBFA",
+        border: filled ? "1px solid var(--nv-accent-border)" : "1px dashed var(--nv-line)",
+        background: filled ? "var(--nv-accent-soft)" : "var(--nv-soft)",
         display: "flex",
         alignItems: "center",
         gap: 10,
@@ -31,7 +31,7 @@ function PhotoSlot({ filled, label, caption }) {
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          background: filled ? "#3C7D50" : "#EEF1EF",
+          background: filled ? "var(--nv-btn-fill)" : "#EEF1EF",
           color: filled ? "#fff" : "#8E9A93",
           fontSize: 13,
           fontWeight: 700,
@@ -40,8 +40,8 @@ function PhotoSlot({ filled, label, caption }) {
         {filled ? "✓" : "·"}
       </span>
       <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-        <strong style={{ fontSize: 12.5, color: filled ? "#0B3D27" : "#3A4048" }}>{label}</strong>
-        <span style={{ fontSize: 11, color: filled ? "#2F6B43" : "#8E9A93", fontWeight: 600 }}>{caption}</span>
+        <strong style={{ fontSize: 12.5, color: filled ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{label}</strong>
+        <span style={{ fontSize: 11, color: filled ? "var(--nv-ok-ink)" : "#8E9A93", fontWeight: 600 }}>{caption}</span>
       </span>
     </div>
   );
@@ -85,12 +85,12 @@ export default function WorkProofRecordCard({ row, ar, onOpen, actions }) {
       {workers.length || row.creator ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {workers.length ? (
-            <span style={{ fontSize: 11, fontWeight: 700, color: "#555C66" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-muted)" }}>
               {ar ? `عمال الجهة · ${workers.length}` : `Crew · ${workers.length}`}
             </span>
           ) : null}
           {workers.slice(0, 3).map((name) => (
-            <span key={name} style={{ fontSize: 11, fontWeight: 600, color: "#0B3D27", background: "#E6F2EA", borderRadius: 999, padding: "2px 8px" }}>
+            <span key={name} style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ink)", background: "var(--nv-accent-soft)", borderRadius: 999, padding: "2px 8px" }}>
               {name}
             </span>
           ))}

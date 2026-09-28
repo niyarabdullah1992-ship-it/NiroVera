@@ -943,12 +943,12 @@ export default function WorkProof() {
               title={ar ? "مخالفة حظر العمل تحت أشعة الشمس" : "Sun-ban breach"}
               tone="bad"
               aside={(
-                <span dir="ltr" style={{ fontSize: 11, fontWeight: 650, color: "#B91C1C", fontFamily: "'IBM Plex Sans',sans-serif" }}>
+                <span dir="ltr" style={{ fontSize: 11, fontWeight: 650, color: "var(--nv-bad-ink)", fontFamily: "'IBM Plex Sans',sans-serif" }}>
                   {`${openHeatFlag.minutes} ${ar ? "د" : "min"}`}
                 </span>
               )}
             >
-              <span style={{ fontSize: 12, color: "#B91C1C", lineHeight: 1.8 }}>
+              <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.8 }}>
                 {ar ? openHeatFlag.textAr : openHeatFlag.textEn}
               </span>
               <LaborArticleCite cite={openHeatFlag.cite} ar={ar} showText showOfficial tone="block" />

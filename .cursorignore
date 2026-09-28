@@ -1,6 +1,7 @@
-﻿# Keep Cursor from indexing scratch dumps and build output.
+# Keep Cursor from indexing scratch dumps and build output.
 .tmp*
 .tmp-*/
+scripts/_pdf_snippets/
 node_modules/
 dist/
 dist-ssr/

@@ -18,9 +18,11 @@
       (function () {
         try {
           var saved = localStorage.getItem("powercare_theme");
-          var dark = saved === "dark" || saved === "light"
-            ? saved === "dark"
-            : window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var session = JSON.parse(localStorage.getItem("powercare_session") || "null");
+          if (session && session.companyId && session.userId) {
+            saved = localStorage.getItem("powercare_theme_" + session.companyId + "_" + session.userId);
+          }
+          var dark = saved === "dark";
           document.documentElement.classList.toggle("dark", dark);
           document.documentElement.style.colorScheme = dark ? "dark" : "light";
           var raw = localStorage.getItem("powercare_color_theme");

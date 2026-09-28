@@ -4,7 +4,7 @@ import { filterChip, pillRail, ui } from "@/lib/platformStyles";
 
 export function OpsControlBar({ children }) {
   return (
-    <div style={{ border: "1px solid #E4E9E6", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
+    <div style={{ border: "1px solid var(--nv-line)", borderRadius: 12, background: "var(--nv-card)", overflow: "hidden" }}>
       {children}
     </div>
   );
@@ -18,10 +18,10 @@ export function OpsStripSearch({ value, onChange, placeholder }) {
       gap: 8,
       margin: 0,
       padding: "8px 12px",
-      borderTop: "1px solid #E4E9E6",
+      borderTop: "1px solid var(--nv-line)",
     }}
     >
-      <Search size={14} color="#8E9A93" strokeWidth={1.75} />
+      <Search size={14} color="var(--nv-ink3)" strokeWidth={1.75} />
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -31,7 +31,7 @@ export function OpsStripSearch({ value, onChange, placeholder }) {
           flex: 1,
           minWidth: 0,
           fontSize: 13,
-          color: "#111418",
+          color: "var(--nv-ink)",
         }}
       />
     </label>

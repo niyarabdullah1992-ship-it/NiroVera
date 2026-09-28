@@ -1,6 +1,6 @@
 /** Other HR service requests — letters, permission, overtime, advance. Not leave. */
 
-import { getLeaveTotal, grantDaysOf } from "./leaveTypes.js";
+import { LEAVE_TYPES, getLeaveTotal, grantDaysOf, leaveTypeLabel } from "./leaveTypes.js";
 import { checkPunchRecordGate, parsePunchClock } from "./attendancePunch.js";
 import { checkIssuedLetterFileGate, checkRaiseSignableGate, isLetterSignableType } from "./requestSigning.js";
 
@@ -369,31 +369,75 @@ export function buildRequestRefuseAudit(args = {}) {
   return { ...row, action: requestRefuseAuditAction({ type: row.type }, args.family) };
 }
 
+function looksLikeRawKey(value) {
+  return /^[a-z][a-z0-9_]*$/i.test(String(value || "").trim());
+}
+
+/** Arabic (or English) name for an audit subject. Never returns night_consent or another raw key. */
+export function requestAuditKindLabel(raw, ar = true) {
+  const key = String(raw || "").trim();
+  if (!key) return ar ? "الطلب" : "the request";
+  if (key === "night_consent" || /^night_consent(_|$)/.test(key)) {
+    return ar ? "موافقة ليلية" : "night-work consent";
+  }
+  const other = OTHER_REQUEST_TYPES.find((row) => row.key === key);
+  if (other && other.key !== "other_request") return ar ? other.ar : other.en;
+  if (LEAVE_TYPES.some((row) => row.key === key.toLowerCase())) {
+    const label = leaveTypeLabel(key, ar);
+    return ar ? `إجازة ${label}` : `${label} leave`;
+  }
+  const stripped = key.replace(/_(raised|approved|refused|withdrawn|recorded|rejected|signed)$/i, "");
+  if (stripped !== key) return requestAuditKindLabel(stripped, ar);
+  if (looksLikeRawKey(key)) return ar ? "الطلب" : "the request";
+  return key;
+}
+
+/** Drop the machine actor. A stored "system" key is not a name to show. */
+export function requestAuditActorLabel(name) {
+  const who = String(name || "").trim();
+  if (!who || /^(system|unknown)$/i.test(who)) return "";
+  return who;
+}
+
+/** Last pass so a stored English key cannot reach the screen. */
+export function presentRequestAuditText(text, ar = true) {
+  let line = String(text || "");
+  if (!line) return "";
+  line = line.replace(/\bnight_consent\b/g, ar ? "موافقة ليلية" : "night-work consent");
+  line = line.replace(/\s*[·•]\s*system\b/gi, "");
+  line = line.replace(/\bsystem\s*[·•]\s*/gi, "");
+  line = line.replace(/\bunknown\b/gi, "");
+  if (ar) line = line.replace(/\s·\s*(قرار\s+\d+)/g, " — $1");
+  return line.replace(/\s{2,}/g, " ").replace(/\s+([،.])/g, "$1").trim();
+}
+
 export function requestAuditFileLog(audit, ar = true) {
   const key = requestAuditVerb(audit?.verb || audit?.type || audit?.action);
   const cite = audit?.article
-    ? (ar ? ` · المادة ${audit.article}` : ` · Art. ${audit.article}`)
+    ? (ar ? ` — المادة ${audit.article}` : ` · Art. ${audit.article}`)
     : audit?.decisionId
-      ? (ar ? ` · قرار ${audit.decisionId}` : ` · Decision ${audit.decisionId}`)
+      ? (ar ? ` — قرار ${audit.decisionId}` : ` · Decision ${audit.decisionId}`)
       : "";
-  const kind = audit?.type || "";
+  const kind = requestAuditKindLabel(audit?.requestType || audit?.type, ar);
+  const generic = kind === (ar ? "الطلب" : "the request");
+  const subject = generic ? kind : (ar ? `طلب ${kind}` : kind);
   const reasonBit = audit?.reason ? `: ${audit.reason}` : "";
-  const text = ar
-    ? (key === "raise" ? `رُفع طلب ${kind}${cite}`
-      : key === "approve" ? `اعتُمد طلب ${kind}${cite}`
-      : key === "withdraw" ? `سُحب طلب ${kind}${cite}`
-      : key === "agree" ? `وُافق على طلب ${kind}${cite}`
-      : key === "revise" ? `أُعيد طلب ${kind} للتعديل${cite}${reasonBit}`
-      : `رُفض طلب ${kind}${cite}${reasonBit}`)
-    : (key === "raise" ? `Request ${kind} raised${cite}`
-      : key === "approve" ? `Request ${kind} approved${cite}`
-      : key === "withdraw" ? `Request ${kind} withdrawn${cite}`
-      : key === "agree" ? `Request ${kind} agreed${cite}`
-      : key === "revise" ? `Request ${kind} returned${cite}${reasonBit}`
-      : `Request ${kind} refused${cite}${reasonBit}`);
+  const text = presentRequestAuditText(ar
+    ? (key === "raise" ? `رُفع ${subject}${cite}`
+      : key === "approve" ? `اعتُمد ${subject}${cite}`
+      : key === "withdraw" ? `سُحب ${subject}${cite}`
+      : key === "agree" ? `وُافق على ${subject}${cite}`
+      : key === "revise" ? `أُعيد ${subject} للتعديل${cite}${reasonBit}`
+      : `رُفض ${subject}${cite}${reasonBit}`)
+    : (key === "raise" ? `${generic ? "Request" : subject} raised${cite}`
+      : key === "approve" ? `${generic ? "Request" : subject} approved${cite}`
+      : key === "withdraw" ? `${generic ? "Request" : subject} withdrawn${cite}`
+      : key === "agree" ? `${generic ? "Request" : subject} agreed${cite}`
+      : key === "revise" ? `${generic ? "Request" : subject} returned${cite}${reasonBit}`
+      : `${generic ? "Request" : subject} refused${cite}${reasonBit}`), ar);
   return {
     text,
-    by: audit?.performedBy || audit?.actorName || "",
+    by: requestAuditActorLabel(audit?.performedBy || audit?.actorName),
     at: audit?.at || "",
     dot: key === "approve" || key === "agree" ? "#137A49" : key === "raise" ? "#14213D" : key === "withdraw" || key === "revise" ? "#4B5567" : "#8A1C2B",
     type: key === "refuse" ? "request_refused" : `request_${requestAuditEventType(key)}`,

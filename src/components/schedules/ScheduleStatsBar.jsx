@@ -80,8 +80,8 @@ export default function ScheduleStatsBar({ employees, shiftTypes, assignments, m
             gap: 8,
             padding: "5px 10px",
             borderRadius: 8,
-            border: `1px solid ${s.warn ? "#FDE68A" : "#E2E8F0"}`,
-            background: s.warn ? "#FFFBEB" : SURFACE,
+            border: `1px solid ${s.warn ? "var(--nv-line)" : "var(--nv-line)"}`,
+            background: s.warn ? "var(--nv-warn-soft)" : SURFACE,
           }}
         >
           <span

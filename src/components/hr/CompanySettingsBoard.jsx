@@ -226,7 +226,7 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
   return (
     <section style={{ ...pageCol, margin: "0 auto" }} dir={ar ? "rtl" : "ltr"}>
       {gateHint && (
-        <div style={{ borderRadius: "11px", border: "1px solid #FECACA", background: "#FEF2F2", padding: "12px 14px", fontSize: "11px", color: "#B91C1C" }}>
+        <div style={{ borderRadius: "11px", border: "1px solid var(--nv-line)", background: "var(--nv-bad-soft)", padding: "12px 14px", fontSize: "11px", color: "var(--nv-bad-ink)" }}>
           {gateHint}
         </div>
       )}
@@ -296,7 +296,7 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
               ? "تسجيل الحضور وإثبات العمل يُقبلان داخل هذا النطاق فقط."
               : "Check-in and work proof are accepted inside this radius only."}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "14px", padding: "13px 15px", borderRadius: "11px", background: SURFACE, border: "1px solid #E2E8F0", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "14px", padding: "13px 15px", borderRadius: "11px", background: SURFACE, border: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
             <button type="button" onClick={toggleGeo} disabled={!isOwner || busy} aria-pressed={geoOn} style={geoSwitchStyle}>
               <span style={geoKnobStyle} />
             </button>
@@ -304,7 +304,7 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
               <span style={{ display: "block", fontSize: "12px", fontWeight: 600, color: NAVY }}>
                 {ar ? "اشتراط التحقق بالموقع الجغرافي" : "Require geofence verification"}
               </span>
-              <span style={{ display: "block", fontSize: "11px", color: geoOn ? "#15803D" : "#B45309", marginTop: "2px" }}>
+              <span style={{ display: "block", fontSize: "11px", color: geoOn ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)", marginTop: "2px" }}>
                 {ar ? verification.statusAr : verification.statusEn}
               </span>
             </span>
@@ -316,7 +316,7 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
 
         <div style={{ overflowX: "auto" }}>
           <div style={{ minWidth: "620px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(140px,1fr) 110px minmax(180px,1fr) 120px", gap: "12px", padding: "10px 20px", background: SURFACE, borderTop: "1px solid #E2E8F0", borderBottom: "1px solid #E2E8F0", fontSize: "10px", letterSpacing: "0.06em", color: MUTED, fontWeight: 600 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(140px,1fr) 110px minmax(180px,1fr) 120px", gap: "12px", padding: "10px 20px", background: SURFACE, borderTop: "1px solid var(--nv-line)", borderBottom: "1px solid var(--nv-line)", fontSize: "10px", letterSpacing: "0.06em", color: MUTED, fontWeight: 600 }}>
               <div>{ar ? "الفرع" : "STATION"}</div>
               <div>{ar ? "نصف القطر" : "RADIUS"}</div>
               <div>{ar ? "الإحداثيات" : "COORDINATES"}</div>
@@ -325,7 +325,7 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
             {geofences.map((g) => (
               <div
                 key={g.stationId}
-                style={{ display: "grid", gridTemplateColumns: "minmax(140px,1fr) 110px minmax(180px,1fr) 120px", gap: "12px", padding: "12px 20px", borderBottom: "1px solid #F1F5F9", alignItems: "center" }}
+                style={{ display: "grid", gridTemplateColumns: "minmax(140px,1fr) 110px minmax(180px,1fr) 120px", gap: "12px", padding: "12px 20px", borderBottom: "1px solid var(--nv-line)", alignItems: "center" }}
               >
                 <div>
                   <div style={{ fontSize: "13px", fontWeight: 500, color: NAVY }}>{g.name}</div>
@@ -345,7 +345,7 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
                         lng: g.lng ?? "",
                         radiusMeters: g.radiusMeters || 200,
                       })}
-                      style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid #E2E8F0", background: CARD, color: MUTED, fontSize: "11px", cursor: "pointer", fontFamily: "inherit" }}
+                      style={{ padding: "6px 12px", borderRadius: "8px", border: "1px solid var(--nv-line)", background: CARD, color: MUTED, fontSize: "11px", cursor: "pointer", fontFamily: "inherit" }}
                     >
                       {g.configured ? (ar ? "عدّل" : "Edit") : (ar ? "حدّد" : "Set")}
                     </button>
@@ -364,7 +364,7 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
         </div>
 
         {editGeo && (
-          <div style={{ borderTop: "1px solid #E2E8F0", background: SURFACE, padding: "15px 16px" }}>
+          <div style={{ borderTop: "1px solid var(--nv-line)", background: SURFACE, padding: "15px 16px" }}>
             <div style={{ fontSize: "12px", fontWeight: 600, color: NAVY, marginBottom: "10px" }}>
               {ar ? `تعديل نطاق: ${editGeo.stationId}` : `Edit geofence: ${editGeo.stationId}`}
             </div>
@@ -394,7 +394,7 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
               <button
                 type="button"
                 onClick={() => setEditGeo(null)}
-                style={{ height: "36px", padding: "0 14px", borderRadius: "9px", border: "1px solid #E2E8F0", background: CARD, color: MUTED, fontSize: "12px", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ height: "36px", padding: "0 14px", borderRadius: "9px", border: "1px solid var(--nv-line)", background: CARD, color: MUTED, fontSize: "12px", cursor: "pointer", fontFamily: "inherit" }}
               >
                 {ar ? "إلغاء" : "Cancel"}
               </button>
@@ -426,7 +426,7 @@ export default function CompanySettingsBoard({ lang = "ar" }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: "14px", marginTop: "16px" }}>
           {rateLimits.map((r) => (
-            <div key={r.key} style={{ border: "1px solid #E2E8F0", borderRadius: "11px", padding: "14px", background: SURFACE }}>
+            <div key={r.key} style={{ border: "1px solid var(--nv-line)", borderRadius: "11px", padding: "14px", background: SURFACE }}>
               <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "22px", fontWeight: 600, lineHeight: 1, textAlign: "right", color: NAVY }}>{r.value}</div>
               <div style={{ fontSize: "11px", color: MUTED, marginTop: "6px" }}>{ar ? r.labelAr : r.labelEn}</div>
             </div>

@@ -8,10 +8,10 @@ const MONO = {
 };
 
 const TONE = {
-  ok: { edge: "#3C7D50", pill: "#E6F2EA", ink: "#2F6B43", bar: "#3C7D50" },
-  warn: { edge: "#C8A45A", pill: "#FBF3E1", ink: "#8A5A12", bar: "#C8A45A" },
-  bad: { edge: "#9B2335", pill: "#FBEBED", ink: "#9B2335", bar: "#9B2335" },
-  neutral: { edge: "#0B3D27", pill: "#F4F7F5", ink: "#3A4048", bar: "#3C7D50" },
+  ok: { edge: "var(--nv-ok-fill)", pill: "var(--nv-ok-soft)", ink: "var(--nv-ok-ink)", bar: "var(--nv-ok-fill)" },
+  warn: { edge: "var(--nv-warn-fill)", pill: "var(--nv-warn-soft)", ink: "var(--nv-warn-ink)", bar: "var(--nv-warn-fill)" },
+  bad: { edge: "var(--nv-bad-fill)", pill: "var(--nv-bad-soft)", ink: "var(--nv-bad-ink)", bar: "var(--nv-bad-fill)" },
+  neutral: { edge: "var(--nv-navy, #0B3D27)", pill: "var(--nv-soft)", ink: "var(--nv-ink2)", bar: "var(--nv-ok-fill)" },
 };
 
 function toneOf(name) {
@@ -68,12 +68,14 @@ export default function LaneRecordCard({
         gap: 12,
         padding: "14px 16px 12px",
         borderRadius: 14,
-        border: `1px solid ${hover ? "#C5DBCD" : "#E4E9E6"}`,
         borderTop: `3px solid ${paint.edge}`,
-        background: fresh ? "#F2F7F4" : hover ? "#F7FBF8" : "#FFFFFF",
+        borderRight: `1px solid ${hover ? "var(--nv-ok-line)" : "var(--nv-line)"}`,
+        borderBottom: `1px solid ${hover ? "var(--nv-ok-line)" : "var(--nv-line)"}`,
+        borderLeft: `1px solid ${hover ? "var(--nv-ok-line)" : "var(--nv-line)"}`,
+        background: fresh ? "var(--nv-g1)" : hover ? "var(--nv-hover)" : "var(--nv-card)",
         boxShadow: hover
-          ? "0 10px 24px rgba(6,61,38,.08)"
-          : "0 1px 2px rgba(12,20,16,.04)",
+          ? "0 10px 24px var(--nv-shadow)"
+          : "var(--nv-paper)",
         cursor: onOpen ? "pointer" : "default",
         textAlign: "start",
         minWidth: 0,
@@ -91,8 +93,8 @@ export default function LaneRecordCard({
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              background: markGold ? "#FBF3E1" : "#0B3D27",
-              color: markGold ? "#8A5A12" : "#FBF3E1",
+              background: markGold ? "var(--nv-warn-soft)" : "var(--nv-navy)",
+              color: markGold ? "var(--nv-warn-ink)" : "#FBF3E1",
               fontSize: 13,
               fontWeight: 700,
               boxShadow: markGold ? "inset 0 0 0 1px #E7D7A8" : "inset 0 0 0 1px rgba(200,164,90,.35)",
@@ -110,7 +112,7 @@ export default function LaneRecordCard({
                 fontSize: 16,
                 fontWeight: 700,
                 lineHeight: 1.35,
-                color: "#111418",
+                color: "var(--nv-ink)",
                 letterSpacing: 0,
               }}
             >
@@ -120,8 +122,8 @@ export default function LaneRecordCard({
               <span style={{
                 fontSize: 10,
                 fontWeight: 700,
-                color: "#2F6B43",
-                background: "#E6F2EA",
+                color: "var(--nv-ok-ink)",
+                background: "var(--nv-ok-soft)",
                 borderRadius: 999,
                 padding: "2px 8px",
               }}
@@ -132,7 +134,7 @@ export default function LaneRecordCard({
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
             {refId ? (
-              <span dir="ltr" style={{ ...MONO, fontSize: 11, color: "#555C66" }}>{refId}</span>
+              <span dir="ltr" style={{ ...MONO, fontSize: 11, color: "var(--nv-ink3)" }}>{refId}</span>
             ) : null}
             {items.map((item) => (
               <span
@@ -140,8 +142,8 @@ export default function LaneRecordCard({
                 style={{
                   fontSize: 11,
                   fontWeight: 600,
-                  color: String(item).includes("خارج النطاق") || String(item).includes("Outside range") ? "#9B2335" : "#3A4048",
-                  background: String(item).includes("خارج النطاق") || String(item).includes("Outside range") ? "#FBEBED" : "#F4F7F5",
+                  color: String(item).includes("خارج النطاق") || String(item).includes("Outside range") ? "var(--nv-bad-ink)" : "var(--nv-ink2)",
+                  background: String(item).includes("خارج النطاق") || String(item).includes("Outside range") ? "var(--nv-bad-soft)" : "var(--nv-soft)",
                   borderRadius: 999,
                   padding: "2px 8px",
                   maxWidth: "100%",
@@ -184,17 +186,17 @@ export default function LaneRecordCard({
                 minWidth: 0,
                 padding: "8px 10px",
                 borderRadius: 8,
-                background: "#F4F7F5",
+                background: "var(--nv-page)",
               }}
             >
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#8E9A93" }}>{fact.label}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "var(--nv-ink3)" }}>{fact.label}</span>
               <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                 <span
                   dir={fact.mono ? "ltr" : undefined}
                   style={{
                     fontSize: 12.5,
                     fontWeight: 650,
-                    color: fact.tone === "bad" ? "#9B2335" : fact.tone === "warn" ? "#8A5A12" : "#111418",
+                    color: fact.tone === "bad" ? "var(--nv-bad-ink)" : fact.tone === "warn" ? "var(--nv-warn-ink)" : "var(--nv-ink)",
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -215,8 +217,8 @@ export default function LaneRecordCard({
           maxWidth: "100%",
           fontSize: 11,
           fontWeight: 700,
-          color: "#9B2335",
-          background: "#FBEBED",
+          color: "var(--nv-bad-ink)",
+          background: "var(--nv-bad-soft)",
           borderRadius: 8,
           padding: "3px 8px",
         }}
@@ -233,17 +235,17 @@ export default function LaneRecordCard({
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
             {progress.label ? (
-              <span style={{ fontSize: 11, color: "#8E9A93", fontWeight: 700 }}>{progress.label}</span>
+              <span style={{ fontSize: 11, color: "var(--nv-ink3)", fontWeight: 700 }}>{progress.label}</span>
             ) : null}
-            <span dir="ltr" style={{ ...MONO, fontSize: 13, fontWeight: 700, color: "#111418" }}>
+            <span dir="ltr" style={{ ...MONO, fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>
               {progress.count || `${progress.done ?? 0}/${progress.target ?? 1}`}
             </span>
-            <span dir="ltr" style={{ ...MONO, fontSize: 12, fontWeight: 600, color: "#8E9A93" }}>{`${pct}%`}</span>
+            <span dir="ltr" style={{ ...MONO, fontSize: 12, fontWeight: 600, color: "var(--nv-ink3)" }}>{`${pct}%`}</span>
             {progress.extra ? (
-              <span style={{ fontSize: 11, color: "#555C66", fontWeight: 700 }}>{progress.extra}</span>
+              <span style={{ fontSize: 11, color: "var(--nv-ink3)", fontWeight: 700 }}>{progress.extra}</span>
             ) : null}
           </div>
-          <span style={{ display: "block", height: 6, borderRadius: 999, background: "#E6F2EA", overflow: "hidden" }}>
+          <span style={{ display: "block", height: 6, borderRadius: 999, background: "var(--nv-ok-soft)", overflow: "hidden" }}>
             <span style={{ display: "block", width: `${pct === 0 ? 0 : pct}%`, height: "100%", borderRadius: 999, background: paint.bar }} />
           </span>
         </div>
@@ -257,7 +259,7 @@ export default function LaneRecordCard({
             flexWrap: "wrap",
             gap: 6,
             paddingTop: 10,
-            borderTop: "1px solid #EEF1EF",
+            borderTop: "1px solid var(--nv-line)",
           }}
         >
           {actions}

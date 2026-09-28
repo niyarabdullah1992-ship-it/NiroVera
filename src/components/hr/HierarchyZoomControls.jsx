@@ -8,8 +8,8 @@ const strip = {
   height: 34,
   padding: "0 4px",
   borderRadius: 999,
-  border: "1px solid #E4E9F0",
-  background: "color-mix(in oklab, #14284B 3%, #fff)",
+  border: "1px solid var(--nv-line)",
+  background: "color-mix(in oklab, var(--nv-ink) 3%, #fff)",
 };
 
 const iconBtn = {
@@ -78,13 +78,13 @@ export default function HierarchyZoomControls({
     const cell = { ...htmlBtn, width: 32, height: 32, border: "none", borderRadius: 0 };
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }} role="toolbar" aria-label={ar ? "عرض الشجرة" : "Tree view"}>
-        <span style={{ display: "inline-flex", alignItems: "center", border: "1px solid #C5CEC9", borderRadius: 8, overflow: "hidden", background: "#fff" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", border: "1px solid var(--nv-line)", borderRadius: 8, overflow: "hidden", background: "var(--nv-card)" }}>
           <button type="button" onClick={() => onZoom(-0.1)} style={cell} title={ar ? "تصغير" : "Zoom out"} aria-label={ar ? "تصغير" : "Zoom out"}>−</button>
-          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", direction: "ltr", unicodeBidi: "isolate", fontSize: 11.5, minWidth: 46, textAlign: "center", borderInline: "1px solid #E4E9E6", lineHeight: "32px" }}>{pct}%</span>
+          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", direction: "ltr", unicodeBidi: "isolate", fontSize: 11.5, minWidth: 46, textAlign: "center", borderInline: "1px solid var(--nv-line)", lineHeight: "32px" }}>{pct}%</span>
           <button type="button" onClick={() => onZoom(0.1)} style={cell} title={ar ? "تكبير" : "Zoom in"} aria-label={ar ? "تكبير" : "Zoom in"}>+</button>
         </span>
         {typeof onFit === "function" ? (
-          <button type="button" onClick={onFit} style={{ ...htmlTxtBtn, height: 32, borderRadius: 8, border: "1px solid #C5CEC9", color: "#111418" }}>
+          <button type="button" onClick={onFit} style={{ ...htmlTxtBtn, height: 32, borderRadius: 8, border: "1px solid var(--nv-line)", color: "var(--nv-ink)" }}>
             {ar ? "ملاءمة" : "Fit"}
           </button>
         ) : null}

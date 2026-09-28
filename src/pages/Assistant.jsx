@@ -424,7 +424,7 @@ Answer the last user question.`,
           flexDirection: "column",
           background: CARD,
           border: `1px solid ${BORDER}`,
-          borderRadius: 16,
+          borderRadius: 14,
           overflow: "hidden",
         }}
         >

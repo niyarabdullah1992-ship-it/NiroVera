@@ -5,8 +5,8 @@
  * - /app page → SectionShell / PlatformStampShell
  * - titled module → IdentityCard
  * - nested box / table → cardShell / tableShell
- * - selected identity and primary actions are #137A49 with white text
- * - navy structure is #14213D; warn/bad stay gold and crimson
+ * - selected identity and primary actions are #3C7D50 with white text
+ * - structure is deep green #0B3D27; warn stays gold, danger stays #9B2335
  */
 
 import { DS_CONTROL_RADIUS, DS_EDGE_PX, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "./designSystem.js";
@@ -17,15 +17,15 @@ export const CONTROL_RADIUS = DS_CONTROL_RADIUS;
 export const PILL_RADIUS = DS_PILL_RADIUS;
 export const PAPER_SHADOW = DS_SHADOW;
 
-export const ACCENT = "var(--nv-accent, #137A49)";
-/** Navy structure from the v4 rail (#14213D). Selected fills use BTN_FILL. */
-export const NAVY_FILL = "var(--nv-navy, #14213D)";
+export const ACCENT = "var(--nv-accent, #3C7D50)";
+/** Deep-green structure. Selected fills use BTN_FILL. */
+export const NAVY_FILL = "var(--nv-navy, #0B3D27)";
 /** Title/body color. */
-export const NAVY = "var(--nv-ink, #14213D)";
-export const INK = "var(--nv-ink, #14213D)";
+export const NAVY = "var(--nv-ink, #111418)";
+export const INK = "var(--nv-ink, #111418)";
 export const MUTED = "var(--nv-muted, var(--nv-ink3, #6B7280))";
 
-export const BRAND = "var(--nv-accent, #137A49)";
+export const BRAND = "var(--nv-accent, #3C7D50)";
 export const BRAND_SOFT = "var(--nv-accent-soft, color-mix(in oklab, #1E9E63 10%, #fff))";
 export const BRAND_DEEP = "var(--nv-accent-deep, color-mix(in oklab, #1E9E63 84%, #000))";
 export const BRAND_BORDER = "var(--nv-accent-border, color-mix(in oklab, #1E9E63 28%, #fff))";
@@ -102,20 +102,21 @@ export const WARN = pill("var(--nv-warn-soft)", "var(--nv-warn-ink)", "var(--nv-
 export const BAD = pill("var(--nv-bad-soft)", "var(--nv-bad-ink)", "var(--nv-bad-line)");
 export const NEUTRAL = pill("var(--nv-mute-soft)", "var(--nv-mute-ink)", "var(--nv-mute-line)");
 
-export const BORDER = "var(--nv-line, #E4E8EE)";
-export const SURFACE = "var(--nv-soft, #F5F6F8)";
+export const BORDER = "var(--nv-line, #E4E9E6)";
+export const SURFACE = "var(--nv-soft, #F5F7F6)";
 export const CARD = "var(--nv-card, #FFFFFF)";
-export const PAGE = "var(--nv-page, #F7F8FA)";
+export const PAGE = "var(--nv-page, #F4F7F5)";
 export const HOVER = "var(--nv-hover, #F5F7FA)";
 /** Recessed stage behind white slabs — the paper table the signing surfaces sit on. */
-export const STAGE = "color-mix(in oklab, var(--nv-navy, #14284B) 5%, var(--nv-soft, #F7F8FA))";
-export const DANGER = "#DC2626";
+export const STAGE = "color-mix(in oklab, var(--nv-navy, #0B3D27) 5%, var(--nv-soft, #F5F7F6))";
+export const DANGER = "var(--nv-bad-ink, #9B2335)";
+export const DANGER_FILL = "var(--nv-bad-fill, #9B2335)";
 /** Active chrome fill — same token Layout uses for section pills. */
-export const BTN_FILL = "var(--nv-btn-fill, #137A49)";
+export const BTN_FILL = "var(--nv-btn-fill, #3C7D50)";
 export const BTN_INK = "var(--nv-btn-ink, #fff)";
 export const PILL_H = 34;
 
-/** Layout sub-header language: muted idle, navy fill when selected. */
+/** Layout sub-header language: muted idle, action fill when selected. */
 export function navPill(active) {
   return {
     display: "inline-flex",
@@ -338,7 +339,7 @@ export const ui = {
     borderRadius: CONTROL_RADIUS,
     background: CARD,
     color: DANGER,
-    border: "1px solid #FECACA",
+    border: "1px solid var(--nv-bad-line)",
     fontSize: "12px",
     fontWeight: 500,
     cursor: "pointer",
@@ -464,9 +465,9 @@ export const ui = {
     height: 28,
     padding: "0 10px",
     borderRadius: CONTROL_RADIUS,
-    border: "1px solid #FECACA",
-    background: "#FEF2F2",
-    color: "#B91C1C",
+    border: "1px solid var(--nv-bad-line)",
+    background: "var(--nv-bad-soft)",
+    color: "var(--nv-bad-ink)",
     fontSize: 11,
     fontWeight: 500,
     cursor: "pointer",

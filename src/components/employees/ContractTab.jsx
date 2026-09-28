@@ -18,9 +18,9 @@ const PDF_CHIP = {
   borderRadius: "20px",
   fontSize: "10px",
   fontWeight: 600,
-  background: "#FEF2F2",
-  color: "#DC2626",
-  border: "1px solid #FECACA",
+  background: "var(--nv-bad-soft)",
+  color: "var(--nv-bad-ink)",
+  border: "1px solid var(--nv-line)",
   flexShrink: 0,
 };
 
@@ -164,7 +164,7 @@ export default function ContractTab({ employee, companyId, canEdit }) {
               ) : null}
             </div>
           ) : art55.approaching ? (
-            <p style={{ margin: "8px 0 0", fontSize: 12, color: "#B45309", lineHeight: 1.65 }}>
+            <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--nv-warn-ink)", lineHeight: 1.65 }}>
               {ar
                 ? "المادة 55 قريبة: ثلاثة تجديدات أو أربع سنوات ثم الاستمرار يحوّل العقد إلى غير محدد المدة."
                 : "Article 55 is near: three renewals or four years, then continuing, converts the contract to indefinite."}

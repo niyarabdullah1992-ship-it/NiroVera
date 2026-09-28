@@ -15,7 +15,7 @@ function NiroVeraMark({ size, className }) {
         height: size,
         flexShrink: 0,
         overflow: "hidden",
-        background: "#fff",
+        background: "var(--nv-card)",
       }}
     >
       <img

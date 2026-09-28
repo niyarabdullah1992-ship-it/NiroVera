@@ -19,6 +19,8 @@ import {
   stationAllowsOpsChat,
   workplaceStations,
   normalizeUnitKind,
+  headerScopeBranches,
+  isNestedWorkplace,
 } from "../src/lib/stationTree.js";
 
 const east = { id: "east", name: "الشرقية", parentStationId: null };
@@ -144,5 +146,15 @@ assert.deepEqual(
   workplaceStations([companyAsManager, { id: "dmm", name: "الدمام" }]).map((s) => s.id),
   ["co", "dmm"],
 );
+
+const scopeTree = [
+  { id: "hq", name: "المقر", isCompanyRoot: true },
+  { id: "east", name: "المنطقة الشرقية", unitKind: "manager", parentStationId: "hq" },
+  { id: "khf", name: "فرع الخفجي", parentStationId: "east" },
+  { id: "dmm", name: "فرع الدمام", parentStationId: "east" },
+  { id: "port", name: "ميناء الدمام", parentStationId: "dmm" },
+];
+assert.equal(isNestedWorkplace(scopeTree[4], scopeTree), true);
+assert.deepEqual(headerScopeBranches(scopeTree, scopeTree).map((row) => row.id), ["hq", "khf", "dmm"]);
 
 console.log("station tree ok");

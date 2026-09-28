@@ -9,7 +9,7 @@ export default function OrgUnitKindPicker({ value, onChange, ar, compact = false
       {!compact ? (
         <span style={labelText}>{ar ? "هذه العقدة" : "This node"}</span>
       ) : null}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, padding: 3, borderRadius: 10, background: "#EEF2F6" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3, padding: 3, borderRadius: 8, background: "var(--nv-hover)" }}>
         <button type="button" onClick={() => onChange("branch")} style={segmentBtn(kind === "branch")}>
           {ar ? "فرع" : "Branch"}
         </button>

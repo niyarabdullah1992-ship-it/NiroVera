@@ -4,7 +4,7 @@ import AttachFileButton from "@/components/shared/AttachFileButton";
 import { CONSENT_MINISTRY_HINT_AR, CONSENT_MINISTRY_HINT_EN } from "@/lib/writtenConsent";
 import { BORDER, CARD, MUTED } from "@/lib/platformStyles";
 
-const OK = "#137a49";
+const OK = "var(--nv-ok-ink)";
 
 function FileMeta({ file, ar, linkLabel, onClear, busy, idle }) {
   if (file?.name) {
@@ -54,7 +54,7 @@ export default function RequestSelfSignBlock({
   const showPaperInput = sourceReady && requirePaper && !paperReady && !paperBusy;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, border: `1px dashed ${sourceReady ? "#bfe6d2" : BORDER}`, background: sourceReady ? "#f2faf6" : CARD, padding: "12px 12px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, border: `1px dashed ${sourceReady ? "var(--nv-line)" : BORDER}`, background: sourceReady ? "#f2faf6" : CARD, padding: "12px 12px" }}>
       {title ? <span style={{ fontSize: 12, fontWeight: 600 }}>{title}</span> : null}
       {blurb ? <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>{blurb}</span> : null}
 
@@ -82,7 +82,7 @@ export default function RequestSelfSignBlock({
           idle={required ? "" : (ar ? "اختياري." : "Optional.")}
         />
       </label>
-      {fileError ? <span style={{ fontSize: 11, color: "#8a1c2b" }}>{fileError}</span> : null}
+      {fileError ? <span style={{ fontSize: 11, color: "var(--nv-bad-ink)" }}>{fileError}</span> : null}
 
       {sourceReady && requirePaper ? (
         <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -108,7 +108,7 @@ export default function RequestSelfSignBlock({
             busy={paperBusy}
             idle=""
           />
-          {paperError ? <span style={{ fontSize: 11, color: "#8a1c2b" }}>{paperError}</span> : null}
+          {paperError ? <span style={{ fontSize: 11, color: "var(--nv-bad-ink)" }}>{paperError}</span> : null}
         </label>
       ) : null}
     </div>

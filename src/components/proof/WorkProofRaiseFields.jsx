@@ -149,7 +149,7 @@ const CSS = `
   .wp-raise-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .wp-fold > summary::-webkit-details-marker { display: none; }
   .wp-fold > summary { list-style: none; }
-  .wp-fold > summary::before { content: "+"; display: inline-block; width: 14px; color: #5A6B85; font-weight: 600; }
+  .wp-fold > summary::before { content: "+"; display: inline-block; width: 14px; color: var(--nv-muted); font-weight: 600; }
   .wp-fold[open] > summary::before { content: "−"; }
   .wp-repeat { display: grid; gap: 10px; }
   @media (max-width: 520px) {

@@ -897,7 +897,7 @@ assert.equal(heatWin.seasonAr, `من ${ruleValue("hours.heat.fromDay")} يوني
 
 // The hours themselves carry no المادة chip — they are the decision's figures.
 assert.equal(citeRule("hours.heat.startHour"), null);
-assert.equal(explainRule("hours.heat.startHour")?.labelAr, "قرار وزاري");
+assert.equal(explainRule("hours.heat.startHour")?.labelAr, "قرار 3337");
 
 // Decision 3337 was issued on articles 122 and 243 — 122 is the one with a text to read.
 const heatCite = citeRule("hours.heat.cite");
@@ -970,7 +970,7 @@ const heatBlocked = checkTaskHeatBanGate(fieldTask, { now: inSeasonMidday, amoun
 assert.equal(heatBlocked.ok, false);
 assert.equal(heatBlocked.error, "HEAT_BAN");
 assert.equal(heatBlocked.ruleId, "hours.heat.startHour");
-assert.equal(heatBlocked.labelAr, "قرار وزاري");
+assert.equal(heatBlocked.labelAr, "قرار 3337");
 assert.equal(
   heatBlocked.reason,
   "موقوف — حظر العمل تحت أشعة الشمس: لا يُسجَّل إنجاز ميداني بين 12:00 و15:00 بتوقيت الرياض من 15 يونيو إلى 15 سبتمبر. الوقت الآن 13:00، فسجّل الإنجاز بعد 15:00. الساعتان والموسم من قرار وزاري رقم 3337 وتاريخ 15/7/1435هـ، الصادر على المادة 122.",
@@ -1022,7 +1022,7 @@ assert.ok(spanNotice);
 assert.equal(spanNotice.id, "heat_ban");
 assert.equal(spanNotice.level, HEAT_BAN_STATE_LEVEL.before_window);
 assert.equal(spanNotice.inSeason, true);
-assert.equal(spanNotice.labelAr, "قرار وزاري");
+assert.equal(spanNotice.labelAr, "قرار 3337");
 assert.equal(spanNotice.cite.article, "122");
 assert.ok(spanNotice.textAr.includes(heatWin.seasonAr));
 assert.ok(spanNotice.textAr.includes("3337"));

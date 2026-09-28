@@ -20,9 +20,9 @@ export default function OrgTreeFullscreenButton({ active, onToggle, ar, htmlLabe
           cursor: "pointer",
           fontFamily: "inherit",
           whiteSpace: "nowrap",
-          background: active ? "#0B3D27" : "#fff",
-          color: active ? "#fff" : "#0B3D27",
-          border: "1px solid #0B3D27",
+          background: active ? "var(--nv-navy)" : "var(--nv-card)",
+          color: active ? "#fff" : "var(--nv-ok-ink)",
+          border: "1px solid var(--nv-ok-line)",
         }}
       >
         {active
@@ -47,7 +47,7 @@ export default function OrgTreeFullscreenButton({ active, onToggle, ar, htmlLabe
         height: 34,
         padding: "0 10px",
         borderRadius: 9,
-        border: `1px solid ${active ? "#14284B" : "#E2E8F0"}`,
+        border: `1px solid ${active ? "var(--nv-navy)" : "var(--nv-line)"}`,
         background: active ? "var(--nv-navy)" : CARD,
         color: active ? "#fff" : NAVY,
         fontSize: 11,

@@ -44,7 +44,7 @@ export default function ConsentSignRow({
   const decisionId = item.decisionId || topic.decisionId;
 
   return (
-    <div id={`consent-${item.id}`} style={{ borderBottom: "1px solid #F1F5F9" }}>
+    <div id={`consent-${item.id}`} style={{ borderBottom: "1px solid var(--nv-line)" }}>
       <div
         style={{
           display: "grid",
@@ -126,7 +126,7 @@ export default function ConsentSignRow({
                   type="button"
                   disabled={paperBusy || !paper?.name || !ack}
                   onClick={() => onAccept?.({ ack, paper })}
-                  style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "7px 11px", border: "none", background: paper?.name && ack ? "#137a49" : "#eef0f4", color: paper?.name && ack ? "#fff" : MUTED, cursor: paper?.name && ack ? "pointer" : "default" }}
+                  style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "7px 11px", border: "none", background: paper?.name && ack ? "var(--nv-ok-ink)" : "var(--nv-soft)", color: paper?.name && ack ? "#fff" : MUTED, cursor: paper?.name && ack ? "pointer" : "default" }}
                 >
                   {ar ? "اعتماد" : "Approve"}
                 </button>
@@ -134,7 +134,7 @@ export default function ConsentSignRow({
                   type="button"
                   disabled={paperBusy}
                   onClick={() => onRefuse?.({})}
-                  style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "7px 11px", border: "1px solid #e9c4c9", background: CARD, color: "#8a1c2b", cursor: "pointer" }}
+                  style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "7px 11px", border: "1px solid var(--nv-bad-line)", background: CARD, color: "var(--nv-bad-ink)", cursor: "pointer" }}
                 >
                   {ar ? "أرفض مباشرة" : "Refuse directly"}
                 </button>

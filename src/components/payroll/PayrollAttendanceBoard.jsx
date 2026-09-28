@@ -12,7 +12,7 @@ const head = {
   gap: 10,
   padding: "10px 16px",
   background: SURFACE,
-  borderBottom: "1px solid #E2E8F0",
+  borderBottom: "1px solid var(--nv-line)",
   fontSize: 10,
   fontWeight: 600,
   color: MUTED,
@@ -23,7 +23,7 @@ const row = {
   gridTemplateColumns: "minmax(140px,1.2fr) 66px 60px 60px 60px 56px 60px 66px minmax(140px,auto)",
   gap: 10,
   padding: "12px 16px",
-  borderBottom: "1px solid #F1F5F9",
+  borderBottom: "1px solid var(--nv-line)",
   alignItems: "center",
 };
 
@@ -74,10 +74,10 @@ export default function PayrollAttendanceBoard({
 
       <div style={{
         padding: "10px 13px",
-        border: `1px solid ${sourced ? "#bfe6d2" : "#e9c4c9"}`,
-        background: sourced ? "#f2faf6" : "#fbf1f2",
+        border: `1px solid ${sourced ? "var(--nv-line)" : "var(--nv-line)"}`,
+        background: sourced ? "#f2faf6" : "var(--nv-bad-soft)",
         fontSize: 12,
-        color: sourced ? "#137a49" : "#8a1c2b",
+        color: sourced ? "var(--nv-ok-ink)" : "var(--nv-bad-ink)",
         lineHeight: 1.7,
       }}>
         <strong>{sourced ? (ar ? "مقروء من الحضور" : "Read from attendance") : (ar ? "لا حضور مقروء لهذه الدورة" : "No attendance read for this cycle")}</strong>
@@ -123,10 +123,10 @@ export default function PayrollAttendanceBoard({
               </span>
               <span dir="ltr">{line.att.shift}</span>
               <span dir="ltr">{line.att.present}</span>
-              <span dir="ltr" style={{ color: line.att.otHours ? "#137a49" : MUTED }}>{line.att.otHours}</span>
+              <span dir="ltr" style={{ color: line.att.otHours ? "var(--nv-ok-ink)" : MUTED }}>{line.att.otHours}</span>
               <span dir="ltr">{line.att.holidayHours || 0}</span>
               <span dir="ltr">{line.att.eidHours || 0}</span>
-              <span dir="ltr" style={{ color: line.att.absent ? "#8a1c2b" : MUTED }}>{line.att.absent}</span>
+              <span dir="ltr" style={{ color: line.att.absent ? "var(--nv-bad-ink)" : MUTED }}>{line.att.absent}</span>
               <span dir="ltr" style={{ color: line.att.unpaidLeave ? "#8a6516" : MUTED }}>{line.att.unpaidLeave}</span>
               <span style={{
                 ...(line.att.attGap ? BAD : (line.att.absent || line.att.unpaidLeave ? WARN : OK)),

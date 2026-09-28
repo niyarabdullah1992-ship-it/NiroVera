@@ -133,7 +133,7 @@ export default function AttendanceMapDashboard({ employees, t }) {
           {t("insideLocation")} ({insideCount})
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#DC2626" }} />
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--nv-bad-fill)" }} />
           {t("outsideLocation")} ({outsideCount})
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
@@ -168,8 +168,8 @@ export default function AttendanceMapDashboard({ employees, t }) {
                 center={[r.check_in_lat, r.check_in_lng]}
                 radius={9}
                 pathOptions={{
-                  color: r.mapInside ? "#059669" : "#dc2626",
-                  fillColor: r.mapInside ? "#10b981" : "#ef4444",
+                  color: r.mapInside ? "#059669" : "var(--nv-bad-ink)",
+                  fillColor: r.mapInside ? "#10b981" : "var(--nv-bad-ink)",
                   fillOpacity: 0.85,
                   weight: 2,
                 }}
@@ -179,7 +179,7 @@ export default function AttendanceMapDashboard({ employees, t }) {
                     <EmployeeNameLink employeeId={r.employee_id} employeeName={r.employee_name || r.employee_id} style={{ fontWeight: 600, color: NAVY }} />
                     <p style={{ margin: "4px 0 0" }}>{t("checkedInAt")} {r.check_in_at ? new Date(r.check_in_at).toLocaleTimeString() : "—"}</p>
                     {r.mapDistance != null && <p style={{ margin: "2px 0 0" }}>{t("distanceMeters")}: {r.mapDistance}m</p>}
-                    <p style={{ margin: "2px 0 0", color: r.mapInside ? "#15803D" : "#DC2626" }}>
+                    <p style={{ margin: "2px 0 0", color: r.mapInside ? "var(--nv-ok-ink)" : "var(--nv-bad-ink)" }}>
                       {r.mapInside ? t("insideLocation") : t("outsideLocation")}
                     </p>
                   </div>

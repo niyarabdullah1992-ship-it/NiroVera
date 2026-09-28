@@ -13,7 +13,7 @@ const tableHead = {
   gap: "12px",
   padding: "11px 18px",
   background: SURFACE,
-  borderBottom: "1px solid #E2E8F0",
+  borderBottom: "1px solid var(--nv-line)",
   fontSize: "10px",
   letterSpacing: "0.06em",
   color: MUTED,
@@ -25,7 +25,7 @@ const tableRow = {
   gridTemplateColumns: "minmax(240px,1.8fr) 120px 150px 96px 120px 120px",
   gap: "12px",
   padding: "12px 18px",
-  borderBottom: "1px solid #F1F5F9",
+  borderBottom: "1px solid var(--nv-line)",
   alignItems: "center",
   cursor: "pointer",
   textDecoration: "none",
@@ -132,9 +132,9 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
   const filterBtn = (active) => ({
     height: "36px",
     borderRadius: "9px",
-    border: `1px solid ${active ? ACCENT : "#E2E8F0"}`,
-    background: active ? "#ECFDF3" : CARD,
-    color: active ? "#14683F" : MUTED,
+    border: `1px solid ${active ? ACCENT : "var(--nv-line)"}`,
+    background: active ? "var(--nv-accent-soft)" : CARD,
+    color: active ? "var(--nv-ok-ink)" : MUTED,
     fontSize: "12px",
     fontWeight: active ? 600 : 500,
     padding: "0 12px",
@@ -177,7 +177,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
             </div>
           </div>
           {recentHires.length > 0 && (
-            <span style={{ fontSize: "11px", fontWeight: 600, color: "#14683F", background: "#ECFDF3", border: "1px solid #BBF7D0", borderRadius: "8px", padding: "5px 11px", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--nv-ok-ink)", background: "var(--nv-accent-soft)", border: "1px solid var(--nv-ok-line)", borderRadius: "8px", padding: "5px 11px", whiteSpace: "nowrap" }}>
               {ar ? `${recentHires.length} تعيين قيد التهيئة` : `${recentHires.length} hires onboarding`}
             </span>
           )}
@@ -193,7 +193,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
               const pct = Number(c.progress) || Math.round(((c.steps || []).filter((x) => x.done).length / Math.max(1, (c.steps || []).length)) * 100);
               const ready = pct >= 100;
               return (
-                <div key={c.id} style={{ border: "1px solid #E2E8F0", borderRadius: "13px", padding: "14px 16px" }}>
+                <div key={c.id} style={{ border: "1px solid var(--nv-line)", borderRadius: "13px", padding: "14px 16px" }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap" }}>
                     <span style={{ fontSize: "14px", fontWeight: 600, color: NAVY }}>{c.name}</span>
                     <span style={{ fontSize: "12px", color: MUTED }}>
@@ -205,7 +205,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
                     </span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px", marginTop: "10px" }}>
-                    <span style={{ flex: 1, height: "5px", borderRadius: "4px", background: "#F1F5F9", overflow: "hidden" }}>
+                    <span style={{ flex: 1, height: "5px", borderRadius: "4px", background: "var(--nv-soft)", overflow: "hidden" }}>
                       <span style={bar(pct, ACCENT)} />
                     </span>
                     <span style={{ fontSize: "11px", color: MUTED, whiteSpace: "nowrap" }} dir="ltr">{pct}%</span>
@@ -222,8 +222,8 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
                   {(c.steps || []).length > 0 && (
                     <div style={{ display: "flex", flexDirection: "column", marginTop: "8px" }}>
                       {c.steps.map((x) => (
-                        <div key={x.key} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "9px 0", borderTop: "1px solid #F1F5F9", flexWrap: "wrap" }}>
-                          <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: x.done ? ACCENT : "#F59E0B", flexShrink: 0 }} />
+                        <div key={x.key} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "9px 0", borderTop: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
+                          <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: x.done ? ACCENT : "var(--nv-warn-fill)", flexShrink: 0 }} />
                           <span style={{ flex: "1 1 220px", minWidth: 0 }}>
                             <span style={{ display: "flex", alignItems: "center", gap: "7px", flexWrap: "wrap" }}>
                               <span style={{ fontSize: "12px", fontWeight: 600, color: NAVY }}>{x.label}</span>
@@ -243,7 +243,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
 
       {/* Directory table — L961 */}
       <div style={tableShell}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "14px 18px", borderBottom: "1px solid #E2E8F0", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 220px" }}>
             <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
               {ar ? "دليل الموظفين" : "Employee directory"}
@@ -259,7 +259,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
             style={{
               padding: "7px 13px",
               borderRadius: "9px",
-              border: "1px solid #E2E8F0",
+              border: "1px solid var(--nv-line)",
               background: CARD,
               color: MUTED,
               fontSize: "12px",
@@ -272,7 +272,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
             {ar ? "الهيكل" : "Org"}
           </Link>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "9px", padding: "12px 18px", borderBottom: "1px solid #E2E8F0", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "9px", padding: "12px 18px", borderBottom: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -280,7 +280,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
             style={{
               flex: "1 1 240px",
               height: "36px",
-              border: "1px solid #E2E8F0",
+              border: "1px solid var(--nv-line)",
               borderRadius: "9px",
               background: SURFACE,
               padding: "0 12px",
@@ -320,7 +320,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
                     to={`/app/employees/${encodeURIComponent(p.id)}`}
                     style={{
                       ...tableRow,
-                      background: hoverRow === p.id ? "#F7F8FA" : undefined,
+                      background: hoverRow === p.id ? "var(--nv-soft)" : undefined,
                     }}
                     onMouseEnter={() => setHoverRow(p.id)}
                     onMouseLeave={() => setHoverRow(null)}
@@ -340,7 +340,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
                       {p.grade || p.profile?.grade || "—"}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-                      <span style={{ flex: 1, height: "4px", borderRadius: "4px", background: "#F1F5F9", overflow: "hidden" }}>
+                      <span style={{ flex: 1, height: "4px", borderRadius: "4px", background: "var(--nv-soft)", overflow: "hidden" }}>
                         <span style={bar(pct, ACCENT)} />
                       </span>
                       <span dir="ltr" style={{ fontSize: "10px", color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", width: "34px", textAlign: "right" }}>

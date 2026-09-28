@@ -1,8 +1,8 @@
-// purpose: Cloud per-location quantity. Frontend inventoryApi.js force-locals to InventoryItem.locationBalances — two quantity truths. Do not treat this as the preview sou
+// purpose: Retired do-not-write. One-shot hydrate into InventoryItem.locationBalances on list/getItem. Never create/update units again.
 // domain: money
 // isolation: companyId
 // owner: inventory
-// status: canonical
+// status: unused
 {
   "name": "InventoryUnit",
   "type": "object",
@@ -13,7 +13,7 @@
     },
     "itemId": {
       "type": "string",
-      "description": "→ InventoryItem id. Live inventory also stores locationBalances on the item."
+      "description": "→ InventoryItem id. Live quantity is on InventoryItem.locationBalances only."
     },
     "locationId": {
       "type": "string",

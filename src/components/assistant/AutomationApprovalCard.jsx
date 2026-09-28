@@ -26,7 +26,7 @@ export default function AutomationApprovalCard({ actions, loading, ar, onApprove
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
         {actions.map((action, index) => (
           <div key={`${action.type}-${index}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 12, border: `1px solid ${BORDER}`, background: CARD, fontSize: 13, color: NAVY }}>
-            <CheckCircle2 style={{ width: 16, height: 16, color: "#1E9E63", flexShrink: 0 }} />
+            <CheckCircle2 style={{ width: 16, height: 16, color: "var(--nv-ok-ink)", flexShrink: 0 }} />
             <span>{labels[action.type]?.[ar ? 0 : 1] || action.title || action.type}</span>
             {(action.title || action.station) ? <span style={{ color: MUTED, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis" }}>— {action.title || action.station}</span> : null}
           </div>

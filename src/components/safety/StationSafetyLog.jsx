@@ -10,7 +10,16 @@ export default function StationSafetyLog({ station, rec, lang, onClose }) {
   const ar = lang === "ar";
   const entries = [
     ...((rec?.approvalLog || []).map((a) => ({ type: "approval", at: a.at, who: a.by, text: ar ? "اعتماد بيانات السلامة" : "Safety data approved" }))),
-    ...((rec?.incidentLog || []).map((i) => ({ type: "incident", at: i.at, who: i.by || "", text: i.description || (ar ? "حادثة سلامة" : "Safety incident") }))),
+    ...((rec?.incidentLog || []).map((i) => {
+      const card = i.card || {};
+      const level = ar ? card.levelAr : card.levelEn;
+      return {
+        type: "incident",
+        at: i.at,
+        who: i.anonymous ? (ar ? "بلاغ بلا اسم" : "Anonymous") : (i.by || ""),
+        text: [i.description || (ar ? "حادثة سلامة" : "Safety incident"), level, ar ? card.categoryAr : card.categoryEn].filter(Boolean).join(" · "),
+      };
+    })),
     ...((rec?.hazardLog || []).map((h) => {
       const duration = h.openedAt
         ? formatOpenDuration(h.openedAt, lang, h.closedAt ? new Date(h.closedAt).getTime() : Date.now())

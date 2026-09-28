@@ -154,7 +154,7 @@ export default function ArbitrationEngineBoard() {
                 height: 38,
                 padding: "0 14px",
                 borderRadius: 9,
-                border: "1px solid #E2E8F0",
+                border: "1px solid var(--nv-line)",
                 background: CARD,
                 color: NAVY,
                 fontSize: 12,
@@ -167,7 +167,7 @@ export default function ArbitrationEngineBoard() {
           ) : null}
         </div>
 
-        <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginTop: 16, paddingTop: 14, borderTop: "1px solid #F1F5F9" }}>
+        <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--nv-line)" }}>
           <div>
             <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 28, fontWeight: 600, color: ACCENT, textAlign: "right" }}>
               {score.score == null ? "—" : `${score.score}%`}
@@ -190,12 +190,12 @@ export default function ArbitrationEngineBoard() {
             <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{ar ? "أحكام مختومة" : "Sealed verdicts"}</div>
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", marginTop: 16, borderTop: "1px solid #F1F5F9" }}>
+        <div style={{ display: "flex", flexDirection: "column", marginTop: 16, borderTop: "1px solid var(--nv-line)" }}>
           {board.sectors.map((row) => {
             const empty = row.score == null;
-            const tone = empty ? MUTED : (row.blocked ? "#B91C1C" : ACCENT);
+            const tone = empty ? MUTED : (row.blocked ? "var(--nv-bad-line)" : ACCENT);
             return (
-              <div key={row.id} style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: "1px solid #F1F5F9", flexWrap: "wrap", alignItems: "baseline" }}>
+              <div key={row.id} style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: "1px solid var(--nv-line)", flexWrap: "wrap", alignItems: "baseline" }}>
                 <Link to={row.href} style={{ fontSize: 12, fontWeight: 600, color: NAVY, textDecoration: "none", minWidth: 96 }}>
                   {ar ? row.ar : row.en}
                 </Link>
@@ -210,7 +210,7 @@ export default function ArbitrationEngineBoard() {
                       : `${row.blocked ? `${row.blocked} blocked` : "clear"} · ${row.total} checks`)}
                 </span>
                 {row.topReason ? (
-                  <span style={{ fontSize: 11, color: "#B91C1C", lineHeight: 1.6, flex: "1 1 220px" }}>
+                  <span style={{ fontSize: 11, color: "var(--nv-bad-ink)", lineHeight: 1.6, flex: "1 1 220px" }}>
                     {ar ? row.topReason : (row.topReasonEn || row.topReason)}
                   </span>
                 ) : null}
@@ -231,9 +231,9 @@ export default function ArbitrationEngineBoard() {
                 borderRadius: 20,
                 fontSize: 11,
                 fontWeight: 600,
-                background: port.live ? "#ECFDF3" : "#F8FAFC",
-                border: `1px solid ${port.live ? "#BBF7D0" : "#E2E8F0"}`,
-                color: port.live ? "#15803D" : MUTED,
+                background: port.live ? "var(--nv-accent-soft)" : "var(--nv-soft)",
+                border: `1px solid ${port.live ? "var(--nv-ok-line)" : "var(--nv-line)"}`,
+                color: port.live ? "var(--nv-ok-ink)" : MUTED,
               }}
             >
               {ar ? port.ar : port.en}
@@ -258,16 +258,16 @@ export default function ArbitrationEngineBoard() {
             {ar ? "لا طلب معلّق لفحصه الآن." : "No pending request to review now."}
           </div>
         ) : liveReviews.map(({ row, review }) => (
-          <div key={`${row.family}-${row.id}`} style={{ padding: "10px 0", borderTop: "1px solid #F1F5F9" }}>
+          <div key={`${row.family}-${row.id}`} style={{ padding: "10px 0", borderTop: "1px solid var(--nv-line)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>
                 {ar ? row.titleAr : row.titleEn} · {row.employeeName}
               </span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: review.ok ? "#15803D" : "#B91C1C" }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: review.ok ? "var(--nv-ok-ink)" : "var(--nv-bad-ink)" }}>
                 {arbitrationStatusLabel(review.status, ar)}
               </span>
             </div>
-            <div style={{ fontSize: 11, color: "#B91C1C", marginTop: 4, lineHeight: 1.7 }}>
+            <div style={{ fontSize: 11, color: "var(--nv-bad-ink)", marginTop: 4, lineHeight: 1.7 }}>
               {ar ? review.reason : review.reasonEn}
             </div>
             {review.ruleId || review.article ? (
@@ -292,7 +292,7 @@ export default function ArbitrationEngineBoard() {
           </div>
           <ul style={{ margin: "8px 0 0", padding: 0, listStyle: "none" }}>
             {outcomes.slice(0, 12).map((row) => (
-              <li key={row.id} style={{ padding: "8px 0", borderTop: "1px solid #F1F5F9", fontSize: 12, color: NAVY }}>
+              <li key={row.id} style={{ padding: "8px 0", borderTop: "1px solid var(--nv-line)", fontSize: 12, color: NAVY }}>
                 <span style={{ fontWeight: 600 }}>{arbitrationStatusLabel(row.status, ar)}</span>
                 {" · "}
                 <span style={{ color: MUTED }}>{row.instrumentAr || row.ruleId || "—"}</span>

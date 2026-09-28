@@ -20,8 +20,8 @@ export default function ProfileCompletionCard({ employee, isSelf, ar, onContinue
     <div
       style={{
         borderRadius: "16px",
-        border: `1px solid ${done ? "#BBF7D0" : "#E2E8F0"}`,
-        background: done ? "#ECFDF3" : CARD,
+        border: `1px solid ${done ? "var(--nv-ok-line)" : "var(--nv-line)"}`,
+        background: done ? "var(--nv-accent-soft)" : CARD,
         padding: "16px 18px",
       }}
     >
@@ -31,8 +31,8 @@ export default function ProfileCompletionCard({ employee, isSelf, ar, onContinue
             width: 36,
             height: 36,
             borderRadius: 10,
-            background: done ? "#DCFCE7" : "#ECFDF3",
-            color: "#1E9E63",
+            background: done ? "var(--nv-accent-soft)" : "var(--nv-accent-soft)",
+            color: "var(--nv-ok-ink)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -50,19 +50,19 @@ export default function ProfileCompletionCard({ employee, isSelf, ar, onContinue
         </div>
         <span
           dir="ltr"
-          style={{ fontSize: 18, fontWeight: 600, color: done ? "#15803D" : "#1E9E63" }}
+          style={{ fontSize: 18, fontWeight: 600, color: done ? "var(--nv-ok-ink)" : "var(--nv-ok-ink)" }}
         >
           {pct}%
         </span>
       </div>
 
-      <div style={{ height: 8, borderRadius: 99, background: "#F1F5F9", overflow: "hidden", marginTop: 12 }}>
+      <div style={{ height: 8, borderRadius: 99, background: "var(--nv-soft)", overflow: "hidden", marginTop: 12 }}>
         <div
           style={{
             height: "100%",
             width: `${pct}%`,
             borderRadius: 99,
-            background: done ? "#22C55E" : "#1E9E63",
+            background: done ? "#22C55E" : "var(--nv-btn-fill)",
             transition: "width .25s ease",
           }}
         />
@@ -86,7 +86,7 @@ export default function ProfileCompletionCard({ employee, isSelf, ar, onContinue
                 width: "100%",
                 borderRadius: 9,
                 border: "none",
-                background: "#1E9E63",
+                background: "var(--nv-btn-fill)",
                 color: "#fff",
                 fontSize: 13,
                 fontWeight: 600,

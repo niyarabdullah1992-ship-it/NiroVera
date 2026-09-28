@@ -1,19 +1,39 @@
 import React, { useMemo } from "react";
-import { gosiLine } from "@/lib/payrollDerivations";
-import { nationalityIsSaudi } from "@/lib/complianceDerivations";
+import { formatGosiPercent, gosiLine } from "@/lib/payrollDerivations";
+import { registrationForPayroll } from "@/lib/facts";
+import { payrollSaudiFlag } from "@/lib/payrollWageSync";
 import { MUTED, NAVY, OK, WARN, tableShell, SURFACE } from "@/lib/platformStyles";
 import KpiStrip from "@/components/shared/KpiStrip";
 
 function money(n) {
-  return Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  return Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
-export default function PayrollGosiBoard({ items = [], employeeForItem, ar }) {
+function basisParts(row, ar) {
+  if (row.unknown) return { text: ar ? "لا حسم قبل ثبوت الجنسية" : "No share until nationality is known" };
+  if (!row.saudi) return { text: ar ? "2٪ أخطار مهنية" : "2% occupational" };
+  if (row.gosi.blocked) return { text: ar ? row.gosi.reason : row.gosi.reasonEn };
+  const rates = `${formatGosiPercent(row.gosi.employeeRate, ar)} + ${formatGosiPercent(row.gosi.employerRate, ar)}`;
+  const klass = row.gosi.subscriberClass === "old"
+    ? (ar ? "قديم" : "Old")
+    : row.gosi.subscriberClass === "new"
+      ? (ar ? "جديد" : "New")
+      : "";
+  return { klass, rates };
+}
+
+export default function PayrollGosiBoard({ items = [], employeeForItem, ar, month }) {
   const rows = useMemo(() => items.map((item) => {
     const employee = employeeForItem?.(item);
-    const saudi = nationalityIsSaudi(employee?.profile?.nationality || employee?.nationality) !== false;
-    return { item, employee, gosi: gosiLine(item, { saudi }), saudi };
-  }), [items, employeeForItem]);
+    const flag = item?.isSaudi === true || item?.isSaudi === false ? item.isSaudi : payrollSaudiFlag(employee);
+    const saudi = flag === true;
+    const unknown = flag == null;
+    const registeredAt = registrationForPayroll(employee, item);
+    const gosi = unknown
+      ? { ...gosiLine(item, { saudi: false }), employeeShare: 0, employerShare: 0, total: 0, blocked: false, reason: "", reasonEn: "", subscriberClass: "" }
+      : gosiLine(item, { saudi, onDate: month || item?.gosiAsOf, registeredAt });
+    return { item, employee, gosi, saudi, unknown };
+  }), [items, employeeForItem, month]);
 
   const tEmp = rows.reduce((sum, row) => sum + row.gosi.employeeShare, 0);
   const tCo = rows.reduce((sum, row) => sum + row.gosi.employerShare, 0);
@@ -43,7 +63,9 @@ export default function PayrollGosiBoard({ items = [], employeeForItem, ar }) {
             : ["Employee", "Nationality", "Contributory", "Employee", "Company", "Basis"]
           ).map((label) => <span key={label}>{label}</span>)}
         </div>
-        {rows.map((row) => (
+        {rows.map((row) => {
+          const basis = basisParts(row, ar);
+          return (
           <div
             key={row.item.id}
             style={{
@@ -51,7 +73,7 @@ export default function PayrollGosiBoard({ items = [], employeeForItem, ar }) {
               gridTemplateColumns: "minmax(150px,1.3fr) 90px minmax(100px,1fr) minmax(100px,1fr) minmax(100px,1fr) minmax(120px,auto)",
               gap: 10,
               padding: "12px 16px",
-              borderTop: "1px solid #F1F5F9",
+              borderTop: "1px solid var(--nv-line)",
               alignItems: "center",
               color: NAVY,
             }}
@@ -60,15 +82,21 @@ export default function PayrollGosiBoard({ items = [], employeeForItem, ar }) {
               <span style={{ display: "block", fontWeight: 600 }}>{row.employee?.name || row.item.employeeName}</span>
               <span style={{ fontSize: 10, color: MUTED }}>{row.employee?.position || ""}</span>
             </span>
-            <span style={row.saudi ? OK : WARN}>{row.saudi ? (ar ? "سعودي" : "Saudi") : (ar ? "وافد" : "Expat")}</span>
+            <span style={row.unknown ? undefined : (row.saudi ? OK : WARN)}>{row.unknown ? (ar ? "غير محددة" : "Unknown") : row.saudi ? (ar ? "سعودي" : "Saudi") : (ar ? "وافد" : "Expat")}</span>
             <span dir="ltr">{money(row.gosi.base)}</span>
-            <span dir="ltr" style={{ color: row.gosi.employeeShare ? "#8a1c2b" : MUTED }}>{money(row.gosi.employeeShare)}</span>
+            <span dir="ltr" style={{ color: row.gosi.employeeShare ? "var(--nv-bad-ink)" : MUTED }}>{money(row.gosi.employeeShare)}</span>
             <span dir="ltr">{money(row.gosi.employerShare)}</span>
             <span style={{ fontSize: 11, color: MUTED }}>
-              {row.saudi ? "9.75٪ + 11.75٪" : (ar ? "2٪ أخطار مهنية" : "2% occupational")}
+              {basis.rates ? (
+                <>
+                  {basis.klass ? `${basis.klass} · ` : null}
+                  <span dir="ltr">{basis.rates}</span>
+                </>
+              ) : basis.text}
             </span>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

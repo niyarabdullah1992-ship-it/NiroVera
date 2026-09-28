@@ -6,7 +6,7 @@ import { cropOpaque } from "@/lib/typedSignatureImage";
 import { BORDER, MUTED, NAVY, ui, CARD, SURFACE } from "@/lib/platformStyles";
 import StampPreview from "./StampPreview";
 
-const DRAW_INK = "#14284B";
+const DRAW_INK = "#111418";
 
 export default function SignaturePad({ ar, signerName, verificationId, stampTheme = "heritage", stampConfig, onPreview, onSave, onMark, markOnly = false, saving }) {
   const canvasRef = useRef(null);
@@ -133,7 +133,7 @@ export default function SignaturePad({ ar, signerName, verificationId, stampThem
         <button type="button" onClick={() => setThickness((value) => Math.min(10, value + 1))} style={ui.btnGhost}><Plus style={{ width: 14, height: 14 }} /></button>
       </div>
       <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
-        <PenTool style={{ width: 13, height: 13, color: "#1E9E63" }} />
+        <PenTool style={{ width: 13, height: 13, color: "var(--nv-ok-ink)" }} />
         {ar ? "ارسم توقيعك داخل الإطار" : "Draw your signature inside the frame"}
       </p>
       <canvas

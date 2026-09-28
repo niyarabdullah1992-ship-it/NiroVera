@@ -51,7 +51,7 @@ export default function NotificationPrefsCard({ lang = "ar" }) {
                 padding: "0 12px",
                 borderRadius: 8,
                 border: on ? "none" : `1px solid ${BORDER}`,
-                background: on ? "#3C7D50" : CARD,
+                background: on ? "var(--nv-btn-fill)" : CARD,
                 color: on ? "#fff" : INK,
                 fontSize: 12,
                 fontWeight: 600,

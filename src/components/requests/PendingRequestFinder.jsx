@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 import { filterPendingRequests } from "@/lib/requestWorkspace";
 
-const NAVY_FILL = "var(--nv-navy, #14213d)";
+const NAVY_FILL = "var(--nv-navy)";
 
 function fieldStyle() {
   return {
@@ -107,7 +107,7 @@ export default function PendingRequestFinder({
           }}
           onKeyDown={onKey}
           placeholder={ar ? "⌕ ابحث باسم موظف أو نوع طلب" : "Search by name or request type"}
-          style={compact ? { ...fieldStyle(), height: 30, borderRadius: 10, fontSize: 11.5, padding: "0 12px" } : fieldStyle()}
+          style={compact ? { ...fieldStyle(), height: 30, borderRadius: 12, fontSize: 11.5, padding: "0 12px" } : fieldStyle()}
         />
         {open ? (
           <div
@@ -145,7 +145,7 @@ export default function PendingRequestFinder({
                     gap: 10,
                     padding: "9px 12px",
                     border: "none",
-                    borderBottom: "1px solid #f3f4f7",
+                    borderBottom: "1px solid var(--nv-line)",
                     background: on ? NAVY_FILL : CARD,
                     color: on ? "#fff" : NAVY,
                     cursor: "pointer",

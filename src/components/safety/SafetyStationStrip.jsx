@@ -29,9 +29,9 @@ export default function SafetyStationStrip({ stations, recFor, selectedId, onSel
               minHeight: 40,
               padding: "6px 10px 6px 8px",
               borderRadius: 10,
-              border: `1px solid ${selected ? "color-mix(in oklab, #14284B 22%, #fff)" : BORDER}`,
+              border: `1px solid ${selected ? "color-mix(in oklab, var(--nv-ink) 22%, #fff)" : BORDER}`,
               background: selected ? CARD : SURFACE,
-              boxShadow: selected ? "inset 3px 0 0 #14284B" : "none",
+              boxShadow: selected ? "inset 3px 0 0 var(--nv-navy)" : "none",
               cursor: "pointer",
               fontFamily: "inherit",
               flexShrink: 0,
@@ -43,7 +43,7 @@ export default function SafetyStationStrip({ stations, recFor, selectedId, onSel
               <span style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                 <span style={{ fontSize: 10, fontWeight: 600, color: tone.fg }}>{tone.label}</span>
                 {hazards > 0 ? (
-                  <span style={{ fontSize: 10, fontWeight: 600, color: "#B45309" }}>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: "var(--nv-warn-ink)" }}>
                     {ar ? `${hazards} خطر` : `${hazards} hazards`}
                   </span>
                 ) : (

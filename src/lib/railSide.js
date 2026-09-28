@@ -63,6 +63,31 @@ function isPath(path, base) {
 
 const MONEY = ["/app/payroll", "/app/expenses", "/app/assets", "/app/inventory"];
 
+/** Personal surface for each money module. Payroll opens قسيمتي, not the wage run. */
+const EMPLOYEE_MONEY_HREF = {
+  payroll: "/app/payroll?view=self&tab=payslip",
+  expenses: "/app/expenses?view=self",
+  assets: "/app/assets?view=self",
+  inventory: "/app/inventory?view=self",
+  "/app/payroll": "/app/payroll?view=self&tab=payslip",
+  "/app/expenses": "/app/expenses?view=self",
+  "/app/assets": "/app/assets?view=self",
+  "/app/inventory": "/app/inventory?view=self",
+};
+
+export function employeeMoneyHref(idOrPath) {
+  const key = String(idOrPath || "").split("?")[0];
+  return EMPLOYEE_MONEY_HREF[key] || "";
+}
+
+/** Employee-face section chip: own surface, no admin pending count. Manage keeps the board route. */
+export function faceSectionTarget(page, railSide) {
+  if (railSide !== "employee" || !page) return page;
+  const personal = employeeMoneyHref(page.appId || page.to);
+  if (!personal) return page;
+  return { ...page, to: personal, badge: undefined, glow: undefined };
+}
+
 /**
  * Address for the same section on the other rail side.
  * Empty means this page has no twin — the caller leaves the address alone.
@@ -92,7 +117,9 @@ export function railFaceHref(pathname, search, targetSide) {
     return targetSide === "manage" ? "/app/requests/manage" : "/app/requests";
   }
   if (isPath(path, "/app/discipline")) {
-    params.set("tab", params.get("tab") === "law" ? "law" : (targetSide === "manage" ? "manage" : "mine"));
+    const tab = params.get("tab") || "";
+    const shared = tab === "law" || tab === "schedule" || tab === "archive";
+    params.set("tab", shared ? tab : (targetSide === "manage" ? "manage" : "mine"));
     return joinPath("/app/discipline", params);
   }
   if (isPath(path, "/app/complaints")) {
@@ -105,7 +132,15 @@ export function railFaceHref(pathname, search, targetSide) {
   }
   const money = MONEY.find((base) => isPath(path, base));
   if (money) {
+    if (targetSide === "employee" && path === money) {
+      const personal = employeeMoneyHref(money);
+      if (personal) return personal;
+    }
     params.set("view", targetSide === "manage" ? "manage" : "self");
+    if (path === "/app/payroll" || path.startsWith("/app/payroll/")) {
+      if (targetSide === "employee") params.set("tab", "payslip");
+      else if (params.get("tab") === "payslip" || params.get("tab") === "slip") params.delete("tab");
+    }
     return joinPath(path, params);
   }
 

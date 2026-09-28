@@ -5,10 +5,12 @@ import { setEmployeeEscalationCoverage } from "@/lib/orgTree";
 import { deriveBranchEscalationChain } from "@/lib/orgDerivations";
 import {
   companyRootStation,
+  escalationLiveStations,
   isCompanyRootStation,
-  workplaceStations,
 } from "@/lib/stationTree";
 import { ACCENT, CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
+import OrgLookupField from "@/components/hr/OrgLookupField";
+import { personLookupOption } from "@/lib/orgLookup";
 
 function activeEmployees(data) {
   return (data?.employees || []).filter((employee) => (
@@ -26,7 +28,7 @@ export default function AssignEscalationDialog({
   onClose,
 }) {
   const stations = useMemo(
-    () => workplaceStations(data?.stations || []).map((station) => ({
+    () => escalationLiveStations(data?.stations || []).map((station) => ({
       id: String(station.id || station.stationId || ""),
       name: station.name || "",
       isHq: isCompanyRootStation(station),
@@ -124,7 +126,7 @@ export default function AssignEscalationDialog({
           maxHeight: "min(90vh, 640px)",
           overflow: "auto",
           borderRadius: 24,
-          border: "1px solid #E8EDF3",
+          border: "1px solid var(--nv-line)",
           background: CARD,
           boxShadow: "0 24px 56px rgba(20,40,75,.16)",
           padding: "18px 18px 16px",
@@ -149,7 +151,7 @@ export default function AssignEscalationDialog({
               width: 32,
               height: 32,
               borderRadius: 999,
-              border: "1px solid #E8EDF3",
+              border: "1px solid var(--nv-line)",
               background: CARD,
               color: MUTED,
               display: "inline-flex",
@@ -162,38 +164,20 @@ export default function AssignEscalationDialog({
           </button>
         </div>
 
-        <label style={{ display: "block", marginTop: 16 }}>
-          <span style={{ display: "block", fontSize: 11, fontWeight: 600, color: MUTED, marginBottom: 6 }}>
-            {ar ? "الموظف" : "Employee"}
-          </span>
-          <select
+        <div style={{ marginTop: 16 }}>
+          <OrgLookupField
+            ar={ar}
+            label={ar ? "الموظف" : "Employee"}
             value={employeeId}
-            onChange={(event) => setEmployeeId(event.target.value)}
-            style={{
-              width: "100%",
-              height: 40,
-              borderRadius: 10,
-              border: "1px solid #E8EDF3",
-              padding: "0 10px",
-              fontSize: 13,
-              fontFamily: "inherit",
-              background: SURFACE,
-              color: NAVY,
-            }}
-          >
-            <option value="">{ar ? "اختر موظفًا…" : "Choose employee…"}</option>
-            {stationOrder.map((sid) => (
-              <optgroup key={sid} label={stationLabel(sid)}>
-                {(employeesByStation.get(sid) || []).map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.name}
-                    {employee.profile?.position ? ` · ${employee.profile.position}` : ""}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
+            allowEmpty
+            emptyLabel={ar ? "اختر موظفًا…" : "Choose employee…"}
+            onChange={setEmployeeId}
+            options={stationOrder.flatMap((sid) => (employeesByStation.get(sid) || []).map((employee) => (
+              personLookupOption(employee, stationLabel(sid), ar)
+            )))}
+            placeholder={ar ? "ابحث بالاسم أو الوظيفة أو الرقم أو الفرع" : "Search name, title, number, or branch"}
+          />
+        </div>
 
         <label style={{ display: "block", marginTop: 12 }}>
           <span style={{ display: "block", fontSize: 11, fontWeight: 600, color: MUTED, marginBottom: 6 }}>
@@ -209,7 +193,7 @@ export default function AssignEscalationDialog({
               width: "100%",
               height: 40,
               borderRadius: 10,
-              border: "1px solid #E8EDF3",
+              border: "1px solid var(--nv-line)",
               padding: "0 10px",
               fontSize: 13,
               fontFamily: "inherit",
@@ -244,7 +228,7 @@ export default function AssignEscalationDialog({
                     border: on
                       ? `1px solid color-mix(in oklab, ${ACCENT} 28%, #fff)`
                       : "1px solid #E8EDF3",
-                    background: on ? "color-mix(in oklab, #1E9E63 8%, #fff)" : "#F7F8FA",
+                    background: on ? "var(--nv-accent-soft)" : "var(--nv-soft)",
                     cursor: "pointer",
                     fontFamily: "inherit",
                     textAlign: "start",
@@ -260,7 +244,7 @@ export default function AssignEscalationDialog({
                       justifyContent: "center",
                       background: on ? CARD : SURFACE,
                       color: on ? ACCENT : MUTED,
-                      border: "1px solid #E8EDF3",
+                      border: "1px solid var(--nv-line)",
                       flexShrink: 0,
                     }}
                   >
@@ -290,7 +274,7 @@ export default function AssignEscalationDialog({
                       alignItems: "center",
                       justifyContent: "center",
                       background: on ? ACCENT : CARD,
-                      border: on ? "none" : "1px solid #E2E8F0",
+                      border: on ? "none" : "1px solid var(--nv-line)",
                       color: "#fff",
                       flexShrink: 0,
                     }}
@@ -313,10 +297,10 @@ export default function AssignEscalationDialog({
             border: "none",
             borderRadius: 999,
             background: employeeId && selected.length ? ACCENT : CARD,
-            color: employeeId && selected.length ? "#fff" : "#9F1239",
+            color: employeeId && selected.length ? "#fff" : "var(--nv-bad-ink)",
             borderWidth: employeeId && selected.length ? 0 : 1,
             borderStyle: "solid",
-            borderColor: "#F1F5F9",
+            borderColor: "var(--nv-line)",
             fontSize: 13,
             fontWeight: 600,
             cursor: "pointer",

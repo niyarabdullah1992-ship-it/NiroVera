@@ -117,7 +117,7 @@ export default function AccountSettingsCard({ employee, company }) {
             </button>
           )}
           {ownerStep === 1 && (
-            <div style={{ padding: "12px", borderRadius: "10px", border: "1px solid #FECACA", background: "#FEF2F2", display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div style={{ padding: "12px", borderRadius: "10px", border: "1px solid var(--nv-line)", background: "var(--nv-bad-soft)", display: "flex", flexDirection: "column", gap: "8px" }}>
               <p style={{ margin: 0, fontSize: "12px", color: DANGER, display: "flex", alignItems: "center", gap: "6px" }}>
                 <AlertTriangle style={{ width: 14, height: 14, flexShrink: 0 }} />
                 {ar
@@ -131,7 +131,7 @@ export default function AccountSettingsCard({ employee, company }) {
             </div>
           )}
           {ownerStep === 2 && (
-            <div style={{ padding: "12px", borderRadius: "10px", border: "1px solid #FECACA", background: "#FEF2F2", display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div style={{ padding: "12px", borderRadius: "10px", border: "1px solid var(--nv-line)", background: "var(--nv-bad-soft)", display: "flex", flexDirection: "column", gap: "8px" }}>
               <p style={{ margin: 0, fontSize: "12px", color: DANGER, fontWeight: 600 }}>
                 {ar ? "تأكيد نهائي — لا يمكن التراجع." : "Final confirmation — this cannot be undone."}
               </p>

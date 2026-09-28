@@ -53,7 +53,7 @@ export default function ProductFeedbackPrompt({ companyId, role }) {
       >
         {sent ? (
           <div style={{ textAlign: "center", padding: "12px 0" }}>
-            <CheckCircle2 style={{ width: 28, height: 28, margin: "0 auto", color: "#15803D" }} />
+            <CheckCircle2 style={{ width: 28, height: 28, margin: "0 auto", color: "var(--nv-ok-ink)" }} />
             <p style={{ margin: "10px 0 0", fontSize: 13, fontWeight: 600, color: NAVY }}>{ar ? "شكراً، تم إرسال اقتراحك" : "Thank you, your suggestion was sent"}</p>
             <button type="button" onClick={() => setVisible(false)} style={{ ...ui.btnSecondary, marginTop: 12 }}>{ar ? "إغلاق" : "Close"}</button>
           </div>
@@ -62,7 +62,7 @@ export default function ProductFeedbackPrompt({ companyId, role }) {
             <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 12 }} dir="ltr">
               {[1, 2, 3, 4, 5].map((value) => (
                 <button key={value} type="button" onClick={() => setRating(value)} aria-label={`${value}/5`} style={{ background: "none", border: 0, cursor: "pointer", padding: 4 }}>
-                  <Star style={{ width: 22, height: 22, color: value <= rating ? "#1E9E63" : BORDER, fill: value <= rating ? "#1E9E63" : "none" }} />
+                  <Star style={{ width: 22, height: 22, color: value <= rating ? "var(--nv-ok-ink)" : BORDER, fill: value <= rating ? "var(--nv-ok-ink)" : "none" }} />
                 </button>
               ))}
             </div>
@@ -73,7 +73,7 @@ export default function ProductFeedbackPrompt({ companyId, role }) {
               rows={4}
               style={textarea}
             />
-            {error ? <p style={{ margin: "8px 0 0", fontSize: 12, color: "#DC2626" }}>{error}</p> : null}
+            {error ? <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--nv-bad-ink)" }}>{error}</p> : null}
             <button type="button" onClick={submit} disabled={!rating || !message.trim() || saving} style={{ ...ui.btnBlock, opacity: !rating || !message.trim() || saving ? 0.4 : 1 }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <Send style={{ width: 14, height: 14 }} />

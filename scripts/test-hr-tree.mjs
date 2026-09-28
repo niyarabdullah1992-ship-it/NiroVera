@@ -104,6 +104,10 @@ const regNode = seats.find((node) => node.id === "reg");
 assert.match(regNode.coordinate, /يخدم:/);
 assert.match(regNode.coordinate, /الخفجي/);
 assert.match(regNode.coordinate, / \+ /);
+assert.match(regNode.servesText, /الخفجي/);
+assert.match(regNode.servesText, /الدمام/);
+assert.match(regNode.servesText, /جدة/);
+assert.equal(regNode.servesText.includes("يخدم:"), false);
 const hrdNode = seats.find((node) => node.id === "hrd");
 assert.equal(hrdNode.kind, "person");
 assert.equal(hrdNode.kindTag, "قسم ثابت · HR");
@@ -112,6 +116,7 @@ assert.equal(seats.some((node) => String(node.id) === `vacant-station:${unit.id}
 assert.equal(seats.filter((node) => node.kindTag === "قسم ثابت · HR").length, 1);
 const bmNode = seats.find((node) => node.id === "bm");
 assert.equal(bmNode.coordinate || "", "");
+assert.equal(bmNode.hrLine, "هند");
 const parentOf = (id) => seats.find((node) => (node.children || []).some((child) => child.id === id));
 assert.equal(parentOf("emp")?.id, "bm");
 assert.notEqual(parentOf("emp")?.id, "hrd");

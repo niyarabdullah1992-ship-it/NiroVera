@@ -14,19 +14,32 @@ import {
   profileFieldValue,
   profileGender,
 } from "./employeeProfileFields.js";
-import { remainingLeaveDays, serviceYearsFromHire, statutoryLeaveFloor, usedLeaveDays, leaveTypeLabel } from "./leaveTypes.js";
+import { isOnLeaveToday, remainingLeaveDays, serviceYearsFromHire, statutoryLeaveFloor, usedLeaveDays, leaveTypeLabel } from "./leaveTypes.js";
 import { pendingNightRotate } from "./nightRotateCycle.js";
 import { nightAllowanceKind, payableNightAllowance } from "./shiftWeek.js";
-import { collectRequestAuditLogs, hasPendingLeaveTopup } from "./otherRequestDerivations.js";
+import { collectRequestAuditLogs, hasPendingLeaveTopup, presentRequestAuditText, requestAuditActorLabel } from "./otherRequestDerivations.js";
 import { statutoryGlowState } from "./statutoryItem.js";
+import { assignWageFields, gosiRegistrationIso, gosiSubscriberClass, readGosiRegisteredAt, readSubscriberNumber, readWageFields, WAGE_FIELD_KEYS } from "./facts/index.js";
 
 function employeeFileStatus(employee, ar) {
   const hireIso = employee?.profile?.hireDate || employee?.hireDate || employee?.startDate || "";
   const hireDate = hireIso ? new Date(`${String(hireIso).slice(0, 10)}T00:00:00`) : null;
+  const today = localDateKey();
   const preStart = hireDate && hireDate > new Date();
   if (preStart) return { label: ar ? "قيد المباشرة" : "Pending start", kind: "warn" };
   if (employee?.active === false) return { label: ar ? "غير نشط" : "Inactive", kind: "bad" };
-  return { label: ar ? "نشط" : "Active", kind: "ok" };
+  if (isOnLeaveToday(employee)) return { label: ar ? "في إجازة" : "On leave", kind: "warn" };
+  const acting = (employee?.actingAssignments || []).some((item) => {
+    if (item?.endedAt) return false;
+    const until = String(item.until || "").slice(0, 10);
+    return !until || until >= today;
+  });
+  if (acting) return { label: ar ? "مكلَّف" : "Acting", kind: "ok" };
+  const probationEnd = String(employee?.profile?.probationEnd || employee?.profile?.contract?.probationEnd || "").slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(probationEnd) && probationEnd >= today) {
+    return { label: ar ? "فترة تجربة" : "Probation", kind: "warn" };
+  }
+  return { label: ar ? "على رأس العمل" : "On the job", kind: "ok" };
 }
 import { eosGratuity } from "./offboardingDerivations.js";
 import { citeRule, laborDayKey, ruleValue } from "./laborRules.js";
@@ -250,10 +263,10 @@ export function moneySar(n, ar = true) {
 }
 
 function tone(kind) {
-  if (kind === "ok") return { color: "#137A49", bg: "#F2FAF6", border: "#BFE6D2" };
-  if (kind === "warn") return { color: "#8A6516", bg: "#FDF6E8", border: "#ECD9A8" };
-  if (kind === "bad") return { color: "#8A1C2B", bg: "#FBF1F2", border: "#E9C4C9" };
-  return { color: "#4B5567", bg: "#F5F6F8", border: "#E6E9EF" };
+  if (kind === "ok") return { color: "var(--nv-ok-ink)", bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)" };
+  if (kind === "warn") return { color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)" };
+  if (kind === "bad") return { color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)" };
+  return { color: "var(--nv-ink3)", bg: "var(--nv-soft)", border: "var(--nv-line)" };
 }
 
 function chipOf(text, kind) {
@@ -274,23 +287,71 @@ export function serviceLabel(hireIso, ar, today) {
   return `${countAr(whole, "سنة", "سنتان", "سنوات", "سنة", "أقل من سنة")}${months ? ` و${countAr(months, "شهر", "شهران", "أشهر", "شهراً")}` : ""}`;
 }
 
+function moneyOrNull(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function namedAllowanceParts(source) {
+  if (!source || typeof source !== "object") return null;
+  const housing = moneyOrNull(source.housingAllowance ?? source.housing);
+  const transport = moneyOrNull(source.transportAllowance ?? source.transport);
+  const other = moneyOrNull(source.otherAllowances ?? source.other);
+  if (![housing, transport, other].some((n) => n != null && n > 0)) return null;
+  return {
+    housing: Math.max(0, housing || 0),
+    transport: Math.max(0, transport || 0),
+    other: Math.max(0, other || 0),
+  };
+}
+
+/**
+ * Housing, transport, and other allowances from the file.
+ * A nested contract split is used only when it already equals the lump allowance
+ * within 1 SAR. A lump with empty housing/transport keys stays a lump.
+ */
+export function contractAllowanceSplit(profile = {}, allowanceTotal) {
+  const direct = namedAllowanceParts(profile);
+  if (direct) return { ...direct, from: "profile" };
+  const lump = Number(allowanceTotal ?? profile.allowances);
+  const target = Number.isFinite(lump) ? lump : 0;
+  const candidates = [profile.contract, profile.contract?.wage, profile.wage];
+  for (const source of candidates) {
+    const nested = namedAllowanceParts(source);
+    if (!nested) continue;
+    const sum = nested.housing + nested.transport + nested.other;
+    if (Math.abs(sum - target) <= 1) return { ...nested, from: "contract" };
+  }
+  return null;
+}
+
+/** Contributory wage for GOSI: base + allowances, capped. Night pay sits inside allowances. */
+export function contributoryWage(wage = {}) {
+  const amount = (Number(wage.base) || 0) + (Number(wage.allowances) || 0);
+  const cap = Number(ruleValue("compliance.gosi.wageCeiling")) || 45000;
+  return Math.min(amount, cap);
+}
+
 export function employeeWageSplit(profile = {}, employee) {
   const person = employee || { profile };
   const night = payableNightAllowance(person);
   const nightKind = nightAllowanceKind(person.profile?.nightRemedy?.allowanceKind);
   const base = Number(profile.baseSalary) || 0;
-  const housing = Number(profile.housingAllowance);
-  const transport = Number(profile.transportAllowance);
-  const other = Number(profile.otherAllowances);
-  const lump = Number(profile.allowances) || 0;
-  const split = (Number.isFinite(housing) && housing > 0) || (Number.isFinite(transport) && transport > 0) || (Number.isFinite(other) && other > 0);
-  if (split) {
-    const h = Math.max(0, housing || 0);
-    const t = Math.max(0, transport || 0);
-    const o = Math.max(0, other || 0);
-    return { base, housing: h, transport: t, other: o, allowances: h + t + o + night, total: base + h + t + o + night, night, nightKind, split: true };
+  const parts = contractAllowanceSplit(profile, profile.allowances);
+  if (parts) {
+    const h = parts.housing;
+    const t = parts.transport;
+    const o = parts.other;
+    return {
+      base, housing: h, transport: t, other: o,
+      allowances: h + t + o + night,
+      total: base + h + t + o + night,
+      night, nightKind, split: true, splitFrom: parts.from,
+    };
   }
-  return { base, housing: 0, transport: 0, other: 0, allowances: lump + night, total: base + lump + night, night, nightKind, split: false };
+  const lump = Number(profile.allowances) || 0;
+  return { base, housing: 0, transport: 0, other: 0, allowances: lump + night, total: base + lump + night, night, nightKind, split: false, splitFrom: "" };
 }
 
 export function employeeCustodyRows(assets = [], employeeId, ar = true) {
@@ -444,7 +505,9 @@ export function buildEmployeeFileView({
   const sickMid = ruleValue("leave.sick.halfPayDays", day);
   const sickFullLeft = Math.max(0, sickFull - usedSick);
   const sickMidLeft = Math.max(0, sickMid - Math.max(0, usedSick - sickFull));
-  const gosi = String(profileFieldValue(profile, "gosiNumber", employee) || "").trim();
+  const gosi = readSubscriberNumber(employee);
+  const gosiRegisteredAt = readGosiRegisteredAt(employee);
+  const gosiClass = gosiSubscriberClass(gosiRegisteredAt);
   const iban = String(profileFieldValue(profile, "iban", employee) || "").trim();
   const qiwa = String(profileFieldValue(profile, "qiwaTitle", employee) || profile.qiwaStatus || "").trim();
   const medicalExp = profileFieldValue(profile, "medicalInsuranceExpiry", employee);
@@ -483,7 +546,7 @@ export function buildEmployeeFileView({
       ok: Boolean(gosi),
       warn: false,
       state: gosi ? (ar ? "مطابق" : "On file") : (ar ? "يحتاج إجراءً" : "Needs action"),
-      note: gosi ? (ar ? `مشترك · الأجر الخاضع ${moneySar(wage.base + (wage.split ? wage.housing : wage.allowances), ar)}` : `Registered · contributory ${moneySar(wage.base + (wage.split ? wage.housing : wage.allowances), ar)}`) : (ar ? "لا رقم اشتراك" : "No GOSI number"),
+      note: gosi ? (ar ? `مشترك · الأجر الخاضع ${moneySar(contributoryWage(wage), ar)}` : `Registered · contributory ${moneySar(contributoryWage(wage), ar)}`) : (ar ? "لا رقم اشتراك" : "No GOSI number"),
     },
     {
       id: "cchi",
@@ -588,6 +651,7 @@ export function buildEmployeeFileView({
     field: field || "",
     type,
     locked: extra.locked ?? !field,
+    secret: Boolean(extra.secret),
     raw: extra.raw != null ? extra.raw : "",
     options: extra.options || null,
     ...chipOf(chip, kind),
@@ -601,7 +665,7 @@ export function buildEmployeeFileView({
       rows: [
         row(ar ? "الاسم الكامل" : "Full name", employee?.name, "", "", "name", "text", { raw: employee?.name || "" }),
         row(ar ? "نوع الهوية" : "ID type", idKind, "", "", "idType", "text", { raw: profileFieldValue(profile, "idType", employee), options: opts(ID_TYPE_OPTIONS) }),
-        row(ar ? "رقم الهوية" : "ID number", profileFieldValue(profile, "nationalId", employee), "", "", "nationalId", "text", { raw: profileFieldValue(profile, "nationalId", employee) }),
+        row(ar ? "رقم الهوية" : "ID number", profileFieldValue(profile, "nationalId", employee), "", "", "nationalId", "text", { raw: profileFieldValue(profile, "nationalId", employee), secret: true }),
         row(ar ? "انتهاء الهوية" : "ID expiry", niceFileDate(idExp, ar), idDays == null ? "" : idDays > 0 ? (ar ? "ساري" : "Valid") : (ar ? "منتهية" : "Expired"), idDays == null ? "mute" : idDays > 0 ? "ok" : "bad", "idExpiry", "date", { raw: idExp || "" }),
         row(ar ? "تاريخ الميلاد" : "Birth date", niceFileDate(profileFieldValue(profile, "birthDate", employee), ar), "", "", "birthDate", "date", { raw: profileFieldValue(profile, "birthDate", employee) }),
         row(
@@ -664,8 +728,8 @@ export function buildEmployeeFileView({
       title: ar ? "التواصل والطوارئ" : "Reach and emergency",
       tag: ar ? "يُحدّثه الموظف" : "The employee updates this",
       rows: [
-        row(ar ? "الجوال" : "Mobile", employee?.phone, "", "", "phone", "text", { raw: employee?.phone || "" }),
-        row(ar ? "البريد" : "Email", employee?.email),
+        row(ar ? "الجوال" : "Mobile", employee?.phone, "", "", "phone", "text", { raw: employee?.phone || "", secret: true }),
+        row(ar ? "البريد" : "Email", employee?.email, "", "", "", "text", { secret: true }),
         row(ar ? "جهة الطوارئ" : "Emergency contact", profile.emergencyName, "", "", "emergencyName", "text", { raw: profile.emergencyName || "" }),
         row(ar ? "جوال الطوارئ" : "Emergency phone", profile.emergencyPhone, "", "", "emergencyPhone", "text", { raw: profile.emergencyPhone || "" }),
         row(ar ? "المؤهل" : "Qualification", profile.qualification, "", "", "qualification", "text", { raw: profile.qualification || "" }),
@@ -677,7 +741,7 @@ export function buildEmployeeFileView({
       tag: ar ? "منصة لا مادة" : "A platform, not an article",
       note: ar ? "حماية الأجور نظام رفع ملفات لوزارة الموارد البشرية، وليست مادة في نظام العمل — فلا شارة لها." : "Wage protection is a ministry file-upload system, not a Labour Law article — so it has no chip.",
       rows: [
-        row(ar ? "الآيبان" : "IBAN", iban, iban ? (ar ? "مطابق" : "On file") : (ar ? "ناقص" : "Missing"), iban ? "ok" : "bad", "iban", "text", { raw: iban }),
+        row(ar ? "الآيبان" : "IBAN", iban, iban ? (ar ? "مطابق" : "On file") : (ar ? "ناقص" : "Missing"), iban ? "ok" : "bad", "iban", "text", { raw: iban, secret: true }),
         row(ar ? "البنك" : "Bank", profile.bankName || profile.bank, "", "", "bankName", "text", { raw: profile.bankName || profile.bank || "" }),
         row(ar ? "طريقة الصرف" : "Pay method", ar ? "تحويل بنكي — لا نقد" : "Bank transfer — not cash"),
       ],
@@ -708,29 +772,44 @@ export function buildEmployeeFileView({
   ];
 
   const wageRows = [
-    { k: ar ? "الأجر الأساسي" : "Base wage", field: "baseSalary", val: wage.base, note: ar ? "أساس حساب الاستحقاقات" : "The basis for entitlements", color: "#14213D", weight: 600 },
-    ...(wage.split
-      ? [
-        { k: ar ? "بدل السكن" : "Housing", field: "housingAllowance", val: wage.housing, note: ar ? "بدل ثابت شهرياً" : "A fixed monthly allowance", color: "#4B5567", weight: 500 },
-        { k: ar ? "بدل النقل" : "Transport", field: "transportAllowance", val: wage.transport, note: ar ? "ثابت شهرياً" : "Fixed monthly", color: "#4B5567", weight: 500 },
-        { k: ar ? "بدلات أخرى" : "Other allowances", field: "otherAllowances", val: wage.other, note: ar ? "طبيعة عمل" : "Work nature", color: "#4B5567", weight: 500 },
-      ]
-      : [{ k: ar ? "البدلات" : "Allowances", field: "allowances", val: (wage.allowances || 0) - (wage.night || 0), note: ar ? "مجموع البدلات الشهرية" : "Monthly allowances total", color: "#4B5567", weight: 500 }]),
+    { k: ar ? "الأجر الأساسي" : "Base wage", field: "baseSalary", val: wage.base, note: ar ? "أساس حساب الاستحقاقات" : "The basis for entitlements", color: "var(--nv-ink)", weight: 600 },
+    { k: ar ? "بدل السكن" : "Housing", field: "housingAllowance", val: wage.housing, note: ar ? "بدل ثابت شهرياً" : "A fixed monthly allowance", color: "#4B5567", weight: 500 },
+    { k: ar ? "بدل النقل" : "Transport", field: "transportAllowance", val: wage.transport, note: ar ? "ثابت شهرياً" : "Fixed monthly", color: "#4B5567", weight: 500 },
+    { k: ar ? "بدلات أخرى" : "Other allowances", field: "otherAllowances", val: wage.other, note: ar ? "طبيعة عمل" : "Work nature", color: "#4B5567", weight: 500 },
+    ...(!wage.split && (Number(profile.allowances) || 0) > 0
+      ? [{ k: ar ? "البدلات" : "Allowances", field: "allowances", val: (wage.allowances || 0) - (wage.night || 0), note: ar ? "مجموع البدلات الشهرية" : "Monthly allowances total", color: "#4B5567", weight: 500 }]
+      : []),
+    {
+      k: ar ? "تاريخ التسجيل في التأمينات" : "GOSI registration date",
+      field: "gosiRegisteredAt",
+      type: "date",
+      val: gosiRegisteredAt,
+      v: gosiRegisteredAt ? niceFileDate(gosiRegisteredAt, ar) : "—",
+      note: ar
+        ? "أول تسجيل للشخص في التأمينات، لا تاريخ التعيين ولا بداية الاشتراك."
+        : "The person's first GOSI registration, not the hire date and not subscription start.",
+      color: "var(--nv-ink)",
+      weight: 600,
+      ...chipOf(
+        gosiClass === "old" ? (ar ? "قديم" : "Old") : gosiClass === "new" ? (ar ? "جديد" : "New") : "",
+        gosiClass === "unset" ? "mute" : "ok",
+      ),
+    },
     ...(wage.night > 0
       ? [{
         k: wage.nightKind === "transport" ? (ar ? "بدل نقل ليلي" : "Night transport") : (ar ? "أجر ليلي" : "Night pay"),
         field: "",
         val: wage.night,
         note: ar ? "من قرار الجدول — القرار 18632" : "From the roster decision — 18632",
-        color: "#137A49",
+        color: "#3C7D50",
         weight: 600,
         derived: true,
       }]
       : []),
-    { k: ar ? "الإجمالي الشهري" : "Monthly total", field: "", val: wage.total, note: ar ? "مشتق من البنود أعلاه" : "Derived from the lines above", color: "#137A49", weight: 700, derived: true },
+    { k: ar ? "الإجمالي الشهري" : "Monthly total", field: "", val: wage.total, note: ar ? "مشتق من البنود أعلاه" : "Derived from the lines above", color: "#3C7D50", weight: 700, derived: true },
   ].map((item) => ({
     ...item,
-    v: moneySar(item.val, ar),
+    v: item.type === "date" ? (item.v || "—") : moneySar(item.val, ar),
     bg: item.derived ? "var(--nv-soft)" : "var(--nv-card)",
   }));
 
@@ -751,10 +830,21 @@ export function buildEmployeeFileView({
       what: ar ? "الاشتراك وحساب الأجر الخاضع" : "Subscription and contributory wage",
       state: gosi ? (ar ? "نشط" : "Active") : (ar ? "ناقص" : "Missing"),
       kind: gosi ? "ok" : "warn",
-      note: ar ? "الأجر الخاضع للاشتراك = الأساسي + بدل السكن. نسبة الاشتراك قرار نظامي مستقل عن نظام العمل." : "Contributory wage = base + housing. The rate is a separate statutory decision, not a Labour Law article.",
+      note: ar
+        ? "الأجر الخاضع = الأساسي + السكن + النقل + أخرى + الليلي، بسقف 45,000، بلا إضافي ولا مكافأة. تاريخ التسجيل في التأمينات هو أول تسجيل للشخص، لا تاريخ تعيينه هنا: قبل 3 يوليو 2024 مشترك قديم، ومنه مشترك جديد. إن خلا التاريخ لا يُعامل كجديد وتبقى حصة السعودي 9.75٪."
+        : "Contributory wage = base + housing + transport + other + night, capped at 45,000, without overtime or bonus. The GOSI registration date is the person's first registration, not the hire date here: before 3 July 2024 an old subscriber, and from that day a new one. An empty date is not treated as new, and a confirmed Saudi stays at 9.75%.",
       rows: [
-        row(ar ? "رقم المشترك" : "Member number", gosi, "", "", "gosiNumber", "text", { raw: gosi }),
-        row(ar ? "الأجر الخاضع" : "Contributory wage", moneySar(wage.base + (wage.split ? wage.housing : wage.allowances), ar), ar ? "مشتق" : "Derived", "mute"),
+        row(ar ? "رقم المشترك" : "Member number", gosi, "", "", "gosiNumber", "text", { raw: gosi, secret: true }),
+        row(
+          ar ? "تاريخ التسجيل في التأمينات" : "GOSI registration date",
+          gosiRegisteredAt ? niceFileDate(gosiRegisteredAt, ar) : "—",
+          gosiClass === "old" ? (ar ? "قديم" : "Old") : gosiClass === "new" ? (ar ? "جديد" : "New") : "",
+          gosiClass === "unset" ? "mute" : "ok",
+          "gosiRegisteredAt",
+          "date",
+          { raw: gosiRegisteredAt },
+        ),
+        row(ar ? "الأجر الخاضع" : "Contributory wage", moneySar(contributoryWage(wage), ar), ar ? "مشتق" : "Derived", "mute"),
         row(ar ? "بداية الاشتراك" : "Subscription start", niceFileDate(hireIso, ar), ar ? "من تاريخ التعيين" : "From hire", "mute"),
       ],
     },
@@ -776,7 +866,7 @@ export function buildEmployeeFileView({
       kind: iban ? "ok" : "warn",
       note: ar ? "عدم المطابقة يوقف خدمات المنشأة في قوى — أثره تشغيلي لا عقابي على الموظف." : "A mismatch stops the company's Qiwa services — an operational effect, not a penalty on the worker.",
       rows: [
-        row(ar ? "الآيبان" : "IBAN", iban, iban ? (ar ? "مطابق" : "On file") : (ar ? "ناقص" : "Missing"), iban ? "ok" : "bad", "iban", "text", { raw: iban }),
+        row(ar ? "الآيبان" : "IBAN", iban, iban ? (ar ? "مطابق" : "On file") : (ar ? "ناقص" : "Missing"), iban ? "ok" : "bad", "iban", "text", { raw: iban, secret: true }),
         row(ar ? "طريقة الصرف" : "Pay method", ar ? "تحويل بنكي" : "Bank transfer"),
       ],
     },
@@ -828,25 +918,29 @@ export function buildEmployeeFileView({
         reason: item.note || item.reason || "",
         state: item.rulingLabel || (face.id === "objected" ? (ar ? "نافذ — تحت اعتراض الموظف" : "In force — under objection") : (live ? (ar ? "نافذ" : "In force") : (ar ? face.shortAr : face.shortEn))),
         wageEff: effectiveCutDays(item) > 0 ? (ar ? `حسم ${effectiveCutDays(item)} يوم` : `${effectiveCutDays(item)}-day cut`) : (ar ? "لا حسم" : "No deduction"),
-        color: live ? "#8A6516" : "#4B5567",
-        bg: live ? "#FDF6E8" : "#F5F6F8",
-        border: live ? "#ECD9A8" : "#DFE3EA",
+        color: live ? "var(--nv-warn-ink)" : "var(--nv-ink3)",
+        bg: live ? "var(--nv-warn-soft)" : "var(--nv-soft)",
+        border: live ? "var(--nv-warn-line)" : "var(--nv-line)",
       };
     });
 
   const seenLog = new Set();
   const fileLog = [];
   for (const row of [...collectRequestAuditLogs(employee, ar), ...(employee?.fileLog || [])]) {
-    const text = row.text || "";
+    const text = presentRequestAuditText(row.text || "", ar);
     const at = row.at || "";
     const key = `${text}|${at}`;
     if (!text || seenLog.has(key)) continue;
     seenLog.add(key);
+    const rawBy = String(row.by || "").trim();
+    const actor = requestAuditActorLabel(rawBy);
+    const by = actor
+      || (/^(system|unknown)$/i.test(rawBy) ? (ar ? "النظام" : "Platform") : (ar ? "الموارد البشرية" : "HR"));
     fileLog.push({
       text,
-      by: row.by || (ar ? "الموارد البشرية" : "HR"),
+      by,
       at,
-      dot: row.dot || "#14213D",
+      dot: row.dot || "#3C7D50",
     });
   }
   fileLog.sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
@@ -904,11 +998,12 @@ export function buildEmployeeFileView({
   };
 }
 
-const FILE_NUMBER_KEYS = new Set(["dependents", "baseSalary", "housingAllowance", "transportAllowance", "otherAllowances", "allowances"]);
+const FILE_NUMBER_KEYS = new Set(["dependents", ...WAGE_FIELD_KEYS]);
 const FILE_EMPLOYEE_KEYS = new Set(["name", "phone"]);
 
 export function employeeFileDraftSeed(employee) {
   const profile = employee?.profile || {};
+  const wage = readWageFields(employee);
   return {
     name: employee?.name || "",
     phone: employee?.phone || "",
@@ -918,7 +1013,7 @@ export function employeeFileDraftSeed(employee) {
     birthDate: profileFieldValue(profile, "birthDate", employee),
     position: profile.position || "",
     hireDate: profile.hireDate || employee?.hireDate || employee?.startDate || "",
-    nationality: profile.nationality || "",
+    nationality: wage.nationality,
     workPermitNumber: profile.workPermitNumber || "",
     qiwaTitle: profile.qiwaTitle || "",
     gender: profileFieldValue(profile, "gender", employee),
@@ -934,12 +1029,13 @@ export function employeeFileDraftSeed(employee) {
     bankName: profile.bankName || profile.bank || "",
     contractType: profileFieldValue(profile, "contractType", employee),
     contractEndDate: profile.contractEndDate || profile.contract?.endDate || "",
-    gosiNumber: profileFieldValue(profile, "gosiNumber", employee),
-    baseSalary: profile.baseSalary ?? "",
-    housingAllowance: profile.housingAllowance ?? "",
-    transportAllowance: profile.transportAllowance ?? "",
-    otherAllowances: profile.otherAllowances ?? "",
-    allowances: profile.allowances ?? "",
+    gosiNumber: wage.gosiNumber,
+    gosiRegisteredAt: wage.gosiRegisteredAt,
+    baseSalary: wage.baseSalary,
+    housingAllowance: wage.housingAllowance,
+    transportAllowance: wage.transportAllowance,
+    otherAllowances: wage.otherAllowances,
+    allowances: wage.allowances,
   };
 }
 
@@ -947,6 +1043,7 @@ export { employeeFileHoursView, employeeFileNightPanel } from "./shiftWeek.js";
 
 export function splitEmployeeFileDraft(draft = {}) {
   const profile = {};
+  const wage = {};
   let name;
   let phone;
   for (const [key, value] of Object.entries(draft)) {
@@ -955,11 +1052,20 @@ export function splitEmployeeFileDraft(draft = {}) {
       if (key === "phone") phone = value;
       continue;
     }
+    if (WAGE_FIELD_KEYS.includes(key)) {
+      wage[key] = value;
+      continue;
+    }
     if (FILE_NUMBER_KEYS.has(key)) {
       profile[key] = value === "" || value == null ? "" : Number(value);
       continue;
     }
+    if (key === "gosiRegisteredAt") {
+      profile.gosiRegisteredAt = gosiRegistrationIso(value);
+      continue;
+    }
     profile[key] = value;
   }
+  assignWageFields(profile, wage);
   return { profile, name, phone };
 }

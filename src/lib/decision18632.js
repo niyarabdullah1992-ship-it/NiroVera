@@ -14,6 +14,10 @@ export const DECISION_18632 = {
   gregorianFrom: "2020-01-01",
 };
 
+/** Verbatim sentences from Decision 18632 — twin of base44/shared/decision18632.ts. */
+export const NIGHT_MEDICAL_AVOID_QUOTE_AR = "في حال تم تقديم شهادة طبية تبيّن أنه بحاجة لتجنب العمل الليلي للمحافظة على صحته.";
+export const NIGHT_MEDICAL_TRANSFER_QUOTE_AR = "في حال تبين أن العامل الليلي غير لائق للعمل الليلي لأسباب صحية، يتم نقله إلى وظيفة أخرى في ساعات العمل المعتادة مماثلة ويكون لائقاً فيها للعمل.";
+
 function isYes(value) {
   if (value === true || value === 1 || value === "1") return true;
   return /^(yes|true|نعم)$/i.test(String(value || "").trim());

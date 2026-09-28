@@ -282,6 +282,34 @@ export function personMonthMap(employee, from, to, data) {
   return map;
 }
 
+/** Approved tasks and sealed proofs that fed a person's score. Empty fields stay blank for the UI to show —. */
+export function personProofEntries(employee, from, to, data) {
+  if (!employee?.id || !from || !to || from > to) return [];
+  const tasks = (data?.tasks || []).filter((task) => (
+    taskBelongsTo(task, employee.id, employee.stationId)
+    && dayInRange(taskDay(task), from, to)
+    && taskIsProven(task)
+  ));
+  const proofs = workProofsOf(employee, data).filter((proof) => {
+    const sealed = proof.status === "sealed" || proof.sealId || proof.approvedAt;
+    return sealed && dayInRange(proofDay(proof), from, to);
+  });
+  return [
+    ...tasks.map((task) => ({
+      id: `task_${task.id || taskDay(task)}`,
+      at: taskDay(task),
+      title: String(task.title || task.name || "").trim(),
+      href: "/app/tasks",
+    })),
+    ...proofs.map((proof) => ({
+      id: `proof_${proof.id || proofDay(proof)}`,
+      at: proofDay(proof),
+      title: String(proof.title || proof.summary || "").trim(),
+      href: "/app/work-proof",
+    })),
+  ].filter((row) => row.at).sort((left, right) => String(right.at).localeCompare(String(left.at)));
+}
+
 function meanKeys(rows, key) {
   if (!rows.length) return 0;
   return Math.round(rows.reduce((sum, row) => sum + (Number(row.a[key]) || 0), 0) / rows.length);
@@ -430,18 +458,18 @@ export function buildPerformanceReportHtml(view, { companyName = "NiroVera", ar 
   const title = ar ? "تقرير الأداء" : "Performance report";
   return `<!DOCTYPE html><html dir="${ar ? "rtl" : "ltr"}" lang="${ar ? "ar" : "en"}"><head><meta charset="utf-8"><title>${esc(title)} — ${esc(view.fmtFrom)} → ${esc(view.fmtTo)}</title>
 <style>@page{size:A4 landscape;margin:16mm 14mm}
-body{margin:0;font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif;color:#14284B;font-size:10pt;line-height:1.7}
-header{border-bottom:2px solid #14284B;padding-bottom:8pt;margin-bottom:14pt;display:flex;justify-content:space-between;align-items:flex-end;gap:14pt}
-h1{font-size:17pt;margin:0}h2{font-size:11.5pt;margin:16pt 0 7pt}
-.org{font-size:9pt;color:#5A6B85;text-align:${ar ? "left" : "right"}}
+body{margin:0;font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif;color:#111418;font-size:10pt;line-height:1.7}
+header{border-bottom:2px solid #0B3D27;padding-bottom:8pt;margin-bottom:14pt;display:flex;justify-content:space-between;align-items:flex-end;gap:14pt}
+h1{font-size:17pt;margin:0;color:#0B3D27}h2{font-size:11.5pt;margin:16pt 0 7pt;color:#0B3D27}
+.org{font-size:9pt;color:#555C66;text-align:${ar ? "left" : "right"}}
 table{width:100%;border-collapse:collapse;margin-bottom:6pt}
-th{background:#F7F8FA;text-align:start;font-size:8.5pt;color:#5A6B85;padding:5pt 6pt;border-bottom:1px solid #E2E8F0;white-space:nowrap}
-td{padding:5pt 6pt;border-bottom:1px solid #EEF0F4;vertical-align:top}
-.n{font-variant-numeric:tabular-nums;text-align:end;white-space:nowrap}s{font-size:8pt;color:#6b7280;text-decoration:none}
-tr.off td{color:#5A6B85;background:#FAFBFC}
-.kv{display:flex;gap:16pt;flex-wrap:wrap;font-size:9.5pt;color:#3c4657}
-.kv b{font-size:13pt}.note{background:#F7F8FA;border:1px solid #E2E8F0;padding:8pt 10pt;font-size:9pt;color:#3c4657}
-footer{margin-top:14pt;font-size:8.5pt;color:#6b7280;border-top:1px solid #E2E8F0;padding-top:7pt}
+th{background:#F4F7F5;text-align:start;font-size:8.5pt;color:#555C66;padding:5pt 6pt;border-bottom:1px solid #E4E9E6;white-space:nowrap}
+td{padding:5pt 6pt;border-bottom:1px solid #E4E9E6;vertical-align:top}
+.n{font-variant-numeric:tabular-nums;text-align:end;white-space:nowrap}s{font-size:8pt;color:#555C66;text-decoration:none}
+tr.off td{color:#555C66;background:#F4F7F5}
+.kv{display:flex;gap:16pt;flex-wrap:wrap;font-size:9.5pt;color:#111418}
+.kv b{font-size:13pt;color:#3C7D50}.note{background:#F4F7F5;border:1px solid #E4E9E6;padding:8pt 10pt;font-size:9pt;color:#111418}
+footer{margin-top:14pt;font-size:8.5pt;color:#555C66;border-top:1px solid #E4E9E6;padding-top:7pt}
 @media print{body{padding:0}}
 </style></head><body>
 <header><h1>${esc(title)}</h1><span class="org">${esc(companyName)} · PowerCare<br>${esc(view.fmtFrom)} → ${esc(view.fmtTo)} · ${view.months?.length || 0} ${ar ? "أشهر" : "months"}</span></header>

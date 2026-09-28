@@ -1,390 +1,786 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { visibleStations } from "@/lib/permissions";
+import { readEmployeeNo } from "@/lib/employeeNumber";
+import { toast } from "@/components/ui/use-toast";
+import PlatformDateField from "@/components/shared/PlatformDateField";
+import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import {
+  MIN_PROOF,
   PERF_DRIVERS,
-  accentOf,
+  TEAM_IDS,
   bandOf,
   countAr,
   derivePerformanceRange,
+  personProofEntries,
   printPerformanceReport,
   scoreOf,
-  segsOf,
   teamLabel,
-  textOf,
 } from "@/lib/perfRange";
-import PerfScopePicker from "@/components/performance/PerfScopePicker";
 import PerfHowBoard from "@/components/performance/PerfHowBoard";
-import { PERF_BODY, PERF_INK, PERF_LINE, PERF_MUTED, PERF_SOFT, PERF_SURFACE, PERF_WHITE } from "@/components/performance/PerformanceSectionFrame";
+import { PERF_BODY, PERF_INK, PERF_LINE, PERF_MUTED, PERF_SOFT, PERF_WHITE } from "@/components/performance/PerformanceSectionFrame";
 
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
-const TREND = ["var(--nv-ink)", "var(--nv-ok-fill)", "var(--nv-warn-fill)", "var(--nv-ink3)"];
-const QUIET = "var(--nv-mute-fill)";
+const DASH = "—";
+const ACTION = "#3C7D50";
+const DANGER = "#9B2335";
+const GOLD = "#C8A45A";
+const DRIVER_COLOR = {
+  done: "#0B8A4F",
+  time: "var(--nv-ink)",
+  safe: GOLD,
+  cover: "#8E9A93",
+};
 
-function SegBar({ segs, height = 14 }) {
-  return (
-    <span style={{ display: "flex", height, background: "var(--nv-inset)", borderRadius: 10, overflow: "hidden", minWidth: 0 }}>
-      {segs.map((seg) => (
-        <span key={seg.id} title={seg.tip} style={{ width: seg.w, background: seg.color, borderInlineEnd: "1px solid var(--nv-card)" }} />
-      ))}
-    </span>
-  );
+const card = {
+  background: PERF_WHITE,
+  border: `1px solid ${PERF_LINE}`,
+  borderRadius: 14,
+};
+
+function ghostBtn(disabled = false) {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    height: 32,
+    padding: "0 12px",
+    borderRadius: 8,
+    border: `1px solid ${PERF_LINE}`,
+    background: disabled ? "var(--nv-soft)" : PERF_WHITE,
+    color: disabled ? PERF_MUTED : PERF_INK,
+    fontSize: 12.5,
+    fontWeight: 600,
+    cursor: disabled ? "default" : "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+  };
 }
 
-function StatTile({ label, value, unit, note, accent }) {
-  return (
-    <div style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: `3px solid ${accent}`, borderRadius: 14, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0, boxSizing: "border-box" }}>
-      <span style={{ fontSize: 12, color: PERF_BODY }}>{label}</span>
-      <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-        <span dir="ltr" style={{ ...mono, fontSize: 30, fontWeight: 500, color: accent, lineHeight: 1.05 }}>{value}</span>
-        {unit ? <span style={{ fontSize: 12, fontWeight: 600, color: accent }}>{unit}</span> : null}
-      </span>
-      <span style={{ fontSize: 11, color: PERF_MUTED, lineHeight: 1.7 }}>{note}</span>
-    </div>
-  );
+function actionBtn(on) {
+  return {
+    ...ghostBtn(!on),
+    border: "none",
+    background: on ? ACTION : "var(--nv-soft)",
+    color: on ? "#fff" : PERF_MUTED,
+  };
 }
 
-export default function PerfScoreBoard({ lang, from, to, tab = "people" }) {
+function checkStyle(on) {
+  return {
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#fff",
+    background: on ? ACTION : "transparent",
+    border: on ? "none" : `1px solid ${PERF_LINE}`,
+    boxSizing: "border-box",
+  };
+}
+
+function statusOf(row, ar) {
+  if (!row.ok) return { label: ar ? "إثبات ناقص" : "Short of proof", color: PERF_MUTED };
+  if (row.score >= 85) return { label: bandOf(row.score, ar), color: ACTION };
+  if (row.score >= 70) return { label: bandOf(row.score, ar), color: "#0B6E5F" };
+  if (row.score >= 55) return { label: bandOf(row.score, ar), color: "#8A5A12" };
+  return { label: bandOf(row.score, ar), color: DANGER };
+}
+
+function driverValue(ok, value) {
+  return ok ? `${value}%` : DASH;
+}
+
+export default function PerfScoreBoard({
+  lang,
+  from,
+  to,
+  presets = [],
+  onFrom,
+  onTo,
+  onPreset,
+  tab = "people",
+  onTab,
+  cycles = [],
+  goalItems = [],
+  dir = "rtl",
+  onlyId = "",
+}) {
   const { data, currentUser, company } = useAuth();
   const ar = lang === "ar";
   const scope = useStationScope();
-  const [selB, setSelB] = useState([]);
-  const [selT, setSelT] = useState([]);
-  const [selP, setSelP] = useState([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickQ, setPickQ] = useState("");
-  const [openB, setOpenB] = useState({});
+  const [variant, setVariant] = useState("std");
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [branchId, setBranchId] = useState("");
+  const [teamId, setTeamId] = useState("");
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState("score");
+  const [sortDir, setSortDir] = useState(-1);
+  const [bSort, setBSort] = useState("avg");
+  const [bDir, setBDir] = useState(-1);
+  const [picked, setPicked] = useState([]);
+  const [pickedB, setPickedB] = useState([]);
+  const [openId, setOpenId] = useState(null);
+  const [dTab, setDTab] = useState("drv");
+  const [compareOn, setCompareOn] = useState(false);
+
+  const employees = useMemo(() => {
+    const list = (data?.employees || []).filter((employee) => matchesStationScope(employee.stationId, scope, data?.stations));
+    if (!onlyId) return list;
+    const id = String(onlyId);
+    const mine = list.filter((employee) => String(employee.id) === id);
+    if (mine.length) return mine;
+    if (currentUser && String(currentUser.id) === id) return [currentUser];
+    return [];
+  }, [data?.employees, data?.stations, scope, onlyId, currentUser]);
 
   const stations = useMemo(() => {
       const list = currentUser && data ? visibleStations(currentUser, data) : data?.stations || [];
-    return list.filter((station) => matchesStationScope(station.id, scope, data?.stations));
-  }, [currentUser, data, scope]);
-
-  const employees = useMemo(
-    () => (data?.employees || []).filter((employee) => matchesStationScope(employee.stationId, scope, data?.stations)),
-    [data?.employees, data?.stations, scope],
-  );
+    const visible = list.filter((station) => matchesStationScope(station.id, scope, data?.stations));
+    if (!onlyId) return visible;
+    const mine = employees[0];
+    const sid = String(mine?.stationId || "");
+    if (!sid) return [];
+    const hit = visible.filter((station) => String(station.id) === sid);
+    if (hit.length) return hit;
+    return [{ id: sid, name: mine?.stationName || mine?.station || "" }];
+  }, [currentUser, data, scope, onlyId, employees]);
 
   const view = useMemo(
-    () => derivePerformanceRange({ employees, stations, data, from, to, selB, selT, selP, ar }),
-    [employees, stations, data, from, to, selB, selT, selP, ar],
+    () => derivePerformanceRange({
+      employees,
+      stations,
+      data,
+      from,
+      to,
+      selB: branchId ? [branchId] : [],
+      selT: teamId ? [teamId] : [],
+      selP: [],
+      ar,
+    }),
+    [employees, stations, data, from, to, branchId, teamId, ar],
   );
 
-  const toggle = (list, setList, value) => {
-    setList((cur) => (cur.includes(value) ? cur.filter((item) => item !== value) : [...cur, value]));
+  const q = query.trim();
+  const people = useMemo(() => {
+    const rows = (view.ranked || []).filter((row) => {
+      if (variant === "low" && row.score >= 70) return false;
+      if (!q) return true;
+      const blob = `${row.name || ""} ${row.job || ""} ${readEmployeeNo(row)}`;
+      return blob.includes(q);
+    });
+    const valueOf = {
+      score: (row) => row.score,
+      name: (row) => row.name || "",
+      no: (row) => readEmployeeNo(row),
+      br: (row) => row.branch || "",
+      done: (row) => row.a.done,
+      time: (row) => row.a.time,
+      safe: (row) => row.a.safe,
+      cov: (row) => row.a.cover,
+    };
+    const read = valueOf[sort] || valueOf.score;
+    return rows.slice().sort((left, right) => {
+      const a = read(left);
+      const b = read(right);
+      if (typeof a === "number" && typeof b === "number") return (a - b) * sortDir;
+      return String(a).localeCompare(String(b), ar ? "ar" : "en") * sortDir;
+    });
+  }, [view.ranked, variant, q, sort, sortDir, ar]);
+
+  const branchRows = useMemo(() => {
+    const rows = (view.branchData || []).map((branch) => {
+      const best = branch.el.slice().sort((left, right) => right.score - left.score)[0] || null;
+      const low = branch.el.filter((row) => row.score < 55).length;
+      return { ...branch, best, low };
+    });
+    const valueOf = {
+      name: (row) => row.name || "",
+      avg: (row) => (row.el.length ? row.score : -1),
+      done: (row) => (row.el.length ? row.a.done : -1),
+      time: (row) => (row.el.length ? row.a.time : -1),
+      safe: (row) => (row.el.length ? row.a.safe : -1),
+      cov: (row) => (row.el.length ? row.a.cover : -1),
+      proof: (row) => (row.ps.length ? row.el.length / row.ps.length : 0),
+      low: (row) => row.low,
+    };
+    const read = valueOf[bSort] || valueOf.avg;
+    return rows.slice().sort((left, right) => {
+      const a = read(left);
+      const b = read(right);
+      if (typeof a === "number" && typeof b === "number") return (a - b) * bDir;
+      return String(a).localeCompare(String(b), ar ? "ar" : "en") * bDir;
+    });
+  }, [view.branchData, bSort, bDir, ar]);
+
+  const valid = view.valid;
+  const eligible = people.filter((row) => row.ok);
+  const avg = valid && eligible.length ? Math.round(eligible.reduce((sum, row) => sum + row.score, 0) / eligible.length) : null;
+  const highest = valid && people.length ? Math.max(...people.map((row) => row.score)) : null;
+  const follow = people.filter((row) => row.ok && row.score < 55).length;
+  const short = people.filter((row) => !row.ok).length;
+  const openRow = people.find((row) => row.id === openId) || (view.ranked || []).find((row) => row.id === openId) || null;
+  const proofs = useMemo(
+    () => (openRow && valid ? personProofEntries(openRow, from, to, data) : []),
+    [openRow, valid, from, to, data],
+  );
+
+  const closedRows = useMemo(() => (cycles || []).filter((cycle) => String(cycle.status) === "closed").map((cycle) => {
+    const spanOk = cycle.from && cycle.to && cycle.from <= cycle.to;
+    const snap = spanOk ? derivePerformanceRange({ employees, stations, data, from: cycle.from, to: cycle.to, ar }) : null;
+    return {
+      id: cycle.id,
+      name: cycle.period || (ar ? "دورة تقييم" : "Review cycle"),
+      from: cycle.from || "",
+      to: cycle.to || "",
+      range: [cycle.from, cycle.to].filter(Boolean).join(" → ") || DASH,
+      avg: snap?.eligible?.length ? String(snap.avg) : DASH,
+      n: snap ? String(snap.rowsAll.length) : DASH,
+    };
+  }), [cycles, employees, stations, data, ar]);
+
+  const toggleSort = (key) => {
+    setSort(key);
+    setSortDir((cur) => (sort === key ? -cur : -1));
+  };
+  const toggleBSort = (key) => {
+    setBSort(key);
+    setBDir((cur) => (bSort === key ? -cur : -1));
+  };
+  const toggleId = (list, setList, id) => {
+    setList((cur) => (cur.includes(id) ? cur.filter((item) => item !== id) : [...cur, id]));
+  };
+
+  const activeTab = onlyId && tab !== "people" && tab !== "branches" ? "people" : tab;
+  const compareCount = activeTab === "branches" ? pickedB.length : picked.length;
+  const compareReady = compareCount >= 2 && compareCount <= 4;
+  const runCompare = () => {
+    if (compareReady) {
+      setCompareOn(true);
+      return;
+    }
+    toast({
+      title: activeTab === "branches"
+        ? (ar ? "حدّد فرعين إلى أربعة للمقارنة." : "Pick two to four branches to compare.")
+        : (ar ? "حدّد موظفين اثنين إلى أربعة للمقارنة." : "Pick two to four people to compare."),
+    });
   };
 
   const download = () => {
     printPerformanceReport({
       ...view,
-      selBNames: selB.map((id) => view.branches.find((row) => row.id === id)?.name || id),
-      selTNames: selT.map((id) => `${ar ? "فريق" : "Team"} ${teamLabel(id, ar)}`),
-      selPNames: selP.map((id) => view.people.find((row) => row.id === id)?.name || id),
+      selBNames: branchId ? [view.branches.find((row) => row.id === branchId)?.name || branchId] : [],
+      selTNames: teamId ? [`${ar ? "فريق" : "Team"} ${teamLabel(teamId, ar)}`] : [],
+      selPNames: [],
     }, { companyName: company?.name || "NiroVera", ar });
   };
 
-  const eligible = view.eligible;
-  const rowsAll = view.rowsAll;
-  const top = view.top;
-  const climbers = view.climbers;
-  const first = view.months[0];
-  const last = view.months[view.months.length - 1];
-  const lead = view.groups[0];
-  const trendPeople = view.ranked.slice(0, 4);
+  const clearFilters = () => {
+    const preset = presets.find((row) => row.id === "q") || presets[0];
+    setBranchId("");
+    setTeamId("");
+    setQuery("");
+    setVariant("std");
+    if (preset) onPreset?.(preset);
+  };
 
-  const stats = [
-    {
-      val: eligible.length ? String(view.avg) : "—",
-      unit: eligible.length ? (ar ? "من 100" : "/100") : "",
-      lbl: ar ? "متوسط الدرجة" : "Average score",
-      note: eligible.length
-        ? (ar ? `${eligible.length} من ${rowsAll.length} بلغوا ${view.minProof} مهام مثبتة` : `${eligible.length} of ${rowsAll.length} reached ${view.minProof} proven tasks`)
-        : (ar ? `لا متوسط — لم يبلغ أحد ${view.minProof} مهام مثبتة في هذا المدى` : `No average — no one reached ${view.minProof} proven tasks`),
-      accent: eligible.length ? "var(--nv-ink)" : "var(--nv-warn-ink)",
-    },
-    {
-      val: top ? String(top.score) : "—",
-      unit: "",
-      lbl: ar ? "الأعلى في المدى" : "Highest in range",
-      note: top ? `${top.name} · ${top.branch}` : (rowsAll.length ? (ar ? `لا صدارة — لم يبلغ أحد ${view.minProof} مهام مثبتة` : `No lead — no one reached ${view.minProof}`) : (ar ? "لا بيانات في المدى" : "No data in range")),
-      accent: top ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)",
-    },
-    {
-      val: climbers[0]?.d > 0 ? `+${climbers[0].d}` : "—",
-      unit: climbers[0]?.d > 0 ? (ar ? countAr(climbers[0].d, "نقطة", "نقطتان", "نقاط", "نقطة").replace(/^\d+\s/, "") : (climbers[0].d === 1 ? "pt" : "pts")) : "",
-      lbl: ar ? "أكبر تحسّن" : "Biggest rise",
-      note: climbers[0]?.d > 0
-        ? (ar ? `${climbers[0].p.name} بين أول المدى وآخره` : `${climbers[0].p.name} from the first month to the last`)
-        : (view.months.length < 2
-          ? (ar ? `يحتاج شهرين على الأقل — المدى الحالي ${countAr(view.months.length, "شهر واحد", "شهران", "أشهر", "شهراً", "بلا أشهر")}` : `Needs at least two months — this range has ${view.months.length}`)
-          : (climbers.length ? (ar ? `لا تحسّن في المدى — أفضل تغيّر ${climbers[0].p.name} (${climbers[0].d > 0 ? "+" : ""}${climbers[0].d})` : `No rise — best change ${climbers[0].p.name} (${climbers[0].d})`) : (ar ? "لا بيانات شهرية في المدى" : "No monthly data"))),
-      accent: climbers[0]?.d > 0 ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)",
-    },
-    {
-      val: String(rowsAll.length - eligible.length),
-      unit: "",
-      lbl: ar ? "بلا إثبات كافٍ" : "Short of proof",
-      note: rowsAll.length - eligible.length ? (ar ? "تُعرض درجتهم ولا تدخل المتوسط" : "Shown, but kept out of the average") : (ar ? "الكلّ بلغ الحدّ" : "Everyone reached the floor"),
-      accent: rowsAll.length - eligible.length ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)",
-    },
+  const modes = onlyId
+    ? [
+      { id: "people", label: ar ? "الموظفون" : "People" },
+      { id: "branches", label: ar ? "الفروع" : "Branches" },
+    ]
+    : [
+      { id: "people", label: ar ? "الموظفون" : "People" },
+      { id: "branches", label: ar ? "الفروع" : "Branches" },
+      { id: "how", label: ar ? "كيف تُحسب" : "How it is scored" },
+      { id: "archive", label: ar ? "الأرشيف" : "Archive" },
+    ];
+
+  useEffect(() => {
+    if (!onlyId || !people[0]) return;
+    setOpenId(people[0].id);
+  }, [onlyId, people[0]?.id]);
+
+  const peopleHeads = [
+    ["no", ar ? "الرقم" : "No."],
+    ["name", ar ? "الموظف" : "Employee"],
+    ["br", ar ? "الفرع" : "Branch"],
+    ["done", ar ? "الإنجاز" : "Done"],
+    ["time", ar ? "الموعد" : "On time"],
+    ["safe", ar ? "السلامة" : "Safety"],
+    ["cov", ar ? "التغطية" : "Cover"],
+    ["score", ar ? "الدرجة" : "Score"],
+    ["", ar ? "الحالة" : "Status"],
+  ];
+  const branchHeads = [
+    ["name", ar ? "الفرع" : "Branch"],
+    ["done", ar ? "الإنجاز" : "Done"],
+    ["time", ar ? "الموعد" : "On time"],
+    ["safe", ar ? "السلامة" : "Safety"],
+    ["cov", ar ? "التغطية" : "Cover"],
+    ["avg", ar ? "المتوسط" : "Average"],
+    ["proof", ar ? "الإثبات" : "Proof"],
+    ["", ar ? "الأعلى" : "Highest"],
+    ["low", ar ? "متابعة" : "Follow-up"],
   ];
 
-  const insights = [
-    top ? { t: ar ? `${top.name} الأعلى بـ${top.score}` : `${top.name} leads at ${top.score}`, d: ar ? `يقود بمحرّك ${(() => { const driver = PERF_DRIVERS.slice().sort((a, b) => (top.a[b.id] * b.w) - (top.a[a.id] * a.w))[0]; return `${driver.nameAr} (${top.a[driver.id]}%)`; })()}.` : `Led by ${(() => { const driver = PERF_DRIVERS.slice().sort((a, b) => (top.a[b.id] * b.w) - (top.a[a.id] * a.w))[0]; return `${driver.nameEn} (${top.a[driver.id]}%)`; })()}.`, accent: "var(--nv-ok-fill)" } : null,
-    climbers[0]?.d > 0 ? {
-      t: ar ? `${climbers[0].p.name} الأكثر تحسّناً` : `${climbers[0].p.name} rose most`,
-      d: ar
-        ? `من ${climbers[0].p.months?.[first] ? scoreOf(climbers[0].p.months[first]) : "—"} إلى ${climbers[0].p.months?.[last] ? scoreOf(climbers[0].p.months[last]) : "—"} بين ${view.monthName(first)} و${view.monthName(last)}.`
-        : `From ${climbers[0].p.months?.[first] ? scoreOf(climbers[0].p.months[first]) : "—"} to ${climbers[0].p.months?.[last] ? scoreOf(climbers[0].p.months[last]) : "—"} between ${view.monthName(first)} and ${view.monthName(last)}.`,
-      accent: "var(--nv-ok-fill)",
-    } : null,
-    (view.low && top && view.low.name !== top.name) ? {
-      t: ar ? `${view.low.name} الأدنى بين المكتملين` : `${view.low.name} is lowest among those with enough proof`,
-      d: ar ? `أضعف محرّك ${(() => { const driver = PERF_DRIVERS.slice().sort((a, b) => view.low.a[a.id] - view.low.a[b.id])[0]; return `${driver.nameAr} (${view.low.a[driver.id]}%)`; })()} — هنا مكان الرفع.` : `Weakest driver ${(() => { const driver = PERF_DRIVERS.slice().sort((a, b) => view.low.a[a.id] - view.low.a[b.id])[0]; return `${driver.nameEn} (${view.low.a[driver.id]}%)`; })()} — that is the lift.`,
-      accent: "var(--nv-warn-fill)",
-    } : null,
-    (rowsAll.length - eligible.length) ? {
-      t: ar ? countAr(rowsAll.length - eligible.length, "موظف واحد بلا إثبات كافٍ", "موظفان بلا إثبات كافٍ", "موظفين بلا إثبات كافٍ", "موظفاً بلا إثبات كافٍ") : `${rowsAll.length - eligible.length} short of enough proof`,
-      d: ar ? "درجاتهم معروضة لكن لا تدخل المتوسط حتى يُعتمد إثباتهم." : "Their scores are shown but stay out of the average until proof is approved.",
-      accent: "var(--nv-bad-fill)",
-    } : null,
-  ].filter(Boolean);
+  const cols = "36px 78px minmax(150px,1.5fr) minmax(90px,1fr) repeat(4,68px) 64px minmax(108px,1fr)";
+  const bcols = "36px minmax(140px,1.3fr) repeat(4,68px) 68px 72px minmax(120px,1.1fr) 72px";
+  const cell = { display: "flex", alignItems: "center", gap: 6, padding: "0 10px", minHeight: 44, borderInlineStart: `1px solid ${PERF_SOFT}`, fontSize: 12.5, minWidth: 0 };
+  const headCell = { ...cell, minHeight: 36, fontSize: 12, fontWeight: 700, color: PERF_BODY, cursor: "pointer", background: "transparent" };
 
-  const scopeLabel = !view.anyPick
-    ? (ar ? "كل الفروع" : "All branches")
-    : [...selB.map((id) => view.branches.find((row) => row.id === id)?.name || id), ...selT.map((id) => `${ar ? "فريق" : "Team"} ${teamLabel(id, ar)}`), ...selP.map((id) => view.people.find((row) => row.id === id)?.name || id)].join(" · ");
+  const tiles = [
+    { label: ar ? "متوسط الدرجة" : "Average score", value: avg == null ? DASH : String(avg), unit: avg == null ? "" : (ar ? "من 100" : "/100"), sub: eligible.length ? (ar ? `${eligible.length} من ${people.length} مكتمل الإثبات` : `${eligible.length} of ${people.length} with enough proof`) : (ar ? `لا متوسط — لم يبلغ أحد ${MIN_PROOF} مهام مثبتة` : `No average — no one reached ${MIN_PROOF} proven tasks`), color: PERF_INK },
+    { label: ar ? "الأعلى" : "Highest", value: highest == null ? DASH : String(highest), unit: "", sub: ar ? "في النطاق المحدد" : "In the current filter", color: ACTION },
+    { label: ar ? "يحتاج متابعة" : "Needs follow-up", value: valid ? String(follow) : DASH, unit: ar ? "موظف" : "", sub: ar ? "درجة أقل من 55" : "Score under 55", color: DANGER },
+    { label: ar ? "إثبات ناقص" : "Short of proof", value: valid ? String(short) : DASH, unit: ar ? "موظف" : "", sub: ar ? "لا يدخل المتوسط" : "Kept out of the average", color: "#8A5A12" },
+    { label: ar ? "الأشهر في المدى" : "Months in range", value: valid ? String(view.months.length) : DASH, unit: ar ? "شهر" : "", sub: valid ? `${from} → ${to}` : DASH, color: PERF_INK },
+  ];
+
+  const allPeopleOn = people.length > 0 && people.every((row) => picked.includes(row.id));
+  const allBranchesOn = branchRows.length > 0 && branchRows.every((row) => pickedB.includes(row.id));
+
+  const compareSet = activeTab === "branches"
+    ? branchRows.filter((row) => pickedB.includes(row.id)).slice(0, 4).map((row) => ({
+      id: row.id,
+      title: row.name,
+      sub: ar ? `${row.el.length} من ${row.ps.length} موظفين` : `${row.el.length} of ${row.ps.length}`,
+      drivers: PERF_DRIVERS.map((driver) => (row.el.length ? row.a[driver.id] : null)),
+      score: row.el.length ? row.score : null,
+    }))
+    : (view.ranked || []).filter((row) => picked.includes(row.id)).slice(0, 4).map((row) => ({
+      id: row.id,
+      title: row.name,
+      sub: `${row.branch || DASH} · ${row.job || DASH}`,
+      drivers: PERF_DRIVERS.map((driver) => row.a[driver.id]),
+      score: row.score,
+    }));
+
+  const fieldLabel = { display: "flex", flexDirection: "column", gap: 4, fontSize: 12, color: PERF_BODY, fontWeight: 600 };
+  const fieldInput = {
+    height: 32,
+    padding: "0 8px",
+    borderRadius: 8,
+    border: `1px solid ${PERF_LINE}`,
+    background: PERF_WHITE,
+    color: PERF_INK,
+    fontSize: 13,
+    fontFamily: "inherit",
+    width: "100%",
+    boxSizing: "border-box",
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <PerfScopePicker
-        ar={ar}
-        view={view}
-        pickerOpen={pickerOpen}
-        pickQ={pickQ}
-        openB={openB}
-        selB={selB}
-        selT={selT}
-        selP={selP}
-        onTogglePicker={() => setPickerOpen((cur) => !cur)}
-        onToggleBranch={(id) => toggle(selB, setSelB, id)}
-        onToggleTeam={(id) => toggle(selT, setSelT, id)}
-        onTogglePerson={(id) => toggle(selP, setSelP, id)}
-        onToggleOpen={(id) => setOpenB((cur) => ({ ...cur, [id]: cur[id] === false }))}
-        onPickAll={(ids, allIn) => setSelP((cur) => (allIn ? cur.filter((id) => !ids.includes(id)) : [...cur.filter((id) => !ids.includes(id)), ...ids]))}
-        onClear={() => { setSelB([]); setSelT([]); setSelP([]); }}
-        onQuery={setPickQ}
-        onReport={download}
-      />
+    <div data-perf-face={onlyId ? "self" : "manage"} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <section data-perf-card style={{ ...card, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: `1px solid ${PERF_SOFT}`, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 220 }}>
+            <span style={{ fontSize: 11, color: PERF_MUTED }}>{ar ? "الأداء · تقرير المقارنة" : "Performance · comparison"}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <strong style={{ fontSize: 17, color: PERF_INK }}>{ar ? "مقارنة أداء الموظفين" : "Compare performance"}</strong>
+              <select className="nv-perf-search" value={variant} onChange={(event) => setVariant(event.target.value)} style={{ ...fieldInput, width: "auto", height: 28, border: "none", background: "transparent", color: ACTION, fontWeight: 700, padding: 0 }}>
+                <option value="std">{ar ? "عرض: قياسي" : "View: standard"}</option>
+                <option value="drv">{ar ? "عرض: المحرّكات" : "View: drivers"}</option>
+                <option value="low">{ar ? "عرض: يحتاج متابعة" : "View: needs follow-up"}</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ display: "flex", border: `1px solid ${PERF_LINE}`, borderRadius: 8, overflow: "hidden" }}>
+              {modes.map((mode) => {
+                const on = activeTab === mode.id;
+                return (
+                  <button key={mode.id} type="button" onClick={() => { onTab?.(mode.id); setCompareOn(false); }} style={{ height: 32, padding: "0 12px", border: "none", background: on ? ACTION : PERF_WHITE, color: on ? "#fff" : PERF_INK, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: "inherit" }}>
+                    {mode.label}
+                  </button>
+                );
+              })}
+            </div>
+            <button type="button" style={ghostBtn()} onClick={() => setFiltersOpen((cur) => !cur)}>{filtersOpen ? (ar ? "إخفاء التصفية" : "Hide filters") : (ar ? "التصفية" : "Filters")}</button>
+            <button type="button" style={ghostBtn()} onClick={download} title={ar ? "طباعة / حفظ PDF" : "Print / save PDF"}>{ar ? "طباعة" : "Print"}</button>
+            <button type="button" style={actionBtn(compareReady)} onClick={runCompare}>
+              {activeTab === "branches"
+                ? (ar ? `قارن الفروع (${pickedB.length})` : `Compare branches (${pickedB.length})`)
+                : (ar ? `قارن الموظفين (${picked.length})` : `Compare people (${picked.length})`)}
+            </button>
+          </div>
+              </div>
 
-      {tab === "how" ? <PerfHowBoard lang={lang} /> : null}
+        {filtersOpen ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "12px 16px", background: "var(--nv-soft)", borderBottom: `1px solid ${PERF_SOFT}` }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {presets.map((preset) => {
+                const on = from === preset.from && to === preset.to;
+                return (
+                  <button key={preset.id} type="button" className="nv-perf-chip" onClick={() => onPreset?.(preset)} style={{ ...ghostBtn(), height: 28, background: on ? ACTION : PERF_WHITE, color: on ? "#fff" : PERF_INK, borderColor: on ? ACTION : PERF_LINE }}>
+                    {ar ? preset.labelAr : preset.labelEn}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, alignItems: "end" }}>
+              <label style={fieldLabel}>
+                {ar ? "من تاريخ" : "From"}
+                <PlatformDateField compact ar={ar} value={from} onChange={onFrom} />
+              </label>
+              <label style={fieldLabel}>
+                {ar ? "إلى تاريخ" : "To"}
+                <PlatformDateField compact ar={ar} value={to} min={from} onChange={onTo} />
+              </label>
+              <label style={fieldLabel}>
+                {ar ? "الفرع" : "Branch"}
+                <select className="nv-perf-search" value={branchId} onChange={(event) => setBranchId(event.target.value)} style={fieldInput}>
+                  <option value="">{ar ? "كل الفروع" : "All branches"}</option>
+                  {view.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name || DASH}</option>)}
+                </select>
+              </label>
+              <label style={fieldLabel}>
+                {ar ? "الفريق" : "Team"}
+                <select className="nv-perf-search" value={teamId} onChange={(event) => setTeamId(event.target.value)} style={fieldInput}>
+                  <option value="">{ar ? "الكل" : "All"}</option>
+                  {TEAM_IDS.map((id) => <option key={id} value={id}>{teamLabel(id, ar)}</option>)}
+                </select>
+              </label>
+              <label style={fieldLabel}>
+                {ar ? "الموظف" : "Employee"}
+                <input className="nv-perf-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={ar ? "الاسم أو الرقم الوظيفي" : "Name or employee number"} style={fieldInput} />
+              </label>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button type="button" style={ghostBtn()} onClick={clearFilters}>{ar ? "مسح" : "Clear"}</button>
+                <button type="button" style={actionBtn(true)} onClick={() => toast({ title: ar ? `طُبّقت التصفية · ${people.length} نتيجة` : `Filter applied · ${people.length}` })}>{ar ? "تطبيق" : "Apply"}</button>
+              </div>
+            </div>
+            {!valid ? <span style={{ fontSize: 12, color: DANGER }}>{ar ? "تاريخ البداية بعد النهاية — صحّح المدى ليُحسب شيء." : "The start is after the end — correct the range so a score can be derived."}</span> : null}
+          </div>
+        ) : null}
 
-      {tab === "people" ? (
-        <>
-          <div className="nv-perf-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 12 }}>
-            {stats.map((stat) => (
-              <StatTile key={stat.lbl} label={stat.lbl} value={stat.val} unit={stat.unit} note={stat.note} accent={stat.accent} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))" }}>
+          {tiles.map((tile, index) => (
+            <div key={tile.label} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "12px 16px", borderInlineStart: index ? `1px solid ${PERF_SOFT}` : "none" }}>
+              <span style={{ fontSize: 12, color: PERF_MUTED }}>{tile.label}</span>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                <strong dir="ltr" style={{ ...mono, fontSize: 24, fontWeight: 700, color: tile.color, lineHeight: 1.15 }}>{tile.value}</strong>
+                {tile.unit ? <span style={{ fontSize: 11, color: PERF_MUTED }}>{tile.unit}</span> : null}
+              </span>
+              <span style={{ fontSize: 11, color: PERF_BODY }}>{tile.sub}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {activeTab === "people" ? (
+        <div style={{ display: "grid", gridTemplateColumns: openRow ? "repeat(auto-fit,minmax(min(100%,560px),1fr))" : "minmax(0,1fr)", gap: 12, alignItems: "start" }}>
+          <section data-perf-card style={{ ...card, minWidth: 0, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: `1px solid ${PERF_SOFT}`, flexWrap: "wrap" }}>
+              <strong style={{ fontSize: 14 }}>{ar ? "الموظفون" : "People"} <span style={{ fontWeight: 500, color: PERF_MUTED }}>({people.length})</span></strong>
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: 12, color: PERF_MUTED }}>{ar ? "ترتيب:" : "Sort:"}</span>
+              {[["score", ar ? "الدرجة" : "Score"], ["name", ar ? "الاسم" : "Name"], ["done", ar ? "الإنجاز" : "Done"]].map(([id, label]) => (
+                <button key={id} type="button" className="nv-perf-chip" onClick={() => toggleSort(id)} style={{ ...ghostBtn(), height: 28, background: sort === id ? "color-mix(in oklab, #3C7D50 16%, var(--nv-card))" : PERF_WHITE, color: sort === id ? ACTION : PERF_BODY, borderColor: sort === id ? ACTION : PERF_LINE }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <div style={{ minWidth: 860 }}>
+                <div style={{ display: "grid", gridTemplateColumns: cols, background: "var(--nv-soft)", borderBottom: `1px solid ${PERF_LINE}` }}>
+                  <button type="button" onClick={() => setPicked(allPeopleOn ? [] : people.map((row) => row.id))} style={{ ...headCell, justifyContent: "center", border: "none" }}><span style={checkStyle(allPeopleOn)}>{allPeopleOn ? "✓" : ""}</span></button>
+                  {peopleHeads.map(([id, label]) => (
+                    <button key={label} type="button" onClick={() => id && toggleSort(id)} style={{ ...headCell, border: "none", cursor: id ? "pointer" : "default" }}>
+                      {label}
+                      <span style={{ color: ACTION }}>{id && sort === id ? (sortDir < 0 ? " ▼" : " ▲") : ""}</span>
+                    </button>
+                  ))}
+                </div>
+                {people.map((row) => {
+                  const on = picked.includes(row.id);
+                  const opened = openId === row.id;
+                  const status = statusOf(row, ar);
+                  const number = readEmployeeNo(row);
+                  return (
+                    <div
+                      key={row.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setOpenId(row.id)}
+                      onKeyDown={(event) => { if (event.key === "Enter") setOpenId(row.id); }}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: cols,
+                        borderBottom: `1px solid ${PERF_SOFT}`,
+                        cursor: "pointer",
+                        background: opened ? "color-mix(in oklab, #3C7D50 16%, var(--nv-card))" : on ? "color-mix(in oklab, #3C7D50 8%, var(--nv-card))" : PERF_WHITE,
+                        boxShadow: opened ? "inset -3px 0 0 #3C7D50" : "none",
+                        color: row.ok ? PERF_INK : PERF_MUTED,
+                      }}
+                    >
+                      <span
+                        role="presentation"
+                        onClick={(event) => { event.stopPropagation(); toggleId(picked, setPicked, row.id); }}
+                        style={{ ...cell, justifyContent: "center" }}
+                      >
+                        <span style={checkStyle(on)}>{on ? "✓" : ""}</span>
+                      </span>
+                      <span dir="ltr" style={{ ...cell, ...mono, color: PERF_MUTED }}>{number || DASH}</span>
+                      <span style={{ ...cell, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 0, lineHeight: 1.35 }}>
+                        <strong style={{ fontSize: 13, color: ACTION }}>{row.name || DASH}</strong>
+                        <span style={{ fontSize: 11, color: PERF_MUTED }}>{[row.job, teamLabel(row.team, ar)].filter(Boolean).join(" · ") || DASH}</span>
+                      </span>
+                      <span style={cell}>{row.branch || DASH}</span>
+                {PERF_DRIVERS.map((driver) => (
+                        <span key={driver.id} dir="ltr" style={{ ...cell, ...mono, color: row.a[driver.id] < 45 ? DANGER : PERF_INK, fontWeight: row.a[driver.id] < 45 ? 700 : 500, background: variant === "drv" ? `color-mix(in oklab, ${DRIVER_COLOR[driver.id]} 22%, var(--nv-card))` : "transparent" }}>
+                          {row.a[driver.id]}%
+                  </span>
+                ))}
+                      <span dir="ltr" style={{ ...cell, ...mono, fontWeight: 700 }}>{row.score}</span>
+                      <span style={cell}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: status.color }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 999, background: status.color }} />
+                          {status.label}
+                        </span>
+            </span>
+          </div>
+                  );
+                })}
+                {!people.length ? <div style={{ padding: 24, textAlign: "center", color: PERF_MUTED }}>{ar ? "لا نتائج — غيّر عوامل التصفية." : "No results — change the filters."}</div> : null}
+              </div>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 12px", borderTop: `1px solid ${PERF_SOFT}`, background: "var(--nv-soft)", fontSize: 12, color: PERF_MUTED, flexWrap: "wrap" }}>
+              <span>{ar ? `المتوسط يحتسب من بلغ ${MIN_PROOF} مهام مثبتة فقط · الأوزان من وصف الوظيفة` : `The average counts only people with ${MIN_PROOF} proven tasks · weights come from the job`}</span>
+              <span dir="ltr" style={mono}>{people.length ? `1–${people.length} / ${people.length}` : DASH}</span>
+            </div>
+          </section>
+
+          {openRow ? (
+            <aside data-perf-card style={{ ...card, position: "sticky", top: 12, maxWidth: 420, width: "100%", justifySelf: "end" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderBottom: `1px solid ${PERF_SOFT}`, background: "var(--nv-soft)" }}>
+                <span style={{ width: 40, height: 40, borderRadius: 8, background: ACTION, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flex: "none" }}>{(openRow.name || DASH).trim().slice(0, 1)}</span>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", lineHeight: 1.35 }}>
+                  <strong style={{ fontSize: 14 }}>{openRow.name || DASH}</strong>
+                  <span style={{ fontSize: 12, color: PERF_MUTED }}>{[readEmployeeNo(openRow) || DASH, openRow.job || DASH, openRow.branch || DASH].join(" · ")}</span>
+                </div>
+                <button type="button" onClick={() => setOpenId(null)} style={{ ...ghostBtn(), width: 32, padding: 0, justifyContent: "center" }} aria-label={ar ? "إغلاق" : "Close"}>×</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", borderBottom: `1px solid ${PERF_SOFT}` }}>
+                <div style={{ padding: "12px 14px", borderInlineEnd: `1px solid ${PERF_SOFT}`, display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: 11, color: PERF_MUTED }}>{ar ? "الدرجة" : "Score"}</span>
+                  <strong dir="ltr" style={{ ...mono, fontSize: 26, lineHeight: 1.2 }}>{openRow.score}</strong>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: statusOf(openRow, ar).color }}>{statusOf(openRow, ar).label}</span>
+                </div>
+                <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column" }}>
+                  <span style={{ fontSize: 11, color: PERF_MUTED }}>{ar ? "الإثبات في المدى" : "Proof in range"}</span>
+                  <strong dir="ltr" style={{ ...mono, fontSize: 26, lineHeight: 1.2 }}>{openRow.a.proof}</strong>
+                  <span style={{ fontSize: 11, color: PERF_MUTED }}>{ar ? `مهام معتمدة · الحد ${MIN_PROOF}` : `Approved tasks · floor ${MIN_PROOF}`}</span>
+                  </div>
+              </div>
+              <div style={{ display: "flex", borderBottom: `1px solid ${PERF_SOFT}` }}>
+                {[["drv", ar ? "المحرّكات" : "Drivers"], ["trend", ar ? "المسار" : "Months"], ["log", ar ? "الأدلة" : "Proof"]].map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => setDTab(id)} style={{ flex: 1, height: 38, border: "none", background: dTab === id ? ACTION : "transparent", color: dTab === id ? "#fff" : PERF_BODY, fontWeight: 700, fontSize: 12.5, cursor: "pointer", fontFamily: "inherit" }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {dTab === "drv" ? (
+                <div>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 52px 52px 52px", gap: 8, padding: "8px 14px", background: "var(--nv-soft)", fontSize: 11, fontWeight: 700, color: PERF_BODY }}>
+                    <span>{ar ? "المحرّك" : "Driver"}</span><span>{ar ? "النسبة" : "Share"}</span><span>{ar ? "الوزن" : "Weight"}</span><span>{ar ? "النقاط" : "Points"}</span>
+                  </div>
+                  {PERF_DRIVERS.map((driver) => {
+                    const share = openRow.a[driver.id];
+                    const points = Math.round((share * driver.w) / 100);
+                    return (
+                      <div key={driver.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 52px 52px 52px", gap: 8, padding: "9px 14px", borderTop: `1px solid ${PERF_SOFT}`, fontSize: 12, alignItems: "center" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <span>{ar ? driver.nameAr : driver.nameEn}</span>
+                          <div style={{ height: 4, background: "var(--nv-inset)", borderRadius: 999 }}><div style={{ height: "100%", width: `${share}%`, background: DRIVER_COLOR[driver.id] || ACTION, borderRadius: 999 }} /></div>
+                        </div>
+                        <span dir="ltr" style={mono}>{share}%</span>
+                        <span dir="ltr" style={{ ...mono, color: PERF_MUTED }}>{driver.w}%</span>
+                        <strong dir="ltr" style={{ ...mono, color: ACTION }}>+{points}</strong>
+                      </div>
+                    );
+                  })}
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "9px 14px", borderTop: `1px solid ${PERF_LINE}`, background: "var(--nv-soft)", fontSize: 13 }}>
+                    <strong>{ar ? "المجموع" : "Total"}</strong>
+                    <strong dir="ltr" style={mono}>{openRow.score}</strong>
+                  </div>
+                </div>
+              ) : null}
+              {dTab === "trend" ? (
+                <div style={{ padding: "8px 14px 12px" }}>
+                  {view.months.length ? view.months.map((key) => {
+                    const facts = openRow.months?.[key];
+                    const monthScore = facts ? scoreOf(facts) : null;
+                    return (
+                      <div key={key} style={{ display: "grid", gridTemplateColumns: "88px minmax(0,1fr) 36px", gap: 10, alignItems: "center", padding: "7px 0", borderTop: `1px solid ${PERF_SOFT}`, fontSize: 12 }}>
+                        <span>{view.monthName(key) || DASH}</span>
+                        <div style={{ height: 10, background: "var(--nv-inset)", borderRadius: 999 }}>{monthScore != null ? <div style={{ height: "100%", width: `${monthScore}%`, background: ACTION, borderRadius: 999 }} /> : null}</div>
+                        <strong dir="ltr" style={mono}>{monthScore == null ? DASH : monthScore}</strong>
+                      </div>
+                    );
+                  }) : <div style={{ padding: "12px 0", color: PERF_MUTED }}>{DASH}</div>}
+            </div>
+              ) : null}
+              {dTab === "log" ? (
+                <div style={{ padding: "4px 14px 12px" }}>
+                  {proofs.length ? proofs.map((row) => (
+                    <Link key={row.id} to={row.href} style={{ display: "grid", gridTemplateColumns: "92px minmax(0,1fr)", gap: 10, padding: "8px 0", borderTop: `1px solid ${PERF_SOFT}`, fontSize: 12, textDecoration: "none", color: "inherit" }}>
+                      <span dir="ltr" style={{ ...mono, color: PERF_MUTED }}>{row.at || DASH}</span>
+                      <span style={{ color: ACTION, fontWeight: 600 }}>{row.title || DASH}</span>
+                    </Link>
+                  )) : <div style={{ padding: "12px 0", color: PERF_MUTED }}>{DASH}</div>}
+                </div>
+              ) : null}
+              <div style={{ display: "flex", gap: 8, padding: "10px 14px", borderTop: `1px solid ${PERF_SOFT}`, background: "var(--nv-soft)", alignItems: "center" }}>
+                <button type="button" style={ghostBtn()} onClick={() => {
+                  const one = derivePerformanceRange({ employees: [openRow], stations, data, from, to, ar });
+                  printPerformanceReport(one, { companyName: company?.name || "NiroVera", ar });
+                }}>{ar ? "تقرير الموظف" : "Person report"}</button>
+                <span style={{ flex: 1 }} />
+                <Link to="/app/requests" style={{ color: ACTION, fontWeight: 700, fontSize: 12 }}>{ar ? "اعتراض من الطلبات ←" : "Object from requests"}</Link>
+              </div>
+            </aside>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!onlyId && activeTab === "how" ? <PerfHowBoard lang={lang} /> : null}
+
+      {!onlyId && activeTab === "archive" ? (
+        <section data-perf-card style={{ ...card, overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px", borderBottom: `1px solid ${PERF_SOFT}` }}>
+            <strong style={{ fontSize: 14 }}>{ar ? "الدورات المغلقة" : "Closed cycles"}</strong>
+            <span style={{ fontSize: 12, color: PERF_MUTED, marginInlineStart: 8 }}>{ar ? "للقراءة فقط · لا تُعدّل بعد الإغلاق" : "Read only · a closed cycle is not edited"}</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(140px,1.2fr) minmax(0,1fr) 90px 90px 110px", background: "var(--nv-soft)", borderBottom: `1px solid ${PERF_LINE}`, fontSize: 12, fontWeight: 700, color: PERF_BODY }}>
+            {[ar ? "الدورة" : "Cycle", ar ? "المدى" : "Range", ar ? "المتوسط" : "Average", ar ? "الموظفون" : "People", ""].map((label) => (
+              <span key={label || "open"} style={{ padding: "9px 12px", borderInlineStart: label === (ar ? "الدورة" : "Cycle") ? "none" : `1px solid ${PERF_SOFT}` }}>{label}</span>
             ))}
           </div>
+          {closedRows.length ? closedRows.map((row) => (
+            <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(140px,1.2fr) minmax(0,1fr) 90px 90px 110px", borderBottom: `1px solid ${PERF_SOFT}`, fontSize: 13, alignItems: "center" }}>
+              <strong style={{ padding: "10px 12px" }}>{row.name || DASH}</strong>
+              <span dir="ltr" style={{ ...mono, padding: "10px 12px", borderInlineStart: `1px solid ${PERF_SOFT}`, textAlign: "end" }}>{row.range}</span>
+              <span dir="ltr" style={{ ...mono, padding: "10px 12px", borderInlineStart: `1px solid ${PERF_SOFT}`, fontWeight: 700 }}>{row.avg}</span>
+              <span dir="ltr" style={{ ...mono, padding: "10px 12px", borderInlineStart: `1px solid ${PERF_SOFT}` }}>{row.n}</span>
+              <button type="button" onClick={() => { if (row.from && row.to) { onFrom?.(row.from); onTo?.(row.to); onTab?.("people"); } }} style={{ margin: "8px 12px", ...ghostBtn(!(row.from && row.to)), color: ACTION, border: "none", background: "transparent" }}>{ar ? "افتح ←" : "Open"}</button>
+            </div>
+          )) : <div style={{ padding: "16px 14px", color: PERF_MUTED }}>{DASH}</div>}
+          <div style={{ padding: 14 }}>
+            <RecordSmartArchive
+              items={goalItems}
+              lang={ar ? "ar" : "en"}
+              dir={dir}
+              emptyLabel={ar ? "لا أهداف منجزة في هذا النطاق." : "No completed goals in this scope."}
+            />
+            </div>
+          </section>
+      ) : null}
 
-          {view.hasGroups ? (
-            <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
-              <div style={{ padding: "16px 20px", borderBottom: `1px solid ${PERF_SOFT}`, display: "flex", flexDirection: "column", gap: 3 }}>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "مقارنة المجموعات المختارة" : "Selected groups"}</span>
-                <span style={{ fontSize: 12, color: PERF_MUTED, lineHeight: 1.8 }}>{ar ? "كل مجموعة درجتها متوسط أفرادها ذوي الإثبات الكافي في المدى. الفرق بينها مكتوب لا مقروء بالعين." : "Each group's score is the mean of its people with enough proof. The gap is written, not left to the eye."}</span>
-              </div>
-              {view.groups.map((group, index) => {
-                const biggest = lead && group.el.length && lead.el.length
-                  ? PERF_DRIVERS.slice().sort((a, b) => ((lead.a[b.id] - group.a[b.id]) * b.w) - ((lead.a[a.id] - group.a[a.id]) * a.w))[0]
-                  : null;
-                const diff = index === 0
-                  ? (ar ? "الأعلى بين المختار" : "Highest among the pick")
-                  : (group.el.length && lead?.el.length
-                    ? (ar
-                      ? `أدنى من ${lead.name} بـ${countAr(lead.score - group.score, "نقطة واحدة", "نقطتين", "نقاط", "نقطة", "لا فرق")} — الفارق الأكبر في ${biggest.nameAr} (${group.a[biggest.id]}% مقابل ${lead.a[biggest.id]}%)`
-                      : `${lead.score - group.score} below ${lead.name} — widest gap in ${biggest.nameEn} (${group.a[biggest.id]}% vs ${lead.a[biggest.id]}%)`)
-                    : (ar ? "لا إثبات كافٍ للمقارنة" : "Not enough proof to compare"));
+      {activeTab === "branches" ? (
+        <section data-perf-card style={{ ...card, minWidth: 0, overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${PERF_SOFT}`, flexWrap: "wrap" }}>
+            <strong style={{ fontSize: 14 }}>{ar ? "الفروع" : "Branches"} <span style={{ fontWeight: 500, color: PERF_MUTED }}>({branchRows.length})</span></strong>
+            <span style={{ fontSize: 12, color: PERF_MUTED }}>{ar ? "المتوسط من الموظفين مكتملي الإثبات · حدّد فرعين إلى أربعة للمقارنة" : "Average of people with enough proof · pick two to four branches"}</span>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ minWidth: 920 }}>
+              <div style={{ display: "grid", gridTemplateColumns: bcols, background: "var(--nv-soft)", borderBottom: `1px solid ${PERF_LINE}` }}>
+                <button type="button" onClick={() => setPickedB(allBranchesOn ? [] : branchRows.map((row) => row.id))} style={{ ...headCell, justifyContent: "center", border: "none" }}><span style={checkStyle(allBranchesOn)}>{allBranchesOn ? "✓" : ""}</span></button>
+                {branchHeads.map(([id, label]) => (
+                  <button key={label} type="button" onClick={() => id && toggleBSort(id)} style={{ ...headCell, border: "none" }}>
+                    {label}
+                    <span style={{ color: ACTION }}>{id && bSort === id ? (bDir < 0 ? " ▼" : " ▲") : ""}</span>
+                  </button>
+                ))}
+            </div>
+              {branchRows.map((row) => {
+                const on = pickedB.includes(row.id);
                 return (
-                  <div key={`${group.kind}-${group.name}`} style={{ padding: "13px 20px", borderTop: `3px solid ${group.el.length ? accentOf(group.score) : QUIET}`, borderBottom: `1px solid ${PERF_SOFT}`, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2.4fr) 92px", gap: 14, alignItems: "center" }}>
-                    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <span style={{ fontSize: 10, fontWeight: 600, color: PERF_BODY, background: "var(--nv-mute-soft)", border: "1px solid var(--nv-mute-line)", borderRadius: 999, padding: "1px 7px" }}>{group.kind}</span>
-                        <span style={{ fontSize: 13, fontWeight: 700, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{group.name}</span>
-                      </span>
-                      <span style={{ fontSize: 10, color: PERF_MUTED }}>{ar ? `${countAr(group.rows.length, "موظف واحد", "موظفان", "موظفين", "موظفاً", "لا أحد")} · ${group.el.length} بإثبات كافٍ` : `${group.rows.length} people · ${group.el.length} with enough proof`}</span>
-                    </span>
-                    <span style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-                      <SegBar segs={group.el.length ? segsOf(group.a) : []} height={16} />
-                      <span style={{ fontSize: 10, color: PERF_BODY, lineHeight: 1.7 }}>{diff}</span>
-                    </span>
-                    <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-                      <span dir="ltr" style={{ ...mono, fontSize: 24, fontWeight: 500, color: group.el.length ? textOf(group.score) : PERF_BODY, lineHeight: 1 }}>{group.el.length ? group.score : "—"}</span>
-                      <span style={{ fontSize: 10, color: PERF_MUTED }}>{group.el.length ? bandOf(group.score, ar) : (ar ? "بلا إثبات" : "No proof")}</span>
-                    </span>
+                  <div key={row.id} style={{ display: "grid", gridTemplateColumns: bcols, borderBottom: `1px solid ${PERF_SOFT}`, background: on ? "color-mix(in oklab, #3C7D50 10%, var(--nv-card))" : PERF_WHITE }}>
+                    <button type="button" onClick={() => toggleId(pickedB, setPickedB, row.id)} style={{ ...cell, justifyContent: "center", border: "none", background: "transparent", cursor: "pointer" }}><span style={checkStyle(on)}>{on ? "✓" : ""}</span></button>
+                    <button type="button" onClick={() => { setBranchId(row.id); onTab?.("people"); setCompareOn(false); }} style={{ ...cell, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 0, lineHeight: 1.35, border: "none", background: "transparent", cursor: "pointer", fontFamily: "inherit", textAlign: "start" }}>
+                      <strong style={{ fontSize: 13, color: ACTION }}>{row.name || DASH}</strong>
+                      <span style={{ fontSize: 11, color: PERF_MUTED }}>{ar ? countAr(row.ps.length, "موظف واحد", "موظفان", "موظفين", "موظفاً", "لا أحد") : `${row.ps.length}`}</span>
+                    </button>
+                    {PERF_DRIVERS.map((driver) => (
+                      <span key={driver.id} dir="ltr" style={{ ...cell, ...mono, background: variant === "drv" && row.el.length ? `color-mix(in oklab, ${DRIVER_COLOR[driver.id]} 22%, var(--nv-card))` : "transparent" }}>{driverValue(row.el.length, row.a[driver.id])}</span>
+                    ))}
+                    <span dir="ltr" style={{ ...cell, ...mono, fontWeight: 700 }}>{row.el.length ? row.score : DASH}</span>
+                    <span dir="ltr" style={{ ...cell, ...mono }}>{row.ps.length ? `${row.el.length}/${row.ps.length}` : DASH}</span>
+                    <span style={{ ...cell, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 0, lineHeight: 1.35 }}>
+                      <span style={{ fontSize: 12 }}>{row.best?.name || DASH}</span>
+                      <span style={{ fontSize: 11, color: PERF_MUTED }}>{row.best ? `${row.best.score} · ${row.best.job || DASH}` : DASH}</span>
+                  </span>
+                    <span dir="ltr" style={{ ...cell, ...mono, fontWeight: 700, color: row.low ? DANGER : ACTION }}>{row.low}</span>
                   </div>
                 );
               })}
-            </section>
-          ) : null}
-
-          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
-            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${PERF_SOFT}`, display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? `مقارنة الموظفين — ${scopeLabel}` : `People comparison — ${scopeLabel}`}</span>
-                <span style={{ fontSize: 12, color: PERF_MUTED, lineHeight: 1.8 }}>{ar ? "مرتّبون بالدرجة المشتقّة في المدى المختار. الشريط يُقسَم بالمحرّكات الأربعة بأوزانها." : "Ranked by the derived score in the chosen range. The bar is split by the four weighted drivers."}</span>
-              </div>
-              <span style={{ marginInlineStart: "auto", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                {PERF_DRIVERS.map((driver) => (
-                  <span key={driver.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: PERF_BODY }}>
-                    <span style={{ width: 10, height: 10, background: driver.color }} />
-                    {ar ? driver.nameAr : driver.nameEn}
-                    <span dir="ltr" style={{ ...mono, color: PERF_MUTED }}>{driver.w}%</span>
-                  </span>
-                ))}
-            </span>
+              {!branchRows.length ? <div style={{ padding: 24, textAlign: "center", color: PERF_MUTED }}>{DASH}</div> : null}
+            </div>
           </div>
-            <div style={{ padding: "10px 20px", background: PERF_SURFACE, borderBottom: `1px solid ${PERF_SOFT}`, display: "grid", gridTemplateColumns: "26px minmax(0,1.3fr) minmax(0,2.2fr) 60px 60px 60px 60px 72px", gap: 11, fontSize: 10, letterSpacing: ".05em", color: PERF_MUTED, fontWeight: 600 }}>
-              <span />
-              <span>{ar ? "الموظف" : "Employee"}</span>
-              <span>{ar ? "تركيب الدرجة" : "Score mix"}</span>
-              <span>{ar ? "الإنجاز" : "Done"}</span>
-              <span>{ar ? "الموعد" : "Time"}</span>
-              <span>{ar ? "السلامة" : "Safety"}</span>
-              <span>{ar ? "التغطية" : "Cover"}</span>
-              <span>{ar ? "الدرجة" : "Score"}</span>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 12px", borderTop: `1px solid ${PERF_SOFT}`, background: "var(--nv-soft)", fontSize: 12, color: PERF_MUTED, flexWrap: "wrap" }}>
+            <span>{ar ? "انقر اسم الفرع لعرض موظفيه" : "Click a branch name to see its people"}</span>
+            <span>{ar ? "متوسط كل الفروع:" : "Average of every branch:"} <strong dir="ltr" style={{ ...mono, color: PERF_INK }}>{view.eligible.length ? view.avg : DASH}</strong></span>
           </div>
-            {view.ranked.map((row, index) => (
-              <div key={row.id} style={{ padding: "11px 20px", borderTop: `3px solid ${row.ok ? accentOf(row.score) : QUIET}`, borderBottom: `1px solid ${PERF_SOFT}`, background: row.ok ? PERF_WHITE : PERF_SURFACE, display: "grid", gridTemplateColumns: "26px minmax(0,1.3fr) minmax(0,2.2fr) 60px 60px 60px 60px 72px", gap: 11, alignItems: "center" }}>
-                <span dir="ltr" style={{ ...mono, fontSize: 11, color: PERF_MUTED, textAlign: "right" }}>{index + 1}</span>
-                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</span>
-                  <span style={{ fontSize: 10, color: PERF_MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.job} · {row.branch}{row.ok ? "" : (ar ? ` · إثبات ${row.a.proof} من ${view.minProof}` : ` · proof ${row.a.proof} of ${view.minProof}`)}</span>
-                </span>
-                <SegBar segs={segsOf(row.a)} />
-                <span dir="ltr" style={{ ...mono, fontSize: 12, textAlign: "right" }}>{row.a.done}%</span>
-                <span dir="ltr" style={{ ...mono, fontSize: 12, textAlign: "right" }}>{row.a.time}%</span>
-                <span dir="ltr" style={{ ...mono, fontSize: 12, color: row.a.safe >= 90 ? "var(--nv-ok-ink)" : "var(--nv-bad-ink)", textAlign: "right" }}>{row.a.safe}%</span>
-                <span dir="ltr" style={{ ...mono, fontSize: 12, textAlign: "right" }}>{row.a.cover}%</span>
-                <span style={{ display: "flex", alignItems: "baseline", gap: 5, justifyContent: "flex-end" }}>
-                  <span dir="ltr" style={{ ...mono, fontSize: 15, fontWeight: 500, color: row.ok ? textOf(row.score) : PERF_BODY }}>{row.score}</span>
-                  <span style={{ fontSize: 10, color: PERF_MUTED }}>{bandOf(row.score, ar)}</span>
-                </span>
-              </div>
-            ))}
-            <div style={{ padding: "13px 20px" }}>
-              <span style={{ fontSize: 11, color: PERF_BODY, lineHeight: 1.95 }}>{ar ? `الصفّ الرمادي لم يبلغ ${view.minProof} مهام مثبتة في المدى: درجته معروضة ولا تُحتسب في المتوسط — نقص إثبات لا سوء أداء.` : `A grey row is short of ${view.minProof} proven tasks in the range: the score is shown and kept out of the average — missing proof is not poor performance.`}</span>
-            </div>
-          </section>
+        </section>
+      ) : null}
 
-          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)", gap: 0, alignItems: "stretch", boxSizing: "border-box" }}>
-            <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12, borderInlineStart: `1px solid ${PERF_SOFT}`, minWidth: 0 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "مسار الدرجة شهراً بشهر" : "Score path, month by month"}</span>
-                <span style={{ fontSize: 12, color: PERF_MUTED, lineHeight: 1.8 }}>{ar ? `أعلى ${countAr(trendPeople.length, "موظف", "موظفين", "موظفين", "موظفاً")} في المدى، درجة كل شهر على حدة.` : `Top ${trendPeople.length} in the range, each month on its own.`}</span>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, view.months.length)},minmax(0,1fr))`, gap: 8, alignItems: "end", height: 170, borderBottom: `1px solid ${PERF_LINE}` }}>
-                {view.months.map((key) => (
-                  <div key={key} style={{ display: "flex", gap: 2, alignItems: "flex-end", height: "100%", minWidth: 0 }}>
-                    {trendPeople.map((person, index) => {
-                      const facts = person.months?.[key];
-                      const score = facts ? scoreOf(facts) : 0;
-                      return <span key={person.id} title={`${person.name} · ${score}`} style={{ flex: 1, minWidth: 0, height: `${score}%`, background: TREND[index] }} />;
-                    })}
-                  </div>
-                ))}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, view.months.length)},minmax(0,1fr))`, gap: 8 }}>
-                {view.months.map((key) => (
-                  <span key={key} style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "center", minWidth: 0 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: PERF_INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{view.monthName(key)}</span>
-                    <span style={{ display: "flex", gap: 2, width: "100%", minWidth: 0 }}>
-                      {trendPeople.map((person, index) => {
-                        const facts = person.months?.[key];
-                        return <span key={person.id} dir="ltr" title={person.name} style={{ flex: 1, minWidth: 0, textAlign: "center", ...mono, fontSize: 10, color: TREND[index], whiteSpace: "nowrap", overflow: "hidden" }}>{facts ? scoreOf(facts) : "—"}</span>;
-                      })}
-                    </span>
-              </span>
-                ))}
-            </div>
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                {trendPeople.map((person, index) => (
-                  <span key={person.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: PERF_MUTED }}>
-                    <span style={{ width: 10, height: 10, background: TREND[index] }} />
-                    {person.name}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div style={{ padding: "16px 20px", background: PERF_SURFACE, display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "ما يقوله المدى" : "What the range says"}</span>
-              {insights.map((item) => (
-                <div key={item.t} style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: `3px solid ${item.accent}`, borderRadius: 14, padding: "11px 13px", display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700 }}>{item.t}</span>
-                  <span style={{ fontSize: 11, color: PERF_MUTED, lineHeight: 1.85 }}>{item.d}</span>
-                </div>
+      {compareOn && compareSet.length >= 2 ? (
+        <section data-perf-card style={{ ...card, overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: `1px solid ${PERF_SOFT}` }}>
+            <strong style={{ fontSize: 14 }}>{activeTab === "branches" ? (ar ? "مقارنة الفروع" : "Branch comparison") : (ar ? "مقارنة الموظفين" : "People comparison")}</strong>
+            <span style={{ fontSize: 12, color: PERF_MUTED }}>{ar ? "الفارق مقابل الأعلى بين المحدد · ★ الأعلى" : "Gap against the highest of the pick · ★ leads"}</span>
+            <span style={{ flex: 1 }} />
+            <button type="button" style={ghostBtn()} onClick={() => setCompareOn(false)}>{ar ? "إغلاق" : "Close"}</button>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: `minmax(120px,1fr) repeat(${compareSet.length},minmax(140px,1fr))`, minWidth: 160 + compareSet.length * 150 }}>
+              <span style={{ padding: "8px 12px", background: "var(--nv-soft)", fontSize: 12, fontWeight: 700, color: PERF_BODY }}>{ar ? "المحرّك" : "Driver"}</span>
+              {compareSet.map((col) => (
+                <span key={col.id} style={{ padding: "8px 12px", background: "var(--nv-soft)", display: "flex", flexDirection: "column", lineHeight: 1.35 }}>
+                  <strong style={{ fontSize: 12 }}>{col.title || DASH}</strong>
+                  <span style={{ fontSize: 11, color: PERF_MUTED, fontWeight: 500 }}>{col.sub || DASH}</span>
+                </span>
               ))}
-              <span style={{ fontSize: 11, color: PERF_MUTED, lineHeight: 1.9 }}>{ar ? "كل جملة أعلاه مشتقّة من الأرقام في المدى — تتغيّر بتغيير التاريخين." : "Every sentence above is derived from the figures in the range — change the dates and it changes."}</span>
-            </div>
-          </section>
-        </>
-      ) : tab === "branches" ? (
-        <>
-          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "flex", flexDirection: "column", boxSizing: "border-box" }}>
-            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${PERF_SOFT}`, display: "flex", flexDirection: "column", gap: 3 }}>
-              <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "مقارنة الفروع" : "Branch comparison"}</span>
-              <span style={{ fontSize: 12, color: PERF_MUTED, lineHeight: 1.8 }}>{ar ? "درجة الفرع متوسط موظفيه ذوي الإثبات الكافي في المدى. الشريط الأفقي بمحرّكاته." : "A branch score is the mean of its people with enough proof. The bar is the drivers."}</span>
-            </div>
-            {view.branchData.map((branch) => (
-              <div key={branch.id} style={{ padding: "14px 20px", borderTop: `3px solid ${branch.el.length ? accentOf(branch.score) : QUIET}`, borderBottom: `1px solid ${PERF_SOFT}`, display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,2.6fr) 84px", gap: 14, alignItems: "center" }}>
-                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>{branch.name}</span>
-                  <span style={{ fontSize: 10, color: PERF_MUTED }}>{ar ? `${countAr(branch.ps.length, "موظف واحد", "موظفان", "موظفين", "موظفاً")} · ${branch.el.length} بإثبات كافٍ` : `${branch.ps.length} people · ${branch.el.length} with enough proof`}</span>
-              </span>
-                <span style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-                  <SegBar segs={branch.el.length ? segsOf(branch.a) : []} height={18} />
-                  <span style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 8 }}>
-                    {PERF_DRIVERS.map((driver) => (
-                      <span key={driver.id} style={{ display: "flex", alignItems: "baseline", gap: 4, fontSize: 10, color: PERF_MUTED, whiteSpace: "nowrap" }}>
-                        <span style={{ width: 8, height: 8, background: driver.color, flex: "none" }} />
-                        {ar ? driver.nameAr : driver.nameEn}
-                        <span dir="ltr" style={{ ...mono, color: PERF_INK }}>{branch.el.length ? `${branch.a[driver.id]}%` : "—"}</span>
-          </span>
-                    ))}
-                  </span>
-                </span>
-                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-                  <span dir="ltr" style={{ ...mono, fontSize: 24, fontWeight: 500, color: branch.el.length ? textOf(branch.score) : PERF_MUTED, lineHeight: 1 }}>{branch.el.length ? branch.score : "—"}</span>
-                  <span style={{ fontSize: 10, color: PERF_MUTED }}>{branch.el.length ? bandOf(branch.score, ar) : (ar ? "بلا إثبات" : "No proof")}</span>
+              {PERF_DRIVERS.map((driver, index) => {
+                const values = compareSet.map((col) => col.drivers[index]);
+                const numeric = values.filter((value) => value != null);
+                const best = numeric.length ? Math.max(...numeric) : null;
+                return (
+                  <React.Fragment key={driver.id}>
+                    <span style={{ padding: "8px 12px", borderTop: `1px solid ${PERF_SOFT}`, fontSize: 12 }}>{ar ? driver.nameAr : driver.nameEn}</span>
+                    {compareSet.map((col, colIndex) => {
+                      const value = values[colIndex];
+                      const gap = value == null || best == null ? null : best - value;
+                      return (
+                        <span key={col.id} dir="ltr" style={{ padding: "8px 12px", borderTop: `1px solid ${PERF_SOFT}`, ...mono, fontWeight: 600, color: value == null ? PERF_MUTED : gap ? (gap >= 15 ? DANGER : PERF_BODY) : ACTION, background: value != null && !gap ? "color-mix(in oklab, #3C7D50 14%, var(--nv-card))" : "transparent" }}>
+                          {value == null ? DASH : `${value}%${gap ? `  (−${gap})` : "  ★"}`}
                               </span>
-              </div>
-            ))}
-            <div style={{ padding: "13px 20px" }}>
-              <span style={{ fontSize: 11, color: PERF_MUTED, lineHeight: 1.95 }}>
-                {view.shownBranches.length < view.branches.length
-                  ? (ar ? `معروض ${view.shownBranches.length} من ${view.branches.length} فروع — حسب اختيارك أعلاه. امسح الاختيار لترى الجميع. ` : `Showing ${view.shownBranches.length} of ${view.branches.length} branches — from the pick above. Clear it to see everyone. `)
-                  : (ar ? "كل الفروع معروضة — اختر فروعاً أعلاه لتقصر المقارنة عليها. " : "Every branch is shown — pick branches above to narrow the comparison. ")}
-                {ar ? "والفرع يُقاس بمن أثبت عمله فيه، فالعدد مكتوب بجانبه." : "A branch is measured by who proved work there, so the count sits beside it."}
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+              <span style={{ padding: "8px 12px", borderTop: `1px solid ${PERF_SOFT}`, fontSize: 12, fontWeight: 700 }}>{activeTab === "branches" ? (ar ? "المتوسط" : "Average") : (ar ? "الدرجة" : "Score")}</span>
+              {compareSet.map((col) => {
+                const numeric = compareSet.map((item) => item.score).filter((value) => value != null);
+                const best = numeric.length ? Math.max(...numeric) : null;
+                const gap = col.score == null || best == null ? null : best - col.score;
+                return (
+                  <span key={col.id} dir="ltr" style={{ padding: "8px 12px", borderTop: `1px solid ${PERF_SOFT}`, ...mono, fontWeight: 700, color: col.score == null ? PERF_MUTED : gap ? PERF_BODY : ACTION }}>
+                    {col.score == null ? DASH : `${col.score}${gap ? `  (−${gap})` : "  ★"}`}
                           </span>
+                );
+              })}
             </div>
-          </section>
-          <section style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, display: "grid", gridTemplateColumns: `repeat(${Math.max(1, view.shownBranches.length)},minmax(0,1fr))`, gap: 0 }}>
-            {view.branchData.map((branch) => (
-              <div key={branch.id} style={{ padding: "16px 20px", borderInlineStart: `1px solid ${PERF_SOFT}`, display: "flex", flexDirection: "column", gap: 9, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>{branch.name}</span>
-                  <span style={{ fontSize: 11, color: PERF_MUTED }}>{ar ? countAr(branch.ps.length, "موظف", "موظفان", "موظفين", "موظفاً") : `${branch.ps.length}`}</span>
-                </div>
-                {branch.ps.slice().sort((left, right) => right.score - left.score).map((person) => (
-                  <div key={person.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1.4fr) 34px", gap: 9, alignItems: "center", borderBottom: `1px solid ${PERF_SOFT}`, paddingBottom: 7 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{person.name}</span>
-                    <span style={{ height: 8, background: "var(--nv-inset)", borderRadius: 999, overflow: "hidden", minWidth: 0 }}><span style={{ display: "block", height: "100%", width: `${person.score}%`, background: person.ok ? accentOf(person.score) : QUIET }} /></span>
-                    <span dir="ltr" style={{ ...mono, fontSize: 12, color: person.ok ? textOf(person.score) : PERF_MUTED, textAlign: "right" }}>{person.score}</span>
-                      </div>
-                ))}
                         </div>
-            ))}
           </section>
-        </>
       ) : null}
     </div>
   );

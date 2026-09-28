@@ -39,8 +39,8 @@ export default function SafetyApprovalControl({
             gap: 10,
             padding: "12px 12px",
             borderRadius: 11,
-            border: "1px solid #BBF7D0",
-            background: "#ECFDF3",
+            border: "1px solid var(--nv-ok-line)",
+            background: "var(--nv-accent-soft)",
           }}
         >
           <span
@@ -54,13 +54,13 @@ export default function SafetyApprovalControl({
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
-              border: "1px solid #BBF7D0",
+              border: "1px solid var(--nv-ok-line)",
             }}
           >
             <BadgeCheck style={{ width: 15, height: 15 }} strokeWidth={1.75} />
           </span>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "#15803D" }}>{L("معتمد", "Approved")}</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)" }}>{L("معتمد", "Approved")}</div>
             <div style={{ fontSize: 12, color: NAVY, marginTop: 2, lineHeight: 1.5 }}>
               {rec.approvedBy}
               {rec.approvedAt ? (
@@ -91,8 +91,8 @@ export default function SafetyApprovalControl({
           <div
             style={{
               borderRadius: 11,
-              border: "1px solid #FECACA",
-              background: "#FEF2F2",
+              border: "1px solid var(--nv-line)",
+              background: "var(--nv-bad-soft)",
               padding: "11px 12px",
             }}
           >
@@ -104,13 +104,13 @@ export default function SafetyApprovalControl({
                 gap: 6,
                 fontSize: 11,
                 fontWeight: 600,
-                color: "#B91C1C",
+                color: "var(--nv-bad-ink)",
               }}
             >
               <AlertTriangle style={{ width: 14, height: 14 }} strokeWidth={1.75} />
               {L("موقوف عن الاعتماد", "Approval blocked")}
             </p>
-            <p style={{ margin: "6px 0 0", fontSize: 11, lineHeight: 1.55, color: "#991B1B" }}>
+            <p style={{ margin: "6px 0 0", fontSize: 11, lineHeight: 1.55, color: "var(--nv-bad-ink)" }}>
               {L(
                 `${hazardCount} مخاطر مفتوحة — أغلقها من بطاقة العمل أولًا.`,
                 `${hazardCount} open hazard${hazardCount === 1 ? "" : "s"} — close them in the work card first.`
@@ -124,7 +124,7 @@ export default function SafetyApprovalControl({
                 gap: 5,
                 fontSize: 10,
                 fontWeight: 600,
-                color: "#B91C1C",
+                color: "var(--nv-bad-ink)",
                 opacity: 0.85,
               }}
             >
@@ -138,8 +138,8 @@ export default function SafetyApprovalControl({
           <div
             style={{
               borderRadius: 11,
-              border: "1px solid #FDE68A",
-              background: "#FFFBEB",
+              border: "1px solid var(--nv-line)",
+              background: "var(--nv-warn-soft)",
               padding: "11px 12px",
             }}
           >
@@ -151,7 +151,7 @@ export default function SafetyApprovalControl({
                 gap: 6,
                 fontSize: 11,
                 fontWeight: 600,
-                color: "#B45309",
+                color: "var(--nv-warn-ink)",
               }}
             >
               <AlertTriangle style={{ width: 14, height: 14 }} strokeWidth={1.75} />
@@ -159,7 +159,7 @@ export default function SafetyApprovalControl({
             </p>
             <ul style={{ margin: 0, paddingInlineStart: 18, display: "flex", flexDirection: "column", gap: 4 }}>
               {softIssues.map((issue) => (
-                <li key={issue} style={{ fontSize: 11, lineHeight: 1.5, color: "#92400E" }}>
+                <li key={issue} style={{ fontSize: 11, lineHeight: 1.5, color: "var(--nv-warn-ink)" }}>
                   {issue}
                 </li>
               ))}

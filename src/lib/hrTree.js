@@ -489,6 +489,13 @@ export function ensureHrPosts(data) {
   return changed;
 }
 
+function servePlace(name) {
+  return String(name || "")
+    .replace(/^فرع\s+/, "")
+    .replace("المقر الرئيسي", "المقر")
+    .trim();
+}
+
 function joinNames(names) {
   const list = (names || []).map((name) => String(name || "").trim()).filter(Boolean);
   if (!list.length) return "";
@@ -499,23 +506,28 @@ function joinNames(names) {
 
 export function regionalSeatLine(seat, data, ar = true) {
   if (seat?.hrPost !== "regional") return "";
-  const names = (Array.isArray(seat.hrServesStationIds) ? seat.hrServesStationIds : []).map((id) => {
+  const names = (Array.isArray(seat.hrServesStationIds) ? seat.hrServesStationIds : []).slice(0, HR_SPAN_MAX).map((id) => {
     const station = (data?.stations || []).find((item) => String(item.id) === String(id));
-    return station?.name || "";
+    return servePlace(station?.name || "");
   });
   const label = names.filter(Boolean).join(" + ");
   if (!label) return "";
-  return ar ? `يخدم: ${label}` : `Serves: ${label}`;
+  const count = names.filter(Boolean).length;
+  return ar
+    ? `يخدم: ${label} · ${count} من ${HR_SPAN_MAX}`
+    : `Serves: ${label} · ${count} of ${HR_SPAN_MAX}`;
 }
 
 export function coordinateLine(employee, data, ar = true) {
   if (!isRegionalHr(employee, data)) return "";
-  const names = servedStationIds(data, employee.id).map((id) => {
+  const names = servedStationIds(data, employee.id).slice(0, HR_SPAN_MAX).map((id) => {
     const station = (data?.stations || []).find((item) => String(item.id) === id);
-    return station?.name || "";
+    return servePlace(station?.name || "");
   }).filter(Boolean);
   if (!names.length) return "";
-  return ar ? `يخدم: ${names.join(" + ")}` : `Serves: ${names.join(" + ")}`;
+  return ar
+    ? `يخدم: ${names.join(" + ")} · ${names.length} من ${HR_SPAN_MAX}`
+    : `Serves: ${names.join(" + ")} · ${names.length} of ${HR_SPAN_MAX}`;
 }
 
 export function branchCoordinateLine(data, station, ar = true) {

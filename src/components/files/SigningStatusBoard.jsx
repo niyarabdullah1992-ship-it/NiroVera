@@ -117,8 +117,8 @@ function DeleteRequestDialog({ request, ar, busy, onClose, onConfirm }) {
             onClick={() => onConfirm(reason.trim())}
             style={{
               ...ui.btnPrimary,
-              background: "#B91C1C",
-              borderColor: "#B91C1C",
+              background: "var(--nv-bad-fill)",
+              borderColor: "var(--nv-bad-line)",
               opacity: canSubmit ? 1 : 0.45,
               cursor: canSubmit ? "pointer" : "not-allowed",
               display: "inline-flex",
@@ -137,7 +137,7 @@ function DeleteRequestDialog({ request, ar, busy, onClose, onConfirm }) {
         title={ar ? "إقرار الحذف" : "Deletion acknowledgement"}
         hint={ar ? "البوابة: السبب مطلوب. يظهر في سجل التدقيق باسم المنشئ." : "Named gate: a reason is required. It stays in the audit trail under the creator’s name."}
       >
-        <div style={{ fontSize: 12, color: "#991B1B", lineHeight: 1.65 }}>
+        <div style={{ fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.65 }}>
           {ar
             ? `«${request.fileName}» لا يُمسح. يغادر الحالة ويبقى في الأرشيف وسجل التدقيق مع التوقيعات والامتناع والبصمة.`
             : `“${request.fileName}” is not wiped. It leaves Status and stays in the archive and audit trail with signatures, refusals, and the fingerprint.`}
@@ -206,9 +206,9 @@ function PartyRow({ signer, index, ar, link, onCopyLink, copiedKey, canReopen, o
           width: 16,
           height: 16,
           borderRadius: "50%",
-          border: `1.5px solid ${signed ? BRAND : refused ? "#DC2626" : skipped ? "#B45309" : BORDER}`,
+          border: `1.5px solid ${signed ? BRAND : refused ? "var(--nv-bad-line)" : skipped ? "var(--nv-warn-line)" : BORDER}`,
           background: signed ? BRAND : "transparent",
-          color: signed ? "#fff" : refused ? "#DC2626" : skipped ? "#B45309" : MUTED,
+          color: signed ? "#fff" : refused ? "var(--nv-bad-ink)" : skipped ? "var(--nv-warn-ink)" : MUTED,
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
@@ -357,7 +357,7 @@ function RequestCard({
                 margin: 0,
                 fontSize: 12,
                 lineHeight: 1.6,
-                color: state === "rejected" ? "#B91C1C" : "#92400E",
+                color: state === "rejected" ? "var(--nv-bad-ink)" : "var(--nv-warn-ink)",
                 display: "flex",
                 gap: 6,
                 alignItems: "flex-start",
@@ -392,7 +392,7 @@ function RequestCard({
               <summary style={{ cursor: "pointer", fontSize: 11, fontWeight: 600, color: NAVY }}>{ar ? "الإثبات" : "Proof"}</summary>
               <div style={{ ...signProofGrid, marginTop: 8, padding: "8px 10px" }}>
                 <span style={{ color: MUTED }}>{ar ? "الحالة" : "State"}</span>
-                <span style={{ color: cooling ? "#B45309" : INK, fontWeight: 500 }}>{proofState(state, cooling, ar)}</span>
+                <span style={{ color: cooling ? "var(--nv-warn-ink)" : INK, fontWeight: 500 }}>{proofState(state, cooling, ar)}</span>
                 <span style={{ color: MUTED }}>{ar ? "بصمة الملف" : "SHA-256"}</span>
                 <span dir="ltr" style={{ color: request.finalHash ? INK : MUTED, wordBreak: "break-all", textAlign: ar ? "right" : "left" }}>{hashLine}</span>
                 <span style={{ color: MUTED }}>{ar ? "المرجع" : "Ref"}</span>
@@ -477,7 +477,7 @@ function RequestCard({
                 type="button"
                 disabled={deletingId === request.id}
                 onClick={() => onRemove(request)}
-                style={{ ...signGhostBtn, padding: "7px 12px", color: "#DC2626", marginInlineStart: "auto" }}
+                style={{ ...signGhostBtn, padding: "7px 12px", color: "var(--nv-bad-ink)", marginInlineStart: "auto" }}
               >
                 {deletingId === request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 style={{ width: 14, height: 14 }} />}
                 {ar ? "حذف" : "Delete"}

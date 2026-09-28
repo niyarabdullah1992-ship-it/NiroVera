@@ -3,33 +3,26 @@ import { Link } from "react-router-dom";
 import Logo from "@/components/Logo";
 import LegalCertificatesStrip from "@/components/landing/LegalCertificatesStrip";
 import {
-  BORDER,
-  MUTED,
-  NAVY_FILL,
   ON_NAVY,
   ON_NAVY_MUTED,
   SURFACE,
-  publicBtnGhost,
-  publicBtnPrimary,
   usePublicPlatformTheme,
 } from "@/lib/publicChrome";
 
 const PAD = { paddingLeft: 48, paddingRight: 48 };
 
 const NAV = [
-  { href: "/#proof-cycle", ar: "سلسلة الإثبات", en: "Proof cycle" },
-  { href: "/#apps", ar: "التطبيقات", en: "Apps" },
-  { href: "/#enterprise-pilot", ar: "للمؤسسات", en: "Enterprise" },
-  { href: "/#mhrsd", ar: "الامتثال", en: "Compliance" },
-  { href: "/#pricing", ar: "الأسعار", en: "Pricing" },
-  { to: "/mobile", ar: "تطبيق الميدان", en: "Field app" },
+  { href: "/#sections", ar: "الأقسام", en: "Sections" },
+  { href: "/#how", ar: "سلسلة الإثبات", en: "Proof chain" },
+  { href: "/#pricing", ar: "الاشتراك", en: "Subscription" },
+  { href: "/#mhrsd", ar: "الامتثال الوزاري", en: "Ministry compliance" },
 ];
 
 const FOOT_PLATFORM = [
-  { href: "/#proof-cycle", ar: "سلسلة الإثبات", en: "Proof cycle" },
-  { href: "/#apps", ar: "التطبيقات", en: "Apps" },
-  { href: "/#mhrsd", ar: "الامتثال", en: "Compliance" },
-  { href: "/#pricing", ar: "الأسعار", en: "Pricing" },
+  { href: "/#sections", ar: "الأقسام", en: "Sections" },
+  { href: "/#how", ar: "سلسلة الإثبات", en: "Proof chain" },
+  { href: "/#pricing", ar: "الاشتراك", en: "Subscription" },
+  { href: "/#mhrsd", ar: "الامتثال الوزاري", en: "Ministry compliance" },
   { to: "/mobile", ar: "تطبيق الميدان", en: "Field app" },
 ];
 
@@ -58,9 +51,8 @@ export function MarketingHeader({ ar, loggedIn, onToggleLang, ctaHref = "/#prici
         position: "sticky",
         top: 0,
         zIndex: 50,
-        background: "color-mix(in oklab, var(--nv-soft, #F7F8FA) 92%, transparent)",
-        backdropFilter: "blur(12px)",
-        borderBottom: `1px solid ${BORDER}`,
+        background: "#0F2A1C",
+        borderBottom: "1px solid #123A28",
         ...PAD,
         paddingTop: 0,
         paddingBottom: 0,
@@ -68,29 +60,29 @@ export function MarketingHeader({ ar, loggedIn, onToggleLang, ctaHref = "/#prici
     >
       <div style={{ maxWidth: 1240, margin: "0 auto", height: 68, display: "flex", alignItems: "center", gap: 20 }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", color: "inherit", textDecoration: "none", flexShrink: 0 }}>
-          <Logo size={28} />
+          <Logo size={28} onDark />
         </Link>
         <nav data-nv="navlinks" style={{ flex: 1, display: "flex", alignItems: "center", gap: 22, minWidth: 0 }}>
           {NAV.map((l) =>
             l.to ? (
-              <Link key={l.to} to={l.to} style={{ fontSize: 13, color: MUTED, textDecoration: "none", whiteSpace: "nowrap" }}>{T(l.ar, l.en)}</Link>
+              <Link key={l.to} to={l.to} style={{ fontSize: 13, color: "#D6E6DC", textDecoration: "none", whiteSpace: "nowrap" }}>{T(l.ar, l.en)}</Link>
             ) : (
-              <a key={l.href} href={l.href} style={{ fontSize: 13, color: MUTED, textDecoration: "none", whiteSpace: "nowrap" }}>{T(l.ar, l.en)}</a>
+              <a key={l.href} href={l.href} style={{ fontSize: 13, color: "#D6E6DC", textDecoration: "none", whiteSpace: "nowrap" }}>{T(l.ar, l.en)}</a>
             )
           )}
         </nav>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           {onToggleLang ? (
-            <button type="button" onClick={onToggleLang} style={{ ...publicBtnGhost, fontWeight: 600, color: MUTED, fontSize: 12 }}>
+            <button type="button" onClick={onToggleLang} style={{ height: 34, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.28)", background: "transparent", color: "#E7F0EA", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>
               {ar ? "EN" : "ع"}
             </button>
           ) : null}
-          <Link to={loggedIn ? "/app" : "/login"} style={publicBtnGhost}>
-            {loggedIn ? T("المنصة", "Platform") : T("دخول", "Sign in")}
-          </Link>
-          <a href={ctaHref} style={publicBtnPrimary}>
-            {ctaLabel || T("أنشئ مساحة شركتك", "Create your company space")}
+          <a href={loggedIn ? "/app" : "/#login"} style={{ height: 36, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,.35)", color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+            {loggedIn ? T("ادخل المنصة", "Enter the platform") : T("تسجيل الدخول", "Sign in")}
           </a>
+          <Link to={ctaHref?.startsWith("/") && !ctaHref.includes("#") ? ctaHref : "/pricing"} style={{ height: 36, display: "inline-flex", alignItems: "center", padding: "0 14px", borderRadius: 8, background: "#C8A45A", color: "#3A2A08", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
+            {ctaLabel || T("ابدأ التجربة", "Start the trial")}
+          </Link>
         </div>
       </div>
     </header>
@@ -100,7 +92,7 @@ export function MarketingHeader({ ar, loggedIn, onToggleLang, ctaHref = "/#prici
 export function MarketingFooter({ ar, lang }) {
   const T = (a, e) => (ar ? a : e);
   return (
-    <footer data-nv="pad" style={{ padding: "48px 48px 36px", background: NAVY_FILL, color: ON_NAVY }}>
+    <footer data-nv="pad" style={{ padding: "28px 48px", background: "#0F2A1C", color: "#A9CDB8" }}>
       <div style={{ maxWidth: 1240, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32 }}>
         <div data-nv="foot-grid" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 36, alignItems: "start" }}>
           <div>

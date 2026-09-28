@@ -48,7 +48,7 @@ export default function LeaveBalanceCard({ profile, requests }) {
                 {l.used}
               </span>
             </div>
-            <div style={{ height: "6px", borderRadius: "5px", background: "#F1F5F9", overflow: "hidden", marginTop: "8px" }}>
+            <div style={{ height: "6px", borderRadius: "5px", background: "var(--nv-soft)", overflow: "hidden", marginTop: "8px" }}>
               <span style={l.barStyle} />
             </div>
             <div style={{ marginTop: 8 }}>
@@ -61,7 +61,7 @@ export default function LeaveBalanceCard({ profile, requests }) {
         const carry = annualBalanceSplit(profile, requests, onDate);
         if (!carry.carryTotal) return null;
         return (
-          <div style={{ marginTop: 16, padding: "12px 0 0", borderTop: "1px solid #F1F5F9" }}>
+          <div style={{ marginTop: 16, padding: "12px 0 0", borderTop: "1px solid var(--nv-line)" }}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
               <span style={{ fontSize: 13, color: NAVY }}>{ar ? "ترحيل السنة السابقة" : "Previous-year carry"}</span>
               <span dir="ltr" style={{ fontSize: 12, fontFamily: "'IBM Plex Sans',sans-serif", color: MUTED }}>

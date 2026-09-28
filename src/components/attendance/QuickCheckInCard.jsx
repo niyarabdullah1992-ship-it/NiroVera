@@ -143,9 +143,9 @@ export default function QuickCheckInCard({ currentUser, company }) {
         <div style={{ display: "flex", justifyContent: "center" }}>
           {checkedOut ? (
             <div style={{
-              width: 104, height: 104, borderRadius: "50%", border: "3px solid #BBF7D0",
-              background: "#ECFDF3", display: "flex", flexDirection: "column", alignItems: "center",
-              justifyContent: "center", color: "#15803D",
+              width: 104, height: 104, borderRadius: "50%", border: "3px solid var(--nv-ok-line)",
+              background: "var(--nv-ok-soft)", display: "flex", flexDirection: "column", alignItems: "center",
+              justifyContent: "center", color: "var(--nv-ok-ink)",
             }}
             >
               <CheckCircle2 style={{ width: 28, height: 28, marginBottom: 4 }} />
@@ -160,7 +160,7 @@ export default function QuickCheckInCard({ currentUser, company }) {
                 width: 104,
                 height: 104,
                 borderRadius: "50%",
-                border: checkedIn ? `3px solid ${ACCENT}` : "3px solid color-mix(in oklab, #1E9E63 35%, #fff)",
+                border: checkedIn ? `3px solid ${ACCENT}` : "3px solid var(--nv-ok-line)",
                 background: checkedIn ? CARD : ACCENT,
                 color: checkedIn ? ACCENT : "#fff",
                 display: "flex",
@@ -202,7 +202,7 @@ export default function QuickCheckInCard({ currentUser, company }) {
             </Link>
           )}
           {error ? (
-            <p style={{ margin: 0, fontSize: 11, color: "#DC2626" }}>{error}</p>
+            <p style={{ margin: 0, fontSize: 11, color: "var(--nv-bad-ink)" }}>{error}</p>
           ) : (
             <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
               {ar ? "اضغط عندما تصل. الموقع يظهر عند الفشل فقط." : "Tap when you arrive. Location appears only on failure."}
@@ -213,7 +213,7 @@ export default function QuickCheckInCard({ currentUser, company }) {
             <p style={{ margin: 0, fontSize: 11, color: MUTED }}>
               {t("checkedInAt")} {new Date(attendance.check_in_at).toLocaleTimeString()}
               {attendance.status === "late" && Number(attendance.late_minutes) > 0 && (
-                <span style={{ color: "#B45309" }}> · {t("lateBy")} {attendance.late_minutes} {t("minutesUnit")}</span>
+                <span style={{ color: "var(--nv-warn-ink)" }}> · {t("lateBy")} {attendance.late_minutes} {t("minutesUnit")}</span>
               )}
               {attendance.station_id && (
                 <span dir="auto"> · <MapPin style={{ width: 11, height: 11, display: "inline", verticalAlign: "middle" }} /> {data?.stations?.find((s) => s.id === attendance.station_id)?.name || ""}</span>
@@ -233,7 +233,7 @@ export default function QuickCheckInCard({ currentUser, company }) {
               style={{
                 height: 32,
                 borderRadius: 8,
-                border: "1px solid #E2E8F0",
+                border: "1px solid var(--nv-line)",
                 background: CARD,
                 color: NAVY,
                 fontSize: 11,

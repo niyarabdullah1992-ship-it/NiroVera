@@ -92,7 +92,7 @@ export default function OpsReassignModal({
         </label>
 
         {options.length === 0 && (
-          <div className="mt-2 text-[11px] leading-6" style={{ color: "#B45309" }}>
+          <div className="mt-2 text-[11px] leading-6" style={{ color: "var(--nv-warn-ink)" }}>
             {ar
               ? "لا موظف آخر ظاهر في نطاق هذا الفرع."
               : "No other visible employee in this station scope."}
@@ -128,7 +128,7 @@ export default function OpsReassignModal({
           </div>
         </div>
         {start && end && end < start && (
-          <div className="mt-2 text-[11px] leading-6" style={{ color: "#B45309" }}>
+          <div className="mt-2 text-[11px] leading-6" style={{ color: "var(--nv-warn-ink)" }}>
             {ar ? "النهاية يجب أن تكون في يوم البداية أو بعده." : "End must be on or after the start date."}
           </div>
         )}
@@ -164,7 +164,7 @@ export default function OpsReassignModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[#E2E8F0] px-3 py-1.5 text-xs"
+            className="rounded-lg border border-[var(--nv-line)] px-3 py-1.5 text-xs"
             style={{ color: MUTED, background: CARD }}
           >
             {ar ? "إلغاء" : "Cancel"}

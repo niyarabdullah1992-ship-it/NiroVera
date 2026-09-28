@@ -51,7 +51,7 @@ export function ProofAttachPicker({ files = [], onChange, ar = true }) {
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
       {list.map((file, index) => (
         <span key={`${file.name || "file"}-${index}`} style={chip}>
-          <span style={kind("#FEF2F2", "#DC2626", "#FECACA")}>{fileKind(file.name, file.type)}</span>
+          <span style={kind("var(--nv-bad-soft)", "#DC2626", "var(--nv-bad-soft)")}>{fileKind(file.name, file.type)}</span>
           <span style={{ fontSize: 12, color: NAVY }}>{file.name || (ar ? "مرفق" : "File")}</span>
           <button
             type="button"
@@ -111,12 +111,12 @@ export default function ProofAttachments({
             <span key={item.id || `${item.name}-${index}`} style={chip}>
               {item.url ? (
                 <a href={item.url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
-                  <span style={kind(label === "IMAGE" ? "#ECFDF3" : "#FEF2F2", label === "IMAGE" ? "#15803D" : "#DC2626", label === "IMAGE" ? "#BBF7D0" : "#FECACA")}>{label}</span>
+                  <span style={kind(label === "IMAGE" ? "var(--nv-accent-soft)" : "var(--nv-bad-soft)", label === "IMAGE" ? "#15803D" : "#DC2626", label === "IMAGE" ? "#BBF7D0" : "var(--nv-bad-soft)")}>{label}</span>
                   <span style={{ fontSize: 12, color: NAVY }}>{item.name || (ar ? "مستند" : "Document")}</span>
                 </a>
               ) : (
                 <>
-                  <span style={kind("#F1F5F9", MUTED, BORDER)}>{ar ? "محلي" : "LOCAL"}</span>
+                  <span style={kind("var(--nv-soft)", MUTED, BORDER)}>{ar ? "محلي" : "LOCAL"}</span>
                   <span style={{ fontSize: 12, color: NAVY }}>{item.name || (ar ? "مستند" : "Document")}</span>
                 </>
               )}
@@ -144,7 +144,7 @@ export default function ProofAttachments({
           );
         })}
         {canEdit && onAdd ? (
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 13px", borderRadius: 10, border: "1px dashed #CBD5E1", background: CARD, fontSize: 12, color: MUTED, cursor: "pointer" }}>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 13px", borderRadius: 10, border: "1px dashed var(--nv-line)", background: CARD, fontSize: 12, color: MUTED, cursor: "pointer" }}>
             <span>{ar ? "أرفق مستندًا" : "Attach a document"}</span>
             <input
               type="file"

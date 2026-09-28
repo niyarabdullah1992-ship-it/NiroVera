@@ -27,7 +27,7 @@ export default function LocationMapModal({ row, t, onClose }) {
         role="dialog"
         aria-modal="true"
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid #E2E8F0" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid var(--nv-line)" }}>
           <h3 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: NAVY }}>
             {t("employeeLocation")} / {t("stationLocation")}
           </h3>
@@ -35,7 +35,7 @@ export default function LocationMapModal({ row, t, onClose }) {
             <X style={{ width: 14, height: 14 }} />
           </button>
         </div>
-        <div style={{ padding: "8px 16px", fontSize: 11, color: MUTED, borderBottom: "1px solid #F1F5F9" }}>
+        <div style={{ padding: "8px 16px", fontSize: 11, color: MUTED, borderBottom: "1px solid var(--nv-line)" }}>
           {t("distanceMeters")}: {row.distance_meters ?? "—"}m
         </div>
         <div style={{ height: 288, position: "relative" }}>

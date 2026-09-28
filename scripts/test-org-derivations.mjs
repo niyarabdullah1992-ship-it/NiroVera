@@ -10,6 +10,8 @@ import {
   derivePermissionMatrix,
   deriveEscalationFromBranches,
   deriveAutoBranchEscalationChain,
+  branchEscalationCardLine,
+  branchEscalationHasChain,
   isDelegationActive,
   deriveDelegationStatus,
   wouldCreateCycle,
@@ -96,5 +98,50 @@ const vacantChain = deriveAutoBranchEscalationChain("port", {
 });
 assert.equal(vacantChain[0].employeeId, "m1");
 assert.equal(vacantChain[1].employeeId, "o1");
+
+const portLine = branchEscalationCardLine("port", workplace);
+assert.equal(portLine[0].employeeId, "a1");
+assert.equal(portLine[0].vacant, false);
+assert.equal(branchEscalationHasChain("port", workplace), true);
+
+const vacantLine = branchEscalationCardLine("port", {
+  ...workplace,
+  employees: workplace.employees.map((item) => ({ ...item, actingAssignments: [] })),
+  stations: [
+    ...workplace.stations,
+    { id: "st_hr_unit", name: "وحدة الموارد البشرية", fixedUnit: "hr", parentStationId: "hq", managerId: "ghost" },
+  ],
+});
+assert.equal(vacantLine[0].vacant, true);
+assert.equal(vacantLine[0].employeeId, "");
+assert.equal(vacantLine[0].stationId, "port");
+assert.equal(vacantLine[1].employeeId, "m1");
+assert.equal(vacantLine.some((step) => step.stationId === "st_hr_unit"), false);
+assert.equal(branchEscalationHasChain("port", {
+  employees: [],
+  stations: [{ id: "port", name: "الميناء" }],
+}), false);
+
+const throughHr = branchEscalationCardLine("port", {
+  employees: [{ id: "o1", name: "المالك", role: "owner" }],
+  ownerId: "o1",
+  stations: [
+    { id: "hq", name: "الرئاسة", isCompanyRoot: true, managerId: "o1" },
+    { id: "st_hr_unit", name: "وحدة الموارد البشرية", fixedUnit: "hr", parentStationId: "hq" },
+    { id: "port", name: "الميناء", parentStationId: "st_hr_unit" },
+  ],
+});
+assert.equal(throughHr.some((step) => step.stationId === "st_hr_unit"), false);
+assert.equal(throughHr[0].vacant, true);
+assert.equal(throughHr.some((step) => step.employeeId === "o1"), true);
+
+const { escalationLiveStations } = await import("../src/lib/stationTree.js");
+const live = escalationLiveStations([
+  { id: "st_hr_unit", name: "وحدة الموارد البشرية", fixedUnit: "hr" },
+  { id: "region", name: "منطقة", unitKind: "manager" },
+  { id: "port", name: "الميناء" },
+  { id: "closed", name: "مغلق", active: false },
+]);
+assert.deepEqual(live.map((station) => station.id), ["port"]);
 
 console.log("org derivations ok");

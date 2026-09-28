@@ -80,11 +80,11 @@ function Swatches({ options, value, onPick, onFree, freeLabel }) {
           color: MUTED,
         }}
       >
-        <span style={{ width: 14, height: 14, borderRadius: "50%", background: value || "#14284B", boxShadow: `0 0 0 1px ${BORDER}` }} />
-        <span dir="ltr" style={{ ...mono, fontSize: 10 }}>{(value || "#14284B").toUpperCase()}</span>
+        <span style={{ width: 14, height: 14, borderRadius: "50%", background: value || "var(--nv-navy)", boxShadow: `0 0 0 1px ${BORDER}` }} />
+        <span dir="ltr" style={{ ...mono, fontSize: 10 }}>{(value || "#0B3D27").toUpperCase()}</span>
         <input
           type="color"
-          value={value || "#14284B"}
+          value={value || "#0B3D27"}
           onChange={(event) => onFree(event.target.value)}
           style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
         />
@@ -211,13 +211,13 @@ export default function StampStudio({ companyId, companyName, currentUser, ar, o
         gridTemplateRows: "56px minmax(0, 1fr)",
         minHeight: 520,
         height: "calc(100dvh - 132px)",
-        background: "#fafbfc",
-        border: "1px solid #dfe3ea",
+        background: "var(--nv-soft)",
+        border: "1px solid var(--nv-line)",
         borderRadius: 14,
         boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
         overflow: "hidden",
         fontSize: 13,
-        color: "#14213d",
+        color: "var(--nv-ink)",
         width: "min(1320px, 100%)",
         margin: "0 auto",
       }}
@@ -231,7 +231,7 @@ export default function StampStudio({ companyId, companyName, currentUser, ar, o
           </span>
         </div>
         <div style={{ marginInlineStart: "auto", display: "flex", alignItems: "center", gap: 12, flex: "none" }}>
-          <span style={{ fontSize: 12, color: saved ? "#15803D" : MUTED, display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <span style={{ fontSize: 12, color: saved ? "var(--nv-ok-ink)" : MUTED, display: "inline-flex", alignItems: "center", gap: 5 }}>
             {saved ? <Check style={{ width: 13, height: 13 }} /> : null}
             {saved ? (ar ? "محفوظ كختمك" : "Saved as your seal") : (ar ? "تغييرات غير محفوظة" : "Unsaved changes")}
           </span>
@@ -300,7 +300,7 @@ export default function StampStudio({ companyId, companyName, currentUser, ar, o
                         fontSize: 12,
                         padding: "12px 8px 10px",
                         borderRadius: 10,
-                        border: `1.5px solid ${on ? "#14213d" : BORDER}`,
+                        border: `1.5px solid ${on ? "var(--nv-navy)" : BORDER}`,
                         background: on ? SURFACE : CARD,
                         color: INK,
                         fontWeight: on ? 600 : 400,
@@ -317,7 +317,7 @@ export default function StampStudio({ companyId, companyName, currentUser, ar, o
                           height: wide >= 1 ? Math.max(16, 56 / wide) : 40,
                           maxHeight: 42,
                           background: on ? config.paper : CARD,
-                          border: `1.5px solid ${on ? config.accent : "#C7CCD6"}`,
+                          border: `1.5px solid ${on ? config.accent : "var(--nv-line)"}`,
                           borderRadius: item.id === "seal" ? "50%" : item.id === "line" ? 0 : 6,
                           clipPath: item.id === "hex" ? "polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%)" : "none",
                           display: "block",
@@ -416,7 +416,7 @@ export default function StampStudio({ companyId, companyName, currentUser, ar, o
                       {config.logoUrl ? (ar ? "استبدال" : "Replace") : (ar ? "رفع شعار" : "Upload logo")}
                     </button>
                     {config.logoUrl ? (
-                      <button type="button" onClick={() => patch({ logoUrl: "" })} style={{ ...signGhostBtn, color: "#DC2626" }}>
+                      <button type="button" onClick={() => patch({ logoUrl: "" })} style={{ ...signGhostBtn, color: "var(--nv-bad-ink)" }}>
                         <Trash2 style={{ width: 14, height: 14 }} />
                         {ar ? "حذف" : "Remove"}
                       </button>
@@ -459,7 +459,7 @@ export default function StampStudio({ companyId, companyName, currentUser, ar, o
                             fontSize: 13,
                             padding: "8px 4px",
                             borderRadius: 10,
-                            border: `1px solid ${on ? "#14213d" : BORDER}`,
+                            border: `1px solid ${on ? "var(--nv-navy)" : BORDER}`,
                             background: on ? SURFACE : CARD,
                             color: INK,
                             fontWeight: on ? 600 : 400,
@@ -509,7 +509,7 @@ export default function StampStudio({ companyId, companyName, currentUser, ar, o
               </p>
             </SigningSlab>
 
-            {error ? <p style={{ margin: 0, fontSize: 12, color: "#DC2626", lineHeight: 1.6 }}>{error}</p> : null}
+            {error ? <p style={{ margin: 0, fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.6 }}>{error}</p> : null}
             <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.7, textAlign: "center" }}>
               {ar
                 ? "ختم واحد لكل شخص. الحفظ يستبدل الختم السابق ويبقى المستندات الموقّعة سابقًا كما هي."

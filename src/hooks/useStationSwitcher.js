@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { visibleStations } from "@/lib/permissions";
-import { isHrUnit } from "@/lib/stationTree";
+import { headerScopeBranches, isNestedWorkplace, nearestHeaderBranch } from "@/lib/stationTree";
 import {
   fallbackStationId,
   headerAllowsAllStations,
@@ -40,7 +40,10 @@ export default function useStationSwitcher() {
   useEffect(() => subscribeStationScope(() => setRecentIds(getRecentStationScopes())), []);
 
   const stations = useMemo(() => {
-    const visible = (data && currentUser ? visibleStations(currentUser, data) : []).filter((station) => !isHrUnit(station));
+    const visible = headerScopeBranches(
+      data && currentUser ? visibleStations(currentUser, data) : [],
+      data?.stations || [],
+    );
     if (!locksToOwn) return visible;
     const own = fallbackStationId({
       employee: currentUser,
@@ -63,9 +66,20 @@ export default function useStationSwitcher() {
         .map((id) => stations.find((s) => String(s.id) === String(id)))
         .filter(Boolean)
         .filter((s) => String(s.id) !== String(scope))
-        .slice(0, 4),
+        .slice(0, 3),
     [recentIds, stations, scope],
   );
+
+  useEffect(() => {
+    if (!scope || scope === "all") return;
+    const tree = data?.stations || [];
+    const node = tree.find((station) => String(station.id) === String(scope));
+    if (!node || !isNestedWorkplace(node, tree)) return;
+    const branch = nearestHeaderBranch(node, tree);
+    if (!branch || String(branch.id) === String(scope)) return;
+    if (!stations.some((station) => String(station.id) === String(branch.id))) return;
+    setStationScope(String(branch.id));
+  }, [scope, data, stations]);
 
   const apply = useCallback((id) => setStationScope(id), []);
 

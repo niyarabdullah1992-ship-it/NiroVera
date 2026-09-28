@@ -3,7 +3,7 @@
  * alert count for the open admin section on each one.
  * Zero stays quiet. Names come from the station register, never literals.
  */
-import { expandStationScope, extraCoverageStationIds, userManagesStation, workplaceStations } from "./stationTree.js";
+import { expandStationScope, extraCoverageStationIds, headerScopeBranches, userManagesStation, workplaceStations } from "./stationTree.js";
 import { managedDutyEmployees, requestInboxEmployees, requestInboxMaySee, seesAllDutyStations } from "./dutyScope.js";
 import { managerScopeSection, pageLocksToOwnWorkplace } from "./stationScopePolicy.js";
 import { managerPendingInbox, requestEmployeeStationId } from "./requestWorkspace.js";
@@ -44,7 +44,7 @@ function stronger(a, b) {
 export function administeredWorkplaceStations(user, data) {
   if (!user || !data) return [];
   const workplaces = workplaceStations(data.stations || []);
-  if (seesAllDutyStations(user, data)) return workplaces;
+  if (seesAllDutyStations(user, data)) return headerScopeBranches(workplaces, data.stations);
   const hr = hrStationScope(user, data);
   if (hr === null && (
     hasHrPerm(user, data, "manage_leave")
@@ -63,7 +63,10 @@ export function administeredWorkplaceStations(user, data) {
   });
   if (!seeds.size) return [];
   const expanded = new Set(expandStationScope(data.stations || [], [...seeds]).map(String));
-  return workplaces.filter((station) => expanded.has(String(station.id)));
+  return headerScopeBranches(
+    workplaces.filter((station) => expanded.has(String(station.id))),
+    data.stations,
+  );
 }
 
 function requestPeople(user, data) {

@@ -5,7 +5,7 @@ import { computeLeaveDays, hasLeaveAttachment, LEAVE_TYPES } from "@/lib/leaveDe
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
 import { ChromeBox } from "@/components/shared/IdentityCard";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
-import { MUTED, NAVY, OK, WARN, BAD, NEUTRAL, emptyState, statCard, SURFACE } from "@/lib/platformStyles";
+import { CARD, MUTED, NAVY, OK, WARN, BAD, NEUTRAL, emptyState, statCard, SURFACE } from "@/lib/platformStyles";
 import StatutoryItem from "@/components/labor/StatutoryItem";
 import { countAr, requestReplyCopy, requestReplyHref } from "@/lib/requestWorkspace";
 
@@ -109,7 +109,7 @@ export default function AttendanceLeaveRequests({
     gap: "10px",
     padding: "10px 18px",
     background: SURFACE,
-    borderBottom: "1px solid #E2E8F0",
+    borderBottom: "1px solid var(--nv-line)",
     fontSize: "10px",
     letterSpacing: "0.06em",
     color: MUTED,
@@ -121,14 +121,14 @@ export default function AttendanceLeaveRequests({
     gridTemplateColumns: COLS,
     gap: "10px",
     padding: "12px 18px",
-    borderBottom: "1px solid #F1F5F9",
+    borderBottom: "1px solid var(--nv-line)",
     alignItems: "center",
   };
 
   const replyLink = {
     padding: "5px 13px",
     borderRadius: 10,
-    border: "1px solid #E2E8F0",
+    border: "1px solid var(--nv-line)",
     background: CARD,
     color: NAVY,
     fontSize: "11px",
@@ -154,7 +154,7 @@ export default function AttendanceLeaveRequests({
                 fontWeight: 600,
                 lineHeight: 1,
                 textAlign: "right",
-                color: s.warn ? "#B45309" : NAVY,
+                color: s.warn ? "var(--nv-warn-ink)" : NAVY,
               }}
             >
               {s.value}
@@ -165,7 +165,7 @@ export default function AttendanceLeaveRequests({
       </div>
 
       <ChromeBox padded={false}>
-        <div style={{ padding: "14px 18px", borderBottom: "1px solid #E2E8F0" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: "12px", flexWrap: "wrap" }}>
             <div style={{ flex: "1 1 240px" }}>
               <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
@@ -183,7 +183,7 @@ export default function AttendanceLeaveRequests({
                 padding: "8px 15px",
                 borderRadius: 10,
                 border: "none",
-                background: "#1E9E63",
+                background: "var(--nv-btn-fill)",
                 color: "#fff",
                 fontSize: "12px",
                 fontWeight: 600,
@@ -237,7 +237,7 @@ export default function AttendanceLeaveRequests({
                   <div
                     key={`${request.employee.id}-${request.id}`}
                     style={rowCell}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "#F7F8FA"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--nv-soft)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                   >
                     <div style={{ minWidth: 0 }}>

@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { BORDER, CARD, MUTED, NAVY, NAVY_FILL, SURFACE } from "@/lib/platformStyles";
+import { BAD, BORDER, CARD, MUTED, NAVY, NAVY_FILL, OK, WARN } from "@/lib/platformStyles";
+
+const STATE_PILL = { ok: OK, bad: BAD, wait: WARN, leave: WARN };
 
 const RING_TONE = {
-  ok: { mark: "✓", color: "#137a49", bg: "color-mix(in oklab, #1E9E63 10%, #fff)", border: "color-mix(in oklab, #1E9E63 28%, #fff)", weight: 400 },
-  bad: { mark: "✕", color: "#8a1c2b", bg: "#fbf1f2", border: "#e9c4c9", weight: 700 },
-  wait: { mark: "—", color: "#8a6516", bg: "#fdf6e8", border: "#ecd9a8", weight: 600 },
-  leave: { mark: "◌", color: "#3d2410", bg: "#efe0cc", border: "#d4b896", weight: 700 },
+  ok: { mark: "✓", color: "var(--nv-ok-ink)", bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)", weight: 400 },
+  bad: { mark: "✕", color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)", weight: 700 },
+  wait: { mark: "—", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", weight: 600 },
+  leave: { mark: "◌", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", weight: 700 },
 };
 
 /** Real product chain — shift → punch → geofence → register. Not NFC / Passkey. */
@@ -163,19 +165,17 @@ const CHAIN_COPY = {
   },
 };
 
-export function AttendanceProofChain({ ar, scheduled, punched, geofence, register, onLeave = false }) {
+export function AttendanceProofChain({ ar, scheduled, punched, geofence, register, onLeave = false, onManual }) {
   const copy = ar ? CHAIN_COPY.ar : CHAIN_COPY.en;
   const rings = buildAttendanceRings({ ar, scheduled, punched, geofence, register, onLeave });
 
   return (
-    <section className="nv-att-card" style={{ background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 3 }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "سلسلة الإثبات" : "Proof chain"}</span>
-        <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.7 }}>{copy.sub}</span>
-      </div>
+    <section className="nv-att-card" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 2 }}>
+      <strong style={{ fontSize: 14, color: NAVY, paddingBottom: 6 }}>{ar ? "سلسلة البصمة" : "Punch chain"}</strong>
       {rings.map((item) => {
         const text = copy.items[item.tag];
         const note = text[item.state] || text.wait || text.ok;
+        const met = item.state === "ok";
         const RowTag = item.tag === "01" ? Link : "div";
         return (
           <RowTag
@@ -184,58 +184,61 @@ export function AttendanceProofChain({ ar, scheduled, punched, geofence, registe
             className="nv-att-chain-row"
             data-nv-att-line
             style={{
-              padding: "13px 20px",
-              borderBottom: `1px solid ${BORDER}`,
               display: "grid",
-              gridTemplateColumns: "auto auto minmax(0,1fr) auto",
-              gap: 11,
-              alignItems: "start",
+              gridTemplateColumns: "30px minmax(0,1fr) auto",
+              gap: 10,
+              alignItems: "center",
+              padding: "8px 0",
+              borderTop: "1px solid var(--nv-line2, #F2F5F3)",
               textDecoration: "none",
               color: "inherit",
-              background: item.state === "bad" ? "#fbf1f2" : item.state === "ok" ? "transparent" : SURFACE,
+              background: "transparent",
             }}
           >
-            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: MUTED, paddingTop: 3 }}>{item.tag}</span>
-            <span style={{
-              width: 18,
-              height: 18,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 11,
-              fontWeight: 700,
-              color: item.color,
-              border: `1px solid ${item.border}`,
-              background: item.bg,
-            }}
+            <span
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: "50%",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontFamily: "'IBM Plex Mono', monospace",
+                fontWeight: 700,
+                fontSize: 10.5,
+                background: met ? "var(--nv-ok-fill, #3C7D50)" : "var(--nv-card)",
+                color: met ? "#fff" : "var(--nv-ink2)",
+                border: met ? "none" : "1.5px dashed var(--nv-line)",
+              }}
             >
-              {item.mark}
+              {met ? "✓" : item.tag}
             </span>
-            <span style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-              <span style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{item.title}</span>
-                <span style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: item.color,
-                  background: item.bg,
-                  border: `1px solid ${item.border}`,
-                  padding: "1px 7px",
-                  whiteSpace: "nowrap",
-                }}
-                >
-                  {copy.state[item.state]}
-                </span>
-              </span>
-              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>{note}</span>
-              {item.tag === "01" ? (
-                <span style={{ fontSize: 11, fontWeight: 600, color: "#137a49" }}>{ar ? "مصدر الوقت ←" : "Clock source →"}</span>
-              ) : null}
+            <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+              <strong style={{ fontSize: 12.5, color: NAVY }}>{item.title}</strong>
+              <span style={{ fontSize: 11, color: MUTED }}>{note}</span>
             </span>
-            <span style={{ fontSize: 10, color: MUTED, whiteSpace: "nowrap", paddingTop: 3 }}>{copy.by[text.by]}</span>
+            <span style={{ ...(STATE_PILL[item.state] || WARN), borderRadius: 999, whiteSpace: "nowrap" }}>{copy.state[item.state]}</span>
           </RowTag>
         );
       })}
+      <button
+        type="button"
+        onClick={onManual}
+        style={{
+          marginTop: 8,
+          alignSelf: "flex-start",
+          fontFamily: "inherit",
+          fontSize: 12,
+          fontWeight: 600,
+          color: "var(--nv-ok-ink, #2F6B43)",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: 0,
+        }}
+      >
+        {ar ? "نسيت البصمة؟ اطلب تسجيل حضور يدوي ←" : "Missed the punch? Ask for a manual record →"}
+      </button>
     </section>
   );
 }
@@ -291,7 +294,7 @@ export function AttendanceEmployeeGuide({ ar }) {
             <div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 14, fontWeight: 700, color: NAVY }}>{item.title}</span>
-                <span style={{ fontSize: 11, color: "#137a49", fontWeight: 600 }}>{item.cost}</span>
+                <span style={{ fontSize: 11, color: "var(--nv-ok-ink)", fontWeight: 600 }}>{item.cost}</span>
               </div>
               <p style={{ margin: "5px 0 0", fontSize: 12, color: MUTED, lineHeight: 1.8 }}>{item.note}</p>
             </div>
@@ -324,7 +327,7 @@ export function AttendanceEmployeeGuide({ ar }) {
               {ar ? "لا يراه الموظف. يظهر للمدير عند الفشل." : "Hidden from the employee. Shown to the manager on failure."}
             </span>
           </span>
-          <span style={{ fontSize: 12, color: "#137a49", fontWeight: 600, whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 12, color: "var(--nv-ok-ink)", fontWeight: 600, whiteSpace: "nowrap" }}>
             {open ? (ar ? "إخفاء" : "Hide") : (ar ? "إظهار" : "Show")}
           </span>
         </button>

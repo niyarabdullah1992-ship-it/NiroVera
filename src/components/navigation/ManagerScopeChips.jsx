@@ -8,11 +8,11 @@ import { buildManagerScopeModel } from "@/lib/managerScopeChips";
 import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
 import { useRailSide } from "@/lib/railSide";
 
-const INK = "#14213D";
-const LINE = "#E4E8EE";
-const PLAIN = "#137A49";
-const WARN = "#C9962B";
-const BAD = "#8A1C2B";
+const INK = "var(--nv-ink)";
+const LINE = "var(--nv-line)";
+const PLAIN = "var(--nv-btn-fill)";
+const WARN = "var(--nv-warn-fill)";
+const BAD = "var(--nv-bad-fill)";
 
 const TONE_BG = { plain: PLAIN, warn: WARN, bad: BAD };
 
@@ -61,8 +61,8 @@ function Chip({ id, label, on, count, tone, onPick }) {
         height: 32,
         padding: "0 12px",
         borderRadius: 999,
-        border: `1px solid ${on ? "#000" : LINE}`,
-        background: on ? "#000" : "#fff",
+        border: `1px solid ${on ? "var(--nv-navy)" : LINE}`,
+        background: on ? "var(--nv-navy)" : "var(--nv-card)",
         color: on ? "#fff" : INK,
         fontSize: 12.5,
         fontWeight: 650,

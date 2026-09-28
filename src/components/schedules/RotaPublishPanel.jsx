@@ -158,7 +158,7 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
         height: "38px",
         padding: "0 16px",
         borderRadius: 10,
-        background: "#E2E8F0",
+        background: "var(--nv-line)",
         color: MUTED,
         border: "none",
         fontSize: "12px",

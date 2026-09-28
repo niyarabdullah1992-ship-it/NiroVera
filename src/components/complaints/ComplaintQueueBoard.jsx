@@ -225,7 +225,7 @@ export default function ComplaintQueueBoard({ lang = "ar", stationScope = "all",
           ))}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "10px 16px", borderTop: "1px solid #E2E8F0", borderBottom: scopedReports.length ? "1px solid #E2E8F0" : "none", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "10px 16px", borderTop: "1px solid var(--nv-line)", borderBottom: scopedReports.length ? "1px solid var(--nv-line)" : "none", flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>{voiceCopy.list}</div>
             <div style={{ fontSize: "11px", color: MUTED, marginTop: "2px" }}>
@@ -245,7 +245,7 @@ export default function ComplaintQueueBoard({ lang = "ar", stationScope = "all",
           const tier = ar ? r.currentTierLabelAr : r.currentTierLabelEn;
           const slaColor = r.slaBreached ? "#DC2626" : r.slaHoursLeft != null && r.slaHoursLeft < 8 ? "#B45309" : MUTED;
           return (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 18px", borderBottom: "1px solid #F1F5F9", flexWrap: "wrap" }}>
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
               <span style={kindStyle}>{ar ? (KIND_LABEL[kindKey]?.ar || kindKey) : (KIND_LABEL[kindKey]?.en || kindKey)}</span>
               <div style={{ flex: "1 1 260px", minWidth: 0 }}>
                 <div style={{ fontSize: "13px", fontWeight: 500, color: NAVY }}>{r.title}</div>
@@ -270,7 +270,7 @@ export default function ComplaintQueueBoard({ lang = "ar", stationScope = "all",
                   borderRadius: "9px",
                   border: `1px solid ${ACCENT}`,
                   background: CARD,
-                  color: "#14683F",
+                  color: "var(--nv-ok-ink)",
                   fontSize: "12px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -291,7 +291,7 @@ export default function ComplaintQueueBoard({ lang = "ar", stationScope = "all",
                 <button type="button" disabled={busy} onClick={() => close(r)} style={{
                   padding: "7px 13px",
                   borderRadius: "9px",
-                  border: "1px solid #E2E8F0",
+                  border: "1px solid var(--nv-line)",
                   background: CARD,
                   color: MUTED,
                   fontSize: "12px",
@@ -325,12 +325,12 @@ export default function ComplaintQueueBoard({ lang = "ar", stationScope = "all",
                       height: "6px",
                       borderRadius: "50%",
                       background: st.state === "done" ? "#CBD5E1" : st.state === "current" ? ACCENT : "transparent",
-                      border: st.state === "pending" ? "1px solid #CBD5E1" : "none",
+                      border: st.state === "pending" ? "1px solid var(--nv-line)" : "none",
                       flexShrink: 0,
                     }} />
                     {ar ? st.labelAr : st.labelEn}
                     {i < (r.steps?.length || 0) - 1 && (
-                      <span style={{ width: "14px", height: "1px", background: "#E2E8F0", margin: "0 2px" }} />
+                      <span style={{ width: "14px", height: "1px", background: "var(--nv-line)", margin: "0 2px" }} />
                     )}
                   </span>
                 ))}

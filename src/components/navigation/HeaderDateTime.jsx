@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { CalendarDays } from "lucide-react";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
 import TimeFormatToggle from "@/components/attendance/TimeFormatToggle";
-import { BORDER, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 
 function clockLocale(lang) {
   return lang === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB";
@@ -21,7 +21,7 @@ export default function HeaderDateTime({ lang }) {
   const dateLabel = now.toLocaleDateString(locale, {
     weekday: "long",
     day: "numeric",
-    month: "short",
+    month: "long",
     calendar: "gregory",
   });
   const timeLabel = now.toLocaleTimeString(locale, {
@@ -33,51 +33,51 @@ export default function HeaderDateTime({ lang }) {
   return (
     <div
       dir={ar ? "rtl" : "ltr"}
+      className="nv-clock-pill"
       title={dateLabel}
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 8,
-        height: 34,
-        paddingInlineStart: 10,
-        paddingInlineEnd: 6,
-        borderRadius: 10,
-        border: `1px solid ${BORDER}`,
-        background: SURFACE,
+        height: 32,
+        borderRadius: 9,
+        padding: "0 3px 0 12px",
+        gap: 10,
         flexShrink: 0,
         maxWidth: "100%",
       }}
     >
+      <CalendarDays style={{ width: 16, height: 16, color: "#3C7D50", flexShrink: 0 }} strokeWidth={1.75} />
       <span
         className="hidden lg:inline"
         style={{
-          fontSize: 11,
-          color: MUTED,
-          fontWeight: 500,
+          fontSize: 12.5,
+          color: "var(--nv-ink, #111418)",
+          fontWeight: 600,
           whiteSpace: "nowrap",
         }}
       >
         {dateLabel}
       </span>
-      <span className="hidden lg:block" style={{ width: 1, height: 14, background: BORDER, flexShrink: 0 }} />
+      <span className="hidden lg:block" aria-hidden style={{ width: 1, height: 18, background: "var(--nv-line, #D5DCD8)", flexShrink: 0 }} />
       <time
         dateTime={now.toISOString()}
         dir="ltr"
         style={{
-          fontFamily: "'IBM Plex Sans',sans-serif",
+          fontFamily: "'IBM Plex Mono', monospace",
           fontSize: 13,
           fontWeight: 600,
-          color: NAVY,
-          letterSpacing: "-0.02em",
+          color: "var(--nv-ink, #111418)",
           fontVariantNumeric: "tabular-nums",
           whiteSpace: "nowrap",
           lineHeight: 1,
+          unicodeBidi: "isolate",
         }}
       >
         {timeLabel}
       </time>
-      <span className="hidden md:block" style={{ width: 1, height: 14, background: BORDER, flexShrink: 0 }} />
-      <TimeFormatToggle lang={lang} compact />
+      <span className="nv-clock-track" style={{ display: "flex", gap: 2, borderRadius: 7, padding: 2 }}>
+        <TimeFormatToggle lang={lang} compact />
+      </span>
     </div>
   );
 }

@@ -12,13 +12,12 @@ import {
   LayoutDashboard,
   ListTodo,
   LogOut,
-  Menu,
   MessageCircle,
+  MessageSquare,
   Network,
   PenLine,
   Settings2,
   ShieldCheck,
-  User,
   UserCog,
   UserPlus,
   Wallet,
@@ -26,17 +25,16 @@ import {
 import { RAIL_SIDE_COLOR, railBadgeTone, railFooter } from "@/lib/suiteRailFrame";
 import { railFaceHref, routeRailSide, useExplicitRailSide, useSetRailSide } from "@/lib/railSide";
 
-const LINE = "#E4E9E6";
-const INK = "#111418";
-const MUTED = "#555C66";
-const LABEL = "#2F6B43";
-const SELECT_BG = "#E6F2EA";
-const DANGER = "#9B2335";
+const LINE = "var(--nv-line)";
+const INK = "var(--nv-ink)";
+const MUTED = "var(--nv-ink3)";
+const LABEL = "var(--nv-ok-ink)";
+const SELECT_BG = "var(--nv-accent-soft)";
+const DANGER = "var(--nv-bad-ink)";
 const GOLD = RAIL_SIDE_COLOR.employee;
 const GREEN = RAIL_SIDE_COLOR.manage;
 
 const ICONS = {
-  file: User,
   duty: CalendarClock,
   signing: PenLine,
   performance: BarChart3,
@@ -77,16 +75,17 @@ function Row({ to, icon: Icon, label, active, badge, badgeKind, glow, title, onC
     fontFamily: "inherit",
     textAlign: "start",
     display: "grid",
-    gridTemplateColumns: "19px minmax(0,1fr) auto",
+    gridTemplateColumns: "15px minmax(0,1fr) auto",
     gap: 10,
     alignItems: "center",
-    padding: "0 11px",
-    height: 32,
+    padding: "0 9px",
+    height: 30,
+    fontSize: 12,
     border: "none",
-    borderRadius: 6,
+    borderRadius: 5,
     background: danger ? "transparent" : (active ? SELECT_BG : "transparent"),
-    color: danger ? DANGER : (active ? GREEN : INK),
-    boxShadow: active && !danger ? `inset -3px 0 0 ${GREEN}` : "none",
+    color: danger ? DANGER : (active ? LABEL : INK),
+    boxShadow: "none",
     cursor: "pointer",
     width: "100%",
     boxSizing: "border-box",
@@ -96,8 +95,8 @@ function Row({ to, icon: Icon, label, active, badge, badgeKind, glow, title, onC
 
   const inner = (
     <>
-      <Icon style={{ width: 19, height: 19, color: "inherit" }} strokeWidth={active ? 2 : 1.7} />
-      <span className="nv-rail-name" style={{ fontSize: 12.5, fontWeight: active ? 600 : 500, color: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+      <Icon style={{ width: 15, height: 15, color: "inherit" }} strokeWidth={active ? 2 : 1.7} />
+      <span className="nv-rail-name" style={{ fontSize: 12, fontWeight: active ? 700 : 500, color: "inherit", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
         {label}
       </span>
       {badge != null ? (
@@ -172,8 +171,11 @@ export default function SuiteRail({
   canOpenSettings,
   onSettings,
   onLogout,
+  onFeedback,
   user,
   data,
+  companyName = "",
+  logoUrl = "",
 }) {
   const ar = lang !== "en";
   const navigate = useNavigate();
@@ -183,12 +185,12 @@ export default function SuiteRail({
   const setRailSide = useSetRailSide();
   const sideId = pinned && sides.some((side) => side.id === pinned) ? pinned : routeSide;
   const side = sides.find((item) => item.id === sideId) || sides[0] || null;
-  const accent = side?.id === "employee" ? GOLD : GREEN;
   const footer = railFooter(user, data, lang, side?.id === "manage" ? "manage" : "employee");
   const showCard = !!(footer.name || footer.line);
   const [open, setOpen] = React.useState(() => {
     try { return window.localStorage.getItem("nv7-nav") !== "closed"; } catch { return true; }
   });
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const toggleRail = () => {
     setOpen((current) => {
       const next = !current;
@@ -208,47 +210,57 @@ export default function SuiteRail({
         type="button"
         className="nv-rail-fold"
         aria-expanded={open}
-        aria-label={ar ? (open ? "طي الشريط" : "فتح الشريط") : (open ? "Collapse navigation" : "Expand navigation")}
+        aria-label={ar ? (open ? "طيّ القائمة" : "فتح القائمة") : (open ? "Collapse navigation" : "Expand navigation")}
         onClick={toggleRail}
         style={{
-          width: 30,
-          height: 30,
-          margin: "0 4px 6px",
-          borderRadius: 6,
-          border: `1px solid ${LINE}`,
-          background: "#fff",
-          color: INK,
-          display: "inline-flex",
+          flex: "none",
+          alignSelf: "stretch",
+          display: "flex",
           alignItems: "center",
-          justifyContent: "center",
+          gap: 10,
+          height: 26,
+          padding: "0 9px",
+          marginBottom: 4,
+          borderRadius: 5,
+          border: `1px solid ${LINE}`,
+          background: "transparent",
+          color: MUTED,
+          fontSize: 11,
+          fontWeight: 600,
           cursor: "pointer",
-          alignSelf: open ? "flex-start" : "center",
+          fontFamily: "inherit",
+          textAlign: "start",
         }}
       >
-        <Menu style={{ width: 16, height: 16 }} strokeWidth={1.8} />
+        <span style={{ fontSize: 16, lineHeight: 1, width: 17, textAlign: "center" }}>{open ? "»" : "☰"}</span>
+        <span className="nv-rail-fold-label">{ar ? (open ? "طيّ القائمة" : "فتح القائمة") : (open ? "Collapse" : "Expand")}</span>
       </button>
       <Link
         to="/app"
         className="nv-rail-brand"
         title="NiroVera"
         style={{
-          height: 58,
           display: "flex",
           alignItems: "center",
-          gap: 10,
-          padding: "2px 8px 14px",
+          gap: 9,
+          padding: "0 6px 10px",
           borderBottom: `1px solid ${LINE}`,
           background: "transparent",
           color: INK,
           textDecoration: "none",
           flexShrink: 0,
           borderRadius: 0,
+          marginBottom: 8,
         }}
       >
-        <span style={{ width: 30, height: 30, borderRadius: 6, background: "#3C7D50", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#fff", fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, fontSize: 12 }}>NV</span>
+        {logoUrl ? (
+          <img src={logoUrl} alt="" style={{ width: 30, height: 30, borderRadius: 6, objectFit: "contain", flexShrink: 0, border: `1px solid ${LINE}`, background: "var(--nv-card)" }} />
+        ) : (
+          <span style={{ width: 30, height: 30, borderRadius: 6, background: "#3C7D50", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "#fff", fontFamily: "'IBM Plex Mono',monospace", fontWeight: 700, fontSize: 13 }}>NV</span>
+        )}
         <span className="nv-rail-brand-copy" style={{ display: "flex", flexDirection: "column", lineHeight: 1.35, minWidth: 0 }}>
-          <span style={{ fontSize: 16, fontWeight: 700, color: INK }}>{ar ? "نيروفيرا" : "NiroVera"}</span>
-          <span style={{ fontSize: 10.5, color: MUTED }}>NiroVera · {ar ? "منظومة الموارد البشرية" : "HR system"}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: INK, letterSpacing: "-.01em" }}>{ar ? "نيروفيرا" : "NiroVera"}</span>
+          <span style={{ fontSize: 10, color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{companyName || (ar ? "منظومة الموارد البشرية" : "HR system")}</span>
         </span>
       </Link>
 
@@ -281,7 +293,7 @@ export default function SuiteRail({
                   height: 26,
                   borderRadius: 5,
                   border: on ? "none" : `1px solid ${LINE}`,
-                  background: on ? fill : "#FFFFFF",
+                  background: on ? fill : "var(--nv-card)",
                   color: on ? ink : INK,
                   fontFamily: "inherit",
                   fontSize: 13,
@@ -306,9 +318,30 @@ export default function SuiteRail({
         {(side?.groups || []).map((group) => (
           <div key={group.id} className="nv-rail-cluster" style={{ display: "flex", flexDirection: "column", borderBottom: `1px solid ${LINE}`, padding: "7px 0" }}>
             {group.label ? (
-              <span className="nv-rail-cluster-name" style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: ".04em", color: LABEL, padding: "10px 10px 4px", whiteSpace: "nowrap" }}>
-                {group.label}
-              </span>
+              group.id === "mine" && footer.to ? (
+                <Link
+                  to={footer.to}
+                  className="nv-rail-cluster-name"
+                  title={ar ? "افتح ملفي" : "Open my file"}
+                  aria-current={location.pathname === footer.to ? "page" : undefined}
+                  onClick={() => { setMenuOpen(false); setRailSide("employee"); }}
+                  style={{
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                    letterSpacing: ".04em",
+                    color: location.pathname === footer.to ? "#3C7D50" : LABEL,
+                    padding: "10px 10px 4px",
+                    whiteSpace: "nowrap",
+                    textDecoration: "none",
+                  }}
+                >
+                  {group.label}
+                </Link>
+              ) : (
+                <span className="nv-rail-cluster-name" style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: ".04em", color: LABEL, padding: "10px 10px 4px", whiteSpace: "nowrap" }}>
+                  {group.label}
+                </span>
+              )
             ) : null}
             {group.items.map((item) => (
               <Row
@@ -328,40 +361,132 @@ export default function SuiteRail({
       </nav>
 
       <div className="nv-rail-cluster" style={{ display: "flex", flexDirection: "column", borderTop: `1px solid ${LINE}`, padding: "7px 0", flexShrink: 0 }}>
-        {canOpenSettings ? (
+        {canOpenSettings && side?.id !== "employee" ? (
           <Row icon={Settings2} label={ar ? "الإعدادات" : "Settings"} onClick={onSettings} />
         ) : null}
         <Row icon={LogOut} label={ar ? "تسجيل الخروج" : "Sign out"} onClick={onLogout} danger />
         {showCard ? (
           <div
             className="nv-rail-foot-card"
+            data-rail-footer="file"
+            data-active={footer.to && location.pathname === footer.to ? "true" : "false"}
             style={{
               margin: "8px 4px 0",
-              padding: "10px",
-              borderRadius: 6,
-              border: `1px solid ${LINE}`,
-              background: "#F7F8FA",
+              padding: "10px 8px",
+              borderRadius: 8,
               display: "flex",
               alignItems: "center",
-              gap: 8,
+              gap: 10,
+              position: "relative",
             }}
           >
-            <span style={{ minWidth: 0, flex: 1 }}>
-              {footer.name ? (
-                <span className="nv-rail-foot-copy" style={{ display: "block", fontSize: 13, fontWeight: 700, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {footer.name}
+            <Link
+              to={footer.to || "/app/employees"}
+              aria-label={footer.name || (ar ? "الملف" : "File")}
+              title={ar ? "افتح ملفي" : "Open my file"}
+              aria-current={footer.to && location.pathname === footer.to ? "page" : undefined}
+              onClick={() => { setMenuOpen(false); setRailSide("employee"); }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                minWidth: 0,
+                flex: 1,
+                textDecoration: "none",
+                color: "inherit",
+              }}
+            >
+              {footer.initials ? (
+                <span style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: side?.id === "employee" ? "#C8A45A" : "#3C7D50",
+                  color: side?.id === "employee" ? "#111418" : "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                  flexShrink: 0,
+                }}
+                >
+                  {footer.initials}
                 </span>
               ) : null}
-              {footer.line ? (
-                <span className="nv-rail-foot-copy" style={{ display: "block", marginTop: 2, fontSize: 11, color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {footer.line}
-                </span>
-              ) : null}
-            </span>
-            {footer.initials ? (
-              <span style={{ width: 36, height: 36, borderRadius: "50%", background: accent, color: side?.id === "employee" ? "#14213D" : "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
-                {footer.initials}
+              <span className="nv-rail-foot-copy" style={{ minWidth: 0, flex: 1, lineHeight: 1.4 }}>
+                {footer.name ? (
+                  <span style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {footer.name}
+                  </span>
+                ) : null}
+                {footer.line ? (
+                  <span className="nv-rail-foot-line" style={{ display: "block", fontSize: 11, color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {footer.line}
+                  </span>
+                ) : null}
               </span>
+            </Link>
+            {open ? (
+              <button
+                type="button"
+                className="nv-rail-foot-copy"
+                aria-expanded={menuOpen}
+                aria-label={ar ? "حسابي" : "My account"}
+                onClick={() => setMenuOpen((value) => !value)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "#3C7D50",
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: "pointer",
+                  padding: 0,
+                  flexShrink: 0,
+                  fontFamily: "inherit",
+                }}
+              >
+                ‹
+              </button>
+            ) : null}
+            {menuOpen ? (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "calc(100% + 6px)",
+                  insetInlineStart: 0,
+                  width: 220,
+                  background: "var(--nv-card)",
+                  border: `1px solid ${LINE}`,
+                  borderRadius: 8,
+                  zIndex: 30,
+                  overflow: "hidden",
+                  boxShadow: "0 18px 44px rgba(12,20,16,.18)",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => { setMenuOpen(false); onFeedback?.(); }}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 12px",
+                    border: "none",
+                    background: "transparent",
+                    color: INK,
+                    fontSize: 12.5,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    textAlign: "start",
+                  }}
+                >
+                  <MessageSquare style={{ width: 14, height: 14, color: "#3C7D50" }} strokeWidth={1.75} />
+                  {ar ? "التقييم والاقتراحات" : "Feedback"}
+                </button>
+              </div>
             ) : null}
           </div>
         ) : null}

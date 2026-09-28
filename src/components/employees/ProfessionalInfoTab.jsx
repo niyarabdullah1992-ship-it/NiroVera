@@ -278,7 +278,7 @@ export default function ProfessionalInfoTab({
                   <div>
                     <div style={{ fontSize: "11px", color: MUTED }}>
                       {ar ? "الفرع" : "Branch"}
-                      <span style={{ marginInlineStart: 6, fontSize: 10, color: "#94A3B8" }}>
+                      <span style={{ marginInlineStart: 6, fontSize: 10, color: "var(--nv-muted)" }}>
                         {ar ? "· من الهيكل" : "· from org tree"}
                       </span>
                     </div>

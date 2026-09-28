@@ -65,8 +65,8 @@ export default function ProofCardsSummary({ cards = [], ar }) {
               </div>
             )}
             {card.completion && (
-              <div className="space-y-1 rounded border border-[#E2E8F0] bg-[#F7F8FA] p-2 text-[11px] font-body">
-                <p className="text-[#15803D]">
+              <div className="space-y-1 rounded border border-[var(--nv-line)] bg-[var(--nv-soft)] p-2 text-[11px] font-body">
+                <p className="text-[var(--nv-ok-ink)]">
                   {ar ? `إثبات إنهاء العمل — اعتماد: ${card.completion.approvedByName}` : `Completion proof — approved by: ${card.completion.approvedByName}`}
                 </p>
                 <div className="flex flex-wrap gap-1.5">

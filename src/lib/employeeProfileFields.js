@@ -4,6 +4,7 @@
  * Professional-info fields are management / HR only.
  */
 
+import { readGosiRegisteredAt, readNationality, readSubscriberNumber } from "./facts/index.js";
 import { isRamadanHoursSubject } from "./laborRules.js";
 
 export function profileGender(profile) {
@@ -146,11 +147,11 @@ export const PROFILE_GROUPS = [
     id: "socialInsurance",
     ar: "التأمينات والضمان الصحي",
     en: "GOSI and medical cover",
-    noteAr: "التسجيل في التأمينات إلزامي، والتأمين الطبي وفق مجلس الضمان الصحي.",
-    noteEn: "GOSI registration is mandatory; medical insurance follows CCHI rules.",
+    noteAr: "رقم المشترك على ملف الموظف. رقم منشأة التأمينات على الشركة في امتثال الوزارة. التأمين الطبي وفق مجلس الضمان الصحي.",
+    noteEn: "The subscriber number is on the employee file. The GOSI establishment number is on the company, in Ministry compliance. Medical insurance follows CCHI rules.",
     ruleId: "compliance.gosi.employeeRate",
     fields: [
-      { key: "gosiNumber", ar: "رقم التأمينات الاجتماعية (GOSI)", en: "GOSI number", dir: "ltr", ruleId: "compliance.gosi.employeeRate" },
+      { key: "gosiNumber", ar: "رقم المشترك", en: "Subscriber number", dir: "ltr", ruleId: "compliance.gosi.employeeRate" },
       { key: "medicalInsuranceNumber", ar: "رقم التأمين الطبي", en: "Medical insurance number", dir: "ltr" },
       { key: "medicalInsuranceExpiry", ar: "انتهاء التأمين الطبي", en: "Medical insurance expiry", type: "date", expiry: true },
       { key: "medicalExam", ar: "الفحص الطبي", en: "Medical exam", optional: true },
@@ -220,9 +221,13 @@ export const PROFILE_GROUPS = [
 ];
 
 export function profileFieldValue(profile = {}, key, employee) {
+  const person = { ...(employee || {}), profile };
   if (key === "position") return profile.position || employee?.position || "";
   if (key === "contractType") return profile.contractType || profile.contract?.type || "";
   if (key === "idExpiry") return profile.idExpiry || profile.iqamaExpiry || "";
+  if (key === "gosiNumber") return readSubscriberNumber(person);
+  if (key === "gosiRegisteredAt") return readGosiRegisteredAt(person);
+  if (key === "nationality") return readNationality(person);
   return profile[key] || "";
 }
 

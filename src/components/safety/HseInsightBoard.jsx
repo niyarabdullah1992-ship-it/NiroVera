@@ -17,20 +17,20 @@ import {
 import { ChromeBox } from "@/components/shared/IdentityCard";
 
 const PYRAMID_LEVELS = [
-  { key: "fatality", ar: "وفاة", en: "Fatality", color: "#991B1B" },
-  { key: "lti", ar: "حادث يفقد وقت عمل", en: "Lost-time injury", color: "#DC2626" },
+  { key: "fatality", ar: "وفاة", en: "Fatality", color: "var(--nv-bad-ink)" },
+  { key: "lti", ar: "حادث يفقد وقت عمل", en: "Lost-time injury", color: "var(--nv-bad-ink)" },
   { key: "restrict", ar: "تقييد عمل / علاج", en: "Restricted / medical", color: "#EA580C" },
   { key: "firstAid", ar: "إسعافات أولية", en: "First aid", color: "#F59E0B" },
   { key: "nearMiss", ar: "قرب حادث", en: "Near miss", color: "#CA8A04" },
   { key: "hazard", ar: "خطر مفتوح", en: "Open hazard", color: MUTED },
-  { key: "observation", ar: "ملاحظة سلامة", en: "Safety observation", color: "#94A3B8" },
+  { key: "observation", ar: "ملاحظة سلامة", en: "Safety observation", color: "var(--nv-muted)" },
 ];
 
 function riskTone(score) {
-  if (score >= 15) return { bg: "#FEF2F2", fg: "#991B1B", bd: "#FECACA" };
+  if (score >= 15) return { bg: "#FEF2F2", fg: "var(--nv-bad-ink)", bd: "#FECACA" };
   if (score >= 8) return { bg: "#FFF7ED", fg: "#C2410C", bd: "#FED7AA" };
-  if (score >= 4) return { bg: "#FFFBEB", fg: "#B45309", bd: "#FDE68A" };
-  return { bg: "#ECFDF3", fg: "#15803D", bd: "#BBF7D0" };
+  if (score >= 4) return { bg: "var(--nv-warn-soft)", fg: "#B45309", bd: "var(--nv-warn-soft)" };
+  return { bg: "var(--nv-accent-soft)", fg: "#15803D", bd: "#BBF7D0" };
 }
 
 /**
@@ -217,12 +217,12 @@ export default function HseInsightBoard({ lang = "ar", stationScope }) {
               <div style={{ fontSize: "9px", letterSpacing: "0.08em", color: MUTED, fontWeight: 600, textAlign: "center", marginTop: "6px" }}>
                 {ar ? "الاحتمال" : "LIKELIHOOD"}
               </div>
-              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "12px", paddingTop: "11px", borderTop: "1px solid #F1F5F9" }}>
+              <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "12px", paddingTop: "11px", borderTop: "1px solid var(--nv-line)" }}>
                 {[
-                  { label: ar ? "منخفض" : "Low", c: "#BBF7D0" },
-                  { label: ar ? "متوسط" : "Medium", c: "#FDE68A" },
+                  { label: ar ? "منخفض" : "Low", c: "var(--nv-ok-line)" },
+                  { label: ar ? "متوسط" : "Medium", c: "var(--nv-line)" },
                   { label: ar ? "عالٍ" : "High", c: "#FED7AA" },
-                  { label: ar ? "حرج" : "Critical", c: "#FECACA" },
+                  { label: ar ? "حرج" : "Critical", c: "var(--nv-bad-soft)" },
                 ].map((b) => (
                   <span key={b.label} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "10px", color: MUTED }}>
                     <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: b.c, flexShrink: 0 }} />
@@ -257,7 +257,7 @@ export default function HseInsightBoard({ lang = "ar", stationScope }) {
                 alignItems: "center",
                 gap: "12px",
                 padding: "12px 0",
-                borderTop: "1px solid #F1F5F9",
+                borderTop: "1px solid var(--nv-line)",
                 flexWrap: "wrap",
               }}
             >
@@ -274,7 +274,7 @@ export default function HseInsightBoard({ lang = "ar", stationScope }) {
       </ChromeBox>
 
       {/* PTW / CAPA / competency / drills — secondary detail, not a competing board */}
-      <details style={{ padding: "8px 0 0", borderTop: "1px solid #E2E8F0" }}>
+      <details style={{ padding: "8px 0 0", borderTop: "1px solid var(--nv-line)" }}>
         <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 600, color: NAVY, listStyle: "none" }}>
           {ar ? "تصاريح · CAPA · كفاءة · تمارين — تفصيل" : "PTW · CAPA · competency · drills — detail"}
         </summary>
@@ -294,7 +294,7 @@ export default function HseInsightBoard({ lang = "ar", stationScope }) {
             </div>
           ) : (
             counts.permits.map((p, i) => (
-              <div key={p.id || i} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 0", borderTop: "1px solid #F1F5F9", flexWrap: "wrap" }}>
+              <div key={p.id || i} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 0", borderTop: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
                 <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: ACCENT, flexShrink: 0 }} />
                 <span style={{ flex: "1 1 210px", minWidth: 0, fontSize: "12px", fontWeight: 600, color: NAVY }}>{p.type || p.title}</span>
                 <span style={OK}>{p.status || (ar ? "ساري" : "Live")}</span>
@@ -313,7 +313,7 @@ export default function HseInsightBoard({ lang = "ar", stationScope }) {
             </div>
           ) : (
             counts.capa.map((c, i) => (
-              <div key={c.ref || c.id || i} style={{ borderTop: "1px solid #F1F5F9", padding: "10px 0", display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
+              <div key={c.ref || c.id || i} style={{ borderTop: "1px solid var(--nv-line)", padding: "10px 0", display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
                 <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: "11px", fontWeight: 600, color: NAVY }} dir="ltr">{c.ref || `CAPA-${i + 1}`}</span>
                 <span style={WARN}>{c.status || (ar ? "مفتوح" : "Open")}</span>
               </div>
@@ -329,8 +329,8 @@ export default function HseInsightBoard({ lang = "ar", stationScope }) {
             </div>
           ) : (
             competency.map((c) => (
-              <div key={c.name} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", borderTop: "1px solid #F1F5F9", padding: "8px 0" }}>
-                <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: c.ok ? ACCENT : "#DC2626", flexShrink: 0 }} />
+              <div key={c.name} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "10px", borderTop: "1px solid var(--nv-line)", padding: "8px 0" }}>
+                <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: c.ok ? ACCENT : "var(--nv-bad-fill)", flexShrink: 0 }} />
                 <span style={{ fontSize: "12px", color: NAVY }}>{c.name}</span>
                 <span style={{ fontSize: "11px", color: MUTED }}>{c.note}</span>
               </div>
@@ -338,7 +338,7 @@ export default function HseInsightBoard({ lang = "ar", stationScope }) {
           )}
         </section>
 
-        <section style={{ borderTop: "1px solid #F1F5F9", paddingTop: "12px" }}>
+        <section style={{ borderTop: "1px solid var(--nv-line)", paddingTop: "12px" }}>
           <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>{ar ? "تمارين الطوارئ" : "Emergency drills"}</div>
           <div style={{ marginTop: "8px", fontSize: "12px", color: MUTED }}>
             {ar ? "تمارين مسجّلة: " : "Recorded drills: "}

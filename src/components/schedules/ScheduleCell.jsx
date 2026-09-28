@@ -87,7 +87,7 @@ export default function ScheduleCell({
         alignItems: "center",
         justifyContent: "center",
         gap: 0,
-        background: isRestDay ? "#FAFBFC" : "transparent",
+        background: isRestDay ? "var(--nv-soft)" : "transparent",
         boxSizing: "border-box",
         cursor: canManage ? "pointer" : "default",
         overflow: "hidden",
@@ -132,14 +132,14 @@ export default function ScheduleCell({
                 maxHeight: "70vh",
                 overflowY: "auto",
                 background: CARD,
-                border: "1px solid #E2E8F0",
+                border: "1px solid var(--nv-line)",
                 borderRadius: "14px",
                 boxShadow: "0 14px 32px rgba(20,40,75,.14)",
               }}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
             >
-              <div style={{ padding: "14px 16px", borderBottom: "1px solid #E2E8F0", fontSize: "12px", fontWeight: 600, color: NAVY }}>
+              <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--nv-line)", fontSize: "12px", fontWeight: 600, color: NAVY }}>
                 {ar ? "إسناد موظف" : t("add")}
               </div>
               {employees.map((emp) => {
@@ -157,7 +157,7 @@ export default function ScheduleCell({
                       width: "100%",
                       padding: "11px 16px",
                       border: "none",
-                      borderBottom: "1px solid #F1F5F9",
+                      borderBottom: "1px solid var(--nv-line)",
                       background: isAssigned ? BRAND_SOFT : CARD,
                       color: isAssigned ? BRAND_DEEP : NAVY,
                       cursor: "pointer",
@@ -205,7 +205,7 @@ export default function ScheduleCell({
                   width: "100%",
                   padding: "12px",
                   border: "none",
-                  borderTop: "1px solid #E2E8F0",
+                  borderTop: "1px solid var(--nv-line)",
                   background: SURFACE,
                   color: MUTED,
                   fontSize: "12px",

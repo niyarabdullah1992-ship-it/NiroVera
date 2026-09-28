@@ -1,21 +1,15 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { NavLink, useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { updateCompany, getCompanyData, getCompanyToken } from "@/lib/store";
 import { base44 } from "@/api/base44Client";
-import {
-  Search, ChevronDown, MessageSquare,
-} from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
-import SyncStatusIndicator from "@/components/SyncStatusIndicator";
-import ThemeToggle from "@/components/ThemeToggle";
 import { allowedNavFor } from "@/lib/navVisibility";
 import { collectSuiteBadges, suiteAppBadge, suiteAppGlow } from "@/lib/suiteBadges";
 import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
 import { hydrateEmployeesLeave } from "@/lib/leaveDerivations";
 import BottomTabBar from "@/components/mobile/BottomTabBar";
-import BackButton from "@/components/mobile/BackButton";
 import ProductFeedbackPrompt from "@/components/ProductFeedbackPrompt";
 import { shouldShowNotification } from "@/lib/notificationFilters";
 import { isChatNotification } from "@/lib/notificationKind";
@@ -32,29 +26,24 @@ import {
 } from "@/lib/suiteNav";
 import { canManagePerformance } from "@/lib/suiteRailFrame";
 import SuiteRail from "@/components/navigation/SuiteRail";
+import AppTopBar from "@/components/navigation/AppTopBar";
 import { RailSideProvider, routeRailSide } from "@/lib/railSide";
-import ScopeBar from "@/components/navigation/ScopeBar";
-import SectionReportPicker from "@/components/reports/SectionReportPicker";
-import HeaderDateTime from "@/components/navigation/HeaderDateTime";
 import { openStationSwitcher } from "@/hooks/useStationSwitcher";
 import { setStationScope, getStationScope } from "@/lib/stationScopeStore";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { visibleStations } from "@/lib/permissions";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
-import { BORDER, BTN_FILL, BTN_INK, CARD, INK, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 import { canSeeMinistryAlerts, deriveMinistryAlerts } from "@/lib/ministryAlertDerivations";
 import { THEME_CHANGE_EVENT, applyPlatformTheme, applyStoredPlatformTheme, persistPlatformTheme } from "@/lib/platformTheme";
 import PlatformBoot from "@/components/shared/PlatformBoot";
 
 export default function Layout({ children }) {
-  const { t, lang, setLang, dir } = useI18n();
+  const { t, lang, dir } = useI18n();
   const { currentUser, company, data, logout, isSyncing } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [notifOpen, setNotifOpen] = useState(false);
-  const [userOpen, setUserOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const userRef = useRef(null);
   const notificationPollInFlightRef = useRef(false);
   const [ministryDismissTick, setMinistryDismissTick] = useState(0);
   const [notifPrefTick, setNotifPrefTick] = useState(0);
@@ -88,15 +77,6 @@ export default function Layout({ children }) {
       window.removeEventListener(THEME_CHANGE_EVENT, onChange);
     };
   }, [company?.id]);
-
-  useEffect(() => {
-    const onClick = (e) => {
-      if (userRef.current && !userRef.current.contains(e.target)) setUserOpen(false);
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
-
 
   // Ctrl/Cmd+K searches; the same chord with Shift switches station in place.
   useEffect(() => {
@@ -234,7 +214,7 @@ export default function Layout({ children }) {
     orderedNavItems.find((item) => matchSuiteNavItem(item, location.pathname) === "exact")
     || orderedNavItems.find((item) => matchSuiteNavItem(item, location.pathname));
   const activeCategory = activeNavItem?.category || "daily";
-  const sectionPages = location.pathname.startsWith("/app/settings")
+  const sectionPages = location.pathname.startsWith("/app/settings") || !activeNavItem
     ? []
     : orderedNavItems.filter((item) => item.category === activeCategory && item.to !== "/app/settings");
   const railGroups = buildSuiteRailGroups(orderedNavItems, lang, currentUser.role);
@@ -388,12 +368,22 @@ export default function Layout({ children }) {
       title: lang === "ar" ? "طلباتي" : "My Requests",
       sub: lang === "ar" ? "إجازة وطلبات أخرى في صندوق واحد" : "Leave and other requests in one inbox",
     },
-    "/app/payroll": {
-      title: lang === "ar" ? "الرواتب" : "Payroll",
-      sub: lang === "ar"
-        ? "دورة نظامية: تجهيز البنود · المادة 90 و92 و93 و107 · الاعتماد · حماية الأجور خلال 30 يوماً من الاستحقاق"
-        : "Statutory cycle: prepare lines · Art. 90, 92, 93 & 107 · approve · wage protection within 30 days of entitlement",
-    },
+    "/app/payroll": (() => {
+      const self = new URLSearchParams(location.search).get("view") === "self";
+      return self
+        ? {
+          title: lang === "ar" ? "قسيمتي" : "My payslip",
+          sub: lang === "ar"
+            ? "قسيمتك أنت — الحضور يغذّي المسير، وتحرير البنود واعتماد الصرف للإدارة"
+            : "Your own payslip — attendance feeds the run; editing lines and approving payment belong to management",
+        }
+        : {
+          title: lang === "ar" ? "الرواتب" : "Payroll",
+          sub: lang === "ar"
+            ? "دورة نظامية: تجهيز البنود · المادة 90 و92 و93 و107 · الاعتماد · حماية الأجور خلال 30 يوماً من الاستحقاق"
+            : "Statutory cycle: prepare lines · Art. 90, 92, 93 & 107 · approve · wage protection within 30 days of entitlement",
+        };
+    })(),
     "/app/performance": (() => {
       const requested = new URLSearchParams(location.search).get("view");
       const manage = requested !== "self" && (requested === "manage" || !requested) && canManagePerformance(currentUser, data);
@@ -486,8 +476,11 @@ export default function Layout({ children }) {
       : { title: lang === "ar" ? "نيروفيرا" : "NiroVera", sub: lang === "ar" ? "منظومة الموارد البشرية" : "HR operating system" };
   };
   const { title: pageTitle } = resolvePageMeta();
-  // period footer removed from design shell — user chip only (L93–99)
-  const roleInitials = String(currentUser?.name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
+  const violationCount = ministryNotifs.filter((row) => {
+    const to = String(row.to || "");
+    if (!to) return false;
+    return location.pathname === to || location.pathname.startsWith(`${to}/`);
+  }).length;
 
   if (!currentUser) {
     return <PlatformBoot variant="shell" />;
@@ -507,36 +500,25 @@ export default function Layout({ children }) {
         canOpenSettings={canOpenSettings}
         onSettings={() => navigate("/app/settings")}
         onLogout={() => { logout(); navigate("/"); }}
+        onFeedback={() => window.dispatchEvent(new Event("powercare:open-feedback"))}
         user={currentUser}
         data={data}
+        companyName={company?.name || ""}
+        logoUrl={data?.reportBranding?.logoUrl || ""}
       />
 
 
-      {/* Main */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Header — title row + section pages strip */}
-        <header
-          data-nv="pad"
-          aria-label={pageTitle}
-          className="powercare-global-header z-40 overflow-visible pt-safe"
-          style={{
-            flexShrink: 0,
-            background: CARD,
-            borderBottom: `1px solid ${BORDER}`,
-            display: "flex",
-            flexDirection: "column",
-            gap: 0,
-            padding: 0,
-            color: INK,
-          }}
-        >
-          <div className="nv-topbar-row flex min-w-0 items-center" style={{ height: 52, padding: "0 16px", gap: 10, boxSizing: "border-box" }}>
-          <div className="flex min-w-0 items-center gap-2 md:hidden">
-            <BackButton />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }} />
-
-            <ScopeBar
+        <main className="nv-bg platform-main-scroll min-h-0 flex-1 overflow-y-auto p-5 pb-28 md:px-[26px] md:pb-12 md:pt-5" style={{ background: "var(--nv-page)" }}>
+          <div className="powercare-interior-page mx-auto w-full max-w-[1600px]">
+            <AppTopBar
+              pageTitle={pageTitle}
+              isSyncing={isSyncing}
+              onSearch={() => setSearchOpen(true)}
+              hideLang={location.pathname.startsWith("/app/signing")}
+              sectionPages={sectionPages}
+              activeNavItem={activeNavItem}
+              pathname={location.pathname}
               notifOpen={notifOpen}
               onToggleNotif={() => setNotifOpen((open) => !open)}
               onCloseNotif={() => setNotifOpen(false)}
@@ -544,323 +526,9 @@ export default function Layout({ children }) {
               onOpenNotif={openNotification}
               onDismissNotif={dismissNotification}
               onMarkAllNotifs={markAllRead}
+              violationCount={violationCount}
             />
 
-            <div className="hidden md:flex" style={{ alignItems: "center", minWidth: 0, flexShrink: 1 }}>
-              <SectionReportPicker lang={lang} compact />
-            </div>
-
-            {/* topmeta — search */}
-            <div
-              data-nv="topmeta"
-              className="hidden md:flex"
-              style={{ alignItems: "center", gap: "8px", flexShrink: 0 }}
-            >
-              <button
-                type="button"
-                onClick={() => setSearchOpen(true)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "7px",
-                  height: "34px",
-                  padding: "0 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${BORDER}`,
-                  background: SURFACE,
-                  minWidth: "140px",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  textAlign: "start",
-                }}
-              >
-                <span style={{ color: MUTED, fontSize: "12px" }}>⌕</span>
-                <span style={{ fontSize: "12px", color: MUTED }}>
-                  {lang === "ar" ? "ابحث أو اكتب أمرًا" : "Search or type a command"}
-                </span>
-              </button>
-            </div>
-
-            <HeaderDateTime lang={lang} />
-
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              aria-label={lang === "ar" ? "البحث العام" : "Global search"}
-              className="flex md:hidden"
-              style={{
-                alignItems: "center",
-                justifyContent: "center",
-                height: "34px",
-                width: "34px",
-                borderRadius: 0,
-                border: `1px solid ${BORDER}`,
-                background: CARD,
-                color: MUTED,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                padding: 0,
-              }}
-            >
-              <Search style={{ width: 16, height: 16 }} />
-            </button>
-
-            <SyncStatusIndicator isSyncing={isSyncing} />
-            <ThemeToggle />
-
-            {location.pathname.startsWith("/app/signing") ? null : (
-            <button
-              type="button"
-              onClick={() => setLang(lang === "ar" ? "en" : "ar")}
-              aria-label={t("language")}
-              style={{
-                flexShrink: 0,
-                height: 34,
-                minHeight: 34,
-                minWidth: "38px",
-                padding: "0 11px",
-                borderRadius: 10,
-                border: `1px solid ${BORDER}`,
-                background: CARD,
-                fontSize: "11px",
-                fontWeight: 600,
-                color: MUTED,
-                cursor: "pointer",
-                fontFamily: "'IBM Plex Sans',sans-serif",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "var(--nv-accent)";
-                e.currentTarget.style.color = "var(--nv-accent)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = BORDER;
-                e.currentTarget.style.color = MUTED;
-              }}
-            >
-              {lang === "ar" ? "EN" : "ع"}
-            </button>
-            )}
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginInlineStart: "auto" }}>
-              <div className="relative" ref={userRef}>
-                <button
-                  type="button"
-                  onClick={() => setUserOpen((o) => !o)}
-                  aria-expanded={userOpen}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    height: 34,
-                    minHeight: 34,
-                    padding: "0 6px 0 4px",
-                    borderRadius: 10,
-                    border: userOpen ? "1px solid var(--nv-accent-border)" : `1px solid ${BORDER}`,
-                    background: userOpen ? "var(--nv-accent-soft)" : CARD,
-                    cursor: "pointer",
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 10,
-                      background: BTN_FILL,
-                      color: "#fff",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      overflow: "hidden",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {currentUser.profile?.avatarUrl ? (
-                      <img src={currentUser.profile.avatarUrl} alt={currentUser.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    ) : (
-                      roleInitials
-                    )}
-                  </span>
-                  <ChevronDown className="hidden h-3.5 w-3.5 sm:block" style={{ color: "#A8B4C8" }} strokeWidth={1.75} />
-                </button>
-                {userOpen && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      marginTop: 8,
-                      [dir === "rtl" ? "left" : "right"]: 0,
-                      width: 260,
-                      background: CARD,
-                      border: `1px solid ${BORDER}`,
-                      borderRadius: 10,
-                      boxShadow: "none",
-                      zIndex: 50,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => { navigate(`/app/employees/${currentUser.id}`); setUserOpen(false); }}
-                      style={{
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 12,
-                        padding: "14px",
-                        border: "none",
-                        borderBottom: `1px solid ${BORDER}`,
-                        background: SURFACE,
-                        cursor: "pointer",
-                        textAlign: "start",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 40,
-                          height: 40,
-                          borderRadius: 10,
-                          background: BTN_FILL,
-                          color: "#fff",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 13,
-                          fontWeight: 600,
-                          overflow: "hidden",
-                          flexShrink: 0,
-                        }}
-                      >
-                        {currentUser.profile?.avatarUrl ? (
-                          <img src={currentUser.profile.avatarUrl} alt={currentUser.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        ) : (
-                          roleInitials
-                        )}
-                      </span>
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {currentUser.name}
-                        </span>
-                        <span style={{ display: "block", marginTop: 2, fontSize: 11, fontWeight: 600, color: "var(--nv-accent)" }}>
-                          {t("viewProfile")}
-                        </span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { window.dispatchEvent(new Event("powercare:open-feedback")); setUserOpen(false); }}
-                      style={{
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "12px 14px",
-                        border: "none",
-                        background: CARD,
-                        color: INK,
-                        fontSize: 13,
-                        fontWeight: 500,
-                        cursor: "pointer",
-                        fontFamily: "inherit",
-                        textAlign: "start",
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: 10,
-                          background: "var(--nv-accent-soft)",
-                          color: "var(--nv-accent)",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <MessageSquare style={{ width: 14, height: 14 }} strokeWidth={1.75} />
-                      </span>
-                      {lang === "ar" ? "التقييم والاقتراحات" : "Feedback & suggestions"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {sectionPages.length > 1 ? (
-            <nav
-              aria-label={lang === "ar" ? "صفحات القسم" : "Section pages"}
-              className="no-scrollbar flex"
-              style={{
-                alignItems: "center",
-                gap: 0,
-                overflowX: "auto",
-                background: CARD,
-                borderTop: `1px solid ${BORDER}`,
-                padding: "0 8px",
-              }}
-            >
-              {sectionPages.map((page) => {
-                const hit = matchSuiteNavItem(page, location.pathname);
-                const active = hit === "exact" || (hit === "prefix" && page === activeNavItem);
-                return (
-                  <NavLink
-                    key={page.to}
-                    to={page.to}
-                    end={page.end}
-                    className="group/tab"
-                    style={{
-                      position: "relative",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 7,
-                      height: 32,
-                      padding: "0 13px",
-                      borderRadius: 6,
-                      textDecoration: "none",
-                      whiteSpace: "nowrap",
-                      fontSize: 12.5,
-                      fontWeight: active ? 700 : 500,
-                      color: active ? BTN_INK : MUTED,
-                      flexShrink: 0,
-                      background: active ? BTN_FILL : "transparent",
-                      borderInlineEnd: "2px solid transparent",
-                    }}
-                  >
-                    <page.icon style={{ position: "relative", width: 14, height: 14, color: "inherit" }} strokeWidth={active ? 2 : 1.7} />
-                    <span style={{ position: "relative" }}>{page.label}</span>
-                    {page.badge != null && (
-                      <span
-                        dir="ltr"
-                        style={{
-                          position: "relative",
-                          minWidth: 16,
-                          height: 16,
-                          padding: "0 4px",
-                          borderRadius: 10,
-                          background: page.appId === "complaints" ? "#C9962B" : BTN_FILL,
-                          color: "#fff",
-                          fontSize: 9,
-                          fontWeight: 700,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        {page.badge}
-                      </span>
-                    )}
-                  </NavLink>
-                );
-              })}
-            </nav>
-          ) : null}
-        </header>
-
-        <main className="nv-bg platform-main-scroll min-h-0 flex-1 overflow-y-auto p-5 pb-28 md:px-[22px] md:pb-10 md:pt-5">
-          <div className="powercare-interior-page mx-auto w-full max-w-[1600px]">
             <PageErrorBoundary resetKey={location.pathname}>{children}</PageErrorBoundary>
           </div>
         </main>

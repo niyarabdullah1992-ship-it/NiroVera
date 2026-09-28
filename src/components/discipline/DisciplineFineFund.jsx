@@ -21,8 +21,8 @@ export default function DisciplineFineFund({ ledger = [], ar, today, onDispose }
   const balance = fineLedgerBalance(ledger);
   const gate = checkDisposeDisciplineFinesGate({ authority, note, ledger, today });
   return (
-    <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)", display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", flexDirection: "column", gap: 6 }}>
+    <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, display: "flex", flexDirection: "column" }}>
+      <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 6, background: "var(--nv-hover)" }}>
         <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "سجل الغرامات وصرفها — المادة 73" : "Fine register and disposal — Article 73"}</span>
         <LaborArticleCite ruleId="discipline.fines.register.cite" ar={ar} showText />
         <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.8 }}>

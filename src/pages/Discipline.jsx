@@ -4,7 +4,7 @@ import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { updateCompany } from "@/lib/store";
 import { toast } from "@/components/ui/use-toast";
-import { countAr, decorateDisciplineCase, deriveDisciplineBoard, isDisciplineSettled, isErasedFromEmployeeRecord } from "@/lib/disciplineBoard";
+import { decorateDisciplineCase, deriveDisciplineBoard, isDisciplineSettled, isErasedFromEmployeeRecord } from "@/lib/disciplineBoard";
 import {
   checkAdvanceDisciplineGate,
   checkRaiseDisciplineGate,
@@ -18,8 +18,10 @@ import {
   planDisciplineFineVoid,
   resolveDisciplineWorkStationId,
 } from "@/lib/disciplineDerivations";
-import PlatformDateField from "@/components/shared/PlatformDateField";
+import DisciplineCutCalculator from "@/components/discipline/DisciplineCutCalculator";
 import DisciplineFineFund from "@/components/discipline/DisciplineFineFund";
+import DisciplineRaiseForm from "@/components/discipline/DisciplineRaiseForm";
+import DisciplineScheduleBoard from "@/components/discipline/DisciplineScheduleBoard";
 import { pageKicker } from "@/lib/moduleMeta";
 import { sha256HexOfFile } from "@/lib/fileHash";
 import { readConsentFile } from "@/lib/writtenConsent";
@@ -27,29 +29,106 @@ import DisciplineArchiveBoard from "@/components/discipline/DisciplineArchiveBoa
 import DisciplineCaseCard from "@/components/discipline/DisciplineCaseCard";
 import DisciplineLawBoard from "@/components/discipline/DisciplineLawBoard";
 import DisciplineMineCard from "@/components/discipline/DisciplineMineCard";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
+import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { generateDisciplineDeduction, liftDisciplineDeduction } from "@/lib/deductionGenerators";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
+import { ROLE_RANK, canSeeAllStations, hrScopeStations, visibleStations } from "@/lib/permissions";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
-import { railLaneTabs, useRailSide } from "@/lib/railSide";
+import { useRailSide, useSetRailSide } from "@/lib/railSide";
+
+const MANAGE_TAB_ORDER = ["mine", "schedule", "calc", "manage", "raise", "law", "archive"];
+const EMPLOYEE_TAB_ORDER = ["mine", "schedule", "law", "archive"];
+const TAB_LABEL = {
+  schedule: { ar: "لائحة الجزاءات", en: "Penalty list" },
+  calc: { ar: "حاسبة الحسم", en: "Cut calculator" },
+  manage: { ar: "إدارة", en: "Manage" },
+  raise: { ar: "ارفع جزاءً", en: "Raise a sanction" },
+  law: { ar: "أنظمة الوزارة", en: "Ministry rules" },
+  archive: { ar: "الأرشيف", en: "Archive" },
+  mine: { ar: "ملفي", en: "My file" },
+};
 
 function uid() {
   return `dsc_${Date.now().toString(36)}`;
 }
 
-const field = {
-  fontFamily: "inherit",
-  fontSize: 12,
-  padding: "9px 10px",
-  border: "1px solid var(--nv-line)",
-  borderRadius: 10,
+function managedScope(person, data) {
+  if (!person) return { all: false, ids: new Set() };
+  if (canSeeAllStations(person) || String(person.id) === String(data?.ownerId || "")) return { all: true, ids: new Set() };
+  if (person.hrLevelId) {
+    const scope = hrScopeStations(person, data);
+    if (scope === null) return { all: true, ids: new Set() };
+    return { all: false, ids: new Set((scope || []).map(String)) };
+  }
+  if (["station_manager", "pgm", "ops_manager", "director"].includes(person.role)) {
+    return { all: false, ids: new Set(visibleStations(person, data).map((row) => String(row.id))) };
+  }
+  return { all: false, ids: new Set() };
+}
+
+/** A sanction is not raised on yourself, or on someone whose scope is equal or wider. */
+function scopeEqualOrWider(person, actor, data) {
+  if (!person || !actor) return false;
+  if (String(person.id) === String(actor.id)) return true;
+  const theirs = managedScope(person, data);
+  const mine = managedScope(actor, data);
+  if (theirs.all) return true;
+  if (mine.all) return false;
+  if (!theirs.ids.size) return false;
+  if (!mine.ids.size) return true;
+  const personRank = ROLE_RANK[person.role] || 0;
+  const actorRank = ROLE_RANK[actor.role] || 0;
+  if (personRank >= actorRank && personRank >= ROLE_RANK.station_manager && theirs.ids.size >= mine.ids.size) return true;
+  let covers = true;
+  mine.ids.forEach((id) => {
+    if (!theirs.ids.has(id)) covers = false;
+  });
+  return covers && theirs.ids.size >= mine.ids.size;
+}
+
+const PACK_CARD = {
   background: "var(--nv-card)",
-  color: "var(--nv-ink)",
-  outline: "none",
-  width: "100%",
-  boxSizing: "border-box",
+  border: "1px solid var(--nv-line)",
+  borderRadius: 8,
+  overflow: "hidden",
 };
+
+function packHead(columns) {
+  return {
+    display: "grid",
+    gridTemplateColumns: columns,
+    alignItems: "center",
+    minHeight: 36,
+    background: "var(--nv-hover)",
+    borderBottom: "1px solid var(--nv-line)",
+    fontSize: 11.5,
+    fontWeight: 700,
+    color: "var(--nv-ink2)",
+  };
+}
+
+function statusPill(kind) {
+  const tone = kind === "bad"
+    ? { color: "var(--nv-bad-ink)", border: "var(--nv-bad-line)" }
+    : kind === "warn"
+      ? { color: "var(--nv-warn-ink)", border: "var(--nv-warn-line)" }
+      : { color: "var(--nv-ok-ink)", border: "var(--nv-ok-line)" };
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    height: 24,
+    padding: "0 10px",
+    borderRadius: 999,
+    fontSize: 11.5,
+    fontWeight: 700,
+    color: tone.color,
+    background: "transparent",
+    border: `1px solid ${tone.border}`,
+    justifySelf: "start",
+    whiteSpace: "nowrap",
+  };
+}
 
 const RIGHTS = [
   { ruleId: "discipline.penalties.cite", ar: "لا يُوقَّع عليّ إلا جزاء من قائمة المادة 66.", en: "Only a penalty on the Article 66 list may be signed on me." },
@@ -69,6 +148,7 @@ export default function Discipline() {
   const ar = lang === "ar";
   const { data, company, currentUser } = useAuth();
   const railSide = useRailSide();
+  const setRailSide = useSetRailSide();
   const cases = data?.disciplinaryCases || [];
   const employees = data?.employees || [];
   const stations = data?.stations || [];
@@ -77,7 +157,7 @@ export default function Discipline() {
   const scopedEmployees = canManage
     ? employees.filter((person) => matchesStationScope(person.stationId || person.station_id, stationScope))
     : employees;
-  const raiseTargets = scopedEmployees.filter((person) => String(person.id) !== String(currentUser?.id));
+  const raiseTargets = scopedEmployees.filter((person) => !scopeEqualOrWider(person, currentUser, data));
   const visibleCases = (canManage ? cases : cases.filter((item) => item.employeeId === currentUser?.id))
     .filter((item) => {
       if (!canManage) return true;
@@ -88,17 +168,15 @@ export default function Discipline() {
   const liveCases = visibleCases.filter((item) => !isDisciplineSettled(item));
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
-  const tab = ["mine", "manage", "law"].includes(requestedTab) ? requestedTab : "mine";
+  const adminVoice = canManage && railSide !== "employee";
   const setTab = (next) => {
     const params = new URLSearchParams(searchParams);
     params.set("tab", next);
     setSearchParams(params, { replace: true });
+    if (adminVoice && next !== "mine") setRailSide("manage");
   };
-  const [mineFace, setMineFace] = useState("live");
-  const [manageFace, setManageFace] = useState("live");
-  const [newOpen, setNewOpen] = useState(false);
-  const [employeeId, setEmployeeId] = useState(employees[0]?.id || "");
-  const [penaltyKind, setPenaltyKind] = useState("warning");
+  const [employeeId, setEmployeeId] = useState("");
+  const [penaltyKind, setPenaltyKind] = useState("fine");
   const [penaltyDays, setPenaltyDays] = useState(1);
   const [discoveredAt, setDiscoveredAt] = useState(() => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date()));
   const [dismissGround, setDismissGround] = useState("");
@@ -106,6 +184,7 @@ export default function Discipline() {
   const [workConnected, setWorkConnected] = useState("");
   const [note, setNote] = useState("");
   const [appealDraft, setAppealDraft] = useState("");
+  const [caseSel, setCaseSel] = useState("");
   const laborCalendar = laborCalendarOf(data);
   const scopedStation = stations.find((row) => String(row.id) === String(stationScope));
   const scopeLabel = scopedStation?.name || "";
@@ -145,39 +224,15 @@ export default function Discipline() {
   const myOpen = mineCards.filter((card) => card.face.id === "signed").length;
   // Signed is archive-settled for the company, but stays on ملفي live so the employee can object.
   const mineLiveCards = mineCards.filter((card) => card.face.id === "signed" || !isDisciplineSettled(card.item));
-  const mineSettledCount = mine.filter((item) => isDisciplineSettled(item)).length;
-  const manageSettledCount = visibleCases.filter((item) => isDisciplineSettled(item)).length;
   const kindSpec = listedPenaltyKind(penaltyKind) || DISCIPLINE_PENALTY_KINDS[0];
   const cutDays = kindSpec.days.includes(0) && kindSpec.days.length === 1 ? 0 : Number(penaltyDays) || kindSpec.days[0] || 0;
-  const ready = Boolean(note.trim() && employeeId);
   const ledger = data?.disciplineFineLedger || [];
-
-  const tabs = railLaneTabs([
-    { key: "mine", ar: "ملفي", en: "My file", count: myOpen },
-    ...(canManage ? [{ key: "manage", ar: "إدارة", en: "Manage", count: board.openCount }] : []),
-    { key: "law", ar: "أنظمة الوزارة", en: "Ministry rules" },
-  ], railSide).map((item, index) => ({ ...item, num: String(index + 1).padStart(2, "0") }));
-
-  let activeFace = ["mine", "manage", "law"].includes(tab) && (canManage || tab !== "manage") ? tab : "mine";
-  if (railSide === "employee" && activeFace === "manage") activeFace = "mine";
-  if (railSide === "manage" && canManage && activeFace === "mine") activeFace = "manage";
-  const adminVoice = canManage && railSide !== "employee";
-
-  const laneChip = (on) => ({
-    fontFamily: "inherit",
-    fontSize: 11,
-    padding: "7px 12px",
-    border: `1px solid ${on ? "var(--nv-navy)" : "var(--nv-line)"}`,
-    borderRadius: 10,
-    background: on ? "var(--nv-navy)" : "var(--nv-card)",
-    color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
-    fontWeight: on ? 700 : 400,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    display: "inline-flex",
-    gap: 6,
-    alignItems: "center",
-  });
+  const tabOrder = adminVoice ? MANAGE_TAB_ORDER : EMPLOYEE_TAB_ORDER;
+  const activeFace = tabOrder.includes(requestedTab) ? requestedTab : (adminVoice ? "manage" : "mine");
+  const tabs = tabOrder.map((key) => ({
+    value: key,
+    label: ar ? TAB_LABEL[key].ar : TAB_LABEL[key].en,
+  }));
 
   const saveCases = (next, extra) => {
     if (!company?.id) return;
@@ -193,7 +248,7 @@ export default function Discipline() {
   };
 
   const openCase = () => {
-    if (!ready || !canManage) return;
+    if (!canManage || !String(note || "").trim()) return;
     const person = employees.find((row) => String(row.id) === String(employeeId));
     const raiseGate = checkRaiseDisciplineGate({
       employee: person,
@@ -250,7 +305,7 @@ export default function Discipline() {
     setDismissGround("");
     setOffSite(false);
     setWorkConnected("");
-    setNewOpen(false);
+    setTab("manage");
   };
 
   const onAction = (item, actionId) => {
@@ -393,379 +448,266 @@ export default function Discipline() {
   };
 
   return (
-    <PlatformStampShell ar={ar} bare maxWidth={1320}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink)", fontSize: 13 }}>
-        <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-            <span style={{ fontSize: 11, letterSpacing: ".14em", color: "var(--nv-muted)", display: "flex", gap: 7, alignItems: "center" }}>
-              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace" }}>{String(pageKicker("/app/discipline", "en")).slice(0, 2) || "04"}</span>
-              <span>·</span>
-              <span>{pageKicker("/app/discipline", lang).replace(/^\d+\s*·\s*/, "")}</span>
-            </span>
-            <span style={{ fontFamily: "'Noto Naskh Arabic',serif", fontSize: 24, fontWeight: 600 }}>{ar ? "الجزاءات" : "Sanctions"}</span>
-            <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.85 }}>
-              {ar
-                ? <>وجهان لملف واحد: <b>ما يراه الموظف</b> — جزاؤه وحقّه في الاعتراض · <b>ما يديره المسؤول</b> — الرفع والمراحل والقرار. الجزاء إجراء موقَّع لا ملاحظة.</>
-                : <>Two faces of one file: <b>what the employee sees</b> — the sanction and the right to object · <b>what management runs</b> — raise, stages, and the decision. A sanction is a signed act, not a note.</>}
-            </span>
-          </div>
-          <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.7, maxWidth: 340 }}>
-            {adminVoice
-              ? (ar ? "إدارة — ترفع الجزاء وتحرّك مراحله وتوقّعه وتقرّر في الاعتراض، ضمن ما تسمح به مواد التأديب — انظر تبويب أنظمة الوزارة." : "Management — you raise, move stages, sign, and rule on an objection, within the discipline articles — see Ministry rules.")
-              : (ar ? "موظف — ترى إبلاغك وتحقيقك وجزاءك، وتعترض على الموقَّع. الرفع والتوقيع والقرار ليست من صلاحيتك." : "Employee — you see your notice, hearing, and sanction, and object to what was signed. Raising, signing, and ruling are not yours.")}
-          </span>
-        </section>
+    <SuiteWorkspaceFrame
+      ar={ar}
+      kicker={pageKicker("/app/discipline", lang)}
+      title={ar ? "الجزاءات" : "Sanctions"}
+      hint={ar
+        ? "وجهان لملف واحد: ما يراه الموظف — جزاؤه وحقّه في الاعتراض · ما يديره المسؤول — الرفع والمراحل والقرار. الجزاء إجراء موقَّع لا ملاحظة."
+        : "Two faces of one file: what the employee sees — the sanction and the right to object — and what management runs — raising, the stages, and the decision. A sanction is a signed act, not a note."}
+      tabs={tabs}
+      tool={activeFace}
+      onTool={setTab}
+    >
+      <div data-discipline-face={activeFace} style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink)", fontSize: 13 }}>
 
-        <div className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-          {tabs.map((item) => {
-            const on = activeFace === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setTab(item.key)}
-                aria-current={on ? "page" : undefined}
-                style={{
-                  fontFamily: "inherit",
-                  fontSize: 13,
-                  fontWeight: on ? 700 : 400,
-                  padding: "9px 16px",
-                  border: `1px solid ${on ? "var(--nv-navy)" : "var(--nv-line)"}`,
-                  background: on ? "var(--nv-navy)" : "var(--nv-card)",
-                  color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  whiteSpace: "nowrap",
-                  borderRadius: 10,
-                }}
-              >
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.75 }}>{item.num}</span>
-                {ar ? item.ar : item.en}
-                {item.count ? (
-                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 11, background: on ? "color-mix(in oklab, var(--nv-btn-ink) 28%, transparent)" : "var(--nv-mute-soft)", color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)", padding: "1px 7px", borderRadius: 999 }}>
-                    {item.count}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-          <span style={{ marginInlineStart: "auto", display: "inline-flex", alignItems: "center", gap: 9, fontSize: 12, fontWeight: 600, color: board.pulseColor, background: board.pulseBg, border: `1px solid ${board.pulseBorder}`, borderRadius: 10, padding: "8px 13px", whiteSpace: "nowrap" }}>
-            <span style={{ width: 7, height: 7, borderRadius: "50%", background: board.pulseDot }} />
-            {board.pulse}
-          </span>
-        </div>
+        {activeFace === "schedule" ? (
+          <DisciplineScheduleBoard ar={ar} today={board.today} />
+        ) : null}
 
-        {canManage && activeFace === "manage" ? (
+        {adminVoice && activeFace === "calc" ? (
+          <DisciplineCutCalculator
+            ar={ar}
+            employees={raiseTargets}
+            stations={stations}
+            cases={visibleCases}
+            today={board.today}
+          />
+        ) : null}
+
+        {adminVoice && activeFace === "raise" ? (
+          <DisciplineRaiseForm
+            ar={ar}
+            employees={raiseTargets}
+            stations={stations}
+            cases={cases}
+            actor={currentUser}
+            today={board.today}
+            employeeId={employeeId}
+            onEmployee={setEmployeeId}
+            penaltyKind={penaltyKind}
+            onPenaltyKind={(next) => {
+              setPenaltyKind(next);
+              const spec = listedPenaltyKind(next);
+              setPenaltyDays(spec?.days.find((n) => n > 0) || spec?.days[0] || 0);
+            }}
+            cutDays={cutDays}
+            onCutDays={setPenaltyDays}
+            discoveredAt={discoveredAt}
+            onDiscovered={setDiscoveredAt}
+            note={note}
+            onNote={setNote}
+            offSite={offSite}
+            onOffSite={setOffSite}
+            workConnected={workConnected}
+            onWorkConnected={setWorkConnected}
+            dismissGround={dismissGround}
+            onDismissGround={setDismissGround}
+            onSubmit={openCase}
+          />
+        ) : null}
+
+        {activeFace === "archive" ? (
+          <DisciplineArchiveBoard
+            cases={adminVoice ? visibleCases : mine}
+            employees={employees}
+            stations={stations}
+            ar={ar}
+            today={board.today}
+            scope={adminVoice ? "manage" : "mine"}
+            selfOnly={!adminVoice}
+            userId={currentUser?.id}
+          />
+        ) : null}
+
+        {adminVoice && activeFace === "manage" ? (
           <>
-            <div className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-              {[
-                ["live", ar ? "الكل" : "All", board.openCount],
-                ["archive", ar ? "الأرشيف" : "Archive", manageSettledCount],
-              ].map(([id, label, n]) => {
-                const on = manageFace === id;
+            <div className="nv-disc-stats" data-discipline-admin="" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+              {board.stats.map((stat) => {
+                const quiet = stat.val === "0" || stat.val === "—" || String(stat.val).startsWith("0 ");
                 return (
-                  <button key={id} type="button" onClick={() => setManageFace(id)} style={laneChip(on)}>
-                    {label}
-                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.8 }}>{n}</span>
-                  </button>
+                  <div key={stat.lbl} style={{ position: "relative", overflow: "hidden", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: 3, background: stat.accent }} />
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-ink3)" }}>{stat.lbl}</span>
+                    <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                      <strong dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 22, fontWeight: 700, lineHeight: 1.15, color: quiet ? "var(--nv-ink)" : stat.accent, unicodeBidi: "isolate" }}>{stat.val}</strong>
+                      {stat.unit ? <span style={{ fontSize: 12, fontWeight: 700, color: quiet ? "var(--nv-ink2)" : stat.accent }}>{stat.unit}</span> : null}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.6 }}>{stat.note || "—"}</span>
+                  </div>
                 );
               })}
-              <span style={{ marginInlineStart: "auto", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-                {ar ? "الأرشيف بعد «الكل» — ما استقرّ في نطاق فرعك." : "Archive sits after All — settled files in your station scope."}
+            </div>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "10px 14px", fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
+              <span aria-hidden style={{ width: 9, height: 9, borderRadius: "50%", background: "#C8A45A", flex: "none" }} />
+              <span>
+                {ar
+                  ? "لرفع جزاء جديد افتح تبويب «ارفع جزاءً» — يمرّ بالبوابات النظامية ثم يظهر ملفه هنا."
+                  : "To raise a sanction, open «Raise a sanction» — the statutory gates run first, then the file appears here."}
               </span>
             </div>
 
-            {manageFace === "archive" ? (
-              <DisciplineArchiveBoard
-                cases={visibleCases}
-                employees={employees}
-                stations={stations}
-                ar={ar}
-                today={board.today}
-                scope="manage"
-                selfOnly={false}
-                userId={currentUser?.id}
-              />
+            {files.length === 0 ? (
+              <section data-discipline-empty="" style={PACK_CARD}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)" }}>
+                  <strong style={{ fontSize: 13 }}>{ar ? "ملف الجزاء" : "Sanction file"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>(0)</span></strong>
+                </div>
+                <div style={{ ...packHead("minmax(0,1fr)"), paddingInline: 12 }}>
+                  <span>{ar ? "ملف الجزاء" : "Sanction file"}</span>
+                </div>
+                <div style={{ padding: "12px 14px", fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "لا ملفات جزاء في نطاقك" : "No sanction files in your scope."}</div>
+              </section>
             ) : (
-            <>
-            <div className="nv-disc-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-              {board.stats.map((stat) => (
-                <div key={stat.lbl} className="nv-paper" style={{ background: "var(--nv-card)", border: `1px solid ${stat.border}`, borderTop: `3px solid ${stat.accent}`, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                  <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{stat.lbl}</span>
-                  <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 30, fontWeight: 500, color: stat.accent, lineHeight: 1.05 }}>{stat.val}</span>
-                    {stat.unit ? <span style={{ fontSize: 12, fontWeight: 600, color: stat.accent }}>{stat.unit}</span> : null}
-                  </span>
-                  <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>{stat.note}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="nv-emp-summary" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,1fr)", gap: 16, alignItems: "stretch" }}>
-              <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", display: "flex", flexDirection: "column" }}>
-                <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "ما يديره المسؤول — مسار المادة 71" : "What management runs — Article 71 path"}</span>
-                  <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.75 }}>
-                    {ar ? "لا يُوقَّع جزاء قبل إبلاغ كتابي وسماع دفاع. المرحلة تتقدّم بقرار موقَّع، لا بمضيّ الوقت." : "No penalty before written notice and a hearing. A stage moves by a signed decision, not by time passing."}
-                  </span>
-                </div>
-                <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-                  {board.stages.map((stage) => (
-                    <div key={stage.id} style={{ display: "grid", gridTemplateColumns: "minmax(90px,auto) minmax(0,1fr) 26px", gap: 11, alignItems: "center" }}>
-                      <span style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
-                        <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: "var(--nv-muted)" }}>{stage.num}</span>
-                        <span style={{ fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{stage.name}</span>
-                      </span>
-                      <span style={{ display: "block", height: 10, background: "var(--nv-soft)", overflow: "hidden", borderRadius: 999 }}>
-                        <span style={{ display: "block", height: "100%", width: stage.pct, background: stage.color }} />
-                      </span>
-                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 15, fontWeight: 500, color: stage.color, textAlign: "end" }}>{stage.n}</span>
-                    </div>
-                  ))}
-                  <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.9, borderTop: "1px solid var(--nv-line2)", paddingTop: 10 }}>{board.stageNote}</span>
-                </div>
-              </section>
-
-              <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", display: "flex", flexDirection: "column" }}>
-                <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", fontSize: 15, fontWeight: 700 }}>
-                  {ar ? "القيود التي تمنع التوقيع" : "Gates that block signing"}
-                </div>
-                {board.gates.map((gate) => (
-                  <div key={gate.head} style={{ padding: "13px 20px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 11, alignItems: "start" }}>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: "var(--nv-ink2)", background: "var(--nv-mute-soft)", border: "1px solid var(--nv-mute-line)", borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap", marginTop: 2 }}>{gate.tag}</span>
-                    <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700 }}>{gate.head}</span>
-                      <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.85 }}>{gate.body}</span>
-                    </span>
-                    <span style={{ fontSize: 10, fontWeight: 600, color: gate.color, background: gate.bg, border: `1px solid ${gate.border}`, borderRadius: 999, padding: "3px 9px", whiteSpace: "nowrap", marginTop: 2 }}>{gate.state}</span>
-                  </div>
-                ))}
-                <div style={{ padding: "13px 20px", fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.9 }}>
-                  {ar ? "كل مانع له سبب ظاهر عند محاولة التوقيع — لا يُمنع الإجراء صامتاً." : "Every block names its reason at the moment of signing."}
-                </div>
-              </section>
-            </div>
-
-            <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", display: "flex", flexDirection: "column" }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                  <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "ملفات الجزاء" : "Sanction files"}</span>
-                  <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.75 }}>{board.recordScope}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setNewOpen((value) => !value)}
-                  style={{ marginInlineStart: "auto", fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "10px 16px", border: "none", borderRadius: 10, background: "var(--nv-ok-fill)", color: "var(--nv-btn-ink)", cursor: "pointer", whiteSpace: "nowrap" }}
-                >
-                  {newOpen ? (ar ? "أغلق نموذج الرفع" : "Close the raise form") : (ar ? "ارفع جزاءً" : "Raise a sanction")}
-                </button>
-              </div>
-
-              {newOpen ? (
-                <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--nv-line3)", background: "var(--nv-soft)", display: "flex", flexDirection: "column", gap: 11 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>{ar ? "رفع جزاء — يفتح الملف في مرحلة «أُبلغ كتابةً» على محطة عمل الموظف لا نطاق الرأس" : "Raise a sanction — opens the file at “notified in writing” on the employee's work station, not the header scope"}</span>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,190px),1fr))", gap: 10 }}>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                      <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "الموظف" : "Employee"}</span>
-                      <select value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} style={field}>
-                        {raiseTargets.map((person) => {
-                          const station = stations.find((row) => row.id === (person.stationId || person.station_id));
-                          return <option key={person.id} value={person.id}>{person.name}{station?.name ? ` — ${station.name}` : ""}</option>;
-                        })}
-                      </select>
-                    </label>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                      <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "الجزاء من المادة 66" : "Penalty from Article 66"}</span>
-                      <select
-                        value={penaltyKind}
-                        onChange={(event) => {
-                          const next = event.target.value;
-                          setPenaltyKind(next);
-                          const spec = listedPenaltyKind(next);
-                          setPenaltyDays(spec?.days.find((n) => n > 0) || spec?.days[0] || 0);
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-ink2)", marginInlineEnd: 4 }}>{ar ? "ملفات الجزاء" : "Sanction files"}</span>
+                  {files.map((card) => {
+                    const on = String((files.find((row) => String(row.item.id) === String(caseSel)) || files[0]).item.id) === String(card.item.id);
+                    return (
+                      <button
+                        key={card.item.id}
+                        type="button"
+                        onClick={() => setCaseSel(String(card.item.id))}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          height: 34,
+                          padding: "0 12px",
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          fontSize: 12.5,
+                          whiteSpace: "nowrap",
+                          fontWeight: on ? 700 : 500,
+                          background: on ? "#0B3D27" : "var(--nv-card)",
+                          color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
+                          border: on ? "1px solid #0B3D27" : "1px solid var(--nv-line)",
                         }}
-                        style={field}
                       >
-                        {DISCIPLINE_PENALTY_KINDS.map((row) => (
-                          <option key={row.id} value={row.id}>{ar ? row.ar : row.en}</option>
-                        ))}
-                      </select>
-                    </label>
-                    {kindSpec.days.some((n) => n > 0) ? (
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                        <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "الأيام — سقف المادة 70 خمسة" : "Days — Article 70 cap is five"}</span>
-                        <select value={String(cutDays)} onChange={(event) => setPenaltyDays(Number(event.target.value))} style={field}>
-                          {kindSpec.days.filter((n) => n > 0).map((n) => (
-                            <option key={n} value={n}>{listedPenaltyLabel(penaltyKind, n, ar)}</option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-                    <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                      <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "تاريخ كشف المخالفة — المادة 69" : "Date the offence was discovered — Article 69"}</span>
-                      <PlatformDateField ar={ar} value={discoveredAt} onChange={setDiscoveredAt} />
-                    </label>
-                    <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, gridColumn: "1 / -1" }}>
-                      <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "المخالفة كما ستُبلَّغ كتابةً" : "Offence as it will be notified"}</span>
-                      <input value={note} onChange={(event) => setNote(event.target.value)} placeholder={ar ? "الواقعة وتاريخها — بلا وصف لا يصحّ الإبلاغ" : "The incident and its date — notice needs a written description"} style={field} />
-                    </label>
-                    {penaltyKind === "dismiss" ? (
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, gridColumn: "1 / -1" }}>
-                        <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "الحالة المقررة للفصل — المادة 66 مع المادة 80" : "Prescribed dismissal case — Articles 66 and 80"}</span>
-                        <input value={dismissGround} onChange={(event) => setDismissGround(event.target.value)} placeholder={ar ? "اكتب الحالة المقررة كما في النظام — لا فصل بلا سند" : "Write the prescribed case as in the Law — no dismissal without a ground"} style={field} />
-                      </label>
-                    ) : null}
-                    <label style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, gridColumn: "1 / -1", fontSize: 12 }}>
-                      <input type="checkbox" checked={offSite} onChange={(event) => setOffSite(event.target.checked)} />
-                      <span>{ar ? "ارتكبت خارج مكان العمل — المادة 70" : "Committed outside the workplace — Article 70"}</span>
-                    </label>
-                    {offSite ? (
-                      <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, gridColumn: "1 / -1" }}>
-                        <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "صلة الواقعة بالعمل أو بصاحبه أو بالمدير المسؤول" : "How the act connects to the work, the employer, or the responsible manager"}</span>
-                        <input value={workConnected} onChange={(event) => setWorkConnected(event.target.value)} placeholder={ar ? "بلا صلة لا يُفتح الملف" : "Without a work link the file does not open"} style={field} />
-                      </label>
-                    ) : null}
-                    <div style={{ gridColumn: "1 / -1", display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      <LaborArticleCite ruleId="discipline.penalties.cite" ar={ar} />
-                      <LaborArticleCite ruleId="discipline.listedOnly.cite" ar={ar} />
-                      <LaborArticleCite ruleId="discipline.charge.maxDays" ar={ar} />
-                      <LaborArticleCite ruleId="discipline.fine.maxDays" ar={ar} />
-                      <LaborArticleCite ruleId="discipline.workplace.cite" ar={ar} />
-                      <LaborArticleCite ruleId="discipline.hearing.cite" ar={ar} />
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={openCase}
-                    style={{
-                      fontFamily: "inherit",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      padding: "10px 16px",
-                      border: "none",
-                      borderRadius: 10,
-                      background: ready ? "var(--nv-navy)" : "var(--nv-line3)",
-                      color: ready ? "var(--nv-btn-ink)" : "var(--nv-muted)",
-                      cursor: ready ? "pointer" : "default",
-                      alignSelf: "flex-start",
-                    }}
-                  >
-                    {ready ? (ar ? "أبلغ الموظف كتابةً وافتح الملف" : "Notify the employee in writing and open the file") : (ar ? "اكتب المخالفة أولاً" : "Write the offence first")}
-                  </button>
+                        {card.employee?.name || "—"}
+                        <span style={{
+                          fontFamily: "'IBM Plex Mono',monospace",
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          padding: "1px 6px",
+                          borderRadius: 4,
+                          background: on ? "rgba(255,255,255,.16)" : "var(--nv-soft)",
+                          color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
+                        }}
+                        >
+                          {ar ? card.face.shortAr : card.face.shortEn}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-              ) : null}
+                <DisciplineCaseCard
+                  card={files.find((row) => String(row.item.id) === String(caseSel)) || files[0]}
+                  ar={ar}
+                  onAction={onAction}
+                  onUploadSigned={onUploadSigned}
+                />
+              </div>
+            )}
 
-              {files.length === 0 ? (
-                <div style={{ padding: "18px 20px", fontSize: 12, color: "var(--nv-muted)" }}>
-                  {ar ? "لا ملفات جزاء بعد." : "No sanction files yet."}
+            <section data-discipline-gates="" style={PACK_CARD}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)" }}>
+                <strong style={{ fontSize: 13 }}>{ar ? "القيود التي تمنع التوقيع" : "Gates that block signing"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({board.gates.length})</span></strong>
+              </div>
+              <div className="nv-disc-gates" style={{ ...packHead("104px minmax(0,1fr) 150px") }}>
+                <span style={{ paddingInlineStart: 12 }}>{ar ? "المرجع" : "Reference"}</span>
+                <span style={{ paddingInlineStart: 10, borderInlineStart: "1px solid var(--nv-line)" }}>{ar ? "القيود التي تمنع التوقيع" : "Gates that block signing"}</span>
+                <span style={{ paddingInlineStart: 10, borderInlineStart: "1px solid var(--nv-line)" }}>{ar ? "الحالة" : "Status"}</span>
+              </div>
+              {board.gates.map((gate) => (
+                <div key={gate.head} className="nv-disc-gates" style={{ display: "grid", gridTemplateColumns: "104px minmax(0,1fr) 150px", gap: 12, padding: "12px 14px", borderBottom: "1px solid var(--nv-line2)", alignItems: "center" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 700, color: "var(--nv-ink)", background: "var(--nv-hover)", border: "1px solid var(--nv-line)", whiteSpace: "nowrap", justifySelf: "start" }}>{gate.tag || "—"}</span>
+                  <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{gate.head}</span>
+                    <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>{gate.body}</span>
+                  </span>
+                  <span style={statusPill(gate.kind)}>{gate.state || "—"}</span>
                 </div>
-              ) : files.map((card) => (
-                <DisciplineCaseCard key={card.item.id} card={card} ar={ar} onAction={onAction} onUploadSigned={onUploadSigned} />
               ))}
-              <div style={{ padding: "13px 20px", fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.9 }}>{board.recordNote}</div>
             </section>
 
             <DisciplineFineFund ledger={ledger} ar={ar} today={board.today} onDispose={disposeFines} />
-            </>
-            )}
           </>
         ) : null}
 
         {activeFace === "law" ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <DisciplineLawBoard cases={visibleCases} employees={employees} ar={ar} today={board.today} />
-            {canManage ? <DisciplineFineFund ledger={ledger} ar={ar} today={board.today} onDispose={disposeFines} /> : null}
-          </div>
+          <DisciplineLawBoard cases={adminVoice ? visibleCases : mine} employees={employees} ar={ar} today={board.today} />
         ) : null}
 
         {activeFace === "mine" ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-              {[
-                ["live", ar ? "ما في ملفي" : "On my file", mineLiveCards.length],
-                ["archive", ar ? "الأرشيف" : "Archive", mineSettledCount],
-              ].map(([id, label, n]) => {
-                const on = mineFace === id;
-                return (
-                  <button key={id} type="button" onClick={() => setMineFace(id)} style={laneChip(on)}>
-                    {label}
-                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.8 }}>{n}</span>
-                  </button>
-                );
-              })}
-              {canManage ? (
-                <span style={{ marginInlineStart: "auto", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-                  {ar ? "أرشيف الإدارة بعد «الكل» في تبويب إدارة." : "Manage archive sits after All on the Manage tab."}
-                </span>
-              ) : null}
-            </div>
-
-            {mineFace === "archive" ? (
-              <DisciplineArchiveBoard
-                cases={mine}
-                employees={employees}
-                stations={stations}
-                ar={ar}
-                today={board.today}
-                scope="mine"
-                selfOnly
-                userId={currentUser?.id}
-              />
-            ) : (
-          <div className="nv-emp-summary" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1fr)", gap: 16, alignItems: "stretch" }}>
-            <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", display: "flex", flexDirection: "column" }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", flexDirection: "column", gap: 3 }}>
-                <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? `ما يراه ${currentUser?.name || ""} في ملفه` : `What ${currentUser?.name || "you"} see on the file`}</span>
-                <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.8 }}>
-                  {mineLiveCards.length
-                    ? (myOpen
-                      ? (ar
-                        ? countAr(myOpen, "جزاء واحد ساري لك أن تعترض عليه", "جزاءان ساريان لك أن تعترض عليهما", "جزاءات سارية لك أن تعترض عليها", "جزاءً سارياً")
-                        : `${myOpen} sanction(s) in force that you may object to`)
-                      : (ar ? "ترى إبلاغك وتحقيقك هنا. الاعتراض يبدأ بعد التوقيع." : "You see your notice and hearing here. Objection starts after signing."))
-                    : (ar ? "لا جزاء مفتوح على ملفك — المستقرّ في الأرشيف." : "No open sanction on your file — settled ones sit in the archive.")}
-                </span>
+          <div data-discipline-mine="" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <section style={PACK_CARD}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)" }}>
+                <strong style={{ fontSize: 13 }}>
+                  {ar ? `ما يراه ${currentUser?.name || "—"} في ملفه` : `What ${currentUser?.name || "—"} sees on the file`}
+                  {" "}
+                  <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({mineLiveCards.length})</span>
+                </strong>
+              </div>
+              <div style={packHead("minmax(0,1fr) 120px")}>
+                <span style={{ paddingInlineStart: 12 }}>{ar ? `ما يراه ${currentUser?.name || "—"} في ملفه` : `What ${currentUser?.name || "—"} sees`}</span>
+                <span style={{ paddingInlineStart: 10, borderInlineStart: "1px solid var(--nv-line)" }}>{ar ? "الحالة" : "Status"}</span>
               </div>
               {mineLiveCards.length === 0 ? (
-                <div style={{ padding: "18px 20px" }}>
-                  <span style={{ fontSize: 12, color: "var(--nv-ok-ink)", fontWeight: 600 }}>{ar ? "لا جزاءات مفتوحة على ملفك." : "No open sanctions on your file."}</span>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 120px", padding: "12px 14px", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "لا جزاء مفتوح على ملفك" : "No open sanction on your file"}</span>
+                  <span style={{ fontSize: 13, color: "var(--nv-muted)", justifySelf: "start" }}>—</span>
                 </div>
               ) : mineLiveCards.map((card) => (
-                <DisciplineMineCard
-                  key={card.item.id}
-                  card={card}
-                  ar={ar}
-                  draft={appealDraft}
-                  onDraft={setAppealDraft}
-                  onObject={fileObject}
-                  onWithdraw={withdrawObject}
-                />
+                <div key={card.item.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 120px", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--nv-line2)", alignItems: "center" }}>
+                  <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                    <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{card.mineTitle || "—"}</strong>
+                    <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.6 }}>{card.mineLine || "—"}</span>
+                  </span>
+                  <span style={statusPill(card.face?.id === "objected" ? "bad" : card.face?.id === "signed" ? "ok" : "warn")}>{card.mineState || "—"}</span>
+                </div>
               ))}
             </section>
 
-            <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", display: "flex", flexDirection: "column" }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", fontSize: 15, fontWeight: 700 }}>
-                {ar ? "حقوقي في هذا المسار" : "My rights on this path"}
+            {mineLiveCards.map((card) => (
+              <DisciplineMineCard
+                key={`act-${card.item.id}`}
+                card={card}
+                ar={ar}
+                draft={appealDraft}
+                onDraft={setAppealDraft}
+                onObject={fileObject}
+                onWithdraw={withdrawObject}
+              />
+            ))}
+
+            <section style={PACK_CARD}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)" }}>
+                <strong style={{ fontSize: 13 }}>{ar ? "حقوقي في هذا المسار" : "My rights on this path"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({RIGHTS.length})</span></strong>
+              </div>
+              <div className="nv-disc-gates" style={packHead("104px minmax(0,1fr)")}>
+                <span style={{ paddingInlineStart: 12 }}>{ar ? "المرجع" : "Reference"}</span>
+                <span style={{ paddingInlineStart: 10, borderInlineStart: "1px solid var(--nv-line)" }}>{ar ? "حقوقي في هذا المسار" : "My rights on this path"}</span>
               </div>
               {RIGHTS.map((row) => (
-                <div key={row.ruleId} style={{ padding: "12px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 6 }}>
-                  <LaborArticleCite ruleId={row.ruleId} ar={ar} showText />
-                  <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.9, minWidth: 0 }}>{ar ? row.ar : row.en}</span>
+                <div key={row.ruleId} className="nv-disc-gates" style={{ display: "grid", gridTemplateColumns: "104px minmax(0,1fr)", gap: 12, padding: "10px 14px", borderBottom: "1px solid var(--nv-line2)", alignItems: "center" }}>
+                  <LaborArticleCite ruleId={row.ruleId} ar={ar} />
+                  <span style={{ fontSize: 12.5, color: "var(--nv-ink)", lineHeight: 1.7, minWidth: 0 }}>{ar ? row.ar : row.en}</span>
                 </div>
               ))}
-              <div style={{ padding: "13px 20px", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.9 }}>
+            </section>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "11px 16px", fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
+              <span>
                 {ar
                   ? <>الاعتراض ليس شكوى: الشكوى واقعة تريد أن تُنظر، والاعتراض حقّ مقيّد بملف جزاء وُقّع عليك. ارفع شكواك من <Link to="/app/complaints" style={{ color: "inherit" }}>صوت الموظف</Link>. جزاؤك الظاهر في <Link to={currentUser?.id ? `/app/employees/${currentUser.id}?tab=growth` : "/app/employees"} style={{ color: "inherit" }}>ملفك</Link>، والحسم النافذ في <Link to="/app/payroll" style={{ color: "inherit" }}>المسير</Link>.</>
                   : <>An objection is not a complaint. Raise a complaint from <Link to="/app/complaints" style={{ color: "inherit" }}>Employee voice</Link>. What is visible sits on <Link to={currentUser?.id ? `/app/employees/${currentUser.id}?tab=growth` : "/app/employees"} style={{ color: "inherit" }}>your file</Link>, and an effective cut on <Link to="/app/payroll" style={{ color: "inherit" }}>payroll</Link>.</>}
-              </div>
-            </section>
-          </div>
-            )}
+              </span>
+            </div>
           </div>
         ) : null}
       </div>
-    </PlatformStampShell>
+    </SuiteWorkspaceFrame>
   );
 }

@@ -186,7 +186,7 @@ export default function OpsTaskComposer({
           style={{
             ...iconBtn,
             border: "none",
-            background: canSubmit ? BRAND : "#E2E8F0",
+            background: canSubmit ? BRAND : "var(--nv-line)",
             color: canSubmit ? "#fff" : MUTED,
             cursor: canSubmit ? "pointer" : "not-allowed",
           }}
@@ -202,7 +202,7 @@ export default function OpsTaskComposer({
         </div>
       ) : null}
       {logBlocked || (stopRequired && !hasStop) || proofMissing ? (
-        <div style={{ fontSize: 11, color: "#B91C1C", lineHeight: 1.45 }}>
+        <div style={{ fontSize: 11, color: "var(--nv-bad-ink)", lineHeight: 1.45 }}>
           {logBlocked
             ? blockReason
             : (stopRequired && !hasStop)

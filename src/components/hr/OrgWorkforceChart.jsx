@@ -3,9 +3,8 @@ import { OrgWorkforceCol, OrgWorkforceNodeCard, ORG_NODE_W, ORG_TREE_LINE } from
 
 function initialsOf(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return "?";
-  const first = (parts[0] || "").slice(0, 1);
-  return parts[1] ? `${first}.${parts[1].slice(0, 1)}` : first;
+  if (!parts.length) return "—";
+  return parts.slice(0, 2).map((part) => part.slice(0, 1)).join("");
 }
 
 /** Management skeleton stays open. A pile of leaf cards stays behind the count. */
@@ -50,9 +49,11 @@ export default function OrgWorkforceChart({
   focusId = "",
   selectedId = "",
   ar = true,
+  canHire = false,
   onSelect,
   onOpenDetails,
   byGrade = false,
+  dense = false,
 }) {
   const [opened, setOpened] = useState(() => new Set());
   const [closed, setClosed] = useState(() => new Set());
@@ -103,7 +104,7 @@ export default function OrgWorkforceChart({
             <div
               aria-hidden
               style={{
-                height: 1,
+                height: 2,
                 background: ORG_TREE_LINE,
                 alignSelf: "stretch",
                 display: showBar ? "block" : "none",
@@ -114,8 +115,8 @@ export default function OrgWorkforceChart({
             <div
               aria-hidden
               style={{
-                width: 1,
-                height: 18,
+                width: 2,
+                height: 22,
                 background: ORG_TREE_LINE,
                 display: flatParent ? "none" : "block",
               }}
@@ -134,6 +135,7 @@ export default function OrgWorkforceChart({
             gradeIndex={node.gradeIndex}
             unit={node.unit}
             unitTip={node.unitTip}
+            branchFace={node.branchFace || ""}
             unitNavy={node.unitNavy}
             byGrade={byGrade}
             count={node.direct > 0 ? `${node.direct} / ${node.total}` : ""}
@@ -149,19 +151,26 @@ export default function OrgWorkforceChart({
             onDetails={() => onOpenDetails?.(node)}
             onClick={() => {
               onSelect?.(node);
-              if (node?.employeeId) onOpenDetails?.(node);
+              onOpenDetails?.(node);
             }}
             onDoubleClick={() => onOpenDetails?.(node)}
             selected={selected}
             isMe={Boolean(node.isMe)}
             acting={Boolean(node.acting)}
             actingText={node.actingText}
+            servesText={node.servesText || ""}
+            hrLine={node.hrLine || ""}
             tone={node.tone}
             vacant={Boolean(node.vacant)}
             kindLock={Boolean(node.kindLock)}
+            bandLabel={node.bandLabel || ""}
+            hireStamp={node.hireStamp || ""}
+            hireTip={node.hireTip || ""}
+            vacantTag={node.vacant ? (canHire ? (ar ? "وظّف من هنا" : "Hire here") : (ar ? "شاغرة" : "Vacant")) : ""}
             coordinate={node.coordinate || ""}
+            dense={dense}
             avatarUrl={node.avatarUrl}
-            initials={initialsOf(node.name)}
+            initials={node.vacant ? "＋" : initialsOf(node.name)}
             meLabel={ar ? "أنت هنا" : "You are here"}
             detailsTitle={ar ? "ملف الموظف" : "Employee file"}
             countTitle={ar ? "مباشرون / إجمالي — انقر للتفرّع" : "Direct / total — click to expand"}
@@ -169,16 +178,19 @@ export default function OrgWorkforceChart({
         </OrgWorkforceCol>
         {kids.length ? (
           <>
-            <div aria-hidden style={{ width: 1, height: 18, background: ORG_TREE_LINE }} />
+            <div aria-hidden style={{ width: 2, height: 22, background: ORG_TREE_LINE }} />
             <div
               style={flat
                 ? {
                     display: "grid",
-                    gridTemplateColumns: `repeat(2, ${ORG_NODE_W}px)`,
-                    gap: 14,
+                    gridTemplateColumns: "repeat(2, max-content)",
+                    gap: 12,
                     justifyContent: "center",
                     alignItems: "start",
-                    paddingTop: 10,
+                    padding: 12,
+                    border: "1px dashed #C9D6CE",
+                    borderRadius: 8,
+                    background: "color-mix(in srgb, var(--nv-card, #fff) 60%, transparent)",
                   }
                 : { display: "flex", alignItems: "flex-start", justifyContent: "center" }}
             >

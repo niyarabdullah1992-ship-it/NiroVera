@@ -46,7 +46,7 @@ export default function SigningFinishDialog({
           maxHeight: "88vh",
           overflow: "auto",
           background: CARD,
-          border: "1px solid #dfe3ea",
+          border: "1px solid var(--nv-line)",
           borderRadius: 14,
           padding: 24,
           display: "flex",
@@ -114,7 +114,7 @@ export default function SigningFinishDialog({
                   : "The seal is merged into the PDF, a SHA-256 fingerprint is computed, and the verification id is written to the company registry. Not a qualified government certificate — verification matches the file to the registry.")}
             </p>
 
-            {error ? <p style={{ margin: 0, fontSize: 12, color: "#DC2626", lineHeight: 1.6 }}>{error}</p> : null}
+            {error ? <p style={{ margin: 0, fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.6 }}>{error}</p> : null}
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
@@ -136,7 +136,7 @@ export default function SigningFinishDialog({
         ) : (
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ fontWeight: 700, fontSize: 16, color: receipt.kind === "group" ? INK : (receipt.registry === "none" ? "#B45309" : BRAND) }}>
+              <span style={{ fontWeight: 700, fontSize: 16, color: receipt.kind === "group" ? INK : (receipt.registry === "none" ? "var(--nv-warn-ink)" : BRAND) }}>
                 {receipt.kind === "group"
                   ? (ar ? "أُرسل الملف — الطلب في الحالة" : "File sent — request is on Status")
                   : receipt.registry === "company"
@@ -171,7 +171,7 @@ export default function SigningFinishDialog({
                   }}
                 >
                   <span style={{ color: MUTED }}>STATE</span>
-                  <span style={{ color: "#B45309", fontWeight: 500 }}>PENDING · parallel</span>
+                  <span style={{ color: "var(--nv-warn-ink)", fontWeight: 500 }}>PENDING · parallel</span>
                   <span style={{ color: MUTED }}>SHA-256</span>
                   <span style={{ color: MUTED }}>{ar ? "يُثبَّت بعد إغلاق المهلة" : "Registers after cooling closes"}</span>
                   <span style={{ color: MUTED }}>REF</span>

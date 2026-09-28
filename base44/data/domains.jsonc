@@ -67,6 +67,7 @@
   ],
   "statusOf": {
     "WorkProof": "unused",
+    "InventoryUnit": "unused",
     "operationsTasks": "legacy-read-fallback",
     "attendanceLedger": "legacy-read-fallback",
     "orgStructure": "legacy-read-fallback",
@@ -95,11 +96,7 @@
       "companySettings",
       "attendanceLedger",
       "publishedRotas",
-      "attendancePolicy",
-      "attendanceEmergency",
       "operationsTasks",
-      "hcmFoundation",
-      "hcmPerformance",
       "hiringPipeline",
       "offboardingCustody",
       "employeeCompliance",
@@ -113,7 +110,6 @@
       "assistantFacts",
       "stationChat",
       "competencyCerts",
-      "hseCredits",
       "orgStructure"
     ]
   },
@@ -646,21 +642,27 @@
           "key": "hcmFoundation",
           "kind": "blob",
           "blobCategory": "hcmFoundation",
+          "storeKey": "hcmFoundation",
           "owner": "hcm",
           "ownerFile": "base44/functions/hcm/entry.ts",
           "derivation": "base44/shared/hcmDerivations.ts",
           "identity": ["companyId"],
-          "personRef": null
+          "personRef": null,
+          "visibility": "senior",
+          "notes": "Object-map blob. Synced via store BLOB_CATEGORIES + hcm function saveBlob."
         },
         {
           "key": "hcmPerformance",
           "kind": "blob",
           "blobCategory": "hcmPerformance",
+          "storeKey": "hcmPerformance",
           "owner": "hcm",
           "ownerFile": "base44/functions/hcm/entry.ts",
           "derivation": "base44/shared/perfDerivations.ts",
           "identity": ["companyId"],
-          "personRef": "employeeId"
+          "personRef": "employeeId",
+          "visibility": "senior",
+          "notes": "Object-map blob. Synced via store BLOB_CATEGORIES + hcm function saveBlob."
         },
         {
           "key": "hiringPipeline",
@@ -875,7 +877,7 @@
           "defect": "split-workproof-shape",
           "status": "unused",
           "isolationKey": "companyId",
-          "notes": "Typed table exists but is NOT the runtime store. No entities.WorkProof reader in functions or src/. Live data is the workProofs blob (ref / sealId). Do-not-write."
+          "notes": "Retired do-not-write. Live data is the workProofs blob (ref / sealId). Never entities.WorkProof.*."
         },
         {
           "key": "visitorProofs",
@@ -952,11 +954,14 @@
           "key": "hseCredits",
           "kind": "blob",
           "blobCategory": "hseCredits",
+          "storeKey": "hseCredits",
           "owner": "scores",
           "ownerFile": "base44/functions/scores/entry.ts",
           "derivation": "base44/shared/hseDerivations.ts",
           "identity": ["id", "companyId"],
-          "personRef": "employeeId"
+          "personRef": "employeeId",
+          "visibility": "senior",
+          "notes": "Synced via store BLOB_CATEGORIES."
         },
         {
           "key": "competencyCerts",
@@ -1186,7 +1191,7 @@
           "personRef": null,
           "isolationKey": "companyId",
           "defect": "inventory-forced-local",
-          "notes": "Canonical SKU. Live quantity is locationBalances + currentLocationId. src/lib/inventoryApi.js forceLocalInventory — frontend never invokes the inventory function."
+          "notes": "Canonical SKU. Sole qty home: locationBalances (+ derived quantity). inventoryApi still force-locals for preview; cloud inventory no longer dual-writes InventoryUnit."
         },
         {
           "key": "InventoryUnit",
@@ -1199,8 +1204,8 @@
           "identity": ["id", "companyId", "itemId"],
           "personRef": null,
           "isolationKey": "companyId",
-          "defect": "inventory-qty-dual",
-          "notes": "Cloud per-location quantity. Frontend inventoryApi.js force-locals to InventoryItem.locationBalances — two quantity truths. Do not treat this as the preview source."
+          "splitOf": "inventoryItems",
+          "notes": "Retired do-not-write. One-shot hydrate into InventoryItem.locationBalances on list/getItem. Never create/update units again."
         },
         {
           "key": "materialRequests",
@@ -1340,6 +1345,19 @@
           "personRef": null,
           "visibility": "senior",
           "notes": "Store treats this as an object map, not an array."
+        },
+        {
+          "key": "branchEscalationSla",
+          "kind": "blob",
+          "blobCategory": "branchEscalationSla",
+          "storeKey": "branchEscalationSla",
+          "owner": "complaints",
+          "ownerFile": "base44/functions/complaints/entry.ts",
+          "derivation": "base44/shared/complaintDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "visibility": "senior",
+          "notes": "stationId → SLA step list. Object map, not an array. Synced via BLOB_CATEGORIES."
         },
         {
           "key": "disciplinaryCases",
@@ -1684,12 +1702,12 @@
     },
     {
       "id": "inventory-qty-dual",
-      "severity": "risky",
+      "severity": "fixed",
       "keys": ["inventoryItems", "InventoryUnit"],
       "canonical": "inventoryItems",
       "legacy": ["InventoryUnit"],
-      "evidence": ["src/lib/localInventoryFallback.js:58", "base44/functions/inventory/entry.ts:305", "base44/entities/InventoryItem.jsonc"],
-      "summary": "Preview quantity is InventoryItem.locationBalances + quantity. Cloud inventory also writes InventoryUnit rows. Two quantity truths for the same SKU."
+      "evidence": ["src/lib/facts/money.js", "base44/functions/inventory/entry.ts", "base44/entities/InventoryItem.jsonc"],
+      "summary": "Sole qty home is InventoryItem.locationBalances. Cloud inventory stopped dual-writing InventoryUnit; one-shot hydrate lifts leftover units into locationBalances."
     },
     {
       "id": "arbitration-preview-gap",
@@ -1702,10 +1720,10 @@
     {
       "id": "preview-blob-gaps",
       "severity": "info",
-      "keys": ["publishedRotas", "hcmFoundation", "hcmPerformance", "hiringPipeline", "offboardingCustody", "employeeCompliance", "assistantFacts", "stationChat", "competencyCerts", "hseCredits"],
+      "keys": ["publishedRotas", "hiringPipeline", "offboardingCustody", "employeeCompliance", "assistantFacts", "stationChat", "competencyCerts"],
       "canonical": null,
-      "evidence": ["src/lib/store.js:764", "base44/data/domains.jsonc previewGaps.notInStoreBlobCategories"],
-      "summary": "These CompanyDataBlob categories are owned by functions but are not in store.js BLOB_CATEGORIES. companyDirectory preview sync will not push/pull them. Listed in previewGaps — do not add a second undocumented category."
+      "evidence": ["src/lib/store.js", "base44/data/domains.jsonc previewGaps.notInStoreBlobCategories"],
+      "summary": "Remaining function-owned blobs still outside store BLOB_CATEGORIES. Live HCM/attendance/hseCredits/branchEscalationSla were promoted. Object-map sync uses normalizeBlobPayload so maps are not wiped to []."
     },
     {
       "id": "workproof-folder-case",

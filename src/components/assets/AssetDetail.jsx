@@ -69,9 +69,9 @@ export default function AssetDetail({
         </div>
 
         {alerts.length > 0 && (
-          <div style={{ borderRadius: 10, border: "1px solid #FDE68A", background: "#FFFBEB", padding: 12 }}>
+          <div style={{ borderRadius: 10, border: "1px solid var(--nv-line)", background: "var(--nv-warn-soft)", padding: 12 }}>
             {alerts.map((a) => (
-              <p key={a} style={{ margin: "0 0 4px", fontSize: 12, color: "#92400E", display: "flex", alignItems: "center", gap: 6 }}>
+              <p key={a} style={{ margin: "0 0 4px", fontSize: 12, color: "var(--nv-warn-ink)", display: "flex", alignItems: "center", gap: 6 }}>
                 <AlertTriangle size={13} /> {a}
               </p>
             ))}
@@ -98,7 +98,7 @@ export default function AssetDetail({
             <img
               src={qr}
               alt="QR"
-              style={{ width: 112, height: 112, borderRadius: 10, border: `1px solid ${BORDER}`, background: "#fff", padding: 4 }}
+              style={{ width: 112, height: 112, borderRadius: 10, border: `1px solid ${BORDER}`, background: "var(--nv-card)", padding: 4 }}
             />
             <span style={{ fontSize: 11, color: MUTED, display: "inline-flex", alignItems: "center", gap: 4 }}>
               <QrCode size={12} /> {asset.qrCode}
@@ -179,7 +179,7 @@ export default function AssetDetail({
                 />
               </>
             ) : (
-              <p style={{ margin: "8px 0 0", fontSize: 11, color: "#92400E", lineHeight: 1.7 }}>
+              <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--nv-warn-ink)", lineHeight: 1.7 }}>
                 {ar
                   ? "البلاغ مفتوح — لا يُغلق إلا بقرار مكتوب: تحميل وشطب، أو العثور عليه."
                   : "The case is open — it closes only on a written decision: charged / written off, or found."}

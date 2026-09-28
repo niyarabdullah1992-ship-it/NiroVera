@@ -35,7 +35,7 @@ const tableHead = {
   padding: "11px 18px",
   background: SURFACE,
   borderTop: "none",
-  borderBottom: "1px solid #E2E8F0",
+  borderBottom: "1px solid var(--nv-line)",
   fontSize: "10px",
   letterSpacing: "0.06em",
   color: MUTED,
@@ -47,7 +47,7 @@ const tableRow = {
   gridTemplateColumns: "minmax(140px,1.4fr) 78px 110px 110px 110px",
   gap: "12px",
   padding: "12px 18px",
-  borderBottom: "1px solid #F1F5F9",
+  borderBottom: "1px solid var(--nv-line)",
   alignItems: "center",
 };
 
@@ -302,7 +302,7 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
                 // Without it the header did not add up to the total below it.
                 { label: ar ? "التأمينات — حصة الموظف" : "GOSI — employee share", value: fmt(displayTotals.gosiEmployee || 0, currency) },
               ].map((m) => (
-                <div key={m.label} className="nv-paper" style={{ border: "1px solid #E2E8F0", borderRadius: 14, padding: "14px 16px", background: CARD }}>
+                <div key={m.label} className="nv-paper" style={{ border: "1px solid var(--nv-line)", borderRadius: 14, padding: "14px 16px", background: CARD }}>
                   <p style={{ margin: 0, fontSize: "10px", fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{m.label}</p>
                   <p dir="ltr" style={{ margin: "8px 0 0", fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "18px", fontWeight: 600, color: NAVY, textAlign: "start" }}>{m.value}</p>
                 </div>
@@ -319,7 +319,7 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "8px",
-                  color: "#B45309",
+                  color: "var(--nv-warn-ink)",
                 }}
               >
                 <ListChecks style={{ width: 14, height: 14, flexShrink: 0 }} />
@@ -358,7 +358,7 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
                       key={r.stationId}
                       style={{
                         ...tableRow,
-                        background: hoverRow === r.stationId ? "#F7F8FA" : undefined,
+                        background: hoverRow === r.stationId ? "var(--nv-soft)" : undefined,
                       }}
                       onMouseEnter={() => setHoverRow(r.stationId)}
                       onMouseLeave={() => setHoverRow(null)}
@@ -372,7 +372,7 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
                           fontSize: "12px",
                           fontFamily: "'IBM Plex Sans',sans-serif",
                           textAlign: "right",
-                          color: r.overtime > 50000 ? "#DC2626" : MUTED,
+                          color: r.overtime > 50000 ? "var(--nv-bad-ink)" : MUTED,
                           fontWeight: r.overtime > 50000 ? 600 : 400,
                         }}
                       >
@@ -408,7 +408,7 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
                   >
                     <div style={{ fontSize: 13, fontWeight: 500, color: NAVY }}>{item.employeeName || item.name}</div>
                     <div dir="ltr" style={{ fontSize: 12, color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "end" }}>{fmt(netOf(item), item.currency || currency)}</div>
-                    <div style={{ fontSize: 11, color: item.paid ? "#15803D" : MUTED }}>{item.paid ? (ar ? "مدفوع" : "Paid") : (ar ? "غير مدفوع" : "Unpaid")}</div>
+                    <div style={{ fontSize: 11, color: item.paid ? "var(--nv-ok-ink)" : MUTED }}>{item.paid ? (ar ? "مدفوع" : "Paid") : (ar ? "غير مدفوع" : "Unpaid")}</div>
                   </div>
                 ))}
             </div>

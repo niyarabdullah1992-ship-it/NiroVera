@@ -86,7 +86,7 @@ const claimsRow = {
   gridTemplateColumns: "minmax(220px,1.8fr) 130px 110px 110px 130px",
   gap: "12px",
   padding: "12px 18px",
-  borderBottom: "1px solid #F1F5F9",
+  borderBottom: "1px solid var(--nv-line)",
   alignItems: "center",
 };
 
@@ -230,11 +230,11 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
         </div>
 
         {loadError ? (
-          <p style={{ margin: "12px 0 0", fontSize: "12px", color: "#8A1C2B", lineHeight: 1.7 }}>{loadError}</p>
+          <p style={{ margin: "12px 0 0", fontSize: "12px", color: "var(--nv-bad-ink)", lineHeight: 1.7 }}>{loadError}</p>
         ) : null}
 
         {(alert?.delayedPayoutCount > 0 || alert?.pendingCount > 0) && (
-          <p style={{ margin: "12px 0 0", fontSize: "11px", color: "#B45309" }}>
+          <p style={{ margin: "12px 0 0", fontSize: "11px", color: "var(--nv-warn-ink)" }}>
             {ar
               ? `${alert.delayedPayoutCount} معتمدة لم تُصرف خلال 48 ساعة · ${alert.pendingCount} بانتظار الاعتماد`
               : `${alert.delayedPayoutCount} approved unpaid after 48h · ${alert.pendingCount} awaiting approval`}
@@ -250,7 +250,7 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
                 <span style={{ width: "96px", fontSize: "12px", color: MUTED, flexShrink: 0 }}>
                   {b.stationName || b.stationId}
                 </span>
-                <span style={{ flex: 1, height: "8px", borderRadius: "5px", background: "#F1F5F9", overflow: "hidden" }}>
+                <span style={{ flex: 1, height: "8px", borderRadius: "5px", background: "var(--nv-soft)", overflow: "hidden" }}>
                   <span style={bar(Math.min(100, b.pct || 0), barColor(tagKey))} />
                 </span>
                 <span
@@ -268,7 +268,7 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
 
       {/* Claims table — L1867 */}
       <div style={tableShell}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "14px 18px", borderBottom: "1px solid #E2E8F0", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
           <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>{ar ? "المطالبات" : "Claims"}</div>
           <div style={{ fontSize: "11px", color: MUTED }}>
             {ar ? "المطالبة تحتاج إيصالًا مرفقًا قبل الاعتماد" : "A receipt attachment is required before approval"}
@@ -294,7 +294,7 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
                     key={c.id}
                     style={{
                       ...claimsRow,
-                      background: hoverClaim === c.id ? "#F7F8FA" : undefined,
+                      background: hoverClaim === c.id ? "var(--nv-soft)" : undefined,
                     }}
                     onMouseEnter={() => setHoverClaim(c.id)}
                     onMouseLeave={() => setHoverClaim(null)}
@@ -351,7 +351,7 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
                               style={{
                                 padding: "4px 10px",
                                 borderRadius: "10px",
-                                border: "1px solid #E2E8F0",
+                                border: "1px solid var(--nv-line)",
                                 background: CARD,
                                 color: MUTED,
                                 fontSize: "10px",
@@ -377,7 +377,7 @@ export default function ExpenseBudgetBoard({ lang = "ar", stationScope = "all" }
                             style={{
                               padding: "4px 10px",
                               borderRadius: "10px",
-                              border: "1px solid #E2E8F0",
+                              border: "1px solid var(--nv-line)",
                               background: CARD,
                               color: MUTED,
                               fontSize: "10px",

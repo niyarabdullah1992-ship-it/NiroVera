@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { buildLawGatesBoard } from "../src/lib/lawGatesBoard.js";
+import { publishedWeekMinistryFacts, scanMinistryCompliance } from "../src/lib/rosterMinistrySurface.js";
 import {
   checkShiftChangeApplyGate,
   checkWeekPublishGates,
@@ -893,9 +894,9 @@ const calManage = calendarLaneEmployees({
 });
 assert.deepEqual(calManage.map((row) => row.id), ["b"]);
 
-assert.equal(LEAVE_STYLE.color, "#4a2c14", "leave chips use dark brown, not green");
-assert.equal(LEAVE_STYLE.bg, "#efe0cc");
-assert.equal(LEAVE_STYLE.fg, "#3d2410");
+assert.equal(LEAVE_STYLE.color, "var(--nv-warn-fill)", "leave chips use the gold warning pair, not green");
+assert.equal(LEAVE_STYLE.bg, "var(--nv-warn-soft)");
+assert.equal(LEAVE_STYLE.fg, "var(--nv-warn-ink)");
 assert.ok(!/#15|#137a49|#ECFDF3|#f2faf6/i.test(`${LEAVE_STYLE.color}${LEAVE_STYLE.bg}${LEAVE_STYLE.fg}`));
 assert.equal(LEAVE_CITE_STYLE.fg, "#6b4423", "article chip on leave is light brown");
 assert.equal(LEAVE_CITE_STYLE.bg, "#f3e6d4");
@@ -1779,6 +1780,8 @@ assert.doesNotMatch(platformSrc, /تبديل النطاق في الهيدر/, "h
 
 const boardSrc = readFileSync(new URL("../src/components/schedules/ShiftWeekBoard.jsx", import.meta.url), "utf8");
 assert.match(boardSrc, /LawGatesPanels/, "publish law gates render as the three-panel board");
+assert.match(boardSrc, /PublishedWeekMinistryStrip/, "published week shows hours, holidays, and article constraints");
+assert.match(boardSrc, /data-published-ministry|PublishedWeekMinistryStrip/, "ministry facts sit on the week grid");
 assert.match(boardSrc, /decisionId="18632"/, "night header always prints قرار 18632");
 assert.match(boardSrc, /entitlement glow=\{nightGlow\}/, "header 18632 stays a green worker-right chip when not due");
 assert.match(boardSrc, /surface="leave"/, "leave-day article chip is light brown, not mint on the cell");
@@ -2602,5 +2605,31 @@ assert.doesNotMatch(
   assert.match(art112?.pillLabel || "", /بقايا/);
   console.log("juvenile publish gates: PASS");
 }
+
+const nationalWeek = checkWeekPublishGates({
+  schedule: { stationId: "st", shiftTypes: [], assignments: {} },
+  employees: [{ id: "e-nat", name: "نورة", stationId: "st" }],
+  weekStart: weekStartDate("2026-09-23"),
+  stationId: "st",
+  ar: true,
+  today: "2026-09-26",
+});
+const nationalFacts = publishedWeekMinistryFacts(nationalWeek, { ar: true });
+assert.notEqual(nationalFacts.holidays, "—", "National Day week names official leave");
+assert.match(nationalFacts.holidayNote, /112/);
+assert.equal(nationalFacts.hours, "0");
+const emptyFacts = publishedWeekMinistryFacts(null, { ar: true });
+assert.equal(emptyFacts.hours, "—");
+assert.equal(emptyFacts.holidays, "—");
+assert.equal(emptyFacts.compliance, "—");
+const quietScan = scanMinistryCompliance({
+  data: { employees: [], schedules: [], stations: [{ id: "st", name: "فرع التجربة" }], payrollRuns: [{ month: "2026-03", status: "sent" }] },
+  stations: [{ id: "st", name: "فرع التجربة" }],
+  employees: [],
+  weekStart: weekStartDate("2026-04-10"),
+  ar: true,
+  today: "2026-04-10",
+});
+assert.ok(!quietScan.findings.some((row) => /فهد العتيبي|نورة القحطاني|فرع الخفجي|4000/.test(`${row.title} ${row.detail}`)));
 
 console.log("shift-week derivations ok");

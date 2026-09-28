@@ -100,11 +100,11 @@ export default function StationLocationEditor({ t, station, onSave, onCancel, in
   };
 
   const card = (
-    <div className={inline ? "w-full border border-[#dfe3ea] bg-white overflow-hidden" : "w-full max-w-lg rounded-xl border border-border bg-card overflow-hidden"}>
+    <div className={inline ? "w-full border border-[var(--nv-line)] bg-white overflow-hidden" : "w-full max-w-lg rounded-xl border border-border bg-card overflow-hidden"}>
       {!inline ? (
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <h3 className="font-heading font-semibold text-sm flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-[#14284B]" /> {t("setLocation")} — <span dir="auto">{station.name}</span>
+            <MapPin className="w-4 h-4 text-[var(--nv-ink)]" /> {t("setLocation")} — <span dir="auto">{station.name}</span>
           </h3>
           <button type="button" onClick={onCancel} className="p-1 rounded-md hover:bg-muted"><X className="w-4 h-4" /></button>
         </div>
@@ -154,7 +154,7 @@ export default function StationLocationEditor({ t, station, onSave, onCancel, in
             <Circle center={pos} radius={accuracy} pathOptions={{ color: "#3b82f6", weight: 1, fillOpacity: 0.08 }} />
           )}
           {pos && <Marker position={pos} icon={markerIcon} />}
-          {pos && <Circle center={pos} radius={Number(radius) || 200} pathOptions={{ color: "#1E9E63", fillOpacity: 0.12 }} />}
+          {pos && <Circle center={pos} radius={Number(radius) || 200} pathOptions={{ color: "var(--nv-ok-ink)", fillOpacity: 0.12 }} />}
         </MapContainer>
       </div>
 
@@ -177,7 +177,7 @@ export default function StationLocationEditor({ t, station, onSave, onCancel, in
             type="button"
             onClick={submit}
             disabled={!pos}
-            className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[#137a49] text-white text-xs font-semibold disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-[var(--nv-btn-fill)] text-white text-xs font-semibold disabled:opacity-50"
           >
             <Check className="w-3.5 h-3.5" /> {t("save")}
           </button>

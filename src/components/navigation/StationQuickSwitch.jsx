@@ -55,9 +55,9 @@ const chip = (on) => ({
   fontWeight: 600,
   cursor: "pointer",
   fontFamily: "inherit",
-  border: on ? "none" : "1px solid #D5DCD8",
-  background: on ? "#3C7D50" : "#fff",
-  color: on ? "#fff" : "#3A4048",
+  border: on ? "none" : "1px solid var(--nv-line)",
+  background: on ? "var(--nv-btn-fill)" : "var(--nv-card)",
+  color: on ? "#fff" : "var(--nv-ink2)",
 });
 
 /**
@@ -88,7 +88,7 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
       const node = anchorRef?.current;
       if (!node) return;
       const rect = node.getBoundingClientRect();
-      const width = Math.min(380, window.innerWidth - 16);
+      const width = Math.min(Math.round(window.innerWidth * 0.92), 380);
       let left = rect.right - width;
       if (left < 8) left = 8;
       if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
@@ -246,18 +246,18 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
           left: box.left,
           zIndex: 81,
           width: box.width,
-          background: "#fff",
-          border: "1px solid #D5DCD8",
-          borderTop: "3px solid #0B8A4F",
-          borderRadius: 8,
-          boxShadow: "0 18px 44px rgba(29,36,32,.2)",
+          background: "var(--nv-card)",
+          border: "1px solid var(--nv-line)",
+          borderTop: "3px solid var(--nv-ok-fill)",
+          borderRadius: 10,
+          boxShadow: "0 18px 44px rgba(12,20,16,.18)",
           display: "flex",
           flexDirection: "column",
           maxHeight: box.maxHeight,
           overflow: "hidden",
         }}
       >
-        <div style={{ padding: 10, borderBottom: "1px solid #E4E9E6", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ padding: 10, borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 8 }}>
           <input
             autoFocus
             value={query}
@@ -265,18 +265,18 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
             placeholder={ar ? "⌕ ابحث باسم الفرع أو المدينة أو الرمز" : "⌕ Search by branch, city, or code"}
             aria-label={ar ? "بحث في الفروع" : "Search stations"}
             style={{
-              height: 34,
-              minHeight: 34,
+              height: 40,
+              minHeight: 40,
               padding: "0 10px",
               borderRadius: 8,
-              border: "1px solid #C5CEC9",
+              border: "1px solid var(--nv-line)",
               fontSize: 12.5,
               outline: "none",
-              color: "#111418",
+              color: "var(--nv-ink)",
               width: "100%",
               boxSizing: "border-box",
               fontFamily: "inherit",
-              background: "#fff",
+              background: "var(--nv-card)",
             }}
           />
           {regions.length > 0 ? (
@@ -306,16 +306,16 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
                 width: "100%",
                 padding: "10px 12px",
                 border: "none",
-                borderBottom: "1px solid #E4E9E6",
+                borderBottom: "1px solid var(--nv-line)",
                 cursor: "pointer",
                 fontFamily: "inherit",
                 textAlign: "start",
-                background: scope === "all" ? "#E6F4EC" : rowIds[cursor] === "all" ? "#F7FBF8" : "#fff",
-                boxShadow: scope === "all" ? "inset -3px 0 0 #0B8A4F" : "none",
+                background: scope === "all" ? "var(--nv-ok-soft)" : rowIds[cursor] === "all" ? "var(--nv-hover)" : "var(--nv-card)",
+                boxShadow: scope === "all" ? "inset -3px 0 0 var(--nv-btn-fill)" : "none",
               }}
             >
-              <strong style={{ fontSize: 12.5, color: "#111418" }}>{ar ? "كل نطاقي" : "All my scope"}</strong>
-              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 600, color: "#555C66", unicodeBidi: "isolate" }}>
+              <strong style={{ fontSize: 12.5, color: "var(--nv-ink)" }}>{ar ? "كل نطاقي" : "All my scope"}</strong>
+              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, fontWeight: 600, color: "var(--nv-muted)", unicodeBidi: "isolate" }}>
                 {workplaces.length}
               </span>
             </button>
@@ -326,12 +326,12 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
               <div style={{
                 padding: "6px 12px",
                 background: "#F2F5F3",
-                borderBottom: "1px solid #E4E9E6",
+                borderBottom: "1px solid var(--nv-line)",
                 display: "flex",
                 justifyContent: "space-between",
                 fontSize: 10.5,
                 fontWeight: 700,
-                color: "#555C66",
+                color: "var(--nv-muted)",
                 letterSpacing: "0.04em",
               }}
               >
@@ -361,16 +361,16 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
                       width: "100%",
                       padding: "8px 12px",
                       border: "none",
-                      borderBottom: "1px solid #F2F5F3",
+                      borderBottom: "1px solid var(--nv-line)",
                       cursor: "pointer",
                       fontFamily: "inherit",
                       textAlign: "start",
-                      background: on ? "#E6F4EC" : hot ? "#F7FBF8" : "#fff",
+                      background: on ? "var(--nv-ok-soft)" : hot ? "var(--nv-hover)" : "var(--nv-card)",
                     }}
                   >
                     <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.35, minWidth: 0 }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 600, color: "#111418" }}>{station.name || "—"}</span>
-                      <span style={{ fontSize: 10.5, color: "#555C66" }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)" }}>{station.name || "—"}</span>
+                      <span style={{ fontSize: 10.5, color: "var(--nv-muted)" }}>
                         {kind}
                         {code ? " · " : null}
                         {code ? (
@@ -383,9 +383,9 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
                         <span title={ar ? "عاجل" : "Urgent"} dir="ltr" style={pill("#9B2335", "#fff", "none")}>{badge.urgent}</span>
                       ) : null}
                       {badge.decision > 0 ? (
-                        <span title={ar ? "ينتظر قرارك" : "Awaiting you"} dir="ltr" style={pill("#FBF3E1", "#8A5A12", "1px solid #EAD6A8")}>{badge.decision}</span>
+                        <span title={ar ? "ينتظر قرارك" : "Awaiting you"} dir="ltr" style={pill("var(--nv-warn-soft)", "#8A5A12", "1px solid #EAD6A8")}>{badge.decision}</span>
                       ) : null}
-                      {on ? <span style={{ fontWeight: 700, color: "#0B8A4F" }}>✓</span> : null}
+                      {on ? <span style={{ fontWeight: 700, color: "var(--nv-ok-ink)" }}>✓</span> : null}
                     </span>
                   </button>
                 );
@@ -394,16 +394,16 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
           ))}
 
           {hits.length === 0 ? (
-            <div style={{ padding: 18, textAlign: "center", fontSize: 12, color: "#555C66" }}>
+            <div style={{ padding: 18, textAlign: "center", fontSize: 12, color: "var(--nv-muted)" }}>
               {ar ? "لا فرع مطابق." : "No matching branch."}
             </div>
           ) : null}
         </div>
 
-        <div style={{ padding: "8px 12px", borderTop: "1px solid #E4E9E6", background: "#FAFBFA", fontSize: 11, color: "#555C66", lineHeight: 1.6 }}>
+        <div style={{ padding: "8px 12px", borderTop: "1px solid var(--nv-line)", background: "var(--nv-soft)", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>
           {ar
-            ? "الشارة الحمراء عاجلة، والذهبية تنتظر قرارك."
-            : "Red is urgent. Gold is awaiting your decision."}
+            ? "يُطبَّق فرع واحد في كل مرة: الفرع الذي تديره الآن. الشارة الحمراء عاجلة، والذهبية تنتظر قرارك."
+            : "One branch is applied at a time: the branch you are managing now. Red is urgent. Gold is awaiting your decision."}
         </div>
       </div>
     </>,

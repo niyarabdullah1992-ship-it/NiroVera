@@ -7,7 +7,7 @@ import PlatformDateField from "@/components/shared/PlatformDateField";
 import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";
 import { BORDER, CARD, MUTED, NAVY, field } from "@/lib/platformStyles";
 
-const row = { padding: "15px 20px", borderBottom: "1px solid #f7f8fa", display: "flex", flexDirection: "column", gap: 8 };
+const row = { padding: "15px 20px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 8 };
 
 function Flag({ label, note, on, disabled, onToggle }) {
   return (
@@ -209,7 +209,7 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
           <button
             type="button"
             onClick={save}
-            style={{ fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: "11px 18px", border: "none", background: "#137a49", color: "#fff", cursor: "pointer" }}
+            style={{ fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: "11px 18px", border: "none", background: "var(--nv-btn-fill)", color: "#fff", cursor: "pointer" }}
           >
             {ar ? "احفظ إعداد الساعات والإعلان" : "Save hours and posting"}
           </button>

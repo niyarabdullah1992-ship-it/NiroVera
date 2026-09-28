@@ -2,6 +2,7 @@
 
 import { citeRule } from "./laborRules.js";
 import { statutoryArticleLabel } from "./statutoryItem.js";
+import { readDisciplinaryCases, readPayrollRuns, readSafety } from "./facts/index.js";
 
 export const INSPECTION_REGISTERS = [
   { id: "workers", ar: "سجل العمال والعقود", en: "Workers and contracts", to: "/app/hr", ruleId: "contract.written.cite" },
@@ -15,9 +16,9 @@ export const INSPECTION_REGISTERS = [
 
 export function deriveInspectionPack(data = {}) {
   const employees = data.employees || [];
-  const cases = data.disciplinaryCases || [];
-  const safety = data.safety || [];
-  const payroll = data.payrollRuns || data.payroll || [];
+  const cases = readDisciplinaryCases(data);
+  const safety = readSafety(data);
+  const payroll = readPayrollRuns(data);
   return {
     generatedAt: new Date().toISOString(),
     registers: INSPECTION_REGISTERS.map((row) => {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { deriveHseRates, checkHazardCloseGate, exposureHours, reportingPointsFor } from "../src/lib/hseDerivations.js";
+import { deriveOpenRiskMap } from "../src/lib/safetyReportCard.js";
 import { scoreEmployee, scoreBoard, PERF_WEIGHTS, blendHseTerm, deriveFairHseRates } from "../src/lib/perfDerivations.js";
 
 assert.equal(exposureHours(10), 20800);
@@ -42,5 +43,34 @@ const board = scoreBoard([
 ]);
 assert.equal(board[0].rank, 1);
 assert.ok(board[0].score >= board[1].score);
+
+const bare = deriveOpenRiskMap([
+  { status: "open", description: "شبه حادثة — سقوط أداة من السقالة" },
+]);
+assert.equal(bare.openCount, 1);
+assert.equal(bare.buckets.find((band) => band.key === "critical").n, 0);
+assert.equal(bare.buckets.find((band) => band.key === "high").n, 0);
+assert.equal(bare.buckets.find((band) => band.key === "medium").n, 0);
+assert.equal(bare.buckets.find((band) => band.key === "low").n, 0);
+assert.equal(bare.buckets.find((band) => band.key === "ungraded").n, 1);
+assert.equal(bare.buckets.find((band) => band.key === "ungraded").ar, "بلا درجة");
+assert.equal(bare.buckets.reduce((sum, band) => sum + band.n, 0), bare.openCount);
+
+const mixed = deriveOpenRiskMap([
+  { status: "open", card: { score: 15 } },
+  { status: "open", card: { score: 10 } },
+  { status: "open", card: { score: 5 } },
+  { status: "open", card: { score: 4 } },
+  { status: "open", card: { score: "—" } },
+  { status: "open", card: { levelKey: "critical" } },
+  { status: "closed", card: { score: 20 } },
+]);
+assert.equal(mixed.openCount, 6);
+assert.equal(mixed.buckets.find((band) => band.key === "critical").n, 1);
+assert.equal(mixed.buckets.find((band) => band.key === "high").n, 1);
+assert.equal(mixed.buckets.find((band) => band.key === "medium").n, 1);
+assert.equal(mixed.buckets.find((band) => band.key === "low").n, 1);
+assert.equal(mixed.buckets.find((band) => band.key === "ungraded").n, 2);
+assert.equal(mixed.buckets.reduce((sum, band) => sum + band.n, 0), mixed.openCount);
 
 console.log("hse + perf derivations: PASS");

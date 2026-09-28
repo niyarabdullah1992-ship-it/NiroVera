@@ -1,6 +1,9 @@
 /** Client mirror of base44/shared/payrollDerivations.ts */
 
-import { citeRule, ruleValue } from "./laborRules.js";
+import { citeRule, ruleAt, ruleValue } from "./laborRules.js";
+import { gosiRegistrationIso, gosiSubscriberClass, GOSI_NEW_LAW_FROM } from "./facts/people.js";
+
+export { gosiRegistrationIso, gosiSubscriberClass, GOSI_NEW_LAW_FROM };
 
 export const SHIFT_HOURS_PER_DAY = ruleValue("hours.shift.ordinaryHours");
 export const DAYS_PER_MONTH = ruleValue("payroll.month.conventionDays");
@@ -55,7 +58,13 @@ export function lineGross(line) {
  */
 export function gosiEmployeeWithheld(line) {
   if (line?.isSaudi !== true) return 0;
-  return gosiLine(line, { saudi: true }).employeeShare;
+  const quote = gosiLine(line, {
+    saudi: true,
+    onDate: line?.gosiAsOf || line?.month,
+    registeredAt: line?.gosiRegisteredAt,
+  });
+  if (quote.blocked) return 0;
+  return quote.employeeShare;
 }
 
 /**
@@ -355,16 +364,141 @@ export const GOSI_WAGE_CEILING = ruleValue("compliance.gosi.wageCeiling");
 export const GOSI_EMPLOYEE_RATE = ruleValue("compliance.gosi.employeeRate");
 export const GOSI_EMPLOYER_RATE = ruleValue("compliance.gosi.employerRate");
 export const GOSI_EXPAT_EMPLOYER_RATE = ruleValue("compliance.gosi.expatEmployerRate");
+export const GOSI_NEW_RATE_UNCONFIRMED_AR = "نسبة المشترك الجديد غير مثبتة";
+export const GOSI_NEW_RATE_UNCONFIRMED_EN = "The new-subscriber rate is not confirmed";
 
-/** Contributory wage = base + allowances, capped. Saudi: employee + employer shares. Expat: employer occupational hazard only. */
-export function gosiLine(line, { saudi } = {}) {
+function gosiAsOfDay(onDate) {
+  const text = String(onDate ?? "").trim();
+  const month = text.match(/^(\d{4})-(\d{2})$/);
+  if (month) {
+    const last = new Date(Number(month[1]), Number(month[2]), 0);
+    return isoLocal(last);
+  }
+  const day = gosiRegistrationIso(text);
+  if (day) return day;
+  return isoLocal(new Date());
+}
+
+function bpsOf(rate) {
+  return Math.round(Number(rate) * 10000);
+}
+
+function halalaFromBps(wage, bps) {
+  return Math.round((Number(wage) || 0) * bps / 100) / 100;
+}
+
+export function formatGosiPercent(rate, ar = true) {
+  if (rate == null || !Number.isFinite(Number(rate))) return "";
+  const pct = Math.round(Number(rate) * 10000) / 100;
+  const text = Number.isInteger(pct) ? String(pct) : String(pct);
+  return ar ? `${text}٪` : `${text}%`;
+}
+
+/**
+ * Rates applied on a day. Old subscribers, and Saudis with an empty registration
+ * date, stay on 9.75% / 11.75%. New subscribers use the annuity band in force
+ * on that day plus SANED and hazards. A missing band withholds nothing.
+ */
+export function gosiAppliedRates({ subscriberClass = "unset", onDate, saudi = true } = {}) {
+  if (saudi === false) {
+    const employerRate = Number(ruleValue("compliance.gosi.expatEmployerRate")) || 0;
+    return {
+      subscriberClass: "expat",
+      employeeRate: 0,
+      employerRate,
+      employeeBps: 0,
+      employerBps: bpsOf(employerRate),
+      blocked: false,
+      reason: "",
+      reasonEn: "",
+    };
+  }
+  const klass = subscriberClass === "old" || subscriberClass === "new" ? subscriberClass : "unset";
+  if (klass !== "new") {
+    const employeeRate = Number(ruleValue("compliance.gosi.employeeRate")) || 0;
+    const employerRate = Number(ruleValue("compliance.gosi.employerRate")) || 0;
+    return {
+      subscriberClass: klass,
+      employeeRate,
+      employerRate,
+      employeeBps: bpsOf(employeeRate),
+      employerBps: bpsOf(employerRate),
+      blocked: false,
+      reason: "",
+      reasonEn: "",
+    };
+  }
+  const day = gosiAsOfDay(onDate);
+  const annuity = ruleAt("compliance.gosi.newAnnuityRate", day);
+  if (!annuity || typeof annuity.value !== "number") {
+    return {
+      subscriberClass: "new",
+      employeeRate: null,
+      employerRate: null,
+      employeeBps: null,
+      employerBps: null,
+      blocked: true,
+      reason: GOSI_NEW_RATE_UNCONFIRMED_AR,
+      reasonEn: GOSI_NEW_RATE_UNCONFIRMED_EN,
+      onDate: day,
+    };
+  }
+  const saned = bpsOf(ruleValue("compliance.gosi.sanedRate"));
+  const hazard = bpsOf(ruleValue("compliance.gosi.expatEmployerRate"));
+  const annuityBps = bpsOf(annuity.value);
+  const employeeBps = annuityBps + saned;
+  const employerBps = annuityBps + saned + hazard;
+  return {
+    subscriberClass: "new",
+    employeeRate: employeeBps / 10000,
+    employerRate: employerBps / 10000,
+    employeeBps,
+    employerBps,
+    annuityRate: annuity.value,
+    blocked: false,
+    reason: "",
+    reasonEn: "",
+    onDate: day,
+  };
+}
+
+/**
+ * Contributory wage = base + allowances (housing, transport, other, night), capped.
+ * Overtime and bonus stay outside. Saudi shares follow the subscriber class.
+ * The class is the person's first GOSI registration date, never the hire date.
+ */
+export function gosiLine(line, { saudi, onDate, registeredAt } = {}) {
   const wage = Math.min(contractWage(line), Number(GOSI_WAGE_CEILING) || 45000);
   const sa = saudi !== false;
-  const employeeShare = sa ? Math.round(wage * (Number(GOSI_EMPLOYEE_RATE) || 0) * 100) / 100 : 0;
-  const employerShare = Math.round(wage * (sa ? (Number(GOSI_EMPLOYER_RATE) || 0) : (Number(GOSI_EXPAT_EMPLOYER_RATE) || 0)) * 100) / 100;
-  return {
+  const registered = gosiRegistrationIso(registeredAt ?? line?.gosiRegisteredAt);
+  const subscriberClass = sa ? gosiSubscriberClass(registered) : "expat";
+  const rates = gosiAppliedRates({
+    subscriberClass,
+    onDate: onDate || line?.gosiAsOf || line?.month,
+    saudi: sa,
+  });
+  const empty = {
     base: Math.round(wage),
     saudi: sa,
+    subscriberClass: sa ? subscriberClass : "expat",
+    registeredAt: registered,
+    employeeRate: rates.employeeRate,
+    employerRate: rates.employerRate,
+    blocked: rates.blocked,
+    reason: rates.reason,
+    reasonEn: rates.reasonEn,
+  };
+  if (!sa) {
+    const employerShare = halalaFromBps(wage, rates.employerBps);
+    return { ...empty, employeeShare: 0, employerShare, total: employerShare };
+  }
+  if (rates.blocked) {
+    return { ...empty, employeeShare: 0, employerShare: 0, total: 0 };
+  }
+  const employeeShare = halalaFromBps(wage, rates.employeeBps);
+  const employerShare = halalaFromBps(wage, rates.employerBps);
+  return {
+    ...empty,
     employeeShare,
     employerShare,
     total: Math.round((employeeShare + employerShare) * 100) / 100,

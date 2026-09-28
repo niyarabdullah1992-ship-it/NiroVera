@@ -67,10 +67,10 @@ export default function HRStructureManagement() {
                 type="button"
                 onClick={() => setGradesOpen((open) => !open)}
                 aria-expanded={gradesOpen}
-                className="flex w-full items-center justify-between py-3 text-start text-[13px] font-semibold text-[#14284B]"
+                className="flex w-full items-center justify-between py-3 text-start text-[13px] font-semibold text-[var(--nv-ink)]"
               >
                 {t("jobGradesManage")}
-                <ChevronDown className={`h-4 w-4 text-[#5A6B85] transition-transform ${gradesOpen ? "rotate-180" : ""}`} />
+                <ChevronDown className={`h-4 w-4 text-[var(--nv-muted)] transition-transform ${gradesOpen ? "rotate-180" : ""}`} />
               </button>
               {gradesOpen && (
                 <div className="pb-2">

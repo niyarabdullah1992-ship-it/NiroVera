@@ -195,7 +195,7 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
         style={{
           position: "relative",
           background: dragging || file ? "#f3fbf6" : CARD,
-          border: `1.5px dashed ${dragging || file ? "#1d9a5b" : "#dfe3ea"}`,
+          border: `1.5px dashed ${dragging || file ? "var(--nv-accent-border)" : "var(--nv-line)"}`,
           borderRadius: 14,
           padding: "40px 24px",
           display: "flex",
@@ -207,7 +207,7 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
           cursor: checking ? "wait" : "pointer",
         }}
       >
-        <span style={{ width: 44, height: 44, borderRadius: 10, background: SURFACE, border: "1px solid #dfe3ea", display: "inline-flex", alignItems: "center", justifyContent: "center", color: INK }}>
+        <span style={{ width: 44, height: 44, borderRadius: 10, background: SURFACE, border: "1px solid var(--nv-line)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: INK }}>
           {checking ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload style={{ width: 20, height: 20 }} />}
         </span>
         <span style={{ fontSize: 17, fontWeight: 700, color: INK }}>
@@ -255,7 +255,7 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
         </div>
       ) : null}
 
-      {pickError ? <p style={{ margin: 0, fontSize: 12, color: "#DC2626" }}>{pickError}</p> : null}
+      {pickError ? <p style={{ margin: 0, fontSize: 12, color: "var(--nv-bad-ink)" }}>{pickError}</p> : null}
 
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <button
@@ -277,24 +277,24 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
       </div>
 
       {result?.status === "error" && !copy ? (
-        <p style={{ margin: 0, fontSize: 12, color: "#8a1c2b" }}>{ar ? "تعذّر التحقق — حاول مجددًا." : "Verification failed — try again."}</p>
+        <p style={{ margin: 0, fontSize: 12, color: "var(--nv-bad-ink)" }}>{ar ? "تعذّر التحقق — حاول مجددًا." : "Verification failed — try again."}</p>
       ) : null}
       </div>
 
       {copy ? (
-        <div style={{ borderTop: "1px solid #eef0f4", padding: embed ? "16px 0 0" : "20px 24px", display: "flex", flexDirection: "column", gap: 16, textAlign: "start" }}>
+        <div style={{ borderTop: "1px solid var(--nv-line)", padding: embed ? "16px 0 0" : "20px 24px", display: "flex", flexDirection: "column", gap: 16, textAlign: "start" }}>
           <div style={{ border: "1px solid var(--nv-line, #dfe3ea)", borderTop: `3px solid ${copy.color}`, background: copy.bg, borderRadius: 14, boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)", padding: "18px 20px", display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 16, alignItems: "start" }}>
             <span style={{ width: 44, height: 44, borderRadius: 10, background: copy.color, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700 }}>{copy.mark}</span>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0, textAlign: "start" }}>
               <span style={{ fontSize: 17, fontWeight: 700, color: copy.color }}>{copy.title}</span>
-              <span style={{ fontSize: 13, lineHeight: 1.9, color: "#3c4657" }}>{copy.desc}</span>
+              <span style={{ fontSize: 13, lineHeight: 1.9, color: "var(--nv-ink2)" }}>{copy.desc}</span>
               <span style={{ fontSize: 12, lineHeight: 1.9, color: VERIFY_MUTED, borderTop: `1px solid ${copy.border}`, paddingTop: 8, marginTop: 2 }}>{copy.note}</span>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,200px),1fr))", border: "1px solid #eef0f4", borderRadius: 14, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,200px),1fr))", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden" }}>
             {facts.map((fact) => (
-              <div key={fact.label} style={{ padding: "13px 16px", borderInlineStart: "1px solid #eef0f4", display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", textAlign: "start" }}>
+              <div key={fact.label} style={{ padding: "13px 16px", borderInlineStart: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", textAlign: "start" }}>
                 <span style={{ fontSize: 11, color: MUTED }}>{fact.label}</span>
                 {fact.latin ? (
                   <Ltr ar={ar} style={{ fontSize: 13, fontWeight: 600, color: fact.color, ...signMono }}>{fact.value}</Ltr>
@@ -311,7 +311,7 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
               { label: "UPLOADED", value: uploaded || dash, color: kind === "ok" ? VERIFY_OK : INK },
               { label: "REGISTRY", value: kind === "none" || !registry ? "no record" : registry, color: kind === "ok" ? VERIFY_OK : kind === "none" ? MUTED : VERIFY_RED },
             ].map((row) => (
-              <div key={row.label} style={{ display: "flex", gap: 12, alignItems: "baseline", fontSize: 11, borderBottom: "1px solid #f2f4f7", paddingBottom: 7 }}>
+              <div key={row.label} style={{ display: "flex", gap: 12, alignItems: "baseline", fontSize: 11, borderBottom: "1px solid var(--nv-line)", paddingBottom: 7 }}>
                 <span style={{ ...signMono, color: MUTED, flex: "none" }}>{row.label}</span>
                 <Ltr ar={ar} style={{ ...signMono, flex: 1, minWidth: 0, wordBreak: "break-all", color: row.color }}>{row.value}</Ltr>
               </div>

@@ -168,7 +168,7 @@ export default function OtherRequestsBoard({
     gap: "10px",
     padding: "10px 18px",
     background: SURFACE,
-    borderBottom: "1px solid #E2E8F0",
+    borderBottom: "1px solid var(--nv-line)",
     fontSize: "10px",
     letterSpacing: "0.06em",
     color: MUTED,
@@ -180,7 +180,7 @@ export default function OtherRequestsBoard({
     gridTemplateColumns: COLS,
     gap: "10px",
     padding: "12px 18px",
-    borderBottom: "1px solid #F1F5F9",
+    borderBottom: "1px solid var(--nv-line)",
     alignItems: "center",
   };
 
@@ -188,7 +188,7 @@ export default function OtherRequestsBoard({
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }} dir={ar ? "rtl" : "ltr"}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(166px,1fr))", gap: "12px" }}>
         <div style={statCard}>
-          <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 24, fontWeight: 600, lineHeight: 1, textAlign: "right", color: pending.length ? "#B45309" : NAVY }}>
+          <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 24, fontWeight: 600, lineHeight: 1, textAlign: "right", color: pending.length ? "var(--nv-warn-ink)" : NAVY }}>
             {pending.length}
           </div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 7 }}>{ar ? "بانتظار القرار" : "awaiting a decision"}</div>
@@ -208,7 +208,7 @@ export default function OtherRequestsBoard({
       </div>
 
       <ChromeBox padded={false}>
-        <div style={{ padding: "14px 18px", borderBottom: "1px solid #E2E8F0" }}>
+        <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
             <div style={{ flex: "1 1 240px" }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>
@@ -225,9 +225,9 @@ export default function OtherRequestsBoard({
               onClick={() => setFormOpen((v) => !v)}
               style={{
                 padding: "8px 15px",
-                borderRadius: 9,
+                borderRadius: 8,
                 border: "none",
-                background: "#1E9E63",
+                background: "var(--nv-btn-fill)",
                 color: "#fff",
                 fontSize: 12,
                 fontWeight: 600,
@@ -240,7 +240,7 @@ export default function OtherRequestsBoard({
           </div>
 
           {formOpen && (
-            <div style={{ marginTop: 13, padding: "15px 16px", borderRadius: 12, background: SURFACE, border: "1px solid #E2E8F0" }}>
+            <div style={{ marginTop: 13, padding: "15px 16px", borderRadius: 12, background: SURFACE, border: "1px solid var(--nv-line)" }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 11 }}>
                 {!selfOnly && (
                   <label style={{ display: "block" }}>
@@ -340,8 +340,8 @@ export default function OtherRequestsBoard({
                   style={{
                     height: 36,
                     padding: "0 14px",
-                    borderRadius: 9,
-                    border: "1px solid #E2E8F0",
+                    borderRadius: 8,
+                    border: "1px solid var(--nv-line)",
                     background: CARD,
                     color: MUTED,
                     fontSize: 12,
@@ -358,9 +358,9 @@ export default function OtherRequestsBoard({
                   style={{
                     height: 36,
                     padding: "0 16px",
-                    borderRadius: 9,
+                    borderRadius: 8,
                     border: "none",
-                    background: ready ? ACCENT : "#E2E8F0",
+                    background: ready ? ACCENT : "var(--nv-line)",
                     color: ready ? "#fff" : MUTED,
                     fontSize: 12,
                     fontWeight: 600,
@@ -399,7 +399,7 @@ export default function OtherRequestsBoard({
                   <div
                     key={`${request.employee.id}-${request.id}`}
                     style={rowCell}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "#F7F8FA"; }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--nv-soft)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                   >
                     <EmployeeIdentityRow
@@ -420,14 +420,14 @@ export default function OtherRequestsBoard({
                     <div><span style={st.style}>{st.label}</span></div>
                     <div style={{ display: "flex", gap: 7, justifyContent: "flex-end" }}>
                       {canDecide && request.type === "night_consent" && (request.status || "pending") === "pending" && (
-                        <span style={{ fontSize: 11, color: request.phase === "manager" ? MUTED : "#8a1c2b" }}>
+                        <span style={{ fontSize: 11, color: request.phase === "manager" ? MUTED : "var(--nv-bad-ink)" }}>
                           {ar ? "سارية حتى يختار الموظف" : "In force until the worker chooses"}
                         </span>
                       )}
                       {canDecide && request.type !== "night_consent" && isManagerDecideOtherRequest(request) && (
                         <Link
                           to={replyHref}
-                          style={{ fontSize: 12, fontWeight: 700, color: "#137a49", textDecoration: "none", whiteSpace: "nowrap" }}
+                          style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink)", textDecoration: "none", whiteSpace: "nowrap" }}
                         >
                           {requestReplyCopy(ar)}
                         </Link>

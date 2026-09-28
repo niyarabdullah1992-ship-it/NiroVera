@@ -29,12 +29,12 @@ import {
 const FIELD = {
   height: 34,
   padding: "0 10px",
-  borderRadius: 10,
-  border: "1px solid #DFE3EA",
+  borderRadius: 8,
+  border: "1px solid var(--nv-line)",
   fontSize: 12,
-  color: "#14213D",
+  color: "var(--nv-ink)",
   outline: "none",
-  background: "#fff",
+  background: "var(--nv-card)",
   fontFamily: "inherit",
   width: "100%",
   boxSizing: "border-box",
@@ -42,11 +42,11 @@ const FIELD = {
 
 const NOTE = {
   fontSize: 11,
-  color: "#4B5567",
-  background: "#EEF2F8",
-  border: "1px solid #DFE3EA",
+  color: "var(--nv-ink2)",
+  background: "var(--nv-hover)",
+  border: "1px solid var(--nv-line)",
   padding: "9px 11px",
-  borderRadius: 10,
+  borderRadius: 12,
   lineHeight: 1.8,
 };
 
@@ -55,12 +55,12 @@ const LABEL = {
   flexDirection: "column",
   gap: 3,
   fontSize: 11,
-  color: "#6B7280",
+  color: "var(--nv-ink3)",
 };
 
 function SectionLabel({ children }) {
   return (
-    <span style={{ fontSize: 10, letterSpacing: "0.14em", color: "#6B7280", fontWeight: 600 }}>
+    <span style={{ fontSize: 10, letterSpacing: "0.14em", color: "var(--nv-ink3)", fontWeight: 600 }}>
       {children}
     </span>
   );
@@ -69,7 +69,7 @@ function SectionLabel({ children }) {
 function FormError({ text }) {
   if (!text) return null;
   return (
-    <div style={{ fontSize: 11, color: "#8A1C2B", background: "#FBF1F2", border: "1px solid #E9C4C9", padding: "8px 11px", borderRadius: 10 }}>
+    <div style={{ fontSize: 11, color: "var(--nv-bad-ink)", background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)", padding: "8px 11px", borderRadius: 12 }}>
       {text}
     </div>
   );
@@ -81,7 +81,7 @@ function actionButton(background, color = "#fff") {
     alignItems: "center",
     justifyContent: "center",
     height: 36,
-    borderRadius: 10,
+    borderRadius: 8,
     background,
     color,
     fontSize: 12,
@@ -121,6 +121,7 @@ function DrawerShell({ ar, title, sub, chain, onClose, children }) {
   return createPortal(
     <div
       role="presentation"
+      className="nv-v7-portal"
       dir={ar ? "rtl" : "ltr"}
       style={{ position: "fixed", inset: 0, zIndex: 490, display: "flex", justifyContent: "flex-start" }}
     >
@@ -128,7 +129,7 @@ function DrawerShell({ ar, title, sub, chain, onClose, children }) {
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) onClose?.();
         }}
-        style={{ position: "absolute", inset: 0, background: "rgba(15,26,48,.28)" }}
+        style={{ position: "absolute", inset: 0, background: "rgba(11,61,39,.32)" }}
       />
       <aside
         role="dialog"
@@ -139,28 +140,28 @@ function DrawerShell({ ar, title, sub, chain, onClose, children }) {
           position: "relative",
           width: "min(94vw, 420px)",
           height: "100%",
-          background: "#fff",
-          borderInlineEnd: "1px solid #DFE3EA",
-          boxShadow: "0 0 40px rgba(20,33,61,.18)",
+          background: "var(--nv-card)",
+          borderInlineEnd: "1px solid var(--nv-line)",
+          boxShadow: "0 0 40px rgba(6,61,38,.16)",
           display: "flex",
           flexDirection: "column",
           overflow: "auto",
         }}
       >
-        <div style={{ padding: "16px 18px", borderBottom: "1px solid #DFE3EA", background: "#F5F6FA", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ padding: "16px 18px", borderTop: "3px solid var(--nv-navy)", borderBottom: "1px solid var(--nv-line)", background: "var(--nv-hover)", display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-            <strong style={{ font: "700 16px 'Readex Pro', var(--font-heading), sans-serif", color: "#14213D" }}>{title}</strong>
+            <strong style={{ font: "700 16px 'Readex Pro', var(--font-heading), sans-serif", color: "var(--nv-ink)" }}>{title}</strong>
             <span style={{ flex: 1 }} />
             <button
               type="button"
               onClick={onClose}
-              style={{ all: "unset", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#4B5567", fontFamily: "inherit" }}
+              style={{ all: "unset", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--nv-ink2)", fontFamily: "inherit" }}
             >
               {ar ? "إغلاق" : "Close"}
             </button>
           </div>
-          {sub ? <span style={{ fontSize: 11.5, color: "#4B5567" }}>{sub}</span> : null}
-          {chain ? <span style={{ fontSize: 11, color: "#6B7280" }}>{chain}</span> : null}
+          {sub ? <span style={{ fontSize: 11.5, color: "var(--nv-ink2)" }}>{sub}</span> : null}
+          {chain ? <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{chain}</span> : null}
         </div>
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           {children}
@@ -377,14 +378,14 @@ export function OrgBranchDrawer({
           boxSizing: "border-box",
           width: "100%",
           height: 36,
-          borderRadius: 10,
+          borderRadius: 8,
           textAlign: "center",
           fontSize: 12,
           fontWeight: 600,
           fontFamily: "inherit",
-          background: on ? "#14213D" : "#fff",
-          color: on ? "#fff" : "#4B5567",
-          border: `1px solid ${on ? "#14213D" : "#DFE3EA"}`,
+          background: on ? "var(--nv-navy)" : "var(--nv-card)",
+          color: on ? "#fff" : "var(--nv-ink2)",
+          border: `1px solid ${on ? "var(--nv-navy)" : "var(--nv-line)"}`,
         }}
       >
         {label}
@@ -431,15 +432,15 @@ export function OrgBranchDrawer({
         </select>
       </label>
       {managerNote?.line ? (
-        <span style={{ fontSize: 11, color: "#6B7280", lineHeight: 1.7 }}>{managerNote.line}</span>
+        <span style={{ fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.7 }}>{managerNote.line}</span>
       ) : isManagerUnit(station) ? (
-        <span style={{ fontSize: 11, color: "#6B7280", lineHeight: 1.7 }}>
+        <span style={{ fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.7 }}>
           {ar ? "هذه الإدارة ليست مكان توظيف أو حضور." : "This admin seat is not a hire or attendance workplace."}
         </span>
       ) : null}
 
       {fixedHr ? (
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 10, background: "#E6F2EA", border: "1px solid #C5DBCD", fontSize: 11.5, color: "#0B3D27", lineHeight: 1.8 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: "var(--nv-accent-soft)", border: "1px solid #C5DBCD", fontSize: 11.5, color: "var(--nv-ink)", lineHeight: 1.8 }}>
           <span style={{ fontSize: 14, lineHeight: 1.4 }}>🔒</span>
           <span>
             <strong>{ar ? "وحدة الموارد البشرية" : "HR unit"}</strong>
@@ -454,7 +455,7 @@ export function OrgBranchDrawer({
           {kindButton("manager", ar ? "إدارة" : "Admin")}
         </div>
       ) : (
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 10, background: "#EEF2F8", border: "1px solid #C3CBD8", fontSize: 11.5, color: "#14213D", lineHeight: 1.8 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: "var(--nv-hover)", border: "1px solid var(--nv-ok-line)", fontSize: 11.5, color: "var(--nv-ink)", lineHeight: 1.8 }}>
           <span style={{ fontSize: 14, lineHeight: 1.4 }}>🔒</span>
           <span>
             <strong>{ar ? "فرع المقر الرئيسي" : "Head office"}</strong>
@@ -468,12 +469,12 @@ export function OrgBranchDrawer({
       {!isRoot && !fixedHr ? (
       <>
       <SectionLabel>{ar ? "مدير الموارد البشرية لهذا الفرع" : "HR manager for this branch"}</SectionLabel>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", border: "1px solid #DFE3EA", borderRadius: 10, fontSize: 11.5 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", border: "1px solid var(--nv-line)", borderRadius: 12, fontSize: 11.5 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-          <span style={{ color: "#6B7280" }}>{ar ? "الحالي" : "Current"}</span>
+          <span style={{ color: "var(--nv-ink3)" }}>{ar ? "الحالي" : "Current"}</span>
           <strong>{hrCurrent ? `${hrCurrent.name}` : (ar ? "لا يوجد" : "None")}</strong>
         </div>
-        <select value={hrSel} onChange={(event) => { setHrSel(event.target.value); setErr(""); }} style={{ ...FIELD, height: 34, borderRadius: 9, fontSize: 11.5, padding: "0 8px" }}>
+        <select value={hrSel} onChange={(event) => { setHrSel(event.target.value); setErr(""); }} style={{ ...FIELD, height: 34, borderRadius: 8, fontSize: 11.5, padding: "0 8px" }}>
           <option value="">{ar ? "— اختر مديراً إقليمياً —" : "— Choose a regional HR manager —"}</option>
           {hrOptions.map((employee) => {
             const seat = (data?.orgSeats || []).find((item) => String(item.employeeId || "") === String(employee.id));
@@ -485,10 +486,10 @@ export function OrgBranchDrawer({
             );
           })}
         </select>
-        <button type="button" onClick={saveHr} style={actionButton("#137A49")}>
+        <button type="button" onClick={saveHr} style={actionButton("var(--nv-ok-ink)")}>
           {ar ? "ربط الفرع بمديره الإقليمي" : "Link the branch to its regional HR manager"}
         </button>
-        <span style={{ fontSize: 10.5, color: "#6B7280" }}>
+        <span style={{ fontSize: 10.5, color: "var(--nv-ink3)" }}>
           {ar
             ? "مدير واحد يخدم فرعين أو ثلاثة. الخط الثابت إلى مديرة الموارد البشرية، والخط المتقطع إلى مدير الفرع للتنسيق والجدول."
             : "One manager serves two or three branches. The solid line goes to the HR director, and the dotted line to the branch manager for the roster."}
@@ -500,21 +501,21 @@ export function OrgBranchDrawer({
       {!isRoot && !fixedHr ? (
         <>
           <SectionLabel>{ar ? "تبعية الفرع" : "Branch parent"}</SectionLabel>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", border: "1px solid #DFE3EA", borderRadius: 10, fontSize: 11.5 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", border: "1px solid var(--nv-line)", borderRadius: 12, fontSize: 11.5 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-              <span style={{ color: "#6B7280" }}>{ar ? "يتبع الآن" : "Reports to"}</span>
+              <span style={{ color: "var(--nv-ink3)" }}>{ar ? "يتبع الآن" : "Reports to"}</span>
               <strong>{parent?.name || root?.name || companyName || "—"}</strong>
             </div>
-            <select value={moveSel} onChange={(event) => { setMoveSel(event.target.value); setErr(""); }} style={{ ...FIELD, height: 34, borderRadius: 9, fontSize: 11.5, padding: "0 8px" }}>
+            <select value={moveSel} onChange={(event) => { setMoveSel(event.target.value); setErr(""); }} style={{ ...FIELD, height: 34, borderRadius: 8, fontSize: 11.5, padding: "0 8px" }}>
               <option value="">{ar ? "— انقل تحت —" : "— Move under —"}</option>
               {moveOptions.map((option) => (
                 <option key={option.id} value={option.id}>{option.label}</option>
               ))}
             </select>
-            <button type="button" onClick={moveBranch} style={actionButton("#14213D")}>
+            <button type="button" onClick={moveBranch} style={actionButton("var(--nv-navy)")}>
               {ar ? "نقل الفرع" : "Move branch"}
             </button>
-            <span style={{ fontSize: 10.5, color: "#6B7280" }}>
+            <span style={{ fontSize: 10.5, color: "var(--nv-ink3)" }}>
               {ar
                 ? "الفرع ينتقل بكل وظائفه وموظفيه. لا يمكن نقله تحت فرع يتبعه، وربط الموارد البشرية لا يتغيّر. يُسجَّل في سجل الأحداث."
                 : "The branch moves with its seats and people. It cannot move under its own descendant. The HR link stays. The event log records it."}
@@ -522,7 +523,7 @@ export function OrgBranchDrawer({
           </div>
 
           {onAddChild ? (
-            <button type="button" onClick={() => onAddChild(stationId)} style={actionButton("#14213D")}>
+            <button type="button" onClick={() => onAddChild(stationId)} style={actionButton("var(--nv-navy)")}>
               {ar ? "فرع تابع" : "Child branch"}
             </button>
           ) : null}
@@ -532,7 +533,7 @@ export function OrgBranchDrawer({
               {ar ? "إدارة — ليست مكان توظيف. وظّف على فرع تشغيلي تحتها." : "Admin — not a hire workplace. Hire on a workplace branch under it."}
             </div>
           ) : onHire ? (
-            <button type="button" onClick={() => onHire({ stationId })} style={actionButton("#137A49")}>
+            <button type="button" onClick={() => onHire({ stationId })} style={actionButton("var(--nv-ok-ink)")}>
               {ar ? "وظّف على مقعد" : "Hire onto a seat"}
             </button>
           ) : null}
@@ -551,22 +552,22 @@ export function OrgBranchDrawer({
           </div>
           {confirmDel ? (
             <>
-              <div style={{ background: "#FBF1F2", border: "1px solid #E9C4C9", borderRadius: 10, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
-                <strong style={{ fontSize: 12, color: "#8A1C2B" }}>
+              <div style={{ background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)", borderRadius: 12, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+                <strong style={{ fontSize: 12, color: "var(--nv-bad-ink)" }}>
                   {ar ? `هل أنت متأكد من إزالة «${station.name || ""}»؟` : `Remove “${station.name || ""}”?`}
                 </strong>
-                <span style={{ fontSize: 11, color: "#8A1C2B", lineHeight: 1.8 }}>
+                <span style={{ fontSize: 11, color: "var(--nv-bad-ink)", lineHeight: 1.8 }}>
                   {ar ? "الإزالة لا تُلغى، وتبقى مسجّلة في سجل الأحداث باسم من نفّذها وتاريخه." : "Removal is kept in the event log with who did it and when."}
                 </span>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
-                <button type="button" onClick={removeBranch} style={{ ...actionButton("#8A1C2B"), flex: 1, fontWeight: 700 }}>
+                <button type="button" onClick={removeBranch} style={{ ...actionButton("var(--nv-bad-ink)"), flex: 1, fontWeight: 700 }}>
                   {ar ? "نعم، أزل الفرع" : "Yes, remove the branch"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmDel(false)}
-                  style={{ ...actionButton("#fff", "#4B5567"), width: "auto", padding: "0 14px", border: "1px solid #DFE3EA", fontWeight: 600 }}
+                  style={{ ...actionButton("#fff", "var(--nv-ink2)"), width: "auto", padding: "0 14px", border: "1px solid var(--nv-line)", fontWeight: 600 }}
                 >
                   {ar ? "إلغاء" : "Cancel"}
                 </button>
@@ -576,14 +577,14 @@ export function OrgBranchDrawer({
             <button
               type="button"
               onClick={() => { setConfirmDel(true); setErr(""); }}
-              style={{ ...actionButton("#fff", "#8A1C2B"), height: 34, border: "1px solid #E9C4C9", fontWeight: 600 }}
+              style={{ ...actionButton("#fff", "var(--nv-bad-ink)"), height: 34, border: "1px solid var(--nv-bad-line)", fontWeight: 600 }}
             >
               {ar ? "إزالة الفرع…" : "Remove branch…"}
             </button>
           )}
         </>
       ) : onHire ? (
-        <button type="button" onClick={() => onHire({ stationId })} style={actionButton("#137A49")}>
+        <button type="button" onClick={() => onHire({ stationId })} style={actionButton("var(--nv-ok-ink)")}>
           {ar ? "وظّف على مقعد" : "Hire onto a seat"}
         </button>
       ) : null}
@@ -687,14 +688,14 @@ export function OrgAddBranchDrawer({
           boxSizing: "border-box",
           width: "100%",
           height: 36,
-          borderRadius: 10,
+          borderRadius: 8,
           textAlign: "center",
           fontSize: 12,
           fontWeight: 600,
           fontFamily: "inherit",
-          background: on ? "#14213D" : "#fff",
-          color: on ? "#fff" : "#4B5567",
-          border: `1px solid ${on ? "#14213D" : "#DFE3EA"}`,
+          background: on ? "var(--nv-navy)" : "var(--nv-card)",
+          color: on ? "#fff" : "var(--nv-ink2)",
+          border: `1px solid ${on ? "var(--nv-navy)" : "var(--nv-line)"}`,
         }}
       >
         {label}
@@ -746,7 +747,7 @@ export function OrgAddBranchDrawer({
           : "The branch is created under the chosen parent. An empty manager stays vacant. Hire onto seats from their cards."}
       </div>
       <FormError text={err} />
-      <button type="button" onClick={create} style={actionButton("#14213D")}>
+      <button type="button" onClick={create} style={actionButton("var(--nv-navy)")}>
         {ar ? "إنشاء الفرع" : "Create branch"}
       </button>
     </DrawerShell>

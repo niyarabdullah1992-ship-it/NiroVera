@@ -1,15 +1,15 @@
 import React from "react";
 import { calendarDateKey, summarizeAttendanceDay } from "@/lib/attendanceCalendar";
-import { isOnApprovedLeave } from "@/lib/leaveTypes";
+import { isStatutoryOffDay } from "@/lib/leaveTypes";
 import { ACCENT, BORDER, CARD, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 import { formatUiNumber } from "@/lib/dateFormat";
 
 const STATUS = {
-  present: { ar: "حاضر", en: "Present", bg: "#ECFDF3", fg: "#15803D", bd: "#BBF7D0", dot: "#1E9E63" },
-  late: { ar: "متأخر", en: "Late", bg: "#FFFBEB", fg: "#B45309", bd: "#FDE68A", dot: "#B45309" },
-  absent: { ar: "غائب", en: "Absent", bg: "#FEF2F2", fg: "#DC2626", bd: "#FECACA", dot: "#DC2626" },
-  on_leave: { ar: "إجازة", en: "Leave", bg: "#EFF6FF", fg: "#1D4ED8", bd: "#BFDBFE", dot: "#1D4ED8" },
-  off_day: { ar: "راحة", en: "Off", bg: "#F1F5F9", fg: "#14284B", bd: "#E2E8F0", dot: "#14284B" },
+  present: { ar: "حاضر", en: "Present", bg: "var(--nv-accent-soft)", fg: "var(--nv-ok-ink)", bd: "var(--nv-ok-line)", dot: "var(--nv-ok-fill)" },
+  late: { ar: "متأخر", en: "Late", bg: "var(--nv-warn-soft)", fg: "var(--nv-warn-ink)", bd: "var(--nv-warn-line)", dot: "var(--nv-warn-fill)" },
+  absent: { ar: "غائب", en: "Absent", bg: "var(--nv-bad-soft)", fg: "var(--nv-bad-ink)", bd: "var(--nv-bad-line)", dot: "var(--nv-bad-fill)" },
+  on_leave: { ar: "إجازة", en: "Leave", bg: "var(--nv-soft)", fg: "var(--nv-ink)", bd: "var(--nv-line)", dot: "var(--nv-navy)" },
+  off_day: { ar: "راحة", en: "Off", bg: "var(--nv-soft)", fg: "var(--nv-muted)", bd: "var(--nv-line)", dot: "var(--nv-muted)" },
 };
 
 const chip = (meta) => ({
@@ -17,7 +17,7 @@ const chip = (meta) => ({
   alignItems: "center",
   gap: 4,
   padding: "1px 6px",
-  borderRadius: 20,
+  borderRadius: 999,
   fontSize: 9,
   fontWeight: 600,
   background: meta.bg,
@@ -73,7 +73,7 @@ export default function AttendanceMonthCalendarGrid({
               dateKey: key,
               schedules,
               todayKey,
-              leaveOn: (employee, dateKey) => isOnApprovedLeave(employee, dateKey),
+              leaveOn: (employee, dateKey) => !!isStatutoryOffDay(employee, dateKey),
             });
             const selfRow = dayRows.find((row) => String(row.employee_id ?? row.employeeId) === String(self?.id));
             const selfStatus = summarizeAttendanceDay({
@@ -82,7 +82,7 @@ export default function AttendanceMonthCalendarGrid({
               dateKey: key,
               schedules,
               todayKey,
-              leaveOn: (employee, dateKey) => isOnApprovedLeave(employee, dateKey),
+              leaveOn: (employee, dateKey) => !!isStatutoryOffDay(employee, dateKey),
             });
             const ownKey = Object.keys(selfStatus).find((status) => selfStatus[status] > 0);
             const dayProofs = proofsByDate[key] || [];
@@ -130,10 +130,10 @@ export default function AttendanceMonthCalendarGrid({
                     <span
                       key={proof.id || proof.ref}
                       style={chip({
-                        bg: proof.kind === "visitor" ? "#ECFDF3" : "#EFF6FF",
-                        fg: proof.kind === "visitor" ? "#15803D" : "#1D4ED8",
-                        bd: proof.kind === "visitor" ? "#BBF7D0" : "#BFDBFE",
-                        dot: proof.kind === "visitor" ? "#1E9E63" : "#1D4ED8",
+                        bg: proof.kind === "visitor" ? "var(--nv-accent-soft)" : "var(--nv-accent-soft)",
+                        fg: proof.kind === "visitor" ? "var(--nv-ok-ink)" : "var(--nv-ink)",
+                        bd: proof.kind === "visitor" ? "var(--nv-ok-line)" : "var(--nv-line)",
+                        dot: proof.kind === "visitor" ? "var(--nv-ok-fill)" : "var(--nv-navy)",
                       })}
                     >
                       {proof.kind === "visitor" ? (ar ? "زائر" : "Visitor") : (ar ? "إثبات" : "Proof")}
@@ -157,11 +157,11 @@ export default function AttendanceMonthCalendarGrid({
           {ar ? "اليوم" : "Today"}
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#1D4ED8" }} />
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--nv-navy)" }} />
           {ar ? "إثبات عمل" : "Work proof"}
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#1E9E63" }} />
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--nv-btn-fill)" }} />
           {ar ? "إثبات زائر" : "Visitor"}
         </span>
       </div>

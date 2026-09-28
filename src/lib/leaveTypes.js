@@ -3,7 +3,7 @@
 import { profileGender } from "./employeeProfileFields.js";
 import { citeLeaveType, isRamadanHoursSubject, ruleAt, ruleValue } from "./laborRules.js";
 import { chargeableSpanExcludingHolidays } from "./leaveEidOverlap.js";
-import { officialHolidayKindLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
+import { officialHolidayKindLabel, officialHolidayLeaveLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
 
 export const LEAVE_TYPES = [
   { key: "annual", defaultTotal: ruleValue("leave.annual.days"), article: citeLeaveType("annual")?.article || null, ar: "سنوية", en: "Annual" },
@@ -489,4 +489,22 @@ export function isOnApprovedLeave(employee, date = new Date()) {
 
 export function isOnLeaveToday(employee) {
   return isOnApprovedLeave(employee, new Date());
+}
+
+/**
+ * Approved طلباتي leave, or an Art. 112 official holiday.
+ * Holiday lock does not require a request. Empty when neither applies.
+ */
+export function isStatutoryOffDay(employee, date = new Date(), calendar) {
+  if (isOnApprovedLeave(employee, date)) {
+    return { kind: "approved", id: "", labelAr: "", labelEn: "" };
+  }
+  const hit = officialHolidayOn(leaveDayKey(date), calendar);
+  if (!hit) return null;
+  return {
+    kind: "official",
+    id: hit.id,
+    labelAr: officialHolidayLeaveLabel(hit.id, true, calendar),
+    labelEn: officialHolidayLeaveLabel(hit.id, false, calendar),
+  };
 }

@@ -60,20 +60,20 @@ export default function OpsLaneTiles({ ar, current }) {
               gap: 10,
               padding: "9px 12px",
               minWidth: 0,
-              borderRadius: 10,
+              borderRadius: 8,
               boxSizing: "border-box",
               cursor: on ? "default" : "pointer",
               textAlign: "start",
               fontFamily: "inherit",
               ...(on
-                ? { background: "#0B3D27", color: "#fff", border: "1px solid #0B3D27", boxShadow: "0 4px 12px rgba(6,61,38,.18)" }
-                : { background: "#fff", color: "#111418", border: "1px solid #E4E9E6" }),
+                ? { background: "var(--nv-btn-fill)", color: "#fff", border: "1px solid var(--nv-btn-fill)", boxShadow: "0 4px 12px rgba(6,61,38,.18)" }
+                : { background: "var(--nv-card)", color: "var(--nv-ink)", border: "1px solid var(--nv-line)" }),
             }}
           >
-            <Icon size={18} strokeWidth={1.75} color={on ? "#fff" : "#0B3D27"} />
+            <Icon size={18} strokeWidth={1.75} color={on ? "#fff" : "var(--nv-navy)"} />
             <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.35, minWidth: 0 }}>
               <strong style={{ fontSize: 13 }}>{label}</strong>
-              <span style={{ fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: on ? "#C5DBCD" : "#555C66" }}>{sub}</span>
+              <span style={{ fontSize: 11, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: on ? "#C5DBCD" : "var(--nv-ink3)" }}>{sub}</span>
             </span>
           </button>
         );

@@ -20,6 +20,8 @@ import { printReport } from "@/lib/printReport";
 import { orgBtnGhost, orgBtnPrimary, orgTreeStageStyle } from "@/lib/orgWorkspaceStyles";
 import { OrgFooterStrip, OrgNotice, OrgPanel, OrgSearchBox, OrgToolbar, OrgTreeCanvas } from "@/components/hr/OrgWorkspace";
 import OrgWorkforceChart from "@/components/hr/OrgWorkforceChart";
+import OrgSeatDirectory from "@/components/hr/OrgSeatDirectory";
+import OrgEmployeeFilesBoard from "@/components/hr/OrgEmployeeFilesBoard";
 import { buildWorkforceSeatChart } from "@/lib/workforceSeatChart";
 import { isHrUnit } from "@/lib/stationTree";
 import {
@@ -31,6 +33,22 @@ import {
   printOrgPyramidRows,
 } from "@/lib/orgStructureLog";
 
+const stageBtn = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 32,
+  padding: "0 12px",
+  borderRadius: 8,
+  border: "1px solid #C5CEC9",
+  background: "var(--nv-card, #fff)",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+  color: "var(--nv-ink, #111418)",
+  whiteSpace: "nowrap",
+  fontFamily: "inherit",
+};
 
 export default function OrgTemplateBoard({
   lang = "ar",
@@ -65,9 +83,12 @@ export default function OrgTemplateBoard({
   const [spine, setSpine] = useState(false);
   const [opened, setOpened] = useState(() => new Set());
   const [queryLocal, setQueryLocal] = useState("");
+  const [dense, setDense] = useState(false);
+  const [chartView, setChartView] = useState("people");
   const query = typeof queryProp === "string" ? queryProp : queryLocal;
   const setQuery = onQueryChange || setQueryLocal;
   const [previewEmployee, setPreviewEmployee] = useState(null);
+  const [previewVacant, setPreviewVacant] = useState(null);
   const viewportRef = useRef(null);
   const treeRef = useRef(null);
   const companyName = data?.settings?.companyName || company?.name || (ar ? "المنشأة" : "Company");
@@ -97,12 +118,23 @@ export default function OrgTemplateBoard({
   }, [people, open, data?.stations]);
   const chart = useMemo(() => {
     try {
-      return buildWorkforceSeatChart(data, { ar, meId: currentUser?.id || "" });
+      return buildWorkforceSeatChart(data, { ar });
     } catch (error) {
       console.error("NiroVera workforce chart:", error);
       return { roots: [], flat: [] };
     }
-  }, [data, ar, currentUser?.id]);
+  }, [data, ar]);
+  const directoryNodes = useMemo(() => {
+    const rows = [];
+    const walk = (list, parentId) => {
+      (list || []).forEach((node) => {
+        rows.push({ ...node, reportsTo: parentId });
+        walk(node.children, node.id);
+      });
+    };
+    walk(chart.roots, "");
+    return rows;
+  }, [chart]);
   const publishIssues = useMemo(() => structurePublishIssues(data, ar), [data, ar]);
   const publishedAt = data?.settings?.orgPublishedAt;
 
@@ -198,7 +230,7 @@ export default function OrgTemplateBoard({
   };
 
 
-  const setSafeZoom = (value) => setZoom(Math.max(0.12, Math.min(2, value)));
+  const setSafeZoom = (value) => setZoom(Math.max(0.25, Math.min(2, value)));
   const panTree = (x, y) => setOffset((current) => ({ x: current.x + x, y: current.y + y }));
   const gestures = useOrgTreeViewport(viewportRef, zoom, setSafeZoom, offset, setOffset);
   const fitTree = () => {
@@ -331,15 +363,28 @@ export default function OrgTemplateBoard({
         <OrgPanel ar={ar} fullscreen={fullscreen} embedded={embedded && !fullscreen}>
           {embedded && !fullscreen ? (
             <div className="nv-org-stage-bar">
-              <span className="nv-org-stage-bar__hint">
-                {fullTree
-                  ? (ar
-                    ? "الشركة كاملة — عجلة الفأرة أو القرص للتكبير حول المؤشر، والسحب للتحرّك"
-                    : "Whole company — wheel or slider zooms at the pointer, drag to pan")
-                  : (ar
-                    ? "اسحب للتحرّك، قرّص بإصبعين للتكبير، ونقرتان للملاءمة. انقر الرقم «مباشرون / إجمالي» فتتفرّع الأغصان تحت صاحبها، ثم تفرّع منها ما شئت حتى الأوراق. النقر مرة أخرى يطوي الغصن بكل ما تحته."
-                    : "Drag to pan, pinch to zoom, double-click to fit. The direct/total count opens branches; click again to fold them.")}
-              </span>
+              <div style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                {[
+                  ["people", ar ? "شجرة الأشخاص" : "People"],
+                  ["dir", ar ? "دليل الموظفين" : "Directory"],
+                  ["files", ar ? "ملفات الموظفين" : "Employee files"],
+                ].map(([id, label]) => {
+                  const on = chartView === id;
+                  return (
+                    <button key={id} type="button" onClick={() => setChartView(id)} style={{ ...stageBtn, ...(on ? { background: "#3C7D50", color: "#fff", borderColor: "#3C7D50" } : {}) }}>{label}</button>
+                  );
+                })}
+              </div>
+              {chartView === "files" ? null : (
+              <div style={{ display: "inline-flex", gap: 6 }}>
+                <button type="button" onClick={() => setDense(false)} style={{ ...stageBtn, ...(dense ? {} : { background: "#3C7D50", color: "#fff", borderColor: "#3C7D50" }) }}>{ar ? "مفصّلة" : "Full"}</button>
+                <button type="button" onClick={() => setDense(true)} style={{ ...stageBtn, ...(dense ? { background: "#3C7D50", color: "#fff", borderColor: "#3C7D50" } : {}) }}>{ar ? "مختصرة" : "Compact"}</button>
+              </div>
+              )}
+              {chartView === "files" ? null : (
+              <>
+              <button type="button" onClick={() => setFullTree(true)} style={stageBtn}>{ar ? "توسيع الكل" : "Expand all"}</button>
+              <button type="button" onClick={() => { setFullTree(false); setSpine(false); setOffset({ x: 0, y: 0 }); }} style={stageBtn}>{ar ? "طيّ الكل" : "Collapse all"}</button>
               <HierarchyZoomControls
                 zoom={zoom}
                 onZoom={(change) => setSafeZoom(zoom + change)}
@@ -349,12 +394,19 @@ export default function OrgTemplateBoard({
                 ar={ar}
                 htmlStrip
               />
+              <button type="button" onClick={() => setOffset({ x: 0, y: 0 })} style={stageBtn}>{ar ? "توسيط" : "Center"}</button>
+              <span style={{ flex: 1 }} />
+              <span className="nv-org-stage-bar__hint">
+                {ar ? "اسحب للتحريك · العجلة أو إصبعان للتكبير" : "Drag to pan · wheel or pinch to zoom"}
+              </span>
               <OrgTreeFullscreenButton
                 active={fullscreen}
                 onToggle={(next) => (next ? enterFullscreen() : exitFullscreen())}
                 ar={ar}
                 htmlLabel
               />
+              </>
+              )}
             </div>
           ) : (
           <OrgToolbar
@@ -406,7 +458,7 @@ export default function OrgTemplateBoard({
               <>
                 <button type="button" onClick={() => { setBranchParentId(""); setAddingBranch(true); }} style={orgBtnPrimary()}>
                   {ar ? "＋ إضافة فرع" : "+ Add branch"}
-                </button>
+                  </button>
               <button
                 type="button"
                 onClick={publish}
@@ -428,6 +480,22 @@ export default function OrgTemplateBoard({
             </OrgNotice>
           ) : null}
 
+          {chartView === "files" ? (
+            <OrgEmployeeFilesBoard
+              data={data}
+              nodes={directoryNodes}
+              ar={ar}
+              canWrite={canWrite}
+              companyId={company?.id || ""}
+              actor={currentUser}
+              onHire={onHire}
+              onManage={(employee) => {
+                setPreviewVacant(null);
+                setPreviewEmployee(employee);
+              }}
+            />
+          ) : (
+          <>
           <OrgTreeCanvas
             viewportRef={viewportRef}
             gestures={{
@@ -440,7 +508,29 @@ export default function OrgTemplateBoard({
             }}
             fullscreen={fullscreen}
             embedded={embedded && !fullscreen}
+            center={chartView !== "dir"}
           >
+            {chartView === "dir" ? (
+              <OrgSeatDirectory
+                nodes={directoryNodes}
+                stations={data?.stations || []}
+                ar={ar}
+                onOpen={(node) => {
+                  const employee = node?.employeeId
+                    ? (data?.employees || []).find((item) => String(item.id) === String(node.employeeId))
+                    : null;
+                  if (employee) {
+                    setPreviewVacant(null);
+                    setPreviewEmployee(employee);
+                    return;
+                  }
+                  if (node?.vacant) {
+                    setPreviewEmployee(null);
+                    setPreviewVacant(node);
+                  }
+                }}
+              />
+            ) : (
             <div
               ref={treeRef}
               style={orgTreeStageStyle(offset, zoom)}
@@ -453,6 +543,7 @@ export default function OrgTemplateBoard({
                   focusId={selectedNodeId || currentUser?.id || ''}
                   selectedId={selectedNodeId}
                   ar={ar}
+                  canHire={canWrite}
                   onSelect={(node) => {
                     setSelectedNodeId(node?.id || '');
                     setBranchFocusId('');
@@ -469,21 +560,38 @@ export default function OrgTemplateBoard({
                       ? (data?.employees || []).find((item) => String(item.id) === String(node.employeeId))
                       : null;
                     if (employee) {
+                      setPreviewVacant(null);
                       setPreviewEmployee(employee);
+                      return;
+                    }
+                    if (node?.vacant) {
+                      setPreviewEmployee(null);
+                      setPreviewVacant(node);
                       return;
                     }
                     const station = (data?.stations || []).find((item) => String(item.id) === String(node?.stationId || ""));
                     if (node?.stationId && !node?.kindLock && !node?.hrPost && !isHrUnit(station)) setSelectedStationId(node.stationId);
                   }}
                   byGrade={byGrade}
+                  dense={dense}
                 />
               ) : (
-                <span style={{ marginBlockStart: 16, fontSize: 12, color: MUTED }}>
+                        <span style={{ marginBlockStart: 16, fontSize: 12, color: MUTED }}>
                   {ar ? 'لا مقاعد بعد — أضف فرعًا أو وظّف من أعلى الشجرة.' : 'No seats yet — add a branch or hire above.'}
-                </span>
+                        </span>
               )}
             </div>
+            )}
           </OrgTreeCanvas>
+          <div className="nv-org-legend">
+            <span><i style={{ background: "#0B3D27" }} />{ar ? "مشغول" : "Occupied"}</span>
+            <span><i style={{ background: "transparent", border: "1.5px dashed #B7791F" }} />{ar ? "شاغر" : "Vacant"}</span>
+            <span><i style={{ background: "#C8A45A" }} />{ar ? "مكلَّف" : "Acting"}</span>
+            <span><i style={{ background: "#9B2335" }} />{ar ? "تنبيه نظامي" : "Compliance alert"}</span>
+            <span className="nv-org-legend__note">{ar ? "انقر البطاقة للتفاصيل · الرقم يفتح الأغصان" : "Click a card for details · the count opens branches"}</span>
+          </div>
+          </>
+          )}
 
           {!fullscreen && !embedded && structureLog.length ? (
             <OrgFooterStrip>
@@ -555,18 +663,24 @@ export default function OrgTemplateBoard({
         }}
       />
       <OrgEmployeePreview
-        open={Boolean(previewEmployee)}
+        open={Boolean(previewEmployee || previewVacant)}
         employee={previewEmployee}
+        vacantNode={previewVacant}
         data={data}
         companyId={company?.id || ""}
         canWrite={canWrite}
         companyName={companyName}
         ar={ar}
+        onHire={onHire}
         onOpenBranch={(stationId) => {
           setPreviewEmployee(null);
+          setPreviewVacant(null);
           setBranchFocusId(stationId);
         }}
-        onClose={() => setPreviewEmployee(null)}
+        onClose={() => {
+          setPreviewEmployee(null);
+          setPreviewVacant(null);
+        }}
       />
     </>
   );

@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 import { createMimeMessage } from 'npm:mimetext@3.0.24';
 import { fetchWithRetry } from '../../shared/fetchRetry.ts';
-import { filterBlobPayload, redactEmployee, attachEmployeeRequestFields, canSeeEmployeeRequests, APPEND_ONLY_CATEGORIES, inspectAppendOnly } from '../../shared/blobVisibility.ts';
+import { filterBlobPayload, redactEmployee, attachEmployeeRequestFields, canSeeEmployeeRequests, APPEND_ONLY_CATEGORIES, inspectAppendOnly, normalizeBlobPayload, isObjectBlobCategory } from '../../shared/blobVisibility.ts';
 import {
   WORKSPACE_SEARCH_MAX,
   accountMatchesWorkspaceQuery,
@@ -992,7 +992,7 @@ Deno.serve(async (req) => {
       const actorRole = context.actor?.role;
       const privilege = await getActorPrivilege();
       let allowed = false;
-      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'workProofs', 'disciplinaryCases'].includes(category)) allowed = context.senior;
+      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'branchEscalationSla', 'workProofs', 'visitorProofs', 'disciplinaryCases', 'arbitrationOutcomes', 'assetTransfers', 'orgSeats', 'stationBudgets', 'hcmFoundation', 'hcmPerformance', 'hseCredits', 'attendancePolicy', 'attendanceEmergency'].includes(category)) allowed = context.senior;
       else if (['hrLevels', 'hrClusters', 'jobGrades'].includes(category)) allowed = context.senior && (!context.actor || context.actor.role === 'director');
       else if (category === 'payrollRuns') allowed = context.senior || context.permissions.has('manage_payroll');
       else if (category === 'schedules') allowed = context.senior || ['pgm', 'station_manager'].includes(actorRole) || context.permissions.has('manage_schedules');
@@ -1014,13 +1014,19 @@ Deno.serve(async (req) => {
       // Never fail silently: a rejected write returns 403 so the UI can tell the user.
       if (!allowed && !selfWrite) return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });
       const existing = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
-      let data = Array.isArray(payload) ? payload : [];
+      // Object-map blobs must not be coerced to [] — that erased branchEscalationChains.
+      let data = normalizeBlobPayload(category, payload);
       const ownerOf = (item) => item.userId || item.employeeId || item.ownerId || item.createdBy || null;
       if (selfWrite) {
         // Merge: the employee's own records come from the client, everyone else's stay untouched.
-        const mine = data.filter((item) => ownerOf(item) === auth.userId || !ownerOf(item));
-        const others = (existing[0]?.payload || []).filter((item) => ownerOf(item) !== auth.userId);
+        const incoming = Array.isArray(data) ? data : [];
+        const mine = incoming.filter((item) => ownerOf(item) === auth.userId || !ownerOf(item));
+        const prior = Array.isArray(existing[0]?.payload) ? existing[0].payload : [];
+        const others = prior.filter((item) => ownerOf(item) !== auth.userId);
         data = [...mine, ...others];
+      }
+      if (isObjectBlobCategory(category) && selfWrite) {
+        return Response.json({ error: 'Forbidden: object blob categories are not self-writable' }, { status: 403 });
       }
       if (APPEND_ONLY_CATEGORIES.includes(category)) {
         // Evidence is never deletable. Records may only be archived — with an

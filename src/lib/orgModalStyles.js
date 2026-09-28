@@ -38,7 +38,7 @@ export const hintText = {
 
 export function segmentBtn(active) {
   return {
-    borderRadius: 10,
+    borderRadius: 8,
     border: "none",
     background: active ? CARD : "transparent",
     boxShadow: "none",
@@ -53,7 +53,7 @@ export function segmentBtn(active) {
 
 export const softPanel = {
   borderRadius: 14,
-  border: "1px solid #E2E8F0",
+  border: "1px solid var(--nv-line)",
   background: SURFACE,
   padding: "12px 14px",
 };
@@ -61,8 +61,8 @@ export const softPanel = {
 export const closeBtn = {
   width: 34,
   height: 34,
-  borderRadius: 10,
-  border: "1px solid #E2E8F0",
+  borderRadius: 8,
+  border: "1px solid var(--nv-line)",
   background: CARD,
   color: MUTED,
   display: "inline-flex",

@@ -89,9 +89,16 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import useStationScope from "@/hooks/useStationScope";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 const warnBanner = statusBanner.warn;
+
+const OPS_FILTERS = new Set(["all", "overdue", "today", "awaiting", "escalated", "archive", "done"]);
+
+function opsFilterFromQuery(value) {
+  const q = String(value || "");
+  return OPS_FILTERS.has(q) ? q : "";
+}
 
 /**
  * A named server refusal is final. Retrying it through the local fallback would
@@ -148,13 +155,19 @@ function asOpsMedia(item) {
 export default function Operations() {
   const { lang, dir, t } = useI18n();
   const ar = lang === "ar";
+  const employeeRail = useRailSide() === "employee";
   const { currentUser, company, data, refresh } = useAuth();
+  const [searchParams] = useSearchParams();
+  const queryFilter = opsFilterFromQuery(searchParams.get("filter"));
   const [tasks, setTasks] = useState([]);
   const [counts, setCounts] = useState(null);
   const [loading, setLoading] = useState(true);
   const [serviceDown, setServiceDown] = useState(false);
   const [localMode, setLocalMode] = useState(false);
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState(queryFilter || "all");
+  useEffect(() => {
+    if (queryFilter) setFilter(queryFilter);
+  }, [queryFilter]);
   const headerScope = useStationScope();
   const scope = headerScope || "all";
   const [viewMode, setViewMode] = useState("list");
@@ -1783,8 +1796,10 @@ export default function Operations() {
 
   const todayKey = localTodayKey();
   const isOpsManager = canCreateTasks(currentUser, data);
-  const liveTasks = tasks.filter((t) => !isOpsTaskArchived(t) && canSeeOpsTask(t, currentUser, { isManager: isOpsManager }));
-  const archivedTasks = tasks.filter((t) => isOpsTaskArchived(t) && canSeeOpsTask(t, currentUser, { isManager: isOpsManager }));
+  // The employee rail is «مهامي»: a director still only opens tasks assigned to them.
+  const seeAsManager = isOpsManager && !employeeRail;
+  const liveTasks = tasks.filter((t) => !isOpsTaskArchived(t) && canSeeOpsTask(t, currentUser, { isManager: seeAsManager }));
+  const archivedTasks = tasks.filter((t) => isOpsTaskArchived(t) && canSeeOpsTask(t, currentUser, { isManager: seeAsManager }));
   const boardFilter = filter === "done" ? "archive" : filter;
   const visible = liveTasks.filter((t) => {
     if (boardFilter === "archive") return false;
@@ -1799,7 +1814,7 @@ export default function Operations() {
 
   // Chips must count what this viewer can actually open — company-wide totals
   // would promise an employee rows they are not allowed to see.
-  const c = isOpsManager ? counts : deriveOpsCounts(liveTasks);
+  const c = seeAsManager ? counts : deriveOpsCounts(liveTasks);
   const chips = c ? [
     { id: "all", label: ar ? `الكل · ${c.total}` : `All · ${c.total}` },
     { id: "overdue", label: ar ? `متأخرة · ${c.overdue}` : `Overdue · ${c.overdue}` },
@@ -1898,7 +1913,7 @@ export default function Operations() {
               {ar ? "سجّل" : "Log"}
             </button>
           )}
-          {canReassign(task) && (
+          {!employeeRail && canReassign(task) && (
             <button
               type="button"
               disabled={busy}
@@ -1908,7 +1923,7 @@ export default function Operations() {
               {ar ? "توكيل" : "Delegate"}
             </button>
           )}
-          {canReassign(task) && (
+          {!employeeRail && canReassign(task) && (
             <button
               type="button"
               disabled={busy}
@@ -1918,7 +1933,7 @@ export default function Operations() {
               {ar ? "نقل" : "Transfer"}
             </button>
           )}
-          {canDeleteOpsTask(task, currentUser) && (
+          {!employeeRail && canDeleteOpsTask(task, currentUser) && (
             <button
               type="button"
               disabled={busy}
@@ -1928,7 +1943,7 @@ export default function Operations() {
               {ar ? "حذف" : "Delete"}
             </button>
           )}
-          {isAwaitingApproval(task) && canReview(task) && (
+          {!employeeRail && isAwaitingApproval(task) && canReview(task) && (
             <>
               <button type="button" disabled={busy} onClick={() => approve(task)} style={ui.btnMiniBrand}>
                 {ar ? "اعتمد" : "Approve"}
@@ -1949,7 +1964,7 @@ export default function Operations() {
   };
 
   const kickerNum = String(pageKicker("/app/tasks", "en")).slice(0, 2) || "01";
-  const employeeFace = useRailSide() === "employee";
+  const employeeFace = employeeRail;
   return (
     <PlatformStampShell
       ar={ar}
@@ -1979,7 +1994,7 @@ export default function Operations() {
           chips={chips}
           showCreate={showCreate}
           onToggleCreate={() => setShowCreate((v) => !v)}
-          canCreate={isOpsManager}
+          canCreate={isOpsManager && !employeeRail}
         />
         {boardFilter !== "archive" && boardPace.active > 0 ? <DailyPaceStrip ar={ar} board={boardPace} embedded /> : null}
       </OpsControlBar>
@@ -1995,7 +2010,7 @@ export default function Operations() {
       </div>
       )}
 
-      {showCreate && isOpsManager && (
+      {showCreate && isOpsManager && !employeeRail && (
         <OpsNewTaskModal
           ar={ar}
           dir={dir}
@@ -2039,24 +2054,24 @@ export default function Operations() {
                 padding: "2px 2px 0",
               }}
               >
-                <div style={{ flex: "1 1 200px", fontFamily: "var(--font-heading)", fontSize: 15, fontWeight: 700, color: "#111418" }}>
+                <div style={{ flex: "1 1 200px", fontFamily: "var(--font-heading)", fontSize: 15, fontWeight: 700, color: "var(--nv-ink)" }}>
                   {ar ? HORIZON_LABEL[g.id]?.ar : HORIZON_LABEL[g.id]?.en}
                 </div>
-                <div style={{ fontSize: 12, color: "#555C66", fontWeight: 600 }}>
+                <div style={{ fontSize: 12, color: "var(--nv-ink3)", fontWeight: 600 }}>
                   {ar ? `${g.rows.length} مهام` : `${g.rows.length} tasks`}
                 </div>
-                <div dir="ltr" style={{ fontSize: 12, color: "#111418", fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums" }}>
+                <div dir="ltr" style={{ fontSize: 12, color: "var(--nv-ink)", fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums" }}>
                   {g.unitsDone}/{g.unitsTarget}
                 </div>
-                <span style={{ width: 96, height: 6, borderRadius: 999, background: "#E6F2EA", overflow: "hidden" }}>
-                  <span style={{ display: "block", width: `${g.pct || 0}%`, height: "100%", background: "#3C7D50", borderRadius: 999 }} />
+                <span style={{ width: 96, height: 6, borderRadius: 999, background: "var(--nv-accent-soft)", overflow: "hidden" }}>
+                  <span style={{ display: "block", width: `${g.pct || 0}%`, height: "100%", background: "var(--nv-btn-fill)", borderRadius: 999 }} />
                 </span>
-                <span dir="ltr" style={{ fontSize: 11, color: "#555C66", fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums" }}>
+                <span dir="ltr" style={{ fontSize: 11, color: "var(--nv-muted)", fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums" }}>
                   {g.pct || 0}%
                 </span>
               </div>
               {g.rows.length === 0 ? (
-                <div style={{ padding: "14px 16px", fontSize: 12, color: MUTED, background: "#fff", border: "1px dashed #E4E9E6", borderRadius: 12 }}>
+                <div style={{ padding: "14px 16px", fontSize: 12, color: MUTED, background: "var(--nv-card)", border: "1px dashed var(--nv-line)", borderRadius: 12 }}>
                   {ar ? "لا مهام في هذا الأفق ضمن التصفية." : "No tasks in this horizon for the current filter."}
                 </div>
               ) : (

@@ -13,11 +13,13 @@ import EscalationCoverageDialog from "@/components/hr/EscalationCoverageDialog";
 import AssignEscalationDialog from "@/components/hr/AssignEscalationDialog";
 import {
   companyRootStation,
+  escalationLiveStations,
   isCompanyRootStation,
-  workplaceStations,
 } from "@/lib/stationTree";
 import { OrgNotice, OrgPanel, OrgToolbar } from "@/components/hr/OrgWorkspace";
-import { orgBtnGhost, orgBtnPrimary, orgSelect } from "@/lib/orgWorkspaceStyles";
+import { orgBtnGhost, orgBtnPrimary } from "@/lib/orgWorkspaceStyles";
+import OrgLookupField from "@/components/hr/OrgLookupField";
+import { personLookupOption } from "@/lib/orgLookup";
 import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 import { toast } from "@/components/ui/use-toast";
 
@@ -33,7 +35,7 @@ function employeeGroups(data, ar) {
   const employees = activeEmployees(data);
   const hq = companyRootStation(data?.stations || []);
   const hqId = hq ? String(hq.id) : "";
-  const stations = workplaceStations(data?.stations || []);
+  const stations = escalationLiveStations(data?.stations || []);
   const groups = [];
   if (hqId) {
     const hqStaff = employees.filter((employee) => String(employee.stationId) === hqId);
@@ -141,23 +143,18 @@ function BranchEscalationRow({
                 ? (ar ? `مستوى جديد · تصعيد ${index + 1}` : `New level · ${index + 1}`)
                 : (ar ? `تصعيد ${index + 1}` : `Level ${index + 1}`)}
             </span>
-            <select
+            <OrgLookupField
+              ar={ar}
               value={value}
               disabled={!canWrite}
-              onChange={(event) => updateLevel(index, event.target.value)}
-              style={{ ...orgSelect, width: "100%", height: 36 }}
-            >
-              <option value="">{ar ? "— اختر موظفًا —" : "— Choose employee —"}</option>
-              {groups.map((group) => (
-                <optgroup key={group.id} label={group.label}>
-                  {group.employees.map((employee) => (
-                    <option key={employee.id} value={employee.id}>
-                      {employee.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+              allowEmpty
+              emptyLabel={ar ? "— اختر موظفًا —" : "— Choose employee —"}
+              onChange={(employeeId) => updateLevel(index, employeeId)}
+              options={groups.flatMap((group) => group.employees.map((employee) => (
+                personLookupOption(employee, group.label, ar)
+              )))}
+              placeholder={ar ? "ابحث بالاسم أو الوظيفة أو الرقم أو الفرع" : "Search name, title, number, or branch"}
+            />
           </label>
         ))}
       </div>
@@ -193,7 +190,7 @@ export default function OrgEscalationBoard({ lang = "ar", canWrite = false, embe
   const [assignForStation, setAssignForStation] = useState(null);
 
   const stations = useMemo(
-    () => workplaceStations(data?.stations || []),
+    () => escalationLiveStations(data?.stations || []),
     [data?.stations],
   );
 

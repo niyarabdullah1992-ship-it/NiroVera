@@ -87,7 +87,7 @@ export default function HRCommunicationsTab({ employee, companyId, currentUser, 
                 padding: "10px 12px",
                 borderRadius: "10px",
                 fontSize: "13px",
-                background: m.from === "employee" ? SURFACE : "color-mix(in oklab, #1E9E63 12%, #fff)",
+                background: m.from === "employee" ? SURFACE : "color-mix(in oklab, var(--nv-ok-ink) 12%, #fff)",
                 color: NAVY,
               }}
               >

@@ -1,5 +1,7 @@
 /** Dated workplace-structure history and the same parent/manager walk ops uses. */
 
+import { isHrUnit } from "./stationTree.js";
+
 const MAX_EVENTS = 400;
 
 function uid() {
@@ -235,6 +237,61 @@ export function workplaceEscalationManagers(data, stationId) {
           title: "مدير الفرع",
           stationId: sid,
           acting: false,
+        });
+      }
+    }
+    const parent = String(cursor.parentStationId || cursor.parentBranchId || "").trim();
+    cursor = parent ? byId.get(parent) : null;
+  }
+  return out;
+}
+
+/**
+ * Same parent walk as workplaceEscalationManagers, plus a vacant rung when the
+ * seat has no acting cover and no managerId. The hidden HR unit is not a rung.
+ * Handler resolution still uses workplaceEscalationManagers and skips vacancies.
+ */
+export function workplaceEscalationLine(data, stationId) {
+  const stations = Array.isArray(data?.stations) ? data.stations : [];
+  const byId = new Map(stations.map((station) => [stationKey(station), station]));
+  const out = [];
+  const seenStations = new Set();
+  const seenPeople = new Set();
+  let cursor = byId.get(String(stationId || ""));
+  while (cursor) {
+    const sid = stationKey(cursor);
+    if (!sid || seenStations.has(sid)) break;
+    seenStations.add(sid);
+    const acting = actingAtStation(data, sid);
+    const aid = acting?.employee?.id ? String(acting.employee.id) : "";
+    const hidden = isHrUnit(cursor);
+    if (aid && !seenPeople.has(aid)) {
+      seenPeople.add(aid);
+      out.push({
+        employeeId: aid,
+        title: "مدير بالوكالة",
+        stationId: sid,
+        acting: true,
+        vacant: false,
+      });
+    } else if (!aid) {
+      const managerId = String(cursor.managerId || "").trim();
+      if (managerId && !seenPeople.has(managerId)) {
+        seenPeople.add(managerId);
+        out.push({
+          employeeId: managerId,
+          title: "مدير الفرع",
+          stationId: sid,
+          acting: false,
+          vacant: false,
+        });
+      } else if (!managerId && !hidden) {
+        out.push({
+          employeeId: "",
+          title: "مدير الفرع",
+          stationId: sid,
+          acting: false,
+          vacant: true,
         });
       }
     }

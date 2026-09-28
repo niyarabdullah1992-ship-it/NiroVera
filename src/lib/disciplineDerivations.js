@@ -66,7 +66,7 @@ export const DISCIPLINE_PENALTY_KINDS = [
   { id: "fine", limb: "2", ar: "غرامة", en: "Fine", days: [1, 2, 3, 4, 5] },
   { id: "increment", limb: "3", ar: "حرمان من العلاوة أو تأجيلها لمدة لا تزيد على سنة", en: "Withhold or defer an increment for up to one year", days: [0], deferMonths: 12 },
   { id: "promotion", limb: "4", ar: "تأجيل الترقية مدة لا تزيد على سنة", en: "Defer promotion for up to one year", days: [0], deferMonths: 12 },
-  { id: "suspend", limb: "5", ar: "إيقاف عن العمل مع الحرمان من الأجر", en: "Unpaid suspension from work", days: [1, 2, 3, 4, 5] },
+  { id: "suspend", limb: "5", ar: "الإيقاف عن العمل مع الحرمان من الأجر", en: "Unpaid suspension from work", days: [1, 2, 3, 4, 5] },
   { id: "dismiss", limb: "6", ar: "فصل من العمل في الحالات المقررة في النظام", en: "Dismissal in the cases prescribed in the Law", days: [0] },
 ];
 
@@ -352,6 +352,135 @@ export function checkRaiseDisciplineGate({
     };
   }
   return checkAdvanceDisciplineGate({ employeeId: employee.id, discoveredAt: discovered, createdAt: day }, "notice", { today: day });
+}
+
+/**
+ * Raise-form chips. Each row is the live gate for that article.
+ * warn does not open a file by itself; fail matches a gate that blocks.
+ */
+export function deriveRaiseDisciplineChips({
+  employee,
+  note = "",
+  today,
+  discoveredAt,
+  penaltyKind,
+  cutDays = 0,
+  dismissGround = "",
+  offSite = false,
+  workConnected = "",
+  cases = [],
+  ar = true,
+} = {}) {
+  const day = dateOnly(today) || todayRiyadh();
+  const kind = listedPenaltyKind(penaltyKind);
+  const days = Number(cutDays) || 0;
+  const articleOf = (ruleId) => citeRule(ruleId, day)?.article || "—";
+  const chipLabel = (article) => (ar ? `المادة ${article}` : `Art. ${article}`);
+  const draft = {
+    employeeId: employee?.id || "",
+    note,
+    penaltyKind,
+    cutDays: days,
+    dismissGround,
+    offSite: Boolean(offSite),
+    workConnected,
+  };
+  const listed = checkListedPenaltyGate(draft, day);
+  const art66 = articleOf("discipline.penalties.cite");
+  const kindName = kind ? (ar ? kind.ar : kind.en) : "—";
+  let state66 = kind ? "pass" : "fail";
+  let text66 = kind
+    ? (ar ? `الجزاء من قائمة المادة ${art66}: ${kindName}.` : `Penalty on the Article ${art66} list: ${kindName}.`)
+    : (ar ? (listed.reason || "—") : (listed.reasonEn || "—"));
+  if (kind?.id === "dismiss" && !String(dismissGround || "").trim()) {
+    state66 = "fail";
+    text66 = ar
+      ? "الفصل لا يُفتح إلا بذكر الحالة المقررة في النظام — المادة 66."
+      : "Dismissal does not open without the prescribed statutory case — Article 66.";
+  }
+
+  const art67 = articleOf("discipline.listedOnly.cite");
+  const state67 = kind ? "pass" : "fail";
+  const text67 = kind
+    ? (ar ? "الجزاء وارد في لائحة تنظيم العمل المعتمدة." : "The penalty is in the adopted work-organization regulations.")
+    : (ar
+      ? "موقوف — لا يُوقَّع جزاء غير وارد في النظام أو في لائحة تنظيم العمل."
+      : "Blocked — no penalty may be imposed that is not in the Law or the work-organization regulations.");
+
+  const max = ruleValue("discipline.charge.maxDays", day);
+  const art69 = articleOf("discipline.charge.maxDays");
+  const discovered = dateOnly(discoveredAt) || day;
+  const age = daysBetween(discovered, day);
+  let state69 = "pass";
+  let text69 = ar
+    ? `كُشفت قبل ${age == null ? "—" : age} يوماً — ضمن مهلة ${max} يوماً.`
+    : `Discovered ${age == null ? "—" : age} day(s) ago — inside the ${max}-day window.`;
+  if (discovered > day) {
+    state69 = "fail";
+    text69 = ar ? "تاريخ الكشف لا يكون بعد اليوم." : "The discovery date cannot be after today.";
+  } else if (pastChargeWindow(discovered, day, max)) {
+    state69 = "fail";
+    text69 = ar
+      ? `موقوف — لا يُتهم العامل بمخالفة مضى على كشفها أكثر من ${max} يوماً.`
+      : `Blocked — a worker may not be accused more than ${max} days after the offence was discovered.`;
+  }
+
+  const art70 = articleOf("discipline.workplace.cite");
+  const place = checkWorkplaceDisciplineGate(draft, { today: day });
+  const statePlace = place.ok ? "pass" : "fail";
+  let textPlace = ar ? "ارتُكبت في مكان العمل." : "Committed at the workplace.";
+  if (offSite) {
+    textPlace = place.ok
+      ? (ar ? "خارج مكان العمل ومتصلة بالعمل أو بصاحبه — يجوز الجزاء." : "Off-site and connected to the work or the employer — a penalty may be raised.")
+      : (ar ? "خارج مكان العمل وغير متصلة بالعمل — لا يجوز الجزاء." : "Off-site and not connected to the work — a penalty may not be raised.");
+  }
+
+  const cap = ruleValue("discipline.fine.maxDays", day);
+  const art70cap = articleOf("discipline.fine.maxDays");
+  const wageKind = kind?.id === "fine" || kind?.id === "suspend";
+  const month = checkDisciplineMonthCapGate(draft, { cases, today: day });
+  const double = String(note || "").trim() && employee?.id
+    ? checkDisciplineDoubleFileGate(draft, { cases, today: day })
+    : { ok: true };
+  let stateCap = "pass";
+  let textCap = ar ? "هذا الجزاء بلا حسم من الأجر." : "This penalty has no wage cut.";
+  if (!double.ok) {
+    stateCap = "fail";
+    textCap = ar ? double.reason : double.reasonEn;
+  } else if (wageKind && (days > cap || listed.error === "DISCIPLINE_FINE_OVER_CAP")) {
+    stateCap = "fail";
+    textCap = ar
+      ? `موقوف — غرامة المخالفة الواحدة أو الإيقاف بلا أجر لا يزيد على أجر ${cap} أيام.`
+      : `Blocked — a single-offence fine or unpaid suspension may not exceed ${cap} days.`;
+  } else if (wageKind && !month.ok) {
+    stateCap = "fail";
+    textCap = ar ? month.reason : month.reasonEn;
+  } else if (wageKind) {
+    stateCap = "warn";
+    textCap = ar
+      ? `الغرامة أو الإيقاف لا يتجاوزان أجر ${cap} أيام في الشهر — تُحسب في «حاسبة الحسم».`
+      : `A fine or unpaid suspension may not exceed ${cap} days in a month — counted in the cut calculator.`;
+  }
+
+  const hasFacts = Boolean(String(note || "").trim());
+  const art71 = articleOf("discipline.hearing.cite");
+  const chips = [
+    { key: "66", article: art66, label: chipLabel(art66), state: state66, text: text66 },
+    { key: "67", article: art67, label: chipLabel(art67), state: state67, text: text67 },
+    { key: "69", article: art69, label: chipLabel(art69), state: state69, text: text69 },
+    { key: "70-place", article: art70, label: chipLabel(art70), state: statePlace, text: textPlace },
+    { key: "70-cap", article: art70cap, label: chipLabel(art70cap), state: stateCap, text: textCap },
+    {
+      key: "71",
+      article: art71,
+      label: chipLabel(art71),
+      state: hasFacts ? "pass" : "fail",
+      text: hasFacts
+        ? (ar ? "الواقعة مكتوبة وتُبلَّغ كتابةً، ثم تُسمع أقواله قبل التوقيع." : "The facts are written and will be notified in writing, then the statement is heard before signing.")
+        : (ar ? "بلا وصف للواقعة لا يصح الإبلاغ" : "Without a written account of the facts, notice cannot open."),
+    },
+  ];
+  return chips;
 }
 
 export function checkAdvanceDisciplineGate(caseRow, toStep, { files = [], appealNote = "", hearingMinutes = "", today, laborCalendar } = {}) {

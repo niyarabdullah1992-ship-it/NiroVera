@@ -9,13 +9,13 @@ import EmployeeTour from "@/components/onboarding/EmployeeTour";
 import { BORDER, CARD, MUTED, NAVY, SURFACE, bar } from "@/lib/platformStyles";
 
 const MONO = "'IBM Plex Mono', monospace";
-const LINE = "#E4E9E6";
-const HAIR = "#EEF1EF";
-const ROW = "#F4F7F5";
-const OK = "#3C7D50";
-const WARN = "#C8A45A";
-const BAD = "#9B2335";
-const HEAD = { fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" };
+const LINE = "var(--nv-line)";
+const HAIR = "var(--nv-line)";
+const ROW = "var(--nv-line2)";
+const OK = "var(--nv-ok-fill)";
+const WARN = "var(--nv-warn-fill)";
+const BAD = "var(--nv-bad-fill)";
+const HEAD = { fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "var(--nv-ink)" };
 
 export default function EmployeeDashboard({ user, company, data }) {
   const { lang } = useI18n();
@@ -97,10 +97,10 @@ export default function EmployeeDashboard({ user, company, data }) {
   ].slice(0, 4);
 
   const kpis = [
-    { key: "open", label: ar ? "مهام مفتوحة" : "Open tasks", value: open.length, hint: ar ? "للتنفيذ" : "To execute", to: "/app/tasks", accent: open.length ? "#111418" : OK },
-    { key: "await", label: ar ? "بانتظار الاعتماد" : "Awaiting approval", value: awaiting.length, hint: ar ? "بعد الإثبات" : "After proof", to: "/app/tasks", accent: awaiting.length ? WARN : "#111418" },
-    { key: "late", label: ar ? "متأخرة" : "Overdue", value: overdue.length, hint: ar ? "تحتاج متابعة" : "Need follow-up", to: "/app/tasks", accent: overdue.length ? BAD : "#111418" },
-    { key: "points", label: ar ? "نقاطي" : "My points", value: points, hint: ar ? "تُمنح عند الاعتماد فقط" : "Awarded on approval only", to: "/app/performance?view=self", accent: "#111418" },
+    { key: "open", label: ar ? "مهام مفتوحة" : "Open tasks", value: open.length, hint: ar ? "للتنفيذ" : "To execute", to: "/app/tasks", accent: open.length ? "var(--nv-ink)" : OK },
+    { key: "await", label: ar ? "بانتظار الاعتماد" : "Awaiting approval", value: awaiting.length, hint: ar ? "بعد الإثبات" : "After proof", to: "/app/tasks", accent: awaiting.length ? WARN : "var(--nv-ink)" },
+    { key: "late", label: ar ? "متأخرة" : "Overdue", value: overdue.length, hint: ar ? "تحتاج متابعة" : "Need follow-up", to: "/app/tasks", accent: overdue.length ? BAD : "var(--nv-ink)" },
+    { key: "points", label: ar ? "نقاطي" : "My points", value: points, hint: ar ? "تُمنح عند الاعتماد فقط" : "Awarded on approval only", to: "/app/performance?view=self", accent: "var(--nv-ink)" },
   ];
 
   return (
@@ -197,7 +197,7 @@ export default function EmployeeDashboard({ user, company, data }) {
           <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}` }}>
             <div style={{ display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
               <span style={HEAD}>{ar ? "جاهزية اليوم" : "Day readiness"}</span>
-              <span dir="ltr" style={{ fontFamily: MONO, fontSize: 18, fontWeight: 500, color: "#111418", unicodeBidi: "isolate" }}>
+              <span dir="ltr" style={{ fontFamily: MONO, fontSize: 18, fontWeight: 500, color: "var(--nv-ink)", unicodeBidi: "isolate" }}>
                 {readiness}
                 <span style={{ fontSize: 12, fontWeight: 500, color: MUTED }}> /100</span>
               </span>

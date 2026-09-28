@@ -23,7 +23,7 @@ export default function OpsTaskAuditTimeline({ task, ar }) {
           >
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: row.tone || "#94A3B8", marginTop: 4, flexShrink: 0 }} />
-              {i < rows.length - 1 ? <span style={{ flex: 1, width: 1, background: "#E2E8F0", marginTop: 4 }} /> : null}
+              {i < rows.length - 1 ? <span style={{ flex: 1, width: 1, background: "var(--nv-line)", marginTop: 4 }} /> : null}
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12, color: NAVY, lineHeight: 1.55, textWrap: "pretty" }}>{row.text}</div>
@@ -33,7 +33,7 @@ export default function OpsTaskAuditTimeline({ task, ar }) {
                 </div>
               )}
               {row.type !== "create" && (
-                <div style={{ fontSize: 11, color: row.reason ? "#B45309" : MUTED, lineHeight: 1.55, marginTop: 3, textWrap: "pretty" }}>
+                <div style={{ fontSize: 11, color: row.reason ? "var(--nv-warn-ink)" : MUTED, lineHeight: 1.55, marginTop: 3, textWrap: "pretty" }}>
                   {ar ? "السبب:" : "Reason:"} {row.reason || (ar ? "غير مذكور" : "Not recorded")}
                 </div>
               )}

@@ -85,4 +85,31 @@ assert.equal(opened.name, "شاغرة");
 const openedParent = afterFlat.find((node) => (node.children || []).some((child) => child.seatId === "s1"));
 assert.equal(openedParent.id, "o1");
 
+const preview = {
+  employees: [
+    { id: "ceo", name: "نيار", role: "director", stationId: "root", profile: { position: "الرئيس" } },
+    { id: "p1", name: "فهد", role: "employee", stationId: "root", profile: { position: "منسق", gradeId: "g-op", directManagerId: "ceo" } },
+  ],
+  orgSeats: [
+    { id: "sp", employeeId: "p1", stationId: "root", title: "منسق", gradeId: "g-op" },
+  ],
+  stations: [
+    { id: "root", name: "NiroVera Preview", isCompanyRoot: true, managerId: "ceo" },
+    { id: "jed", name: "فرع جدة", parentStationId: "root", managerId: "ceo", unitKind: "branch" },
+  ],
+  jobGrades: [
+    { id: "g-op", gradeNumber: "OP1", title: "متوسط", order: 9 },
+  ],
+};
+const previewChart = buildWorkforceSeatChart(preview, { ar: true });
+const previewFlat = flattenSeatChart(previewChart.roots);
+const previewCeo = previewFlat.find((node) => node.id === "ceo");
+const previewPerson = previewFlat.find((node) => node.id === "p1");
+assert.equal(previewCeo.unit || "", "");
+assert.equal(previewCeo.branchFace || "", "");
+assert.equal(previewPerson.unit || "", "");
+assert.equal(previewPerson.grade, "م1");
+assert.equal(previewPerson.gradeIndex, 0);
+assert.equal(/preview/i.test(`${previewCeo.branchFace || ""} ${previewCeo.unit || ""} ${previewPerson.unit || ""} ${previewPerson.grade || ""}`), false);
+
 console.log("workforce seat chart ok", flat.map((node) => `${node.kindTag}:${node.name}`).join(" | "));

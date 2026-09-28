@@ -90,7 +90,7 @@ export default function SigningAuditTrail({ events = [], ar, open = false }) {
           return (
             <div key={`${event.at}-${index}`} style={{ fontSize: 11 }}>
               <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 6, color: NAVY }}>
-                <Icon style={{ width: 13, height: 13, color: event.type === "signed" ? "#15803D" : event.type === "rejected" || event.type === "deleted" ? "#DC2626" : event.type === "reopened" ? "#B45309" : NAVY }} />
+                <Icon style={{ width: 13, height: 13, color: event.type === "signed" ? "var(--nv-ok-ink)" : event.type === "rejected" || event.type === "deleted" ? "var(--nv-bad-ink)" : event.type === "reopened" ? "var(--nv-warn-ink)" : NAVY }} />
                 {event.actorName || "NiroVera"} · {label}{targetLine ? ` · ${targetLine}` : ""}
               </p>
               <p style={{ margin: "4px 0 0", color: MUTED }}>

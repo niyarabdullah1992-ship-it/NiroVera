@@ -43,7 +43,7 @@ export default function DeductionDisputeForm({ ar, onSubmit }) {
           onClick={() => onSubmit(note.trim())}
           style={{
             ...ui.btnDanger,
-            background: DANGER,
+            background: "var(--nv-bad-fill)",
             color: "#fff",
             border: `1px solid ${DANGER}`,
             opacity: note.trim().length < 5 ? 0.5 : 1,

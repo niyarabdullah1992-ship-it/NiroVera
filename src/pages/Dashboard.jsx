@@ -260,7 +260,7 @@ export default function Dashboard() {
           )}
         >
           {face === "map" ? (
-            <OperationsModuleGrid metrics={mapMetrics} lang={lang} user={currentUser} data={data} company={company} />
+            <OperationsModuleGrid metrics={mapMetrics} lang={lang} user={currentUser} data={data} company={company} personal={personalFace} />
           ) : (
             decideBody
           )}

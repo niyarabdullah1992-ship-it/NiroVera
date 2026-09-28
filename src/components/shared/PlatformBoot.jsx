@@ -112,7 +112,7 @@ export default function PlatformBoot({ variant = "full" }) {
               flexShrink: 0,
             }}
           >
-            <span style={{ width: 26, height: 26, background: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ width: 26, height: 26, background: "var(--nv-card)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
               <Logo size={18} wordmark={false} />
             </span>
             <span style={{ display: "flex", flexDirection: "column", gap: 1 }}>

@@ -25,7 +25,7 @@ export default function StampPreview({ src, sealId, ar }) {
             objectFit: "contain",
             display: "block",
             borderRadius: 12,
-            border: "1px solid color-mix(in oklab, #14284B 10%, #fff)",
+            border: "1px solid color-mix(in oklab, var(--nv-ink) 10%, #fff)",
             background: CARD,
             boxShadow: "0 10px 24px rgba(20,40,75,.10)",
           }}

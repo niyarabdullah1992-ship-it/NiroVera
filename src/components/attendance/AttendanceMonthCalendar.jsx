@@ -410,7 +410,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
       id, label, value: String(value ?? 0), color,
       cursor: rangeOn ? "default" : "pointer",
       bg: act && !rangeOn ? "var(--nv-hover)" : "var(--nv-card)",
-      border: act && !rangeOn ? "#c7ccd6" : OC.soft,
+      border: act && !rangeOn ? "var(--nv-line)" : OC.soft,
       weight: act && !rangeOn ? 700 : 500,
       select: () => {
         if (rangeOn) return;
@@ -980,7 +980,7 @@ function MatrixView({ ar, cells, weekdays, selected, pickDay }) {
   });
   const worstIdx = byWd.reduce((best, value, i) => (value != null && (best < 0 || value < byWd[best]) ? i : best), -1);
   const scale = [
-    { label: "98%+", color: "#137a49" },
+    { label: "98%+", color: "var(--nv-ok-ink)" },
     { label: "92%", color: "#5cb98a" },
     { label: "85%", color: "#a8dcc2" },
     { label: "75%", color: "#f0d79a" },

@@ -29,7 +29,7 @@ export default function DailyHoursTable({ selectedMonth, dailyHours = [], totalH
       {open && <>
       <div className="grid grid-cols-[1fr_8rem] border-t border-border bg-muted/60 px-3 py-2 text-[11px] font-semibold text-muted-foreground"><span>{ar ? "اليوم والتاريخ" : "Day and date"}</span><span>{ar ? "ساعات العمل" : "Work hours"}</span></div>
       <div className="max-h-80 overflow-y-auto divide-y divide-border/60">{days.map(({ date, future, day }) => <div key={date} className={`grid grid-cols-[1fr_8rem] items-center px-3 py-1.5 ${future ? "bg-muted/40 text-muted-foreground/60" : "bg-card"}`}><span className="text-xs"><strong>{day}</strong><span className="ms-2 text-[10px] text-muted-foreground">{date}</span></span><input type="number" min="0" step="0.25" disabled={!canEdit || future} value={!future && entries.has(date) ? entries.get(date) : ""} onChange={(event) => setHours(date, event.target.value)} className="h-8 rounded-md border border-input px-2 text-xs disabled:cursor-not-allowed disabled:opacity-50" /></div>)}</div>
-      <div className="flex items-center justify-between border-t border-border bg-[#F7F8FA] px-3 py-2 text-xs"><span className="font-semibold text-[#14284B]">{ar ? "إجمالي ساعات الشهر" : "Monthly total"}</span><strong className="text-[#1E9E63]">{totalHours.toLocaleString()}</strong></div>
+      <div className="flex items-center justify-between border-t border-border bg-[var(--nv-soft)] px-3 py-2 text-xs"><span className="font-semibold text-[var(--nv-ink)]">{ar ? "إجمالي ساعات الشهر" : "Monthly total"}</span><strong className="text-[var(--nv-ok-ink)]">{totalHours.toLocaleString()}</strong></div>
       </>}
     </div>
   );

@@ -87,7 +87,7 @@ export default function PublicSignSignaturePanel({
                 height: 20,
                 borderRadius: "50%",
                 border: `1.5px solid ${done ? "var(--nv-accent, #1E9E63)" : BORDER}`,
-                background: done ? "var(--nv-accent, #1E9E63)" : "#fff",
+                background: done ? "var(--nv-accent, #1E9E63)" : "var(--nv-card)",
                 color: done ? "#fff" : NAVY,
                 display: "inline-flex",
                 alignItems: "center",
@@ -135,7 +135,7 @@ export default function PublicSignSignaturePanel({
               </p>
             ) : null}
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <button type="button" onClick={confirmRefuse} disabled={!reason.trim() || signing} style={{ ...signPrimaryBtn, background: DANGER, opacity: !reason.trim() || signing ? 0.45 : 1 }}>
+              <button type="button" onClick={confirmRefuse} disabled={!reason.trim() || signing} style={{ ...signPrimaryBtn, background: "var(--nv-bad-fill)", opacity: !reason.trim() || signing ? 0.45 : 1 }}>
                 {ar ? "تأكيد الرفض" : "Confirm refusal"}
               </button>
               <button type="button" onClick={() => setShowReject(false)} style={{ ...signGhostBtn, marginInlineStart: "auto" }}>
@@ -152,7 +152,7 @@ export default function PublicSignSignaturePanel({
               <button
                 type="button"
                 onClick={() => setShowReject(true)}
-                style={{ ...signGhostBtn, padding: "6px 10px", fontSize: 12, color: DANGER, borderColor: "color-mix(in oklab, #DC2626 28%, #fff)" }}
+                style={{ ...signGhostBtn, padding: "6px 10px", fontSize: 12, color: DANGER, borderColor: "color-mix(in oklab, var(--nv-bad-ink) 28%, #fff)" }}
               >
                 <XCircle style={{ width: 14, height: 14 }} />
                 {ar ? "رفض" : "Refuse"}
@@ -290,7 +290,7 @@ export default function PublicSignSignaturePanel({
         </p>
       ) : null}
       {error ? (
-        <p style={{ margin: "0 16px 16px", background: "#FEF2F2", padding: "10px 12px", fontSize: 12, color: DANGER }}>{error}</p>
+        <p style={{ margin: "0 16px 16px", background: "var(--nv-bad-soft)", padding: "10px 12px", fontSize: 12, color: DANGER }}>{error}</p>
       ) : null}
     </div>
   );

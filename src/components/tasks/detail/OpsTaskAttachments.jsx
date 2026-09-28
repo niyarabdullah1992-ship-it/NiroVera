@@ -92,7 +92,7 @@ export default function OpsTaskAttachments({
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {(Array.isArray(steps) ? steps : stepText.split("\n").filter(Boolean)).map((s, i) => (
                 <div key={`${taskId}-step-${i}`} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                  <span dir="ltr" style={{ width: 20, height: 20, borderRadius: "50%", background: "#F1F5F9", color: MUTED, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "'IBM Plex Sans',sans-serif", marginTop: 1 }}>{i + 1}</span>
+                  <span dir="ltr" style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--nv-soft)", color: MUTED, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "'IBM Plex Sans',sans-serif", marginTop: 1 }}>{i + 1}</span>
                   <span style={{ fontSize: 13, color: NAVY, lineHeight: 1.6, textWrap: "pretty" }}>{s}</span>
                 </div>
               ))}
@@ -119,12 +119,12 @@ export default function OpsTaskAttachments({
                     </>
                   ) : f.url ? (
                     <a href={f.url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
-                      <span style={kind("#FEF2F2", "#DC2626", "#FECACA")}>{(f.name || "").toLowerCase().endsWith(".pdf") ? "PDF" : "FILE"}</span>
+                      <span style={kind("var(--nv-bad-soft)", "#DC2626", "var(--nv-bad-soft)")}>{(f.name || "").toLowerCase().endsWith(".pdf") ? "PDF" : "FILE"}</span>
                       <span style={{ fontSize: 12, color: NAVY }}>{f.name || "file"}</span>
                     </a>
                   ) : (
                     <>
-                      <span style={kind("#F1F5F9", MUTED, BORDER)}>{ar ? "محلي" : "LOCAL"}</span>
+                      <span style={kind("var(--nv-soft)", MUTED, BORDER)}>{ar ? "محلي" : "LOCAL"}</span>
                       <span style={{ fontSize: 12, color: NAVY }}>{f.name || "file"}</span>
                     </>
                   )}
@@ -151,7 +151,7 @@ export default function OpsTaskAttachments({
               );
             })}
             {canEdit && (
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 13px", borderRadius: 10, border: "1px dashed #CBD5E1", background: CARD, fontSize: 12, color: MUTED, cursor: "pointer" }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 13px", borderRadius: 10, border: "1px dashed var(--nv-line)", background: CARD, fontSize: 12, color: MUTED, cursor: "pointer" }}>
                 <span>{ar ? "أرفق ملفًا" : "Attach file"}</span>
                 <input type="file" style={{ display: "none" }} onChange={(e) => setFile(e.target.files?.[0] || null)} />
               </label>

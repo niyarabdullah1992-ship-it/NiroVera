@@ -16,7 +16,7 @@ export default function AssistantMessage({ message, onFeedback, onDelete, ar = f
       <div className={`group relative max-w-[85%] rounded-xl py-3 ps-4 pe-10 text-sm font-body ${isUser ? "bg-foreground text-background" : "bg-card border border-border"}`} dir="auto">
         {onDelete && <button type="button" onClick={onDelete} aria-label={ar ? "حذف الرسالة" : "Delete message"} title={ar ? "حذف الرسالة" : "Delete message"} className={`absolute end-2 top-2 rounded-md p-1.5 opacity-70 hover:opacity-100 ${isUser ? "text-background/70 hover:bg-background/10" : "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"}`}><Trash2 className="h-3.5 w-3.5" /></button>}
         {!isUser && (
-          <div className="flex items-center gap-1.5 mb-1 text-[#14284B]">
+          <div className="flex items-center gap-1.5 mb-1 text-[var(--nv-ink)]">
             <Sparkles className="w-3.5 h-3.5" />
           </div>
         )}

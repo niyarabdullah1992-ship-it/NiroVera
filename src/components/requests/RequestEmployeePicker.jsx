@@ -3,7 +3,7 @@ import useStationScope from "@/hooks/useStationScope";
 import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 import { filterRequestPeople, requestPeopleStations } from "@/lib/requestWorkspace";
 
-const NAVY_FILL = "var(--nv-navy, #14213d)";
+const NAVY_FILL = "var(--nv-navy)";
 
 function fieldStyle() {
   return {
@@ -162,7 +162,7 @@ export default function RequestEmployeePicker({
                       gap: 10,
                       padding: "9px 12px",
                       border: "none",
-                      borderBottom: "1px solid #f3f4f7",
+                      borderBottom: "1px solid var(--nv-line)",
                       background: on ? NAVY_FILL : CARD,
                       color: on ? "#fff" : NAVY,
                       cursor: "pointer",

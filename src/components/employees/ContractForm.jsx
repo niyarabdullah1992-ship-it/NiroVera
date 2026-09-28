@@ -207,9 +207,9 @@ export default function ContractForm({ employee, companyId, contract, ar, onDone
             </div>
           </label>
         </div>
-        {error && <p style={{ margin: 0, fontSize: "12px", color: "#DC2626" }}>{error}</p>}
+        {error && <p style={{ margin: 0, fontSize: "12px", color: "var(--nv-bad-ink)" }}>{error}</p>}
         {liveTermGate.warning === "ART55_CONVERTED" ? (
-          <p style={{ margin: 0, fontSize: "12px", color: "#B45309", lineHeight: 1.65 }}>
+          <p style={{ margin: 0, fontSize: "12px", color: "var(--nv-warn-ink)", lineHeight: 1.65 }}>
             {ar
               ? "الحفظ يكتب المادة 55: العقد يصبح غير محدد المدة في الملف. تاريخ نهاية جديد في المستقبل هو تجديد مكتوب ويبقى محدد المدة."
               : "Saving writes Article 55: the file becomes indefinite. A new future end date is a written renewal and stays fixed-term."}

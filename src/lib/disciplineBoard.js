@@ -13,7 +13,7 @@ import {
   resolvePenaltyKind,
   monthCapDaysByKind,
 } from "./disciplineDerivations.js";
-import { citeRule, explainRule, ruleValue } from "./laborRules.js";
+import { citeRule, ruleValue } from "./laborRules.js";
 
 export const FACE_STAGES = [
   { id: "notified", num: "01", ar: "أُبلغ كتابةً", en: "Notified in writing", shortAr: "أُبلغ", shortEn: "Notified", live: ["incident", "notice"] },
@@ -353,7 +353,7 @@ export function deriveDisciplineBoard({
   });
 
   const stats = [
-    { val: String(cases.length), unit: "", lbl: ar ? "ملفات في نطاقك" : "Files in scope", note: scopeLabel || (ar ? "هذا الفرع" : "This station"), accent: "var(--nv-navy)", border: "var(--nv-line)" },
+    { val: String(cases.length), unit: "", lbl: ar ? "ملفات في نطاقك" : "Files in scope", note: scopeLabel || (cases.length ? "—" : (ar ? "لا ملفات" : "No files")), accent: "var(--nv-ink)", border: "var(--nv-line)" },
     {
       val: String(open.length),
       unit: "",
@@ -520,8 +520,8 @@ export function decorateDisciplineCase(item, {
   const appealNote = disciplineAppealNote(item);
 
   const steps = [
-    { id: "notified", name: ar ? "أُبلغ" : "Notified", when: notifiedAt ? fmtDisciplineDate(notifiedAt, ar) : (ar ? "لم يُبلَغ" : "Not yet"), done: Boolean(notifiedAt || ["notice", "hearing", "decision", "notify", "appeal", "ruling", "closed"].includes(item.status)) },
-    { id: "defence", name: ar ? "سُمع دفاعه" : "Defence", when: defenceAt ? fmtDisciplineDate(defenceAt, ar) : (ar ? "لم يُسمع بعد" : "Not heard yet"), done: Boolean(defenceAt) },
+    { id: "notified", name: ar ? "أُبلغ كتابةً" : "Notified in writing", when: notifiedAt ? fmtDisciplineDate(notifiedAt, ar) : (ar ? "لم يُبلَغ" : "Not yet"), done: Boolean(notifiedAt || ["notice", "hearing", "decision", "notify", "appeal", "ruling", "closed"].includes(item.status)) },
+    { id: "defence", name: ar ? "سُمع دفاعه" : "Defence heard", when: defenceAt ? fmtDisciplineDate(defenceAt, ar) : (ar ? "لم يُسمع بعد" : "Not heard yet"), done: Boolean(defenceAt) },
     { id: "signed", name: ar ? "وُقّع" : "Signed", when: signedAt ? fmtDisciplineDate(signedAt, ar) : (ar ? "لم يُوقَّع" : "Not signed"), done: Boolean(signedAt) },
     { id: "objected", name: ar ? "اعترض" : "Objected", when: objectedAt ? fmtDisciplineDate(objectedAt, ar) : (ar ? "لا اعتراض" : "No objection"), done: Boolean(objectedAt || face.id === "objected") },
     { id: "closed", name: ar ? "أُغلق" : "Closed", when: item.rulingLabel ? `${item.rulingLabel} · ${fmtDisciplineDate(closedAt, ar)}` : (face.id === "closed" ? (ar ? "استقرّ" : "Settled") : (ar ? "مفتوح" : "Open")), done: face.id === "closed" },
@@ -566,6 +566,44 @@ export function decorateDisciplineCase(item, {
       actions.push({ id: "void", kind: "go", label: ar ? "ألغِ الجزاء" : "Void the sanction", tip: ar ? "يُرفع من الملف" : "Removed from the file" });
     }
   }
+
+  const signMax = Number(ruleValue("discipline.charge.maxDays", day)) || 0;
+  const appealMax = Number(ruleValue("discipline.appeal.internalDays", day)) || 0;
+  const cutCap = Number(cap) || Number(ruleValue("discipline.fine.maxDays", day)) || 0;
+  const signElapsed = defenceAt ? daysBetween(defenceAt, signedAt || day) : null;
+  const appealElapsed = signedAt ? daysBetween(signedAt, objectedAt || closedAt || day) : null;
+  const fineUsed = monthCapDaysByKind(cases, item.employeeId, day, "fine");
+  const suspendUsed = monthCapDaysByKind(cases, item.employeeId, day, "suspend");
+  const cutUsed = fineUsed + suspendUsed;
+  const meterPct = (used, max) => (!max || used == null ? 0 : Math.max(0, Math.min(100, Math.round((Number(used) / max) * 100))));
+  const meters = [
+    {
+      id: "sign",
+      label: ar ? "مهلة التوقيع" : "Signing window",
+      article: citeRule("discipline.charge.maxDays", day)?.article || "69",
+      text: signElapsed == null || !signMax ? "—" : `${signElapsed} / ${signMax}`,
+      pct: meterPct(signElapsed, signMax),
+      over: signElapsed != null && signMax > 0 && signElapsed > signMax,
+    },
+    {
+      id: "appeal",
+      label: ar ? "مهلة الاعتراض" : "Objection window",
+      article: citeRule("discipline.appeal.internalDays", day)?.article || "72",
+      text: appealElapsed == null || !appealMax ? "—" : `${appealElapsed} / ${appealMax}`,
+      pct: meterPct(appealElapsed, appealMax),
+      over: appealElapsed != null && appealMax > 0 && appealElapsed > appealMax,
+    },
+    {
+      id: "cap",
+      label: ar ? "سقف الحسم" : "Deduction cap",
+      article: citeRule("discipline.fine.maxDays", day)?.article || "70",
+      text: cutCap ? `${cutUsed} / ${cutCap}` : "—",
+      pct: meterPct(cutUsed, cutCap),
+      over: cutCap > 0 && cutUsed > cutCap,
+    },
+  ];
+  const jobTitle = employee?.jobTitle || employee?.title || employee?.profile?.jobTitle || employee?.profile?.position || employee?.position || "";
+  const fileCode = employee?.employeeNumber || employee?.profile?.employeeNumber || employee?.code || employee?.fileNo || "";
 
   const phrase = cutPhrase(item, wage, ar);
   const line = signedAt
@@ -668,6 +706,9 @@ export function decorateDisciplineCase(item, {
         ? (ar ? "نسخة مستقرّة للحفظ والاحتجاج — لا توقيع جديد عليها" : "Settled copy to keep — no new signing on it")
         : (ar ? "نسخة الجزاء الموقَّع للحفظ — الاعتراض من وجه الموظف" : "Signed copy to keep — objection sits on the employee's face")),
     related: disciplineRelatedLinks(item, { employee, ar, signedAt }),
+    meters,
+    jobTitle: String(jobTitle || "").trim() || "—",
+    fileCode: String(fileCode || "").trim() || "—",
   };
 }
 
@@ -695,44 +736,44 @@ const LAW_CATALOG = [
 
 const LAW_APPLIED = {
   "discipline.penalties.cite": {
-    ar: "في المنصة: القائمة هي بنود المادة 66 الستة — إنذار، غرامة حتى خمسة أيام، حرمان/تأجيل علاوة سنة، تأجيل ترقية سنة، إيقاف بلا أجر حتى خمسة أيام، فصل في الحالات المقررة.",
-    en: "On the platform: the list is the six Article 66 limbs — warning, a fine of up to five days, withholding/deferring an increment for a year, deferring promotion for a year, unpaid suspension of up to five days, and dismissal in the prescribed cases.",
+    ar: "لا يُوقَّع إلا البنود الستة: إنذار، غرامة حتى خمسة أيام، تأجيل علاوة أو ترقية، إيقاف بلا أجر، أو فصل مقرر.",
+    en: "Only the six listed penalties may be imposed: warning, a fine of up to five days, a deferred increment or promotion, unpaid suspension, or a prescribed dismissal.",
   },
   "discipline.listedOnly.cite": {
-    ar: "في المنصة: لا يُكتب جزاء نصّاً حرّاً. ما ليس في المادة 66 يُمنع باسم DISCIPLINE_PENALTY_NOT_LISTED.",
-    en: "On the platform: a penalty is not free text. What is not in Article 66 is blocked as DISCIPLINE_PENALTY_NOT_LISTED.",
+    ar: "لا يُكتب جزاء نصّاً حرّاً، ولا يُوقَّع جزاء غير وارد في النظام أو في لائحة تنظيم العمل.",
+    en: "A penalty is not free text, and none may be imposed unless it is in the Law or the work-organization regulations.",
   },
   "discipline.repeat.cooloffDays": {
-    ar: "في المنصة: الجزاء الأقدم من 180 يوماً لا يُرفع درجة الجزاء التالي. المنع يُكتب سببه ولا يُخفى الزر.",
-    en: "On the platform: a penalty older than 180 days does not raise the next one. The block writes its reason.",
+    ar: "جزاء أقدم من 180 يوماً لا يرفع درجة الجزاء التالي، ويُكتب سبب المنع.",
+    en: "A penalty older than 180 days does not raise the next one, and the block writes its reason.",
   },
   "discipline.charge.maxDays": {
-    ar: "في المنصة: مهلة الاتهام من تاريخ الكشف، ومهلة التوقيع من انتهاء التحقيق. ما تجاوز الثانية يُمنع توقيعه ويُكتب السبب.",
-    en: "On the platform: the accusation window runs from discovery, and the signing window from the investigation end. Past the second clock, signing is blocked and the reason is written.",
+    ar: "مهلة الاتهام من تاريخ الكشف، ومهلة التوقيع من انتهاء التحقيق، وما تجاوز الثانية يُمنع توقيعه.",
+    en: "The accusation window runs from discovery and the signing window from the investigation end; past the second, signing is blocked.",
   },
   "discipline.fine.maxDays": {
-    ar: "في المنصة: سقف الغرامة الشهري منفصل عن سقف الإيقاف. المخالفة الواحدة لا تُفتح عليها ملفات متعددة — DISCIPLINE_DOUBLE_PENALTY.",
-    en: "On the platform: the monthly fine cap is separate from the suspension cap. One offence cannot open two files — DISCIPLINE_DOUBLE_PENALTY.",
+    ar: "سقف الغرامة الشهري منفصل عن سقف الإيقاف، ولا يُوقَّع أكثر من جزاء واحد على المخالفة الواحدة.",
+    en: "The monthly fine cap is separate from the suspension cap, and more than one penalty may not be imposed for a single offence.",
   },
   "discipline.workplace.cite": {
-    ar: "في المنصة: إن وُسمت الواقعة خارج مكان العمل يُطلب بيان الصلة بالعمل أو بصاحبه أو بالمدير — وإلا يُمنع الرفع (DISCIPLINE_OFFSITE_UNRELATED).",
-    en: "On the platform: if the act is marked off-site, a link to the work, the employer, or the manager is required — otherwise raise is blocked (DISCIPLINE_OFFSITE_UNRELATED).",
+    ar: "خارج مكان العمل لا يُرفع الجزاء إلا إذا اتصل بالعمل أو بصاحبه أو بالمدير المسؤول.",
+    en: "An off-site act is not raised unless it is connected with the work, the employer, or the responsible manager.",
   },
   "discipline.hearing.cite": {
-    ar: "في المنصة: الإنذار أو غرامة يوم تُستجوَب شفاهة ويُكتب ذلك في المحضر. غيرها يحتاج محضر دفاع مكتوب أو مرفقاً.",
-    en: "On the platform: a warning or a one-day fine may be questioned orally and that is written in the minutes. Other penalties need written defence minutes or an attachment.",
+    ar: "الإنذار أو غرامة يوم تُستجوَب شفاهة في المحضر، وغيرها يحتاج محضر دفاع مكتوباً.",
+    en: "A warning or a one-day fine may be questioned orally in the minutes; other penalties need written defence minutes.",
   },
   "discipline.appeal.internalDays": {
-    ar: "في المنصة: الاعتراض خلال 30 يوماً من التوقيع عدا أيام العطل الرسمية. إن لم يُبتّ خلال 15 يوماً تقويمية يُحجب البتّ الداخلي (DISCIPLINE_RULING_LATE) ويُذكر حق المحاكم العمالية.",
-    en: "On the platform: the objection is within 30 days of signing excluding official holidays. If it is not decided in 15 calendar days, the internal ruling is blocked (DISCIPLINE_RULING_LATE) and the labour-court right is written.",
+    ar: "الاعتراض خلال 30 يوماً من التوقيع عدا العطل، والبتّ خلال 15 يوماً وإلا حُجب القرار الداخلي وبقي حق المحاكم العمالية.",
+    en: "The objection is within 30 days of signing excluding holidays, and the ruling within 15 days, or the internal decision is blocked and the labour-court right remains.",
   },
   "discipline.fines.register.cite": {
-    ar: "في المنصة: الغرامة تُقيَّد في السجل وتُرحَّل إلى المسير، ولا تُصرف إلا بقرار لجنة أو موافقة وزارة مكتوبة — لا يُختلق سند.",
-    en: "On the platform: a fine is written to the register and posted to payroll, and is disposed of only with a written committee decision or Ministry approval — no invented instrument.",
+    ar: "الغرامة تُقيَّد في السجل وتُرحَّل إلى المسير، ولا تُصرف إلا بقرار لجنة أو موافقة وزارة مكتوبة.",
+    en: "A fine is written to the register and posted to payroll, and is disposed of only with a written committee decision or Ministry approval.",
   },
   "discipline.record.eraseDays": {
-    ar: "في المنصة: الملف يبقى في أرشيف الشركة ويُمحى من سجل الموظف الظاهر بعد سنة — قاعدة حفظ، ليست مادة نظام.",
-    en: "On the platform: the file stays in the company archive and drops off the employee's visible record after a year — a retention rule, not a statutory article.",
+    ar: "الملف يبقى في أرشيف الشركة ويُمحى من سجل الموظف الظاهر بعد سنة.",
+    en: "The file stays in the company archive and drops off the employee's visible record after a year.",
   },
 };
 
@@ -842,7 +883,6 @@ export function deriveDisciplineLawBoard({
     .filter((row) => filter === "all" || row.kind === filter)
     .map((row) => {
       const cite = citeRule(row.ruleId, day);
-      const explained = explainRule(row.ruleId, day);
       const n = live[row.ruleId] || 0;
       const blockedN = blocked[row.ruleId] || 0;
       const art = cite?.article || "—";
@@ -852,13 +892,10 @@ export function deriveDisciplineLawBoard({
         kind: row.kind,
         kindLabel: ar ? LAW_KIND[row.kind].ar : LAW_KIND[row.kind].en,
         head: ar ? row.headAr : row.headEn,
-        text: ar
-          ? (cite?.textAr || explained?.hintAr || "")
-          : (cite?.textEn || explained?.hintEn || ""),
         applied: ar ? LAW_APPLIED[row.ruleId].ar : LAW_APPLIED[row.ruleId].en,
         live: n,
         blocked: blockedN,
-        rowBg: blockedN ? "var(--nv-bad-soft)" : n ? "var(--nv-warn-soft)" : "var(--nv-card)",
+        rowBg: "var(--nv-card)",
         numColor: blockedN ? "var(--nv-bad-ink)" : n ? "var(--nv-warn-ink)" : "var(--nv-navy)",
         tag: blockedN
           ? (ar
@@ -870,7 +907,7 @@ export function deriveDisciplineLawBoard({
               : `Applies now to ${n} file(s)`)
             : (ar ? LAW_KIND[row.kind].ar : LAW_KIND[row.kind].en),
         tagColor: blockedN ? "var(--nv-bad-ink)" : n ? "var(--nv-warn-ink)" : "var(--nv-ink2)",
-        tagBg: blockedN || n ? "var(--nv-card)" : "var(--nv-mute-soft)",
+        tagBg: blockedN ? "var(--nv-bad-soft)" : "transparent",
         tagBorder: blockedN ? "var(--nv-bad-line)" : n ? "var(--nv-warn-line)" : "var(--nv-line)",
       };
     });
@@ -883,8 +920,8 @@ export function deriveDisciplineLawBoard({
       label: ar ? labels.ar : labels.en,
     })),
     note: ar
-      ? "وزارة الموارد البشرية والتنمية الاجتماعية. المادة المنطبقة على الملف المفتوح تُظلَّل، والمادة التي مُنع بها إجراء تُوسم. أرقام المواد مرجعها النص الرسمي — والمنصة تعرضها ولا تُفتي بها."
-      : "Ministry of Human Resources and Social Development. An article that applies to an open file is highlighted, and one that blocked an action is marked. Article numbers follow the official text — the platform displays them and does not give a fatwa.",
+      ? "المادة المنطبقة تُوسم بعدّ الملفات، والتي منعت إجراءً تُوسم بسببها. المنصة تعرض الرقم ولا تُفتي."
+      : "An article that applies is marked with the file count, and one that blocked an action is marked with its reason. The platform shows the number and does not give a fatwa.",
   };
 }
 

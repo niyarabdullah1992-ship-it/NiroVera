@@ -141,7 +141,7 @@ export default function ChatBubble({ msg, isMine, lang, onDelete, allowDeleteAny
     alignItems: "center",
     justifyContent: "center",
     background: isMine ? NAVY_FILL : CARD,
-    color: isMine ? "#6EE7B7" : NAVY,
+    color: isMine ? "#A9CDB8" : NAVY,
     border: `1px solid ${BORDER}`,
     fontSize: 11,
     fontWeight: 700,
@@ -215,13 +215,13 @@ export default function ChatBubble({ msg, isMine, lang, onDelete, allowDeleteAny
           border: isMine ? "none" : `1px solid ${BORDER}`,
           borderRadius: isMine ? mineRadius : otherRadius,
           padding: "11px 14px",
-          boxShadow: isMine ? "0 1px 0 rgba(20,40,75,.12)" : "0 1px 0 #E2E8F0",
+          boxShadow: isMine ? "0 1px 0 rgba(20,40,75,.12)" : "0 1px 0 var(--nv-line)",
           textAlign: "start",
         }}
       >
         <div data-nv-bubble-head style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
           {avatar}
-          <div style={{ fontSize: 11, fontWeight: 600, color: isMine ? "#6EE7B7" : NAVY, flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: isMine ? "#A9CDB8" : NAVY, flex: 1, minWidth: 0 }}>
             {displayName}
           </div>
           <button
@@ -241,7 +241,7 @@ export default function ChatBubble({ msg, isMine, lang, onDelete, allowDeleteAny
               border: "none",
               borderRadius: 999,
               background: hover || picked ? (isMine ? "rgba(255,255,255,.12)" : CARD) : "transparent",
-              color: isMine ? "#A8B4C8" : MUTED,
+              color: isMine ? "#C5DBCD" : MUTED,
               cursor: "pointer",
               opacity: hover || picked || deletable ? 1 : 0,
             }}
@@ -256,11 +256,11 @@ export default function ChatBubble({ msg, isMine, lang, onDelete, allowDeleteAny
         ) : null}
         <CommentAttachments files={(Array.isArray(msg.files) ? msg.files : []).filter((file) => !isAudioAttachment(file))} />
         {(Array.isArray(msg.files) ? msg.files : []).filter(isAudioAttachment).length ? (
-          <div style={{ fontSize: 12, color: isMine ? "#A8B4C8" : MUTED, marginTop: 6 }}>
+          <div style={{ fontSize: 12, color: isMine ? "#C5DBCD" : MUTED, marginTop: 6 }}>
             {ar ? "مقطع صوتي" : "Voice note"}
           </div>
         ) : null}
-        <div style={{ fontSize: 10, color: isMine ? "#A8B4C8" : MUTED, marginTop: 6 }}>{time}</div>
+        <div style={{ fontSize: 10, color: isMine ? "#C5DBCD" : MUTED, marginTop: 6 }}>{time}</div>
       </div>
 
       {picked && typeof document !== "undefined"
@@ -295,7 +295,7 @@ export default function ChatBubble({ msg, isMine, lang, onDelete, allowDeleteAny
                           padding: "6px 12px",
                           borderRadius: 9,
                           border: "none",
-                          background: DANGER,
+                          background: "var(--nv-bad-fill)",
                           color: "#fff",
                           fontSize: 12,
                           cursor: "pointer",

@@ -45,7 +45,31 @@ export const BLOB_VISIBILITY = {
   assetTransfers: "senior",
   orgSeats: "senior",
   branchEscalationChains: "senior",
+  branchEscalationSla: "senior",
+  hcmFoundation: "senior",
+  hcmPerformance: "senior",
+  hseCredits: "senior",
 };
+
+/** Object-map blobs (not row arrays). Must stay objects through syncBlob / getBlob. */
+export const OBJECT_BLOB_CATEGORIES = [
+  "branchEscalationChains",
+  "branchEscalationSla",
+  "hcmFoundation",
+  "hcmPerformance",
+];
+
+export function isObjectBlobCategory(category: string) {
+  return OBJECT_BLOB_CATEGORIES.includes(String(category || ""));
+}
+
+export function normalizeBlobPayload(category: string, payload: unknown) {
+  if (isObjectBlobCategory(category)) {
+    if (payload && typeof payload === "object" && !Array.isArray(payload)) return payload;
+    return {};
+  }
+  return Array.isArray(payload) ? payload : [];
+}
 
 // الحقول الحساسة في سجل الموظف — لا تُرسل إلا لصاحبها أو لمن يدير الموظفين.
 export const SENSITIVE_EMPLOYEE_FIELDS = ["hrMessages", "leaveRequests", "otherRequests", "certificates", "profile", "phone", "email"];
@@ -79,8 +103,16 @@ const recordStation = (item) => item.stationId || item.station_id || null;
 
 // يفلتر سجلات الـ blob وفق قاعدة الرؤية وسياق المستدعي.
 export function filterBlobPayload(category, payload, context) {
-  const rows = Array.isArray(payload) ? payload : [];
   const rule = BLOB_VISIBILITY[category];
+  // Object-map categories: never coerce to [] — that wiped branchEscalationChains.
+  if (isObjectBlobCategory(category) || (payload && typeof payload === "object" && !Array.isArray(payload))) {
+    const empty = isObjectBlobCategory(category) ? {} : [];
+    if (context.senior) return payload && typeof payload === "object" ? payload : empty;
+    if (rule === "shared") return payload && typeof payload === "object" ? payload : empty;
+    if (rule === undefined || rule === "senior") return empty;
+    return empty;
+  }
+  const rows = Array.isArray(payload) ? payload : [];
   if (context.senior) return rows;
   if (rule === "shared") return rows;
   if (rule === undefined) return [];               // فئة غير معلنة = لا تُقرأ

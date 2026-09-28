@@ -1,6 +1,6 @@
 import { useRef } from "react";
 
-const clamp = (value) => Math.max(0.15, Math.min(2.5, value));
+const clamp = (value) => Math.max(0.25, Math.min(2, value));
 const distance = (points) => Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
 
 export default function useOrgTreeViewport(viewportRef, zoom, setZoom, offset, setOffset) {
@@ -31,9 +31,10 @@ export default function useOrgTreeViewport(viewportRef, zoom, setZoom, offset, s
   };
   const onPointerEnd = (event) => { pointers.current.delete(event.pointerId); begin(); };
   const onWheel = (event) => {
-    if (!event.ctrlKey && !event.metaKey) return;
+    if (event.shiftKey) return;
     event.preventDefault();
-    setZoom(clamp(zoom - event.deltaY * 0.002));
+    const step = Math.sign(event.deltaY) * 0.08;
+    setZoom(clamp(+(zoom - step).toFixed(2)));
   };
   return { onPointerDown, onPointerMove, onPointerUp: onPointerEnd, onPointerCancel: onPointerEnd, onWheel };
 }

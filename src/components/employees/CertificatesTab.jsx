@@ -144,7 +144,7 @@ export default function CertificatesTab({ employee, companyId, canEdit, canAppro
                       gridTemplateColumns: COLS,
                       gap: "12px",
                       padding: "13px 20px",
-                      borderBottom: "1px solid #F1F5F9",
+                      borderBottom: "1px solid var(--nv-line)",
                       alignItems: "center",
                     }}
                   >
@@ -168,9 +168,9 @@ export default function CertificatesTab({ employee, companyId, canEdit, canAppro
                                 style={{
                                   padding: "4px 8px",
                                   borderRadius: "8px",
-                                  border: "1px solid #BBF7D0",
-                                  background: "#ECFDF3",
-                                  color: "#15803D",
+                                  border: "1px solid var(--nv-ok-line)",
+                                  background: "var(--nv-accent-soft)",
+                                  color: "var(--nv-ok-ink)",
                                   cursor: "pointer",
                                   fontFamily: "inherit",
                                 }}
@@ -184,9 +184,9 @@ export default function CertificatesTab({ employee, companyId, canEdit, canAppro
                                 style={{
                                   padding: "4px 8px",
                                   borderRadius: "8px",
-                                  border: "1px solid #FECACA",
-                                  background: "#FEF2F2",
-                                  color: "#DC2626",
+                                  border: "1px solid var(--nv-line)",
+                                  background: "var(--nv-bad-soft)",
+                                  color: "var(--nv-bad-ink)",
                                   cursor: "pointer",
                                   fontFamily: "inherit",
                                 }}
@@ -206,7 +206,7 @@ export default function CertificatesTab({ employee, companyId, canEdit, canAppro
                                     borderRadius: "8px",
                                     border: `1px solid ${BORDER}`,
                                     background: CARD,
-                                    color: "#DC2626",
+                                    color: "var(--nv-bad-ink)",
                                     cursor: "pointer",
                                     fontFamily: "inherit",
                                     fontSize: "11px",

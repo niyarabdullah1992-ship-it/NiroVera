@@ -63,7 +63,7 @@ export default function LeaveTab({ employee, companyId, isSelf, canApprove }) {
                 </div>
                 <Link
                   to="/app/requests/leave"
-                  style={{ fontSize: 12, fontWeight: 700, color: "#137a49", textDecoration: "none", whiteSpace: "nowrap", alignSelf: "center" }}
+                  style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink)", textDecoration: "none", whiteSpace: "nowrap", alignSelf: "center" }}
                 >
                   {ar ? "قدّم من طلباتي" : "Raise from My Requests"}
                 </Link>

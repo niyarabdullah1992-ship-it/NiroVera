@@ -220,7 +220,7 @@ export default function VisitorProofCard({
 
       {left ? (
         <OpsTaskSection tone="ok" title={ar ? "سُجّلت المغادرة" : "Departure recorded"}>
-          <div style={{ fontSize: 12, color: "#15803D", lineHeight: 1.65 }}>
+          <div style={{ fontSize: 12, color: "var(--nv-ok-ink)", lineHeight: 1.65 }}>
             {ar ? "الزائر غادر الفرع، والبطاقة في الأرشيف." : "The visitor left the station, and the card is in the archive."}
           </div>
         </OpsTaskSection>

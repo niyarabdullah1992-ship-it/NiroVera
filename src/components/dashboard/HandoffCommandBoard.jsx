@@ -8,13 +8,13 @@ import { setStationScope } from "@/lib/stationScopeStore";
 import useStationScope from "@/hooks/useStationScope";
 
 const MONO = "'IBM Plex Mono', monospace";
-const LINE = "#E4E9E6";
-const HAIR = "#EEF1EF";
-const ROW = "#F4F7F5";
-const OK = "#3C7D50";
-const WARN = "#C8A45A";
-const BAD = "#9B2335";
-const HEAD = { fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "#111418" };
+const LINE = "var(--nv-line)";
+const HAIR = "var(--nv-line2)";
+const ROW = "var(--nv-page)";
+const OK = "var(--nv-btn-fill)";
+const WARN = "var(--nv-warn-fill)";
+const BAD = "var(--nv-bad-ink)";
+const HEAD = { fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "var(--nv-ink)" };
 
 function inferAlertLevel(to) {
   if (!to) return "warn";
@@ -51,13 +51,13 @@ function kpiAccent(key, value) {
     if (value < 80) return WARN;
     return OK;
   }
-  if (key === "decisions") return value > 0 ? BAD : "#111418";
+  if (key === "decisions") return value > 0 ? BAD : "var(--nv-ink)";
   if (key === "readiness") {
     if (value < 40) return BAD;
     if (value < 70) return WARN;
     return OK;
   }
-  return "#111418";
+  return "var(--nv-ink)";
 }
 
 export default function HandoffCommandBoard({
@@ -338,7 +338,7 @@ export default function HandoffCommandBoard({
             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
               <div style={{ display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
                 <span style={HEAD}>{ar ? "مكونات الجاهزية" : "Readiness components"}</span>
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 18, fontWeight: 500, color: "#111418", lineHeight: 1, unicodeBidi: "isolate" }}>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 18, fontWeight: 500, color: "var(--nv-ink)", lineHeight: 1, unicodeBidi: "isolate" }}>
                   {score}
                   <span style={{ fontSize: 12, fontWeight: 500, color: MUTED }}> /100</span>
                 </span>
@@ -413,7 +413,7 @@ export default function HandoffCommandBoard({
                 aria-pressed={active}
                 title={ar ? "اجعل هذا الفرع نطاق الصفحة" : "Scope this page to this station"}
                 style={{
-                  background: active ? "#F2F7F4" : CARD,
+                  background: active ? "var(--nv-hover)" : CARD,
                   border: `1px solid ${active ? "#C5DBCD" : LINE}`,
                   borderTop: `3px solid ${tone}`,
                   borderRadius: 12,
@@ -438,7 +438,7 @@ export default function HandoffCommandBoard({
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginTop: 10, flexWrap: "wrap" }}>
                   <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5 }}>
-                    <span dir="ltr" style={{ fontFamily: MONO, fontSize: 16, fontWeight: 500, lineHeight: 1, color: "#111418", unicodeBidi: "isolate" }}>{crew}</span>
+                    <span dir="ltr" style={{ fontFamily: MONO, fontSize: 16, fontWeight: 500, lineHeight: 1, color: "var(--nv-ink)", unicodeBidi: "isolate" }}>{crew}</span>
                     <span style={{ fontSize: 11, color: MUTED }}>{ar ? "في الوردية" : "on shift"}</span>
                   </span>
                   <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5 }}>

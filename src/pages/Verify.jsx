@@ -22,7 +22,7 @@ export default function Verify() {
           <Link to="/" style={{ textDecoration: "none", padding: "0 14px", display: "flex", alignItems: "center", color: "rgba(255,255,255,.7)", borderBottom: "3px solid transparent" }}>
             {ar ? "الرئيسية" : "Home"}
           </Link>
-          <Link to="/verify" style={{ textDecoration: "none", padding: "0 14px", display: "flex", alignItems: "center", color: "#fff", fontWeight: 600, borderBottom: "3px solid #1E9E63" }}>
+          <Link to="/verify" style={{ textDecoration: "none", padding: "0 14px", display: "flex", alignItems: "center", color: "#fff", fontWeight: 600, borderBottom: "3px solid var(--nv-accent-border)" }}>
             {ar ? "تحقق" : "Verify"}
           </Link>
         </nav>

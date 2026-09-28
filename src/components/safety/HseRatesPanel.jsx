@@ -16,15 +16,15 @@ const TARGETS = {
   dart: 1.5,
 };
 
-const ACCENT = "#1E9E63";
+const ACCENT = "var(--nv-btn-fill)";
 
 const SHELL = {
   maxWidth: "1320px",
   background: CARD,
-  border: "1px solid #E2E8F0",
+  border: "1px solid var(--nv-line)",
   borderRadius: "16px",
   padding: "18px 20px",
-  boxShadow: "0 1px 0 #E2E8F0",
+  boxShadow: "0 1px 0 var(--nv-line)",
 };
 
 const GRID = {
@@ -38,8 +38,8 @@ function kpiCardStyle(ok) {
   return {
     padding: "14px 16px",
     borderRadius: "12px",
-    border: `1px solid ${ok ? BORDER : "#FDE68A"}`,
-    background: ok ? CARD : "#FFFBEB",
+    border: `1px solid ${ok ? BORDER : "var(--nv-line)"}`,
+    background: ok ? CARD : "var(--nv-warn-soft)",
   };
 }
 
@@ -49,7 +49,7 @@ function kpiValueStyle(ok) {
     fontSize: "26px",
     fontWeight: 600,
     lineHeight: 1,
-    color: ok ? ACCENT : "#B45309",
+    color: ok ? ACCENT : "var(--nv-warn-ink)",
   };
 }
 
@@ -58,7 +58,7 @@ function kpiTargetStyle(ok) {
     fontSize: "11px",
     fontWeight: 500,
     marginTop: "5px",
-    color: ok ? "#5A6B85" : "#92400E",
+    color: ok ? "var(--nv-muted)" : "var(--nv-warn-ink)",
   };
 }
 

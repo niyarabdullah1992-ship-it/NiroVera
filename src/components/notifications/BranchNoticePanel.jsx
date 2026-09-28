@@ -30,9 +30,9 @@ function chip(on) {
     minHeight: 28,
     padding: "0 10px",
     borderRadius: 8,
-    border: on ? "none" : "1px solid #DDE3DF",
-    background: on ? "#0B3D27" : "#fff",
-    color: on ? "#fff" : "#3A4048",
+    border: on ? "none" : "1px solid var(--nv-line)",
+    background: on ? "var(--nv-navy)" : "var(--nv-card)",
+    color: on ? "#fff" : "var(--nv-ink2)",
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
@@ -96,18 +96,18 @@ export default function BranchNoticePanel({
         maxHeight: "min(76vh, 640px)",
         display: "flex",
         flexDirection: "column",
-        background: "#fff",
-        border: "1px solid #D5DCD8",
-        borderTop: "3px solid #0B3D27",
+        background: "var(--nv-card)",
+        border: "1px solid var(--nv-line)",
+        borderTop: "3px solid var(--nv-navy)",
         borderRadius: 8,
         boxShadow: "0 18px 44px rgba(12,20,16,.18)",
         overflow: "hidden",
       }}
     >
-      <div style={{ padding: "12px 14px", borderBottom: "1px solid #E4E9E6", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-          <strong style={{ fontSize: 13.5, color: "#111418" }}>{ar ? "إشعارات كل نطاقي" : "Notices for all my scope"}</strong>
-          <span style={{ fontSize: 10.5, color: "#555C66" }}>{ar ? "مرتّبة بالأولوية · مجمّعة لكل فرع" : "By priority · grouped per branch"}</span>
+          <strong style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{ar ? "إشعارات كل نطاقي" : "Notices for all my scope"}</strong>
+          <span style={{ fontSize: 10.5, color: "var(--nv-muted)" }}>{ar ? "مرتّبة بالأولوية · مجمّعة لكل فرع" : "By priority · grouped per branch"}</span>
         </div>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           {BANDS.map((entry) => (
@@ -121,8 +121,8 @@ export default function BranchNoticePanel({
 
       <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
         {brief.length > 0 ? (
-          <div style={{ padding: "10px 14px", borderBottom: "1px solid #E4E9E6", background: "#F6FAF7", display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0B3D27" }}>{ar ? "اليوم في فروعك" : "Today in your branches"}</span>
+          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--nv-line)", background: "#F6FAF7", display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "اليوم في فروعك" : "Today in your branches"}</span>
             {brief.map((row) => (
               <button
                 key={row.id}
@@ -140,16 +140,16 @@ export default function BranchNoticePanel({
                   cursor: "pointer",
                   fontFamily: "inherit",
                   textAlign: "start",
-                  color: "#111418",
+                  color: "var(--nv-ink)",
                 }}
               >
                 <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.name}</span>
-                <span dir="ltr" style={{ fontFamily: MONO, textAlign: "center", color: "#9B2335", fontWeight: 600, unicodeBidi: "isolate" }}>{row.urgent || ""}</span>
-                <span dir="ltr" style={{ fontFamily: MONO, textAlign: "center", color: "#8A5A12", fontWeight: 600, unicodeBidi: "isolate" }}>{row.decision || ""}</span>
-                <span dir="ltr" style={{ fontFamily: MONO, textAlign: "center", color: "#555C66", unicodeBidi: "isolate" }}>{row.info || ""}</span>
+                <span dir="ltr" style={{ fontFamily: MONO, textAlign: "center", color: "var(--nv-bad-ink)", fontWeight: 600, unicodeBidi: "isolate" }}>{row.urgent || ""}</span>
+                <span dir="ltr" style={{ fontFamily: MONO, textAlign: "center", color: "var(--nv-warn-ink)", fontWeight: 600, unicodeBidi: "isolate" }}>{row.decision || ""}</span>
+                <span dir="ltr" style={{ fontFamily: MONO, textAlign: "center", color: "var(--nv-muted)", unicodeBidi: "isolate" }}>{row.info || ""}</span>
               </button>
             ))}
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 44px 44px 44px", gap: 6, fontSize: 9.5, color: "#555C66" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 44px 44px 44px", gap: 6, fontSize: 9.5, color: "var(--nv-muted)" }}>
               <span />
               <span style={{ textAlign: "center" }}>{ar ? "عاجل" : "Urgent"}</span>
               <span style={{ textAlign: "center" }}>{ar ? "قرارك" : "Yours"}</span>
@@ -159,32 +159,32 @@ export default function BranchNoticePanel({
         ) : null}
 
         {rows.length === 0 ? (
-          <div style={{ padding: 22, textAlign: "center", fontSize: 12, color: "#555C66" }}>
+          <div style={{ padding: 22, textAlign: "center", fontSize: 12, color: "var(--nv-muted)" }}>
             {ar ? "لا إشعارات في هذا الفلتر." : "No notices in this filter."}
           </div>
         ) : rows.map((item) => (
-          <div key={item.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 14px", borderBottom: "1px solid #E4E9E6" }}>
+          <div key={item.id} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 14px", borderBottom: "1px solid var(--nv-line)" }}>
             <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", marginTop: 6, background: dotColor(item.band), flexShrink: 0 }} />
             <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: 1 }}>
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                <strong style={{ fontSize: 12.5, color: "#111418" }}>{ar ? item.titleAr : item.titleEn}</strong>
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: "#555C66", unicodeBidi: "isolate" }}>{`${item.count}×`}</span>
+                <strong style={{ fontSize: 12.5, color: "var(--nv-ink)" }}>{ar ? item.titleAr : item.titleEn}</strong>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: "var(--nv-muted)", unicodeBidi: "isolate" }}>{`${item.count}×`}</span>
               </div>
-              <span style={{ fontSize: 11, color: "#555C66" }}>{`${item.branch} · ${ar ? item.kindAr : item.kindEn}`}</span>
-              <span style={{ fontSize: 10.5, color: "#555C66" }}>{ar ? "الآن" : "Now"}</span>
+              <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{`${item.branch} · ${ar ? item.kindAr : item.kindEn}`}</span>
+              <span style={{ fontSize: 10.5, color: "var(--nv-muted)" }}>{ar ? "الآن" : "Now"}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end", flexShrink: 0 }}>
               <button
                 type="button"
                 onClick={() => onOpen?.(item)}
-                style={{ border: "none", background: "transparent", padding: 0, fontSize: 11, fontWeight: 600, color: "#0B3D27", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ border: "none", background: "transparent", padding: 0, fontSize: 11, fontWeight: 600, color: "var(--nv-ink)", cursor: "pointer", fontFamily: "inherit" }}
               >
                 {ar ? "افتح ←" : "Open"}
               </button>
               <button
                 type="button"
                 onClick={() => markDone(item)}
-                style={{ border: "none", background: "transparent", padding: 0, fontSize: 10.5, color: "#555C66", cursor: "pointer", fontFamily: "inherit" }}
+                style={{ border: "none", background: "transparent", padding: 0, fontSize: 10.5, color: "var(--nv-muted)", cursor: "pointer", fontFamily: "inherit" }}
               >
                 {ar ? "تمّ" : "Done"}
               </button>
@@ -193,7 +193,7 @@ export default function BranchNoticePanel({
         ))}
       </div>
 
-      <div style={{ padding: "8px 14px", borderTop: "1px solid #E4E9E6", background: "#FAFBFA", fontSize: 10.5, color: "#555C66", lineHeight: 1.7 }}>
+      <div style={{ padding: "8px 14px", borderTop: "1px solid var(--nv-line)", background: "var(--nv-soft)", fontSize: 10.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
         {ar
           ? "يصلك إشعار كل فرع تديره. فتح الإشعار يختار ذلك الفرع ويفتح قسمه. الحدث المتكرّر يُجمَّع، والعاجل بلا إجراء يصعد بعد 48 ساعة."
           : "You are notified for every branch you administer. Opening a notice selects that branch and opens its section. Repeats are grouped, and an urgent item with no action escalates after 48 hours."}

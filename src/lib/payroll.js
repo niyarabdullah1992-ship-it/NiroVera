@@ -4,10 +4,10 @@
 import { getCompanyData, updateCompany } from "@/lib/store";
 import { notifyMoney } from "@/lib/moneyNotifications";
 import { checkArticle90Gate, lineNet, settlementStamp, OT_ANNUAL_MAX_HOURS } from "@/lib/payrollDerivations";
-import { nationalityIsSaudi } from "@/lib/complianceDerivations";
-import { approvedOvertimeHoursForMonth, approvedOvertimeHoursForYear } from "@/lib/attendanceDerivations";
 import { PAYROLL_DENY, canFeedPayroll, canManagePayroll, payrollActor } from "@/lib/payrollRights";
 import { logAudit } from "@/lib/auditLog";
+import { derivePayrollWagePatch } from "@/lib/payrollWageSync";
+import { assignWageFields } from "@/lib/facts";
 import { payableNightAllowance } from "@/lib/shiftWeek";
 
 const uid = (p) => `${p}_${Math.random().toString(36).slice(2, 9)}${Date.now().toString(36).slice(-4)}`;
@@ -30,26 +30,72 @@ export const netOf = (item) => lineNet(item);
 
 export const isPayrollEmployee = (employee, includeOwner = false) => includeOwner || employee?.role !== "owner";
 
-const itemFromEmployee = (employee) => {
+function persistContractSplit(employee, persistProfile) {
+  if (!employee || !persistProfile) return;
+  const profile = employee.profile || (employee.profile = {});
+  const next = {};
+  if (!(Number(profile.housingAllowance) > 0)) next.housingAllowance = persistProfile.housingAllowance;
+  if (!(Number(profile.transportAllowance) > 0)) next.transportAllowance = persistProfile.transportAllowance;
+  if (!(Number(profile.otherAllowances) > 0) && Number(persistProfile.otherAllowances) > 0) {
+    next.otherAllowances = persistProfile.otherAllowances;
+  }
+  assignWageFields(profile, next);
+}
+
+/** Writes contract split, GOSI, and approved overtime onto an unpaid line. */
+export function applyPayrollWagePatch(item, employee, data, month) {
+  const patch = derivePayrollWagePatch(item, employee, { otDecisions: data?.otDecisions, month });
+  if (!patch) return false;
+  const snapshot = (row) => JSON.stringify({
+    base: row.base,
+    allowances: row.allowances,
+    nightAllowance: row.nightAllowance,
+    housingAllowance: row.housingAllowance,
+    transportAllowance: row.transportAllowance,
+    otherAllowances: row.otherAllowances,
+    isSaudi: row.isSaudi,
+    gosiEmployee: row.gosiEmployee,
+    gosiRegisteredAt: row.gosiRegisteredAt,
+    gosiAsOf: row.gosiAsOf,
+    gosiClass: row.gosiClass,
+    gosiBlocked: row.gosiBlocked,
+    gosiBlockReason: row.gosiBlockReason,
+    overtimeHours: row.overtimeHours,
+    overtimeHoursYtd: row.overtimeHoursYtd,
+    qiwaWage: row.qiwaWage,
+  });
+  const before = snapshot(item);
+  Object.assign(item, patch.fields);
+  if (patch.fields.housingAllowance == null) {
+    delete item.housingAllowance;
+    delete item.transportAllowance;
+    delete item.otherAllowances;
+  }
+  persistContractSplit(employee, patch.persistProfile);
+  return before !== snapshot(item) || Boolean(patch.persistProfile);
+}
+
+const itemFromEmployee = (employee, data, month) => {
   const profile = employee.profile || {};
   const currency = String(profile.currency || "SAR").toUpperCase();
-  const nightPay = payableNightAllowance(employee);
-  return {
+  const draft = {
     id: uid("itm"), employeeId: employee.id,
     employeeName: employee.name, employeePosition: employee.position || employee.role || "", employeeStationId: employee.stationId || null,
     isOwner: employee.role === "owner",
-    base: Number(profile.baseSalary) || 0, allowances: (Number(profile.allowances) || 0) + nightPay,
-    nightAllowance: nightPay,
+    base: 0, allowances: 0,
     bonus: 0, overtimeHours: 0, deductions: 0, currency: /^[A-Z]{3}$/.test(currency) ? currency : "SAR", paid: false,
-    // Whether the employee's own GOSI share is withheld from the transfer. Kept on the
-    // line so the net stays derivable from the line alone; null stays null — an unknown
-    // nationality withholds nothing.
-    isSaudi: nationalityIsSaudi(profile.nationality || employee.nationality),
-    // The contract wage the WPS gate compares against. The cloud handler seeds it when
-    // it opens a run; leaving it unset locally made every local run fail the Qiwa check
-    // with a mismatch that did not exist, so the wage file could never be built.
-    qiwaWage: (Number(profile.baseSalary) || 0) + (Number(profile.allowances) || 0) + nightPay,
+    isSaudi: null,
+    qiwaWage: null,
   };
+  const patch = derivePayrollWagePatch(draft, employee, { otDecisions: data?.otDecisions, month });
+  if (patch) Object.assign(draft, patch.fields);
+  if (patch?.fields?.housingAllowance == null) {
+    delete draft.housingAllowance;
+    delete draft.transportAllowance;
+    delete draft.otherAllowances;
+  }
+  persistContractSplit(employee, patch?.persistProfile);
+  return draft;
 };
 
 export function payrollItemIssues(item) {
@@ -86,21 +132,16 @@ export function ensurePayrollRun(companyId, month) {
     employees.filter((employee) => isPayrollEmployee(employee, includeOwner)).forEach((employee) => {
       const hiredMonth = employee.createdAt ? monthKey(new Date(employee.createdAt)) : month;
       if (existing.has(employee.id) || hiredMonth > month) return;
-      run.items.push(itemFromEmployee(employee));
+      run.items.push(itemFromEmployee(employee, d, month));
     });
     const employeesById = new Map(employees.map((employee) => [employee.id, employee]));
     run.items.forEach((item) => {
-      if (!item.paid) {
+      if (!item.paid && item.settledNet == null) {
         const currency = String(item.currency || "SAR").toUpperCase();
         item.currency = /^[A-Z]{3}$/.test(currency) ? currency : "SAR";
         const employee = employeesById.get(item.employeeId);
-        if (employee) {
-          item.employeeStationId = employee.stationId || null;
-          item.isSaudi = nationalityIsSaudi(employee.profile?.nationality || employee.nationality);
-        }
-        const derivedOt = approvedOvertimeHoursForMonth(d.otDecisions, item.employeeId, month);
-        if (derivedOt > 0) item.overtimeHours = derivedOt;
-        item.overtimeHoursYtd = approvedOvertimeHoursForYear(d.otDecisions, item.employeeId, month);
+        if (employee) item.employeeStationId = employee.stationId || null;
+        applyPayrollWagePatch(item, employee, d, month);
       }
       // Outside the paid check on purpose: the contract wage is a reference, not a
       // payable figure. Filling it only for unpaid lines left every settled line an
@@ -122,27 +163,20 @@ export function syncPayrollFromProfiles(companyId, month) {
     const includeOwner = d.settings?.includeOwnerInPayroll === true;
     const employees = new Map((d.employees || []).filter((employee) => isPayrollEmployee(employee, includeOwner)).map((employee) => [employee.id, employee]));
     run.items.forEach((item) => {
-      if (item.paid) return;
+      if (item.paid || item.settledNet != null) return;
       const employee = employees.get(item.employeeId);
       if (!employee) return;
-      const profile = employee.profile || {};
-      const profileCurrency = String(profile.currency || "SAR").toUpperCase();
-      const next = {
-        base: Number(profile.baseSalary) || 0,
-        allowances: (Number(profile.allowances) || 0) + payableNightAllowance(employee),
-        nightAllowance: payableNightAllowance(employee),
-        currency: /^[A-Z]{3}$/.test(profileCurrency) ? profileCurrency : "SAR",
-        employeeStationId: employee.stationId || null,
-      };
-      if (item.base === next.base && item.allowances === next.allowances && item.currency === next.currency && item.employeeStationId === next.employeeStationId) return;
-      if (item.base !== next.base || item.allowances !== next.allowances) {
-        rewritten.push(`${item.employeeName || item.employeeId}: ${item.base}+${item.allowances} → ${next.base}+${next.allowances}`);
+      const profileCurrency = String(employee.profile?.currency || "SAR").toUpperCase();
+      const beforeBase = item.base;
+      const beforeAllow = item.allowances;
+      const changed = applyPayrollWagePatch(item, employee, d, month);
+      const nextCurrency = /^[A-Z]{3}$/.test(profileCurrency) ? profileCurrency : "SAR";
+      item.currency = nextCurrency;
+      item.employeeStationId = employee.stationId || null;
+      if (beforeBase !== item.base || beforeAllow !== item.allowances) {
+        rewritten.push((item.employeeName || item.employeeId) + ": " + beforeBase + "+" + beforeAllow + " → " + item.base + "+" + item.allowances);
       }
-      item.base = next.base;
-      item.allowances = next.allowances;
-      item.nightAllowance = next.nightAllowance;
-      item.currency = next.currency;
-      item.employeeStationId = next.employeeStationId;
+      if (!changed) return;
       updatedCount += 1;
     });
   });
@@ -172,18 +206,34 @@ export function syncEmployeeSalaryToPayroll(companyId, employeeId) {
     }
     let item = run.items.find((entry) => entry.employeeId === employeeId);
     if (!item) {
-      run.items.push(itemFromEmployee(employee));
+      run.items.push(itemFromEmployee(employee, d, month));
       return;
     }
-    if (item.paid) return;
-    const profileItem = itemFromEmployee(employee);
-    item.base = profileItem.base;
-    item.allowances = profileItem.allowances;
-    item.currency = profileItem.currency;
-    item.employeeName = profileItem.employeeName;
-    item.employeePosition = profileItem.employeePosition;
-    item.employeeStationId = profileItem.employeeStationId;
+    if (item.paid || item.settledNet != null) return;
+    applyPayrollWagePatch(item, employee, d, month);
+    item.employeeName = employee.name;
+    item.employeePosition = employee.position || employee.role || "";
+    item.employeeStationId = employee.stationId || null;
+    const profileCurrency = String(employee.profile?.currency || "SAR").toUpperCase();
+    item.currency = /^[A-Z]{3}$/.test(profileCurrency) ? profileCurrency : "SAR";
   });
+}
+
+/** The signed-in person's own unpaid line, refreshed from their contract and locked attendance. */
+export function refreshOwnPayrollDerivation(companyId, month) {
+  const { userId } = payrollActor(companyId);
+  if (!companyId || !userId || !month) return false;
+  if (String(month) < monthKey()) return false;
+  let changed = false;
+  updateCompany(companyId, (d) => {
+    const run = (d.payrollRuns || []).find((row) => row.month === month);
+    if (!run || run.status === "approved" || run.status === "sent") return;
+    const item = (run.items || []).find((row) => String(row.employeeId) === String(userId));
+    if (!item) return;
+    const employee = (d.employees || []).find((row) => row.id === item.employeeId);
+    changed = applyPayrollWagePatch(item, employee, d, month);
+  });
+  return changed;
 }
 
 export function setOwnerPayrollEnabled(companyId, enabled) {

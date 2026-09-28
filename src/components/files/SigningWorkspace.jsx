@@ -818,9 +818,9 @@ export default function SigningWorkspace({
           justifyContent: "flex-start",
           gap: 6,
           padding: "0 8px",
-          border: on ? "1px solid #14213D" : `1px solid ${BORDER}`,
+          border: on ? "1px solid var(--nv-navy)" : `1px solid ${BORDER}`,
           borderRadius: 10,
-          background: on ? "#14213D" : "#fff",
+          background: on ? "var(--nv-navy)" : "var(--nv-card)",
           color: on ? "#fff" : MUTED,
           fontSize: 12,
           fontWeight: 600,
@@ -829,7 +829,7 @@ export default function SigningWorkspace({
           textAlign: "start",
         }}
       >
-        <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none", color: on ? "#fff" : "#14213D" }}>{toolIcon(item.id)}</span>
+        <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none", color: on ? "#fff" : "var(--nv-ink)" }}>{toolIcon(item.id)}</span>
         <span style={{ minWidth: 0, whiteSpace: "nowrap" }}>{ar ? item.ar : item.en}</span>
       </button>
     );
@@ -854,7 +854,7 @@ export default function SigningWorkspace({
           {group.id === "input" && tool === "check" ? (
             <div style={{ display: "flex", gap: 6, padding: "6px 0 0" }}>
               {MARK_GLYPHS.map((glyph) => (
-                <button key={glyph} type="button" aria-pressed={mark === glyph} onClick={() => chooseMark(glyph)} style={{ fontFamily: "inherit", height: 28, minWidth: 28, borderRadius: 8, border: `1px solid ${mark === glyph ? "#14213D" : BORDER}`, background: mark === glyph ? "#14213D" : "#fff", color: mark === glyph ? "#fff" : INK, cursor: "pointer" }}>
+                <button key={glyph} type="button" aria-pressed={mark === glyph} onClick={() => chooseMark(glyph)} style={{ fontFamily: "inherit", height: 28, minWidth: 28, borderRadius: 8, border: `1px solid ${mark === glyph ? "var(--nv-navy)" : BORDER}`, background: mark === glyph ? "var(--nv-navy)" : "var(--nv-card)", color: mark === glyph ? "#fff" : INK, cursor: "pointer" }}>
                   {glyph}
                 </button>
               ))}
@@ -864,7 +864,7 @@ export default function SigningWorkspace({
       ))}
 
       <div style={{ padding: "10px 16px 0" }}>
-        <button type="button" onClick={suggestSpots} disabled={!pdf || detecting} style={{ width: "100%", height: 36, borderRadius: 8, border: `1px solid ${BORDER}`, background: "#fff", fontFamily: "inherit", fontSize: 12.5, fontWeight: 600, cursor: !pdf || detecting ? "wait" : "pointer", opacity: !pdf || detecting ? 0.55 : 1 }}>
+        <button type="button" onClick={suggestSpots} disabled={!pdf || detecting} style={{ width: "100%", height: 36, borderRadius: 8, border: `1px solid ${BORDER}`, background: "var(--nv-card)", fontFamily: "inherit", fontSize: 12.5, fontWeight: 600, cursor: !pdf || detecting ? "wait" : "pointer", opacity: !pdf || detecting ? 0.55 : 1 }}>
           {detecting ? (ar ? "جارٍ قراءة النص…" : "Reading the text…") : (ar ? "اقترح المواضع من نص المستند" : "Suggest positions from the document text")}
         </button>
       </div>
@@ -876,7 +876,7 @@ export default function SigningWorkspace({
             const found = templates.find((item) => item.id === event.target.value);
             if (found) applyTemplate(found);
           }}
-          style={{ flex: 1, minWidth: 0, height: 34, borderRadius: 8, border: `1px solid ${BORDER}`, background: "#fff", fontFamily: "inherit", fontSize: 12, color: MUTED, padding: "0 8px" }}
+          style={{ flex: 1, minWidth: 0, height: 34, borderRadius: 8, border: `1px solid ${BORDER}`, background: "var(--nv-card)", fontFamily: "inherit", fontSize: 12, color: MUTED, padding: "0 8px" }}
         >
           <option value="">{ar ? "تطبيق قالب…" : "Apply a template…"}</option>
           {templates.map((template) => (
@@ -894,7 +894,7 @@ export default function SigningWorkspace({
             style={{ width: 120, height: 34, borderRadius: 8, border: `1px solid ${BORDER}`, padding: "0 8px", fontFamily: "inherit", fontSize: 12 }}
           />
         ) : (
-          <button type="button" onClick={() => fields.length && setNaming(true)} disabled={!fields.length} style={{ height: 34, padding: "0 10px", borderRadius: 8, border: `1px solid ${BORDER}`, background: "#fff", fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: fields.length ? "pointer" : "not-allowed", whiteSpace: "nowrap", opacity: fields.length ? 1 : 0.5 }}>
+          <button type="button" onClick={() => fields.length && setNaming(true)} disabled={!fields.length} style={{ height: 34, padding: "0 10px", borderRadius: 8, border: `1px solid ${BORDER}`, background: "var(--nv-card)", fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: fields.length ? "pointer" : "not-allowed", whiteSpace: "nowrap", opacity: fields.length ? 1 : 0.5 }}>
             {ar ? "حفظ كقالب" : "Save as template"}
           </button>
         )}
@@ -902,7 +902,7 @@ export default function SigningWorkspace({
       {templates.length ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 16px 8px" }}>
           {templates.map((template) => (
-            <button key={template.id} type="button" onClick={() => dropTemplate(template.id)} style={{ fontFamily: "inherit", fontSize: 11, border: `1px solid ${BORDER}`, background: "#fff", borderRadius: 8, padding: "2px 8px", color: MUTED, cursor: "pointer" }}>
+            <button key={template.id} type="button" onClick={() => dropTemplate(template.id)} style={{ fontFamily: "inherit", fontSize: 11, border: `1px solid ${BORDER}`, background: "var(--nv-card)", borderRadius: 8, padding: "2px 8px", color: MUTED, cursor: "pointer" }}>
               {template.name} ×
             </button>
           ))}
@@ -914,11 +914,11 @@ export default function SigningWorkspace({
         <p style={{ margin: "6px 0 8px", fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
           {ar ? "لكل موقّع لون يُعرف به حقوله" : "Each signer has a color that marks their fields"}
         </p>
-        <div style={{ display: "flex", background: "#F3F4F6", borderRadius: 10, padding: 3, marginBottom: 10 }}>
-          <button type="button" onClick={() => setOrderMode("parallel")} style={{ flex: 1, height: 32, border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: orderMode === "parallel" ? "#14213D" : "transparent", color: orderMode === "parallel" ? "#fff" : MUTED }}>
+        <div style={{ display: "flex", background: "var(--nv-page)", borderRadius: 10, padding: 3, marginBottom: 10 }}>
+          <button type="button" onClick={() => setOrderMode("parallel")} style={{ flex: 1, height: 32, border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: orderMode === "parallel" ? "var(--nv-navy)" : "transparent", color: orderMode === "parallel" ? "#fff" : MUTED }}>
             {ar ? "بالتوازي" : "Parallel"}
           </button>
-          <button type="button" onClick={() => setOrderMode("sequential")} style={{ flex: 1, height: 32, border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: orderMode === "sequential" ? "#14213D" : "transparent", color: orderMode === "sequential" ? "#fff" : MUTED }}>
+          <button type="button" onClick={() => setOrderMode("sequential")} style={{ flex: 1, height: 32, border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: orderMode === "sequential" ? "var(--nv-navy)" : "transparent", color: orderMode === "sequential" ? "#fff" : MUTED }}>
             {ar ? "بالتسلسل" : "Sequential"}
           </button>
         </div>
@@ -927,9 +927,9 @@ export default function SigningWorkspace({
           const known = signer.name.trim() && emailValid(signer.email);
           const editing = signer.external && (editingSigner === index || !known);
           return (
-            <div key={signer.key} onClick={() => setSignerIndex(index)} style={{ border: `1px solid ${on ? "#D5DCE6" : "#EEF1F4"}`, borderRadius: 12, padding: "10px 10px 6px", marginBottom: 8, background: "#fff", cursor: "pointer" }}>
+            <div key={signer.key} onClick={() => setSignerIndex(index)} style={{ border: `1px solid ${on ? "var(--nv-line)" : "var(--nv-line)"}`, borderRadius: 12, padding: "10px 10px 6px", marginBottom: 8, background: "var(--nv-card)", cursor: "pointer" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#F3F4F6", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{index + 1}</span>
+                <span style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--nv-page)", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{index + 1}</span>
                 <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: signer.color, flex: "none" }} />
@@ -987,8 +987,8 @@ export default function SigningWorkspace({
         />
         <div style={{ marginTop: 8 }}>
           {shownPeople.length ? shownPeople.map((person) => (
-            <div key={person.id || person.email} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid #F1F3F6` }}>
-              <span style={{ width: 32, height: 32, borderRadius: "50%", background: "#F3F4F6", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flex: "none" }}>{personInitials(person.name)}</span>
+            <div key={person.id || person.email} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid var(--nv-line)` }}>
+              <span style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--nv-page)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flex: "none" }}>{personInitials(person.name)}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: "block", fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{person.name}</span>
                 <span style={{ display: "block", fontSize: 11, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -999,7 +999,7 @@ export default function SigningWorkspace({
                 type="button"
                 disabled={!canGroup || !emailValid(person.email) || signers.length >= MAX_PARALLEL_SIGNERS}
                 onClick={() => addFromEmployee(person)}
-                style={{ height: 28, padding: "0 10px", borderRadius: 8, border: `1px solid ${BORDER}`, background: "#fff", fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer", flex: "none" }}
+                style={{ height: 28, padding: "0 10px", borderRadius: 8, border: `1px solid ${BORDER}`, background: "var(--nv-card)", fontFamily: "inherit", fontSize: 12, fontWeight: 600, cursor: "pointer", flex: "none" }}
               >
                 {ar ? "إضافة" : "Add"}
               </button>
@@ -1020,7 +1020,7 @@ export default function SigningWorkspace({
   const signStep = (
     <section style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
       <strong style={{ fontSize: 15 }}>{ar ? "التوقيع" : "Signing"}</strong>
-      <span style={{ color: "#137A49", fontWeight: 700, fontSize: 12.5 }}>{ar ? "توقيع آمن · بصمة التراث" : "Secure Sign · heritage fingerprint"}</span>
+      <span style={{ color: "var(--nv-ok-ink)", fontWeight: 700, fontSize: 12.5 }}>{ar ? "توقيع آمن · بصمة التراث" : "Secure Sign · heritage fingerprint"}</span>
       <p style={{ margin: 0, fontSize: 12.5, color: MUTED, lineHeight: 1.7 }}>
         {ar
           ? "يُدمج الختم في ملف PDF، وتُحسب بصمة SHA-256، ويُسجَّل رقم التحقق في سجل الشركة. ليست شهادة حكومية مؤهلة."
@@ -1044,8 +1044,8 @@ export default function SigningWorkspace({
             : (ar ? "بالتوازي: كل طرف يوقّع من رابطه دون انتظار الباقين." : "Parallel: each party signs from their link without waiting.")}
         </p>
       )}
-      {placeBlock ? <p style={{ margin: 0, fontSize: 12, color: "#8A1C2B" }}>{placeBlock}</p> : null}
-      <button type="button" onClick={requestFinish} disabled={busy} style={{ height: 36, border: "none", borderRadius: 8, background: "#14213D", color: "#fff", fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>
+      {placeBlock ? <p style={{ margin: 0, fontSize: 12, color: "var(--nv-bad-ink)" }}>{placeBlock}</p> : null}
+      <button type="button" onClick={requestFinish} disabled={busy} style={{ height: 36, border: "none", borderRadius: 8, background: "var(--nv-navy)", color: "#fff", fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>
         {group ? (ar ? "إرسال للتوقيع" : "Send for signature") : (ar ? "إنهاء وتوقيع" : "Finish and sign")}
       </button>
     </section>
@@ -1058,8 +1058,8 @@ export default function SigningWorkspace({
       {fields.length ? fields.map((field) => {
         const owner = signers[field.signer];
         return (
-          <button key={field.id} type="button" onClick={() => { setActiveFieldId(field.id); setActivePage(field.page); }} style={{ textAlign: "start", fontFamily: "inherit", border: `1px solid ${BORDER}`, background: "#fff", borderRadius: 10, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: owner?.color || "#1d9a5b", flex: "none" }} />
+          <button key={field.id} type="button" onClick={() => { setActiveFieldId(field.id); setActivePage(field.page); }} style={{ textAlign: "start", fontFamily: "inherit", border: `1px solid ${BORDER}`, background: "var(--nv-card)", borderRadius: 10, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: owner?.color || "var(--nv-ok-ink)", flex: "none" }} />
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: "block", fontWeight: 700, fontSize: 12.5 }}>{field.label}</span>
               <span style={{ display: "block", fontSize: 11, color: MUTED }}>{owner?.name} · {ar ? `صفحة ${field.page}` : `Page ${field.page}`}</span>
@@ -1116,7 +1116,7 @@ export default function SigningWorkspace({
           </div>
         ) : null}
         thumbs={rail === "pages" && pdf ? (
-          <div style={{ width: 96, flex: "none", overflow: "auto", background: "#fff", borderInlineStart: `1px solid ${BORDER}`, padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ width: 96, flex: "none", overflow: "auto", background: "var(--nv-card)", borderInlineStart: `1px solid ${BORDER}`, padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
             <SigningWorkspaceThumbs
               pdf={pdf}
               pageCount={pageCount}
@@ -1133,7 +1133,7 @@ export default function SigningWorkspace({
         panel={studioStep === 2 ? signStep : studioStep === 3 ? fieldsStep : fieldsPanel}
       >
         {rail === "summary" ? (
-          <aside style={{ position: "absolute", top: 12, insetInlineEnd: 12, zIndex: 4, width: 240, background: "#fff", border: `1px solid ${BORDER}`, borderRadius: 12, padding: 12, boxShadow: "0 8px 24px rgba(20,33,61,.08)" }}>
+          <aside style={{ position: "absolute", top: 12, insetInlineEnd: 12, zIndex: 4, width: 240, background: "var(--nv-card)", border: `1px solid ${BORDER}`, borderRadius: 12, padding: 12, boxShadow: "0 8px 24px rgba(20,33,61,.08)" }}>
             <strong style={{ display: "block", marginBottom: 4 }}>{docTitle}</strong>
             <span style={{ display: "block", fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>{fileMeta}</span>
             <span style={{ display: "block", fontSize: 12, marginTop: 6 }}>{ar ? `${fields.length} حقول · ${signers.length} موقّعين` : `${fields.length} fields · ${signers.length} signers`}</span>
@@ -1162,7 +1162,7 @@ export default function SigningWorkspace({
             onVisiblePage={noteVisiblePage}
           />
         ) : (
-          <div style={{ width: "min(100%, 640px)", aspectRatio: "1 / 1.3", background: "#fff", border: "1px solid #D5D9E0", boxShadow: "0 1px 3px rgba(0,0,0,.08)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: MUTED, padding: "10%", textAlign: "center", boxSizing: "border-box" }}>
+          <div style={{ width: "min(100%, 640px)", aspectRatio: "1 / 1.3", background: "var(--nv-card)", border: "1px solid var(--nv-line)", boxShadow: "0 1px 3px rgba(0,0,0,.08)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: MUTED, padding: "10%", textAlign: "center", boxSizing: "border-box" }}>
             {failed ? null : <Loader2 className="h-5 w-5 animate-spin" />}
             <span style={{ fontSize: 13, lineHeight: 1.8, color: "#4B5567" }}>
               {failed
@@ -1177,7 +1177,7 @@ export default function SigningWorkspace({
 
       {leaveAsk && !receipt ? (
         <div role="dialog" aria-modal="true" onClick={(event) => { if (event.target === event.currentTarget) setLeaveAsk(false); }} style={{ position: "fixed", inset: 0, background: "rgba(20,40,75,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 80 }}>
-          <div dir={ar ? "rtl" : "ltr"} style={{ width: "min(420px, 100%)", background: CARD, border: "1px solid #dfe3ea", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div dir={ar ? "rtl" : "ltr"} style={{ width: "min(420px, 100%)", background: CARD, border: "1px solid var(--nv-line)", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
             <span style={{ fontWeight: 700, fontSize: 16, color: INK }}>{ar ? "هل أنت متأكد؟" : "Are you sure?"}</span>
             <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.7 }}>
               {ar ? "مغادرة التحضير تُلغي الحقول التي وضعتها على الصفحات." : "Leaving prepare discards the fields you placed on the pages."}

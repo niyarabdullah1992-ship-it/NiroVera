@@ -49,7 +49,7 @@ export default function DisciplineCaseThread({
                   padding: "8px 10px",
                   borderRadius: 10,
                   fontSize: 13,
-                  background: m.from === "employee" ? SURFACE : "color-mix(in oklab, #1E9E63 12%, #fff)",
+                  background: m.from === "employee" ? SURFACE : "color-mix(in oklab, var(--nv-ok-ink) 12%, #fff)",
                   color: NAVY,
                 }}
               >

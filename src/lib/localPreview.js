@@ -120,7 +120,7 @@ export function enterLocalPreview() {
         anonymousId: "a_owner",
         createdAt: now,
         leaveRequests: [],
-        profile: { satisfactionScore: 92, gender: "male" },
+        profile: { satisfactionScore: 92, gender: "male", nationality: "سعودي" },
       },
       {
         id: managerId,

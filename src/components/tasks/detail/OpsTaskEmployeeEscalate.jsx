@@ -21,7 +21,7 @@ export default function OpsTaskEmployeeEscalate({
 
   return (
     <OpsTaskSection tone="warn" title={ar ? "حق التصعيد" : "Right to escalate"}>
-      <div style={{ fontSize: 12, color: "#92400E", lineHeight: 1.65 }}>
+      <div style={{ fontSize: 12, color: "var(--nv-warn-ink)", lineHeight: 1.65 }}>
         {canEscalate
           ? (ar
             ? `رُفض إنجازك ${OPS_EMPLOYEE_ESCALATE_AFTER} مرات — يحق لك التصعيد للمستوى التالي. السبب يظهر في مراسلات البطاقة.`
@@ -43,7 +43,7 @@ export default function OpsTaskEmployeeEscalate({
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder={ar ? "سبب التصعيد (يظهر في مراسلات البطاقة)" : "Escalation reason (shown on the card thread)"}
-                style={{ width: "100%", border: "1px solid #FECACA", borderRadius: 9, background: CARD, padding: "9px 12px", fontSize: 12, color: NAVY, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
+                style={{ width: "100%", border: "1px solid var(--nv-line)", borderRadius: 9, background: CARD, padding: "9px 12px", fontSize: 12, color: NAVY, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
               />
               <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>{ar ? "السبب علني على البطاقة — ليُعرف لماذا صُعّدت المهمة." : "The reason is public on the card — so why it was escalated stays visible."}</div>
               <div style={{ display: "flex", gap: 8 }}>

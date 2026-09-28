@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogIn, LogOut, Plus, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
+import { LogIn, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -16,7 +16,7 @@ import { ownerBoardSections, platformOwnerGate, resolveOwnerBoardActor } from "@
 import { DEFAULT_SUBSCRIPTION_PLANS, planDisplayName } from "@/lib/subscriptionPlans";
 import { logAudit } from "@/lib/auditLog";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
+import OwnerBoardFrame from "@/components/owner/OwnerBoardFrame";
 import IdentityCard from "@/components/shared/IdentityCard";
 import { MUTED, SURFACE, ui } from "@/lib/platformStyles";
 import {
@@ -163,32 +163,17 @@ export default function CompanyOwnerBoard() {
   const sections = ownerBoardSections(ar);
 
   return (
-    <div style={{ minHeight: "100vh", background: SURFACE, padding: "24px 16px 40px" }} dir={ar ? "rtl" : "ltr"}>
-      <PlatformStampShell
+    <OwnerBoardFrame
         ar={ar}
-        kicker={ar ? "مالك المنصة" : "Platform owner"}
-        title={ar ? "لوحة المالك" : "Owner board"}
-        hint={ar
-          ? "سطح واحد على /owner — تشغيل المنصة، اشتراكات الشركات، الإجازات الرسمية ورمضان، والفوترة والأخبار. لا محرّر اشتراك داخل منصة الشركة."
-          : "One surface at /owner — platform ops, company plan rulings, official holidays and Ramadan, billing, and news. No subscription editor inside the company app."}
+        user={user}
         sections={sections}
-        tool={tab}
-        onTool={setTab}
-        meta={(
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => navigate("/app")} style={ui.btnGhost}>
-              {ar ? "منصة الشركة" : "Company app"}
-            </button>
-            <button type="button" onClick={() => refresh(true)} disabled={refreshing} style={ui.btnGhost}>
-              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-              {ar ? "تحديث" : "Refresh"}
-            </button>
-            <button type="button" onClick={() => base44.auth.logout("/")} style={ui.btnSecondary}>
-              <LogOut className="h-3.5 w-3.5" />
-              {t("logout")}
-            </button>
-          </div>
-        )}
+        tab={tab}
+        onTab={setTab}
+        companies={companies}
+        refreshing={refreshing}
+        onRefresh={() => refresh(true)}
+        onLogout={() => base44.auth.logout("/")}
+        onOpenApp={() => navigate("/app")}
       >
         {tab === "glance" ? <SaasAnalyticsDashboard key={`glance-${refreshKey}`} lang={lang} /> : null}
 
@@ -299,7 +284,6 @@ export default function CompanyOwnerBoard() {
         {tab === "audit" ? <AuditLogDashboard key={`audit-${refreshKey}`} ar={ar} companies={companies} /> : null}
         {tab === "roadmap" ? <PlatformRoadmap ar={ar} /> : null}
         {tab === "news" ? <NewsBroadcast key={`news-${refreshKey}`} /> : null}
-      </PlatformStampShell>
-    </div>
+    </OwnerBoardFrame>
   );
 }

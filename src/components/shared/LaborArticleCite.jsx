@@ -72,7 +72,7 @@ function OfficialStatuteBlock({ title, body, rest, ar, link }) {
             maxWidth: "100%",
             minWidth: 0,
             background: SURFACE,
-            border: "1px solid #d4dae6",
+            border: "1px solid var(--nv-line)",
             padding: "8px 10px",
             display: "flex",
             flexDirection: "column",
@@ -212,7 +212,7 @@ export default function LaborArticleCite({
           </p>
         )}
         {encoding && statute ? (
-          <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: 12 }}>
+          <div style={{ borderTop: "1px solid var(--nv-line)", paddingTop: 12 }}>
             <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 600, color: MUTED }}>
               {ar ? "ما تطبّقه المنصة" : "What the platform applies"}
             </p>
@@ -255,7 +255,7 @@ export default function LaborArticleCite({
               height: 32,
               padding: "0 12px",
               borderRadius: 10,
-              border: "1px solid #E2E8F0",
+              border: "1px solid var(--nv-line)",
               color: NAVY,
               fontSize: 12,
               fontWeight: 600,

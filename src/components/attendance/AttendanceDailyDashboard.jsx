@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Loader2, MapPin } from "lucide-react";
@@ -263,9 +263,9 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     { label: lang === "ar" ? "حضر في الوقت" : "On time", value: todayAtt.present, note: lang === "ar" ? "مَن وأين مؤكّدان" : "Who and where confirmed", accent: "var(--nv-ok-fill)", color: "var(--nv-ok-ink)" },
     { label: lang === "ar" ? "متأخر" : "Late", value: todayAtt.late, note: lang === "ar" ? "بصم بعد بداية الوردية" : "Punched after shift start", accent: "var(--nv-warn-fill)", color: "#8a6516" },
     { label: lang === "ar" ? "بانتظار قرار" : "Awaiting a decision", value: attentionCount, note: lang === "ar" ? "حلقة انكسرت — لا حاضر ولا غائب بعد" : "A link broke — neither present nor absent yet", accent: "#8a6516", color: "#8a6516" },
-    { label: lang === "ar" ? "غاب" : "Absent", value: absentClosed, note: lang === "ar" ? "بلا تسجيل ولا إجازة بعد نافذة الوردية" : "No punch and no leave after the shift window", accent: "#8a1c2b", color: "#8a1c2b" },
+    { label: lang === "ar" ? "غاب" : "Absent", value: absentClosed, note: lang === "ar" ? "بلا تسجيل ولا إجازة بعد نافذة الوردية" : "No punch and no leave after the shift window", accent: "#8a1c2b", color: "var(--nv-bad-ink)" },
     { label: lang === "ar" ? "إجازة" : "Leave", value: todayAtt.onLeave, note: lang === "ar" ? "خارج حساب الحضور" : "Outside the attendance count", accent: "#c7ccd6", color: "#4b5567" },
-    { label: lang === "ar" ? "لم يبصم بعد" : "Not punched yet", value: notYet, note: lang === "ar" ? "الوردية لم تنتهِ بعد" : "The shift window is still open", accent: "#c7ccd6", color: "#4b5567" },
+    { label: lang === "ar" ? "لم يبصم بعد" : "Not punched yet", value: notYet, note: lang === "ar" ? "الوردية لم تنتهِ بعد" : "The shift window is still open", accent: "var(--nv-line)", color: "#4b5567" },
   ];
 
   useEffect(() => {
@@ -382,7 +382,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: MUTED }}>{punchTime}</span>
               </span>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: attention ? "#8a1c2b" : flag.color }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: attention ? "var(--nv-bad-ink)" : flag.color }}>
                   {broke || (lang === "ar" ? flag.ar : flag.en)}
                 </span>
                 <AttendanceRingChips rings={rings} />

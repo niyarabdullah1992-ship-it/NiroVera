@@ -47,6 +47,53 @@ export function workplaceStations(stations) {
   return (stations || []).filter((station) => isWorkplaceStation(station));
 }
 
+/** A site hanging under another workplace. The header scope is the branch, not the site. */
+export function isNestedWorkplace(station, stations) {
+  if (!station || isCompanyRootStation(station) || !isWorkplaceStation(station) || isHrUnit(station)) return false;
+  const parentId = stationParentId(station);
+  if (!parentId) return false;
+  const parent = (stations || []).find((item) => String(item.id) === String(parentId));
+  if (!parent || isCompanyRootStation(parent) || isManagerUnit(parent) || isHrUnit(parent)) return false;
+  return isWorkplaceStation(parent);
+}
+
+/** Walk up sites until the branch that owns them. */
+export function nearestHeaderBranch(station, stations) {
+  if (!station) return null;
+  const byId = new Map((stations || []).map((item) => [String(item.id), item]));
+  let cursor = station;
+  const seen = new Set();
+  while (cursor && isNestedWorkplace(cursor, stations)) {
+    const id = String(cursor.id);
+    if (seen.has(id)) break;
+    seen.add(id);
+    const parent = byId.get(String(stationParentId(cursor) || ""));
+    if (!parent) break;
+    cursor = parent;
+  }
+  return cursor && isWorkplaceStation(cursor) && !isHrUnit(cursor) ? cursor : null;
+}
+
+/**
+ * Header chips and the scope menu. A site under a branch stays inside that branch
+ * when the branch is already in the list.
+ */
+export function headerScopeBranches(candidates, tree) {
+  const stations = tree || candidates || [];
+  const list = (candidates || []).filter((station) => isWorkplaceStation(station) && !isHrUnit(station));
+  const ids = new Set(list.map((station) => String(station.id)));
+  return list.filter((station) => {
+    if (!isNestedWorkplace(station, stations)) return true;
+    const branch = nearestHeaderBranch(station, stations);
+    return !branch || !ids.has(String(branch.id));
+  });
+}
+
+/** Live workplaces on the escalation board. The fixed HR unit is not a branch card. */
+export function escalationLiveStations(stations) {
+  return workplaceStations(stations).filter((station) => station && !isHrUnit(station) && station.active !== false);
+}
+
 export function companyRootStation(stations) {
   return (stations || []).find((station) => isCompanyRootStation(station)) || null;
 }

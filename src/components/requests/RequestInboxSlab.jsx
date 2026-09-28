@@ -19,7 +19,7 @@ function AlertBadge({ count, mark }) {
         minWidth: 22,
         textAlign: "center",
         padding: "2px 7px",
-        background: mark?.kind === "decision" ? "#8A1C2B" : (derivedAlertCount(count) ? "#8A6516" : "#14213D"),
+        background: mark?.kind === "decision" ? "var(--nv-bad-ink)" : (derivedAlertCount(count) ? "var(--nv-warn-ink)" : "var(--nv-ink)"),
         color: "#fff",
         flexShrink: 0,
       }}
@@ -40,7 +40,7 @@ export default function RequestInboxSlab({ employees, notifications, userId, vie
       <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}`, display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "إشعاراتي" : "My notices"}</span>
         <AlertBadge count={total} />
-        <span style={{ marginInlineStart: "auto", fontSize: 11, fontWeight: 600, color: fresh ? "#137a49" : MUTED }}>
+        <span style={{ marginInlineStart: "auto", fontSize: 11, fontWeight: 600, color: fresh ? "var(--nv-ok-ink)" : MUTED }}>
           {fresh ? (ar ? `${fresh} جديد اليوم` : `${fresh} new today`) : (total ? (ar ? `${total} إشعار` : `${total} notices`) : (ar ? "لا إشعارات" : "No notices"))}
         </span>
       </div>
@@ -59,16 +59,16 @@ export default function RequestInboxSlab({ employees, notifications, userId, vie
             <span style={{ fontSize: 10, color: NAVY, fontWeight: 600 }}>{row.alertLabel}</span>
           ) : null}
           {inboxNoticeShowsBody(row) ? (
-            <span style={{ fontSize: 11, color: "#3c4657", lineHeight: 1.9 }}>{row.body}</span>
+            <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.9 }}>{row.body}</span>
           ) : null}
           <span style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {row.downloadUrl ? (
-              <a href={row.downloadUrl} download style={{ fontSize: 11, fontWeight: 600, color: "#137a49", textDecoration: "none" }}>
+              <a href={row.downloadUrl} download style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)", textDecoration: "none" }}>
                 {ar ? "نزّل الوثيقة" : "Download the letter"}
               </a>
             ) : null}
             {row.linkLabel && row.href ? (
-              <Link to={row.href} style={{ fontSize: 11, fontWeight: 600, color: "#137a49", textDecoration: "none" }}>{row.linkLabel} ←</Link>
+              <Link to={row.href} style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)", textDecoration: "none" }}>{row.linkLabel} ←</Link>
             ) : null}
           </span>
         </div>

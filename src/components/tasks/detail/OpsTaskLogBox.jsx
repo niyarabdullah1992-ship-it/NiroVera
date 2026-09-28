@@ -3,7 +3,7 @@ import VoiceRecorder from "@/components/tasks/VoiceRecorder";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
 import { BORDER, BRAND, CARD, MUTED, NAVY, SURFACE, field } from "@/lib/platformStyles";
 
-const dashed = { display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 13px", borderRadius: 9, border: "1px dashed #CBD5E1", background: CARD, fontSize: 12, color: MUTED, cursor: "pointer" };
+const dashed = { display: "inline-flex", alignItems: "center", gap: 7, height: 38, padding: "0 13px", borderRadius: 9, border: "1px dashed var(--nv-line)", background: CARD, fontSize: 12, color: MUTED, cursor: "pointer" };
 
 /** Log-completion block: quantity, evidence (file / voice / attestation), submit. */
 export default function OpsTaskLogBox({ ar, busy, doneN, targetN, onsiteBlocked, attendanceGate, onLog }) {
@@ -44,11 +44,11 @@ export default function OpsTaskLogBox({ ar, busy, doneN, targetN, onsiteBlocked,
           onClick={async () => {
             await onLog?.({ amount, proofFile, proofVoice, attestation: attest.trim() }); setProofVoice(null); setProofFile(null); setAttest("");
           }}
-          style={{ padding: "9px 16px", borderRadius: 9, border: "none", fontSize: 12, fontWeight: 600, fontFamily: "inherit", background: canLog ? BRAND : "#E2E8F0", color: canLog ? "#fff" : MUTED, cursor: canLog ? (busy ? "wait" : "pointer") : "not-allowed", opacity: busy ? 0.6 : 1 }}
+          style={{ padding: "9px 16px", borderRadius: 9, border: "none", fontSize: 12, fontWeight: 600, fontFamily: "inherit", background: canLog ? BRAND : "var(--nv-line)", color: canLog ? "#fff" : MUTED, cursor: canLog ? (busy ? "wait" : "pointer") : "not-allowed", opacity: busy ? 0.6 : 1 }}
         >
           {ar ? "سجّل الإنجاز" : "Log completion"}
         </button>
-        {!canLog && <span style={{ fontSize: 11, color: "#B91C1C", lineHeight: 1.6 }}>{blockReason}</span>}
+        {!canLog && <span style={{ fontSize: 11, color: "var(--nv-bad-ink)", lineHeight: 1.6 }}>{blockReason}</span>}
       </div>
     </OpsTaskSection>
   );

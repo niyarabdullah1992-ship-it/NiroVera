@@ -61,12 +61,12 @@ export default function FlowSwipeAction({
           justifyContent: "center",
           gap: 8,
           borderRadius: 10,
-          border: "1px solid #BBF7D0",
-          background: "#ECFDF3",
+          border: "1px solid var(--nv-ok-line)",
+          background: "var(--nv-accent-soft)",
           padding: "8px 12px",
           fontSize: 12,
           fontWeight: 600,
-          color: "#15803D",
+          color: "var(--nv-ok-ink)",
           cursor: "pointer",
           fontFamily: "inherit",
         }}
@@ -103,7 +103,7 @@ export default function FlowSwipeAction({
           onClick={() => setConfirming(false)}
           style={{
             borderRadius: 10,
-            border: "1px solid #E2E8F0",
+            border: "1px solid var(--nv-line)",
             background: CARD,
             padding: "9px 12px",
             fontSize: 12,
@@ -128,7 +128,7 @@ export default function FlowSwipeAction({
         height: 40,
         overflow: "hidden",
         borderRadius: 11,
-        border: "1px solid #BBF7D0",
+        border: "1px solid var(--nv-ok-line)",
         background: "linear-gradient(180deg, #ECFDF3 0%, #F0FDF4 100%)",
         touchAction: "none",
         userSelect: "none",
@@ -146,7 +146,7 @@ export default function FlowSwipeAction({
           textAlign: "center",
           fontSize: 11,
           fontWeight: 600,
-          color: "#15803D",
+          color: "var(--nv-ok-ink)",
           letterSpacing: 0.01,
         }}
       >

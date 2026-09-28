@@ -14,7 +14,7 @@ const STATUS_LABELS = {
 
 function Row({ label, value, mono }) {
   return (
-    <div style={{ display: "flex", gap: "12px", padding: "9px 0", borderTop: "1px solid #F1F5F9" }}>
+    <div style={{ display: "flex", gap: "12px", padding: "9px 0", borderTop: "1px solid var(--nv-line)" }}>
       <span style={{ flex: "0 0 150px", fontSize: "11px", color: MUTED }}>{label}</span>
       <span dir={mono ? "ltr" : undefined} style={{ flex: 1, fontSize: "12px", color: NAVY, fontWeight: value === "—" ? 400 : 500 }}>{value}</span>
     </div>
@@ -129,9 +129,9 @@ export default function AssignmentTab({
             fontWeight: 600,
             padding: "3px 9px",
             borderRadius: "20px",
-            background: a.source === "action" ? "#ECFDF3" : "#FFFBEB",
-            color: a.source === "action" ? "#15803D" : "#B45309",
-            border: `1px solid ${a.source === "action" ? "#BBF7D0" : "#FDE68A"}`,
+            background: a.source === "action" ? "var(--nv-accent-soft)" : "var(--nv-warn-soft)",
+            color: a.source === "action" ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)",
+            border: `1px solid ${a.source === "action" ? "var(--nv-ok-line)" : "var(--nv-line)"}`,
           }}
           >
             {a.source === "action"
@@ -141,7 +141,7 @@ export default function AssignmentTab({
         </div>
 
         {a.gap ? (
-          <div style={{ marginTop: "10px", padding: "11px 13px", borderRadius: "10px", background: "#FFFBEB", border: "1px solid #FDE68A", fontSize: "11px", color: "#92400E", lineHeight: 1.7 }}>
+          <div style={{ marginTop: "10px", padding: "11px 13px", borderRadius: "10px", background: "var(--nv-warn-soft)", border: "1px solid var(--nv-line)", fontSize: "11px", color: "var(--nv-warn-ink)", lineHeight: 1.7 }}>
             {ar ? a.gap.reason : a.gap.reasonEn}
           </div>
         ) : null}
@@ -179,9 +179,9 @@ export default function AssignmentTab({
         ) : history.map((h) => {
           const reason = (ACTION_REASONS[h.type] || []).find((r) => r.id === h.reasonCode);
           return (
-            <div key={h.id} style={{ display: "flex", gap: "12px", alignItems: "baseline", padding: "11px 18px", borderTop: "1px solid #F1F5F9", flexWrap: "wrap" }}>
+            <div key={h.id} style={{ display: "flex", gap: "12px", alignItems: "baseline", padding: "11px 18px", borderTop: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
               <span dir="ltr" style={{ flex: "0 0 92px", fontSize: "11px", color: MUTED }}>{h.effectiveDate}</span>
-              <span style={{ flex: "0 0 96px", fontSize: "12px", fontWeight: 600, color: h.type === "termination" ? "#DC2626" : ACCENT }}>
+              <span style={{ flex: "0 0 96px", fontSize: "12px", fontWeight: 600, color: h.type === "termination" ? "var(--nv-bad-ink)" : ACCENT }}>
                 {ar ? ACTION_LABELS[h.type]?.ar || h.type : ACTION_LABELS[h.type]?.en || h.type}
               </span>
               <span style={{ flex: "1 1 180px", fontSize: "11px", color: MUTED }}>

@@ -89,7 +89,7 @@ export default function OrgPeopleTree({
     8,
   );
 
-  const setSafeZoom = (value) => setZoom(Math.max(0.12, Math.min(2, value)));
+  const setSafeZoom = (value) => setZoom(Math.max(0.25, Math.min(2, value)));
   const panTree = (x, y) => setOffset((current) => ({ x: current.x + x, y: current.y + y }));
   const gestures = useOrgTreeViewport(viewportRef, zoom, setSafeZoom, offset, setOffset);
 
@@ -251,7 +251,7 @@ export default function OrgPeopleTree({
   const panel = (
     <OrgPanel ar={ar} fullscreen={fullscreen} embedded={embedded && !fullscreen}>
       {embedded && !fullscreen ? (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", background: "#fff", borderBottom: "1px solid #D5DCD8" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "10px 12px", background: "var(--nv-card)", borderBottom: "1px solid var(--nv-line)" }}>
           <OrgSearchBox
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -270,10 +270,10 @@ export default function OrgPeopleTree({
             )}
           />
           <span style={{ flex: 1 }} />
-          <button type="button" onClick={() => { setSpine(false); setFullTree(true); }} style={{ ...orgBtnGhost, height: 32, borderRadius: 8, border: "1px solid #C5CEC9", color: "#111418" }}>
+          <button type="button" onClick={() => { setSpine(false); setFullTree(true); }} style={{ ...orgBtnGhost, height: 32, borderRadius: 8, border: "1px solid var(--nv-line)", color: "var(--nv-ink)" }}>
             {ar ? "توسيع الكل" : "Expand all"}
           </button>
-          <button type="button" onClick={showSpine} style={{ ...orgBtnGhost, height: 32, borderRadius: 8, border: "1px solid #C5CEC9", color: "#111418" }}>
+          <button type="button" onClick={showSpine} style={{ ...orgBtnGhost, height: 32, borderRadius: 8, border: "1px solid var(--nv-line)", color: "var(--nv-ink)" }}>
             {ar ? "طيّ الكل" : "Collapse all"}
           </button>
           <HierarchyZoomControls
@@ -347,7 +347,7 @@ export default function OrgPeopleTree({
                 {note.many ? (
                   <>
                     <span style={{ fontWeight: 600, color: NAVY }}>{ar ? "مرة واحدة" : "Once"}</span>
-                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "#137A49", marginInline: 8 }}>1 seat · 1 home</span>
+                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--nv-ok-ink)", marginInline: 8 }}>1 seat · 1 home</span>
                   </>
                 ) : null}
                 {note.line}
@@ -395,9 +395,9 @@ export default function OrgPeopleTree({
                         height: 32,
                         padding: "0 12px",
                         borderRadius: 8,
-                        border: "1px solid #FECACA",
+                        border: "1px solid var(--nv-line)",
                         background: CARD,
-                        color: "#DC2626",
+                        color: "var(--nv-bad-ink)",
                         fontSize: 12,
                         fontWeight: 600,
                         fontFamily: "inherit",
@@ -457,13 +457,12 @@ export default function OrgPeopleTree({
         </div>
       </OrgTreeCanvas>
       {embedded && !fullscreen ? (
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", padding: "8px 12px", background: "#FAFBFA", borderTop: "1px solid #D5DCD8", fontSize: 11, color: "#555C66" }}>
-          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 10, height: 10, borderRadius: 8, background: "#0B3D27" }} />{ar ? "مشغول" : "Filled"}</span>
-          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 10, height: 10, borderRadius: 8, border: "1.5px dashed #B7791F" }} />{ar ? "شاغر" : "Vacant"}</span>
-          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 10, height: 10, borderRadius: 8, background: "#C8A45A" }} />{ar ? "مكلَّف" : "Acting"}</span>
-          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 10, height: 10, borderRadius: 8, background: "#9B2335" }} />{ar ? "تنبيه نظامي" : "Statutory alert"}</span>
-          <span style={{ flex: 1 }} />
-          <span>{ar ? "اسحب للتحرّك · Ctrl + عجلة للتكبير · انقر البطاقة للتفاصيل · الرقم يفتح الأغصان" : "Drag to pan · Ctrl + wheel to zoom · click a card for details · the count opens branches"}</span>
+        <div className="nv-org-legend">
+          <span><i style={{ background: "#0B3D27" }} />{ar ? "مشغول" : "Occupied"}</span>
+          <span><i style={{ background: "transparent", border: "1.5px dashed #B7791F" }} />{ar ? "شاغر" : "Vacant"}</span>
+          <span><i style={{ background: "#C8A45A" }} />{ar ? "مكلَّف" : "Acting"}</span>
+          <span><i style={{ background: "#9B2335" }} />{ar ? "تنبيه نظامي" : "Compliance alert"}</span>
+          <span className="nv-org-legend__note">{ar ? "انقر البطاقة للتفاصيل · الرقم يفتح الأغصان" : "Click a card for details · the count opens branches"}</span>
         </div>
       ) : null}
     </OrgPanel>

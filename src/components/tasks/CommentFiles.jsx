@@ -49,12 +49,12 @@ export default function CommentFiles({
         <div
           key={i}
           className="group relative flex items-center gap-1.5 pe-7 ps-2 py-1 rounded-md text-xs font-body max-w-[200px]"
-          style={{ background: SURFACE, border: "1px solid #E2E8F0", color: INK }}
+          style={{ background: SURFACE, border: "1px solid var(--nv-line)", color: INK }}
         >
           {isImage(f.name, f.type) ? (
             <img src={f.url} alt={f.name} className="w-4 h-4 rounded object-cover" />
           ) : (
-            <FileText className="w-4 h-4 shrink-0" style={{ color: "#1E9E63" }} />
+            <FileText className="w-4 h-4 shrink-0" style={{ color: "var(--nv-ok-ink)" }} />
           )}
           <a href={f.url} target="_blank" rel="noopener noreferrer" download={f.name} className="truncate hover:underline" title={f.name} style={{ color: INK }}>
             {f.name}
@@ -106,7 +106,7 @@ export default function CommentFiles({
               height: 14,
               padding: "0 3px",
               borderRadius: 20,
-              background: "#1E9E63",
+              background: "var(--nv-btn-fill)",
               color: "#fff",
               fontSize: 9,
               fontWeight: 700,

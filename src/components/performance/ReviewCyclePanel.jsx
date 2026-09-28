@@ -46,7 +46,7 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
             <span style={{ fontSize: "11px", color: MUTED }}>
               {ar ? `قُيِّم ${progress.rated} من ${progress.total}` : `${progress.rated} of ${progress.total} rated`}
               {" · "}
-              <span style={{ color: progress.pct === 100 ? ACCENT : "#B45309" }}>{progress.pct}%</span>
+              <span style={{ color: progress.pct === 100 ? ACCENT : "var(--nv-warn-ink)" }}>{progress.pct}%</span>
             </span>
           ) : null}
           {isSenior && nextStates.map((s) => (
@@ -103,7 +103,7 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
       )}
 
       {isSenior && cycle && ["manager_review", "calibration"].includes(status) && (
-        <div style={{ marginTop: "14px", padding: "15px 16px", borderRadius: "12px", background: SURFACE, border: "1px solid #E2E8F0" }}>
+        <div style={{ marginTop: "14px", padding: "15px 16px", borderRadius: "12px", background: SURFACE, border: "1px solid var(--nv-line)" }}>
           <div style={{ fontSize: "12px", fontWeight: 600, color: NAVY }}>{ar ? "معايرة درجة موظف" : "Calibrate an employee score"}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: "11px", marginTop: "11px" }}>
             <label>

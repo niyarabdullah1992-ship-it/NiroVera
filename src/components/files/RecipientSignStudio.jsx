@@ -6,10 +6,10 @@ import { consentFileKind } from "@/lib/documentReadGate";
 import { RETRACT_DAY_OPTIONS, retractDaysLabel } from "@/lib/multiSignDerivations";
 import { verificationUrlFor } from "@/lib/verificationBadge";
 
-const NAVY = "#14213D";
-const GREEN = "#137A49";
+const NAVY = "var(--nv-navy)";
+const GREEN = "var(--nv-btn-fill)";
 const GOLD = "#F2C230";
-const LINE = "#DFE3EA";
+const LINE = "var(--nv-line)";
 const PAPER = "#F4F5F7";
 const MONO = "'IBM Plex Mono', monospace";
 const FONTS = [
@@ -76,7 +76,7 @@ function sheet(width) {
   return {
     position: "relative",
     width,
-    background: "#fff",
+    background: "var(--nv-card)",
     borderRadius: width > 400 ? 14 : 8,
     boxShadow: "0 20px 60px rgba(20,33,61,.3)",
     padding: 18,
@@ -232,10 +232,10 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
     : (ar ? "طلب توقيع" : "Signature request");
 
   const banner = rejected ? (
-    <section style={{ background: "#FBF1F2", border: "1px solid #E9C4C9", borderRadius: 8, padding: 18, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-      <span style={{ width: 44, height: 44, borderRadius: "50%", background: "#8A1C2B", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>✕</span>
+    <section style={{ background: "var(--nv-bad-soft)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: 18, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+      <span style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--nv-bad-fill)", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>✕</span>
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        <strong style={{ fontSize: 14, color: "#8A1C2B" }}>{ar ? "رفضت التوقيع" : "You declined to sign"}</strong>
+        <strong style={{ fontSize: 14, color: "var(--nv-bad-ink)" }}>{ar ? "رفضت التوقيع" : "You declined to sign"}</strong>
         <span style={{ fontSize: 11.5, color: "#4B5567" }}>
           {ar
             ? `السبب: «${done?.reason || info?.rejectionReason || signer.rejectionReason || reason}» — أُبلغ المرسل، والمظروف لا يُوقَّع منك.`
@@ -245,7 +245,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
       <button type="button" onClick={onBack} style={navyBtn}>{ar ? "العودة للاتفاقيات" : "Back to agreements"}</button>
     </section>
   ) : success ? (
-    <section style={{ background: "#F2FAF6", border: "1px solid #BFE6D2", borderRadius: 14, padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
+    <section style={{ background: "#F2FAF6", border: "1px solid var(--nv-line)", borderRadius: 14, padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
         <span style={{ width: 44, height: 44, borderRadius: "50%", background: GREEN, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>✓</span>
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -259,9 +259,9 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
         <button type="button" onClick={onBack} style={navyBtn}>{ar ? "العودة للاتفاقيات" : "Back to agreements"}</button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: "4px 12px", fontSize: 11, fontFamily: MONO }}>
-        <span style={{ color: "#6B7280", fontFamily: "inherit" }}>{ar ? "البصمة" : "Fingerprint"}</span>
+        <span style={{ color: "var(--nv-muted)", fontFamily: "inherit" }}>{ar ? "البصمة" : "Fingerprint"}</span>
         <span dir="ltr" style={{ textAlign: "end" }}>{hash || (ar ? "تُثبَّت عند إغلاق المظروف" : "Fixed when the envelope closes")}</span>
-        <span style={{ color: "#6B7280", fontFamily: "inherit" }}>{ar ? "التحقق" : "Verify"}</span>
+        <span style={{ color: "var(--nv-muted)", fontFamily: "inherit" }}>{ar ? "التحقق" : "Verify"}</span>
         {verifyHref ? <a dir="ltr" href={verifyHref} style={{ textAlign: "end", color: NAVY }}>{info.verificationId}</a> : <span>—</span>}
       </div>
       {done?.docUrl ? <a href={done.docUrl} style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>{ar ? "تنزيل النسخة" : "Download the copy"}</a> : null}
@@ -274,7 +274,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
   return (
     <div className="nv-sign-studio" dir={ar ? "rtl" : "ltr"} style={{ position: "fixed", inset: 0, zIndex: 80, background: PAPER, overflow: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
       {banner || (
-        <section style={{ background: "#fff", border: `1px solid ${LINE}`, borderRadius: 8, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
+        <section style={{ background: "var(--nv-card)", border: `1px solid ${LINE}`, borderRadius: 8, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
           <div style={{ padding: "10px 16px", background: NAVY, color: "#fff", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
             <button type="button" onClick={onBack} style={{ fontFamily: "inherit", border: "none", background: "transparent", color: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}>
               <span aria-hidden="true">←</span>
@@ -282,20 +282,20 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
             </button>
             <div style={{ display: "flex", flexDirection: "column", minWidth: 0, lineHeight: 1.35 }}>
               <strong style={{ fontSize: 13.5 }}>{String(info?.fileName || "").replace(/\.(pdf|png|jpe?g)$/i, "")}</strong>
-              {fromLine ? <span style={{ fontSize: 11, color: "#B8C4D6" }}>{fromLine}</span> : null}
+              {fromLine ? <span style={{ fontSize: 11, color: "#C5DBCD" }}>{fromLine}</span> : null}
               <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10.5, color: "#8FE0B5", textAlign: ar ? "end" : "start" }}>
                 {info?.verificationId || ""}{pages ? ` · ${ar ? `${pages} صفحات` : `${pages} pages`}` : ""}
               </span>
             </div>
             <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 220 }}>
               <span style={{ fontSize: 12, color: "rgba(255,255,255,.78)" }}>
-                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%", background: "#fff", color: NAVY, fontSize: 11, fontWeight: 700, marginInlineEnd: 6 }}>2</span>
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%", background: "var(--nv-card)", color: NAVY, fontSize: 11, fontWeight: 700, marginInlineEnd: 6 }}>2</span>
                 {ar ? "التوقيع" : "Signing"}
                 <span style={{ marginInlineStart: 8, color: "#8FE0B5" }}>{ar ? "حقولك فقط" : "Your fields only"}</span>
               </span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 120 }}>
-              <span style={{ fontSize: 11, color: "#B8C4D6" }}>
+              <span style={{ fontSize: 11, color: "#C5DBCD" }}>
                 {left ? (ar ? `متبقٍ ${left} من ${fields.length || left}` : `${left} of ${fields.length || left} left`) : (ar ? "كل الحقول مكتملة" : "Every field is complete")}
               </span>
               <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,.15)", overflow: "hidden" }}>
@@ -311,7 +311,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
           </div>
 
           {!started ? (
-            <div style={{ padding: "12px 18px", background: "#FFF7DE", borderBottom: "1px solid #ECD9A8", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", fontSize: 12, color: "#5C4300" }}>
+            <div style={{ padding: "12px 18px", background: "#FFF7DE", borderBottom: "1px solid var(--nv-line)", display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", fontSize: 12, color: "#5C4300" }}>
               <span style={{ flex: 1, minWidth: 240 }}>
                 {ar
                   ? `راجع المستند${pages > 1 ? ` (${pages} صفحات)` : ""}، ثم اضغط «ابدأ» ليأخذك إلى كل حقل مطلوب. بمتابعتك توافق على التوقيع الإلكتروني واستلام المستند إلكترونياً.`
@@ -322,7 +322,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
           ) : null}
 
           {needSeen && !allSeen ? (
-            <div style={{ padding: "10px 18px", background: "#FBF1F2", borderBottom: "1px solid #E9C4C9", fontSize: 12, color: "#8A1C2B" }}>
+            <div style={{ padding: "10px 18px", background: "var(--nv-bad-soft)", borderBottom: "1px solid var(--nv-line)", fontSize: 12, color: "var(--nv-bad-ink)" }}>
               {ar ? `تصفّح كل الصفحات قبل الإنهاء — ${unread.join("، ")} لم تُفتح بعد.` : `Open every page before finishing — ${unread.join(", ")} still unread.`}
             </div>
           ) : null}
@@ -334,7 +334,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
               <button type="button" onClick={() => setZoom((value) => Math.min(1.4, +(value + 0.1).toFixed(2)))} style={zoomBtn}>+</button>
             </div>
             {loadingDoc ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#6B7280", marginTop: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--nv-muted)", marginTop: 24 }}>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 {ar ? "جارٍ فتح المستند…" : "Opening the document…"}
               </div>
@@ -343,7 +343,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
               const pageFields = fields.filter((field) => (field.page || 1) === index + 1);
               const unreadable = !imageUrl && !pdf;
               return (
-                <div key={index} data-sgpage={String(index)} style={{ position: "relative", width: pageWidth, aspectRatio: unreadable ? "1 / 1.15" : "1 / 1.3", background: "#fff", border: "1px solid #D5D9E0", boxShadow: "0 1px 3px rgba(0,0,0,.08)", flex: "none" }}>
+                <div key={index} data-sgpage={String(index)} style={{ position: "relative", width: pageWidth, aspectRatio: unreadable ? "1 / 1.15" : "1 / 1.3", background: "var(--nv-card)", border: "1px solid var(--nv-line)", boxShadow: "0 1px 3px rgba(0,0,0,.08)", flex: "none" }}>
                   {imageUrl && index === 0 ? (
                     <img src={imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
                   ) : pdf ? (
@@ -355,7 +355,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
                         : (ar ? "تعذّر قراءة هذا الـ PDF. إن كان محمياً بكلمة مرور أو تالفاً فصدّره من جديد ثم ارفعه." : "This PDF could not be read. If it is protected or damaged, export it again.")}
                     </div>
                   )}
-                  <span style={{ position: "absolute", bottom: "2.5%", insetInline: 0, textAlign: "center", fontFamily: MONO, fontSize: 10, color: "#9AA8BF", pointerEvents: "none" }}>
+                  <span style={{ position: "absolute", bottom: "2.5%", insetInline: 0, textAlign: "center", fontFamily: MONO, fontSize: 10, color: "#C5DBCD", pointerEvents: "none" }}>
                     {ar ? `صفحة ${index + 1} من ${pages}` : `Page ${index + 1} of ${pages}`}
                   </span>
                   {pageFields.map((field) => {
@@ -385,7 +385,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
                           padding: value ? "2px 6px" : "0 10px",
                           cursor: "pointer",
                           fontFamily: "inherit",
-                          border: value ? "1px dashed transparent" : "1px solid #D9A91E",
+                          border: value ? "1px dashed transparent" : "1px solid var(--nv-line)",
                           background: value ? "transparent" : "#FCEFC0",
                           boxShadow: value ? "none" : "0 2px 6px rgba(217,169,30,.22)",
                           outline: current ? `2px solid ${GOLD}` : "none",
@@ -418,7 +418,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
               );
             })}
           </div>
-          {error ? <p style={{ margin: 0, padding: "10px 18px", background: "#FBF1F2", color: "#8A1C2B", fontSize: 12 }}>{error}</p> : null}
+          {error ? <p style={{ margin: 0, padding: "10px 18px", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)", fontSize: 12 }}>{error}</p> : null}
           {busy && stage ? <p style={{ margin: 0, padding: "8px 18px", fontSize: 12, color: "#4B5567" }}>{stage}</p> : null}
         </section>
       )}
@@ -427,10 +427,10 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
         <Scrim onClose={() => setDeclining(false)}>
           <div style={sheet(440)}>
             <strong style={{ fontSize: 15 }}>{ar ? "رفض التوقيع" : "Decline to sign"}</strong>
-            <span style={{ fontSize: 11.5, color: "#6B7280" }}>{ar ? "يُبلَّغ المرسل بالسبب. لا يمكن التراجع عن الرفض." : "The sender is told the reason. A decline cannot be undone."}</span>
+            <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "يُبلَّغ المرسل بالسبب. لا يمكن التراجع عن الرفض." : "The sender is told the reason. A decline cannot be undone."}</span>
             <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} placeholder={ar ? "سبب الرفض — 5 أحرف على الأقل" : "Reason — at least 5 characters"} style={{ padding: 10, borderRadius: 6, border: `1px solid ${LINE}`, fontSize: 12.5, fontFamily: "inherit", resize: "vertical" }} />
             <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" disabled={reason.trim().length < 5 || busy} onClick={() => { setDeclining(false); reject(reason.trim()); }} style={{ ...navyBtn, flex: 1, background: "#8A1C2B", opacity: reason.trim().length < 5 ? 0.45 : 1 }}>{ar ? "رفض وإبلاغ المرسل" : "Decline and notify"}</button>
+              <button type="button" disabled={reason.trim().length < 5 || busy} onClick={() => { setDeclining(false); reject(reason.trim()); }} style={{ ...navyBtn, flex: 1, background: "var(--nv-bad-fill)", opacity: reason.trim().length < 5 ? 0.45 : 1 }}>{ar ? "رفض وإبلاغ المرسل" : "Decline and notify"}</button>
               <button type="button" onClick={() => setDeclining(false)} style={ghostBtn}>{ar ? "رجوع" : "Back"}</button>
             </div>
           </div>
@@ -442,10 +442,10 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
           <div style={sheet(380)}>
             <strong style={{ fontSize: 14 }}>{ynField.label || (ar ? "صح / خطأ" : "Yes or no")}</strong>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <button type="button" onClick={() => { setTextValue(ynField.id, "✓ صح"); setYnField(null); }} style={{ height: 44, borderRadius: 6, border: "1px solid #BFE6D2", background: "#F2FAF6", color: GREEN, fontWeight: 700, cursor: "pointer" }}>✓ {ar ? "صح" : "Yes"}</button>
-              <button type="button" onClick={() => { setTextValue(ynField.id, "✗ خطأ"); setYnField(null); }} style={{ height: 44, borderRadius: 6, border: "1px solid #E9C4C9", background: "#FBF1F2", color: "#8A1C2B", fontWeight: 700, cursor: "pointer" }}>✗ {ar ? "خطأ" : "No"}</button>
+              <button type="button" onClick={() => { setTextValue(ynField.id, "✓ صح"); setYnField(null); }} style={{ height: 44, borderRadius: 6, border: "1px solid var(--nv-line)", background: "#F2FAF6", color: GREEN, fontWeight: 700, cursor: "pointer" }}>✓ {ar ? "صح" : "Yes"}</button>
+              <button type="button" onClick={() => { setTextValue(ynField.id, "✗ خطأ"); setYnField(null); }} style={{ height: 44, borderRadius: 6, border: "1px solid var(--nv-line)", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)", fontWeight: 700, cursor: "pointer" }}>✗ {ar ? "خطأ" : "No"}</button>
             </div>
-            <button type="button" onClick={() => setYnField(null)} style={{ alignSelf: "center", background: "none", border: "none", color: "#6B7280", cursor: "pointer" }}>{ar ? "إلغاء" : "Cancel"}</button>
+            <button type="button" onClick={() => setYnField(null)} style={{ alignSelf: "center", background: "none", border: "none", color: "var(--nv-muted)", cursor: "pointer" }}>{ar ? "إلغاء" : "Cancel"}</button>
           </div>
         </Scrim>
       ) : null}
@@ -467,20 +467,20 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
         <Scrim onClose={() => setAdoptOpen(false)}>
           <div style={sheet(520)}>
             <strong style={{ fontSize: 15 }}>{ar ? "اعتماد توقيعك" : "Adopt your signature"}</strong>
-            <span style={{ fontSize: 11.5, color: "#6B7280" }}>{ar ? "اختر شكل الاسم. حقل التوقيع يُختم بتوقيعك الآمن وبصمة التراث، ويُسجَّل مع بريدك ووقت التوقيع." : "Pick a name style. The signature field is sealed with Secure Sign and the heritage fingerprint."}</span>
-            <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "#6B7280" }}>
+            <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "اختر شكل الاسم. حقل التوقيع يُختم بتوقيعك الآمن وبصمة التراث، ويُسجَّل مع بريدك ووقت التوقيع." : "Pick a name style. The signature field is sealed with Secure Sign and the heritage fingerprint."}</span>
+            <label style={{ display: "flex", flexDirection: "column", gap: 3, fontSize: 11, color: "var(--nv-muted)" }}>
               {ar ? "الاسم الكامل" : "Full name"}
               <input value={name} onChange={(event) => setName(event.target.value)} style={{ height: 36, padding: "0 10px", borderRadius: 9, border: `1px solid ${LINE}`, fontSize: 13, color: NAVY }} />
             </label>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {FONTS.map((font, index) => (
-                <button key={font} type="button" onClick={() => setFontIndex(index)} style={{ height: 62, borderRadius: 6, cursor: "pointer", border: `1px solid ${fontIndex === index ? NAVY : LINE}`, background: fontIndex === index ? "#EEF2F8" : "#fff" }}>
-                  <span style={{ font: `700 22px ${font}`, color: "#14284B" }}>{displayName || (ar ? "اسمك" : "Your name")}</span>
+                <button key={font} type="button" onClick={() => setFontIndex(index)} style={{ height: 62, borderRadius: 6, cursor: "pointer", border: `1px solid ${fontIndex === index ? NAVY : LINE}`, background: fontIndex === index ? "var(--nv-accent-soft)" : "var(--nv-card)" }}>
+                  <span style={{ font: `700 22px ${font}`, color: "var(--nv-ink)" }}>{displayName || (ar ? "اسمك" : "Your name")}</span>
                 </button>
               ))}
             </div>
             {stampPreview ? <img src={stampPreview} alt="" style={{ height: 56, objectFit: "contain", alignSelf: "flex-start" }} /> : null}
-            <span style={{ fontSize: 10.5, color: "#6B7280", lineHeight: 1.7 }}>
+            <span style={{ fontSize: 10.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
               {ar ? "باختيار «اعتماد وتوقيع» تقرّ بأن هذا التوقيع يمثّلك في هذا المستند." : "Adopting means this signature represents you on this document."}
             </span>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -516,7 +516,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
             <span style={{ fontSize: 12.5, lineHeight: 1.7 }}>{ar ? "يُختم المستند بختمك وتُرسل النسخة إلى بقية الأطراف. البصمة تُثبَّت مع الملف." : "Your seal is applied and the copy goes to the remaining parties. The fingerprint is stored with the file."}</span>
             <div style={{ display: "flex", gap: 6 }}>
               {RETRACT_DAY_OPTIONS.map((days) => (
-                <button key={days} type="button" onClick={() => setRetractDays(days)} style={{ flex: 1, height: 34, borderRadius: 6, border: `1px solid ${retractDays === days ? NAVY : LINE}`, background: retractDays === days ? NAVY : "#fff", color: retractDays === days ? "#fff" : NAVY, fontSize: 11, cursor: "pointer" }}>
+                <button key={days} type="button" onClick={() => setRetractDays(days)} style={{ flex: 1, height: 34, borderRadius: 6, border: `1px solid ${retractDays === days ? NAVY : LINE}`, background: retractDays === days ? NAVY : "var(--nv-card)", color: retractDays === days ? "#fff" : NAVY, fontSize: 11, cursor: "pointer" }}>
                   {retractDaysLabel(days, ar)}
                 </button>
               ))}
@@ -572,7 +572,7 @@ const ghostBtn = {
   padding: "0 16px",
   borderRadius: 10,
   border: `1px solid ${LINE}`,
-  background: "#fff",
+  background: "var(--nv-card)",
   color: "#4B5567",
   fontSize: 12.5,
   cursor: "pointer",
@@ -583,7 +583,7 @@ const zoomBtn = {
   height: 26,
   borderRadius: 4,
   border: `1px solid ${LINE}`,
-  background: "#fff",
+  background: "var(--nv-card)",
   cursor: "pointer",
   color: NAVY,
 };

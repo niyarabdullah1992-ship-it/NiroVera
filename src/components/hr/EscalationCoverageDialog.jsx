@@ -78,7 +78,7 @@ export default function EscalationCoverageDialog({
         alignItems: "center",
         justifyContent: "center",
         padding: 16,
-        background: "rgba(20,40,75,.28)",
+        background: "color-mix(in oklab, var(--nv-navy) 42%, transparent)",
         backdropFilter: "blur(6px)",
       }}
     >
@@ -88,7 +88,7 @@ export default function EscalationCoverageDialog({
           width: "100%",
           maxWidth: 360,
           borderRadius: 24,
-          border: "1px solid #E8EDF3",
+          border: "1px solid var(--nv-line)",
           background: CARD,
           boxShadow: "0 24px 56px rgba(20,40,75,.16)",
           padding: "18px 18px 16px",
@@ -103,7 +103,7 @@ export default function EscalationCoverageDialog({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "color-mix(in oklab, #14284B 8%, #fff)",
+              background: "color-mix(in oklab, var(--nv-ink) 8%, #fff)",
               color: NAVY,
               fontSize: 13,
               fontWeight: 700,
@@ -145,7 +145,7 @@ export default function EscalationCoverageDialog({
               width: 32,
               height: 32,
               borderRadius: 999,
-              border: "1px solid #E8EDF3",
+              border: "1px solid var(--nv-line)",
               background: CARD,
               color: MUTED,
               display: "inline-flex",
@@ -174,9 +174,9 @@ export default function EscalationCoverageDialog({
                   padding: "10px 12px",
                   borderRadius: 999,
                   border: on
-                    ? `1px solid color-mix(in oklab, ${ACCENT} 28%, #fff)`
-                    : "1px solid #E8EDF3",
-                  background: on ? "color-mix(in oklab, #1E9E63 8%, #fff)" : "#F7F8FA",
+                    ? "1px solid var(--nv-accent-border)"
+                    : "1px solid var(--nv-line)",
+                  background: on ? "var(--nv-accent-soft)" : "var(--nv-soft)",
                   cursor: "pointer",
                   fontFamily: "inherit",
                   textAlign: "start",
@@ -192,7 +192,7 @@ export default function EscalationCoverageDialog({
                     justifyContent: "center",
                     background: on ? CARD : SURFACE,
                     color: on ? ACCENT : MUTED,
-                    border: "1px solid #E8EDF3",
+                    border: "1px solid var(--nv-line)",
                     flexShrink: 0,
                   }}
                 >
@@ -222,7 +222,7 @@ export default function EscalationCoverageDialog({
                     alignItems: "center",
                     justifyContent: "center",
                     background: on ? ACCENT : CARD,
-                    border: on ? "none" : "1px solid #E2E8F0",
+                    border: on ? "none" : "1px solid var(--nv-line)",
                     color: "#fff",
                     flexShrink: 0,
                   }}
@@ -244,10 +244,10 @@ export default function EscalationCoverageDialog({
             border: "none",
             borderRadius: 999,
             background: selected.length ? ACCENT : CARD,
-            color: selected.length ? "#fff" : "#9F1239",
+            color: selected.length ? "#fff" : "var(--nv-bad-ink)",
             borderWidth: selected.length ? 0 : 1,
             borderStyle: "solid",
-            borderColor: "#F1F5F9",
+            borderColor: "var(--nv-line)",
             fontSize: 13,
             fontWeight: 600,
             cursor: "pointer",

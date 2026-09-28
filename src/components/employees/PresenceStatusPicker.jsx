@@ -2,7 +2,8 @@ import React from "react";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { setPresenceStatus } from "@/lib/store";
-import { isOnLeaveToday } from "@/lib/leaveTypes";
+import { isStatutoryOffDay } from "@/lib/leaveTypes";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import useAttendancePresence from "@/hooks/useAttendancePresence";
 
 export const PRESENCE_OPTIONS = [
@@ -16,8 +17,8 @@ export const PRESENCE_OPTIONS = [
 // overridden to "On Leave" (read-only) if they have an approved leave today.
 export default function PresenceStatusPicker({ user }) {
   const { t, lang } = useI18n();
-  const { company } = useAuth();
-  const onLeave = isOnLeaveToday(user);
+  const { company, data } = useAuth();
+  const onLeave = !!isStatutoryOffDay(user, new Date(), laborCalendarOf(data));
   const attendance = useAttendancePresence(user?.id);
   const current = PRESENCE_OPTIONS.find((o) => o.key === user.presenceStatus) || PRESENCE_OPTIONS[0];
   const checkedIn = !!attendance?.check_in_at && !attendance?.check_out_at;

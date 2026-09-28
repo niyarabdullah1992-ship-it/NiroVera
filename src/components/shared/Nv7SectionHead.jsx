@@ -30,35 +30,40 @@ export default function Nv7SectionHead({ kicker, title, hint, meta, tabs }) {
   return (
     <header
       className="nv7-section-head"
+      data-sec-head="1"
       style={{
         background: "linear-gradient(135deg,#0B3D27 0%,#0F5535 100%)",
         borderRadius: 12,
         padding: "14px 18px",
         boxShadow: "0 6px 18px rgba(6,61,38,.16)",
         display: "flex",
-        flexDirection: "column",
-        gap: 12,
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 14,
+        flexWrap: "wrap",
         color: "#fff",
         textAlign: "start",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: 1 }}>
-          {kicker ? (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#A9CDB8", fontWeight: 600, fontSize: 10.5 }}>
-              <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", display: "inline-block" }} />
-              {index ? <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{index}</span> : null}
-              {rest ? <span>{rest}</span> : (!index ? <span>{kicker}</span> : null)}
-            </span>
-          ) : null}
-          <h1 className="nv-h" style={{ margin: 0, fontFamily: "var(--font-heading)", fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.35 }}>{title}</h1>
-          {hint ? (
-            <div style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: "#C5DBCD", maxWidth: 680 }}>{hint}</div>
-          ) : null}
-        </div>
-        {meta ? <div style={{ flexShrink: 0, color: "#C5DBCD", fontSize: 12 }}>{meta}</div> : null}
+      <div style={{ display: "flex", flexDirection: "column", gap: 1, maxWidth: 680, minWidth: 0, flex: "1 1 240px" }}>
+        {kicker ? (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#A9CDB8", fontWeight: 600, fontSize: 10.5, letterSpacing: ".04em" }}>
+            <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", borderRadius: 8, display: "inline-block" }} />
+            {index ? <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{index}</span> : null}
+            {rest ? <span>{rest}</span> : (!index ? <span>{kicker}</span> : null)}
+          </span>
+        ) : null}
+        <h1 className="nv-h" style={{ margin: 0, fontFamily: "var(--font-heading)", fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.4, letterSpacing: "-.01em" }}>{title}</h1>
+        {hint ? (
+          <div style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: "#C5DBCD", maxWidth: 680 }}>{hint}</div>
+        ) : null}
       </div>
-      {tabs || null}
+      {(meta || tabs) ? (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8, minWidth: 0, maxWidth: "100%" }}>
+          {meta ? <div style={{ flexShrink: 0, color: "#C5DBCD", fontSize: 12 }}>{meta}</div> : null}
+          {tabs || null}
+        </div>
+      ) : null}
     </header>
   );
 }

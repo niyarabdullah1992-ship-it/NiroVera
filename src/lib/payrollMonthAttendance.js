@@ -3,6 +3,7 @@
 import { approvedOvertimeHoursForMonth } from "./attendanceDerivations.js";
 import { DAYS_PER_MONTH } from "./payrollDerivations.js";
 import { computeLeaveDays } from "./leaveDerivations.js";
+import { readPersonalAttendance } from "./facts/attendance.js";
 
 function rowDate(row) {
   return String(row?.date || row?.attendanceDate || row?.day || "").slice(0, 10);
@@ -44,7 +45,7 @@ function daysInMonth(start, end, month) {
 export function derivePayrollMonthAttendance(employeeId, month, data = {}) {
   const id = String(employeeId || "");
   const prefix = `${month}-`;
-  const rows = (data.personalAttendance || []).filter((row) =>
+  const rows = readPersonalAttendance(data).filter((row) =>
     rowEmployeeId(row) === id && rowDate(row).startsWith(prefix),
   );
   let present = 0;

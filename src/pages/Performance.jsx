@@ -2,21 +2,52 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
-import PerfScoreBoard from "@/components/performance/PerfScoreBoard";
 import PerfMineBoard from "@/components/performance/PerfMineBoard";
-import PerfRangeBar from "@/components/performance/PerfRangeBar";
-import PerformanceSectionFrame, { PERF_LINE, PERF_WHITE } from "@/components/performance/PerformanceSectionFrame";
+import PerfScoreBoard from "@/components/performance/PerfScoreBoard";
+import PerformanceSectionFrame, { PERF_BODY, PERF_LINE, PERF_MUTED, PERF_WHITE } from "@/components/performance/PerformanceSectionFrame";
 import usePerformanceTargets from "@/hooks/usePerformanceTargets";
 import { syncPointsFromCloud } from "@/lib/store";
-import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import { pageKicker } from "@/lib/moduleMeta";
 import { hcmCall } from "@/lib/hcmApi";
-import { CYCLE_STATUS_LABELS } from "@/lib/hcmDerivations";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { formatDayMonthYear } from "@/lib/dateFormat";
 import { countAr, isoDay, monthsInRange, rangePresets } from "@/lib/perfRange";
 import { canManagePerformance } from "@/lib/suiteRailFrame";
 import { useRailSide } from "@/lib/railSide";
+
+const LAWS = [
+  {
+    cite: "المادة 80",
+    ar: "الدرجة وحدها لا تكون سبباً للفصل بلا مكافأة نهاية الخدمة.",
+    en: "A score alone is never grounds for dismissal without the end-of-service award.",
+  },
+  {
+    cite: "المادة 61",
+    ar: "المعاملة واحدة، والأوزان نفسها لمن في الوظيفة نفسها.",
+    en: "Equal treatment: the same weights for the same job.",
+  },
+  {
+    cite: "قاعدة المنصة",
+    ar: "لا درجة بلا إثبات معتمد. كل نقطة ترجع إلى مهمة أو إثباتها أو سجل سلامة.",
+    en: "No score without approved proof. Every point traces to a task, its proof, or a safety record.",
+  },
+];
+
+function LawPanel({ ar }) {
+  return (
+    <details data-perf-card style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "3px solid #C8A45A", borderRadius: 14, padding: "12px 16px" }}>
+      <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "مرجع الوزارة" : "Ministry reference"}</summary>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+        {LAWS.map((row) => (
+          <div key={row.cite} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 10, alignItems: "start" }}>
+            <span className="nv-perf-chip" style={{ fontSize: 11, fontWeight: 700, color: PERF_BODY, background: "var(--nv-soft)", border: `1px solid ${PERF_LINE}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>{row.cite}</span>
+            <span style={{ fontSize: 12, color: PERF_MUTED, lineHeight: 1.75 }}>{ar ? row.ar : row.en}</span>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
 
 /** Performance is a derived judgment of approved proof between two dates. */
 export default function Performance() {
@@ -68,16 +99,7 @@ export default function Performance() {
   const empName = (id) => (data?.employees || []).find((e) => String(e.id) === String(id))?.name || "";
   const empStation = (id) => (data?.employees || []).find((e) => String(e.id) === String(id))?.stationId;
 
-  const archiveItems = useMemo(() => {
-    const closedCycles = (cycles || [])
-      .filter((cycle) => String(cycle.status) === "closed")
-      .map((cycle) => ({
-        id: `cyc_${cycle.id}`,
-        date: cycle.closedAt || cycle.to,
-        title: cycle.period || (ar ? "دورة تقييم" : "Review cycle"),
-        text: [cycle.from, cycle.to].filter(Boolean).join(" → "),
-        badge: ar ? (CYCLE_STATUS_LABELS.closed?.ar || "مقفلة") : (CYCLE_STATUS_LABELS.closed?.en || "Closed"),
-      }));
+  const goalItems = useMemo(() => {
     const doneGoals = scopedTargets
       .filter((tg) => tg.status === "completed")
       .filter((tg) => {
@@ -96,8 +118,8 @@ export default function Performance() {
           badge: ar ? "هدف منجز" : "Goal done",
         };
       });
-    return [...closedCycles, ...doneGoals];
-  }, [cycles, scopedTargets, headerScope, data?.stations, data?.employees, ar]);
+    return doneGoals;
+  }, [scopedTargets, headerScope, data?.stations, data?.employees, ar]);
 
   if (!data || !currentUser) return null;
   const valid = Boolean(from && to && from <= to);
@@ -115,49 +137,34 @@ export default function Performance() {
       title={face === "self" ? (ar ? "أدائي" : "My performance") : (ar ? "الأداء" : "Performance")}
       hint={face === "self"
         ? (ar
-          ? "درجتك تُشتقّ من إثباتك المعتمد بين هذين التاريخين."
-          : "Your score is derived from your approved proof between these two dates.")
+          ? "درجتك تُشتقّ من إثباتك المعتمد في الفترة التي تختارها، وتراها أنت ومديرك المباشر."
+          : "Your score is derived from your approved proof in the period you choose, and only you and your direct manager see it.")
         : (tab === "archive"
           ? (ar ? "دورات مقفلة وأهداف منجزة — مجمّعة حسب السنة ثم الشهر." : "Closed cycles and completed goals — grouped by year, then month.")
           : (ar
             ? "مقارنة الموظفين والفروع على الدرجة المشتقّة من الإثبات المعتمد بين تاريخين، مع قاعدة الحساب وأرشيف الدورات المقفلة."
             : "People and branches compared on the score derived from approved proof between two dates, with the scoring rule and the archive of closed cycles."))}
-      range={(face === "self" || tab !== "archive") ? (
-        <PerfRangeBar
-          ar={ar}
+    >
+      {face === "self" ? (
+        <PerfMineBoard lang={lang} employee={currentUser} data={data} />
+      ) : (
+        <PerfScoreBoard
+          key="manage"
+          lang={lang}
+          dir={dir}
           from={from}
           to={to}
           presets={presets}
           onFrom={setFrom}
           onTo={setTo}
           onPreset={(preset) => { setFrom(preset.from); setTo(preset.to); }}
-          note={rangeNote}
-          valid={valid}
+          tab={tab}
+          onTab={setTab}
+          cycles={cycles}
+          goalItems={goalItems}
         />
-      ) : null}
-      tabs={face === "manage" ? [
-        { value: "people", num: "01", label: ar ? "الموظفون" : "People" },
-        { value: "branches", num: "02", label: ar ? "الفروع" : "Branches" },
-        { value: "how", num: "03", label: ar ? "كيف تُحسب" : "How it is scored" },
-        { value: "archive", num: "04", label: ar ? "الأرشيف" : "Archive", count: archiveItems.length },
-      ] : []}
-      tool={tab}
-      onTool={setTab}
-    >
-      {face === "self" ? (
-        <PerfMineBoard lang={lang} from={from} to={to} employee={currentUser} data={data} />
-      ) : tab === "archive" ? (
-        <div style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, padding: 16 }}>
-          <RecordSmartArchive
-            items={archiveItems}
-            lang={lang === "ar" ? "ar" : "en"}
-            dir={dir}
-            emptyLabel={ar ? "لا دورات مقفلة ولا أهداف منجزة في هذا النطاق." : "No closed cycles or completed goals in this scope."}
-          />
-        </div>
-      ) : (
-        <PerfScoreBoard lang={lang} from={from} to={to} tab={tab} />
       )}
+      {face === "self" ? null : <LawPanel ar={ar} />}
     </PerformanceSectionFrame>
   );
 }

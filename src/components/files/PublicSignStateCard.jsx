@@ -113,7 +113,7 @@ export default function PublicSignStateCard({ ar, type, info, done, message, onR
   ];
   const rail = success ? ACCENT : rejected || deleted ? NAVY_FILL : type === "error" ? DANGER : NAVY_FILL;
   const coolingGrid = canRetract
-    ? { ...signProofGrid, border: "1px solid #FDE68A", background: "#FFFBEB" }
+    ? { ...signProofGrid, border: "1px solid var(--nv-line)", background: "var(--nv-warn-soft)" }
     : signProofGrid;
 
   return (
@@ -130,8 +130,8 @@ export default function PublicSignStateCard({ ar, type, info, done, message, onR
           <div style={{ ...coolingGrid, marginBottom: 16, borderRadius: 12 }}>
             {proof.map(([key, value]) => (
               <React.Fragment key={key}>
-                <span style={{ color: canRetract ? "#B45309" : MUTED }}>{key}</span>
-                <span style={{ color: canRetract && key === proof[0][0] ? "#B45309" : NAVY, fontWeight: 500, overflowWrap: "anywhere" }}>{value}</span>
+                <span style={{ color: canRetract ? "var(--nv-warn-ink)" : MUTED }}>{key}</span>
+                <span style={{ color: canRetract && key === proof[0][0] ? "var(--nv-warn-ink)" : NAVY, fontWeight: 500, overflowWrap: "anywhere" }}>{value}</span>
               </React.Fragment>
             ))}
           </div>
@@ -147,8 +147,8 @@ export default function PublicSignStateCard({ ar, type, info, done, message, onR
             </div>
           ) : null}
           {canRetract ? (
-            <div style={{ border: "1px solid #FDE68A", borderRadius: 12, background: "#FFFBEB", padding: 12, marginBottom: 16 }}>
-              <p style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: "#B45309" }}>
+            <div style={{ border: "1px solid var(--nv-line)", borderRadius: 12, background: "var(--nv-warn-soft)", padding: 12, marginBottom: 16 }}>
+              <p style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: "var(--nv-warn-ink)" }}>
                 {ar ? "خلال المهلة يمكنك سحب توقيعك فيعود الطلب بانتظارك ويُستعاد الملف السابق. بعد انتهائها تُثبَّت البصمة ولا تراجع." : "During the window you can withdraw; the request returns to awaiting you and the previous file is restored. After it closes the fingerprint is sealed and there is no retract."}
               </p>
               {showRetract ? (
@@ -157,20 +157,20 @@ export default function PublicSignStateCard({ ar, type, info, done, message, onR
                     value={retractReason}
                     onChange={(event) => setRetractReason(event.target.value)}
                     placeholder={ar ? "سبب التراجع (اختياري)" : "Reason for retracting (optional)"}
-                    style={{ ...textarea, minHeight: 72, marginTop: 10, background: "#fff" }}
+                    style={{ ...textarea, minHeight: 72, marginTop: 10, background: "var(--nv-card)" }}
                   />
                   <button
                     type="button"
                     onClick={() => onRetract?.(retractReason)}
                     disabled={retracting}
-                    style={{ ...signPrimaryBtn, background: DANGER, opacity: retracting ? 0.4 : 1, marginTop: 8 }}
+                    style={{ ...signPrimaryBtn, background: "var(--nv-bad-fill)", opacity: retracting ? 0.4 : 1, marginTop: 8 }}
                   >
                     {retracting ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <Undo2 style={{ width: 14, height: 14 }} />}
                     {ar ? "تأكيد سحب التوقيع" : "Confirm retraction"}
                   </button>
                 </>
               ) : (
-                <button type="button" onClick={() => setShowRetract(true)} style={{ ...signGhostBtn, marginTop: 8, color: "#B45309", borderColor: "#FDE68A" }}>
+                <button type="button" onClick={() => setShowRetract(true)} style={{ ...signGhostBtn, marginTop: 8, color: "var(--nv-warn-ink)", borderColor: "var(--nv-line)" }}>
                   <Undo2 style={{ width: 14, height: 14 }} />
                   {ar ? "سحب توقيعي" : "Retract my signature"}
                 </button>
@@ -178,7 +178,7 @@ export default function PublicSignStateCard({ ar, type, info, done, message, onR
             </div>
           ) : null}
           {retractError ? (
-            <p style={{ margin: "0 0 12px", background: "#FEF2F2", padding: "10px 12px", fontSize: 12, color: DANGER }}>{retractError}</p>
+            <p style={{ margin: "0 0 12px", background: "var(--nv-bad-soft)", padding: "10px 12px", fontSize: 12, color: DANGER }}>{retractError}</p>
           ) : null}
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {success && closed && !canRetract && finalUrl ? (

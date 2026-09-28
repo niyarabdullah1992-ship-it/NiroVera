@@ -629,13 +629,14 @@ export default function HireSeatDrawer({
 
   return createPortal(
     <div
+      className="nv-v7-portal"
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 480,
         display: "flex",
         justifyContent: "flex-start",
-        background: "rgba(15,26,48,.28)",
+        background: "rgba(11,61,39,.32)",
       }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose?.();
@@ -648,13 +649,13 @@ export default function HireSeatDrawer({
           maxWidth: "100vw",
           height: "100%",
           background: "var(--nv-card, #fff)",
-          borderInlineEnd: "1px solid var(--nv-line, #DFE3EA)",
-          boxShadow: "0 0 40px rgba(20,33,61,.18)",
+          borderInlineEnd: "1px solid var(--nv-line)",
+          boxShadow: "0 0 40px rgba(6,61,38,.16)",
           display: "flex",
           flexDirection: "column",
         }}
       >
-        <header style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "16px 18px", borderBottom: `1px solid ${BORDER}`, background: "var(--nv-hover, #F5F6FA)" }}>
+        <header style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "16px 18px", borderBottom: `1px solid ${BORDER}`, background: "var(--nv-hover)" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 10, letterSpacing: "0.14em", fontWeight: 600, color: MUTED }}>
               {ar ? "إغلاق السلسلة" : "Close the chain"}
@@ -680,7 +681,7 @@ export default function HireSeatDrawer({
               style={{
                 flex: 1,
                 height: 32,
-                borderRadius: 9,
+                borderRadius: 8,
                 border: `1px solid ${step === n ? BORDER : "transparent"}`,
                 background: step === n ? CARD : "transparent",
                 color: step === n ? INK : MUTED,
@@ -914,11 +915,11 @@ export default function HireSeatDrawer({
                     return (
                       <fieldset
                         key={group.id}
-                        style={{ margin: 0, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 10 }}
+                        style={{ margin: 0, border: `1px solid ${BORDER}`, borderRadius: 12, padding: "10px 12px 12px", display: "flex", flexDirection: "column", gap: 10 }}
                       >
                         <legend style={{ fontSize: 12, fontWeight: 600, padding: "0 6px" }}>{ar ? group.ar : group.en}</legend>
                         {identityGate?.error === "SAUDI_IDENTITY_MISMATCH" ? (
-                          <p style={{ margin: 0, fontSize: 11, color: "#B91C1C", lineHeight: 1.55 }}>
+                          <p style={{ margin: 0, fontSize: 11, color: "var(--nv-bad-ink)", lineHeight: 1.55 }}>
                             {ar ? identityGate.reason : identityGate.reasonEn}
                           </p>
                         ) : null}

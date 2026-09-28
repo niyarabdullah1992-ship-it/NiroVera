@@ -323,14 +323,14 @@ export default function Inventory() {
           <FinanceViewSwitch ar={ar} view={view} canManage={canManage} showSwitch={!railSide} onChange={setView} />
           <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
             <span style={{ fontSize: 10, color: MUTED }}>{ar ? "تحت الحدّ" : "Below minimum"}</span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: low ? "#8A6516" : "#137A49" }}>{low}</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: low ? "#8A6516" : "var(--nv-ok-ink)" }}>{low}</span>
           </div>
           <span style={{ width: 1, height: 30, background: "#EEF0F4" }} />
           <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
             <span style={{ fontSize: 10, color: MUTED }}>
               {view === MANAGE ? (ar ? "طلبات تنتظر" : "Waiting on you") : (ar ? "طلباتي المفتوحة" : "My open requests")}
             </span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: (view === MANAGE ? pending : myPending) ? "#8A6516" : "#137A49" }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: (view === MANAGE ? pending : myPending) ? "#8A6516" : "var(--nv-ok-ink)" }}>
               {view === MANAGE ? pending : myPending}
             </span>
           </div>
@@ -605,7 +605,7 @@ function InventoryTable({ headers, rows, empty, onRowClick }) {
           gap: 8,
           padding: "10px 16px",
           background: SURFACE,
-          borderBottom: "1px solid #E2E8F0",
+          borderBottom: "1px solid var(--nv-line)",
           fontSize: 10,
           fontWeight: 600,
           color: MUTED,
@@ -623,7 +623,7 @@ function InventoryTable({ headers, rows, empty, onRowClick }) {
             minHeight: 44,
             alignItems: "center",
             padding: "0 16px",
-            borderBottom: index === rows.length - 1 ? "none" : "1px solid #F1F5F9",
+            borderBottom: index === rows.length - 1 ? "none" : "1px solid var(--nv-line)",
             fontSize: 13,
             color: NAVY,
             cursor: onRowClick ? "pointer" : "default",

@@ -60,7 +60,7 @@ const headStyle = {
   gap: 12,
   padding: "11px 18px",
   background: SURFACE,
-  borderBottom: "1px solid #E2E8F0",
+  borderBottom: "1px solid var(--nv-line)",
   fontSize: 10,
   color: MUTED,
   fontWeight: 600,
@@ -71,7 +71,7 @@ const rowStyle = {
   gridTemplateColumns: COLUMNS,
   gap: 12,
   padding: "12px 18px",
-  borderBottom: "1px solid #F1F5F9",
+  borderBottom: "1px solid var(--nv-line)",
   alignItems: "start",
 };
 
@@ -198,16 +198,16 @@ export default function PayrollWpsBoard({
         ) : null}
       </div>
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
-          <div className="nv-paper" style={{ border: "1px solid #E2E8F0", padding: "14px 16px", background: CARD }}>
+          <div className="nv-paper" style={{ border: "1px solid var(--nv-line)", padding: "14px 16px", background: CARD }}>
             <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{ar ? "مهلة الإيداع" : "Deposit deadline"}</p>
-            <p style={{ margin: "8px 0 0", fontSize: 16, fontWeight: 600, color: late ? "#B45309" : NAVY }}>
+            <p style={{ margin: "8px 0 0", fontSize: 16, fontWeight: 600, color: late ? "var(--nv-warn-ink)" : NAVY }}>
               {deadline ? formatDate(deadline, lang, { year: "numeric", month: "long", day: "numeric" }) : "—"}
             </p>
-            {late && <p style={{ margin: "4px 0 0", fontSize: 10, color: "#B45309" }}>{ar ? "متأخر" : "Late"}</p>}
+            {late && <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--nv-warn-ink)" }}>{ar ? "متأخر" : "Late"}</p>}
           </div>
-          <div className="nv-paper" style={{ border: "1px solid #E2E8F0", padding: "14px 16px", background: CARD }}>
+          <div className="nv-paper" style={{ border: "1px solid var(--nv-line)", padding: "14px 16px", background: CARD }}>
             <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{ar ? "جاهزية الصفوف" : "Row readiness"}</p>
-            <p style={{ margin: "8px 0 0", fontSize: 16, fontWeight: 600, color: blockedCount ? "#B45309" : NAVY, lineHeight: 1.5 }}>
+            <p style={{ margin: "8px 0 0", fontSize: 16, fontWeight: 600, color: blockedCount ? "var(--nv-warn-ink)" : NAVY, lineHeight: 1.5 }}>
               {rows.length ? readiness : (ar ? "لا صفوف بعد" : "No rows yet")}
             </p>
             {rows.length > 0 && (
@@ -217,7 +217,7 @@ export default function PayrollWpsBoard({
         </div>
 
         {approved && !fileGate.ok && (
-          <p style={{ margin: 0, fontSize: 12, color: "#B45309", display: "flex", alignItems: "center", gap: 6 }}>
+          <p style={{ margin: 0, fontSize: 12, color: "var(--nv-warn-ink)", display: "flex", alignItems: "center", gap: 6 }}>
             <AlertTriangle style={{ width: 14, height: 14, flexShrink: 0 }} />
             {ar ? fileGate.reason : fileGate.reasonEn}
           </p>
@@ -305,7 +305,7 @@ export default function PayrollWpsBoard({
                 return (
                   <div
                     key={row.employeeId}
-                    style={{ display: "flex", flexDirection: "column", gap: 10, padding: "14px 16px", borderBottom: "1px solid #F1F5F9" }}
+                    style={{ display: "flex", flexDirection: "column", gap: 10, padding: "14px 16px", borderBottom: "1px solid var(--nv-line)" }}
                   >
                     {identity}
                     <div style={{ display: "grid", gap: 6 }}>

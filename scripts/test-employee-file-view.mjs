@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { employeeFileHoursView, employeeFileLaborWeek, employeeFileNightPanel, weekStartDate } from "../src/lib/shiftWeek.js";
-import { migratePreviewOwnerMorningRota } from "../src/lib/previewMigrations.js";
+import { migratePreviewGosiEstablishment, migratePreviewOwnerMorningRota } from "../src/lib/previewMigrations.js";
 import { collectRequestInbox, isCoworkerDutyInboxNotice } from "../src/lib/requestWorkspace.js";
 import {
   buildEmployeeFileView,
@@ -10,6 +10,7 @@ import {
   employeeFileDraftSeed,
   employeeFileHoursAlerts,
   employeeFileVoice,
+  contractAllowanceSplit,
   employeeWageSplit,
   hasPendingLeaveDecision,
   hasPendingLeaveFilePointer,
@@ -47,6 +48,10 @@ assert.equal(employeeWageSplit({
   baseSalary: 8000,
   allowances: 1500,
 }, { profile: { baseSalary: 8000, allowances: 1500, nightRemedy: { kind: "allowance", amount: 400, allowanceKind: "pay" } } }).night, 400);
+assert.equal(employeeWageSplit({ baseSalary: 7600, allowances: 2660 }).split, false, "a lump allowance is not split into 25% housing");
+assert.equal(contractAllowanceSplit({ allowances: 2660, contract: { housingAllowance: 1900, transport: 760 } }).from, "contract");
+assert.equal(contractAllowanceSplit({ allowances: 1500, contract: { housingAllowance: 1900, transportAllowance: 760 } }), null);
+assert.equal(employeeWageSplit({ baseSalary: 7600, allowances: 2660, contract: { housing: 1900, transport: 760 } }).housing, 1900);
 
 const service = serviceLabel("2020-01-15", true, "2026-09-12");
 assert.match(service, /سنوات|سنة|سنتان/);
@@ -141,6 +146,21 @@ assert.match(
   /مسلم/,
 );
 assert.equal(view.platforms.length, 5);
+const gosiWage = view.wageRows.find((row) => row.field === "gosiRegisteredAt");
+assert.equal(gosiWage.k, "تاريخ التسجيل في التأمينات");
+assert.equal(gosiWage.type, "date");
+assert.equal(gosiWage.val, "");
+assert.equal(gosiWage.v, "—");
+assert.equal(gosiWage.hasChip, false, "empty registration date has no old/new badge");
+const wageIndex = (field) => view.wageRows.findIndex((row) => row.field === field);
+assert.ok(wageIndex("otherAllowances") < wageIndex("gosiRegisteredAt"));
+assert.ok(wageIndex("gosiRegisteredAt") < view.wageRows.findIndex((row) => row.k === "الإجمالي الشهري"));
+const gosiPlatform = view.platforms.find((card) => card.name === "التأمينات الاجتماعية");
+const platformDate = gosiPlatform.rows.find((row) => row.field === "gosiRegisteredAt");
+assert.equal(platformDate.k, "تاريخ التسجيل في التأمينات");
+assert.equal(platformDate.field, gosiWage.field);
+assert.equal(platformDate.raw, "");
+assert.notEqual(gosiWage.val, "2020-01-15", "hire date must not fill the registration date");
 assert.equal(view.leaveGroups.length, 3);
 assert.equal(view.filed.length, 1);
 assert.equal(view.hasPendingLeave, false);
@@ -178,11 +198,50 @@ assert.ok(!view.facts.some((fact) => /محطة|فرع|المسمى/.test(fact.k)
 
 const seed = employeeFileDraftSeed(employee);
 assert.equal(seed.name, "عمر ناصر");
-const parted = splitEmployeeFileDraft({ ...seed, baseSalary: "11000", name: "عمر ن." });
+assert.equal(seed.gosiRegisteredAt, "");
+const parted = splitEmployeeFileDraft({ ...seed, baseSalary: "11000", gosiRegisteredAt: "2024-07-02", name: "عمر ن." });
 assert.equal(parted.profile.baseSalary, 11000);
+assert.equal(parted.profile.gosiRegisteredAt, "2024-07-02");
 assert.equal(parted.name, "عمر ن.");
 
+const oldFile = buildEmployeeFileView({
+  employee: { ...employee, profile: { ...employee.profile, gosiRegisteredAt: "2024-07-02", hireDate: "2026-02-01" } },
+  ar: true,
+  today: "2026-09-28",
+});
+const oldWage = oldFile.wageRows.find((row) => row.field === "gosiRegisteredAt");
+assert.equal(oldWage.val, "2024-07-02");
+assert.equal(oldWage.chip, "قديم");
+assert.equal(oldFile.platforms.find((card) => card.name === "التأمينات الاجتماعية").rows.find((row) => row.field === "gosiRegisteredAt").chip, "قديم");
+
+const newFile = buildEmployeeFileView({
+  employee: { ...employee, profile: { ...employee.profile, gosiRegisteredAt: "2024-07-03", hireDate: "2020-01-15" } },
+  ar: true,
+  today: "2026-09-28",
+});
+const newWage = newFile.wageRows.find((row) => row.field === "gosiRegisteredAt");
+assert.equal(newWage.chip, "جديد");
+assert.notEqual(newWage.chip, "قديم", "a hire date before the cutoff must not keep an on-or-after registration as old");
+
+const ownerEmpty = buildEmployeeFileView({
+  employee: { id: "emp_owner_preview", name: "نيار", profile: { nationality: "سعودي", baseSalary: 15500, hireDate: "2024-08-01" } },
+  ar: true,
+  today: "2026-09-28",
+});
+const ownerDate = ownerEmpty.wageRows.find((row) => row.field === "gosiRegisteredAt");
+assert.equal(ownerDate.val, "");
+assert.equal(ownerDate.hasChip, false);
+assert.equal(ownerEmpty.wage.base, 15500);
+
 const hoursSrc = readFileSync(new URL("../src/components/employees/HoursOnFile.jsx", import.meta.url), "utf8");
+const wageCardSrc = readFileSync(new URL("../src/components/employees/EmployeeFileFieldCard.jsx", import.meta.url), "utf8");
+const profileSrc = readFileSync(new URL("../src/pages/EmployeeProfile.jsx", import.meta.url), "utf8");
+assert.match(wageCardSrc, /PlatformDateField/);
+assert.match(wageCardSrc, /canEditDate \|\| editing/);
+assert.match(wageCardSrc, /registrationBadge/);
+assert.match(profileSrc, /canEditDate=\{canEditFile\}/);
+assert.match(profileSrc, /gosiRegisteredAt: next/);
+assert.match(profileSrc, /syncEmployeeSalaryToPayroll/);
 const railSrc = readFileSync(new URL("../src/components/employees/FileHoursAlertsRail.jsx", import.meta.url), "utf8");
 const cardSrc = readFileSync(new URL("../src/components/employees/DutyStripAlertCard.jsx", import.meta.url), "utf8");
 assert.match(hoursSrc, /rosterMineScopeCopy/, "file hours states the work-branch lock");
@@ -310,7 +369,6 @@ assert.equal(otherVoice.nightSubject, "عمر ناصر");
 const heroSrc = readFileSync(new URL("../src/components/employees/ProfileHero.jsx", import.meta.url), "utf8");
 assert.match(heroSrc, /employeeFileVoice/, "hero kicker uses viewer voice");
 assert.match(heroSrc, /FileSelfBadge/, "own file shows ملفي badge");
-const profileSrc = readFileSync(new URL("../src/pages/EmployeeProfile.jsx", import.meta.url), "utf8");
 assert.match(profileSrc, /voice\.title/, "page header is ملفي or ملف {name}");
 assert.match(profileSrc, /voice\.warnings/, "page kicker is تنبيهاتي or تنبيهاته");
 assert.match(railSrc, /employeeFileVoice/, "hours rail uses viewer voice");
@@ -378,6 +436,21 @@ assert.deepEqual(dirtyPreview.schedules[0].assignments["2026-09-16"].night, ["em
 assert.ok(!dirtyPreview.schedules[0].assignments["2026-09-17"].evening.includes("emp_owner_preview"));
 assert.ok(dirtyPreview.schedules[0].assignments["2026-09-17"].morning.includes("emp_owner_preview"));
 assert.equal(migratePreviewOwnerMorningRota(dirtyPreview), false, "owner morning pin is idempotent");
+
+const misplacedEstablishment = {
+  employees: [{ id: "emp_owner_preview", profile: { gosiNumber: "634647848", nationality: "سعودي" } }],
+};
+assert.equal(migratePreviewGosiEstablishment(misplacedEstablishment), true);
+assert.equal(misplacedEstablishment.gosiEstablishment, "634647848");
+assert.equal(misplacedEstablishment.employees[0].profile.gosiNumber, undefined);
+assert.equal(migratePreviewGosiEstablishment(misplacedEstablishment), false);
+const otherSubscriber = {
+  gosiEstablishment: "500000001",
+  employees: [{ id: "emp_owner_preview", profile: { gosiNumber: "1099" } }],
+};
+assert.equal(migratePreviewGosiEstablishment(otherSubscriber), false);
+assert.equal(otherSubscriber.employees[0].profile.gosiNumber, "1099");
+assert.equal(otherSubscriber.gosiEstablishment, "500000001");
 const pinnedNiyar = employeeFileHoursAlerts({
   employee: { id: "emp_owner_preview", name: "نيار عبدالله", stationId: "st", profile: {}, leaveRequests: [], otherRequests: [] },
   schedule: dirtyPreview.schedules[0],

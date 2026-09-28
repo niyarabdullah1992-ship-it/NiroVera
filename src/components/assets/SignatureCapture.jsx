@@ -18,7 +18,7 @@ export default function SignatureCapture({ label, value, onChange }) {
     if (!drawing.current) return;
     const ctx = canvasRef.current.getContext("2d");
     const p = point(e);
-    ctx.strokeStyle = "#0B1A3F"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    ctx.strokeStyle = "#111418"; ctx.lineWidth = 3; ctx.lineCap = "round";
     ctx.lineTo(p.x, p.y); ctx.stroke();
   };
   const end = () => { drawing.current = false; };

@@ -15,8 +15,8 @@ export function OrgPanel({ ar, fullscreen = false, embedded = false, children, s
               overflow: "hidden",
               padding: 0,
               boxSizing: "border-box",
-              border: "1px solid #D5DCD8",
-              background: "#fff",
+              border: "1px solid var(--nv-line)",
+              background: "var(--nv-card)",
               display: "flex",
               flexDirection: "column",
               height: 720,
@@ -63,7 +63,7 @@ export function OrgInspectorField({ label, children }) {
   );
 }
 
-export function OrgTreeCanvas({ viewportRef, gestures, fullscreen, children, embedded = false }) {
+export function OrgTreeCanvas({ viewportRef, gestures, fullscreen, children, embedded = false, center = true }) {
   return (
     <div
       ref={viewportRef}
@@ -77,16 +77,17 @@ export function OrgTreeCanvas({ viewportRef, gestures, fullscreen, children, emb
         maxHeight: fullscreen ? "none" : (embedded ? "none" : 720),
         overflow: "auto",
         cursor: "grab",
-        backgroundColor: embedded ? "#F7F9F8" : undefined,
-        backgroundImage: embedded ? "radial-gradient(#D7E0DB 1px, transparent 1px)" : undefined,
-        backgroundSize: embedded ? "22px 22px" : undefined,
-        border: embedded ? "1px solid #D5DCD8" : undefined,
+        backgroundColor: "var(--nv-org-canvas, #F7F9F8)",
+        backgroundImage: "radial-gradient(var(--nv-org-dot, #D7E0DB) 1px, transparent 1px)",
+        backgroundSize: "22px 22px",
+        border: embedded ? "1px solid var(--nv-line)" : undefined,
         borderRadius: embedded ? 0 : undefined,
         width: "100%",
         boxSizing: "border-box",
         padding: embedded ? 12 : undefined,
         display: embedded ? "grid" : undefined,
-        placeContent: embedded ? "safe center" : undefined,
+        placeContent: embedded && center ? "safe center" : undefined,
+        alignContent: embedded && !center ? "start" : undefined,
       }}
     >
       {children}
@@ -128,8 +129,8 @@ export function OrgSearchBox({ value, onChange, placeholder, hits, onPick, rende
 }
 
 export function OrgNotice({ tone = "warn", children }) {
-  const bg = tone === "warn" ? "#FFFBEB" : SURFACE;
-  const border = tone === "warn" ? "color-mix(in oklab, #C9A227 35%, #E2E8F0)" : BORDER;
+  const bg = tone === "warn" ? "var(--nv-warn-soft)" : SURFACE;
+  const border = tone === "warn" ? "var(--nv-warn-line)" : BORDER;
   return (
     <div className="nv-org-notice" style={{ background: bg, borderBottom: `1px solid ${border}`, color: NAVY }}>
       {children}

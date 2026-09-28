@@ -1,6 +1,6 @@
 /** Client mirror of base44/shared/orgDerivations.ts */
 
-import { workplaceEscalationManagers } from "./orgStructureLog.js";
+import { workplaceEscalationLine, workplaceEscalationManagers } from "./orgStructureLog.js";
 
 export const SCOPE = { NONE: 0, COMPANY: 1, OWN: 2, DELEGATED: 3, STATION: 4, REGION: 5 };
 export const SCOPE_CYCLE = [SCOPE.NONE, SCOPE.OWN, SCOPE.STATION, SCOPE.REGION, SCOPE.COMPANY];
@@ -408,6 +408,76 @@ export function deriveBranchEscalationChain(stationId, data) {
     chain.push(stepFromEmp(emp));
   }
   return chain;
+}
+
+/**
+ * Board line for one branch: custom order when that branch was edited,
+ * otherwise the org line (branch manager → parent → …) with vacant seats kept.
+ * Does not invent a person and does not replace the handler chain.
+ */
+export function branchEscalationCardLine(stationId, data) {
+  const sid = stationId ? String(stationId) : "";
+  const manual = manualBranchEscalationIds(sid, data);
+  if (manual && manual.length) {
+    return deriveBranchEscalationChain(sid, data).map((step) => ({
+      ...step,
+      vacant: false,
+      acting: false,
+      stationId: sid,
+    }));
+  }
+
+  const employees = Array.isArray(data?.employees) ? data.employees : [];
+  const empById = employeeIndex(employees);
+  const steps = [];
+  const seen = new Set();
+
+  const pushNamed = (emp, title, extra) => {
+    if (!emp) return false;
+    const id = String(emp.id || emp.employeeId || "");
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    steps.push({ ...stepFromEmp(emp, title), vacant: false, ...extra });
+    return true;
+  };
+
+  for (const rung of workplaceEscalationLine(data, sid)) {
+    if (rung.vacant) {
+      steps.push({
+        employeeId: "",
+        name: "",
+        title: rung.title || "",
+        role: "",
+        vacant: true,
+        acting: false,
+        stationId: rung.stationId || sid,
+      });
+      continue;
+    }
+    const emp = empById.get(String(rung.employeeId || ""));
+    if (!emp) {
+      steps.push({
+        employeeId: "",
+        name: "",
+        title: rung.title || "",
+        role: "",
+        vacant: false,
+        acting: Boolean(rung.acting),
+        stationId: rung.stationId || sid,
+      });
+      continue;
+    }
+    pushNamed(emp, rung.title, { acting: Boolean(rung.acting), stationId: rung.stationId || sid });
+  }
+
+  const owner = employees.find((e) => e.isOwner || e.role === "owner" || String(e.id) === String(data?.ownerId));
+  if (owner) pushNamed(owner, "المالك", { acting: false, stationId: "" });
+  return steps;
+}
+
+/** True when this branch already resolves to at least one named handler. */
+export function branchEscalationHasChain(stationId, data) {
+  return branchEscalationCardLine(stationId, data).some((step) => step.employeeId && !step.vacant);
 }
 
 /** Station ids whose escalation ladder includes this employee. */

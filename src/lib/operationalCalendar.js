@@ -12,7 +12,7 @@ import {
   visitorProofsOnly,
 } from "./visitorProof.js";
 import { hydrateEmployeesLeave } from "./leaveDerivations.js";
-import { approvedLeaveOnDay, isOnApprovedLeave, leaveTypeLabel, weekendLeavePeople } from "./leaveTypes.js";
+import { approvedLeaveOnDay, isStatutoryOffDay, leaveTypeLabel, weekendLeavePeople } from "./leaveTypes.js";
 import { citeLeaveType } from "./laborRules.js";
 import { LEAVE_CITE_STYLE, LEAVE_STYLE } from "./shiftWeek.js";
 import {
@@ -245,7 +245,8 @@ export function deriveDayRecord({
   } else {
     for (const employee of roster) {
       const request = approvedLeaveOnDay(employee, dateKey);
-      const onLeave = !!request || isOnApprovedLeave(employee, dateKey);
+      const off = isStatutoryOffDay(employee, dateKey);
+      const onLeave = !!off;
       const status = dayAttendanceStatus({
         employee,
         row: byEmployee[String(employee.id)],
@@ -258,7 +259,7 @@ export function deriveDayRecord({
       if (!state) continue;
       const row = byEmployee[String(employee.id)];
       const lateMinutes = Number(row?.late_minutes ?? row?.lateMinutes ?? 0) || 0;
-      const clash = state === "leave" && employeeScheduledOn(schedules, employee.id, dateKey);
+      const clash = state === "leave" && off?.kind !== "official" && employeeScheduledOn(schedules, employee.id, dateKey);
       people.push({
         id: employee.id,
         name: employee.name || employee.id,

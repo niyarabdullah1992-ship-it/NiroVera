@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { MUTED, NAVY } from "@/lib/platformStyles";
 
-const paper = { background: "#fff", border: "1px solid #E4E9E6", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" };
+const paper = { background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" };
 
 export default function EmployeeFileGrowthBoard({ view, ar }) {
   return (

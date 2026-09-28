@@ -58,7 +58,7 @@ export default function PayrollEosBoard({ items = [], employeeForItem, ar }) {
               gridTemplateColumns: "minmax(150px,1.3fr) 90px minmax(100px,1fr) minmax(110px,1fr) minmax(110px,1fr) minmax(110px,1fr)",
               gap: 10,
               padding: "12px 16px",
-              borderTop: "1px solid #F1F5F9",
+              borderTop: "1px solid var(--nv-line)",
               alignItems: "center",
               color: NAVY,
             }}
@@ -71,7 +71,7 @@ export default function PayrollEosBoard({ items = [], employeeForItem, ar }) {
             <span dir="ltr">{money(row.wage)}</span>
             <span dir="ltr">{money(row.first)}</span>
             <span dir="ltr" style={{ color: row.rest ? NAVY : "#c7ccd6" }}>{money(row.rest)}</span>
-            <span dir="ltr" style={{ fontWeight: 600, color: "#137a49" }}>{money(row.amt)}</span>
+            <span dir="ltr" style={{ fontWeight: 600, color: "var(--nv-ok-ink)" }}>{money(row.amt)}</span>
           </div>
         ))}
       </div>

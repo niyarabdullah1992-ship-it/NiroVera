@@ -44,7 +44,7 @@ export default function OpsDeleteModal({
 
         <div
           className="mt-3 rounded-xl border px-3 py-2.5 text-[11px] leading-6"
-          style={{ borderColor: "#FECACA", background: "#FEF2F2", color: "#991B1B" }}
+          style={{ borderColor: "var(--nv-line)", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)" }}
         >
           <strong style={{ display: "block", marginBottom: 4 }}>
             {ar ? "تنبيه — يبقى في السجل" : "Notice — stays in the record"}
@@ -89,7 +89,7 @@ export default function OpsDeleteModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[#E2E8F0] px-3 py-1.5 text-xs"
+            className="rounded-lg border border-[var(--nv-line)] px-3 py-1.5 text-xs"
             style={{ color: MUTED, background: CARD }}
           >
             {ar ? "إلغاء" : "Cancel"}
@@ -99,7 +99,7 @@ export default function OpsDeleteModal({
             disabled={!canSubmit}
             onClick={() => onConfirm?.({ reason: reason.trim(), ack: true })}
             className="rounded-lg px-3 py-1.5 text-xs text-white disabled:opacity-50"
-            style={{ background: "#B91C1C" }}
+            style={{ background: "var(--nv-bad-fill)" }}
           >
             {ar ? "تأكيد الحذف" : "Confirm delete"}
           </button>

@@ -60,7 +60,7 @@ export default function EmpPointsTab({ employee, data, lang = "ar" }) {
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }} dir={ar ? "rtl" : "ltr"}>
       <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
         <div style={{ flex: "1 1 200px", background: NAVY_FILL, borderRadius: "14px", padding: "20px", color: "#fff" }}>
-          <div style={{ fontSize: "11px", color: "#6EE7B7", letterSpacing: "0.1em", fontWeight: 600 }}>
+          <div style={{ fontSize: "11px", color: "#A9CDB8", letterSpacing: "0.1em", fontWeight: 600 }}>
             {ar ? "النقاط الممنوحة" : "GRANTED"}
           </div>
           <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "42px", fontWeight: 600, lineHeight: 1, marginTop: "10px", textAlign: "right" }}>
@@ -71,7 +71,7 @@ export default function EmpPointsTab({ employee, data, lang = "ar" }) {
           <div style={{ fontSize: "11px", color: MUTED, letterSpacing: "0.1em", fontWeight: 600 }}>
             {ar ? "معلّقة" : "HELD"}
           </div>
-          <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "42px", fontWeight: 600, lineHeight: 1, marginTop: "10px", color: "#B45309", textAlign: "right" }}>
+          <div dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "42px", fontWeight: 600, lineHeight: 1, marginTop: "10px", color: "var(--nv-warn-ink)", textAlign: "right" }}>
             {held}
           </div>
         </ChromeBox>
@@ -110,7 +110,7 @@ export default function EmpPointsTab({ employee, data, lang = "ar" }) {
                     gridTemplateColumns: "minmax(220px,1.8fr) 110px 90px 90px 170px",
                     gap: "12px",
                     padding: "13px 20px",
-                    borderBottom: "1px solid #F1F5F9",
+                    borderBottom: "1px solid var(--nv-line)",
                     alignItems: "center",
                   }}
                 >

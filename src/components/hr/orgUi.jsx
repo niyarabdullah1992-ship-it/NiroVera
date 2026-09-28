@@ -15,10 +15,11 @@ export const ORG_NODE_W = 250;
 export const ORG_NODE_H = 76;
 export const ORG_NODE_H_ACTING = 96;
 export const ORG_NODE_SHADOW = "0 1px 2px var(--nv-shadow2), 0 8px 20px var(--nv-shadow)";
+/** Package connector: 2px sage, not a hairline. */
 export const ORG_TREE_LINE = "#B9C7BF";
 
 /** HTML GC — one color per ladder step, repeating after the seventh. */
-export const ORG_GRADE_COLORS = ["#4B5567", "#5B6B85", "#2F7D57", "#137A49", "#9A6F12", "#8A6516", "#14213D"];
+export const ORG_GRADE_COLORS = ["#555C66", "#3C7D50", "#2F6B43", "#0F5535", "#0B3D27", "#C8A45A", "#8A5A12"];
 
 export function orgGradeColor(index) {
   const step = Number(index);
@@ -27,16 +28,64 @@ export function orgGradeColor(index) {
 }
 
 const TONE_DOT = {
-  ok: "var(--nv-ok-fill)",
-  acting: "var(--nv-ok-ink)",
-  warn: "var(--nv-warn-fill)",
-  block: "var(--nv-bad-ink)",
-  vacant: "var(--nv-warn-fill)",
+  ok: "#0B3D27",
+  acting: "#C8A45A",
+  warn: "#9B2335",
+  block: "#9B2335",
+  vacant: "#8A5A12",
 };
 
+/** Vacant seat meaning. Gold fill stays #FBF3E1 day and night. Dashed edge matches the package. */
+const VACANT_BG = "#FBF3E1";
+const VACANT_INK = "#8A5A12";
+const VACANT_LINE = "#EAD6A8";
+const VACANT_DASH = "#D9C08A";
+const VACANT_MARK = "#B7791F";
+const INITIALS_BG = "#E6F0EA";
+const INITIALS_INK = "#0B3D27";
+
+export function OrgLockMark({ size = 18, icon = 11, title = "وحدة ثابتة" }) {
+  return (
+    <span
+      title={title}
+      aria-hidden
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: size,
+        height: size,
+        borderRadius: size > 20 ? 7 : 5,
+        background: "#0B3D27",
+        border: "1px solid #0B3D27",
+        color: "#fff",
+        flex: "none",
+      }}
+    >
+      <svg width={icon} height={icon} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="7" width="10" height="7" rx="1.5" />
+        <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+        <circle cx="8" cy="10.5" r=".6" fill="currentColor" />
+      </svg>
+    </span>
+  );
+}
+
+function stripLock(value) {
+  return String(value || "").replace(/🔒/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** Drop the English Preview token. An Arabic branch name is kept whole. */
+function facePlace(value) {
+  const raw = String(value || "").trim();
+  if (!raw || /\bpreview\b/i.test(raw)) return "";
+  return raw;
+}
+
 /**
- * One org-tree node.
- * 1 name + أنت · 2 job title · 3 branch / number / grade · 4 avatar, count, ≡
+ * One org-tree seat.
+ * Band · initials · name · title · NV/date · reserved gold coord line.
+ * Occupied stays white (night #1C2922). Vacant stays gold.
  */
 export function OrgWorkforceNodeCard({
   name,
@@ -49,7 +98,7 @@ export function OrgWorkforceNodeCard({
   gradeIndex = -1,
   unit = "",
   unitTip = "",
-  unitNavy = false,
+  branchFace = "",
   byGrade = false,
   count = "",
   countOpen = false,
@@ -62,62 +111,59 @@ export function OrgWorkforceNodeCard({
   isMe = false,
   acting = false,
   actingText = "",
+  servesText = "",
+  hrLine = "",
   tone = "ok",
   vacant = false,
   avatarUrl = "",
   initials = "?",
-  meLabel = "أنت",
+  meLabel = "أنت هنا",
   detailsTitle = "ملف الموظف",
-  countTitle = "مباشرون / إجمالي — انقر للتفرّع",
+  countTitle = "مباشرون / إجمالي — افتح الأغصان",
   coordinate = "",
   kindLock = false,
+  bandLabel = "",
+  hireStamp = "",
+  hireTip = "",
+  vacantTag = "",
+  dense = false,
   style,
 }) {
-  const isBranch = kind === "branch" || kind === "company";
   const resolvedTone = acting ? "acting" : (vacant ? "vacant" : tone);
   const dot = TONE_DOT[resolvedTone] || TONE_DOT.ok;
-  const dashed = vacant && !acting;
-  const gradeColor = orgGradeColor(gradeIndex);
-  const branchLabel = unit || (kind === "person" ? "" : (kindTag || ""));
-  const chip = {
-    display: "inline-flex",
-    alignItems: "center",
-    height: 20,
-    maxWidth: "100%",
-    padding: "0 8px",
-    borderRadius: DS_CONTROL_RADIUS,
-    fontSize: 10.5,
-    fontWeight: 600,
-    lineHeight: 1,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    flex: "none",
-    boxSizing: "border-box",
-  };
-
-  const bandBg = isBranch
-    ? "linear-gradient(135deg,#0B3D27,#0F5535)"
-    : dashed
-      ? "#FBF3E1"
-      : acting
-        ? "#FBF3E1"
-        : resolvedTone === "block"
-          ? "#FBEBED"
-          : "#EEF4F0";
-  const bandColor = isBranch
-    ? "#E9D9AE"
-    : dashed || acting
-      ? "#8A5A12"
-      : resolvedTone === "block"
-        ? "#9B2335"
-        : "#0B3D27";
-  const bandLabel = dashed
-    ? "شاغرة"
-    : acting
-      ? (actingText || "تكليف ساري")
-      : (branchLabel || (isBranch ? "وحدة" : "مشغول"));
-  const tagText = isMe ? (meLabel || "أنت هنا") : (dashed ? "شاغرة" : (empLine || ""));
+  const empty = vacant && !acting;
+  const gradeColor = gradeIndex >= 0 ? orgGradeColor(gradeIndex) : "";
+  const locked = Boolean(kindLock) || /🔒/.test(String(kindTag || ""));
+  const face = stripLock(bandLabel)
+    || (empty ? "شاغرة" : "")
+    || (acting ? String(actingText || "").split("·")[0].trim() : "")
+    || stripLock(kindTag)
+    || facePlace(branchFace)
+    || facePlace(unit)
+    || "—";
+  const strong = empty ? (title || name || "—") : (name || "—");
+  const sub = empty ? "بانتظار التوظيف" : (title || "—");
+  const tagText = isMe
+    ? (meLabel || "أنت هنا")
+    : empty
+      ? (vacantTag || "شاغرة")
+      : dense
+        ? (empLine || "—")
+        : [empLine || "—", hireStamp].filter(Boolean).join(" · ");
+  const coord = String(coordinate || "").trim()
+    || (hrLine ? `خط متقطع · ${hrLine} · تنسيق الجدول` : "")
+    || (servesText ? `يخدم: ${servesText}` : "");
+  const bandBg = empty || acting
+    ? VACANT_BG
+    : resolvedTone === "warn" || resolvedTone === "block"
+      ? "var(--nv-bad-soft, #FBEBED)"
+      : "var(--nv-org-band, #EEF4F0)";
+  const bandInk = empty || acting
+    ? VACANT_INK
+    : resolvedTone === "warn" || resolvedTone === "block"
+      ? "var(--nv-bad-ink, #9B2335)"
+      : "var(--nv-org-band-ink, #0B3D27)";
+  const showGrade = !dense && Boolean(grade) && !/\bOP\d/i.test(grade) && !/preview/i.test(grade);
 
   return (
     <div
@@ -128,12 +174,14 @@ export function OrgWorkforceNodeCard({
       style={{
         userSelect: "none",
         position: "relative",
-        width: "100%",
-        minWidth: 0,
-        maxWidth: 300,
+        width: ORG_NODE_W,
+        maxWidth: "100%",
         boxSizing: "border-box",
-        background: dashed ? "#FFFCF5" : "#fff",
-        border: `1px ${dashed ? "dashed #D9C08A" : `solid ${selected ? "#0B3D27" : "#DCE3DF"}`}`,
+        background: empty ? VACANT_BG : "var(--nv-card, #fff)",
+        border: empty
+          ? `1px dashed ${VACANT_DASH}`
+          : `1px solid ${selected ? "#0B3D27" : "var(--nv-org-card-line, #DCE3DF)"}`,
+        ...( !empty && byGrade && gradeColor ? { borderTop: `3px solid ${gradeColor}` } : {}),
         borderRadius: 6,
         overflow: "hidden",
         boxShadow: isMe
@@ -143,15 +191,17 @@ export function OrgWorkforceNodeCard({
             : "0 1px 2px rgba(12,20,16,.05), 0 8px 20px rgba(12,20,16,.07)",
         cursor: "pointer",
         textAlign: "start",
+        transition: "transform .15s, box-shadow .15s",
         ...style,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, padding: "6px 12px", background: byGrade && grade ? gradeColor : bandBg }}>
-        <span title={gradeTip || unitTip || undefined} style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: byGrade && grade ? "#fff" : bandColor }}>
-          {bandLabel}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, padding: "6px 12px", minHeight: 30, boxSizing: "border-box", background: bandBg }}>
+        <span title={unitTip || gradeTip || actingText || undefined} style={{ flex: "1 1 auto", minWidth: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: bandInk }}>
+          {face}
         </span>
-        {grade && !isBranch ? (
-          <span style={{ ...chip, background: "#fff", color: "#555C66", border: "1px solid #DCE3DF", height: 18 }}>{grade}</span>
+        {locked ? <OrgLockMark /> : null}
+        {showGrade ? (
+          <span title={gradeTip || undefined} style={{ font: "600 10px 'IBM Plex Mono', monospace", padding: "0 6px", borderRadius: 999, background: empty ? "#fff" : "var(--nv-card, #fff)", color: "var(--nv-ink3, #555C66)", border: "1px solid var(--nv-org-card-line, #DCE3DF)", whiteSpace: "nowrap", flex: "none" }}>{grade}</span>
         ) : null}
       </div>
       <div style={{ display: "flex", gap: 11, alignItems: "center", padding: "12px 12px 6px" }}>
@@ -167,7 +217,7 @@ export function OrgWorkforceNodeCard({
             position: "relative",
             width: 42,
             height: 42,
-            borderRadius: isBranch ? 6 : "50%",
+            borderRadius: "50%",
             flex: "none",
             display: "inline-flex",
             alignItems: "center",
@@ -177,23 +227,22 @@ export function OrgWorkforceNodeCard({
             cursor: "pointer",
             padding: 0,
             overflow: "visible",
-            fontFamily: isBranch ? "'IBM Plex Mono', monospace" : "inherit",
-            ...(dashed
-              ? { border: "1.5px dashed #D9C08A", color: "#B7791F", background: "#fff" }
-              : isBranch
-                ? { border: "none", background: "#0B3D27", color: "#fff" }
-                : { border: "none", background: "#E6F0EA", color: "#0B3D27" }),
+            fontFamily: "inherit",
+            ...(empty
+              ? { border: `1.5px dashed ${VACANT_DASH}`, color: VACANT_MARK, background: "#fff" }
+              : { border: "none", background: INITIALS_BG, color: INITIALS_INK }),
           }}
         >
-          {avatarUrl
+          {avatarUrl && !empty
             ? <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} />
-            : (vacant ? "＋" : initials)}
-          {!isBranch && !dashed ? (
-            <span aria-hidden style={{ position: "absolute", bottom: -1, insetInlineEnd: -1, width: 11, height: 11, borderRadius: "50%", border: "2px solid #fff", background: dot }} />
+            : (empty ? "＋" : initials)}
+          {!empty ? (
+            <span aria-hidden style={{ position: "absolute", bottom: -1, insetInlineEnd: -1, width: 11, height: 11, borderRadius: "50%", border: "2px solid var(--nv-card, #fff)", background: dot }} />
           ) : null}
         </button>
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1, gap: 2 }}>
           <strong
+            title={strong}
             onClick={(event) => {
               if (!onNameClick) return;
               event.stopPropagation();
@@ -201,7 +250,7 @@ export function OrgWorkforceNodeCard({
             }}
             style={{
               cursor: onNameClick ? "pointer" : "inherit",
-              color: dashed ? "#8A5A12" : "#111418",
+              color: empty ? VACANT_INK : "var(--nv-ink, #111418)",
               fontSize: 13.5,
               lineHeight: 1.35,
               fontWeight: 700,
@@ -210,35 +259,31 @@ export function OrgWorkforceNodeCard({
               whiteSpace: "nowrap",
             }}
           >
-            {dashed ? (title || name || "—") : (name || "—")}
+            {strong}
           </strong>
-          <span style={{ fontSize: 11.5, color: "#555C66", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {dashed ? "بانتظار التوظيف" : (title || "—")}
+          <span title={sub} style={{ fontSize: 11.5, color: "var(--nv-ink3, #555C66)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {sub}
           </span>
-          {kindLock && kindTag ? (
-            <span title="وحدة ثابتة" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 700, color: "#0B3D27" }}>
-              {kindTag}
-              <span aria-hidden style={{ fontSize: 11, lineHeight: 1 }}>🔒</span>
-            </span>
-          ) : null}
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, padding: "6px 12px 10px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, padding: "6px 12px 10px", minHeight: 38, boxSizing: "border-box" }}>
         <span
           dir={isMe ? undefined : "ltr"}
+          title={hireTip || undefined}
           style={{
             ...ORG_MONO,
+            minWidth: 0,
             direction: isMe ? undefined : "ltr",
             unicodeBidi: "isolate",
             fontSize: 10.5,
             fontWeight: isMe ? 700 : 500,
-            color: isMe || dashed ? "#8A5A12" : "#555C66",
+            color: empty || isMe ? VACANT_INK : "var(--nv-ink3, #555C66)",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
           }}
         >
-          {tagText}
+          {tagText || "—"}
         </span>
         {count ? (
           <button
@@ -261,20 +306,21 @@ export function OrgWorkforceNodeCard({
               cursor: onCountClick ? "pointer" : "default",
               whiteSpace: "nowrap",
               fontFamily: "inherit",
+              flex: "none",
               ...(countOpen
                 ? { background: "#0B3D27", color: "#fff", border: "1px solid #0B3D27" }
-                : { background: "#EEF4F0", color: "#0B3D27", border: "1px solid #CFE0D6" }),
+                : { background: "var(--nv-org-band, #EEF4F0)", color: "var(--nv-org-band-ink, #0B3D27)", border: "1px solid #CFE0D6" }),
             }}
           >
             {count} {countOpen ? "▴" : "▾"}
           </button>
         ) : null}
       </div>
-      {coordinate ? (
-        <div style={{ margin: "0 12px 10px", paddingTop: 6, borderTop: "1px dashed #EAD6A8", fontSize: 10.5, lineHeight: 1.6, color: "#8A5A12" }}>
-          {coordinate}
+      {dense ? null : (
+        <div title={coord || undefined} style={{ margin: "0 12px 10px", paddingTop: 6, borderTop: "1px dashed #EAD6A8", fontSize: 10.5, lineHeight: 1.6, color: VACANT_INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minHeight: 18 }}>
+          {coord || "\u00a0"}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
@@ -390,7 +436,7 @@ export function orgKindChip(on = false) {
     fontWeight: 600,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    border: `1px solid ${on ? "var(--nv-box, #C3CBD8)" : "#ECEEF2"}`,
+    border: `1px solid ${on ? "var(--nv-box, #C3CBD8)" : "var(--nv-line)"}`,
     background: on ? "var(--nv-soft)" : "transparent",
     color: on ? "var(--nv-ink)" : "var(--nv-muted)",
   };
@@ -405,7 +451,7 @@ export function orgPrimaryBtn() {
     gap: 6,
     height: 28,
     padding: "0 11px",
-    borderRadius: 9,
+    borderRadius: 8,
     border: "1px solid var(--nv-navy)",
     background: "var(--nv-navy)",
     color: "#fff",
@@ -425,7 +471,7 @@ export function orgGhostBtn() {
     gap: 6,
     height: 28,
     padding: "0 11px",
-    borderRadius: 9,
+    borderRadius: 8,
     border: "1px solid var(--nv-line)",
     background: "var(--nv-card)",
     color: "var(--nv-ink)",

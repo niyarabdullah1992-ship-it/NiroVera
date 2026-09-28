@@ -1,8 +1,12 @@
 import { isSigningDeskNotice } from "./notificationKind.js";
+import { assignNationality, assignWageFields } from "./facts/index.js";
+import { canonicalizePlatformFacts, migratePlatformFactHomes } from "./facts/migrate.js";
+import { derivePayrollWagePatch } from "./payrollWageSync.js";
 import { seatCompanyHeadOnRoot } from "./peopleTreeGraph.js";
 import { addDays, weekDateKeys, weekKeyFromDate, weekStartDate } from "./shiftWeek.js";
 import { companyRootStation } from "./stationTree.js";
 export { applyPreviewStationPin, migratePreviewStationPins, PREVIEW_STATION_PINS } from "./previewStationPins.js";
+export { migratePlatformFactHomes, canonicalizePlatformFacts };
 
 /** Preview-only clock/proof seeds. Kept out of store↔localPreview to avoid a cycle. */
 
@@ -537,7 +541,8 @@ export function seedPreviewWrittenConsent(data, today = previewTodayKey()) {
 
 function ensurePreviewWage(person, wage) {
   if (!person || Number(person.profile?.baseSalary) > 0) return false;
-  person.profile = { ...(person.profile || {}), baseSalary: wage };
+  person.profile = person.profile && typeof person.profile === "object" ? person.profile : {};
+  assignWageFields(person.profile, { baseSalary: wage });
   return true;
 }
 
@@ -814,6 +819,62 @@ const PREVIEW_GENDER_BY_NAME = {
   "نورة القحطاني": "female",
   "حسن العمري": "male",
 };
+
+/**
+ * The preview company head is the Saudi owner of this establishment.
+ * Nationality alone is enough for the employee GOSI share. A national ID is never invented.
+ * Open payroll lines then store housing, transport, other allowances, overtime, and that share.
+ */
+export function migratePreviewOwnerGosiIdentity(data) {
+  const owner = (data?.employees || []).find((row) => row.id === "emp_owner_preview");
+  if (!owner) return false;
+  let changed = false;
+  const profile = owner.profile && typeof owner.profile === "object" ? owner.profile : (owner.profile = {});
+  if (!String(owner.nationality || profile.nationality || "").trim()) {
+    assignNationality(owner, "سعودي");
+    changed = true;
+  }
+  const openMonth = previewTodayKey().slice(0, 7);
+  for (const run of data.payrollRuns || []) {
+    if (String(run.month || "") < openMonth) continue;
+    for (const item of run.items || []) {
+      if (String(item.employeeId) !== String(owner.id) || item.paid || item.settledNet != null) continue;
+      const patch = derivePayrollWagePatch(item, owner, { otDecisions: data.otDecisions, month: run.month });
+      if (!patch) continue;
+      const snap = (row) => JSON.stringify({
+        base: row.base,
+        allowances: row.allowances,
+        housingAllowance: row.housingAllowance,
+        transportAllowance: row.transportAllowance,
+        otherAllowances: row.otherAllowances,
+        isSaudi: row.isSaudi,
+        gosiEmployee: row.gosiEmployee,
+        overtimeHours: row.overtimeHours,
+        overtimeHoursYtd: row.overtimeHoursYtd,
+      });
+      const before = snap(item);
+      Object.assign(item, patch.fields);
+      if (patch.fields.housingAllowance == null) {
+        delete item.housingAllowance;
+        delete item.transportAllowance;
+        delete item.otherAllowances;
+      }
+      if (snap(item) !== before) changed = true;
+    }
+  }
+  return changed;
+}
+
+/**
+ * 634647848 is this preview company's GOSI establishment subscription
+ * (رقم اشتراك المنشأة), not an employee subscriber number (رقم المشترك).
+ * A trial wrote it on emp_owner_preview.profile.gosiNumber. Move it once
+ * onto the company field the ministry board already saves, and clear the
+ * employee field only when it still holds that exact value.
+ */
+export function migratePreviewGosiEstablishment(data) {
+  return migratePlatformFactHomes(data);
+}
 
 /** Preview files were seeded without gender, so maternity/paternity gates could not tell Omar from Noura. */
 export function migratePreviewEmployeeGenders(data) {

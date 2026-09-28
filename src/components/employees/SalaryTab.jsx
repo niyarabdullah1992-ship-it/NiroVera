@@ -6,7 +6,10 @@ import { base44 } from "@/api/base44Client";
 import { Loader2, Banknote, Stamp } from "lucide-react";
 import { normalizeLocalizedNumber } from "@/lib/localizedNumber";
 import { MUTED, NAVY, NAVY_FILL, ui, field } from "@/lib/platformStyles";
-import { isSaudiForNitaqat } from "@/lib/complianceDerivations";
+import { deriveSaudiStatus } from "@/lib/complianceDerivations";
+import { employeeWageSplit } from "@/lib/employeeFileView";
+import { assignWageFields, readGosiRegisteredAt, readWageFields } from "@/lib/facts";
+import { formatGosiPercent, gosiLine, GOSI_NEW_RATE_UNCONFIRMED_AR, GOSI_NEW_RATE_UNCONFIRMED_EN } from "@/lib/payrollDerivations";
 import IdentityCard from "@/components/shared/IdentityCard";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
@@ -21,36 +24,68 @@ export default function SalaryTab({ employee, companyId, canEdit }) {
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
   const profile = employee.profile || {};
+  const wageFields = readWageFields(employee);
   const [form, setForm] = useState({
-    baseSalary: profile.baseSalary || "",
-    allowances: profile.allowances || "",
+    baseSalary: wageFields.baseSalary || "",
+    housingAllowance: wageFields.housingAllowance || "",
+    transportAllowance: wageFields.transportAllowance || "",
+    otherAllowances: wageFields.otherAllowances || "",
+    allowances: wageFields.allowances || "",
     currency: profile.currency || "SAR",
   });
 
-  const base = Number(profile.baseSalary) || 0;
-  const allow = Number(profile.allowances) || 0;
+  const wage = employeeWageSplit(profile, employee);
+  const base = wage.base;
+  const allow = wage.split ? (wage.housing + wage.transport + wage.other) : (Number(profile.allowances) || 0);
   const currency = profile.currency || "SAR";
-  const saudi = isSaudiForNitaqat({ ...profile, nationalId: profile.nationalId || employee.nationalId, nationality: profile.nationality || employee.nationality });
-  const gosiEmp = saudi ? Math.round(base * 0.0975) : 0;
-  const net = base + allow - gosiEmp;
+  const identity = deriveSaudiStatus(employee);
+  const unknown = !identity.countable || identity.mismatch || identity.unresolved || identity.saudi == null;
+  const saudi = !unknown && identity.saudi === true;
+  const quote = gosiLine(
+    { base: wage.base, allowances: wage.allowances },
+    { saudi, registeredAt: readGosiRegisteredAt(employee) },
+  );
+  const gosiEmp = saudi && !quote.blocked ? quote.employeeShare : 0;
+  const net = wage.base + wage.allowances - gosiEmp;
+  const className = quote.subscriberClass === "old"
+    ? (ar ? "قديم" : "old")
+    : quote.subscriberClass === "new"
+      ? (ar ? "جديد" : "new")
+      : "";
+  const gosiLabel = quote.blocked
+    ? (ar ? GOSI_NEW_RATE_UNCONFIRMED_AR : GOSI_NEW_RATE_UNCONFIRMED_EN)
+    : (ar
+      ? `التأمينات الاجتماعية — حصة الموظف ${formatGosiPercent(quote.employeeRate, true)}${className ? ` · ${className}` : ""}`
+      : `GOSI — employee share ${formatGosiPercent(quote.employeeRate, false)}${className ? ` · ${className}` : ""}`);
 
   const rows = [
     { label: ar ? "الراتب الأساسي" : "Base salary", value: money(base) },
-    { label: ar ? "البدلات" : "Allowances", value: money(allow) },
+    { label: ar ? "بدل السكن" : "Housing", value: money(wage.housing) },
+    { label: ar ? "بدل النقل" : "Transport", value: money(wage.transport) },
+    { label: ar ? "بدلات أخرى" : "Other allowances", value: money(wage.other) },
+    ...(!wage.split && allow > 0 ? [{ label: ar ? "البدلات" : "Allowances", value: money(allow) }] : []),
     saudi
-      ? { label: ar ? "التأمينات الاجتماعية — حصة الموظف 9.75%" : "GOSI — employee share 9.75%", value: `-${money(gosiEmp)}` }
-      : { label: ar ? "التأمينات — أخطار مهنية 2% على صاحب العمل" : "GOSI — 2% occupational hazards, employer-paid", value: ar ? "لا خصم على الموظف" : "No employee deduction" },
+      ? { label: gosiLabel, value: quote.blocked ? (ar ? "لا حسم حتى تُثبت النسبة" : "No withholding until the rate is confirmed") : `-${money(gosiEmp)}` }
+      : unknown
+        ? { label: ar ? "التأمينات الاجتماعية" : "GOSI", value: ar ? "لا حسم قبل ثبوت الجنسية" : "No share until nationality is known" }
+        : { label: ar ? "التأمينات — أخطار مهنية 2% على صاحب العمل" : "GOSI — 2% occupational hazards, employer-paid", value: ar ? "لا خصم على الموظف" : "No employee deduction" },
   ];
 
   const save = () => {
     const baseSalary = Number(normalizeLocalizedNumber(form.baseSalary));
+    const housingAllowance = Number(normalizeLocalizedNumber(form.housingAllowance || 0));
+    const transportAllowance = Number(normalizeLocalizedNumber(form.transportAllowance || 0));
+    const otherAllowances = Number(normalizeLocalizedNumber(form.otherAllowances || 0));
     const allowances = Number(normalizeLocalizedNumber(form.allowances || 0));
     const cur = String(form.currency || "").trim().toUpperCase();
-    if (!Number.isFinite(baseSalary) || baseSalary <= 0 || !Number.isFinite(allowances) || allowances < 0 || !/^[A-Z]{3}$/.test(cur)) {
+    const partsOk = [housingAllowance, transportAllowance, otherAllowances, allowances].every((n) => Number.isFinite(n) && n >= 0);
+    if (!Number.isFinite(baseSalary) || baseSalary <= 0 || !partsOk || !/^[A-Z]{3}$/.test(cur)) {
       setError(ar ? "أدخل راتبًا أساسيًا موجبًا وبدلات غير سالبة ورمز عملة من 3 أحرف." : "Enter a positive base salary, non-negative allowances, and a 3-letter currency code.");
       return;
     }
-    updateEmployeeProfile(companyId, employee.id, { baseSalary, allowances, currency: cur });
+    const wagePatch = {};
+    assignWageFields(wagePatch, { baseSalary, housingAllowance, transportAllowance, otherAllowances, allowances });
+    updateEmployeeProfile(companyId, employee.id, { ...wagePatch, currency: cur });
     syncEmployeeSalaryToPayroll(companyId, employee.id);
     setError("");
     setEditing(false);
@@ -98,14 +133,14 @@ export default function SalaryTab({ employee, companyId, canEdit }) {
         <div style={{ marginBottom: 14 }}>
           <LaborArticleCite ruleId="payroll.deduction.capRatio" ar={ar} showText />
         </div>
-        {saudi ? (
+        {saudi && !quote.blocked ? (
           <div style={{ marginBottom: 14 }}>
-            <LaborArticleCite ruleId="compliance.gosi.employeeRate" ar={ar} showText />
+            <LaborArticleCite ruleId={quote.subscriberClass === "new" ? "compliance.gosi.newAnnuityRate" : "compliance.gosi.employeeRate"} ar={ar} showText />
           </div>
         ) : null}
         {editing ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "11px", marginTop: "16px" }}>
-            {[["baseSalary", ar ? "الراتب الأساسي" : "Base salary"], ["allowances", ar ? "البدلات" : "Allowances"], ["currency", ar ? "العملة" : "Currency"]].map(([key, label]) => (
+            {[["baseSalary", ar ? "الراتب الأساسي" : "Base salary"], ["housingAllowance", ar ? "بدل السكن" : "Housing"], ["transportAllowance", ar ? "بدل النقل" : "Transport"], ["otherAllowances", ar ? "بدلات أخرى" : "Other allowances"], ["allowances", ar ? "البدلات" : "Allowances"], ["currency", ar ? "العملة" : "Currency"]].map(([key, label]) => (
               <div key={key}>
                 <div style={{ fontSize: "11px", color: MUTED, marginBottom: "6px" }}>{label}</div>
                 <input
@@ -120,7 +155,7 @@ export default function SalaryTab({ employee, companyId, canEdit }) {
                 />
               </div>
             ))}
-            {error && <div style={{ fontSize: "12px", color: "#DC2626" }}>{error}</div>}
+            {error && <div style={{ fontSize: "12px", color: "var(--nv-bad-ink)" }}>{error}</div>}
           </div>
         ) : !canEdit && !profile.baseSalary ? (
           <div style={{ marginTop: "16px", fontSize: "13px", color: MUTED }}>—</div>
@@ -135,7 +170,7 @@ export default function SalaryTab({ employee, companyId, canEdit }) {
                   justifyContent: "space-between",
                   gap: "12px",
                   paddingBottom: "11px",
-                  borderBottom: "1px solid #F1F5F9",
+                  borderBottom: "1px solid var(--nv-line)",
                 }}
               >
                 <span style={{ fontSize: "13px", color: MUTED }}>{r.label}</span>
@@ -156,7 +191,7 @@ export default function SalaryTab({ employee, companyId, canEdit }) {
           </div>
         )}
 
-        <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: "1px solid #F1F5F9" }}>
+        <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: "1px solid var(--nv-line)" }}>
           <div style={{ fontSize: "11px", color: MUTED }}>
             {ar ? "الآيبان — حماية الأجور (مدد)" : "IBAN — wage protection (Mudad)"}
           </div>

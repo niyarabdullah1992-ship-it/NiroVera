@@ -32,8 +32,9 @@ export default function WrittenConsentInbox({ employees, currentUser, ar, refres
   const openCount = openWrittenConsentCount(scoped);
   const [filter, setFilter] = useState(openCount ? "mine" : "all");
   const [busyId, setBusyId] = useState("");
+  const [ack, setAck] = useState({});
 
-  const loadPaper = async (item, picked, { accept = false } = {}) => {
+  const loadPaper = async (item, picked) => {
     if (!picked || !company?.id) return;
     setBusyId(item.id);
     try {
@@ -49,12 +50,6 @@ export default function WrittenConsentInbox({ employees, currentUser, ar, refres
       if (!result.ok) {
         toast({ description: ar ? result.reason : result.reasonEn, variant: "destructive" });
         return;
-      }
-      if (accept) {
-        const saved = answerWrittenConsent(company.id, item.employee.id, item.id, { accept: true, ack: true, paper });
-        if (!saved.ok) {
-          toast({ description: ar ? saved.reason : saved.reasonEn, variant: "destructive" });
-        }
       }
       refresh?.();
     } catch {
@@ -93,36 +88,40 @@ export default function WrittenConsentInbox({ employees, currentUser, ar, refres
           ? (ar ? NIGHT_HINT_AR : "After three months as a night worker a written consent is required, with the right to withdraw at any time, or the work rotates to ordinary hours for at least a month.")
           : (ar ? CONSENT_MINISTRY_HINT_AR : CONSENT_MINISTRY_HINT_EN);
         const mineRow = item.employee?.id === currentUser?.id;
+        const acked = !!ack[item.id];
+        const hasPaper = !!item.paper?.name;
+        const canAgree = hasPaper && acked && busyId !== item.id;
         return (
           <section
             key={item.id}
             style={{
               background: CARD,
-              border: "1px solid #ECD9A8",
+              border: "1px solid var(--nv-line)",
               borderRadius: 14,
-              boxShadow: "0 1px 2px rgba(20,33,61,.04), 0 10px 26px rgba(20,33,61,.045)",
+              boxShadow: "0 1px 2px rgba(12,20,16,.04), 0 10px 26px rgba(12,20,16,.05)",
               padding: "14px 18px",
-              display: "grid",
-              gridTemplateColumns: "auto minmax(0,1fr) auto",
-              gap: 14,
-              alignItems: "center",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              alignItems: "stretch",
             }}
           >
-            <span aria-hidden style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--nv-warn-fill, #C9962B)" }} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <strong style={{ fontSize: 13, color: INK }}>{title}</strong>
-                {cite ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 7px", borderRadius: 999, fontSize: 10, fontWeight: 600, color: "#137A49", background: "#F2FAF6", border: "1px solid #BFE6D2" }}>{cite}</span>
-                ) : null}
-              </div>
-              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
-                {hint}{from ? ` ${ar ? "من" : "From"} ${from}.` : ""}
-              </span>
-            </div>
+            <strong style={{ fontSize: 14, color: INK, lineHeight: 1.45 }}>{title}</strong>
+            {cite ? (
+              <span style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, color: "#2F6B43", background: "#E6F2EA", border: "1px solid #BCDFCB" }}>{cite}</span>
+            ) : null}
+            <span style={{ fontSize: 12.5, color: MUTED, lineHeight: 1.75 }}>
+              {hint}{from ? ` ${ar ? "من" : "From"} ${from}.` : ""}
+            </span>
+            <span style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", minHeight: 22, padding: "2px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, color: "#8A5A12", background: "#FBF3E1", border: "1px solid #E7D3A1" }}>
+              {ar ? "بانتظار موافقتك" : "Awaiting your consent"}
+            </span>
             {mineRow ? (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <label className="nv-attach nv-attach--inline">
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {hasPaper ? (
+                  <span style={{ fontSize: 12, color: INK }}>{ar ? `النسخة الموقّعة: ${item.paper.name}` : `Signed copy: ${item.paper.name}`}</span>
+                ) : null}
+                <label className="nv-attach nv-attach--inline" style={{ alignSelf: "flex-start" }}>
                   {busyId === item.id ? (ar ? "جارٍ الحفظ…" : "Saving…") : (ar ? "أرفق النسخة الموقّعة" : "Attach the signed copy")}
                   <input
                     type="file"
@@ -131,19 +130,33 @@ export default function WrittenConsentInbox({ employees, currentUser, ar, refres
                     onChange={(event) => {
                       const picked = event.target.files?.[0];
                       event.target.value = "";
-                      if (picked) loadPaper(item, picked, { accept: true });
+                      if (picked) loadPaper(item, picked);
                     }}
                     style={{ display: "none" }}
                   />
                 </label>
-                <button
-                  type="button"
-                  disabled={busyId === item.id}
-                  onClick={() => answer(item, { accept: false })}
-                  style={{ fontFamily: "inherit", height: 32, padding: "0 12px", borderRadius: 9, border: "1px solid #E9C4C9", background: CARD, color: "#8A1C2B", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
-                >
-                  {ar ? "أرفض" : "Refuse"}
-                </button>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: INK, lineHeight: 1.7, cursor: "pointer" }}>
+                  <input type="checkbox" checked={acked} onChange={(event) => setAck((map) => ({ ...map, [item.id]: event.target.checked }))} style={{ marginTop: 3 }} />
+                  <span>{ar ? "أقرّ بأنني كتبت الموافقة ووقّعتها في قسم التوقيع، وأرفع النسخة هنا." : "I acknowledge that I wrote the consent, signed it in Digital signing, and upload the copy here."}</span>
+                </label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    disabled={!canAgree}
+                    onClick={() => canAgree && answer(item, { accept: true, ack: true, paper: item.paper })}
+                    style={{ fontFamily: "inherit", height: 34, padding: "0 14px", borderRadius: 8, border: "none", background: canAgree ? "#3C7D50" : "#E4E9E6", color: canAgree ? "#fff" : "#555C66", fontSize: 12, fontWeight: 600, cursor: canAgree ? "pointer" : "default" }}
+                  >
+                    {ar ? "أوافق" : "Agree"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => answer(item, { accept: false })}
+                    style={{ fontFamily: "inherit", height: 34, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-bad-line)", background: CARD, color: "var(--nv-bad-ink)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    {ar ? "أرفض" : "Refuse"}
+                  </button>
+                </div>
               </div>
             ) : null}
           </section>

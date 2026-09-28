@@ -9,7 +9,7 @@ const rowBtn = {
   minHeight: 44,
   padding: "0 14px",
   border: "none",
-  borderBottom: "1px solid #F1F5F9",
+  borderBottom: "1px solid var(--nv-line)",
   background: CARD,
   cursor: "pointer",
   fontFamily: "inherit",

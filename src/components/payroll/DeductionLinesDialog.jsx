@@ -62,7 +62,7 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
                     </p>
                   )}
                   {line.disputeStatus === "accepted" && (
-                    <p style={{ margin: "6px 0 0", fontSize: "11px", color: "#15803D" }}>
+                    <p style={{ margin: "6px 0 0", fontSize: "11px", color: "var(--nv-ok-ink)" }}>
                       {ar ? "اعتراض مقبول — أُلغي الخصم" : "Dispute accepted — deduction cancelled"}
                       {line.originalAmount > 0 && (
                         <span style={{ color: MUTED }}>

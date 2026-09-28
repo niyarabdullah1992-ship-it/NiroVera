@@ -182,12 +182,14 @@ export function AuthProvider({ children }) {
             hydrateBlobFromEntity(s.companyId, "companyMeta").then((records) => {
               const meta = records && records[0];
               if (!meta) return;
+              const metaEstablishment = String(meta.gosiEstablishment || "").trim();
               const metaUpdates = {
                 name: meta.name, plan: meta.plan, directorId: meta.directorId,
                 ownerId: meta.ownerId, stationChatGroups: meta.stationChatGroups,
                 crossStationChatEnabled: meta.crossStationChatEnabled,
                 settings: meta.settings, reportBranding: meta.reportBranding,
                 orgStructureLog: Array.isArray(meta.orgStructureLog) ? meta.orgStructureLog : undefined,
+                ...(metaEstablishment ? { gosiEstablishment: metaEstablishment } : {}),
               };
               cacheCloudData(s.companyId, Object.fromEntries(Object.entries(metaUpdates).filter(([, value]) => value !== undefined)));
               setData((prevData) => (prevData ? {
@@ -201,6 +203,7 @@ export function AuthProvider({ children }) {
                 settings: meta.settings ?? prevData.settings,
                 reportBranding: meta.reportBranding ?? prevData.reportBranding,
                 orgStructureLog: Array.isArray(meta.orgStructureLog) ? meta.orgStructureLog : prevData.orgStructureLog,
+                gosiEstablishment: String(meta.gosiEstablishment || "").trim() || prevData.gosiEstablishment,
                 } : prevData));
             })
           );

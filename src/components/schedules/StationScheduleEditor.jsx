@@ -33,7 +33,7 @@ const monthBtn = {
   width: 32,
   height: 32,
   borderRadius: 9,
-  border: "1px solid #E2E8F0",
+  border: "1px solid var(--nv-line)",
   background: CARD,
   color: NAVY,
   cursor: "pointer",
@@ -139,7 +139,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
           marginTop: 12,
           padding: "10px 12px",
           borderRadius: 12,
-          border: "1px solid #E2E8F0",
+          border: "1px solid var(--nv-line)",
           background: SURFACE,
         }}
       >
@@ -183,14 +183,14 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
       </div>
 
       {clones.length > 0 && (
-        <div style={{ padding: "10px 12px", fontSize: 12, color: "#B45309", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 12 }}>
+        <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--nv-warn-ink)", background: "var(--nv-warn-soft)", border: "1px solid var(--nv-line)", borderRadius: 12 }}>
           {ar
             ? `وردية مكررة بنفس الوقت: ${clones.map((g) => g.map((s) => s.label).join(" · ")).join(" — ")}.`
             : `Duplicate windows: ${clones.map((g) => g.map((s) => s.label).join(" · ")).join(" — ")}.`}
         </div>
       )}
 
-      <div style={{ overflowX: "auto", border: "1px solid #E2E8F0", borderRadius: 14, boxShadow: "0 1px 0 #E2E8F0" }}>
+      <div style={{ overflowX: "auto", border: "1px solid var(--nv-line)", borderRadius: 14, boxShadow: "0 1px 0 var(--nv-line)" }}>
         <table className="nv-shift-matrix nv-shift-matrix--inline" style={{ width: tableWidth, minWidth: tableWidth }}>
           <thead>
             <tr>
@@ -294,7 +294,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                           width: 26,
                           height: 26,
                           borderRadius: 7,
-                          border: "1px solid #E2E8F0",
+                          border: "1px solid var(--nv-line)",
                           background: CARD,
                           color: MUTED,
                           cursor: "pointer",
@@ -329,7 +329,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                 {monthDates.map((d) => {
                   const key = dateKey(d);
                   return (
-                    <td key={`${st.id}-${key}`} className="nv-shift-day" style={{ background: d.getDay() === 5 ? "#FAFBFC" : CARD }}>
+                    <td key={`${st.id}-${key}`} className="nv-shift-day" style={{ background: d.getDay() === 5 ? "var(--nv-soft)" : CARD }}>
                       <ScheduleCell
                         companyId={companyId}
                         stationId={stationId}
@@ -357,7 +357,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
         style={{
           padding: "10px 12px",
           borderRadius: 12,
-          border: "1px solid #E2E8F0",
+          border: "1px solid var(--nv-line)",
           background: CARD,
         }}
       >

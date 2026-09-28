@@ -53,8 +53,8 @@ function emptyList(session) {
 
 /**
  * One inventory adapter. Preview is forced-local (`inventoryItems` in the company cache).
- * Cloud InventoryUnit / ProcurementRequest / PurchaseOrder stay behind this function —
- * not a second UI. Do not add a parallel stockBoard reader.
+ * Sole qty home: inventoryItems[].locationBalances (facts inventory.qty).
+ * InventoryUnit is retired do-not-write. Do not add a parallel stockBoard reader.
  */
 export async function inventoryCall(session, action, payload = {}) {
   forceLocalInventory(session?.companyId);

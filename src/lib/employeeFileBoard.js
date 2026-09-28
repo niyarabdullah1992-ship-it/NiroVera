@@ -1,5 +1,5 @@
 import { profileCompletionStats, profileFieldValue, profileGender, optionLabel, CONTRACT_TYPE_OPTIONS, isFixedContractType, isRamadanHoursSubject } from "@/lib/employeeProfileFields";
-import { remainingLeaveDays, serviceYearsFromHire } from "@/lib/leaveTypes";
+import { isOnLeaveToday, remainingLeaveDays, serviceYearsFromHire } from "@/lib/leaveTypes";
 import { collectEmployeeValidityDocs, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { payableNightAllowance } from "@/lib/shiftWeek";
 
@@ -42,13 +42,29 @@ function tone(kind) {
   return { color: "#5A6B85", bg: "#F5F6F8", border: "#E6E9EF" };
 }
 
+function dayKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 export function employeeFileStatus(employee, ar) {
   const hireIso = employee?.profile?.hireDate || employee?.hireDate || employee?.startDate || "";
   const hireDate = hireIso ? new Date(`${String(hireIso).slice(0, 10)}T00:00:00`) : null;
+  const today = dayKey();
   const preStart = hireDate && hireDate > new Date();
   if (preStart) return { label: ar ? "قيد المباشرة" : "Pending start", kind: "warn" };
   if (employee?.active === false) return { label: ar ? "غير نشط" : "Inactive", kind: "bad" };
-  return { label: ar ? "نشط" : "Active", kind: "ok" };
+  if (isOnLeaveToday(employee)) return { label: ar ? "في إجازة" : "On leave", kind: "warn" };
+  const acting = (employee?.actingAssignments || []).some((item) => {
+    if (item?.endedAt) return false;
+    const until = String(item.until || "").slice(0, 10);
+    return !until || until >= today;
+  });
+  if (acting) return { label: ar ? "مكلَّف" : "Acting", kind: "ok" };
+  const probationEnd = String(employee?.profile?.probationEnd || employee?.profile?.contract?.probationEnd || "").slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(probationEnd) && probationEnd >= today) {
+    return { label: ar ? "فترة تجربة" : "Probation", kind: "warn" };
+  }
+  return { label: ar ? "على رأس العمل" : "On the job", kind: "ok" };
 }
 
 /** Rules encoded on this file — shown to the employee with official text, starting from the summary. */

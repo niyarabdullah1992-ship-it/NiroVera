@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   collectDisciplineArchive,
   countAr,
+  disciplineArchiveSmartItems,
   decorateDisciplineCase,
   deriveDisciplineBoard,
   deriveDisciplineLawBoard,
@@ -19,6 +20,7 @@ import {
   checkRaiseDisciplineGate,
   checkSignDisciplineGate,
   checkWorkplaceDisciplineGate,
+  deriveRaiseDisciplineChips,
   listedPenaltyLabel,
 } from "../src/lib/disciplineDerivations.js";
 import { countDaysExcludingOfficialHolidays } from "../src/lib/ummAlQuraCalendar.js";
@@ -318,6 +320,11 @@ assert.ok((law.rows.find((row) => row.id === "discipline.appeal.internalDays")?.
 assert.ok((law.rows.find((row) => row.id === "discipline.record.eraseDays")?.live || 0) >= 1);
 assert.ok(!law.rows.some((row) => row.art === "78"));
 assert.equal(law.rows.find((row) => row.id === "discipline.workplace.cite")?.art, "70");
+assert.ok(!law.rows.some((row) => /DISCIPLINE_[A-Z0-9_]+/.test(`${row.applied || ""} ${row.head || ""}`)));
+assert.match(
+  law.rows.find((row) => row.id === "discipline.listedOnly.cite")?.applied || "",
+  /لا يُوقَّع جزاء غير وارد في النظام أو في لائحة تنظيم العمل/,
+);
 const scoped = deriveDisciplineLawBoard({ ar: true, today: "2026-09-12", filter: "scope", cases: [] });
 assert.ok(scoped.rows.every((row) => row.kind === "scope"));
 assert.equal(archive.rows.find((row) => row.id === "a3")?.href, "/app/employees/e1?tab=growth");
@@ -394,5 +401,59 @@ assert.equal(checkAdvanceDisciplineGate(
   "appeal",
   { today: "2026-10-17" },
 ).error, "DISCIPLINE_APPEAL_LATE");
+
+const emptyFacts = deriveRaiseDisciplineChips({
+  employee: employees[0],
+  note: "",
+  penaltyKind: "fine",
+  cutDays: 1,
+  discoveredAt: "2026-09-12",
+  today: "2026-09-12",
+  offSite: false,
+  ar: true,
+});
+const chip = (key) => emptyFacts.find((row) => row.key === key);
+assert.equal(chip("66").state, "pass");
+assert.match(chip("66").text, /غرامة/);
+assert.equal(chip("67").state, "pass");
+assert.equal(chip("69").state, "pass");
+assert.match(chip("69").text, /0 يوماً/);
+assert.equal(chip("70-place").state, "pass");
+assert.equal(chip("70-cap").state, "warn");
+assert.equal(chip("71").state, "fail");
+assert.equal(chip("71").text, "بلا وصف للواقعة لا يصح الإبلاغ");
+
+const wroteFacts = deriveRaiseDisciplineChips({
+  employee: employees[0],
+  note: "تأخّر عن تسليم عهدة الفرع يوم 12 سبتمبر",
+  penaltyKind: "fine",
+  cutDays: 1,
+  discoveredAt: "2026-09-12",
+  today: "2026-09-12",
+  ar: true,
+});
+assert.equal(wroteFacts.find((row) => row.key === "71").state, "pass");
+
+const staleFacts = deriveRaiseDisciplineChips({
+  employee: employees[0],
+  note: "تأخير قديم",
+  penaltyKind: "warning",
+  discoveredAt: "2026-01-01",
+  today: "2026-09-12",
+  ar: true,
+});
+assert.equal(staleFacts.find((row) => row.key === "69").state, "fail");
+
+const offSiteFacts = deriveRaiseDisciplineChips({
+  employee: employees[0],
+  note: "واقعة خارج المحطة",
+  penaltyKind: "warning",
+  discoveredAt: "2026-09-12",
+  today: "2026-09-12",
+  offSite: true,
+  workConnected: "",
+  ar: true,
+});
+assert.equal(offSiteFacts.find((row) => row.key === "70-place").state, "fail");
 
 console.log("discipline board ok");

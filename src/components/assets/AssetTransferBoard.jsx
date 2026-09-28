@@ -115,7 +115,7 @@ export default function AssetTransferBoard({
               gridTemplateColumns: "minmax(170px,1.4fr) 120px 120px minmax(160px,1.3fr) minmax(170px,auto)",
               gap: 10,
               padding: "12px 16px",
-              borderTop: "1px solid #F1F5F9",
+              borderTop: "1px solid var(--nv-line)",
               alignItems: "center",
               background: row.status === "pending" && canApprove(row) ? "#fdf6e8" : "transparent",
               color: NAVY,

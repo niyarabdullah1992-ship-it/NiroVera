@@ -3,6 +3,7 @@
  * Derives scores from company tasks / safety using the same gates as the server.
  */
 import { getCompanyData, updateCompany } from "@/lib/store";
+import { readHcmFoundation, readHcmPerformance } from "@/lib/facts";
 import {
   ACTION_LABELS,
   ACTION_REASONS,
@@ -68,8 +69,8 @@ function emptyPerformance() {
 }
 
 function ensureLedgers(data, companyName) {
-  if (!data.hcmFoundation || typeof data.hcmFoundation !== "object") data.hcmFoundation = emptyFoundation();
-  if (!data.hcmPerformance || typeof data.hcmPerformance !== "object") data.hcmPerformance = emptyPerformance();
+  data.hcmFoundation = readHcmFoundation(data) || emptyFoundation();
+  data.hcmPerformance = readHcmPerformance(data) || emptyPerformance();
   data.hcmFoundation.orgUnits = Array.isArray(data.hcmFoundation.orgUnits) ? data.hcmFoundation.orgUnits : [];
   data.hcmFoundation.jobs = Array.isArray(data.hcmFoundation.jobs) ? data.hcmFoundation.jobs : [];
   data.hcmFoundation.positions = Array.isArray(data.hcmFoundation.positions) ? data.hcmFoundation.positions : [];

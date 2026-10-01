@@ -11,11 +11,13 @@ import OrgWorkforceHero from "@/components/hr/OrgWorkforceHero";
 import OrgWorkforceAdminPanels from "@/components/hr/OrgWorkforceAdminPanels";
 import OrgTemplateBoard from "@/components/hr/OrgTemplateBoard";
 import OrgPeopleTree from "@/components/hr/OrgPeopleTree";
+import OrgFormerFilesBoard from "@/components/hr/OrgFormerFilesBoard";
 import HireSeatDrawer from "@/components/hr/HireSeatDrawer";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
 import PlatformStampShell from "@/components/shared/PlatformStampShell";
 import { MUTED } from "@/lib/platformStyles";
 import { useRailSide } from "@/lib/railSide";
+import { formerEmployeeCount } from "@/lib/formerEmployees";
 
 /**
  * Workforce /org — HTML composition: view toggle · hero toolbar · tree stage ·
@@ -45,6 +47,7 @@ export default function OrgStructure() {
   const permRef = useRef(null);
   const logRef = useRef(null);
   const gradesRef = useRef(null);
+  const formerRef = useRef(null);
 
   const canWrite = Boolean(currentUser && (
     currentUser.id === data?.ownerId
@@ -75,11 +78,16 @@ export default function OrgStructure() {
   };
 
   const health = useMemo(() => orgChainHealth(data), [data]);
+  const formerCount = useMemo(() => formerEmployeeCount(data), [data]);
 
   const scrollPanel = (ref) => {
     requestAnimationFrame(() => {
       ref.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
     });
+  };
+
+  const goFormer = () => {
+    scrollPanel(formerRef);
   };
 
   const handleSearchHits = useCallback((hits) => {
@@ -233,6 +241,8 @@ export default function OrgStructure() {
               onToggleByGrade={() => setByGrade((value) => !value)}
               byGrade={byGrade}
               onGoLog={goLog}
+              onGoFormer={isAdminView ? goFormer : undefined}
+              formerCount={formerCount}
             />
 
             <PageErrorBoundary resetKey={view}>
@@ -275,6 +285,8 @@ export default function OrgStructure() {
             </PageErrorBoundary>
 
             {isAdminView ? (
+              <>
+              <OrgFormerFilesBoard data={data} ar={ar} boardRef={formerRef} />
               <OrgWorkforceAdminPanels
                 ar={ar}
                 data={data}
@@ -295,6 +307,7 @@ export default function OrgStructure() {
                 permRef={permRef}
                 logRef={logRef}
               />
+              </>
             ) : null}
           </div>
         )}

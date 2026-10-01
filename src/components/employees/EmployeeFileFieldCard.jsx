@@ -29,10 +29,13 @@ export function FileRow({ row, editing, draft, onDraft, ar = true, showFull = fa
   const editable = Boolean(editing && row.field);
   const value = editable ? String(draft?.[row.field] ?? row.raw ?? "") : row.v;
   const shown = !editable && row.secret && !showFull ? maskFileSecret(value) : value;
+  const chipText = String(row.chip || "");
+  /** Effect essays (religion / legal note) stack under the value — short status chips stay inline. */
+  const stackedChip = row.hasChip && (chipText.length > 28 || /أثر النظام|Legal effect|·/.test(chipText));
   return (
-    <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "minmax(88px,1fr) minmax(0,1.3fr)", gap: 12, alignItems: "baseline" }}>
+    <div style={{ padding: "10px 18px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "minmax(88px,1fr) minmax(0,1.3fr)", gap: 12, alignItems: stackedChip ? "start" : "baseline" }}>
       <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{row.k}</span>
-      <span style={{ display: "flex", alignItems: "baseline", gap: 7, flexWrap: "wrap", minWidth: 0 }}>
+      <span style={{ display: "flex", flexDirection: stackedChip ? "column" : "row", alignItems: stackedChip ? "stretch" : "baseline", gap: stackedChip ? 6 : 7, flexWrap: stackedChip ? "nowrap" : "wrap", minWidth: 0 }}>
         {editable && row.options?.length ? (
           <select value={value} onChange={(event) => onDraft?.(row.field, event.target.value)} style={input}>
             <option value="">—</option>
@@ -53,7 +56,23 @@ export function FileRow({ row, editing, draft, onDraft, ar = true, showFull = fa
           <span dir={row.secret ? "ltr" : undefined} style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.7, color: NAVY, fontFamily: row.secret ? "'IBM Plex Mono', monospace" : "inherit" }}>{shown}</span>
         )}
         {row.hasChip ? (
-          <span style={{ fontSize: 10, fontWeight: 600, color: row.color, background: row.bg, border: `1px solid ${row.border}`, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap" }}>{row.chip}</span>
+          <span style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: row.color,
+            background: row.bg,
+            border: `1px solid ${row.border}`,
+            borderRadius: stackedChip ? 8 : 999,
+            padding: stackedChip ? "6px 10px" : "1px 7px",
+            whiteSpace: stackedChip ? "normal" : "nowrap",
+            lineHeight: stackedChip ? 1.65 : undefined,
+            maxWidth: "100%",
+            boxSizing: "border-box",
+            overflowWrap: "anywhere",
+          }}
+          >
+            {row.chip}
+          </span>
         ) : null}
         {editing && row.locked ? (
           <span style={{ fontSize: 10, color: MUTED, background: "var(--nv-soft)", border: "1px dashed var(--nv-line)", padding: "1px 7px", whiteSpace: "nowrap" }}>
@@ -75,7 +94,7 @@ export default function EmployeeFileFieldCard({ card, editing, draft, onDraft, c
           {card.what ? <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{card.what}</span> : null}
         </div>
         {card.tag || card.state ? (
-          <span style={{ marginInlineStart: "auto", fontSize: 10, fontWeight: 600, color: card.tagColor || card.color || MUTED, background: card.tagBg || card.bg || "var(--nv-soft)", border: `1px solid ${card.tagBorder || card.border || "var(--nv-line)"}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>
+          <span style={{ marginInlineStart: "auto", maxWidth: "100%", fontSize: 10, fontWeight: 600, color: card.tagColor || card.color || MUTED, background: card.tagBg || card.bg || "var(--nv-soft)", border: `1px solid ${card.tagBorder || card.border || "var(--nv-line)"}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "normal", lineHeight: 1.5, textAlign: "center" }}>
             {card.tag || card.state}
           </span>
         ) : null}

@@ -463,15 +463,9 @@ export function getCompanyMeta(id) {
   return getRegistry().companies.find((c) => c.id === id) || null;
 }
 
-// Owner-initiated permanent purge: deletes the company account, all employees,
-// stations, credentials, sessions and data blobs from the cloud, then removes
-// the local copy and ends the session. Returns true only if the cloud purge succeeded.
-export async function purgeCompanyAccount(companyId) {
-  const res = await invokeDirectory({ action: "deleteCompanyAccount", companyId, performedBy: auditActor });
-  if (!res?.data?.ok) return false;
-  deleteCompany(companyId);
-  clearSession();
-  return true;
+/** Company accounts are retained — platform never offers owner self-purge. */
+export async function purgeCompanyAccount() {
+  return false;
 }
 
 // Owner/director-controlled restriction: only emails ending in this domain may be added
@@ -1221,25 +1215,9 @@ export async function setEmployeePassword(companyId, employeeId, email, password
   }
 }
 
-export async function deleteEmployeeAccount(companyId, employeeId) {
-  const res = await invokeDirectory({ action: "deleteEmployeeAccount", companyId, employeeId });
-  if (!res?.data?.ok) return false;
-  updateCompany(companyId, (data) => {
-    (data.orgSeats || []).forEach((seat) => {
-      if (String(seat.employeeId) !== String(employeeId)) return;
-      seat.employeeId = null;
-      seat.filledAt = null;
-      seat.vacatedAt = new Date().toISOString();
-      seat.hireOpen = true;
-    });
-    (data.stations || []).forEach((station) => {
-      if (String(station.managerId) === String(employeeId)) station.managerId = null;
-    });
-    data.smartPositions = (data.smartPositions || []).filter((item) => String(item.employeeId) !== String(employeeId));
-    data.orgTree = (data.orgTree || []).filter((node) => String(node.refId) !== String(employeeId) && String(node.id) !== `org_${employeeId}`);
-    data.employees = data.employees.filter((employee) => employee.id !== employeeId);
-  });
-  return true;
+/** Employee files are retained — exit via termination / resignation offboarding only. */
+export async function deleteEmployeeAccount() {
+  return false;
 }
 
 export function switchUser(userId) {
@@ -2077,7 +2055,18 @@ export async function completeEmployeeOffboarding(companyId, employeeId, offboar
   updateCompany(companyId, (d) => {
     const emp = d.employees.find((e) => e.id === employeeId);
     if (!emp) return;
-    emp.profile = { ...(emp.profile || {}), employmentStatus: "terminated", offboarding: next };
+    const lastWorkplaceId = emp.stationId || emp.profile?.lastWorkplaceId || null;
+    const lastWorkplaceName = (d.stations || []).find((row) => String(row.id) === String(lastWorkplaceId))?.name
+      || emp.profile?.lastWorkplaceName
+      || "";
+    emp.profile = {
+      ...(emp.profile || {}),
+      employmentStatus: "terminated",
+      offboarding: next,
+      lastWorkplaceId,
+      lastWorkplaceName,
+      employmentEndedAt: next.completedAt,
+    };
     emp.stationId = null; emp.managedStations = []; emp.actingAssignments = []; emp.hrLevelId = null; emp.hrStationId = null; emp.hrClusterId = null;
     (d.orgSeats || []).forEach((seat) => {
       if (String(seat.employeeId) !== String(employeeId)) return;

@@ -1,30 +1,15 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Trash2, Loader2 } from "lucide-react";
+import React from "react";
+import { FileText } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import { deleteEmployeeAccount } from "@/lib/store";
-import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import { MUTED, CARD } from "@/lib/platformStyles";
 
-export default function DeleteEmployeeAccountCard({ employee, companyId }) {
+/**
+ * Employee files are retained. Exit is termination or resignation under the Labour Law —
+ * never a hard delete of the person record.
+ */
+export default function DeleteEmployeeAccountCard() {
   const { lang } = useI18n();
-  const navigate = useNavigate();
-  const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState("");
   const ar = lang === "ar";
-
-  const remove = async () => {
-    setDeleting(true); setError("");
-    try {
-      const ok = await deleteEmployeeAccount(companyId, employee.id);
-      if (ok) navigate("/app/employees");
-      else setError(ar ? "تعذر حذف الحساب." : "Account could not be deleted.");
-    } catch {
-      setError(ar ? "تعذر حذف الحساب." : "Account could not be deleted.");
-    } finally {
-      setDeleting(false);
-    }
-  };
 
   return (
     <div style={{
@@ -37,44 +22,15 @@ export default function DeleteEmployeeAccountCard({ employee, companyId }) {
       gap: "10px",
     }}
     >
-      <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 600, color: "var(--nv-bad-ink)" }}>
-        <Trash2 style={{ width: 16, height: 16 }} />
-        {ar ? "حذف حساب الموظف" : "Delete employee account"}
+      <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", fontWeight: 600, color: "var(--nv-ink)" }}>
+        <FileText style={{ width: 16, height: 16 }} />
+        {ar ? "ملف الموظف محفوظ" : "Employee file is retained"}
       </h3>
       <p style={{ margin: 0, fontSize: "12px", color: MUTED, lineHeight: 1.65 }}>
         {ar
-          ? "متاح لمالك الشركة ومسؤولي الموارد البشرية، ويوقف دخول الموظف نهائيًا."
-          : "Available to the company owner and HR staff, and permanently revokes employee access."}
+          ? "لا يُحذف ملف الموظف من المنصة. إنهاء العلاقة يكون بإنهاء الخدمة أو الاستقالة وفق نظام العمل والقرارات الوزارية — من تبويب إنهاء الخدمة / خروج العقد، مع بقاء السجل محفوظًا وسريًا داخل الشركة."
+          : "The employee file is not deleted from the platform. Employment ends by termination or resignation under the Labour Law and ministerial decisions — from the Offboarding / contract-exit tab — while the record stays stored and confidential inside the company."}
       </p>
-      <ConfirmDeleteDialog
-        onConfirm={remove}
-        title={ar ? "حذف حساب الموظف؟" : "Delete employee account?"}
-        description={ar ? "سيتم حذف الحساب وبيانات الدخول ولا يمكن التراجع." : "The account and login access will be deleted permanently."}
-        trigger={(
-          <button
-            type="button"
-            disabled={deleting}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "8px",
-              borderRadius: "9px",
-              border: "1px solid var(--nv-bad-line)",
-              background: CARD,
-              color: "var(--nv-bad-ink)",
-              fontSize: "13px",
-              padding: "8px 12px",
-              cursor: deleting ? "not-allowed" : "pointer",
-              opacity: deleting ? 0.5 : 1,
-              fontFamily: "inherit",
-            }}
-          >
-            {deleting && <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />}
-            {ar ? "حذف الحساب" : "Delete account"}
-          </button>
-        )}
-      />
-      {error && <p style={{ margin: 0, fontSize: "12px", color: "var(--nv-bad-ink)" }}>{error}</p>}
     </div>
   );
 }

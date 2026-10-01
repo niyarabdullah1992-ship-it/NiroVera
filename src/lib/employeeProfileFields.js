@@ -138,7 +138,7 @@ export const PROFILE_GROUPS = [
       { key: "birthDate", ar: "تاريخ الميلاد", en: "Birth date", type: "date" },
       { key: "gender", ar: "الجنس", en: "Gender", options: "gender" },
       { key: "maritalStatus", ar: "الحالة الاجتماعية", en: "Marital status", options: "marital" },
-      { key: "religion", ar: "الدين — رمضان والحج والعدّة", en: "Religion — Ramadan, Hajj and iddah", options: "religion", alwaysShow: true },
+      { key: "religion", ar: "الدين", en: "Religion", options: "religion", alwaysShow: true },
       { key: "passportNumber", ar: "رقم الجواز", en: "Passport number", dir: "ltr", forIqama: true },
       { key: "passportExpiry", ar: "انتهاء الجواز", en: "Passport expiry", type: "date", expiry: true, forIqama: true },
     ],
@@ -250,10 +250,23 @@ export function profileFieldLabel(field, idType, ar) {
 export function displayProfileField(field, raw, ar) {
   const opts = profileFieldOptions(field);
   if (field?.key === "religion" && !String(raw || "").trim()) {
-    return ar ? "مسلم — افتراضي لرمضان والحج والعدّة" : "Muslim — default for Ramadan, Hajj and iddah";
+    // Empty file is treated as Muslim for Ramadan / Hajj / iddah — show the value, not the rule essay.
+    return ar ? "مسلم" : "Muslim";
   }
   if (opts) return optionLabel(opts, raw, ar) || "";
   return raw || "";
+}
+
+/** Short legal effect under the religion row — not part of the stored value. */
+export function religionEffectNote(employee, ar = true) {
+  if (isRamadanHoursSubject(employee)) {
+    return ar
+      ? "أثر النظام: ساعات رمضان · حج · عدّة 4 أشهر و10 أيام"
+      : "Legal effect: Ramadan hours · Hajj · iddah 4 months and 10 days";
+  }
+  return ar
+    ? "أثر النظام: عدّة 15 يوماً · بلا حج"
+    : "Legal effect: 15-day iddah · no Hajj";
 }
 
 export function canonicalFieldValue(field, raw) {

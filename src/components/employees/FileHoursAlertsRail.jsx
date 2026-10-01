@@ -11,7 +11,8 @@ import { statusBanner, statusBannerQuiet } from "@/lib/platformStyles";
  * Employee presenter of the same week-check rows as حكم المنصة.
  * Section title is تنبيهاتي. Cards never name a coworker.
  * Default chrome matches platform تنبيهات (statusBanner + 3px top edge).
- * Pass quietEdge for جدول — soft fill + 1px line only.
+ * Pass quietEdge for جدول — soft fill + 1px line only; night_rotate / 18632 stay there.
+ * Without quietEdge (employee file): omit night consent — it lives in طلباتي or الجدول only.
  */
 export default function FileHoursAlertsRail({
   employee,
@@ -65,11 +66,19 @@ export default function FileHoursAlertsRail({
     }),
     [employee, schedule, weekStart, ar, laborCalendar],
   );
+  /** File تنبيهاتي: 18632 / night_rotate lives in طلباتي or الجدول only — no repeat here. */
+  const omitNightConsentRepeat = !quietEdge;
   const grouped = useMemo(() => {
+    const weekCards = omitNightConsentRepeat
+      ? weekPack.cards.filter((row) => row.gateId !== "night_rotate" && row.decisionId !== "18632")
+      : weekPack.cards;
     const extraCards = fileAlerts.chips
       .filter((chip) => {
         if (!chip.due) return false;
-        if (chip.id === "18632") return !weekPack.cards.some((row) => row.decisionId === "18632");
+        if (chip.id === "18632" || chip.decisionId === "18632") {
+          if (omitNightConsentRepeat) return false;
+          return !weekCards.some((row) => row.decisionId === "18632" || row.gateId === "night_rotate");
+        }
         return true;
       })
       .map((chip) => {
@@ -95,10 +104,10 @@ export default function FileHoursAlertsRail({
         };
       });
     return groupDutyStripByPerson(
-      { cards: [...weekPack.cards, ...extraCards] },
+      { cards: [...weekCards, ...extraCards] },
       { ar, audience },
     );
-  }, [weekPack, fileAlerts, employee, ar, audience]);
+  }, [weekPack, fileAlerts, employee, ar, audience, omitNightConsentRepeat]);
   const due = grouped.anyDue;
   const posting = checkWorkPostingGate({ company, station, settings });
   const table = hoursPolicyOf(company).workPosting || {};

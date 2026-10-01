@@ -544,6 +544,7 @@ export default function OrgEmployeeFilesBoard({
               companyId={companyId}
               actor={actor}
               ar={ar}
+              startOpen
               onDone={() => setTransferId("")}
             />
           </div>

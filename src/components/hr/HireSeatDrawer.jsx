@@ -24,6 +24,7 @@ import { companyLists, listPositions, templateLabel } from "@/lib/permissionTemp
 import {
   PROFILE_GROUPS,
   isProfileFieldVisible,
+  profileCompletionStats,
   profileFieldLabel,
   profileFieldOptions,
 } from "@/lib/employeeProfileFields";
@@ -111,12 +112,13 @@ export default function HireSeatDrawer({
     const pack = packs.find((item) => item.id === listName || item.ar === listName || item.en === listName || templateLabel(item, true) === listName);
     return pack?.id || "";
   }, [listId, listName, packs]);
+  const pickStationId = stationId || newSeat.stationId || "";
   const vacancies = useMemo(
-    () => vacantSeats(data, stationId || undefined, resolvedListId || listName || undefined),
-    [data, stationId, resolvedListId, listName],
+    () => vacantSeats(data, pickStationId || undefined, resolvedListId || listName || undefined),
+    [data, pickStationId, resolvedListId, listName],
   );
   const allVacancies = useMemo(() => vacantSeats(data), [data]);
-  const pool = stationId || resolvedListId || listName ? vacancies : allVacancies;
+  const pool = pickStationId || resolvedListId || listName ? vacancies : allVacancies;
   const listKey = newSeat.listId || resolvedListId;
   const listGrades = useMemo(() => gradesForList(data, listKey), [data, listKey]);
   const titleGrades = useMemo(
@@ -127,6 +129,7 @@ export default function HireSeatDrawer({
   const listPack = packs.find((pack) => pack.id === listKey);
   const stations = workplaceStations(data?.stations || []);
   const lockedSeat = Boolean(seatId);
+  const freeBranchPick = !stationId && !lockedSeat;
   const activeSeat = (data?.orgSeats || []).find((item) => item.id === chosenSeatId) || null;
   const readout = seatReadout(activeSeat, data, ar);
   const leaveDays = annualLeaveFromHireDate(person.hireDate || profile.hireDate);
@@ -134,10 +137,32 @@ export default function HireSeatDrawer({
   const homeStation = (data?.stations || []).find((item) => item.id === homeId);
   const hasManager = stationHasManager(homeStation);
   const catalogTitles = listPositions(listPack).filter((item) => !hasManager || !isBranchManagerTitle(item.title));
-  const openSeats = pool.filter((seat) => !hasManager || !isBranchManagerTitle(seat.title));
+  const openSeats = pool
+    .filter((seat) => !hasManager || !isBranchManagerTitle(seat.title))
+    .filter((seat) => !pickStationId || String(seat.stationId) === String(pickStationId));
   const adminHome = Boolean(homeId && isManagerUnit(homeStation));
   const stationName = homeStation?.name || "";
   const extraStations = stations.filter((item) => item.id !== homeId);
+  const hirePreview = useMemo(() => {
+    const title = creating
+      ? String(newSeat.title || "").trim()
+      : String(activeSeat?.title || "").trim();
+    const packId = creating ? (newSeat.listId || resolvedListId) : (activeSeat?.listId || resolvedListId);
+    const pack = packs.find((item) => item.id === packId);
+    return {
+      name: person.name,
+      profile: {
+        ...profile,
+        position: title || profile.position || "",
+        department: pack ? templateLabel(pack, true) : (profile.department || ""),
+        nationalId: profile.nationalId || person.nationalId || "",
+        phone: profile.phone || person.phone || "",
+        hireDate: profile.hireDate || person.hireDate || todayKey(),
+        contractType: profile.contractType || person.contractType || "indefinite",
+      },
+    };
+  }, [creating, newSeat.title, newSeat.listId, activeSeat, resolvedListId, packs, person, profile]);
+  const completion = profileCompletionStats(hirePreview);
 
   useEffect(() => {
     if (!open) return;
@@ -151,7 +176,8 @@ export default function HireSeatDrawer({
     setPerson(emptyPerson());
     setProfile(emptyProfile());
     setChosenSeatId(seatId || "");
-    setCreating(!seatId && matching.length === 0);
+    // From files board: branch-first create. From tree (stationId/seatId): keep seat/vacancy flow.
+    setCreating(!seatId && (!stationId || matching.length === 0));
     setNewSeat({
       title: "",
       listId: defaultList,
@@ -161,6 +187,15 @@ export default function HireSeatDrawer({
     setExtraStationIds([]);
     setMakeManager(false);
   }, [open, seatId, stationId, listId, listName]);
+
+  useEffect(() => {
+    if (!open || creating || lockedSeat || !chosenSeatId) return;
+    const seat = (data?.orgSeats || []).find((item) => item.id === chosenSeatId);
+    if (!seat) return;
+    if (pickStationId && String(seat.stationId) !== String(pickStationId)) {
+      setChosenSeatId("");
+    }
+  }, [open, creating, lockedSeat, chosenSeatId, pickStationId, data?.orgSeats]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -220,6 +255,7 @@ export default function HireSeatDrawer({
       return;
     }
     const draft = mode === "draft";
+    const requireComplete = mode === "complete" || mode === "complete-another";
     const email = String(person.email || "").trim();
     const password = String(person.password || "");
     const name = String(person.name || "").trim();
@@ -231,6 +267,17 @@ export default function HireSeatDrawer({
 
     if (!name) {
       toast({ description: ar ? "الاسم مطلوب." : "Name is required.", variant: "destructive" });
+      setStep(2);
+      return;
+    }
+    if (requireComplete && !completion.done) {
+      const gaps = completion.missing.slice(0, 4).map((item) => (ar ? item.ar : item.en)).join(" · ");
+      toast({
+        description: ar
+          ? `أكمل الملف أولًا (${completion.pct}٪). ينقص: ${gaps || "حقول إلزامية"}.`
+          : `Finish the file first (${completion.pct}%). Missing: ${gaps || "required fields"}.`,
+        variant: "destructive",
+      });
       setStep(2);
       return;
     }
@@ -372,6 +419,10 @@ export default function HireSeatDrawer({
       const url = inviteUrl(result.employeeId, result.inviteToken);
       if (url && navigator.clipboard?.writeText) navigator.clipboard.writeText(url).catch(() => {});
       notes.push(ar ? "مسوّدة: أكمل الموظف الملف من رابط الدعوة." : "Draft: the employee completes the file from the invite link.");
+    } else if (requireComplete || completion.done) {
+      notes.push(ar ? "ملف مكتمل." : "Complete file.");
+    } else if (completion.missing.length) {
+      notes.push(ar ? `اكتمال الملف ${completion.pct}٪ — يمكن إكماله لاحقًا.` : `File ${completion.pct}% complete — can finish later.`);
     }
     toast({
       description: [
@@ -383,7 +434,7 @@ export default function HireSeatDrawer({
     });
     const nextCount = added + 1;
     setAdded(nextCount);
-    if (mode === "another") {
+    if (mode === "another" || mode === "complete-another") {
       const keepListId = creating ? newSeat.listId : (activeSeat?.listId || "");
       const keepGradeId = creating ? newSeat.gradeId : (activeSeat?.gradeId || "");
       setPerson({ ...emptyPerson(), hireDate });
@@ -664,7 +715,9 @@ export default function HireSeatDrawer({
               {stationName ? (ar ? `أضف موظفًا على «${stationName}»` : `Add employee on “${stationName}”`) : (ar ? "أضف موظفًا" : "Add employee")}
             </h2>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: MUTED, lineHeight: 1.55 }}>
-              {ar ? "فرع + حزمة صلاحية. ثم يُملأ الملف. الناس يُشتقّون بعد الحفظ." : "Workplace + access pack. Then the file is filled. People are derived after save."}
+              {freeBranchPick
+                ? (ar ? "حدّد الفرع من القائمة، ثم الحزمة والمنصب. الإضافة من الشجرة تبقى في الهيكل." : "Pick the branch from the list, then the pack and title. Hire-from-tree stays on the org chart.")
+                : (ar ? "فرع + حزمة صلاحية. ثم يُملأ الملف. الناس يُشتقّون بعد الحفظ." : "Workplace + access pack. Then the file is filled. People are derived after save.")}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label={ar ? "إغلاق" : "Close"} style={{ ...ui.btnGhost, padding: 8 }}>
@@ -749,108 +802,179 @@ export default function HireSeatDrawer({
                   )}
                   {lockedSeat && readout ? (
                     <p style={{ margin: 0, fontSize: 12, color: MUTED }}>{ar ? "المنصب مأخوذ من «عيّن»." : "Seat taken from Assign."}</p>
-                  ) : creating ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                      {!stationId && (
-                        <Field label={ar ? "الفرع" : "Branch"}>
-                          <select
-                            value={newSeat.stationId}
-                            onChange={(e) => setNewSeat((current) => ({ ...current, stationId: e.target.value }))}
-                            style={{ ...field, appearance: "auto" }}
-                          >
-                            <option value="">{ar ? "اختر فرعًا" : "Pick a branch"}</option>
-                            {stations.map((station) => (
-                              <option key={station.id} value={station.id}>{station.name}</option>
-                            ))}
-                          </select>
-                        </Field>
-                      )}
-                      <Field label={ar ? "القائمة — الصلاحيات تتبعها" : "List — permissions follow it"}>
-                        <select
-                          value={newSeat.listId}
-                          onChange={(e) => setNewSeat((current) => ({ ...current, listId: e.target.value, gradeId: "", title: "" }))}
-                          style={{ ...field, appearance: "auto" }}
-                        >
-                          <option value="">{ar ? "اختر قائمة" : "Pick a list"}</option>
-                          {packs.map((pack) => (
-                            <option key={pack.id} value={pack.id}>{templateLabel(pack, ar)}</option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label={ar ? "المنصب من القائمة" : "Title from the list"}>
-                        {catalogTitles.length ? (
-                          <select
-                            value={newSeat.title}
-                            onChange={(e) => setNewSeat((current) => ({ ...current, title: e.target.value, gradeId: "" }))}
-                            style={{ ...field, appearance: "auto" }}
-                          >
-                            <option value="">{ar ? "اختر منصبًا من القائمة" : "Pick a title from the list"}</option>
-                            {catalogTitles.map((item) => (
-                              <option key={item.id} value={item.title}>{item.title}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            value={newSeat.title}
-                            onChange={(e) => setNewSeat((current) => ({ ...current, title: e.target.value, gradeId: "" }))}
-                            placeholder={ar ? "أضف المناصب في قائمة المنشأة أولًا، أو اكتب مسمّى" : "Add titles on the company list first, or type one"}
-                            style={field}
-                          />
-                        )}
-                      </Field>
-                      {listKey && String(newSeat.title || "").trim() && !titleGrades.length && !listGrades.length ? (
-                        <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
-                          {ar
-                            ? "هذا المسمّى بلا درجات. أضفها من سلّم الدرجات الوظيفية."
-                            : "This title has no grades. Add them on the job-grade ladder."}
-                        </p>
-                      ) : listKey && offerGrades.length ? (
-                        <Field label={ar ? "درجة هذا المسمّى" : "This title’s grade"}>
-                          <select
-                            value={newSeat.gradeId}
-                            onChange={(e) => setNewSeat((current) => ({ ...current, gradeId: e.target.value }))}
-                            style={{ ...field, appearance: "auto" }}
-                          >
-                            <option value="">{ar ? "اختر درجة من سلّم المسمّى" : "Pick a grade from this title"}</option>
-                            {offerGrades.map((grade) => (
-                              <option key={grade.id} value={grade.id}>{grade.gradeNumber ? `${grade.gradeNumber} · ` : ""}{grade.title || jobGradeLabel(grade)}</option>
-                            ))}
-                          </select>
-                        </Field>
-                      ) : null}
-                    </div>
                   ) : (
-                    <>
-                      {openSeats.length > 0 ? (
-                        <Field label={ar ? "المنصب الشاغر" : "Vacant seat"}>
-                          <select
-                            value={chosenSeatId}
-                            onChange={(e) => setChosenSeatId(e.target.value)}
-                            style={{ ...field, appearance: "auto" }}
-                          >
-                            <option value="">{ar ? "اختر منصبًا" : "Pick a seat"}</option>
-                            {openSeats.map((seat) => (
-                              <option key={seat.id} value={seat.id}>
-                                {seat.title}
-                                {stationId ? "" : ` · ${stations.find((item) => item.id === seat.stationId)?.name || ""}`}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      {freeBranchPick ? (
+                        <>
+                          <Field label={ar ? "الفرع — بدون الشجرة" : "Branch — without the tree"}>
+                            <select
+                              value={newSeat.stationId}
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                setNewSeat((current) => ({ ...current, stationId: next }));
+                                setChosenSeatId("");
+                              }}
+                              style={{ ...field, appearance: "auto" }}
+                            >
+                              <option value="">{ar ? "اختر فرعًا" : "Pick a branch"}</option>
+                              {stations.map((station) => (
+                                <option key={station.id} value={station.id}>{station.name}</option>
+                              ))}
+                            </select>
+                          </Field>
+                          <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.55 }}>
+                            {ar
+                              ? "تختار الفرع من القائمة مباشرة. الإضافة من الشجرة تبقى متاحة من الهيكل التنظيمي."
+                              : "Pick the branch from the list directly. Hire-from-tree stays available on the org chart."}
+                          </p>
+                          <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 10, background: SURFACE, border: `1px solid ${BORDER}`, alignSelf: "start", flexWrap: "wrap" }}>
+                            <button
+                              type="button"
+                              aria-pressed={creating}
+                              onClick={() => { setCreating(true); setChosenSeatId(""); }}
+                              style={{
+                                height: 30,
+                                padding: "0 12px",
+                                borderRadius: 8,
+                                border: 0,
+                                background: creating ? CARD : "transparent",
+                                color: creating ? INK : MUTED,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                                boxShadow: creating ? `inset 0 0 0 1px ${BORDER}` : "none",
+                              }}
+                            >
+                              {ar ? "فرع ومنصب جديد" : "Branch + new seat"}
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={!creating}
+                              onClick={() => setCreating(false)}
+                              style={{
+                                height: 30,
+                                padding: "0 12px",
+                                borderRadius: 8,
+                                border: 0,
+                                background: !creating ? CARD : "transparent",
+                                color: !creating ? INK : MUTED,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                fontFamily: "inherit",
+                                boxShadow: !creating ? `inset 0 0 0 1px ${BORDER}` : "none",
+                              }}
+                            >
+                              {ar ? "منصب شاغر" : "Vacant seat"}
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+
+                      {creating ? (
+                        <>
+                          <Field label={ar ? "القائمة — الصلاحيات تتبعها" : "List — permissions follow it"}>
+                            <select
+                              value={newSeat.listId}
+                              onChange={(e) => setNewSeat((current) => ({ ...current, listId: e.target.value, gradeId: "", title: "" }))}
+                              style={{ ...field, appearance: "auto" }}
+                            >
+                              <option value="">{ar ? "اختر قائمة" : "Pick a list"}</option>
+                              {packs.map((pack) => (
+                                <option key={pack.id} value={pack.id}>{templateLabel(pack, ar)}</option>
+                              ))}
+                            </select>
+                          </Field>
+                          <Field label={ar ? "المنصب من القائمة" : "Title from the list"}>
+                            {catalogTitles.length ? (
+                              <select
+                                value={newSeat.title}
+                                onChange={(e) => setNewSeat((current) => ({ ...current, title: e.target.value, gradeId: "" }))}
+                                style={{ ...field, appearance: "auto" }}
+                              >
+                                <option value="">{ar ? "اختر منصبًا من القائمة" : "Pick a title from the list"}</option>
+                                {catalogTitles.map((item) => (
+                                  <option key={item.id} value={item.title}>{item.title}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                value={newSeat.title}
+                                onChange={(e) => setNewSeat((current) => ({ ...current, title: e.target.value, gradeId: "" }))}
+                                placeholder={ar ? "أضف المناصب في قائمة المنشأة أولًا، أو اكتب مسمّى" : "Add titles on the company list first, or type one"}
+                                style={field}
+                              />
+                            )}
+                          </Field>
+                          {listKey && String(newSeat.title || "").trim() && !titleGrades.length && !listGrades.length ? (
+                            <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+                              {ar
+                                ? "هذا المسمّى بلا درجات. أضفها من سلّم الدرجات الوظيفية."
+                                : "This title has no grades. Add them on the job-grade ladder."}
+                            </p>
+                          ) : listKey && offerGrades.length ? (
+                            <Field label={ar ? "درجة هذا المسمّى" : "This title’s grade"}>
+                              <select
+                                value={newSeat.gradeId}
+                                onChange={(e) => setNewSeat((current) => ({ ...current, gradeId: e.target.value }))}
+                                style={{ ...field, appearance: "auto" }}
+                              >
+                                <option value="">{ar ? "اختر درجة من سلّم المسمّى" : "Pick a grade from this title"}</option>
+                                {offerGrades.map((grade) => (
+                                  <option key={grade.id} value={grade.id}>{grade.gradeNumber ? `${grade.gradeNumber} · ` : ""}{grade.title || jobGradeLabel(grade)}</option>
+                                ))}
+                              </select>
+                            </Field>
+                          ) : null}
+                          {!freeBranchPick ? (
+                            <button
+                              type="button"
+                              onClick={() => setCreating(false)}
+                              style={{ ...ui.btnGhost, alignSelf: "start", height: 32 }}
+                            >
+                              {ar ? "أو اختر منصبًا شاغرًا" : "Or pick a vacant seat"}
+                            </button>
+                          ) : null}
+                        </>
                       ) : (
-                        <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.55 }}>
-                          {ar ? "لا منصب شاغر في هذه الوحدة." : "No vacant seat in this unit."}
-                        </p>
+                        <>
+                          {openSeats.length > 0 ? (
+                            <Field label={ar ? "المنصب الشاغر" : "Vacant seat"}>
+                              <select
+                                value={chosenSeatId}
+                                onChange={(e) => setChosenSeatId(e.target.value)}
+                                style={{ ...field, appearance: "auto" }}
+                              >
+                                <option value="">{ar ? "اختر منصبًا" : "Pick a seat"}</option>
+                                {openSeats.map((seat) => (
+                                  <option key={seat.id} value={seat.id}>
+                                    {seat.title}
+                                    {pickStationId ? "" : ` · ${stations.find((item) => item.id === seat.stationId)?.name || ""}`}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                          ) : (
+                            <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.55 }}>
+                              {pickStationId
+                                ? (ar ? "لا منصب شاغر في هذا الفرع — أنشئ منصبًا أو غيّر الفرع." : "No vacant seat on this branch — create one or change the branch.")
+                                : (ar ? "اختر فرعًا أولًا لعرض المناصب الشاغرة." : "Pick a branch first to see vacant seats.")}
+                            </p>
+                          )}
+                          {!freeBranchPick ? (
+                            <button
+                              type="button"
+                              onClick={() => { setCreating(true); setChosenSeatId(""); }}
+                              style={{ ...ui.btnSecondary, display: "inline-flex", alignItems: "center", gap: 6, alignSelf: "start" }}
+                            >
+                              <Plus style={{ width: 14, height: 14 }} />
+                              {ar ? "أنشئ منصبًا في هذه الوحدة" : "Create a seat in this unit"}
+                            </button>
+                          ) : null}
+                        </>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => { setCreating(true); setChosenSeatId(""); }}
-                        style={{ ...ui.btnSecondary, display: "inline-flex", alignItems: "center", gap: 6, alignSelf: "start" }}
-                      >
-                        <Plus style={{ width: 14, height: 14 }} />
-                        {ar ? "أنشئ منصبًا في هذه الوحدة" : "Create a seat in this unit"}
-                      </button>
-                    </>
+                    </div>
                   )}
 
                   {readout && !creating && (
@@ -898,6 +1022,41 @@ export default function HireSeatDrawer({
 
               {step === 2 && (
                 <>
+                  <div style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: `1px solid ${completion.done ? "var(--nv-ok-line, #BFE6D2)" : BORDER}`,
+                    background: completion.done ? "var(--nv-ok-soft, #F2FAF6)" : SURFACE,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                  }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                      <strong style={{ fontSize: 12.5, color: INK }}>
+                        {ar ? "اكتمال الملف" : "File completeness"}
+                      </strong>
+                      <span dir="ltr" style={{ fontSize: 12, fontWeight: 700, color: completion.done ? "var(--nv-ok-ink, #15803D)" : NAVY }}>
+                        {completion.done ? (ar ? "مكتمل" : "Complete") : `${completion.pct}%`}
+                      </span>
+                    </div>
+                    <div style={{ height: 5, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden" }}>
+                      <div style={{
+                        height: "100%",
+                        width: `${completion.pct}%`,
+                        borderRadius: 999,
+                        background: completion.done ? "#3C7D50" : completion.pct >= 50 ? "#C8A45A" : "#9B2335",
+                      }}
+                      />
+                    </div>
+                    <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.55 }}>
+                      {completion.done
+                        ? (ar ? "كل الحقول الإلزامية معبأة — جاهز لحفظ ملف مكتمل." : "All required fields are filled — ready to save a complete file.")
+                        : (ar
+                          ? `ينقص ${completion.missing.length}: ${completion.missing.slice(0, 4).map((item) => item.ar).join(" · ")}${completion.missing.length > 4 ? "…" : ""}`
+                          : `Missing ${completion.missing.length}: ${completion.missing.slice(0, 4).map((item) => item.en).join(" · ")}${completion.missing.length > 4 ? "…" : ""}`)}
+                    </p>
+                  </div>
                   <Field label={ar ? "الاسم" : "Name"}>
                     <input value={person.name} onChange={(e) => setField("name", e.target.value)} autoFocus style={field} />
                   </Field>
@@ -964,8 +1123,8 @@ export default function HireSeatDrawer({
             <>
               <p style={{ margin: 0, fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
                 {ar
-                  ? "التحذيرات لا تمنع الحفظ. الوثائق الناقصة تذهب للامتثال."
-                  : "Warnings do not block save. Missing documents go to compliance."}
+                  ? "المسوّدة للنقص. «حفظ ملف مكتمل» يطلب الحقول الإلزامية. الوثائق الناقصة تذهب للامتثال."
+                  : "Draft allows gaps. “Save complete file” requires required fields. Missing documents go to compliance."}
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {step > 1 ? (
@@ -982,19 +1141,24 @@ export default function HireSeatDrawer({
                   </button>
                 ) : (
                   <>
-                    <button type="button" disabled={busy} onClick={() => save("another")} style={{ ...ui.btnSecondary, flex: "1 1 140px" }}>
+                    <button type="button" disabled={busy} onClick={() => save(completion.done ? "complete-another" : "another")} style={{ ...ui.btnSecondary, flex: "1 1 140px" }}>
                       {ar ? "حفظ وأضف آخر" : "Save & add another"}
                     </button>
-                    <button type="button" disabled={busy} onClick={() => save("done")} style={{ ...ui.btnPrimary, flex: "1 1 100px" }}>
-                      {ar ? "حفظ" : "Save"}
+                    <button type="button" disabled={busy} onClick={() => save(completion.done ? "complete" : "done")} style={{ ...ui.btnPrimary, flex: "1 1 120px" }}>
+                      {completion.done ? (ar ? "حفظ ملف مكتمل" : "Save complete file") : (ar ? "حفظ الملف" : "Save file")}
                     </button>
                   </>
                 )}
               </div>
               {step === 2 ? (
-                <button type="button" disabled={busy} onClick={() => save("done")} style={{ ...ui.btnGhost, alignSelf: "start" }}>
-                  {ar ? "حفظ دون دخول" : "Save without sign-in"}
-                </button>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  <button type="button" disabled={busy} onClick={() => save("complete")} style={{ ...ui.btnPrimary, flex: "1 1 160px" }}>
+                    {ar ? "حفظ ملف مكتمل" : "Save complete file"}
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => save("done")} style={{ ...ui.btnGhost, flex: "1 1 140px" }}>
+                    {ar ? "حفظ دون دخول" : "Save without sign-in"}
+                  </button>
+                </div>
               ) : null}
               <Link to="/app/hr" onClick={onClose} style={{ fontSize: 11, color: MUTED, textDecoration: "none" }}>
                 {ar ? "تقويم الامتثال في الموارد البشرية" : "Compliance calendar in HR"}

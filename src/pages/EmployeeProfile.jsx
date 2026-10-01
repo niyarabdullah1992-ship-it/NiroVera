@@ -10,7 +10,6 @@ import {
   canAdjustPayroll,
   canManageEmployeeHR,
   canManageEmployeeContract,
-  canManageEmployeeCommunication,
 } from "@/lib/permissions";
 import { getRoleLabel } from "@/lib/roles";
 import { Lock } from "lucide-react";
@@ -20,7 +19,6 @@ import ProfileHero from "@/components/employees/ProfileHero";
 import ProfileCompletionCard, { profileCompletionStats } from "@/components/employees/ProfileCompletionCard";
 import CertificatesTab from "@/components/employees/CertificatesTab";
 import LeaveTab from "@/components/employees/LeaveTab";
-import HRCommunicationsTab from "@/components/employees/HRCommunicationsTab";
 import DisciplineOnFile from "@/components/employees/DisciplineOnFile";
 import LoginAccessCard from "@/components/employees/LoginAccessCard";
 import AccountSettingsCard from "@/components/employees/AccountSettingsCard";
@@ -97,7 +95,7 @@ export default function EmployeeProfile() {
 
   const isSelf = isViewerOwnFile(employee, currentUser);
   const voice = employeeFileVoice({ employee, currentUser, ar });
-  const canDeleteAccount = !isSelf && employee.id !== data.ownerId && (isCompanyOwner(currentUser, data) || !!currentUser.hrLevelId);
+  const showFileRetentionNote = !isSelf && (isCompanyOwner(currentUser, data) || !!currentUser.hrLevelId);
 
   if (!canViewEmployeeProfile(currentUser, employee, data)) {
     return (
@@ -131,7 +129,6 @@ export default function EmployeeProfile() {
   const canApproveLeave = canManage || hasHRPermission(currentUser, data, "manage_leave");
   const canApproveCerts = canManage || hasHRPermission(currentUser, data, "manage_leave");
   const canEditContract = canManageEmployeeContract(currentUser, employee, data);
-  const canReplyCommunication = canManageEmployeeCommunication(currentUser, employee, data);
   const canEditFile = Boolean(canManage);
   const stationName = (data.stations || []).find((s) => s.id === employee.stationId)?.name;
   const fallbackPosition = employee.customTitle || getRoleLabel(company, employee.role, t);
@@ -460,14 +457,6 @@ export default function EmployeeProfile() {
                 ar={ar}
               />
             ) : null}
-            <HRCommunicationsTab
-              employee={employee}
-              companyId={company.id}
-              currentUser={currentUser}
-              isSelf={isSelf}
-              canReply={canReplyCommunication}
-              data={data}
-            />
           </>
         )}
 
@@ -513,18 +502,18 @@ export default function EmployeeProfile() {
           </section>
         )}
 
-        {(isSelf || (canManage && !isSelf) || canDeleteAccount) && (tab === "identity" || tab === "compliance") && (
+        {(isSelf || (canManage && !isSelf) || showFileRetentionNote) && (tab === "identity" || tab === "compliance") && (
           <IdentityCard
             kicker={ar ? "دخول المنصة" : "Platform access"}
             title={ar ? "إعدادات الحساب والدخول" : "Account and sign-in settings"}
             subtitle={ar
-              ? "كلمة المرور وحذف الحساب أمر تشغيلي للمنصة — ليست مادة من نظام العمل."
-              : "Password and account deletion are platform commands — not a Labour Law article."}
+              ? "تغيير كلمة المرور فقط. بيانات الشركة والموظفين تبقى محفوظة وسرية — لا حذف للشركة ولا لملف الموظف."
+              : "Password change only. Company and employee data stay stored and confidential — neither the company nor the employee file can be deleted."}
           >
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               {isSelf && <AccountSettingsCard employee={employee} company={company} />}
               {canManage && !isSelf && <LoginAccessCard employee={employee} companyId={company.id} />}
-              {canDeleteAccount && <DeleteEmployeeAccountCard employee={employee} companyId={company.id} />}
+              {showFileRetentionNote && <DeleteEmployeeAccountCard />}
             </div>
           </IdentityCard>
         )}

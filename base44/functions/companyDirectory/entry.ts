@@ -797,35 +797,13 @@ Deno.serve(async (req) => {
       return Response.json({ ok: true });
     }
 
-    // Employee account deletion is available to the company owner and assigned HR staff.
-    // It also revokes credentials and active sessions so the removed employee cannot sign in again.
+    // Employee files are retained. Exit is offboarding (termination / resignation) — never hard delete.
     if (action === 'deleteEmployeeAccount') {
-      const { employeeId } = body;
-      if (!employeeId || (auth.userId && auth.userId === employeeId)) return Response.json({ error: 'Forbidden' }, { status: 403 });
-      let performedBy = 'Company owner';
-      if (auth.role !== 'owner' && !auth.admin) {
-        const context = await getActorContext();
-        if (!context.actor || (!['director', 'ops_manager'].includes(context.actor.role) && !context.permissions.has('manage_employees'))) {
-          return Response.json({ error: 'HR employee-management access required' }, { status: 403 });
-        }
-        performedBy = context.actor.name || 'HR';
-      }
-      const targets = await base44.asServiceRole.entities.Employee.filter({ companyId, employeeId });
-      const actorContext = await getActorContext();
-      if (!actorContext.senior && actorContext.scope !== null && !actorContext.scope.includes(targets[0]?.stationId)) {
-        return Response.json({ error: 'Employee is outside your station scope' }, { status: 403 });
-      }
-      if (!targets.length) return Response.json({ error: 'Employee not found' }, { status: 404 });
-      const meta = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: 'companyMeta' });
-      if (meta[0]?.payload?.[0]?.ownerId === employeeId) return Response.json({ error: 'Company owner cannot be deleted' }, { status: 403 });
-      const credentials = await base44.asServiceRole.entities.EmployeeCredential.filter({ companyId, employeeId });
-      const sessions = await base44.asServiceRole.entities.CompanySession.filter({ companyId, userId: employeeId });
-      for (const record of credentials) await base44.asServiceRole.entities.EmployeeCredential.delete(record.id);
-      for (const session of sessions) await base44.asServiceRole.entities.CompanySession.delete(session.id);
-      for (const target of targets) await base44.asServiceRole.entities.Employee.delete(target.id);
-      await base44.asServiceRole.entities.AuditLog.create({ companyId, action: 'employee_account_deleted', performedBy, details: `Employee account deleted: ${targets[0].name || employeeId}.` });
-      await bumpSignal(base44, companyId);
-      return Response.json({ ok: true });
+      return Response.json({
+        error: 'EMPLOYEE_DELETE_DISABLED',
+        reason: 'لا يُحذف ملف الموظف. إنهاء العلاقة بإنهاء الخدمة أو الاستقالة وفق نظام العمل.',
+        reasonEn: 'Employee files are not deleted. End employment by termination or resignation under the Labour Law.',
+      }, { status: 403 });
     }
 
     // Password changes are allowed for the owner, the employee themself, or a
@@ -1133,34 +1111,13 @@ Deno.serve(async (req) => {
       return Response.json({ payload: filterBlobPayload(category, existing[0]?.payload || [], visibilityContext) });
     }
 
-    // Owner-only permanent purge: removes the company account and every related
-    // record — employees, stations, data blobs, credentials, sessions and signal.
+    // Company data is retained and confidential — owners cannot self-purge the account.
     if (action === 'deleteCompanyAccount') {
-      if (auth.role !== 'owner') return Response.json({ error: 'Forbidden' }, { status: 403 });
-      const svc = base44.asServiceRole.entities;
-      const wipe = async (entity) => {
-        const records = await entity.filter({ companyId });
-        for (const r of records) await entity.delete(r.id);
-      };
-      try {
-        await wipe(svc.Employee);
-        await wipe(svc.Station);
-        await wipe(svc.CompanyDataBlob);
-        await wipe(svc.EmployeeCredential);
-        await wipe(svc.CompanySession);
-        await wipe(svc.SyncSignal);
-        await wipe(svc.AnonymousReportReceipt);
-        await wipe(svc.CompanyAccount);
-        await svc.AuditLog.create({
-          companyId, action: 'company_deleted',
-          performedBy: body.performedBy || 'owner',
-          details: 'Company account permanently deleted by owner (all stations, employees and data blobs purged).',
-        });
-      } catch (e) {
-        console.error('deleteCompanyAccount failed:', e.message);
-        return Response.json({ error: e.message }, { status: 500 });
-      }
-      return Response.json({ ok: true });
+      return Response.json({
+        error: 'COMPANY_DELETE_DISABLED',
+        reason: 'لا يُحذف حساب الشركة من المنصة. البيانات تبقى محفوظة وسرية.',
+        reasonEn: 'The company account cannot be deleted from the platform. Data stays stored and confidential.',
+      }, { status: 403 });
     }
 
     if (action === 'logAudit') {

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ArrowLeftRight } from "lucide-react";
 import { ACTION_REASONS } from "@/lib/hcmDerivations";
 import { transferEmployeeBetweenStations } from "@/lib/employeeStationTransfer";
+import { workplaceStations } from "@/lib/stationTree";
 import { toast } from "@/components/ui/use-toast";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { ACCENT, BORDER, MUTED, NAVY, field, ui, BRAND_BORDER, BRAND_SOFT, BRAND_DEEP, CARD, SURFACE } from "@/lib/platformStyles";
@@ -19,16 +20,19 @@ export default function StationTransferPanel({
   actor,
   ar = true,
   onDone,
+  startOpen = false,
 }) {
-  const fromStation = stations.find((s) => String(s.id) === String(employee?.stationId));
-  const destinations = stations.filter((s) => String(s.id) !== String(employee?.stationId));
+  const workplaces = workplaceStations(stations);
+  const fromStation = workplaces.find((s) => String(s.id) === String(employee?.stationId))
+    || stations.find((s) => String(s.id) === String(employee?.stationId));
+  const destinations = workplaces.filter((s) => String(s.id) !== String(employee?.stationId));
   const reasons = ACTION_REASONS.transfer || [];
   const [toStationId, setToStationId] = useState(destinations[0]?.id || "");
   const [reasonCode, setReasonCode] = useState(reasons[0]?.id || "operational_need");
   const [effectiveDate, setEffectiveDate] = useState(todayKey());
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!startOpen);
 
   if (!employee || destinations.length === 0) {
     return (
@@ -43,7 +47,7 @@ export default function StationTransferPanel({
       }}
       >
         {ar
-          ? "لا فرع آخر للنقل إليه — أضف فرع من الهيكل أو الإعدادات أولًا."
+          ? "لا فرع آخر للنقل إليه — أضف فرعًا من الهيكل أو الإعدادات أولًا."
           : "No other branch to transfer to — add a station from Org or Settings first."}
       </div>
     );
@@ -99,17 +103,19 @@ export default function StationTransferPanel({
           </div>
           <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.6 }}>
             {ar
-              ? "إجراء مؤرَّخ يحدّث فرع العمل والشجرة التنظيمية معًا — السجل السابق لا يُمحى."
-              : "A dated action that updates the work branch and org tree together — prior history is kept."}
+              ? "نقل مباشر بين الفروع من القائمة — بلا الشجرة. السجل السابق لا يُمحى."
+              : "Direct branch-to-branch transfer from the list — without the tree. Prior history is kept."}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          style={{ ...ui.btnPrimary, opacity: 1 }}
-        >
-          {open ? (ar ? "إخفاء" : "Hide") : (ar ? "نقل الموظف" : "Transfer employee")}
-        </button>
+        {!startOpen ? (
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            style={{ ...ui.btnPrimary, opacity: 1 }}
+          >
+            {open ? (ar ? "إخفاء" : "Hide") : (ar ? "نقل الموظف" : "Transfer employee")}
+          </button>
+        ) : null}
       </div>
 
       <div style={{

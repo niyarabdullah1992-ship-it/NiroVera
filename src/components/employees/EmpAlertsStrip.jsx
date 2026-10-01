@@ -4,7 +4,6 @@ import { OK, WARN, BAD, statusBanner } from "@/lib/platformStyles";
 import { checkContractTermGate, collectEmployeeValidityDocs, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { deriveProbationProgress, deriveArt55Conversion } from "@/lib/contractLawDerivations";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
-import { nightRotateStage, pendingNightRotate } from "@/lib/nightRotateCycle";
 import { annualEntitlementDue } from "@/lib/leaveEntitlementCycle";
 import { employeeFileVoice } from "@/lib/employeeFileView";
 
@@ -94,18 +93,6 @@ export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
         chipText: probation.warning === "PROBATION_ENDED" ? (ar ? "انتهت" : "Ended") : (ar ? "تنبيه 15 يوماً" : "15-day watch"),
         chipStyle: probation.warning === "PROBATION_ENDED" ? BAD : WARN,
         ruleId: "contract.probation.warnDays",
-      });
-    }
-    const nightPending = pendingNightRotate(employee);
-    if (nightPending) {
-      const stage = nightRotateStage(nightPending);
-      rows.push({
-        label: ar ? "موافقة العمل الليلي" : "Night-work consent",
-        value: ar ? "سارية حتى تختار: موافقة أو تقليص ساعات أو تدوير" : "In force until you choose: consent, reduced hours, or rotation",
-        chipText: stage === "active" ? (ar ? "سارية" : "In force") : (ar ? "سارية" : "In force"),
-        chipStyle: BAD,
-        href: "/app/requests",
-        ruleId: "hours.night.rotateWeeks",
       });
     }
     const leaveDue = annualEntitlementDue(employee);

@@ -102,7 +102,7 @@ export default function ShiftsPlatformBoard({ lang = "ar", kicker, lane = "mine"
 
   return (
     <div className="nv-ops-cal" style={{ display: "flex", flexDirection: "column", gap: 16, color: SW.ink, fontSize: 13, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }} dir={ar ? "rtl" : "ltr"}>
-      {mine && stationId && table.stationName && (canManage || headerOther) && (
+      {mine && canManage && stationId && table.stationName && (
         <div style={{
           padding: "11px 18px",
           background: mineScope.emphasize ? SW.goldBg : SW.card,
@@ -116,11 +116,9 @@ export default function ShiftsPlatformBoard({ lang = "ar", kicker, lane = "mine"
           alignItems: "baseline",
         }}>
           <span>{mineScope.line}</span>
-          {canManage ? (
-            <Link to="/app/shifts?lane=manage" style={{ color: "inherit", fontWeight: 700 }}>
-              {mineScope.action}
-            </Link>
-          ) : null}
+          <Link to="/app/shifts?lane=manage" style={{ color: "inherit", fontWeight: 700 }}>
+            {mineScope.action}
+          </Link>
         </div>
       )}
       {!mine && table.headerAll && stationId && table.stationName && (

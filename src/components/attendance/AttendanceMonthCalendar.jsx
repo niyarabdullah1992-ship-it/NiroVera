@@ -533,7 +533,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
         </div>
       </section>
 
-      {mineLane && workStationName && (canManage || (headerScope && headerScope !== "all" && String(headerScope) !== String(workStationId))) && (() => {
+      {mineLane && canManage && workStationName && (() => {
         const mineScope = rosterMineScopeCopy({
           stationName: workStationName,
           headerOther: !!(headerScope && headerScope !== "all" && workStationId && String(headerScope) !== String(workStationId)),
@@ -553,11 +553,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
             alignItems: "baseline",
           }}>
             <span>{mineScope.line}</span>
-            {canManage ? (
-              <Link to="/app/calendar?lane=manage" style={{ color: "inherit", fontWeight: 700 }}>
-                {mineScope.action}
-              </Link>
-            ) : null}
+            <Link to="/app/calendar?lane=manage" style={{ color: "inherit", fontWeight: 700 }}>
+              {mineScope.action}
+            </Link>
           </div>
         );
       })()}

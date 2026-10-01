@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { CARD, MUTED, NAVY } from "@/lib/platformStyles";
+import { MUTED, NAVY } from "@/lib/platformStyles";
 import { buildPeopleTree, explainWorkplaceManager, filterPeopleHits, flattenPeopleTree } from "@/lib/peopleTree";
 import HierarchyZoomControls from "@/components/hr/HierarchyZoomControls";
 import OrgTreeFullscreenButton from "@/components/hr/OrgTreeFullscreenButton";
@@ -10,9 +10,7 @@ import OrgWorkforceChart from "@/components/hr/OrgWorkforceChart";
 import useOrgTreeViewport from "@/hooks/useOrgTreeViewport";
 import { toast } from "@/components/ui/use-toast";
 import { quickTransferEmployee } from "@/lib/employeeStationTransfer";
-import { deleteEmployeeAccount } from "@/lib/store";
 import { workplaceStations } from "@/lib/stationTree";
-import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import { printReport } from "@/lib/printReport";
 import { buildWorkforceSeatChart } from "@/lib/workforceSeatChart";
 import { orgBtnGhost, orgBtnPrimary, orgSelect, orgTreeStageStyle } from "@/lib/orgWorkspaceStyles";
@@ -47,7 +45,6 @@ export default function OrgPeopleTree({
   const [fullTree, setFullTree] = useState(false);
   const [spine, setSpine] = useState(false);
   const [moveTo, setMoveTo] = useState("");
-  const [deleting, setDeleting] = useState(false);
   const [previewEmployee, setPreviewEmployee] = useState(null);
   const viewportRef = useRef(null);
   const treeRef = useRef(null);
@@ -77,12 +74,6 @@ export default function OrgPeopleTree({
     : null;
   const workplaces = useMemo(() => workplaceStations(data?.stations || []), [data]);
   const moveTargets = workplaces.filter((station) => station.id && station.id !== selectedEmployee?.stationId);
-  const canDeleteSelected = Boolean(
-    canWrite
-    && selectedEmployee
-    && selectedEmployee.id !== data?.ownerId
-    && selectedEmployee.id !== currentUser?.id
-  );
   const hits = filterPeopleHits(
     chart.flat.map((node) => ({ ...node, job: node.title, branch: node.kindTag })),
     query,
@@ -226,22 +217,6 @@ export default function OrgPeopleTree({
     });
   };
 
-  const deleteSelected = async () => {
-    if (!company?.id || !canDeleteSelected) return;
-    setDeleting(true);
-    try {
-      const ok = await deleteEmployeeAccount(company.id, selectedEmployee.id);
-      if (!ok) {
-        toast({ description: ar ? "تعذر حذف الحساب." : "Account could not be deleted.", variant: "destructive" });
-        return;
-      }
-      setSelectedId("");
-      toast({ description: ar ? `حُذف حساب ${selectedEmployee.name} وأُخلي المقعد.` : `${selectedEmployee.name} deleted and the seat vacated.` });
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   const openChartNode = (node) => {
     if (!node?.employeeId) return;
     const employee = (data?.employees || []).find((item) => String(item.id) === String(node.employeeId));
@@ -378,37 +353,6 @@ export default function OrgPeopleTree({
               <button type="button" disabled={!moveTo} onClick={moveSelected} style={orgBtnPrimary(!moveTo)}>
                 {ar ? "نقل" : "Move"}
               </button>
-              {canDeleteSelected ? (
-                <ConfirmDeleteDialog
-                  title={ar ? "حذف حساب الموظف؟" : "Delete employee account?"}
-                  description={ar
-                    ? `سيتم حذف حساب «${selectedEmployee.name}» وإخلاء مقعده. لا يمكن التراجع.`
-                    : `“${selectedEmployee.name}” will be deleted and the seat vacated. This cannot be undone.`}
-                  onConfirm={deleteSelected}
-                  trigger={(
-                    <button
-                      type="button"
-                      disabled={deleting}
-                      style={{
-                        all: "unset",
-                        cursor: deleting ? "not-allowed" : "pointer",
-                        height: 32,
-                        padding: "0 12px",
-                        borderRadius: 8,
-                        border: "1px solid var(--nv-line)",
-                        background: CARD,
-                        color: "var(--nv-bad-ink)",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        fontFamily: "inherit",
-                        opacity: deleting ? 0.5 : 1,
-                      }}
-                    >
-                      {ar ? "حذف" : "Delete"}
-                    </button>
-                  )}
-                />
-              ) : null}
             </>
           ) : null}
         </OrgInspector>

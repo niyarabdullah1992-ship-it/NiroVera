@@ -7,6 +7,7 @@ import {
   MARITAL_OPTIONS,
   RELIGION_OPTIONS,
   displayProfileField,
+  religionEffectNote,
   isFixedContractType,
   isIqamaIdType,
   isNationalIdType,
@@ -711,9 +712,9 @@ export function buildEmployeeFileView({
       rows: [
         row(ar ? "الحالة الاجتماعية" : "Marital status", marital, "", "", "maritalStatus", "text", { raw: profileFieldValue(profile, "maritalStatus", employee), options: opts(MARITAL_OPTIONS) }),
         row(
-          ar ? "الدين — رمضان والحج والعدّة" : "Religion — Ramadan, Hajj and iddah",
+          ar ? "الدين" : "Religion",
           displayProfileField({ key: "religion", options: "religion" }, profileFieldValue(profile, "religion", employee), ar),
-          isRamadanHoursSubject(employee) ? (ar ? "مسلم — رمضان · حج · عدّة 130 يوماً" : "Muslim — Ramadan · Hajj · 130-day iddah") : (ar ? "غير مسلم — عدّة 15 يوماً بلا حج" : "Non-Muslim — 15-day iddah, no Hajj"),
+          religionEffectNote(employee, ar),
           isRamadanHoursSubject(employee) ? "ok" : "mute",
           "religion",
           "text",

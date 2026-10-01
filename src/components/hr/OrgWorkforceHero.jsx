@@ -36,6 +36,8 @@ export default function OrgWorkforceHero({
   onToggleByGrade,
   byGrade = false,
   onGoLog,
+  onGoFormer,
+  formerCount = 0,
 }) {
   const logCount = useMemo(() => orgStructureEvents(data).length, [data]);
 
@@ -53,6 +55,12 @@ export default function OrgWorkforceHero({
       label: ar ? "تكليفات سارية" : "Acting now",
       value: health?.acting ?? 0,
       tone: (health?.acting ?? 0) > 0 ? "ok" : undefined,
+    },
+    {
+      id: "former",
+      label: ar ? "ملفات منتهية" : "Former files",
+      value: formerCount,
+      tone: formerCount > 0 ? "ok" : undefined,
     },
   ];
 
@@ -132,6 +140,12 @@ export default function OrgWorkforceHero({
             <button type="button" onClick={onGoLog} style={orgNavChip()}>
               {ar ? "سجل الأحداث" : "Event log"} <span dir="ltr" style={ORG_MONO}>{logCount}</span>
             </button>
+            {onGoFormer ? (
+              <button type="button" onClick={onGoFormer} style={orgNavChip()}>
+                {ar ? "ملفات من انتهت خدمتهم" : "Former worker files"}{" "}
+                <span dir="ltr" style={ORG_MONO}>{formerCount}</span>
+              </button>
+            ) : null}
             {onAddBranch ? (
               <button type="button" onClick={onAddBranch} style={orgPrimaryBtn()}>{ar ? "＋ إضافة فرع" : "+ Add branch"}</button>
             ) : null}

@@ -15,9 +15,9 @@ export default function Privacy() {
           <h2 style={legalCopy.h2}>حماية البيانات</h2>
           <p style={{ margin: 0 }}>تُخزن كلمات المرور بصيغة مشفّرة غير قابلة للاسترجاع، وتُعزل بيانات كل شركة عن غيرها بالكامل. يقتصر الوصول إلى بيانات الشركة على مستخدميها المصرح لهم.</p>
           <h2 style={legalCopy.h2}>حقوقك</h2>
-          <p style={{ margin: 0 }}>يمكن لمالك الشركة حذف حساب الشركة وجميع بياناتها نهائيًا في أي وقت من داخل المنصة. للاستفسارات تواصل معنا عبر: niyar@powercares.pro</p>
+          <p style={{ margin: 0 }}>بيانات الشركة والموظفين تبقى محفوظة وسرية داخل المنصة؛ لا يُحذف حساب الشركة من داخل التطبيق، ولا يُحذف ملف الموظف — إنهاء العلاقة يكون بإنهاء الخدمة أو الاستقالة وفق نظام العمل. للاستفسارات تواصل معنا عبر: niyar@powercares.pro</p>
           <hr style={legalCopy.hr} />
-          <p style={legalCopy.en}>NiroVera collects only the data required to operate the service (company account, employee records, attendance, tasks and reports). When you sign in with Google, Microsoft, or Apple, we receive only the basic account information made available by the provider, such as your email and name, for identity verification and session creation. We never receive your password for these services, and we never sell or share your data with third parties. Company owners can permanently delete their account and all data at any time. Contact: niyar@powercares.pro</p>
+          <p style={legalCopy.en}>NiroVera collects only the data required to operate the service (company account, employee records, attendance, tasks and reports). When you sign in with Google, Microsoft, or Apple, we receive only the basic account information made available by the provider, such as your email and name, for identity verification and session creation. We never receive your password for these services, and we never sell or share your data with third parties. Company and employee data remain stored and confidential; the company account cannot be deleted in-app, and employee files are not deleted — employment ends by termination or resignation under the Labour Law. Contact: niyar@powercares.pro</p>
         </div>
       </IdentityCard>
     </PublicPaperShell>

@@ -1,0 +1,16 @@
+{
+  "name": "NiroVera / PowerCare",
+  "install": "npm ci",
+  "terminals": [
+    {
+      "name": "vite-dev",
+      "command": "npm run dev",
+      "description": "Vite dev server for the NiroVera/PowerCare frontend on http://localhost:5173 (uses local preview mode when no Base44 backend is configured)."
+    }
+  ],
+  "ports": [
+    {
+      "port": 5173
+    }
+  ]
+}

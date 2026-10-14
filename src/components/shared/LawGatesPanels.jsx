@@ -3,6 +3,7 @@ import LawGateAlertRow from "@/components/shared/LawGateAlertRow";
 import LawGateStatusPill from "@/components/shared/LawGateStatusPill";
 import { buildLawGatesBoard } from "@/lib/lawGatesBoard";
 import { DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
+import NightWorkRightsTable, { NightWorkDefinition } from "@/components/shared/NightWorkRightsTable";
 
 const panelShell = {
   background: "var(--nv-card, #fff)",
@@ -98,20 +99,45 @@ function NightPanel({ panel, ar }) {
   return (
     <article style={panelShell} data-law-gates="18632">
       <PanelHeader title={panel.title} />
-      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-        {(panel.rows || []).map((row) => (
-          <LawGateAlertRow
-            key={row.id}
-            slab
-            ar={ar}
-            status={row.status}
-            who={row.who}
-            detail={row.detail}
-            pillLabel={row.pillLabel}
-            article={row.article || "18632"}
-            summary={row.summary}
-          />
-        ))}
+      <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <NightWorkDefinition
+          ar={ar}
+          windowText={ar ? panel.windowAr : panel.windowEn}
+          performerText={ar ? panel.performerAr : panel.performerEn}
+          workerText={ar ? panel.workerAr : panel.workerEn}
+        />
+        <NightWorkRightsTable ar={ar} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {(panel.rows || []).map((row) => (
+            <LawGateAlertRow
+              key={row.id}
+              slab
+              ar={ar}
+              status={row.status}
+              who={row.who}
+              detail={row.detail}
+              pillLabel={row.pillLabel}
+              article={row.article || "18632"}
+              summary={(
+                <span>
+                  {row.summary}
+                  {row.performer != null ? (
+                    <span style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                      <LawGateStatusPill
+                        ar={ar}
+                        status={row.performer ? "settled" : "void"}
+                        label={row.performer
+                          ? (ar ? "يؤدي عملاً ليلياً" : "Performs night work")
+                          : (ar ? (row.performerNoteAr || "بلا أثر على من يؤدي دقيقة") : (row.performerNoteEn || "No effect for a night minute"))}
+                      />
+                      <LawGateStatusPill ar={ar} status="settled" label={ar ? "عامل ليلي" : "Night worker"} />
+                    </span>
+                  ) : null}
+                </span>
+              )}
+            />
+          ))}
+        </div>
       </div>
     </article>
   );

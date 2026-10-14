@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NiroVera — 18632 night gates · Claude handoff</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Readex+Pro:wght@600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --nv-navy: #0B3D27;
+      --nv-ink: #111418;
+      --nv-ink2: #3A4048;
+      --nv-muted: #555C66;
+      --nv-page: #F4F7F5;
+      --nv-line: #E4E9E6;
+      --nv-soft: #F5F7F6;
+      --nv-inset: #F7F8FA;
+      --nv-card: #FFFFFF;
+      --nv-shadow2: rgba(12, 20, 16, 0.04);
+      --nv-ok-ink: #2F6B43;
+      --nv-ok-soft: #E6F2EA;
+      --nv-ok-line: #C5CEC9;
+      --nv-ok-fill: #3C7D50;
+      --nv-warn-ink: #8A5A12;
+      --nv-warn-soft: #FBF3E1;
+      --nv-warn-line: #E4D3A8;
+      --nv-bad-ink: #9B2335;
+      --nv-mute-ink: #555C66;
+      --nv-mute-soft: #F2F7F4;
+      --nv-mute-line: #E4E9E6;
+      --nv-radius: 12px;
+      --nv-radius-control: 8px;
+      --font: "IBM Plex Sans Arabic", Tahoma, sans-serif;
+      --font-title: "Readex Pro", "IBM Plex Sans Arabic", sans-serif;
+      --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--nv-page);
+      color: var(--nv-ink);
+      font-family: var(--font);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 64px; }
+    h1 { font-family: var(--font-title); font-size: 26px; margin: 0 0 6px; color: var(--nv-navy); }
+    h2 { font-family: var(--font-title); font-size: 16px; margin: 28px 0 10px; color: var(--nv-navy); }
+    h3 { font-size: 13px; margin: 0 0 8px; }
+    p { margin: 0 0 10px; }
+    .lede { color: var(--nv-muted); margin-bottom: 18px; }
+    .prompt {
+      background: var(--nv-navy);
+      color: #fff;
+      border-radius: var(--nv-radius);
+      padding: 16px 18px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .prompt strong { color: #C5DBCD; }
+    .card {
+      background: var(--nv-card);
+      border: 1px solid var(--nv-line);
+      border-radius: var(--nv-radius);
+      box-shadow: 0 1px 2px var(--nv-shadow2);
+    }
+    .pad { padding: 14px 16px; }
+    .head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--nv-line);
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 860px) { .grid2 { grid-template-columns: 1fr; } }
+    .def {
+      display: grid;
+      grid-template-columns: auto minmax(0,1fr);
+      gap: 6px 12px;
+      padding: 10px 12px;
+      background: var(--nv-inset);
+      border: 1px solid var(--nv-line);
+      border-radius: 10px;
+      font-size: 12px;
+    }
+    .def span:nth-child(odd) { color: var(--nv-muted); }
+    .def span:nth-child(even) { font-weight: 600; }
+    .slab {
+      border: 1px solid var(--nv-line);
+      border-radius: var(--nv-radius-control);
+      padding: 9px 11px;
+      background: var(--nv-card);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .who { font-size: 10.5px; color: var(--nv-muted); }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 9px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .ok { color: var(--nv-ok-ink); background: var(--nv-ok-soft); border: 1px solid var(--nv-ok-line); }
+    .void { color: var(--nv-mute-ink); background: var(--nv-mute-soft); border: 1px solid var(--nv-mute-line); }
+    .wait { color: var(--nv-warn-ink); background: var(--nv-warn-soft); border: 1px solid var(--nv-warn-line); }
+    .cite {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      height: 28px;
+      padding: 0 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      direction: ltr;
+      background: var(--nv-soft);
+      color: var(--nv-ink2);
+      border: 1px solid var(--nv-line);
+    }
+    .row-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+    .kind {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 58px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--nv-line);
+      background: var(--nv-card);
+    }
+    .kind.on { border-color: var(--nv-navy); background: var(--nv-navy); color: #fff; }
+    .mark {
+      width: 34px; height: 34px; border-radius: 9px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--nv-ok-soft); color: var(--nv-ok-ink); font-weight: 700; flex-shrink: 0;
+    }
+    .kind.on .mark { background: rgba(255,255,255,.14); color: #fff; }
+    .kind small { display: block; font-size: 11px; color: var(--nv-muted); font-weight: 400; }
+    .kind.on small { color: #C5DBCD; }
+    .kind strong { font-size: 13px; }
+    .stack { display: flex; flex-direction: column; gap: 6px; }
+    table.data { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table.data th, table.data td {
+      border: 1px solid var(--nv-line);
+      padding: 7px 8px;
+      text-align: start;
+      vertical-align: top;
+    }
+    table.data th { background: var(--nv-soft); font-weight: 700; }
+    code, .mono { font-family: var(--font-mono); font-size: 11px; direction: ltr; unicode-bidi: isolate; }
+    .do { color: var(--nv-ok-ink); }
+    .dont { color: var(--nv-bad-ink); }
+    ul { margin: 0; padding: 0 18px 0 0; }
+    li { margin-bottom: 5px; }
+    .muted { color: var(--nv-muted); font-size: 12px; }
+    .files { font-size: 12px; }
+    .files td { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>NiroVera · القرار 18632 · تسليم لكلود</h1>
+    <p class="lede">ملف واحد مستقل. الصق هذا الـ HTML في المحادثة مع كلود. لا تستنسخ جلد كلود. الهوية نيروفيرا فقط.</p>
+
+    <div class="prompt">
+      <strong>تعليمات لكلود</strong><br />
+      أنت تصمّم / تدقّق سطحي نيروفيرا فقط: (1) بوابات 18632 في جدول الدوام، (2) طلبات العمل الليلي في طلباتي.
+      المصدر القانوني: القرار الوزاري 18632 لسنة 1441هـ، يسري 1 يناير 2020.
+      الليل من الساعة 23 إلى الساعة 6. المسائي من 15 إلى 23 خارج الليل.
+      يؤدي عملاً ليلياً = أي دقيقة في النافذة. عامل ليلي = 3 ساعات فأكثر في النافذة.
+      الحالة أربع فقط: استقرّ · ينتظر · مُنع · بلا أثر. شريحة 999، حد 1px، لا تظليل أصفر، لا إطار ملوّن حول البطاقة.
+      لا تحذف خريطة الحقوق من البوابات ولا من طلباتي.
+      الأرقام مشتقّة من الجدول المنشور. لا تخترع ساعة شركة.
+    </div>
+
+    <h2>1. هوية السطح</h2>
+    <div class="card pad">
+      <ul>
+        <li>وثيقة لا لوحة: حد هيكل 1px، نصف قطر 12 للبطاقة و8 للصف، ظل ورقي خفيف.</li>
+        <li>زوج لوني: كحلي <span class="mono">#0B3D27</span> للحبر والهيكل، أخضر واحد <span class="mono">#2F6B43 / #E6F2EA</span> للمعنى.</li>
+        <li>ثلاث درجات: ink للنص، soft للغسل، fill للأشرطة فقط — لا fill خلف زر فيه نص.</li>
+        <li>رموز <span class="mono">--nv-*</span> فقط. لا لون حرفي جديد. لا أصفر تزييني لصفوف الجدول.</li>
+        <li>عربي أولاً RTL. أرقام الوقت في سياق عربي: «من الساعة 23 إلى الساعة 6» لا <span class="mono">23:00–06:00</span> إن كان الاتجاه ينعكس.</li>
+        <li>شارة المادة: حبة 999 بخط mono واتجاه LTR للنص <span class="cite">18632</span></li>
+      </ul>
+    </div>
+
+    <h2>2. الفكرتان — لا تُخلطان</h2>
+    <div class="def" style="margin-bottom: 12px;">
+      <span>نافذة الليل</span>
+      <span>الليل من الساعة 23 إلى الساعة 6. المسائي من 15 إلى 23 خارج الليل.</span>
+      <span>يؤدي عملاً ليلياً</span>
+      <span>أي دقيقة داخل النافذة.</span>
+      <span>عامل ليلي</span>
+      <span>ثلاث ساعات فأكثر داخل النافذة.</span>
+    </div>
+
+    <h2>3. خريطة الحقوق — تبقى في البوابات وفي طلباتي</h2>
+    <div class="stack" style="margin-bottom: 12px;">
+      <div class="slab">
+        <strong>راحة 12 ساعة بين يومي عمل</strong>
+        <div class="pills">
+          <span class="who">يؤدي عملاً ليلياً</span><span class="pill ok">استقرّ</span>
+          <span class="who">عامل ليلي</span><span class="pill ok">استقرّ</span>
+        </div>
+      </div>
+      <div class="slab">
+        <strong>تعويض ساعات أو أجر أو بدل أو نقل</strong>
+        <div class="pills">
+          <span class="who">يؤدي عملاً ليلياً</span><span class="pill ok">استقرّ</span>
+          <span class="who">عامل ليلي</span><span class="pill ok">استقرّ</span>
+        </div>
+      </div>
+      <div class="slab">
+        <strong>حظر الحمل 24 أسبوعاً قبل الوضع</strong>
+        <div class="pills">
+          <span class="who">يؤدي عملاً ليلياً</span><span class="pill ok">استقرّ</span>
+          <span class="who">عامل ليلي</span><span class="pill ok">استقرّ</span>
+        </div>
+      </div>
+      <div class="slab">
+        <strong>بدل مناسب أو تخفيض ساعات مع حفظ الأجر</strong>
+        <div class="pills">
+          <span class="who">يؤدي عملاً ليلياً</span><span class="pill void">لا — إلا إن صار عامل ليلي</span>
+          <span class="who">عامل ليلي</span><span class="pill ok">استقرّ</span>
+        </div>
+      </div>
+      <div class="slab">
+        <strong>تدوير بعد 3 أشهر أو موافقة خطية</strong>
+        <div class="pills">
+          <span class="who">يؤدي عملاً ليلياً</span><span class="pill void">بلا أثر</span>
+          <span class="who">عامل ليلي</span><span class="pill ok">استقرّ</span>
+        </div>
+      </div>
+      <div class="slab">
+        <strong>تقرير لياقة طبية</strong>
+        <div class="pills">
+          <span class="who">يؤدي عملاً ليلياً</span><span class="pill void">بلا أثر</span>
+          <span class="who">عامل ليلي</span><span class="pill ok">استقرّ</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <section class="card">
+        <div class="head">البوابات · جدول الدوام · الإدارة</div>
+        <div class="pad stack">
+          <div class="def">
+            <span>نافذة الليل</span><span>الليل من الساعة 23 إلى الساعة 6. المسائي من 15 إلى 23 خارج الليل.</span>
+            <span>يؤدي عملاً ليلياً</span><span>أي دقيقة داخل النافذة.</span>
+            <span>عامل ليلي</span><span>ثلاث ساعات فأكثر داخل النافذة.</span>
+          </div>
+          <div class="slab">
+            <div class="row-top">
+              <span class="pill void">بلا أثر</span>
+              <span class="cite">18632</span>
+            </div>
+            <span class="muted">3 ساعات فأكثر بين 23:00 و06:00 = عامل ليلي · أي دقيقة = يؤدي عملاً ليلياً</span>
+          </div>
+          <div class="slab">
+            <div class="row-top">
+              <span class="pill ok">استقرّ</span>
+              <span class="cite">18632</span>
+            </div>
+            <span class="muted">راحة 12 ساعة بين يومي عمل لمن أدّى عملاً ليلياً — ليست حصراً على العامل الليلي</span>
+            <div class="pills">
+              <span class="pill ok">يؤدي عملاً ليلياً</span>
+              <span class="pill ok">عامل ليلي</span>
+            </div>
+          </div>
+          <p class="muted" style="margin:0">بعد الخريطة: صفوف البوابات الحيّة للأسبوع (تعويض، حمل، XOR، تدوير، لياقة، مرافق، مساواة أجر، مراعاة كبار السن). كل صف LawGateAlertRow: شريحة حالة + شارة 18632 + النص.</p>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="head">طلباتي · ملفي · طلبات العمل الليلي</div>
+        <div class="pad stack">
+          <div class="row-top">
+            <strong>طلبات العمل الليلي</strong>
+            <span class="cite">18632</span>
+          </div>
+          <div class="kinds">
+            <div class="kind on">
+              <span class="mark">ت</span>
+              <span><strong>تعويض ساعات أو أجر أو بدل أو نقل</strong><small>يؤدي عملاً ليلياً · لكل من يدخل النافذة</small></span>
+            </div>
+            <div class="kind">
+              <span class="mark">ح</span>
+              <span><strong>حظر الحمل 24 أسبوعاً</strong><small>يؤدي عملاً ليلياً · الساعات المعتادة</small></span>
+            </div>
+            <div class="kind">
+              <span class="mark">ب</span>
+              <span><strong>بدل أو تخفيض ساعات</strong><small>عامل ليلي فقط · إلا العرضي ورمضان</small></span>
+            </div>
+            <div class="kind">
+              <span class="mark">د</span>
+              <span><strong>تدوير 3 أشهر أو موافقة</strong><small>عامل ليلي فقط · تُفتح تلقائياً</small></span>
+            </div>
+            <div class="kind">
+              <span class="mark">ل</span>
+              <span><strong>تقرير لياقة طبية</strong><small>عامل ليلي فقط · يُرفع من هنا</small></span>
+            </div>
+          </div>
+          <p class="muted" style="margin:0">اللياقة وحدها نموذج إرسال. الباقي حق: التعويض/التقليص من إعداد الليل في الجدول، الحمل من الملف، الموافقة بعد 3 أشهر في طلباتي.</p>
+        </div>
+      </section>
+    </div>
+
+    <h2>4. أين يعيش كل حق</h2>
+    <table class="data">
+      <tr><th>الحق</th><th>يؤدي دقيقة</th><th>عامل ليلي</th><th>السطح</th><th>يُرفع طلب؟</th></tr>
+      <tr><td>راحة 12 ساعة</td><td>استقرّ</td><td>استقرّ</td><td>بوابة الإسناد</td><td>لا</td></tr>
+      <tr><td>تعويض ساعات/أجر/بدل/نقل</td><td>استقرّ</td><td>استقرّ</td><td>إعداد الليل في الجدول</td><td>لا — قرار منشأة</td></tr>
+      <tr><td>حظر الحمل 24 أسبوعاً</td><td>استقرّ</td><td>استقرّ</td><td>ملف الموظف</td><td>لا</td></tr>
+      <tr><td>بدل أو تخفيض مع حفظ الأجر</td><td>بلا أثر إلا عامل ليلي</td><td>استقرّ</td><td>إعداد الليل</td><td>لا — إلا العرضي ورمضان</td></tr>
+      <tr><td>تدوير 3 أشهر أو موافقة خطية</td><td>بلا أثر</td><td>استقرّ</td><td>طلباتي تلقائي</td><td>الموافقة تُفتح، لا تُنشأ يدوياً</td></tr>
+      <tr><td>تقرير لياقة طبية</td><td>بلا أثر</td><td>استقرّ</td><td>طلباتي</td><td>نعم — الموظف من ملفي</td></tr>
+    </table>
+
+    <h2>5. ملفات التنفيذ في المستودع</h2>
+    <table class="data files">
+      <tr><th>ملف</th><th>دور</th></tr>
+      <tr><td class="mono">src/lib/nightWorkRights.js</td><td>كتالوج الحقوق والحروف والنطاق</td></tr>
+      <tr><td class="mono">src/components/shared/NightWorkRightsTable.jsx</td><td>الخريطة + تعريف النافذة</td></tr>
+      <tr><td class="mono">src/lib/lawGatesBoard.js</td><td>buildNightGatePanel</td></tr>
+      <tr><td class="mono">src/components/shared/LawGatesPanels.jsx</td><td>لوحة 18632 في الجدول</td></tr>
+      <tr><td class="mono">src/components/requests/RequestsWorkspace.jsx</td><td>بلاطة طلبات العمل الليلي</td></tr>
+      <tr><td class="mono">src/lib/decision18632.js</td><td>دقائق النافذة، performs / worker</td></tr>
+      <tr><td class="mono">src/lib/laborRules.js</td><td>hours.night.* تُقرأ بـ ruleValue</td></tr>
+      <tr><td class="mono">src/lib/nightRotateCycle.js</td><td>13 أسبوعاً ثم موافقة أو شهر عادي</td></tr>
+    </table>
+
+    <h2>6. افعل / لا تفعل</h2>
+    <div class="card pad">
+      <p class="do">افعل: أبقِ خريطة الحقوق في البوابات وفي طلباتي.</p>
+      <p class="do">افعل: شرائح استقرّ / بلا أثر لمعنى الانطباق.</p>
+      <p class="do">افعل: المسائي 15–23 ساعات معتادة — صفر دقائق ليل — لا تدوير 3 أشهر.</p>
+      <p class="dont">لا تحذف الخريطة من أحد السطحين بحجة الازدحام.</p>
+      <p class="dont">لا تظلّل صفوفاً بالأصفر. الحالة خضراء أو صامتة فقط.</p>
+      <p class="dont">لا تستخدم isEveningShift بدل دقائق 23–6.</p>
+      <p class="dont">لا تصفّر عدّ الثلاثة أشهر بأسبوع صباحي واحد.</p>
+      <p class="dont">لا تلغِ الليل في رمضان — يُعفى بند التعويضات/المزايا فقط.</p>
+      <p class="dont">لا ترسم جلد كلود (كريمي/تراكوتي). نيروفيرا فقط.</p>
+    </div>
+
+    <p class="muted" style="margin-top:22px">نيروفيرا · تسليم 18632 لكلود · ليس استشارة قانونية · القرار الوزاري 18632 هو النص.</p>
+  </div>
+</body>
+</html>

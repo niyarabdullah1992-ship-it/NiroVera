@@ -2247,9 +2247,12 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
   const subject = rosterEmployeeById(live?.employees, employeeId);
   if (!subject) return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
   const calendarDays = computeLeaveDays(startDate, endDate);
-  const chargeable = chargeableLeaveDays(startDate, endDate, type, laborCalendarOf(live));
+  const chargeable = chargeableLeaveDays(startDate, endDate, type, laborCalendarOf(live), live, subject);
   const explicit = Number(requestedDays);
-  const days = Number.isFinite(explicit) && explicit >= 1 ? Math.max(1, Math.round(explicit)) : (chargeable || calendarDays);
+  const leaveKey = String(type || "").trim().toLowerCase();
+  const days = (leaveKey === "annual" || leaveKey === "sick")
+    ? chargeable
+    : (Number.isFinite(explicit) && explicit >= 1 ? Math.max(1, Math.round(explicit)) : calendarDays);
   const gate = checkSubmitLeaveGate({
     type,
     startDate,
@@ -2280,6 +2283,7 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
     actorId: requestedById,
     employerRecorded: status === "approved" && !!recordedBy,
     laborCalendar: laborCalendarOf(live),
+    company: live,
   });
   if (!gate.ok) return gate;
   let createdRequest = null;
@@ -2410,6 +2414,7 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
       profile: emp?.profile,
       requests: emp?.leaveRequests,
       laborCalendar: laborCalendarOf(data),
+      company: data,
       examNoticeIssuedAt: issuedAt || undefined,
       onDate: extras.onDate,
     });

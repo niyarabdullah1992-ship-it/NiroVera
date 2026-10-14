@@ -11,6 +11,7 @@ import { heatBanWindow } from "./contractLawDerivations.js";
 import { hoursPolicyOf } from "./laborHoursPolicy.js";
 import { ruleValue } from "./laborRules.js";
 import { statusFromWeekCheck } from "./lawGateStatus.js";
+import { NIGHT_WORK_RIGHTS } from "./nightWorkRights.js";
 
 function checkById(gates, id) {
   return (gates?.checks || []).find((row) => row?.id === id) || null;
@@ -121,9 +122,82 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
   const facilitiesPill = pillFromCheck(facilities, ar);
   const payPill = pillFromCheck(payEq, ar);
 
+  const pillByGate = {
+    night_rest: restPill,
+    night_performer_comp: performerPill,
+    night_compensate: compensatePill,
+    night_rotate: rotatePill,
+    night_pregnancy: pregPill,
+    night_medical: medicalPill,
+  };
+  const checkByGate = {
+    night_rest: rest,
+    night_performer_comp: performer,
+    night_compensate: compensate,
+    night_rotate: rotate,
+    night_pregnancy: preg,
+    night_medical: medical,
+  };
+  const rightRows = NIGHT_WORK_RIGHTS.map((right) => {
+    const check = checkByGate[right.gateId];
+    const pill = pillByGate[right.gateId] || { status: "void", who: "" };
+    const voidWhenIdle = right.gateId === "night_performer_comp" || right.gateId === "night_compensate" || right.gateId === "night_medical";
+    const idle = voidWhenIdle && !check && nights === 0 && right.gateId !== "night_performer_comp";
+    const performerIdle = right.gateId === "night_performer_comp" && !performer;
+    let status = pill.status;
+    if (right.gateId === "night_compensate" && !compensate) status = nights > 0 ? "settled" : "void";
+    if (right.gateId === "night_medical" && !medical) status = nights > 0 ? "settled" : "void";
+    if (performerIdle) status = "void";
+    const summaryExtra = right.gateId === "night_rest"
+      ? (ar
+        ? `راحة ${restH} ساعة بين يومي عمل لمن أدّى عملاً ليلياً — ليست حصراً على العامل الليلي`
+        : `${restH}-hour rest between work days for anyone who performed night work — not only night workers`)
+      : right.gateId === "night_rotate"
+        ? (ar
+          ? `تدوير بعد ${rotateMonths} أشهر كعامل ليلي — موافقة خطية محفوظة مع حق التراجع، أو شهر ساعات عادية على الأقل`
+          : `Rotate after ${rotateMonths} months as a night worker — written consent on file with withdraw right, or at least one ordinary-hours month`)
+        : right.gateId === "night_pregnancy"
+          ? (ar
+            ? `حظر ليلي للحامل قبل الوضع بـ${pregWeeks} أسبوعاً على الأقل — مع عمل مناسب في الساعات المعتادة`
+            : `Pregnancy night ban for at least ${pregWeeks} weeks before birth — with suitable ordinary-hours work`)
+          : right.gateId === "night_performer_comp"
+            ? (ar
+              ? "تعويض ساعات أو أجر أو بدل أو نقل — لكل من يدخل النافذة ولو أقل من ثلاث ساعات"
+              : "Compensate in hours, pay, allowance, or transport — anyone in the window, even under three hours")
+            : right.gateId === "night_compensate"
+              ? (ar
+                ? "بدل مناسب أو تخفيض ساعات مع حفظ الأجر — للعامل الليلي إلا العرضي ورمضان"
+                : "Suitable allowance or reduced hours with pay preserved — night worker unless incidental or Ramadan")
+              : (ar ? `${right.ar} — ${right.hintAr}` : `${right.en} — ${right.hintEn}`);
+    return {
+      id: right.gateId,
+      article: "18632",
+      decision: "18632",
+      status,
+      who: pill.who,
+      title: ar ? right.ar : right.en,
+      inRequests: right.inRequests,
+      performer: right.performer,
+      worker: right.worker,
+      performerNoteAr: right.performerNoteAr,
+      performerNoteEn: right.performerNoteEn,
+      pillLabel: (performerIdle || (idle && !check))
+        ? (ar ? "بلا أثر" : "No effect")
+        : undefined,
+      summary: summaryExtra,
+      checkId: right.gateId,
+    };
+  });
+
   return {
     id: "18632",
     title: ar ? "بوابات 18632 — الليل" : "Gates 18632 — night",
+    windowAr: `الليل من الساعة ${Number(start)} إلى الساعة ${Number(end)}. المسائي من 15 إلى 23 خارج الليل.`,
+    windowEn: `Night is ${start}:00 to ${end}:00. Evening 15:00–23:00 is outside night.`,
+    performerAr: "يؤدي عملاً ليلياً: أي دقيقة داخل النافذة.",
+    performerEn: "Performs night work: any minute in the window.",
+    workerAr: `عامل ليلي: ${workerHours} ساعات فأكثر داخل النافذة.`,
+    workerEn: `Night worker: ${workerHours}+ hours in the window.`,
     rows: [
       {
         id: "night_definition",
@@ -138,84 +212,10 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
             : (ar ? `${nights} ليالٍ` : `${nights} nights`))
           : (ar ? "بلا أثر" : "No effect"),
         summary: ar
-          ? `تعريف العامل الليلي — ${workerHours} ساعات فأكثر بين ${start}:00–${end}:00 · أي دقيقة داخل النافذة = يؤدي عملاً ليلياً`
-          : `Night worker — ${workerHours}+ hours between ${start}:00–${end}:00 · any minute in the window performs night work`,
+          ? `${workerHours} ساعات فأكثر بين ${start}:00 و${end}:00 = عامل ليلي · أي دقيقة = يؤدي عملاً ليلياً`
+          : `${workerHours}+ hours between ${start}:00 and ${end}:00 = night worker · any minute performs night work`,
       },
-      {
-        id: "night_rest",
-        article: "18632",
-        decision: "18632",
-        status: restPill.status,
-        who: restPill.who,
-        summary: ar
-          ? `راحة ${restH} ساعة بين يومي عمل لمن أدّى عملاً ليلياً — ليست حصراً على العامل الليلي`
-          : `${restH}-hour rest between work days for anyone who performed night work — not only night workers`,
-        checkId: "night_rest",
-      },
-      {
-        id: "night_performer_comp",
-        article: "18632",
-        decision: "18632",
-        status: performer ? performerPill.status : "void",
-        who: performerPill.who,
-        pillLabel: !performer
-          ? (ar ? "بلا أثر" : "No effect")
-          : undefined,
-        summary: ar
-          ? `تعويض من يؤدي عملاً ليلياً — ساعات أو أجر أو مزايا مماثلة (بدل / نقل) داخل ${start}:00–${end}:00`
-          : `Compensate anyone who performs night work — hours, pay, or similar benefits (allowance / transport) inside ${start}:00–${end}:00`,
-        checkId: "night_performer_comp",
-      },
-      {
-        id: "night_compensate",
-        article: "18632",
-        decision: "18632",
-        status: compensate ? compensatePill.status : (nights > 0 ? "settled" : "void"),
-        who: compensatePill.who,
-        pillLabel: !compensate && nights === 0
-          ? (ar ? "بلا أثر" : "No effect")
-          : undefined,
-        summary: ar
-          ? "العامل الليلي: بدل مناسب أو تخفيض ساعات مع حفظ وزن الساعات العادية والأجر والمزايا — إلا الليلي العرضي"
-          : "Night worker: suitable allowance or reduced hours with ordinary-hour weight, pay and benefits preserved — unless incidental",
-        checkId: "night_compensate",
-      },
-      {
-        id: "night_rotate",
-        article: "18632",
-        decision: "18632",
-        status: rotatePill.status,
-        who: rotatePill.who,
-        summary: ar
-          ? `تدوير بعد ${rotateMonths} أشهر كعامل ليلي — موافقة خطية محفوظة مع حق التراجع، أو شهر ساعات عادية على الأقل`
-          : `Rotate after ${rotateMonths} months as a night worker — written consent on file with withdraw right, or at least one ordinary-hours month`,
-        checkId: "night_rotate",
-      },
-      {
-        id: "night_pregnancy",
-        article: "18632",
-        decision: "18632",
-        status: pregPill.status,
-        who: pregPill.who,
-        summary: ar
-          ? `حظر ليلي للحامل قبل الوضع بـ${pregWeeks} أسبوعاً على الأقل — مع عمل مناسب في الساعات المعتادة`
-          : `Pregnancy night ban for at least ${pregWeeks} weeks before birth — with suitable ordinary-hours work`,
-        checkId: "night_pregnancy",
-      },
-      {
-        id: "night_medical",
-        article: "18632",
-        decision: "18632",
-        status: medical ? medicalPill.status : (nights > 0 ? "settled" : "void"),
-        who: medicalPill.who,
-        pillLabel: !medical && nights === 0
-          ? (ar ? "بلا أثر" : "No effect")
-          : undefined,
-        summary: ar
-          ? "لياقة العامل الليلي — تقرير طبي قبل الإسناد وسنوياً وعند ظهور مشكلة صحية · للملف فقط وبموافقة"
-          : "Night-worker fitness — medical report before assignment, yearly, and when health issues appear · on file only with consent",
-        checkId: "night_medical",
-      },
+      ...rightRows,
       {
         id: "night_facilities",
         article: "18632",

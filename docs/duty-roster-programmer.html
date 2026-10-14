@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <title>جدول الدوام والحضور — دليل مبرمج</title>
+  <style>
+    @page { size: A4; margin: 12mm 12mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Tahoma", "Consolas", sans-serif;
+      font-size: 11px;
+      line-height: 1.55;
+      color: #16324f;
+    }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    h2 { font-size: 13px; margin: 14px 0 6px; color: #0f3d4c; border-bottom: 1px solid #d7e2ea; padding-bottom: 3px; }
+    h3 { font-size: 12px; margin: 10px 0 4px; }
+    p, li { margin: 0 0 5px; }
+    .sub { color: #5a7184; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; margin: 0 0 8px; font-size: 10.5px; }
+    th, td { border: 1px solid #d7e2ea; padding: 4px 6px; vertical-align: top; text-align: start; }
+    th { background: #eef5f1; }
+    code, .mono { font-family: Consolas, "Courier New", monospace; font-size: 10px; direction: ltr; unicode-bidi: isolate; }
+    pre {
+      background: #f4f7f8;
+      border: 1px solid #d7e2ea;
+      padding: 8px 10px;
+      font-size: 9.5px;
+      direction: ltr;
+      text-align: left;
+      white-space: pre-wrap;
+      margin: 0 0 8px;
+    }
+    .note { background: #fff8e8; border: 1px solid #ead7a0; padding: 7px 10px; margin: 8px 0; }
+    .ok { background: #f1f8f2; border: 1px solid #c5e0cb; padding: 7px 10px; margin: 8px 0; }
+    ul { margin: 0 0 8px; padding: 0 16px 0 0; }
+    .foot { color: #7a8b99; font-size: 10px; margin-top: 10px; }
+    .keep { page-break-inside: avoid; }
+  </style>
+</head>
+<body>
+  <h1>جدول الدوام والحضور — دليل مبرمج مفصّل</h1>
+  <p class="sub">NiroVera · عزل companyId · أرقام الشاشة مشتقة · دورة الإثبات حلقة 1: شخص + مكان + وقت</p>
+  <div class="ok">الجدول يخطّط الساعة. البصمة تلتقط. التقويم يثبت. لا تخترع ساعة شركة افتراضية.</div>
+
+  <h2>1. الأسطح</h2>
+  <table>
+    <tr><th>مسار</th><th>ملف</th><th>عمل</th></tr>
+    <tr><td class="mono">/app/shifts</td><td>Attendance.jsx + ShiftsPlatformBoard</td><td>شبكة + نشر أسبوع</td></tr>
+    <tr><td class="mono">/app/attendance</td><td>نفس الصفحة</td><td>بصمتي / كشفي / طابور / سياسة</td></tr>
+    <tr><td class="mono">/app/calendar</td><td>AttendanceMonthCalendar</td><td>يثبت ما حصل</td></tr>
+    <tr><td class="mono">/app/requests</td><td>Requests.jsx</td><td>إجازة · تغيير وردية · موافقة ليل</td></tr>
+  </table>
+  <p><code>lane=mine|manage</code>. موظف ≠ طابور الإدارة. مجموعة duty في <code>suiteApps.js</code>.</p>
+
+  <h2>2. الملفات الأساسية</h2>
+  <p><code>src/lib/shiftWeek.js</code> نشر وبوابات وتصنيف ونطاق فرع. <code>decision18632.js</code> ليل. <code>attendanceDerivations.js</code> تأخير وبصمة. <code>store.js</code>: <code>setEmployeeDayShift</code> / <code>publishWeek</code> / <code>copyScheduleMonth</code>. حقيقة: <code>ATTENDANCE_FACTS</code> → <code>company.schedules[]</code>.</p>
+
+  <h2>3. النموذج</h2>
+<pre>{
+  stationId,
+  shiftTypes: [{ id, label, start, end, restMinutes }],
+  assignments: { "YYYY-MM-DD": { [shiftId]: [empId] } },
+  publishedWeeks: { [weekKey]: { at, by } },
+  weekDirty: { [weekKey]: true },
+  nightCompensation
+}</pre>
+  <p>جدول واحد لكل <code>stationId</code>. شخص واحد في نوع واحد في اليوم. مفاتيح أسبوعية 0–6 قديمة؛ <code>dayAssignmentMap</code> يفضّل المؤرخ.</p>
+  <p>نوافذ قياسية: صباحي 07:00–15:00 · مسائي 15:00–23:00 · ليلي 23:00–07:00 · 12 بقاء 07:00–19:00.</p>
+
+  <h2>4. نطاق الفرع</h2>
+  <p><code>rosterTableStation</code>: mine = فرع العمل فقط (الهيدر لا يستبدل). manage = فرع الهيدر أو العمل. «كل الفروع» لا يدمج الشبكات.</p>
+  <p>رسم: مالك / director / ops_manager / station_manager أو <code>canCreateTasks</code> ومع <code>lane=manage</code>.</p>
+
+  <h2>5. التصنيف — الوقت لا الطول</h2>
+  <table>
+    <tr><th>دالة</th><th>قاعدة</th></tr>
+    <tr><td class="mono">isMorningShift</td><td>تسمية أو بداية 05–11، وليست ليل</td></tr>
+    <tr><td class="mono">isEveningShift</td><td>تسمية أو بداية 12–22، وليست ليل</td></tr>
+    <tr><td class="mono">performsNightWork</td><td>أي دقيقة 23:00–06:00</td></tr>
+    <tr><td class="mono">isNightWorker</td><td>≥ 3 ساعات داخل النافذة</td></tr>
+  </table>
+  <p>م99 تسع ساعات = سقف أجر يومي إن فُعّل، ليس نوع وردية. <code>07:00–16:00</code> يبقى صباحيًا. التأخير: <code>lateMinutesFromScheduledStart</code> من <code>shift.start</code> لذلك الموظف. لا حد سماح في الرقم.</p>
+
+  <h2>6. نشر الأسبوع</h2>
+  <table>
+    <tr><th>kind</th><th>معنى</th></tr>
+    <tr><td class="mono">draft</td><td>غير منشور — وردية البصمة غير حيّة</td></tr>
+    <tr><td class="mono">published</td><td>لقطة + غير dirty</td></tr>
+    <tr><td class="mono">edited</td><td>عُدّل بعد النشر — أعد النشر</td></tr>
+    <tr><td class="mono">implicit</td><td>أسبوع ماضٍ يُعامل منشورًا</td></tr>
+  </table>
+  <p><code>publishWeek</code> يستدعي <code>checkWeekPublishGates</code> ثم يكتب اللقطة. الفشل: <code>PUBLISH_BLOCKED</code> بلا كتابة. نسخ الشهر لا ينشر ولا يصفّر 18632.</p>
+
+  <h2>7. البوابات</h2>
+  <h3>خلية — checkShiftChangeApplyGate ثم setEmployeeDayShift</h3>
+  <p><code>ON_LEAVE</code> · <code>OFFICIAL_HOLIDAY</code> م112 · <code>NIGHT_REST_REQUIRED</code> 12س · <code>NIGHT_CONSENT_REQUIRED</code> بعد 13 أسبوع عامل ليلي · تقليص ساعات · رمضان 6س إلا 12 بقاء · حدث 162–164. <code>resolveNightRestAssignTarget</code> قد يقفز لوردية قانونية — لا إسناد ليلي صامت مخالف.</p>
+  <h3>نشر — checkWeekPublishGates</h3>
+  <p>48س/أسبوع · 10س م106 · 12س بقاء م101 · راحة 30د/5س · راحة أسبوعية م104 · رمضان 6/36 (فراغ الملف=مسلم) · 3337 شمس · تدوير/بدل ليل · منشأة ليلية.</p>
+  <p>نقص التغطية عبء جدولة لا غياب. <code>RotaPublishPanel</code> فحص شهري عبر <code>workforce</code> — ليس بديل <code>publishWeek</code>.</p>
+
+  <h2>8. البصمة</h2>
+  <p><code>getTodaysShift</code> يقرأ <code>assignments[dateKey]</code> لفرع الموظف + تغطية إضافية. <code>selfPunchScheduleGate</code> → <code>NOT_SCHEDULED</code> بلا بداية.</p>
+  <div class="note">
+    <strong>فخ:</strong> <code>hasPublishedScheduleOn</code> = «يوجد أي إسناد ذلك اليوم». ساعة الشبكة والنص «بلا جدول» = <code>isWeekDayPublished</code> (لقطات الأسبوع). لا تخلط الدالتين.
+  </div>
+  <p>بصمة بلا وردية منشورة ≠ late ≠ absent شرعي — طابور المدير «بلا جدول».</p>
+
+  <h2>9. 18632</h2>
+  <p>السطح هنا + طلباتي. لا لوحة كاملة في ملف الموظف. بعد 3 أشهر: أسند صباحي/مسائي؛ نوع الليل يبقى. موافقة خطية حتى السحب. أسبوع صباح لا يصفّر العدّ. XOR بدل أو تقليص (إلا العرضي). حمل: حظر ليلي 24 أسبوعًا قبل الوضع.</p>
+
+  <h2>10. التغذية</h2>
+  <table>
+    <tr><th>هدف</th><th>يأخذ</th></tr>
+    <tr><td>كشفي / تقويم</td><td>وردية + إجازة معتمدة</td></tr>
+    <tr><td>قسيمتي</td><td>ساعات مشتقة؛ إضافي م107 غير مخزّن كمصدر</td></tr>
+    <tr><td>أداء</td><td>طول الفترة من ورديات منشورة — الحضور لا يدخل الدرجة</td></tr>
+    <tr><td>مهام</td><td>isActiveAttendance فوق الحلقة 1</td></tr>
+  </table>
+
+  <h2>11. قواعد كود</h2>
+  <ul>
+    <li>لا ساعة شركة. قارن start/end لا hours.</li>
+    <li>كل مانع مسمّى. لا merge فروع.</li>
+    <li>لا غياب على إجازة أو خلية فارغة.</li>
+    <li>تواريخ تشغيل: <code>toRiyadhDateKey()</code>.</li>
+    <li>رمضان من laborCalendar + الدين؛ الفراغ = مسلم.</li>
+  </ul>
+
+  <h2>12. اختبار</h2>
+  <p>07:00–15:00 صباحي · 15:00–23:00 التأخير من 15:00 · مسودة → بلا جدول · &gt;48س يمنع النشر · إجازة → ON_LEAVE · ليل ثم صباح بلا 12س يُرفض أو يقفز · نسخ شهر لا ينشر.</p>
+
+  <h2>13. ابدأ من</h2>
+  <p><code>employeeShiftOnDay</code> · <code>weekPublishState</code> · <code>checkWeekPublishGates</code> · <code>publishWeek</code> · <code>getTodaysShift</code> · <code>performsNightWork</code> · <code>ordinaryDayCap</code></p>
+  <p class="foot">المصدر القابل للتعديل في المستودع: docs/duty-roster-programmer.md</p>
+</body>
+</html>

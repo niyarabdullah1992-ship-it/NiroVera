@@ -38,6 +38,8 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
       hoursTable: live.workPosting?.hoursTable || "",
       restPeriods: live.workPosting?.restPeriods || "",
       weeklyRest: live.workPosting?.weeklyRest || "",
+      weeklyRestDow: Number.isInteger(Number(live.workPosting?.weeklyRestDow)) ? Number(live.workPosting.weeklyRestDow) : 5,
+      weeklyRestDayCount: Number(live.workPosting?.weeklyRestDayCount) === 1 ? 1 : 2,
       shiftTimes: live.workPosting?.shiftTimes || "",
       posted: live.workPosting?.posted === true,
       postedAt: live.workPosting?.postedAt || "",
@@ -66,6 +68,8 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
         nurseryChildrenCount: Number(draft.nurseryChildrenCount) || 0,
         workPosting: {
           ...draft.workPosting,
+          weeklyRestDow: Number(draft.workPosting.weeklyRestDow),
+          weeklyRestDayCount: Number(draft.workPosting.weeklyRestDayCount) === 1 ? 1 : 2,
           posted: draft.workPosting.posted === true,
           postedAt: draft.workPosting.postedAt || "",
         },
@@ -171,6 +175,34 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
         <label style={{ fontSize: 11, color: MUTED }}>
           {ar ? "يوم الراحة الأسبوعية" : "Weekly rest day"}
           <input value={draft.workPosting.weeklyRest} disabled={!canEdit} onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, weeklyRest: e.target.value } }))} style={{ ...field, marginTop: 6 }} />
+        </label>
+        <label style={{ fontSize: 11, color: MUTED }}>
+          {ar ? "راحة المادة 104" : "Article 104 rest weekday"}
+          <select
+            value={draft.workPosting.weeklyRestDow}
+            disabled={!canEdit}
+            onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, weeklyRestDow: Number(e.target.value) } }))}
+            style={{ ...field, marginTop: 6 }}
+          >
+            {(ar
+              ? ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
+              : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+            ).map((label, dow) => (
+              <option key={dow} value={dow}>{label}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: 11, color: MUTED }}>
+          {ar ? "عدد أيام الراحة في الأسبوع" : "Weekly rest days"}
+          <select
+            value={draft.workPosting.weeklyRestDayCount}
+            disabled={!canEdit}
+            onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, weeklyRestDayCount: Number(e.target.value) } }))}
+            style={{ ...field, marginTop: 6 }}
+          >
+            <option value={2}>{ar ? "يومان — نظامي + راحة الشركة (لا يُخصمان من السنوية)" : "Two — statutory + company rest (not charged to annual)"}</option>
+            <option value={1}>{ar ? "يوم واحد — راحة المادة 104 فقط" : "One — Article 104 rest only"}</option>
+          </select>
         </label>
         <label style={{ fontSize: 11, color: MUTED }}>
           {ar ? "مواعيد النوبة" : "Shift times"}

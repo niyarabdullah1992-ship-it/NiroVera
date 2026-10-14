@@ -12,9 +12,9 @@ export type EmployeeLeaveProfile = {
   leaveRequests?: LeaveRequestLike[];
 };
 
-export function chargeableAnnualDays(startDate?: string, endDate?: string, calendar?: unknown): number;
+export function chargeableAnnualDays(startDate?: string, endDate?: string, calendar?: unknown, company?: unknown): number;
 export function chargeableSickDays(startDate?: string, endDate?: string, calendar?: unknown): number;
-export function usedLeaveDays(requests: LeaveRequestLike[] | undefined, key: string, onDate?: string, hireDate?: string, calendar?: unknown): number;
+export function usedLeaveDays(requests: LeaveRequestLike[] | undefined, key: string, onDate?: string, hireDate?: string, calendar?: unknown, company?: unknown): number;
 export function remainingLeaveDays(
   profile: { hireDate?: string; leaveTotals?: Record<string, number> } | null | undefined,
   requests: LeaveRequestLike[] | undefined,

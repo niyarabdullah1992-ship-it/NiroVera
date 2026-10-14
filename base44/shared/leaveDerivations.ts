@@ -95,6 +95,11 @@ export type LeaveApproveExtras = {
   employerRecorded?: boolean;
   companyId?: string;
   laborCalendar?: LaborCalendar | null;
+  company?: {
+    hoursPolicy?: { workPosting?: { weeklyRestDow?: number; weeklyRestDayCount?: number; weeklyOffDows?: number[]; companyRestDows?: number[]; companyRestDays?: number } };
+    attendanceSettings?: { hoursPolicy?: { workPosting?: { weeklyRestDow?: number; weeklyRestDayCount?: number } } };
+    workPosting?: { weeklyRestDow?: number; weeklyRestDayCount?: number };
+  };
   otherRequests?: ExamConsentExtras["otherRequests"];
   employee?: ExamConsentExtras["employee"] & { id?: string };
 };
@@ -572,8 +577,47 @@ function chargeableSpanExcludingHolidays(startDate?: string, endDate?: string, c
   return n;
 }
 
-function chargeableAnnualDays(startDate?: string, endDate?: string) {
-  return chargeableSpanExcludingHolidays(startDate, endDate);
+function postingOf(company?: LeaveApproveExtras["company"]) {
+  return company?.hoursPolicy?.workPosting
+    || company?.attendanceSettings?.hoursPolicy?.workPosting
+    || company?.workPosting
+    || {};
+}
+
+function weeklyOffDowsOf(company?: LeaveApproveExtras["company"], employee?: LeaveApproveExtras["employee"]) {
+  const posting = postingOf(company);
+  const listed = posting.weeklyOffDows || posting.companyRestDows;
+  if (Array.isArray(listed) && listed.length) {
+    return [...new Set(listed.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))];
+  }
+  const statutoryRaw = Number(posting.weeklyRestDow);
+  const statutory = Number.isInteger(statutoryRaw) && statutoryRaw >= 0 && statutoryRaw <= 6 ? statutoryRaw : 5;
+  const fileRaw = Number((employee as { profile?: { weeklyRestDayCount?: number }; weeklyRestDayCount?: number } | undefined)?.profile?.weeklyRestDayCount
+    ?? (employee as { weeklyRestDayCount?: number } | undefined)?.weeklyRestDayCount);
+  const fileCount = fileRaw === 1 || fileRaw === 2 ? fileRaw : 0;
+  const countRaw = Number(posting.weeklyRestDayCount ?? posting.companyRestDays);
+  const count = fileCount || (countRaw === 1 ? 1 : 2);
+  if (count <= 1) return [statutory];
+  return [statutory, (statutory + 1) % 7];
+}
+
+function isWeeklyOffOn(dateKey: string, company?: LeaveApproveExtras["company"], employee?: LeaveApproveExtras["employee"]) {
+  const [y, m, d] = String(dateKey || "").split("-").map(Number);
+  if (!y) return false;
+  return weeklyOffDowsOf(company, employee).includes(new Date(y, m - 1, d).getDay());
+}
+
+function chargeableAnnualDays(startDate?: string, endDate?: string, calendar?: LaborCalendar | null, company?: LeaveApproveExtras["company"], employee?: LeaveApproveExtras["employee"]) {
+  const start = dateOnly(startDate);
+  const end = dateOnly(endDate);
+  if (!start || !end || end < start) return 0;
+  let n = 0;
+  let cursor: string | null = start;
+  while (cursor && cursor <= end) {
+    if (!isOfficialHolidayDay(cursor, calendar) && !isWeeklyOffOn(cursor, company, employee)) n += 1;
+    cursor = addLaborDays(cursor, 1);
+  }
+  return n;
 }
 
 export function isOfficialHolidayLeave(type?: string) {
@@ -748,7 +792,7 @@ function sickStatutoryYearWindow(requests: LeaveRequestLike[] | undefined, onDat
   return { start: startIso, end: addCalendarDays(startIso, 364) };
 }
 
-function usedLeaveDays(requests: LeaveRequestLike[] | undefined, key: string, onDate?: string, hireDate?: string) {
+function usedLeaveDays(requests: LeaveRequestLike[] | undefined, key: string, onDate?: string, hireDate?: string, calendar?: LaborCalendar | null, company?: LeaveApproveExtras["company"], employee?: LeaveApproveExtras["employee"]) {
   const k = String(key || "").trim().toLowerCase();
   const approved = (requests || []).filter((r) => String(r.type || "").toLowerCase() === k && r.status === "approved");
   if (k === "sick") {
@@ -771,7 +815,7 @@ function usedLeaveDays(requests: LeaveRequestLike[] | undefined, key: string, on
       if (start && end && win) {
         const a0 = start > win.start ? start : win.start;
         const a1 = end < win.end ? end : win.end;
-        return sum + (a0 <= a1 ? chargeableAnnualDays(a0, a1) : 0);
+        return sum + (a0 <= a1 ? chargeableAnnualDays(a0, a1, calendar, company, employee) : 0);
       }
       return sum + (Number(r.days) || 0);
     }, 0);
@@ -995,9 +1039,11 @@ export function checkApproveLeaveGate(
   const gender = checkLeaveGenderGate(request, extras);
   if (!gender.ok) return gender;
   const rawDays = Number(request.days) > 0 ? Number(request.days) : computed;
-  const days = (type === "annual" || type === "sick")
-    ? chargeableSpanExcludingHolidays(start, end, extras.laborCalendar)
-    : rawDays;
+  const days = type === "annual"
+    ? chargeableAnnualDays(start, end, extras.laborCalendar, extras.company, extras.employee)
+    : type === "sick"
+      ? chargeableSpanExcludingHolidays(start, end, extras.laborCalendar)
+      : rawDays;
   const onDate = request.startDate || extras.onDate;
   const cite = citeLeaveType(type, onDate);
   const defer = checkAnnualDeferGate(request, extras);

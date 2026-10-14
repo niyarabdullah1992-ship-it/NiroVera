@@ -28,7 +28,7 @@ function row(id, value, unit, article, source, hintAr, hintEn, dates = {}) {
 }
 
 export const LABOR_RULES = [
-  row("leave.annual.days", 21, "days", "109", "labour", "إجازة سنوية 21 يوماً بأجر كامل، وترتفع إلى 30 يوماً بعد خمس سنوات خدمة.", "Annual leave 21 days on full pay, rising to 30 after five years of service."),
+  row("leave.annual.days", 21, "days", "109", "labour", "إجازة سنوية 21 يوم عمل بأجر كامل، وترتفع إلى 30 بعد خمس سنوات. الراحة الأسبوعية (المادة 104) وأيام راحة الشركة لا تُخصم من هذا الرصيد.", "Annual leave is 21 work days on full pay, rising to 30 after five years. Weekly rest (Art. 104) and company rest days are not charged against this balance."),
   row("leave.annual.afterFiveYearsDays", 30, "days", "109", "labour", "ترتفع الإجازة السنوية إلى 30 يوماً بعد خمس سنوات خدمة.", "Annual leave rises to 30 days after five years of service."),
   row("leave.annual.carry.cite", 1, "days", "110", "labour", "يجوز تأجيل الإجازة السنوية إلى السنة التالية بموافقة صاحب العمل. لصاحب العمل التأجيل حتى 90 يوماً بعد سنة الاستحقاق، وأبعد من ذلك بموافقة كتابية على ألا يتجاوز نهاية السنة التالية.", "Annual leave may be postponed to the next year with the employer's approval. The employer may postpone up to 90 days after the entitlement year, and further only with written consent, not beyond the end of the following year."),
   row("leave.annual.deferMaxDays", 90, "days", "110", "labour", "تأجيل صاحب العمل للإجازة السنوية بعد سنة الاستحقاق لا يزيد على تسعين يوماً إلا بموافقة العامل كتابة.", "The employer may postpone annual leave after the entitlement year by no more than ninety days without the worker's written consent."),

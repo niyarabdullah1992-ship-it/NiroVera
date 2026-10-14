@@ -632,12 +632,12 @@ export function leaveKindsFor(profile, ar = true, requests) {
 
 export { grantDaysOf, leftoverGrantDays };
 
-export function annualRemainingWithGrants(profile, requests, onDate) {
-  const split = annualBalanceSplit(profile, requests, onDate);
+export function annualRemainingWithGrants(profile, requests, onDate, company, employee) {
+  const split = annualBalanceSplit(profile, requests, onDate, company, employee);
   const total = split.currentTotal ?? 0;
   const used = split.currentUsed + split.carryUsed;
   const leftover = split.currentLeft;
-  const leftoverGrants = leftoverGrantDays(profile, requests, onDate);
+  const leftoverGrants = leftoverGrantDays(profile, requests, onDate, company, employee);
   return {
     total,
     used,

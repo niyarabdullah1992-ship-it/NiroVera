@@ -2,7 +2,7 @@
 
 import { profileGender } from "./employeeProfileFields.js";
 import { citeLeaveType, isRamadanHoursSubject, ruleAt, ruleValue } from "./laborRules.js";
-import { chargeableSpanExcludingHolidays } from "./leaveEidOverlap.js";
+import { chargeableAnnualWorkDays, chargeableSpanExcludingHolidays } from "./leaveEidOverlap.js";
 import { officialHolidayKindLabel, officialHolidayLeaveLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
 
 export const LEAVE_TYPES = [
@@ -243,9 +243,9 @@ function overlapRange(a0, a1, b0, b1) {
   return { start, end };
 }
 
-/** Art. 24(2): official holidays inside annual leave extend it — they are not charged. */
-export function chargeableAnnualDays(startDate, endDate, calendar) {
-  return chargeableSpanExcludingHolidays(startDate, endDate, calendar);
+/** Art. 109 work days: holidays (regs 24) and weekly rest (Art. 104 + company off) are not charged. */
+export function chargeableAnnualDays(startDate, endDate, calendar, company, employee) {
+  return chargeableAnnualWorkDays(startDate, endDate, calendar, company, employee);
 }
 
 /** Art. 24(2): Eid (and other official holidays) inside sick leave pay full wage, not the sick band. */
@@ -330,7 +330,7 @@ export function examLeaveChargesAnnual(request) {
     && request?.examPayFrom === "annual";
 }
 
-export function usedLeaveDays(requests, key, onDate, hireDate, calendar) {
+export function usedLeaveDays(requests, key, onDate, hireDate, calendar, company, employee) {
   const k = String(key || "").trim().toLowerCase();
   const approved = (requests || []).filter((r) => String(r.type || "").toLowerCase() === k && r.status === "approved");
   if (k === "sick") {
@@ -350,7 +350,7 @@ export function usedLeaveDays(requests, key, onDate, hireDate, calendar) {
       const end = dateOnly(r.endDate) || (start ? addCalendarDays(start, Math.max(1, Number(r.days) || 1) - 1) : "");
       if (start && end && win) {
         const span = overlapRange(start, end, win.start, win.end);
-        return sum + (span ? chargeableAnnualDays(span.start, span.end, calendar) : 0);
+        return sum + (span ? chargeableAnnualDays(span.start, span.end, calendar, company, employee) : 0);
       }
       return sum + (Number(r.days) || 0);
     }, 0);
@@ -383,16 +383,16 @@ export function grantDaysOf(profile) {
 }
 
 /** Discretionary days still available — grant leave and annual overflow share this pool. */
-export function leftoverGrantDays(profile, requests, onDate) {
-  const split = annualBalanceSplit(profile, requests, onDate);
+export function leftoverGrantDays(profile, requests, onDate, company, employee) {
+  const split = annualBalanceSplit(profile, requests, onDate, company, employee);
   const overflow = Math.max(0, (split.currentUsed + split.carryUsed) - (split.currentTotal || 0) - split.carryTotal);
   return Math.max(0, grantDaysOf(profile) - usedLeaveDays(requests, "grant", onDate, profile?.hireDate) - overflow);
 }
 
-export function remainingLeaveDays(profile, requests, key = "annual", onDate) {
-  if (key === "grant") return leftoverGrantDays(profile, requests, onDate);
+export function remainingLeaveDays(profile, requests, key = "annual", onDate, company, employee) {
+  if (key === "grant") return leftoverGrantDays(profile, requests, onDate, company, employee);
   if (key === "annual") {
-    const split = annualBalanceSplit(profile, requests, onDate);
+    const split = annualBalanceSplit(profile, requests, onDate, company, employee);
     if (split.currentTotal == null && split.carryTotal === 0) return null;
     return split.remaining;
   }
@@ -415,9 +415,9 @@ export function unusedFromPreviousYear(profile, requests, onDate) {
 }
 
 /** Current-year statutory line plus a separate carry line; carry is consumed first. */
-export function annualBalanceSplit(profile, requests, onDate) {
+export function annualBalanceSplit(profile, requests, onDate, company, employee) {
   const currentTotal = getLeaveTotal(profile, "annual", onDate);
-  const usedThisYear = usedLeaveDays(requests, "annual", onDate, profile?.hireDate);
+  const usedThisYear = usedLeaveDays(requests, "annual", onDate, profile?.hireDate, undefined, company, employee || (profile ? { profile } : null));
   const carryTotal = unusedFromPreviousYear(profile, requests, onDate);
   const carryUsed = Math.min(carryTotal, usedThisYear);
   const currentUsed = Math.max(0, usedThisYear - carryTotal);

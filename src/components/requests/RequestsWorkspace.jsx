@@ -5,6 +5,7 @@ import { setStationScope } from "@/lib/stationScopeStore";
 import { answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
 import { approvedLeaveWithdrawWindow, chargeableLeaveDays, checkApproveLeaveGate, checkExamSittingSettleGate, checkLeaveGenderGate, checkRejectLeaveGate, checkSubmitLeaveGate, examNoticeFilesOf, examSatFileOf, examSatState, hasLeaveAttachment, isRealSupportingFile, leaveNeedsAttachment, leaveNeedsArticle118Ack, leaveSpanIncludesOfficialHolidays } from "@/lib/leaveDerivations";
 import { usedLeaveDays } from "@/lib/leaveTypes";
+import { weeklyOffDaysInRange, weeklyOffLabels } from "@/lib/leaveEidOverlap.js";
 import {
   checkApproveOtherRequestGate,
   checkApproveStudyConsentGate,
@@ -48,6 +49,10 @@ import {
   studyConsentState,
 } from "@/lib/otherRequestDerivations";
 import { nightMedicalReportOf } from "@/lib/decision18632";
+import { nightWorkRequestRights, nightWorkRightById } from "@/lib/nightWorkRights";
+import NightWorkRightsTable, { NightWorkDefinition } from "@/components/shared/NightWorkRightsTable";
+import LawGateAlertRow from "@/components/shared/LawGateAlertRow";
+import LawGateStatusPill, { LawGateArticleBadge } from "@/components/shared/LawGateStatusPill";
 import { ruleValue } from "@/lib/laborRules";
 import {
   ARTICLE_106_GROUNDS,
@@ -142,7 +147,7 @@ const BAD = "var(--nv-bad-ink)";
 const MINE_TILES = [
   { id: "leave", ar: "إجازة", en: "Leave", hintAr: "م 109 · السنوية والمرضية ورفع الرصيد", hintEn: "Art. 109 · annual, sick, and a balance top-up", letter: "إ" },
   { id: "study_consent", ar: "موافقة دراسية", en: "Study consent", hintAr: "م 115 · للامتحان أو الانتظام", hintEn: "Art. 115 · an exam or enrolment", letter: "د" },
-  { id: "night_fitness", ar: "موافقة عمل ليلي", en: "Night-work consent", hintAr: "قرار 18632 · لياقة وموافقة خطية", hintEn: "Decision 18632 · fitness and written consent", letter: "ل" },
+  { id: "night_fitness", ar: "طلبات العمل الليلي", en: "Night-work requests", hintAr: "قرار 18632 · يؤدي عملاً ليلياً أو عامل ليلي", hintEn: "Decision 18632 · performs night work or night worker", letter: "ل" },
   { id: "manual", ar: "تسجيل حضور يدوي", en: "Manual punch", hintAr: "سلسلة الإثبات · حلقة بصمة مكسورة", hintEn: "Proof chain · a broken punch", letter: "ح" },
   { id: "outfix", ar: "تصحيح انصراف", en: "Checkout correction", hintAr: "سلسلة الإثبات · سجل لم يُغلق", hintEn: "Proof chain · a checkout left open", letter: "ص" },
   { id: "doc", ar: "وثيقة أو شهادة", en: "Document or letter", hintAr: "تعريف أو شهادة خدمة", hintEn: "A salary letter or service certificate", letter: "و" },
@@ -424,6 +429,7 @@ export default function RequestsWorkspace({
   const [studyInstitution, setStudyInstitution] = useState("");
   const [studyStart, setStudyStart] = useState("");
   const [studyApprovalFile, setStudyApprovalFile] = useState(null);
+  const [nightRight, setNightRight] = useState("performer_comp");
   const [fitnessPermanent, setFitnessPermanent] = useState(false);
   const [fitnessFrom, setFitnessFrom] = useState("");
   const [fitnessTo, setFitnessTo] = useState("");
@@ -481,6 +487,8 @@ export default function RequestsWorkspace({
   const isCustody = kind === "custody";
   const isStudyConsent = kind === "study_consent";
   const isNightFitness = kind === "night_fitness";
+  const nightRightMeta = isNightFitness ? nightWorkRightById(nightRight) : null;
+  const isNightFitnessRaise = isNightFitness && nightRight === "medical";
   const isPunchKind = kind === "manual" || kind === "outfix";
   const isSignableKind = isDoc || isCustody;
   const needsDates = !isDoc && !isTopup && !isLeaveCredit && !isOtAssign && !isStudyConsent && !isNightFitness;
@@ -548,10 +556,11 @@ export default function RequestsWorkspace({
   const needs118 = isLeave && leaveNeedsArticle118Ack(leave);
   const dates = rangeDates(from, to);
   const holidayHit = dates.filter((day) => holidays.some((h) => h.from && day >= h.from && day <= h.to));
+  const restHit = isLeave && leave === "annual" && from && to ? weeklyOffDaysInRange(from, to, company, subject) : [];
   const counted = isLeave && (leave === "annual" || leave === "sick")
-    ? (dates.length ? chargeableLeaveDays(from, to, leave, laborCalendarOf(data)) : 0)
+    ? (dates.length ? chargeableLeaveDays(from, to, leave, laborCalendarOf(data), company, subject) : 0)
     : dates.length;
-  const annual = annualRemainingWithGrants(subject?.profile, subject?.leaveRequests);
+  const annual = annualRemainingWithGrants(subject?.profile, subject?.leaveRequests, undefined, company, subject);
   const isGrant = isLeave && leave === "grant";
   const overGrant = isGrant && counted > annual.leftoverGrants;
   const overBalance = (isLeave && leave === "annual" && counted > annual.remaining) || overGrant;
@@ -612,8 +621,12 @@ export default function RequestsWorkspace({
         ? (ar ? STUDY_CONSENT_LABEL_AR : STUDY_CONSENT_LABEL_EN)
       : isNightFitness
         ? (ar
-          ? `موافقة عمل ليلي · ${fitnessPermanent ? "مفتوحة" : "بين تاريخين"}`
-          : `Night-work consent · ${fitnessPermanent ? "open" : "between dates"}`)
+          ? (isNightFitnessRaise
+            ? `تقرير لياقة طبية · ${fitnessPermanent ? "مفتوحة" : "بين تاريخين"}`
+            : (nightRightMeta?.ar || "طلبات العمل الليلي"))
+          : (isNightFitnessRaise
+            ? `Night fitness · ${fitnessPermanent ? "open" : "between dates"}`
+            : (nightRightMeta?.en || "Night-work requests")))
       : isOther
         ? (otherTitle.trim() || (ar ? "طلب آخر" : "Other request"))
         : (ar ? REQUEST_KINDS.find((row) => row.id === kind)?.ar : REQUEST_KINDS.find((row) => row.id === kind)?.en);
@@ -636,6 +649,7 @@ export default function RequestsWorkspace({
       return;
     }
     setKind(tile.id);
+    if (tile.id === "night_fitness") setNightRight("performer_comp");
   };
   const pickLeaveType = (row) => {
     setKind("leave");
@@ -692,6 +706,10 @@ export default function RequestsWorkspace({
       profile: subject?.profile,
       canCredit: canDecide,
     }, lang)
+    : isNightFitness && !isNightFitnessRaise
+    ? [
+      { ok: true, text: ar ? (nightRightMeta?.whereAr || "حق من القرار 18632 — ليس طلباً يُرفع من هنا.") : (nightRightMeta?.whereEn || "A decision 18632 right — not raised from here.") },
+    ]
     : isNightFitness
     ? [
       { ok: !!supportingFile, text: supportingFile
@@ -839,7 +857,7 @@ export default function RequestsWorkspace({
       files: supportingFile ? [supportingFile] : [],
       noOtherEmployerAck: true,
       reason: note || "—",
-    }, { profile: subject?.profile, requests: subject?.leaveRequests, otherRequests: subject?.otherRequests, employee: subject, companyId: company?.id, laborCalendar });
+    }, { profile: subject?.profile, requests: subject?.leaveRequests, otherRequests: subject?.otherRequests, employee: subject, companyId: company?.id, laborCalendar, company });
     if (!statutory.ok && statutory.error !== "NO_OTHER_EMPLOYER_ACK" && statutory.error !== "LEAVE_DATES_REQUIRED" && statutory.error !== "LEAVE_DATES_ORDER") {
       gateDefs.push({ id: statutory.error || "LEAVE_SUBMIT", ok: false, text: ar ? statutory.reason : statutory.reasonEn });
     }
@@ -871,10 +889,19 @@ export default function RequestsWorkspace({
           : `${holidayHit.length} official holiday days sit inside sick leave — paid in full, not the Article 117 band.`),
     });
   }
+  if (isLeave && leave === "annual" && restHit.length) {
+    gateDefs.push({
+      ok: true,
+      warn: false,
+      text: ar
+        ? `${restHit.length} يوم راحة أسبوعية لهذا الموظف داخل المدة (${weeklyOffLabels(company, subject, true).map((row) => row.title).join(" · ")}) — لا تُخصم من الـ 21 يوماً.`
+        : `${restHit.length} weekly-off day(s) for this employee (${weeklyOffLabels(company, subject, false).map((row) => row.title).join(" · ")}) — not taken from the 21.`,
+    });
+  }
 
   gateDefs = uniqueNamedGates(gateDefs);
   const blockers = gateDefs.filter((g) => !g.ok && !g.warn);
-  const canSend = blockers.length === 0 && !!company?.id && !!subject?.id && !fileBusy && !paperBusy;
+  const canSend = blockers.length === 0 && !!company?.id && !!subject?.id && !fileBusy && !paperBusy && !(isNightFitness && !isNightFitnessRaise);
 
   const clearSupportingFile = () => {
     setSupportingFile(null);
@@ -1804,26 +1831,44 @@ export default function RequestsWorkspace({
             </div>
           ) : null}
           {selfOnly && isNightFitness ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 12, borderTop: "1px solid #EEF1EF" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                <strong style={{ fontSize: 13 }}>{ar ? "مدة الموافقة" : "Consent span"}</strong>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "#2F6B43", background: "#E6F2EA", borderRadius: 999, padding: "1px 8px" }}>{ar ? "قرار 18632" : "Decision 18632"}</span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 12, borderTop: "1px solid var(--nv-line)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "طلبات العمل الليلي" : "Night-work requests"}</strong>
+                <LawGateArticleBadge article="18632" />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 6 }}>
-                <button type="button" onClick={() => setFitnessPermanent(false)} style={leaveTypeChip(!fitnessPermanent)}>
-                  <strong style={{ fontSize: 12.5 }}>{ar ? "بين تاريخين" : "Between two dates"}</strong>
-                  <span style={{ fontSize: 11, color: "#555C66" }}>{ar ? `${NIGHT_FITNESS_RANGE_AR} — تسقط بعد تاريخ النهاية` : `${NIGHT_FITNESS_RANGE_EN} — it lapses after the end date`}</span>
-                </button>
-                <button type="button" onClick={() => { setFitnessPermanent(true); setFitnessTo(""); }} style={leaveTypeChip(fitnessPermanent)}>
-                  <strong style={{ fontSize: 12.5 }}>{ar ? "مفتوحة حتى التراجع" : "Open until withdrawn"}</strong>
-                  <span style={{ fontSize: 11, color: "#555C66" }}>{ar ? `${NIGHT_FITNESS_PERMANENT_AR} — سارية حتى تسحبها أو تنتهي اللياقة` : `${NIGHT_FITNESS_PERMANENT_EN} — valid until you withdraw or fitness ends`}</span>
-                </button>
+              <NightWorkDefinition
+                ar={ar}
+                windowText={ar ? "الليل من الساعة 23 إلى الساعة 6. المسائي من 15 إلى 23 خارج الليل." : "Night is 23:00 to 06:00. Evening 15:00–23:00 is outside night."}
+                performerText={ar ? "أي دقيقة داخل النافذة." : "Any minute in the window."}
+                workerText={ar ? "ثلاث ساعات فأكثر داخل النافذة." : "Three hours or more in the window."}
+              />
+              <NightWorkRightsTable ar={ar} rows={nightWorkRequestRights()} />
+              <div className="nv-req-kind-grid">
+                {nightWorkRequestRights().map((row) => (
+                  <KindFrameCard
+                    key={row.id}
+                    on={nightRight === row.id}
+                    letter={row.letter}
+                    title={ar ? row.ar : row.en}
+                    hint={ar
+                      ? `${row.performer ? "يؤدي عملاً ليلياً" : "عامل ليلي فقط"} · ${row.hintAr}`
+                      : `${row.performer ? "Performs night work" : "Night worker only"} · ${row.hintEn}`}
+                    onClick={() => setNightRight(row.id)}
+                  />
+                ))}
               </div>
-              <span style={{ fontSize: 11.5, color: "#3A4048", lineHeight: 1.7, background: "#F7F9F8", border: "1px solid #EEF1EF", borderRadius: 9, padding: "8px 11px" }}>
-                {ar
-                  ? "القرار 18632: لا يُسند عمل ليلي بلا لياقة طبية سارية وموافقة خطية منك. لك التراجع في أي وقت، ويُعاد جدولك بعد التراجع بإشعار. الموافقة المفتوحة تُراجَع مع كل تجديد للياقة."
-                  : "Decision 18632: night work is not assigned without current medical fitness and your written consent. You may withdraw at any time, and the roster is reset after notice. An open consent is reviewed on each fitness renewal."}
-              </span>
+              {isNightFitnessRaise ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 6 }}>
+                  <button type="button" onClick={() => setFitnessPermanent(false)} style={leaveTypeChip(!fitnessPermanent)}>
+                    <strong style={{ fontSize: 12.5 }}>{ar ? "بين تاريخين" : "Between two dates"}</strong>
+                    <span style={{ fontSize: 11, color: "var(--nv-ink2)" }}>{ar ? `${NIGHT_FITNESS_RANGE_AR} — تسقط بعد تاريخ النهاية` : `${NIGHT_FITNESS_RANGE_EN} — it lapses after the end date`}</span>
+                  </button>
+                  <button type="button" onClick={() => { setFitnessPermanent(true); setFitnessTo(""); }} style={leaveTypeChip(fitnessPermanent)}>
+                    <strong style={{ fontSize: 12.5 }}>{ar ? "مفتوحة حتى التراجع" : "Open until withdrawn"}</strong>
+                    <span style={{ fontSize: 11, color: "var(--nv-ink2)" }}>{ar ? `${NIGHT_FITNESS_PERMANENT_AR} — سارية حتى تسحبها أو تنتهي اللياقة` : `${NIGHT_FITNESS_PERMANENT_EN} — valid until you withdraw or fitness ends`}</span>
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -1990,7 +2035,38 @@ export default function RequestsWorkspace({
             </div>
           )}
 
-          {isNightFitness && mode !== "manage" && (
+          {isNightFitness && mode !== "manage" && !isNightFitnessRaise && nightRightMeta ? (
+            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 8 }}>
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink)" }}>{ar ? nightRightMeta.ar : nightRightMeta.en}</span>
+                <LaborArticleCite decisionId="18632" ar={ar} showOfficial showText entitlement />
+              </span>
+              <LawGateAlertRow
+                slab
+                ar={ar}
+                status={nightRightMeta.performer ? "settled" : "void"}
+                article="18632"
+                summary={(
+                  <span>
+                    <span style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
+                      <LawGateStatusPill
+                        ar={ar}
+                        status={nightRightMeta.performer ? "settled" : "void"}
+                        label={nightRightMeta.performer
+                          ? (ar ? "يؤدي عملاً ليلياً · استقرّ" : "Performs night work · settled")
+                          : (ar ? (nightRightMeta.performerNoteAr || "يؤدي عملاً ليلياً · بلا أثر") : (nightRightMeta.performerNoteEn || "Performs night work · no effect"))}
+                      />
+                      <LawGateStatusPill ar={ar} status="settled" label={ar ? "عامل ليلي · استقرّ" : "Night worker · settled"} />
+                    </span>
+                    <span style={{ display: "block", color: "var(--nv-ink2)" }}>{ar ? nightRightMeta.hintAr : nightRightMeta.hintEn}</span>
+                    <span style={{ display: "block", marginTop: 4, color: "var(--nv-muted)" }}>{ar ? nightRightMeta.whereAr : nightRightMeta.whereEn}</span>
+                  </span>
+                )}
+              />
+            </div>
+          ) : null}
+
+          {isNightFitnessRaise && mode !== "manage" && (
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? NIGHT_FITNESS_LABEL_AR : NIGHT_FITNESS_LABEL_EN}</span>
               <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.75 }}>{ar ? NIGHT_FITNESS_SUBTITLE_AR : NIGHT_FITNESS_SUBTITLE_EN}</span>
@@ -2614,6 +2690,7 @@ export default function RequestsWorkspace({
             ))}
           </div>
 
+          {!(isNightFitness && !isNightFitnessRaise) ? (
           <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 9 }}>
             <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.85 }}>
               {isOtAssign
@@ -2650,6 +2727,7 @@ export default function RequestsWorkspace({
               </>
             )}
           </div>
+          ) : null}
         </section>
         ) : null}
         {mode === "manage" && canDecide ? (

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <title>حسبة الإجازة السنوية — يوم أو يومان</title>
+  <style>
+    @page { size: A4; margin: 14mm 15mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Tahoma", "Traditional Arabic", sans-serif;
+      font-size: 13.5px;
+      line-height: 1.7;
+      color: #16324f;
+    }
+    h1 { font-size: 22px; margin: 0 0 4px; color: #0f3d4c; }
+    .sub { color: #5a7184; margin: 0 0 14px; font-size: 13px; }
+    h2 { font-size: 15px; margin: 14px 0 8px; color: #0f3d4c; }
+    p { margin: 0 0 8px; }
+    .hero {
+      background: #e8f4ea;
+      border: 2px solid #b7d8be;
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .box {
+      border: 1.5px solid #d7e2ea;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin: 0 0 10px;
+      background: #f7fafc;
+    }
+    .box.green { background: #f1f8f2; border-color: #c5e0cb; }
+    .box.gold { background: #fff8e8; border-color: #ead7a0; }
+    .row { display: flex; gap: 10px; margin-bottom: 10px; }
+    .row .box { flex: 1; margin: 0; }
+    table { width: 100%; border-collapse: collapse; margin: 0 0 10px; font-size: 12.5px; }
+    th, td { border: 1px solid #d7e2ea; padding: 7px 8px; text-align: start; vertical-align: top; }
+    th { background: #eef5f1; }
+    .ok { color: #1f7a4d; font-weight: 700; }
+    .no { color: #8a4a16; font-weight: 700; }
+    .foot { color: #7a8b99; font-size: 11px; text-align: center; margin-top: 12px; }
+    ul { margin: 4px 0 0; padding: 0 18px 0 0; }
+    li { margin-bottom: 4px; }
+    .page { page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <h1>حسبة الإجازة السنوية</h1>
+    <p class="sub">نيروفيرا · المادة 109 · 21 يوم عمل — ليست أيام تقويم</p>
+
+    <div class="hero">الرصيد 21 يوماً (أو 30 بعد خمس سنوات). يُخصم يوم العمل فقط.</div>
+
+    <h2>ماذا يُخصم وما لا يُخصم</h2>
+    <table>
+      <tr><th>اليوم داخل طلب السنوية</th><th>من الـ 21؟</th></tr>
+      <tr><td>يوم عمل</td><td class="ok">يُخصم</td></tr>
+      <tr><td>راحة نظامية — المادة 104 (الجمعة أصلاً)</td><td class="no">لا</td></tr>
+      <tr><td>راحة الشركة (السبت إن كان الدوام خمسة أيام)</td><td class="no">لا</td></tr>
+      <tr><td>عيد / اليوم الوطني / يوم التأسيس</td><td class="no">لا — تُمدَّد السنوية</td></tr>
+    </table>
+
+    <h2>كيف نميّز اليومين لكل موظف</h2>
+    <div class="row">
+      <div class="box green">
+        <strong>يوم نظامي</strong>
+        <p>راحة المادة 104. مُعلَن للمنشأة. غالباً الجمعة.</p>
+        <p>لكل الموظفين. لا يُخصم أبداً من السنوية.</p>
+      </div>
+      <div class="box gold">
+        <strong>يوم الشركة</strong>
+        <p>راحة إضافية فوق النظام. غالباً السبت.</p>
+        <p>فقط لمن دوامه خمسة أيام. إن عمل ستة أيام فالسبت يوم عمل ويُخصم.</p>
+      </div>
+    </div>
+
+    <div class="box">
+      <strong>أين يُضبط</strong>
+      <ul>
+        <li>المنشأة: الحضور → السياسة والمواقع → ساعات العمل: يوم أو يومان، وأي يوم هو راحة 104.</li>
+        <li>الموظف: ملف الموظف → الساعات من الجدول → يتبع المنشأة / يومان / يوم واحد.</li>
+      </ul>
+    </div>
+    <p class="foot">نيروفيرا · صفحة 1 من 2</p>
+  </section>
+
+  <section>
+    <h2>مثال واحد — من الخميس إلى السبت</h2>
+    <table>
+      <tr><th></th><th>دوام خمسة أيام (يومان راحة)</th><th>دوام ستة أيام (يوم نظامي فقط)</th></tr>
+      <tr><td>الخميس</td><td>عمل → يُخصم</td><td>عمل → يُخصم</td></tr>
+      <tr><td>الجمعة</td><td>راحة 104 → لا</td><td>راحة 104 → لا</td></tr>
+      <tr><td>السبت</td><td>راحة الشركة → لا</td><td>عمل → يُخصم</td></tr>
+      <tr><td><strong>من الرصيد</strong></td><td><strong>1 يوم</strong></td><td><strong>2 يوم</strong></td></tr>
+    </table>
+
+    <div class="box green">
+      <strong>أسبوع أحد–خميس بلا عطل</strong>
+      <p>خمسة أيام عمل → تُخصم 5 من الـ 21، للنوعين.</p>
+    </div>
+    <div class="box gold">
+      <strong>جمعة وسبت وحدهما</strong>
+      <p>خمسة أيام: صفر. ستة أيام: يُخصم السبت فقط. لا تُرفع سنوية على راحة نظامية وحدها.</p>
+    </div>
+
+    <h2>جملة تُحفظ</h2>
+    <div class="hero" style="font-size:15px;font-weight:600">
+      الجمعة راحة النظام. السبت راحة الشركة إن كان دوامه خمسة أيام. الـ 21 أيام عمل فقط.
+    </div>
+
+    <p style="font-size:12px;color:#5a7184;margin-top:14px">
+      المرضية تُحسب أياماً تقويمية عدا العطل الرسمية. الحج أياماً تقويمية بما فيها العيد. العيد والوطني والتأسيس مسار إجازة مستقل ولا تُخصم من السنوية.
+    </p>
+    <p class="foot">نيروفيرا · صفحة 2 من 2 · الإجازة السنوية وراحة الأسبوع</p>
+  </section>
+</body>
+</html>

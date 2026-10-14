@@ -7,13 +7,121 @@
 import { addLaborDays, citeRule, laborDayKey } from "./laborRules.js";
 import { isOfficialHoliday, officialHolidayOn } from "./ummAlQuraCalendar.js";
 
-function weeklyRestDowOf(company) {
-  const raw = company?.hoursPolicy?.workPosting?.weeklyRestDow
-    ?? company?.attendanceSettings?.hoursPolicy?.workPosting?.weeklyRestDow
-    ?? company?.workPosting?.weeklyRestDow;
-  const n = Number(raw);
+function postingOf(company) {
+  return company?.hoursPolicy?.workPosting
+    || company?.attendanceSettings?.hoursPolicy?.workPosting
+    || company?.workPosting
+    || {};
+}
+
+/** Art. 104 weekly rest weekday — Friday unless the establishment posted another. */
+export function weeklyRestDowOf(company) {
+  const n = Number(postingOf(company).weeklyRestDow);
   if (Number.isInteger(n) && n >= 0 && n <= 6) return n;
   return 5;
+}
+
+export const WEEKDAY_NAMES_AR = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+export const WEEKDAY_NAMES_EN = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function countOneOrTwo(raw) {
+  const n = Number(raw);
+  if (n === 1 || n === 2) return n;
+  return null;
+}
+
+/**
+ * How many weekly off days apply to this person.
+ * File override first, then establishment posting. Default two
+ * (Art. 104 + company extra). One = six-day week — only the statutory rest.
+ */
+export function weeklyRestDayCountOf(company, employee) {
+  const fromFile = countOneOrTwo(employee?.profile?.weeklyRestDayCount ?? employee?.weeklyRestDayCount);
+  if (fromFile) return fromFile;
+  const fromCompany = countOneOrTwo(postingOf(company).weeklyRestDayCount ?? postingOf(company).companyRestDays);
+  return fromCompany || 2;
+}
+
+/** Weekdays that must not be charged against Article 109 for this employee. */
+export function weeklyOffDows(company, employee) {
+  const posting = postingOf(company);
+  const listed = posting.weeklyOffDows || posting.companyRestDows;
+  if (Array.isArray(listed) && listed.length) {
+    return [...new Set(listed.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))];
+  }
+  const statutory = weeklyRestDowOf(company);
+  if (weeklyRestDayCountOf(company, employee) <= 1) return [statutory];
+  return [statutory, (statutory + 1) % 7];
+}
+
+export function isWeeklyOffDay(dateKey, company, employee) {
+  const [y, m, d] = String(dateKey || "").split("-").map(Number);
+  if (!y) return false;
+  return weeklyOffDows(company, employee).includes(new Date(y, m - 1, d).getDay());
+}
+
+function scheduleForEmployee(company, employee) {
+  const stationId = employee?.profile?.workStationId || employee?.stationId;
+  if (stationId == null || String(stationId).trim() === "") return null;
+  return (company?.schedules || []).find((row) => String(row.stationId) === String(stationId)) || null;
+}
+
+function assignmentMapOn(schedule, dateKey) {
+  const assignments = schedule?.assignments || {};
+  const dated = assignments[dateKey];
+  if (dated && typeof dated === "object" && !Array.isArray(dated)) return dated;
+  const [y, m, d] = String(dateKey || "").split("-").map(Number);
+  if (!y) return null;
+  const dow = new Date(y, m - 1, d).getDay();
+  const weekly = assignments[dow] || assignments[String(dow)];
+  return weekly && typeof weekly === "object" && !Array.isArray(weekly) ? weekly : null;
+}
+
+function employeeAssignedOn(schedule, employeeId, dateKey) {
+  const day = assignmentMapOn(schedule, dateKey);
+  if (!day || employeeId == null) return false;
+  return (schedule?.shiftTypes || []).some((shift) => (day[shift.id] || []).includes(employeeId));
+}
+
+function nearbyDateKey(dateKey, delta) {
+  const [y, m, d] = String(dateKey || "").split("-").map(Number);
+  if (!y) return "";
+  const next = new Date(y, m - 1, d + Number(delta));
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+}
+
+function employeeHasRosterNearby(schedule, employeeId, dateKey) {
+  for (let delta = -7; delta <= 7; delta += 1) {
+    if (employeeAssignedOn(schedule, employeeId, nearbyDateKey(dateKey, delta))) return true;
+  }
+  return false;
+}
+
+/**
+ * 4-on/4-off (and any painted rest): a rest cell on this person's roster
+ * is not annual leave. A published duty cell is a work day even if it falls
+ * on Friday or Saturday.
+ */
+export function employeeRosterDayKind(company, employee, dateKey) {
+  const schedule = scheduleForEmployee(company, employee);
+  if (!schedule || employee?.id == null) return "unknown";
+  if (employeeAssignedOn(schedule, employee.id, dateKey)) return "duty";
+  if (employeeHasRosterNearby(schedule, employee.id, dateKey)) return "rest";
+  return "unknown";
+}
+
+/** Named rest days for this employee — first is Art. 104, second is company extra. */
+export function weeklyOffLabels(company, employee, ar = true) {
+  const names = ar ? WEEKDAY_NAMES_AR : WEEKDAY_NAMES_EN;
+  const statutory = weeklyRestDowOf(company);
+  return weeklyOffDows(company, employee).map((dow) => ({
+    dow,
+    kind: dow === statutory ? "law" : "company",
+    name: names[dow] || String(dow),
+    title: dow === statutory
+      ? (ar ? `${names[dow]} — راحة نظامية (المادة 104)` : `${names[dow]} — statutory rest (Art. 104)`)
+      : (ar ? `${names[dow]} — راحة الشركة` : `${names[dow]} — company rest`),
+  }));
 }
 
 function isWeeklyRestOn(dateKey, company) {
@@ -85,7 +193,41 @@ export function chargeableSpanExcludingHolidays(startDate, endDate, calendar) {
   return Math.max(0, eachInclusiveDay(start, end) - officialHolidayDaysInRange(start, end, calendar));
 }
 
-export function deriveEidOverlap({ start, end, type, company, calendar } = {}) {
+function isAnnualUnchargedRestDay(dateKey, company, employee) {
+  const kind = employeeRosterDayKind(company, employee, dateKey);
+  if (kind === "duty") return false;
+  if (kind === "rest") return true;
+  return isWeeklyOffDay(dateKey, company, employee);
+}
+
+/**
+ * Annual leave (Art. 109) is 21 *work* days.
+ * Duty cells on this person's roster are charged even on Friday/Saturday.
+ * Roster rest (including 4-on/4-off), Art. 104, company weekly rest, and
+ * official holidays are not charged.
+ */
+export function chargeableAnnualWorkDays(startDate, endDate, calendar, company, employee) {
+  const start = laborDayKey(startDate);
+  const end = laborDayKey(endDate);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) return 0;
+  let n = 0;
+  eachInclusiveDay(start, end, (day) => {
+    if (isOfficialHoliday(day, calendar)) return;
+    if (isAnnualUnchargedRestDay(day, company, employee)) return;
+    n += 1;
+  });
+  return n;
+}
+
+export function weeklyOffDaysInRange(start, end, company, employee) {
+  const days = [];
+  eachInclusiveDay(start, end, (day) => {
+    if (isAnnualUnchargedRestDay(day, company, employee)) days.push(day);
+  });
+  return days;
+}
+
+export function deriveEidOverlap({ start, end, type, company, calendar, employee } = {}) {
   const from = laborDayKey(start);
   const to = laborDayKey(end);
   const cite = citeRule("leave.eid.overlap.cite", from) || citeRule("leave.eid.cite", from);
@@ -107,6 +249,8 @@ export function deriveEidOverlap({ start, end, type, company, calendar } = {}) {
     restDays,
     extendAnnualDays: key === "annual" ? holidayDays : 0,
     sickFullPayDays: key === "sick" ? holidayDays : 0,
-    chargeable: chargeableSpanExcludingHolidays(from, to, calendar),
+    chargeable: key === "annual"
+      ? chargeableAnnualWorkDays(from, to, calendar, company, employee)
+      : chargeableSpanExcludingHolidays(from, to, calendar),
   };
 }

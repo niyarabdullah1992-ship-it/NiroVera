@@ -13,6 +13,8 @@ import { isViewerOwnFile } from "@/lib/employeeFileView";
 import NightMedicalFileField from "@/components/employees/NightMedicalFileField";
 import { nightMedicalReportOf } from "@/lib/decision18632";
 import { canCreateTasks, hasHRPermission } from "@/lib/permissions";
+import { weeklyOffLabels, weeklyRestDayCountOf } from "@/lib/leaveEidOverlap.js";
+import { updateEmployeeProfile } from "@/lib/store";
 
 const paper = {
   background: "var(--nv-card)",
@@ -32,7 +34,7 @@ const paper = {
  */
 export default function HoursOnFile({ employee, data, lang = "ar" }) {
   const ar = lang === "ar";
-  const { currentUser, data: authData } = useAuth();
+  const { currentUser, data: authData, company, refresh } = useAuth();
   const isSelf = isViewerOwnFile(employee, currentUser);
   const canManage = !!(currentUser && (
     canCreateTasks(currentUser)
@@ -80,6 +82,58 @@ export default function HoursOnFile({ employee, data, lang = "ar" }) {
         >
           {ar ? "افتح الجدول ←" : "Open schedule →"}
         </Link>
+      </div>
+
+      <div style={{ borderTop: "1px solid var(--nv-line2)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink)" }}>
+          {ar ? "راحة الأسبوع — لهذا الموظف" : "Weekly rest — this employee"}
+        </span>
+        <span style={{ fontSize: 11.5, color: SW.muted, lineHeight: 1.75 }}>
+          {weeklyOffLabels(company, employee, ar).map((row) => row.title).join(ar ? " · " : " · ")
+            || (ar ? "لا يوم راحة مسمّى." : "No named rest day.")}
+        </span>
+        {canManage ? (
+          <label style={{ fontSize: 11.5, color: "var(--nv-ink2)", display: "flex", flexDirection: "column", gap: 4 }}>
+            {ar ? "عدد أيام الراحة على الملف" : "Rest days on this file"}
+            <select
+              value={(() => {
+                const n = Number(employee?.profile?.weeklyRestDayCount);
+                return n === 1 || n === 2 ? String(n) : "";
+              })()}
+              onChange={(e) => {
+                if (!company?.id || !employee?.id) return;
+                const raw = e.target.value;
+                updateEmployeeProfile(company.id, employee.id, {
+                  weeklyRestDayCount: raw === "1" || raw === "2" ? Number(raw) : "",
+                });
+                refresh?.();
+              }}
+              style={{
+                fontFamily: "inherit",
+                fontSize: 12,
+                padding: "8px 10px",
+                border: "1px solid var(--nv-line)",
+                borderRadius: 10,
+                background: "var(--nv-card)",
+                color: "var(--nv-ink)",
+              }}
+            >
+              <option value="">
+                {ar
+                  ? `يتبع المنشأة (${weeklyRestDayCountOf(company) === 1 ? "يوم نظامي واحد" : "يومان"})`
+                  : `Follow establishment (${weeklyRestDayCountOf(company) === 1 ? "one statutory day" : "two days"})`}
+              </option>
+              <option value="2">{ar ? "يومان — نظامي + راحة الشركة (خمسة دوام)" : "Two — statutory + company rest (five-day week)"}</option>
+              <option value="1">{ar ? "يوم واحد — راحة المادة 104 فقط (ستة دوام)" : "One — Article 104 rest only (six-day week)"}</option>
+            </select>
+          </label>
+        ) : (
+          <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
+            {weeklyRestDayCountOf(company, employee) === 1
+              ? (ar ? "دوام ستة أيام — يُخصم السبت إن طُلبت سنوية فيه." : "Six-day week — Saturday annual leave is charged.")
+              : (ar ? "دوام خمسة أيام — الجمعة والسبت لا يُخصمان من السنوية." : "Five-day week — Friday and Saturday are not charged to annual leave.")}
+          </span>
+        )}
       </div>
 
       {!medical?.url ? (

@@ -4,7 +4,7 @@ import { profileGender } from "./employeeProfileFields.js";
 import { citeLeaveType, citeRule, isRamadanHoursSubject, ruleAt, ruleValue } from "./laborRules.js";
 import { daysUntilLeaveStart } from "./leaveEntitlementCycle.js";
 import { officialHolidayKindLabel, officialHolidayList, officialHolidayOn } from "./ummAlQuraCalendar.js";
-import { chargeableSpanExcludingHolidays, deriveEidOverlap } from "./leaveEidOverlap.js";
+import { chargeableAnnualWorkDays, chargeableSpanExcludingHolidays, deriveEidOverlap } from "./leaveEidOverlap.js";
 import { annualBalanceSplit, anniversaryYearWindow, getLeaveTotal, leftoverGrantDays, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, usedLeaveDays, serviceYearsFromHire, iddahPaidDays, lastApprovedMaternity } from "./leaveTypes.js";
 import { articleOfficialText } from "./laborArticleTexts.js";
 import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAVE_TRACK_PAID } from "./otherRequestDerivations.js";
@@ -49,10 +49,11 @@ export function leaveSpanIncludesOfficialHolidays(type) {
   return String(type || "").trim().toLowerCase() === "hajj";
 }
 
-export function chargeableLeaveDays(startDate, endDate, type, calendar) {
+export function chargeableLeaveDays(startDate, endDate, type, calendar, company, employee) {
   const key = String(type || "").trim().toLowerCase();
   if (leaveSpanIncludesOfficialHolidays(key)) return computeLeaveDays(startDate, endDate);
-  if (key === "annual" || key === "sick") return chargeableSpanExcludingHolidays(startDate, endDate, calendar);
+  if (key === "annual") return chargeableAnnualWorkDays(startDate, endDate, calendar, company, employee);
+  if (key === "sick") return chargeableSpanExcludingHolidays(startDate, endDate, calendar);
   return computeLeaveDays(startDate, endDate);
 }
 
@@ -866,7 +867,7 @@ export function checkAnnualDeferGate(request, extras = {}) {
   if (!recorded) return { ok: true };
   const profile = extras.profile || {};
   const start = String(request?.startDate || "").slice(0, 10);
-  const split = annualBalanceSplit(profile, extras.requests || profile.leaveRequests || [], start);
+  const split = annualBalanceSplit(profile, extras.requests || profile.leaveRequests || [], start, extras.company, extras.employee);
   if (split.carryLeft <= 0) return { ok: true };
   const win = anniversaryYearWindow(profile.hireDate, start);
   if (!win) return { ok: true };
@@ -1006,10 +1007,11 @@ export function checkApproveLeaveGate(request, typeRequiresFile = false, extras 
     type,
     company: extras.company,
     calendar,
+    employee: extras.employee,
   });
   const rawDays = Number(request.days) > 0 ? Number(request.days) : dates.days;
   const days = (type === "annual" || type === "sick")
-    ? chargeableLeaveDays(dates.start, dates.end, type, calendar)
+    ? chargeableLeaveDays(dates.start, dates.end, type, calendar, extras.company, extras.employee)
     : rawDays;
   const onDate = request.startDate || extras.onDate;
   const cite = citeLeaveType(type, onDate);
@@ -1044,8 +1046,8 @@ export function checkApproveLeaveGate(request, typeRequiresFile = false, extras 
         };
       }
     } else if (type === "annual") {
-      const split = annualBalanceSplit(profile, requests, onDate);
-      const leftoverGrants = leftoverGrantDays(profile, requests, onDate);
+      const split = annualBalanceSplit(profile, requests, onDate, extras.company, extras.employee);
+      const leftoverGrants = leftoverGrantDays(profile, requests, onDate, extras.company, extras.employee);
       const remaining = split.remaining + leftoverGrants;
       const total = (split.currentTotal || 0) + split.carryTotal;
       if (days > remaining) {

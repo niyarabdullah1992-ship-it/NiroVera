@@ -554,7 +554,7 @@ section("Labour Law — roster checks added from the M/51 text (Arts. 98, 104, 1
   check("Art. 162: a birth date on file → row 162 settled", labourRow(kidOk, "162")?.status, "settled");
   check("Art. 165: juvenile on roster without documents → juvenile_docs warns (not a block)", `${gate(kidOk, "juvenile_docs")?.ok}/${gate(kidOk, "juvenile_docs")?.block}`, "false/false", "labor-law.pdf Art. 165");
   check("Art. 165: board row 165 open with the name", `${labourRow(kidOk, "165")?.status}/${labourRow(kidOk, "165")?.who}`, "waiting/حدث");
-  const kidDocs = { ...kid, profile: { ...kid.profile, juvenileIdDoc: true, juvenileFitnessCert: true, juvenileGuardianConsent: true, juvenileOfficeNotifiedAt: "2026-09-01" } };
+  const kidDocs = { ...kid, profile: { ...kid.profile, juvenileIdDoc: true, juvenileFitnessCert: true, juvenileGuardianConsent: true, juvenileOfficeNotifiedAt: "2026-09-01", guardianFullName: "سالم بن محمد العتيبي", juvenileResidence: "الرس — حي الخالدية" } };
   const kidFiled = run({ "2026-09-13": { jEve: ["k1"] }, "2026-09-14": { jLate: ["k1"] } }, [kidDocs]);
   check("Art. 165–166: documents + office notice on file → juvenile_docs passes, row settled", `${gate(kidFiled, "juvenile_docs")?.ok}/${labourRow(kidFiled, "165")?.status}`, "true/settled");
   check("Art. 165: no juvenile → row 165 void", labourRow(noOt, "165")?.status, "void");

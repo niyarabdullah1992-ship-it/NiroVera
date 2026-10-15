@@ -5,6 +5,7 @@
 
 import { citeRule, isRamadanDay, isRamadanHoursSubject, ruleValue } from "./laborRules.ts";
 import { checkHeatBanGate, heatBanWindow, isHeatBanDate, monthHasHeatBanDay, shiftOverlapsNight } from "./contractLawDerivations.ts";
+import { rosterLawChecks } from "./rosterLawGates.ts";
 
 export type ShiftType = { id: string; label?: string; start: string; end: string; restMinutes?: number | null; outdoor?: boolean };
 
@@ -279,7 +280,14 @@ export function checkPublishGates(input: {
   onLeaveIds?: Iterable<string>;
   restDow?: number;
   namesById?: Record<string, string>;
-  employees?: Array<{ id?: string; employeeId?: string; religion?: string; profile?: { religion?: string } }>;
+  employees?: Array<any>;
+  /** Full schedule (sunExposure marks, night flags) — enables the 18632 / juvenile / 3337 per-person blocks. */
+  schedule?: any;
+  station?: any;
+  settings?: any;
+  company?: any;
+  laborCalendar?: any;
+  today?: string;
 }): PublishGateResult {
   const year = Number(input.year);
   const monthIndex = Number(input.monthIndex);
@@ -448,8 +456,10 @@ export function checkPublishGates(input: {
   }
 
   const consecArticle = citeRule("hours.rest.maxConsecutiveHours", onDate)?.article;
+  const policy = { ...(input.company?.hoursPolicy || {}), ...(input.company?.attendanceSettings?.hoursPolicy || {}) };
+  const continuous103 = policy.continuousWork103 === true || String(policy.continuousWork103) === "true";
   const consecFails = shiftTypes
-    .map((st) => ({ st, gate: checkConsecutiveWorkGate({ start: st.start, end: st.end, restMinutes: st.restMinutes, onDate }) }))
+    .map((st: any) => ({ st, gate: checkConsecutiveWorkGate({ start: st.start, end: st.end, restMinutes: st.restMinutes, breaks: st.breaks, breakCount: st.breakCount, continuous103, onDate }) }))
     .filter((row) => !row.gate.ok);
   const consecFail = consecFails[0] || null;
   const heatFails = shiftTypes
@@ -620,6 +630,26 @@ export function checkPublishGates(input: {
       noteEn: `Classification under decision 18632: any work inside ${nightWin} performs night work. A night worker works ${nightWorkerHours} hours or more in the window. No Labour Law chip.`,
     },
   ];
+
+  if (input.schedule) {
+    // Server twin of the client's per-person blocks (18632, juveniles 161–166, 3337) — same ids.
+    const law = rosterLawChecks({
+      year,
+      monthIndex,
+      schedule: { ...input.schedule, shiftTypes, assignments },
+      employees,
+      station: input.station,
+      settings: input.settings,
+      company: input.company,
+      laborCalendar: input.laborCalendar,
+      today: input.today,
+    });
+    const lawIds = new Set(law.map((row) => row.id));
+    for (let i = checks.length - 1; i >= 0; i -= 1) if (lawIds.has(checks[i].id)) checks.splice(i, 1);
+    for (const row of law) {
+      checks.push({ id: row.id, ok: row.ok, block: row.block, article: row.article, labelAr: row.labelAr, labelEn: row.labelEn, noteAr: row.noteAr, noteEn: row.noteEn });
+    }
+  }
 
   const failed = checks.find((c) => !c.ok && c.block !== false) || null;
   return {

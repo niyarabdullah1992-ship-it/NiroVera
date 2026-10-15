@@ -70,7 +70,7 @@ import { requestSelfEmployee, viewerEmployeeId } from "@/lib/employeeFileView";
 import { CONSENT_MINISTRY_HINT_AR, CONSENT_MINISTRY_HINT_EN, hashConsentFile, nightWrittenConsentGlow, readConsentFile } from "@/lib/writtenConsent";
 import ConsentFileLink from "@/components/requests/ConsentFileLink";
 import { generateAbsenceDeduction } from "@/lib/deductionGenerators";
-import { employeeShiftOnDay, isWeekDayPublished, weekStartDate } from "@/lib/shiftWeek";
+import { employeeRosterOtContext, employeeShiftOnDay, isWeekDayPublished, weekStartDate } from "@/lib/shiftWeek";
 import { maxStatutoryGlow, statutoryGlowState } from "@/lib/statutoryItem";
 import { toast } from "@/components/ui/use-toast";
 import {
@@ -567,7 +567,6 @@ export default function RequestsWorkspace({
   const [ot106, setOt106] = useState(false);
   const [otGround, setOtGround] = useState("");
   const [ot106Ack, setOt106Ack] = useState(false);
-  const [otCapAck, setOtCapAck] = useState(false);
   const [otChoice, setOtChoice] = useState({});
   const [otAck, setOtAck] = useState({});
   const [otEnjoy, setOtEnjoy] = useState({});
@@ -699,6 +698,8 @@ export default function RequestsWorkspace({
     { type: "exam", companyId: company?.id },
     { otherRequests: subject?.otherRequests, employee: subject, companyId: company?.id },
   );
+  // Arts 101/106: read the assignment against the rostered shift and week, not a fixed 8h / 48h.
+  const otRoster = employeeRosterOtContext(data?.schedules, subject, from, laborCalendarOf(data));
   const otRaiseGate = checkRaiseOtAssignmentGate({
     reason: note,
     hours: otHours,
@@ -707,7 +708,9 @@ export default function RequestsWorkspace({
     article106: ot106,
     article106Ground: otGround,
     manager106Ack: ot106Ack,
-    annualCapConsent: otCapAck,
+    ordinaryHours: otRoster.ordinaryHours,
+    presenceHours: otRoster.presenceHours,
+    rosterWeekHours: otRoster.rosterWeekHours,
     files: supportingFile ? [supportingFile] : [],
     employee: subject,
     otherRequests: subject?.otherRequests,
@@ -918,13 +921,13 @@ export default function RequestsWorkspace({
         : (ot106 && otGround === "pressure_inventory"
           ? (ar ? "سقف المادة 106(1) للجرد والميزانية والمواسم: 30 يوماً في السنة." : "Article 106(1) inventory/budget/season cap: 30 days in the year.")
           : (ar ? "لا سقف سنوي لهذا السبب." : "This ground has no annual day cap.")) },
-      { ok: !["ART106_DAY_CAP", "ART106_WEEK_CAP", "JUVENILE_NO_OT"].includes(otRaiseGate.error), text: ["ART106_DAY_CAP", "ART106_WEEK_CAP", "JUVENILE_NO_OT"].includes(otRaiseGate.error)
+      { ok: !["ART106_DAY_CAP", "ART106_WEEK_CAP", "JUVENILE_NO_OT", "OT_WORKPLACE_STAY"].includes(otRaiseGate.error), text: ["ART106_DAY_CAP", "ART106_WEEK_CAP", "JUVENILE_NO_OT", "OT_WORKPLACE_STAY"].includes(otRaiseGate.error)
         ? (ar ? otRaiseGate.reason : otRaiseGate.reasonEn)
         : (ot106
           ? (ar ? "حد المادة 106: عمل فعلي لا يزيد على 10 ساعات في اليوم و60 في الأسبوع." : "Article 106 limit: actual work within 10 hours a day and 60 a week.")
           : (ar ? "ليس حدثاً — لا مانع من المادة 164." : "Not a juvenile — Article 164 does not block.")) },
-      { ok: otRaiseGate.ok || otRaiseGate.error !== "OT_ANNUAL_CAP" || otCapAck, text: otRaiseGate.error === "OT_ANNUAL_CAP"
-        ? (ar ? otRaiseGate.reason : otRaiseGate.reasonEn)
+      { ok: true, text: otRaiseGate.capConsentRequested
+        ? (ar ? "يتجاوز سقف 720 ساعة في السنة — يُطلب من العامل نفسه الموافقة عند قبوله التكليف (اللائحة 22)، ولا يوافق عنه المسؤول." : "Passes the 720-hour annual cap — the worker himself is asked to consent when accepting (regs Art. 22); the manager cannot consent for him.")
         : (ar ? "سقف الإضافي السنوي 720 ساعة — اللائحة 22. الزيادة بموافقة العامل." : "Annual overtime cap is 720 hours — regs Art. 22. Excess needs the worker's consent.") },
     ]
     : isLeaveCredit
@@ -1455,7 +1458,6 @@ export default function RequestsWorkspace({
           article106: ot106,
           article106Ground: otGround,
           manager106Ack: ot106Ack,
-          annualCapConsent: otCapAck,
           files: supportingFile ? [supportingFile] : [],
           stationId: subject.stationId,
           by: currentUser?.name,
@@ -2683,11 +2685,10 @@ export default function RequestsWorkspace({
                   </label>
                 </div>
               ) : null}
-              {otRaiseGate.error === "OT_ANNUAL_CAP" ? (
-                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: NAVY, lineHeight: 1.7, cursor: "pointer" }}>
-                  <input type="checkbox" checked={otCapAck} onChange={(e) => setOtCapAck(e.target.checked)} style={{ marginTop: 3 }} />
-                  <span>{ar ? "موافقة العامل مسجّلة على تجاوز سقف 720 ساعة في السنة (اللائحة 22)." : "The worker's consent to exceed the annual 720-hour cap is on file (regs Art. 22)."}</span>
-                </label>
+              {otRaiseGate.capConsentRequested ? (
+                <span data-ot-cap-requested="1" style={{ fontSize: 12, color: NAVY, lineHeight: 1.7 }}>
+                  {ar ? "ستُطلب موافقة العامل على تجاوز سقف 720 ساعة في السنة عند قبوله التكليف (اللائحة 22)." : "The worker will be asked to consent to passing the annual 720-hour cap when accepting (regs Art. 22)."}
+                </span>
               ) : null}
             </div>
           )}

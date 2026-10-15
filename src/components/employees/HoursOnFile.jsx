@@ -13,9 +13,9 @@ import { isViewerOwnFile } from "@/lib/employeeFileView";
 import { nightMedicalReportOf } from "@/lib/decision18632";
 import { canCreateTasks, hasHRPermission } from "@/lib/permissions";
 import { patchEmployeeFile, updateEmployeeProfile } from "@/lib/store";
-import { isJuvenile } from "@/lib/laborHoursPolicy.js";
+import { ART108_CATEGORIES, art108CategoryOf, hoursBasisOf, isJuvenile } from "@/lib/laborHoursPolicy.js";
 import { fileOffDows, weeklyRestDayCountOf } from "@/lib/leaveEidOverlap.js";
-import { JUVENILE_DOCS, juvenileDocGaps } from "@/lib/ministryExtras";
+import { JUVENILE_DOCS, JUVENILE_REGISTER_FIELDS, juvenileDocGaps } from "@/lib/ministryExtras";
 
 const paper = {
   background: "var(--nv-card)",
@@ -152,6 +152,53 @@ export default function HoursOnFile({ employee, data, lang = "ar", embedded = fa
       })() : null}
       {/* Family responsibilities are raised in طلباتي (18632 e) and written here on approval — see the ministry panel. */}
 
+      {canManage ? (() => {
+        const cat = art108CategoryOf(employee);
+        const basis = hoursBasisOf(data, employee);
+        const fieldStyle = { fontFamily: "inherit", fontSize: 12, padding: "8px 10px", border: "1px solid var(--nv-line)", borderRadius: 10, background: "var(--nv-card)", color: "var(--nv-ink)" };
+        return (
+          <div data-hours-category="1" style={{ borderTop: "1px solid var(--nv-line2)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink)" }}>
+              {ar ? "معيار الساعات وفئة المادة 108" : "Hours basis and Article 108 category"}
+            </span>
+            <label style={{ fontSize: 11.5, color: "var(--nv-ink2)", display: "flex", flexDirection: "column", gap: 4 }}>
+              {ar ? "معيار الساعات (المادة 98) — يحدد كيف يُسمّى الإضافي وسقف رمضان" : "Hours basis (Art. 98) — drives overtime naming and the Ramadan cap"}
+              <select
+                data-hours-basis="1"
+                disabled={!canManage}
+                value={String(employee?.profile?.hoursBasis || "")}
+                onChange={(e) => { updateEmployeeProfile(company.id, employee.id, { hoursBasis: e.target.value }); refresh?.(); }}
+                style={fieldStyle}
+              >
+                <option value="">{ar ? `كما في الفرع أو المنشأة${basis.basis && basis.source !== "employee" ? ` (${basis.basis === "weekly" ? "أسبوعي 48" : "يومي 8"})` : " (غير مسجّل)"}` : "As the site / company"}</option>
+                <option value="daily">{ar ? "يومي — 8 ساعات (6 في رمضان)" : "Daily — 8 h (6 in Ramadan)"}</option>
+                <option value="weekly">{ar ? "أسبوعي — 48 ساعة (36 في رمضان)" : "Weekly — 48 h (36 in Ramadan)"}</option>
+              </select>
+            </label>
+            <label style={{ fontSize: 11.5, color: "var(--nv-ink2)", display: "flex", flexDirection: "column", gap: 4 }}>
+              {ar ? "فئة المادة 108 (اللائحة م23) — بلا فئة تُطبَّق المادتان 98 و101" : "Article 108 category (Regs Art. 23) — none applies Arts. 98 and 101"}
+              <select
+                data-hours-category-select="1"
+                disabled={!canManage}
+                value={cat.category}
+                onChange={(e) => { updateEmployeeProfile(company.id, employee.id, { hoursCategory108: e.target.value, hoursExempt108: !!e.target.value }); refresh?.(); }}
+                style={fieldStyle}
+              >
+                <option value="">{ar ? "لا فئة — الساعات العادية" : "No category — ordinary hours"}</option>
+                {ART108_CATEGORIES.map((row) => <option key={row.id} value={row.id}>{ar ? row.ar : row.en}</option>)}
+              </select>
+            </label>
+            {cat.legacy ? (
+              <span data-art108-legacy="1" style={{ fontSize: 11.5, color: "var(--nv-warn-ink)", lineHeight: 1.7 }}>
+                {ar
+                  ? "على الملف «مستثنى من المادة 108» بلا فئة — اختر الفئة لتُطبَّق حدود اللائحة م23. حتى ذلك تُطبَّق الحدود العادية."
+                  : "The file says “Art. 108 exempt” with no category — choose one to apply Regs Art. 23 limits. Ordinary limits apply until then."}
+              </span>
+            ) : null}
+          </div>
+        );
+      })() : null}
+
       {isJuvenile(employee, new Date().toISOString().slice(0, 10)) ? (
         <div data-juvenile-docs="1" style={{ borderTop: "1px solid var(--nv-line2)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink)" }}>
@@ -195,6 +242,21 @@ export default function HoursOnFile({ employee, data, lang = "ar", embedded = fa
               style={{ fontFamily: "inherit", fontSize: 12, padding: "8px 10px", border: "1px solid var(--nv-line)", borderRadius: 10, background: "var(--nv-card)", color: "var(--nv-ink)" }}
             />
           </label>
+          {JUVENILE_REGISTER_FIELDS.map((field) => (
+            <label key={field.key} data-juvenile-register={field.key} style={{ fontSize: 11.5, color: "var(--nv-ink2)", display: "flex", flexDirection: "column", gap: 4 }}>
+              {ar ? `${field.ar} — سجل الأحداث (المادة 166)` : `${field.en} — juvenile register (Art. 166)`}
+              <input
+                disabled={!canManage}
+                defaultValue={String(employee?.profile?.[field.key] || "")}
+                onBlur={(e) => {
+                  if (!company?.id || !employee?.id) return;
+                  updateEmployeeProfile(company.id, employee.id, { [field.key]: e.target.value.trim() });
+                  refresh?.();
+                }}
+                style={{ fontFamily: "inherit", fontSize: 12, padding: "8px 10px", border: "1px solid var(--nv-line)", borderRadius: 10, background: "var(--nv-card)", color: "var(--nv-ink)" }}
+              />
+            </label>
+          ))}
         </div>
       ) : null}
 

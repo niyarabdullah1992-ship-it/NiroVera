@@ -185,6 +185,10 @@ Deno.serve(async (req) => {
         namesById[e.employeeId || e.id] = e.name || e.employeeId || e.id;
       }
       const onLeaveIds = monthOnLeaveIds(emps, year, monthIndex);
+      const metaBlob = await loadBlob("companyMeta").catch(() => null);
+      const meta: any = Array.isArray(metaBlob?.payload) ? metaBlob.payload[0] || {} : metaBlob?.payload || {};
+      const stations = await base44.asServiceRole.entities.Station.filter({ companyId: auth.companyId }).catch(() => []);
+      const station = (stations || []).find((row: any) => String(row?.id) === String(stationId) || String(row?.stationId) === String(stationId)) || null;
       const gate = checkPublishGates({
         year,
         monthIndex,
@@ -193,6 +197,12 @@ Deno.serve(async (req) => {
         onLeaveIds,
         namesById,
         employees: emps,
+        // Per-person blocks the week board runs on the client (18632, juveniles, 3337) — never trust it alone.
+        schedule,
+        station,
+        settings: meta.settings || null,
+        company: meta.hoursPolicy ? { hoursPolicy: meta.hoursPolicy } : null,
+        today: riyadhToday(),
       });
       return { schedule, gate, crewSize: stationCrew.length, onLeaveCount: onLeaveIds.size };
     };

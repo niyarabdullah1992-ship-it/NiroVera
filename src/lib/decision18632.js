@@ -11,7 +11,7 @@ function isStoredNightMedicalFile(file) {
 
 export const DECISION_18632 = {
   id: "18632",
-  hijriFrom: "1441-05-01",
+  hijriFrom: "1441-05-06",
   gregorianFrom: "2020-01-01",
 };
 
@@ -374,8 +374,8 @@ export function nightConsiderationNote(employee, onDate, ar = true) {
 
 export function decision18632Gist(ar = true) {
   return ar
-    ? "القرار 18632 لسنة 1441هـ (ساري من 2020-01-01 / 1441-05-01): الليل 23:00–06:00. أي عمل داخل النافذة = يؤدي عملاً ليلياً. عامل ليلي = ثلاث ساعات فأكثر في النافذة."
-    : "Decision 18632 of 1441 AH (from 2020-01-01 / 1441-05-01): night is 23:00–06:00. Any work in that window performs night work. A night worker works three hours or more in the window.";
+    ? "القرار 18632 لسنة 1441هـ (ساري من 2020-01-01 / 1441-05-06): الليل 23:00–06:00. أي عمل داخل النافذة = يؤدي عملاً ليلياً. عامل ليلي = ثلاث ساعات فأكثر في النافذة."
+    : "Decision 18632 of 1441 AH (from 2020-01-01 / 1441-05-06): night is 23:00–06:00. Any work in that window performs night work. A night worker works three hours or more in the window.";
 }
 
 export function decision18632RightsNote(ar = true) {

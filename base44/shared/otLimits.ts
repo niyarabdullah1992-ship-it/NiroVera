@@ -39,8 +39,15 @@ export function checkOtDayWeekGate(input: any = {}) {
   if (input.employee && isJuvenileOn(input.employee, date)) {
     return { ok: false, error: "JUVENILE_NO_OT", reason: "موقوف — المادة 164: الحدث لا يُشغَّل فعلياً أكثر من 6 ساعات في اليوم (4 في رمضان)، ولا تسري عليه استثناءات المادة 106 — فلا تكليف إضافي له.", reasonEn: "Blocked — Article 164: no overtime for a juvenile." };
   }
+  // Art. 101 (12h at the workplace) applies to every assignment — the rostered shift, not a fixed 8h.
+  const rosteredActual = input.ordinaryHours != null && input.ordinaryHours !== "" ? Math.max(0, Number(input.ordinaryHours) || 0) : null;
+  const presence = input.presenceHours != null && input.presenceHours !== "" ? Math.max(0, Number(input.presenceHours) || 0) : rosteredActual;
+  const stayCap = Number(ruleValue("hours.workplace.maxHours", date)) || 12;
+  if (presence != null && presence + perDay > stayCap + 0.001) {
+    return { ok: false, error: "OT_WORKPLACE_STAY", reason: `موقوف — المادة 101: لا يبقى العامل في مكان العمل أكثر من ${stayCap} ساعة في اليوم. ورديته ${presence} والتكليف ${perDay}.`, reasonEn: "Blocked — Article 101 workplace-stay cap.", perDay };
+  }
   if (!input.article106) return { ok: true, perDay };
-  const ordinary = Number(input.ordinaryHours) || Number(ruleValue("hours.shift.ordinaryHours", date)) || 8;
+  const ordinary = rosteredActual != null ? rosteredActual : (Number(ruleValue("hours.shift.ordinaryHours", date)) || 8);
   const dayCap = Number(ruleValue("hours.ot.exceptionDayHours", date)) || 10;
   const weekCap = Number(ruleValue("hours.ot.exceptionWeekHours", date)) || 60;
   if (ordinary + perDay > dayCap + 0.001) {
@@ -51,7 +58,8 @@ export function checkOtDayWeekGate(input: any = {}) {
     .filter((row: any) => row?.type === "overtime" && (row.assignment === true || row.source === "assignment") && row.article106 === true && row.id !== input.exceptId && LIVE.has(String(row.status || "")))
     .filter((row: any) => weekStart(row.date) === week)
     .reduce((sum: number, row: any) => sum + ((Number(row.hours) || 0) / assignmentDays(row)) * Math.min(assignmentDays(row), 7), 0);
-  const total = Math.round((ordinary * 6 + others + perDay * Math.min(n, 7)) * 100) / 100;
+  const ordinaryWeek = input.rosterWeekHours != null && input.rosterWeekHours !== "" ? Math.max(0, Number(input.rosterWeekHours) || 0) : ordinary * 6;
+  const total = Math.round((ordinaryWeek + others + perDay * Math.min(n, 7)) * 100) / 100;
   if (total > weekCap + 0.001) {
     return { ok: false, error: "ART106_WEEK_CAP", reason: `موقوف — المادة 106: لا يزيد العمل الفعلي على ${weekCap} ساعة في الأسبوع — المجموع ${total}.`, reasonEn: "Blocked — Article 106 week cap.", total };
   }

@@ -58,12 +58,31 @@ export const JUVENILE_DOCS = [
   { key: "juvenileGuardianConsent", ar: "موافقة ولي الأمر", en: "Guardian consent" },
 ];
 
+/** Art. 166 juvenile register fields kept on the file. */
+export const JUVENILE_REGISTER_FIELDS = [
+  { key: "guardianFullName", ar: "الاسم الكامل لولي الأمر", en: "Guardian's full name" },
+  { key: "juvenileResidence", ar: "محل إقامة الحدث", en: "Juvenile's residence" },
+];
+
+function juvenileRegisterValue(employee, key) {
+  const profile = employee?.profile || {};
+  const raw = key === "juvenileResidence" ? (profile.juvenileResidence || profile.residence || profile.address) : profile[key];
+  const value = String(raw || "").trim();
+  // A full name is at least two words — «الاسم الكامل لولي أمره» (Art. 166).
+  if (key === "guardianFullName" && value.split(/\s+/).filter(Boolean).length < 2) return "";
+  return value;
+}
+
 /** Arts. 165–166 — what is missing on a juvenile's file. */
 export function juvenileDocGaps(employee) {
   const profile = employee?.profile || {};
   const gaps = JUVENILE_DOCS.filter((doc) => profile[doc.key] !== true);
   if (!String(profile.juvenileOfficeNotifiedAt || "").trim()) {
     gaps.push({ key: "juvenileOfficeNotifiedAt", ar: "إبلاغ مكتب العمل (المادة 166)", en: "Labour office notified (Art. 166)" });
+  }
+  // Art. 166 register: the juvenile's name, age, the guardian's FULL name, residence and start date.
+  for (const field of JUVENILE_REGISTER_FIELDS) {
+    if (!juvenileRegisterValue(employee, field.key)) gaps.push({ key: field.key, ar: `${field.ar} (المادة 166)`, en: `${field.en} (Art. 166)` });
   }
   return gaps;
 }

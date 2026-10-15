@@ -7,7 +7,7 @@ import { ruleValue } from "./laborRules.ts";
 
 export const DECISION_18632 = {
   id: "18632",
-  hijriFrom: "1441-05-01",
+  hijriFrom: "1441-05-06",
   gregorianFrom: "2020-01-01",
 };
 

@@ -809,6 +809,7 @@ export function resolveNightRestAssignTarget({
   weekStart,
   ordinaryOnly = false,
   employees = [],
+  holidayWorkConfirmed = false,
 } = {}) {
   const gate = checkShiftChangeApplyGate({
     schedule,
@@ -817,6 +818,7 @@ export function resolveNightRestAssignTarget({
     shiftTypeId,
     laborCalendar,
     employees,
+    holidayWorkConfirmed,
   });
   if (gate.ok) {
     return { ok: true, jumped: false, dateKey, shiftTypeId, gate };
@@ -1864,6 +1866,26 @@ export function weekNamedOvertime(schedule, employee, weekStart, company, laborC
     criterion: compressed ? "weekly" : "",
     ar,
   });
+}
+
+/**
+ * Arts 101/106 — the rostered shift behind an overtime assignment on that day: its workplace stay,
+ * its actual hours, and the week's rostered actual hours. Empty roster → nulls (callers fall back).
+ */
+export function employeeRosterOtContext(schedules = [], employee, dateKey, laborCalendar) {
+  const day = String(dateKey || "").slice(0, 10);
+  if (!employee?.id || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return { presenceHours: null, ordinaryHours: null, rosterWeekHours: null, shift: null };
+  const own = String(employee?.profile?.workStationId || employee?.stationId || "");
+  const list = [...(schedules || [])].sort((a, b) => (String(b.stationId) === own) - (String(a.stationId) === own));
+  const schedule = list.find((row) => weekDateKeys(day).some((key) => employeeShiftOnDay(row, employee.id, key))) || null;
+  if (!schedule) return { presenceHours: null, ordinaryHours: null, rosterWeekHours: null, shift: null };
+  const shift = isRosterLeaveDay(employee, day, laborCalendar) ? null : employeeShiftOnDay(schedule, employee.id, day);
+  return {
+    shift,
+    presenceHours: shift ? shiftHours(shift) : 0,
+    ordinaryHours: shift ? actualShiftHours(shift, day, employee) : 0,
+    rosterWeekHours: Math.round(employeeWeekHours(schedule, employee.id, day, employee, laborCalendar) * 10) / 10,
+  };
 }
 
 /** Days this week with no duty (rest or leave) — Art. 104 rest-day count. */

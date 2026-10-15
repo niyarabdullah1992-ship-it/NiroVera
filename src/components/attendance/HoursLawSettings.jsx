@@ -36,6 +36,9 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
     art105WorkerConsent: live.art105WorkerConsent,
     art105MinistryConsent: live.art105MinistryConsent,
     art105BankedWeeks: live.art105BankedWeeks || "",
+    hoursBasis: live.hoursBasis || "",
+    art100ApprovalNo: live.art100ApprovalNo || "",
+    art100ApprovalDate: live.art100ApprovalDate || "",
     nurseryChildrenCount: live.nurseryChildrenCount || "",
     nurseryOnSite: live.nurseryOnSite === true,
     gosiInjuryWageMode: live.gosiInjuryWageMode === "stop" ? "stop" : "continue",
@@ -80,6 +83,9 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
         art105WorkerConsent: draft.art105WorkerConsent === true,
         art105MinistryConsent: draft.art105MinistryConsent === true,
         art105BankedWeeks: Number(draft.art105BankedWeeks) || 0,
+        hoursBasis: draft.hoursBasis === "daily" || draft.hoursBasis === "weekly" ? draft.hoursBasis : "",
+        art100ApprovalNo: String(draft.art100ApprovalNo || "").trim(),
+        art100ApprovalDate: String(draft.art100ApprovalDate || "").slice(0, 10),
         nurseryChildrenCount: Number(draft.nurseryChildrenCount) || 0,
         nurseryOnSite: draft.nurseryOnSite === true,
         gosiOccupationalHazards: draft.gosiOccupationalHazards || "",
@@ -190,6 +196,56 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
                 onToggle={(on) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, religiousDutiesEnabled: on } }))}
               />
             </div>
+          </div>
+        ) : null}
+      </div>
+      <div style={row} data-hours-law="1">
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: NAVY }}>{ar ? "معيار الساعات والاستثناءات — المواد 98 و100 و103 و105" : "Hours basis and exceptions — Arts. 98, 100, 103, 105"}</span>
+        <label style={{ fontSize: 11, color: MUTED }}>
+          {ar ? "معيار الساعات المعتمد (المادة 98) — يسمّي الإضافي ويحدد سقف رمضان؛ للفرع أو للموظف أن يختلف" : "Hours basis on record (Art. 98) — names overtime and the Ramadan cap; a site or file may differ"}
+          <select data-hours-basis-company="1" value={draft.hoursBasis} disabled={!canEdit} onChange={(e) => setDraft((prev) => ({ ...prev, hoursBasis: e.target.value }))} style={{ ...field, marginTop: 6 }}>
+            <option value="">{ar ? "غير مسجّل — يُقرأ من شكل الوردية" : "Not recorded — read from the shift shape"}</option>
+            <option value="daily">{ar ? "يومي — 8 ساعات (6 في رمضان للمسلمين)" : "Daily — 8 h (6 in Ramadan for Muslims)"}</option>
+            <option value="weekly">{ar ? "أسبوعي — 48 ساعة (36 في رمضان للمسلمين)" : "Weekly — 48 h (36 in Ramadan for Muslims)"}</option>
+          </select>
+        </label>
+        <Flag
+          label={ar ? "العمل بالتناوب بمتوسط ثلاثة أسابيع (المادة 100)" : "Rotation averaged over three weeks (Art. 100)"}
+          note={ar ? "بموافقة الوزارة فقط — سجّل رقم الموافقة وتاريخها، وإلا يبقى حد 48 لكل أسبوع." : "Ministry approval only — record its number and date, otherwise the 48 cap stays per week."}
+          on={draft.rotatingShifts}
+          disabled={!canEdit}
+          onToggle={(on) => setDraft((prev) => ({ ...prev, rotatingShifts: on }))}
+        />
+        {draft.rotatingShifts ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <label style={{ fontSize: 11, color: MUTED }}>
+              {ar ? "رقم موافقة الوزارة" : "Ministry approval number"}
+              <input data-art100-no="1" dir="ltr" value={draft.art100ApprovalNo} disabled={!canEdit} onChange={(e) => setDraft((prev) => ({ ...prev, art100ApprovalNo: e.target.value }))} style={{ ...field, marginTop: 6 }} />
+            </label>
+            <label style={{ fontSize: 11, color: MUTED }}>
+              {ar ? "تاريخ الموافقة" : "Approval date"}
+              <input data-art100-date="1" type="date" dir="ltr" value={draft.art100ApprovalDate} disabled={!canEdit} onChange={(e) => setDraft((prev) => ({ ...prev, art100ApprovalDate: e.target.value }))} style={{ ...field, marginTop: 6 }} />
+            </label>
+          </div>
+        ) : null}
+        <Flag
+          label={ar ? "عمل مستمر بقرار الوزير (المادة 103)" : "Continuous work by Minister's decision (Art. 103)"}
+          note={ar ? "الصلاة والطعام والراحة تنظمها الإدارة أثناء العمل — يُرفع شرط التوقف بعد خمس ساعات في الجدول." : "Prayer, food and rest are organised during work — the five-hour stop is lifted on the roster."}
+          on={draft.continuousWork103}
+          disabled={!canEdit}
+          onToggle={(on) => setDraft((prev) => ({ ...prev, continuousWork103: on }))}
+        />
+        <Flag
+          label={ar ? "تجميع الراحة الأسبوعية في المواقع البعيدة (المادة 105)" : "Banked weekly rest at remote sites (Art. 105)"}
+          note={ar ? "حتى ثمانية أسابيع، باتفاق العمال وموافقة الوزارة." : "Up to eight weeks, with the workers' agreement and the Ministry's approval."}
+          on={draft.remoteRestBank105}
+          disabled={!canEdit}
+          onToggle={(on) => setDraft((prev) => ({ ...prev, remoteRestBank105: on }))}
+        />
+        {draft.remoteRestBank105 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingInlineStart: 22 }}>
+            <Flag label={ar ? "اتفاق العمال مسجّل" : "Workers' agreement recorded"} note={ar ? "شرط في المادة 105." : "A condition of Art. 105."} on={draft.art105WorkerConsent} disabled={!canEdit} onToggle={(on) => setDraft((prev) => ({ ...prev, art105WorkerConsent: on }))} />
+            <Flag label={ar ? "موافقة الوزارة مسجّلة" : "Ministry approval recorded"} note={ar ? "شرط في المادة 105." : "A condition of Art. 105."} on={draft.art105MinistryConsent} disabled={!canEdit} onToggle={(on) => setDraft((prev) => ({ ...prev, art105MinistryConsent: on }))} />
           </div>
         ) : null}
       </div>

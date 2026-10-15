@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import * as ts from "../base44/shared/syncLaw.ts";
 import { BLOB_VISIBILITY, OBJECT_BLOB_CATEGORIES, SENSITIVE_EMPLOYEE_FIELDS, filterBlobPayload } from "../base44/shared/blobVisibility.ts";
 import * as js from "../src/lib/syncLaw.js";
+import * as outbox from "../src/lib/disciplineOutbox.js";
 import { NOT_PUSHED_AS_IS, isObjectBlobCategory, isServerActionCategory, pushableBlobCategories } from "../src/lib/canonicalStore.js";
 
 let n = 0;
@@ -168,6 +169,81 @@ t("a stage sets only its own fields on top of the server row", () => {
   assert.equal(ts.planDisciplineStageWrite("bogus", existing, {}).error, "STAGE_REQUIRED");
   assert.equal(ts.planDisciplineStageWrite("ruling", { ...existing, status: "appeal" }, { status: "closed", rulingOutcome: "void" }).row.status, "closed");
   assert.deepEqual(ts.DISCIPLINE_WORKER_STAGES, ["appeal", "withdraw", "message"]);
+});
+
+
+/* ----------------------------- 3b. discipline outbox ----------------------------- */
+const memStore = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), m }; };
+
+t("outbox stage fields and re-application match the server", () => {
+  assert.deepEqual(outbox.DISCIPLINE_STAGE_FIELDS, ts.DISCIPLINE_STAGE_FIELDS);
+  const existing = { id: "c1", employeeId: "e1", status: "hearing", cutDays: 2, messages: [{ id: "m1" }] };
+  for (const [stage, inc] of [["appeal", { status: "closed", appealNote: "x", cutDays: 0 }], ["message", { messages: [{ id: "m2" }] }], ["ruling", { status: "closed", rulingOutcome: "void" }], ["sign", { signedAt: "t", status: "zzz" }]]) {
+    assert.deepEqual(outbox.applyStage(stage, existing, inc), ts.planDisciplineStageWrite(stage, existing, inc).row, stage);
+  }
+});
+
+t("outbox persists per company and survives a newer server copy", () => {
+  const st = memStore();
+  let list = outbox.enqueueStage([], { stage: "raise", caseRow: { id: "c2", employeeId: "e1", status: "notice", note: "late" } }, 1);
+  list = outbox.enqueueStage(list, { stage: "hearing", caseRow: { id: "c1", hearingMinutes: "minutes", hearingAt: "h" } }, 2);
+  list = outbox.enqueueStage(list, { stage: "message", caseRow: { id: "c1", messages: [{ id: "m1" }, { id: "m9" }] } }, 3);
+  outbox.writeOutbox(st, "co1", list);
+  assert.equal(outbox.readOutbox(st, "co2").length, 0);
+  const pending = outbox.readOutbox(st, "co1");
+  assert.equal(pending.length, 3);
+  // A newer server copy (another device added m5) downloads before the queue drained.
+  const server = [{ id: "c1", employeeId: "e1", status: "notice", messages: [{ id: "m1" }, { id: "m5" }], updatedAt: "later" }];
+  const out = outbox.applyPendingStages(server, pending);
+  assert.equal(out[0].id, "c2");
+  const c1 = out.find((r) => r.id === "c1");
+  assert.equal(c1.status, "hearing");
+  assert.equal(c1.hearingMinutes, "minutes");
+  assert.deepEqual(c1.messages.map((m) => m.id), ["m1", "m5", "m9"]);
+  assert.equal(c1.updatedAt, "later");
+  // once the server has the raised case, re-applying "raise" keeps the server row
+  const again = outbox.applyPendingStages([{ id: "c2", status: "hearing" }], [pending[0]]);
+  assert.equal(again.length, 1);
+  assert.equal(again[0].status, "hearing");
+});
+
+t("outbox drops an entry only on success or a reasoned gate refusal", () => {
+  let list = outbox.enqueueStage([], { stage: "sign", caseRow: { id: "c1" } }, 1000);
+  const jid = list[0].jid;
+  let r = outbox.settleStage(list, jid, { ok: false, offline: true }, 1000);
+  assert.equal(r.list.length, 1);
+  assert.equal(r.list[0].tries, 1);
+  assert.ok(r.list[0].nextAt > 1000);
+  assert.equal(outbox.dueStages(r.list, 1000).length, 0);
+  assert.equal(outbox.dueStages(r.list, r.list[0].nextAt).length, 1);
+  r = outbox.settleStage(r.list, jid, { ok: false, error: "Unauthorized" }, 2000); // no reason → transient
+  assert.equal(r.list.length, 1);
+  assert.equal(r.rejected, null);
+  const refused = outbox.settleStage(r.list, jid, { ok: false, error: "DISCIPLINE_SIGN_LATE", reason: "مضى 30 يوماً (المادة 69)", reasonEn: "Art. 69" });
+  assert.equal(refused.list.length, 0);
+  assert.equal(refused.rejected.error, "DISCIPLINE_SIGN_LATE");
+  assert.equal(refused.rejected.caseRow.id, "c1");
+  assert.equal(outbox.settleStage(r.list, jid, { ok: true }).list.length, 0);
+});
+
+t("a newer write of the same stage supersedes the old one; the old answer never drops it", () => {
+  let list = outbox.enqueueStage([], { stage: "message", caseRow: { id: "c1", messages: [{ id: "a" }] } }, 1);
+  const oldJid = list[0].jid;
+  list = outbox.enqueueStage(list, { stage: "message", caseRow: { id: "c1", messages: [{ id: "a" }, { id: "b" }] } }, 2);
+  assert.equal(list.length, 1);
+  const r = outbox.settleStage(list, oldJid, { ok: true });
+  assert.equal(r.list.length, 1);
+  assert.equal(r.list[0].caseRow.messages.length, 2);
+  const st = memStore();
+  outbox.writeOutbox(st, "co1", []);
+  assert.equal(st.m.size, 0);
+});
+
+t("hydration re-applies the outbox (store.cacheCloudData) and the session tick retries it", () => {
+  const store = readFileSync(new URL("../src/lib/store.js", import.meta.url), "utf8");
+  assert.match(store, /applyPendingStages\(nextUpdates\.disciplinaryCases, pending\)/);
+  const auth = readFileSync(new URL("../src/lib/PowerCareAuth.jsx", import.meta.url), "utf8");
+  assert.match(auth, /flushDisciplineOutbox\(s\.companyId\)/);
 });
 
 /* ----------------------------- 4. abuse cases ----------------------------- */

@@ -98,6 +98,7 @@ import { migratePreviewStationPins } from "./previewStationPins";
 import { attachSharedGradesToTitles, ensureProductLadder } from "./jobGradeTitles";
 import { assertWritableCategory, isDoNotWrite, isServerActionCategory, normalizeBlobPayload, pushableBlobCategories } from "./canonicalStore";
 import { applyEmployerDutyRoster, employerDutyRosterFromEmployees } from "./syncLaw.js";
+import { applyPendingStages, readOutbox as readDisciplineOutbox } from "./disciplineOutbox.js";
 import { visibleArbitrationOutcomes } from "./arbitrationEngine";
 import {
   WRITTEN_CONSENT_TYPE,
@@ -730,6 +731,11 @@ export function cacheCloudData(companyId, updates) {
     );
   }
   if (nextUpdates.stations) nextUpdates.stations = mergeLocalDemoRecords(current.stations, nextUpdates.stations, "stations", companyId);
+  // Sanction stages the server has not confirmed yet stay on top of any newer server copy.
+  if (Array.isArray(nextUpdates.disciplinaryCases)) {
+    const pending = readDisciplineOutbox(typeof localStorage !== "undefined" ? localStorage : null, companyId);
+    if (pending.length) nextUpdates.disciplinaryCases = applyPendingStages(nextUpdates.disciplinaryCases, pending);
+  }
   let next = { ...current, ...nextUpdates };
   // Training / medical / held-document registers come back as one row per employee — lay them onto the people.
   if ((nextUpdates.employees || nextUpdates.employerDuties) && Array.isArray(next.employerDuties)) {

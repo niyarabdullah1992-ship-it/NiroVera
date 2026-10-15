@@ -618,7 +618,7 @@ function weeklyOffDowsOf(company?: LeaveApproveExtras["company"], employee?: Lea
   return [statutory, (statutory + 1) % 7];
 }
 
-export function isWeeklyOffOn(dateKey: string, company?: LeaveApproveExtras["company"], employee?: LeaveApproveExtras["employee"]) {
+function isWeeklyOffOn(dateKey: string, company?: LeaveApproveExtras["company"], employee?: LeaveApproveExtras["employee"]) {
   const [y, m, d] = String(dateKey || "").split("-").map(Number);
   if (!y) return false;
   return weeklyOffDowsOf(company, employee).includes(new Date(y, m - 1, d).getDay());

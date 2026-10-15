@@ -2,12 +2,17 @@
  *  timesheet (actualDuty), planned roster overtime on the OT board, single «المادة 107» chip. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { ruleValue } from "../src/lib/laborRules.js";
 import { checkPublishGates as checkPublishGatesJs } from "../src/lib/shiftDerivations.js";
 import { checkPublishGates as checkPublishGatesTs } from "../base44/shared/shiftDerivations.ts";
 import { rosterLawChecks as rosterLawChecksJs } from "../src/lib/rosterLawGates.js";
 import { rosterLawChecks as rosterLawChecksTs } from "../base44/shared/rosterLawGates.ts";
 import { deriveAttendanceRowDay, deriveTimesheetDay, deriveTimesheetTotals } from "../src/lib/reportsDerivations.js";
-import { deriveTimesheetDay as deriveTimesheetDayTs, deriveTimesheetTotals as deriveTimesheetTotalsTs } from "../base44/shared/reportsDerivations.ts";
+import { deriveActualDutyCore, deriveTimesheetDay as deriveTimesheetDayTs, deriveTimesheetTotals as deriveTimesheetTotalsTs } from "../base44/shared/reportsDerivations.ts";
+import { art108Limits as art108LimitsTs, ordinaryDayCap as ordinaryDayCapTs, weeklyOffDows as weeklyOffDowsTs, actualShiftHours as actualShiftHoursTs } from "../base44/shared/laborHoursPolicy.ts";
+import { art108Limits, ordinaryDayCap } from "../src/lib/laborHoursPolicy.js";
+import { weeklyOffDows } from "../src/lib/leaveEidOverlap.js";
+import { actualShiftHours } from "../src/lib/shiftWeek.js";
 import { deriveActualDuty } from "../src/lib/actualDuty.js";
 import { otDayStatus, plannedOtWeeks, PLANNED_OT_LABEL_AR } from "../src/lib/otDecisionPlan.js";
 
@@ -145,6 +150,63 @@ const person = (id, name, profile = {}, extra = {}) => ({ id, name, stationId: "
   const row = deriveAttendanceRowDay({ employeeId: "w1", date: "2026-10-12", check_in_at: "15:05", check_out_at: "23:30" }, data);
   eq(row.shiftId, "eve", "attendance row resolves the rostered evening shift");
   eq([row.late, row.overtimeMinutes, row.workedMinutes], [false, 0, 475], "attendance row figures from the roster");
+}
+
+/* ======================= 2b. Server timesheet: juvenile + Art. 108 category caps == client ======================= */
+{
+  const LONG12 = { id: "l12", label: "12", start: "07:00", end: "19:00", restMinutes: 60 };
+  const SIX = { id: "six", label: "6", start: "08:00", end: "14:00", restMinutes: 30 };
+  const people = {
+    plain: person("a", "عادي"),
+    juvenile: person("j", "حدث", { birthDate: "2010-03-01" }),
+    management: person("m", "مدير", { hoursCategory108: "management" }),
+    preparatory: person("p", "تجهيز", { hoursCategory108: "preparatory" }),
+    intermittent: person("i", "متقطع", { hoursCategory108: "intermittent" }),
+    guard: person("g", "حارس", { hoursCategory108: "guard" }),
+    cleaner: person("c", "نظافة", { hoursCategory108: "cleaner" }),
+    legacy108: person("x", "قديم", { hoursExempt108: true }),
+    hazardous: person("h", "خطر", { hazardousHours: true }),
+    nine: person("n", "تسع", { extendedNine: true }),
+    weekly: person("w", "أسبوعي", { hoursBasis: "weekly" }),
+    nursing: person("r", "مرضع", { gender: "female", childBirthDate: "2026-03-01" }, { leaveRequests: [{ type: "maternity", status: "approved", startDate: "2026-02-01", endDate: "2026-05-10", eventDate: "2026-03-01" }] }),
+    fileOff: person("f", "ملف", { weeklyOffDows: [1] }),
+    oneRest: person("o", "يوم", { weeklyRestDayCount: 1 }),
+  };
+  const days = ["2026-10-12", "2026-10-16", "2026-10-17", "2027-02-15"]; // Mon, Fri (rest), Sat, a Ramadan day
+  const punchSets = [["06:00", "19:30"], ["07:00", "15:10"], ["07:00", "14:00"], ["22:00", "09:00"], ["08:00", "14:30"]];
+  const shifts = [MORN, LONG12, SIX, NGT, null];
+  const company = { hoursPolicy: {} };
+  let compared = 0;
+  const shape = (r) => JSON.parse(JSON.stringify({ ...r, flags: (r.flags || []).map((f) => ({ error: f.error, article: f.article, reason: f.reason, reasonEn: f.reasonEn })) }));
+  for (const [label, emp] of Object.entries(people)) {
+    for (const day of days) {
+      eq(ordinaryDayCapTs(emp, company, day, null), ordinaryDayCap(emp, company, day, null), `day cap parity ${label} ${day}`);
+      eq(JSON.stringify(art108LimitsTs(emp, day, null)), JSON.stringify(art108Limits(emp, day, null)), `Art. 108 limits parity ${label} ${day}`);
+      for (const shift of shifts) {
+        if (shift) eq(actualShiftHoursTs(shift, day, emp), actualShiftHours(shift, day, emp), `rostered hours parity ${label} ${shift.id} ${day}`);
+        for (const [checkIn, checkOut] of punchSets) {
+          const args = { checkIn, checkOut, shift, onDate: day, employee: emp, company, laborCalendar: null };
+          assert.deepEqual(shape(deriveActualDutyCore(args)), shape(deriveActualDuty(args)), `server actual duty == client: ${label} ${day} ${shift?.id || "none"} ${checkIn}-${checkOut}`);
+          const p = { date: day, checkIn, checkOut };
+          assert.deepEqual(shape(deriveTimesheetDayTs(p, { shift, employee: emp, company })), shape(deriveTimesheetDay(p, { shift, employee: emp, company })), `server timesheet == client: ${label} ${day}`);
+          compared += 2;
+        }
+      }
+    }
+    eq(weeklyOffDowsTs(company, emp), weeklyOffDows(company, emp), `weekly off days parity ${label}`);
+  }
+  passed += compared;
+  // The caps actually bite on the server.
+  const jv = deriveTimesheetDayTs({ date: "2026-10-12", checkIn: "08:00", checkOut: "15:00" }, { shift: SIX, employee: people.juvenile, company });
+  ok(jv.overtimeMinutes > 0 && jv.ordinaryMinutes === ruleValue("hours.juvenile.ordinaryHours", "2026-10-12") * 60, "juvenile: ordinary capped at the Art. 164 six hours on the server");
+  const guard = deriveTimesheetDayTs({ date: "2026-10-12", checkIn: "07:00", checkOut: "19:00" }, { shift: LONG12, employee: people.guard, company });
+  eq(guard.flags.map((f) => f.error), [], "guard (Regs Art. 23(8)): 12 h presence is no breach on the server");
+  const plainLong = deriveTimesheetDayTs({ date: "2026-10-12", checkIn: "06:00", checkOut: "19:30" }, { shift: LONG12, employee: people.plain, company });
+  ok(plainLong.flags.some((f) => f.error === "ACTUAL_PRESENCE_OVER_CAP"), "ordinary worker: same presence is an Art. 101 breach");
+  const mgmt = deriveTimesheetDayTs({ date: "2026-10-12", checkIn: "06:00", checkOut: "19:30" }, { shift: MORN, employee: people.management, company });
+  eq([mgmt.overtimeMinutes, mgmt.flags.length], [0, 0], "senior management (Art. 108(1)): no day cap, no flags");
+  const cleaner = deriveTimesheetDayTs({ date: "2026-10-12", checkIn: "07:00", checkOut: "14:00", breaks: [] }, { shift: null, employee: people.cleaner, company });
+  ok(cleaner.flags.some((f) => f.error === "ACTUAL_NO_BREAK"), "cleaner: 7 h without a break passes the Regs Art. 23(5) six");
 }
 
 /* ======================= 3. Planned roster overtime on the OT board ======================= */

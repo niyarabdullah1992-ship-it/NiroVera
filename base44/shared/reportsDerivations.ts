@@ -3,9 +3,10 @@
  *  Daily station board lives in dailyReport — do not duplicate StationDailyBoard here.
  */
 
-import { citeRule, isRamadanDay, isRamadanHoursSubject, ruleValue } from "./laborRules.ts";
+import { citeRule, ruleValue } from "./laborRules.ts";
 import { checkConsecutiveWorkGate, minutesBetween, shiftRestMinutes } from "./shiftDerivations.ts";
-import { isOfficialHolidayDay, isWeeklyOffOn } from "./leaveDerivations.ts";
+import { isOfficialHolidayDay } from "./leaveDerivations.ts";
+import { actualShiftHours, art108Limits, hoursBasisOf, hoursPolicyOf, isEmployeeOffDay, isTwelveStayDuty, ordinaryDayCap } from "./laborHoursPolicy.ts";
 
 export const GRACE_MINUTES = ruleValue("hours.grace.minutes");
 export const SHIFT_HOURS = ruleValue("hours.shift.ordinaryHours");
@@ -245,17 +246,13 @@ const clockOf = (mins: number) => {
   const m = ((mins % 1440) + 1440) % 1440;
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 };
-const flagOn = (v: any) => {
-  const s = String(v ?? "").trim().toLowerCase();
-  return v === true || s === "1" || s === "true" || s === "yes" || s === "نعم";
-};
 
 /**
- * Server read of src/lib/actualDuty.js deriveActualDuty for the timesheet: rostered shift, rest deducted
+ * Server twin of src/lib/actualDuty.js deriveActualDuty for the timesheet: rostered shift, rest deducted
  * (Art. 102), overtime per Art. 107 (holiday / unrostered rest day in full; weekly criterion beyond the
- * roster; else beyond the day cap — Art. 98 / 99 / Ramadan), and the flags presence > 12 h (Art. 101),
- * work > 10 h (Art. 106), more than five hours without a break (Art. 101). Juvenile and Art. 108
- * category caps live in the client laborHoursPolicy.js; the client passes its own `duty` for those.
+ * roster; else beyond the day cap — juvenile 164 / Art. 108 category / Ramadan / Art. 99 / 8 h), and the
+ * flags presence over the stay cap (Art. 101 or the Regs Art. 23 ceiling), work over 10 h (Art. 106 or
+ * the category cap), more than five hours without a break (Art. 101 / category). Same rule rows.
  */
 export function deriveActualDutyCore(input: {
   checkIn?: any; checkOut?: any; shift?: any; onDate: string; employee?: any; company?: any; laborCalendar?: any; breaks?: any[] | null;
@@ -263,7 +260,9 @@ export function deriveActualDutyCore(input: {
   const { checkIn, checkOut, shift = null, onDate, employee, company, laborCalendar } = input;
   const inM = punchClockMinutes(checkIn);
   const outRaw = punchClockMinutes(checkOut);
-  if (inM == null || outRaw == null) return { ok: false, open: true } as any;
+  if (inM == null || outRaw == null) {
+    return { ok: false, open: true, reason: "لا انصراف مسجّل بعد — لا تُحسب ساعات.", reasonEn: "No checkout yet — no hours are computed." } as any;
+  }
   const outM = outRaw <= inM ? outRaw + 1440 : outRaw;
   const presence = outM - inM;
   const consecMax = ruleValue("hours.rest.maxConsecutiveHours", onDate) || 5;
@@ -277,51 +276,42 @@ export function deriveActualDutyCore(input: {
   const worked = Math.max(0, presence - Math.min(rest, presence));
 
   const holiday = isOfficialHolidayDay(onDate, laborCalendar);
-  const offDay = !shift && isWeeklyOffOn(onDate, company, employee);
-  let rosteredMinutes = 0;
-  if (shift) {
-    const span = minutesBetween(shift.start, shift.end);
-    const restMin = rosterRest == null ? (span > consecMax * 60 ? statutoryRest : 0) : rosterRest;
-    rosteredMinutes = Math.round(Math.max(0, Math.round(((span - restMin) / 60) * 10) / 10) * 60);
-  }
-  const policy = { ...(company?.hoursPolicy || {}), ...(company?.attendanceSettings?.hoursPolicy || {}) };
-  const basis = String(employee?.profile?.hoursBasis || policy.hoursBasis || "");
-  const twelveStay = !!shift && minutesBetween(shift.start, shift.end) === ruleValue("hours.workplace.maxHours", onDate) * 60;
-  const weeklyCriterion = basis === "weekly" || twelveStay;
-  const profile = employee?.profile || {};
-  const dayCap = isRamadanDay(onDate, laborCalendar) && isRamadanHoursSubject(employee)
-    ? ruleValue("hours.ramadan.ordinaryHours", onDate)
-    : (flagOn(profile.hazardousHours) || flagOn(policy.hazardousHours))
-      ? ruleValue("hours.art99.hazardousDayHours", onDate)
-      : (flagOn(profile.extendedNine) || flagOn(policy.extendedNine))
-        ? ruleValue("hours.art99.extendedDayHours", onDate)
-        : ruleValue("hours.shift.ordinaryHours", onDate);
-  const dayCapMinutes = Math.round((dayCap || 8) * 60);
+  const offDay = !shift && isEmployeeOffDay(onDate, company, employee);
+  const rosteredMinutes = shift ? Math.round(actualShiftHours(shift, onDate, employee) * 60) : 0;
+  const basis = hoursBasisOf(company, employee).basis;
+  const weeklyCriterion = basis === "weekly" || (shift && isTwelveStayDuty(shift, onDate));
+  const dayCapMinutes = Math.round((ordinaryDayCap(employee, company, onDate, laborCalendar) || 8) * 60);
+
   let overtime = 0;
   let kind = "";
   if (holiday) { overtime = worked; kind = "holiday"; }
   else if (offDay) { overtime = worked; kind = "weekly_rest"; }
   else if (weeklyCriterion) { overtime = Math.max(0, worked - rosteredMinutes); kind = overtime ? "beyond_roster" : ""; }
-  else { overtime = Math.max(0, worked - dayCapMinutes); kind = overtime ? "beyond_day_cap" : ""; }
+  else if (Number.isFinite(dayCapMinutes)) { overtime = Math.max(0, worked - dayCapMinutes); kind = overtime ? "beyond_day_cap" : ""; }
+  const grace = ruleValue("hours.grace.minutes", onDate) || 0;
+  const shiftStart = shift?.start ? punchClockMinutes(shift.start) : null;
+  const lateMinutes = shiftStart == null ? 0 : Math.max(0, inM - shiftStart - grace);
 
-  const stayCap = ruleValue("hours.workplace.maxHours", onDate);
-  const workCap = ruleValue("hours.ot.exceptionDayHours", onDate);
+  const limits = art108Limits(employee, onDate, laborCalendar);
+  const policy = hoursPolicyOf(company, employee);
+  const stayCap = limits ? limits.workplaceHours : ruleValue("hours.workplace.maxHours", onDate);
+  const workCap = limits ? limits.dayHours : ruleValue("hours.ot.exceptionDayHours", onDate);
   const flags: any[] = [];
   if (presence > stayCap * 60) {
     flags.push({
       error: "ACTUAL_PRESENCE_OVER_CAP",
-      article: "101",
-      reason: `بقاء فعلي ${Math.round((presence / 60) * 10) / 10} ساعة في موقع العمل فوق ${stayCap} — المادة 101.`,
-      reasonEn: `Actual presence ${Math.round((presence / 60) * 10) / 10} h at the workplace above ${stayCap} — Art. 101.`,
+      article: limits ? "اللائحة م23" : "101",
+      reason: `بقاء فعلي ${Math.round((presence / 60) * 10) / 10} ساعة في موقع العمل فوق ${stayCap} — ${limits ? "اللائحة م23" : "المادة 101"}.`,
+      reasonEn: `Actual presence ${Math.round((presence / 60) * 10) / 10} h at the workplace above ${stayCap} — ${limits ? "Regs Art. 23" : "Art. 101"}.`,
       cite: citeRule("hours.workplace.maxHours", onDate),
     });
   }
   if (worked > workCap * 60) {
     flags.push({
       error: "ACTUAL_WORK_OVER_CAP",
-      article: "106",
-      reason: `عمل فعلي ${Math.round((worked / 60) * 10) / 10} ساعة فوق ${Math.round(workCap * 100) / 100} — المادة 106.`,
-      reasonEn: `Actual work ${Math.round((worked / 60) * 10) / 10} h above ${Math.round(workCap * 100) / 100} — Art. 106.`,
+      article: limits ? "اللائحة م23" : "106",
+      reason: `عمل فعلي ${Math.round((worked / 60) * 10) / 10} ساعة فوق ${Math.round(workCap * 100) / 100} — ${limits ? "سقف فئة المادة 108 (اللائحة م23)" : "المادة 106"}.`,
+      reasonEn: `Actual work ${Math.round((worked / 60) * 10) / 10} h above ${Math.round(workCap * 100) / 100} — ${limits ? "Art. 108 category cap (Regs Art. 23)" : "Art. 106"}.`,
       cite: citeRule("hours.ot.exceptionDayHours", onDate),
     });
   }
@@ -332,7 +322,9 @@ export function deriveActualDutyCore(input: {
     restMinutes: recordedBreaks ? breakMinutes : (presence > consecMax * 60 ? (rosterRest == null ? undefined : rosterRest) : 0),
     breakCount: shift?.breakCount,
     onDate,
-    continuous103: flagOn(policy.continuousWork103),
+    continuous103: policy.continuousWork103 === true,
+    maxConsecutiveHours: limits?.consecutiveHours || undefined,
+    exempt101: !!limits && limits.consecutiveHours == null,
   });
   if (!consec.ok) flags.push({ error: "ACTUAL_NO_BREAK", article: "101", reason: consec.reason, reasonEn: consec.reasonEn, cite: consec.cite });
   return {
@@ -344,6 +336,7 @@ export function deriveActualDutyCore(input: {
     rosteredMinutes,
     ordinaryMinutes: Math.max(0, worked - overtime),
     overtimeMinutes: overtime,
+    lateMinutes,
     holiday,
     offDay,
     kind,

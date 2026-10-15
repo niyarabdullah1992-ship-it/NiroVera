@@ -352,6 +352,9 @@ export function holidayOvertimeHours({ employeeId, month, attendance = [], otDec
     if (!key.startsWith(`${id}:`)) continue;
     const day = key.slice(id.length + 1);
     if (!day.startsWith(prefix) || row?.holiday !== true) continue;
+    // A holiday decision of any status owns that day: pending hours wait for the manager's pay or
+    // comp-leave choice (worked hours can't be rejected), so the punch path never pays them first.
+    flagged.add(day);
     if (row?.decision !== "approve" && row?.decision !== "pay") continue;
     fromDecisions += Math.max(0, Number(row.overtimeMinutes) || 0) / 60;
     flagged.add(day);

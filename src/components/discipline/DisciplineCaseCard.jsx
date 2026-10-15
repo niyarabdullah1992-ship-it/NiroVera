@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
+import PlatformDateField from "@/components/shared/PlatformDateField";
+import { DISCIPLINE_DELIVERY_METHODS } from "@/lib/disciplineDerivations";
 import { Link } from "react-router-dom";
 import ConsentFileLink from "@/components/requests/ConsentFileLink";
 import DisciplineRelatedLinks from "@/components/discipline/DisciplineRelatedLinks";
@@ -133,7 +135,36 @@ export function DisciplineHero({ card, ar = true, mine = false, companyName = ""
   );
 }
 
-export default function DisciplineCaseCard({ card, ar, onAction, onUploadSigned, companyName = "" }) {
+/** Model regulation Art. 68 · Law Art. 72 — record how and when the signed decision reached the worker. */
+function DeliveryProof({ item, ar, today, onDelivery }) {
+  const [method, setMethod] = useState("hand");
+  const [at, setAt] = useState(today || "");
+  const [ref, setRef] = useState("");
+  const done = DISCIPLINE_DELIVERY_METHODS.find((m) => m.id === item.notifyMethod);
+  if (done) {
+    return (
+      <div data-disc-delivery="done" style={{ margin: "0 20px 12px", fontSize: 12.5, color: "var(--nv-ink)", border: "1px solid var(--nv-ok-line)", borderRadius: 8, padding: "10px 14px", lineHeight: 1.7 }}>
+        {ar ? "أُبلغ بالقرار: " : "Decision delivered: "}{ar ? done.ar : done.en} · {regulationDate(item.notifyDeliveredAt, ar)}{item.notifyRef ? ` · ${item.notifyRef}` : ""}
+      </div>
+    );
+  }
+  const input = { fontFamily: "inherit", fontSize: 13, height: 38, padding: "0 10px", border: "1px solid var(--nv-line)", borderRadius: 8, background: "var(--nv-page)", color: "var(--nv-ink)", boxSizing: "border-box", minWidth: 0 };
+  return (
+    <div data-disc-delivery="" style={{ margin: "0 20px 12px", display: "flex", flexDirection: "column", gap: 8, border: "1px solid var(--nv-line)", borderInlineStart: `3px solid ${GOLD}`, borderRadius: 8, padding: "10px 14px" }}>
+      <span style={{ fontSize: 12.5, fontWeight: 700 }}>{ar ? "إثبات إبلاغ العامل بالقرار (المادة 72 · النموذج م68)" : "Proof the decision reached the worker (Art. 72 · model Art. 68)"}</span>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,180px),1fr))", gap: 8 }}>
+        <select value={method} onChange={(e) => setMethod(e.target.value)} style={input} aria-label={ar ? "طريقة الإبلاغ" : "Delivery method"}>
+          {DISCIPLINE_DELIVERY_METHODS.map((m) => <option key={m.id} value={m.id}>{ar ? m.ar : m.en}</option>)}
+        </select>
+        <PlatformDateField ar={ar} value={at} onChange={setAt} style={{ height: 38, minHeight: 38, fontSize: 13, background: "var(--nv-page)", borderRadius: 8 }} />
+        {method !== "hand" ? <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder={ar ? "رقم الإرسال / مرجع البريد" : "Tracking / message ref."} style={input} /> : null}
+        <button type="button" onClick={() => onDelivery?.(item, { method, at, ref })} style={{ ...quietBtn, height: 38, justifyContent: "center" }}>{ar ? "سجّل الإبلاغ" : "Record delivery"}</button>
+      </div>
+    </div>
+  );
+}
+
+export default function DisciplineCaseCard({ card, ar, onAction, onUploadSigned, onDelivery, today = "", companyName = "" }) {
   const primary = card.actions.find((action) => action.kind === "go") || card.actions[0] || null;
   const rest = card.actions.filter((action) => action !== primary);
 
@@ -201,6 +232,7 @@ export default function DisciplineCaseCard({ card, ar, onAction, onUploadSigned,
         <span style={{ fontSize: 11.5, color: "var(--nv-ink2)" }}>{ar ? "كل خطوة تُسجَّل باسمك ووقتها في التدقيق." : "Every step is stored with your name and time."}</span>
       </footer>
 
+      {card.signedAt && onDelivery ? <DeliveryProof item={card.item} ar={ar} today={today} onDelivery={onDelivery} /> : null}
       {card.hasObj ? (
         <span style={{ margin: "0 20px 12px", fontSize: 12.5, color: "var(--nv-ink)", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderInlineStart: "3px solid #C8A45A", borderRadius: 8, padding: "10px 14px", lineHeight: 1.7 }}>
           {card.objText}

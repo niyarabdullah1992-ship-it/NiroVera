@@ -3,8 +3,12 @@ import PlatformDateField from "@/components/shared/PlatformDateField";
 import { citeRule, ruleValue } from "@/lib/laborRules";
 import { DISCIPLINE_PENALTY_KINDS } from "@/lib/disciplineDerivations";
 import {
+  MODEL_GROUPS,
   MODEL_REGULATION,
+  checkPublishRegulationGate,
   checkRegulationDraft,
+  regulationAckStatus,
+  regulationStanding,
   newClauseId,
   parseRegulationStep,
   regulationDate,
@@ -24,7 +28,7 @@ const OUTSIDE = [
 
 function stepTone(step) {
   if (!step?.ok) return "var(--nv-muted)";
-  if (step.kind === "dismiss" || (step.kind === "fine" && step.days >= 2)) return DANGER;
+  if (step.kind === "dismiss" || step.kind === "dismissal_with_award" || (step.kind === "fine" && step.days >= 2)) return DANGER;
   if (step.kind === "warning") return "var(--nv-ink)";
   return GOLD;
 }
@@ -67,6 +71,9 @@ function draftFrom(regulation) {
       id: c.id,
       ar: c.ar || "",
       en: c.en || "",
+      ...(c.group ? { group: c.group, no: c.no } : {}),
+      ...(c.plus ? { plus: c.plus } : {}),
+      ...(c.art80 ? { art80: c.art80 } : {}),
       steps: [0, 1, 2, 3].map((i) => (c.steps || [])[i] || ""),
     })),
   };
@@ -85,10 +92,20 @@ function RegulationTable({ regulation, ar }) {
         ))}
         {regulation.clauses.map((c, n) => {
           const steps = [0, 1, 2, 3].map((i) => (c.steps || [])[i] || "");
+          const group = MODEL_GROUPS.find((g) => g.id === c.group);
+          const firstOfGroup = group && regulation.clauses.findIndex((x) => x.group === c.group) === n;
           return (
             <React.Fragment key={c.id}>
-              <span dir="ltr" style={{ padding: "10px 12px", borderBottom: "1px solid var(--nv-line)", fontFamily: "'IBM Plex Mono',monospace", fontSize: 13, color: "var(--nv-muted)" }}>{n + 1}</span>
-              <span style={{ padding: "10px 12px", borderBottom: "1px solid var(--nv-line)", fontSize: 13, fontWeight: 700, lineHeight: 1.5 }}>{ar ? c.ar || c.en : c.en || c.ar}</span>
+              {firstOfGroup ? (
+                <span data-regulation-group={group.id} style={{ gridColumn: "1 / -1", padding: "8px 12px", fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)", background: "var(--nv-hover)", borderBottom: "1px solid var(--nv-line)" }}>
+                  {ar ? group.ar : group.en}
+                </span>
+              ) : null}
+              <span dir="ltr" style={{ padding: "10px 12px", borderBottom: "1px solid var(--nv-line)", fontFamily: "'IBM Plex Mono',monospace", fontSize: 13, color: "var(--nv-muted)" }}>{group ? c.no : n + 1}</span>
+              <span style={{ padding: "10px 12px", borderBottom: "1px solid var(--nv-line)", fontSize: 13, fontWeight: 700, lineHeight: 1.5, display: "flex", flexDirection: "column", gap: 2 }}>
+                <span>{ar ? c.ar || c.en : c.en || c.ar}</span>
+                {c.plus ? <span style={{ fontSize: 11, fontWeight: 500, color: "var(--nv-muted)" }}>{c.plus}</span> : null}
+              </span>
               {steps.map((text, i) => {
                 const p = parseRegulationStep(text);
                 return (
@@ -105,7 +122,60 @@ function RegulationTable({ regulation, ar }) {
   );
 }
 
-export default function DisciplineScheduleBoard({ ar, today, regulation = MODEL_REGULATION, canEdit = false, onSave }) {
+/**
+ * Law Arts. 12–13 · Regs Art. 2(3) · model Art. 72: the approved regulation is announced in a visible
+ * place, binds the workers from the day after, and each worker confirms reading it.
+ */
+function RegulationAnnouncement({ ar, today, regulation, canEdit, employees = [], meId = "", onAnnounce, onAck }) {
+  const standing = regulationStanding(regulation, today);
+  if (standing.id === "model") return null;
+  const ack = regulationAckStatus(regulation, employees);
+  const mine = meId ? (regulation.acks || {})[meId] : null;
+  const mineValid = mine && (!ack.version || String(mine.version || "") === ack.version);
+  const publish = checkPublishRegulationGate(regulation, { today, ar });
+  const pill = (tone, text) => (
+    <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "2px 10px", border: `1px solid var(--nv-${tone}-line)`, color: `var(--nv-${tone}-ink)` }}>{text}</span>
+  );
+  return (
+    <section data-regulation-announce={standing.id} style={{ ...slab, display: "flex", flexDirection: "column", gap: 10, padding: "14px 18px" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <strong style={{ fontSize: 14 }}>{ar ? "إعلان اللائحة وإقرار العمال بالاطلاع" : "Announcement and workers' acknowledgement"}</strong>
+        {standing.id === "draft" ? pill("warn", ar ? "لم تُعلَن" : "Not announced") : null}
+        {standing.id === "announced" ? pill("warn", ar ? `تسري من ${regulationDate(standing.effectiveFrom, true)}` : `In force from ${standing.effectiveFrom}`) : null}
+        {standing.id === "inForce" ? pill("ok", ar ? `سارية منذ ${regulationDate(standing.effectiveFrom, true)}` : `In force since ${standing.effectiveFrom}`) : null}
+        <span style={{ flex: 1 }} />
+        {canEdit && standing.id === "draft" ? (
+          <button type="button" data-regulation-announce-btn="" disabled={!publish.ok} title={publish.ok ? "" : (ar ? publish.reason : publish.reasonEn)} onClick={() => publish.ok && onAnnounce?.()} style={btn(true)}>
+            {ar ? "أعلن اللائحة للعمال" : "Announce to the workers"}
+          </button>
+        ) : null}
+        {!canEdit && standing.id !== "draft" && meId && !mineValid ? (
+          <button type="button" data-regulation-ack-btn="" onClick={() => onAck?.()} style={btn(true)}>{ar ? "اطّلعت على اللائحة وأقرّ بالعلم بها" : "I have read the regulation"}</button>
+        ) : null}
+        {!canEdit && mineValid ? pill("ok", ar ? `أقررتَ بالاطلاع ${regulationDate(mine.at, true)}` : `Acknowledged ${String(mine.at).slice(0, 10)}`) : null}
+      </div>
+      <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
+        {ar
+          ? "تُعلَن اللائحة وكل تعديل عليها في مكان ظاهر أو بوسيلة تكفل علم العمال بها (المادة 13 · اللائحة م2/3)، وتسري على العمال من اليوم التالي لإعلانها (النموذج الموحد م72)، ويُطلع العامل عليها عند التعاقد (النموذج م3/3)."
+          : "The regulation and every amendment are announced visibly (Art. 13 · Regs Art. 2(3)); they bind the workers from the next day (model Art. 72)."}
+      </span>
+      {canEdit && standing.id !== "draft" ? (
+        <div data-regulation-acks="" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700 }}>
+            {ar ? `أقرّ بالاطلاع ${ack.acked.length} من ${ack.total}` : `${ack.acked.length} of ${ack.total} acknowledged`}
+          </span>
+          {ack.pending.length ? (
+            <span style={{ fontSize: 12, color: "var(--nv-warn-ink)", lineHeight: 1.8 }}>
+              {ar ? "لم يُقرّ بعد: " : "Not yet: "}{ack.pending.map((p) => p.employee.name || p.employee.id).join(" · ")}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export default function DisciplineScheduleBoard({ ar, today, regulation = MODEL_REGULATION, canEdit = false, onSave, employees = [], meId = "", onAnnounce, onAck }) {
   const art = citeRule("discipline.penalties.cite", today)?.article || "—";
   const cap = ruleValue("discipline.fine.maxDays", today);
   const own = regulation?.source === "own";
@@ -124,7 +194,15 @@ export default function DisciplineScheduleBoard({ ar, today, regulation = MODEL_
     onSave?.({
       approvalNo: draft.approvalNo.trim(),
       approvedAt: draft.approvedAt,
-      clauses: draft.clauses.map((c) => ({ id: c.id, ar: c.ar.trim(), en: c.en.trim(), steps: c.steps.map((x) => String(x || "").trim()).filter(Boolean) })),
+      clauses: draft.clauses.map((c) => ({
+        id: c.id,
+        ar: c.ar.trim(),
+        en: c.en.trim(),
+        ...(c.group ? { group: c.group, no: c.no } : {}),
+        ...(c.plus ? { plus: c.plus } : {}),
+        ...(c.art80 ? { art80: c.art80 } : {}),
+        steps: c.steps.map((x) => String(x || "").trim()).filter(Boolean),
+      })),
     });
     setDraft(null);
     setTried(false);
@@ -132,6 +210,7 @@ export default function DisciplineScheduleBoard({ ar, today, regulation = MODEL_
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <RegulationAnnouncement ar={ar} today={today} regulation={regulation} canEdit={canEdit} employees={employees} meId={meId} onAnnounce={onAnnounce} onAck={onAck} />
       <section data-discipline-schedule="" data-regulation-source={regulation?.source || "model"} style={{ ...slab, display: "flex", flexDirection: "column" }}>
         <SectionHead
           title={own ? (ar ? "لائحة تنظيم العمل المعتمدة" : "Approved work-organization regulation") : (ar ? "النموذج الاسترشادي — لم تُسجَّل لائحة المنشأة" : "Model schedule — the establishment's regulation is not recorded")}
@@ -140,7 +219,7 @@ export default function DisciplineScheduleBoard({ ar, today, regulation = MODEL_
               ? <>رقم الاعتماد <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace" }}>{regulation.approvalNo || "—"}</span> · بتاريخ {regulationDate(regulation.approvedAt, true) || "—"} · كل جزاء يُرفع يسمّي بنده منها، ويُطبَّق عليه درجة التكرار خلال 180 يوماً (المادتان 67 و68).</>
               : <>Approval {regulation.approvalNo || "—"} · {String(regulation.approvedAt || "").slice(0, 10) || "—"} · every sanction names its clause, stepped by repeats within 180 days (Arts. 67–68).</>)
             : (ar
-              ? "المادة 67: لا يُوقَّع جزاء غير وارد في النظام أو في لائحة تنظيم العمل. هذا الجدول نموذج للاسترشاد — سجّل لائحة منشأتك المعتمدة ليصير كل جزاء مربوطاً ببندها."
+              ? "المادة 67: لا يُوقَّع جزاء غير وارد في النظام أو في لائحة تنظيم العمل. هذه جداول المخالفات الثلاثة في النموذج الموحد للائحة تنظيم العمل (الملحق 1 باللائحة التنفيذية) — للمنشأة دون خمسين عاملاً اعتماده إلكترونياً كما هو (اللائحة م4). سجّل لائحتك المعتمدة ليصير كل جزاء مربوطاً ببندها."
               : "Article 67: no penalty outside the Law or the work-organization regulation. This table is a model — record your approved regulation so every sanction is tied to its clause.")}
           trailing={canEdit && !draft ? (
             <button type="button" data-regulation-edit="" onClick={() => { setDraft(draftFrom(regulation)); setTried(false); }} style={btn(!own)}>
@@ -163,7 +242,7 @@ export default function DisciplineScheduleBoard({ ar, today, regulation = MODEL_
             </div>
             <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
               {ar
-                ? "اكتب كل خانة كما في لائحتك: «إنذار كتابي»، أو نسبة من أجر اليوم مثل «10%»، أو أياماً حتى 5 مثل «يومان»، أو «فصل». تحت كل خانة يظهر كيف قُرئت."
+                ? "اكتب كل خانة كما في لائحتك: «إنذار كتابي»، أو نسبة من أجر اليوم مثل «10%»، أو أياماً حتى 5 مثل «يومان»، أو «إيقاف يومين بدون أجر»، أو «تأجيل الترقية أو الحرمان من العلاوة»، أو «فصل مع المكافأة»، أو «فصل بدون مكافأة (المادة 80)». تحت كل خانة يظهر كيف قُرئت."
                 : "Write each cell as in your regulation: “Written warning”, a share of a day's wage like “10%”, days up to 5, or “Dismissal”. Each cell shows how it was read."}
             </span>
             <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 10 }}>

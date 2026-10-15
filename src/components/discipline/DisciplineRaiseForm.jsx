@@ -2,7 +2,9 @@ import React from "react";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import GreenMenu from "@/components/discipline/GreenMenu";
 import {
+  ART80_GROUNDS,
   DISCIPLINE_PENALTY_KINDS,
+  art80Ground,
   deriveRaiseDisciplineChips,
   listedPenaltyKind,
   listedPenaltyLabel,
@@ -112,6 +114,8 @@ export default function DisciplineRaiseForm({
   onWorkConnected,
   dismissGround,
   onDismissGround,
+  art80 = {},
+  onArt80,
   onSubmit,
   regulation = null,
   clauseId = "",
@@ -249,9 +253,69 @@ export default function DisciplineRaiseForm({
             />
           </label>
           {penaltyKind === "dismiss" ? (
+            <div data-raise-art80="" style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0, gridColumn: "1 / -1" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+                <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "حالة الفسخ من المادة 80 — تُختار من النص لا تُكتب" : "Article 80 case — picked from the text"}</span>
+                <GreenMenu
+                  ariaLabel={ar ? "حالة المادة 80" : "Article 80 case"}
+                  menuId="discipline-raise-art80"
+                  value={art80Ground(dismissGround) ? dismissGround : ""}
+                  options={[{ value: "", label: ar ? "— اختر الحالة —" : "— Pick the case —" }, ...ART80_GROUNDS.map((g) => ({ value: g.id, label: `${g.para}. ${ar ? g.ar : g.en}` }))]}
+                  onChange={onDismissGround}
+                />
+              </label>
+              {art80Ground(dismissGround)?.absence ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,180px),1fr))", gap: 10 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "نوع الغياب" : "Absence type"}</span>
+                    <GreenMenu
+                      ariaLabel={ar ? "نوع الغياب" : "Absence type"}
+                      menuId="discipline-raise-art80-mode"
+                      value={art80.mode === "intermittent" ? "intermittent" : "consecutive"}
+                      options={[
+                        { value: "consecutive", label: ar ? "متصل — أكثر من 15 يوماً، إنذار بعد 10" : "Consecutive — over 15 days, warning after 10" },
+                        { value: "intermittent", label: ar ? "متقطع — أكثر من 30 يوماً، إنذار بعد 20" : "Intermittent — over 30 days, warning after 20" },
+                      ]}
+                      onChange={(v) => onArt80?.({ ...art80, mode: v })}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "أيام الغياب حتى اليوم" : "Days absent to date"}</span>
+                    <input type="number" min="0" value={art80.days ?? ""} onChange={(e) => onArt80?.({ ...art80, days: Number(e.target.value) || 0 })} style={field} />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "تاريخ الإنذار الكتابي" : "Written warning date"}</span>
+                    <PlatformDateField ar={ar} value={art80.warnedAt || ""} onChange={(v) => onArt80?.({ ...art80, warnedAt: v })} style={{ height: 44, minHeight: 44, fontSize: 14, background: "var(--nv-page)", borderRadius: 10 }} />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "أيام الغياب يوم الإنذار" : "Days absent when warned"}</span>
+                    <input type="number" min="0" value={art80.warnedAtDays ?? ""} onChange={(e) => onArt80?.({ ...art80, warnedAtDays: Number(e.target.value) || 0 })} style={field} />
+                  </label>
+                </div>
+              ) : null}
+              {art80Ground(dismissGround)?.warning ? (
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 260 }}>
+                  <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "تاريخ الإنذار الكتابي السابق (المادة 80/2)" : "Prior written warning date (Art. 80(2))"}</span>
+                  <PlatformDateField ar={ar} value={art80.warnedAt || ""} onChange={(v) => onArt80?.({ ...art80, warnedAt: v })} style={{ height: 44, minHeight: 44, fontSize: 14, background: "var(--nv-page)", borderRadius: 10 }} />
+                </label>
+              ) : null}
+              {art80Ground(dismissGround)?.report24h ? (
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 260 }}>
+                  <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "تاريخ إبلاغ الجهات المختصة (خلال 24 ساعة — المادة 80/4)" : "Date the authorities were told (within 24h — Art. 80(4))"}</span>
+                  <PlatformDateField ar={ar} value={art80.reportedAt || ""} onChange={(v) => onArt80?.({ ...art80, reportedAt: v })} style={{ height: 44, minHeight: 44, fontSize: 14, background: "var(--nv-page)", borderRadius: 10 }} />
+                </label>
+              ) : null}
+              <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
+                {ar
+                  ? "المادة 80: لا يُوقَّع الفسخ إلا بقرار مكتوب بعد إتاحة الفرصة للعامل لإبداء أسباب معارضته — يُثبت ذلك في المحضر قبل التوقيع."
+                  : "Article 80: the dismissal is signed only as a written decision after the worker had the chance to object — recorded before signing."}
+              </span>
+            </div>
+          ) : null}
+          {penaltyKind === "dismissal_with_award" ? (
             <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0, gridColumn: "1 / -1" }}>
-              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "الحالة المقررة للفصل — المادة 66" : "Prescribed dismissal case — Article 66"}</span>
-              <input value={dismissGround} onChange={(event) => onDismissGround(event.target.value)} placeholder={ar ? "اكتب الحالة المقررة كما في النظام" : "Write the prescribed case as in the Law"} style={field} />
+              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "السبب المشروع للفصل مع المكافأة (النموذج الموحد م58/6)" : "Legitimate reason for dismissal with award (model Art. 58(6))"}</span>
+              <input value={art80Ground(dismissGround) ? "" : dismissGround} onChange={(event) => onDismissGround(event.target.value)} placeholder={ar ? "مثال: تكرار التدخين في الأماكن المحظورة للمرة الرابعة" : "e.g. fourth repeat of smoking in prohibited areas"} style={field} />
             </label>
           ) : null}
           <MarkBox

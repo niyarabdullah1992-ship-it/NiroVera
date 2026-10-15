@@ -180,6 +180,14 @@ assert.equal(checkRaiseDisciplineGate({
   penaltyKind: "dismiss",
   dismissGround: "اعتداء على المسؤول — المادة 80",
   today: "2026-09-12",
+}).error, "DISCIPLINE_DISMISS_GROUND", "Art. 80 ground is picked from the list, not free text");
+assert.equal(checkRaiseDisciplineGate({
+  employee: employees[0],
+  actor: { id: "mgr" },
+  note: "إهمال جسيم",
+  penaltyKind: "dismiss",
+  dismissGround: "assault",
+  today: "2026-09-12",
 }).ok, true);
 
 assert.equal(checkAdvanceDisciplineGate(
@@ -312,7 +320,7 @@ const signedCard = { ...docCard, signedAt: "2026-09-10", item: { ...docCard.item
 assert.equal(disciplinePaperKind(signedCard), "decision");
 const decision = buildSheetHtml(disciplineSheet(signedCard, true));
 assert.match(decision, /قرار توقيع جزاء/);
-assert.match(decision, /بكتاب مسجّل/);
+assert.match(decision, /بالبريد المسجّل على عنوانه المختار/);
 assert.match(decision, /المحاكم العمالية/);
 assert.match(decision, /خمسة عشر يوماً/);
 assert.match(decision, /البند 2 من لائحة/);

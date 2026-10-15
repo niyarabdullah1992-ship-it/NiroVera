@@ -11,7 +11,7 @@
 
 import { cutPhrase, effectivePenalty, fmtDisciplineDate, penaltyLabel } from "./disciplineBoard.js";
 import { printSheet } from "./printSheet.js";
-import { resolvePenaltyKind } from "./disciplineDerivations.js";
+import { DISCIPLINE_DELIVERY_METHODS, art80Ground, disciplineRepeatLine, resolvePenaltyKind } from "./disciplineDerivations.js";
 
 const TIME_AR = ["الأولى", "الثانية", "الثالثة", "الرابعة"];
 
@@ -54,7 +54,11 @@ export function disciplineSheet(card, ar = true, { company = "" } = {}) {
     kind === "notice"
       ? { label: ar ? "الجزاء المقترح" : "Proposed sanction", value: penaltyLabel(item, ar) }
       : { label: ar ? "الجزاء" : "Sanction", value: effectivePenalty(item, ar) },
-    kind !== "notice" ? { label: ar ? "الأثر على الأجر" : "Pay effect", value: cutPhrase(item, card.wage, ar) } : null,
+    kind !== "notice" ? { label: ar ? "المقدار (النموذج م68)" : "Amount (model Art. 68)", value: cutPhrase(item, card.wage, ar) } : null,
+    kind !== "notice" ? { label: ar ? "الجزاء عند التكرار" : "On repeat", value: disciplineRepeatLine(item, ar), wide: true } : null,
+    resolvePenaltyKind(item) === "dismiss" && art80Ground(item.dismissGround)
+      ? { label: ar ? "حالة الفسخ (المادة 80)" : "Dismissal case (Art. 80)", value: `${ar ? "الفقرة" : "Para"} ${art80Ground(item.dismissGround).para}: ${ar ? art80Ground(item.dismissGround).ar : art80Ground(item.dismissGround).en}`, wide: true }
+      : null,
     kind !== "notice" ? { label: ar ? "تاريخ التوقيع" : "Signed on", value: fmtDisciplineDate(card.signedAt, ar), mono: true } : null,
     kind !== "notice" ? { label: ar ? "وقّعه" : "Signed by", value: item.signedBy || "" } : null,
     reg ? { label: ar ? "السند من اللائحة (المادة 67)" : "Regulation basis (Art. 67)", value: reg, wide: true } : null,
@@ -117,15 +121,15 @@ export function disciplineSheet(card, ar = true, { company = "" } = {}) {
         ? "لك التظلّم كتابةً للجهة المختصة لدى صاحب العمل خلال ثلاثين يوماً — عدا أيام العطل الرسمية — من تاريخ إبلاغك بهذا القرار.\nفإن رُفض تظلّمك أو لم يُبتّ فيه كتابةً خلال خمسة عشر يوماً من تقديمه، فلك الاعتراض أمام المحاكم العمالية خلال ثلاثين يوماً — عدا العطل الرسمية — من تاريخ الرفض أو انتهاء مدة البتّ، أيهما أقرب."
         : "You may file a written grievance with the employer's competent party within thirty days, excluding official holidays, of being notified of this decision.\nIf it is refused or not decided in writing within fifteen days, you may object before the labour courts within thirty days, excluding official holidays, of the refusal or the end of the decision period, whichever is earlier.",
     });
-    if (kind === "decision") {
+    if (kind !== "notice") {
+      const done = DISCIPLINE_DELIVERY_METHODS.find((m) => m.id === item.notifyMethod);
       blocks.push({
         type: "table",
-        heading: ar ? "إثبات الإبلاغ بالقرار (المادة 72)" : "Proof of notice (Art. 72)",
+        heading: ar ? "إثبات الإبلاغ بالقرار (المادة 72 · النموذج م68)" : "Proof of notice (Art. 72 · model Art. 68)",
         cols: [ar ? "الطريقة" : "Method", ar ? "التاريخ" : "Date", ar ? "المرجع / التوقيع" : "Reference / signature"],
-        rows: [
-          [ar ? "☐ سُلِّم للعامل يداً بيد" : "☐ Handed to the worker", "……/……/………", ""],
-          [ar ? "☐ امتنع عن الاستلام أو كان غائباً — أُرسل بكتاب مسجّل على عنوانه المبيّن في ملفه" : "☐ Refused or absent — sent by registered letter to the address on file", "……/……/………", ar ? "رقم الإرسال: ……………" : "Tracking no.: ……………"],
-        ],
+        rows: done
+          ? [[`☑ ${ar ? done.ar : done.en}`, fmtDisciplineDate(item.notifyDeliveredAt, ar), item.notifyRef || ""]]
+          : DISCIPLINE_DELIVERY_METHODS.map((m) => [`☐ ${ar ? m.ar : m.en}`, "……/……/………", m.id === "hand" ? "" : (ar ? "المرجع: ……………" : "Ref.: ……………")]),
       });
     }
   }

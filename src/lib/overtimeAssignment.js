@@ -190,7 +190,9 @@ export function checkOtAnnualCapGate(input = {}) {
   if (!hours) return { ok: true, used: 0, add: 0, cap: ruleValue("hours.ot.annualMaxHours", onDate) };
   const year = otYearOf(input) || String(onDate || "").slice(0, 4);
   const fromRequests = otHoursInYear(input.otherRequests, year, input.exceptId);
-  const used = Math.max(0, Number(input.overtimeHoursYtd) || 0, fromRequests);
+  const used = input.overtimeHoursOutsideYtd != null
+    ? Math.round(((Math.max(0, Number(input.overtimeHoursOutsideYtd) || 0)) + fromRequests) * 10) / 10
+    : Math.max(0, Number(input.overtimeHoursYtd) || 0, fromRequests);
   const cap = ruleValue("hours.ot.annualMaxHours", onDate);
   const next = used + hours;
   if (next > cap && input.annualCapConsent !== true) {
@@ -244,7 +246,9 @@ export function checkCompLeaveYearCapGate(input = {}) {
   const cap = ruleValue("hours.ot.compLeave.maxDaysPerYear", onDate);
   const year = otYearOf(input) || String(onDate || "").slice(0, 4);
   const fromRequests = compLeaveDaysInYear(input.otherRequests, year, input.exceptId);
-  const used = Math.max(0, Number(input.creditDaysYtd) || 0, fromRequests);
+  const used = input.creditDaysOutsideYtd != null
+    ? Math.round(((Math.max(0, Number(input.creditDaysOutsideYtd) || 0)) + fromRequests) * 1000) / 1000
+    : Math.max(0, Number(input.creditDaysYtd) || 0, fromRequests);
   const add = otCreditDays(input.hours ?? ((Number(input.overtimeMinutes) || 0) / 60), onDate);
   const next = used + add;
   if (next > cap) {

@@ -5,7 +5,7 @@ import { checkPunchRecordGate, parsePunchClock } from "./attendancePunch.js";
 import { checkIssuedLetterFileGate, checkRaiseSignableGate, isLetterSignableType } from "./requestSigning.js";
 import { checkDutyRequestFields, isDutyRequestType } from "./dutyRequests.js";
 import { checkResignationFields, RESIGNATION_TYPE } from "./exitRequests.js";
-import { ART81_EXIT_TYPE, DAMAGE_OBJECTION_TYPE, DOCUMENTS_RETURN_TYPE, LEAVE_CARRY_TYPE, NIGHT_AVOID_TYPE, checkArt81Gate, checkDamageObjectionGate, checkDocumentsReturnGate, checkLeaveCarryGate, checkNightAvoidGate } from "./rightsRequests.js";
+import { ART81_EXIT_TYPE, DAMAGE_OBJECTION_TYPE, DOCUMENTS_RETURN_TYPE, GRIEVANCE_TYPE, LEAVE_CARRY_TYPE, NIGHT_AVOID_TYPE, checkArt81Gate, checkGrievanceGate, checkDamageObjectionGate, checkDocumentsReturnGate, checkLeaveCarryGate, checkNightAvoidGate } from "./rightsRequests.js";
 
 export const LEAVE_TOPUP_TYPE = "leave_topup";
 export const LEAVE_TOPUP_MAX_DAYS = 30;
@@ -85,6 +85,7 @@ export const OTHER_REQUEST_TYPES = [
   { key: ART81_EXIT_TYPE, ar: "ترك العمل دون إشعار (المادة 81)", en: "Leaving without notice (Art. 81)" },
   { key: NIGHT_AVOID_TYPE, ar: "تجنب العمل الليلي لسبب صحي", en: "Avoid night work for health" },
   { key: DOCUMENTS_RETURN_TYPE, ar: "استرداد الوثائق المودعة", en: "Return of deposited documents" },
+  { key: GRIEVANCE_TYPE, ar: "تظلم (اللائحة م71)", en: "Grievance (Regs Art. 71)" },
   { key: LEAVE_TOPUP_TYPE, ar: "رفع رصيد إجازة", en: "Leave balance top-up" },
   { key: "document", ar: "مستند / أخرى", en: "Document / other" },
   { key: "other_request", ar: "طلب آخر", en: "Other request" },
@@ -1205,6 +1206,10 @@ export function checkSubmitOtherRequestGate(input) {
   }
   if (type === DOCUMENTS_RETURN_TYPE) {
     const g = checkDocumentsReturnGate({ reason });
+    if (!g.ok) return g;
+  }
+  if (type === GRIEVANCE_TYPE) {
+    const g = checkGrievanceGate({ notifiedOn: input?.notifiedOn, grievanceKind: input?.grievanceKind, reason, today: input?.today, isHoliday: input?.isHoliday });
     if (!g.ok) return g;
   }
   if (isDutyRequestType(type) && !(type === "shift_change" && input?.fromRoster)) {

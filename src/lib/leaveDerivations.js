@@ -13,7 +13,7 @@ import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAV
 import { otherRequestsForEmployeeId } from "./employeeRequestBags.js";
 
 export const CHAPTER_LEAVE_TYPES = [
-  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "work_injury", "emergency", "comp", "job_search", "unpaid",
+  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "work_injury", "emergency", "comp", "job_search", "dialysis", "unpaid",
 ];
 
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
@@ -37,6 +37,7 @@ export const LEAVE_TYPES = [
   { key: "emergency", total: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
   { key: "comp", total: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
   { key: "job_search", total: null, article: "78", ar: "يوم بحث عن عمل", en: "Job-search day" },
+  { key: "dialysis", total: null, article: null, ar: "غسيل كلوي (اللائحة م42)", en: "Kidney dialysis (Regs Art. 42)", requiresFile: true },
   { key: "unpaid", total: null, article: citeLeaveType("unpaid")?.article || null, ar: "بدون راتب", en: "Unpaid" },
 ];
 
@@ -734,6 +735,20 @@ function checkStatutoryLeaveGates(request, extras, days, onDate, cite) {
         cite: iCite,
       };
     }
+    const bornOn = String(request.iddahBirthDate || "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(bornOn) && bornOn >= event && bornOn <= latestPaid && isRamadanHoursSubject({ profile: extras.profile })) {
+      // Regs Art. 40(5): a birth before the 130 days ends the iddah — nothing of it is used after birth.
+      if (end && end >= bornOn) {
+        return {
+          ok: false,
+          error: "IDDAH_AFTER_BIRTH",
+          reason: `موقوف — العدة تنتهي بالوضع (${bornOn}) ولا يُستفاد من باقيها بعده (اللائحة م40/5).`,
+          reasonEn: `Blocked — iddah ends at birth (${bornOn}); none of it is used after (Regs Art. 40(5)).`,
+          cite: iCite,
+        };
+      }
+      return { ok: true };
+    }
     if (!end || end < latestPaid) {
       return {
         ok: false,
@@ -970,6 +985,14 @@ export function checkLeaveSelfRaiseGate(request, extras = {}) {
 export function checkSubmitLeaveGate(request, extras = {}) {
   const selfRaise = checkLeaveSelfRaiseGate(request, extras);
   if (!selfRaise.ok) return selfRaise;
+  if (String(request?.type || "").toLowerCase() === "dialysis") {
+    // Regs Art. 42: the paid day is the day of the dialysis session itself — one request per session day.
+    const a = String(request?.startDate || "").slice(0, 10);
+    const b = String(request?.endDate || "").slice(0, 10) || a;
+    if (a && b && a !== b) {
+      return { ok: false, error: "DIALYSIS_ONE_DAY", reason: "موقوف — إجازة الغسيل الكلوي عن يوم الجلسة نفسه؛ ارفع طلباً لكل يوم غسيل مع تقرير الجهة المعالجة (اللائحة م42).", reasonEn: "Blocked — dialysis leave is for the session day itself; raise one request per dialysis day with the provider's report (Regs Art. 42)." };
+    }
+  }
   if (String(request?.type || "").toLowerCase() === "job_search") {
     const js = checkJobSearchDayGate({ employee: extras.employee || { profile: extras.profile, leaveRequests: extras.requests }, startDate: request.startDate, endDate: request.endDate, today: extras.today, exceptId: request.id });
     if (!js.ok) return js;
@@ -1364,4 +1387,53 @@ export function checkCheckInLeaveGate(requests, dayKey) {
     };
   }
   return { ok: true };
+}
+
+/**
+ * Regs Art. 41: «إذا وقعت أيام الإجازة المرضية أثناء الإجازة السنوية، فتوقف أيام الإجازة السنوية إلى حين
+ * انتهاء الإجازة المرضية ثم تستأنف المدة المتبقية بعد ذلك». Given an approved annual leave and a sick
+ * leave that overlaps it, the annual days from the overlap on resume the day after the sick leave ends.
+ * Returns null when they do not overlap. `keep` is the part of the annual leave before the sick leave
+ * (null when the sick leave starts on or before the annual one); `resume` is the part after it.
+ */
+export function planAnnualPauseForSick(annual, sick) {
+  const d = (v) => String(v || "").slice(0, 10);
+  if (String(annual?.type || "").toLowerCase() !== "annual" || String(sick?.type || "").toLowerCase() !== "sick") return null;
+  const aStart = d(annual.startDate);
+  const aEnd = d(annual.endDate);
+  const sStart = d(sick.startDate);
+  const sEnd = d(sick.endDate) || sStart;
+  if (!aStart || !aEnd || !sStart || !sEnd) return null;
+  if (sStart > aEnd || sEnd < aStart) return null;
+  const pauseFrom = sStart > aStart ? sStart : aStart;
+  const remaining = computeLeaveDays(pauseFrom, aEnd) - (sEnd < aEnd ? computeLeaveDays(addCalendarDays(sEnd, 1), aEnd) : 0);
+  const tail = sEnd < aEnd ? computeLeaveDays(addCalendarDays(sEnd, 1), aEnd) : 0;
+  const moved = remaining + tail;
+  const resumeStart = addCalendarDays(sEnd, 1);
+  const resumeEnd = addCalendarDays(resumeStart, moved - 1);
+  const keep = pauseFrom > aStart ? { startDate: aStart, endDate: addCalendarDays(pauseFrom, -1), days: computeLeaveDays(aStart, addCalendarDays(pauseFrom, -1)) } : null;
+  return {
+    pausedDays: remaining,
+    keep,
+    resume: { startDate: resumeStart, endDate: resumeEnd, days: moved },
+  };
+}
+
+/**
+ * Regs Art. 40(5): a pregnant Muslim widow's iddah ends at birth — «ولا يجوز لها الاستفادة من باقي إجازة
+ * العدة الممنوحة لها بعد وضع هذا الحمل». Recording the birth on an approved iddah ends it the day before
+ * the birth (maternity leave covers the birth day on).
+ */
+export function checkIddahBirthGate(request, birthDate) {
+  const d = (v) => String(v || "").slice(0, 10);
+  const birth = d(birthDate);
+  if (String(request?.type || "").toLowerCase() !== "iddah") return { ok: false, error: "NOT_IDDAH", reason: "ليست إجازة عدة.", reasonEn: "Not an iddah leave." };
+  if (request.status !== "approved") return { ok: false, error: "NOT_APPROVED", reason: "تُسجَّل الولادة على عدة معتمدة.", reasonEn: "Record the birth on an approved iddah." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birth)) return { ok: false, error: "BIRTH_REQUIRED", reason: "حدد تاريخ الوضع.", reasonEn: "Set the birth date." };
+  const start = d(request.startDate);
+  const end = d(request.endDate);
+  if (birth < start) return { ok: false, error: "BIRTH_BEFORE_IDDAH", reason: "تاريخ الوضع قبل بداية العدة.", reasonEn: "The birth is before the iddah began." };
+  if (end && birth > end) return { ok: false, error: "BIRTH_AFTER_IDDAH", reason: "تاريخ الوضع بعد نهاية العدة — لا أثر له عليها.", reasonEn: "The birth is after the iddah ended — no effect." };
+  const newEnd = birth > start ? addCalendarDays(birth, -1) : start;
+  return { ok: true, birthDate: birth, endDate: newEnd, days: computeLeaveDays(start, newEnd), cutDays: end ? Math.max(0, computeLeaveDays(start, end) - computeLeaveDays(start, newEnd)) : 0 };
 }

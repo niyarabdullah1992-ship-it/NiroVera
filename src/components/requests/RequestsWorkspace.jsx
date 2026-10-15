@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { setStationScope } from "@/lib/stationScopeStore";
-import { postponeResignation, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
+import { postponeResignation, recordIddahBirth, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
 import { approvedLeaveWithdrawWindow, chargeableLeaveDays, checkApproveLeaveGate, checkExamSittingSettleGate, checkLeaveGenderGate, checkRejectLeaveGate, checkSubmitLeaveGate, examNoticeFilesOf, examSatFileOf, examSatState, hasLeaveAttachment, isRealSupportingFile, leaveNeedsAttachment, leaveNeedsArticle118Ack, leaveSpanIncludesOfficialHolidays } from "@/lib/leaveDerivations";
 import { usedLeaveDays } from "@/lib/leaveTypes";
 import { weeklyOffDaysInRange, weeklyOffLabels } from "@/lib/leaveEidOverlap.js";
@@ -119,7 +120,7 @@ import { isRosterLockedCivicHoliday, laborCalendarOf, officialHolidayKindLabel, 
 import { iddahSpanFromEvent, maternityFollowOnSpan } from "@/lib/leaveTypes";
 import { isRamadanHoursSubject, religionOnFile } from "@/lib/laborRules";
 import { profileGender } from "@/lib/employeeProfileFields";
-import { DUTY_REQUEST_META, DUTY_REQUEST_TYPES, checkDutyRequestFields, dutyRequestDetail, dutyRequestEffect, dutyRequestRosterFacts, isDutyRequestType } from "@/lib/dutyRequests";
+import { DUTY_REQUEST_META, DUTY_REQUEST_TYPES, checkDutyRequestFields, nursingRightUntil, dutyRequestDetail, dutyRequestEffect, dutyRequestRosterFacts, isDutyRequestType } from "@/lib/dutyRequests";
 import { performsNightWork, pregnancyNightBan } from "@/lib/decision18632";
 import { checkResignationFields, checkPostponeResignationGate, resignationDetail, resignationFacts, resignationState, RESIGNATION_TYPE } from "@/lib/exitRequests";
 import { sunExposureMark } from "@/lib/shiftWeek";
@@ -295,6 +296,10 @@ function requestDecisionEffect(row, ar) {
   }
   if (row?.type === "art81_exit") return ar ? "ينتهي العقد بالبلاغ · م 81" : "Contract ends on notice · Art. 81";
   if (row?.type === "damage_objection") return ar ? "قبول يرد المبلغ · وإلا المحكمة العمالية · م 91" : "Accept refunds · else labour court · Art. 91";
+  if (row?.type === "grievance") {
+    const by = row.grievanceReplyBy ? regulationDate(row.grievanceReplyBy) : "";
+    return ar ? `بُتّ كتابةً${by ? ` حتى ${by}` : " خلال 15 يوماً"} · اللائحة م71` : `Decide in writing${row.grievanceReplyBy ? ` by ${row.grievanceReplyBy}` : " within 15 days"} · Regs Art. 71`;
+  }
   if (row?.type === "night_avoid") return ar ? "عمل نهاري مماثل أو 6 ساعات بالأجر نفسه · 18632" : "Similar day work or 6 h, same pay · 18632";
   if (row?.type === "documents_return") return ar ? "تُعاد ولا تُرفض · م 64" : "Returned, not refused · Art. 64";
   if (row?.type === "leave_carry") return ar ? "بموافقة صاحب العمل · م 110" : "With the employer's agreement · Art. 110";
@@ -548,6 +553,7 @@ export default function RequestsWorkspace({
   const [issuedBusy, setIssuedBusy] = useState({});
   const [issuedError, setIssuedError] = useState({});
   const [examSatBusy, setExamSatBusy] = useState({});
+  const [iddahBirth, setIddahBirth] = useState({});
   const [examSatError, setExamSatError] = useState({});
   const [nightAck, setNightAck] = useState({});
   const [busy, setBusy] = useState(false);
@@ -1056,6 +1062,7 @@ export default function RequestsWorkspace({
           until: nursingUntil, dueDate, file: supportingFile,
           nursingSplit: kind === "nursing_hour" ? nursingSplit : undefined,
           childBirthDate: kind === "nursing_hour" ? childBirthDate : undefined,
+          nurseryOnSite: hoursPolicyOf(data).nurseryOnSite === true,
         });
         return [{
           ok: duty.ok,
@@ -3069,8 +3076,10 @@ export default function RequestsWorkspace({
                   ) : null}
                   {kind === "nursing_hour" ? (() => {
                     const total = (nursingSplit.start || 0) + (nursingSplit.mid || 0) + (nursingSplit.end || 0);
+                    const nurseryOnSite = hoursPolicyOf(data).nurseryOnSite === true;
                     const pick = (slot, value) => setNursingSplit((prev) => {
-                      const next = { ...prev, [slot]: Number(value) };
+                      // Without a nursery: one period only — picking one slot clears the others.
+                      const next = nurseryOnSite ? { ...prev, [slot]: Number(value) } : { start: 0, mid: 0, end: 0, [slot]: Number(value) };
                       setNursingPlacement(next.start ? "start" : next.end ? "end" : "start");
                       return next;
                     });
@@ -3081,9 +3090,11 @@ export default function RequestsWorkspace({
                           <span style={{ fontSize: 11, color: MUTED }}>{ar ? "تاريخ ميلاد الطفل — إلزامي" : "Child's birth date — required"}</span>
                           <PlatformDateField ar={ar} value={childBirthDate} onChange={setChildBirthDate} />
                         </label>
-                        <span style={{ fontSize: 11, color: MUTED }}>{ar ? "فترات الرضاعة — فترة أو أكثر، مجموعها ساعة في اليوم كحد أعلى (المادة 154)" : "Nursing periods — one or more, an hour a day at most (Art. 154)"}</span>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 9 }}>
-                          {[["start", ar ? "أول الدوام" : "Start"], ["mid", ar ? "وسط الدوام" : "Middle"], ["end", ar ? "آخر الدوام" : "End"]].map(([slot, label]) => (
+                        <span style={{ fontSize: 11, color: MUTED }}>{nurseryOnSite
+                          ? (ar ? "فترات الرضاعة — تتوفر حضانة في المنشأة: فترة أو أكثر، مجموعها ساعة في اليوم كحد أعلى (المادة 154، اللائحة م31/3-ب)" : "Nursing periods — on-site nursery: one or more, an hour a day at most (Regs Art. 31(3)(b))")
+                          : (ar ? "لا تتوفر حضانة في المنشأة — ساعة الرضاعة فترة واحدة أول الدوام أو آخره (اللائحة م31/3-أ). وتمتد 24 شهراً من تاريخ الوضع." : "No on-site nursery — the nursing hour is one period at the start or end (Regs Art. 31(3)(a)), for 24 months from birth.")}</span>
+                        <div style={{ display: "grid", gridTemplateColumns: `repeat(${nurseryOnSite ? 3 : 2}, minmax(0, 1fr))`, gap: 9 }}>
+                          {[["start", ar ? "أول الدوام" : "Start"], ["mid", ar ? "وسط الدوام" : "Middle"], ["end", ar ? "آخر الدوام" : "End"]].filter(([slot]) => nurseryOnSite || slot !== "mid").map(([slot, label]) => (
                             <label key={slot} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                               <span style={{ fontSize: 11, color: MUTED }}>{label}</span>
                               <select data-nursing-slot={slot} value={String(nursingSplit[slot] || 0)} onChange={(e) => pick(slot, e.target.value)} style={fieldStyle()}>
@@ -3100,7 +3111,7 @@ export default function RequestsWorkspace({
                               : (ar ? "اختاري فترة واحدة على الأقل." : "Pick at least one period.")}
                         </span>
                         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <span style={{ fontSize: 11, color: MUTED }}>{ar ? "حتى تاريخ — اختياري" : "Until — optional"}</span>
+                          <span style={{ fontSize: 11, color: MUTED }}>{ar ? `حتى تاريخ — اختياري${childBirthDate && nursingRightUntil(childBirthDate) ? `؛ الحد ${regulationDate(nursingRightUntil(childBirthDate))}` : ""}` : "Until — optional"}</span>
                           <PlatformDateField ar={ar} value={nursingUntil} onChange={setNursingUntil} />
                         </label>
                       </div>
@@ -3863,6 +3874,39 @@ export default function RequestsWorkspace({
                   {row.family === "leave" && row.type === "exam" ? (
                     <LaborArticleCite article="115" ar={ar} showOfficial showText entitlement />
                   ) : null}
+                  {row.family === "leave" && row.type === "iddah" && st === "approved" && (() => {
+                    const ownRow = String(row.employee?.id || "") === String(currentUser?.id || "");
+                    if (row.iddahEndedAtBirth) {
+                      return (
+                        <span data-iddah-birth="done" style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.8 }}>
+                          {ar ? `انتهت العدة بالوضع في ${regulationDate(row.iddahBirthDate)} — لا يُستفاد من باقيها بعد الوضع (اللائحة م40/5).` : `Iddah ended at birth on ${row.iddahBirthDate} (Regs Art. 40(5)).`}
+                        </span>
+                      );
+                    }
+                    if (!(ownRow || rowCanDecide) || !String(row.endDate || "").slice(0, 10) || String(row.endDate).slice(0, 10) < today) return null;
+                    const val = iddahBirth[key] || "";
+                    return (
+                      <div data-iddah-birth="open" style={{ border: "1px solid var(--nv-line3)", background: SURFACE, padding: "10px 11px", display: "flex", flexDirection: "column", gap: 7 }}>
+                        <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
+                          {ar ? "إن كانت حاملاً ووضعت قبل نهاية العدة فإنها تنتهي بالوضع، ولا يُستفاد من باقيها بعده، وتبدأ إجازة الوضع (اللائحة م40/5)." : "If pregnant and the birth comes before the iddah ends, it ends at birth and maternity leave starts (Regs Art. 40(5))."}
+                        </span>
+                        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                          <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 180 }}>
+                            <span style={{ fontSize: 11, color: MUTED }}>{ar ? "تاريخ الوضع" : "Birth date"}</span>
+                            <PlatformDateField ar={ar} value={val} onChange={(v) => setIddahBirth((m) => ({ ...m, [key]: v }))} />
+                          </label>
+                          <button type="button" data-iddah-birth-save="1" disabled={!val} onClick={() => {
+                            const res = recordIddahBirth(company.id, row.employee.id, row.id, val, { actor: currentUser?.name });
+                            if (!res?.ok) { toast({ description: ar ? res?.reason : res?.reasonEn, variant: "destructive" }); return; }
+                            toast({ description: ar ? "سُجّل الوضع وانتهت العدة به." : "Birth recorded; iddah ended." });
+                            refresh?.();
+                          }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 38, padding: "0 14px", border: "none", borderRadius: 8, background: val ? "#0B3D27" : "var(--nv-line)", color: val ? "#fff" : MUTED, cursor: val ? "pointer" : "default" }}>
+                            {ar ? "سجّل الوضع وأنهِ العدة" : "Record birth and end iddah"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {row.family === "leave" && row.type === "exam" && st !== "rejected" && st !== "withdrawn" && (() => {
                     const sat = examSatState(row);
                     const settle = checkExamSittingSettleGate(row);
@@ -4026,6 +4070,8 @@ export default function RequestsWorkspace({
                           ? (ar ? "استلم البلاغ" : "Acknowledge")
                           : row.type === "damage_objection"
                             ? (ar ? "اقبل الاعتراض ورد المبلغ" : "Accept and refund")
+                            : row.type === "grievance"
+                            ? (ar ? "اقبل التظلم" : "Uphold the grievance")
                             : issuesFile
                           ? (ar ? "اعتمد وأصدر الملف" : "Approve and issue the file")
                           : (ar ? "اعتمد الطلب" : "Approve the request")}

@@ -15,6 +15,9 @@ import {
   leaveCoverRange,
   LEAVE_TYPES,
   addCalendarDays,
+  isOfficialHolidayDay,
+  planAnnualPauseForSick,
+  checkIddahBirthGate,
 } from "../../shared/leaveDerivations.ts";
 import {
   STUDY_CONSENT_TYPE,
@@ -35,6 +38,9 @@ import {
   ART81_EXIT_TYPE,
   DAMAGE_OBJECTION_TYPE,
   DOCUMENTS_RETURN_TYPE,
+  GRIEVANCE_TYPE,
+  checkGrievanceGate,
+  grievanceReplyBy,
   LEAVE_CARRY_TYPE,
   NIGHT_AVOID_TYPE,
   checkArt81Gate,
@@ -76,6 +82,7 @@ function checkRightsSubmit(request: any, emp: any) {
   if (type === ART81_EXIT_TYPE) return checkArt81Gate({ caseKey: request.art81Case, reason, ack: true });
   if (type === NIGHT_AVOID_TYPE) return checkNightAvoidGate({ kind: request.nightAvoidKind, from: request.avoidFrom, until: request.avoidUntil, file: Array.isArray(request.files) ? request.files[0] : null, gender: emp?.profile?.gender });
   if (type === DOCUMENTS_RETURN_TYPE) return checkDocumentsReturnGate({ reason });
+  if (type === GRIEVANCE_TYPE) return checkGrievanceGate({ notifiedOn: request.notifiedOn, grievanceKind: request.grievanceKind, reason, today: riyadhToday(), isHoliday: (iso: string) => isOfficialHolidayDay(iso) });
   return { ok: true };
 }
 
@@ -355,6 +362,7 @@ Deno.serve(async (req) => {
       const rights = checkRightsSubmit(request, emp);
       if (!rights.ok) return Response.json({ ...rights }, { status: 422 });
       if (request.type === DAMAGE_OBJECTION_TYPE) request.objectionLastDay = damageObjectionDeadline(request.notifiedOn);
+      if (request.type === GRIEVANCE_TYPE) request.grievanceReplyBy = grievanceReplyBy(riyadhToday(), (iso: string) => isOfficialHolidayDay(iso));
       const prior = Array.isArray(emp.otherRequests) ? emp.otherRequests : [];
       const raiseRow = buildRequestAudit({
         actor: auth.name,
@@ -422,6 +430,26 @@ Deno.serve(async (req) => {
         });
         req.auditTrail = appendRequestAudit(req, row);
         leaveRequests[idx] = req;
+        if (String(req.type || "").toLowerCase() === "sick") {
+          // Regs Art. 41: annual leave the sick leave falls in is paused and resumes after it.
+          for (let i = 0; i < leaveRequests.length; i += 1) {
+            const annual = { ...leaveRequests[i] };
+            if (annual.status !== "approved" || String(annual.type || "").toLowerCase() !== "annual") continue;
+            const plan = planAnnualPauseForSick(annual, req);
+            if (!plan) continue;
+            const origDays = Number(annual.days) || computeLeaveDays(annual.startDate, annual.endDate);
+            const keepDays = plan.keep ? Math.min(origDays, plan.keep.days) : 0;
+            const stamp = { sickId: req.id, pausedDays: plan.pausedDays, at: req.approvedAt };
+            if (plan.keep) {
+              leaveRequests[i] = { ...annual, endDate: plan.keep.endDate, activeEndDate: plan.keep.endDate, days: keepDays, pausedBySick: stamp };
+              if (origDays - keepDays > 0) {
+                leaveRequests.push({ ...annual, id: `leave_${Date.now().toString(36)}_${i}`, startDate: plan.resume.startDate, endDate: plan.resume.endDate, activeStartDate: plan.resume.startDate, activeEndDate: plan.resume.endDate, days: origDays - keepDays, resumedFrom: annual.id, pausedBySick: undefined, auditTrail: [], reason: "استئناف الإجازة السنوية بعد المرضية (اللائحة م41)" });
+              }
+            } else {
+              leaveRequests[i] = { ...annual, startDate: plan.resume.startDate, endDate: plan.resume.endDate, activeStartDate: plan.resume.startDate, activeEndDate: plan.resume.endDate, pausedBySick: stamp };
+            }
+          }
+        }
         const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
         await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests, fileLog });
         await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
@@ -664,6 +692,32 @@ Deno.serve(async (req) => {
       leaveRequests[idx] = r;
       await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
       await audit("leave_cut_attended", `${emp.name} cut leave ${r.id} from ${day} (attended)`);
+      return Response.json({ ok: true, request: r });
+    }
+
+    // Regs Art. 40(5): the birth ends a pregnant widow's iddah. The widow herself or a manager records it.
+    if (action === "recordIddahBirth") {
+      const employeeId = String(body.employeeId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      if (!employeeId || !requestId) return Response.json({ error: "Missing employeeId or requestId" }, { status: 400 });
+      if (!isManager && auth.userId !== employeeId) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
+      const idx = leaveRequests.findIndex((r: any) => r.id === requestId);
+      if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
+      const gate = checkIddahBirthGate(leaveRequests[idx], body.birthDate);
+      if (!gate.ok) return Response.json({ ...gate }, { status: 422 });
+      const r: any = { ...leaveRequests[idx] };
+      r.iddahBirthDate = gate.birthDate;
+      r.iddahEndedAtBirth = true;
+      r.originalEndDate = r.originalEndDate || r.endDate;
+      r.endDate = gate.endDate;
+      r.days = gate.days;
+      if (r.activeEndDate) r.activeEndDate = gate.endDate;
+      leaveRequests[idx] = r;
+      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
+      await audit("iddah_ended_at_birth", `${emp.name} iddah ${r.id} ended at birth ${gate.birthDate}`);
       return Response.json({ ok: true, request: r });
     }
 

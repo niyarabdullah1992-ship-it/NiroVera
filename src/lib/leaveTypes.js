@@ -24,6 +24,8 @@ export const LEAVE_TYPES = [
   { key: "emergency", defaultTotal: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
   { key: "comp", defaultTotal: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
   { key: "job_search", defaultTotal: null, article: "78", employerNoticeOnly: true, ar: "يوم بحث عن عمل", en: "Job-search day" },
+  // Regs Art. 42: paid leave on each kidney-dialysis day, on a report from the treating provider.
+  { key: "dialysis", defaultTotal: null, article: null, requiresFile: true, ar: "غسيل كلوي (اللائحة م42)", en: "Kidney dialysis (Regs Art. 42)" },
   { key: "unpaid", defaultTotal: null, article: citeLeaveType("unpaid")?.article || null, ar: "بدون راتب", en: "Unpaid" },
 ];
 
@@ -314,25 +316,22 @@ export function accruedAnnualDaysAtExit(hireDate, entitlement, exitDate) {
   return floor * (worked / yearLen);
 }
 
-/** Article 117: the sick year starts on the first sick leave and rolls every 365 days. */
+/** Article 117 + Regs Art. 41: the sick year starts on the first sick leave and runs
+ *  365 days; the next sick year starts on the first sick leave taken after that
+ *  window ends (not on the anniversary of the very first one). */
 export function sickStatutoryYearWindow(requests, onDate) {
   const day = dateOnly(onDate) || new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
-  const first = (requests || [])
+  const starts = [...new Set((requests || [])
     .filter((r) => String(r.type || "").toLowerCase() === "sick" && r.status === "approved")
     .map((r) => dateOnly(r.startDate))
-    .filter(Boolean)
-    .sort()[0];
-  if (!first) return { start: day, end: addCalendarDays(day, 364) };
-  const origin = parseLocalDay(first);
-  const on = parseLocalDay(day) || origin;
-  let start = new Date(origin.getTime());
-  while (true) {
-    const next = new Date(start.getFullYear() + 1, start.getMonth(), start.getDate());
-    if (next > on) break;
-    start = next;
+    .filter((d) => d && d <= day))]
+    .sort();
+  let win = null;
+  for (const s of starts) {
+    if (!win || s > win.end) win = { start: s, end: addCalendarDays(s, 364) };
   }
-  const startIso = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
-  return { start: startIso, end: addCalendarDays(startIso, 364) };
+  if (!win || day > win.end) return { start: day, end: addCalendarDays(day, 364) };
+  return win;
 }
 
 export function examLeaveChargesAnnual(request) {
@@ -458,7 +457,16 @@ export function annualBalanceSplit(profile, requests, onDate, company, employee)
   };
 }
 
-/** Art. 154: after return from maternity, until nursingUntil or two years from birth/return. */
+/** Art. 154 + Regs Art. 31(1): after return from maternity, for 24 months from the date of birth. */
+function nursingMonthsUntil(birth, months) {
+  if (!birth) return "";
+  const [y, m, d] = birth.split("-").map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + months, 1));
+  const last = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(d, last) - 1 || 0);
+  return target.toISOString().slice(0, 10);
+}
+
 export function isNursingSubject(employee, onDate) {
   const profile = employee?.profile || {};
   const gender = String(profile.gender || "").toLowerCase();
@@ -472,7 +480,9 @@ export function isNursingSubject(employee, onDate) {
   ));
   if (!ended.length) return false;
   const last = [...ended].sort((a, b) => dateOnly(b.endDate).localeCompare(dateOnly(a.endDate)))[0];
-  const until = dateOnly(profile.nursingUntil) || addCalendarDays(dateOnly(last.eventDate || last.endDate), 730);
+  // Birth date on the maternity leave; without it, the latest birth the six post-birth weeks allow.
+  const birth = dateOnly(last.eventDate) || dateOnly(profile.childBirthDate) || addCalendarDays(dateOnly(last.endDate), -41);
+  const until = dateOnly(profile.nursingUntil) || nursingMonthsUntil(birth, 24);
   return !!until && day <= until;
 }
 

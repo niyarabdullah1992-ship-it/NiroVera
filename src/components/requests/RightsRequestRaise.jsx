@@ -1,10 +1,16 @@
 import React, { useState } from "react";
-import { submitOtherRequest } from "@/lib/store";
+import { getCompanyData, submitOtherRequest } from "@/lib/store";
+import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import {
   ART81_CASES,
   ART81_EXIT_TYPE,
   DAMAGE_OBJECTION_TYPE,
   DOCUMENTS_RETURN_TYPE,
+  GRIEVANCE_KINDS,
+  GRIEVANCE_TYPE,
+  checkGrievanceGate,
+  grievanceFileDeadline,
+  grievanceReplyBy,
   NIGHT_AVOID_KINDS,
   NIGHT_AVOID_TYPE,
   checkDocumentsReturnGate,
@@ -54,6 +60,9 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
   const [avoidKind, setAvoidKind] = useState("");
   const [avoidFrom, setAvoidFrom] = useState("");
   const [avoidUntil, setAvoidUntil] = useState("");
+  const [grievanceKind, setGrievanceKind] = useState("");
+  const calendar = laborCalendarOf(getCompanyData(companyId));
+  const isHoliday = (iso) => isOfficialHoliday(iso, calendar);
   const gender = profileGender(employee?.profile);
   const remaining = remainingLeaveDays(employee?.profile, employee?.leaveRequests, "annual");
   const kinds = RIGHTS_REQUESTS.filter((k) => k.key !== "contract_copy");
@@ -67,7 +76,9 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
         ? checkNightAvoidGate({ kind: avoidKind, from: avoidFrom, until: avoidUntil, file, gender })
         : kind === DOCUMENTS_RETURN_TYPE
           ? checkDocumentsReturnGate({ reason })
-          : checkArt81Gate({ caseKey, reason, ack });
+          : kind === GRIEVANCE_TYPE
+            ? checkGrievanceGate({ notifiedOn, grievanceKind, reason, today, isHoliday })
+            : checkArt81Gate({ caseKey, reason, ack });
 
   const pickFile = async (picked) => {
     if (!picked) return;
@@ -89,7 +100,8 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
         reason: reason.trim() || (kind === NIGHT_AVOID_TYPE ? (NIGHT_AVOID_KINDS.find((k) => k.key === avoidKind)?.ar || "") : ""),
         days: kind === LEAVE_CARRY_TYPE ? days : undefined,
         remaining,
-        notifiedOn: kind === DAMAGE_OBJECTION_TYPE ? notifiedOn : undefined,
+        notifiedOn: kind === DAMAGE_OBJECTION_TYPE || kind === GRIEVANCE_TYPE ? notifiedOn : undefined,
+        grievanceKind: kind === GRIEVANCE_TYPE ? grievanceKind : undefined,
         amount: kind === DAMAGE_OBJECTION_TYPE ? Number(amount) : undefined,
         art81Case: kind === ART81_EXIT_TYPE ? caseKey : undefined,
         nightAvoidKind: kind === NIGHT_AVOID_TYPE ? avoidKind : undefined,
@@ -108,7 +120,7 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
       toast({ description: kind === ART81_EXIT_TYPE
         ? (ar ? "سُجّل تركك العمل وفق المادة 81 — وصل البلاغ للإدارة، وحقوقك النظامية محفوظة." : "Your Art. 81 exit is on file — management is told; your rights are kept.")
         : (ar ? "أُرسل الطلب — بانتظار رد الإدارة." : "Sent — awaiting management.") });
-      setAvoidKind(""); setAvoidFrom(""); setAvoidUntil("");
+      setAvoidKind(""); setAvoidFrom(""); setAvoidUntil(""); setGrievanceKind("");
       setReason(""); setDays(""); setNotifiedOn(""); setAmount(""); setCaseKey(""); setAck(false); setFile(null);
       refresh?.();
       onSent?.();
@@ -129,7 +141,9 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
             </button>
           ))}
         </div>
-        {meta.article === "18632"
+        {meta.article === "regs71"
+          ? <span style={{ fontSize: 11, fontWeight: 700, color: "#0B3D27" }}>{ar ? "اللائحة التنفيذية لنظام العمل (القرار 115921 لعام 1446هـ) — المادة 71، التظلم" : "Labour Law Implementing Regulations (decision 115921, 1446H) — Art. 71, grievance"}</span>
+          : meta.article === "18632"
           ? <span style={{ fontSize: 11, fontWeight: 700, color: "#0B3D27" }}>{ar ? "القرار الوزاري 18632 (1441/1/30هـ) — ثالثاً، الخدمات الصحية (ج)" : "Ministerial decision 18632 — third, health services (c)"}</span>
           : <LaborArticleCite article={meta.article} ar={ar} showOfficial showText />}
       </div>
@@ -202,6 +216,35 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
           </>
         ) : null}
 
+        {kind === GRIEVANCE_TYPE ? (
+          <>
+            <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
+              {ar
+                ? "لك أن تتظلم كتابةً من أي قرار أو إجراء أو جزاء اتُّخذ في حقك، خلال ثلاثين يوماً — عدا العطل الرسمية — من إبلاغك به، ولا تُضار من تقديم تظلمك. وتُبلَّغ بنتيجة البت خلال خمسة عشر يوماً عدا العطل الرسمية. فإن رُفض أو لم يُبت فيه كتابةً خلالها فلك الاعتراض أمام المحكمة العمالية خلال ثلاثين يوماً عدا العطل الرسمية."
+                : "You may grieve in writing any decision, action or penalty taken against you within thirty days (official holidays aside) of being told, without harm to you. You are told the result within fifteen days. If refused or not decided in writing by then, you may go to the labour court within thirty days."}
+            </span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {GRIEVANCE_KINDS.map((k) => (
+                <label key={k.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, cursor: "pointer" }}>
+                  <input type="radio" name="grievanceKind" checked={grievanceKind === k.key} onChange={() => setGrievanceKind(k.key)} style={{ accentColor: "#0B3D27" }} />
+                  <span>{ar ? k.ar : k.en}</span>
+                </label>
+              ))}
+            </div>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 260 }}>
+              <span style={label}>{ar ? "تاريخ إبلاغك به" : "Date you were told"}</span>
+              <PlatformDateField ar={ar} value={notifiedOn} onChange={setNotifiedOn} />
+            </label>
+            {notifiedOn ? (
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: gate.error === "GRIEVANCE_LATE" ? "var(--nv-bad-ink)" : "#2F6B43" }}>
+                {ar
+                  ? `آخر يوم للتظلم: ${regulationDate(grievanceFileDeadline(notifiedOn, isHoliday))} · الرد عليك حتى ${regulationDate(grievanceReplyBy(today, isHoliday))}`
+                  : `Last day to grieve: ${grievanceFileDeadline(notifiedOn, isHoliday)} · answer due by ${grievanceReplyBy(today, isHoliday)}`}
+              </span>
+            ) : null}
+          </>
+        ) : null}
+
         {kind === DOCUMENTS_RETURN_TYPE ? (
           <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
             {ar ? "يلتزم صاحب العمل عند انتهاء عقد العمل أن يعيد إليك جميع ما أودعته لديه من شهادات أو وثائق (المادة 64). اذكرها أدناه." : "At contract end the employer returns every certificate or document you deposited (Art. 64). List them below."}
@@ -227,7 +270,7 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
         ) : null}
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={label}>{kind === ART81_EXIT_TYPE ? (ar ? "ما الذي حدث؟ بالتواريخ" : "What happened? With dates") : kind === DAMAGE_OBJECTION_TYPE ? (ar ? "سبب اعتراضك" : "Why you object") : kind === NIGHT_AVOID_TYPE ? (ar ? "ملاحظة — اختيارية" : "Note — optional") : kind === DOCUMENTS_RETURN_TYPE ? (ar ? "الوثائق المودعة" : "Deposited documents") : (ar ? "سبب التأجيل" : "Why")}</span>
+          <span style={label}>{kind === ART81_EXIT_TYPE ? (ar ? "ما الذي حدث؟ بالتواريخ" : "What happened? With dates") : kind === DAMAGE_OBJECTION_TYPE ? (ar ? "سبب اعتراضك" : "Why you object") : kind === NIGHT_AVOID_TYPE ? (ar ? "ملاحظة — اختيارية" : "Note — optional") : kind === DOCUMENTS_RETURN_TYPE ? (ar ? "الوثائق المودعة" : "Deposited documents") : kind === GRIEVANCE_TYPE ? (ar ? "تظلمك: ما الذي اتُّخذ ولماذا تراه غير صحيح" : "Your grievance") : (ar ? "سبب التأجيل" : "Why")}</span>
           <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} style={{ ...field, resize: "vertical" }} />
         </label>
 

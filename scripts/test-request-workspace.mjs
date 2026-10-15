@@ -615,7 +615,7 @@ for (const row of LEAVE_TYPES) {
   assert.ok(!/\d{4}-\d{2}-\d{2}/.test(notice), `${row.key} notice has no ISO date`);
   assert.ok(notice.includes(leaveApprovalBlessing(row.key)), `${row.key} notice keeps blessing`);
   assert.match(card, /التقويم التشغيلي|جدول الدوام/);
-  if (row.key === "sick" || row.key === "work_injury" || row.key === "bereavement" || row.key === "bereavement_sibling" || row.key === "iddah") {
+  if (row.key === "sick" || row.key === "work_injury" || row.key === "bereavement" || row.key === "bereavement_sibling" || row.key === "iddah" || row.key === "dialysis") {
     assert.ok(!/تهانينا|مبارك/.test(notice), `${row.key} notice is compassionate`);
   } else {
     assert.ok(/تهانينا|مبارك|بارك|وُفّقت|تقبّل|يسّر|رعاك/.test(notice), `${row.key} notice blesses`);

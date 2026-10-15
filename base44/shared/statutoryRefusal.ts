@@ -22,9 +22,14 @@ const SAME_EVENT = { key: "already_taken", ar: "أُخذت الإجازة نفس
 export const REFUSAL_GROUNDS = {
   sick: [
     { key: "report_unverifiable", ar: "التقرير الطبي لا يظهر عند التحقق في منصة صحة", en: "The medical report does not show when checked on the Seha platform" },
-    { key: "not_accredited", ar: "التقرير ليس من جهة طبية معتمدة", en: "The report is not from an accredited medical provider" },
+    { key: "not_accredited", ar: "التقرير ليس من طبيب المنشأة ولا من مرجع طبي معتمد (اللائحة م41)", en: "The report is from neither the company doctor nor an accredited medical provider (Regs Art. 41)" },
     DATES,
     { key: "no_report", ar: "لم يُقدَّم تقرير طبي رغم طلبه", en: "No medical report was given, though it was asked for" },
+  ],
+  dialysis: [
+    { key: "no_report", ar: "لم يُقدَّم تقرير من الجهة الطبية المعالجة يثبت الغسيل في هذا اليوم (اللائحة م42)", en: "No report from the treating provider shows dialysis on this day (Regs Art. 42)" },
+    { key: "report_unverifiable", ar: "التقرير لا يظهر عند التحقق من الجهة الطبية", en: "The report does not verify with the provider" },
+    DATES,
   ],
   marriage: [PROOF, DATES, SAME_EVENT],
   bereavement: [PROOF, DATES, { key: "relation", ar: "صلة القرابة ليست من المنصوص عليها في المادة 113", en: "The relation is not one Article 113 names" }, SAME_EVENT],

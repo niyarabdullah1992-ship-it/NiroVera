@@ -32,6 +32,7 @@ export function hoursPolicyOf(company, employee) {
     hoursExempt108: flagOn(profile.hoursExempt108),
     workPosting: bag.workPosting || company?.workPosting || company?.attendanceSettings?.workPosting || {},
     nurseryChildrenCount: Number(bag.nurseryChildrenCount ?? company?.nurseryChildrenCount) || 0,
+    nurseryOnSite: flagOn(bag.nurseryOnSite),
   };
 }
 

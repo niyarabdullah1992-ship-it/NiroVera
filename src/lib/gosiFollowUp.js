@@ -16,6 +16,9 @@ export const GOSI_INJURY_REPORT_DAYS = 10;
 export const GOSI_PAYMENT_DAYS = 15;
 
 /** GOSI exclusion reasons (employer guide) for each platform termination reason. */
+/** Regs Art. 28(1): an establishment outside GOSI's hazards branch tells the labour office within a week. */
+export const LABOUR_OFFICE_INJURY_REPORT_DAYS = 7;
+
 export function gosiExclusionReason(exit = {}) {
   const reason = String(exit.reason || "");
   const party = String(exit.party || "");
@@ -115,6 +118,21 @@ export function gosiTasks({ employees = [], company = {}, today, contributory = 
         }, today));
       }
     }
+    if (injuryCovered === false) {
+      // Regs Art. 28: not under GOSI's occupational-hazards branch — report to the labour office within a week of knowing.
+      for (const row of emp.leaveRequests || []) {
+        if (String(row?.type || "").toLowerCase() !== "work_injury" && row?.originalType !== "work_injury") continue;
+        if (!["approved", "pending", "pending_manager", "pending_hr"].includes(row.status || "pending")) continue;
+        const injured = key(row.injuryDate || row.eventDate || row.startDate);
+        if (!injured) continue;
+        if (out.some((t) => t.kind === "injury_office" && t.employeeId === emp.id && t.from === injured)) continue;
+        out.push(task({
+          id: `injury_office:${emp.id}:${injured}`, kind: "injury_office", employeeId: emp.id, name: emp.name, leaveId: row.id,
+          due: addDays(injured, LABOUR_OFFICE_INJURY_REPORT_DAYS), from: injured,
+          done: Boolean(row.labourOfficeReportedAt), doneAt: row.labourOfficeReportedAt || "", ref: row.labourOfficeRef || "",
+        }, today));
+      }
+    }
     if (injuryCovered !== false) {
       for (const row of emp.leaveRequests || []) {
         if (String(row?.type || "").toLowerCase() !== "work_injury" && row?.originalType !== "work_injury") continue;
@@ -142,6 +160,7 @@ export const GOSI_TASK_LABEL = {
   register: { ar: "تسجيل مشترك", en: "Register" },
   exclude: { ar: "استبعاد مشترك", en: "Exclude" },
   injury: { ar: "إبلاغ إصابة عمل", en: "Report a work injury" },
+  injury_office: { ar: "إبلاغ مكتب العمل بإصابة", en: "Report an injury to the labour office" },
   wage: { ar: "تحديث الأجر", en: "Update the wage" },
   payment: { ar: "سداد الاشتراكات", en: "Pay contributions" },
 };

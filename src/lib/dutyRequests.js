@@ -80,6 +80,38 @@ export function nursingSplitOf(row = {}) {
   return { start: 0, mid: 0, end: 0 };
 }
 
+/** Regs Art. 31(1): the nursing break runs 24 months from the date of birth — the last day it covers. */
+export function nursingRightUntil(birthDate) {
+  const b = String(birthDate || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(b)) return "";
+  const d = new Date(`${b}T00:00:00Z`);
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + 24);
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, last));
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Regs Art. 31(3): without a nursery on site the worker picks one nursing hour at the start or the end
+ * of the shift; with a nursery she may split it into periods totalling an hour.
+ */
+export function checkNursingNurseryGate(split, nurseryOnSite) {
+  if (nurseryOnSite === true) return { ok: true };
+  const parts = ["start", "mid", "end"].filter((k) => (split?.[k] || 0) > 0);
+  if (parts.length > 1 || parts[0] === "mid") {
+    return {
+      ok: false,
+      error: "NURSING_NO_NURSERY_SPLIT",
+      reason: "لا تتوفر حضانة داخل المنشأة — فترة الرضاعة تكون أول الدوام أو آخره فقط، فترة واحدة (اللائحة م31/3-أ). التقسيم على فترات حين تتوفر حضانة.",
+      reasonEn: "There is no on-site nursery — the nursing hour is one period at the start or the end of the shift (Regs Art. 31(3)(a)). Splitting is for when a nursery exists.",
+    };
+  }
+  return { ok: true };
+}
+
 export function nursingSplitTotal(split) {
   return (split?.start || 0) + (split?.mid || 0) + (split?.end || 0);
 }
@@ -180,10 +212,16 @@ export function checkDutyRequestFields(input = {}) {
     const total = nursingSplitTotal(split);
     if (!total) return fail("PLACEMENT_REQUIRED", "حددي فترة الرضاعة: أول الدوام أو وسطه أو آخره.", "Set the nursing period: start, middle or end of shift.");
     if (total > 60) return fail("NURSING_OVER_HOUR", `مجموع الفترات ${total} دقيقة — المادة 154 لا تتجاوز ساعة في اليوم.`, `The periods total ${total} minutes — Art. 154 allows at most an hour a day.`);
+    const nursery = checkNursingNurseryGate(split, input.nurseryOnSite);
+    if (!nursery.ok) return nursery;
     if (input.childBirthDate !== undefined) {
       const birth = String(input.childBirthDate || "").slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(birth)) return fail("BIRTH_REQUIRED", "حددي تاريخ ميلاد الطفل — الحق يبدأ بعد العودة من إجازة الوضع.", "Set the child's birth date — the right starts after returning from maternity leave.");
       if (birth > String(input.date).slice(0, 10)) return fail("BIRTH_ORDER", "تاريخ ميلاد الطفل بعد تاريخ بداية الساعة.", "The birth date is after the start date.");
+      const lastDay = nursingRightUntil(birth);
+      if (String(input.date).slice(0, 10) > lastDay) return fail("NURSING_OVER_24M", `انتهى حق ساعة الرضاعة في ${lastDay} — أربعة وعشرون شهراً من تاريخ الوضع (اللائحة م31/1).`, `The nursing right ended on ${lastDay} — 24 months from birth (Regs Art. 31(1)).`);
+      const askedUntil = String(input.until || "").slice(0, 10);
+      if (askedUntil && askedUntil > lastDay) return fail("NURSING_OVER_24M", `ساعة الرضاعة حتى ${lastDay} كحد أقصى — أربعة وعشرون شهراً من تاريخ الوضع (اللائحة م31/1).`, `The nursing hour runs until ${lastDay} at most — 24 months from birth (Regs Art. 31(1)).`);
     }
     const until = String(input.until || "").slice(0, 10);
     if (until && until < String(input.date).slice(0, 10)) return fail("UNTIL_ORDER", "تاريخ النهاية قبل البداية.", "The end date is before the start.");

@@ -37,6 +37,7 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
     art105MinistryConsent: live.art105MinistryConsent,
     art105BankedWeeks: live.art105BankedWeeks || "",
     nurseryChildrenCount: live.nurseryChildrenCount || "",
+    nurseryOnSite: live.nurseryOnSite === true,
     gosiInjuryWageMode: live.gosiInjuryWageMode === "stop" ? "stop" : "continue",
     gosiOccupationalHazards: live.gosiOccupationalHazards === true || live.gosiOccupationalHazards === "yes" ? "yes" : (live.gosiOccupationalHazards === false || live.gosiOccupationalHazards === "no" ? "no" : ""),
     workPosting: {
@@ -80,6 +81,7 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
         art105MinistryConsent: draft.art105MinistryConsent === true,
         art105BankedWeeks: Number(draft.art105BankedWeeks) || 0,
         nurseryChildrenCount: Number(draft.nurseryChildrenCount) || 0,
+        nurseryOnSite: draft.nurseryOnSite === true,
         gosiOccupationalHazards: draft.gosiOccupationalHazards || "",
         gosiInjuryWageMode: draft.gosiInjuryWageMode === "stop" ? "stop" : "continue",
         workPosting: (() => {
@@ -240,6 +242,12 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
             onChange={(e) => setDraft((prev) => ({ ...prev, nurseryChildrenCount: e.target.value }))}
             style={{ ...field, marginTop: 6 }}
           />
+        </label>
+        <label data-nursery-onsite="1" style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, lineHeight: 1.7, cursor: canEdit ? "pointer" : "default" }}>
+          <input type="checkbox" checked={draft.nurseryOnSite} disabled={!canEdit} onChange={(e) => setDraft((prev) => ({ ...prev, nurseryOnSite: e.target.checked }))} style={{ marginTop: 4 }} />
+          <span>{ar
+            ? "تتوفر حضانة داخل المنشأة — تختار المرضع فترة أو فترات مجموعها ساعة؛ وبدونها فترة واحدة أول الدوام أو آخره (اللائحة م31/3)."
+            : "There is an on-site nursery — a nursing worker may split her hour; without one it is a single period at the start or end (Regs Art. 31(3))."}</span>
         </label>
       </div>
       {canEdit ? (

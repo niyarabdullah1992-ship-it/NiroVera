@@ -34,7 +34,14 @@ console.log("attendance window OK");
 {
   const { checkDutyRequestFields, nursingHourOn, excusedStartMinutes, nursingSplitLabel } = await import("../src/lib/dutyRequests.js");
   const base = { type: "nursing_hour", reason: "رضاعة", date: "2026-10-14", childBirthDate: "2026-06-01" };
-  assert.equal(checkDutyRequestFields({ ...base, nursingSplit: { start: 30, mid: 0, end: 30 } }).ok, true, "split start + end");
+  assert.equal(checkDutyRequestFields({ ...base, nurseryOnSite: true, nursingSplit: { start: 30, mid: 0, end: 30 } }).ok, true, "split start + end with a nursery");
+  // Regs Art. 31(3)(a): no nursery on site — one period, at the start or the end only.
+  assert.equal(checkDutyRequestFields({ ...base, nursingSplit: { start: 30, mid: 0, end: 30 } }).error, "NURSING_NO_NURSERY_SPLIT", "no nursery: no split");
+  assert.equal(checkDutyRequestFields({ ...base, nursingSplit: { start: 0, mid: 60, end: 0 } }).error, "NURSING_NO_NURSERY_SPLIT", "no nursery: not mid-shift");
+  assert.equal(checkDutyRequestFields({ ...base, nursingSplit: { start: 0, mid: 0, end: 60 } }).ok, true, "no nursery: an hour at the end");
+  // Regs Art. 31(1): 24 months from birth.
+  assert.equal(checkDutyRequestFields({ ...base, date: "2028-06-01", nursingSplit: { start: 60, mid: 0, end: 0 } }).error, "NURSING_OVER_24M");
+  assert.equal(checkDutyRequestFields({ ...base, until: "2028-07-01", nursingSplit: { start: 60, mid: 0, end: 0 } }).error, "NURSING_OVER_24M");
   assert.equal(checkDutyRequestFields({ ...base, nursingSplit: { start: 45, mid: 0, end: 30 } }).error, "NURSING_OVER_HOUR");
   assert.equal(checkDutyRequestFields({ ...base, nursingSplit: { start: 0, mid: 0, end: 0 } }).error, "PLACEMENT_REQUIRED");
   assert.equal(checkDutyRequestFields({ ...base, childBirthDate: "", nursingSplit: { start: 60 } }).error, "BIRTH_REQUIRED");

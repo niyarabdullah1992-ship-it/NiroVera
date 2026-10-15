@@ -49,6 +49,7 @@ export default function GosiFollowUpBoard({ data, companyId, ar = true, by = "",
       ? `آخر يوم ${iso(t.from)} · سبب الاستبعاد: ${t.reason ? t.reason.ar : "لا يقابله سبب في الدليل — اختره في تأميناتي أعمال"}`
       : `Last day ${t.from} · reason: ${t.reason ? t.reason.en : "no matching line — pick it in GOSI"}`;
     if (t.kind === "injury") return ar ? `إصابة ${iso(t.from)} — الإبلاغ خلال عشرة أيام` : `Injury ${t.from} — report within ten days`;
+    if (t.kind === "injury_office") return ar ? `إصابة ${iso(t.from)} — المنشأة غير خاضعة لفرع الأخطار المهنية: يُبلَّغ مكتب العمل خلال أسبوع من العلم بها، وهو يقرر كونها إصابة عمل ويحدد التعويض (اللائحة م28)` : `Injury ${t.from} — outside GOSI hazards: report to the labour office within a week (Regs Art. 28)`;
     if (t.kind === "wage") return ar ? `الأجر الخاضع تغيّر من ${money(t.previous)} إلى ${money(t.wage)} — يُبلَّغ فوراً` : `Contributory wage changed ${money(t.previous)} → ${money(t.wage)} — report at once`;
     if (t.kind === "payment") return ar ? `اشتراكات شهر ${iso(t.month)} — تُسدَّد خلال 15 يوماً بعده` : `Contributions for ${t.month} — paid within 15 days after it`;
     return "";
@@ -89,7 +90,7 @@ export default function GosiFollowUpBoard({ data, companyId, ar = true, by = "",
       ) : list.map((t) => (
         <div key={t.id} data-gosi-task={t.kind} style={{ padding: "11px 18px", borderBottom: "1px solid var(--nv-line2, #EEF2F7)", display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <span style={chip(t.kind === "injury" || t.kind === "exclude" ? "warn" : "mute", { fontWeight: 700 })}>{ar ? GOSI_TASK_LABEL[t.kind].ar : GOSI_TASK_LABEL[t.kind].en}</span>
+            <span style={chip(t.kind === "injury" || t.kind === "injury_office" || t.kind === "exclude" ? "warn" : "mute", { fontWeight: 700 })}>{ar ? GOSI_TASK_LABEL[t.kind].ar : GOSI_TASK_LABEL[t.kind].en}</span>
             <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{t.kind === "payment" ? (ar ? "المنشأة" : "Establishment") : t.name}</strong>
             <span style={{ marginInlineStart: "auto" }}>{dueChip(t)}</span>
           </div>
@@ -116,9 +117,9 @@ export default function GosiFollowUpBoard({ data, companyId, ar = true, by = "",
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <input type="date" dir="ltr" value={draft(t.id).at} onChange={(e) => setDraft(t.id, { at: e.target.value })} style={input} aria-label={ar ? "تاريخ التنفيذ" : "Done on"} />
-              <input value={draft(t.id).ref} onChange={(e) => setDraft(t.id, { ref: e.target.value })} placeholder={ar ? "رقم الطلب أو الإيصال في التأمينات" : "GOSI request or receipt number"} style={{ ...input, flex: "1 1 200px" }} />
+              <input value={draft(t.id).ref} onChange={(e) => setDraft(t.id, { ref: e.target.value })} placeholder={t.kind === "injury_office" ? (ar ? "رقم البلاغ لدى مكتب العمل" : "Labour-office report number") : (ar ? "رقم الطلب أو الإيصال في التأمينات" : "GOSI request or receipt number")} style={{ ...input, flex: "1 1 200px" }} />
               <button type="button" data-gosi-record="1" onClick={() => record(t)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 34, padding: "0 14px", borderRadius: 8, border: "1px solid #0B3D27", background: "#0B3D27", color: "#fff", cursor: "pointer" }}>
-                {ar ? "سجّلته في تأميناتي أعمال" : "Recorded in GOSI"}
+                {t.kind === "injury_office" ? (ar ? "أبلغت مكتب العمل" : "Reported to the labour office") : (ar ? "سجّلته في تأميناتي أعمال" : "Recorded in GOSI")}
               </button>
             </div>
           )}

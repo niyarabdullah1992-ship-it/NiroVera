@@ -441,6 +441,30 @@ export function approvedOvertimeHoursForYear(otDecisions, employeeId, yearOrMont
   return approvedOvertimeHoursForMonth(otDecisions, employeeId, String(yearOrMonth || "").slice(0, 4));
 }
 
+/** Regs Art. 22: the 720-hour ceiling and the 30 comp-leave days are counted once
+ *  per hour worked. Decisions stamped from an overtime assignment are already
+ *  counted from the assignment itself, so they are skipped here and the two
+ *  sources are summed, not maxed. Comp-leave decisions count toward the hours too. */
+export function overtimeYearUsageOutsideAssignments(otDecisions, employeeId, yearOrMonth) {
+  const year = String(yearOrMonth || "").slice(0, 4);
+  const prefix = `${employeeId}:`;
+  const perHour = ruleValue("hours.ot.compLeave.minHoursPerOtHour");
+  const dayHours = ruleValue("hours.shift.ordinaryHours");
+  let minutes = 0;
+  let days = 0;
+  for (const [key, row] of Object.entries(otDecisions || {})) {
+    if (!key.startsWith(prefix)) continue;
+    if (!String(key.slice(prefix.length)).startsWith(year)) continue;
+    if (row?.source === "ot_assignment") continue;
+    const d = row?.decision;
+    if (!["approve", "pay", "comp_leave", "credit"].includes(d)) continue;
+    const m = Math.max(0, Number(row.overtimeMinutes) || 0);
+    minutes += m;
+    if (d === "comp_leave" || d === "credit") days += ((m / 60) * perHour) / dayHours;
+  }
+  return { hours: Math.round((minutes / 60) * 10) / 10, creditDays: Math.round(days * 1000) / 1000 };
+}
+
 export function buildRosterRow(punch, opts = {}) {
   const day = deriveDayStatus(punch, { shiftStart: opts.shiftStart });
   let status = day.status;

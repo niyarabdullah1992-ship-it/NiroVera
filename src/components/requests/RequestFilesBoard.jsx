@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { collectRequestFiles } from "@/lib/requestWorkspace";
+import { chipButton, slab } from "@/components/schedules/scheduleChrome";
 import { BORDER, CARD, MUTED, NAVY, NAVY_FILL } from "@/lib/platformStyles";
 
 function chip(on) {
@@ -24,7 +25,7 @@ export default function RequestFilesBoard({ employees, ar }) {
   const issued = all.filter((row) => row.side === "out").length;
 
   return (
-    <section style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, boxShadow: "var(--nv-paper)", overflow: "hidden" }}>
+    <section style={{ ...slab, overflow: "hidden" }}>
       <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
           <span className="nv-req-title" style={{ fontSize: 14 }}>{ar ? "ملفات طلباتي" : "My request files"}</span>
@@ -36,7 +37,7 @@ export default function RequestFilesBoard({ employees, ar }) {
         </div>
         <span style={{ marginInlineStart: "auto", display: "flex", gap: 5, flexWrap: "wrap" }}>
           {[["all", ar ? "الكل" : "All"], ["in", ar ? "ما أرفقته" : "Attached"], ["out", ar ? "ما صدر لي" : "Issued"]].map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setFilter(id)} style={chip(filter === id)}>{label}</button>
+            <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)} style={chipButton(filter === id)}>{label}</button>
           ))}
         </span>
       </div>
@@ -57,10 +58,10 @@ export default function RequestFilesBoard({ employees, ar }) {
           {rows.map((row) => (
             <div key={row.id} style={{ minWidth: 560, display: "grid", gridTemplateColumns: "minmax(0,1.7fr) 90px minmax(0,1.3fr) 80px", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--nv-line3, var(--nv-soft))", alignItems: "center", fontSize: 12 }}>
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                <strong dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, textAlign: "end", unicodeBidi: "isolate" }}>{row.name}</strong>
+                <strong dir="auto" style={{ fontSize: 12, textAlign: "start", unicodeBidi: "plaintext", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.name}>{row.name}</strong>
                 <span style={{ fontSize: 10.5, color: MUTED }}>{row.meta}</span>
               </span>
-              <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 9px", borderRadius: 899, fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap", width: "fit-content", color: row.side === "out" ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)", background: row.side === "out" ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)", border: `1px solid ${row.side === "out" ? "var(--nv-ok-line)" : "var(--nv-warn-line)"}` }}>
+              <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 9px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap", width: "fit-content", color: row.side === "out" ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)", background: row.side === "out" ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)", border: `1px solid ${row.side === "out" ? "var(--nv-ok-line)" : "var(--nv-warn-line)"}` }}>
                 {ar ? row.kindAr : row.kindEn}
               </span>
               <span style={{ display: "flex", flexDirection: "column" }}>

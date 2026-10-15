@@ -106,7 +106,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       title: ar ? "مراجعة" : "Review",
       note: ar ? "اعتماد أو رفض بسبب مكتوب" : "Approve or refuse with a written reason",
       value: dash(metrics.escalated),
-      to: "/app/escalation",
+      to: "/app/tasks?lane=manage&filter=escalated",
     },
     {
       key: "escalation",
@@ -114,7 +114,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       title: ar ? "تصعيد" : "Escalate",
       note: ar ? "عند احتراق الحصة دون تقدّم" : "When the time quota burns without progress",
       value: n(metrics.escalated) > 0 ? metrics.escalated : "—",
-      to: "/app/escalation",
+      to: "/app/tasks?lane=manage&filter=escalated",
     },
     {
       key: "signing",
@@ -168,7 +168,6 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
         { key: "payroll", title: ar ? "الرواتب" : "Payroll", note: ar ? "يغذيه الحضور المعتمد" : "Fed by approved attendance", value: metrics.payroll, to: "/app/payroll" },
         { key: "expenses", title: ar ? "المصروفات" : "Expenses", note: ar ? "مطالبات بانتظار الاعتماد" : "Claims awaiting approval", value: n(metrics.expenses) > 0 ? metrics.expenses : "—", to: "/app/expenses" },
         { key: "assets", title: ar ? "الأصول / العهد" : "Assets / Custody", note: ar ? "سجل وتسليم ونقل بين الفروع" : "Register, handover, inter-station transfer", value: metrics.assets ?? "—", to: "/app/assets" },
-        { key: "inventory", title: ar ? "المخزون" : "Inventory", note: ar ? "رصيد لا مركزي · طلب من فرع آخر" : "Decentralised balance · request from another station", value: metrics.inventory, to: "/app/inventory" },
       ],
     },
     {

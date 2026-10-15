@@ -266,20 +266,6 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                               <option value={60}>{ar ? "راحة 60 د" : "60m rest"}</option>
                               <option value={0}>{ar ? "بلا راحة" : "No rest"}</option>
                             </select>
-                            <select
-                              className="nv-shift-field"
-                              value={st.outdoor === true ? "outdoor" : st.outdoor === false ? "indoor" : ""}
-                              aria-label={ar ? "مكان العمل: داخلي أو ميدان مكشوف" : "Work place: indoor or open-air"}
-                              onChange={(e) => {
-                                const next = e.target.value === "outdoor" ? true : e.target.value === "indoor" ? false : null;
-                                updateShiftType(companyId, stationId, st.id, { ...st, outdoor: next });
-                              }}
-                              style={{ height: 26, fontSize: 11, padding: "0 6px", maxWidth: 168 }}
-                            >
-                              <option value="">{ar ? "مكان؟" : "Place?"}</option>
-                              <option value="indoor">{ar ? "داخلي" : "Indoor"}</option>
-                              <option value="outdoor">{ar ? "ميدان مكشوف" : "Open-air"}</option>
-                            </select>
                             {!gate.ok ? (
                               <PolicyDeviationAlert gate={gate} ruleId="hours.rest.maxConsecutiveHours" ar={ar} quietEdge />
                             ) : null}

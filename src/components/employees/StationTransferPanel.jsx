@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { ArrowLeftRight } from "lucide-react";
 import { ACTION_REASONS } from "@/lib/hcmDerivations";
 import { transferEmployeeBetweenStations } from "@/lib/employeeStationTransfer";
+import { consentState, necessityDaysUsed, NECESSITY_CAP_DAYS } from "@/lib/consentEffects";
 import { workplaceStations } from "@/lib/stationTree";
 import { toast } from "@/components/ui/use-toast";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -32,6 +33,10 @@ export default function StationTransferPanel({
   const [effectiveDate, setEffectiveDate] = useState(todayKey());
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [residence, setResidence] = useState("");
+  const [necessityUntil, setNecessityUntil] = useState("");
+  const siteConsent = consentState(employee, "site");
+  const necessityUsed = necessityDaysUsed(employee, "site", String(effectiveDate || todayKey()).slice(0, 4));
   const [open, setOpen] = useState(!!startOpen);
 
   if (!employee || destinations.length === 0) {
@@ -65,6 +70,8 @@ export default function StationTransferPanel({
         effectiveDate,
         note,
         actor,
+        residence,
+        necessityUntil,
       });
       if (!result.ok) {
         toast({
@@ -81,6 +88,8 @@ export default function StationTransferPanel({
       });
       setOpen(false);
       setNote("");
+      setResidence("");
+      setNecessityUntil("");
       onDone?.(result);
     } finally {
       setBusy(false);
@@ -165,6 +174,38 @@ export default function StationTransferPanel({
             {ar ? "تاريخ السريان" : "Effective date"}
             <PlatformDateField ar={ar} value={effectiveDate} onChange={setEffectiveDate} required />
           </label>
+          <fieldset data-transfer-residence="1" style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: "10px 12px", margin: 0, display: "grid", gap: 8 }}>
+            <legend style={{ fontSize: 11.5, color: NAVY, fontWeight: 700, padding: "0 4px" }}>
+              {ar ? "هل يقتضي هذا النقل تغيير محل إقامته؟ (المادة 58)" : "Does this move change their residence? (Art. 58)"}
+            </legend>
+            {[
+              ["same", ar ? "لا — يبقى في محل إقامته" : "No — same residence", ""],
+              ["change", ar ? "نعم — بموافقته الكتابية الموقّعة" : "Yes — with their signed consent", siteConsent.state === "signed"
+                ? (ar ? "موافقته موقّعة — تُستخدم لهذا النقل." : "Signed — used for this move.")
+                : siteConsent.state === "refused"
+                  ? (ar ? "رفض كتابياً — لا يُنقل بهذا الخيار." : "Refused in writing.")
+                  : siteConsent.state === "open"
+                    ? (ar ? "طلب الموافقة بانتظار رده." : "Awaiting their reply.")
+                    : (ar ? "لا موافقة — أرسلها من الطلبات ← رفع طلب لموظف ← طلب موافقة خطية." : "No consent — send it from Requests.")],
+              ["necessity", ar ? "ضرورة عارضة مؤقتة — دون موافقة" : "Temporary incidental necessity — no consent", ar
+                ? `حتى ${NECESSITY_CAP_DAYS} يوماً في السنة (استُخدم ${necessityUsed})، وتكاليف الانتقال والإقامة على المنشأة.`
+                : `Up to ${NECESSITY_CAP_DAYS} days a year (used ${necessityUsed}); travel and lodging on the employer.`],
+            ].map(([value, label, hint]) => (
+              <label key={value} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: NAVY, cursor: "pointer" }}>
+                <input type="radio" name="transfer-residence" value={value} checked={residence === value} onChange={() => setResidence(value)} style={{ marginTop: 3 }} />
+                <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontWeight: 600 }}>{label}</span>
+                  {hint ? <span style={{ fontSize: 11, color: value === "change" && siteConsent.state === "refused" ? "var(--nv-bad-ink)" : MUTED, lineHeight: 1.6 }}>{hint}</span> : null}
+                </span>
+              </label>
+            ))}
+            {residence === "necessity" ? (
+              <label style={{ display: "grid", gap: "4px", fontSize: "11px", color: MUTED }}>
+                {ar ? "ينتهي التكليف المؤقت في" : "The temporary assignment ends on"}
+                <PlatformDateField ar={ar} value={necessityUntil} onChange={setNecessityUntil} />
+              </label>
+            ) : null}
+          </fieldset>
           <label style={{ display: "grid", gap: "4px", fontSize: "11px", color: MUTED }}>
             {ar ? "ملاحظة (اختياري)" : "Note (optional)"}
             <input
@@ -179,7 +220,7 @@ export default function StationTransferPanel({
             <button type="button" onClick={() => setOpen(false)} style={ui.btnGhost}>
               {ar ? "إلغاء" : "Cancel"}
             </button>
-            <button type="submit" disabled={busy} style={{ ...ui.btnPrimary, opacity: busy ? 0.5 : 1 }}>
+            <button type="submit" disabled={busy || !residence} style={{ ...ui.btnPrimary, opacity: busy || !residence ? 0.5 : 1 }}>
               {ar ? "تأكيد النقل" : "Confirm transfer"}
             </button>
           </div>
@@ -212,6 +253,8 @@ export default function StationTransferPanel({
                   {(x.fromStationName || "—")} → {(x.toStationName || "—")}
                 </span>
                 <span>{reason ? (ar ? reason.ar : reason.en) : x.reasonCode}</span>
+                {x.residence === "change" ? <span style={{ color: "var(--nv-ok-ink)" }}>{ar ? "بموافقته الموقّعة · م 58" : "Signed consent · Art. 58"}</span> : null}
+                {x.residence === "necessity" ? <span style={{ color: "var(--nv-warn-ink)" }}>{ar ? `ضرورة مؤقتة حتى ${x.necessityUntil} · م 58/2` : `Temporary until ${x.necessityUntil} · Art. 58/2`}</span> : null}
                 <span>{x.recordedByName || "—"}</span>
               </div>
             );

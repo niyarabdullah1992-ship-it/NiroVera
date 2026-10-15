@@ -26,7 +26,11 @@ import DeleteEmployeeAccountCard from "@/components/employees/DeleteEmployeeAcco
 import OffboardingTab from "@/components/employees/OffboardingTab";
 import EmpAlertsStrip from "@/components/employees/EmpAlertsStrip";
 import AssignmentTab from "@/components/employees/AssignmentTab";
-import HoursOnFile from "@/components/employees/HoursOnFile";
+import WorkInjuryPanel from "@/components/requests/WorkInjuryPanel";
+import { AllowanceLedgerCard, PayslipEstimateCard, SiteConditionsCard } from "@/components/payroll/PayslipLedger";
+import MyPayslipArchive from "@/components/payroll/MyPayslipArchive";
+import RequestsMinistryPanel from "@/components/requests/RequestsMinistryPanel";
+import EmployeeFileDutyBoard from "@/components/employees/EmployeeFileDutyBoard";
 import EmployeeFileSummary from "@/components/employees/EmployeeFileSummary";
 import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employees/EmployeeFileFieldCard";
 import EmployeeFileLeaveBoard from "@/components/employees/EmployeeFileLeaveBoard";
@@ -38,7 +42,10 @@ import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import IdentityCard from "@/components/shared/IdentityCard";
-import { applyDueLaborRules, openDueNightRotateCycles, patchEmployeeFile } from "@/lib/store";
+import { applyDueLaborRules, openDueNightRotateCycles, patchEmployeeFile, updateCompany } from "@/lib/store";
+import { checkFileChangeConsentGate, necessityDaysUsed, NECESSITY_CAP_DAYS, spendConsent } from "@/lib/consentEffects";
+import { toast } from "@/components/ui/use-toast";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import { syncEmployeeSalaryToPayroll } from "@/lib/payroll";
 import { gosiRegistrationIso } from "@/lib/facts";
 
@@ -46,6 +53,8 @@ const TABS = [
   { key: "summary", ar: "ملخّص الملف", en: "File summary" },
   { key: "identity", ar: "الهوية والتوظيف", en: "Identity and employment" },
   { key: "contract", ar: "العقد والأجر", en: "Contract and wage" },
+  { key: "payslip", ar: "قسيمتي والبدلات", en: "Payslip and allowances" },
+  { key: "duty", ar: "الدوام وأنظمة الوزارة", en: "Duty and ministry rules" },
   { key: "leave", ar: "الإجازات", en: "Leave" },
   { key: "compliance", ar: "الالتزام والمنصات", en: "Compliance and platforms" },
   { key: "growth", ar: "التدرّج والجزاءات", en: "Progression and sanctions" },
@@ -56,7 +65,8 @@ const TABS = [
 const LEGACY_TAB = {
   professionalInfo: "identity",
   salary: "contract",
-  hours: "identity",
+  hours: "duty",
+  schedule: "duty",
   certificates: "docs",
   assignment: "growth",
 };
@@ -86,6 +96,8 @@ export default function EmployeeProfile() {
   const [tab, setTab] = useState(LEGACY_TAB[requested] || requested);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
+  const [positionChange, setPositionChange] = useState("");
+  const [necessityUntil, setNecessityUntil] = useState("");
 
   if (!data || !currentUser) return null;
   const employee = (data.employees || []).find((e) => e.id === employeeId);
@@ -158,20 +170,42 @@ export default function EmployeeProfile() {
   const cancelEdit = () => {
     setEditing(false);
     setDraft({});
+    setPositionChange("");
+    setNecessityUntil("");
   };
+  const seed = editing ? employeeFileDraftSeed(employee) : {};
+  const positionChanged = editing && String(seed.position || "").trim() && String(draft.position ?? seed.position).trim() !== String(seed.position || "").trim();
   const saveEdit = () => {
     if (!canEditFile || !dirty) return;
     const { profile, name, phone } = splitEmployeeFileDraft(draft);
+    // Arts. 59–60 — a move off the monthly wage, or substantially different work, needs the worker's
+    // signed consent (spent by this save); incidental necessity is dated and capped at 30 days a year.
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+    const consentGate = checkFileChangeConsentGate({
+      employee,
+      before: { wageType: employee.profile?.wageType || "monthly", position: seed.position },
+      after: { wageType: profile.wageType ?? employee.profile?.wageType, position: profile.position ?? seed.position },
+      positionChange,
+      necessityUntil,
+      today,
+    });
+    if (!consentGate.ok) {
+      toast({ description: ar ? consentGate.reason : consentGate.reasonEn, variant: "destructive" });
+      return;
+    }
     if (!canEditSalary) {
       delete profile.baseSalary;
       delete profile.housingAllowance;
       delete profile.transportAllowance;
       delete profile.otherAllowances;
       delete profile.allowances;
+      // Named Art. 2 lines and site allowances are wage too — payroll rights only.
+      for (const key of ["hazardAllowance", "livingAllowance", "commissionAmount", "remoteAreaAllowance", "medicalDistanceAllowance", "mealAllowance"]) delete profile[key];
     }
     if (!canEditContract) {
       delete profile.contractType;
       delete profile.contractEndDate;
+      delete profile.wageType;
     }
     if (Object.prototype.hasOwnProperty.call(profile, "gosiRegisteredAt")) {
       profile.gosiRegisteredAt = gosiRegistrationIso(profile.gosiRegisteredAt);
@@ -187,9 +221,24 @@ export default function EmployeeProfile() {
         dot: "#3C7D50",
       },
     });
+    if (consentGate.spend.length || consentGate.necessity) {
+      updateCompany(company.id, (d) => {
+        const emp = (d.employees || []).find((row) => row.id === employee.id);
+        if (!emp) return;
+        for (const row of consentGate.spend) {
+          spendConsent((emp.otherRequests || []).find((req) => req.id === row.consentId), { what: row.what, by: currentUser.name || "" });
+        }
+        if (consentGate.necessity) {
+          emp.necessityLog = Array.isArray(emp.necessityLog) ? emp.necessityLog : [];
+          emp.necessityLog.push({ ...consentGate.necessity, by: currentUser.name || "" });
+        }
+      });
+    }
     syncEmployeeSalaryToPayroll(company.id, employee.id);
     setEditing(false);
     setDraft({});
+    setPositionChange("");
+    setNecessityUntil("");
   };
   const commitGosiRegisteredAt = (field, iso) => {
     if (field !== "gosiRegisteredAt" || !canEditFile) return;
@@ -273,6 +322,29 @@ export default function EmployeeProfile() {
               ) : null}
             </div>
           ) : null}
+          {positionChanged ? (
+            <fieldset data-position-change="1" style={{ flex: "1 1 100%", border: "1px solid var(--nv-warn-line)", background: "var(--nv-warn-soft)", borderRadius: 10, padding: "10px 12px", margin: 0, display: "grid", gap: 6 }}>
+              <legend style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ink)", padding: "0 4px" }}>
+                {ar ? `تغيّر المسمّى إلى «${String(draft.position || "").trim()}» — ما طبيعته؟ (المادة 60)` : "The title changed — what kind of change? (Art. 60)"}
+              </legend>
+              {[
+                ["minor", ar ? "تصحيح في التسمية — العمل نفسه" : "A wording fix — the same work"],
+                ["essential", ar ? "عمل يختلف جوهرياً — بموافقته الكتابية الموقّعة" : "Substantially different work — with signed consent"],
+                ["necessity", ar ? `ضرورة عارضة مؤقتة — حتى ${NECESSITY_CAP_DAYS} يوماً في السنة (استُخدم ${necessityDaysUsed(employee, "work", new Date().getFullYear())})` : `Temporary incidental necessity — up to ${NECESSITY_CAP_DAYS} days a year`],
+              ].map(([value, text]) => (
+                <label key={value} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: "var(--nv-ink)", cursor: "pointer" }}>
+                  <input type="radio" name="position-change" value={value} checked={positionChange === value} onChange={() => setPositionChange(value)} />
+                  {text}
+                </label>
+              ))}
+              {positionChange === "necessity" ? (
+                <label style={{ display: "grid", gap: 4, fontSize: 11.5, color: "var(--nv-ink2)", maxWidth: 280 }}>
+                  {ar ? "ينتهي التكليف المؤقت في" : "The temporary assignment ends on"}
+                  <PlatformDateField ar={ar} value={necessityUntil} onChange={setNecessityUntil} />
+                </label>
+              ) : null}
+            </fieldset>
+          ) : null}
           <span style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-ok-ink)", background: "var(--nv-ok-soft)", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap" }}>{voice.warnings}</span>
           <span style={{ fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.6, minWidth: 0 }}>{roleNote}</span>
         </div>
@@ -327,7 +399,6 @@ export default function EmployeeProfile() {
                 </Link>
               </section>
             ) : null}
-            <HoursOnFile employee={employee} data={data} lang={lang} />
           </>
         )}
 
@@ -372,9 +443,54 @@ export default function EmployeeProfile() {
           </div>
         )}
 
+        {tab === "payslip" && (
+          <div data-file-payslip="1" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <PayslipEstimateCard
+              employee={employee}
+              ar={ar}
+              stationName={stationName}
+              monthLabel={new Date().toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { month: "long", year: "numeric" })}
+            />
+            <MyPayslipArchive employee={employee} runs={data.payrollRuns || []} ar={ar} lang={lang} companyName={company?.name || ""} />
+            <AllowanceLedgerCard employee={employee} ar={ar} />
+            <SiteConditionsCard
+              employee={employee}
+              station={(data.stations || []).find((s) => s.id === employee.stationId) || {}}
+              ar={ar}
+              editing={editing}
+              draft={draft}
+              onDraft={setDraftField}
+              canEdit={canEditFile}
+            />
+          </div>
+        )}
+
+        {tab === "duty" && (
+          <>
+            <EmployeeFileDutyBoard employee={employee} data={data} currentUser={currentUser} lang={lang} />
+            {/* Ministry rules a request touches — the roster rules sit above in the same tab. */}
+            <RequestsMinistryPanel ar={ar} lang={lang} subject={employee} own={isSelf} dutyHref={null} fileMode />
+          </>
+        )}
+
         {tab === "leave" && (
           <>
             <EmployeeFileLeaveBoard view={view} ar={ar} />
+            {(employee.leaveRequests || []).some((row) => String(row.type || "").toLowerCase() === "work_injury" && (row.status || "") === "approved") ? (
+              <section data-file-injuries="1" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "إصابات العمل — المواد 132 إلى 139" : "Work injuries — Arts. 132 to 139"}</span>
+                {(employee.leaveRequests || [])
+                  .filter((row) => String(row.type || "").toLowerCase() === "work_injury" && (row.status || "") === "approved")
+                  .map((row) => (
+                    <div key={row.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)" }}>
+                        {ar ? `إصابة ${String(row.eventDate || row.startDate || "").slice(0, 10)} · علاج ${String(row.startDate || "").slice(0, 10)} → ${String(row.endDate || "").slice(0, 10)}` : `Injury ${String(row.eventDate || row.startDate || "").slice(0, 10)}`}
+                      </span>
+                      <WorkInjuryPanel row={row} employee={employee} data={data} companyId={company.id} ar={ar} canDecide={!!canApproveLeave} by={currentUser?.name || ""} />
+                    </div>
+                  ))}
+              </section>
+            ) : null}
             <LeaveTab
               employee={employee}
               companyId={company.id}
@@ -387,6 +503,7 @@ export default function EmployeeProfile() {
 
         {tab === "compliance" && (
           <>
+
             {!profileCompletionStats(employee).done && (
               <ProfileCompletionCard
                 employee={employee}
@@ -502,7 +619,7 @@ export default function EmployeeProfile() {
           </section>
         )}
 
-        {(isSelf || (canManage && !isSelf) || showFileRetentionNote) && (tab === "identity" || tab === "compliance") && (
+        {(isSelf || (canManage && !isSelf) || showFileRetentionNote) && tab === "identity" && (
           <IdentityCard
             kicker={ar ? "دخول المنصة" : "Platform access"}
             title={ar ? "إعدادات الحساب والدخول" : "Account and sign-in settings"}

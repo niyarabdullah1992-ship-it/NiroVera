@@ -522,11 +522,11 @@ export function seedPreviewWrittenConsent(data, today = previewTodayKey()) {
       ...draft(
         "wcon_preview_field",
         "site",
-        "تغيير موقع العمل",
-        "Change of work site",
+        "نقل يقتضي تغيير محل الإقامة",
+        "A move that changes residence",
         "المادة 58",
         "Art. 58",
-        "تطلب الإدارة إقرارك الخطي بالانتقال إلى موقع عمل آخر ضمن المدينة نفسها، مع بقاء الأجر والمسمّى كما هما.",
+        "تطلب الإدارة موافقتك الكتابية على نقلك من مكان عملك الأصلي إلى مكان عمل آخر يقتضي تغيير محل إقامتك، مع بقاء أجرك ومسمّاك الوظيفي كما هما. لك أن توافق أو ترفض (المادة 58).",
         owner.name,
         owner.id,
       ),
@@ -873,7 +873,88 @@ export function migratePreviewOwnerGosiIdentity(data) {
  * employee field only when it still holds that exact value.
  */
 export function migratePreviewGosiEstablishment(data) {
-  return migratePlatformFactHomes(data);
+  const moved = migratePlatformFactHomes(data);
+  const dated = migratePreviewDatelessLeave(data);
+  const crew = migratePreviewProofPeople(data);
+  const rhythm = migratePreviewTaskRhythm(data);
+  return dated || crew || rhythm || moved;
+}
+
+/**
+ * The preview pump order (34 of 50) had no day-by-day history, so its card could not show the last
+ * seven days or the last entry. Spread the 34 it already holds over the days before today.
+ */
+const PREVIEW_LOG_NOTES = ["صيانة 6 مضخات وتنظيف المرشحات", "فحص الضغط وتسجيل القراءات", "تشحيم المحامل في الوحدة 2", "استبدال حشوات المضخة 3 و4", "اختبار التشغيل بعد الصيانة"];
+
+export function migratePreviewTaskRhythm(data, today = previewTodayKey()) {
+  const task = (Array.isArray(data?.tasks) ? data.tasks : []).find((t) => t?.id === "tk_1");
+  // An earlier seed wrote «إنجاز ×n» as the note, which the thread already shows as the amount.
+  if (task && Array.isArray(task.comments) && task.comments.some((c) => String(c?.id || "").startsWith("cm_prev_") && /^إنجاز ×/.test(String(c.text || "")))) {
+    task.comments = task.comments.map((c, i) => (String(c?.id || "").startsWith("cm_prev_") && /^إنجاز ×/.test(String(c.text || ""))
+      ? { ...c, text: PREVIEW_LOG_NOTES[Number(String(c.id).slice(8)) % PREVIEW_LOG_NOTES.length] || c.text }
+      : c));
+    return true;
+  }
+  if (!task || task.paceDayLog || (Array.isArray(task.comments) && task.comments.some((c) => c?.kind === "log"))) return false;
+  const [y, m, d] = String(today).split("-").map(Number);
+  const key = (n) => previewTodayKey(new Date(y, m - 1, d + n));
+  const plan = [[-6, 6], [-5, 7], [-4, 5], [-3, 0], [-2, 8], [-1, 8]];
+  task.startAt = task.startAt || `${key(-6)}T08:00:00`;
+  task.dueAt = `${key(3)}T17:00:00`;
+  task.paceDayLog = Object.fromEntries(plan.filter(([, n]) => n).map(([o, n]) => [key(o), n]));
+  task.memberIds = task.memberIds && task.memberIds.length > 1 ? task.memberIds : [task.ownerId, "emp_hassan_preview"].filter(Boolean);
+  const who = ["عمر ناصر", "حسن العمري"];
+  task.comments = [
+    ...(Array.isArray(task.comments) ? task.comments : []),
+    ...plan.filter(([, n]) => n).map(([o, n], i) => ({
+      id: `cm_prev_${i}`,
+      kind: "log",
+      amount: n,
+      text: PREVIEW_LOG_NOTES[i % PREVIEW_LOG_NOTES.length],
+      authorName: who[i % 2],
+      at: `${key(o)}T${String(9 + i).padStart(2, "0")}:15:00`,
+      createdAt: `${key(o)}T${String(9 + i).padStart(2, "0")}:15:00`,
+      files: [],
+    })),
+  ];
+  task.completedCount = 34;
+  return true;
+}
+
+/** The preview pump job had no named crew, so the per-worker in/out on the card had nothing to show. */
+export function migratePreviewProofPeople(data) {
+  let changed = false;
+  const wp = (Array.isArray(data?.workProofs) ? data.workProofs : []).find((p) => p?.id === "wp_preview_live");
+  if (wp && !(Array.isArray(wp.people) && wp.people.some((p) => p?.name))) {
+    const day = String(wp.startedAt || "").slice(0, 10);
+    wp.people = [
+      { name: "سالم الحربي", nationality: "سعودي", idType: "national_id", id: "1102233445", title: "فني مضخات", briefed: true, inAt: `${day}T07:20:00` },
+      { name: "راجو كومار", nationality: "هندي", idType: "iqama", id: "2456677889", title: "لحّام", briefed: true, inAt: `${day}T07:35:00` },
+    ];
+    wp.personName = wp.personName || "سالم الحربي";
+    changed = true;
+  }
+  return changed;
+}
+
+/** The first preview seed filed «lv_1» as an annual leave with no dates — give it a real span so the queue reads true. */
+export function migratePreviewDatelessLeave(data, today = previewTodayKey()) {
+  let changed = false;
+  for (const person of data?.employees || []) {
+    for (const row of person.leaveRequests || []) {
+      if (row.id !== "lv_1" || row.startDate) continue;
+      const [y, m, d] = String(today).split("-").map(Number);
+      const key = (n) => previewTodayKey(new Date(y, m - 1, d + n));
+      const start = key(11);
+      row.startDate = start;
+      row.endDate = key(15);
+      row.days = 5;
+      row.reason = row.reason || "إجازة عائلية";
+      row.createdAt = row.createdAt || new Date().toISOString();
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 /** Preview files were seeded without gender, so maternity/paternity gates could not tell Omar from Noura. */
@@ -948,4 +1029,68 @@ export function migratePreviewAssets(data) {
   if (!Array.isArray(data.assetMaintenance)) data.assetMaintenance = [];
   if (!Array.isArray(data.assetTransfers)) data.assetTransfers = [];
   return true;
+}
+
+
+/**
+ * Preview attendance history: the seeded roster ran for months with no punches, so «سجلي» showed the
+ * owner absent 67 days with Art. 80 warnings. Fill each past published workday with a plausible
+ * check-in / check-out (a few late arrivals), skipping approved leave. Preview only; runs once.
+ */
+export function seedPreviewAttendanceHistory(data, today = previewTodayKey()) {
+  if (!data || data.previewAttendanceHistorySeeded) return false;
+  const people = Array.isArray(data.employees) ? data.employees : [];
+  data.personalAttendance = Array.isArray(data.personalAttendance) ? data.personalAttendance : [];
+  const have = new Set(data.personalAttendance.map((row) => `${row.employeeId ?? row.employee_id}:${String(row.date || row.dateKey || "").slice(0, 10)}`));
+  const [ty, tm, td] = String(today).split("-").map(Number);
+  const floor = previewTodayKey(new Date(ty, tm - 1, td - 120));
+  const onLeave = (person, key) => (person?.leaveRequests || []).some((row) => row.status === "approved"
+    && String(row.startDate || "").slice(0, 10) <= key && String(row.endDate || row.startDate || "").slice(0, 10) >= key);
+  const hm = (v) => { const [h, m] = String(v || "").split(":").map(Number); return Number.isFinite(h) ? h * 60 + (m || 0) : null; };
+  const at = (key, minutes) => {
+    const [y, m, d] = key.split("-").map(Number);
+    const dayShift = Math.floor(minutes / 1440);
+    const rest = ((minutes % 1440) + 1440) % 1440;
+    const date = previewTodayKey(new Date(y, m - 1, d + dayShift));
+    return new Date(`${date}T${String(Math.floor(rest / 60)).padStart(2, "0")}:${String(rest % 60).padStart(2, "0")}:00+03:00`).toISOString();
+  };
+  let added = 0;
+  for (const schedule of data.schedules || []) {
+    const types = Array.isArray(schedule.shiftTypes) ? schedule.shiftTypes : [];
+    for (const [key, day] of Object.entries(schedule.assignments || {})) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || key >= today || key < floor) continue;
+      for (const [shiftId, ids] of Object.entries(day || {})) {
+        const shift = types.find((row) => row.id === shiftId);
+        const start = hm(shift?.start);
+        let end = hm(shift?.end);
+        if (start == null || end == null) continue;
+        if (end <= start) end += 1440;
+        for (const employeeId of Array.isArray(ids) ? ids : []) {
+          const id = `${employeeId}:${key}`;
+          if (have.has(id)) continue;
+          const person = people.find((row) => String(row.id) === String(employeeId));
+          if (!person || onLeave(person, key)) continue;
+          let h = 0;
+          for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 997;
+          const late = h % 13 === 0 ? 7 + (h % 9) : 0;
+          data.personalAttendance.push({
+            id: `att_seed_${employeeId}_${key}`,
+            employeeId,
+            date: key,
+            stationId: schedule.stationId || person.stationId || null,
+            checkInAt: at(key, start + (late || -(3 + (h % 6)))),
+            checkOutAt: at(key, end + 2 + (h % 4)),
+            status: late ? "late" : "present",
+            lateMinutes: late,
+            locationStatus: "inside",
+            seeded: true,
+          });
+          have.add(id);
+          added += 1;
+        }
+      }
+    }
+  }
+  data.previewAttendanceHistorySeeded = true;
+  return added > 0;
 }

@@ -1,14 +1,19 @@
 import React from "react";
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { Search } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { faceSectionTarget, useRailSide } from "@/lib/railSide";
+import { suiteSectionPagesForSide } from "@/lib/suiteRailFrame";
 import { matchSuiteNavItem } from "@/lib/suiteNav";
+import { dutyCrumb, dutySectionPages, isDutyPath } from "@/lib/dutyNav";
+import { useAuth } from "@/lib/PowerCareAuth";
+import { canCreateTasks } from "@/lib/permissions";
 import BackButton from "@/components/mobile/BackButton";
 import HeaderDateTime from "@/components/navigation/HeaderDateTime";
 import ScopeBar from "@/components/navigation/ScopeBar";
 import SyncStatusIndicator from "@/components/SyncStatusIndicator";
 import ThemeToggle from "@/components/ThemeToggle";
+import DutySmartSearch, { dutySearchPages } from "@/components/attendance/DutySmartSearch";
 import { BTN_FILL, BTN_INK, MUTED } from "@/lib/platformStyles";
 
 const MONO = "'IBM Plex Mono', monospace";
@@ -58,8 +63,35 @@ export default function AppTopBar({
   const home = ar ? "الرئيسية" : "Home";
   const facePages = (employee
     ? sectionPages.filter((page) => page.appId !== "escalation" && !String(page.to || "").startsWith("/app/escalation"))
-    : sectionPages
+    : suiteSectionPagesForSide(sectionPages, railSide)
   ).map((page) => faceSectionTarget(page, employee ? "employee" : railSide));
+  const { search } = useLocation();
+  const { data: authData, currentUser: authUser } = useAuth() || {};
+  // الحضور والدوام: one strip per lane — personal pages for الموظف, team pages for الإدارة.
+  const duty = isDutyPath(pathname);
+  const dutyBadge = duty ? (sectionPages.find((page) => String(page.to || "").split("?")[0] === "/app/attendance")?.badge ?? null) : null;
+  const dutyPages = duty
+    ? dutySectionPages({ side: employee ? "employee" : railSide === "manage" ? "manage" : "employee", ar, canPolicy: canCreateTasks(authUser, authData), badge: employee ? null : dutyBadge })
+      // Only surfaces this person may open (same allow-list as the suite strip).
+      .filter((page) => {
+        const base = page.to.split("?")[0];
+        return base === "/app/attendance" || sectionPages.some((item) => String(item.to || "").split("?")[0] === base);
+      })
+    : [];
+  const dutyLeaf = duty ? dutyCrumb(dutyPages, pathname, search) : null;
+  // The smart search reads both lanes' pages this person may open (the other lane only if he manages).
+  const dutyAllowed = (page) => {
+    const base = page.to.split("?")[0];
+    return base === "/app/attendance" || sectionPages.some((item) => String(item.to || "").split("?")[0] === base);
+  };
+  const canManageDuty = duty && canCreateTasks(authUser, authData);
+  const searchPages = duty
+    ? dutySearchPages(
+      dutySectionPages({ side: "employee", ar }).filter(dutyAllowed),
+      canManageDuty ? dutySectionPages({ side: "manage", ar, canPolicy: canManageDuty }).filter(dutyAllowed) : [],
+    )
+    : [];
+  const crumbTitle = duty ? (ar ? "الحضور والدوام" : "Time & attendance") : pageTitle;
 
   return (
     <div className="nv-frame" style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
@@ -99,7 +131,15 @@ export default function AppTopBar({
             <span style={{ fontSize: 12.5, color: "var(--nv-ink3, #555C66)", whiteSpace: "nowrap", minWidth: 0 }}>
               <Link to="/app" style={{ color: "inherit", fontWeight: 500, textDecoration: "none" }}>{home}</Link>
               <span style={{ color: "#C4CCC7", margin: "0 4px" }}>›</span>
-              <strong style={{ color: "var(--nv-ink, #111418)", fontWeight: 700, fontSize: 14 }}>{pageTitle}</strong>
+              {dutyLeaf ? (
+                <>
+                  <span style={{ fontWeight: 500 }}>{crumbTitle}</span>
+                  <span style={{ color: "#C4CCC7", margin: "0 4px" }}>›</span>
+                  <strong style={{ color: "var(--nv-ink, #111418)", fontWeight: 700, fontSize: 14 }}>{dutyLeaf.label}</strong>
+                </>
+              ) : (
+                <strong style={{ color: "var(--nv-ink, #111418)", fontWeight: 700, fontSize: 14 }}>{crumbTitle}</strong>
+              )}
             </span>
           </div>
 
@@ -165,7 +205,70 @@ export default function AppTopBar({
         </div>
       </div>
 
-      {facePages.length > 1 ? (
+      {duty ? (
+        <div className="nv-duty-strip" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+        {dutyPages.length > 1 ? (
+        <nav
+          aria-label={ar ? "صفحات الحضور والدوام" : "Time and attendance pages"}
+          className="no-scrollbar nv-section-pages"
+          data-duty-lane={employee ? "employee" : "manage"}
+          style={{ display: "flex", alignItems: "center", gap: 6, overflowX: "auto", background: "transparent", padding: 0, flex: "1 1 auto", minWidth: 0 }}
+        >
+          {dutyPages.map((page) => {
+            const active = page.match(pathname, search);
+            const Icon = page.icon;
+            return (
+              <Link
+                key={page.key}
+                to={page.to}
+                aria-current={active ? "page" : undefined}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  height: 32,
+                  padding: "0 13px",
+                  borderRadius: 6,
+                  textDecoration: "none",
+                  whiteSpace: "nowrap",
+                  fontSize: 12.5,
+                  fontWeight: active ? 700 : 500,
+                  color: active ? BTN_INK : MUTED,
+                  flexShrink: 0,
+                  background: active ? BTN_FILL : "var(--nv-card)",
+                  border: active ? "1px solid transparent" : "1px solid var(--nv-line, #E4E9E6)",
+                }}
+              >
+                <Icon style={{ width: 14, height: 14, color: "inherit" }} strokeWidth={active ? 2 : 1.7} />
+                <span>{page.label}</span>
+                {page.badge ? (
+                  <span
+                    dir="ltr"
+                    style={{
+                      minWidth: 16,
+                      height: 16,
+                      padding: "0 4px",
+                      borderRadius: 10,
+                      background: active ? "rgba(255,255,255,.22)" : BTN_FILL,
+                      color: "#fff",
+                      fontSize: 9,
+                      fontWeight: 700,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {page.badge}
+                  </span>
+                ) : null}
+              </Link>
+            );
+          })}
+        </nav>
+        ) : <span style={{ flex: "1 1 auto" }} />}
+        <DutySmartSearch ar={ar} side={employee ? "employee" : railSide === "manage" ? "manage" : "employee"} pages={searchPages} />
+        </div>
+      ) : !duty && facePages.length > 1 ? (
         <nav
           aria-label={ar ? "صفحات القسم" : "Section pages"}
           className="no-scrollbar nv-section-pages"

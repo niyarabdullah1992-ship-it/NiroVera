@@ -6,6 +6,7 @@
  * A destination is listed on one side only. «لوحة المالك» is not a company side.
  */
 import { isWorkplaceStation, scopedStationIdsForUser } from "./stationTree.js";
+import { SUITE_APPS, suiteAppOnSide } from "./suiteApps.js";
 
 export const RAIL_SIDES = [
   { id: "employee", ar: "الموظف", en: "Employee" },
@@ -167,18 +168,34 @@ function dutyManageTo(user, data, group) {
     return withQuery(appPath(group, "attendance") || group.to || "/app/attendance", { lane: "manage" });
   }
   if (hrPerm(user, data, "manage_leave")) {
-    const shifts = appPath(group, "shifts") || appPath(group, "calendar");
+    const shifts = appPath(group, "shifts");
     return shifts ? withQuery(shifts, { lane: "manage" }) : "";
   }
   return "";
 }
 
 function moneyManageTo(user, data, group) {
-  for (const id of ["payroll", "expenses", "assets", "inventory"]) {
+  for (const id of ["payroll", "expenses", "assets"]) {
     const path = appPath(group, id);
     if (path && canManageMoney(id, user, data)) return withQuery(path, { view: "manage" });
   }
   return "";
+}
+
+/**
+ * Section chips for the current rail side. The management side never lists
+ * التقويم التشغيلي — the manage lane plans on جدول الدوام and the calendar stays with the employee.
+ * @param {{ appId?: string, to?: string }[]} pages
+ * @param {"employee"|"manage"|string} side
+ */
+export function suiteSectionPagesForSide(pages, side) {
+  const list = Array.isArray(pages) ? pages : [];
+  if (side !== "manage") return list;
+  return list.filter((page) => {
+    const app = SUITE_APPS.find((row) => row.id === page?.appId) || null;
+    if (app) return suiteAppOnSide(app, "manage");
+    return !String(page?.to || "").split("?")[0].endsWith("/calendar");
+  });
 }
 
 export function railBadgeTone(kind) {
@@ -455,7 +472,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
   const discipline = byKey.get("discipline");
   if (discipline) {
     const base = appPath(discipline, "discipline") || String(discipline.to || "/app/discipline").split("?")[0];
-    const manageTo = canManageDiscipline(user, data) ? withQuery(base, { tab: "manage" }) : "";
+    const manageTo = canManageDiscipline(user, data) ? withQuery(base, { tab: "manage", lane: "manage" }) : "";
     const mineTo = withQuery(base, { tab: "mine" });
     if (manageTo) {
       manage.set("discipline", faceItem({

@@ -20,7 +20,10 @@ export const LEAVE_TYPES = [
   { key: "paternity", defaultTotal: ruleValue("leave.paternity.days"), article: citeLeaveType("paternity")?.article || null, gender: "male", ar: "أبوة", en: "Paternity" },
   { key: "hajj", defaultTotal: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article || null, religion: "muslim", ar: "حج", en: "Hajj" },
   { key: "eid", defaultTotal: null, article: citeLeaveType("eid")?.article || null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
+  { key: "work_injury", defaultTotal: null, article: null, requiresFile: true, ar: "إصابة عمل", en: "Work injury" },
   { key: "emergency", defaultTotal: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
+  { key: "comp", defaultTotal: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
+  { key: "job_search", defaultTotal: null, article: "78", employerNoticeOnly: true, ar: "يوم بحث عن عمل", en: "Job-search day" },
   { key: "unpaid", defaultTotal: null, article: citeLeaveType("unpaid")?.article || null, ar: "بدون راتب", en: "Unpaid" },
 ];
 
@@ -94,6 +97,12 @@ export function leaveTypesForProfile(profile) {
     if (ty.gender && ty.gender !== g) return false;
     if (ty.religion === "muslim" && !muslim) return false;
     if (ty.religion === "non_muslim" && muslim) return false;
+    // Art. 78: only while a notice given by the employer runs.
+    if (ty.employerNoticeOnly) {
+      const exit = profile?.contractExit || {};
+      const today = new Date().toISOString().slice(0, 10);
+      if (exit.party !== "employer" || !exit.effectiveDate || String(exit.effectiveDate).slice(0, 10) < today) return false;
+    }
     return true;
   });
 }
@@ -330,9 +339,22 @@ export function examLeaveChargesAnnual(request) {
     && request?.examPayFrom === "annual";
 }
 
-export function usedLeaveDays(requests, key, onDate, hireDate, calendar, company, employee) {
+/**
+ * Leaves the law gives again at every occurrence (Arts. 113 and 151): marriage, a death, a birth.
+ * Their days are counted per event, never as one balance for the whole service.
+ */
+export const PER_EVENT_LEAVE_TYPES = ["marriage", "bereavement", "bereavement_sibling", "paternity", "maternity"];
+
+export function usedLeaveDays(requests, key, onDate, hireDate, calendar, company, employee, { eventDate, exceptId } = {}) {
   const k = String(key || "").trim().toLowerCase();
   const approved = (requests || []).filter((r) => String(r.type || "").toLowerCase() === k && r.status === "approved");
+  if (PER_EVENT_LEAVE_TYPES.includes(k)) {
+    const ev = dateOnly(eventDate);
+    if (!ev) return 0;
+    return approved
+      .filter((r) => r.id !== exceptId && dateOnly(r.eventDate) === ev)
+      .reduce((sum, r) => sum + (Number(r.days) || computeDays(r.startDate, r.endDate) || 0), 0);
+  }
   if (k === "sick") {
     const win = sickStatutoryYearWindow(requests, onDate);
     return approved.reduce((sum, r) => {

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { citeRule, explainRule } from "@/lib/laborRules";
 import { BORDER, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
-import { DS_RADIUS } from "@/lib/designSystem";
+import { DS_CONTROL_RADIUS, DS_RADIUS } from "@/lib/designSystem";
 import { cardAwaitsNightConsent, nightConsentWaitCopy } from "@/lib/shiftWeek";
 import LawGateStatusPill, { LawGateArticleBadge } from "@/components/shared/LawGateStatusPill";
 
@@ -104,6 +104,7 @@ export default function DutyStripAlertCard({
   onApplyOrdinary,
   onNightRemedy,
   hideJudgment = false,
+  row = false,
 }) {
   const [readOpen, setReadOpen] = useState(false);
   const [cutOpen, setCutOpen] = useState(false);
@@ -132,13 +133,31 @@ export default function DutyStripAlertCard({
   const personName = String(card.name || "").trim();
   const masthead = String(card.instrument || "").trim();
   const showName = Boolean(personName && card.audience === "manager");
+  /** Row chrome: 24px control-radius chips, hairline rows — one chip style across جدول الدوام. */
+  const pillSkin = row ? { height: 24, boxSizing: "border-box", padding: "0 9px", borderRadius: DS_CONTROL_RADIUS, fontSize: 11, fontWeight: 600, lineHeight: 1 } : undefined;
+  const badgeSkin = row ? { height: 24, minWidth: 34, borderRadius: DS_CONTROL_RADIUS } : undefined;
+  const onDate = row && card.onDate ? String(card.onDate) : "";
+  const statusPill = <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} style={pillSkin} />;
   return (
     <article
       className="nv-duty-circular"
       data-glow={card.glow || (block ? "block" : "due")}
       data-gate={card.gateId || undefined}
       data-audience={card.audience || undefined}
-      style={{
+      data-row={row ? "1" : undefined}
+      style={row ? {
+        position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        width: "100%",
+        boxSizing: "border-box",
+        padding: "10px 18px",
+        borderBottom: "1px solid var(--nv-line2, #EEF2F7)",
+        background: "transparent",
+        color: NAVY,
+        ...AR,
+      } : {
         position: "relative",
         display: "flex",
         flexDirection: "column",
@@ -156,18 +175,23 @@ export default function DutyStripAlertCard({
     >
       {showName ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <strong data-duty-name="1" style={{ fontSize: 14, fontWeight: 700, color: NAVY, lineHeight: 1.4, ...AR }}>
+          <strong data-duty-name="1" style={{ fontSize: row ? 12.5 : 14, fontWeight: 700, color: NAVY, lineHeight: 1.4, ...AR }}>
             {personName}
           </strong>
-          <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} />
+          {onDate ? <span dir="ltr" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, color: MUTED }}>{onDate}</span> : null}
+          <span style={{ marginInlineStart: "auto" }}>{statusPill}</span>
         </div>
       ) : card.subject ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: NAVY, lineHeight: 1.45, ...AR }}>{card.subject}</span>
-          <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} />
+          <span style={{ fontSize: row ? 12.5 : 13, fontWeight: 600, color: NAVY, lineHeight: 1.45, ...AR }}>{card.subject}</span>
+          {onDate ? <span dir="ltr" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, color: MUTED }}>{onDate}</span> : null}
+          <span style={{ marginInlineStart: "auto" }}>{statusPill}</span>
         </div>
       ) : (
-        <LawGateStatusPill status={block ? "blocked" : "waiting"} ar={ar} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {onDate ? <span dir="ltr" style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, color: MUTED }}>{onDate}</span> : null}
+          <span style={{ marginInlineStart: "auto" }}>{statusPill}</span>
+        </div>
       )}
 
       {items.length ? (
@@ -189,7 +213,14 @@ export default function DutyStripAlertCard({
                 key={item.id}
                 data-gate={item.gateId || undefined}
                 dir={ar ? "rtl" : "ltr"}
-                style={{
+                style={row ? {
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  minWidth: 0,
+                  padding: "2px 0",
+                } : {
                   display: "flex",
                   flexDirection: "row",
                   alignItems: "center",
@@ -201,6 +232,7 @@ export default function DutyStripAlertCard({
                   border: "1px solid var(--nv-line, #E2E8F0)",
                 }}
               >
+                {row && article ? <LawGateArticleBadge article={article} style={badgeSkin} /> : null}
                 <span
                   style={{
                     flex: 1,
@@ -215,7 +247,7 @@ export default function DutyStripAlertCard({
                 >
                   {item.headline || item.title}
                 </span>
-                {article ? <LawGateArticleBadge article={article} /> : null}
+                {!row && article ? <LawGateArticleBadge article={article} /> : null}
               </li>
             );
           })}

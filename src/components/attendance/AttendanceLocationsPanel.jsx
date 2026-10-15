@@ -108,8 +108,8 @@ export default function AttendanceLocationsPanel({ t, lang = "ar" }) {
                       : (ar ? "بلا نقطة — حدّد الموقع" : "No point — set the location")}
                   </span>
                 </span>
-                <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
-                  {hasLocation ? `${station.radiusMeters || 200} ${ar ? "م" : "m"}` : "—"}
+                <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
+                  {hasLocation ? <><span style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{station.radiusMeters || 200}</span> {ar ? "م" : "m"}</> : "—"}
                 </span>
               </button>
               {on ? (

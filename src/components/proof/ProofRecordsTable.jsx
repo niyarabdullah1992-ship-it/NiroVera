@@ -1,6 +1,7 @@
 import React from "react";
 import LaneRecordCard from "@/components/shared/LaneRecordCard";
 import WorkProofRecordCard from "@/components/proof/WorkProofRecordCard";
+import VisitorPassCard from "@/components/proof/VisitorPassCard";
 import { INK, MUTED, emptyState } from "@/lib/platformStyles";
 
 const TONE = {
@@ -22,6 +23,17 @@ function ProofRow({ row, ar, heads, onOpen, renderActions, variant }) {
         row={row}
         ar={ar}
         onOpen={onOpen}
+        actions={typeof renderActions === "function" ? renderActions(row) : null}
+      />
+    );
+  }
+  if (variant === "visitor") {
+    return (
+      <VisitorPassCard
+        row={row}
+        ar={ar}
+        onOpen={onOpen}
+        stationName={row.station}
         actions={typeof renderActions === "function" ? renderActions(row) : null}
       />
     );

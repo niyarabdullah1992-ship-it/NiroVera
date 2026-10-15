@@ -14,8 +14,20 @@ function postingOf(company) {
     || {};
 }
 
-/** Art. 104 weekly rest weekday — Friday unless the establishment posted another. */
-export function weeklyRestDowOf(company) {
+/**
+ * The rest days HR set on this person's file (0 = Sunday … 6 = Saturday): the first is the Art. 104 day,
+ * the second (optional) the company rest. Empty → the establishment default applies.
+ */
+export function fileOffDows(employee) {
+  const raw = employee?.profile?.weeklyOffDows;
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].slice(0, 2);
+}
+
+/** Art. 104 weekly rest weekday — the file's first rest day, else the establishment's, else Friday. */
+export function weeklyRestDowOf(company, employee) {
+  const own = fileOffDows(employee);
+  if (own.length) return own[0];
   const n = Number(postingOf(company).weeklyRestDow);
   if (Number.isInteger(n) && n >= 0 && n <= 6) return n;
   return 5;
@@ -36,6 +48,8 @@ function countOneOrTwo(raw) {
  * (Art. 104 + company extra). One = six-day week — only the statutory rest.
  */
 export function weeklyRestDayCountOf(company, employee) {
+  const own = fileOffDows(employee);
+  if (own.length) return own.length;
   const fromFile = countOneOrTwo(employee?.profile?.weeklyRestDayCount ?? employee?.weeklyRestDayCount);
   if (fromFile) return fromFile;
   const fromCompany = countOneOrTwo(postingOf(company).weeklyRestDayCount ?? postingOf(company).companyRestDays);
@@ -44,10 +58,15 @@ export function weeklyRestDayCountOf(company, employee) {
 
 /** Weekdays that must not be charged against Article 109 for this employee. */
 export function weeklyOffDows(company, employee) {
+  const own = fileOffDows(employee);
+  if (own.length) return own;
   const posting = postingOf(company);
   const listed = posting.weeklyOffDows || posting.companyRestDows;
   if (Array.isArray(listed) && listed.length) {
-    return [...new Set(listed.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))];
+    const days = [...new Set(listed.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))];
+    // A file set to one rest day keeps only the statutory (first) day the management chose.
+    const fromFile = countOneOrTwo(employee?.profile?.weeklyRestDayCount ?? employee?.weeklyRestDayCount);
+    return fromFile === 1 ? days.slice(0, 1) : days;
   }
   const statutory = weeklyRestDowOf(company);
   if (weeklyRestDayCountOf(company, employee) <= 1) return [statutory];
@@ -113,7 +132,7 @@ export function employeeRosterDayKind(company, employee, dateKey) {
 /** Named rest days for this employee — first is Art. 104, second is company extra. */
 export function weeklyOffLabels(company, employee, ar = true) {
   const names = ar ? WEEKDAY_NAMES_AR : WEEKDAY_NAMES_EN;
-  const statutory = weeklyRestDowOf(company);
+  const statutory = weeklyRestDowOf(company, employee);
   return weeklyOffDows(company, employee).map((dow) => ({
     dow,
     kind: dow === statutory ? "law" : "company",
@@ -217,6 +236,41 @@ export function chargeableAnnualWorkDays(startDate, endDate, calendar, company, 
     n += 1;
   });
   return n;
+}
+
+/**
+ * Day by day, what an annual-leave span does to the balance (Art. 109 — work days only):
+ *   charge      a work day — taken from the balance
+ *   dutyOnRest  a published shift on what would be his weekly rest — a work day, taken
+ *   law         his Art. 104 rest day — not taken
+ *   company     his company rest day — not taken
+ *   cycle       a rest cell of his roster cycle (e.g. 4-on/4-off) — not taken
+ *   holiday     an official holiday — not taken; the leave is extended
+ */
+export function annualDayBreakdown(startDate, endDate, calendar, company, employee) {
+  const start = laborDayKey(startDate);
+  const end = laborDayKey(endDate);
+  const days = [];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || end < start) return { days, counts: {}, charged: 0, calendarDays: 0 };
+  const statutory = weeklyRestDowOf(company, employee);
+  eachInclusiveDay(start, end, (key) => {
+    const [y, m, d] = key.split("-").map(Number);
+    const dow = new Date(y, m - 1, d).getDay();
+    const holiday = officialHolidayOn(key, calendar);
+    let kind;
+    if (holiday) kind = "holiday";
+    else {
+      const roster = employeeRosterDayKind(company, employee, key);
+      const weekly = isWeeklyOffDay(key, company, employee);
+      if (roster === "duty") kind = weekly ? "dutyOnRest" : "charge";
+      else if (roster === "rest") kind = weekly ? (dow === statutory ? "law" : "company") : "cycle";
+      else if (weekly) kind = dow === statutory ? "law" : "company";
+      else kind = "charge";
+    }
+    days.push({ key, dow, kind, holiday: holiday || null });
+  });
+  const counts = days.reduce((acc, day) => ({ ...acc, [day.kind]: (acc[day.kind] || 0) + 1 }), {});
+  return { days, counts, charged: (counts.charge || 0) + (counts.dutyOnRest || 0), calendarDays: days.length };
 }
 
 export function weeklyOffDaysInRange(start, end, company, employee) {

@@ -312,7 +312,6 @@ const NOTICE_SECTIONS = [
   { id: "expenses", ar: "مصروفات بانتظار قرار", en: "Expenses awaiting you", kindAr: "المال والأصول", kindEn: "Money", route: "/app/expenses?view=manage" },
   { id: "payroll", ar: "مسير بانتظار الاعتماد", en: "Payroll awaiting approval", kindAr: "المال والأصول", kindEn: "Money", route: "/app/payroll?view=manage" },
   { id: "assets", ar: "نقل أصل بانتظارك", en: "Asset transfer awaiting you", kindAr: "المال والأصول", kindEn: "Money", route: "/app/assets?view=manage" },
-  { id: "inventory", ar: "طلب مخزون بانتظارك", en: "Stock request awaiting you", kindAr: "المخزون", kindEn: "Inventory", route: "/app/inventory?view=manage" },
 ];
 
 function noticeBand(section, tone) {
@@ -350,6 +349,34 @@ export function buildBranchNotices({ user, data, attendanceRows = [] } = {}) {
         band: noticeBand(section.id, row.tone),
       });
     }
+  }
+  // 3337 — today's sun-ban alerts addressed to this manager (written at 12:00 by openDueHeatBanNotices).
+  const pad = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const heatBy = new Map();
+  for (const row of data?.notifications || []) {
+    const key = String(row?.key || "");
+    if (row?.read || String(row?.userId) !== String(user?.id) || !key.startsWith(`3337-admin:${user?.id}:`) || !key.endsWith(today)) continue;
+    const employeeId = key.split(":")[2];
+    const employee = (data?.employees || []).find((emp) => String(emp.id) === String(employeeId));
+    const sid = String(employee?.profile?.workStationId || employee?.stationId || "");
+    if (!nameOf.has(sid)) continue;
+    heatBy.set(sid, (heatBy.get(sid) || 0) + 1);
+  }
+  for (const [sid, count] of heatBy) {
+    items.push({
+      id: `heatban:${sid}`,
+      stationId: sid,
+      branch: nameOf.get(sid),
+      titleAr: "حظر الشمس — بدأت ساعات الحظر (3337)",
+      titleEn: "Sun ban — ban hours started (3337)",
+      kindAr: "جدول الدوام",
+      kindEn: "Duty roster",
+      route: "/app/shifts?lane=manage",
+      count,
+      band: "urgent",
+    });
   }
   const rank = { urgent: 0, decision: 1, info: 2 };
   items.sort((a, b) => (rank[a.band] - rank[b.band]) || (b.count - a.count) || a.branch.localeCompare(b.branch, "ar"));

@@ -24,7 +24,8 @@ import {
   listedPenaltyLabel,
 } from "../src/lib/disciplineDerivations.js";
 import { countDaysExcludingOfficialHolidays } from "../src/lib/ummAlQuraCalendar.js";
-import { buildDisciplineNoticeHtml } from "../src/lib/disciplineDoc.js";
+import { disciplinePaperKind, disciplineSheet } from "../src/lib/disciplineDoc.js";
+import { buildSheetHtml } from "../src/lib/printSheet.js";
 
 assert.equal(countAr(1, "ملف واحد", "ملفان", "ملفات", "ملفاً"), "ملف واحد");
 assert.equal(countAr(2, "ملف واحد", "ملفان", "ملفات", "ملفاً"), "ملفان");
@@ -41,7 +42,7 @@ const empty = deriveDisciplineBoard({ cases: [], employees, stations, ar: true, 
 assert.equal(empty.stats[0].val, "0");
 assert.equal(empty.pulseKind, "ok");
 assert.equal(empty.stages.length, 5);
-assert.equal(empty.gates.length, 5);
+assert.equal(empty.gates.length, 4, "only the Law's gates — the platform-only one is gone");
 assert.equal(empty.pulse, "لا ملف مفتوح");
 
 const open = deriveDisciplineBoard({
@@ -233,7 +234,7 @@ assert.equal(effectiveCutDays({ cutDays: 2, status: "hearing" }), 0);
 assert.equal(isDisciplineSettled({ status: "notify", signedAt: "2026-09-08" }), true);
 assert.equal(isDisciplineSettled({ status: "appeal" }), false);
 assert.equal(isDisciplineSettled({ status: "appeal", rulingLabel: "ثُبِّت الجزاء" }), true);
-assert.equal(isErasedFromEmployeeRecord({ signedAt: "2025-08-12" }, "2026-09-12"), true);
+assert.equal(isErasedFromEmployeeRecord({ signedAt: "2025-08-12" }, "2026-09-12"), false, "no erasure — not in the Law");
 assert.equal(isErasedFromEmployeeRecord({ signedAt: "2026-08-12" }, "2026-09-12"), false);
 
 const archive = collectDisciplineArchive({
@@ -249,7 +250,7 @@ const archive = collectDisciplineArchive({
 });
 assert.equal(archive.rows.length, 2);
 assert.ok(archive.groups.some((group) => group.year === "2026"));
-assert.ok(archive.rows.find((row) => row.id === "a3")?.meta.includes("مُحي"));
+assert.ok(!archive.rows.find((row) => row.id === "a3")?.meta.includes("مُحي"), "nothing is erased from the worker's record");
 assert.equal(collectDisciplineArchive({
   ar: true,
   today: "2026-09-12",
@@ -298,10 +299,25 @@ assert.match(docCard.docTitle, /إبلاغ/);
 assert.ok(docCard.related.some((row) => row.to === "/app/payroll"));
 assert.ok(docCard.related.some((row) => row.to === "/app/attendance"));
 assert.ok(docCard.related.some((row) => row.to.includes("/app/employees/")));
-const html = buildDisciplineNoticeHtml(docCard, true);
+assert.equal(disciplinePaperKind(docCard), "notice");
+const noticeSheet = disciplineSheet(docCard, true);
+const html = buildSheetHtml(noticeSheet);
 assert.match(html, /إبلاغ كتابي/);
 assert.match(html, /أحمد/);
 assert.match(html, /المادة 71/);
+assert.ok(!/المادة 67\)/.test(html), "one penalty per act is Art. 70, not 67");
+assert.equal(noticeSheet.signatures.length, 2);
+// After signing: the decision with proof of notice (registered letter) and the Art. 72 grievance path.
+const signedCard = { ...docCard, signedAt: "2026-09-10", item: { ...docCard.item, signedAt: "2026-09-10", signedBy: "مدير", regulationRef: "البند 2 من لائحة تنظيم العمل المعتمدة رقم 77", regulationTime: 2 } };
+assert.equal(disciplinePaperKind(signedCard), "decision");
+const decision = buildSheetHtml(disciplineSheet(signedCard, true));
+assert.match(decision, /قرار توقيع جزاء/);
+assert.match(decision, /بكتاب مسجّل/);
+assert.match(decision, /المحاكم العمالية/);
+assert.match(decision, /خمسة عشر يوماً/);
+assert.match(decision, /البند 2 من لائحة/);
+assert.match(decision, /المرة الثانية/);
+assert.match(decision, /92\/5/);
 
 const law = deriveDisciplineLawBoard({
   ar: true,
@@ -317,7 +333,8 @@ assert.ok(law.rows.length >= 8);
 assert.equal(law.rows.find((row) => row.id === "discipline.charge.maxDays")?.art, "69");
 assert.ok((law.rows.find((row) => row.id === "discipline.charge.maxDays")?.blocked || 0) >= 1);
 assert.ok((law.rows.find((row) => row.id === "discipline.appeal.internalDays")?.live || 0) >= 1);
-assert.ok((law.rows.find((row) => row.id === "discipline.record.eraseDays")?.live || 0) >= 1);
+assert.equal(law.rows.find((row) => row.id === "discipline.record.eraseDays"), undefined, "platform policy is not on the ministry board");
+assert.ok(law.rows.find((row) => row.id === "payroll.deduction.capRatio"), "Art. 93 is on the board");
 assert.ok(!law.rows.some((row) => row.art === "78"));
 assert.equal(law.rows.find((row) => row.id === "discipline.workplace.cite")?.art, "70");
 assert.ok(!law.rows.some((row) => /DISCIPLINE_[A-Z0-9_]+/.test(`${row.applied || ""} ${row.head || ""}`)));

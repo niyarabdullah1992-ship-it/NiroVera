@@ -12,12 +12,14 @@ export default function DeductionLineForm({ ar, item, onAdd }) {
   const [reason, setReason] = useState("");
   const [sourceRefId, setSourceRefId] = useState("");
   const [error, setError] = useState("");
+  const [consent, setConsent] = useState(false);
 
   const cap = article90MaxDeduction(item || {});
   const messages = {
     INVALID_AMOUNT: ar ? "أدخل مبلغاً أكبر من صفر." : "Enter an amount greater than zero.",
     SOURCE_REQUIRED: ar ? "حدّد مصدر الخصم." : "Select the deduction source.",
     REASON_REQUIRED: ar ? "الخصم اليدوي يتطلب سبباً مكتوباً واضحاً." : "A manual deduction requires a written reason.",
+    CONSENT_REQUIRED: ar ? "لا حسم لحق خاص دون موافقة خطية من العامل (المادة 92) — أكّد وجود الموافقة." : "No deduction for a private right without the worker's written consent (Art. 92) — confirm it exists.",
     REFERENCE_REQUIRED: ar ? "أدخل معرّف السجل المرجعي (سجل الغياب أو السلفة)." : "Enter the reference record id (absence or advance).",
     REFERENCE_SHAPE: ar
       ? "المرجع يجب أن يبدأ بنطاق مصدره: ATT- للغياب المعتمد، ADV- للسلفة، DSC- للجزاء."
@@ -36,9 +38,9 @@ export default function DeductionLineForm({ ar, item, onAdd }) {
   };
 
   const submit = () => {
-    const code = onAdd({ source, amount, reason, sourceRefId });
+    const code = onAdd({ source, amount, reason, sourceRefId, consent: source === "manual" ? consent : undefined });
     if (code) { setError(messages[code] || payrollDenyReason(code, ar) || String(code)); return; }
-    setError(""); setAmount(""); setReason(""); setSourceRefId("");
+    setError(""); setAmount(""); setReason(""); setSourceRefId(""); setConsent(false);
   };
 
   return (
@@ -70,6 +72,12 @@ export default function DeductionLineForm({ ar, item, onAdd }) {
           aria-label={ar ? "سبب الخصم" : "Deduction reason"}
           style={textarea}
         />
+      ) : null}
+      {source === "manual" ? (
+        <label data-deduction-consent="1" style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7, cursor: "pointer" }}>
+          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} />
+          <span>{ar ? "لدينا موافقة خطية من العامل على هذا الحسم — المادة 92 لا تجيز حسم حق خاص بدونها." : "We hold the worker's written consent to this deduction — Art. 92 allows no private-right deduction without it."}</span>
+        </label>
       ) : (
         <input
           type="text"

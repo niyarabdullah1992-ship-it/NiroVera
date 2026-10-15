@@ -175,13 +175,12 @@ export function isDisciplineSettled(item) {
   return face.id === "signed" || face.id === "closed";
 }
 
-export function isErasedFromEmployeeRecord(item, today) {
-  const signed = dateOnly(item?.signedAt || item?.decidedAt);
-  if (!signed) return false;
-  const day = dateOnly(today) || todayRiyadh();
-  const n = daysBetween(signed, day);
-  const erase = ruleValue("discipline.record.eraseDays", day) || 365;
-  return n != null && n > erase;
+/**
+ * The Law gives no basis to drop a signed sanction from the worker's own record, so nothing is
+ * hidden: kept for callers, always false. (The one-year erasure was a platform policy — removed.)
+ */
+export function isErasedFromEmployeeRecord() {
+  return false;
 }
 
 export function shortFileHash(hash) {
@@ -429,15 +428,6 @@ export function deriveDisciplineBoard({
         ? (ar ? countAr(rulingLate, "تظلم واحد تجاوز المهلة", "تظلمان تجاوزا المهلة", "تظلمات تجاوزت المهلة", "تظلماً تجاوز المهلة") : `${rulingLate} overdue`)
         : (ar ? "لا تجاوز" : "Within time"),
       kind: rulingLate ? "bad" : "ok",
-    },
-    {
-      tag: ar ? "قاعدة المنصة" : "Platform rule",
-      head: ar ? "كل قرار باسم صاحبه" : "Every decision names its author",
-      body: ar
-        ? "التوقيع والقرار في الاعتراض يُسجَّلان باسم من أصدرهما ووقتهما، ويظهران للموظف بحيثياتهما."
-        : "Signing and the objection ruling are stored with the author's name and time, and the employee sees the reasons.",
-      state: canDecide ? (ar ? "يُسجَّل باسمك" : "Recorded in your name") : (ar ? "للاطّلاع" : "For viewing"),
-      kind: canDecide ? "ok" : "mute",
     },
   ].map((row) => ({
     ...row,
@@ -698,13 +688,13 @@ export function decorateDisciplineCase(item, {
       : stageDoc.note,
     docColor: signedPaper ? "var(--nv-ok-ink)" : "var(--nv-muted)",
     dlLabel: !signedAt
-      ? (ar ? "نزّل الإبلاغ" : "Download the notice")
-      : (settled ? (ar ? "نزّل الوثيقة المستقرّة" : "Download the settled document") : (ar ? "نزّل نسخة الجزاء" : "Download the sanction copy")),
+      ? (ar ? "اطبع الإبلاغ" : "Print the notice")
+      : (settled ? (ar ? "اطبع القرار المستقرّ" : "Print the settled decision") : (ar ? "اطبع القرار" : "Print the decision")),
     dlTip: !signedAt
-      ? (ar ? "نسخة A4 للطباعة والتوقيع بخطّ اليد" : "A4 copy to print and sign by hand")
+      ? (ar ? "إبلاغ كتابي واستدعاء لسماع الأقوال (المادة 71)" : "Written notice and call to be heard (Art. 71)")
       : (settled
-        ? (ar ? "نسخة مستقرّة للحفظ والاحتجاج — لا توقيع جديد عليها" : "Settled copy to keep — no new signing on it")
-        : (ar ? "نسخة الجزاء الموقَّع للحفظ — الاعتراض من وجه الموظف" : "Signed copy to keep — objection sits on the employee's face")),
+        ? (ar ? "القرار كما استقرّ وحيثيات البتّ" : "The decision as settled, with the ruling")
+        : (ar ? "قرار الجزاء مع إثبات الإبلاغ وحقّ التظلّم (المادة 72)" : "The decision with proof of notice and the grievance right (Art. 72)")),
     related: disciplineRelatedLinks(item, { employee, ar, signedAt }),
     meters,
     jobTitle: String(jobTitle || "").trim() || "—",
@@ -731,7 +721,7 @@ const LAW_CATALOG = [
   { ruleId: "discipline.hearing.cite", kind: "act", headAr: "إبلاغ كتابي وسماع دفاع", headEn: "Written notice and a recorded defence" },
   { ruleId: "discipline.appeal.internalDays", kind: "right", headAr: "التظلم خلال 30 يوماً عدا العطل والبت خلال 15", headEn: "Object within 30 days excluding holidays; a ruling within 15" },
   { ruleId: "discipline.fines.register.cite", kind: "act", headAr: "سجل الغرامات وصرفها", headEn: "Fine register and how they are used" },
-  { ruleId: "discipline.record.eraseDays", kind: "right", headAr: "محو السجل الظاهر بعد سنة", headEn: "Drop from the visible record after a year" },
+  { ruleId: "payroll.deduction.capRatio", kind: "cap", headAr: "الغرامة تُحسم بلا موافقة — ولا يتجاوز الحسم نصف الأجر", headEn: "A fine is deducted without consent — and deductions stay under half the wage" },
 ];
 
 const LAW_APPLIED = {
@@ -764,16 +754,16 @@ const LAW_APPLIED = {
     en: "A warning or a one-day fine may be questioned orally in the minutes; other penalties need written defence minutes.",
   },
   "discipline.appeal.internalDays": {
-    ar: "الاعتراض خلال 30 يوماً من التوقيع عدا العطل، والبتّ خلال 15 يوماً وإلا حُجب القرار الداخلي وبقي حق المحاكم العمالية.",
-    en: "The objection is within 30 days of signing excluding holidays, and the ruling within 15 days, or the internal decision is blocked and the labour-court right remains.",
+    ar: "يُبلَّغ القرار كتابةً، وللعامل التظلّم كتابةً خلال 30 يوماً عدا العطل الرسمية. فإن رُفض أو لم يُبتّ فيه كتابةً خلال 15 يوماً فله الاعتراض أمام المحاكم العمالية خلال 30 يوماً.",
+    en: "The decision is notified in writing; the worker may file a written grievance within 30 days excluding official holidays. If it is refused or not decided in writing within 15 days, the worker may object before the labour courts within 30 days.",
   },
   "discipline.fines.register.cite": {
     ar: "الغرامة تُقيَّد في السجل وتُرحَّل إلى المسير، ولا تُصرف إلا بقرار لجنة أو موافقة وزارة مكتوبة.",
     en: "A fine is written to the register and posted to payroll, and is disposed of only with a written committee decision or Ministry approval.",
   },
-  "discipline.record.eraseDays": {
-    ar: "الملف يبقى في أرشيف الشركة ويُمحى من سجل الموظف الظاهر بعد سنة.",
-    en: "The file stays in the company archive and drops off the employee's visible record after a year.",
+  "payroll.deduction.capRatio": {
+    ar: "الغرامة على المخالفة تُحسم من الأجر دون موافقة العامل (المادة 92/5)، ومجموع ما يُحسم في الشهر مع التأمينات لا يتجاوز نصف الأجر المستحق (المادة 93).",
+    en: "A fine for an offence is deducted without the worker's consent (Art. 92/5), and everything deducted in the month, GOSI included, stays under half the wage due (Art. 93).",
   },
 };
 
@@ -876,7 +866,7 @@ export function deriveDisciplineLawBoard({
     if (face.id === "objected") bump("discipline.appeal.internalDays");
     if (face.id === "objected" && !ruling.ok) bump("discipline.appeal.internalDays", 1, true);
     if (signedAt && resolvePenaltyKind(item) === "fine" && effectiveCutDays(item) > 0) bump("discipline.fines.register.cite");
-    if (isErasedFromEmployeeRecord(item, day)) bump("discipline.record.eraseDays");
+    if (signedAt && effectiveCutDays(item) > 0) bump("payroll.deduction.capRatio");
   }
 
   const rows = LAW_CATALOG

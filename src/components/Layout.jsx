@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { updateCompany, getCompanyData, getCompanyToken } from "@/lib/store";
+import { updateCompany, getCompanyData, getCompanyToken, openDueHeatBanNotices, openDueDisciplineDeadlineNotices, openDueNecessityNotices, openDueCompLeaveNotices, settleDueResignations } from "@/lib/store";
 import { base44 } from "@/api/base44Client";
 import { toast } from "@/components/ui/use-toast";
 import { allowedNavFor } from "@/lib/navVisibility";
@@ -54,6 +54,21 @@ export default function Layout({ children }) {
     window.addEventListener(NOTIFICATION_PREFS_EVENT, refresh);
     return () => window.removeEventListener(NOTIFICATION_PREFS_EVENT, refresh);
   }, []);
+
+  // 3337 — check every minute; notices fire once when the 12:00 ban window opens on a season day.
+  useEffect(() => {
+    if (!company?.id) return undefined;
+    const tick = () => {
+      try { openDueHeatBanNotices(company.id); } catch { /* notices are best-effort */ }
+      try { openDueDisciplineDeadlineNotices(company.id); } catch { /* notices are best-effort */ }
+      try { openDueNecessityNotices(company.id); } catch { /* notices are best-effort */ }
+      try { openDueCompLeaveNotices(company.id); } catch { /* notices are best-effort */ }
+      try { settleDueResignations(company.id); } catch { /* best-effort; runs again next tick */ }
+    };
+    tick();
+    const timer = window.setInterval(tick, 60000);
+    return () => window.clearInterval(timer);
+  }, [company?.id]);
 
   useEffect(() => {
     applyStoredPlatformTheme(company?.id);
@@ -205,7 +220,8 @@ export default function Layout({ children }) {
   });
 
   const allowedNav = allowedNavFor(currentUser, data, company);
-  const visibleNavItems = navItems.filter((i) => allowedNav.has(i.to));
+  // المخزون is removed from the platform's navigation — employee and management alike.
+  const visibleNavItems = navItems.filter((i) => allowedNav.has(i.to) && String(i.to || "").split("?")[0] !== "/app/inventory");
   const orderedNavItems = [...visibleNavItems].sort(
     (a, b) => SUITE_GROUP_ORDER.indexOf(a.category) - SUITE_GROUP_ORDER.indexOf(b.category),
   );
@@ -216,7 +232,8 @@ export default function Layout({ children }) {
   const activeCategory = activeNavItem?.category || "daily";
   const sectionPages = location.pathname.startsWith("/app/settings") || !activeNavItem
     ? []
-    : orderedNavItems.filter((item) => item.category === activeCategory && item.to !== "/app/settings");
+    // التصعيد is part of المهام (side list, filter, each order's chain) — not a page of its own.
+    : orderedNavItems.filter((item) => item.category === activeCategory && item.to !== "/app/settings" && !String(item.to || "").startsWith("/app/escalation"));
   const railGroups = buildSuiteRailGroups(orderedNavItems, lang, currentUser.role);
   const railClusters = buildSuiteRailClusters(railGroups, lang, { user: currentUser, data });
   const activeRailKey = activeSuiteRailKey(railClusters, activeCategory, location.pathname, location.search);
@@ -402,17 +419,22 @@ export default function Layout({ children }) {
       sub: lang === "ar" ? "جهد وإثبات · مراجعة بسبب · تصعيد عند احتراق المهلة" : "Effort and proof · review with reason · escalate when the quota burns",
     },
     "/app/escalation": {
-      title: lang === "ar" ? "نظام التصعيد" : "Escalation",
+      title: lang === "ar" ? "المهام والعمليات" : "Operations",
       sub: lang === "ar" ? "صندوق المراجعة · سلسلة لكل فرع حتى القمة" : "Review inbox · per-station chain to the top",
     },
     "/app/inventory": {
       title: lang === "ar" ? "المخزون" : "Inventory",
       sub: lang === "ar" ? "لا مركزي: كل فرع يشتري رصيده · يرى غيره ويطلب · صرف للعمل بمرجع" : "Decentralised: each station buys its stock · sees others and requests · issue to work with a ref",
     },
-    "/app/assets": {
-      title: lang === "ar" ? "الأصول / العهد" : "Assets / Custody",
-      sub: lang === "ar" ? "سجل أصل · حائز واحد · نقل بين الفروع بطلب وموافقة · تسليم بتوقيع الطرفين" : "Asset register · one holder · inter-station transfer by request · dual-sign handover",
-    },
+    "/app/assets": new URLSearchParams(location.search).get("view") === "self"
+      ? {
+        title: lang === "ar" ? "العهد" : "Custody",
+        sub: lang === "ar" ? "ما بحوزتك وما طلبت نقله — التسليم بتوقيع الطرفين" : "What you hold and what you asked to move — handover is signed by both sides",
+      }
+      : {
+        title: lang === "ar" ? "الأصول / العهد" : "Assets / Custody",
+        sub: lang === "ar" ? "سجل أصل · حائز واحد · نقل بين الفروع بطلب وموافقة · تسليم بتوقيع الطرفين" : "Asset register · one holder · inter-station transfer by request · dual-sign handover",
+      },
     "/app/expenses": {
       title: lang === "ar" ? "المصروفات" : "Expenses",
       sub: lang === "ar" ? "الوعاء التشغيلي وحده — اعتماد متدرّج بالمبلغ · الإيصال بوابة · لا مخزون ولا أصل" : "Operating vessel only — amount-derived approval · receipt gates · not stock, not an asset",

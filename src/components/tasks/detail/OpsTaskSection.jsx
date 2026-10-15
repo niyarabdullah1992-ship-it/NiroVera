@@ -14,10 +14,10 @@ export default function OpsTaskSection({ title, hint, count, aside, tone, childr
   const frame = stateId
     ? docFrame(stateId)
     : {
-        background: "var(--nv-inset, var(--nv-soft))",
+        background: "var(--nv-card)",
         border: "1px solid var(--nv-line)",
-        borderRadius: 14,
-        boxShadow: "none",
+        borderRadius: 12,
+        boxShadow: "var(--nv-paper)",
       };
   const titleColor = stateId
     ? `var(--nv-${DS_STATES[stateId].token}-ink)`
@@ -40,10 +40,13 @@ export default function OpsTaskSection({ title, hint, count, aside, tone, childr
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {title ? (
-              <div style={{ fontSize: 12, fontWeight: 650, color: titleColor, letterSpacing: "0.01em" }}>{title}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 700, color: titleColor }}>
+                {stateId ? null : <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", borderRadius: 2, flexShrink: 0 }} />}
+                {title}
+              </div>
             ) : null}
             {hint ? (
-              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 4 }}>{hint}</div>
+              <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.65, marginTop: 4 }}>{hint}</div>
             ) : null}
           </div>
           {count != null && (

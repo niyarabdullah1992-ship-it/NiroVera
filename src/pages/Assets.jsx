@@ -204,7 +204,7 @@ export default function Assets() {
     <SuiteWorkspaceFrame
       ar={ar}
       kicker={pageKicker("/app/assets", lang)}
-      title={ar ? "الأصول والعهد" : "Assets & custody"}
+      title={view === SELF ? (ar ? "العهد" : "Custody") : (ar ? "الأصول والعهد" : "Assets & custody")}
       hint={ar ? (
         <>
           استرجاع العهد شرط{" "}
@@ -249,7 +249,7 @@ export default function Assets() {
           <FinanceViewSwitch ar={ar} view={view} canManage={canManage} showSwitch={!railSide} onChange={setView} />
           <div style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: ar ? "flex-end" : "flex-start" }}>
             <span style={{ fontSize: 10, color: MUTED }}>
-              {view === MANAGE ? (ar ? "عهد نشطة" : "Active custody") : (ar ? "أصول بحوزتي" : "Assets I hold")}
+              {view === MANAGE ? (ar ? "عهد نشطة" : "Active custody") : (ar ? "عهد بحوزتي" : "Custody I hold")}
             </span>
             <span style={{ fontSize: 15, fontWeight: 700 }}>
               {view === MANAGE ? scoped.filter((a) => a.status === "in_custody").length : myAssets.length}
@@ -272,7 +272,7 @@ export default function Assets() {
       {tab === "mine" && (
         <>
           <KpiStrip stats={[
-            { label: ar ? "أصول بحوزتي" : "Assets I hold", value: myAssets.length },
+            { label: ar ? "عهد بحوزتي" : "Custody I hold", value: myAssets.length },
             {
               label: ar ? "تحتاج فحصًا" : "Inspection due",
               value: myAssets.filter((a) => a.nextInspectionDate && a.nextInspectionDate <= new Date().toISOString().slice(0, 10)).length,

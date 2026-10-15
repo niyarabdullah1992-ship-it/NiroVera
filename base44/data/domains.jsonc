@@ -856,7 +856,7 @@
           "blobCategory": "workProofs",
           "storeKey": "workProofs",
           "owner": "workproof",
-          "ownerFile": "base44/functions/workproof/entry.ts",
+          "ownerFile": "base44/functions/workProof/entry.ts",
           "derivation": "base44/shared/workProofDerivations.ts",
           "identity": ["id", "companyId", "ref"],
           "personRef": "raiserId",
@@ -869,7 +869,7 @@
           "entity": "WorkProof",
           "entityFile": "base44/entities/WorkProof.jsonc",
           "owner": "workproof",
-          "ownerFile": "base44/functions/workproof/entry.ts",
+          "ownerFile": "base44/functions/workProof/entry.ts",
           "derivation": "base44/shared/workProofDerivations.ts",
           "identity": ["id", "companyId", "proofNumber"],
           "personRef": "performedById",
@@ -1619,7 +1619,7 @@
       "keys": ["workProofs", "WorkProof"],
       "canonical": "workProofs",
       "legacy": ["WorkProof"],
-      "evidence": ["base44/functions/workproof/entry.ts:22", "src/pages/WorkProof.jsx:75", "base44/entities/WorkProof.jsonc"],
+      "evidence": ["base44/functions/workProof/entry.ts:22", "src/pages/WorkProof.jsx:75", "base44/entities/WorkProof.jsonc"],
       "summary": "Live data is the workProofs blob (ref, sealId). WorkProof entity still requires proofNumber/workTitle — a second shape, not the runtime store. No entities.WorkProof reader in functions or src/. Do-not-write the entity."
     },
     {
@@ -1730,8 +1730,8 @@
       "severity": "fixed-visible",
       "keys": ["workProofs"],
       "canonical": "workProofs",
-      "evidence": ["src/pages/WorkProof.jsx:75", "base44/functions/workproof/entry.ts", "base44/functions/workProof/entry.ts"],
-      "summary": "Frontend invokes workproof. A workProof folder listing also exists; on Windows they are the same path. Canonical invoke name: workproof."
+      "evidence": ["src/pages/WorkProof.jsx:75", "base44/functions/workProof/entry.ts"],
+      "summary": "Frontend invokes workproof; the function folder on disk is workProof (case-insensitive on Windows, so both resolve there; on Linux only workProof exists). Canonical invoke name: workproof; file paths use workProof."
     },
     {
       "id": "workproof-signToken",

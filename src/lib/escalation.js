@@ -59,6 +59,8 @@ export function handlersForLevel(levelIdx, r, data) {
 }
 
 export function complaintHandlersForLevel(levelIdx, r, data) {
+  // A branch ladder set in the org (or derived from it) names the same people as المهام.
+  if (deriveBranchEscalationChain(r?.stationId, data).length) return handlersForLevel(levelIdx, r, data);
   const manual = manualChain(data);
   return manual.length ? (manual[levelIdx] ? [manual[levelIdx]] : []) : handlersForLevel(levelIdx, r, data);
 }

@@ -113,6 +113,10 @@ export default function DisciplineRaiseForm({
   dismissGround,
   onDismissGround,
   onSubmit,
+  regulation = null,
+  clauseId = "",
+  onClause,
+  clauseStep = null,
 }) {
   const person = employees.find((row) => String(row.id) === String(employeeId)) || null;
   const kindSpec = listedPenaltyKind(penaltyKind) || DISCIPLINE_PENALTY_KINDS[0];
@@ -129,6 +133,8 @@ export default function DisciplineRaiseForm({
     workConnected,
     cases,
     ar,
+    regulation,
+    clauseId,
   });
   const hasFacts = Boolean(String(note || "").trim());
   const failing = chips.filter((chip) => chip.state === "fail");
@@ -142,7 +148,13 @@ export default function DisciplineRaiseForm({
   })();
   const people = employees.map((row) => ({ value: row.id, label: personLabel(row, stations) }));
   const kinds = DISCIPLINE_PENALTY_KINDS.map((row) => ({ value: row.id, label: ar ? row.ar : row.en }));
-  const dayChoices = (kindSpec?.days || []).filter((n) => n > 0);
+  const baseDays = (kindSpec?.days || []).filter((n) => n > 0);
+  const dayChoices = penaltyKind === "fine" && Number(cutDays) > 0 && Number(cutDays) < 1 ? [Number(cutDays), ...baseDays] : baseDays;
+  const own = regulation?.source === "own";
+  const clauseOptions = [
+    { value: "", label: ar ? "— لم يُحدَّد —" : "— Not set —" },
+    ...(regulation?.clauses || []).map((c, i) => ({ value: c.id, label: `${i + 1}. ${ar ? c.ar || c.en : c.en || c.ar}` })),
+  ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -177,6 +189,29 @@ export default function DisciplineRaiseForm({
               onChange={onEmployee}
             />
           </label>
+          {regulation ? (
+            <label data-raise-clause="" style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0, gridColumn: "1 / -1" }}>
+              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>
+                {own
+                  ? (ar ? `بند المخالفة في لائحة تنظيم العمل المعتمدة${regulation.approvalNo ? ` (${regulation.approvalNo})` : ""} — المادة 67` : "Offence clause in the approved regulation — Article 67")
+                  : (ar ? "بند المخالفة — من النموذج الاسترشادي حتى تُسجَّل لائحة المنشأة (المادة 67)" : "Offence clause — from the model until the establishment's regulation is recorded (Article 67)")}
+              </span>
+              <GreenMenu
+                ariaLabel={ar ? "بند المخالفة" : "Offence clause"}
+                menuId="discipline-raise-clause"
+                value={clauseId}
+                options={clauseOptions}
+                onChange={onClause}
+              />
+              {clauseStep ? (
+                <span data-raise-clause-step="" style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
+                  {ar
+                    ? <>{clauseStep.timeLabel} لهذا الموظف{clauseStep.lastAt ? ` — السابقة وُقّعت ${clauseStep.lastAtLabel}` : ""}{clauseStep.lapsed && clauseStep.time === 1 ? " — مضى 180 يوماً على السابقة فلا تشديد (المادة 68)" : ""}. اللائحة تنص على: <strong style={{ color: "var(--nv-ink)" }}>{clauseStep.label}</strong>{clauseStep.beyond ? " (آخر درجة في البند)" : ""} — طُبّق على الجزاء أدناه.</>
+                    : <>{clauseStep.timeLabel} for this employee. The regulation says: <strong>{clauseStep.label}</strong> — applied below.</>}
+                </span>
+              ) : null}
+            </label>
+          ) : null}
           <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
             <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "الجزاء من المادة 66" : "Penalty from Article 66"}</span>
             <GreenMenu

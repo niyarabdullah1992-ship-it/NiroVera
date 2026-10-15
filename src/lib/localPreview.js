@@ -132,7 +132,7 @@ export function enterLocalPreview() {
         anonymousId: "a_mgr",
         createdAt: now,
         managedStations: [],
-        leaveRequests: [{ id: "lv_1", status: "pending", type: "annual" }],
+        leaveRequests: [{ id: "lv_1", status: "pending", type: "annual", reason: "إجازة عائلية" }],
         otherRequests: [{
           id: "or_1",
           status: "pending",

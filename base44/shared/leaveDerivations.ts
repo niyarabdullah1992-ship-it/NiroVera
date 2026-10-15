@@ -4,13 +4,15 @@
  */
 
 import { articleOfficialText } from "./laborArticleTexts.ts";
+import { checkGroundedRefusalGate } from "./statutoryRefusal.ts";
+import { checkJobSearchDayGate } from "./rightsRequests.ts";
 import { addLaborDays, citeLeaveType, citeRule, isRamadanHoursSubject, lastRamadanDay, ownerHolidayBag, RAMADAN_WINDOWS, rulingCivicDate, rulingEidSpan, ruleAt, ruleValue, type LaborCalendar } from "./laborRules.ts";
 import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAVE_TRACK_PAID, type ExamConsentExtras } from "./otherRequestDerivations.ts";
 
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
 
 export const CHAPTER_LEAVE_TYPES = [
-  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "emergency", "unpaid",
+  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "emergency", "comp", "job_search", "unpaid",
 ] as const;
 
 export const LEAVE_TYPES = [
@@ -29,6 +31,8 @@ export const LEAVE_TYPES = [
   { key: "eid", total: null, article: citeLeaveType("eid")?.article ?? null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
   { key: "exam", total: null, article: citeLeaveType("exam")?.article ?? null, ar: "امتحان", en: "Exam", requiresFile: true },
   { key: "emergency", total: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article ?? null, ar: "اضطرارية", en: "Emergency" },
+  { key: "comp", total: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
+  { key: "job_search", total: null, article: "78", ar: "يوم بحث عن عمل", en: "Job-search day" },
   { key: "unpaid", total: null, article: citeLeaveType("unpaid")?.article ?? null, ar: "بدون راتب", en: "Unpaid" },
 ] as const;
 
@@ -102,6 +106,9 @@ export type LeaveApproveExtras = {
   };
   otherRequests?: ExamConsentExtras["otherRequests"];
   employee?: ExamConsentExtras["employee"] & { id?: string };
+  rejectGround?: string;
+  rejectVerified?: boolean;
+  skipGrounds?: boolean;
 };
 
 export function addCalendarDays(iso: string | undefined, n: number) {
@@ -209,6 +216,8 @@ export function checkLeaveGenderGate(request: LeaveRequestLike | null | undefine
 export function leaveNeedsAttachment(request: LeaveRequestLike) {
   const key = String(request.type || "").trim().toLowerCase();
   if (key === "maternity_extend") return false;
+  // Arts. 109 / 107 / 78 ask no proof for annual, compensatory or job-search days.
+  if (key === "annual" || key === "comp" || key === "job_search" || key === "grant") return false;
   const days = Number(request.days) || computeLeaveDays(request.startDate, request.endDate);
   const type = LEAVE_TYPES.find((t) => t.key === request.type);
   if (type && "requiresFile" in type && type.requiresFile) return true;
@@ -483,7 +492,10 @@ export function checkRejectLeaveGate(request: LeaveRequestLike | null | undefine
   const next = String(extras.nextStatus || extras.action || extras.status || "rejected").trim().toLowerCase();
   if (next !== "rejected") return { ok: true as const };
   const type = String(request?.type || "").trim().toLowerCase();
-  if (type !== "exam") return { ok: true as const };
+  if (type !== "exam") {
+    if (extras.actor === "employee" || extras.skipGrounds) return { ok: true as const };
+    return checkGroundedRefusalGate({ ...(request || {}), type, family: "leave" }, { ground: extras.rejectGround, verified: extras.rejectVerified, actor: extras.actor });
+  }
   if (extras.actor === "employee") return { ok: true as const };
   const qualify = examLeaveQualifies(request || {}, extras);
   if (!qualify.ok) return { ok: true as const, via: "not_qualified" as const, qualify };
@@ -792,9 +804,19 @@ function sickStatutoryYearWindow(requests: LeaveRequestLike[] | undefined, onDat
   return { start: startIso, end: addCalendarDays(startIso, 364) };
 }
 
-function usedLeaveDays(requests: LeaveRequestLike[] | undefined, key: string, onDate?: string, hireDate?: string, calendar?: LaborCalendar | null, company?: LeaveApproveExtras["company"], employee?: LeaveApproveExtras["employee"]) {
+/** Arts. 113 and 151: given again at every marriage, death or birth — counted per event, not per career. */
+export const PER_EVENT_LEAVE_TYPES = ["marriage", "bereavement", "bereavement_sibling", "paternity", "maternity"];
+
+function usedLeaveDays(requests: LeaveRequestLike[] | undefined, key: string, onDate?: string, hireDate?: string, calendar?: LaborCalendar | null, company?: LeaveApproveExtras["company"], employee?: LeaveApproveExtras["employee"], perEvent: { eventDate?: string; exceptId?: string } = {}) {
   const k = String(key || "").trim().toLowerCase();
   const approved = (requests || []).filter((r) => String(r.type || "").toLowerCase() === k && r.status === "approved");
+  if (PER_EVENT_LEAVE_TYPES.includes(k)) {
+    const ev = dateOnly(perEvent.eventDate);
+    if (!ev) return 0;
+    return approved
+      .filter((r) => r.id !== perEvent.exceptId && dateOnly((r as { eventDate?: string }).eventDate) === ev)
+      .reduce((sum, r) => sum + (Number(r.days) || computeLeaveDays(r.startDate, r.endDate) || 0), 0);
+  }
   if (k === "sick") {
     const win = sickStatutoryYearWindow(requests, onDate);
     return approved.reduce((sum, r) => {
@@ -865,6 +887,7 @@ function unusedFromPreviousYear(profile: LeaveApproveExtras["profile"], requests
 
 export function leaveNeedsArticle118Ack(type?: string) {
   const key = String(type || "").trim().toLowerCase();
+  if (key === "job_search") return false;
   return LEAVE_TYPES.some((row) => row.key === key);
 }
 
@@ -977,6 +1000,10 @@ export function checkLeaveSelfRaiseGate(request: LeaveRequestLike | null | undef
 export function checkSubmitLeaveGate(request: LeaveRequestLike | null | undefined, extras: LeaveApproveExtras = {}) {
   const selfRaise = checkLeaveSelfRaiseGate(request, extras);
   if (!selfRaise.ok) return selfRaise;
+  if (String(request?.type || "").toLowerCase() === "job_search") {
+    const js = checkJobSearchDayGate({ employee: extras.employee || { profile: extras.profile, leaveRequests: extras.requests }, startDate: request?.startDate, endDate: request?.endDate, today: extras.today, exceptId: request?.id });
+    if (!js.ok) return js;
+  }
   const gate = checkApproveLeaveGate({ ...(request || {}), status: "pending" }, extras);
   if (!gate.ok) return gate;
   const ack = checkNoOtherEmployerGate(request);
@@ -1382,7 +1409,8 @@ export function checkApproveLeaveGate(
     }
     const total = getLeaveTotal(profile, type, onDate);
     if (total != null) {
-      const used = usedLeaveDays(extras.requests || extras.profile?.leaveRequests || [], type, onDate, extras.profile?.hireDate);
+      const perEvent = PER_EVENT_LEAVE_TYPES.includes(type);
+      const used = usedLeaveDays(extras.requests || extras.profile?.leaveRequests || [], type, onDate, extras.profile?.hireDate, undefined, undefined, undefined, perEvent ? { eventDate: request.eventDate || extras.eventDate, exceptId: request.id } : {});
       const remaining = Math.max(0, total - used);
       if (days > remaining) {
         return {

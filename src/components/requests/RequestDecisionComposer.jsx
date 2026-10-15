@@ -13,6 +13,7 @@ export default function RequestDecisionComposer({
   onNote,
   showFile = false,
   fileOptional = true,
+  fileTitle = "",
   fileLabel,
   fileHint,
   file = null,
@@ -33,6 +34,12 @@ export default function RequestDecisionComposer({
   onApprove,
   onReject,
   onRevise,
+  grounds = null,
+  groundName = "",
+  ground = "",
+  onGround,
+  verified = false,
+  onVerified,
 }) {
   const fileRef = useRef(null);
   const approveOk = !!approveGate.ok && !busy && !fileBusy;
@@ -47,121 +54,107 @@ export default function RequestDecisionComposer({
     !approveGate.ok ? { tone: "stop", text: ar ? approveGate.reason : approveGate.reasonEn } : null,
     approveGate.ok && approveGate.via === "late_notice" ? { tone: "ok", text: ar ? approveGate.reason : approveGate.reasonEn } : null,
     article106 ? { tone: "", text: ar ? "المادة 106: العمل إجباري — يجوز رد اختيار التعويض فقط." : "Article 106: the work is mandatory — you may only return the compensation choice." } : null,
-    !article106 && !rejectGate.ok ? { tone: "stop", text: ar ? rejectGate.reason : rejectGate.reasonEn } : null,
+    !article106 && !rejectGate.ok && !["REFUSAL_GROUND_REQUIRED", "REFUSAL_VERIFY_REQUIRED"].includes(rejectGate.error) ? { tone: "stop", text: ar ? rejectGate.reason : rejectGate.reasonEn } : null,
   ].filter(Boolean);
 
+  // One decision bar: reason (and the stamped copy when the type issues one), then the three outcomes in a row.
   return (
-    <div className="nv-req-decision" dir={ar ? "rtl" : "ltr"}>
-      <section className="nv-req-decision-col">
-        <header className="nv-req-decision-head">
-          <strong>{ar ? "قرار الجهة المعتمدة" : "Approver decision"}</strong>
-          <em>{showFile ? hint : (ar ? "يُحفظ مع الطلب" : "Stored with the request")}</em>
-        </header>
-        <div className="nv-req-decision-side">
-          {showFile ? (
-            <div className="nv-req-decision-file">
-              <input
-                ref={fileRef}
-                className="nv-req-file-native"
-                type="file"
-                accept={accept}
-                tabIndex={-1}
-                aria-hidden="true"
-                onChange={(event) => {
-                  onPickFile?.(event.target.files?.[0] || null);
-                  event.target.value = "";
-                }}
-              />
-              <button
-                type="button"
-                className="nv-attach nv-req-decision-attach"
-                disabled={busy || fileBusy}
-                onClick={() => fileRef.current?.click()}
-              >
-                {fileBusy ? (ar ? "جارٍ قراءة الملف…" : "Reading the file…") : attachLabel}
-              </button>
-              {file?.name ? (
-                <span className="nv-req-decision-chosen">
-                  <span>{ar ? "المختار" : "Chosen"}</span>
-                  <strong dir="ltr">{file.name}</strong>
-                  <button type="button" onClick={onClearFile}>{ar ? "أزل" : "Remove"}</button>
-                </span>
-              ) : null}
-              {fileError ? <span className="nv-req-decision-hint is-stop">{fileError}</span> : null}
-            </div>
-          ) : (
-            <span className="nv-req-decision-quiet">{ar ? "لا مرفق لهذا القرار" : "No file on this decision"}</span>
-          )}
-          {showExamNotice ? (
-            <label className="nv-req-decision-exam">
-              <span>{ar ? "تاريخ صدور ورقة المواعيد" : "Timetable issue date"}</span>
-              <PlatformDateField ar={ar} value={examNotice} onChange={onExamNotice} />
+    <div className="nv-dec" dir={ar ? "rtl" : "ltr"} data-req-decision="1">
+      <div className="nv-dec-head">
+        <strong>{ar ? "قرارك" : "Your decision"}</strong>
+        <span>{ar ? "السبب مطلوب للرفض أو الإعادة فقط، ويُحفظ في سجل التدقيق باسمك." : "A reason is required only to refuse or return, and is stored on the audit trail in your name."}</span>
+      </div>
+      <div className={`nv-dec-body${showFile || showExamNotice ? " has-side" : ""}`}>
+        {grounds && grounds.length ? (
+          <fieldset className="nv-dec-grounds" data-refusal-grounds="1">
+            <legend>{ar ? "حق نظامي — يُرفض فقط إن لم يثبت شرطه" : "A statutory right — refused only if its condition is not met"}</legend>
+            {grounds.map((g) => (
+              <label key={g.key} className={ground === g.key ? "is-on" : ""}>
+                <input type="radio" name={`ground-${groundName || grounds.map((x) => x.key).join("")}`} checked={ground === g.key} onChange={() => onGround?.(g.key)} />
+                <span>{ar ? g.ar : g.en}</span>
+              </label>
+            ))}
+            <label className={`nv-dec-verify${verified ? " is-on" : ""}`}>
+              <input type="checkbox" checked={verified} onChange={(e) => onVerified?.(e.target.checked)} />
+              <span>{ar ? "تحققت من السبب قبل الرفض" : "I checked the ground before refusing"}</span>
             </label>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="nv-req-decision-col">
-        <header className="nv-req-decision-head">
-          <strong>{ar ? "سبب الرفض أو الإعادة" : "Reason to refuse or return"}</strong>
-          <em>{ar ? "يُطلب عند الرفض أو الإعادة فقط، ويُحفظ في سجل التدقيق" : "Required only to refuse or return, and stored on the audit trail"}</em>
-        </header>
-        <label className="nv-req-decision-reason">
+            <em>{ar ? "خطأ في التعبئة؟ أعده للتعديل بدل الرفض. ولا يُرفض لظروف العمل." : "A filing mistake? Return it for a change instead. Never refused for work reasons."}</em>
+          </fieldset>
+        ) : null}
+        <label className="nv-dec-reason">
+          <span>{grounds && grounds.length ? (ar ? "تفصيل (اختياري للرفض، مطلوب للإعادة)" : "Detail (optional to refuse, required to return)") : (ar ? "سبب الرفض أو الإعادة" : "Reason to refuse or return")}</span>
           <textarea
             value={note}
-            rows={3}
+            rows={2}
             onChange={(event) => onNote?.(event.target.value)}
             placeholder={ar ? "اكتب السبب هنا" : "Write the reason here"}
           />
         </label>
-      </section>
-
-      <section className="nv-req-decision-col">
-        <header className="nv-req-decision-head">
-          <strong>{ar ? "الإجراء" : "Action"}</strong>
-          <em>{ar ? "اعتماد أو إعادة أو رفض" : "Approve, return, or refuse"}</em>
-        </header>
-        <div className="nv-req-decision-actions">
-          <button
-            type="button"
-            className="nv-req-decision-primary"
-            disabled={!approveOk}
-            onClick={onApprove}
-          >
-            {approveLabel || (ar ? "اعتمد وأصدر الملف" : "Approve and issue the file")}
-          </button>
-          <button
-            type="button"
-            className="nv-req-decision-secondary"
-            disabled={busy || !noteReady}
-            onClick={onRevise}
-          >
-            {ar ? "أعده للتعديل" : "Return for a change"}
-          </button>
-          {article106 || !rejectGate.ok ? (
-            <button type="button" className="nv-req-decision-refuse" disabled>
-              {ar ? "ارفض" : "Refuse"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="nv-req-decision-refuse"
-              disabled={busy || refuseBlocked}
-              onClick={onReject}
-            >
-              {ar ? "ارفض" : "Refuse"}
-            </button>
-          )}
-        </div>
-      </section>
-
+        {showFile || showExamNotice ? (
+          <div className="nv-dec-side">
+            {showFile ? (
+              <div className="nv-dec-file">
+                <span>{fileTitle || (fileOptional ? (ar ? "النسخة المختومة" : "Stamped copy") : (ar ? "ملف الموافقة" : "Consent letter"))} <em>{hint}</em></span>
+                <input
+                  ref={fileRef}
+                  className="nv-req-file-native"
+                  type="file"
+                  accept={accept}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  onChange={(event) => {
+                    onPickFile?.(event.target.files?.[0] || null);
+                    event.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  className="nv-dec-attach"
+                  disabled={busy || fileBusy}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {fileBusy ? (ar ? "جارٍ قراءة الملف…" : "Reading the file…") : attachLabel}
+                </button>
+                {file?.name ? (
+                  <span className="nv-dec-chosen">
+                    <strong dir="ltr">{file.name}</strong>
+                    <button type="button" onClick={onClearFile}>{ar ? "أزل" : "Remove"}</button>
+                  </span>
+                ) : null}
+                {fileError ? <span className="nv-dec-note is-stop">{fileError}</span> : null}
+              </div>
+            ) : null}
+            {showExamNotice ? (
+              <label className="nv-dec-file">
+                <span>{ar ? "تاريخ صدور ورقة المواعيد" : "Timetable issue date"}</span>
+                <PlatformDateField ar={ar} value={examNotice} onChange={onExamNotice} />
+              </label>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
       {gateNotes.length ? (
-        <div className="nv-req-decision-notes">
+        <div className="nv-dec-notes">
           {gateNotes.map((item) => (
-            <p key={item.text} className={`nv-req-decision-note${item.tone ? ` is-${item.tone}` : ""}`}>{item.text}</p>
+            <p key={item.text} className={`nv-dec-note${item.tone ? ` is-${item.tone}` : ""}`}>{item.text}</p>
           ))}
         </div>
       ) : null}
+      <div className="nv-dec-actions">
+        <button type="button" className="nv-dec-approve" disabled={!approveOk} onClick={onApprove}>
+          {approveLabel || (ar ? "اعتمد وأصدر الملف" : "Approve and issue the file")}
+        </button>
+        <button type="button" className="nv-dec-return" disabled={busy || !noteReady} onClick={onRevise}>
+          {ar ? "أعده للتعديل" : "Return for a change"}
+        </button>
+        {article106 || !rejectGate.ok ? (
+          <button type="button" className="nv-dec-refuse" disabled>{ar ? "ارفض" : "Refuse"}</button>
+        ) : (
+          <button type="button" className="nv-dec-refuse" disabled={busy || refuseBlocked} onClick={onReject}>
+            {ar ? "ارفض" : "Refuse"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

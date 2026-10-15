@@ -7,6 +7,8 @@ import {
   EMPTY_PERSON,
   EMPTY_VEHICLE,
   canAddCrewItem,
+  duplicatePersonIdIndex,
+  PROOF_PEOPLE_LIMIT,
   formPeople,
   formVehicles,
 } from "@/lib/workProofCrew";
@@ -91,11 +93,31 @@ export default function VisitorProofFields({
     || (stations || []).find((s) => String(s.id) === lockedStation)?.name
     || "";
   const addBtn = {
-    ...ui.btnGhost,
-    display: "inline-flex",
+    fontFamily: "inherit",
+    display: "flex",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
-    marginTop: 8,
+    width: "100%",
+    height: 40,
+    marginTop: 4,
+    borderRadius: 10,
+    border: "1.5px dashed #0F5535",
+    background: "transparent",
+    color: "#0F5535",
+    fontSize: 12.5,
+    fontWeight: 700,
+    cursor: "pointer",
+  };
+  const dupIndex = duplicatePersonIdIndex(people);
+  // The next one of the same crew or group usually shares the nationality and ID type.
+  const nextPerson = () => {
+    const last = people[people.length - 1] || {};
+    return { ...EMPTY_PERSON, nationality: last.nationality || "", idType: last.idType || "" };
+  };
+  const setBriefed = (index) => (event) => {
+    const checked = event.target.checked;
+    setPeople(people.map((person, i) => (i === index ? { ...person, briefed: checked } : person)));
   };
 
   return (
@@ -220,6 +242,11 @@ export default function VisitorProofFields({
             >
               <RepeatHead
                 title={ar ? `زائر ${index + 1}` : `Visitor ${index + 1}`}
+                extra={index === dupIndex ? (
+                  <span data-dup-id="1" style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-bad-ink)", background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)", borderRadius: 999, padding: "1px 8px" }}>
+                    {ar ? "رقم الهوية مكرر" : "Repeated ID"}
+                  </span>
+                ) : null}
                 canRemove={people.length > 1}
                 onRemove={() => setPeople(people.filter((_, i) => i !== index))}
                 ar={ar}
@@ -263,7 +290,14 @@ export default function VisitorProofFields({
                 <Field label={ar ? "المسمى" : "Title"}>
                   <input value={person.title} onChange={patchPerson(index, "title")} style={box} />
                 </Field>
+                <Field label={ar ? "رقم بطاقة الزائر" : "Visitor badge no."}>
+                  <input value={person.badge || ""} onChange={patchPerson(index, "badge")} dir="ltr" placeholder={ar ? "تُسلَّم عند البوابة" : "Handed at the gate"} style={box} />
+                </Field>
               </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12, color: "var(--nv-ink2)", cursor: "pointer" }}>
+                <input type="checkbox" checked={!!person.briefed} onChange={setBriefed(index)} />
+                {ar ? "تلقّى تعريف السلامة قبل الدخول" : "Safety briefing given before entry"}
+              </label>
             </div>
           ))}
         </div>
@@ -273,11 +307,13 @@ export default function VisitorProofFields({
         {canAddCrewItem(people) ? (
           <button
             type="button"
-            onClick={() => setPeople([...people, { ...EMPTY_PERSON }])}
+            onClick={() => setPeople([...people, nextPerson()])}
+            data-add-person="1"
             style={addBtn}
           >
             <Plus style={{ width: 14, height: 14 }} />
             {ar ? "إضافة زائر" : "Add visitor"}
+            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500, opacity: 0.75 }}>{people.length}/{PROOF_PEOPLE_LIMIT}</span>
           </button>
         ) : null}
       </OpsTaskSection>

@@ -85,7 +85,9 @@ export function faceSectionTarget(page, railSide) {
   if (railSide !== "employee" || !page) return page;
   const personal = employeeMoneyHref(page.appId || page.to);
   if (!personal) return page;
-  return { ...page, to: personal, badge: undefined, glow: undefined };
+  // On the employee side the asset register is management's; what the employee has is العهد.
+  const custody = String(page.to || "").split("?")[0] === "/app/assets" || page.appId === "assets";
+  return { ...page, to: personal, badge: undefined, glow: undefined, ...(custody ? { label: page.label && /[\u0600-\u06FF]/.test(page.label) ? "العهد" : "Custody" } : null) };
 }
 
 /**
@@ -106,7 +108,7 @@ export function railFaceHref(pathname, search, targetSide) {
     }
     params.set("lane", "manage");
     const tab = params.get("tab");
-    if (!tab || ["punch", "mine", "roster", "report"].includes(tab)) {
+    if (!tab || ["punch", "mine", "record", "roster", "report"].includes(tab)) {
       if (isPath(path, "/app/shifts")) params.set("tab", "schedule");
       else if (!isPath(path, "/app/calendar")) params.set("tab", "team");
     }
@@ -120,6 +122,8 @@ export function railFaceHref(pathname, search, targetSide) {
     const tab = params.get("tab") || "";
     const shared = tab === "law" || tab === "schedule" || tab === "archive";
     params.set("tab", shared ? tab : (targetSide === "manage" ? "manage" : "mine"));
+    if (targetSide === "manage") params.set("lane", "manage");
+    else params.delete("lane");
     return joinPath("/app/discipline", params);
   }
   if (isPath(path, "/app/complaints")) {

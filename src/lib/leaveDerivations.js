@@ -5,13 +5,15 @@ import { citeLeaveType, citeRule, isRamadanHoursSubject, ruleAt, ruleValue } fro
 import { daysUntilLeaveStart } from "./leaveEntitlementCycle.js";
 import { officialHolidayKindLabel, officialHolidayList, officialHolidayOn } from "./ummAlQuraCalendar.js";
 import { chargeableAnnualWorkDays, chargeableSpanExcludingHolidays, deriveEidOverlap } from "./leaveEidOverlap.js";
-import { annualBalanceSplit, anniversaryYearWindow, getLeaveTotal, leftoverGrantDays, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, usedLeaveDays, serviceYearsFromHire, iddahPaidDays, lastApprovedMaternity } from "./leaveTypes.js";
+import { checkGroundedRefusalGate } from "./statutoryRefusal.js";
+import { checkJobSearchDayGate } from "./rightsRequests.js";
+import { annualBalanceSplit, anniversaryYearWindow, getLeaveTotal, leftoverGrantDays, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, usedLeaveDays, serviceYearsFromHire, iddahPaidDays, lastApprovedMaternity, PER_EVENT_LEAVE_TYPES } from "./leaveTypes.js";
 import { articleOfficialText } from "./laborArticleTexts.js";
 import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAVE_TRACK_PAID } from "./otherRequestDerivations.js";
 import { otherRequestsForEmployeeId } from "./employeeRequestBags.js";
 
 export const CHAPTER_LEAVE_TYPES = [
-  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "emergency", "unpaid",
+  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "work_injury", "emergency", "comp", "job_search", "unpaid",
 ];
 
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
@@ -31,7 +33,10 @@ export const LEAVE_TYPES = [
   { key: "hajj", total: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article || null, ar: "حج", en: "Hajj" },
   { key: "eid", total: null, article: citeLeaveType("eid")?.article || null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
   { key: "exam", total: null, article: citeLeaveType("exam")?.article || null, ar: "امتحان", en: "Exam", requiresFile: true },
+  { key: "work_injury", total: null, article: null, ar: "إصابة عمل", en: "Work injury", requiresFile: true },
   { key: "emergency", total: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
+  { key: "comp", total: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
+  { key: "job_search", total: null, article: "78", ar: "يوم بحث عن عمل", en: "Job-search day" },
   { key: "unpaid", total: null, article: citeLeaveType("unpaid")?.article || null, ar: "بدون راتب", en: "Unpaid" },
 ];
 
@@ -223,6 +228,8 @@ export function checkLeaveGenderGate(request, extras = {}) {
 export function leaveNeedsAttachment(request, typeRequiresFile = false) {
   const key = String(request?.type || "").trim().toLowerCase();
   if (key === "maternity_extend") return false;
+  // Art. 109 / 107 / 78: annual, compensatory and job-search days need no proof — the law asks none.
+  if (key === "annual" || key === "comp" || key === "job_search" || key === "grant") return !!typeRequiresFile;
   const days = Number(request?.days) || computeLeaveDays(request?.startDate, request?.endDate);
   const type = LEAVE_TYPES.find((t) => t.key === request?.type);
   if (typeRequiresFile || type?.requiresFile) return true;
@@ -494,7 +501,10 @@ export function checkRejectLeaveGate(request, extras = {}) {
   const next = String(extras.nextStatus || extras.action || extras.status || "rejected").trim().toLowerCase();
   if (next !== "rejected") return { ok: true };
   const type = String(request?.type || extras.type || "").trim().toLowerCase();
-  if (type !== "exam") return { ok: true };
+  if (type !== "exam") {
+    if (extras.actor === "employee" || extras.skipGrounds) return { ok: true };
+    return checkGroundedRefusalGate({ ...request, type, family: "leave" }, { ground: extras.rejectGround, verified: extras.rejectVerified, actor: extras.actor });
+  }
   if (extras.actor === "employee") return { ok: true };
   const qualify = examLeaveQualifies(request, extras);
   if (!qualify.ok) return { ok: true, via: "not_qualified", qualify };
@@ -822,6 +832,7 @@ function checkStatutoryLeaveGates(request, extras, days, onDate, cite) {
 /** Any type on the leave raise form — not only statutory chapter types. Other-request kinds stay out. */
 export function leaveNeedsArticle118Ack(type) {
   const key = String(type || "").trim().toLowerCase();
+  if (key === "job_search") return false;
   return LEAVE_TYPES.some((row) => row.key === key);
 }
 
@@ -921,6 +932,17 @@ export function checkLeaveSelfRaiseGate(request, extras = {}) {
   const subjectId = String(extras.employee?.id || extras.employeeId || request?.employeeId || "").trim();
   if (!actorId || !subjectId) return { ok: true };
   if (actorId === subjectId) return { ok: true };
+  // Recorded by management on the worker's behalf — only as an approved record carrying the paper (sick report, etc.).
+  const papers = (Array.isArray(request?.files) ? request.files : []).filter(Boolean);
+  if (extras.employerRecorded === true && papers.length) return { ok: true, onBehalf: true };
+  if (extras.employerRecorded === true) {
+    return {
+      ok: false,
+      error: "LEAVE_ON_BEHALF_PAPER",
+      reason: "تسجيل الإجازة نيابة عن الموظف يحتاج المستند المؤيد (تقرير أو ورقة الواقعة).",
+      reasonEn: "Recording leave on a worker's behalf needs the supporting paper (report or event document).",
+    };
+  }
   return {
     ok: false,
     error: "LEAVE_EMPLOYEE_ONLY",
@@ -933,6 +955,10 @@ export function checkLeaveSelfRaiseGate(request, extras = {}) {
 export function checkSubmitLeaveGate(request, extras = {}) {
   const selfRaise = checkLeaveSelfRaiseGate(request, extras);
   if (!selfRaise.ok) return selfRaise;
+  if (String(request?.type || "").toLowerCase() === "job_search") {
+    const js = checkJobSearchDayGate({ employee: extras.employee || { profile: extras.profile, leaveRequests: extras.requests }, startDate: request.startDate, endDate: request.endDate, today: extras.today, exceptId: request.id });
+    if (!js.ok) return js;
+  }
   const gate = checkApproveLeaveGate({ ...(request || {}), status: "pending" }, false, extras);
   if (!gate.ok) return gate;
   const ack = checkNoOtherEmployerGate(request);
@@ -1065,14 +1091,17 @@ export function checkApproveLeaveGate(request, typeRequiresFile = false, extras 
     } else {
     const total = getLeaveTotal(profile, type, onDate);
     if (total != null) {
-      const used = usedLeaveDays(requests, type, onDate, extras.profile?.hireDate);
+      const perEvent = PER_EVENT_LEAVE_TYPES.includes(type);
+      const used = usedLeaveDays(requests, type, onDate, extras.profile?.hireDate, undefined, undefined, undefined, perEvent ? { eventDate: request.eventDate || extras.eventDate, exceptId: request.id } : {});
       const leftover = Math.max(0, total - used);
       const remaining = leftover;
       if (days > remaining) {
         return {
           ok: false,
           error: "LEAVE_BALANCE_EXCEEDED",
-          reason: `موقوف — يتجاوز الطلب الرصيد النظامي (المتبقي ${remaining} من ${total} يوماً).`,
+          reason: perEvent
+            ? `موقوف — لهذه الواقعة ${total} أيام، استُخدم منها ${used} — المتبقي ${remaining} (تتجدد الإجازة مع كل واقعة).`
+            : `موقوف — يتجاوز الطلب الرصيد النظامي (المتبقي ${remaining} من ${total} يوماً).`,
           reasonEn: `Blocked — the request exceeds the statutory balance (${remaining} of ${total} days left).`,
           cite,
           remaining,

@@ -3,6 +3,9 @@
 import { LEAVE_TYPES, getLeaveTotal, grantDaysOf, leaveTypeLabel } from "./leaveTypes.js";
 import { checkPunchRecordGate, parsePunchClock } from "./attendancePunch.js";
 import { checkIssuedLetterFileGate, checkRaiseSignableGate, isLetterSignableType } from "./requestSigning.js";
+import { checkDutyRequestFields, isDutyRequestType } from "./dutyRequests.js";
+import { checkResignationFields, RESIGNATION_TYPE } from "./exitRequests.js";
+import { ART81_EXIT_TYPE, DAMAGE_OBJECTION_TYPE, DOCUMENTS_RETURN_TYPE, LEAVE_CARRY_TYPE, NIGHT_AVOID_TYPE, checkArt81Gate, checkDamageObjectionGate, checkDocumentsReturnGate, checkLeaveCarryGate, checkNightAvoidGate } from "./rightsRequests.js";
 
 export const LEAVE_TOPUP_TYPE = "leave_topup";
 export const LEAVE_TOPUP_MAX_DAYS = 30;
@@ -69,9 +72,19 @@ export const OTHER_REQUEST_TYPES = [
   { key: "written_consent", ar: "موافقة خطية", en: "Written consent" },
   { key: STUDY_CONSENT_TYPE, ar: STUDY_CONSENT_LABEL_AR, en: STUDY_CONSENT_LABEL_EN },
   { key: NIGHT_FITNESS_TYPE, ar: NIGHT_FITNESS_LABEL_AR, en: NIGHT_FITNESS_LABEL_EN },
+  { key: "nursing_hour", ar: "ساعة الرضاعة", en: "Nursing hour" },
+  { key: "pregnancy_notice", ar: "إبلاغ حمل", en: "Pregnancy notice" },
+  { key: "heat_report", ar: "بلاغ عمل مكشوف", en: "Exposed-work report" },
+  { key: "family_duties", ar: "إبلاغ بمسؤوليات عائلية", en: "Family responsibilities notice" },
   { key: "manual_punch", ar: "تسجيل حضور يدوي", en: "Manual punch" },
   { key: "checkout_fix", ar: "تصحيح انصراف", en: "Checkout correction" },
   { key: "custody", ar: "عهدة", en: "Custody" },
+  { key: RESIGNATION_TYPE, ar: "تقديم استقالة", en: "Resignation" },
+  { key: DAMAGE_OBJECTION_TYPE, ar: "اعتراض على خصم إتلاف", en: "Damage-deduction objection" },
+  { key: LEAVE_CARRY_TYPE, ar: "تأجيل إجازة سنوية", en: "Annual-leave carry-over" },
+  { key: ART81_EXIT_TYPE, ar: "ترك العمل دون إشعار (المادة 81)", en: "Leaving without notice (Art. 81)" },
+  { key: NIGHT_AVOID_TYPE, ar: "تجنب العمل الليلي لسبب صحي", en: "Avoid night work for health" },
+  { key: DOCUMENTS_RETURN_TYPE, ar: "استرداد الوثائق المودعة", en: "Return of deposited documents" },
   { key: LEAVE_TOPUP_TYPE, ar: "رفع رصيد إجازة", en: "Leave balance top-up" },
   { key: "document", ar: "مستند / أخرى", en: "Document / other" },
   { key: "other_request", ar: "طلب آخر", en: "Other request" },
@@ -1170,6 +1183,34 @@ export function checkSubmitOtherRequestGate(input) {
     if (!daysGate.ok) return daysGate;
     return { ok: true, days: daysGate.days };
   }
+  if (type === RESIGNATION_TYPE) {
+    const exit = checkResignationFields(input);
+    if (!exit.ok) return exit;
+  }
+  if (type === DAMAGE_OBJECTION_TYPE) {
+    const g = checkDamageObjectionGate({ notifiedOn: input?.notifiedOn, amount: input?.amount, reason, today: input?.today });
+    if (!g.ok) return g;
+  }
+  if (type === LEAVE_CARRY_TYPE) {
+    const g = checkLeaveCarryGate({ days: input?.days, remaining: input?.remaining, reason });
+    if (!g.ok) return g;
+  }
+  if (type === ART81_EXIT_TYPE) {
+    const g = checkArt81Gate({ caseKey: input?.art81Case, reason, ack: input?.ack });
+    if (!g.ok) return g;
+  }
+  if (type === NIGHT_AVOID_TYPE) {
+    const g = checkNightAvoidGate({ kind: input?.nightAvoidKind, from: input?.from, until: input?.until, file: input?.file || (Array.isArray(input?.files) ? input.files[0] : null), gender: input?.gender });
+    if (!g.ok) return g;
+  }
+  if (type === DOCUMENTS_RETURN_TYPE) {
+    const g = checkDocumentsReturnGate({ reason });
+    if (!g.ok) return g;
+  }
+  if (isDutyRequestType(type) && !(type === "shift_change" && input?.fromRoster)) {
+    const duty = checkDutyRequestFields({ ...input, type });
+    if (!duty.ok) return duty;
+  }
   if ((type === "overtime" || type === "permission" || type === "shift_change" || type === "manual_punch" || type === "checkout_fix") && !String(input?.date || "").trim()) {
     return { ok: false, error: "DATE_REQUIRED", reason: "حدد تاريخ الطلب.", reasonEn: "Set the request date." };
   }
@@ -1203,7 +1244,9 @@ export function checkSubmitOtherRequestGate(input) {
       reasonEn: "Write the consent to remain on night work.",
     };
   }
-  if (isLetterSignableType(type)) {
+  // A letter (salary / employment / other document) is issued by the company: asking for it needs the
+  // purpose and the addressee only — no file from the worker. Custody keeps its hand-signed handover.
+  if (isLetterSignableType(type) && type === "custody") {
     const signGate = checkRaiseSignableGate({
       type,
       file: input?.file || input?.files?.[0],
@@ -1244,6 +1287,15 @@ export function checkApproveOtherRequestGate(request) {
       paper: request.paper || request.files?.[1],
     });
     if (raiseGate.ok) return raiseGate;
+    const hasRaiseFile = Boolean(request.file || request.files?.[0] || request.senderFile);
+    if (request.type !== "custody" && !hasRaiseFile) {
+      return {
+        ok: false,
+        error: "FILE_REQUIRED",
+        reason: "أرفق الوثيقة الصادرة المختومة — تُسلَّم للموظف على البطاقة.",
+        reasonEn: "Attach the issued, stamped letter — it is delivered to the worker on the card.",
+      };
+    }
     return {
       ok: false,
       error: raiseGate.error || "ISSUED_OR_PAPER_REQUIRED",

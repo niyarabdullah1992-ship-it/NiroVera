@@ -10,6 +10,7 @@ import {
   deriveSettlementDeadline,
 } from "@/lib/offboardingDerivations";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import { compPayout, hoursWord } from "@/lib/compLeave";
 import { toast } from "@/components/ui/use-toast";
 import { BORDER, BRAND, BRAND_DEEP, MUTED, NAVY, OK, WARN, BAD, NEUTRAL, CARD, SURFACE } from "@/lib/platformStyles";
 
@@ -391,6 +392,13 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                   label: ar ? `بدل ${eos.unusedAnnualDays} يوم إجازة غير مستنفدة` : `${eos.unusedAnnualDays} days unused annual leave`,
                   value: fmt(eos.leaveCash),
                 },
+                // Regs 22 bis — comp leave not taken before leaving is paid at the actual hourly wage.
+                ...(() => {
+                  const comp = compPayout(employee, new Date().toISOString().slice(0, 10), eos.wage);
+                  return comp.hours > 0
+                    ? [{ label: ar ? `أجرة ${hoursWord(comp.hours)} إجازة تعويضية لم تُؤخذ (اللائحة 22 مكرر)` : `${comp.hours} h untaken compensatory leave (regs 22 bis)`, value: fmt(comp.amount) }]
+                    : [];
+                })(),
               ].map((r) => (
                 <div
                   key={r.label}
@@ -451,7 +459,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                 </span>
                 <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
                   <span dir="ltr" style={{ fontSize: "22px", fontWeight: 600, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right", color: NAVY }}>
-                    {fmt(eos.total)}
+                    {fmt(eos.total + compPayout(employee, new Date().toISOString().slice(0, 10), eos.wage).amount)}
                   </span>
                   <span style={{ fontSize: "12px", color: MUTED }}>SAR</span>
                 </div>

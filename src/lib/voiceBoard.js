@@ -97,8 +97,14 @@ export function topicOf(id) {
 }
 
 export function voicePublicId(item) {
-  const ref = String(item?.voiceRef || item?.anonymousId || item?.id || "").trim();
-  return ref || "—";
+  const ref = String(item?.voiceRef || item?.anonymousId || "").trim();
+  if (ref) return ref;
+  // Older rows carry only an internal id — show a stable short reference, never the raw key.
+  const id = String(item?.id || "");
+  if (!id) return "—";
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 10000;
+  return `${item?.anonymous || item?.kind === "anonymous" ? "AN" : "VO"}-${String(h).padStart(4, "0")}`;
 }
 
 export function hoursAr(n, gen = false) {
@@ -235,15 +241,28 @@ export function decorateVoiceItem(item, {
     : outcome === "return"
       ? (ar ? "أُعيد بملاحظة" : "Returned with a note")
       : (overdue ? (ar ? "رُفع لتجاوز المهلة" : "Raised — SLA passed") : (ar ? "قيد المراجعة" : "Under review"));
-  const steps = (enriched.steps || []).map((step) => ({
+  const skipped = Number(item.reviewStartLevel) || 0;
+  const steps = (enriched.steps || []).map((step, index) => ({
     name: ar ? (step.labelAr || step.labelEn) : (step.labelEn || step.labelAr),
-    when: step.state === "done"
+    when: index < skipped
+      ? (ar ? "تخطّاه — صاحب الصوت" : "Skipped — the author")
+      : step.state === "done"
       ? (ar ? "مضت مهلته" : "Window passed")
       : step.state === "current"
-        ? (ar ? "عنده الآن" : "With them now")
+        ? (settled ? (ar ? "قرّر" : "Ruled") : (ar ? "عنده الآن" : "With them now"))
         : (ar ? "لم يبلغه" : "Not reached"),
     bg: step.state === "pending" ? "var(--nv-card)" : "var(--nv-inset)",
     color: step.state === "pending" ? "var(--nv-muted)" : "var(--nv-ink)",
+    // The shared ladder reads this: one vocabulary for صوت الموظف and المهام.
+    ladder: index < skipped
+      ? "skipped"
+      : step.state === "done"
+        ? (step.vacant ? "vacant" : "passed")
+        : step.state === "current"
+          ? (settled ? "ruled" : "now")
+          : step.vacant
+            ? "vacant"
+            : (!settled && (enriched.steps || [])[index - 1]?.state === "current" ? "next" : "later"),
   }));
   return {
     item,
@@ -269,12 +288,12 @@ export function decorateVoiceItem(item, {
         ? (overdue ? `بـ${hoursAr(left, true)}` : hoursAr(left))
         : (overdue ? `${Math.abs(Math.round(left))}h over` : `${Math.round(left)}h`)),
     slaColor: overdue ? "var(--nv-bad-ink)" : (left != null && left <= 24 ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)"),
-    tier: enriched.escalationLevel > 0
+    tier: enriched.escalationLevel > skipped
       ? (ar ? `رُفع تلقائياً · ${enriched.currentTierLabelAr || "—"}` : `Raised · ${enriched.currentTierLabelEn || "—"}`)
       : (ar ? `لدى ${enriched.currentTierLabelAr || chain[0]?.labelAr || "—"}` : `With ${enriched.currentTierLabelEn || chain[0]?.labelEn || "—"}`),
-    tierColor: enriched.escalationLevel > 0 ? "var(--nv-bad-ink)" : "var(--nv-ink2)",
-    tierBg: enriched.escalationLevel > 0 ? "var(--nv-bad-soft)" : "var(--nv-mute-soft)",
-    tierBorder: enriched.escalationLevel > 0 ? "var(--nv-bad-line)" : "var(--nv-line)",
+    tierColor: enriched.escalationLevel > skipped ? "var(--nv-bad-ink)" : "var(--nv-ink2)",
+    tierBg: enriched.escalationLevel > skipped ? "var(--nv-bad-soft)" : "var(--nv-mute-soft)",
+    tierBorder: enriched.escalationLevel > skipped ? "var(--nv-bad-line)" : "var(--nv-line)",
     meta: [
       ar ? ch.ar : ch.en,
       (() => {
@@ -318,6 +337,7 @@ export function voiceArchiveSmartItems(cards = [], { ar = true } = {}) {
       title: card.title,
       text: [card.meta, card.reply].filter(Boolean).join(" · "),
       date: card.item.closedAt || card.item.decidedAt || card.item.createdAt,
+      branch: card.station?.name || "",
       badge: card.state,
       search: [
         card.title,
@@ -375,7 +395,10 @@ export function deriveVoiceBoard({
   canManage = false,
   userId,
   chain = defaultEscalationChain(),
+  chainFor = null,
 } = {}) {
+  // Each voice climbs its own branch ladder when the caller can name it.
+  const ladder = (item) => (typeof chainFor === "function" ? (chainFor(item) || chain) : chain);
   const workStation = String(viewerStationId || "").trim();
   const scoped = Array.isArray(queueItems)
     ? queueItems
@@ -387,10 +410,10 @@ export function deriveVoiceBoard({
         const sameStation = !workStation || String(row.stationId || "") === workStation;
         return mineNamed || (settledAnon && sameStation);
       });
-  const cards = scoped.map((item) => decorateVoiceItem(item, { employees, stations, ar, nowMs, chain, canManage }));
+  const cards = scoped.map((item) => decorateVoiceItem(item, { employees, stations, ar, nowMs, chain: ladder(item), canManage }));
   const mine = items
     .filter((row) => String(row.authorId) === String(userId) && row.channel !== "anonymous")
-    .map((item) => decorateVoiceItem(item, { employees, stations, ar, nowMs, chain, currentUser: { id: userId }, canManage }));
+    .map((item) => decorateVoiceItem(item, { employees, stations, ar, nowMs, chain: ladder(item), currentUser: { id: userId }, canManage }));
   const open = cards.filter((card) => !card.settled);
   const overdue = open.filter((card) => card.overdue);
   const settled = cards.filter((card) => card.settled);

@@ -171,7 +171,7 @@ export default function VoiceRaiseCard({
           })}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 11.5, color: "var(--nv-warn-ink)", background: "var(--nv-warn-soft)", border: "1px solid var(--nv-warn-line)", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>{topic.cite}</span>
+          <span style={{ fontWeight: 700, fontSize: 11.5, color: "var(--nv-warn-ink)", background: "var(--nv-warn-soft)", border: "1px solid var(--nv-warn-line)", borderRadius: 6, padding: "2px 8px", whiteSpace: "nowrap" }}>{topic.cite}</span>
           <span style={{ fontSize: 12, color: "var(--nv-muted)" }}>{ar ? topic.ruleAr : topic.ruleEn}</span>
         </div>
 

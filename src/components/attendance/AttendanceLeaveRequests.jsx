@@ -70,6 +70,8 @@ export default function AttendanceLeaveRequests({
           ar ? `${days} أيام` : `${days} days`,
           stationName(request.employee?.stationId),
         ].filter(Boolean).join(" · "),
+        person: request.employee?.name || "",
+        branch: stationName(request.employee?.stationId),
         badge: st.label,
       };
     });

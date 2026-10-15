@@ -106,7 +106,12 @@ export default function Requests() {
     : railSide === "manage"
       ? canManage
       : canManage && path.endsWith("/manage");
-  const initialKind = path.endsWith("/other") ? "other" : "leave";
+  const askedKind = new URLSearchParams(location.search || "").get("kind") || "";
+  const initialKind = path.endsWith("/other")
+    ? "other"
+    : (["permission", "shift_change", "nursing_hour", "pregnancy_notice", "heat_report", "family_duties", "manual", "outfix", "resignation"].includes(askedKind)
+      ? askedKind
+      : (manageLane ? "leave_credit" : "leave"));
   const lane = manageLane ? "manage" : "mine";
   const initialFilter = location.state?.requestFilter === "archive" ? "archive" : undefined;
 
@@ -153,18 +158,12 @@ export default function Requests() {
     ]
     : [
       {
-        label: ar ? "الرصيد السنوي" : "Annual balance",
-        value: annual.remaining,
-        note: (annual.total || annual.statutory)
-          ? (ar ? `من ${annual.total || annual.statutory} · المادة 109` : `of ${annual.total || annual.statutory} · Art. 109`)
-          : "—",
-      },
-      {
         label: ar ? "بانتظار قرار" : "Awaiting a decision",
         value: pendingShown,
         note: pendingShown ? (ar ? "لدى مديرك · تصعد بعد 48 س" : "With your manager · escalates after 48h") : "—",
       },
       { label: ar ? "معتمدة هذا العام" : "Approved this year", value: approvedThisYear },
+      { label: ar ? "مرفوضة" : "Refused", value: refusedCount, note: refusedCount ? (ar ? "بسبب مكتوب" : "With a written reason") : "—" },
     ];
 
   return (
@@ -174,21 +173,14 @@ export default function Requests() {
       title={pageTitle}
       hint={manageLane ? pageLede : (
         <>
-          {ar ? "ترفع طلبك هنا ويستقرّ في " : "You raise the request here and it settles on "}
-          <Link to="/app/employees" style={linkInk}>{ar ? "ملف الموظف" : "the employee file"}</Link>
-          {ar ? ". القرار في «" : ". The decision sits in «"}
-          {canManage && railSide !== "employee"
-            ? <Link to="/app/requests/manage" style={linkInk}>{ar ? "إدارة" : "Manage"}</Link>
-            : (ar ? "إدارة" : "Manage")}
-          {ar ? "»، والأثر في " : "», and the effect lands on "}
+          {ar ? "ترفع طلبك هنا ويقرّره مديرك، ويظهر أثره في " : "Raise your request here; your manager decides, and the effect shows on "}
           <Link to="/app/shifts" style={linkInk}>{ar ? "جدول الدوام" : "the duty roster"}</Link>
           {ar ? " و" : " and "}
-          <Link to={railSide === "manage" ? "/app/calendar?lane=manage" : "/app/calendar"} style={linkInk}>{ar ? "التقويم التشغيلي" : "the operational calendar"}</Link>
+          <Link to="/app/attendance?tab=record" style={linkInk}>{ar ? "سجل الحضور" : "the attendance record"}</Link>
           .
         </>
       )}
-      viewNote={viewNote}
-      tabs={laneTabs.map((item) => ({
+      tabs={[].concat(laneTabs.length > 1 ? laneTabs : []).map((item) => ({
         value: item.key,
         label: ar ? item.ar : item.en,
         count: item.count,
@@ -205,8 +197,9 @@ export default function Requests() {
               {index > 0 ? <span aria-hidden style={{ width: 1, height: 28, background: "rgba(255,255,255,.28)" }} /> : null}
               <div style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-start" }}>
                 <span style={{ fontSize: 10.5, color: "#A9CDB8" }}>{item.label}</span>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 18, fontWeight: 600, color: "#fff", unicodeBidi: "isolate" }}>{item.value}</span>
-                {item.note ? <span style={{ fontSize: 10, color: "#C5DBCD" }}>{item.note}</span> : null}
+                <span dir="ltr" style={{ fontSize: 20, fontWeight: 700, color: "#fff", unicodeBidi: "isolate", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>{item.value}</span>
+                {/* Every stat keeps a note line so the three numbers sit on one baseline. */}
+                <span style={{ fontSize: 10, color: "#C5DBCD", minHeight: 14 }}>{item.note && item.note !== "—" ? item.note : "\u00a0"}</span>
               </div>
             </React.Fragment>
           ))}

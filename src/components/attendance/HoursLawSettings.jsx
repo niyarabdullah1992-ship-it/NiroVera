@@ -1,9 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { updateCompany } from "@/lib/store";
-import { hoursPolicyOf, checkWorkPostingGate } from "@/lib/laborHoursPolicy.js";
+import { hoursPolicyOf } from "@/lib/laborHoursPolicy.js";
 import { checkNurseryThreshold } from "@/lib/laborProtectionGates.js";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
-import PlatformDateField from "@/components/shared/PlatformDateField";
 import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";
 import { BORDER, CARD, MUTED, NAVY, field } from "@/lib/platformStyles";
 
@@ -22,6 +21,10 @@ function Flag({ label, note, on, disabled, onToggle }) {
 }
 
 /** Arts 17 / 99 / 100 / 103 / 105 — off by default; خفجي stays on 98. */
+const WEEKDAYS = (ar) => (ar
+  ? ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
+  : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]);
+
 export default function HoursLawSettings({ company, employees = [], canEdit, ar = true, onSaved }) {
   const live = hoursPolicyOf(company);
   const [draft, setDraft] = useState(() => ({
@@ -34,19 +37,30 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
     art105MinistryConsent: live.art105MinistryConsent,
     art105BankedWeeks: live.art105BankedWeeks || "",
     nurseryChildrenCount: live.nurseryChildrenCount || "",
+    gosiInjuryWageMode: live.gosiInjuryWageMode === "stop" ? "stop" : "continue",
+    gosiOccupationalHazards: live.gosiOccupationalHazards === true || live.gosiOccupationalHazards === "yes" ? "yes" : (live.gosiOccupationalHazards === false || live.gosiOccupationalHazards === "no" ? "no" : ""),
     workPosting: {
       hoursTable: live.workPosting?.hoursTable || "",
       restPeriods: live.workPosting?.restPeriods || "",
       weeklyRest: live.workPosting?.weeklyRest || "",
       weeklyRestDow: Number.isInteger(Number(live.workPosting?.weeklyRestDow)) ? Number(live.workPosting.weeklyRestDow) : 5,
       weeklyRestDayCount: Number(live.workPosting?.weeklyRestDayCount) === 1 ? 1 : 2,
+      // Second rest day chosen by management (any weekday) — -1 = none (six-day week).
+      secondRestDow: (() => {
+        const listed = Array.isArray(live.workPosting?.weeklyOffDows) ? live.workPosting.weeklyOffDows.map(Number) : [];
+        if (listed.length >= 2) return listed[1];
+        if (listed.length === 1 || Number(live.workPosting?.weeklyRestDayCount) === 1) return -1;
+        const first = Number.isInteger(Number(live.workPosting?.weeklyRestDow)) ? Number(live.workPosting.weeklyRestDow) : 5;
+        return (first + 1) % 7;
+      })(),
+      fridaySwapNotifiedAt: live.workPosting?.fridaySwapNotifiedAt || "",
+      religiousDutiesEnabled: live.workPosting?.religiousDutiesEnabled === true,
       shiftTimes: live.workPosting?.shiftTimes || "",
       posted: live.workPosting?.posted === true,
       postedAt: live.workPosting?.postedAt || "",
     },
   }));
 
-  const postingGate = useMemo(() => checkWorkPostingGate({ company: { hoursPolicy: { workPosting: draft.workPosting } } }), [draft.workPosting]);
   const nursery = useMemo(
     () => checkNurseryThreshold({ employees, childrenCount: draft.nurseryChildrenCount === "" ? undefined : Number(draft.nurseryChildrenCount), ar }),
     [employees, draft.nurseryChildrenCount, ar],
@@ -66,13 +80,24 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
         art105MinistryConsent: draft.art105MinistryConsent === true,
         art105BankedWeeks: Number(draft.art105BankedWeeks) || 0,
         nurseryChildrenCount: Number(draft.nurseryChildrenCount) || 0,
-        workPosting: {
-          ...draft.workPosting,
-          weeklyRestDow: Number(draft.workPosting.weeklyRestDow),
-          weeklyRestDayCount: Number(draft.workPosting.weeklyRestDayCount) === 1 ? 1 : 2,
-          posted: draft.workPosting.posted === true,
-          postedAt: draft.workPosting.postedAt || "",
-        },
+        gosiOccupationalHazards: draft.gosiOccupationalHazards || "",
+        gosiInjuryWageMode: draft.gosiInjuryWageMode === "stop" ? "stop" : "continue",
+        workPosting: (() => {
+          const first = Number(draft.workPosting.weeklyRestDow);
+          const second = Number(draft.workPosting.secondRestDow);
+          const offDows = second >= 0 && second !== first ? [first, second] : [first];
+          const { secondRestDow: _drop, ...rest } = draft.workPosting;
+          return {
+            ...rest,
+            weeklyRestDow: first,
+            weeklyOffDows: offDows,
+            weeklyRestDayCount: offDows.length,
+            fridaySwapNotifiedAt: offDows.includes(5) ? "" : String(draft.workPosting.fridaySwapNotifiedAt || ""),
+            religiousDutiesEnabled: offDows.includes(5) ? false : draft.workPosting.religiousDutiesEnabled === true,
+            posted: draft.workPosting.posted === true,
+            postedAt: draft.workPosting.postedAt || "",
+          };
+        })(),
       };
     });
     onSaved?.();
@@ -81,146 +106,127 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
   return (
     <section className="nv-paper" style={{ background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column" }} dir={ar ? "rtl" : "ltr"}>
       <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}` }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "ساعات العمل والإعلان — نظام العمل" : "Hours of work and posting — Labour Law"}</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{ar ? "ساعات العمل والراحة — نظام العمل" : "Hours of work and rest — Labour Law"}</span>
         <p style={{ margin: "6px 0 0", fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
           {ar
-            ? "الافتراضي المادة 98. أعلام 99 و103 و105 مغلقة حتى تُفعَّل هنا. لا قائمة وزارية للأعمال الخطرة."
-            : "The default is Article 98. Flags 99, 103 and 105 stay off until switched on here. No ministerial list of hazardous jobs."}
+            ? "الساعات وفق المادة 98: ثماني ساعات يومياً و48 ساعة أسبوعياً، ويوم راحة أسبوعي بأجر كامل (المادة 104)."
+            : "Hours follow Article 98: eight a day and 48 a week, with a paid weekly rest day (Article 104)."}
         </p>
       </div>
       <div style={row}>
-        <LaborArticleCite ruleId="hours.art99.extendedDayHours" ar={ar} showText />
-        <Flag
-          label={ar ? "تسع ساعات عادية — المادة 99" : "Nine ordinary hours — Art. 99"}
-          note={ar ? "يرفع السقف اليومي المستخدم في نشر الأسبوع. الأسبوع يبقى 48 إلا للحدث." : "Raises the daily cap used at week publish. The week stays 48 except for a juvenile."}
-          on={draft.extendedNine}
-          disabled={!canEdit}
-          onToggle={(on) => setDraft((prev) => ({ ...prev, extendedNine: on }))}
-        />
-        <Flag
-          label={ar ? "أعمال خطرة أو ضارة — سبع ساعات" : "Hazardous or harmful work — seven hours"}
-          note={ar ? "علم المنشأة. ليست قائمة الوزير المخزّنة." : "An establishment flag. Not a stored ministerial list."}
-          on={draft.hazardousHours}
-          disabled={!canEdit}
-          onToggle={(on) => setDraft((prev) => ({ ...prev, hazardousHours: on }))}
-        />
-      </div>
-      <div style={row}>
-        <LaborArticleCite ruleId="hours.art100.averageWeeks" ar={ar} showText />
-        <Flag
-          label={ar ? "نظام الورديات — متوسط ثلاثة أسابيع" : "Rotating shifts — three-week average"}
-          note={ar ? "عند التشغيل يُفحص متوسط ثلاثة أسابيع مع فحص الأسبوع." : "When on, the three-week average is checked with the week."}
-          on={draft.rotatingShifts}
-          disabled={!canEdit}
-          onToggle={(on) => setDraft((prev) => ({ ...prev, rotatingShifts: on }))}
-        />
-      </div>
-      <div style={row}>
-        <LaborArticleCite ruleId="hours.art103.cite" ar={ar} showText />
-        <Flag
-          label={ar ? "استمرار العمل دون توقف — المادة 103" : "Uninterrupted work — Art. 103"}
-          note={ar ? "مغلق افتراضياً. لا يُفعَّل لخفجي." : "Off by default. Do not turn on for Khafji."}
-          on={draft.continuousWork103}
-          disabled={!canEdit}
-          onToggle={(on) => setDraft((prev) => ({ ...prev, continuousWork103: on }))}
-        />
-      </div>
-      <div style={row}>
-        <LaborArticleCite ruleId="hours.art105.bankMaxWeeks" ar={ar} showText />
-        <Flag
-          label={ar ? "تجميع الراحة الأسبوعية في مكان ناءٍ" : "Bank weekly rest at a remote site"}
-          note={ar ? "مغلق افتراضياً. يحتاج موافقة العامل والوزارة." : "Off by default. Needs the worker's and the Ministry's consent."}
-          on={draft.remoteRestBank105}
-          disabled={!canEdit}
-          onToggle={(on) => setDraft((prev) => ({ ...prev, remoteRestBank105: on }))}
-        />
-        {draft.remoteRestBank105 ? (
-          <>
-            <Flag
-              label={ar ? "موافقة العامل كتابة مسجّلة" : "Worker's written consent on file"}
-              on={draft.art105WorkerConsent}
+        <span data-rest-on-file="1" style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
+          {ar
+            ? "راحة المنشأة الافتراضية — يوم أو يومان في الأسبوع. يتبعها كل موظف ما لم يحدد الموارد البشرية راحة مختلفة في ملفه (تبويب «الدوام وأنظمة الوزارة»). الإجازة السنوية لا تُخصم من أيام الراحة."
+            : "The establishment's default rest — one or two days a week. Every worker follows it unless HR sets a different rest on the file. Annual leave is never taken from rest days."}
+        </span>
+        {(() => {
+          // The file wins over this default — say how many files do.
+          const own = (employees || []).filter((emp) => {
+            const p = emp?.profile || {};
+            return (Array.isArray(p.weeklyOffDows) && p.weeklyOffDows.length) || Number(p.weeklyRestDayCount) === 1 || Number(p.weeklyRestDayCount) === 2;
+          }).length;
+          return (
+            <span data-rest-file-count={own} style={{ fontSize: 11.5, fontWeight: 600, color: own ? NAVY : MUTED }}>
+              {ar
+                ? (own ? `ملف الموظف يتقدّم على هذا الافتراضي — ${own === 1 ? "موظف واحد له" : own === 2 ? "موظفان لهما" : `${own} موظفين لهم`} راحة محددة في ملفه.` : "ملف الموظف يتقدّم على هذا الافتراضي — لا أحد له راحة خاصة الآن.")
+                : (own ? `The file wins over this default — ${own} with their own rest on file.` : "The file wins over this default — nobody has their own rest now.")}
+            </span>
+          );
+        })()}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+          <label style={{ fontSize: 11, color: MUTED }}>
+            {ar ? "الافتراضي — يوم الراحة النظامي (المادة 104)" : "Default — statutory rest day (Art. 104)"}
+            <select
+              value={draft.workPosting.weeklyRestDow}
               disabled={!canEdit}
-              onToggle={(on) => setDraft((prev) => ({ ...prev, art105WorkerConsent: on }))}
-            />
-            <Flag
-              label={ar ? "موافقة الوزارة مسجّلة" : "Ministry approval on file"}
-              on={draft.art105MinistryConsent}
+              onChange={(e) => {
+                const first = Number(e.target.value);
+                setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, weeklyRestDow: first, secondRestDow: Number(prev.workPosting.secondRestDow) === first ? -1 : prev.workPosting.secondRestDow } }));
+              }}
+              style={{ ...field, marginTop: 6 }}
+            >
+              {WEEKDAYS(ar).map((label, dow) => <option key={dow} value={dow}>{label}</option>)}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, color: MUTED }}>
+            {ar ? "الافتراضي — يوم الراحة الثاني (راحة الشركة)" : "Default — second rest day (company rest)"}
+            <select
+              value={draft.workPosting.secondRestDow}
               disabled={!canEdit}
-              onToggle={(on) => setDraft((prev) => ({ ...prev, art105MinistryConsent: on }))}
-            />
-            <label style={{ fontSize: 11, color: MUTED }}>
-              {ar ? "أسابيع مجمّعة" : "Banked weeks"}
-              <input
-                dir="ltr"
-                value={draft.art105BankedWeeks}
+              onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, secondRestDow: Number(e.target.value) } }))}
+              style={{ ...field, marginTop: 6 }}
+            >
+              <option value={-1}>{ar ? "لا يوجد — دوام ستة أيام" : "None — six-day week"}</option>
+              {WEEKDAYS(ar).map((label, dow) => (dow === Number(draft.workPosting.weeklyRestDow) ? null : <option key={dow} value={dow}>{label}</option>))}
+            </select>
+          </label>
+        </div>
+        {(Number(draft.workPosting.weeklyRestDow) !== 5 && Number(draft.workPosting.secondRestDow) !== 5) || (employees || []).some((person) => Array.isArray(person?.profile?.weeklyOffDows) && person.profile.weeklyOffDows.length && !person.profile.weeklyOffDows.map(Number).includes(5)) ? (
+          <div data-friday-swap="1" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", border: "1px solid var(--nv-warn-line, #EBD3A2)", background: "var(--nv-warn-soft, #FBF3E1)", borderRadius: 8 }}>
+            <span style={{ fontSize: 11.5, color: NAVY, lineHeight: 1.75 }}>
+              {ar
+                ? "الجمعة ليست يوم راحة لبعض الموظفين أو للمنشأة. المادة 104 (1): يجوز استبدالها بيوم آخر بعد إبلاغ مكتب العمل، وعلى صاحب العمل تمكين العمال من أداء واجباتهم الدينية."
+                : "Friday is not a rest day. Art. 104(1): it may be replaced after notifying the labour office, and workers must be enabled to perform their religious duties."}
+            </span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, alignItems: "end" }}>
+              <label style={{ fontSize: 11, color: MUTED }}>
+                {ar ? "تاريخ إبلاغ مكتب العمل" : "Labour office notified on"}
+                <input
+                  type="date"
+                  dir="ltr"
+                  value={draft.workPosting.fridaySwapNotifiedAt}
+                  disabled={!canEdit}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, fridaySwapNotifiedAt: e.target.value } }))}
+                  style={{ ...field, marginTop: 6 }}
+                />
+              </label>
+              <Flag
+                label={ar ? "تمكين العمال من أداء واجباتهم الدينية" : "Workers enabled to perform their religious duties"}
+                note={ar ? "مثل صلاة الجمعة — شرط في المادة 104." : "Such as Friday prayer — a condition of Art. 104."}
+                on={draft.workPosting.religiousDutiesEnabled}
                 disabled={!canEdit}
-                onChange={(e) => setDraft((prev) => ({ ...prev, art105BankedWeeks: e.target.value }))}
-                style={{ ...field, marginTop: 6 }}
+                onToggle={(on) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, religiousDutiesEnabled: on } }))}
               />
-            </label>
-          </>
+            </div>
+          </div>
         ) : null}
       </div>
-      <div style={row}>
-        <LaborArticleCite ruleId="hours.posting.cite" ar={ar} showText />
-        {!postingGate.ok ? <PolicyDeviationAlert gate={postingGate} ruleId="hours.posting.cite" ar={ar} /> : null}
+      <div style={row} data-injury-coverage="1">
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: NAVY }}>{ar ? "إصابات العمل — المواد 132 إلى 139" : "Work injuries — Arts. 132 to 139"}</span>
+        <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.75 }}>
+          {ar
+            ? "إن كانت المنشأة مسجّلة في فرع الأخطار المهنية بالتأمينات فالعلاج والتعويض اليومي من التأمينات (المادة 132). وإن لم تكن: يتحمل صاحب العمل العلاج (133)، وأجراً كاملاً 60 يوماً ثم 75٪ طوال العلاج (137)، وعند سنة علاج عجز كلي: إنهاء العقد وتعويض أجر ثلاث سنوات بحد أدنى 54,000 ريال (138)."
+            : "If the establishment is in GOSI's occupational-hazards branch, treatment and the daily compensation come from GOSI (Art. 132). If not: the employer pays treatment (133), the full wage for 60 days then 75% throughout treatment (137), and at one year total disability: the contract ends with three years' wage, at least SAR 54,000 (138)."}
+        </span>
         <label style={{ fontSize: 11, color: MUTED }}>
-          {ar ? "جدول مواعيد العمل" : "Work-hours table"}
-          <input value={draft.workPosting.hoursTable} disabled={!canEdit} onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, hoursTable: e.target.value } }))} style={{ ...field, marginTop: 6 }} />
-        </label>
-        <label style={{ fontSize: 11, color: MUTED }}>
-          {ar ? "فترات الراحة" : "Rest periods"}
-          <input value={draft.workPosting.restPeriods} disabled={!canEdit} onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, restPeriods: e.target.value } }))} style={{ ...field, marginTop: 6 }} />
-        </label>
-        <label style={{ fontSize: 11, color: MUTED }}>
-          {ar ? "يوم الراحة الأسبوعية" : "Weekly rest day"}
-          <input value={draft.workPosting.weeklyRest} disabled={!canEdit} onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, weeklyRest: e.target.value } }))} style={{ ...field, marginTop: 6 }} />
-        </label>
-        <label style={{ fontSize: 11, color: MUTED }}>
-          {ar ? "راحة المادة 104" : "Article 104 rest weekday"}
+          {ar ? "المنشأة مسجّلة في فرع الأخطار المهنية" : "Covered by GOSI occupational hazards"}
           <select
-            value={draft.workPosting.weeklyRestDow}
+            data-injury-coverage-select="1"
+            value={draft.gosiOccupationalHazards}
             disabled={!canEdit}
-            onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, weeklyRestDow: Number(e.target.value) } }))}
+            onChange={(e) => setDraft((prev) => ({ ...prev, gosiOccupationalHazards: e.target.value }))}
             style={{ ...field, marginTop: 6 }}
           >
-            {(ar
-              ? ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"]
-              : ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-            ).map((label, dow) => (
-              <option key={dow} value={dow}>{label}</option>
-            ))}
+            <option value="">{ar ? "لم يُحدَّد — يُعامل كمسجّل" : "Not set — treated as covered"}</option>
+            <option value="yes">{ar ? "نعم — التأمينات تعوّض" : "Yes — GOSI compensates"}</option>
+            <option value="no">{ar ? "لا — صاحب العمل يتحمل (المواد 133–138)" : "No — the employer carries it (Arts. 133–138)"}</option>
           </select>
         </label>
-        <label style={{ fontSize: 11, color: MUTED }}>
-          {ar ? "عدد أيام الراحة في الأسبوع" : "Weekly rest days"}
-          <select
-            value={draft.workPosting.weeklyRestDayCount}
-            disabled={!canEdit}
-            onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, weeklyRestDayCount: Number(e.target.value) } }))}
-            style={{ ...field, marginTop: 6 }}
-          >
-            <option value={2}>{ar ? "يومان — نظامي + راحة الشركة (لا يُخصمان من السنوية)" : "Two — statutory + company rest (not charged to annual)"}</option>
-            <option value={1}>{ar ? "يوم واحد — راحة المادة 104 فقط" : "One — Article 104 rest only"}</option>
-          </select>
-        </label>
-        <label style={{ fontSize: 11, color: MUTED }}>
-          {ar ? "مواعيد النوبة" : "Shift times"}
-          <input value={draft.workPosting.shiftTimes} disabled={!canEdit} onChange={(e) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, shiftTimes: e.target.value } }))} style={{ ...field, marginTop: 6 }} />
-        </label>
-        <Flag
-          label={ar ? "معلَن في موقع العمل" : "Posted at the workplace"}
-          note={ar ? "غياب الإعلان تنبيه للإدارة، لا سكوت." : "A missing posting is a management warning, not a silent pass."}
-          on={draft.workPosting.posted}
-          disabled={!canEdit}
-          onToggle={(on) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, posted: on } }))}
-        />
-        <label style={{ fontSize: 11, color: MUTED }}>
-          {ar ? "تاريخ الإعلان" : "Posting date"}
-          <div style={{ marginTop: 6 }}>
-            <PlatformDateField ar={ar} value={draft.workPosting.postedAt} disabled={!canEdit} onChange={(postedAt) => setDraft((prev) => ({ ...prev, workPosting: { ...prev.workPosting, postedAt } }))} />
-          </div>
-        </label>
+        {draft.gosiOccupationalHazards !== "no" ? (
+          <label style={{ fontSize: 11, color: MUTED }}>
+            {ar ? "مستلم التعويض اليومي — يُختار عند الإبلاغ عن الإصابة في تأميناتي أعمال، ولا يُجمع البدل مع الأجر" : "Wage on injury days — GOSI's daily allowance is never paid with the wage"}
+            <select
+              data-injury-wage-mode="1"
+              value={draft.gosiInjuryWageMode}
+              disabled={!canEdit}
+              onChange={(e) => setDraft((prev) => ({ ...prev, gosiInjuryWageMode: e.target.value }))}
+              style={{ ...field, marginTop: 6 }}
+            >
+              <option value="continue">{ar ? "صاحب العمل — يواصل دفع الأجر كاملاً وتعوّضه التأمينات" : "The establishment keeps paying the wage"}</option>
+              <option value="stop">{ar ? "الموظف — يتوقف الأجر ويصرف له البدل اليومي من التأمينات" : "The wage stops — GOSI pays the daily allowance"}</option>
+            </select>
+          </label>
+        ) : null}
       </div>
       <div style={row}>
         <LaborArticleCite ruleId="facility.nursery.womenMin" ar={ar} showText />
@@ -243,7 +249,7 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
             onClick={save}
             style={{ fontFamily: "inherit", fontSize: 13, fontWeight: 600, padding: "11px 18px", border: "none", background: "var(--nv-btn-fill)", color: "#fff", cursor: "pointer" }}
           >
-            {ar ? "احفظ إعداد الساعات والإعلان" : "Save hours and posting"}
+            {ar ? "احفظ إعداد الساعات والراحة" : "Save hours and rest"}
           </button>
         </div>
       ) : null}

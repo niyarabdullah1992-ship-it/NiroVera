@@ -34,6 +34,10 @@ assert.equal(railFaceHref("/app/attendance", "", "manage"), "/app/attendance?lan
 assert.equal(railFaceHref("/app/requests/manage", "", "employee"), "/app/requests");
 assert.equal(railFaceHref("/app/requests", "", "manage"), "/app/requests/manage");
 assert.equal(railFaceHref("/app/discipline", "?tab=manage", "employee"), "/app/discipline?tab=mine");
+// Shared tabs keep their tab, and the side rides in the address — no silent flip on reload.
+assert.equal(railFaceHref("/app/discipline", "?tab=law", "manage"), "/app/discipline?tab=law&lane=manage");
+assert.equal(railFaceHref("/app/discipline", "?tab=law&lane=manage", "employee"), "/app/discipline?tab=law");
+assert.equal(railFaceHref("/app/discipline", "?tab=mine", "manage"), "/app/discipline?tab=manage&lane=manage");
 assert.equal(railFaceHref("/app/complaints", "?tab=mine", "manage"), "/app/complaints?tab=manage");
 assert.equal(railFaceHref("/app/performance", "?view=manage", "employee"), "/app/performance?view=self");
 assert.equal(railFaceHref("/app/payroll", "?view=manage", "employee"), "/app/payroll?view=self&tab=payslip");
@@ -156,7 +160,7 @@ assert.equal(sideItems(manageSide).some((item) => item.section === "overview"), 
 assert.equal(sideItems(manageSide).find((item) => item.section === "decide").to, "/app");
 assert.equal(sideItems(manageSide).find((item) => item.section === "duty").to, "/app/attendance?lane=manage");
 assert.equal(sideItems(manageSide).find((item) => item.section === "requests").to, "/app/requests/manage");
-assert.equal(sideItems(manageSide).find((item) => item.section === "discipline").to, "/app/discipline?tab=manage");
+assert.equal(sideItems(manageSide).find((item) => item.section === "discipline").to, "/app/discipline?tab=manage&lane=manage");
 assert.equal(sideItems(manageSide).find((item) => item.section === "complaints").to, "/app/complaints?tab=manage");
 assert.equal(sideItems(manageSide).find((item) => item.section === "people").to, "/app/org?view=admin");
 assert.equal(sideItems(manageSide).find((item) => item.section === "money").to, "/app/payroll?view=manage");

@@ -4,6 +4,7 @@ import { consentRowHref, consentSealFace, consentStatus, consentTopicMeta } from
 import { BORDER, BRAND, CARD, INK, MUTED, NAVY } from "@/lib/platformStyles";
 import AttachFileButton from "@/components/shared/AttachFileButton";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import { consentChoiceLines, consentEffectLine } from "@/lib/consentEffects";
 
 const GRID = "minmax(200px, 2.2fr) minmax(0, 1.2fr) 140px 118px";
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
@@ -61,7 +62,8 @@ export default function ConsentSignRow({
           <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
             <a href={href} style={{ fontSize: 13, fontWeight: 600, color: INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textDecoration: "none" }}>{fileName}</a>
             <span dir="ltr" style={{ ...mono, fontSize: 11, color: MUTED, textAlign: ar ? "right" : "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {face.ref || item.citeAr || item.requestedBy || "—"}
+              {/* The article sits once, in its chip below — not repeated here. */}
+              {face.ref || item.requestedBy || "—"}
             </span>
           </span>
         </div>
@@ -89,6 +91,21 @@ export default function ConsentSignRow({
           entitlement={item.topic === "night" || item.topic === "ot"}
           glow={glow}
         />
+        {(() => {
+          // What this consent does — before the answer, both outcomes; after it, the effect in force.
+          if (open) {
+            const lines = consentChoiceLines(item.topic, ar);
+            if (!lines) return null;
+            return (
+              <span data-consent-choices="1" style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 6, fontSize: 11.5, lineHeight: 1.7 }}>
+                <span style={{ color: "var(--nv-ok-ink)" }}>{lines.yes}</span>
+                <span style={{ color: "var(--nv-ink2)" }}>{lines.no}</span>
+              </span>
+            );
+          }
+          const effect = consentEffectLine(item, ar);
+          return effect ? <span data-consent-effect="1" style={{ display: "block", marginTop: 6, fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.7 }}>{effect}</span> : null;
+        })()}
       </div>
 
       {open ? (

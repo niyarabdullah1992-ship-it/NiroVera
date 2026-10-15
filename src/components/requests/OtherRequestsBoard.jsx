@@ -76,6 +76,8 @@ export default function OtherRequestsBoard({
           request.reason,
           stationName(request.employee?.stationId),
         ].filter(Boolean).join(" · "),
+        person: request.employee?.name || "",
+        branch: stationName(request.employee?.stationId),
         badge: st.label,
       };
     });

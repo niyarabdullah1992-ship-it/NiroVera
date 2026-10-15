@@ -4,6 +4,7 @@ import { imageBlobToPdf } from "@/lib/signPdf";
 import SigningStatusBoard, { settledState, stateLabel } from "@/components/files/SigningStatusBoard";
 import { canDownloadFinal, isArchivedSigningEnvelope, isOpenSigningState } from "@/lib/multiSignDerivations";
 import VerifyWorkspace from "@/components/files/VerifyWorkspace";
+import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import { signMono as mono } from "./signingUi";
 import {
   SIGN_BODY,
@@ -295,7 +296,7 @@ export default function SigningHome({
     const bucket = deskBucket(row);
     if (archiveFolder === "done" && bucket !== "done") return false;
     if (archiveFolder === "declined" && bucket !== "declined") return false;
-    return matchesQuery(row);
+    return true;
   });
 
   const selected = rows.find((row) => row.id === selectedId) || null;
@@ -373,11 +374,6 @@ export default function SigningHome({
     ["waiting", ar ? "بانتظار الآخرين" : "Waiting on others", counts.waiting],
     ["draft", ar ? "المسودات" : "Drafts", 0],
     ["all", ar ? "الكل" : "All", activeRows.length],
-  ];
-  const archiveChips = [
-    ["all", ar ? "الكل" : "All", archiveRows.length],
-    ["done", ar ? "مكتمل" : "Completed", counts.done],
-    ["declined", ar ? "مرفوض ومُلغى" : "Refused and voided", counts.declined],
   ];
 
   const nav = [
@@ -510,6 +506,7 @@ export default function SigningHome({
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {view !== "archive" ? (
           <input
             className="nv-sign-query"
             value={q}
@@ -522,6 +519,7 @@ export default function SigningHome({
             placeholder={ar ? "⌕ ابحث في الاتفاقيات والأطراف" : "Search agreements and parties"}
             style={{ height: 34, flex: 1, minWidth: 220, maxWidth: 420, padding: "0 12px", borderRadius: 10, border: `1px solid ${SIGN_LINE}`, background: SIGN_WHITE, fontSize: 12, outline: "none", color: SIGN_INK, fontFamily: "inherit" }}
           />
+          ) : null}
           <span style={{ flex: 1 }} />
           <div className="nv-sign-actions" style={{ display: "flex", alignItems: "center", gap: 16, flex: "none", flexShrink: 0 }}>
             <button type="button" className="nv-sign-action" onClick={onOpenStudio} style={actionTab(false)}>{ar ? "الختم" : "Seal"}</button>
@@ -704,112 +702,46 @@ export default function SigningHome({
       ) : null}
 
       {view === "archive" ? (
-        <section style={{ ...PAPER, overflow: "hidden" }}>
-          <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--nv-line3)", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            {archiveChips.map(([id, label, count]) => {
-              const on = archiveFolder === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  className="nv-sign-pill"
-                  onClick={() => setArchiveFolder(id)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    height: 30,
-                    padding: "0 12px",
-                    borderRadius: 999,
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    background: on ? "var(--nv-navy)" : SIGN_WHITE,
-                    color: on ? "#fff" : SIGN_BODY,
-                    border: on ? "1px solid var(--nv-navy)" : `1px solid ${SIGN_LINE}`,
-                  }}
-                >
-                  {label}
-                  <span dir="ltr" style={mono}>{formatUiNumber(count, ar)}</span>
-                </button>
-              );
+        requests === null || loading ? (
+          <section style={{ ...PAPER, padding: 24, fontSize: 12, color: SIGN_MUTED }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Loader2 className="h-4 w-4 animate-spin" />{ar ? "جارٍ تحميل الأرشيف…" : "Loading the archive…"}</span>
+          </section>
+        ) : (
+          <RecordSmartArchive
+            lang={ar ? "ar" : "en"}
+            dir={ar ? "rtl" : "ltr"}
+            kicker={ar ? "التوقيع والاتفاقيات" : "Signing"}
+            title={ar ? "أرشيف الاتفاقيات" : "Agreements archive"}
+            subtitle={ar ? "المكتمل والمرفوض والمُلغى، بتاريخ إغلاقه وبصمته." : "Completed, refused, and voided — with closing date and fingerprint."}
+            exportName={ar ? "أرشيف-الاتفاقيات" : "signing-archive"}
+            query={q}
+            onQueryChange={setQ}
+            searchPlaceholder={ar ? "ابحث باسم المستند أو طرف أو رقم التحقق…" : "Search by document, party, or verification ID…"}
+            emptyLabel={ar ? "لا مظاريف في الأرشيف. المكتمل والمرفوض والمُلغى ينتقل إلى هنا بعد إغلاقه." : "Nothing is in the archive. Completed, refused, and voided envelopes move here once they close."}
+            items={archivedListed.map((request) => {
+              const finger = storedFingerprint(request);
+              return {
+                id: request.id,
+                title: request.fileName,
+                text: [partyLine(request, currentUser, ar), request.verificationId, finger ? shortFingerprint(finger) : ""].filter(Boolean).join(" · "),
+                date: closeStamp(request),
+                badge: deskLabel(request, ar),
+                search: [request.creatorName, finger, ...(request.signers || []).map((x) => `${x.name || ""} ${x.email || ""}`)].join(" "),
+                request,
+              };
             })}
-          </div>
-          <div style={{ overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
-              <thead>
-                <tr>
-                  {(ar
-                    ? ["المستند", "الأطراف", "الحالة", "تاريخ الإغلاق", "البصمة", ""]
-                    : ["Document", "Parties", "Status", "Closed", "Fingerprint", ""]
-                  ).map((label) => (
-                    <th key={label || "act"} style={{ textAlign: "start", fontSize: 10.5, color: SIGN_MUTED, fontWeight: 600, padding: "8px 14px", background: "var(--nv-hover)", borderBottom: "1px solid var(--nv-line3)", whiteSpace: "nowrap" }}>{label}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {requests === null || loading ? (
-                  <tr>
-                    <td colSpan={6} style={{ padding: 24, fontSize: 12, color: SIGN_MUTED }}>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Loader2 className="h-4 w-4 animate-spin" />{ar ? "جارٍ تحميل الأرشيف…" : "Loading the archive…"}</span>
-                    </td>
-                  </tr>
-                ) : archivedListed.map((request) => {
-                  const bucket = deskBucket(request);
-                  const finger = storedFingerprint(request);
-                  const downloadReady = canDownloadFinal(request);
-                  return (
-                    <tr key={request.id} onClick={() => openRow(request)} style={{ cursor: "pointer", background: SIGN_WHITE }}>
-                      <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line3)" }}>
-                        <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
-                          <span style={{ width: 32, height: 38, borderRadius: 5, flex: "none", display: "inline-flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 5, boxSizing: "border-box", font: "700 8px 'IBM Plex Mono', monospace", color: "#fff", background: TONE[bucket].fill }}>PDF</span>
-                          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                            <strong style={{ fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 280 }}>{request.fileName}</strong>
-                            <span dir="ltr" style={{ ...mono, fontSize: 10, color: SIGN_MUTED, textAlign: "end" }}>{request.verificationId || "—"}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line3)", fontSize: 11.5, color: SIGN_BODY }}>{partyLine(request, currentUser, ar)}</td>
-                      <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line3)" }}>
-                        <span style={pillStyle(bucket)}>{deskLabel(request, ar)}</span>
-                      </td>
-                      <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line3)" }}>
-                        <span dir="ltr" style={{ ...mono, fontSize: 10.5, color: SIGN_BODY }}>{stamp(closeStamp(request), ar)}</span>
-                      </td>
-                      <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line3)" }}>
-                        <span dir="ltr" title={finger || undefined} style={{ ...mono, fontSize: 10.5, color: finger ? SIGN_INK : SIGN_MUTED }}>{finger ? shortFingerprint(finger) : "—"}</span>
-                      </td>
-                      <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line3)", position: "sticky", insetInlineEnd: 0, background: "inherit" }}>
-                        <button
-                          type="button"
-                          style={ghostBtn}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (downloadReady) {
-                              downloadFinalCopy(request);
-                              return;
-                            }
-                            openRow(request);
-                          }}
-                        >
-                          {downloadReady ? (ar ? "تنزيل" : "Download") : (ar ? "فتح" : "Open")}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {requests !== null && !loading && archivedListed.length === 0 ? (
-            <div style={{ padding: 24, textAlign: "center", fontSize: 12, color: SIGN_MUTED, lineHeight: 1.8 }}>
-              {query
-                ? (ar ? `لا مظروف مؤرشف يطابق «${query}».` : `No archived envelope matches “${query}”.`)
-                : (ar ? "لا مظاريف في الأرشيف. المكتمل والمرفوض والمُلغى ينتقل إلى هنا بعد إغلاقه." : "Nothing is in the archive. Completed, refused, and voided envelopes move here once they close.")}
-            </div>
-          ) : null}
-        </section>
+            renderOpen={(it) => {
+              const request = it.request;
+              const downloadReady = canDownloadFinal(request);
+              return (
+                <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" style={ghostBtn} onClick={() => openRow(request)}>{ar ? "فتح المظروف" : "Open envelope"}</button>
+                  {downloadReady ? <button type="button" style={ghostBtn} onClick={() => downloadFinalCopy(request)}>{ar ? "تنزيل النسخة الموقّعة" : "Download signed copy"}</button> : null}
+                </span>
+              );
+            }}
+          />
+        )
       ) : null}
 
       {view === "track" ? (

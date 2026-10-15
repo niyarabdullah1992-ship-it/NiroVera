@@ -6,19 +6,27 @@ import {
   listLocalVisitorProofs,
   raiseLocalVisitorProof,
   attachLocalVisitorProof,
+  addLocalVisitorPerson,
+  markLocalVisitorPersonOut,
+  extendLocalVisitorProof,
 } from "@/lib/localVisitorProofFallback";
 import { getCompanyData } from "@/lib/store";
 import { toast } from "@/components/ui/use-toast";
 import { ui } from "@/lib/platformStyles";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import { pageKicker } from "@/lib/moduleMeta";
+import OpsFrame from "@/components/tasks/OpsFrame";
+import OpsSideSlab, { OpsListHead } from "@/components/tasks/OpsSideSlab";
+import OpsMoreMenu from "@/components/tasks/OpsMoreMenu";
+import { DetailHero, HeroFigure, HeroPill } from "@/components/tasks/detail/DetailKit";
+import { cleanedPeople } from "@/lib/workProofCrew";
+import { DutyTile, DutyNumber } from "@/components/schedules/DutyTiles";
+import { formatUiNumber as formatNum } from "@/lib/dateFormat";
+import { useRailSide } from "@/lib/railSide";
+import { visitPassState } from "@/components/proof/VisitorPassCard";
 import ComposerModalShell from "@/components/shared/ComposerModalShell";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import VisitorProofFields from "@/components/proof/VisitorProofFields";
 import VisitorProofCard from "@/components/proof/VisitorProofCard";
-import ProofSurfaceNote from "@/components/proof/ProofSurfaceNote";
-import OpsLaneTiles from "@/components/tasks/OpsLaneTiles";
 import OpsToolbarStrip, { OpsControlBar, OpsStripSearch } from "@/components/tasks/OpsToolbarStrip";
 import ProofRecordsTable from "@/components/proof/ProofRecordsTable";
 import { EMPTY_PERSON, EMPTY_VEHICLE } from "@/lib/workProofCrew";
@@ -75,8 +83,11 @@ export default function VisitorProof() {
   const [raising, setRaising] = useState(false);
   const [busy, setBusy] = useState(false);
   const [openProofId, setOpenProofId] = useState(null);
+  const [focusStation, setFocusStation] = useState("");
+  const [sideGuest, setSideGuest] = useState("");
   const [form, setForm] = useState(blankVisitForm);
 
+  const railSide = useRailSide();
   const isManager = !!(currentUser && (
     ["owner", "director", "ops_manager", "station_manager", "pgm", "admin"].includes(currentUser.role)
     || data?.ownerId === currentUser?.id
@@ -176,6 +187,34 @@ export default function VisitorProof() {
     }
   };
 
+  const runPeople = (fn, okText) => {
+    setBusy(true);
+    try {
+      const result = fn();
+      if (result?.error) {
+        toast({ description: ar ? (result.reason || result.error) : (result.reasonEn || result.reason || result.error), variant: "destructive" });
+        return { ok: false };
+      }
+      if (okText) toast({ description: okText });
+      load();
+      return { ok: true };
+    } finally {
+      setBusy(false);
+    }
+  };
+  const addVisitor = (proof, person) => runPeople(
+    () => addLocalVisitorPerson(company.id, proof, person, currentUser),
+    ar ? `سُجّل دخول ${person.name}.` : `${person.name} checked in.`,
+  );
+  const visitorOut = (proof, index) => runPeople(
+    () => markLocalVisitorPersonOut(company.id, proof, index, currentUser),
+    ar ? "سُجّل خروجه." : "Checked out.",
+  );
+  const extendVisit = (proof, input) => runPeople(
+    () => extendLocalVisitorProof(company.id, proof, input, currentUser, todayVisitDateKey()),
+    ar ? "مُدّد التصريح." : "Pass extended.",
+  );
+
   const scopedProofs = proofs.filter((p) => matchesStationScope(p.stationId, headerScope, stations));
   const liveProofs = scopedProofs.filter((p) => deriveVisitorProofStage(p) !== "left");
   const archiveProofs = scopedProofs.filter((p) => deriveVisitorProofStage(p) === "left");
@@ -202,6 +241,8 @@ export default function VisitorProof() {
         stationName(p.stationId),
       ].filter(Boolean).join(" · "),
       date: p.leftAt || p.createdAt || p.arrivedAt,
+      person: p.raiserName || "",
+      branch: p.stationId ? stationName(p.stationId) : "",
       badge: ar ? STAGE_LABEL.left.ar : STAGE_LABEL.left.en,
     };
   });
@@ -210,7 +251,7 @@ export default function VisitorProof() {
     { id: "left", label: ar ? `الأرشيف · ${archiveProofs.length}` : `Archive · ${archiveProofs.length}` },
   ];
 
-  const tableRows = visible.map((p) => {
+  const tableRows = visible.filter((p) => !focusStation || String(p.stationId) === String(focusStation)).map((p) => {
     const stage = deriveVisitorProofStage(p);
     const people = Array.isArray(p.people) ? p.people.filter((person) => person?.name) : [];
     const first = people[0];
@@ -256,18 +297,131 @@ export default function VisitorProof() {
     }).ok
     : false;
 
-  return (
-    <PlatformStampShell
-      ar={ar}
-      maxWidth={1280}
-      kicker={pageKicker("/app/visitor-proof", lang)}
-      title={ar ? "إثبات زائر" : "Visitor proof"}
-      hint={ar
-        ? "ضيف على الفرع — موظف الشركة الذي ينفّذ في فرع آخر يبقى على المهمة، والجهة الخارجية في إثبات العمل."
-        : "A guest at the station — a company employee executing at another branch stays on the task; an outside company belongs on Work proof."}
+  const employeeFace = railSide === "employee" || !isManager;
+  const passStates = liveProofs.map((p) => visitPassState(p));
+  const guestsNow = liveProofs.reduce((n, p, i) => {
+    if (passStates[i].key === "upcoming") return n;
+    const named = (Array.isArray(p.people) ? p.people : []).filter((person) => person?.name);
+    return n + (named.length ? named.filter((person) => !person.outAt).length : 1);
+  }, 0);
+  const lastDay = passStates.filter((st) => st.key === "last").length;
+  const overstay = passStates.filter((st) => st.key === "overstay").length;
+  const vpTiles = [
+    <DutyTile
+      key="now"
+      dataKey="vp-now"
+      tone={guestsNow ? "ok" : "mute"}
+      label={ar ? "في الفرع الآن" : "On site now"}
+      note={ar ? `${formatNum(liveProofs.length)} تصريح مفتوح` : `${liveProofs.length} open passes`}
     >
-      <OpsLaneTiles ar={ar} current="visitor-proof" />
-      <ProofSurfaceNote ar={ar} current="visitor-proof" />
+      <DutyNumber value={formatNum(guestsNow)} unit={ar ? "زائر" : "guests"} />
+    </DutyTile>,
+    <DutyTile
+      key="last"
+      dataKey="vp-last"
+      tone={lastDay ? "warn" : "mute"}
+      label={ar ? "ينتهي تصريحه اليوم" : "Pass ends today"}
+      note={ar ? "سجّل المغادرة عند الخروج" : "Record leaving on the way out"}
+    >
+      <DutyNumber value={formatNum(lastDay)} unit={ar ? "تصريح" : "passes"} />
+    </DutyTile>,
+    <DutyTile
+      key="over"
+      dataKey="vp-overstay"
+      tone={overstay ? "bad" : "mute"}
+      label={ar ? "تجاوز موعده" : "Past the date"}
+      note={ar ? "انتهى التصريح ولم تُسجَّل مغادرة" : "Pass ended with no leaving recorded"}
+    >
+      <DutyNumber value={formatNum(overstay)} unit={ar ? "تصريح" : "passes"} />
+    </DutyTile>,
+  ];
+  // ضيوف الفرع الآن: each guest still inside, by branch — the list a guard reads at the gate.
+  const dmy = (key) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(key || ""));
+    return m ? `${m[3]}/${m[2]}` : "";
+  };
+  const vpSide = (() => {
+    const byStation = new Map();
+    liveProofs.forEach((p, pi) => {
+      const st = passStates[pi];
+      if (st.key === "upcoming") return;
+      const sid = String(p.stationId || "");
+      if (!byStation.has(sid)) byStation.set(sid, []);
+      const named = cleanedPeople(p.people, p.stationId);
+      const list = named.length ? named : [{ name: p.personName || p.title }];
+      list.forEach((person, index) => {
+        if (person.outAt) return;
+        byStation.get(sid).push({ p, person, index, st, legacy: !named.length });
+      });
+    });
+    const groups = [...byStation.entries()].map(([sid, list]) => ({
+      id: sid,
+      name: stationName(sid) || (ar ? "بلا فرع" : "No branch"),
+      alert: ar
+        ? `${list.length === 1 ? "زائر واحد" : `${list.length} زوار`}${list.some((g) => g.st.key === "overstay") ? " · فيهم من تجاوز موعده" : ""}`
+        : `${list.length} guests`,
+      rows: list.map(({ p, person, index, st, legacy }) => {
+        const id = `${p.id || p.ref}:${index}`;
+        const canClose = checkCloseVisitorProofGate({ proof: p, actorUserId: currentUser?.id, sameBranch: sameBranchOf(p), isManager }).ok;
+        return {
+          id,
+          title: person.name,
+          count: person.badge || "",
+          tone: st.key === "overstay" ? "bad" : st.key === "last" ? "gold" : "soft",
+          line: st.key === "overstay"
+            ? (ar ? `انتهى تصريحه ${dmy(p.visitTo)} ولم يخرج` : `Pass ended ${dmy(p.visitTo)}, still inside`)
+            : [p.visitReason, p.hostName ? (ar ? `مضيفه ${p.hostName}` : `host ${p.hostName}`) : "", ar ? `حتى ${dmy(p.visitTo || p.visitFrom)}` : `until ${dmy(p.visitTo || p.visitFrom)}`].filter(Boolean).join(" · "),
+          action: [
+            { key: "open", label: ar ? "افتح التصريح" : "Open the pass", onClick: () => setOpenProofId(p.id || p.ref) },
+            canClose && !legacy ? { key: "out", label: ar ? "سجّل خروجه" : "Check out", onClick: () => { visitorOut(p, index); setSideGuest(""); } } : null,
+            canClose && legacy ? { key: "out", label: ar ? "سجّل المغادرة" : "Record leaving", onClick: () => closeVisit(p) } : null,
+          ],
+        };
+      }),
+    }));
+    return (
+      <OpsSideSlab
+        ar={ar}
+        dataKey="vp-side"
+        title={ar ? "ضيوف الفرع الآن" : "Guests inside now"}
+        standing={focusStation ? (ar ? `معروض: ${stationName(focusStation)}` : `Showing: ${stationName(focusStation)}`) : (ar ? "كل الفروع" : "All branches")}
+        note={ar ? "كل ضيف ما زال داخل الفرع، برقم بطاقته إن سُلّمت. اختر اسماً لتسجيل خروجه." : "Each guest still inside, with their badge number. Pick a name to check them out."}
+        summary={guestsNow ? (ar ? `${guestsNow} في الفروع الآن` : `${guestsNow} inside now`) : null}
+        groups={groups}
+        emptyText={ar ? "لا ضيف داخل فروعك الآن." : "No guest is inside your branches now."}
+        focusId={focusStation}
+        onFocus={setFocusStation}
+        selectedId={sideGuest}
+        onSelect={setSideGuest}
+      />
+    );
+  })();
+  const vpHowTo = ar
+    ? [
+      "«إثبات زائر جديد» عند الوصول: سبب الزيارة، المضيف، الفترة، ثم الزوار والسيارات.",
+      "البطاقة تعرض آخر أربعة أرقام من الهوية فقط — الرقم الكامل داخل البطاقة المفتوحة.",
+      "«مغادرة» تغلق التصريح وتنقله إلى الأرشيف بوقت الخروج.",
+      "موظف الشركة من فرع آخر يبقى على مهمته، والمقاول الخارجي في «إثبات العمل».",
+    ]
+    : [
+      "“New visitor proof” on arrival: reason, host, dates, then the visitors and vehicles.",
+      "The list shows only the last four ID digits — the full number is inside the open card.",
+      "“Left” closes the pass and moves it to the archive with the time out.",
+      "A company employee from another branch stays on their task; outside contractors go on Work proof.",
+    ];
+
+  return (
+    <OpsFrame
+      ar={ar}
+      lane={employeeFace ? "mine" : "manage"}
+      title={ar ? "إثبات زائر — ضيوف الفرع" : "Visitor proof — branch guests"}
+      hint={ar
+        ? "من دخل الفرع اليوم، ومن يستضيفه، وحتى متى صُرّح له — وتُسجَّل مغادرته عند خروجه."
+        : "Who came into the branch, who hosts them, and until when they are cleared — their leaving is recorded on the way out."}
+      tiles={vpTiles}
+      side={vpSide}
+      howTo={vpHowTo}
+    >
       {raising && (
         <ComposerModalShell
           ar={ar}
@@ -279,9 +433,47 @@ export default function VisitorProof() {
             : "A guest at the station. Set the dates and stations, then the visitors and vehicles."}
           onClose={() => setRaising(false)}
           onSubmit={raise}
-          submitLabel={ar ? "حفظ الإثبات" : "Save proof"}
+          submitLabel={ar ? "أصدر التصريح" : "Issue the pass"}
           busy={busy}
+          tinted
+          wide
         >
+          {(() => {
+            const guests = (Array.isArray(form.people) ? form.people : []).filter((x) => String(x?.name || "").trim());
+            const cars = (Array.isArray(form.vehicles) ? form.vehicles : []).filter((v) => v && (v.plateNumbers || v.plate || v.maker || v.model));
+            const ids = Array.isArray(form.stationIds) && form.stationIds.length ? form.stationIds : (form.stationId ? [form.stationId] : []);
+            const d = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || "")); return m ? `${m[3]}/${m[2]}` : "—"; };
+            const missing = !ids.length
+              ? (ar ? "فرع الزيارة" : "the branch")
+              : !String(form.visitReason || "").trim()
+                ? (ar ? "سبب الزيارة" : "the visit reason")
+                : !guests.length
+                  ? (ar ? "اسم زائر واحد على الأقل" : "at least one visitor")
+                  : !String(guests[0]?.nationality || "").trim() ? (ar ? "جنسية الزائر" : "the visitor's nationality") : "";
+            return (
+              <DetailHero
+                kind={ar ? "تصريح زائر جديد — معاينة" : "New visitor pass — preview"}
+                pills={guests.filter((g) => g.briefed).length ? <HeroPill tone="ok">{ar ? "تلقّى تعريف السلامة" : "Safety briefed"}</HeroPill> : null}
+                figure={(
+                  <HeroFigure
+                    mono={false}
+                    placeholder={!guests[0]?.name}
+                    value={guests[0]?.name || (ar ? "اسم الزائر" : "Visitor name")}
+                    unit={guests.length > 1 ? (ar ? `ومعه ${guests.length - 1}` : `+${guests.length - 1}`) : ""}
+                    line={missing ? (ar ? `بقي: ${missing}` : `Left: ${missing}`) : String(form.visitReason || "").trim()}
+                    lineTone={missing ? "warn" : "ok"}
+                  />
+                )}
+                facts={[
+                  { label: ar ? "الفرع" : "Branch", value: ids.length > 1 ? (ar ? `${ids.length} فروع` : `${ids.length} branches`) : (stationName(ids[0]) || "—") },
+                  { label: ar ? "المضيف" : "Host", value: form.hostName || (ar ? "بدون مضيف" : "No host") },
+                  { label: ar ? "من" : "From", value: d(form.visitFrom), mono: true },
+                  { label: ar ? "حتى" : "Until", value: d(form.visitTo), mono: true },
+                  cars.length ? { label: ar ? "السيارات" : "Vehicles", value: cars.length, mono: true } : null,
+                ]}
+              />
+            );
+          })()}
           <VisitorProofFields
             form={form}
             setForm={setForm}
@@ -293,6 +485,17 @@ export default function VisitorProof() {
         </ComposerModalShell>
       )}
 
+      <OpsListHead
+        title={ar ? "تصاريح الزوار" : "Visitor passes"}
+        note={focusStation
+          ? (ar ? `معروض: ${stationName(focusStation)}` : `Showing: ${stationName(focusStation)}`)
+          : (ar ? "تصريح لكل زيارة: من جاء، ومن يستضيفه، وحتى متى." : "One pass per visit: who came, who hosts them, until when.")}
+        trailing={focusStation ? (
+          <button type="button" data-clear-focus="1" onClick={() => setFocusStation("")} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: "none", background: "transparent", color: "#0F5535", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+            {ar ? "اعرض الكل" : "Show all"}
+          </button>
+        ) : null}
+      />
       <OpsControlBar>
         <OpsToolbarStrip
           ar={ar}
@@ -330,6 +533,7 @@ export default function VisitorProof() {
       ) : (
         <ProofRecordsTable
           ar={ar}
+          variant="visitor"
           rows={tableRows}
           heads={ar ? ["الإثبات", "الفرع", "الزائر", "الحالة", "الزوار"] : ["PROOF", "STATION", "VISITOR", "STATUS", "VISITORS"]}
           emptyLabel={ar ? "لا إثباتات زائر بعد." : "No visitor proofs yet."}
@@ -343,20 +547,24 @@ export default function VisitorProof() {
               isManager,
             }).ok;
             return (
-              <div className="flex flex-wrap gap-1.5">
-                <button type="button" onClick={() => setOpenProofId(row.id)} style={ui.btnMiniSoft}>
-                  {ar ? "بطاقة" : "Card"}
-                </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {canClose ? (
                   <button
                     type="button"
+                    data-primary="leave"
                     disabled={busy}
                     onClick={() => closeVisit(p)}
-                    style={ui.btnMiniBrand}
+                    style={{ ...ui.btnMiniBrand, height: 32, padding: "0 14px" }}
                   >
-                    {ar ? "مغادرة" : "Left"}
+                    {ar ? "سجّل مغادرة الجميع" : "Everyone left"}
                   </button>
                 ) : null}
+                <OpsMoreMenu
+                  ar={ar}
+                  items={[
+                    { key: "card", label: ar ? "افتح التصريح" : "Open the pass", hint: ar ? "إضافة زائر، خروج فرد، تمديد" : "Add, check out, extend", onClick: () => setOpenProofId(row.id) },
+                  ]}
+                />
               </div>
             );
           }}
@@ -375,8 +583,11 @@ export default function VisitorProof() {
           onLeave={() => { closeVisit(openProof); setOpenProofId(null); }}
           onAddAttachment={(file) => attachVisitDoc(openProof, file)}
           onReplaceAttachment={(id, file) => attachVisitDoc(openProof, file, id)}
+          onAddPerson={(person) => addVisitor(openProof, person)}
+          onPersonOut={(index) => visitorOut(openProof, index)}
+          onExtend={(input) => extendVisit(openProof, input)}
         />
       ) : null}
-    </PlatformStampShell>
+    </OpsFrame>
   );
 }

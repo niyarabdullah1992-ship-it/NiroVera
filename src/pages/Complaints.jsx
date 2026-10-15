@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { updateCompany, addNotification, getAnonUsage } from "@/lib/store";
 import { toast } from "@/components/ui/use-toast";
 import { hasHRPermission } from "@/lib/permissions";
+import { branchReviewTiers } from "@/lib/branchChain";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { pageKicker } from "@/lib/moduleMeta";
 import { sha256HexOfFile } from "@/lib/fileHash";
@@ -14,14 +15,14 @@ import {
   resolveVoiceWorkStationId,
   checkCloseGate,
   checkEscalateGate,
-  checkReturnNoteGate,
+  checkReturnNoteGate, checkAdoptNoteGate, firstReviewLevel, checkSelfReviewGate,
   checkSubmitVoiceGate,
   checkWorkerAppealGate,
   defaultEscalationChain,
   deriveEscalationChain,
 } from "@/lib/complaintDerivations";
 import { getRoleLabel } from "@/lib/roles";
-import {
+import { voicePublicId,
   channelOf,
   collectVoiceItems,
   deriveVoiceBoard,
@@ -33,6 +34,8 @@ import VoiceChainBoard from "@/components/complaints/VoiceChainBoard";
 import VoiceGuaranteeList from "@/components/complaints/VoiceGuaranteeList";
 import VoiceLawPanel from "@/components/complaints/VoiceLawPanel";
 import VoiceMineBoard from "@/components/complaints/VoiceMineBoard";
+import VoiceQueueList from "@/components/complaints/VoiceQueueList";
+import VoiceDecisionCard from "@/components/complaints/VoiceDecisionCard";
 import VoiceRaiseCard from "@/components/complaints/VoiceRaiseCard";
 import VoiceRelatedLinks from "@/components/complaints/VoiceRelatedLinks";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
@@ -71,17 +74,39 @@ export default function Complaints() {
     || hasHRPermission(currentUser, data, "view_anonymous_reports")
     || hasHRPermission(currentUser, data, "manage_anonymous_reports")
   ));
+  // Same ladder as المهام: the branch line from the org, same people at each level.
   const chain = useMemo(() => {
+    const tiers = branchReviewTiers(data, currentUser?.stationId);
+    if (tiers.length) return tiers;
     const ids = data?.complaintEscalationChain || [];
     if (ids.length) return deriveEscalationChain(ids, employees);
     const home = stations.find((row) => String(row.id) === String(currentUser?.stationId))
-      || stations.find((row) => String(row.name || "").includes("الخفجي"))
       || stations.find((row) => row.managerId)
       || stations[0];
     const named = employees.find((row) => String(row.id) === String(home?.managerId))?.name
       || employees.find((row) => row.role === "station_manager")?.name;
     return defaultEscalationChain(named);
-  }, [data?.complaintEscalationChain, employees, stations, currentUser?.stationId]);
+  }, [data, employees, stations, currentUser?.stationId]);
+
+  // The ladder a voice climbs is its own branch's — the same people المهام routes to.
+  const stationOfVoice = (item) => {
+    if (item?.stationId) return String(item.stationId);
+    const author = employees.find((row) => String(row.id) === String(item?.authorId));
+    return String(author?.stationId || "");
+  };
+  const chainFor = (item) => {
+    const tiers = branchReviewTiers(data, stationOfVoice(item));
+    return tiers.length ? tiers : chain;
+  };
+  /** Only the people on the voice's ladder, from its current level up, rule on it (owner/admin always). */
+  const isVoiceReviewer = (item) => {
+    if (!currentUser) return false;
+    if (currentUser.isOwner || currentUser.role === "owner" || currentUser.role === "admin" || String(data?.ownerId || "") === String(currentUser.id)) return true;
+    const tiers = branchReviewTiers(data, stationOfVoice(item));
+    if (!tiers.some((tier) => tier.handlerIds.length)) return canManage;
+    const level = Math.max(0, Number(item?.escalationLevel) || 0);
+    return tiers.slice(level).some((tier) => tier.handlerIds.includes(String(currentUser.id)));
+  };
 
   const allItems = useMemo(
     () => collectVoiceItems({ publicReports: data?.publicReports, anonymousReports: data?.anonymousReports }),
@@ -106,8 +131,10 @@ export default function Complaints() {
       canManage,
       userId: currentUser?.id,
       chain,
+      chainFor,
     }),
-    [allItems, queueItems, employees, stations, ar, canManage, currentUser?.id, currentUser?.stationId, chain],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [allItems, queueItems, employees, stations, ar, canManage, currentUser?.id, currentUser?.stationId, chain, data?.branchEscalationChains, data?.orgTree, data?.stations],
   );
   const mineSettled = useMemo(
     () => (canManage ? board.mine.filter((card) => card.settled) : board.settled),
@@ -123,6 +150,7 @@ export default function Complaints() {
     setSearchParams(params, { replace: true });
   };
   const [channel, setChannel] = useState("suggestion");
+  const [pickedId, setPickedId] = useState("");
   const [prio, setPrio] = useState("low");
   const [topicId, setTopicId] = useState("wage");
   const [title, setTitle] = useState("");
@@ -139,8 +167,17 @@ export default function Complaints() {
 
   useEffect(() => {
     if (!company?.id) return;
-    const pub = applySlaAutoEscalate(data?.publicReports || [], chain);
-    const hidden = applySlaAutoEscalate(data?.anonymousReports || [], chain);
+    const run = (list) => {
+      let escalated = 0;
+      const reports = list.map((r) => {
+        const res = applySlaAutoEscalate([r], chainFor(r));
+        escalated += res.escalated || 0;
+        return (res.reports || [r])[0];
+      });
+      return { reports, escalated };
+    };
+    const pub = run(data?.publicReports || []);
+    const hidden = run(data?.anonymousReports || []);
     if (!pub.escalated && !hidden.escalated) return;
     updateCompany(company.id, (row) => {
       row.publicReports = pub.reports;
@@ -155,7 +192,9 @@ export default function Complaints() {
   const wantOk = want.trim().length > 0;
   const ackOk = channel === "anonymous" || ack;
   const canSend = titleOk && bodyOk && dateOk && wantOk && ackOk && Boolean(company?.id);
-  const firstTier = ar ? (chain[0]?.labelAr || "مدير الفرع") : (chain[0]?.labelEn || "the station manager");
+  const homeManagerId = stations.find((row) => row.id === resolveVoiceWorkStationId(currentUser))?.managerId;
+  const startTier = chain[firstReviewLevel(chain, currentUser?.id, homeManagerId)] || chain[0];
+  const firstTier = ar ? (startTier?.labelAr || "مدير الفرع") : (startTier?.labelEn || "the station manager");
   const roleLabel = currentUser?.role ? getRoleLabel(company, currentUser.role, t) : "";
   const reporter = channel === "anonymous"
     ? (ar ? "يصل برقم — لا يُسجَّل اسمك" : "It arrives as a number — your name is not stored")
@@ -208,6 +247,7 @@ export default function Complaints() {
     const now = new Date().toISOString();
     const station = stations.find((row) => row.id === stationId);
     const managerId = station?.managerId;
+    const startLevel = firstReviewLevel(chain, currentUser?.id, managerId);
     const notice = { outcome: "raised", channel, title: gate.title };
     const voiceFields = {
       topicId,
@@ -233,10 +273,12 @@ export default function Complaints() {
             stationId,
             ...voiceFields,
             files: file ? [file] : [],
-            escalationLevel: 0,
+            escalationLevel: startLevel,
+            reviewStartLevel: startLevel,
+            levelSinceAt: now,
             createdAt: now,
             replies: [],
-            auditTrail: appendVoiceAudit({}, "raise", {}, { at: now, hideActor: true, level: 0 }),
+            auditTrail: appendVoiceAudit({}, "raise", {}, { at: now, hideActor: true, level: startLevel }),
           },
           ...(row.anonymousReports || []),
         ];
@@ -262,10 +304,12 @@ export default function Complaints() {
             acknowledged: true,
             files: file ? [file] : [],
             ...voiceFields,
-            escalationLevel: 0,
+            escalationLevel: startLevel,
+            reviewStartLevel: startLevel,
+            levelSinceAt: now,
             replies: [],
             createdAt: now,
-            auditTrail: appendVoiceAudit({}, "raise", currentUser, { at: now, level: 0 }),
+            auditTrail: appendVoiceAudit({}, "raise", currentUser, { at: now, level: startLevel }),
           },
           ...(row.publicReports || []),
         ];
@@ -294,12 +338,34 @@ export default function Complaints() {
   };
 
   const decide = (card, outcome) => {
+    if (!isVoiceReviewer(card.item)) {
+      const tier = chainFor(card.item)[Math.max(0, Number(card.item?.escalationLevel) || 0)];
+      toast({
+        description: ar
+          ? `هذا الصوت عند ${tier?.labelAr || "مستوى آخر"} في سلسلة فرعه — يقرّر فيه من في السلسلة من مستواه فما فوق.`
+          : `This voice is with ${tier?.labelEn || "another level"} on its branch ladder — only people at that level or above rule on it.`,
+        variant: "destructive",
+      });
+      return;
+    }
     const close = checkCloseGate(card.item, { isHandler: canManage });
     if (!close.ok) {
       toast({ description: ar ? close.reason : close.reasonEn, variant: "destructive" });
       return;
     }
+    const self = checkSelfReviewGate(card.item, currentUser?.id);
+    if (!self.ok) {
+      toast({ description: ar ? self.reason : self.reasonEn, variant: "destructive" });
+      return;
+    }
     const note = String(notes[card.item.id] || "").trim();
+    if (outcome === "adopt") {
+      const need = checkAdoptNoteGate(note);
+      if (!need.ok) {
+        toast({ description: ar ? need.reason : need.reasonEn, variant: "destructive" });
+        return;
+      }
+    }
     if (outcome === "return") {
       const need = checkReturnNoteGate(note);
       if (!need.ok) {
@@ -339,8 +405,8 @@ export default function Complaints() {
 
   const escalate = (card, asAuthor = false) => {
     const gate = asAuthor
-      ? checkWorkerAppealGate(card.item, chain, currentUser?.id)
-      : checkEscalateGate(card.item, chain, { isHandler: canManage });
+      ? checkWorkerAppealGate(card.item, chainFor(card.item), currentUser?.id)
+      : checkEscalateGate(card.item, chainFor(card.item), { isHandler: isVoiceReviewer(card.item) });
     if (!gate.ok) {
       toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
       return;
@@ -399,15 +465,15 @@ export default function Complaints() {
       kicker={pageKicker("/app/complaints", lang)}
       title={ar ? "صوت الموظف" : "Employee Voice"}
       hint={ar
-        ? <>ثلاث قنوات لصوت واحد: <b>اقتراح</b> للتحسين باسم صاحبه · <b>شكوى</b> للمعالجة بهوية ظاهرة · <b>بلاغ مجهول</b> للحماية. القناة تحدّد الهوية والمهلة والتصعيد — لا الشكل.</>
-        : <>Three channels, one voice: a <b>suggestion</b> in your name · a named <b>complaint</b> to resolve · an <b>anonymous report</b> to protect. The channel sets identity, window, and escalation — not the look.</>}
+        ? "قل ما يحسّن العمل أو ما يضرّك، وتابع قراره حتى يُكتب. القناة تحدّد الهوية والمهلة والتصعيد."
+        : "Say what would improve work or what harms you, and follow it to a written ruling. The channel sets identity, window and escalation."}
       viewNote={adminVoice
         ? (ar ? "إدارة — تراجع وتعتمد أو تُعيد بملاحظة. ما تجاوز مهلته يُرفع لمن بعدك تلقائياً، ولا يُغلق بلا قرار مكتوب." : "Management — you adopt or return with a note. What misses its window is raised to whoever follows you. Nothing closes without a written ruling.")
         : (ar ? "موظف — ترفع صوتك في القناة التي تختارها وتتابع قرارها. لا ترى أصوات غيرك، ولا تُعرف هويّتك في القناة المجهولة." : "Employee — you raise a voice on the channel you choose and follow its ruling. You do not see others' voices, and the anonymous channel does not name you.")}
       tabs={tabs.map((item) => ({ value: item.key, label: ar ? item.ar : item.en, count: item.count }))}
       tool={activeFace}
       onTool={setTab}
-      meta={(
+      meta={activeFace !== "manage" ? null : (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 9, fontSize: 12, fontWeight: 600, color: board.pulseColor, background: board.pulseBg, border: `1px solid ${board.pulseBorder}`, borderRadius: 999, padding: "6px 12px", whiteSpace: "nowrap" }}>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: board.pulseDot }} />
           {board.pulse}
@@ -499,11 +565,13 @@ export default function Complaints() {
                       : `Sent with no identity. Follow-up number ${anonReceipt} — watch the archive for that number; there is no personal reply.`) : ""}
                   />
                   <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-                    <VoiceMineBoard cards={board.mine} chain={chain} ar={ar} onEscalate={(card) => escalate(card, true)} />
-                    <VoiceGuaranteeList rows={board.promises} ar={ar} />
+                    {/* Settled voices live in «الأرشيف» only; each open card already carries its chain. */}
+                    <VoiceMineBoard cards={board.mine.filter((card) => !card.settled)} chain={chain} ar={ar} onEscalate={(card) => escalate(card, true)} />
+                    {/* The channel promises are on the channel tiles; only the two shared guarantees stay. */}
+                    <VoiceGuaranteeList rows={board.promises.slice(-2)} ar={ar} />
                   </div>
                 </div>
-                <VoiceChainBoard chain={board.chain} note={board.chainNote} ar={ar} />
+                {board.mine.some((card) => !card.settled) ? null : <VoiceChainBoard chain={board.chain} note={board.chainNote} ar={ar} />}
                 <p style={{ margin: 0, fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
                   {ar
                     ? <>الاعتراض على جزاء موقَّع مسار آخر: <Link to="/app/discipline" style={{ color: "inherit" }}>الجزاءات</Link>.</>
@@ -521,131 +589,59 @@ export default function Complaints() {
                 <div key={stat.lbl} className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, borderTop: `3px solid ${stat.accent}`, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
                   <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{stat.lbl}</span>
                   <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 28, fontWeight: 500, color: stat.accent, lineHeight: 1.05 }}>{stat.val}</span>
+                    <span dir="ltr" style={{ fontSize: 26, fontWeight: 700, color: stat.accent, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{stat.val}</span>
                     {stat.unit ? <span style={{ fontSize: 12, fontWeight: 600, color: stat.accent }}>{stat.unit}</span> : null}
                   </span>
                   <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>{stat.note}</span>
                 </div>
               ))}
             </div>
-            {queueFilter === "archive" ? (
-              <>
-                <div className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "12px 16px", display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                    <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "طابور المراجعة" : "Review queue"}</span>
-                    <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.8 }}>
-                      {ar ? "الأرشيف بعد «الكل» — ما استقرّ في نطاق فرعك." : "Archive sits after All — settled voices in your station scope."}
-                    </span>
-                  </div>
-                  <span style={{ marginInlineStart: "auto", display: "flex", gap: 5, flexWrap: "wrap" }}>
-                    {queueFilters.map(([id, label, n]) => {
-                      const on = queueFilter === id;
-                      return (
-                        <button key={id} type="button" onClick={() => setQueueFilter(id)} style={{ fontFamily: "inherit", fontSize: 11, padding: "7px 12px", border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`, borderRadius: 999, background: on ? "var(--nv-btn-fill)" : "var(--nv-card)", color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)", fontWeight: on ? 700 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", gap: 6, alignItems: "center" }}>
-                          {label}
-                          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.8 }}>{n}</span>
-                        </button>
-                      );
-                    })}
-                  </span>
-                </div>
-                <VoiceArchiveBoard
-                  cards={board.cards}
-                  ar={ar}
-                  canManage
-                  scope="manage"
-                />
-              </>
-            ) : (
-            <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-              <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                  <span style={{ fontSize: 15, fontWeight: 700 }}>{ar ? "طابور المراجعة" : "Review queue"}</span>
-                  <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.8 }}>
-                    {ar ? "مرتّب بما ضاق وقته أولاً. تجاوز المهلة يُرفع للمدير التالي على السلسلة نفسها — لا يُهمل. الأرشيف بعد «الكل»." : "Sorted by the tightest window first. A missed window is raised to the next manager on the same chain — it is not dropped. Archive sits after All."}
-                  </span>
-                </div>
-                <span style={{ marginInlineStart: "auto", display: "flex", gap: 5, flexWrap: "wrap" }}>
-                  {queueFilters.map(([id, label, n]) => {
-                    const on = queueFilter === id;
-                    return (
-                      <button key={id} type="button" onClick={() => setQueueFilter(id)} style={{ fontFamily: "inherit", fontSize: 11, padding: "7px 12px", border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`, borderRadius: 999, background: on ? "var(--nv-btn-fill)" : "var(--nv-card)", color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)", fontWeight: on ? 700 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", gap: 6, alignItems: "center" }}>
-                        {label}
-                        <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.8 }}>{n}</span>
-                      </button>
-                    );
-                  })}
-                </span>
-              </div>
-              {queue.length === 0 ? (
-                <div style={{ padding: "18px 20px", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.9 }}>
-                  {queueFilter === "over"
-                    ? (ar ? "لا صوت تجاوز مهلته — الطابور في وقته." : "No voice has missed its window — the queue is on time.")
-                    : (ar ? "لا أصوات في هذا الترشيح." : "No voices in this filter.")}
-                </div>
-              ) : queue.map((card) => {
-                const note = String(notes[card.item.id] || "");
-                const noteReady = note.trim().length > 4;
+            <div className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+              {queueFilters.map(([id, label, n]) => {
+                const on = queueFilter === id;
                 return (
-                  <article key={card.item.id} style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", borderInlineEnd: `3px solid ${card.accent}`, display: "flex", flexDirection: "column", gap: 9 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto auto", gap: 11, alignItems: "start" }}>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: card.ch.color, background: card.ch.bg, border: `1px solid ${card.ch.border}`, padding: "2px 9px", whiteSpace: "nowrap", marginTop: 2 }}>{card.channel}</span>
-                      <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.5 }}>{card.title}</span>
-                        <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.8 }}>{card.meta}{card.body ? ` · ${card.body}` : ""}</span>
-                      </span>
-                      <span style={{ display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end", whiteSpace: "nowrap" }}>
-                        <span style={{ fontSize: 10, color: "var(--nv-muted)" }}>{card.slaLabel}</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: card.slaColor }}>{card.slaVal}</span>
-                      </span>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: card.tierColor, background: card.tierBg, border: `1px solid ${card.tierBorder}`, padding: "2px 9px", whiteSpace: "nowrap", marginTop: 2 }}>{card.tier}</span>
-                    </div>
-                    <div style={{ display: "flex", gap: 0, flexWrap: "wrap", border: "1px solid var(--nv-line3)" }}>
-                      {card.steps.map((step) => (
-                        <span key={step.name} style={{ flex: "1 1 120px", minWidth: 0, padding: "7px 10px", borderInlineStart: "1px solid var(--nv-line3)", background: step.bg, display: "flex", flexDirection: "column", gap: 2 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: step.color, lineHeight: 1.5 }}>{step.name}</span>
-                          <span style={{ fontSize: 9, color: "var(--nv-muted)", lineHeight: 1.6 }}>{step.when}</span>
-                        </span>
-                      ))}
-                    </div>
-                    {card.item.channel === "anonymous" ? (
-                      <span style={{ fontSize: 11, color: "var(--nv-bad-ink)", background: "var(--nv-bad-soft)", border: "1px solid var(--nv-line)", padding: "9px 11px", lineHeight: 1.9 }}>
-                        {ar
-                          ? `بلاغ مجهول: لا تُطلب هويّة مُبلِّغه ولا يُراسَل شخصياً. يُعالَج بوقائعه، ويُنشر قراره بالرقم ${card.item.anonymousId || "—"}.`
-                          : `Anonymous: the reporter is not named or written to. It is handled on its facts, and the ruling is published under ${card.item.anonymousId || "—"}.`}
-                      </span>
-                    ) : null}
-                    <input
-                      value={note}
-                      onChange={(event) => setNotes((prev) => ({ ...prev, [card.item.id]: event.target.value }))}
-                      placeholder={card.item.channel === "anonymous"
-                        ? (ar ? "حيثيات القرار — تُنشر بالرقم لا بمخاطبة شخصية" : "Ruling reasons — published by number, not as a personal letter")
-                        : (ar ? "الملاحظة التي تصل صاحب الصوت — إلزامية للإعادة" : "The note the author sees — required to return")}
-                      style={field}
-                    />
-                    <div style={{ display: "flex", gap: 7, flexWrap: "wrap", alignItems: "center" }}>
-                      <button type="button" onClick={() => decide(card, "adopt")} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 13px", whiteSpace: "nowrap", ...actionStyle("go") }}>
-                        {ar ? "اعتماد بقرار مكتوب" : "Adopt with a written ruling"}
-                      </button>
-                      <button type="button" onClick={() => decide(card, "return")} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 13px", whiteSpace: "nowrap", ...actionStyle("plain", !noteReady) }}>
-                        {noteReady ? (ar ? "أَعِد بملاحظة" : "Return with a note") : (ar ? "الإعادة تحتاج ملاحظة" : "A return needs a note")}
-                      </button>
-                      <button type="button" onClick={() => escalate(card)} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "8px 13px", whiteSpace: "nowrap", ...actionStyle("plain", card.atTop) }}>
-                        {card.atTop ? (ar ? "بلغ آخر السلسلة" : "End of the chain") : (ar ? "صعّد للمستوى التالي" : "Escalate to the next level")}
-                      </button>
-                    </div>
-                    <VoiceAuditTrail events={card.audit} ar={ar} />
-                    <VoiceRelatedLinks links={card.related} ar={ar} />
-                  </article>
+                  <button key={id} type="button" onClick={() => setQueueFilter(id)} style={{ fontFamily: "inherit", fontSize: 11, padding: "7px 12px", border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`, borderRadius: 999, background: on ? "var(--nv-btn-fill)" : "var(--nv-card)", color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)", fontWeight: on ? 700 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", gap: 6, alignItems: "center" }}>
+                    {label}
+                    <span dir="ltr" style={{ fontSize: 10, opacity: 0.8 }}>{n}</span>
+                  </button>
                 );
               })}
-              <div style={{ padding: "13px 20px", fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.95 }}>
-                {ar
-                  ? "كل إجراء يُقيَّد في مسار القرار بوقته. صاحب الصوت المسمّى يرى من قرّر؛ والبلاغ المجهول يُعرض مساره بلا اسم المراجع إلا للإدارة. والإعادة بملاحظة تحتاج نصّاً مكتوباً."
-                  : "Every action is written on the decision path with its time. The named author sees who ruled; an anonymous path hides the reviewer's name except from management. A return needs a written note."}
-              </div>
-            </section>
-            )}
+              <span style={{ marginInlineStart: "auto", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
+                {ar ? "ما يتجاوز مهلته يُرفع تلقائياً للمستوى التالي." : "What misses its window goes up the chain automatically."}
+              </span>
+            </div>
+            {queueFilter === "archive" ? (
+              <VoiceArchiveBoard cards={board.cards} ar={ar} canManage scope="manage" />
+            ) : (() => {
+              const picked = queue.find((card) => String(card.item.id) === String(pickedId)) || queue[0] || null;
+              const note = picked ? String(notes[picked.item.id] || "") : "";
+              const noteReady = note.trim().length > 4;
+              const ownVoice = picked ? !checkSelfReviewGate(picked.item, currentUser?.id).ok : false;
+              return (
+                <div data-voice-manage-grid="1" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 16, alignItems: "start" }}>
+                  <VoiceDecisionCard
+                    card={picked}
+                    ar={ar}
+                    note={note}
+                    onNote={(value) => picked && setNotes((prev) => ({ ...prev, [picked.item.id]: value }))}
+                    noteReady={noteReady}
+                    ownVoice={ownVoice}
+                    onAdopt={() => picked && decide(picked, "adopt")}
+                    onReturn={() => picked && decide(picked, "return")}
+                    onEscalate={() => picked && escalate(picked)}
+                  />
+                  <VoiceQueueList
+                    cards={queue}
+                    selectedId={picked?.item.id}
+                    onPick={setPickedId}
+                    ar={ar}
+                    emptyText={queueFilter === "over"
+                      ? (ar ? "لا صوت تجاوز مهلته — الطابور في وقته." : "No voice has missed its window — the queue is on time.")
+                      : (ar ? "لا أصوات في هذا الترشيح." : "No voices in this filter.")}
+                  />
+                </div>
+              );
+            })()}
           </>
         ) : null}
 

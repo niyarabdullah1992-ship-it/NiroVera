@@ -22,7 +22,7 @@ export default function LeaveRequestItem({ request, canApprove, profile, request
   const { tone, icon: StatusIcon } = STATUS_STYLE[request.status] || STATUS_STYLE.pending;
   const typeRequiresFile = !!LEAVE_TYPES.find((ty) => ty.key === request.type)?.requiresFile;
   const gate = checkApproveLeaveGate(request, typeRequiresFile, { profile, requests });
-  const rejectGate = checkRejectLeaveGate(request, { nextStatus: "rejected", actor: "manager", profile, requests });
+  const rejectGate = checkRejectLeaveGate(request, { nextStatus: "rejected", actor: "manager", profile, requests, skipGrounds: true });
   const settle = request.type === "exam" ? checkExamSittingSettleGate(request) : { ok: true, settled: true };
   const pending = (request.status || "pending") === "pending";
 

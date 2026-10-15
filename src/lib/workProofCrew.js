@@ -9,6 +9,8 @@ export const EMPTY_PERSON = {
   employeeId: "",
   homeStationId: "",
   visitor: false,
+  badge: "",
+  briefed: false,
 };
 
 export const EMPTY_VEHICLE = {
@@ -42,8 +44,28 @@ export function normalizePerson(raw = {}, executeStationId) {
     employeeId,
     homeStationId,
     visitor,
+    // Gate details kept per person: badge handed at the gate, safety briefing, time in and out.
+    badge: String(raw.badge || "").trim(),
+    briefed: raw.briefed === true,
+    ...(raw.inAt ? { inAt: String(raw.inAt) } : {}),
+    ...(raw.outAt ? { outAt: String(raw.outAt) } : {}),
   };
 }
+
+/** Index of the first row whose ID repeats an earlier row's, or -1. */
+export function duplicatePersonIdIndex(list) {
+  const seen = new Set();
+  const rows = Array.isArray(list) ? list : [];
+  for (let i = 0; i < rows.length; i += 1) {
+    const id = String(rows[i]?.id || "").replace(/\s+/g, "");
+    if (!id) continue;
+    if (seen.has(id)) return i;
+    seen.add(id);
+  }
+  return -1;
+}
+
+export const PROOF_PEOPLE_LIMIT = CREW_LIMIT;
 
 export function normalizeVehicle(raw = {}) {
   const plate = String(raw.plate || "").trim();
@@ -165,6 +187,14 @@ export function workProofCrewFields(form) {
       ok: false,
       errorAr: "أدخل رقم هوية عامل واحد على الأقل.",
       errorEn: "Enter at least one worker ID number.",
+    };
+  }
+  const dup = duplicatePersonIdIndex(people);
+  if (dup >= 0) {
+    return {
+      ok: false,
+      errorAr: `رقم هوية ${people[dup].name} مكرر مع عامل آخر في الإثبات.`,
+      errorEn: `${people[dup].name}'s ID repeats another worker on this proof.`,
     };
   }
   return {

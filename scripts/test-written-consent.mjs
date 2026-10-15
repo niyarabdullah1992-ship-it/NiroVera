@@ -86,10 +86,10 @@ assert.equal(checkRaiseSignableGate({ type: "salary_letter", file: form, paper }
 assert.equal(checkRaiseSignableGate({ type: "custody", file: { name: "ack.jpg", url: "/x.jpg", type: "image/jpeg" }, paper: { name: "ack-signed.jpg", url: "/y.jpg", type: "image/jpeg" } }).ok, true);
 assert.equal(checkRaiseSignableGate({ type: "advance", file: form }).skipped, true);
 assert.equal(consentSignerEmail({ id: "e1", email: "a@b.co" }), "a@b.co");
-assert.match(CONSENT_MINISTRY_HINT_AR, /اكتب موافقة خطية/);
+assert.match(CONSENT_MINISTRY_HINT_AR, /وقّع النموذج.*الرفض لا يُتخذ سبباً لجزاء/);
 assert.match(CONSENT_MINISTRY_HINT_AR, /قسم التوقيع/);
-assert.match(CONSENT_MINISTRY_HINT_AR, /ارفع النسخة هنا للاعتماد/);
-assert.match(CONSENT_MINISTRY_HINT_AR, /زر مباشر/);
+assert.match(CONSENT_MINISTRY_HINT_AR, /ارفع النسخة الموقّعة/);
+assert.match(CONSENT_MINISTRY_HINT_AR, /ارفض بزر واحد/);
 assert.equal(checkAcceptConsentGate({ viaSigning: true }).error, "ACK_REQUIRED");
 assert.equal(checkAcceptConsentGate({ viaSigning: true, ack: true }).error, "PAPER_REQUIRED");
 assert.equal(checkRefuseConsentGate({ note: "لا", viaSigning: true }).ok, true);

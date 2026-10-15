@@ -33,7 +33,7 @@ export default function EmployeeFileLeaveBoard({ view, ar }) {
             {group.rows.map((row) => (
               <div key={`${group.title}-${row.name}`} style={{ display: "grid", gridTemplateColumns: "minmax(110px,1.3fr) 62px minmax(0,1.5fr) minmax(0,1.2fr) minmax(0,1fr)", gap: 12, padding: "11px 20px", alignItems: "start", borderBottom: "1px solid var(--nv-line2)" }}>
                 <span style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.6, minWidth: 0, color: NAVY }}>{row.name}</span>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 12, color: "var(--nv-ink2)", textAlign: "end" }}>{row.art}</span>
+                <span dir={/^\d/.test(String(row.art)) ? "ltr" : undefined} style={{ fontFamily: /^\d/.test(String(row.art)) ? "'IBM Plex Mono',monospace" : "inherit", fontSize: /^\d/.test(String(row.art)) ? 12 : 11, color: "var(--nv-ink2)", textAlign: "end" }}>{row.art}</span>
                 <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.8, minWidth: 0 }}>{row.ent}</span>
                 <span style={{ fontSize: 11, color: row.wageColor, lineHeight: 1.8, minWidth: 0 }}>{row.wage}</span>
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8, minWidth: 0 }}>{row.cond}</span>

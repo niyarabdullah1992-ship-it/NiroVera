@@ -47,13 +47,13 @@ export default function Nv7SectionHead({ kicker, title, hint, meta, tabs }) {
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 1, maxWidth: 680, minWidth: 0, flex: "1 1 240px" }}>
         {kicker ? (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#A9CDB8", fontWeight: 600, fontSize: 10.5, letterSpacing: ".04em" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#A9CDB8", fontWeight: 600, fontSize: 10.5, letterSpacing: 0 }}>
             <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", borderRadius: 8, display: "inline-block" }} />
-            {index ? <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{index}</span> : null}
+            {index ? <span dir={/[\u0600-\u06FF]/.test(index) ? undefined : "ltr"} style={{ fontFamily: /[\u0600-\u06FF]/.test(index) ? "inherit" : "var(--font-mono, 'IBM Plex Mono', monospace)", letterSpacing: ".04em"}}>{index}</span> : null}
             {rest ? <span>{rest}</span> : (!index ? <span>{kicker}</span> : null)}
           </span>
         ) : null}
-        <h1 className="nv-h" style={{ margin: 0, fontFamily: "var(--font-heading)", fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.4, letterSpacing: "-.01em" }}>{title}</h1>
+        <h1 className="nv-h" style={{ margin: 0, fontFamily: "var(--font-heading)", fontSize: 18, fontWeight: 700, color: "#fff", lineHeight: 1.4, letterSpacing: 0 }}>{title}</h1>
         {hint ? (
           <div style={{ margin: 0, fontSize: 12, lineHeight: 1.7, color: "#C5DBCD", maxWidth: 680 }}>{hint}</div>
         ) : null}

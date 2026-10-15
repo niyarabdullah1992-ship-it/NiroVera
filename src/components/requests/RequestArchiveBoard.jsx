@@ -9,6 +9,8 @@ import {
 } from "@/lib/requestWorkspace";
 import { BORDER, CARD, CONTROL_RADIUS, MUTED, NAVY, PILL_RADIUS } from "@/lib/platformStyles";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import { requestDecisionSheet } from "@/lib/printRecords";
+import { archiveTone } from "@/lib/archiveFacts";
 
 function chip(on) {
   return {
@@ -110,6 +112,14 @@ export default function RequestArchiveBoard({
           <button type="button" onClick={() => setScope("mine")} style={chip(scope === "mine")}>{ar ? "ملفي" : "My file"}</button>
         </span>
       ) : null}
+      printRecord={(item) => (item.row ? requestDecisionSheet({
+        row: item.row,
+        ar,
+        branch: item.branch,
+        tone: archiveTone(item.row.statusLabel),
+        trail: requestAuditTrailRows(item.row.source || item.row, ar),
+        article: item.row.article ? (ar ? `نظام العمل — المادة ${item.row.article}` : `Labour Law — Article ${item.row.article}`) : "",
+      }) : null)}
       renderOpen={(item) => {
         const row = item.row;
         if (!row) return null;

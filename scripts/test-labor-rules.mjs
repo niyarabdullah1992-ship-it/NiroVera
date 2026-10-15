@@ -618,8 +618,11 @@ assert.equal(
   "LEAVE_DATES_ORDER",
 );
 
+// Updated: Art. 109 charges work days only (Fri/Sat default rest not charged), so 2026-08-01..25 is
+// 18 chargeable days — inside the 21-day balance. The over-balance fixture now spans 25 work days.
+assert.equal(chargeableAnnualDays("2026-08-01", "2026-08-25"), 18);
 const overBalance = checkApproveLeaveGate(
-  { type: "annual", startDate: "2026-08-01", endDate: "2026-08-25", days: 25, files: [{ name: "a.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "annual", startDate: "2026-08-02", endDate: "2026-09-03", days: 25, files: [{ name: "a.pdf" }], status: "pending", noOtherEmployerAck: true },
   false,
   { profile: { hireDate: "2026-01-01", leaveTotals: {} }, requests: [] },
 );
@@ -627,7 +630,7 @@ assert.equal(overBalance.ok, false);
 assert.equal(overBalance.error, "LEAVE_BALANCE_EXCEEDED");
 
 const overBalanceNoFile = checkApproveLeaveGate(
-  { type: "annual", startDate: "2026-08-01", endDate: "2026-08-25", days: 25, files: [], status: "pending", noOtherEmployerAck: true },
+  { type: "annual", startDate: "2026-08-02", endDate: "2026-09-03", days: 25, files: [], status: "pending", noOtherEmployerAck: true },
   false,
   { profile: { hireDate: "2026-01-01", leaveTotals: {} }, requests: [] },
 );
@@ -842,20 +845,24 @@ assert.equal(usedLeaveDays(priorSick, "sick", "2025-03-01"), 95);
 assert.equal(usedLeaveDays(priorSick, "sick", "2026-09-01"), 0);
 
 assert.equal(officialHolidayOn("2026-05-26")?.id, "adha");
-assert.equal(chargeableAnnualDays("2026-05-24", "2026-06-02"), 6);
-assert.equal(chargeableAnnualDays("2026-09-21", "2026-09-25"), 4);
+// Updated to the Art. 109 work-days rule (alpdf/al.txt): with no posting the default is two weekly
+// rest days (Art. 104 Friday + company Saturday), so Sat 2026-05-30 and Fri 2026-09-25 are not charged.
+// 2026-05-24..06-02: 10 days − Adha 26–29 − Sat 30 = 5. 2026-09-21..25: 5 − National 23 − Fri 25 = 3.
+assert.equal(chargeableAnnualDays("2026-05-24", "2026-06-02"), 5);
+assert.equal(chargeableAnnualDays("2026-05-24", "2026-06-02", undefined, { workPosting: { weeklyRestDayCount: 1 } }), 6, "six-day week: Saturday is charged");
+assert.equal(chargeableAnnualDays("2026-09-21", "2026-09-25"), 3);
 const eidInsideAnnual = [{ type: "annual", status: "approved", startDate: "2026-05-24", endDate: "2026-06-02", days: 10 }];
-assert.equal(usedLeaveDays(eidInsideAnnual, "annual", "2026-09-16", "2026-01-01"), 6);
-assert.equal(remainingLeaveDays({ hireDate: "2026-01-01" }, eidInsideAnnual, "annual", "2026-09-16"), 15);
+assert.equal(usedLeaveDays(eidInsideAnnual, "annual", "2026-09-16", "2026-01-01"), 5);
+assert.equal(remainingLeaveDays({ hireDate: "2026-01-01" }, eidInsideAnnual, "annual", "2026-09-16"), 16);
 const nationalInsideAnnual = [{ type: "annual", status: "approved", startDate: "2026-09-21", endDate: "2026-09-25", days: 5 }];
-assert.equal(usedLeaveDays(nationalInsideAnnual, "annual", "2026-09-25", "2026-01-01"), 4);
+assert.equal(usedLeaveDays(nationalInsideAnnual, "annual", "2026-09-25", "2026-01-01"), 3);
 const sickOverEid = [{ type: "sick", status: "approved", startDate: "2026-05-24", endDate: "2026-06-02", days: 10 }];
 assert.equal(usedLeaveDays(sickOverEid, "sick", "2026-06-02"), 6);
 assert.deepEqual(weeklyRestDaysInsideEid("2026-05-26", "2026-05-29"), ["2026-05-29"]);
 const annualOverlap = deriveEidOverlap({ start: "2026-05-24", end: "2026-06-02", type: "annual" });
 assert.equal(annualOverlap.extendAnnualDays, 4);
 assert.equal(annualOverlap.compensateRestDays, 1);
-assert.equal(annualOverlap.chargeable, 6);
+assert.equal(annualOverlap.chargeable, 5); // work days only — see chargeableAnnualDays above
 assert.equal(mergeHolidayHit({ id: "fitr", from: "2026-03-20" }, { id: "national", from: "2026-03-20" }).absorbedCivic, "national");
 assert.equal(mergeHolidayHit({ id: "fitr", from: "2026-03-20" }, { id: "national", from: "2026-03-20" }).id, "fitr");
 const eidRequestOk = checkApproveLeaveGate(

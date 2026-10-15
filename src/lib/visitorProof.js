@@ -3,6 +3,7 @@ import { ID_TYPE_OPTIONS, GENDER_OPTIONS } from "./employeeProfileFields.js";
 import {
   cleanedPeople,
   cleanedVehicles,
+  duplicatePersonIdIndex,
   formPeople,
   formVehicles,
 } from "./workProofCrew.js";
@@ -235,6 +236,10 @@ export function visitorProofFields(form) {
   }
   if (!first.nationality) {
     return { ok: false, error: "NATIONALITY_REQUIRED", errorAr: "أدخل جنسية الزائر.", errorEn: "Enter the visitor nationality." };
+  }
+  const dup = duplicatePersonIdIndex(people);
+  if (dup >= 0) {
+    return { ok: false, error: "DUPLICATE_ID", errorAr: `رقم هوية ${people[dup].name} مكرر مع زائر آخر.`, errorEn: `${people[dup].name}'s ID repeats another visitor.` };
   }
   const visitFrom = visitDateKey(form?.visitFrom || form?.arrivedAt) || todayVisitDateKey();
   const visitTo = visitDateKey(form?.visitTo);

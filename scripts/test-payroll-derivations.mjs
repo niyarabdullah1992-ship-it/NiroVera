@@ -137,9 +137,12 @@ assert.equal(gosiEmployeeWithheld(otLine), 0);
 assert.equal(gosiEmployeeWithheld({ ...otLine, isSaudi: false }), 0);
 assert.equal(gosiEmployeeWithheld({ ...otLine, isSaudi: true }), 234);
 assert.equal(lineNet({ ...otLine, isSaudi: true }), 2216); // 2450 − 234
-// The GOSI share is statutory, not an Article 93 deduction: it never widens or narrows the cap.
-assert.equal(checkArticle90Gate({ ...otLine, isSaudi: true, deductions: 1200 }).ok, true);
-assert.equal(checkArticle90Gate({ ...otLine, isSaudi: true, deductions: 1201 }).ok, false);
+// Art. 92/2 lists GOSI contributions among deductions and Art. 93 caps them "in all cases":
+// with a 234 share, documented deductions may reach 1200 − 234 = 966.
+assert.equal(checkArticle90Gate({ ...otLine, isSaudi: true, deductions: 966 }).ok, true);
+assert.equal(checkArticle90Gate({ ...otLine, isSaudi: true, deductions: 967 }).ok, false);
+assert.equal(checkArticle90Gate({ ...otLine, deductions: 1200 }).ok, true, "nationality unknown: nothing withheld, full half");
+assert.equal(article90MaxDeduction({ ...otLine, isSaudi: true }), 966, "the room for documented deductions is the half less the GOSI share");
 assert.equal(article90MaxDeduction({ ...otLine, overtimeHours: 200 }), 1200); // overtime does not raise the cap
 
 // A settled line reports what it was settled with, whatever the formula does later.

@@ -803,7 +803,7 @@ const dict = {
     noHandlerAssigned: "لم يُعيَّن أحد بعد",
     clusterManagerNote: "تريد مديرًا أعلى من مدير الفرع يشرف على مجموعة كاملة من الفروع؟ أنشئ مجموعة (Cluster) أدناه وحدد فيها الفروع التي يجب أن يغطيها، ثم أضف منصب موارد بشرية بنطاق \"على مستوى المجموعة\". هذا الشخص يصبح تلقائيًا أعلى من كل مدير فرع ضمن تلك المجموعة في سلسلة التصعيد.",
     selectAllStations: "تحديد الكل", deselectAllStations: "إلغاء تحديد الكل",
-    attendance: "الحضور والانصراف", attendanceScheduling: "الدوام والحضور", checkIn: "تسجيل حضور", checkOut: "تسجيل انصراف",
+    attendance: "الحضور والانصراف", attendanceScheduling: "الحضور والدوام", checkIn: "تسجيل حضور", checkOut: "تسجيل انصراف",
     checkedInAt: "تم تسجيل الحضور الساعة", checkedOutAt: "تم تسجيل الانصراف الساعة",
     notCheckedInYet: "لم تسجل حضورك اليوم", alreadyCheckedOut: "قمت بتسجيل الانصراف لهذا اليوم",
     attendanceStatusPresent: "حاضر", attendanceStatusLate: "متأخر", attendanceStatusAbsent: "غائب", attendanceStatusNotYet: "لم يسجل الحضور",

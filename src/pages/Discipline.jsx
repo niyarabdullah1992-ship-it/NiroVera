@@ -29,16 +29,31 @@ import DisciplineArchiveBoard from "@/components/discipline/DisciplineArchiveBoa
 import DisciplineCaseCard from "@/components/discipline/DisciplineCaseCard";
 import DisciplineLawBoard from "@/components/discipline/DisciplineLawBoard";
 import DisciplineMineCard from "@/components/discipline/DisciplineMineCard";
-import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
+import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
+import OpsSideSlab, { OpsListHead } from "@/components/tasks/OpsSideSlab";
+import { DutyNumber, DutyTile } from "@/components/schedules/DutyTiles";
+import { DisciplineHero } from "@/components/discipline/DisciplineCaseCard";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { generateDisciplineDeduction, liftDisciplineDeduction } from "@/lib/deductionGenerators";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { ROLE_RANK, canSeeAllStations, hrScopeStations, visibleStations } from "@/lib/permissions";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { useRailSide, useSetRailSide } from "@/lib/railSide";
+import { regulationDate, regulationOf, regulationRef, regulationStepFor } from "@/lib/workRegulation";
+import { deadlineText, disciplineDeadlines } from "@/lib/disciplineDeadlines";
+import { ruleValue } from "@/lib/laborRules";
 
-const MANAGE_TAB_ORDER = ["mine", "schedule", "calc", "manage", "raise", "law", "archive"];
+const MANAGE_TAB_ORDER = ["manage", "raise", "calc", "schedule", "law", "archive"];
 const EMPLOYEE_TAB_ORDER = ["mine", "schedule", "law", "archive"];
+const FACE_TITLE = {
+  mine: { ar: "جزاءاتي وحقّي في الاعتراض", en: "My sanctions and my right to object" },
+  schedule: { ar: "لائحة الجزاءات", en: "The penalty list" },
+  calc: { ar: "حاسبة الحسم", en: "Cut calculator" },
+  manage: { ar: "ملفات الجزاء المفتوحة", en: "Open sanction files" },
+  raise: { ar: "ارفع جزاءً", en: "Raise a sanction" },
+  law: { ar: "أنظمة الوزارة في الجزاءات", en: "Ministry rules on sanctions" },
+  archive: { ar: "أرشيف الجزاءات", en: "Sanctions archive" },
+};
 const TAB_LABEL = {
   schedule: { ar: "لائحة الجزاءات", en: "Penalty list" },
   calc: { ar: "حاسبة الحسم", en: "Cut calculator" },
@@ -139,8 +154,7 @@ const RIGHTS = [
   { ruleId: "discipline.listedOnly.cite", ar: "لا يُوقَّع عليّ جزاء غير وارد في النظام أو في لائحة تنظيم العمل.", en: "No penalty may be imposed that is not in the Law or the work-organization regulations." },
   { ruleId: "discipline.repeat.cooloffDays", ar: "لا يُشدَّد الجزاء عند التكرار إذا مضى 180 يوماً على إبلاغ الجزاء السابق.", en: "A repeat penalty may not be increased if 180 days have passed since notice of the previous one." },
   { ruleId: "discipline.appeal.internalDays", ar: "أعترض بنفسي بعد التوقيع خلال 30 يوماً عدا أيام العطل الرسمية.", en: "I object myself within 30 days of signing, excluding official holidays." },
-  { ruleId: "discipline.decision.days", ar: "إن لم يُبتّ في اعتراضي خلال 15 يوماً فلي حق الاعتراض أمام المحاكم العمالية.", en: "If my objection is not decided within 15 days, I may challenge it before the labour courts." },
-  { ruleId: "discipline.record.eraseDays", ar: "يُمحى الجزاء من سجلّي الظاهر بعد سنة من توقيعه، ويبقى في أرشيف الشركة.", en: "A sanction drops off my visible record one year after signing, and stays in the company archive." },
+  { ruleId: "discipline.decision.days", ar: "إن رُفض تظلّمي أو لم يُبتّ فيه كتابةً خلال 15 يوماً فلي الاعتراض أمام المحاكم العمالية خلال 30 يوماً عدا العطل الرسمية.", en: "If my grievance is refused or not decided in writing within 15 days, I may object before the labour courts within 30 days, official holidays excluded." },
 ];
 
 export default function Discipline() {
@@ -162,18 +176,26 @@ export default function Discipline() {
     .filter((item) => {
       if (!canManage) return true;
       const person = employees.find((row) => String(row.id) === String(item.employeeId));
+      // Management never sees its own file, nor one it could not have raised — those live on ملفي
+      // and with whoever sits above (the same rule as raising).
+      if (String(item.employeeId) === String(currentUser?.id)) return false;
+      if (person && scopeEqualOrWider(person, currentUser, data)) return false;
       return matchesStationScope(item.stationId || person?.stationId || person?.station_id, stationScope);
     });
   const mine = cases.filter((item) => item.employeeId === currentUser?.id);
   const liveCases = visibleCases.filter((item) => !isDisciplineSettled(item));
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
+  // The side is in the address: lane=manage is الإدارة, anything else is الموظف — the shared tabs
+  // (لائحة الجزاءات · أنظمة الوزارة · الأرشيف) keep the side they were opened from.
   const adminVoice = canManage && railSide !== "employee";
   const setTab = (next) => {
     const params = new URLSearchParams(searchParams);
     params.set("tab", next);
+    if (adminVoice) params.set("lane", "manage");
+    else params.delete("lane");
     setSearchParams(params, { replace: true });
-    if (adminVoice && next !== "mine") setRailSide("manage");
+    if (adminVoice) setRailSide("manage");
   };
   const [employeeId, setEmployeeId] = useState("");
   const [penaltyKind, setPenaltyKind] = useState("fine");
@@ -185,6 +207,8 @@ export default function Discipline() {
   const [note, setNote] = useState("");
   const [appealDraft, setAppealDraft] = useState("");
   const [caseSel, setCaseSel] = useState("");
+  const [clauseId, setClauseId] = useState("");
+  const regulation = useMemo(() => regulationOf(data), [data]);
   const laborCalendar = laborCalendarOf(data);
   const scopedStation = stations.find((row) => String(row.id) === String(stationScope));
   const scopeLabel = scopedStation?.name || "";
@@ -193,6 +217,20 @@ export default function Discipline() {
     if (raiseTargets.some((person) => String(person.id) === String(employeeId))) return;
     setEmployeeId(raiseTargets[0]?.id || "");
   }, [employeeId, raiseTargets]);
+
+  const clauseStep = useMemo(
+    () => (clauseId && employeeId
+      ? regulationStepFor({ regulation, clauseId, cases, employeeId, today: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date()), cooloffDays: Number(ruleValue("discipline.repeat.cooloffDays")) || 180, ar })
+      : null),
+    [regulation, clauseId, cases, employeeId, ar],
+  );
+
+  // Picking a clause (or another person) applies what the regulation says for this time (Arts. 67–68).
+  useEffect(() => {
+    if (!clauseStep?.step?.ok) return;
+    setPenaltyKind(clauseStep.step.kind);
+    setPenaltyDays(clauseStep.step.days);
+  }, [clauseStep]);
 
   const board = useMemo(
     () => deriveDisciplineBoard({ cases: liveCases, employees, stations, ar, canDecide: canManage, scopeLabel }),
@@ -233,6 +271,66 @@ export default function Discipline() {
     value: key,
     label: ar ? TAB_LABEL[key].ar : TAB_LABEL[key].en,
   }));
+  const selectedCard = files.find((row) => String(row.item.id) === String(caseSel)) || files[0] || null;
+  const meterOf = (card, id) => (card.meters || []).find((m) => m.id === id) || {};
+  const deadlineOf = (card) => {
+    const id = card.face?.id;
+    const m = id === "signed" || id === "objected" ? meterOf(card, "appeal") : meterOf(card, "sign");
+    if (!m.text || m.text === "—") return null;
+    return { text: `${m.text} ${ar ? "يوماً" : "days"}`, label: m.label, over: m.over, art: m.article };
+  };
+  const NEXT = {
+    notified: { ar: "سماع الدفاع", en: "Hear the defence" },
+    defence: { ar: "التوقيع أو الحفظ", en: "Sign or close" },
+    objected: { ar: "البتّ في الاعتراض", en: "Rule on the objection" },
+    signed: { ar: "يسري — يُغلق بعد مهلة الاعتراض", en: "In force — closes after the objection window" },
+  };
+  const waiting = files.filter((card) => card.actions?.length);
+  // Arts. 69 & 72 — the windows about to close (≤ 7 days) or already closed, most urgent first.
+  const clocks = adminVoice
+    ? disciplineDeadlines({ cases: liveCases, today: board.today, calendar: laborCalendar }).filter((row) => row.kind !== "grievance" && (row.soon || row.over))
+    : [];
+  const overCount = files.filter((card) => (card.meters || []).some((m) => m.over)).length;
+  // The platform's three tiles: what waits on you first (wider), then open files, then the cut in force.
+  const statTile = (stat, key, tone) => (stat ? (
+    <DutyTile key={key} dataKey={key} tone={tone} label={stat.lbl} note={stat.note || ""}>
+      <DutyNumber value={stat.val} unit={stat.unit || ""} />
+    </DutyTile>
+  ) : null);
+  const manageTiles = adminVoice ? [
+    <DutyTile key="due" dataKey="disc-due" tone={overCount ? "bad" : waiting.length ? "warn" : "ok"} label={ar ? "بانتظار قرارك" : "Waiting on you"} note={overCount ? (ar ? `${overCount} تجاوز مهلة نظامية` : `${overCount} past a statutory window`) : (ar ? "كلها ضمن المهل النظامية (69 · 72)" : "All within the statutory windows (69 · 72)")}>
+      <DutyNumber value={String(waiting.length)} unit={ar ? "ملف" : "files"} />
+    </DutyTile>,
+    statTile(board.stats[1], "disc-open", files.length ? "warn" : "mute"),
+    statTile(board.stats[3], "disc-cut", String(board.stats[3]?.val || "0").startsWith("0") ? "mute" : "bad"),
+  ].filter(Boolean) : null;
+  const manageSide = adminVoice ? (
+    <OpsSideSlab
+      ar={ar}
+      dataKey="disc-side"
+      title={ar ? "بانتظار قرارك" : "Waiting on you"}
+      standing={scopeLabel ? (ar ? `النطاق: ${scopeLabel}` : `Scope: ${scopeLabel}`) : (ar ? "كل فروعك" : "All your branches")}
+      note={ar ? "كل ملف بخطوته التالية ومهلتها النظامية. اختر اسماً لفتح ملفه." : "Each file with its next step and statutory window. Pick a name to open the file."}
+      groups={["notified", "defence", "objected", "signed"].map((fid) => ({
+        id: fid,
+        name: ar ? NEXT[fid].ar : NEXT[fid].en,
+        rows: files.filter((card) => card.face?.id === fid).map((card) => {
+          const dl = deadlineOf(card);
+          return {
+            id: String(card.item.id),
+            title: card.employee?.name || "—",
+            count: dl ? dl.text.split(" ")[0] : "",
+            tone: dl?.over ? "bad" : "gold",
+            line: [card.item.note || card.item.reason, dl ? `${dl.label} (${ar ? "م" : "Art."} ${dl.art})` : ""].filter(Boolean).join(" · "),
+            action: { key: "open", label: ar ? "افتح الملف" : "Open the file", onClick: () => { setCaseSel(String(card.item.id)); document.querySelector("[data-discipline-case]")?.scrollIntoView({ behavior: "smooth", block: "start" }); } },
+          };
+        }),
+      }))}
+      emptyText={ar ? "لا ملف ينتظر قرارك." : "No file waits on you."}
+      selectedId={String(selectedCard?.item.id || "")}
+      onSelect={(id) => id && setCaseSel(id)}
+    />
+  ) : null;
 
   const saveCases = (next, extra) => {
     if (!company?.id) return;
@@ -284,6 +382,14 @@ export default function Discipline() {
         cutDays,
         deferMonths: kindSpec.deferMonths || 0,
         dismissGround: penaltyKind === "dismiss" ? dismissGround.trim() : "",
+        ...(clauseStep ? {
+          regulationClauseId: clauseStep.clause.id,
+          regulationSource: regulation.source,
+          regulationRef: regulationRef(regulation, clauseStep.clause, true),
+          regulationOffence: clauseStep.clause.ar || clauseStep.clause.en || "",
+          regulationTime: clauseStep.time,
+          regulationSays: clauseStep.label,
+        } : {}),
         offSite,
         workConnected: offSite ? workConnected.trim() : "",
         createdAt: now,
@@ -302,6 +408,7 @@ export default function Discipline() {
       ...cases,
     ]);
     setNote("");
+    setClauseId("");
     setDismissGround("");
     setOffSite(false);
     setWorkConnected("");
@@ -448,21 +555,38 @@ export default function Discipline() {
   };
 
   return (
-    <SuiteWorkspaceFrame
+    <OpsFrame
       ar={ar}
-      kicker={pageKicker("/app/discipline", lang)}
-      title={ar ? "الجزاءات" : "Sanctions"}
-      hint={ar
-        ? "وجهان لملف واحد: ما يراه الموظف — جزاؤه وحقّه في الاعتراض · ما يديره المسؤول — الرفع والمراحل والقرار. الجزاء إجراء موقَّع لا ملاحظة."
-        : "Two faces of one file: what the employee sees — the sanction and the right to object — and what management runs — raising, the stages, and the decision. A sanction is a signed act, not a note."}
-      tabs={tabs}
-      tool={activeFace}
-      onTool={setTab}
+      lane={adminVoice ? "manage" : "mine"}
+      section={ar ? "الجزاءات" : "Sanctions"}
+      title={ar ? FACE_TITLE[activeFace]?.ar || "الجزاءات" : FACE_TITLE[activeFace]?.en || "Sanctions"}
+      hint={adminVoice
+        ? (ar
+          ? "ملفات الجزاء في نطاقك: الإبلاغ، وسماع الدفاع، والتوقيع، والبتّ في التظلّم. لا يُوقَّع جزاء إلا من قائمة المادة 66 وبند لائحة تنظيم العمل، وبعد إبلاغ كتابي وسماع دفاع (المادة 71). ملفك أنت ليس هنا — هو في واجهة الموظف."
+          : "Sanction files in your scope: notice, hearing, signing, and ruling on grievances. Your own file is not here — it is on the employee side.")
+        : (ar
+          ? "ما على ملفك من جزاءات، ومهلة تظلّمك من كلٍّ منها (المادة 72). التظلّم حقّك وحدك ويُرفع كتابةً."
+          : "The sanctions on your file and your grievance window for each (Art. 72). The grievance is yours alone, in writing.")}
+      meta={<HeroSwitch options={tabs} value={activeFace} onChange={setTab} label={ar ? "صفحات الجزاءات" : "Sanction pages"} />}
+      tiles={adminVoice && activeFace === "manage" ? manageTiles : null}
+      side={adminVoice && activeFace === "manage" ? manageSide : null}
     >
       <div data-discipline-face={activeFace} style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink)", fontSize: 13 }}>
 
         {activeFace === "schedule" ? (
-          <DisciplineScheduleBoard ar={ar} today={board.today} />
+          <DisciplineScheduleBoard
+            ar={ar}
+            today={board.today}
+            regulation={regulation}
+            canEdit={adminVoice}
+            onSave={(next) => {
+              if (!company?.id) return;
+              updateCompany(company.id, (row) => {
+                row.workRegulation = { ...next, savedBy: currentUser?.name || "", savedAt: new Date().toISOString() };
+              });
+              toast({ description: ar ? "حُفظت لائحة تنظيم العمل المعتمدة — كل جزاء جديد يسمّي بنده منها." : "The approved regulation is saved — every new sanction names its clause." });
+            }}
+          />
         ) : null}
 
         {adminVoice && activeFace === "calc" ? (
@@ -504,6 +628,15 @@ export default function Discipline() {
             dismissGround={dismissGround}
             onDismissGround={setDismissGround}
             onSubmit={openCase}
+            regulation={regulation}
+            clauseId={clauseId}
+            clauseStep={clauseStep}
+            onClause={(next) => {
+              setClauseId(next || "");
+              const clause = regulation.clauses.find((c) => c.id === next);
+              // The clause names the offence; the date makes it this incident (one penalty per act — Art. 70).
+              if (clause && !String(note || "").trim()) setNote(`${ar ? clause.ar || clause.en : clause.en || clause.ar} — ${ar ? "يوم" : "on"} ${regulationDate(discoveredAt, ar)}`);
+            }}
           />
         ) : null}
 
@@ -522,91 +655,97 @@ export default function Discipline() {
 
         {adminVoice && activeFace === "manage" ? (
           <>
-            <div className="nv-disc-stats" data-discipline-admin="" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-              {board.stats.map((stat) => {
-                const quiet = stat.val === "0" || stat.val === "—" || String(stat.val).startsWith("0 ");
-                return (
-                  <div key={stat.lbl} style={{ position: "relative", overflow: "hidden", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                    <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: 3, background: stat.accent }} />
-                    <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-ink3)" }}>{stat.lbl}</span>
-                    <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                      <strong dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 22, fontWeight: 700, lineHeight: 1.15, color: quiet ? "var(--nv-ink)" : stat.accent, unicodeBidi: "isolate" }}>{stat.val}</strong>
-                      {stat.unit ? <span style={{ fontSize: 12, fontWeight: 700, color: quiet ? "var(--nv-ink2)" : stat.accent }}>{stat.unit}</span> : null}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.6 }}>{stat.note || "—"}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "10px 14px", fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
-              <span aria-hidden style={{ width: 9, height: 9, borderRadius: "50%", background: "#C8A45A", flex: "none" }} />
-              <span>
-                {ar
-                  ? "لرفع جزاء جديد افتح تبويب «ارفع جزاءً» — يمرّ بالبوابات النظامية ثم يظهر ملفه هنا."
-                  : "To raise a sanction, open «Raise a sanction» — the statutory gates run first, then the file appears here."}
-              </span>
-            </div>
-
+            <OpsListHead
+              title={ar ? `ملفات الجزاء · ${files.length}` : `Sanction files · ${files.length}`}
+              note={ar ? "كل ملف بمرحلته، والجزاء المقترح أو الموقَّع، ومهلته النظامية (69 قبل التوقيع · 72 بعده)، وما استُهلك من سقف الشهر (70)." : "Each file with its stage, the proposed or signed penalty, its statutory window (69 before signing · 72 after), and the month's cap used (70)."}
+              trailing={(
+                <button type="button" data-disc-raise="1" onClick={() => setTab("raise")} style={{ fontFamily: "inherit", height: 36, padding: "0 16px", borderRadius: 10, border: "none", background: "#0B3D27", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                  {ar ? "ارفع جزاءً" : "Raise a sanction"}
+                </button>
+              )}
+            />
+            {clocks.length ? (
+              <section data-disc-clocks="" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-warn-line)", borderRadius: 12, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", background: "var(--nv-warn-soft)" }}>
+                  <span aria-hidden style={{ width: 14, height: 2, background: "#C8A45A", borderRadius: 4 }} />
+                  <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "مهل نظامية تقترب" : "Statutory windows closing"}</strong>
+                  <span style={{ fontSize: 11.5, color: "var(--nv-ink2)" }}>{ar ? "يُنبَّه المسؤولون قبل 7 أيام ثم يومين، والعامل عند فوات مهلة البتّ" : "Managers are reminded 7 and 2 days ahead; the worker when a ruling lapses"}</span>
+                </div>
+                {clocks.map((row) => {
+                  const card = files.find((c) => String(c.item.id) === String(row.caseId));
+                  return (
+                    <div key={`${row.caseId}-${row.kind}`} data-disc-clock={row.kind} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "10px 14px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)" }}>
+                      <span style={{ fontSize: 12.5, color: row.over ? "var(--nv-bad-ink)" : "var(--nv-ink)", lineHeight: 1.7 }}>{deadlineText(row, card?.employee?.name, ar)}</span>
+                      {card ? (
+                        <button type="button" onClick={() => { setCaseSel(String(row.caseId)); document.querySelector("[data-discipline-case]")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} style={{ fontFamily: "inherit", height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                          {ar ? "افتح الملف" : "Open the file"}
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </section>
+            ) : null}
             {files.length === 0 ? (
-              <section data-discipline-empty="" style={PACK_CARD}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)" }}>
-                  <strong style={{ fontSize: 13 }}>{ar ? "ملف الجزاء" : "Sanction file"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>(0)</span></strong>
-                </div>
-                <div style={{ ...packHead("minmax(0,1fr)"), paddingInline: 12 }}>
-                  <span>{ar ? "ملف الجزاء" : "Sanction file"}</span>
-                </div>
-                <div style={{ padding: "12px 14px", fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "لا ملفات جزاء في نطاقك" : "No sanction files in your scope."}</div>
+              <section data-discipline-empty="" style={{ ...PACK_CARD, borderRadius: 12, padding: "26px 18px", textAlign: "center", fontSize: 13, color: "var(--nv-muted)" }}>
+                {ar ? "لا ملفات جزاء مفتوحة في نطاقك." : "No open sanction files in your scope."}
               </section>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-ink2)", marginInlineEnd: 4 }}>{ar ? "ملفات الجزاء" : "Sanction files"}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <ol data-disc-rows="1" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
                   {files.map((card) => {
-                    const on = String((files.find((row) => String(row.item.id) === String(caseSel)) || files[0]).item.id) === String(card.item.id);
+                    const on = String(selectedCard?.item.id) === String(card.item.id);
+                    const dl = deadlineOf(card);
+                    const capM = meterOf(card, "cap");
+                    const stageTone = card.face?.id === "objected" ? "bad" : card.face?.id === "signed" ? "ok" : "warn";
+                    const tone = { ok: ["var(--nv-ok-ink)", "var(--nv-ok-soft)", "var(--nv-ok-line)"], warn: ["var(--nv-warn-ink)", "var(--nv-warn-soft)", "var(--nv-warn-line)"], bad: ["var(--nv-bad-ink)", "var(--nv-bad-soft)", "var(--nv-bad-line)"] }[stageTone];
+                    const chipS = (c) => ({ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, color: c[0], background: c[1], border: `1px solid ${c[2]}`, whiteSpace: "nowrap" });
                     return (
-                      <button
-                        key={card.item.id}
-                        type="button"
-                        onClick={() => setCaseSel(String(card.item.id))}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                          height: 34,
-                          padding: "0 12px",
-                          borderRadius: 8,
-                          cursor: "pointer",
-                          fontFamily: "inherit",
-                          fontSize: 12.5,
-                          whiteSpace: "nowrap",
-                          fontWeight: on ? 700 : 500,
-                          background: on ? "#0B3D27" : "var(--nv-card)",
-                          color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
-                          border: on ? "1px solid #0B3D27" : "1px solid var(--nv-line)",
-                        }}
-                      >
-                        {card.employee?.name || "—"}
-                        <span style={{
-                          fontFamily: "'IBM Plex Mono',monospace",
-                          fontSize: 10.5,
-                          fontWeight: 600,
-                          padding: "1px 6px",
-                          borderRadius: 4,
-                          background: on ? "rgba(255,255,255,.16)" : "var(--nv-soft)",
-                          color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
-                        }}
+                      <li key={card.item.id}>
+                        <button
+                          type="button"
+                          data-disc-row={card.item.id}
+                          aria-pressed={on}
+                          onClick={() => setCaseSel(String(card.item.id))}
+                          className="nv-disc-row"
+                          style={{ fontFamily: "inherit", width: "100%", textAlign: "start", display: "grid", gridTemplateColumns: "40px minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: `1px solid ${on ? "#0B3D27" : "var(--nv-line)"}`, background: on ? "var(--nv-ok-soft)" : "var(--nv-card)", position: "relative" }}
                         >
-                          {ar ? card.face.shortAr : card.face.shortEn}
-                        </span>
-                      </button>
+                          <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 12, bottom: 12, width: 3, borderRadius: 3, background: stageTone === "bad" ? "var(--nv-bad-fill)" : stageTone === "ok" ? "#0F5535" : "#C8A45A" }} />
+                          <span aria-hidden style={{ width: 40, height: 40, borderRadius: 999, background: "linear-gradient(135deg,#0B3D27,#0F5535)", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>
+                            {String(card.employee?.name || "—").trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("")}
+                          </span>
+                          <span style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <strong style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{card.employee?.name || "—"}</strong>
+                              <span style={chipS(tone)}>{ar ? card.face.shortAr : card.face.shortEn}</span>
+                              {card.penalty ? <span style={chipS(["var(--nv-bad-ink)", "var(--nv-card)", "var(--nv-bad-line)"])}>{card.penalty}</span> : null}
+                            </span>
+                            <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {card.item.note || card.item.reason || "—"}{card.station?.name ? ` · ${card.station.name}` : ""}
+                            </span>
+                          </span>
+                          <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5 }}>
+                            {dl ? <span style={chipS(dl.over ? ["var(--nv-bad-ink)", "var(--nv-bad-soft)", "var(--nv-bad-line)"] : ["var(--nv-ink2)", "var(--nv-soft)", "var(--nv-line)"])} title={`${dl.label} — ${ar ? "المادة" : "Art."} ${dl.art}`}>{`${dl.label} ${dl.text}`}</span> : null}
+                            {capM.text && capM.text !== "—" ? (
+                              <span title={ar ? "سقف الحسم في الشهر — المادة 70" : "Monthly cap — Art. 70"} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: capM.over ? "var(--nv-bad-ink)" : "var(--nv-muted)" }}>
+                                <span aria-hidden style={{ width: 54, height: 5, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden" }}>
+                                  <span style={{ display: "block", height: "100%", width: `${capM.pct || 0}%`, background: capM.over ? "var(--nv-bad-fill)" : "#0F5535" }} />
+                                </span>
+                                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace" }}>{capM.text}</span>
+                              </span>
+                            ) : null}
+                          </span>
+                        </button>
+                      </li>
                     );
                   })}
-                </div>
+                </ol>
                 <DisciplineCaseCard
-                  card={files.find((row) => String(row.item.id) === String(caseSel)) || files[0]}
+                  card={selectedCard}
                   ar={ar}
                   onAction={onAction}
                   onUploadSigned={onUploadSigned}
+                  companyName={company?.name || ""}
                 />
               </div>
             )}
@@ -637,40 +776,23 @@ export default function Discipline() {
         ) : null}
 
         {activeFace === "law" ? (
-          <DisciplineLawBoard cases={adminVoice ? visibleCases : mine} employees={employees} ar={ar} today={board.today} />
+          <DisciplineLawBoard cases={adminVoice ? visibleCases : mine} employees={employees} ar={ar} today={board.today} own={!adminVoice} />
         ) : null}
 
         {activeFace === "mine" ? (
           <div data-discipline-mine="" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <section style={PACK_CARD}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)" }}>
-                <strong style={{ fontSize: 13 }}>
-                  {ar ? `ما يراه ${currentUser?.name || "—"} في ملفه` : `What ${currentUser?.name || "—"} sees on the file`}
-                  {" "}
-                  <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({mineLiveCards.length})</span>
-                </strong>
-              </div>
-              <div style={packHead("minmax(0,1fr) 120px")}>
-                <span style={{ paddingInlineStart: 12 }}>{ar ? `ما يراه ${currentUser?.name || "—"} في ملفه` : `What ${currentUser?.name || "—"} sees`}</span>
-                <span style={{ paddingInlineStart: 10, borderInlineStart: "1px solid var(--nv-line)" }}>{ar ? "الحالة" : "Status"}</span>
-              </div>
-              {mineLiveCards.length === 0 ? (
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 120px", padding: "12px 14px", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "لا جزاء مفتوح على ملفك" : "No open sanction on your file"}</span>
-                  <span style={{ fontSize: 13, color: "var(--nv-muted)", justifySelf: "start" }}>—</span>
-                </div>
-              ) : mineLiveCards.map((card) => (
-                <div key={card.item.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 120px", gap: 10, padding: "12px 14px", borderBottom: "1px solid var(--nv-line2)", alignItems: "center" }}>
-                  <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                    <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{card.mineTitle || "—"}</strong>
-                    <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.6 }}>{card.mineLine || "—"}</span>
-                  </span>
-                  <span style={statusPill(card.face?.id === "objected" ? "bad" : card.face?.id === "signed" ? "ok" : "warn")}>{card.mineState || "—"}</span>
-                </div>
-              ))}
-            </section>
-
+            <OpsListHead
+              title={ar ? `ما على ملفي · ${mineLiveCards.length}` : `On my file · ${mineLiveCards.length}`}
+              note={ar ? "كل جزاء بمرحلته ومهلة اعتراضك عليه (المادة 72). الاعتراض حقّك وحدك، ويُرفع كتابةً." : "Each sanction with its stage and your objection window (Art. 72). Objecting is yours alone, in writing."}
+            />
+            {mineLiveCards.length === 0 ? (
+              <section style={{ ...PACK_CARD, borderRadius: 12, padding: "26px 18px", textAlign: "center", fontSize: 13, color: "var(--nv-muted)" }}>
+                {ar ? "لا جزاء مفتوح على ملفك." : "No open sanction on your file."}
+              </section>
+            ) : null}
             {mineLiveCards.map((card) => (
+              <React.Fragment key={`mine-${card.item.id}`}>
+              <DisciplineHero card={card} ar={ar} mine companyName={company?.name || ""} />
               <DisciplineMineCard
                 key={`act-${card.item.id}`}
                 card={card}
@@ -680,6 +802,7 @@ export default function Discipline() {
                 onObject={fileObject}
                 onWithdraw={withdrawObject}
               />
+              </React.Fragment>
             ))}
 
             <section style={PACK_CARD}>
@@ -708,6 +831,6 @@ export default function Discipline() {
           </div>
         ) : null}
       </div>
-    </SuiteWorkspaceFrame>
+    </OpsFrame>
   );
 }

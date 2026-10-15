@@ -306,7 +306,7 @@ export default function OrgEscalationBoard({ lang = "ar", canWrite = false, embe
 
       <div style={{ padding: "12px 16px", fontSize: 11, color: MUTED, lineHeight: 1.65 }}>
         {ar ? "صندوق المهام المصعّدة: " : "Escalated task inbox: "}
-        <Link to="/app/escalation" style={{ color: NAVY, fontWeight: 600 }}>
+        <Link to="/app/tasks?lane=manage&filter=escalated" style={{ color: NAVY, fontWeight: 600 }}>
           {ar ? "نظام التصعيد" : "Escalation system"}
         </Link>
       </div>

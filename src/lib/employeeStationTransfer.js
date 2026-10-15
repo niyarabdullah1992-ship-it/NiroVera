@@ -7,6 +7,7 @@ import { updateCompany, getCompanyData, addNotification } from "@/lib/store";
 import { applyWorkplaceManagerRule } from "@/lib/peopleTreeGraph";
 import { appendOrgStructureEvent } from "@/lib/orgStructureLog";
 import { isManagerUnit, stripDescendantCoverage } from "@/lib/stationTree";
+import { checkConsentGate, checkNecessityGate, necessityId, spendConsent } from "@/lib/consentEffects";
 
 function todayKey() {
   const d = new Date();
@@ -31,6 +32,8 @@ export function checkStationTransferGate({
   reasonCode,
   effectiveDate,
   stations = [],
+  residence,
+  necessityUntil,
 } = {}) {
   if (!employee?.id) {
     return { ok: false, error: "EMPLOYEE_REQUIRED", reason: "الموظف مطلوب.", reasonEn: "Employee is required." };
@@ -90,7 +93,30 @@ export function checkStationTransferGate({
       reasonEn: "A coded transfer reason is required for audit.",
     };
   }
-  return { ok: true, fromStationId: fromId, toStationId: toId, effectiveDate: day, reasonCode: reason };
+  // Art. 58 — a move that changes the worker's residence needs his written consent; incidental
+  // necessity is the only exception, temporary and within 30 days a year.
+  const res = String(residence || "");
+  if (!["same", "change", "necessity"].includes(res)) {
+    return {
+      ok: false,
+      error: "RESIDENCE_REQUIRED",
+      reason: "حدّد: هل يقتضي هذا النقل تغيير محل إقامة الموظف؟ (المادة 58)",
+      reasonEn: "Say whether this move changes the worker's residence (Art. 58).",
+    };
+  }
+  let consentId = null;
+  let until = null;
+  if (res === "change") {
+    const consent = checkConsentGate(employee, "site");
+    if (!consent.ok) return consent;
+    consentId = consent.consent.id;
+  }
+  if (res === "necessity") {
+    const need = checkNecessityGate(employee, "site", { from: day, until: necessityUntil });
+    if (!need.ok) return need;
+    until = String(necessityUntil).slice(0, 10);
+  }
+  return { ok: true, fromStationId: fromId, toStationId: toId, effectiveDate: day, reasonCode: reason, residence: res, consentId, necessityUntil: until };
 }
 
 function ensureStationOrgNode(data, stationId) {
@@ -145,6 +171,8 @@ export function transferEmployeeBetweenStations(companyId, {
   effectiveDate,
   note,
   actor,
+  residence,
+  necessityUntil,
 } = {}) {
   const data = getCompanyData(companyId);
   const employee = (data?.employees || []).find((e) => e.id === employeeId);
@@ -155,6 +183,8 @@ export function transferEmployeeBetweenStations(companyId, {
     reasonCode,
     effectiveDate: effectiveDate || todayKey(),
     stations: data?.stations || [],
+    residence,
+    necessityUntil,
   });
   if (!gate.ok) return { ok: false, ...gate };
 
@@ -175,6 +205,9 @@ export function transferEmployeeBetweenStations(companyId, {
     recordedByName: actor?.name || "—",
     recordedAt: new Date().toISOString(),
     voidedAt: null,
+    residence: gate.residence,
+    consentId: gate.consentId || null,
+    necessityUntil: gate.necessityUntil || null,
   };
 
   updateCompany(companyId, (d) => {
@@ -212,6 +245,25 @@ export function transferEmployeeBetweenStations(companyId, {
 
     emp.stationTransfers = Array.isArray(emp.stationTransfers) ? emp.stationTransfers : [];
     emp.stationTransfers.unshift(record);
+    if (gate.consentId) {
+      const consent = (emp.otherRequests || []).find((row) => row.id === gate.consentId);
+      spendConsent(consent, { what: `نقل من ${fromStation?.name || "—"} إلى ${toStation?.name || "—"} اعتباراً من ${gate.effectiveDate}`, by: actor?.name || "" });
+    }
+    if (gate.residence === "necessity") {
+      emp.necessityLog = Array.isArray(emp.necessityLog) ? emp.necessityLog : [];
+      emp.necessityLog.push({
+        id: `nec_${record.id}`,
+        kind: "site",
+        from: gate.effectiveDate,
+        until: gate.necessityUntil,
+        transferId: record.id,
+        fromStationId: gate.fromStationId,
+        fromStationName: fromStation?.name || null,
+        toStationId: gate.toStationId,
+        toStationName: toStation?.name || null,
+        by: actor?.name || "",
+      });
+    }
 
     (d.orgSeats || []).forEach((seat) => {
       if (String(seat.employeeId) === String(employeeId)) seat.stationId = gate.toStationId;
@@ -244,7 +296,9 @@ export function transferEmployeeBetweenStations(companyId, {
     moveEmployeeOrgNode(d, employeeId, gate.toStationId);
   });
 
-  const msgAr = `نُقل ${employee.name} من ${fromStation?.name || "—"} إلى ${toStation?.name || "—"} اعتبارًا من ${gate.effectiveDate}`;
+  const msgAr = `نُقل ${employee.name} من ${fromStation?.name || "—"} إلى ${toStation?.name || "—"} اعتبارًا من ${gate.effectiveDate}`
+    + (gate.residence === "necessity" ? ` — تكليف مؤقت لضرورة عارضة حتى ${gate.necessityUntil}، وتكاليف الانتقال والإقامة على المنشأة (المادة 58/2)` : "")
+    + (gate.residence === "change" ? " — بموافقته الكتابية الموقّعة (المادة 58)" : "");
   const notifyIds = new Set([employeeId]);
   if (data?.ownerId) notifyIds.add(String(data.ownerId));
   for (const e of data?.employees || []) {
@@ -260,12 +314,59 @@ export function transferEmployeeBetweenStations(companyId, {
   return { ok: true, record, employee: getCompanyData(companyId)?.employees?.find((e) => e.id === employeeId) };
 }
 
-export function quickTransferEmployee(companyId, { employeeId, toStationId, actor } = {}) {
+export function quickTransferEmployee(companyId, { employeeId, toStationId, actor, residence } = {}) {
   return transferEmployeeBetweenStations(companyId, {
     employeeId,
     toStationId,
     reasonCode: "operational_need",
     effectiveDate: todayKey(),
     actor,
+    residence,
   });
+}
+
+/**
+ * End a temporary (incidental-necessity) assignment: a posting goes back to the branch it came from,
+ * a different-work assignment gets its previous title back. The entry is closed with who and when;
+ * the days actually used are what count toward the 30.
+ */
+export function endNecessityAssignment(companyId, { employeeId, entryId, actor } = {}) {
+  const data = getCompanyData(companyId);
+  const employee = (data?.employees || []).find((e) => e.id === employeeId);
+  const entry = (employee?.necessityLog || []).find((row) => necessityId(row) === entryId && !row.endedAt);
+  if (!employee || !entry) {
+    return { ok: false, error: "NOT_FOUND", reason: "التكليف المؤقت غير موجود أو انتهى.", reasonEn: "That temporary assignment is not running." };
+  }
+  if (actor?.id && String(actor.id) === String(employee.id)) {
+    return { ok: false, error: "SELF", reason: "لا تُنهي تكليفك بنفسك — ينهيه مسؤول آخر.", reasonEn: "Another manager ends your own assignment." };
+  }
+  if (entry.kind === "site") {
+    if (entry.fromStationId && String(employee.stationId) !== String(entry.fromStationId)) {
+      const back = transferEmployeeBetweenStations(companyId, {
+        employeeId,
+        toStationId: entry.fromStationId,
+        reasonCode: "operational_need",
+        effectiveDate: todayKey(),
+        note: "عودة من تكليف مؤقت لضرورة عارضة (المادة 58/2)",
+        actor,
+        residence: "same",
+      });
+      if (!back.ok) return back;
+    }
+  }
+  updateCompany(companyId, (d) => {
+    const emp = (d.employees || []).find((e) => e.id === employeeId);
+    const row = (emp?.necessityLog || []).find((r) => necessityId(r) === entryId);
+    if (!emp || !row) return;
+    row.endedAt = new Date().toISOString();
+    row.endedBy = actor?.name || "";
+    if (row.kind === "work" && row.fromTitle) {
+      emp.profile = emp.profile || {};
+      emp.profile.position = row.fromTitle;
+    }
+  });
+  addNotification(companyId, employeeId, entry.kind === "site"
+    ? `انتهى تكليفك المؤقت وعُدتَ إلى ${entry.fromStationName || "فرعك"}.`
+    : `انتهى تكليفك المؤقت وعاد مسمّاك «${entry.fromTitle || ""}».`);
+  return { ok: true, kind: entry.kind };
 }

@@ -44,7 +44,7 @@ function persistContractSplit(employee, persistProfile) {
 
 /** Writes contract split, GOSI, and approved overtime onto an unpaid line. */
 export function applyPayrollWagePatch(item, employee, data, month) {
-  const patch = derivePayrollWagePatch(item, employee, { otDecisions: data?.otDecisions, month });
+  const patch = derivePayrollWagePatch(item, employee, { otDecisions: data?.otDecisions, month, company: data });
   if (!patch) return false;
   const snapshot = (row) => JSON.stringify({
     base: row.base,
@@ -87,7 +87,7 @@ const itemFromEmployee = (employee, data, month) => {
     isSaudi: null,
     qiwaWage: null,
   };
-  const patch = derivePayrollWagePatch(draft, employee, { otDecisions: data?.otDecisions, month });
+  const patch = derivePayrollWagePatch(draft, employee, { otDecisions: data?.otDecisions, month, company: data });
   if (patch) Object.assign(draft, patch.fields);
   if (patch?.fields?.housingAllowance == null) {
     delete draft.housingAllowance;
@@ -102,7 +102,8 @@ export function payrollItemIssues(item) {
   if (!Number.isFinite(Number(item?.base)) || (!item?.isOwner && Number(item.base) <= 0) || Number(item.base) < 0) return ["BASE_REQUIRED"];
   const fields = ["allowances", "bonus", "deductions"];
   if (fields.some((field) => !Number.isFinite(Number(item?.[field])) || Number(item[field]) < 0)) return ["INVALID_AMOUNTS"];
-  if (!item?.isOwner && netOf(item) <= 0) return ["NET_REQUIRED"];
+  // A month fully without injury compensation (Art. 139) may lawfully net zero.
+  if (!item?.isOwner && netOf(item) <= 0 && !(Number(item?.injuryUnpaid) > 0) && !(Number(item?.injuryWageStop) > 0) && !(Number(item?.sickUnpaid) > 0)) return ["NET_REQUIRED"];
   if (!checkArticle90Gate(item).ok) return ["ARTICLE_93_EXCEEDED"];
   // Year-to-date when the run carries it: one month can never reach 720 hours, so
   // checking the month alone left the annual ceiling unenforceable.

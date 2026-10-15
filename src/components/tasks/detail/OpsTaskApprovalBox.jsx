@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import EscalationSteps from "@/components/escalation/EscalationSteps";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
 import { BORDER, CARD, MUTED, NAVY, NAVY_FILL } from "@/lib/platformStyles";
 
@@ -17,9 +16,6 @@ export default function OpsTaskApprovalBox({ ar, busy, canManage, points, target
           : `${targetN}/${targetN} logged with proof. Approval grants ${points} points and closes the work order. A reject returns the task to the executor, and the reason stays on the card thread. After three rejects the executor may escalate.`}
         {currentLevelLabel ? (ar ? ` المستوى الحالي: ${currentLevelLabel}.` : ` Current level: ${currentLevelLabel}.`) : ""}
       </div>
-      {Array.isArray(escalationSteps) && escalationSteps.length > 0 && t && (
-        <div style={{ marginTop: 10 }}><EscalationSteps steps={escalationSteps} t={t} lang={lang || (ar ? "ar" : "en")} /></div>
-      )}
       {canManage ? (
         <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
           <button type="button" disabled={busy} onClick={() => onApprove?.()} style={{ ...btn, background: "var(--nv-ok-fill)", color: "#fff", border: "none", opacity: busy ? 0.5 : 1 }}>{ar ? "اعتمد الإنجاز" : "Approve completion"}</button>

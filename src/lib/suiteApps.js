@@ -30,7 +30,7 @@ export const SUITE_GROUPS = [
   },
   {
     id: "duty",
-    ar: "الدوام والحضور",
+    ar: "الحضور والدوام",
     en: "Time & Attendance",
     num: "03",
     blurbAr: "جدول الورديات يحدد من يجب أن يحضر — ثم تسجيل الحضور والانصراف يغذي المسير.",
@@ -97,8 +97,8 @@ export const SUITE_GROUPS = [
     ar: "المال والأصول",
     en: "Money & assets",
     num: "10",
-    blurbAr: "البصمة تغذّي المسير. المصروف والمخزون والأصول والعهد في مسار واحد، ولكل مسار سطحه.",
-    blurbEn: "Attendance feeds payroll. Expenses, stock, and assets & custody each have their own path.",
+    blurbAr: "البصمة تغذّي المسير. المصروف والأصول والعهد في مسار واحد، ولكل مسار سطحه.",
+    blurbEn: "Attendance feeds payroll. Expenses and assets & custody each have their own path.",
   },
   {
     id: "admin",
@@ -110,7 +110,7 @@ export const SUITE_GROUPS = [
   },
 ];
 
-/** @typedef {{ id: string, path: string, planSection: string | null, group: string, public: boolean, rail?: boolean, aliases?: string[], ar: string, en: string, blurbAr: string, blurbEn: string, icon: string }} SuiteApp */
+/** @typedef {{ id: string, path: string, planSection: string | null, group: string, public: boolean, rail?: boolean, side?: "employee" | "manage", aliases?: string[], ar: string, en: string, blurbAr: string, blurbEn: string, icon: string }} SuiteApp */
 
 /** @type {SuiteApp[]} */
 export const SUITE_APPS = [
@@ -145,6 +145,8 @@ export const SUITE_APPS = [
     group: "duty",
     public: true,
     aliases: ["/app/attendance/calendar"],
+    /** Employee side only — الإدارة plans on جدول الدوام; the calendar seals what already happened. */
+    side: "employee",
     ar: "التقويم التشغيلي",
     en: "Operational calendar",
     blurbAr: "كل يوم يحمل توزيعه: حضر، تأخّر، غاب — واليوم الذي انكسرت فيه حلقة يُعلَّم بحدّ ذهبي.",
@@ -429,6 +431,12 @@ export function suiteAppsByGroup(apps = SUITE_APPS) {
     ...group,
     apps: apps.filter((app) => app.group === group.id),
   })).filter((group) => group.apps.length > 0);
+}
+
+/** Apps that belong to one rail side only (e.g. التقويم التشغيلي is employee-side). */
+export function suiteAppOnSide(app, side) {
+  if (!app?.side) return true;
+  return app.side === side;
 }
 
 export function suiteAppLabel(app, lang = "ar") {

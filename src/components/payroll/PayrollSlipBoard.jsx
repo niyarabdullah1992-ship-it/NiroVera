@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Check, Info, Shield } from "lucide-react";
-import { checkArticle93Gate, gosiLine, lineComponents, OT_RATE } from "@/lib/payrollDerivations";
+import { checkArticle93Gate, gosiLine, lineComponents } from "@/lib/payrollDerivations";
+import { otMonthBreakdown } from "@/lib/otOffer";
 import { registrationForPayroll } from "@/lib/facts";
 import { contractAllowanceSplit, employeeWageSplit } from "@/lib/employeeFileView";
 import { payrollSaudiFlag } from "@/lib/payrollWageSync";
@@ -109,6 +110,16 @@ export function slipRows(item, employee, parts, ar, month) {
     amount: base,
     source: ar ? "عقد العمل الموثّق في قوى" : "Qiwa employment contract",
   }];
+  // Art. 2 named lines of the actual wage — each on its own row with its basis.
+  function pushExtras() {
+    if (wage.hazard > 0) rows.push({ id: "hazard", label: ar ? "بدل طبيعة عمل أو خطر" : "Effort or hazard allowance", amount: wage.hazard, source: ar ? "عقد العمل · المادة 2" : "Contract · Art. 2" });
+    if (wage.living > 0) rows.push({ id: "living", label: ar ? "بدل غلاء معيشة أو عائلي" : "Cost-of-living or family allowance", amount: wage.living, source: ar ? "عقد العمل · المادة 2" : "Contract · Art. 2" });
+    if (wage.remote > 0) rows.push({ id: "remote", label: ar ? "بدل منطقة نائية" : "Remote-area allowance", amount: wage.remote, source: ar ? "عقد العمل · المادتان 2 و146" : "Contract · Arts. 2, 146" });
+    if (wage.medical > 0) rows.push({ id: "medical", label: ar ? "بدل بُعد الخدمات الطبية" : "Distance-from-care allowance", amount: wage.medical, source: ar ? "عقد العمل · المادتان 144 و146/3" : "Contract · Arts. 144, 146/3" });
+    if (wage.meals > 0) rows.push({ id: "meals", label: ar ? "بدل إعاشة" : "Meals allowance", amount: wage.meals, source: ar ? "عقد العمل · المادة 147" : "Contract · Art. 147" });
+    if (wage.commission > 0) rows.push({ id: "commission", label: ar ? "العمولة" : "Commission", amount: wage.commission, source: ar ? "مبيعات الشهر · المادة 2" : "The month's sales · Art. 2" });
+  }
+  const housingInKind = profile.housingMode === "provided";
   const profileSum = (wage.housing || 0) + (wage.transport || 0) + (wage.other || 0) + (wage.night || 0);
   const canSplit = wage.split && lineAllow > 0 && Math.abs(profileSum - lineAllow) <= 1;
   const showNamed = canSplit || lineAllow === 0;
@@ -118,9 +129,11 @@ export function slipRows(item, employee, parts, ar, month) {
       id: "housing",
       label: ar ? "بدل السكن" : "Housing",
       amount: wage.housing || 0,
-      source: quarter
-        ? (ar ? "عقد العمل · 25% من الأساسي" : "Contract · 25% of base")
-        : (ar ? "عقد العمل" : "Employment contract"),
+      source: housingInKind && !(wage.housing > 0)
+        ? (ar ? "سكن مؤمَّن من المنشأة · المادة 61" : "Housing provided · Art. 61")
+        : quarter
+          ? (ar ? "عقد العمل · 25% من الأساسي" : "Contract · 25% of base")
+          : (ar ? "عقد العمل" : "Employment contract"),
     });
     rows.push({
       id: "transport",
@@ -131,9 +144,10 @@ export function slipRows(item, employee, parts, ar, month) {
     rows.push({
       id: "other",
       label: ar ? "بدلات أخرى" : "Other allowances",
-      amount: wage.other || 0,
+      amount: wage.otherPlain ?? (wage.other || 0),
       source: ar ? "عقد العمل" : "Employment contract",
     });
+    pushExtras();
     if (wage.night > 0) {
       rows.push({
         id: "night",
@@ -143,12 +157,14 @@ export function slipRows(item, employee, parts, ar, month) {
       });
     }
   } else if (lineAllow > 0) {
+    const extrasOnLine = Math.min(lineAllow, wage.extras || 0);
     rows.push({
       id: "allowances",
       label: ar ? "البدلات" : "Allowances",
-      amount: lineAllow,
+      amount: lineAllow - extrasOnLine,
       source: ar ? "عقد العمل" : "Employment contract",
     });
+    if (extrasOnLine > 0) pushExtras();
   }
   if ((Number(parts.bonus) || 0) > 0) {
     rows.push({
@@ -158,14 +174,18 @@ export function slipRows(item, employee, parts, ar, month) {
       source: ar ? "اعتماد المسير" : "Run approval",
     });
   }
-  const otHours = Math.max(0, Number(parts.overtimeHours) || 0);
-  const pct = Math.round((OT_RATE - 1) * 100);
-  rows.push({
-    id: "ot",
-    label: ar ? `أجر إضافي — ${otHours} ساعات` : `Overtime — ${otHours} hours`,
-    amount: Number(parts.overtimePay) || 0,
-    source: ar ? `الحضور المقفل · المادة 107 (+${pct}%)` : `Locked attendance · Art. 107 (+${pct}%)`,
+  // Overtime: one line per approved assignment taken as pay, the rest from attendance, and the hours
+  // taken as compensatory leave as a line with no amount (it never enters the totals).
+  const ot = otMonthBreakdown({
+    employee,
+    month: month || item?.month,
+    totalHours: Math.max(0, Number(parts.overtimeHours) || 0),
+    totalPay: Number(parts.overtimePay) || 0,
+    base,
+    allowances: lineAllow,
+    ar,
   });
+  rows.push(...ot.rows);
   const registeredAt = registrationForPayroll(employee, item);
   const gosiQuote = gosiLine(item, {
     saudi: item?.isSaudi === true,
@@ -187,6 +207,67 @@ export function slipRows(item, employee, parts, ar, month) {
       minus: !gosiQuote.blocked,
       blocked: gosiQuote.blocked,
       source,
+    });
+  }
+  const injuryDays = Number(item?.injuryDays) || 0;
+  if (injuryDays > 0) {
+    if (item?.injuryCovered === false) {
+      if ((Number(item?.injuryReduction) || 0) > 0) {
+        rows.push({
+          id: "injury137",
+          label: ar ? `إصابة عمل — ${item.injuryReducedDays} يوماً بـ75٪ بعد اليوم 60` : `Work injury — ${item.injuryReducedDays} days at 75% after day 60`,
+          amount: Number(item.injuryReduction) || 0,
+          minus: true,
+          source: ar ? "المادة 137 · بنص النظام لا حسماً" : "Art. 137 · set by law, not a deduction",
+        });
+      }
+      if ((Number(item?.injuryUnpaid) || 0) > 0) {
+        rows.push({
+          id: "injury139",
+          label: ar ? `إصابة عمل — ${item.injuryExcludedDays} يوماً بلا معونة` : `Work injury — ${item.injuryExcludedDays} days without compensation`,
+          amount: Number(item.injuryUnpaid) || 0,
+          minus: true,
+          source: ar ? "المادة 139 · بقرار مكتوب" : "Art. 139 · written decision",
+        });
+      }
+      if (!(Number(item?.injuryReduction) || 0) && !(Number(item?.injuryUnpaid) || 0)) {
+        rows.push({ id: "injuryFull", label: ar ? `إصابة عمل — ${injuryDays} يوماً بأجر كامل` : `Work injury — ${injuryDays} days on full pay`, amount: 0, source: ar ? "المادة 137 · أول 60 يوماً" : "Art. 137 · first 60 days" });
+      }
+    } else if ((Number(item?.injuryWageStop) || 0) > 0) {
+      rows.push({
+        id: "injuryGosiStop",
+        label: ar ? `إصابة عمل — الأجر موقوف ${injuryDays} يوماً` : `Work injury — wage stopped ${injuryDays} days`,
+        amount: Number(item.injuryWageStop) || 0,
+        minus: true,
+        source: ar
+          ? `البدل اليومي تصرفه التأمينات — تقديره ${Number(item.injuryAllowance || 0).toLocaleString("ar-SA")} ر.س — ولا يُجمع مع الأجر`
+          : `GOSI pays the daily allowance — about SAR ${Number(item.injuryAllowance || 0).toLocaleString("en-US")} — never with the wage`,
+      });
+    } else {
+      rows.push({
+        id: "injuryGosi",
+        label: ar ? `إصابة عمل — ${injuryDays} يوماً بأجر مستمر` : `Work injury — ${injuryDays} days, wage continued`,
+        amount: 0,
+        source: ar ? "المنشأة تواصل الأجر — فلا يُصرف للموظف البدل اليومي من التأمينات معه (لا جمع بينهما)" : "The establishment keeps the wage — so the worker does not also take GOSI's daily allowance",
+      });
+    }
+  }
+  if ((Number(item?.sickReduction) || 0) > 0) {
+    rows.push({
+      id: "sick117q",
+      label: ar ? `إجازة مرضية — ${item.sickQuarterDays} يوماً بثلاثة أرباع الأجر` : `Sick leave — ${item.sickQuarterDays} days at three-quarters`,
+      amount: Number(item.sickReduction) || 0,
+      minus: true,
+      source: ar ? "المادة 117 · بعد أول 30 يوماً في السنة" : "Art. 117 · after the first 30 days in the year",
+    });
+  }
+  if ((Number(item?.sickUnpaid) || 0) > 0) {
+    rows.push({
+      id: "sick117u",
+      label: ar ? `إجازة مرضية — ${item.sickUnpaidDays} يوماً بلا أجر` : `Sick leave — ${item.sickUnpaidDays} days unpaid`,
+      amount: Number(item.sickUnpaid) || 0,
+      minus: true,
+      source: ar ? "المادة 117 · بعد 90 يوماً في السنة" : "Art. 117 · after 90 days in the year",
     });
   }
   if ((Number(parts.deductions) || 0) > 0) {
@@ -253,10 +334,10 @@ function payslipLawRows(item, employee, parts) {
       id: "107",
       badgeAr: "المادة 107",
       badgeEn: "Art. 107",
-      titleAr: "الإضافي 150% على الأساسي",
-      titleEn: "Overtime at 150% of base",
-      bodyAr: "يحسب الإضافي من البصمة بـ150% ويرحّله للمسير.",
-      bodyEn: "Overtime is taken from the punch at 150% and carried into the run.",
+      titleAr: "ساعة الإضافي = أجر الساعة + 50% من أجر الساعة الأساسي",
+      titleEn: "An overtime hour = the hourly wage + 50% of the basic hourly wage",
+      bodyAr: "يُحسب الإضافي المعتمد من البصمة بهذه المعادلة ويُرحَّل إلى المسير.",
+      bodyEn: "Approved overtime is taken from the punch by this formula and carried into the run.",
       effectAr: overtime ? "محسوب في المسير" : "لا ساعات إضافية",
       effectEn: overtime ? "Counted in the run" : "No overtime hours",
       tone: overtime ? "ok" : "na",
@@ -387,7 +468,7 @@ export default function PayrollSlipBoard({
   const live = facedForGosi(item, employee, month);
   const parts = lineComponents(live);
   const gross = parts.base + parts.allowances + parts.bonus + (Number(parts.overtimePay) || 0);
-  const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0);
+  const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0);
   const rows = slipRows(live, employee, parts, ar, month);
   const allOn = rows.length > 0 && rows.every((row) => picked.has(row.id));
   const toggle = (id) => {
@@ -482,7 +563,7 @@ export default function PayrollSlipBoard({
                       <RoundCheck on={on} onClick={() => toggle(row.id)} label={row.label} />
                     </td>
                     <td style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 13, fontWeight: 700, color: NAVY }}>{row.label}</td>
-                    <td dir="ltr" style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 13, fontFamily: "'IBM Plex Mono', monospace", color: NAVY, textAlign: "end" }}>{row.blocked ? "—" : sarBefore(row.amount, row.minus)}</td>
+                    <td dir="ltr" style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 13, fontFamily: "'IBM Plex Mono', monospace", color: NAVY, textAlign: "end" }}>{row.info ? <span style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif", color: "#2F6B43", fontWeight: 700 }}>{row.valueText}</span> : row.blocked ? "—" : sarBefore(row.amount, row.minus)}</td>
                     <td style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 12.5, color: MUTED }}>{row.source}</td>
                   </tr>
                 );

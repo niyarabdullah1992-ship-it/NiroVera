@@ -1,15 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Loader2, MapPin } from "lucide-react";
-import { STUDY_CONSENT_TYPE } from "@/lib/otherRequestDerivations";
-import { requestReplyCopy, requestReplyHref } from "@/lib/requestWorkspace";
 import LocationMapModal from "@/components/attendance/LocationMapModal";
 import { useI18n } from "@/lib/i18n";
 import { formatTime, useTimeFormat } from "@/hooks/useTimeFormat";
 import { deriveTeamAttendanceToday, getAttendanceStatus, getTodaysShift, isAttendancePolicyError, isScheduledToday } from "@/lib/attendance";
 import { isServiceOutage } from "@/lib/serviceErrors";
-import { hmToMinutes } from "@/lib/attendanceDerivations";
+import { hmToMinutes, todaysShiftEnded } from "@/lib/attendanceDerivations";
+import { isExcusedEarlyCheckout } from "@/lib/dutyRequests";
 import { listLocalTodayAttendance, mergeAttendanceRows } from "@/lib/localAttendanceFallback";
 import { recordManualAttendance } from "@/lib/store";
 import { isLocalPreviewActive } from "@/lib/localPreview";
@@ -17,6 +16,11 @@ import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
 import { AttendanceRingChips, brokeAtLabel, buildAttendanceRings } from "@/components/attendance/AttendanceTrustChrome";
 import { formatUiNumber } from "@/lib/dateFormat";
+import { DutyBoard, DutyNumber, DutyTile, DutyTiles } from "@/components/schedules/DutyTiles";
+import { dutyChip, dutyLabel } from "@/components/schedules/dutyStatus";
+import { Collapsible } from "@/components/schedules/scheduleChrome";
+import { ManageDutySideAuto } from "@/components/schedules/ManageDutySide";
+import { fileDutyHref, openLinkStyle, revealNode, rosterPersonHref } from "@/components/schedules/dutyLinks";
 import { ACCENT, BORDER, CARD, DANGER, MUTED, NAVY, emptyState, field, SURFACE } from "@/lib/platformStyles";
 
 const miniBtn = (variant = "ghost") => ({
@@ -65,10 +69,9 @@ function punchPolicyMessage(code, ar, kind) {
   return "";
 }
 
+/** Today's shift is over (+1 h grace). An overnight shift ends tomorrow — never «over» on its start day. */
 function shiftWindowElapsed(shift) {
-  const end = hmToMinutes(shift?.end);
-  if (end == null) return false;
-  return nowMinutes() > end + 60;
+  return todaysShiftEnded(shift, nowMinutes(), 60);
 }
 
 const actBtn = (kind) => {
@@ -91,6 +94,8 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   const [checkoutEmployeeId, setCheckoutEmployeeId] = useState(null);
   const [checkoutReason, setCheckoutReason] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
+  const [searchParams] = useSearchParams();
+  const queueRef = useRef(null);
 
   const load = () => {
     const apply = (cloudRows) => {
@@ -230,100 +235,177 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
 
   const byEmployee = Object.fromEntries(rows.map((r) => [String(r.employee_id ?? r.employeeId), r]));
   const statusFor = (employee) => getAttendanceStatus(employee, byEmployee[String(employee.id)], data);
-  const isPastCheckoutMissing = (r) => r?.check_in_at && !r?.check_out_at && r?.status !== "absent";
+  // «بلا انصراف» only once the shift has actually ended (+1 h) — an open record mid-shift is normal.
+  const isPastCheckoutMissing = (r, employee) => {
+    if (!(r?.check_in_at && !r?.check_out_at && r?.status !== "absent")) return false;
+    const person = employee || employees.find((e) => String(e.id) === String(r.employee_id ?? r.employeeId));
+    return shiftWindowElapsed(getTodaysShift(data, person));
+  };
   const needsDecision = (employee) => {
     const row = byEmployee[String(employee.id)];
     const status = statusFor(employee);
     const askedManual = (employee.otherRequests || []).some((item) => item.type === "manual_punch" && (item.status || "pending") === "pending");
-    return row?.location_status === "outside" || isPastCheckoutMissing(row) || !!row?.early_checkout || askedManual;
+    // Leaving inside her Art. 154 nursing minutes at the end of the shift is not an early checkout.
+    const earlyOk = row?.early_checkout && isExcusedEarlyCheckout(employee, String(row.date || "").slice(0, 10) || toRiyadhDateKey(), row.check_out_at, getTodaysShift(data, employee)?.end);
+    return row?.location_status === "outside" || isPastCheckoutMissing(row, employee) || (!!row?.early_checkout && !earlyOk) || askedManual;
   };
   const todayAtt = deriveTeamAttendanceToday(employees, rows, data);
   const queue = employees.filter(needsDecision);
   const attentionCount = queue.length;
-  const pendingRequestReplies = employees.flatMap((employee) => {
-    const leave = (employee.leaveRequests || [])
-      .filter((row) => (row.status || "pending") === "pending")
-      .map((request) => ({ employee, family: "leave", request }));
-    const study = (employee.otherRequests || [])
-      .filter((row) => row.type === STUDY_CONSENT_TYPE && (row.status || "pending") === "pending")
-      .map((request) => ({ employee, family: "study", request }));
-    return [...leave, ...study];
-  });
-  const pendingRepliesMine = pendingRequestReplies.length > 0
-    && pendingRequestReplies.every((row) => String(row.employee.id) === String(currentUser?.id));
-  const pendingReplyHref = requestReplyHref({ mine: pendingRepliesMine });
   const notYet = employees.filter((employee) => {
     const status = statusFor(employee);
     if (status !== "absent") return false;
     return !shiftWindowElapsed(getTodaysShift(data, employee));
   }).length;
   const absentClosed = Math.max(0, todayAtt.absent - notYet);
-  const kpis = [
-    { label: lang === "ar" ? "مجدولون اليوم" : "Scheduled today", value: todayAtt.scheduled, note: lang === "ar" ? `سجّل ${todayAtt.presentLike} · ${todayAtt.rate}%` : `Logged ${todayAtt.presentLike} · ${todayAtt.rate}%`, accent: "var(--nv-ink)", color: "var(--nv-ink)" },
-    { label: lang === "ar" ? "حضر في الوقت" : "On time", value: todayAtt.present, note: lang === "ar" ? "مَن وأين مؤكّدان" : "Who and where confirmed", accent: "var(--nv-ok-fill)", color: "var(--nv-ok-ink)" },
-    { label: lang === "ar" ? "متأخر" : "Late", value: todayAtt.late, note: lang === "ar" ? "بصم بعد بداية الوردية" : "Punched after shift start", accent: "var(--nv-warn-fill)", color: "#8a6516" },
-    { label: lang === "ar" ? "بانتظار قرار" : "Awaiting a decision", value: attentionCount, note: lang === "ar" ? "حلقة انكسرت — لا حاضر ولا غائب بعد" : "A link broke — neither present nor absent yet", accent: "#8a6516", color: "#8a6516" },
-    { label: lang === "ar" ? "غاب" : "Absent", value: absentClosed, note: lang === "ar" ? "بلا تسجيل ولا إجازة بعد نافذة الوردية" : "No punch and no leave after the shift window", accent: "#8a1c2b", color: "var(--nv-bad-ink)" },
-    { label: lang === "ar" ? "إجازة" : "Leave", value: todayAtt.onLeave, note: lang === "ar" ? "خارج حساب الحضور" : "Outside the attendance count", accent: "#c7ccd6", color: "#4b5567" },
-    { label: lang === "ar" ? "لم يبصم بعد" : "Not punched yet", value: notYet, note: lang === "ar" ? "الوردية لم تنتهِ بعد" : "The shift window is still open", accent: "var(--nv-line)", color: "#4b5567" },
+  const ar = lang === "ar";
+  const split = [
+    { key: "present", value: todayAtt.present, color: "var(--nv-ok-fill)", label: ar ? "في الوقت" : "On time" },
+    { key: "late", value: todayAtt.late, color: "var(--nv-warn-fill)", label: ar ? "متأخر" : "Late" },
+    { key: "absent", value: absentClosed, color: "var(--nv-bad-fill, #9B2335)", label: ar ? "غاب" : "Absent" },
+    { key: "notyet", value: notYet, color: "var(--nv-mute-fill, #C5CEC9)", label: ar ? "لم يُسجَّل" : "Not yet" },
   ];
+  const splitTotal = split.reduce((sum, item) => sum + item.value, 0);
+  /** Team rows speak the employee lane's words and colours (dutyStatus). */
+  const TEAM_STATUS = { present: "present", late: "late", absent: "absent", on_leave: "leave", not_scheduled: "unscheduled" };
+  const panel = { background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", minWidth: 0 };
+  const panelHead = { padding: "14px 18px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" };
+  const headTitle = { fontSize: 15, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0, lineHeight: 1.4 };
+  const headNote = { fontSize: 12, color: MUTED, lineHeight: 1.65 };
+  const pill = (tone) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    height: 22,
+    padding: "0 8px",
+    borderRadius: 7,
+    fontSize: 11,
+    fontWeight: 600,
+    whiteSpace: "nowrap",
+    background: `var(--nv-${tone}-soft)`,
+    color: `var(--nv-${tone}-ink)`,
+    border: `1px solid var(--nv-${tone}-line)`,
+  });
 
   useEffect(() => {
     onQueueCount?.(attentionCount);
   }, [attentionCount, onQueueCount]);
 
+  // ?focus=queue (from «يحتاج قرارك» anywhere in the section) lands on the queue.
+  useEffect(() => {
+    if (loading || searchParams.get("focus") !== "queue") return;
+    revealNode(queueRef.current, { block: "start" });
+  }, [loading, searchParams]);
+
   const queueSub = attentionCount
     ? (lang === "ar"
       ? (attentionCount === 1 ? "صفٌّ واحد انكسرت فيه حلقة ولا يصحّ حكم النظام عليه — لا حاضراً بلا دليل، ولا غائباً وهو قد يكون في الموقع." : `${formatUiNumber(attentionCount)} صفوف انكسرت فيها حلقة واحدة ولا يصحّ حكم النظام عليها.`)
       : `${formatUiNumber(attentionCount)} row${attentionCount === 1 ? "" : "s"} broke a link — the system will not guess present or absent.`)
-    : (lang === "ar" ? "كل الصفوف حُسمت. القرارات مسجّلة في سجل التدقيق أدناه." : "The queue is clear. Decisions are in the audit below.");
+    : (lang === "ar" ? "ما ينكسر من حلقات اليوم يصل هنا، وكل قرار يُسجَّل باسمك." : "Today's broken links land here; every decision is recorded in your name.");
   const queueInsight = attentionCount
     ? (lang === "ar" ? "الطابور مقياس عمل لا مقياس أداء — يجب أن يصل صفراً كل يوم." : "The queue measures work, not performance — it should reach zero every day.")
     : (lang === "ar" ? "الطابور صفر — كل يوم أُغلق تلقائياً أو بقرار موقّع." : "Queue at zero — every day closed automatically or by a signed decision.");
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }} dir={lang === "ar" ? "rtl" : "ltr"}>
-      {checkoutError ? (
-        <div style={{ border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", padding: "10px 14px", fontSize: 12, color: DANGER, lineHeight: 1.7, borderRadius: 10 }}>
-          {checkoutError}
-        </div>
-      ) : null}
-      {!loading && employees.length > 0 ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 170px), 1fr))", gap: 12 }}>
-          {kpis.map((item) => (
-            <div key={item.label} className="nv-att-kpi" style={{ background: CARD, border: `1px solid ${BORDER}`, borderTop: `3px solid ${item.accent}`, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
-              <span style={{ fontSize: 11, color: MUTED }}>{item.label}</span>
-              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 26, color: item.color, textAlign: lang === "ar" ? "right" : "left", lineHeight: 1.1 }}>{formatUiNumber(item.value)}</span>
-              <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.7 }}>{item.note}</span>
+  const tiles = (
+    <DutyTiles>
+      <DutyTile
+        dataKey="team-today"
+        tone={!todayAtt.scheduled ? "mute" : todayAtt.presentLike >= todayAtt.scheduled ? "ok" : "warn"}
+        label={ar ? "الفريق اليوم" : "The team today"}
+        note={ar
+          ? `في الوقت ${formatUiNumber(todayAtt.present)} · متأخر ${formatUiNumber(todayAtt.late)} · لم يُسجَّل ${formatUiNumber(notYet)}`
+          : `On time ${formatUiNumber(todayAtt.present)} · late ${formatUiNumber(todayAtt.late)} · not yet ${formatUiNumber(notYet)}`}
+      >
+        <DutyNumber
+          value={formatUiNumber(todayAtt.presentLike)}
+          unit={<>{ar ? "سجّلوا من" : "logged of"} <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{formatUiNumber(todayAtt.scheduled)}</span> {ar ? "مجدولين" : "scheduled"}</>}
+        />
+        <span aria-hidden style={{ height: 6, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden", display: "flex", gap: splitTotal ? 2 : 0 }}>
+          {splitTotal ? split.filter((item) => item.value > 0).map((item) => (
+            <span key={item.key} style={{ flex: item.value, background: item.color }} />
+          )) : null}
+        </span>
+      </DutyTile>
+      <DutyTile
+        dataKey="absent"
+        tone={absentClosed ? "bad" : "mute"}
+        label={ar ? "غاب" : "Absent"}
+        note={ar
+          ? `بلا تسجيل ولا إجازة بعد نافذة الوردية · إجازة ${formatUiNumber(todayAtt.onLeave)}`
+          : `No punch and no leave after the window · leave ${formatUiNumber(todayAtt.onLeave)}`}
+      >
+        <DutyNumber value={formatUiNumber(absentClosed)} unit={ar ? "موظف" : "people"} />
+      </DutyTile>
+    </DutyTiles>
+  );
+
+  const teamList = !loading && employees.length > 0 ? (
+    <section className="nv-att-card" data-team-today style={panel}>
+      <div style={panelHead}>
+        <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+          <span style={headTitle}>{ar ? "الفريق اليوم — بالاسم" : "The team today — by name"}</span>
+          <span style={headNote}>
+            {ar
+              ? `${formatUiNumber(todayAtt.scheduled)} مجدولون · نسبة التسجيل ${todayAtt.rate}% · «افتح» يفتح ملف دوام الموظف`
+              : `${formatUiNumber(todayAtt.scheduled)} scheduled · ${todayAtt.rate}% logged · “Open” opens the person's duty file`}
+          </span>
+        </span>
+      </div>
+      <div className="nv-att-team-list">
+        {employees.map((employee) => {
+          const row = byEmployee[String(employee.id)];
+          const status = statusFor(employee);
+          const shift = getTodaysShift(data, employee);
+          const decide = needsDecision(employee);
+          const notYetRow = status === "absent" && !shiftWindowElapsed(shift);
+          const key = TEAM_STATUS[status] || "unscheduled";
+          const label = decide
+            ? (ar ? "بانتظار قرارك" : "Needs you")
+            : notYetRow
+              ? dutyLabel("pending", ar)
+              : dutyLabel(key, ar);
+          const chipStyle = decide ? dutyChip("alert") : notYetRow ? dutyChip("rest") : dutyChip(key);
+          const self = String(employee.id) === String(currentUser?.id);
+          const href = self ? "/app/attendance?tab=record" : fileDutyHref(employee.id);
+          return (
+            <div key={employee.id} data-team-row={status} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 10, alignItems: "center", padding: "10px 18px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", borderInlineStart: "1px solid var(--nv-line2, #EEF1EF)", minWidth: 0 }}>
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{employee.name}</span>
+                <span style={{ fontSize: 11, color: MUTED, display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  {shift ? (
+                    <span>{shift.label || (ar ? "وردية" : "Shift")} <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{shift.start}–{shift.end}</span></span>
+                  ) : (
+                    <span>{ar ? "بلا وردية اليوم" : "No shift today"}</span>
+                  )}
+                  {row?.check_in_at ? (
+                    <span>· {ar ? "بصم" : "in"} <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{formatTime(row.check_in_at, format, "en-GB")}</span></span>
+                  ) : null}
+                </span>
+              </span>
+              <span style={{ ...chipStyle, height: 22, fontSize: 11 }}>{label}</span>
+              {href ? (
+                <Link to={href} data-team-open={employee.id} style={openLinkStyle()} title={self ? (ar ? "سجلي" : "My record") : (ar ? "ملف الدوام" : "Duty file")}>
+                  {ar ? "افتح ›" : "Open ›"}
+                </Link>
+              ) : <span />}
             </div>
-          ))}
-        </div>
-      ) : null}
+          );
+        })}
+      </div>
+    </section>
+  ) : null;
 
-    {pendingRequestReplies.length > 0 ? (
-      <section className="nv-att-card" style={{ background: CARD, border: `1px solid ${BORDER}`, padding: "14px 18px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>
-            {lang === "ar" ? "إجازة أو موافقة دراسية بانتظار الرد" : "Leave or study consent awaiting a reply"}
-          </span>
-          <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
-            {lang === "ar"
-              ? `${formatUiNumber(pendingRequestReplies.length)} بانتظار القرار — الاعتماد والرفض من طلباتي، لا من طابور الحضور.`
-              : `${formatUiNumber(pendingRequestReplies.length)} awaiting a decision — approve and reject in My Requests, not this attendance queue.`}
-          </span>
-        </div>
-        <Link to={pendingReplyHref} style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink)", textDecoration: "none", whiteSpace: "nowrap", alignSelf: "center" }}>
-          {requestReplyCopy(lang === "ar")}
-        </Link>
-      </section>
-    ) : null}
-
-    <section className="nv-att-card" style={{ background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}`, display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{lang === "ar" ? "يحتاج قرارك" : "Needs your decision"}</span>
-          <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>{queueSub}</span>
-        </div>
+  const queuePanel = (
+    <section ref={queueRef} id="nv-team-queue" className="nv-att-card" data-decision-queue style={{ ...panel, scrollMarginTop: 88 }}>
+      <div style={panelHead}>
+        <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: "1 1 240px" }}>
+          <span style={headTitle}>{lang === "ar" ? "بصمات اليوم بلا حكم" : "Today's punches without a verdict"}</span>
+          <span style={headNote}>{queueSub}</span>
+        </span>
+        <span style={pill(attentionCount ? "warn" : "ok")}>
+          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{formatUiNumber(attentionCount)}</span>
+          {lang === "ar" ? "في الطابور" : "in queue"}
+        </span>
       </div>
 
       <div>
@@ -332,9 +414,11 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
       ) : employees.length === 0 ? (
         <div style={{ ...emptyState, margin: 16 }}>{t("noAttendanceRecords")}</div>
       ) : queue.length === 0 ? (
-        <div style={{ padding: "18px 20px" }}>
-          <span style={{ fontSize: 12, color: "var(--nv-ok-ink)", fontWeight: 600 }}>
-            {lang === "ar" ? "الطابور صفر — كل يوم أُغلق تلقائياً أو بقرار موقّع." : "Queue at zero — every day closed automatically or by a signed decision."}
+        <div data-queue-empty style={{ padding: "22px 18px", display: "flex", alignItems: "center", gap: 12 }}>
+          <span aria-hidden style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--nv-ok-soft)", border: "1px solid var(--nv-ok-line)", color: "var(--nv-ok-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}>✓</span>
+          <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{lang === "ar" ? "الطابور صفر" : "Queue at zero"}</span>
+            <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>{lang === "ar" ? "كل يوم أُغلق تلقائياً أو بقرار موقّع." : "Every day closed automatically or by a signed decision."}</span>
           </span>
         </div>
       ) : (
@@ -350,7 +434,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
             ? "outside"
             : r?.early_checkout
               ? "early"
-              : isPastCheckoutMissing(r)
+              : isPastCheckoutMissing(r, e)
                 ? "missing"
                 : FLAG[status]
                   ? status
@@ -368,7 +452,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 ? (lang === "ar" ? "مجدول اليوم ولم يسجّل بعد." : "Scheduled today and has not punched yet.")
                 : status === "not_scheduled"
                   ? (lang === "ar" ? "غير مدرج في جدول اليوم." : "Not on today's rota.")
-                  : isPastCheckoutMissing(r)
+                  : isPastCheckoutMissing(r, e)
                     ? (lang === "ar" ? "حضور بلا انصراف." : "Checked in with no checkout.")
                     : r?.early_checkout
                       ? t("earlyCheckoutLabel")
@@ -387,6 +471,10 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 </span>
                 <AttendanceRingChips rings={rings} />
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.75 }}>{reason}</span>
+                <span data-queue-links="1" style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+                  <Link to={fileDutyHref(e.id)} style={openLinkStyle()}>{lang === "ar" ? "ملف الدوام ›" : "Duty file ›"}</Link>
+                  <Link to={rosterPersonHref(e.id)} style={openLinkStyle()}>{lang === "ar" ? "في جدول الدوام ›" : "On the roster ›"}</Link>
+                </span>
                 {r?.excused ? <span style={{ fontSize: 10, color: MUTED }}>{t("excused")}</span> : null}
                 {r?.location_status === "outside" ? (
                   <button type="button" onClick={() => setMapRow(r)} style={{ ...miniBtn(), alignSelf: "start" }}>
@@ -397,7 +485,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 ) : null}
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                {isManager && isPastCheckoutMissing(r) && (
+                {isManager && isPastCheckoutMissing(r, e) && (
                   checkoutEmployeeId === e.id ? (
                     <div style={{ minWidth: 180, padding: 8, border: `1px solid ${BORDER}`, background: SURFACE }}>
                       <input
@@ -448,41 +536,78 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
         })
       )}
       {mapRow && <LocationMapModal row={mapRow} t={t} onClose={() => setMapRow(null)} />}
-      <div style={{ padding: "13px 20px" }}>
-        <span style={{ fontSize: 11, color: "#4b5567", lineHeight: 1.85 }}>{queueInsight}</span>
-      </div>
+      {queue.length > 0 ? (
+        <div style={{ padding: "12px 18px" }}>
+          <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.85 }}>{queueInsight}</span>
+        </div>
+      ) : null}
       </div>
     </section>
-    {!loading ? (() => {
-      const audit = rows
-        .filter((row) => row.excused || row.manual_override || row.override_by || row.excused_by_name)
-        .map((row) => ({
-          id: row.id,
-          text: lang === "ar"
-            ? `${row.override_by || row.excused_by_name || currentUser?.name || "المدير"} ${row.excused ? "أعفى" : "اعتمد يدوياً"} ${(employees.find((emp) => String(emp.id) === String(row.employee_id ?? row.employeeId))?.name) || ""}`
-            : `${row.override_by || row.excused_by_name || currentUser?.name || "Manager"} ${row.excused ? "excused" : "manually approved"} ${(employees.find((emp) => String(emp.id) === String(row.employee_id ?? row.employeeId))?.name) || ""}`,
-          time: row.check_in_at ? formatTime(row.check_in_at, format, "en-GB") : "—",
-          dot: row.excused ? "var(--nv-warn-fill)" : "var(--nv-ok-ink)",
-        }));
-      return (
-        <section className="nv-att-card" style={{ background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "16px 20px", borderBottom: `1px solid ${BORDER}` }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>{lang === "ar" ? "سجل التدقيق — قرارات اليوم" : "Audit — today's decisions"}</span>
+  );
+
+  const audit = rows
+    .filter((row) => row.excused || row.manual_override || row.override_by || row.excused_by_name)
+    .map((row) => ({
+      id: row.id,
+      text: lang === "ar"
+        ? `${row.override_by || row.excused_by_name || currentUser?.name || "المدير"} ${row.excused ? "أعفى" : "اعتمد يدوياً"} ${(employees.find((emp) => String(emp.id) === String(row.employee_id ?? row.employeeId))?.name) || ""}`
+        : `${row.override_by || row.excused_by_name || currentUser?.name || "Manager"} ${row.excused ? "excused" : "manually approved"} ${(employees.find((emp) => String(emp.id) === String(row.employee_id ?? row.employeeId))?.name) || ""}`,
+      time: row.check_in_at ? formatTime(row.check_in_at, format, "en-GB") : "—",
+      dot: row.excused ? "var(--nv-warn-fill)" : "var(--nv-ok-ink)",
+    }));
+  // Reference, not a task — folded under the work.
+  const auditPanel = !loading ? (
+    <section className="nv-att-card" data-audit style={{ ...panel, overflow: "hidden" }}>
+      <Collapsible
+        dataAttr="audit"
+        title={lang === "ar" ? "سجل التدقيق" : "Audit trail"}
+        note={lang === "ar" ? "قرارات اليوم باسم من قرّرها." : "Today's decisions, in the name of whoever made them."}
+        trailing={(
+          <span style={pill("mute")}>
+            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{formatUiNumber(audit.length)}</span>
+            {lang === "ar" ? "قرار" : "decisions"}
+          </span>
+        )}
+      >
+        {audit.length === 0 ? (
+          <div style={{ padding: "4px 18px 12px" }}>
+            <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>{lang === "ar" ? "لا قرار بعد. كل اعتماد أو إعفاء يظهر هنا." : "No decision yet. Each approval or excuse appears here."}</span>
           </div>
-          {audit.length === 0 ? (
-            <div style={{ padding: "16px 20px" }}>
-              <span style={{ fontSize: 11, color: MUTED }}>{lang === "ar" ? "لا قرار بعد. كل اعتماد أو إعفاء يُسجَّل هنا باسم من قرّره." : "No decision yet. Each approval or excuse is recorded here with the actor's name."}</span>
-            </div>
-          ) : audit.map((item) => (
-            <div key={item.id} style={{ padding: "12px 20px", borderBottom: `1px solid ${BORDER}`, display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "baseline" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: item.dot }} />
-              <span style={{ fontSize: 12, color: NAVY, lineHeight: 1.8, minWidth: 0 }}>{item.text}</span>
-              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: MUTED }}>{item.time}</span>
-            </div>
-          ))}
-        </section>
-      );
-    })() : null}
-    </div>
+        ) : audit.map((item) => (
+          <div key={item.id} style={{ padding: "11px 18px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "baseline" }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: item.dot }} />
+            <span style={{ fontSize: 12, color: "var(--nv-ink)", lineHeight: 1.8, minWidth: 0 }}>{item.text}</span>
+            <span style={{ whiteSpace: "nowrap" }}><span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: MUTED }}>{item.time}</span></span>
+          </div>
+        ))}
+      </Collapsible>
+    </section>
+  ) : null;
+
+  return (
+    <>
+      {checkoutError ? (
+        <div style={{ border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", padding: "10px 14px", fontSize: 12, color: DANGER, lineHeight: 1.7, borderRadius: 10 }}>
+          {checkoutError}
+        </div>
+      ) : null}
+      {tiles}
+      <DutyBoard
+        main={(
+          <>
+            {queuePanel}
+            {teamList}
+            {auditPanel}
+          </>
+        )}
+        side={(
+          <ManageDutySideAuto
+            ar={ar}
+            queueCount={loading ? undefined : attentionCount}
+            hideQueue
+          />
+        )}
+      />
+    </>
   );
 }

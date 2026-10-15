@@ -22,7 +22,8 @@ export const TERMINATION_REASONS = [
   { id: "force_majeure", article: "74", ar: "قوة قاهرة", en: "Force majeure" },
   { id: "closure", article: "74", ar: "إغلاق المنشأة / الإفلاس", en: "Closure / insolvency" },
   { id: "retirement", article: "74", ar: "بلوغ سن التقاعد", en: "Retirement age" },
-  { id: "death", article: "74", ar: "وفاة العامل", en: "Worker's death" },
+  { id: "death", article: "79", ar: "وفاة العامل", en: "Worker's death" },
+  { id: "disability", article: "79", ar: "عجز العامل عن أداء عمله — بشهادة طبية (المادة 79)", en: "Unable to work — medical certificate (Art. 79)" },
   { id: "article_80", article: "80", ar: "فصل بلا مكافأة — المادة 80", en: "Dismissal without award — Art. 80" },
   { id: "article_81", article: "81", ar: "ترك العمل مع حفظ الحقوق — المادة 81", en: "Leaving with rights preserved — Art. 81" },
 ];
@@ -332,19 +333,18 @@ export function monthHasHeatBanDay(year, monthIndex) {
   return false;
 }
 
+/** Exact clock overlap with 12:00–15:00 (half-open) — a shift ending 12:04 or starting 14:58 is still inside. */
 export function shiftOverlapsHeatBan(start, end, { outdoor = false, summer = false } = {}) {
   if (!outdoor || !summer) return false;
   const from = ruleValue("hours.heat.startHour") * 60;
   const to = ruleValue("hours.heat.endHour") * 60;
   const [sh, sm] = String(start || "0:0").split(":").map(Number);
   const [eh, em] = String(end || "0:0").split(":").map(Number);
-  let a = sh * 60 + sm;
-  let b = eh * 60 + em;
+  const a = (sh || 0) * 60 + (sm || 0);
+  let b = (eh || 0) * 60 + (em || 0);
   if (b <= a) b += 1440;
-  const wrap = (m) => ((m % 1440) + 1440) % 1440;
-  for (let t = a; t < b; t += 15) {
-    const m = wrap(t);
-    if (m >= from && m < to) return true;
+  for (const day of [0, 1440]) {
+    if (Math.min(b, day + to) > Math.max(a, day + from)) return true;
   }
   return false;
 }

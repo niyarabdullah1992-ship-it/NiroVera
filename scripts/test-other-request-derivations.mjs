@@ -87,7 +87,7 @@ assert.equal(flattenOtherRequests(people)[0].id, "o3");
 const blocked = checkSubmitOtherRequestGate({ type: "salary_letter", reason: "" });
 assert.equal(blocked.ok, false);
 assert.equal(blocked.error, "REASON_REQUIRED");
-assert.equal(checkSubmitOtherRequestGate({ type: "salary_letter", reason: "تقديم للبنك" }).error, "FILE_REQUIRED");
+assert.equal(checkSubmitOtherRequestGate({ type: "salary_letter", reason: "تقديم للبنك" }).ok, true, "asking for a letter needs no file from the worker");
 assert.equal(checkApproveOtherRequestGate({ type: "salary_letter", status: "pending", reason: "تقديم للبنك" }).error, "FILE_REQUIRED");
 assert.equal(checkApproveOtherRequestGate({
   type: "salary_letter",
@@ -109,14 +109,32 @@ assert.equal(checkSubmitOtherRequestGate({
   type: "employment_letter",
   reason: "تعريف للسفارة",
   file: { name: "letter.pdf", url: "/letter.pdf" },
-}).error, "PAPER_REQUIRED");
+}).ok, true, "a letter request does not need a hand-signed copy");
+assert.equal(checkSubmitOtherRequestGate({ type: "custody", reason: "تسليم لابتوب" }).error, "FILE_REQUIRED", "custody keeps its signed handover");
 assert.equal(checkSubmitOtherRequestGate({
   type: "employment_letter",
   reason: "تعريف للسفارة",
   file: { name: "letter.pdf", url: "/letter.pdf" },
   paper: { name: "letter-signed.pdf", url: "/letter-signed.pdf" },
 }).ok, true);
-assert.equal(checkSubmitOtherRequestGate({ type: "permission", reason: "خروج مبكر", date: "2026-09-14" }).ok, true);
+// استئذان needs its window; the other duty requests carry their ministry fields.
+assert.equal(checkSubmitOtherRequestGate({ type: "permission", reason: "خروج مبكر", date: "2026-09-14" }).error, "TIME_REQUIRED");
+assert.equal(checkSubmitOtherRequestGate({ type: "permission", reason: "خروج مبكر", date: "2026-09-14", time: "12:00", timeTo: "11:00" }).error, "TIME_ORDER");
+assert.equal(checkSubmitOtherRequestGate({ type: "permission", reason: "خروج مبكر", date: "2026-09-14", time: "07:00", timeTo: "08:30" }).ok, true);
+assert.equal(checkSubmitOtherRequestGate({ type: "nursing_hour", reason: "رضاعة", date: "2026-09-14", placement: "start" }).ok, true);
+assert.equal(checkSubmitOtherRequestGate({ type: "nursing_hour", reason: "رضاعة", date: "2026-09-14", placement: "mid" }).error, "PLACEMENT_REQUIRED");
+assert.equal(checkSubmitOtherRequestGate({ type: "pregnancy_notice", reason: "حمل", date: "2026-09-14", dueDate: "2027-03-01" }).error, "FILE_REQUIRED");
+assert.equal(checkSubmitOtherRequestGate({ type: "pregnancy_notice", reason: "حمل", date: "2026-09-14", dueDate: "2027-03-01", file: { name: "r.pdf" } }).ok, true);
+assert.equal(checkSubmitOtherRequestGate({ type: "heat_report", reason: "عمل مكشوف ظهراً", date: "2026-07-14" }).ok, true);
+{
+  const { excusedStartMinutes } = await import("../src/lib/dutyRequests.js");
+  const emp = { otherRequests: [{ type: "permission", status: "approved", date: "2026-09-14", time: "06:30", timeTo: "08:00" }] };
+  assert.equal(excusedStartMinutes(emp, "2026-09-14", "07:00").minutes, 60, "permission covering the start excuses up to its end");
+  assert.equal(excusedStartMinutes(emp, "2026-09-15", "07:00").minutes, 0, "another day is not excused");
+  const mom = { profile: { nursingHour: { placement: "start", from: "2026-09-01", until: "" } } };
+  assert.equal(excusedStartMinutes(mom, "2026-09-14", "07:00").reason, "nursing", "Art. 154 nursing hour at start");
+  assert.equal(excusedStartMinutes({ profile: { nursingHour: { placement: "end", from: "2026-09-01" } } }, "2026-09-14", "07:00").minutes, 0, "an end-of-shift hour does not excuse the start");
+}
 
 const dated = checkSubmitOtherRequestGate({ type: "overtime", reason: "ضغط تشغيل", date: "" });
 assert.equal(dated.ok, false);
@@ -161,7 +179,7 @@ assert.equal(emp.profile.leaveTotals.annual, 24);
 assert.equal(hasPendingLeaveTopup([{ type: LEAVE_TOPUP_TYPE, status: "pending" }]), true);
 assert.equal(hasPendingLeaveTopup([{ type: LEAVE_TOPUP_TYPE, status: "approved" }]), false);
 
-assert.equal(ARTICLE_106_GROUNDS.length, 3);
+assert.equal(ARTICLE_106_GROUNDS.length, 5); // the four cases of Art. 106, paragraph 2 split in two
 assert.equal(otCreditDays(8, "2026-09-13"), 1.5);
 
 const realFile = { name: "incident.pdf", size: 2400, url: "data:application/pdf,ok", hash: "AA11" };
@@ -178,8 +196,12 @@ assert.equal(checkRaiseOtAssignmentGate({
 assert.equal(checkRaiseOtAssignmentGate({
   reason: "خطر حريق", hours: 4, date: "2026-09-13", article106: true, article106Ground: "danger", files: [realFile],
 }).error, "MANAGER_106_ACK_REQUIRED");
+// Art. 106 last paragraph: even in its cases, actual work ≤ 10 h a day — 8 h shift + 4 h is over.
 assert.equal(checkRaiseOtAssignmentGate({
   reason: "خطر حريق", hours: 4, date: "2026-09-13", article106: true, article106Ground: "danger", files: [realFile], manager106Ack: true,
+}).error, "ART106_DAY_CAP");
+assert.equal(checkRaiseOtAssignmentGate({
+  reason: "خطر حريق", hours: 2, date: "2026-09-13", article106: true, article106Ground: "danger", files: [realFile], manager106Ack: true,
 }).ok, true);
 
 const used106 = Array.from({ length: 30 }, (_, i) => ({
@@ -246,10 +268,11 @@ const creditReq = {
   status: "pending_manager",
   employeeAck: true,
 };
-assert.equal(stampOvertimeCreditOnEmployee(creditEmp, creditReq).nextTotal, 22.5);
-assert.equal(creditReq.balanceApplied, true);
+// Regs 22 bis — comp leave is its own balance in hours; the annual total is untouched.
+assert.equal(stampOvertimeCreditOnEmployee(creditEmp, creditReq).hours, 12, "8 overtime hours × 1.5");
+assert.equal(creditReq.compGranted, true);
 assert.equal(stampOvertimeCreditOnEmployee(creditEmp, creditReq).skipped, true);
-assert.equal(creditEmp.profile.leaveTotals.annual, 22.5);
+assert.equal(creditEmp.profile.leaveTotals?.annual, undefined, "annual leave is not touched");
 assert.equal(incrementAnnualLeaveTotal({ hireDate: "2024-01-15" }, 1.5, "2026-09-13").nextTotal, 22.5);
 
 const waiting = [{ otherRequests: [normalAssign] }];

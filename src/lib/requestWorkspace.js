@@ -1,5 +1,6 @@
 /** Catalog and derived figures for the unified My Requests workspace. */
 
+import { isDutyRequestType } from "./dutyRequests.js";
 import { decision18632RightsNote } from "./decision18632.js";
 import { articleOfficialText } from "./laborArticleTexts.js";
 import { profileGender } from "./employeeProfileFields.js";
@@ -35,6 +36,8 @@ import { formatNotificationText, isInventoryDeskNotice, isRequestWorkspaceNotice
 import { formatDate } from "./dateFormat.js";
 import { leaveApprovalBlessing } from "./leaveEntitlementCycle.js";
 import { isViewerOwnFile, viewerEmployeeId } from "./employeeFileView.js";
+import { hoursAr, otOffer, sar as sarText } from "./otOffer.js";
+import { compBalance } from "./compLeave.js";
 
 export const SUPPORTING_FILE_ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
 export const SUPPORTING_FILE_MAX_BYTES = 10 * 1024 * 1024;
@@ -83,11 +86,23 @@ export const REQUEST_KINDS = [
   /** Admin credit from إدارة — no employee raise, no self-decide leave. */
   { id: "leave_credit", ar: "إضافة رصيد", en: "Add leave balance", manageOnly: true, manageFiled: true, credit: true },
   { id: "ot_assign", ar: "تكليف إضافي", en: "Overtime assignment", type: "overtime", assignment: true, manageOnly: true, manageFiled: true },
+  /** «طلبات الدوام» — each one changes how a duty day is read (dutyRequests.js). */
+  { id: "permission", ar: "استئذان", en: "Permission", type: "permission", duty: true, manageDuty: true },
+  { id: "shift_change", ar: "تغيير وردية", en: "Shift change", type: "shift_change", duty: true },
+  { id: "nursing_hour", ar: "ساعة الرضاعة", en: "Nursing hour", type: "nursing_hour", duty: true, gender: "female", manageDuty: true },
+  { id: "pregnancy_notice", ar: "إبلاغ حمل", en: "Pregnancy notice", type: "pregnancy_notice", duty: true, gender: "female", manageDuty: true },
+  { id: "heat_report", ar: "بلاغ عمل مكشوف", en: "Exposed-work report", type: "heat_report", duty: true },
+  /** Decision 18632 (e) — the worker tells HR; on approval the file carries it and the roster considers it at night. */
+  { id: "family_duties", ar: "إبلاغ بمسؤوليات عائلية", en: "Family responsibilities notice", type: "family_duties", duty: true },
   { id: "manual", ar: "تسجيل حضور يدوي", en: "Manual punch", type: "manual_punch" },
   { id: "outfix", ar: "تصحيح انصراف", en: "Checkout correction", type: "checkout_fix" },
   { id: "doc", ar: "وثيقة أو شهادة", en: "Document or letter" },
   { id: "money", ar: "سلفة أو بدل", en: "Advance or allowance", type: "advance" },
   { id: "custody", ar: "عهدة", en: "Custody", type: "custody" },
+  /** Arts. 75 / 79 bis — the worker's own written resignation; management decides or lets 30 days pass. */
+  { id: "resignation", ar: "تقديم استقالة", en: "Resignation", type: "resignation" },
+  /** Arts. 51 · 81 · 91 · 110 — rights the law gives the worker (rightsRequests.js). Filed from ملفي only. */
+  { id: "rights", ar: "حقوق نظامية أخرى", en: "Other legal rights", employeeOnly: true },
   /** Manager may raise from إدارة as an establishment act; worker may also raise from ملفي. */
   { id: "other", ar: "طلب آخر", en: "Other request", type: "other_request", manageFiled: true },
 ];
@@ -99,14 +114,16 @@ export const REQUEST_KINDS = [
  */
 export function composeRequestKinds(lane = "mine") {
   if (lane === "manage") {
-    return REQUEST_KINDS.filter((row) => row.id === "ot_assign" || row.id === "leave_credit" || row.id === "other");
+    // إدارة may also record a granted permission, a nursing hour, or a pregnancy notice handed in on paper.
+    return REQUEST_KINDS.filter((row) => row.id === "ot_assign" || row.id === "leave_credit" || row.manageDuty || row.id === "leave" || row.id === "other");
   }
   return REQUEST_KINDS.filter((row) => !row.manageOnly);
 }
 
 /** True when إدارة may compose this kind as a manager-side raise (not ملفي masquerade). */
 export function isManageRaiseKind(kindId) {
-  return kindId === "ot_assign" || kindId === "leave_credit" || kindId === "other";
+  return kindId === "ot_assign" || kindId === "leave_credit" || kindId === "other" || kindId === "leave"
+    || REQUEST_KINDS.some((row) => row.id === kindId && row.manageDuty);
 }
 
 /** Checklist rows for the إدارة credit form. */
@@ -202,6 +219,7 @@ export const DOC_KINDS = [
   { id: "salary", type: "salary_letter", salary: true, ar: "شهادة تعريف بالراتب", en: "Salary introduction", approverAr: "الموارد البشرية", approverEn: "HR" },
   { id: "job", type: "employment_letter", salary: false, ar: "تعريف بالمهنة", en: "Job introduction", approverAr: "الموارد البشرية", approverEn: "HR" },
   { id: "exp", type: "document", salary: false, ar: "شهادة خبرة أو خدمة", en: "Service certificate", approverAr: "الموارد البشرية", approverEn: "HR" },
+  { id: "contract", type: "document", salary: true, ar: "نسخة من عقد العمل", en: "A copy of my contract", approverAr: "الموارد البشرية · م 51", approverEn: "HR · Art. 51" },
   { id: "embassy", type: "document", salary: true, ar: "تعريف للسفارة أو التأشيرة", en: "Embassy or visa letter", approverAr: "الموارد البشرية", approverEn: "HR" },
   { id: "bank", type: "document", salary: true, ar: "مشهد راتب للبنك أو التمويل", en: "Bank or finance letter", approverAr: "الموارد البشرية + المالية", approverEn: "HR + finance" },
   { id: "clear", type: "document", salary: false, ar: "إخلاء طرف / نهاية خدمة", en: "Clearance / end of service", approverAr: "الموارد البشرية + المدير", approverEn: "HR + manager" },
@@ -436,6 +454,10 @@ const LAW_ROWS = [
   { art: "117", kind: "leave", ruleId: "leave.sick.days", implAr: "شريط مراتب يبيّن أين وصل الموظف — لا صف واحد.", implEn: "A band strip shows where the worker stands — not one row." },
   { art: "151", kind: "leave", ruleId: "leave.maternity.days", implAr: "اثنا عشر أسبوعاً، ستة بعد الوضع وجوبية. تمديد شهر بلا أجر بعد انتهائها. مولود مريض أو ذو إعاقة يحتاج مرافقاً: شهر بأجر ثم شهر بلا أجر. وفاة الزوج للعاملة من المادة 160 لا من 113.", implEn: "Twelve weeks, six after birth mandatory. One unpaid month after it ends. A sick or disabled newborn needing a companion: one paid month then one unpaid. A female worker's husband death is Article 160, not 113." },
   { art: "160", kind: "leave", ruleId: "leave.iddah.cite", implAr: "تبدأ من تاريخ الوفاة. المسلمة 130 يوماً بأجر، وغير المسلمة 15. التمديد بلا أجر للحامل حتى الوضع فقط، ولا تُكمَّل العدة بعد الولادة.", implEn: "It starts on the date of death. A Muslim widow has 130 paid days; a non-Muslim widow has 15. An unpaid extension is only if she is pregnant until birth; remaining iddah is not used after birth." },
+  { art: "75", kind: "contract", ruleId: "contract.notice.workerMonthlyDays", implAr: "طلب «تقديم استقالة» يحسب مهلة الإشعار من تاريخ التقديم إلى آخر يوم عمل، وينبّه إن قلّت عن 30 يوماً (والمادة 76: من لم يراعِ المهلة يدفع أجرها).", implEn: "The resignation request counts notice from submission to the last working day and warns under 30 days (Art. 76: the missing notice is paid)." },
+  { art: "79 مكرر", kind: "contract", ruleId: "contract.resignation.autoAcceptDays", implAr: "تظهر للإدارة تاريخ القبول الحكمي بعد 30 يوماً دون رد، وحدّ التأجيل 60 يوماً بإيضاح مكتوب، وحق السحب خلال 7 أيام. الاعتماد يكتب إنهاء العقد في ملف الموظف.", implEn: "Management sees the deemed-acceptance date after 30 days, the 60-day postponement cap with a written reason, and the 7-day withdrawal right. Approval writes the contract end on the file." },
+  { art: "59", kind: "contract", ruleId: "contract.wageType.consent.cite", implAr: "تغيير فئة الأجر من شهري لا يتم إلا بموافقة كتابية — تُرسل من «طلب موافقة خطية» ويُوقّعها الموظف.", implEn: "A move off the monthly wage needs written consent — sent as a written-consent request and signed by the worker." },
+  { art: "60", kind: "contract", ruleId: "contract.essentialChange.cite", implAr: "التكليف بعمل مختلف جوهرياً يحتاج موافقة كتابية، إلا لضرورة عارضة حتى 30 يوماً في السنة.", implEn: "Substantially different work needs written consent, except incidental necessity up to 30 days a year." },
   { art: "98", kind: "work", ruleId: "hours.week.ordinaryMaxHours", implAr: "سقف 48 ساعة فحص مانع. في رمضان 6 ساعات يومياً أو 36 على أيام رمضان للمسلم — مانع للنشر. اليوم 30 معلّق حتى إعلان 29 أو 30.", implEn: "A 48-hour cap is a blocking check. In Ramadan, 6 hours a day or 36 across Ramadan days for a Muslim blocks publish. Day 30 waits for the 29/30 announcement." },
   { art: "101", kind: "work", ruleId: "hours.rest.maxConsecutiveHours", implAr: "فحص مانع: لا أكثر من خمس ساعات متواصلة، ولا بقاء في مكان العمل فوق اثنتي عشرة ساعة.", implEn: "A blocking check: no more than five consecutive hours, and no more than twelve hours at the workplace." },
   { art: "102", kind: "work", ruleId: "hours.rest.notWorkingHours.cite", implAr: "فترات الراحة والصلاة والطعام لا تُحتسب ساعات عمل فعلية.", implEn: "Rest, prayer and meal periods are not counted as actual working hours." },
@@ -586,11 +608,16 @@ export function leaveKindMeta(key, onDate) {
   };
 }
 
-export function leaveKindsFor(profile, ar = true, requests) {
+export function leaveKindsFor(profile, ar = true, requests, employee) {
   const leftover = leftoverGrantDays(profile, requests);
+  const comp = employee ? compBalance(employee) : null;
   return leaveTypesForProfile(profile || {}).map((row) => {
     const meta = leaveKindMeta(row.key);
-    const cite = meta.article ? statutoryArticleLabel(meta.article, ar) : (ar ? "قرار تشغيلي" : "Operational");
+    const cite = meta.article
+      ? statutoryArticleLabel(meta.article, ar)
+      : row.key === "work_injury"
+        ? (ar ? "نظام التأمينات" : "Social insurance")
+        : (ar ? "قرار تشغيلي" : "Operational");
     const cap = row.key === "annual"
       ? (ar ? "21 يوماً — 30 بعد 5 سنوات" : "21 days — 30 after 5 years")
         : row.key === "grant"
@@ -613,6 +640,12 @@ export function leaveKindsFor(profile, ar = true, requests) {
         ? (ar ? "شهر بأجر بعد الوضع — وتمديد شهر بلا أجر" : "One paid month after maternity — plus an unpaid month")
       : row.key === "sick"
         ? (ar ? "30 كامل · 60 بثلاثة أرباع · 30 بلا أجر" : "30 full · 60 at three-quarters · 30 unpaid")
+      : row.key === "work_injury"
+        ? (ar ? "بتقرير طبي · التأمينات — الأخطار المهنية" : "With a medical report · GOSI occupational hazards")
+      : row.key === "comp"
+        ? (comp && comp.left > 0
+          ? (ar ? `رصيدك ${hoursAr(comp.left)} — حتى ${formatArDate(comp.nextTakeBy, "ar")}` : `${comp.left} h left — by ${comp.nextTakeBy}`)
+          : (ar ? "لا رصيد بعد — يتكوّن حين تختار الإجازة بدل أجر الإضافي" : "No balance yet — it comes from overtime taken as leave"))
       : row.key === "exam"
         ? (ar ? "أيام الامتحان الفعلية — لا تُرفض إن استوفت" : "Actual exam days — a qualifying file is not refused")
         : row.defaultTotal
@@ -654,6 +687,12 @@ export function officialHolidays(onDate = todayRiyadh(), calendar) {
   return officialHolidayList(onDate, calendar);
 }
 
+/**
+ * Articles the duty roster already judges week by week (جدول الدوام → أنظمة الوزارة). طلباتي does not repeat them.
+ * 106/107 = overtime on the roster, 112 = holidays locked on the roster, 18632 = night work.
+ */
+export const ROSTER_COVERED_ARTICLES = ["98", "101", "102", "104", "106", "107", "112", "18632"];
+
 export function lawArticleCards(filter = "leave", liveArticle = "", lang = "ar") {
   const ar = lang === "ar";
   const names = {
@@ -675,10 +714,16 @@ export function lawArticleCards(filter = "leave", liveArticle = "", lang = "ar")
     106: { ar: "العمل الإضافي الإجباري", en: "Mandatory overtime" },
     107: { ar: "أجر العمل الإضافي", en: "Overtime pay" },
     58: { ar: "تغيير مكان العمل", en: "Change of workplace" },
+    59: { ar: "تغيير فئة الأجر", en: "Change of wage type" },
+    60: { ar: "العمل المختلف جوهرياً", en: "Substantially different work" },
+    75: { ar: "مهلة الإشعار", en: "Notice period" },
+    "79 مكرر": { ar: "الاستقالة", en: "Resignation" },
     18632: { ar: "العمل الليلي", en: "Night work" },
   };
   return LAW_ROWS
-    .filter((row) => filter === "all" || row.kind === filter)
+    .filter((row) => (filter === "requests"
+      ? !ROSTER_COVERED_ARTICLES.includes(String(row.art))
+      : (filter === "all" || row.kind === filter)))
     .map((row) => {
       const citeKind = row.citeKind || (row.source === "ministerial" ? "decision" : "article");
       const official = citeKind === "article" ? articleOfficialText(row.art) : null;
@@ -816,9 +861,14 @@ export function flattenWorkspaceRows(employees = [], lang = "ar") {
       ? statutoryDecisionLabel("18632", ar)
       : isArticle106Assignment(request)
         ? statutoryArticleLabel("106", ar)
-        : (otCompensationOf(request) === "credit"
-          ? (ar ? "رصيد إجازة" : "Leave credit")
-          : (otCompensationOf(request) === "pay" ? (ar ? "أجر إضافي" : "OT pay") : "")),
+        : (() => {
+          // The chosen compensation with its value, so both sides see the same number.
+          const comp = otCompensationOf(request);
+          if (comp !== "credit" && comp !== "pay") return "";
+          const offer = otOffer({ employee, hours: request.hours, date: request.date, exceptId: request.id });
+          if (comp === "credit") return ar ? `إجازة تعويضية · ${hoursAr(offer.leave.hours)}` : `Leave · ${offer.leave.hours} h`;
+          return offer.known ? (ar ? `أجر إضافي · ${sarText(offer.pay.total)}` : `OT pay · ${sarText(offer.pay.total, false)}`) : (ar ? "أجر إضافي" : "OT pay");
+        })(),
     fileName: assignmentFileName(request) || request.senderFile?.name || request.file?.name || request.files?.[0]?.name || "",
   })));
   return [...leave, ...other].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -944,10 +994,10 @@ const MANAGE_PENDING_KINDS = [
   { id: "leave", ar: "إجازة", en: "leave", match: (row) => row.family === "leave" },
   { id: STUDY_CONSENT_TYPE, ar: STUDY_CONSENT_LABEL_AR, en: STUDY_CONSENT_LABEL_EN, match: (row) => row.type === STUDY_CONSENT_TYPE },
   { id: NIGHT_FITNESS_TYPE, ar: NIGHT_FITNESS_LABEL_AR, en: NIGHT_FITNESS_LABEL_EN, match: (row) => row.type === NIGHT_FITNESS_TYPE },
-  { id: "permission", ar: "استئذان", en: "excuse", match: (row) => row.type === "permission" },
+  { id: "duty", ar: "طلبات الدوام", en: "duty requests", match: (row) => isDutyRequestType(row.type) },
   { id: "advance", ar: "سلفة", en: "advance", match: (row) => row.type === "advance" },
   { id: "custody", ar: "عهدة", en: "custody", match: (row) => row.type === "custody" },
-  { id: "other", ar: "طلب آخر", en: "other", match: (row) => row.family === "other" && ![STUDY_CONSENT_TYPE, NIGHT_FITNESS_TYPE, "permission", "advance", "custody", "night_consent", "written_consent"].includes(row.type) },
+  { id: "other", ar: "طلب آخر", en: "other", match: (row) => row.family === "other" && ![STUDY_CONSENT_TYPE, NIGHT_FITNESS_TYPE, "advance", "custody", "night_consent", "written_consent"].includes(row.type) && !isDutyRequestType(row.type) },
 ];
 
 /** إدارة decide queue — pending leave / study / night fitness / excuses / advances / custody / other. */
@@ -978,7 +1028,7 @@ export function managerPendingInbox(employees = [], lang = "ar", extras = {}) {
     count: derivedAlertCount(annotated.length),
     named,
     emptyReason: ar
-      ? "لا طلب معلّق بانتظار قرار الإدارة — إجازة، موافقة دراسية، لياقة ليلية، استئذان، سلفة، عهدة، أو طلب آخر."
+      ? "لا طلب معلّق بانتظار قرار الإدارة — إجازة، موافقة دراسية، لياقة ليلية، طلبات الدوام، سلفة، عهدة، أو طلب آخر."
       : "No pending request awaiting management — leave, study consent, night fitness, excuse, advance, custody, or other.",
   };
 }
@@ -1552,6 +1602,8 @@ export function requestArchiveSmartItems(rows = [], extras = {}) {
       formatArDate(archiveDay(row.at), lang),
     ].filter(Boolean).join(" · "),
     date: row.at || row.source?.createdAt || row.createdAt,
+    person: hideName ? "" : (row.employeeName || ""),
+    branch: employeeStationName(row.employee, stations) || "",
     badge: row.statusLabel,
     stateId: requestArchiveStateId(row.status),
     search: requestArchiveSearchHay(row, stations),

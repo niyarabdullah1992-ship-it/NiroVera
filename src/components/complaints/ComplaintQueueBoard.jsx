@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { hoursWord } from "@/lib/compLeave";
 import { ArrowUpCircle, Check, Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -42,13 +43,13 @@ function slaText(r, ar) {
       const d = Math.round(overdue / 24);
       return ar ? `تجاوز ${d} يومًا` : `${d}d overdue`;
     }
-    return ar ? `تجاوز ${Math.round(overdue)} ساعات` : `${Math.round(overdue)}h overdue`;
+    return ar ? `تجاوز ${hoursWord(Math.round(overdue))}` : `${Math.round(overdue)}h overdue`;
   }
   if (h >= 24) {
     const d = Math.round(h / 24);
     return ar ? `${d} أيام` : `${d} days`;
   }
-  return ar ? `${Math.round(h)} ساعات` : `${Math.round(h)}h`;
+  return ar ? hoursWord(Math.round(h)) : `${Math.round(h)}h`;
 }
 
 export default function ComplaintQueueBoard({ lang = "ar", stationScope = "all", voice = "all" }) {

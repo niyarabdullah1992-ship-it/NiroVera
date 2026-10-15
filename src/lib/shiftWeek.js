@@ -1,7 +1,7 @@
 /** Week-first rota: employee × day, ministry publish gates, night (18632) watch. */
 
 import { calendarDateKey, dayAssignmentMap } from "./attendanceCalendar.js";
-import { checkHeatBanGate, heatBanWindow, isHeatBanDate, shiftOverlapsHeatBan } from "./contractLawDerivations.js";
+import { heatBanWindow, isHeatBanDate, shiftOverlapsHeatBan } from "./contractLawDerivations.js";
 import { HEAT_BAN_DECISION, heatBanDecisionLabel } from "./heatBanDecision.js";
 import { isoDayKey, riyadhClock } from "./opsDerivations.js";
 import {
@@ -18,10 +18,11 @@ import {
   nightMinutesInWindow as nightMinutesInDecisionWindow,
   performsNightWork,
 } from "./decision18632.js";
-import { isRamadanHoursSubject } from "./employeeProfileFields.js";
-import { citeLeaveType, citeRule, explainRule, isRamadanDay, laborDayKey, ruleValue } from "./laborRules.js";
-import { ageYearsOn, deriveNamedOvertime, isJuvenile, isWeeklyRestDay } from "./laborHoursPolicy.js";
+import { isRamadanHoursSubject, profileGender } from "./employeeProfileFields.js";
+import { citeLeaveType, citeRule, explainRule, isRamadanDay, laborDayKey, laborDaysBetween, ruleValue } from "./laborRules.js";
+import { ageYearsOn, deriveNamedOvertime, hoursPolicyOf, isJuvenile, isWeeklyRestDay, ordinaryDayCap } from "./laborHoursPolicy.js";
 import { checkJuvenileHoursGate } from "./laborProtectionGates.js";
+import { fridaySwapGaps, juvenileDocGaps, nightEmployerDutyGaps } from "./ministryExtras.js";
 import { approvedLeaveOnDay, isNursingSubject, isOnApprovedLeave, leaveTypeLabel } from "./leaveTypes.js";
 import { isEidHoliday } from "./leaveEidOverlap.js";
 import { isOfficialHoliday, officialHolidayLeaveLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
@@ -1267,17 +1268,18 @@ export function nightAssignmentHoursReduced(shift, onDate) {
   return shiftHours(shift) + 1e-9 < ordinary;
 }
 
-export function countNightWorkerDaysInYear(schedule, employeeId, onDate) {
+/** `test` = isNightWorker (≥3h, default) or performsNightWork (any minute) — رابعاً counts «من يعمل في فترة العمل الليلي». */
+export function countNightWorkerDaysInYear(schedule, employeeId, onDate, test = isNightWorker) {
   const year = String(laborDayKey(onDate)).slice(0, 4);
   let days = 0;
   for (const key of Object.keys(schedule?.assignments || {})) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(key) || !key.startsWith(year)) continue;
-    if (isNightWorker(employeeShiftOnDay(schedule, employeeId, key, { datedOnly: true }), key)) days += 1;
+    if (test(employeeShiftOnDay(schedule, employeeId, key, { datedOnly: true }), key)) days += 1;
   }
   return days;
 }
 
-export function consecutiveNightWorkerMonths(schedule, employeeId, onDate) {
+export function consecutiveNightWorkerMonths(schedule, employeeId, onDate, test = isNightWorker) {
   const day = parseDateKey(onDate) || new Date();
   let months = 0;
   for (let back = 0; back < 18; back += 1) {
@@ -1288,7 +1290,7 @@ export function consecutiveNightWorkerMonths(schedule, employeeId, onDate) {
     let hit = false;
     for (const key of Object.keys(schedule?.assignments || {})) {
       if (!key.startsWith(prefix)) continue;
-      if (isNightWorker(employeeShiftOnDay(schedule, employeeId, key, { datedOnly: true }), key)) {
+      if (test(employeeShiftOnDay(schedule, employeeId, key, { datedOnly: true }), key)) {
         hit = true;
         break;
       }
@@ -1297,6 +1299,27 @@ export function consecutiveNightWorkerMonths(schedule, employeeId, onDate) {
     months += 1;
   }
   return months;
+}
+
+/**
+ * 18632 رابعاً — does the compensation-and-benefits paragraph reach this person on this day?
+ * Shared by the night-worker (ب) and night-performer (أ) gates; only the day test differs.
+ */
+export function nightCompensationParagraphExemption({ schedule, employee, onDate, laborCalendar, test = isNightWorker } = {}) {
+  const yearPrefix = String(laborDayKey(onDate)).slice(0, 4);
+  const datedYearDays = Object.keys(schedule?.assignments || {}).filter((key) => (
+    /^\d{4}-\d{2}-\d{2}$/.test(key) && key.startsWith(yearPrefix)
+  )).length;
+  return isNightWorkerXorExempt({
+    onDate,
+    employee,
+    schedule,
+    laborCalendar,
+    yearDays: countNightWorkerDaysInYear(schedule, employee?.id, onDate, test),
+    consecutiveMonths: consecutiveNightWorkerMonths(schedule, employee?.id, onDate, test),
+    shareMonths: monthsWithNightShareAtLeast(schedule, employee?.id, onDate, 0.25),
+    datedYearDays,
+  });
 }
 
 export function monthsWithNightShareAtLeast(schedule, employeeId, onDate, share = 0.25) {
@@ -1322,6 +1345,7 @@ export function monthsWithNightShareAtLeast(schedule, employeeId, onDate, share 
   return count;
 }
 
+/** Compensation (أ) for anyone who performs night work — within the رابعاً thresholds, and not in Ramadan. */
 export function checkNightPerformerCompensationGate({
   shift,
   onDate,
@@ -1329,11 +1353,16 @@ export function checkNightPerformerCompensationGate({
   schedule,
   station,
   settings,
+  laborCalendar,
 } = {}) {
   const ruleId = "hours.night.compensateOrReduce";
   const explained = explainRule(ruleId, onDate);
   if (!performsNightWork(shift, onDate)) {
     return { ok: true, error: null, ruleId, via: null };
+  }
+  const exempt = nightCompensationParagraphExemption({ schedule, employee, onDate, laborCalendar, test: performsNightWork });
+  if (exempt.exempt) {
+    return { ok: true, error: null, ruleId, via: "exempt", exempt, cite: explained };
   }
   if (hasRecordedNightCompensation({ schedule, station, settings, employee, shift })) {
     return { ok: true, error: null, ruleId, via: "compensate", cite: explained };
@@ -1366,20 +1395,7 @@ export function checkNightCompensateOrReduceGate({
   if (!shift || !isNightWorker(shift, onDate)) {
     return { ok: true, error: null, ruleId, via: null };
   }
-  const yearPrefix = String(laborDayKey(onDate)).slice(0, 4);
-  const datedYearDays = Object.keys(schedule?.assignments || {}).filter((key) => (
-    /^\d{4}-\d{2}-\d{2}$/.test(key) && key.startsWith(yearPrefix)
-  )).length;
-  const exempt = isNightWorkerXorExempt({
-    onDate,
-    employee,
-    schedule,
-    laborCalendar,
-    yearDays: countNightWorkerDaysInYear(schedule, employee?.id, onDate),
-    consecutiveMonths: consecutiveNightWorkerMonths(schedule, employee?.id, onDate),
-    shareMonths: monthsWithNightShareAtLeast(schedule, employee?.id, onDate, 0.25),
-    datedYearDays,
-  });
+  const exempt = nightCompensationParagraphExemption({ schedule, employee, onDate, laborCalendar, test: isNightWorker });
   if (exempt.exempt) {
     return { ok: true, error: null, ruleId, via: "exempt", exempt, cite: explained };
   }
@@ -1955,6 +1971,93 @@ export function checkJuvenileRosterGate({
   return gate;
 }
 
+/**
+ * Duty intervals in absolute minutes from the week's first day 00:00 —
+ * the previous day (offset -1) through the next week's first day (offset 7).
+ * Leave / official-holiday days carry no duty.
+ */
+export function weekDutyIntervals(schedule, employee, weekStart, laborCalendar) {
+  const keys = weekDateKeys(weekStart);
+  if (!employee?.id || !keys.length) return [];
+  const span = [neighborDateKey(keys[0], -1), ...keys, neighborDateKey(keys[6], 1)];
+  const out = [];
+  span.forEach((key, index) => {
+    if (!key) return;
+    const shift = employeeDutyShiftOnDay(schedule, employee, key, laborCalendar);
+    if (!shift?.start || !shift?.end) return;
+    const start = (index - 1) * 1440 + clockMinutes(shift.start);
+    const length = minutesBetween(shift.start, shift.end) || 1440;
+    out.push({ key, start, end: start + length, shift, inWeek: index >= 1 && index <= 7 });
+  });
+  return out.sort((a, b) => a.start - b.start);
+}
+
+/**
+ * Art. 104(2): longest continuous off-duty stretch touching the week, in hours.
+ * An unplanned next-week first day is open (Infinity) — it is not judged here.
+ * Returns null when the person has no duty this week.
+ */
+export function longestWeeklyRestHours(schedule, employee, weekStart, laborCalendar) {
+  const intervals = weekDutyIntervals(schedule, employee, weekStart, laborCalendar);
+  if (!intervals.some((row) => row.inWeek)) return null;
+  const weekEnd = 7 * 1440;
+  const gaps = [];
+  // Head: the previous day's start is the earliest point read.
+  gaps.push([-1440, intervals[0].start]);
+  let runEnd = -Infinity;
+  for (let i = 0; i < intervals.length; i += 1) {
+    runEnd = Math.max(runEnd, intervals[i].end);
+    const next = intervals[i + 1];
+    gaps.push([runEnd, next ? next.start : (runEnd < weekEnd + 1440 && intervals[i].inWeek ? Infinity : runEnd)]);
+  }
+  let best = 0;
+  for (const [from, to] of gaps) {
+    if (!(to > from)) continue;
+    if (to <= 0 || from >= weekEnd) continue;
+    if (to === Infinity) return Infinity;
+    best = Math.max(best, to - from);
+  }
+  return Math.round((best / 60) * 10) / 10;
+}
+
+/** Shortest off-duty gap (hours) between two consecutive duties that touch this week — Art. 163 night period. */
+export function shortestDutyGapHours(schedule, employee, weekStart, laborCalendar) {
+  const intervals = weekDutyIntervals(schedule, employee, weekStart, laborCalendar);
+  let shortest = null;
+  for (let i = 0; i + 1 < intervals.length; i += 1) {
+    const a = intervals[i];
+    const b = intervals[i + 1];
+    if (!a.inWeek && !b.inWeek) continue;
+    const gap = (b.start - a.end) / 60;
+    if (shortest == null || gap < shortest) shortest = gap;
+  }
+  return shortest == null ? null : Math.round(shortest * 10) / 10;
+}
+
+/** Art. 151: the actual birth on file (profile), else the latest approved maternity event date. */
+export function postnatalBirthDate(employee) {
+  const profile = employee?.profile || {};
+  if (profileGender(profile) !== "female") return "";
+  const own = String(profile.childBirthDate || profile.lastChildBirthDate || "").slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(own)) return own;
+  const events = (employee?.leaveRequests || [])
+    .filter((row) => String(row?.type || "").toLowerCase() === "maternity" && row.status === "approved")
+    .map((row) => String(row.eventDate || "").slice(0, 10))
+    .filter((key) => /^\d{4}-\d{2}-\d{2}$/.test(key))
+    .sort();
+  return events.length ? events[events.length - 1] : "";
+}
+
+/** Art. 151(1): the six weeks after birth are mandatory leave — no duty on those days. */
+export function isMandatoryPostnatalDay(employee, dateKey) {
+  const birth = postnatalBirthDate(employee);
+  if (!birth || !dateKey) return false;
+  const days = ruleValue("leave.maternity.mandatoryPostDays", dateKey);
+  if (!days) return false;
+  const since = laborDaysBetween(birth, dateKey);
+  return since >= 0 && since < days;
+}
+
 function articleChip(ruleId, onDate, fallbackAr) {
   const cite = ruleId ? citeRule(ruleId, onDate) : null;
   const explained = !cite && ruleId ? explainRule(ruleId, onDate) : null;
@@ -1998,6 +2101,113 @@ export function isHistoricalHeatBanDay(dateKey, today = new Date(), weekEndKey =
   const todayKey = heatBanTodayKey(today);
   const end = isoDayKey(weekEndKey) || String(weekEndKey || "").slice(0, 10);
   return key < todayKey && !!end && end < todayKey;
+}
+
+/* ----------------------- Decision 3337 — per-person exposed / shaded mark -----------------------
+   The same morning shift carries field and office workers, so the mark lives on the roster cell:
+   schedule.sunExposure[dayKey][employeeId] = "field" | "office" | ""  ("" = explicitly unset)
+   schedule.sunExposureDefault[employeeId] = "field" | "office"         (the last choice, pre-fills)
+   Resolution: cell → employee default → legacy shiftType.outdoor → unset. */
+export const SUN_FIELD = "field";
+export const SUN_OFFICE = "office";
+
+function normalSunMark(value) {
+  return value === SUN_FIELD || value === SUN_OFFICE ? value : null;
+}
+
+/** Resolved mark for one person on one day — `{ mark, source }`, source ∈ cell | default | shift | null. */
+export function sunExposureMark(schedule, employeeId, dayKey, shift = null) {
+  const key = isoDayKey(dayKey) || String(dayKey || "").slice(0, 10);
+  const id = String(employeeId ?? "");
+  const day = schedule?.sunExposure?.[key];
+  if (day && Object.prototype.hasOwnProperty.call(day, id)) {
+    return { mark: normalSunMark(day[id]), source: "cell" };
+  }
+  const fallback = normalSunMark(schedule?.sunExposureDefault?.[id]);
+  if (fallback) return { mark: fallback, source: "default" };
+  const onShift = shift || (id ? employeeShiftOnDay(schedule, id, key) : null);
+  if (onShift?.outdoor === true) return { mark: SUN_FIELD, source: "shift" };
+  if (onShift?.outdoor === false) return { mark: SUN_OFFICE, source: "shift" };
+  return { mark: null, source: null };
+}
+
+/** Does this shift touch the midday window? Window from laborRules — never a hard-coded hour. */
+export function shiftTouchesHeatWindow(shift) {
+  if (!shift?.start || !shift?.end) return false;
+  return shiftOverlapsHeatBan(shift.start, shift.end, { outdoor: true, summer: true });
+}
+
+/**
+ * One roster cell against 3337: `asks` when the day is in season and the shift touches the window.
+ * `live` narrows to the days the publish gate fires on (today forward).
+ */
+export function sunExposureCellState(schedule, employeeId, dayKey, { shift, today = new Date() } = {}) {
+  const key = isoDayKey(dayKey) || String(dayKey || "").slice(0, 10);
+  const onShift = shift === undefined ? employeeShiftOnDay(schedule, employeeId, key) : shift;
+  const inSeason = isHeatBanDate(key);
+  const touches = !!onShift && shiftTouchesHeatWindow(onShift);
+  // Asked whenever the shift touches the window — year-round; the ban itself only bites in season (`live`).
+  const asks = touches;
+  const resolved = asks ? sunExposureMark(schedule, employeeId, key, onShift) : { mark: null, source: null };
+  return {
+    asks,
+    live: asks && isLiveHeatBanDay(key, today),
+    inSeason,
+    touches,
+    mark: resolved.mark,
+    source: resolved.source,
+  };
+}
+
+/** Next state on a cell toggle: unset → field → office → unset. */
+export function nextSunExposureMark(mark) {
+  if (mark === SUN_FIELD) return SUN_OFFICE;
+  if (mark === SUN_OFFICE) return "";
+  return SUN_FIELD;
+}
+
+/** Week tally among in-season cells that touch the window: exposed / shaded / unset. */
+export function weekSunExposureCounts(schedule, employees = [], weekStart, { laborCalendar, shiftOf } = {}) {
+  const out = { field: 0, office: 0, unset: 0, cells: 0, inSeason: false };
+  const days = weekDays(weekStart);
+  out.inSeason = days.some((day) => isHeatBanDate(day.key));
+  if (!out.inSeason) return out;
+  for (const employee of employees) {
+    if (!employee?.id) continue;
+    for (const day of days) {
+      if (isRosterLeaveDay(employee, day.key, laborCalendar)) continue;
+      const shift = shiftOf ? shiftOf(employee, day) : employeeShiftOnDay(schedule, employee.id, day.key);
+      const state = sunExposureCellState(schedule, employee.id, day.key, { shift: shift || null });
+      if (!state.asks) continue;
+      out.cells += 1;
+      if (state.mark === SUN_FIELD) out.field += 1;
+      else if (state.mark === SUN_OFFICE) out.office += 1;
+      else out.unset += 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Seasonal notice for every employee equally — the same line whatever the mark.
+ * `fieldDays` (day keys the viewer is marked field inside the window) adds a personal line.
+ */
+export function heatSeasonNoticeCopy(onDate, { ar = true, fieldDays = [] } = {}) {
+  const win = heatBanWindow(onDate);
+  const headline = ar ? "موسم حظر العمل المكشوف" : "Open-sun ban season";
+  const body = ar
+    ? `${win.seasonAr} يُمنع العمل تحت الشمس من ${win.startLabel} إلى ${win.endLabel} (القرار ${HEAT_BAN_DECISION.id}).`
+    : `${win.seasonEn[0].toUpperCase()}${win.seasonEn.slice(1)}, work under the sun is banned from ${win.startLabel} to ${win.endLabel} (Decision ${HEAT_BAN_DECISION.id}).`;
+  const dayNames = fieldDays.map((key) => {
+    const at = new Date(`${key}T12:00:00`);
+    return weekdayLabel(at.getDay(), ar);
+  });
+  const personal = dayNames.length
+    ? (ar
+      ? `مخالفة — عملك محدَّد «مكشوف» يوم ${dayNames.join("، ")} في ساعات الحظر. وفق القرار 3337 لا يجوز تشغيلك تحت أشعة الشمس من ${win.startLabel} إلى ${win.endLabel}، ويحق لك رفض العمل المكشوف في هذه الساعات.`
+      : `You are marked field on ${dayNames.join(", ")} — the employer may not compel you to work under the sun from ${win.startLabel} to ${win.endLabel}.`)
+    : "";
+  return { headline, body, personal, window: `${win.startLabel}–${win.endLabel}` };
 }
 
 export function checkWeekPublishGates({
@@ -2198,6 +2408,7 @@ export function checkWeekPublishGates({
         schedule,
         station,
         settings,
+        laborCalendar,
       }).ok;
     }),
   ).map((employee) => employee.name);
@@ -2229,48 +2440,128 @@ export function checkWeekPublishGates({
   const facilityGaps = performersThisWeek.length
     ? nightFacilityGaps(nightFacilityBags({ schedule, station, settings, company }))
     : [];
+  const nightDutyGaps = performersThisWeek.length
+    ? nightEmployerDutyGaps(nightFacilityBags({ schedule, station, settings, company }))
+    : [];
+  const fridayGaps = fridaySwapGaps(company, employees);
+
+  /* Labour Law provisions read from the same roster — warnings, not publish blocks. */
+  const weeklyRestHoursNeed = ruleValue("hours.rest.weeklyHours", onDate) || 24;
+  const juvenileNightNeed = ruleValue("hours.juvenile.nightBanHours", onDate) || 12;
+  const weeklyRest24Short = [];
+  const ramadanWeekCriterionOver = [];
+  const overtimeNamed = [];
+  const postnatalDuty = [];
+  const nursingOnDuty = [];
+  const juvenileGapShort = [];
+  const juvenileHazard = [];
+  const juvenilesThisWeek = [];
+  const juvenileDocsMissing = [];
+  let birthDatesKnown = 0;
+  let postnatalInWindow = 0;
+  for (const employee of roster) {
+    const keys = days.map((day) => day.key);
+    const duty = keys
+      .map((key) => ({ key, shift: employeeDutyShiftOnDay(schedule, employee, key, laborCalendar) }))
+      .filter((row) => row.shift);
+    if (ageYearsOn(employee, onDate) != null) birthDatesKnown += 1;
+    if (keys.some((key) => isMandatoryPostnatalDay(employee, key))) postnatalInWindow += 1;
+    if (!duty.length) continue;
+    const juvenile = duty.some((row) => isJuvenile(employee, row.key));
+
+    // Art. 104(2): at least 24 continuous hours — a rest "day" shortened by a night spill-over is not enough.
+    if (!noWeeklyRest.includes(employee.name)) {
+      const longest = longestWeeklyRestHours(schedule, employee, weekStart, laborCalendar);
+      if (longest != null && longest < weeklyRestHoursNeed) weeklyRest24Short.push({ employee, hours: longest });
+    }
+
+    // Art. 98: Ramadan weekly 36 for the weekly criterion (12h-stay duties are not cut to 6 a day).
+    if (isRamadanHoursSubject(employee)) {
+      const ramadanDuty = duty.filter((row) => isRamadanDay(row.key, laborCalendar));
+      const stayDays = ramadanDuty.filter((row) => !ramadanUsesDailySixCap(row.shift, row.key, employee));
+      if (stayDays.length) {
+        const total = Math.round(ramadanDuty.reduce((sum, row) => sum + actualShiftHours(row.shift, row.key, employee), 0) * 10) / 10;
+        if (total > ramadanWeekCap) ramadanWeekCriterionOver.push({ employee, hours: total, days: stayDays.map((row) => row.key) });
+      }
+    }
+
+    // Art. 107(1): hours past the daily ordinary cap (daily criterion) are overtime at +50%.
+    const exempt108 = hoursPolicyOf(company, employee).hoursExempt108;
+    if (!exempt108 && !juvenile && !employeeOnCompressedTwelveWeek(schedule, employee, weekStart)) {
+      let ot = 0;
+      const otDays = [];
+      for (const row of duty) {
+        if (isRamadanDay(row.key, laborCalendar) && isRamadanHoursSubject(employee)) continue;
+        const cap = ordinaryDayCap(employee, company, row.key, laborCalendar);
+        const actual = actualShiftHours(row.shift, row.key, employee);
+        if (cap && actual > cap) {
+          ot += actual - cap;
+          otDays.push(row.key);
+        }
+      }
+      if (ot > 0) overtimeNamed.push({ employee, hours: Math.round(ot * 10) / 10, days: otDays });
+    }
+
+    // Art. 151(1): no duty in the six mandatory weeks after birth.
+    const postDays = duty.filter((row) => isMandatoryPostnatalDay(employee, row.key)).map((row) => row.key);
+    if (postDays.length) postnatalDuty.push({ employee, days: postDays });
+
+    // Art. 154: nursing hour counted as actual work — informational, applies when on duty.
+    if (duty.some((row) => isNursingSubject(employee, row.key))) nursingOnDuty.push(employee.name);
+
+    if (juvenile) {
+      juvenilesThisWeek.push(employee.name);
+      const docGaps = juvenileDocGaps(employee);
+      if (docGaps.length) juvenileDocsMissing.push({ employee, gaps: docGaps });
+      // Art. 163: a night period of at least 12 consecutive hours off between two duties.
+      const gap = shortestDutyGapHours(schedule, employee, weekStart, laborCalendar);
+      if (gap != null && gap < juvenileNightNeed) juvenileGapShort.push({ employee, hours: gap });
+      // Art. 161: hazardous / harmful work flagged on the file or the shift.
+      const hazardous = hoursPolicyOf(null, employee).hazardousHours || duty.some((row) => row.shift.hazardous === true);
+      if (hazardous) juvenileHazard.push(employee.name);
+    }
+  }
+  const dayList = (list) => list
+    .map((key) => weekdayLabel(new Date(`${key}T12:00:00`).getDay(), ar))
+    .join(ar ? "، " : ", ");
 
   const heatWin = heatBanWindow(onDate);
   const todayKey = heatBanTodayKey(today);
   const weekEndKey = days[6]?.key || "";
   const heatSeason = days.some((day) => isLiveHeatBanDay(day.key, todayKey));
-  const sunClash = [];
-  const sunUnmarked = [];
-  if (heatSeason) {
-    for (const shift of types) {
-      const used = days.some((day) => {
-        const map = dayAssignmentMap(schedule?.assignments, day.key);
-        return (map?.[shift.id] || []).length > 0 && isLiveHeatBanDay(day.key, todayKey);
-      });
-      if (!used) continue;
-      const gate = checkHeatBanGate({ start: shift.start, end: shift.end, outdoor: shift.outdoor === true, summer: true });
-      if (!gate.ok) {
-        sunClash.push(shift.label || shift.id);
-        continue;
-      }
-      if (shift.outdoor === true || shift.outdoor === false) continue;
-      if (shiftOverlapsHeatBan(shift.start, shift.end, { outdoor: true, summer: true })) {
-        sunUnmarked.push(shift.label || shift.id);
-      }
-    }
-  }
-  const sunBanPeople = [];
-  const sunUnmarkedPeople = [];
+  /* 3337 per person, per day — the mark lives on the roster cell (exposed / shaded), not the shift type. */
+  const sunField = [];
+  const sunUnset = [];
+  let sunOfficeCells = 0;
+  const sunFieldCells = new Set();
+  const sunUnsetCells = new Set();
   if (heatSeason) {
     for (const employee of roster) {
+      const fieldDays = [];
+      const unsetDays = [];
       for (const day of days) {
         if (!isLiveHeatBanDay(day.key, todayKey) || isRosterLeaveDay(employee, day.key, laborCalendar)) continue;
         const shift = employeeShiftOnDay(schedule, employee.id, day.key);
-        if (!shift) continue;
-        const shiftName = shift.label || shift.id;
-        if (sunClash.includes(shiftName) && !sunBanPeople.includes(employee.name)) {
-          sunBanPeople.push(employee.name);
-        } else if (sunUnmarked.includes(shiftName) && !sunUnmarkedPeople.includes(employee.name)) {
-          sunUnmarkedPeople.push(employee.name);
+        if (!shift || !shiftTouchesHeatWindow(shift)) continue;
+        const { mark } = sunExposureMark(schedule, employee.id, day.key, shift);
+        if (mark === SUN_FIELD) {
+          fieldDays.push(day.key);
+          sunFieldCells.add(`${employee.id}:${day.key}`);
+        } else if (mark === SUN_OFFICE) {
+          sunOfficeCells += 1;
+        } else {
+          unsetDays.push(day.key);
+          sunUnsetCells.add(`${employee.id}:${day.key}`);
         }
       }
+      if (fieldDays.length) sunField.push({ employeeId: employee.id, name: employee.name, days: fieldDays });
+      if (unsetDays.length) sunUnset.push({ employeeId: employee.id, name: employee.name, days: unsetDays });
     }
   }
+  const sunWho = (rows) => rows.map((row) => {
+    const labels = row.days.map((key) => weekdayLabel(new Date(`${key}T12:00:00`).getDay(), ar));
+    return `${row.name} (${labels.join(ar ? "، " : ", ")})`;
+  });
 
   const ramadan = days.some((day) => isRamadanDay(day.key, laborCalendar));
   const ramadanBlocked = ramadanOverDay.length > 0 || ramadanOverWeek.length > 0;
@@ -2457,6 +2748,21 @@ export function checkWeekPublishGates({
         : (ar ? "لا وسم تمييز أجر ليلي على الملف — ملاحظة تشغيلية، بلا تدقيق مسير." : "No night-pay discrimination flag is on the file — operational note, not a payroll audit."),
     },
     {
+      id: "night_employer_duties",
+      ok: nightDutyGaps.length === 0,
+      block: false,
+      applicable: performersThisWeek.length > 0,
+      ...articleChip(null, onDate, "القرار 18632"),
+      title: ar ? "متطلبات المنشأة للعمل الليلي: تكافؤ التدريب ودليل الإجراءات" : "Employer night-work requirements: training parity and a procedures guide",
+      note: nightDutyGaps.length
+        ? (ar
+          ? `غير مسجّل: ${nightDutyGaps.map((row) => `${row.ar} (${row.clause})`).join("، ")}. سجّله في «إعداد الليل» على جدول الدوام.`
+          : `Not on file: ${nightDutyGaps.map((row) => row.en).join(", ")}. Record it under Night settings on the roster.`)
+        : performersThisWeek.length
+          ? (ar ? "التكافؤ في التأهيل والتدريب والترقية مسجّل، ودليل إجراءات العمل الليلي منشور للعاملين." : "Training and promotion parity is on file and the night procedures guide is published.")
+          : (ar ? "لا عمل ليلي هذا الأسبوع." : "No night work this week."),
+    },
+    {
       id: "night_consideration",
       ok: true,
       block: false,
@@ -2468,26 +2774,30 @@ export function checkWeekPublishGates({
     },
     {
       id: "heat_ban",
-      ok: sunClash.length === 0,
+      ok: sunField.length === 0,
       block: false,
+      // A breach shown as «مخالفة» to the manager and the worker — never a publish block (product decision).
+      violation: sunField.length > 0,
       ...articleChip("hours.heat.startHour", onDate, "قرار 3337"),
-      title: ar ? "لا يُجبر العامل على العمل في نافذة حظر الشمس" : "A worker may not be compelled to work in the sun-ban window",
-      note: sunClash.length
-        ? `${weekHeatBanWorkerNotice(names(sunBanPeople.length ? sunBanPeople : sunClash), onDate, { ar })} ${ar ? "تنبيه حماية، وليس مانعاً للنشر." : "A protection notice, not a publish block."}`
+      title: ar ? "لا يجوز التشغيل تحت أشعة الشمس في ساعات الحظر" : "No work under direct sun in the ban hours",
+      note: sunField.length
+        ? `${weekHeatBanWorkerNotice(names(sunWho(sunField)), onDate, { ar })} ${ar ? "مخالفة لا تمنع النشر — تُسجَّل ويراها الموظف، وعند 12:00 يصل تنبيه للإدارة وللموظف." : "A violation that does not block publishing — recorded and visible to the worker; at 12:00 the manager and the worker are alerted."}`
         : heatSeason
-          ? (ar ? `موسم الحظر ساري (${heatWin.seasonAr}) ولا وردية موسومة ميداناً تمسّ ${heatWin.startLabel} – ${heatWin.endLabel}.` : `Heat-ban season is in force (${heatWin.seasonEn}) and no shift marked open-air touches ${heatWin.startLabel}–${heatWin.endLabel}.`)
+          ? (ar ? `موسم الحظر ساري (${heatWin.seasonAr}) ولا موظف مُحدَّد «مكشوف» في وردية تمسّ ${heatWin.startLabel} – ${heatWin.endLabel}.` : `Heat-ban season is in force (${heatWin.seasonEn}) and nobody marked field is on a shift touching ${heatWin.startLabel}–${heatWin.endLabel}.`)
           : (ar ? "خارج موسم حظر الشمس." : "Outside the heat-ban season."),
     },
     {
       id: "heat_place",
-      ok: sunUnmarked.length === 0,
+      ok: sunUnset.length === 0,
       block: false,
       ...articleChip("hours.heat.startHour", onDate, "قرار 3337"),
-      title: ar ? "وسم الميدان المكشوف قبل حظر الشمس" : "Mark open-air before the sun ban",
-      note: sunUnmarked.length
-        ? `${weekHeatBanWorkerNotice(names(sunUnmarkedPeople.length ? sunUnmarkedPeople : sunUnmarked), onDate, { ar })} ${ar ? "وسم الميدان مكشوفاً أو داخلياً — الحظر لا يُطبَّق على العمل الداخلي." : "Mark the shift open-air or indoor — the ban does not apply to indoor work."}`
+      title: ar ? "يحتاج تحديد مكشوف/مظلّل" : "Needs a exposed / shaded mark",
+      note: sunUnset.length
+        ? (ar
+          ? `${names(sunWho(sunUnset))} — يحتاج تحديد مكشوف/مظلّل من خلية الموظف في الجدول. الحظر لا يُطبَّق على العمل المظلّل أو الداخلي.`
+          : `${names(sunWho(sunUnset))} — needs a exposed / shaded mark on the roster cell. The ban does not apply to office work.`)
         : heatSeason
-          ? (ar ? "كل وردية تمس نافذة الحظر موسومة داخلياً أو ميداناً مكشوفاً — الحظر لا يُطبَّق على العمل الداخلي." : "Every shift that touches the ban window is marked indoor or open-air — the ban does not apply to indoor work.")
+          ? (ar ? "كل خلية تمسّ نافذة الحظر محدَّدة مكشوف أو مظلّل — الحظر لا يُطبَّق على العمل المظلّل أو الداخلي." : "Every cell touching the ban window is marked exposed or shaded — the ban does not apply to office work.")
           : (ar ? "خارج الموسم — لا نافذة ظهر لحظر الشمس." : "Off season — no midday sun-ban window."),
     },
     {
@@ -2529,6 +2839,7 @@ export function checkWeekPublishGates({
       id: "juvenile",
       ok: juvenileAgeBad.length === 0 && juvenileNightBad.length === 0 && juvenileHoursBad.length === 0,
       block: true,
+      applicable: juvenilesThisWeek.length > 0 || juvenileAgeBad.length > 0,
       ...articleChip("hours.juvenile.ordinaryHours", onDate),
       title: ar ? "تشغيل الأحداث ضمن المواد 162–164" : "Juvenile work within Arts. 162–164",
       note: (() => {
@@ -2558,6 +2869,7 @@ export function checkWeekPublishGates({
       id: "juvenile_hours",
       ok: juvenileHoursBad.length === 0,
       block: true,
+      applicable: juvenilesThisWeek.length > 0,
       ...articleChip("hours.juvenile.ordinaryHours", onDate),
       title: ar ? "ساعات الحدث — المادة 164" : "Juvenile hours — Art. 164",
       note: juvenileHoursBad.length
@@ -2570,6 +2882,7 @@ export function checkWeekPublishGates({
       id: "juvenile_night",
       ok: juvenileNightBad.length === 0,
       block: true,
+      applicable: juvenilesThisWeek.length > 0,
       ...articleChip("hours.juvenile.nightBanHours", onDate),
       title: ar ? "حظر ليل الحدث — المادة 163" : "Juvenile night ban — Art. 163",
       note: juvenileNightBad.length
@@ -2582,6 +2895,7 @@ export function checkWeekPublishGates({
       id: "juvenile_age",
       ok: juvenileAgeBad.length === 0,
       block: true,
+      applicable: birthDatesKnown > 0,
       ...articleChip("hours.juvenile.minAgeYears", onDate),
       title: ar ? "سن التشغيل الأدنى — المادة 162" : "Minimum employment age — Art. 162",
       note: juvenileAgeBad.length
@@ -2589,6 +2903,135 @@ export function checkWeekPublishGates({
           ? `${names(juvenileAgeBad)} — دون الخامسة عشرة.`
           : `${names(juvenileAgeBad)} — under fifteen years of age.`)
         : (ar ? "لا تعيين دون سن التشغيل الأدنى في هذا الأسبوع." : "No under-age assignment this week."),
+    },
+    {
+      id: "juvenile_docs",
+      ok: juvenileDocsMissing.length === 0,
+      block: false,
+      applicable: juvenilesThisWeek.length > 0,
+      ...articleChip(null, onDate, "المادة 165"),
+      title: ar ? "وثائق الحدث في ملفه وإبلاغ مكتب العمل — المادتان 165 و166" : "Juvenile documents on file and labour office notice — Arts. 165–166",
+      note: juvenileDocsMissing.length
+        ? (ar
+          ? juvenileDocsMissing.map((row) => `${row.employee.name}: ${row.gaps.map((gap) => gap.ar).join("، ")}`).join(" · ") + " — سجّلها في ملف الموظف (الساعات على الملف)."
+          : juvenileDocsMissing.map((row) => `${row.employee.name}: ${row.gaps.map((gap) => gap.en).join(", ")}`).join(" · ") + " — record them on the employee file.")
+        : (ar ? "وثائق كل حدث في الجدول محفوظة، وأُبلغ مكتب العمل." : "Every juvenile on the roster has documents on file and the labour office was notified."),
+    },
+    {
+      id: "weekly_rest_24h",
+      ok: weeklyRest24Short.length === 0,
+      block: false,
+      applicable: assigned > 0,
+      ...articleChip("hours.rest.weeklyHours", onDate),
+      title: ar ? `الراحة الأسبوعية ${weeklyRestHoursNeed} ساعة متتالية فعلاً` : `Weekly rest is truly ${weeklyRestHoursNeed} consecutive hours`,
+      note: weeklyRest24Short.length
+        ? (ar
+          ? `${weeklyRest24Short.map((row) => `${row.employee.name} (أطول راحة ${row.hours} ساعة)`).join("، ")} — يوم الراحة موجود لكن وردية قبله أو بعده تقطع الـ${weeklyRestHoursNeed} ساعة المتتالية (المادة 104 فقرة 2).`
+          : `${weeklyRest24Short.map((row) => `${row.employee.name} (longest rest ${row.hours}h)`).join(", ")} — a rest day exists but a shift before or after it cuts the ${weeklyRestHoursNeed} consecutive hours (Art. 104(2)).`)
+        : (ar
+          ? `لكل من في الجدول راحة متصلة لا تقل عن ${weeklyRestHoursNeed} ساعة، بأجر كامل ولا تُعوَّض نقداً (المادة 104).`
+          : `Everyone on the roster has at least ${weeklyRestHoursNeed} consecutive rest hours, on full pay and never paid off in cash (Art. 104).`),
+    },
+    {
+      id: "weekly_rest_friday",
+      ok: fridayGaps.length === 0,
+      block: false,
+      applicable: fridayGaps.length > 0 || !!company?.hoursPolicy?.workPosting?.fridaySwapNotifiedAt,
+      ...articleChip(null, onDate, "المادة 104"),
+      title: ar ? "استبدال الجمعة بيوم راحة آخر — إبلاغ مكتب العمل" : "Replacing Friday as the rest day — notify the labour office",
+      note: fridayGaps.length
+        ? (ar
+          ? `يوم الراحة النظامي ليس الجمعة، والناقص: ${fridayGaps.map((row) => row.ar).join("، ")} (المادة 104 فقرة 1). سجّلهما في «السياسة والمواقع».`
+          : `The statutory rest day is not Friday; missing: ${fridayGaps.map((row) => row.en).join(", ")} (Art. 104(1)). Record them in Policy and sites.`)
+        : (ar
+          ? "الجمعة يوم راحة، أو استُبدلت بعد إبلاغ مكتب العمل مع تمكين العمال من أداء واجباتهم الدينية."
+          : "Friday is a rest day, or it was replaced after notifying the labour office with workers enabled to perform their religious duties."),
+    },
+    {
+      id: "ramadan_week_36",
+      ok: ramadanWeekCriterionOver.length === 0,
+      block: false,
+      applicable: ramadan,
+      ...articleChip("hours.ramadan.weekMaxHours", onDate),
+      title: ar ? `رمضان بالمعيار الأسبوعي: ${ramadanWeekCap} ساعة فعلية في الأسبوع` : `Ramadan on the weekly criterion: ${ramadanWeekCap} actual hours a week`,
+      note: !ramadan
+        ? (ar ? "لا أيام رمضان في هذا الأسبوع." : "No Ramadan days this week.")
+        : ramadanWeekCriterionOver.length
+          ? (ar
+            ? `${ramadanWeekCriterionOver.map((row) => `${row.employee.name} (${row.hours} ساعة فعلية)`).join("، ")} — بقاء 12 ساعة في رمضان، لكن نص المادة 98 لا يجيز أكثر من ${ramadanWeekCap} ساعة فعلية في الأسبوع للمسلم. زِد الراحة داخل الوردية أو قلّل أيام الدوام.`
+            : `${ramadanWeekCriterionOver.map((row) => `${row.employee.name} (${row.hours} actual hours)`).join(", ")} — 12h stay in Ramadan, but Art. 98 allows no more than ${ramadanWeekCap} actual hours a week for a Muslim. Add rest inside the stay or cut a duty day.`)
+          : (ar ? `ورديات البقاء 12 ساعة في رمضان ضمن ${ramadanWeekCap} ساعة فعلية في الأسبوع.` : `12h-stay duties in Ramadan stay within ${ramadanWeekCap} actual hours a week.`),
+    },
+    {
+      id: "overtime_107",
+      ok: overtimeNamed.length === 0,
+      block: false,
+      applicable: overtimeNamed.length > 0,
+      ...articleChip("hours.ot.premium", onDate),
+      title: ar ? "الساعات الإضافية بأجر الساعة + 50%" : "Overtime at the hourly wage + 50%",
+      note: overtimeNamed.length
+        ? (ar
+          ? `${overtimeNamed.map((row) => `${row.employee.name} (${row.hours} ساعة)`).join("، ")} — ساعات فوق الحد اليومي العادي. يُدفع أجر الساعة مضافاً إليه 50% من الأجر الأساسي، أو إجازة تعويضية مدفوعة بموافقة العامل (المادة 107).`
+          : `${overtimeNamed.map((row) => `${row.employee.name} (${row.hours}h)`).join(", ")} — hours above the ordinary daily cap. Pay the hourly wage plus 50% of the basic wage, or paid compensatory leave with the worker's consent (Art. 107).`)
+        : (ar ? "لا ساعات فوق الحد اليومي العادي في هذا الأسبوع." : "No hours above the ordinary daily cap this week."),
+    },
+    {
+      id: "maternity_postnatal",
+      ok: postnatalDuty.length === 0,
+      block: false,
+      applicable: postnatalInWindow > 0,
+      ...articleChip("leave.maternity.mandatoryPostDays", onDate),
+      title: ar ? "لا دوام في الأسابيع الستة الوجوبية بعد الوضع" : "No duty in the six mandatory weeks after birth",
+      note: postnatalDuty.length
+        ? (ar
+          ? `${postnatalDuty.map((row) => `${row.employee.name} (${dayList(row.days)})`).join("، ")} — داخل الأسابيع الستة التالية للوضع، وهي وجوبية (المادة 151). يُسجَّل اليوم إجازة وضع أو إجازة دون أجر إن تأخر الوضع.`
+          : `${postnatalDuty.map((row) => `${row.employee.name} (${dayList(row.days)})`).join(", ")} — inside the six weeks after birth, which are mandatory (Art. 151). Record the day as maternity leave, or unpaid leave if the birth came late.`)
+        : postnatalInWindow
+          ? (ar ? "من هي داخل الأسابيع الستة بعد الوضع ليس لها دوام في الجدول." : "Whoever is inside the six weeks after birth has no duty on the roster.")
+          : (ar ? "لا عاملة داخل الأسابيع الستة بعد الوضع — يُقرأ من تاريخ الوضع في الملف أو إجازة الوضع المعتمدة." : "Nobody is inside the six weeks after birth — read from the birth date on file or the approved maternity leave."),
+    },
+    {
+      id: "nursing_hour",
+      ok: true,
+      block: false,
+      applicable: nursingOnDuty.length > 0,
+      ...articleChip("leave.nursing.dailyMinutes", onDate),
+      title: ar ? "فترة الإرضاع حتى ساعة يومياً من ساعات العمل" : "Nursing time up to one hour a day counts as working time",
+      note: nursingOnDuty.length
+        ? (ar
+          ? `${names(nursingOnDuty)} — لها فترة إرضاع لا تزيد على ساعة في اليوم فوق راحات العمال، تُحسب من ساعات العمل الفعلية ولا يُخفَّض بها الأجر (المادة 154). المنصة لا تخصمها من الساعات الفعلية.`
+          : `${names(nursingOnDuty)} — nursing time of up to one hour a day on top of the general rests, counted as actual working time with no wage cut (Art. 154). The platform does not deduct it from actual hours.`)
+        : (ar ? "لا عاملة مرضع على الجدول هذا الأسبوع." : "No nursing worker on the roster this week."),
+    },
+    {
+      id: "juvenile_night_gap",
+      ok: juvenileGapShort.length === 0,
+      block: false,
+      applicable: juvenilesThisWeek.length > 0,
+      ...articleChip("hours.juvenile.nightBanHours", onDate),
+      title: ar ? `ليل الحدث ${juvenileNightNeed} ساعة متتالية بلا عمل` : `A juvenile's night is ${juvenileNightNeed} consecutive hours off`,
+      note: juvenileGapShort.length
+        ? (ar
+          ? `${juvenileGapShort.map((row) => `${row.employee.name} (${row.hours} ساعة)`).join("، ")} — الفاصل بين ورديتين أقل من ${juvenileNightNeed} ساعة متتالية، فلا تكتمل فترة الليل المحظورة على الحدث (المادة 163).`
+          : `${juvenileGapShort.map((row) => `${row.employee.name} (${row.hours}h)`).join(", ")} — the gap between two duties is under ${juvenileNightNeed} consecutive hours, so the juvenile's protected night period is not complete (Art. 163).`)
+        : juvenilesThisWeek.length
+          ? (ar ? `كل حدث على الجدول بين ورديتيه ${juvenileNightNeed} ساعة متتالية أو أكثر.` : `Every juvenile on the roster has ${juvenileNightNeed}+ consecutive hours between duties.`)
+          : (ar ? "لا حدث على الجدول هذا الأسبوع." : "No juvenile on the roster this week."),
+    },
+    {
+      id: "juvenile_hazard",
+      ok: juvenileHazard.length === 0,
+      block: false,
+      applicable: juvenilesThisWeek.length > 0,
+      ...articleChip("hours.juvenile.hazard.cite", onDate),
+      title: ar ? "لا عمل خطر أو ضار للحدث" : "No hazardous or harmful work for a juvenile",
+      note: juvenileHazard.length
+        ? (ar
+          ? `${names(juvenileHazard)} — حدث وعمله موسوم خطراً أو ضاراً في الملف أو الوردية (المادة 161).`
+          : `${names(juvenileHazard)} — a juvenile whose work is marked hazardous or harmful on the file or the shift (Art. 161).`)
+        : juvenilesThisWeek.length
+          ? (ar ? "لا حدث في عمل موسوم خطراً أو ضاراً. تحديد الأعمال الخطرة بقرار الوزير." : "No juvenile in work marked hazardous or harmful. Hazardous work is listed by Minister decision.")
+          : (ar ? "لا حدث على الجدول هذا الأسبوع." : "No juvenile on the roster this week."),
     },
     {
       id: "not_empty",
@@ -2715,18 +3158,17 @@ export function checkWeekPublishGates({
         }
       }
       if (isLiveHeatBanDay(key, todayKey)) {
-        const shiftName = shift.label || shift.id;
-        if (sunClash.includes(shiftName)) {
-          markCell(employee.id, key, "heat_ban", "warn", weekHeatBanWorkerNotice(employee.name, key, { ar }));
-        } else if (sunUnmarked.includes(shiftName)) {
-          markCell(employee.id, key, "heat_place", "warn", weekHeatBanWorkerNotice(employee.name, key, { ar }));
+        const cellKey = `${employee.id}:${key}`;
+        if (sunFieldCells.has(cellKey)) {
+          markCell(employee.id, key, "heat_ban", "block", weekHeatBanWorkerNotice(employee.name, key, { ar }));
+        } else if (sunUnsetCells.has(cellKey)) {
+          markCell(employee.id, key, "heat_place", "warn", ar
+            ? `${employee.name} — يحتاج تحديد مكشوف/مظلّل في هذا اليوم (القرار 3337).`
+            : `${employee.name} — needs a exposed / shaded mark on this day (Decision 3337).`);
         }
-      } else if (isHistoricalHeatBanDay(key, todayKey, weekEndKey)) {
-        const histKind = !checkHeatBanGate({ start: shift.start, end: shift.end, outdoor: shift.outdoor === true, summer: true }).ok
-          ? "heat_ban"
-          : (shift.outdoor !== true && shift.outdoor !== false && shiftOverlapsHeatBan(shift.start, shift.end, { outdoor: true, summer: true })
-            ? "heat_place"
-            : null);
+      } else if (isHistoricalHeatBanDay(key, todayKey, weekEndKey) && shiftTouchesHeatWindow(shift)) {
+        const { mark } = sunExposureMark(schedule, employee.id, key, shift);
+        const histKind = mark === SUN_FIELD ? "heat_ban" : (mark == null ? "heat_place" : null);
         if (histKind) {
           markCell(employee.id, key, histKind, "warn", weekHeatBanWorkerNotice(employee.name, key, { ar }));
         }
@@ -2737,6 +3179,12 @@ export function checkWeekPublishGates({
       if (keys.includes(pair.toKey)) markCell(employee.id, pair.toKey, "night_rest", "block");
     }
   }
+  const markDays = (rows, gateId) => {
+    for (const row of rows) for (const key of row.days || []) markCell(row.employee.id, key, gateId, "warn");
+  };
+  markDays(ramadanWeekCriterionOver, "ramadan_week_36");
+  markDays(overtimeNamed, "overtime_107");
+  markDays(postnatalDuty, "maternity_postnatal");
 
   const blockers = gateDefs.filter((gate) => !gate.ok && gate.block);
   const warnings = gateDefs.filter((gate) => !gate.ok && !gate.block);
@@ -2761,6 +3209,15 @@ export function checkWeekPublishGates({
     holidayLeaveNames,
     leaveClash,
     holidayGhostClash,
+    sunField,
+    sunUnset,
+    sunCounts: { field: sunFieldCells.size, office: sunOfficeCells, unset: sunUnsetCells.size },
+    juvenilesThisWeek,
+    birthDatesKnown,
+    weeklyRest24Short: weeklyRest24Short.map((row) => ({ employeeId: row.employee.id, name: row.employee.name, hours: row.hours })),
+    overtimeNamed: overtimeNamed.map((row) => ({ employeeId: row.employee.id, name: row.employee.name, hours: row.hours, days: row.days })),
+    postnatalDuty: postnatalDuty.map((row) => ({ employeeId: row.employee.id, name: row.employee.name, days: row.days })),
+    nursingOnDuty,
     cellMarks,
   };
 }
@@ -2788,6 +3245,12 @@ export const WEEK_CELL_ALERT_IDS = new Set([
   "juvenile_hours",
   "juvenile_night",
   "juvenile_age",
+  "weekly_rest_24h",
+  "ramadan_week_36",
+  "overtime_107",
+  "maternity_postnatal",
+  "juvenile_night_gap",
+  "juvenile_hazard",
 ]);
 
 /** Named worker-protection notice — Decision 3337 / Arts. 122+243. Roster alert only, never a publish block. */
@@ -2796,7 +3259,7 @@ export function weekHeatBanWorkerNotice(name, onDate, { ar = true } = {}) {
   const who = String(name || "").trim();
   const cite = heatBanDecisionLabel(ar);
   if (ar) {
-    return `${who ? `${who} — ` : ""}لا يحق لصاحب العمل أن يجبره على العمل في الميدان المكشوف من ${win.startLabel} إلى ${win.endLabel} ${win.seasonAr}. ${cite}، على المادتين 122 و243.`;
+    return `${who ? `${who} — ` : ""}لا يحق لصاحب العمل أن يجبره على العمل في العمل المكشوف تحت الشمس من ${win.startLabel} إلى ${win.endLabel} ${win.seasonAr}. ${cite}، على المادتين 122 و243.`;
   }
   return `${who ? `${who} — ` : ""}the employer has no right to compel him to work in the open air from ${win.startLabel} to ${win.endLabel} ${win.seasonEn}. ${cite}, on articles 122 and 243.`;
 }
@@ -2810,7 +3273,7 @@ export function weekHeatBanStripCopy(onDate, { ar = true } = {}) {
     instrument: ar ? `قرار ${HEAT_BAN_DECISION.id}` : `Decision ${HEAT_BAN_DECISION.id}`,
     headline: ar ? "حظر العمل تحت أشعة الشمس" : "Sun-ban on open-air work",
     body: ar
-      ? `لا يحق لصاحب العمل أن يجبره على العمل في الميدان المكشوف من ${win.startLabel} إلى ${win.endLabel} ${win.seasonAr}.`
+      ? `لا يحق لصاحب العمل أن يجبره على العمل في العمل المكشوف تحت الشمس من ${win.startLabel} إلى ${win.endLabel} ${win.seasonAr}.`
       : `The employer has no right to compel him to work in the open air from ${win.startLabel} to ${win.endLabel} ${win.seasonEn}.`,
     footer: ar ? `على المادتين ${articles}` : `On articles ${articles}`,
   };
@@ -2985,7 +3448,17 @@ export function presentDutyStripCard(card, { audience = "manager", ar = true } =
   const name = String(card.name || "").trim();
   const heat = WEEK_DUTY_HEAT_IDS.has(card.gateId);
   const night = WEEK_DUTY_NIGHT_IDS.has(card.gateId);
-  const heatCopy = heat ? weekHeatBanStripCopy(card.onDate, { ar }) : null;
+  const heatBase = heat ? weekHeatBanStripCopy(card.onDate, { ar }) : null;
+  const heatCopy = heatBase && card.gateId === "heat_place"
+    ? {
+      ...heatBase,
+      classification: ar ? "تنبيه إداري" : "Administrative notice",
+      headline: ar ? "يحتاج تحديد مكشوف/مظلّل" : "Needs a exposed / shaded mark",
+      body: audience === "employee"
+        ? (ar ? "لم يُحدَّد بعد إن كان عملك في هذا اليوم مكشوفاً للشمس أو مظلّلاً — الإدارة تحدّده من الجدول." : "Whether your work that day is exposed or shaded is not set yet — management marks it on the roster.")
+        : (ar ? "حدِّد «مكشوف» أو «مظلّل» من خلية الموظف في الجدول — الحظر لا يُطبَّق على العمل المظلّل أو الداخلي." : "Mark exposed or shaded on the person's roster cell — the ban does not apply to office work."),
+    }
+    : heatBase;
   const headline = heatCopy?.headline || String(card.title || "").trim();
   const medical = card.gateId === "night_medical";
   const body = heatCopy?.body

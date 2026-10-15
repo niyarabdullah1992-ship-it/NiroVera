@@ -32,15 +32,21 @@ export function hourlyFromBase(base) {
   return b / (DAYS_PER_MONTH * SHIFT_HOURS_PER_DAY);
 }
 
-export function overtimePay(base, overtimeHours) {
+/**
+ * Art. 107: an overtime hour is paid at the hourly wage (the actual wage — Art. 2) plus 50% of the
+ * basic hourly wage. With no allowances this is the familiar time-and-a-half of basic.
+ */
+export function overtimePay(base, overtimeHours, allowances = 0) {
   const hours = Math.max(0, Number(overtimeHours) || 0);
-  return Math.round(hourlyFromBase(base) * ruleValue("hours.ot.premium") * hours * 100) / 100;
+  const premium = Number(ruleValue("hours.ot.premium")) - 1;
+  const hourly = hourlyFromBase((Number(base) || 0) + Math.max(0, Number(allowances) || 0));
+  return Math.round((hourly + hourlyFromBase(base) * premium) * hours * 100) / 100;
 }
 
 /** Pay for the month's approved overtime hours, at the statutory Article 107 premium. */
 export function lineOvertimePay(line) {
   if (line?.overtimePay != null) return Number(line.overtimePay) || 0;
-  return overtimePay(Number(line?.base) || 0, Number(line?.overtimeHours) || 0);
+  return overtimePay(Number(line?.base) || 0, Number(line?.overtimeHours) || 0, Number(line?.allowances) || 0);
 }
 
 export function lineGross(line) {
@@ -50,9 +56,9 @@ export function lineGross(line) {
 /**
  * The employee's own GOSI share, withheld from the wage before transfer.
  *
- * It is a statutory contribution, not an Article 93 deduction, so it is withheld from
- * what reaches the bank but stays outside the half-wage cap and outside the documented
- * deduction lines. Non-Saudis carry no employee share (occupational hazard is on the
+ * It is a contribution Art. 92/2 allows to be deducted without the worker's consent. It stays
+ * outside the documented deduction lines, but it does count toward the Art. 93 half-wage cap,
+ * which applies "in all cases". Non-Saudis carry no employee share (occupational hazard is on the
  * employer alone), and a line whose nationality is not yet known withholds nothing —
  * an unknown never invents a subtraction from someone's wage.
  */
@@ -81,7 +87,19 @@ export function lineNet(line) {
   const settled = Number(line?.settledNet);
   if (line?.settledNet != null && Number.isFinite(settled)) return settled;
   if (line?.paid) return (Number(line.base) || 0) + (Number(line.allowances) || 0) + (Number(line.bonus) || 0) - (Number(line.deductions) || 0);
-  return lineGross(line) - (Number(line.deductions) || 0) - gosiEmployeeWithheld(line);
+  return lineGross(line) - (Number(line.deductions) || 0) - gosiEmployeeWithheld(line) - lineInjuryCut(line) - lineSickCut(line);
+}
+
+/** Art. 117 sick bands — a quarter off after the first 30 days, nothing after 90. Set by law, not an Art. 92 deduction. */
+export function lineSickCut(line) {
+  if (line?.settledNet != null) return Number(line.settledSickCut) || 0;
+  return Math.max(0, Number(line?.sickReduction) || 0) + Math.max(0, Number(line?.sickUnpaid) || 0);
+}
+
+/** Art. 137 reduction and Art. 139 unpaid injury days — set by the law, not an Art. 92 deduction. */
+export function lineInjuryCut(line) {
+  if (line?.settledNet != null) return Number(line.settledInjuryCut) || 0;
+  return Math.max(0, Number(line?.injuryReduction) || 0) + Math.max(0, Number(line?.injuryUnpaid) || 0) + Math.max(0, Number(line?.injuryWageStop) || 0);
 }
 
 /**
@@ -100,6 +118,8 @@ export function lineComponents(line) {
     overtimePay: settled ? Number(line.settledOvertimePay) || 0 : lineOvertimePay(line),
     deductions: Number(line?.deductions) || 0,
     gosiEmployee: settled ? Number(line.settledGosiEmployee) || 0 : gosiEmployeeWithheld(line),
+    injuryCut: lineInjuryCut(line),
+    sickCut: lineSickCut(line),
     net: lineNet(line),
   };
 }
@@ -111,6 +131,8 @@ export function settlementStamp(line) {
     settledOvertimeHours: Math.max(0, Number(line?.overtimeHours) || 0),
     settledOvertimePay: lineOvertimePay(line),
     settledGosiEmployee: gosiEmployeeWithheld(line),
+    settledInjuryCut: lineInjuryCut({ ...line, settledNet: null }),
+    settledSickCut: lineSickCut({ ...line, settledNet: null }),
     settledAt: new Date().toISOString(),
   };
 }
@@ -135,8 +157,18 @@ export function contractWage(line) {
   return (Number(line.base) || 0) + (Number(line.allowances) || 0);
 }
 
+/** The employee's GOSI share as it stands on the line (the stamped one once settled). */
+function lineGosiShare(line) {
+  return line?.settledNet != null ? Number(line.settledGosiEmployee) || 0 : gosiEmployeeWithheld(line);
+}
+
+/**
+ * Room left for documented deductions under Art. 93: half the wage, less the GOSI share that
+ * Art. 92/2 counts among the deductions.
+ */
 export function article93MaxDeduction(line) {
-  return Math.round(contractWage(line) * ruleValue("payroll.deduction.capRatio") * 100) / 100;
+  const half = contractWage(line) * ruleValue("payroll.deduction.capRatio");
+  return Math.max(0, Math.round((half - lineGosiShare(line)) * 100) / 100);
 }
 /** @deprecated Use article93MaxDeduction */
 export const article90MaxDeduction = article93MaxDeduction;
@@ -166,16 +198,23 @@ export function checkArticle92LoanGate(line, extraAdvance = 0) {
 
 export function checkArticle93Gate(line) {
   const wage = contractWage(line);
-  const deductions = Number(line.deductions) || 0;
+  // Art. 92/2 lists social-insurance contributions among the deductions, and Art. 93 caps
+  // what is deducted "في جميع الأحوال" — so the employee's GOSI share counts toward the half.
+  const gosi = lineGosiShare(line);
+  const deductions = (Number(line.deductions) || 0) + gosi;
   const cite = citeRule("payroll.deduction.capRatio");
   if (wage <= 0) return { ok: true, wage, deductions, max: 0, cite };
+  const half = Math.round(wage * ruleValue("payroll.deduction.capRatio") * 100) / 100;
+  // `max` is the room left for documented deductions once the GOSI share is counted.
   const max = article93MaxDeduction(line);
-  if (deductions <= max) return { ok: true, wage, deductions, max, cite };
+  if (deductions <= half + 0.001) return { ok: true, wage, deductions, max, half, gosi, cite };
   return {
     ok: false,
     error: "ARTICLE_93_EXCEEDED",
-    reason: `مجموع الخصومات (${deductions.toLocaleString()} ر.س) يتجاوز نصف الأجر (${max.toLocaleString()} ر.س) — ${cite?.labelAr || "المادة 93"} من نظام العمل.`,
-    reasonEn: `Total deductions (${deductions} SAR) exceed half the contractual wage (${max} SAR) — Labour Law ${cite?.labelEn || "Art. 93"}.`,
+    reason: `مجموع الخصومات مع حصة التأمينات (${deductions.toLocaleString()} ر.س) يتجاوز نصف الأجر (${half.toLocaleString()} ر.س) — ${cite?.labelAr || "المادة 93"} من نظام العمل.`,
+    reasonEn: `Total deductions with the GOSI share (${deductions} SAR) exceed half the contractual wage (${half} SAR) — Labour Law ${cite?.labelEn || "Art. 93"}.`,
+    half,
+    gosi,
     wage,
     deductions,
     max,
@@ -463,13 +502,35 @@ export function gosiAppliedRates({ subscriberClass = "unset", onDate, saudi = tr
 }
 
 /**
- * Contributory wage = base + allowances (housing, transport, other, night), capped.
+ * The GOSI contributory wage (GOSI employer guide): basic wage + housing allowance + commissions
+ * and sales percentages — not transport, other allowances, night pay, overtime or bonus.
+ * Capped at 45,000; floored at 1,500 in the annuity branch (Saudi) and 400 in the hazards branch
+ * for those outside it (non-Saudi). A line whose allowances were never split keeps the lump
+ * (housing cannot be told apart) and says so through `lump: true`.
+ */
+export function gosiContributoryWage(line = {}, { saudi = true } = {}) {
+  const base = Number(line.base) || 0;
+  const hasSplit = line.housingAllowance != null && line.housingAllowance !== "";
+  const commission = Math.max(0, Number(line.commissionAmount) || 0);
+  const raw = hasSplit ? base + (Number(line.housingAllowance) || 0) + commission : contractWage(line);
+  if (raw <= 0) return { wage: 0, lump: !hasSplit, floored: false };
+  const cap = Number(GOSI_WAGE_CEILING) || 45000;
+  const floor = saudi !== false
+    ? Number(ruleValue("compliance.gosi.wageFloorAnnuity")) || 1500
+    : Number(ruleValue("compliance.gosi.wageFloorHazard")) || 400;
+  const wage = Math.min(cap, Math.max(floor, raw));
+  return { wage, lump: !hasSplit, floored: raw < floor };
+}
+
+/**
+ * Contributory wage = base + housing + commissions (gosiContributoryWage), capped and floored.
  * Overtime and bonus stay outside. Saudi shares follow the subscriber class.
  * The class is the person's first GOSI registration date, never the hire date.
  */
 export function gosiLine(line, { saudi, onDate, registeredAt } = {}) {
-  const wage = Math.min(contractWage(line), Number(GOSI_WAGE_CEILING) || 45000);
   const sa = saudi !== false;
+  const contrib = gosiContributoryWage(line, { saudi: sa });
+  const wage = contrib.wage;
   const registered = gosiRegistrationIso(registeredAt ?? line?.gosiRegisteredAt);
   const subscriberClass = sa ? gosiSubscriberClass(registered) : "expat";
   const rates = gosiAppliedRates({
@@ -479,6 +540,8 @@ export function gosiLine(line, { saudi, onDate, registeredAt } = {}) {
   });
   const empty = {
     base: Math.round(wage),
+    lump: contrib.lump,
+    floored: contrib.floored,
     saudi: sa,
     subscriberClass: sa ? subscriberClass : "expat",
     registeredAt: registered,

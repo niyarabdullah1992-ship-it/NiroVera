@@ -1,10 +1,13 @@
 
+import { checkEarlyCheckInGate, earlyCheckInMinutes } from "@/lib/attendanceDerivations";
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { getTodaysShift, isAttendancePolicyError, isForgottenCheckout, isLocationRequired } from "@/lib/attendance";
 import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
+import LeaveCutOffer from "@/components/attendance/LeaveCutOffer";
 import { isStatutoryOffDay } from "@/lib/leaveTypes";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { getAccuratePosition, startGeoWarmup } from "@/lib/geo";
@@ -25,6 +28,7 @@ import { submitOtherRequest } from "@/lib/store";
 import { checkSubmitOtherRequestGate } from "@/lib/otherRequestDerivations";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import { parsePunchClock, riyadhNowClock } from "@/lib/attendancePunch";
+import { dutyTone } from "@/components/schedules/dutyStatus";
 
 const STATUS_PILL = {
   present: { bg: "var(--nv-accent-soft)", fg: "#15803D", bd: "#BBF7D0", ar: "حاضر", en: "Present" },
@@ -46,7 +50,7 @@ function elapsedLabel(checkInAt, lang) {
 /**
  * Employee daily check-in/out — primary punch surface on the attendance hub.
  */
-export default function CheckInOutCard({ currentUser, company, t, onStatusChange, compact = false, manualAsk = 0 }) {
+export default function CheckInOutCard({ currentUser, company, t, onStatusChange, compact = false, manualAsk = 0, dockOnPhone = false }) {
   const { data, refresh } = useAuth();
   const { lang } = useI18n();
   const ar = lang === "ar";
@@ -66,9 +70,28 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const [attendance, setAttendance] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [leaveCut, setLeaveCut] = useState(false);
   const [localMode, setLocalMode] = useState(local);
   const [tick, setTick] = useState(Date.now());
   const [manualOpen, setManualOpen] = useState(false);
+  const [dockBottom, setDockBottom] = useState(0);
+
+  /** Phone dock sits above the bottom tab bar when one is shown (it already pads the safe area). */
+  useEffect(() => {
+    if (!dockOnPhone || typeof window === "undefined") return undefined;
+    const measure = () => {
+      const nav = document.querySelector(".tech-bottom-nav");
+      const rect = nav ? nav.getBoundingClientRect() : null;
+      setDockBottom(rect && rect.height > 0 && getComputedStyle(nav).display !== "none" ? Math.round(rect.height) : 0);
+    };
+    measure();
+    const late = window.setTimeout(measure, 400);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.clearTimeout(late);
+      window.removeEventListener("resize", measure);
+    };
+  }, [dockOnPhone]);
 
   useEffect(() => {
     if (scheduledStationId && !punchStationId) setPunchStationId(scheduledStationId);
@@ -119,7 +142,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   }, [manualAsk]);
 
   const scheduleBlocks = !shift;
-  const onLeaveToday = !!isStatutoryOffDay(currentUser, toRiyadhDateKey(), laborCalendarOf(data));
+  const offDay = isStatutoryOffDay(currentUser, toRiyadhDateKey(), laborCalendarOf(data));
+  const onLeaveToday = !!offDay;
+  const onApprovedLeave = offDay?.kind === "approved";
   const statusPill = attendance?.status ? STATUS_PILL[attendance.status] : null;
   const elapsed = useMemo(
     () => elapsedLabel(attendance?.check_in_at, lang),
@@ -131,10 +156,19 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       const leaveGate = checkCheckInLeaveGate(currentUser, toRiyadhDateKey(), laborCalendarOf(data));
       if (!leaveGate.ok) {
         setError(ar ? leaveGate.reason : leaveGate.reasonEn);
+        setLeaveCut(leaveGate.error === "ON_APPROVED_LEAVE");
         return;
       }
+      setLeaveCut(false);
       if (scheduleBlocks) {
         setError(ar ? "لا يمكنك تسجيل الحضور لأنك غير مدرج في جدول اليوم." : "You cannot check in because you are not scheduled today.");
+        return;
+      }
+      // The check-in opens a set time before the published shift (policy, default 60 min).
+      const nowD = new Date();
+      const early = checkEarlyCheckInGate(shift, nowD.getHours() * 60 + nowD.getMinutes(), earlyCheckInMinutes(data));
+      if (!early.ok) {
+        setError(ar ? early.reason : early.reasonEn);
         return;
       }
       if (!hasAssignedStation && !localMode) {
@@ -322,6 +356,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             </span>
           )}
           {error && <p style={{ margin: 0, fontSize: 11, color: "var(--nv-bad-ink)", flex: "1 1 100%" }}>{error}</p>}
+          {leaveCut || (onApprovedLeave && phase === "awaiting_in") ? <LeaveCutOffer ar={ar} companyId={company?.id} employee={currentUser} onDone={async () => { setError(""); setLeaveCut(false); await refresh?.(); }} /> : null}
           {phase === "awaiting_in" && punchButton("in", ar ? "حضر" : "Present")}
           {phase === "awaiting_out" && punchButton("out", ar ? "انصرف" : "Out")}
         </div>
@@ -409,6 +444,53 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       : null,
   ].filter(Boolean);
 
+  const toned = (key) => {
+    const tone = dutyTone(key);
+    return { bg: tone.soft, fg: tone.ink, bd: tone.line };
+  };
+  const lanePill = onLeaveToday && !inn
+    ? { t: ar ? "إجازة" : "On leave", ...toned("leave") }
+    : !shift && !inn
+      ? { t: ar ? "لا وردية" : "No shift", ...toned("rest") }
+      : !inn
+        ? { t: ar ? "لم تبدأ" : "Not started", ...toned("rest") }
+        : !done
+          ? (isLate
+            ? { t: ar ? "متأخر" : "Late", ...toned("warn") }
+            : { t: ar ? "حاضر" : "In", ...toned("ok") })
+          : { t: ar ? "انصرفت" : "Checked out", bg: "var(--nv-ok-fill, #3C7D50)", fg: "#fff", bd: "var(--nv-ok-fill, #3C7D50)" };
+  const orbReady = !punchBlocked && (phase === "awaiting_in" || phase === "awaiting_out");
+  const orbClick = () => { if (phase === "awaiting_in") punch("in"); else if (phase === "awaiting_out") punch("out"); };
+  const steps = shift
+    ? [
+        { key: "start", kind: "plan", label: ar ? "بداية الوردية" : "Shift starts", note: ar ? "من الجدول المنشور" : "From the published rota", value: startClock },
+        {
+          key: "in",
+          kind: "punch",
+          state: inn ? (isLate ? "late" : "done") : (phase === "awaiting_in" && !punchBlocked ? "now" : "wait"),
+          label: ar ? "بصمة الحضور" : "Check-in",
+          note: inn
+            ? (isLate ? (ar ? `متأخر ${lateMinutes || "—"} دقيقة` : `Late ${lateMinutes || "—"} min`) : (ar ? "في الوقت" : "On time"))
+            : (ar ? "بانتظار ضغطتك" : "Waiting for your tap"),
+          value: inn ? inTime : "—",
+        },
+        ...(band?.label
+          ? [{ key: "rest", kind: "plan", label: ar ? "الراحة" : "Break", note: ar ? "تُخصم من المنجز · المادة 101" : "Excluded from worked time · Art. 101", value: band.label }]
+          : []),
+        { key: "end", kind: "plan", label: ar ? "نهاية الوردية" : "Shift ends", note: ar ? "من الجدول المنشور" : "From the published rota", value: endClock },
+        {
+          key: "out",
+          kind: "punch",
+          state: done ? "done" : (phase === "awaiting_out" && !punchBlocked ? "now" : "wait"),
+          label: ar ? "بصمة الانصراف" : "Check-out",
+          note: done
+            ? (ar ? `أُغلق اليوم · ${worked.label}` : `Day closed · ${worked.label}`)
+            : (inn ? (elapsed || (ar ? "اليوم مفتوح" : "Day open")) : (ar ? "بعد الحضور" : "After check-in")),
+          value: done ? outTime : "—",
+        },
+      ]
+    : [];
+
   return (
     <section
       style={{
@@ -421,117 +503,215 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         borderRadius: 14,
       }}
       dir={ar ? "rtl" : "ltr"}
-      className="nv-att-card"
+      className="nv-att-card nv-punch-hero"
       data-testid="check-in-out-card"
+      data-phase={phase}
     >
-      <header style={{ background: "linear-gradient(135deg,#0B3D27,#0F5535)", color: "#fff", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <span style={{ fontSize: 11, color: "#A9CDB8", fontWeight: 600 }}>{pvDate}</span>
-          <strong style={{ fontSize: 16 }}>{shiftLine}</strong>
-          <span style={{ fontSize: 11.5, color: "#C5DBCD" }}>{siteLine}</span>
+      <header className="nv-punch-head" style={{ background: "var(--nv-soft, #FAFBFA)", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", color: "var(--nv-ink)", padding: "16px 22px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "1 1 220px" }}>
+          <span style={{ fontSize: 11.5, color: "var(--nv-muted)", fontWeight: 600 }}>{ar ? `ورديتك اليوم · ${pvDate}` : `Today's shift · ${pvDate}`}</span>
+          <strong style={{ fontSize: 18, fontFamily: "var(--font-heading)", letterSpacing: 0, color: "var(--nv-ink)" }}>{shiftLine}</strong>
+          <span style={{ fontSize: 12, color: "var(--nv-ink3, var(--nv-muted))" }}>{siteLine}</span>
         </div>
-        <strong dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 30, letterSpacing: ".02em" }}>{clockLabel}</strong>
-      </header>
-      <div style={{ padding: "22px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
-        <button
-          type="button"
-          className="nv-att-punch-orb"
-          onClick={() => { if (phase === "awaiting_in") punch("in"); else if (phase === "awaiting_out") punch("out"); }}
-          disabled={punchBlocked}
-          style={{
-            fontFamily: "inherit",
-            border: "none",
-            textAlign: "center",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 4,
-            cursor: punchBlocked ? "default" : "pointer",
-            opacity: punchBlocked && !done ? 0.55 : 1,
-            ...orbStyle,
-          }}
-        >
-          <span style={{ fontSize: 12, fontWeight: 600, opacity: 0.85, whiteSpace: "nowrap" }}>{orbSub}</span>
-          <strong style={{ fontSize: 22 }}>{orbLabel}</strong>
-        </button>
-        <span style={{ fontSize: 13, fontWeight: 600, color: statusColor, textAlign: "center" }}>{statusText}</span>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          {checks.map((chip) => (
-            <span
-              key={chip.t}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 5,
-                height: 26,
-                padding: "0 10px",
-                borderRadius: 999,
-                fontSize: 11.5,
-                fontWeight: 600,
-                whiteSpace: "nowrap",
-                background: chip.ok ? "var(--nv-ok-soft, #E6F2EA)" : chip.wait ? "var(--nv-soft)" : "var(--nv-bad-soft, #FBEBED)",
-                color: chip.ok ? "var(--nv-ok-ink, #2F6B43)" : chip.wait ? "var(--nv-muted)" : "var(--nv-bad-ink, #9B2335)",
-                border: `1px solid ${chip.ok ? "var(--nv-ok-line)" : chip.wait ? "var(--nv-line)" : "var(--nv-bad-line)"}`,
-              }}
-            >
-              <span>{chip.ok ? "✓" : chip.wait ? "—" : "✕"}</span>
-              {chip.t}
-            </span>
-          ))}
-        </div>
-        {forgotten ? (
-          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-warn-ink)", textAlign: "center" }}>
-            {ar ? "انصراف منسي — أُحيل إلى مديرك. السجل يبقى مفتوحاً حتى يضع وقت الانصراف." : "Forgotten checkout — sent to your manager. The register stays open until they set the time."}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+          <span style={{ whiteSpace: "nowrap" }}>
+            <span dir="ltr" aria-label={ar ? "الساعة الآن" : "Time now"} style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 32, lineHeight: 1, fontVariantNumeric: "tabular-nums", color: "var(--nv-ok-ink, #2F6B43)" }}>{clockLabel}</span>
           </span>
-        ) : null}
-        {error ? <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", textAlign: "center", lineHeight: 1.7 }}>{error}</span> : null}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
-        {[
-          [ar ? "الحضور" : "In", inn ? inTime : "—", ar ? `الجدول ${startClock}` : `Rota ${startClock}`],
-          [ar ? "الانصراف" : "Out", done ? outTime : "—", ar ? `الجدول ${endClock}` : `Rota ${endClock}`],
-          [ar ? "المنجز" : "Worked", inn ? worked.label : "—", ar ? `من ${targetLabel}` : `of ${targetLabel}`],
-        ].map((cell) => (
-          <div key={cell[0]} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "12px 16px", borderInlineStart: "1px solid var(--nv-line2, #EEF1EF)" }}>
-            <span style={{ fontSize: 11, color: MUTED }}>{cell[0]}</span>
-            <strong dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 18, textAlign: "start", color: "var(--nv-ink)" }}>{cell[1]}</strong>
-            <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))" }}>{cell[2]}</span>
+          <span
+            data-punch-state
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: 24,
+              padding: "0 10px",
+              borderRadius: 999,
+              fontSize: 11.5,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+              background: lanePill.bg,
+              color: lanePill.fg,
+              border: `1px solid ${lanePill.bd}`,
+            }}
+          >
+            <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
+            {lanePill.t}
+          </span>
+        </div>
+      </header>
+
+      <div className="nv-punch-body">
+        <div className="nv-punch-orb-col" style={{ padding: "26px 20px 22px", display: "flex", flexDirection: "column", alignItems: "center", gap: 14, minWidth: 0 }}>
+          <button
+            type="button"
+            className={`nv-att-punch-orb${orbReady ? " is-ready" : ""}`}
+            onClick={orbClick}
+            disabled={punchBlocked}
+            style={{
+              fontFamily: "inherit",
+              border: "none",
+              textAlign: "center",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              position: "relative",
+              cursor: punchBlocked ? "default" : "pointer",
+              opacity: punchBlocked && !done ? 0.55 : 1,
+              ...orbStyle,
+            }}
+          >
+            {loading
+              ? <Loader2 style={{ width: 22, height: 22, animation: "spin 1s linear infinite" }} />
+              : !inn
+                ? <LogIn style={{ width: 22, height: 22 }} strokeWidth={1.75} />
+                : !done
+                  ? <LogOut style={{ width: 22, height: 22 }} strokeWidth={1.75} />
+                  : null}
+            <strong style={{ fontSize: 24, lineHeight: 1.2 }}>{orbLabel}</strong>
+            <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.85, whiteSpace: "nowrap" }}>{orbSub}</span>
+          </button>
+          <span style={{ fontSize: 13.5, fontWeight: 700, color: statusColor, textAlign: "center", lineHeight: 1.6 }}>{statusText}</span>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+            {checks.map((chip) => (
+              <span
+                key={chip.t}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  height: 26,
+                  padding: "0 10px",
+                  borderRadius: 999,
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                  background: chip.ok ? "var(--nv-ok-soft, #E6F2EA)" : chip.wait ? "var(--nv-soft)" : "var(--nv-bad-soft, #FBEBED)",
+                  color: chip.ok ? "var(--nv-ok-ink, #2F6B43)" : chip.wait ? "var(--nv-muted)" : "var(--nv-bad-ink, #9B2335)",
+                  border: `1px solid ${chip.ok ? "var(--nv-ok-line)" : chip.wait ? "var(--nv-line)" : "var(--nv-bad-line)"}`,
+                }}
+              >
+                <span aria-hidden>{chip.ok ? "✓" : chip.wait ? "—" : "✕"}</span>
+                {chip.t}
+              </span>
+            ))}
           </div>
-        ))}
-      </div>
-      <div style={{ padding: "12px 20px 16px", display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: MUTED }}>
-          <span>{ar ? "ساعات اليوم" : "Today"}</span>
-          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{inn ? worked.label : "0:00"} / {targetLabel}</span>
-        </div>
-        <div style={{ height: 8, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden", position: "relative" }}>
-          <div style={{ height: "100%", width: `${inn ? dayPct : 0}%`, background: done ? "var(--nv-ok-fill, #3C7D50)" : "var(--nv-warn-fill, #C8A45A)", borderRadius: 999 }} />
-          {band?.label ? (
-            <span
-              title={ar ? `راحة ${band.label}` : `Break ${band.label}`}
-              style={{
-                position: "absolute",
-                top: 0,
-                bottom: 0,
-                insetInlineStart: `${band.leftPct}%`,
-                width: `${band.widthPct}%`,
-                background: "repeating-linear-gradient(45deg,#C8A45A 0 3px,transparent 3px 6px)",
-                opacity: 0.85,
-              }}
-            />
+          {forgotten ? (
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-warn-ink)", textAlign: "center", lineHeight: 1.7 }}>
+              {ar ? "انصراف منسي — أُحيل إلى مديرك. السجل يبقى مفتوحاً حتى يضع وقت الانصراف." : "Forgotten checkout — sent to your manager. The register stays open until they set the time."}
+            </span>
           ) : null}
+          {error ? <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", textAlign: "center", lineHeight: 1.7 }}>{error}</span> : null}
+          {onApprovedLeave && !inn ? <LeaveCutOffer ar={ar} companyId={company?.id} employee={currentUser} onDone={async () => { setError(""); setLeaveCut(false); await refresh?.(); }} /> : null}
         </div>
-        <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))" }}>
-          {band?.label
-            ? (ar ? `الشريط المخطّط: راحة ${band.label} (المادة 101)` : `Hatched band: break ${band.label} (Art. 101)`)
-            : (ar ? "راحة الوردية تُخصم من المنجز — المادة 101" : "Shift rest is excluded from worked time — Art. 101")}
-        </span>
+
+        <div className="nv-punch-day" style={{ padding: "20px 22px", display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <strong style={{ fontSize: 14, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0 }}>{ar ? "مسار اليوم" : "Today's timeline"}</strong>
+            <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "الجدول يحدّد الوقت، وبصمتك تثبته." : "The rota sets the time; your punch proves it."}</span>
+          </div>
+          {steps.length ? (
+            <ol className="nv-punch-steps" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
+              {steps.map((step, index) => {
+                const last = index === steps.length - 1;
+                const tone = step.kind === "plan"
+                  ? { bg: "var(--nv-card)", bd: "var(--nv-mute-fill, #C5CEC9)", fg: "var(--nv-muted)" }
+                  : step.state === "done"
+                    ? { bg: "var(--nv-ok-fill, #3C7D50)", bd: "var(--nv-ok-fill, #3C7D50)", fg: "#fff" }
+                    : step.state === "late"
+                      ? { bg: "var(--nv-warn-fill, #C8A45A)", bd: "var(--nv-warn-fill, #C8A45A)", fg: "#fff" }
+                      : step.state === "now"
+                        ? { bg: "var(--nv-ok-soft, #E6F2EA)", bd: "var(--nv-ok-fill, #3C7D50)", fg: "var(--nv-ok-ink)" }
+                        : { bg: "var(--nv-card)", bd: "var(--nv-line)", fg: "var(--nv-muted)" };
+                return (
+                  <li key={step.key} data-step={step.key} data-state={step.state || "plan"} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) auto", gap: 12, alignItems: "start", position: "relative", paddingBottom: last ? 0 : 14 }}>
+                    {!last ? <span aria-hidden style={{ position: "absolute", insetInlineStart: 10, top: 22, bottom: 0, width: 2, background: "var(--nv-line2, #EEF1EF)", borderRadius: 2 }} /> : null}
+                    <span aria-hidden style={{ width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1 }}>
+                      {step.kind === "plan" ? (
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", boxSizing: "border-box", background: "var(--nv-card)", border: "2px solid var(--nv-mute-fill, #C5CEC9)" }} />
+                      ) : (
+                        <span
+                          className={step.state === "now" ? "nv-punch-step-now" : undefined}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: "50%",
+                            boxSizing: "border-box",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: tone.bg,
+                            color: tone.fg,
+                            border: `${step.state === "wait" ? "1.5px dashed" : "2px solid"} ${tone.bd}`,
+                          }}
+                        >
+                          {step.state === "done" || step.state === "late" ? "✓" : step.state === "now" ? <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--nv-ok-fill, #3C7D50)" }} /> : ""}
+                        </span>
+                      )}
+                    </span>
+                    <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: step.kind === "punch" ? 700 : 600, color: step.kind === "punch" ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{step.label}</span>
+                      <span style={{ fontSize: 11, color: step.state === "late" ? "var(--nv-warn-ink)" : "var(--nv-muted)", lineHeight: 1.5 }}>{step.note}</span>
+                    </span>
+                    <span style={{ whiteSpace: "nowrap", paddingTop: 1 }}>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: step.kind === "punch" ? 15 : 13, fontWeight: step.kind === "punch" ? 700 : 500, color: step.value === "—" ? "var(--nv-mute-fill, #C5CEC9)" : step.kind === "punch" ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{step.value}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <div className="nv-att-well" style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
+              {onLeaveToday
+                ? (ar ? "إجازة معتمدة اليوم — لا بصمة ولا يُحتسب غياب." : "Approved leave today — no punch and no absence.")
+                : (ar ? "لا وردية منشورة لك اليوم. البصمة تُفتح حين تُنشر ورديتك في جدول الدوام." : "No published shift for you today. The punch opens once your shift is published.")}
+              {" "}
+              <Link to="/app/shifts" style={{ color: "var(--nv-ok-ink)", fontWeight: 700, textDecoration: "none" }}>{ar ? "جدولي ←" : "My roster →"}</Link>
+            </div>
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 12, borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink2)" }}>{ar ? "المنجز اليوم" : "Worked today"}</span>
+              <span style={{ whiteSpace: "nowrap" }}>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{inn ? worked.label : "0:00"} / {targetLabel}</span>
+              </span>
+            </div>
+            <div style={{ height: 8, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden", position: "relative" }}>
+              <div style={{ height: "100%", width: `${inn ? dayPct : 0}%`, background: done ? "var(--nv-ok-fill, #3C7D50)" : "var(--nv-warn-fill, #C8A45A)", borderRadius: 999 }} />
+              {band?.label ? (
+                <span
+                  title={ar ? `راحة ${band.label}` : `Break ${band.label}`}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    insetInlineStart: `${band.leftPct}%`,
+                    width: `${band.widthPct}%`,
+                    background: "repeating-linear-gradient(45deg,#C8A45A 0 3px,transparent 3px 6px)",
+                    opacity: 0.85,
+                  }}
+                />
+              ) : null}
+            </div>
+            <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))" }}>
+              {band?.label
+                ? (ar ? "الجزء المخطّط هو الراحة — لا تُحتسب ساعات عمل." : "The hatched part is the break — not counted as work.")
+                : (ar ? "راحة الوردية تُخصم من المنجز — المادة 101" : "Shift rest is excluded from worked time — Art. 101")}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: "12px 22px 16px", display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid var(--nv-line2, #EEF1EF)", background: "var(--nv-soft, #FAFBFA)" }}>
         <button
           type="button"
           onClick={() => setManualOpen((open) => !open)}
+          aria-expanded={manualOpen}
           style={{
-            marginTop: 4,
             alignSelf: "flex-start",
             fontFamily: "inherit",
             fontSize: 12,
@@ -565,6 +745,45 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           />
         ) : null}
       </div>
+      {dockOnPhone && (orbReady || loading) && typeof document !== "undefined" ? createPortal(
+        <div
+          className="nv-punch-dock"
+          data-punch-dock="1"
+          dir={ar ? "rtl" : "ltr"}
+          style={{ bottom: dockBottom ? dockBottom + 10 : "calc(10px + env(safe-area-inset-bottom, 0px))" }}
+        >
+          <button
+            type="button"
+            onClick={orbClick}
+            disabled={punchBlocked}
+            style={{
+              fontFamily: "inherit",
+              width: "100%",
+              minHeight: 54,
+              border: "none",
+              borderRadius: 14,
+              background: phase === "awaiting_out" ? "var(--nv-navy)" : "var(--nv-ok-fill, #3C7D50)",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              padding: "8px 16px",
+              cursor: punchBlocked ? "default" : "pointer",
+              boxShadow: "0 10px 26px rgba(6,61,38,.28)",
+            }}
+          >
+            {loading
+              ? <Loader2 style={{ width: 20, height: 20, animation: "spin 1s linear infinite" }} />
+              : phase === "awaiting_out"
+                ? <LogOut style={{ width: 20, height: 20 }} strokeWidth={1.9} />
+                : <LogIn style={{ width: 20, height: 20 }} strokeWidth={1.9} />}
+            <strong style={{ fontSize: 17, fontWeight: 700 }}>{orbLabel}</strong>
+            <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.85, whiteSpace: "nowrap" }}>{orbSub}</span>
+          </button>
+        </div>,
+        document.body,
+      ) : null}
     </section>
   );
 }
@@ -575,7 +794,7 @@ function parseHm(value) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
-function breakBand(shift) {
+export function breakBand(shift) {
   const start = parseHm(shift?.start);
   const end = parseHm(shift?.end);
   if (start == null || end == null) return null;
@@ -602,7 +821,7 @@ function breakBand(shift) {
   };
 }
 
-function workedClock(checkIn, checkOut, now, band) {
+export function workedClock(checkIn, checkOut, now, band) {
   if (!checkIn) return { label: "0:00", minutes: 0 };
   const start = new Date(checkIn).getTime();
   const end = checkOut ? new Date(checkOut).getTime() : now;
@@ -622,9 +841,10 @@ function workedClock(checkIn, checkOut, now, band) {
 const REQ_REASONS_AR = ["خارج النطاق", "تعذّر الموقع", "عمل ميداني", "سبب آخر"];
 const REQ_REASONS_EN = ["Outside range", "Location failed", "Field work", "Other"];
 
-function ManualPunchRequest({
+export function ManualPunchRequest({
   ar,
   phase,
+  date = "",
   companyId,
   employee,
   attendance,
@@ -641,8 +861,11 @@ function ManualPunchRequest({
 }) {
   const reasons = ar ? REQ_REASONS_AR : REQ_REASONS_EN;
   const punchType = phase === "awaiting_out" ? "checkout_fix" : "manual_punch";
-  const pending = (employee?.otherRequests || []).find((row) => row.type === punchType && (row.status || "pending") === "pending");
-  const decided = (employee?.otherRequests || []).find((row) => row.type === punchType && (row.status === "approved" || row.status === "rejected"));
+  const day = date || toRiyadhDateKey();
+  // A named day (سجلي) reads only that day's request; today's card keeps its original reading.
+  const sameDay = (row) => !date || String(row.date || "").slice(0, 10) === date;
+  const pending = (employee?.otherRequests || []).find((row) => row.type === punchType && (row.status || "pending") === "pending" && sameDay(row));
+  const decided = (employee?.otherRequests || []).find((row) => row.type === punchType && (row.status === "approved" || row.status === "rejected") && sameDay(row));
   const noteReady = String(reqNote || "").trim().length >= 3;
   const timeReady = !!parsePunchClock(reqTime);
   const canSend = noteReady && timeReady;
@@ -654,7 +877,7 @@ function ManualPunchRequest({
     const gate = checkSubmitOtherRequestGate({
       type: phase === "awaiting_out" ? "checkout_fix" : "manual_punch",
       reason,
-      date: toRiyadhDateKey(),
+      date: day,
       time: reqTime,
       employee,
       attendance,
@@ -667,7 +890,7 @@ function ManualPunchRequest({
     submitOtherRequest(companyId, employee.id, {
       type: phase === "awaiting_out" ? "checkout_fix" : "manual_punch",
       reason,
-      date: toRiyadhDateKey(),
+      date: day,
       time: reqTime,
     });
     setReqNote("");
@@ -788,5 +1011,43 @@ function ManualPunchRequest({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The same manual-punch / checkout-fix request, for a named day (سجلي → اطلب تصحيح).
+ * Owns its own form state; the gate and the store call are the card's.
+ */
+export function ManualPunchRequestBox({ ar, date, attendance, companyId, employee, onLeave = false }) {
+  const { refresh } = useAuth();
+  const [reqTime, setReqTime] = useState(() => {
+    const at = attendance?.check_in_at || attendance?.checkInAt;
+    return at && !(attendance?.check_out_at || attendance?.checkOutAt) ? "" : riyadhNowClock();
+  });
+  const [reqReason, setReqReason] = useState("");
+  const [reqNote, setReqNote] = useState("");
+  const [reqError, setReqError] = useState("");
+  const inAt = attendance?.check_in_at || attendance?.checkInAt;
+  const outAt = attendance?.check_out_at || attendance?.checkOutAt;
+  const phase = !inAt ? "awaiting_in" : !outAt ? "awaiting_out" : "done";
+  return (
+    <ManualPunchRequest
+      ar={ar}
+      phase={phase}
+      date={date}
+      companyId={companyId}
+      employee={employee}
+      attendance={attendance}
+      onLeave={onLeave}
+      reqTime={reqTime}
+      setReqTime={setReqTime}
+      reqReason={reqReason}
+      setReqReason={setReqReason}
+      reqNote={reqNote}
+      setReqNote={setReqNote}
+      reqError={reqError}
+      setReqError={setReqError}
+      refresh={refresh}
+    />
   );
 }

@@ -2,6 +2,7 @@
 
 import { citeRule, ruleValue } from "./laborRules.js";
 import { countDaysExcludingOfficialHolidays } from "./ummAlQuraCalendar.js";
+import { compareToRegulation, regulationRef, regulationStepFor } from "./workRegulation.js";
 
 export const DISCIPLINE_STEPS = [
   { id: "incident", ar: "واقعة", en: "Incident" },
@@ -86,6 +87,8 @@ export function listedPenaltyLabel(kindId, days = 0, ar = true) {
   if (!kind) return ar ? "جزاء" : "Sanction";
   const n = Number(days) || 0;
   if (kind.id === "fine") {
+    // A share of one day's wage, as the regulation's percentage steps read (e.g. 10%).
+    if (n > 0 && n < 1) return ar ? `غرامة ${Math.round(n * 100)}% من أجر يوم` : `Fine of ${Math.round(n * 100)}% of a day's wage`;
     if (n === 1) return ar ? "غرامة أجر يوم" : "Fine of one day's wage";
     if (n === 2) return ar ? "غرامة أجر يومين" : "Fine of two days' wage";
     return ar ? `غرامة أجر ${n} أيام` : `Fine of ${n} days' wage`;
@@ -205,7 +208,8 @@ export function checkListedPenaltyGate(item, today) {
       cite: citeRule("discipline.fine.maxDays", day),
     };
   }
-  if (spec.days.length && !spec.days.includes(days) && !(days === 0 && spec.days.includes(0))) {
+  const regulationShare = kind === "fine" && days > 0 && days < 1;
+  if (!regulationShare && spec.days.length && !spec.days.includes(days) && !(days === 0 && spec.days.includes(0))) {
     return {
       ok: false,
       error: "DISCIPLINE_PENALTY_NOT_LISTED",
@@ -370,6 +374,8 @@ export function deriveRaiseDisciplineChips({
   workConnected = "",
   cases = [],
   ar = true,
+  regulation = null,
+  clauseId = "",
 } = {}) {
   const day = dateOnly(today) || todayRiyadh();
   const kind = listedPenaltyKind(penaltyKind);
@@ -400,12 +406,37 @@ export function deriveRaiseDisciplineChips({
   }
 
   const art67 = articleOf("discipline.listedOnly.cite");
-  const state67 = kind ? "pass" : "fail";
-  const text67 = kind
-    ? (ar ? "الجزاء وارد في لائحة تنظيم العمل المعتمدة." : "The penalty is in the adopted work-organization regulations.")
+  let state67 = kind ? "pass" : "fail";
+  let text67 = kind
+    ? (ar ? "الجزاء من قائمة النظام." : "The penalty is on the Law's list.")
     : (ar
-      ? "موقوف — لا يُوقَّع جزاء غير وارد في النظام أو في لائحة تنظيم العمل."
+      ? "موقوف — لا يُوقَّع جزاء غير وارد في النظام أو في لائحة تنظيم العمل."
       : "Blocked — no penalty may be imposed that is not in the Law or the work-organization regulations.");
+  if (kind && regulation) {
+    const own = regulation.source === "own";
+    const at = clauseId
+      ? regulationStepFor({ regulation, clauseId, cases, employeeId: employee?.id, today: day, cooloffDays: ruleValue("discipline.repeat.cooloffDays", day) || 180, ar })
+      : null;
+    if (!at) {
+      state67 = own ? "fail" : "warn";
+      text67 = own
+        ? (ar ? "موقوف — اختر بند المخالفة من لائحة تنظيم العمل المعتمدة؛ لا جزاء على مخالفة غير واردة فيها." : "Blocked — pick the offence clause from the approved regulation; no penalty for an offence it does not list.")
+        : (ar ? "لم تُسجَّل لائحة المنشأة المعتمدة بعد — اختر البند المقابل من النموذج الاسترشادي، وسجّل لائحتك من «لائحة الجزاءات»." : "The establishment's approved regulation is not recorded — pick the matching model clause, and record yours under the penalty list.");
+    } else {
+      const cmp = compareToRegulation(kind.id, days, at.step);
+      const ref = regulationRef(regulation, at.clause, ar);
+      const says = ar ? `${ref} — ${at.timeLabel}${at.lastAt ? ` (السابقة ${at.lastAtLabel})` : ""}: ${at.label}.` : `${ref} — ${at.timeLabel}: ${at.label}.`;
+      if (cmp === "harsher") {
+        state67 = own ? "fail" : "warn";
+        text67 = ar ? `${own ? "موقوف — " : ""}الجزاء المختار أشد مما تنص عليه اللائحة. ${says}` : `${own ? "Blocked — " : ""}The chosen penalty is harsher than the regulation. ${says}`;
+      } else if (cmp === "lighter") {
+        state67 = "warn";
+        text67 = ar ? `الجزاء المختار أخف مما تنص عليه اللائحة — يجوز. ${says}` : `The chosen penalty is lighter than the regulation — allowed. ${says}`;
+      } else {
+        text67 = says + (at.lapsed && at.time === 1 ? (ar ? " مضى 180 يوماً على السابقة فلا تشديد (المادة 68)." : " 180 days passed since the previous one — no increase (Art. 68).") : "");
+      }
+    }
+  }
 
   const max = ruleValue("discipline.charge.maxDays", day);
   const art69 = articleOf("discipline.charge.maxDays");

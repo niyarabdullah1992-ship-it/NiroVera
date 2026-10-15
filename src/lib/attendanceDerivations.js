@@ -497,3 +497,40 @@ export function deriveAttStats(rows, geofenceOn) {
     shiftHours: SHIFT_HOURS,
   };
 }
+
+
+/** Minutes the check-in opens before a published shift (company policy, default 60). */
+export const EARLY_CHECKIN_DEFAULT = 60;
+export function earlyCheckInMinutes(company) {
+  const n = Number(company?.attendanceSettings?.early_checkin_minutes);
+  return Number.isFinite(n) && n >= 0 ? n : EARLY_CHECKIN_DEFAULT;
+}
+
+/** A check-in before the window opens is refused; the reply says when it opens. */
+export function checkEarlyCheckInGate(shift, nowMin, windowMin = EARLY_CHECKIN_DEFAULT) {
+  const start = hmToMinutes(shift?.start);
+  if (start == null || nowMin == null) return { ok: true };
+  const until = start - nowMin;
+  if (until <= windowMin) return { ok: true };
+  const open = ((start - windowMin) % 1440 + 1440) % 1440;
+  const hm = `${String(Math.floor(open / 60)).padStart(2, "0")}:${String(open % 60).padStart(2, "0")}`;
+  return {
+    ok: false,
+    error: "TOO_EARLY",
+    opensAt: hm,
+    reason: `يُفتح الحضور قبل ورديتك بـ${windowMin} دقيقة — من الساعة ${hm}.`,
+    reasonEn: `Check-in opens ${windowMin} minutes before your shift — from ${hm}.`,
+  };
+}
+
+/**
+ * Has today's shift (start date = today) ended, plus a grace? An overnight shift (end ≤ start) ends
+ * tomorrow, so on its own start day it has never ended.
+ */
+export function todaysShiftEnded(shift, nowMin, graceMin = 60) {
+  const start = hmToMinutes(shift?.start);
+  const end = hmToMinutes(shift?.end);
+  if (end == null || nowMin == null) return false;
+  if (start != null && end <= start) return false;
+  return nowMin > end + graceMin;
+}

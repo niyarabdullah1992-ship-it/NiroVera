@@ -8,7 +8,7 @@ export const SMART_DEPARTMENTS = [
   // Proof cycle — matches Layout category "daily"
   {
     id: "attendance",
-    ar: "الدوام والحضور",
+    ar: "الحضور والدوام",
     en: "Time & Attendance",
     hintAr: "حضور وانصراف وتقويم تشغيلي وورديات — وطلباتي في الشريط",
     hintEn: "Check-in, operational calendar, shifts — My Requests is on the rail",
@@ -144,7 +144,7 @@ export const SMART_DEPARTMENTS = [
 
 export const SMART_SECTION_GROUPS = [
   { id: "daily", ar: "دورة الإثبات", en: "Proof cycle" },
-  { id: "duty", ar: "الدوام والحضور", en: "Time & Attendance" },
+  { id: "duty", ar: "الحضور والدوام", en: "Time & Attendance" },
   { id: "workforce", ar: "القوى العاملة", en: "Workforce" },
   { id: "performance", ar: "الأداء", en: "Performance" },
   { id: "complaints", ar: "صوت الموظف", en: "Employee Voice" },

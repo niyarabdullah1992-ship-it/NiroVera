@@ -1,83 +1,173 @@
+/**
+ * The sanction's papers, printed on the platform's one sheet (printSheet):
+ *
+ *   قبل التوقيع — إبلاغ كتابي بما نُسب إلى العامل واستدعاء لسماع أقواله (المادة 71)، مع مهل المادة 69.
+ *   بعد التوقيع — قرار توقيع الجزاء يُبلَّغ كتابةً، ومعه إثبات الإبلاغ: يداً بيد، أو بكتاب مسجّل على
+ *   عنوانه في ملفه إن امتنع أو غاب، وحقّه في التظلّم ثم المحاكم العمالية (المادة 72).
+ *   بعد الاستقرار — القرار كما استقرّ، بحيثيات البتّ في التظلّم إن وُجد.
+ *
+ * Pure builder (disciplineSheet) plus one print call.
+ */
+
 import { cutPhrase, effectivePenalty, fmtDisciplineDate, penaltyLabel } from "./disciplineBoard.js";
+import { printSheet } from "./printSheet.js";
+import { resolvePenaltyKind } from "./disciplineDerivations.js";
 
-function esc(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+const TIME_AR = ["الأولى", "الثانية", "الثالثة", "الرابعة"];
+
+function regulationLine(item, ar) {
+  if (!item?.regulationRef) return "";
+  const time = Number(item.regulationTime) || 0;
+  const t = time ? (ar ? ` · المرة ${TIME_AR[time - 1] || time}` : ` · time ${time}`) : "";
+  return `${item.regulationRef}${t}`;
 }
 
-export function buildDisciplineNoticeHtml(card, ar = true) {
-  const item = card.item || {};
-  const settled = Boolean(item.rulingLabel || card.face?.id === "closed");
-  const signed = Boolean(card.signedAt);
-  const head = !signed
-    ? (ar ? "إبلاغ كتابي بمخالفة" : "Written notice of an offence")
-    : (settled ? (ar ? "قرار جزاء مستقرّ" : "Settled sanction decision") : (ar ? "جزاء موقَّع" : "Signed sanction"));
-  const pen = signed ? effectivePenalty(item, ar) : penaltyLabel(item, ar);
-  const name = card.employee?.name || item.employeeId || "—";
-  const branch = card.station?.name || "—";
+/** Which paper this file prints as now. */
+export function disciplinePaperKind(card) {
+  const item = card?.item || {};
+  if (!card?.signedAt) return "notice";
+  if (item.rulingLabel || card.face?.id === "closed") return "settled";
+  return "decision";
+}
+
+export function disciplineSheet(card, ar = true, { company = "" } = {}) {
+  const item = card?.item || {};
+  const kind = disciplinePaperKind(card);
+  const name = card?.employee?.name || item.employeeId || "—";
   const offence = item.note || item.reason || "—";
-  const rows = [
-    [ar ? "الموظف" : "Employee", name],
-    [ar ? "الفرع" : "Station", branch],
-    [ar ? "المخالفة" : "Offence", offence],
-    [signed ? (ar ? "الجزاء" : "Sanction") : (ar ? "الجزاء المقترح" : "Proposed sanction"), pen],
-    [ar ? "الأثر المالي" : "Pay effect", signed ? cutPhrase(item, card.wage, ar) : (ar ? "لا يُحتسب قبل التوقيع" : "Not counted before signing")],
-    [ar ? "تاريخ الإبلاغ" : "Notice date", fmtDisciplineDate(item.notifiedAt || item.createdAt, ar)],
-  ];
-  if (signed) rows.push([ar ? "تاريخ التوقيع" : "Signed on", fmtDisciplineDate(card.signedAt, ar)]);
-  if (settled) rows.push([ar ? "القرار" : "Ruling", `${item.rulingLabel || ""} — ${fmtDisciplineDate(item.rulingAt, ar)}`]);
+  const reg = regulationLine(item, ar);
+  const fineCut = Number(item.cutDays || 0) > 0 && resolvePenaltyKind(item) === "fine";
 
-  const law = ar
-    ? "للموظف أن يُبدي دفاعه ويُدوَّن قبل توقيع الجزاء (المادة 71). ولا يُتَّهم بمخالفة مضى على كشفها أكثر من ثلاثين يوماً، ولا يُوقَّع الجزاء بعد انتهاء التحقيق بأكثر من ثلاثين يوماً (المادة 69). ولا يُوقَّع على المخالفة الواحدة أكثر من جزاء (المادة 67). وللموظف الاعتراض بعد التوقيع خلال ثلاثين يوماً (المادة 72)."
-    : "No sanction before a recorded defence (Article 71). A worker may not be accused more than thirty days after discovery, nor sanctioned more than thirty days after the investigation ended (Article 69). One offence may not carry two penalties (Article 67). The worker may object within thirty days of signing (Article 72).";
+  const title = {
+    notice: ar ? "إبلاغ كتابي بمخالفة واستدعاء لسماع الأقوال" : "Written notice of an offence and call to be heard",
+    decision: ar ? "قرار توقيع جزاء تأديبي" : "Disciplinary sanction decision",
+    settled: ar ? "قرار جزاء مستقرّ" : "Settled sanction decision",
+  }[kind];
 
-  const sig = settled ? ""
-    : `<div class="sig"><div><span>${esc(ar ? "توقيع الموظف" : "Employee signature")}</span><i></i><span>${esc(ar ? "التاريخ" : "Date")}</span><i></i></div>`
-      + `<div><span>${esc(ar ? "توقيع المسؤول" : "Manager signature")}</span><i></i><span>${esc(ar ? "التاريخ" : "Date")}</span><i></i></div></div>`;
+  const facts = [
+    { label: ar ? "الموظف" : "Employee", value: name },
+    { label: ar ? "الرقم الوظيفي" : "File no.", value: card?.fileCode && card.fileCode !== "—" ? card.fileCode : "", mono: true },
+    { label: ar ? "الوظيفة" : "Job", value: card?.jobTitle && card.jobTitle !== "—" ? card.jobTitle : "" },
+    { label: ar ? "الفرع" : "Branch", value: card?.station?.name || "" },
+    { label: ar ? "تاريخ كشف المخالفة" : "Discovered on", value: fmtDisciplineDate(item.discoveredAt, ar), mono: true },
+    { label: ar ? "تاريخ الإبلاغ" : "Notified on", value: fmtDisciplineDate(item.notifiedAt || item.createdAt, ar), mono: true },
+    kind === "notice"
+      ? { label: ar ? "الجزاء المقترح" : "Proposed sanction", value: penaltyLabel(item, ar) }
+      : { label: ar ? "الجزاء" : "Sanction", value: effectivePenalty(item, ar) },
+    kind !== "notice" ? { label: ar ? "الأثر على الأجر" : "Pay effect", value: cutPhrase(item, card.wage, ar) } : null,
+    kind !== "notice" ? { label: ar ? "تاريخ التوقيع" : "Signed on", value: fmtDisciplineDate(card.signedAt, ar), mono: true } : null,
+    kind !== "notice" ? { label: ar ? "وقّعه" : "Signed by", value: item.signedBy || "" } : null,
+    reg ? { label: ar ? "السند من اللائحة (المادة 67)" : "Regulation basis (Art. 67)", value: reg, wide: true } : null,
+  ].filter(Boolean);
 
-  return `<!DOCTYPE html><html dir="${ar ? "rtl" : "ltr"}" lang="${ar ? "ar" : "en"}"><head><meta charset="utf-8">`
-    + `<title>${esc(head)} — ${esc(name)}</title>`
-    + `<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Noto+Naskh+Arabic:wght@600&display=swap" rel="stylesheet">`
-    + `<style>@page{size:A4;margin:22mm 20mm}`
-    + `body{margin:0;font-family:"IBM Plex Sans Arabic",sans-serif;color:#14213d;font-size:12pt;line-height:1.9}`
-    + `header{border-bottom:2px solid #14213d;padding-bottom:10pt;margin-bottom:18pt;display:flex;justify-content:space-between;align-items:flex-end;gap:16pt}`
-    + `h1{font-family:"Noto Naskh Arabic",serif;font-size:19pt;margin:0}`
-    + `.org{font-size:10pt;color:#4b5567;text-align:${ar ? "left" : "right"}}`
-    + `table{width:100%;border-collapse:collapse;margin-bottom:16pt}`
-    + `th{width:32%;text-align:start;font-weight:600;color:#4b5567;font-size:11pt;padding:7pt 0;vertical-align:top;border-bottom:1px solid #dfe3ea}`
-    + `td{padding:7pt 0;border-bottom:1px solid #dfe3ea;vertical-align:top}`
-    + `.law{background:#f7f8fa;border:1px solid #dfe3ea;padding:11pt 13pt;font-size:10.5pt;color:#3c4657;margin-bottom:20pt}`
-    + `.sig{display:flex;gap:28pt;margin-top:26pt}`
-    + `.sig>div{flex:1;display:flex;flex-direction:column;gap:4pt;font-size:10.5pt;color:#4b5567}`
-    + `.sig i{display:block;border-bottom:1px dotted #14213d;height:22pt}`
-    + `footer{margin-top:22pt;font-size:9.5pt;color:#6b7280;border-top:1px solid #dfe3ea;padding-top:9pt}`
-    + `</style></head><body>`
-    + `<header><h1>${esc(head)}</h1><span class="org">NiroVera · PowerCare<br>${esc(branch)}</span></header>`
-    + `<table>${rows.map((row) => `<tr><th>${esc(row[0])}</th><td>${esc(row[1])}</td></tr>`).join("")}</table>`
-    + `<p class="law">${esc(law)}</p>`
-    + sig
-    + `<footer>${esc(ar ? "وثيقة داخلية بسجلّ شركة. للتوقيع الإلكتروني متعدّد الأطراف احفظها PDF وارفعها في التوقيع الرقمي." : "Internal company record. For multi-party electronic signing, save as PDF and upload in Digital signing.")}</footer>`
-    + `</body></html>`;
+  const blocks = [{ type: "text", heading: ar ? "ما نُسب إلى العامل" : "What is attributed to the worker", body: offence }];
+
+  if (kind === "notice") {
+    blocks.push({
+      type: "text",
+      heading: ar ? "سماع الأقوال (المادة 71)" : "The hearing (Art. 71)",
+      body: ar
+        ? "لا يُوقَّع عليك جزاء إلا بعد إبلاغك كتابةً بما نُسب إليك واستجوابك وتحقيق دفاعك وإثبات ذلك في محضر يودع في ملفك. ويجوز أن يكون الاستجواب شفاهة في المخالفات البسيطة التي يُعاقب عليها بالإنذار أو بغرامة لا تتجاوز أجر يوم واحد، على أن يُثبت ذلك في المحضر.\nاكتب دفاعك في المساحة أدناه أو أرفقه، ويُسلَّم لجهة التحقيق."
+        : "No sanction is imposed before you are told in writing what is attributed to you, questioned, your defence examined, and all of it recorded in minutes kept in your file. Minor offences punishable by a warning or a fine up to one day's wage may be questioned orally if recorded in the minutes.\nWrite your defence below or attach it.",
+    });
+    blocks.push({
+      type: "table",
+      heading: ar ? "المهل التي تحكم هذا الملف" : "The windows on this file",
+      cols: [ar ? "المادة" : "Art.", ar ? "القاعدة" : "Rule"],
+      nowrapCols: [0],
+      rows: [
+        ["69", ar ? "لا يُتّهم العامل بمخالفة مضى على كشفها أكثر من 30 يوماً، ولا يُوقَّع الجزاء بعد انتهاء التحقيق بأكثر من 30 يوماً." : "No charge more than 30 days after discovery; no sanction more than 30 days after the investigation ends."],
+        ["70", ar ? "لا يُوقَّع على المخالفة الواحدة أكثر من جزاء واحد، ولا تزيد الغرامة عنها على أجر خمسة أيام." : "One penalty per offence; a fine for one offence may not exceed five days' wage."],
+        ["68", ar ? "لا يُشدَّد الجزاء عند التكرار إذا انقضى 180 يوماً على إبلاغ الجزاء السابق." : "No increase for a repeat once 180 days passed since notice of the previous sanction."],
+      ],
+    });
+    blocks.push({ type: "text", heading: ar ? "دفاع العامل" : "The worker's defence", body: item.hearingMinutes || (ar ? "……………………………………………………………………………………\n……………………………………………………………………………………\n……………………………………………………………………………………" : "……………………………………………………………\n……………………………………………………………") });
+  } else {
+    if (item.hearingMinutes || item.hearingEndedAt) {
+      blocks.push({
+        type: "text",
+        heading: ar ? "سماع الدفاع (المادة 71)" : "The hearing (Art. 71)",
+        body: [item.hearingMinutes || "", item.hearingEndedAt ? (ar ? `أُثبت في المحضر بتاريخ ${fmtDisciplineDate(item.hearingEndedAt, ar)}.` : `Recorded in the minutes on ${fmtDisciplineDate(item.hearingEndedAt, ar)}.`) : ""].filter(Boolean).join("\n"),
+      });
+    }
+    if (fineCut) {
+      blocks.push({
+        type: "text",
+        heading: ar ? "حسم الغرامة (المادتان 92 و93)" : "Deducting the fine (Arts. 92–93)",
+        body: ar
+          ? "تُحسم الغرامة من الأجر دون حاجة إلى موافقة العامل (المادة 92/5)، ولا يتجاوز مجموع ما يُحسم في الشهر مع حصة التأمينات نصف الأجر المستحق (المادة 93)، ولا يُقتطع وفاءً للغرامات أكثر من أجر خمسة أيام في الشهر (المادة 70). وتُقيَّد في سجل الغرامات ولا يُتصرَّف فيها إلا لنفع عمال المنشأة (المادة 73)."
+          : "The fine is deducted without the worker's consent (Art. 92/5); the month's total with the social-insurance share stays within half the wage (Art. 93), and no more than five days' wage is taken for fines in a month (Art. 70). It is entered in the fines register and used only for the workers' benefit (Art. 73).",
+      });
+    }
+    if (kind === "settled") {
+      blocks.push({
+        type: "text",
+        heading: ar ? "القرار في التظلّم" : "The ruling on the grievance",
+        body: [
+          `${item.rulingLabel || ""}${item.rulingAt ? ` — ${fmtDisciplineDate(item.rulingAt, ar)}` : ""}${item.rulingBy ? ` — ${item.rulingBy}` : ""}`,
+          item.appealNote ? (ar ? `تظلّم العامل: «${item.appealNote}»` : `Grievance: “${item.appealNote}”`) : "",
+          item.rulingNote || "",
+        ].filter(Boolean).join("\n"),
+      });
+    }
+    blocks.push({
+      type: "text",
+      heading: ar ? "حقّك في التظلّم (المادة 72)" : "Your right to a grievance (Art. 72)",
+      body: ar
+        ? "لك التظلّم كتابةً للجهة المختصة لدى صاحب العمل خلال ثلاثين يوماً — عدا أيام العطل الرسمية — من تاريخ إبلاغك بهذا القرار.\nفإن رُفض تظلّمك أو لم يُبتّ فيه كتابةً خلال خمسة عشر يوماً من تقديمه، فلك الاعتراض أمام المحاكم العمالية خلال ثلاثين يوماً — عدا العطل الرسمية — من تاريخ الرفض أو انتهاء مدة البتّ، أيهما أقرب."
+        : "You may file a written grievance with the employer's competent party within thirty days, excluding official holidays, of being notified of this decision.\nIf it is refused or not decided in writing within fifteen days, you may object before the labour courts within thirty days, excluding official holidays, of the refusal or the end of the decision period, whichever is earlier.",
+    });
+    if (kind === "decision") {
+      blocks.push({
+        type: "table",
+        heading: ar ? "إثبات الإبلاغ بالقرار (المادة 72)" : "Proof of notice (Art. 72)",
+        cols: [ar ? "الطريقة" : "Method", ar ? "التاريخ" : "Date", ar ? "المرجع / التوقيع" : "Reference / signature"],
+        rows: [
+          [ar ? "☐ سُلِّم للعامل يداً بيد" : "☐ Handed to the worker", "……/……/………", ""],
+          [ar ? "☐ امتنع عن الاستلام أو كان غائباً — أُرسل بكتاب مسجّل على عنوانه المبيّن في ملفه" : "☐ Refused or absent — sent by registered letter to the address on file", "……/……/………", ar ? "رقم الإرسال: ……………" : "Tracking no.: ……………"],
+        ],
+      });
+    }
+  }
+
+  const signatures = kind === "notice"
+    ? [
+      { label: ar ? "استلم العامل الإبلاغ" : "Received by the worker", name },
+      { label: ar ? "جهة التحقيق" : "Investigating party", name: "" },
+    ]
+    : kind === "decision"
+      ? [
+        { label: ar ? "استلم العامل القرار" : "Received by the worker", name },
+        { label: ar ? "مُصدر القرار" : "Issued by", name: item.signedBy || "" },
+        { label: ar ? "شاهد (عند الامتناع)" : "Witness (if refused)", name: "" },
+      ]
+      : [];
+
+  return {
+    ar,
+    kicker: ar ? "الجزاءات · نظام العمل المواد 66–73" : "Sanctions · Labour Law Arts. 66–73",
+    title,
+    subtitle: name,
+    ref: String(item.id || ""),
+    company,
+    status: {
+      label: ar ? card?.face?.shortAr || "" : card?.face?.shortEn || "",
+      tone: kind === "settled" ? "ok" : kind === "decision" ? "bad" : "warn",
+    },
+    facts,
+    blocks,
+    signatures,
+    note: ar
+      ? "يُحفظ أصل هذه الورقة موقَّعةً في ملف العامل. نظام العمل (م/51) ولائحة تنظيم العمل المعتمدة هما المرجع عند الخلاف."
+      : "The signed original is kept in the worker's file. The Labour Law (M/51) and the approved regulation govern in a dispute.",
+  };
 }
 
-export function downloadDisciplineNotice(card, ar = true) {
-  const item = card.item || {};
-  const settled = Boolean(item.rulingLabel || card.face?.id === "closed");
-  const signed = Boolean(card.signedAt);
-  const head = !signed
-    ? (ar ? "إبلاغ كتابي بمخالفة" : "Written notice")
-    : (settled ? (ar ? "قرار جزاء مستقرّ" : "Settled sanction") : (ar ? "جزاء موقَّع" : "Signed sanction"));
-  const name = card.employee?.name || item.employeeId || "file";
-  const html = buildDisciplineNoticeHtml(card, ar);
-  const url = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${head} — ${name}.html`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+export function printDisciplinePaper(card, ar = true, opts = {}) {
+  return printSheet({ ...disciplineSheet(card, ar, opts), ar });
+}
+
+/** Kept for older callers: prints instead of downloading an HTML file. */
+export function downloadDisciplineNotice(card, ar = true, opts = {}) {
+  return printDisciplinePaper(card, ar, opts);
 }

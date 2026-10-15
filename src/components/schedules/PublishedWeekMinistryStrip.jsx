@@ -1,11 +1,12 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
 
+// Block-level values must NOT set direction:ltr or unicode-bidi:plaintext — in an RTL column either one
+// pins a digits-only value to the left edge. Digits inside an RTL block already align to the start (right).
 const mono = {
-  fontFamily: "'IBM Plex Mono', monospace",
+  fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)",
   fontVariantNumeric: "tabular-nums",
-  direction: "ltr",
-  unicodeBidi: "isolate",
 };
 
 function toneEdge(tone) {
@@ -19,7 +20,7 @@ function toneEdge(tone) {
  * Four derived facts on the published week: hours, official holidays,
  * article constraints, and whether publish compliance is clear.
  */
-export default function PublishedWeekMinistryStrip({ facts, ar = true, manageHref = "" }) {
+export default function PublishedWeekMinistryStrip({ facts, ar = true, manageHref = "", tilesOnly = false }) {
   if (!facts) return null;
   const cells = [
     {
@@ -55,29 +56,35 @@ export default function PublishedWeekMinistryStrip({ facts, ar = true, manageHre
   ];
   return (
     <section data-published-ministry="" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 140px), 1fr))", gap: 8 }}>
+      <div className="nv-sched-stats" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))", gap: 12 }}>
         {cells.map((cell) => (
           <div
             key={cell.key}
+            data-stat={cell.key}
+            data-tone={cell.tone}
             style={{
               background: "var(--nv-card)",
               border: "1px solid var(--nv-line)",
-              borderTop: `3px solid ${toneEdge(cell.tone)}`,
-              borderRadius: 10,
-              padding: "10px 12px",
+              borderRadius: DS_RADIUS,
+              boxShadow: DS_SHADOW,
+              padding: "12px 16px 13px",
               display: "flex",
               flexDirection: "column",
-              gap: 3,
+              gap: 4,
               minWidth: 0,
+              position: "relative",
+              overflow: "hidden",
             }}
           >
-            <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{cell.label}</span>
-            <strong style={{ ...mono, fontSize: 18, fontWeight: 700, color: "var(--nv-ink)", textAlign: "start" }}>{cell.value || "—"}</strong>
-            <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.65 }}>{cell.note || "—"}</span>
+            {/* status lives on the 3px top edge only — never a filled card */}
+            <span aria-hidden style={{ position: "absolute", insetInline: 0, top: 0, height: 3, background: toneEdge(cell.tone) }} />
+            <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.4 }}>{cell.label}</span>
+            <strong style={{ ...(/^[\d.,%—–-]+$/.test(String(cell.value || "—")) ? mono : { letterSpacing: 0 }), fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: "var(--nv-ink)", textAlign: "start" }}>{cell.value || "—"}</strong>
+            <span style={{ fontSize: 11, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.6, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{cell.note || "—"}</span>
           </div>
         ))}
       </div>
-      {facts.constraints?.length ? (
+      {!tilesOnly && facts.constraints?.length ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {facts.constraints.slice(0, 4).map((row) => (
             <div key={row.id} style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
@@ -87,7 +94,7 @@ export default function PublishedWeekMinistryStrip({ facts, ar = true, manageHre
           ))}
         </div>
       ) : null}
-      {manageHref ? (
+      {!tilesOnly && manageHref ? (
         <Link to={manageHref} style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink, var(--nv-ink))", textDecoration: "none", alignSelf: "flex-start" }}>
           {ar ? "افتح الجدول ←" : "Open the roster →"}
         </Link>

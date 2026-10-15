@@ -149,7 +149,7 @@ export const DS_BEHAVE_RULES = [
 
 export const DS_SURFACES = [
   { href: "/app/signing", ar: "التوقيع الرقمي", en: "Digital signing", jobAr: "ختم متعدّد الأطراف ومهلة تراجع", jobEn: "Multi-party seal and retraction window", empAr: "يوقّع ويتراجع", empEn: "Signs and retracts", mgrAr: "يرسل ويتابع", mgrEn: "Sends and follows" },
-  { href: "/app/attendance", ar: "الحضور", en: "Attendance", jobAr: "شخص ومكان ووقت في سلسلة الإثبات", jobEn: "Person, place, and time in the proof cycle", empAr: "بصمتي وكشفي", empEn: "My punch and my sheet", mgrAr: "القرار والسياسة", mgrEn: "Decision and policy" },
+  { href: "/app/attendance", ar: "الحضور", en: "Attendance", jobAr: "شخص ومكان ووقت في سلسلة الإثبات", jobEn: "Person, place, and time in the proof cycle", empAr: "بصمتي وسجلي", empEn: "My punch and my record", mgrAr: "القرار والسياسة", mgrEn: "Decision and policy" },
   { href: "/app/calendar", ar: "التقويم التشغيلي", en: "Operations calendar", jobAr: "يثبت ما مضى بحلقاته", jobEn: "Seals what already happened", empAr: "سجلّي", empEn: "My register", mgrAr: "الفريق والتوزيع", mgrEn: "Team and allocation" },
   { href: "/app/shifts", ar: "جدول الدوام", en: "Roster", jobAr: "حكم المنصة على الساعات والراحة", jobEn: "Platform judgment on hours and rest", empAr: "جدولك", empEn: "Your roster", mgrAr: "يحكم وينشر", mgrEn: "Judges and publishes" },
   { href: "/app/requests", ar: "طلباتي", en: "My Requests", jobAr: "يطلب ويردّ كتابةً ويؤرشف", jobEn: "Asks, answers in writing, archives", empAr: "يرسل ويردّ", empEn: "Sends and answers", mgrAr: "يقرّر ويمنح", mgrEn: "Decides and grants" },

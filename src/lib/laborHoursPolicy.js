@@ -249,8 +249,8 @@ export function checkArt105BankGate({ company, employee, bankedWeeks, workerCons
     return {
       ok: false,
       error: "ARTICLE_105_CONSENT",
-      reason: "موقوف — المادة 105: تجميع الراحة الأسبوعية يحتاج موافقة العامل كتابة وموافقة الوزارة.",
-      reasonEn: "Blocked — Article 105: banking weekly rest needs the worker's written consent and the Ministry's approval.",
+      reason: "موقوف — المادة 105: تجميع الراحة الأسبوعية يحتاج اتفاق صاحب العمل والعمال وموافقة الوزارة.",
+      reasonEn: "Blocked — Article 105: banking weekly rest needs the employer–worker agreement and the Ministry's approval.",
       cite,
     };
   }

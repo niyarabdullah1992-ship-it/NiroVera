@@ -5,8 +5,8 @@ import { consentFileKind, normalizeSignMark } from "./documentReadGate.js";
 export const WRITTEN_CONSENT_TYPE = "written_consent";
 
 /** Ministry path: write → sign in قسم التوقيع → upload + اعتماد. Refuse is one direct action. */
-export const CONSENT_MINISTRY_HINT_AR = "اكتب موافقة خطية → وقّع الملف في قسم التوقيع → ارفع النسخة هنا للاعتماد. رفض = زر مباشر.";
-export const CONSENT_MINISTRY_HINT_EN = "Write a written consent → sign the file in Digital signing → upload the copy here to approve. Refuse is one direct button.";
+export const CONSENT_MINISTRY_HINT_AR = "اقرأ الطلب والنموذج، ثم وقّع النموذج في قسم التوقيع وارفع النسخة الموقّعة لتُسجَّل موافقتك — أو ارفض بزر واحد. الرفض لا يُتخذ سبباً لجزاء.";
+export const CONSENT_MINISTRY_HINT_EN = "Read the request and the form, then sign the form and upload the signed copy to record your consent — or refuse with one button. Refusing is never grounds for a penalty.";
 
 export const CONSENT_TOPICS = [
   {
@@ -21,23 +21,59 @@ export const CONSENT_TOPICS = [
   },
   {
     id: "site",
-    ar: "تغيير موقع العمل",
-    en: "Change of work site",
+    ar: "نقل يقتضي تغيير محل الإقامة",
+    en: "A move that changes residence",
     citeAr: "المادة 58",
     citeEn: "Art. 58",
     article: "58",
-    bodyAr: "تطلب الإدارة إقرارك الخطي بالانتقال إلى موقع عمل آخر ضمن المدينة نفسها، مع بقاء الأجر والمسمّى كما هما.",
-    bodyEn: "Management asks for your written consent to move to another site in the same city, with pay and title unchanged.",
+    hintAr: "من مكان العمل الأصلي إلى مكان يقتضي تغيير محل الإقامة",
+    hintEn: "From the original workplace to one that requires moving home",
+    withoutAr: "دون موافقة يجوز فقط لضرورة عارضة حتى 30 يوماً في السنة، ويتحمّل صاحب العمل تكاليف الانتقال والإقامة (58/2).",
+    withoutEn: "Without consent only for incidental necessity, up to 30 days a year, with travel and lodging paid (58/2).",
+    bodyAr: "تطلب الإدارة موافقتك الكتابية على نقلك من مكان عملك الأصلي إلى مكان عمل آخر يقتضي تغيير محل إقامتك، مع بقاء أجرك ومسمّاك الوظيفي كما هما. لك أن توافق أو ترفض (المادة 58).",
+    bodyEn: "Management asks for your written consent to move you from your original workplace to another that requires changing your residence, with pay and title unchanged. You may agree or refuse (Art. 58).",
+  },
+  {
+    id: "wage_type",
+    ar: "تغيير فئة الأجر",
+    en: "Change of wage type",
+    citeAr: "المادة 59",
+    citeEn: "Art. 59",
+    article: "59",
+    hintAr: "من الأجر الشهري إلى يومي أو أسبوعي أو بالقطعة أو بالساعة",
+    hintEn: "Monthly pay to daily, weekly, piece or hourly",
+    withoutAr: "لا يجوز دون موافقة، وتبقى الحقوق المكتسبة في مدة الأجر الشهري (م 59).",
+    withoutEn: "Not allowed without consent; rights earned on the monthly wage stay (Art. 59).",
+    bodyAr: "تطلب الإدارة موافقتك الكتابية على نقلك من الأجر الشهري إلى أجر يومي أو أسبوعي أو بالقطعة أو بالساعة، مع عدم الإخلال بحقوقك المكتسبة في مدة الأجر الشهري.",
+    bodyEn: "Management asks for your written consent to move you from a monthly wage to daily, weekly, piece or hourly pay, without prejudice to rights earned on the monthly wage.",
+  },
+  {
+    id: "different_work",
+    ar: "تكليف بعمل مختلف جوهرياً",
+    en: "Substantially different work",
+    citeAr: "المادة 60",
+    citeEn: "Art. 60",
+    article: "60",
+    hintAr: "عمل يختلف جوهرياً عن العمل المتفق عليه",
+    hintEn: "Work substantially different from the agreed work",
+    withoutAr: "دون موافقة يجوز فقط لضرورة عارضة حتى 30 يوماً في السنة (م 60).",
+    withoutEn: "Without consent only for incidental necessity, up to 30 days a year (Art. 60).",
+    bodyAr: "تطلب الإدارة موافقتك الكتابية على تكليفك بعمل يختلف اختلافاً جوهرياً عن العمل المتفق عليه. دون موافقتك لا يجوز ذلك إلا لضرورة عارضة لا تتجاوز ثلاثين يوماً في السنة.",
+    bodyEn: "Management asks for your written consent to substantially different work. Without it this is allowed only for incidental necessity, up to thirty days a year.",
   },
   {
     id: "ot",
-    ar: "ساعات عمل إضافية",
-    en: "Overtime hours",
+    ar: "إجازة تعويضية بدل أجر الإضافي",
+    en: "Paid time off instead of overtime pay",
     citeAr: "المادة 107",
     citeEn: "Art. 107",
     article: "107",
-    bodyAr: "تطلب الإدارة إقرارك الخطي بالعمل ساعات إضافية خلال فترة الذروة، بأجر إضافي وفق النظام، وبما لا يتجاوز الحد النظامي.",
-    bodyEn: "Management asks for your written consent to overtime in a peak period, at the statutory premium and within the legal cap.",
+    hintAr: "أيام إجازة مدفوعة بدل أجر الساعات الإضافية",
+    hintEn: "Paid leave days instead of overtime pay",
+    withoutAr: "دون موافقة يُدفع أجر الساعات الإضافية: أجر الساعة + 50% من الأجر الأساسي (107/1).",
+    withoutEn: "Without consent the overtime is paid: hourly wage + 50% of basic (107/1).",
+    bodyAr: "تطلب الإدارة موافقتك الكتابية على احتساب أيام إجازة تعويضية مدفوعة الأجر بدلاً من الأجر الإضافي المستحق لك عن ساعات العمل الإضافية. إن رفضت يُصرف لك الأجر الإضافي كاملاً (المادة 107).",
+    bodyEn: "Management asks for your written consent to grant paid compensatory leave days instead of the overtime pay you are owed. If you refuse, the overtime pay is paid in full (Art. 107).",
   },
 ];
 
@@ -240,7 +276,7 @@ export function checkRaiseConsentGate({ employeeId, body, deadline, file, paper 
     return { ok: false, error: "DEADLINE_REQUIRED", reason: "حدد مهلة الرد.", reasonEn: "Set a reply deadline." };
   }
   if (!file?.name && !file?.url) {
-    return { ok: false, error: "FILE_REQUIRED", reason: "أرفق النموذج ليكتبه الموظف ويوقّعه في قسم التوقيع ثم يرفعه هنا.", reasonEn: "Attach the form so the worker can write it, sign it in Digital signing, then upload it here." };
+    return { ok: false, error: "FILE_REQUIRED", reason: "أرفق النموذج الذي سيوقّعه الموظف (PDF أو صورة).", reasonEn: "Attach the form the worker will sign (PDF or image)." };
   }
   if (consentFileKind(file) !== "pdf" && consentFileKind(file) !== "image") {
     return { ok: false, error: "FILE_KIND", reason: "أرفق PDF أو صورة.", reasonEn: "Attach a PDF or image." };

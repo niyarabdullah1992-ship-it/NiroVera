@@ -80,6 +80,9 @@ export function addDeductionLine(companyId, month, item, line, actor) {
   if (![...DEDUCTION_SOURCES, ...GENERATED_DEDUCTION_SOURCES].includes(line?.source)) return "SOURCE_REQUIRED";
   const reason = String(line?.reason || "").trim();
   if (line.source === "manual" && reason.length < 5) return "REASON_REQUIRED";
+  // Art. 92: no deduction for a private right without the worker's written consent, outside
+  // the listed cases (advance, GOSI, savings fund, housing scheme, sanction, court debt).
+  if (line.source === "manual" && line.consent !== true) return "CONSENT_REQUIRED";
   if (line.source !== "manual" && !String(line?.sourceRefId || "").trim()) return "REFERENCE_REQUIRED";
   const refProblem = referenceProblem(companyId, line.source, line.sourceRefId, item);
   if (refProblem) return refProblem;
@@ -96,6 +99,7 @@ export function addDeductionLine(companyId, month, item, line, actor) {
     source: line.source,
     sourceRefId: String(line.sourceRefId || "").trim() || null,
     reason,
+    ...(line.source === "manual" ? { consent: true, consentNote: String(line.consentNote || "").trim() } : {}),
     createdBy: actor?.id || "unknown",
     createdByName: actor?.name || "",
     createdAt: new Date().toISOString(),

@@ -28,6 +28,29 @@ import {
   requestAuditFileLog,
   requestRefuseFileLog,
 } from "../../shared/otherRequestDerivations.ts";
+import { checkGroundedRefusalGate } from "../../shared/statutoryRefusal.ts";
+import { checkTakeCompLeaveGate } from "../../shared/compLeaveBalance.ts";
+import {
+  ART81_EXIT_TYPE,
+  DAMAGE_OBJECTION_TYPE,
+  DOCUMENTS_RETURN_TYPE,
+  LEAVE_CARRY_TYPE,
+  NIGHT_AVOID_TYPE,
+  checkArt81Gate,
+  checkDamageObjectionGate,
+  checkDocumentsReturnGate,
+  checkLeaveCarryGate,
+  checkNightAvoidGate,
+  damageObjectionDeadline,
+} from "../../shared/rightsRequests.ts";
+import {
+  RESIGNATION_TYPE,
+  checkPostponeResignationGate,
+  checkWithdrawResignationGate,
+  dueResignations,
+  resignationFacts,
+  resignationState,
+} from "../../shared/resignationLaw.ts";
 
 const SCHEDULES_CATEGORY = "schedules";
 const PUBLISHED_ROTAS_CATEGORY = "publishedRotas";
@@ -36,6 +59,22 @@ function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
   if (!id) return null;
   return id;
+}
+
+function riyadhToday() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+}
+
+/** Server-side gates for the rights requests (the client runs the same ones — never trust it alone). */
+function checkRightsSubmit(request: any, emp: any) {
+  const type = String(request?.type || "");
+  const reason = String(request?.reason || "");
+  if (type === DAMAGE_OBJECTION_TYPE) return checkDamageObjectionGate({ notifiedOn: request.notifiedOn, amount: request.amount, reason, today: riyadhToday() });
+  if (type === LEAVE_CARRY_TYPE) return checkLeaveCarryGate({ days: request.days, remaining: null, reason });
+  if (type === ART81_EXIT_TYPE) return checkArt81Gate({ caseKey: request.art81Case, reason, ack: true });
+  if (type === NIGHT_AVOID_TYPE) return checkNightAvoidGate({ kind: request.nightAvoidKind, from: request.avoidFrom, until: request.avoidUntil, file: Array.isArray(request.files) ? request.files[0] : null, gender: emp?.profile?.gender });
+  if (type === DOCUMENTS_RETURN_TYPE) return checkDocumentsReturnGate({ reason });
+  return { ok: true };
 }
 
 function uid(prefix: string) {
@@ -227,6 +266,8 @@ Deno.serve(async (req) => {
         recordedBy: body.recordedBy ? String(body.recordedBy) : undefined,
         deferConsentAt: body.deferConsentAt ? String(body.deferConsentAt) : undefined,
       };
+      // Art. 78: the worker sets the job-search day; it is recorded, not asked for approval.
+      if (type === "job_search") request.status = "approved";
       const extras = {
         profile: emp.profile,
         requests: emp.leaveRequests,
@@ -236,6 +277,11 @@ Deno.serve(async (req) => {
         recordedBy: request.recordedBy,
         employerRecorded: !!request.recordedBy,
       };
+      if (type === "comp") {
+        // Regs 22 bis: comp days come from the comp balance (hours), never from annual leave.
+        const comp = checkTakeCompLeaveGate({ employee: emp, days, on: startDate, exceptId: request.id });
+        if (!comp.ok) return Response.json({ ...comp }, { status: 422 });
+      }
       const gate = checkSubmitLeaveGate(request, extras);
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, gate }, { status: 422 });
@@ -273,13 +319,31 @@ Deno.serve(async (req) => {
       if (!incoming) return Response.json({ error: "Missing request" }, { status: 400 });
       const emp = await findEmployee(employeeId);
       if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
-      const request = {
+      const request: any = {
         ...incoming,
         id: String(incoming.id || "").trim() || uid("oreq"),
         companyId: auth.companyId,
         status: String(incoming.status || "pending"),
         createdAt: incoming.createdAt || new Date().toISOString(),
       };
+      // Art. 79 bis(4): a resignation carries no deferred date — it is dated the day it reaches us.
+      if (request.type === RESIGNATION_TYPE) {
+        const today = riyadhToday();
+        request.date = today;
+        request.lastDay = resignationFacts({ date: today }).deemedAcceptedOn;
+        if (request.status !== "pending") request.status = "pending";
+      }
+      if (request.type === "permission" && request.compLeave === true) {
+        const comp = checkTakeCompLeaveGate({ employee: emp, hours: (() => {
+          const m = (v: any) => { const x = String(v || "").match(/^(\d{1,2}):(\d{2})/); return x ? Number(x[1]) * 60 + Number(x[2]) : null; };
+          const a = m(request.time); const b = m(request.timeTo);
+          return a != null && b != null && b > a ? (b - a) / 60 : Number(request.hours) || 0;
+        })(), on: request.date, exceptId: request.id });
+        if (!comp.ok) return Response.json({ ...comp }, { status: 422 });
+      }
+      const rights = checkRightsSubmit(request, emp);
+      if (!rights.ok) return Response.json({ ...rights }, { status: 422 });
+      if (request.type === DAMAGE_OBJECTION_TYPE) request.objectionLastDay = damageObjectionDeadline(request.notifiedOn);
       const prior = Array.isArray(emp.otherRequests) ? emp.otherRequests : [];
       const raiseRow = buildRequestAudit({
         actor: auth.name,
@@ -294,7 +358,14 @@ Deno.serve(async (req) => {
       request.auditTrail = appendRequestAudit(request, raiseRow);
       const otherRequests = [request, ...prior.filter((row: { id?: string }) => row?.id !== request.id)];
       const fileLog = [requestAuditFileLog(raiseRow, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
-      await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, fileLog });
+      const patch: Record<string, unknown> = { otherRequests, fileLog };
+      if (request.type === ART81_EXIT_TYPE) {
+        // Art. 81: the worker leaves today with all his rights; the file carries it at once (undone on withdrawal).
+        const today = riyadhToday();
+        request.previousContractExit = emp.profile?.contractExit ?? null;
+        patch.profile = { ...(emp.profile || {}), contractExit: { ...(emp.profile?.contractExit || {}), reason: "article_81", party: "worker", art81Case: request.art81Case, effectiveDate: today, status: "worker_left", noticeAt: today, art81RequestId: request.id } };
+      }
+      await base44.asServiceRole.entities.Employee.update(emp.id, patch);
       await audit(raiseRow.action, raiseRow.details, { reason: raiseRow.reason, oldValue: raiseRow.oldValue, newValue: raiseRow.newValue });
       return Response.json({ request, ok: true, audit: raiseRow });
     }
@@ -350,7 +421,7 @@ Deno.serve(async (req) => {
       if (!lock.ok) {
         return Response.json({ error: lock.error, reason: lock.reason, reasonEn: lock.reasonEn, gate: lock }, { status: 422 });
       }
-      const refuse = checkRejectLeaveGate(req, { nextStatus: "rejected", actor: "manager", ...extras });
+      const refuse = checkRejectLeaveGate(req, { nextStatus: "rejected", actor: "manager", ...extras, rejectGround: body.rejectGround, rejectVerified: body.rejectVerified === true });
       if (!refuse.ok) {
         return Response.json({ error: refuse.error, reason: refuse.reason, reasonEn: refuse.reasonEn, gate: refuse }, { status: 422 });
       }
@@ -403,6 +474,20 @@ Deno.serve(async (req) => {
         pending.status = "approved";
         pending.reviewedBy = auth.name;
         pending.reviewedAt = new Date().toISOString();
+        const profilePatch: Record<string, unknown> = {};
+        if (pending.type === RESIGNATION_TYPE) {
+          // Art. 79 bis(2): the contract ends from the date the employer accepts.
+          const today = riyadhToday();
+          profilePatch.contractExit = { ...(emp.profile?.contractExit || {}), reason: "resignation", party: "worker", resignationSubmittedAt: pending.date || "", effectiveDate: today, status: "accepted", acceptedAt: today };
+        }
+        if (pending.type === NIGHT_AVOID_TYPE) {
+          profilePatch.nightAvoid = { kind: pending.nightAvoidKind, from: pending.avoidFrom, until: pending.avoidUntil || "", requestId: pending.id };
+        }
+        if (pending.type === LEAVE_CARRY_TYPE) {
+          profilePatch.leaveCarryAgreed = [...(emp.profile?.leaveCarryAgreed || []), { requestId: pending.id, days: Number(pending.days) || 0, at: pending.reviewedAt }];
+        }
+        if (pending.type === DAMAGE_OBJECTION_TYPE) pending.objectionAccepted = true;
+        if (pending.type === DOCUMENTS_RETURN_TYPE) pending.documentsReturnedAt = pending.reviewedAt;
         const row = buildRequestAudit({
           actor: auth.name,
           employeeId,
@@ -415,10 +500,21 @@ Deno.serve(async (req) => {
         pending.auditTrail = appendRequestAudit(pending, row);
         otherRequests[idx] = pending;
         const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
-        await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, fileLog });
+        const approvePatch: Record<string, unknown> = { otherRequests, fileLog };
+        if (Object.keys(profilePatch).length) approvePatch.profile = { ...(emp.profile || {}), ...profilePatch };
+        await base44.asServiceRole.entities.Employee.update(emp.id, approvePatch);
         await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
         return Response.json({ request: pending, ok: true, audit: row });
       }
+      if (pending.type === RESIGNATION_TYPE) {
+        return Response.json({
+          error: "RESIGNATION_NOT_REFUSABLE",
+          reason: "موقوف — المادة 79 مكرر: الاستقالة لا تُرفض. لك قبولها، أو تأجيل قبولها حتى 60 يوماً بإيضاح مسبب مكتوب قبل مضي 30 يوماً؛ وإلا تُعد مقبولة.",
+          reasonEn: "Blocked — Article 79 bis: a resignation is not refused; accept it or postpone acceptance in writing.",
+        }, { status: 422 });
+      }
+      const grounded = checkGroundedRefusalGate({ ...pending, family: "other" }, { ground: body.rejectGround, verified: body.rejectVerified === true, actor: "manager" });
+      if (!grounded.ok) return Response.json({ ...grounded, gate: grounded }, { status: 422 });
       const rejectGate = pending.type === STUDY_CONSENT_TYPE
         ? checkRejectStudyConsentGate(pending, body.reason || body.note)
         : pending.type === "night_fitness"
@@ -448,6 +544,116 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, fileLog });
       await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
       return Response.json({ request: pending, ok: true, audit: row });
+    }
+
+    // The worker withdraws his own request. Resignation: 7 days and before acceptance (Art. 79 bis(3)).
+    // Art. 81 notice withdrawn by mistake: the file's previous exit comes back.
+    if (action === "withdrawOther") {
+      const employeeId = String(body.employeeId || auth.userId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      if (!employeeId || !requestId) return Response.json({ error: "Missing employeeId or requestId" }, { status: 400 });
+      if (auth.userId && auth.userId !== employeeId && !isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const otherRequests = Array.isArray(emp.otherRequests) ? [...emp.otherRequests] : [];
+      const idx = otherRequests.findIndex((r: { id?: string }) => r.id === requestId);
+      if (idx < 0) return Response.json({ error: "REQUEST_NOT_FOUND" }, { status: 404 });
+      const row: any = { ...otherRequests[idx] };
+      if (row.type === RESIGNATION_TYPE) {
+        const w = checkWithdrawResignationGate(row, riyadhToday());
+        if (!w.ok) return Response.json({ ...w }, { status: 422 });
+      }
+      row.status = "withdrawn";
+      row.withdrawnAt = new Date().toISOString();
+      otherRequests[idx] = row;
+      const patch: Record<string, unknown> = { otherRequests };
+      if (row.type === ART81_EXIT_TYPE && emp.profile?.contractExit?.art81RequestId === row.id) {
+        const profile: any = { ...(emp.profile || {}) };
+        if (row.previousContractExit) profile.contractExit = row.previousContractExit; else delete profile.contractExit;
+        patch.profile = profile;
+      }
+      await base44.asServiceRole.entities.Employee.update(emp.id, patch);
+      await audit("request_withdrawn", `${emp.name} withdrew ${row.type} ${row.id}`);
+      return Response.json({ ok: true, request: row });
+    }
+
+    // Art. 79 bis(1): postpone acceptance once, before the 30 days end, ≤ 60 days, with a written reason.
+    if (action === "postponeResignation") {
+      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const employeeId = String(body.employeeId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      if (auth.userId && auth.userId === employeeId) return Response.json({ error: "SELF" }, { status: 403 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const otherRequests = Array.isArray(emp.otherRequests) ? [...emp.otherRequests] : [];
+      const idx = otherRequests.findIndex((r: { id?: string; type?: string }) => r.id === requestId && r.type === RESIGNATION_TYPE);
+      if (idx < 0) return Response.json({ error: "REQUEST_NOT_FOUND" }, { status: 404 });
+      const today = riyadhToday();
+      const gate = checkPostponeResignationGate({ row: otherRequests[idx], days: body.days, reason: body.reason, today });
+      if (!gate.ok) return Response.json({ ...gate }, { status: 422 });
+      const row: any = { ...otherRequests[idx], postponedUntil: (gate as any).until, postponeReason: String(body.reason).trim(), postponedAt: today, postponedBy: auth.name };
+      otherRequests[idx] = row;
+      await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests });
+      await audit("resignation_postponed", `Resignation of ${emp.name} postponed to ${row.postponedUntil}`, { reason: row.postponeReason });
+      return Response.json({ ok: true, request: row });
+    }
+
+    // Art. 79 bis(1)(2): resignations with 30 days of silence, or at the end of a postponement, are accepted by law.
+    if (action === "settleResignations") {
+      const emps = await loadEmployees();
+      const today = riyadhToday();
+      const due = dueResignations({ employees: emps.map((e: any) => ({ ...e, id: e.employeeId || e.id })) }, today);
+      for (const item of due) {
+        const emp: any = emps.find((e: any) => (e.employeeId || e.id) === item.employeeId);
+        if (!emp) continue;
+        const otherRequests = (emp.otherRequests || []).map((r: any) => (r.id === item.requestId
+          ? { ...r, status: "approved", deemedAccepted: item.via, reviewedBy: "بحكم النظام", reviewedAt: new Date().toISOString(), approvedAt: new Date().toISOString() }
+          : r));
+        const req = (emp.otherRequests || []).find((r: any) => r.id === item.requestId) || {};
+        const contractExit = { ...(emp.profile?.contractExit || {}), reason: "resignation", party: "worker", resignationSubmittedAt: req.date || "", effectiveDate: item.endsOn, status: "accepted", acceptedAt: item.endsOn, deemed: item.via };
+        await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, profile: { ...(emp.profile || {}), contractExit } });
+        await audit("resignation_deemed_accepted", `Resignation of ${emp.name} accepted by law (${item.via}) on ${item.endsOn}`);
+      }
+      return Response.json({ ok: true, settled: due.length });
+    }
+
+    // At work on an approved leave day: the worker cuts the leave from that day (not in Art. 151's six weeks).
+    if (action === "cutLeave") {
+      const employeeId = String(body.employeeId || auth.userId || "").trim();
+      if (!employeeId || (auth.userId && auth.userId !== employeeId)) return Response.json({ error: "SELF_ONLY" }, { status: 403 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const day = String(body.day || riyadhToday()).slice(0, 10);
+      const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
+      const idx = leaveRequests.findIndex((r: any) => {
+        if (r.status !== "approved") return false;
+        const span = leaveCoverRange(r);
+        return !!span.start && !!span.end && span.start <= day && day <= span.end;
+      });
+      if (idx < 0) return Response.json({ error: "NO_LEAVE" }, { status: 404 });
+      const r: any = { ...leaveRequests[idx] };
+      if (String(r.type) === "maternity" && r.eventDate) {
+        const last = addCalendarDays(String(r.eventDate).slice(0, 10), 41);
+        if (day >= String(r.eventDate).slice(0, 10) && day <= last) {
+          return Response.json({ error: "MATERNITY_MANDATORY", reason: `لا يجوز تشغيلك في الأسابيع الستة التالية للوضع (حتى ${last}) — المادة 151.` }, { status: 422 });
+        }
+      }
+      const span = leaveCoverRange(r);
+      r.cutOn = day;
+      r.originalEndDate = r.originalEndDate || span.end;
+      if (day <= span.start) {
+        r.status = "withdrawn";
+        r.withdrawnReason = "attended";
+      } else {
+        const newEnd = addCalendarDays(day, -1);
+        r.endDate = newEnd;
+        if (r.activeEndDate) r.activeEndDate = newEnd;
+        if (Number.isFinite(Number(body.keptDays))) r.days = Number(body.keptDays);
+      }
+      leaveRequests[idx] = r;
+      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
+      await audit("leave_cut_attended", `${emp.name} cut leave ${r.id} from ${day} (attended)`);
+      return Response.json({ ok: true, request: r });
     }
 
     if (action === "attachExamSat") {

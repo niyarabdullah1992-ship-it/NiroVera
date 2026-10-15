@@ -17,6 +17,7 @@ import {
   isViewerOwnFile,
   requestSelfEmployee,
   leaveCatalogFor,
+  allowanceLawRows,
   leaveOnFile,
   moneySar,
   pendingLeavePointerCopy,
@@ -58,11 +59,18 @@ assert.match(service, /سنوات|سنة|سنتان/);
 assert.match(service, /شهر|شهران|أشهر|شهراً/);
 
 const maleGroups = leaveCatalogFor({ gender: "male" }, true);
-assert.equal(maleGroups.length, 3);
+assert.equal(maleGroups.length, 4); // + social-insurance group (work injury)
+assert.ok(maleGroups.some((group) => group.rows.some((row) => /إصابة عمل/.test(row.name))));
+assert.ok(maleGroups.some((group) => group.rows.some((row) => row.art === "113" && /أخ أو أخت/.test(row.name))));
 assert.ok(maleGroups.some((group) => group.rows.some((row) => row.art === "113" && /أبوة/.test(row.name))));
 assert.ok(!maleGroups.some((group) => group.rows.some((row) => row.art === "151" || row.art === "160")));
 const femaleGroups = leaveCatalogFor({ gender: "female" }, true);
-assert.equal(femaleGroups.length, 4);
+assert.equal(femaleGroups.length, 5);
+assert.ok(!femaleGroups.some((group) => group.rows.some((row) => row.art === "154" || row.art === "18632")), "nursing hour and pre-birth night ban live once — in the ministry panel");
+const law = allowanceLawRows({ base: 6000, housing: 1500, transport: 500, other: 0, allowances: 2000, night: 0, split: true }, true);
+assert.equal(law.total, 8000);
+assert.equal(law.otHour, Math.round((8000 / 240 + 6000 / 240 * 0.5) * 100) / 100);
+assert.ok(law.rows.every((row) => row.eos === "يدخل" && row.leave === "يدخل"));
 assert.ok(femaleGroups.some((group) => group.rows.some((row) => row.art === "151")));
 assert.ok(femaleGroups.some((group) => group.rows.some((row) => row.art === "151" && /تمديد|مرافقة/.test(row.name))));
 assert.ok(femaleGroups.some((group) => group.rows.some((row) => row.art === "160")));
@@ -161,7 +169,7 @@ assert.equal(platformDate.k, "تاريخ التسجيل في التأمينات"
 assert.equal(platformDate.field, gosiWage.field);
 assert.equal(platformDate.raw, "");
 assert.notEqual(gosiWage.val, "2020-01-15", "hire date must not fill the registration date");
-assert.equal(view.leaveGroups.length, 3);
+assert.equal(view.leaveGroups.length, 4);
 assert.equal(view.filed.length, 1);
 assert.equal(view.hasPendingLeave, false);
 assert.equal(leaveOnFile(employee.leaveRequests).length, 1);
@@ -244,17 +252,23 @@ assert.match(profileSrc, /gosiRegisteredAt: next/);
 assert.match(profileSrc, /syncEmployeeSalaryToPayroll/);
 const railSrc = readFileSync(new URL("../src/components/employees/FileHoursAlertsRail.jsx", import.meta.url), "utf8");
 const cardSrc = readFileSync(new URL("../src/components/employees/DutyStripAlertCard.jsx", import.meta.url), "utf8");
-assert.match(hoursSrc, /rosterMineScopeCopy/, "file hours states the work-branch lock");
+// Updated: the file hours surface moved from HoursOnFile (now only file-held notices) to
+// EmployeeFileDutyBoard — same week cards / ministry panel as «جدولي», read-only, alerts in the side rail.
+const fileBoardSrc = readFileSync(new URL("../src/components/employees/EmployeeFileDutyBoard.jsx", import.meta.url), "utf8");
+assert.match(fileBoardSrc, /homeOnly: true/, "file hours states the work-branch lock");
+assert.doesNotMatch(fileBoardSrc, /<MyWeekDays/, "the day cards live once — in جدولي / جدول الدوام, not repeated on the file");
+assert.doesNotMatch(fileBoardSrc, /<BranchRosterReadOnly/, "the branch roster lives in جدول الدوام, not in a person's file");
 assert.match(hoursSrc, /\/app\/shifts\?lane=manage/, "other rosters from the file open إدارة");
-assert.match(hoursSrc, /employeeFileHoursView/, "file hours board uses the open-file hours view");
-assert.match(hoursSrc, /FileHoursAlertsRail/, "left rail is the shared file-owner alerts slot");
-assert.match(hoursSrc, /nv-ops-cal-board/, "alerts sit beside the file week, not on roster names");
+assert.match(fileBoardSrc, /useMyDutyWeek\(\{ employee, data, weekStart, ar \}\)/, "file hours board uses the open-file person's duty week");
+assert.doesNotMatch(fileBoardSrc, /<FileHoursAlertsRail/, "open week checks are listed once — in the ministry panel, no second alerts rail on the file");
+assert.match(fileBoardSrc, /<MinistryPersonalPanel/, "the file keeps one ministry panel for the week");
 assert.match(railSrc, /employeeFileHoursAlerts/, "left rail is derived file alerts, not a night essay");
 assert.match(cardSrc, /nv-duty-circular/, "due rows stay the shared person register");
 assert.doesNotMatch(cardSrc, /docFrame/, "file duty row is not a nested stamped document");
 assert.match(cardSrc, /letterSpacing: 0/, "file duty Arabic keeps letter-spacing 0");
 assert.match(cardSrc, /DS_RADIUS/, "file duty person card is 14px soft shell");
-assert.match(railSrc, /banner\.(bad|warn)/, "تنبيهاتي due wash uses statusBanner chrome");
+// 3c964a5: quiet chrome is now `slab`; the due wash reads statusBanner.* directly (no `banner` alias).
+assert.match(railSrc, /(statusBanner|banner)\.(bad|warn)/, "تنبيهاتي due wash uses statusBanner chrome");
 assert.match(railSrc, /--nv-bad-soft|statusBanner/, "due تنبيهاتي wash matches platform bad soft");
 assert.match(cardSrc, /showChip=\{false\}/, "circular instrument is not a green pill");
 assert.match(railSrc, /voice\.warnings/, "left rail title is تنبيهاتي or تنبيهاته");
@@ -263,8 +277,8 @@ assert.match(railSrc, /chip\.decisionId/, "due/in-scope 18632 stays a short chip
 assert.match(railSrc, /DutyStripAlertCard/, "due rows use the shared إنذار card");
 assert.match(railSrc, /hideJudgment/, "file strip does not reprint platform judgment on each card");
 assert.doesNotMatch(railSrc, /تنبيهك/, "own-file rail does not stack تنبيهك under تنبيهاتي");
-assert.match(hoursSrc, /LaborArticleCite/, "file hour checks keep the article number");
-assert.match(hoursSrc, /showEssay \? \(/, "essay stays quiet unless due or failing");
+assert.match(cardSrc, /LaborArticleCite/, "file hour checks keep the article number");
+assert.match(railSrc, /\{!due \? \(/, "essay stays quiet unless due or failing");
 assert.doesNotMatch(hoursSrc, /if \(!showStatutoryHeaderCite/, "quiet glow must not hide المادة / قرار chips");
 assert.doesNotMatch(`${hoursSrc}\n${railSrc}`, /العمل الليلي/, "left rail is not a night-law heading");
 assert.doesNotMatch(`${hoursSrc}\n${railSrc}`, /23:00/, "night window definition is not in the hours header");
@@ -330,7 +344,8 @@ assert.equal(omarHours.checks.find((row) => row.id === "night_medical")?.ok, fal
 assert.equal(omarHours.checks.find((row) => row.id === "night_medical")?.block, false);
 assert.ok(!niyarHours.checks.some((row) => row.id === "night_medical"));
 assert.ok(!niyarChecks.checks.some((row) => row.id === "night_medical"), "morning file hides the night-worker medical card");
-assert.match(hoursSrc, /NightMedicalFileField/, "file hours unmet medical is a طلباتي notice");
+assert.doesNotMatch(hoursSrc, /<NightMedicalFileField/, "night fitness is read once — in the week ministry panel, not repeated on the file card");
+assert.doesNotMatch(hoursSrc, /data-family-duties/, "family responsibilities are raised in طلباتي, not ticked on the file");
 assert.doesNotMatch(hoursSrc, /uploadFileOrLocal|type=["']file["']/, "file hours medical check does not embed upload");
 assert.doesNotMatch(railSrc, /NightMedicalFileField|uploadFileOrLocal|type=["']file["']/, "night strip does not embed upload");
 assert.match(readFileSync(new URL("../src/components/employees/ProfessionalInfoTab.jsx", import.meta.url), "utf8"), /NightMedicalFileField/);

@@ -45,6 +45,7 @@ export default function OrgPeopleTree({
   const [fullTree, setFullTree] = useState(false);
   const [spine, setSpine] = useState(false);
   const [moveTo, setMoveTo] = useState("");
+  const [moveResidence, setMoveResidence] = useState("");
   const [previewEmployee, setPreviewEmployee] = useState(null);
   const viewportRef = useRef(null);
   const treeRef = useRef(null);
@@ -204,12 +205,14 @@ export default function OrgPeopleTree({
       employeeId: selectedEmployee.id,
       toStationId: moveTo,
       actor: currentUser,
+      residence: moveResidence,
     });
     if (!result.ok) {
       toast({ description: ar ? result.reason : result.reasonEn, variant: "destructive" });
       return;
     }
     setMoveTo("");
+    setMoveResidence("");
     toast({
       description: ar
         ? `نُقل ${result.employee?.name || selectedEmployee.name} إلى ${result.record.toStationName}`
@@ -350,7 +353,22 @@ export default function OrgPeopleTree({
                 ))}
               </select>
               </OrgInspectorField>
-              <button type="button" disabled={!moveTo} onClick={moveSelected} style={orgBtnPrimary(!moveTo)}>
+              {moveTo ? (
+                <OrgInspectorField label={ar ? "الإقامة (المادة 58)" : "Residence (Art. 58)"}>
+                  <select
+                    value={moveResidence}
+                    onChange={(event) => setMoveResidence(event.target.value)}
+                    aria-label={ar ? "هل يقتضي النقل تغيير الإقامة" : "Does the move change residence"}
+                    data-move-residence="1"
+                    style={{ ...orgSelect, minWidth: 140 }}
+                  >
+                    <option value="">{ar ? "هل يغيّر محل إقامته؟" : "Changes residence?"}</option>
+                    <option value="same">{ar ? "لا — نفس محل الإقامة" : "No — same residence"}</option>
+                    <option value="change">{ar ? "نعم — بموافقته الموقّعة" : "Yes — with signed consent"}</option>
+                  </select>
+                </OrgInspectorField>
+              ) : null}
+              <button type="button" disabled={!moveTo || !moveResidence} onClick={moveSelected} style={orgBtnPrimary(!moveTo || !moveResidence)}>
                 {ar ? "نقل" : "Move"}
               </button>
             </>

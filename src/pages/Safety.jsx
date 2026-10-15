@@ -166,6 +166,7 @@ export default function Safety() {
         date: i.at || i.reviewedAt,
         title: station.name,
         text: [i.description || card.what || "—", ar ? card.categoryAr : card.categoryEn, card.where].filter(Boolean).join(" · "),
+        branch: station.name,
         badge: level || (ar ? "حادث" : "Incident"),
         search: [i.description, card.code, card.where, card.categoryAr, card.categoryEn, i.anonymous ? "بلاغ بلا اسم" : i.by].filter(Boolean).join(" "),
       };
@@ -175,6 +176,7 @@ export default function Safety() {
       date: h.closedAt || h.openedAt,
       title: station.name,
       text: h.description || "",
+      branch: station.name,
       badge: ar ? "خطر أُغلق" : "Hazard closed",
     }));
     return [...incidents, ...hazards];

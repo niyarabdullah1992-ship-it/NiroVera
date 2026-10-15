@@ -5,6 +5,7 @@
 import { checkResignationGate, checkTerminationGate } from "./contractLawDerivations.ts";
 import { citeRule, ruleValue } from "./laborRules.ts";
 import { accruedAnnualDaysAtExit } from "./leaveDerivations.ts";
+import { suspendedDaysFromUnpaidLeave } from "./contractSuspension.ts";
 
 export const ANNUAL_ENTITLEMENT_DAYS = 21;
 /** Milliseconds in a mean Gregorian year (365.25d) — matches design svcYears. */
@@ -91,10 +92,42 @@ function parseLocalDate(isoDate: string | null | undefined) {
 }
 
 /** Service years from hire date (local midnight) — design: Date.now − hire / 31557600000. */
-export function serviceYears(hireDate: string | null | undefined, nowMs = Date.now()) {
+export function serviceYears(hireDate: string | null | undefined, nowMs = Date.now(), suspendedDays = 0) {
   const d = parseLocalDate(hireDate);
   if (!d) return 0;
-  return Math.max(0, (nowMs - d.getTime()) / MS_PER_YEAR);
+  return Math.max(0, (nowMs - d.getTime() - Math.max(0, Number(suspendedDays) || 0) * 86400000) / MS_PER_YEAR);
+}
+
+/** The day service ends (Arts. 84/87/111): exit effective date, else last day, else `nowMs`. */
+export function eosEndMs(caseRow: any = {}, nowMs = Date.now()) {
+  const exit = caseRow?.contractExit || caseRow?.profile?.contractExit || {};
+  const d = parseLocalDate(exit.effectiveDate || exit.lastDay || caseRow?.lastWorkDate || caseRow?.lastDay);
+  return d ? d.getTime() : nowMs;
+}
+
+export const WORKER_FORCE_MAJEURE = "worker_force_majeure";
+
+function truthy(value: unknown) {
+  const s = String(value ?? "").trim().toLowerCase();
+  return value === true || s === "1" || s === "true" || s === "yes" || s === "نعم";
+}
+
+/** Arts. 2/84/86 — mirror of src/lib/laborProtectionGates.js eosWageBase: commissions in unless excluded by agreement. */
+export function eosWageBase(caseRow: any = {}) {
+  const profile = caseRow.profile || {};
+  const contract = profile.contract || {};
+  const excluded = truthy(profile.eosExcludeCommissions ?? contract.eosExcludeCommissions ?? caseRow.eosExcludeCommissions);
+  const bonusAgreed = truthy(profile.eosAllWageElements || caseRow.eosAllWageElements);
+  const base = Math.max(0, Number(caseRow.base ?? profile.base) || 0);
+  const allowances = Math.max(0, Number(caseRow.allowances ?? profile.allowances) || 0);
+  const bonus = Math.max(0, Number(caseRow.bonus ?? profile.bonus) || 0);
+  const commission = Math.max(0, Number(caseRow.commissionAmount ?? profile.commissionAmount) || 0)
+    + Math.max(0, Number(caseRow.commission ?? profile.commission) || 0);
+  const last = base + allowances;
+  const withCommission = last + (excluded ? 0 : commission);
+  const all = withCommission + bonus;
+  const citeRuleId = commission > 0 || excluded ? "eos.allElements.cite" : "eos.gratuity.cite";
+  return { agreed: bonusAgreed, commissionsExcluded: excluded, commission: excluded ? 0 : commission, wage: bonusAgreed ? all : withCommission, last, all, citeRuleId };
 }
 
 export function isPreStart(hireDate: string | null | undefined, nowMs = Date.now()) {
@@ -149,11 +182,12 @@ export function deriveSettlementDeadline(input: {
   lastWorkDate?: string;
   effectiveDate?: string;
   contractExit?: OffboardingCaseLike["contractExit"];
+  settlementPaidAt?: string;
 } = {}, nowMs = Date.now()) {
   const onDate = input.today || localIso(nowMs);
   const reason = String(input.reason || input.contractExit?.reason || "").trim();
   const last = String(input.lastWorkDate || input.effectiveDate || input.contractExit?.effectiveDate || "").slice(0, 10);
-  const workerEnded = reason === "resignation" || reason === "article_81";
+  const workerEnded = reason === "resignation" || reason === "article_81" || reason === WORKER_FORCE_MAJEURE;
   const days = workerEnded
     ? ruleValue("eos.settlement.workerDays", onDate)
     : ruleValue("eos.settlement.employerDays", onDate);
@@ -162,6 +196,10 @@ export function deriveSettlementDeadline(input: {
     return { ok: true as const, pending: true, days, workerEnded, due: null as string | null, late: false, cite, warning: null as string | null };
   }
   const due = addCalendarDays(last, days);
+  const paidAt = String(input.settlementPaidAt || (input.contractExit as any)?.settlementPaidAt || "").slice(0, 10);
+  if (paidAt) {
+    return { ok: true as const, pending: false, days, workerEnded, lastWorkDate: last, due, late: false, paidAt, paidLate: paidAt > due, closed: true, cite, warning: null as string | null };
+  }
   const late = onDate > due;
   return {
     ok: true as const,
@@ -192,6 +230,7 @@ export function eosResignationFraction(years: number, onDate?: string) {
 export function art87FullAward(caseRow: OffboardingCaseLike, nowMs = Date.now()) {
   const exit = caseRow.contractExit || {};
   const reason = String(exit.reason || caseRow.exitReason || "").trim();
+  if (reason === WORKER_FORCE_MAJEURE || (reason === "resignation" && (exit as any).forceMajeure === true)) return true;
   if (reason && reason !== "resignation") return false;
   if (!isFemale(caseRow.gender || caseRow.profile?.gender)) return false;
   const endIso = localIso(nowMs);
@@ -304,12 +343,20 @@ function annualEntitlementDays(caseRow: OffboardingCaseLike, onDate: string, now
   return Math.max(Number(custom) || 0, floor);
 }
 
-export function deriveEos(caseRow: OffboardingCaseLike, nowMs = Date.now()) {
+export function deriveEos(caseRow: OffboardingCaseLike, nowMs = eosEndMs(caseRow)) {
   const hireDate = caseRow.hireDate || caseRow.profile?.hireDate || null;
   const preStart = isPreStart(hireDate, nowMs);
-  const years = preStart ? 0 : serviceYears(hireDate, nowMs);
-  const wage = finalWage(Number(caseRow.base) || 0, Number(caseRow.allowances) || 0);
   const onDate = localIso(nowMs);
+  const suspendedDays = preStart ? 0 : suspendedDaysFromUnpaidLeave((caseRow as any).leaveRequests || (caseRow.profile as any)?.leaveRequests || [], hireDate, onDate);
+  const years = preStart ? 0 : serviceYears(hireDate, nowMs, suspendedDays);
+  const eosBase = eosWageBase({
+    ...caseRow,
+    profile: caseRow.profile || {},
+    base: caseRow.base ?? (caseRow.profile as any)?.baseSalary ?? (caseRow.profile as any)?.base,
+    allowances: caseRow.allowances ?? (caseRow.profile as any)?.allowances,
+  });
+  const averageBasis = Number((caseRow as any).averageWage) > 0 && (caseRow as any).averageWageBasis === true;
+  const wage = averageBasis ? Number((caseRow as any).averageWage) : eosBase.wage;
   const entitlement = annualEntitlementDays(caseRow, onDate, nowMs);
   const accrued = preStart ? 0 : accruedAnnualDaysAtExit(hireDate || undefined, entitlement, onDate);
   const unused = Math.round(unusedAnnualDays(Number(caseRow.annualLeaveUsed) || 0, accrued) * 10) / 10;
@@ -322,9 +369,9 @@ export function deriveEos(caseRow: OffboardingCaseLike, nowMs = Date.now()) {
   const art87 = !preStart && !art80 && art87FullAward(caseRow, nowMs);
   const resigning = reason === "resignation";
   let fraction = 1;
-  let citeId = "eos.gratuity.cite";
+  let citeId = eosBase.citeRuleId || "eos.gratuity.cite";
   if (preStart) {
-    citeId = "eos.gratuity.cite";
+    citeId = eosBase.citeRuleId || "eos.gratuity.cite";
   } else if (art80) {
     fraction = 0;
     citeId = "eos.art80.cite";
@@ -340,6 +387,11 @@ export function deriveEos(caseRow: OffboardingCaseLike, nowMs = Date.now()) {
   return {
     hireDate,
     preStart,
+    endDate: onDate,
+    suspendedDays,
+    averageBasis,
+    commissionsExcluded: eosBase.commissionsExcluded,
+    commission: eosBase.commission,
     years,
     wage,
     unusedAnnualDays: unused,
@@ -392,7 +444,7 @@ export function enrichOffboardingCase(caseRow: OffboardingCaseLike, nowMs = Date
     assets,
     outstandingCount: outstanding,
     gateOpen: status === "completed" ? false : gateOpen,
-    eos: deriveEos(caseRow, nowMs),
+    eos: deriveEos(caseRow, eosEndMs(caseRow, nowMs)),
     steps: deriveOffboardingSteps({ ...caseRow, assets, status }),
     accessRevoked: !!(caseRow.accessRevoked || status === "completed"),
     qiwaNotified: !!(caseRow.qiwaNotified || status === "completed"),

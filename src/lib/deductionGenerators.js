@@ -2,7 +2,7 @@
 // re-typing amounts manually in payroll.
 // Idempotent: the same sourceRefId never produces a line twice.
 import { addDeductionLine, deductionLines, removeDeductionLine } from "@/lib/payrollDeductions";
-import { getRun, ensurePayrollRun, monthKey } from "@/lib/payroll";
+import { getRun, ensurePayrollRun, monthKey, syncEmployeeSalaryToPayroll } from "@/lib/payroll";
 import { getCompanyData } from "@/lib/store";
 
 export function generateAbsenceDeduction(companyId, employeeId, attendanceRecordId, days, actor) {
@@ -21,6 +21,16 @@ export function generateAbsenceDeduction(companyId, employeeId, attendanceRecord
     sourceRefId: refId,
     reason: `غياب معتمد ${days} يوم · Approved unpaid absence (${days} day${days === 1 ? "" : "s"})`,
   }, actor);
+}
+
+/**
+ * Art. 116: an approved unpaid leave is wage not due, not an Art. 92 deduction. Instead of posting
+ * an "attendance" deduction line (which counted toward the Art. 93 half-wage cap and could block
+ * the month), the open payroll line is re-derived — it carries the days as `unpaidLeaveCut`.
+ */
+export function refreshUnpaidLeaveWage(companyId, employeeId) {
+  syncEmployeeSalaryToPayroll(companyId, employeeId);
+  return null;
 }
 
 export function disciplineDeductionRef(caseId) {

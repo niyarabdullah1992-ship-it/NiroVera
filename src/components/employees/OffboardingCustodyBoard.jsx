@@ -8,7 +8,10 @@ import {
   checkMarkReturnedGate,
   deriveEos,
   deriveSettlementDeadline,
+  eosEndMs,
 } from "@/lib/offboardingDerivations";
+import { averageActualWage, deriveFinalSettlement, isAverageWageBasis } from "@/lib/payrollLaw";
+import { recordFinalSettlementPaid } from "@/lib/payrollLawStore";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { compPayout, hoursWord } from "@/lib/compLeave";
 import { toast } from "@/components/ui/use-toast";
@@ -90,7 +93,7 @@ const actStyle = {
 /** Platform isTabOff — L2811–2872 */
 export default function OffboardingCustodyBoard({ employee, canManage = false, lang = "ar" }) {
   const ar = lang === "ar";
-  const { company, currentUser } = useAuth();
+  const { company, currentUser, data } = useAuth();
   const [caseRow, setCaseRow] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -187,19 +190,55 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
 
   if (!currentUser) return null;
 
+  // Arts. 84/87/111: service, the Art. 87 windows and accrued leave are measured to the exit
+  // date (effective date, else last day), not to whenever the file happens to be opened.
+  const exitRow = employee?.profile?.contractExit || caseRow?.contractExit || {};
+  const endMs = eosEndMs({ contractExit: exitRow });
+  const endDay = new Date(endMs);
+  const endIso = `${endDay.getFullYear()}-${String(endDay.getMonth() + 1).padStart(2, "0")}-${String(endDay.getDate()).padStart(2, "0")}`;
+  // Art. 96: piece / commission-only wages settle on the last year's average actual wage.
+  const average = isAverageWageBasis(employee) ? averageActualWage(data?.payrollRuns || [], employee?.id, endIso.slice(0, 7)) : null;
   const eos = caseRow
     ? deriveEos({
       ...caseRow,
-      contractExit: employee?.profile?.contractExit || caseRow.contractExit,
+      contractExit: exitRow,
       gender: employee?.profile?.gender,
       profile: employee?.profile,
-    })
+      leaveRequests: employee?.leaveRequests || [],
+      averageWage: average?.average,
+      averageWageBasis: Boolean(average?.months),
+    }, endMs)
     : null;
   const settlement = deriveSettlementDeadline({
-    reason: employee?.profile?.contractExit?.reason || caseRow?.contractExit?.reason || caseRow?.exitReason,
-    lastWorkDate: employee?.profile?.contractExit?.effectiveDate || caseRow?.contractExit?.effectiveDate,
-    contractExit: employee?.profile?.contractExit || caseRow?.contractExit,
+    reason: exitRow.reason || caseRow?.exitReason,
+    lastWorkDate: exitRow.effectiveDate || exitRow.lastDay,
+    contractExit: exitRow,
+    settlementPaidAt: exitRow.settlementPaidAt,
   });
+  const comp = eos ? compPayout(employee, endIso, eos.wage) : { hours: 0, amount: 0 };
+  // Art. 88: the final settlement — partial month, award, leave and comp hours, less work debts set off.
+  const custodyDebt = (caseRow?.assets || [])
+    .filter((asset) => asset.status !== "returned")
+    .reduce((sum, asset) => sum + (Number(asset.value ?? asset.cost) || 0), 0);
+  const finalSettlement = eos ? deriveFinalSettlement({
+    employee,
+    eos,
+    payrollRuns: data?.payrollRuns || [],
+    exitDate: exitRow.effectiveDate || exitRow.lastDay || "",
+    monthlyWage: eos.wage,
+    custodyDebt,
+    extras: comp.amount,
+    deadline: settlement,
+  }) : null;
+  const markSettlementPaid = () => {
+    if (!company?.id || !employee?.id || !finalSettlement) return;
+    const res = recordFinalSettlementPaid(company.id, employee.id, { amount: finalSettlement.net });
+    if (res?.error) {
+      toast({ description: ar ? (res.reason || res.error) : (res.reasonEn || res.error), variant: "destructive" });
+      return;
+    }
+    toast({ description: ar ? "سُجّل صرف التصفية النهائية — أُغلقت مهلة المادة 88." : "Final settlement recorded as paid — the Art. 88 window is closed." });
+  };
   const completed = caseRow?.status === "completed";
   const outstanding = caseRow?.outstandingCount || 0;
   const gateOpen = !!caseRow?.gateOpen;
@@ -348,8 +387,8 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
           </div>
           <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.65, textWrap: "pretty" }}>
             {ar
-              ? "تُحسب المادة 84 أولاً. الفصل وفق المادة 80 بغير مكافأة. ترك العمل وفق المادة 81 يحفظ الحقوق كاملة. الاستقالة تطبّق المادة 85. المادة 87 إذا أنهت العاملة العقد خلال ستة أشهر من الزواج أو ثلاثة أشهر من الوضع. القوة القاهرة في المادة 74 تستحق المادة 84 كاملة."
-              : "Article 84 is calculated first. Article 80 dismissal is without award. Leaving under Article 81 preserves full rights. Resignation applies Article 85. Article 87 applies if a female worker ends the contract within six months of marriage or three months of childbirth. Force majeure under Article 74 is a full Article 84 award."}
+              ? `تُحسب المادة 84 أولاً حتى ${eos.endDate || ""}. الفصل وفق المادة 80 بغير مكافأة. ترك العمل وفق المادة 81 يحفظ الحقوق كاملة. الاستقالة تطبّق المادة 85. المادة 87: ترك العامل العمل لقوة قاهرة خارجة عن إرادته، أو إنهاء العاملة العقد خلال ستة أشهر من الزواج أو ثلاثة أشهر من الوضع — المكافأة كاملة. العمولات من الأجر ما لم يُتفق على استبعادها (المادة 86)${eos.suspendedDays ? `، وتُستبعد ${eos.suspendedDays} يوماً موقوفة من الإجازة بلا أجر (المادة 116)` : ""}.`
+              : `Article 84 is calculated first, to ${eos.endDate || ""}. Article 80 dismissal is without award. Leaving under Article 81 preserves full rights. Resignation applies Article 85. Article 87: a worker leaving through force majeure beyond his will, or a female worker ending the contract within six months of marriage or three months of childbirth — the full award. Commissions are wage unless excluded by agreement (Art. 86)${eos.suspendedDays ? `; ${eos.suspendedDays} suspended unpaid-leave days are left out (Art. 116)` : ""}.`}
           </div>
           {eos?.citeRuleId ? (
             <div style={{ marginTop: "10px" }}>
@@ -376,7 +415,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "14px" }}>
               {[
-                { label: ar ? "آخر أجر شامل (أساسي + بدلات)" : "Final wage (base + allowances)", value: fmt(eos.wage) },
+                { label: eos.averageBasis ? (ar ? "متوسط أجر السنة الأخيرة (المادة 96)" : "Last year's average wage (Art. 96)") : (ar ? `آخر أجر شامل (أساسي + بدلات${eos.commission ? " + عمولات" : ""})` : `Final wage (base + allowances${eos.commission ? " + commissions" : ""})`), value: fmt(eos.wage) },
                 { label: ar ? "نصف شهر × أول 5 سنوات" : "Half month × first 5 years", value: fmt(eos.firstFive) },
                 { label: ar ? "شهر كامل × ما بعد 5 سنوات" : "Full month × years beyond 5", value: fmt(eos.beyondFive) },
                 ...(eos.art80
@@ -394,7 +433,6 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                 },
                 // Regs 22 bis — comp leave not taken before leaving is paid at the actual hourly wage.
                 ...(() => {
-                  const comp = compPayout(employee, new Date().toISOString().slice(0, 10), eos.wage);
                   return comp.hours > 0
                     ? [{ label: ar ? `أجرة ${hoursWord(comp.hours)} إجازة تعويضية لم تُؤخذ (اللائحة 22 مكرر)` : `${comp.hours} h untaken compensatory leave (regs 22 bis)`, value: fmt(comp.amount) }]
                     : [];
@@ -446,7 +484,9 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
               <div style={{ marginTop: 10 }}>
                 <LaborArticleCite ruleId={settlement.workerEnded ? "eos.settlement.workerDays" : "eos.settlement.employerDays"} ar={ar} showText />
                 <div style={{ fontSize: 12, color: settlement.late ? "var(--nv-warn-ink)" : MUTED, marginTop: 6, lineHeight: 1.65 }}>
-                  {settlement.pending
+                  {settlement.closed
+                    ? (ar ? `صُرفت التصفية في ${settlement.paidAt}${settlement.paidLate ? ` — بعد المهلة (${settlement.due})` : ""}.` : `Settlement paid on ${settlement.paidAt}${settlement.paidLate ? ` — after the window (${settlement.due})` : ""}.`)
+                    : settlement.pending
                     ? (ar ? "مهلة التصفية تبدأ من آخر يوم عمل." : "The settlement window starts from the last working day.")
                     : settlement.late
                       ? (ar ? `تجاوزت مهلة التصفية (${settlement.due}).` : `The settlement window (${settlement.due}) has passed.`)
@@ -459,11 +499,43 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                 </span>
                 <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
                   <span dir="ltr" style={{ fontSize: "22px", fontWeight: 600, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right", color: NAVY }}>
-                    {fmt(eos.total + compPayout(employee, new Date().toISOString().slice(0, 10), eos.wage).amount)}
+                    {fmt(eos.total + comp.amount)}
                   </span>
                   <span style={{ fontSize: "12px", color: MUTED }}>SAR</span>
                 </div>
               </div>
+              {finalSettlement ? (
+                <div data-final-settlement="1" style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>{ar ? "التصفية النهائية — المادة 88" : "Final settlement — Art. 88"}</div>
+                  {[
+                    finalSettlement.partialDays
+                      ? { label: ar ? `أجر الشهر الأخير — ${finalSettlement.partialDays} يوماً` : `Final month's wage — ${finalSettlement.partialDays} days`, value: fmt(finalSettlement.partialWage) }
+                      : { label: ar ? (finalSettlement.monthPaid ? "أجر الشهر الأخير — مصروف في المسير" : "أجر الشهر الأخير — حدد تاريخ الخروج") : (finalSettlement.monthPaid ? "Final month's wage — paid in the run" : "Final month's wage — set the exit date"), value: "—" },
+                    { label: ar ? "المكافأة وبدل الإجازة والساعات التعويضية" : "Award, leave pay and comp hours", value: fmt(finalSettlement.eosTotal + finalSettlement.extras) },
+                    ...(finalSettlement.advances ? [{ label: ar ? "تُخصم سلف قائمة (دين بسبب العمل)" : "Less outstanding advances (work debt)", value: `− ${fmt(Math.min(finalSettlement.advances, finalSettlement.setOff))}` }] : []),
+                    ...(finalSettlement.custodyDebt ? [{
+                      label: ar
+                        ? `تُخصم عهدة لم تُسلَّم — حتى أجر 5 أيام (المادة 91)${finalSettlement.custodyToCourt ? `؛ الباقي ${fmt(finalSettlement.custodyToCourt)} يُطلب أمام المحكمة العمالية` : ""}`
+                        : `Less unreturned custody — up to 5 days' wage (Art. 91)${finalSettlement.custodyToCourt ? `; the remaining ${fmt(finalSettlement.custodyToCourt)} is claimed before the labour court` : ""}`,
+                      value: `− ${fmt(finalSettlement.custodySetOff)}`,
+                    }] : []),
+                  ].map((r) => (
+                    <div key={r.label} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ fontSize: 12, color: MUTED }}>{r.label}</span>
+                      <span dir="ltr" style={{ fontSize: 13, color: NAVY }}>{r.value}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{ar ? "صافي التصفية" : "Net settlement"}</span>
+                    <span dir="ltr" style={{ fontSize: 18, fontWeight: 600, color: NAVY }}>{fmt(finalSettlement.net)} SAR</span>
+                  </div>
+                  {canManage && !finalSettlement.paidAt ? (
+                    <button type="button" onClick={markSettlementPaid} style={{ ...actStyle, alignSelf: "flex-start" }}>
+                      {ar ? "تسجيل صرف التصفية" : "Record settlement paid"}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           )}
         </div>

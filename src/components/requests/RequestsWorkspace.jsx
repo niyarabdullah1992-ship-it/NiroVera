@@ -69,7 +69,7 @@ import { ownPendingAwaitingNote, requestMayDecideOnLane } from "@/lib/dutyScope"
 import { requestSelfEmployee, viewerEmployeeId } from "@/lib/employeeFileView";
 import { CONSENT_MINISTRY_HINT_AR, CONSENT_MINISTRY_HINT_EN, hashConsentFile, nightWrittenConsentGlow, readConsentFile } from "@/lib/writtenConsent";
 import ConsentFileLink from "@/components/requests/ConsentFileLink";
-import { generateAbsenceDeduction } from "@/lib/deductionGenerators";
+import { refreshUnpaidLeaveWage } from "@/lib/deductionGenerators";
 import { employeeShiftOnDay, isWeekDayPublished, weekStartDate } from "@/lib/shiftWeek";
 import { maxStatutoryGlow, statutoryGlowState } from "@/lib/statutoryItem";
 import { toast } from "@/components/ui/use-toast";
@@ -1445,7 +1445,7 @@ export default function RequestsWorkspace({
           toast({ description: ar ? (saved?.reason || "تعذّر إرسال الطلب") : (saved?.reasonEn || "Could not send the request"), variant: "destructive" });
           return;
         }
-        if (direct && (leave === "unpaid" || leave === "maternity_extend")) generateAbsenceDeduction(company.id, subject.id, "direct", counted, currentUser);
+        if (direct && (leave === "unpaid" || leave === "maternity_extend")) refreshUnpaidLeaveWage(company.id, subject.id);
       } else if (isOtAssign) {
         const saved = submitOtAssignment(company.id, subject.id, {
           reason: note.trim(),
@@ -1628,7 +1628,7 @@ export default function RequestsWorkspace({
           return;
         }
         if (status === "approved" && (row.type === "unpaid" || row.type === "maternity_extend")) {
-          generateAbsenceDeduction(company.id, row.employee.id, row.id, Number(row.days) || computeDaysSafe(row), currentUser);
+          refreshUnpaidLeaveWage(company.id, row.employee.id);
         }
       } else {
         if (status === "rejected") {

@@ -49,7 +49,9 @@ import {
   backfillLegacyDeduction,
   disputeDeductionLine,
   deductionLines,
+  reconcileDamageObjections,
 } from "@/lib/payrollDeductions";
+import PayrollLawPanel from "@/components/payroll/PayrollLawPanel";
 import PayrollMineDeductions from "@/components/payroll/PayrollMineDeductions";
 import { notifyMoney } from "@/lib/moneyNotifications";
 import useStationScope from "@/hooks/useStationScope";
@@ -112,7 +114,11 @@ export default function Payroll() {
   useEffect(() => {
     // Materialising the month's run is a management write. The personal view reads
     // whatever run already exists and says so plainly when there is none.
-    if (canView && view === MANAGE && company) ensurePayrollRun(company.id, liveMonth);
+    if (canView && view === MANAGE && company) {
+      ensurePayrollRun(company.id, liveMonth);
+      // Art. 91: accepted damage objections are refunded on the open line.
+      if (canManage) reconcileDamageObjections(company.id, liveMonth);
+    }
     if (company && view === SELF) refreshOwnPayrollDerivation(company.id, liveMonth);
   }, [company?.id, liveMonth, canView, includeOwner, view]);
 
@@ -405,6 +411,18 @@ export default function Payroll() {
       })()}
 
       {tab === "run" && view === MANAGE && (
+        <PayrollLawPanel
+          companyId={company?.id}
+          data={data}
+          month={month}
+          items={managedVisible.map(faceOf)}
+          employeeForItem={employeeForItem}
+          canManage={canManage}
+          ar={ar}
+        />
+      )}
+
+      {tab === "run" && view === MANAGE && (
         <PayrollRunBoard
           month={month}
           lang={lang}
@@ -434,7 +452,7 @@ export default function Payroll() {
       )}
 
       {tab === "eos" && view === MANAGE && (
-        <PayrollEosBoard items={visible} employeeForItem={employeeForItem} ar={ar} />
+        <PayrollEosBoard items={visible} employeeForItem={employeeForItem} ar={ar} payrollRuns={data?.payrollRuns || []} />
       )}
 
       {tab === "archive" && view === SELF && (() => {
@@ -566,6 +584,8 @@ export default function Payroll() {
                         const issues = payrollItemIssues(item);
                         const msg = (issues.includes("ARTICLE_93_EXCEEDED") || issues.includes("ARTICLE_90_EXCEEDED"))
                           ? (ar ? "لا يمكن الدفع — مجموع الخصومات يتجاوز نصف الأجر (المادة 93)." : "Payment blocked — deductions exceed half the wage (Art. 93).")
+                          : issues.includes("CURRENCY_NOT_SAR")
+                            ? (ar ? "لا يمكن الدفع — الأجر يُدفع بالعملة الرسمية للمملكة (الريال) — المادة 90." : "Payment blocked — wages are paid in the Kingdom's official currency (SAR) — Art. 90.")
                           : issues.includes("OT_ANNUAL_CAP")
                             ? (ar ? "لا يمكن الدفع — ساعات الإضافي تتجاوز 720 ساعة في السنة (اللائحة مادة 22)." : "Payment blocked — overtime exceeds 720 hours in a year (implementing regulations Art. 22).")
                             : (ar ? "لا يمكن اعتماد الدفع قبل إدخال راتب أساسي ومبالغ صحيحة وصافي موجب وعملة صالحة." : "Payment cannot be approved until base salary, valid amounts, a positive net, and a valid currency are set.");

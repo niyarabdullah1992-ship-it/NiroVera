@@ -132,12 +132,13 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
   }
   const unpaid = daysOfType(employee, month, "unpaid");
   if (unpaid.days) {
+    const cut = Number(line.unpaidLeaveCut) || 0;
     rows.push({
-      id: "unpaid", cite: ar ? "اتفاق" : "Agreement",
+      id: "unpaid", cite: "116",
       title: ar ? `إجازة بلا أجر · ${unpaid.days} يوماً` : `Unpaid leave · ${unpaid.days} days`,
-      detail: ar ? "تُحسم في «بنود الخصم» من الحضور المقفل — لا تُحسب هنا مرتين" : "Taken in the deduction lines from locked attendance — not counted twice here",
-      amount: 0,
-      tone: "mute",
+      detail: ar ? "أجر غير مستحق عن أيامها — ليس حسماً من المادة 92 ولا يدخل في سقف نصف الأجر (المادة 93)" : "Wage not due for its days — not an Art. 92 deduction and outside the Art. 93 half-wage cap",
+      amount: -cut,
+      tone: cut > 0 ? "warn" : "mute",
     });
   }
   const injuryCut = (Number(line.injuryReduction) || 0) + (Number(line.injuryUnpaid) || 0) + (Number(line.injuryWageStop) || 0);

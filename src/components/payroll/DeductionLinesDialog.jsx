@@ -71,6 +71,13 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
                       )}
                     </p>
                   )}
+                  {line.source === "damage" && line.objectionLastDay && (
+                    <p style={{ margin: "6px 0 0", fontSize: "11px", color: MUTED }}>
+                      {ar
+                        ? `أُبلغ في ${line.damageNoticeOn} — مهلة التظلم حتى ${line.objectionLastDay} (المادة 91)${line.refundedAt ? " · رُدّ المبلغ بقبول الاعتراض" : ""}`
+                        : `Told on ${line.damageNoticeOn} — objection open until ${line.objectionLastDay} (Art. 91)${line.refundedAt ? " · refunded on an accepted objection" : ""}`}
+                    </p>
+                  )}
                   {line.disputeStatus === "rejected" && (
                     <p style={{ margin: "6px 0 0", fontSize: "11px", color: MUTED }}>{ar ? "اعتراض مرفوض" : "Dispute rejected"}</p>
                   )}

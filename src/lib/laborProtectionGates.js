@@ -123,22 +123,38 @@ export function checkExitCloseoutGate({ serviceCertificateIssued, documentsRetur
   return { ok: true, cite };
 }
 
+/**
+ * The wage the end-of-service award is settled on (Arts. 2, 84, 86).
+ *
+ * Art. 2 makes commissions and sales percentages part of the actual wage, and Art. 84 settles
+ * the award on the last wage — so they are in by default. Art. 86 only allows the parties to
+ * AGREE to leave all or some of them out: `eosExcludeCommissions` (profile or contract) records
+ * that agreement. `eosAllWageElements` keeps its old meaning for bonus/grants agreed into the base.
+ */
 export function eosWageBase(caseRow = {}) {
   const profile = caseRow.profile || {};
-  const agreed = isTruthy(profile.eosAllWageElements || caseRow.eosAllWageElements);
+  const contract = profile.contract || {};
+  const excluded = isTruthy(profile.eosExcludeCommissions ?? contract.eosExcludeCommissions ?? caseRow.eosExcludeCommissions);
+  const bonusAgreed = isTruthy(profile.eosAllWageElements || caseRow.eosAllWageElements);
   const base = Math.max(0, Number(caseRow.base ?? profile.base) || 0);
   const allowances = Math.max(0, Number(caseRow.allowances ?? profile.allowances) || 0);
   const bonus = Math.max(0, Number(caseRow.bonus ?? profile.bonus) || 0);
+  const commission = Math.max(0, Number(caseRow.commissionAmount ?? profile.commissionAmount) || 0)
+    + Math.max(0, Number(caseRow.commission ?? profile.commission) || 0);
   const last = base + allowances;
-  const all = last + bonus;
-  const cite = citeRule(agreed ? "eos.allElements.cite" : "eos.gratuity.cite");
+  const withCommission = last + (excluded ? 0 : commission);
+  const all = withCommission + bonus;
+  const wage = bonusAgreed ? all : withCommission;
+  const citeRuleId = commission > 0 || excluded ? "eos.allElements.cite" : "eos.gratuity.cite";
   return {
-    agreed,
-    wage: agreed ? all : last,
+    agreed: bonusAgreed,
+    commissionsExcluded: excluded,
+    commission: excluded ? 0 : commission,
+    wage,
     last,
     all,
-    cite,
-    citeRuleId: agreed ? "eos.allElements.cite" : "eos.gratuity.cite",
+    cite: citeRule(citeRuleId),
+    citeRuleId,
   };
 }
 

@@ -7,6 +7,9 @@ import { deriveSaudiStatus } from "./complianceDerivations.js";
 import { contractAllowanceSplit, employeeWageSplit } from "./employeeFileView.js";
 import { readGosiRegisteredAt } from "./facts/people.js";
 import { gosiLine } from "./payrollDerivations.js";
+import { detentionMonth, detentionRefund, holidayOvertimeHours, unpaidLeaveMonth } from "./payrollLaw.js";
+import { isOfficialHoliday, laborCalendarOf } from "./ummAlQuraCalendar.js";
+import { readPersonalAttendance } from "./facts/attendance.js";
 
 /** True / false when identity is settled. Null when it is unknown or mismatched — nothing is withheld. */
 export function payrollSaudiFlag(employee) {
@@ -99,6 +102,35 @@ export function derivePayrollWagePatch(item, employee, { otDecisions, month, com
       if (!employee || !month) return { sickDays: 0, sickQuarterDays: 0, sickUnpaidDays: 0, sickReduction: 0, sickUnpaid: 0 };
       const sick = sickMonth({ employee, month, monthlyWage: base + allowances });
       return { sickDays: sick.days, sickFullDays: sick.fullDays, sickQuarterDays: sick.quarterDays, sickUnpaidDays: sick.unpaidDays + sick.beyondDays, sickReduction: sick.reduction, sickUnpaid: sick.unpaid };
+    })(),
+    // Art. 116: approved unpaid-leave days are wage not due — they cut the gross, never an Art. 92
+    // deduction line, so they stay outside the Art. 93 half-wage cap.
+    ...(() => {
+      if (!employee || !month) return { unpaidLeaveDays: 0, unpaidLeaveCut: 0 };
+      const unpaid = unpaidLeaveMonth({ employee, month, monthlyWage: base + allowances });
+      return { unpaidLeaveDays: unpaid.days, unpaidLeaveCut: unpaid.cut };
+    })(),
+    // Art. 97: detained in a work-related case — half the wage up to 180 days; refund on acquittal.
+    ...(() => {
+      const detention = employee?.profile?.workDetention;
+      if (!employee || !month || !detention?.from) return { detentionDays: 0, detentionCut: 0, refunds: 0 };
+      const det = detentionMonth({ detention, month, monthlyWage: base + allowances });
+      const acquittedMonth = String(detention.acquittedAt || "").slice(0, 7);
+      const refund = acquittedMonth === month ? detentionRefund({ detention, monthlyWage: base + allowances }) : 0;
+      return { detentionDays: det.days, detentionCut: det.cut, refunds: refund };
+    })(),
+    // Art. 107(3): hours on official holidays are overtime — those no decision already carries.
+    ...(() => {
+      if (!month || !company) return { holidayOvertimeHours: 0 };
+      const calendar = laborCalendarOf(company);
+      const hol = holidayOvertimeHours({
+        employeeId: item.employeeId,
+        month,
+        attendance: readPersonalAttendance(company),
+        otDecisions,
+        isHoliday: (day) => isOfficialHoliday(day, calendar),
+      });
+      return { holidayOvertimeHours: hol.hours, holidayOvertimeFlagged: hol.fromDecisions };
     })(),
     // Art. 2 named lines, shown apart on the payslip.
     remoteAreaAllowance: wage ? wage.remote || 0 : Number(item.remoteAreaAllowance) || 0,

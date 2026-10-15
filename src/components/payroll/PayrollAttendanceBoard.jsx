@@ -1,14 +1,14 @@
 import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { derivePayrollMonthAttendance } from "@/lib/payrollMonthAttendance";
-import { overtimePay, holidayPay, eidPay } from "@/lib/payrollDerivations";
+import { overtimePay, holidayPay, lineUnpaidLeaveCut } from "@/lib/payrollDerivations";
 import { MUTED, NAVY, OK, WARN, BAD, tableShell, SURFACE, INK } from "@/lib/platformStyles";
 import KpiStrip from "@/components/shared/KpiStrip";
 import { ChromeBox } from "@/components/shared/IdentityCard";
 
 const head = {
   display: "grid",
-  gridTemplateColumns: "minmax(140px,1.2fr) 66px 60px 60px 60px 56px 60px 66px minmax(140px,auto)",
+  gridTemplateColumns: "minmax(140px,1.2fr) 66px 60px 60px 76px 60px 66px minmax(150px,auto)",
   gap: 10,
   padding: "10px 16px",
   background: SURFACE,
@@ -20,7 +20,7 @@ const head = {
 
 const row = {
   display: "grid",
-  gridTemplateColumns: "minmax(140px,1.2fr) 66px 60px 60px 60px 56px 60px 66px minmax(140px,auto)",
+  gridTemplateColumns: "minmax(140px,1.2fr) 66px 60px 60px 76px 60px 66px minmax(150px,auto)",
   gap: 10,
   padding: "12px 16px",
   borderBottom: "1px solid var(--nv-line)",
@@ -42,12 +42,16 @@ export default function PayrollAttendanceBoard({
   const lines = useMemo(() => items.map((item) => {
     const employee = employeeForItem?.(item);
     const att = derivePayrollMonthAttendance(item.employeeId, month, data);
-    const otPay = overtimePay(item.base, att.otHours);
-    const hol = holidayPay(item.base, att.holidayHours);
-    const eid = eidPay(item.base, att.eidHours);
+    // Art. 107: the overtime hour is the actual hourly wage (base + allowances) + 50% of the basic
+    // hourly. Art. 107(3): holiday and Eid hours are overtime at the same formula — no ×2.
+    const otPay = overtimePay(item.base, att.otHours, item.allowances);
+    const holidayHours = Number(item.holidayOvertimeHours) || 0;
+    const hol = holidayPay(item.base, holidayHours, item.allowances);
     const day = Math.round((Number(item.base) || 0) / 30);
-    const cut = (att.absent + att.unpaidLeave) * day;
-    return { item, employee, att, otPay, hol, eid, cut };
+    const cut = att.absent * day;
+    // Art. 116: unpaid leave is wage not due — it lowers the gross, it is not a deduction line.
+    const notDue = lineUnpaidLeaveCut(item);
+    return { item, employee, att, otPay, hol, holidayHours, cut, notDue };
   }), [items, month, data, employeeForItem]);
 
   const tot = lines.reduce((acc, line) => ({
@@ -97,8 +101,8 @@ export default function PayrollAttendanceBoard({
       <div style={tableShell}>
         <div style={head}>
           {(ar
-            ? ["الموظف", "الوردية", "حضر", "إضافي", "عطلة", "عيد", "غياب", "بلا أجر", "أثره في المسير"]
-            : ["Employee", "Shift", "Present", "OT", "Rest", "Eid", "Absent", "Unpaid", "Run effect"]
+            ? ["الموظف", "الوردية", "حضر", "إضافي", "عطل وأعياد", "غياب", "بلا أجر", "أثره في المسير"]
+            : ["Employee", "Shift", "Present", "OT", "Holidays/Eid", "Absent", "Unpaid", "Run effect"]
           ).map((label) => <span key={label}>{label}</span>)}
         </div>
         {lines.length === 0 ? (
@@ -107,8 +111,9 @@ export default function PayrollAttendanceBoard({
           </p>
         ) : lines.map((line) => {
           const effect = [
-            (line.otPay + line.hol + line.eid) ? `+${money(line.otPay + line.hol + line.eid)}` : "",
+            (line.otPay + line.hol) ? `+${money(line.otPay + line.hol)}` : "",
             line.cut ? `− ${money(line.cut)}` : "",
+            line.notDue ? (ar ? `غير مستحق ${money(line.notDue)} (م116)` : `not due ${money(line.notDue)} (Art. 116)`) : "",
           ].filter(Boolean).join(" · ") || (ar ? "لا أثر" : "No effect");
           return (
             <button
@@ -124,8 +129,7 @@ export default function PayrollAttendanceBoard({
               <span dir="ltr">{line.att.shift}</span>
               <span dir="ltr">{line.att.present}</span>
               <span dir="ltr" style={{ color: line.att.otHours ? "var(--nv-ok-ink)" : MUTED }}>{line.att.otHours}</span>
-              <span dir="ltr">{line.att.holidayHours || 0}</span>
-              <span dir="ltr">{line.att.eidHours || 0}</span>
+              <span dir="ltr">{line.holidayHours}</span>
               <span dir="ltr" style={{ color: line.att.absent ? "var(--nv-bad-ink)" : MUTED }}>{line.att.absent}</span>
               <span dir="ltr" style={{ color: line.att.unpaidLeave ? "#8a6516" : MUTED }}>{line.att.unpaidLeave}</span>
               <span style={{

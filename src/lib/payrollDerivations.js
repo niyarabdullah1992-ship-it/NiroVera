@@ -43,14 +43,29 @@ export function overtimePay(base, overtimeHours, allowances = 0) {
   return Math.round((hourly + hourlyFromBase(base) * premium) * hours * 100) / 100;
 }
 
+/**
+ * Art. 107(3): hours worked on official holidays and Eids are overtime hours, priced by the same
+ * Art. 107 formula. They reach the line either inside the approved overtime decisions (flagged
+ * `holiday: true`, already in `overtimeHours`) or as `holidayOvertimeHours` read from approved
+ * attendance on an official holiday that no decision covers — never both.
+ */
+export function lineOvertimeHours(line) {
+  return Math.max(0, Number(line?.overtimeHours) || 0) + Math.max(0, Number(line?.holidayOvertimeHours) || 0);
+}
+
 /** Pay for the month's approved overtime hours, at the statutory Article 107 premium. */
 export function lineOvertimePay(line) {
   if (line?.overtimePay != null) return Number(line.overtimePay) || 0;
-  return overtimePay(Number(line?.base) || 0, Number(line?.overtimeHours) || 0, Number(line?.allowances) || 0);
+  return overtimePay(Number(line?.base) || 0, lineOvertimeHours(line), Number(line?.allowances) || 0);
+}
+
+/** Refunds owed back on this line: an Art. 97 acquittal (`refunds`) and accepted Art. 91 objections (`damageRefunds`). */
+export function lineRefunds(line) {
+  return Math.max(0, Number(line?.refunds) || 0) + Math.max(0, Number(line?.damageRefunds) || 0);
 }
 
 export function lineGross(line) {
-  return (Number(line.base) || 0) + (Number(line.allowances) || 0) + (Number(line.bonus) || 0) + lineOvertimePay(line);
+  return (Number(line.base) || 0) + (Number(line.allowances) || 0) + (Number(line.bonus) || 0) + lineOvertimePay(line) + lineRefunds(line);
 }
 
 /**
@@ -87,7 +102,28 @@ export function lineNet(line) {
   const settled = Number(line?.settledNet);
   if (line?.settledNet != null && Number.isFinite(settled)) return settled;
   if (line?.paid) return (Number(line.base) || 0) + (Number(line.allowances) || 0) + (Number(line.bonus) || 0) - (Number(line.deductions) || 0);
-  return lineGross(line) - (Number(line.deductions) || 0) - gosiEmployeeWithheld(line) - lineInjuryCut(line) - lineSickCut(line);
+  return lineGross(line) - (Number(line.deductions) || 0) - gosiEmployeeWithheld(line) - lineWageNotDue(line);
+}
+
+/**
+ * Wage the law says is not due for the month — not an Art. 92 deduction, so outside the
+ * Art. 93 half-wage cap: sick bands (117), work injury (137/139), unpaid leave (116) and the
+ * unpaid half while detained in a work-related case (97).
+ */
+export function lineWageNotDue(line) {
+  return lineInjuryCut(line) + lineSickCut(line) + lineUnpaidLeaveCut(line) + lineDetentionCut(line);
+}
+
+/** Art. 116: approved unpaid-leave days are wage not due — they reduce the gross, they are not deducted. */
+export function lineUnpaidLeaveCut(line) {
+  if (line?.settledNet != null) return Number(line.settledUnpaidLeaveCut) || 0;
+  return Math.max(0, Number(line?.unpaidLeaveCut) || 0);
+}
+
+/** Art. 97: half the wage while detained in a work-related case (up to 180 days), nothing beyond. */
+export function lineDetentionCut(line) {
+  if (line?.settledNet != null) return Number(line.settledDetentionCut) || 0;
+  return Math.max(0, Number(line?.detentionCut) || 0);
 }
 
 /** Art. 117 sick bands — a quarter off after the first 30 days, nothing after 90. Set by law, not an Art. 92 deduction. */
@@ -114,37 +150,56 @@ export function lineComponents(line) {
     base: Number(line?.base) || 0,
     allowances: Number(line?.allowances) || 0,
     bonus: Number(line?.bonus) || 0,
-    overtimeHours: settled ? Number(line.settledOvertimeHours) || 0 : Math.max(0, Number(line?.overtimeHours) || 0),
+    overtimeHours: settled ? Number(line.settledOvertimeHours) || 0 : lineOvertimeHours(line),
+    holidayOvertimeHours: Math.max(0, Number(line?.holidayOvertimeHours) || 0),
     overtimePay: settled ? Number(line.settledOvertimePay) || 0 : lineOvertimePay(line),
+    refunds: lineRefunds(line),
     deductions: Number(line?.deductions) || 0,
     gosiEmployee: settled ? Number(line.settledGosiEmployee) || 0 : gosiEmployeeWithheld(line),
     injuryCut: lineInjuryCut(line),
     sickCut: lineSickCut(line),
+    unpaidLeaveCut: lineUnpaidLeaveCut(line),
+    detentionCut: lineDetentionCut(line),
+    // Art. 109 / Art. 90: what already left ahead of the month-end transfer (annual leave paid in
+    // advance, weekly instalments). Part of the same net — the transfer carries only the rest.
+    paidAhead: linePaidAhead(line),
     net: lineNet(line),
   };
 }
 
+/** Amounts paid out ahead of the month-end transfer: Art. 109 leave advances and Art. 90 weekly instalments. */
+export function linePaidAhead(line) {
+  const sum = (rows) => (Array.isArray(rows) ? rows : []).reduce((s, r) => s + (r?.paidAt ? Math.max(0, Number(r.amount) || 0) : 0), 0);
+  return Math.round((sum(line?.leaveAdvances) + sum(line?.weeklyPayments)) * 100) / 100;
+}
+
+/** What the month-end transfer still carries once advances and weekly instalments went out. */
+export function lineTransferDue(line) {
+  return Math.max(0, Math.round((lineNet(line) - linePaidAhead(line)) * 100) / 100);
+}
+
 /** The figures to freeze on a line at the moment it is settled. */
 export function settlementStamp(line) {
+  const open = { ...line, settledNet: null };
   return {
     settledNet: lineNet({ ...line, settledNet: null, paid: false }),
-    settledOvertimeHours: Math.max(0, Number(line?.overtimeHours) || 0),
+    settledOvertimeHours: lineOvertimeHours(line),
     settledOvertimePay: lineOvertimePay(line),
     settledGosiEmployee: gosiEmployeeWithheld(line),
-    settledInjuryCut: lineInjuryCut({ ...line, settledNet: null }),
-    settledSickCut: lineSickCut({ ...line, settledNet: null }),
+    settledInjuryCut: lineInjuryCut(open),
+    settledSickCut: lineSickCut(open),
+    settledUnpaidLeaveCut: lineUnpaidLeaveCut(open),
+    settledDetentionCut: lineDetentionCut(open),
     settledAt: new Date().toISOString(),
   };
 }
 
-/**
- * The wage the statutory ratios are measured against: base + allowances.
- *
- * Deliberately without overtime or bonus. Article 93 caps deductions at half "الأجر
- * المستحق" — the contractual wage — so a month with heavy overtime must not widen how
- * much may be deducted from the worker, and the Qiwa contract comparison is a contract
- * figure, not a payment figure.
- */
+/** Every settlement field — cleared together when a paid mark is taken back. */
+export const SETTLEMENT_FIELDS = [
+  "settledNet", "settledOvertimeHours", "settledOvertimePay", "settledGosiEmployee",
+  "settledInjuryCut", "settledSickCut", "settledUnpaidLeaveCut", "settledDetentionCut", "settledAt",
+];
+
 /**
  * The wage the statutory ratios are measured against: base + allowances.
  *
@@ -231,13 +286,16 @@ export function lineIssues(line) {
     const v = line?.[field];
     if (v != null && (!Number.isFinite(Number(v)) || Number(v) < 0)) issues.push("INVALID_AMOUNTS");
   }
-  if (lineNet(line) <= 0) issues.push("NET_REQUIRED");
+  // A month the law leaves wholly unpaid (Arts. 97/116/117/139) may net zero; anything else may not.
+  if (lineNet(line) <= 0 && !(lineWageNotDue(line) > 0)) issues.push("NET_REQUIRED");
   if (!checkArticle93Gate(line).ok) issues.push("ARTICLE_93_EXCEEDED");
   // The ceiling is annual, so weigh the year's approved overtime when the line
   // carries it; a single month can never reach 720 hours on its own.
   if (Number(line.overtimeHoursYtd ?? line.overtimeHours) > ruleValue("hours.ot.annualMaxHours")) issues.push("OT_ANNUAL_CAP");
   const currency = String(line?.currency || "SAR").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) issues.push("CURRENCY_REQUIRED");
+  // Art. 90: the wage and every sum due are paid in the official currency of the Kingdom.
+  else if (currency !== WAGE_CURRENCY) issues.push("CURRENCY_NOT_SAR");
   return [...new Set(issues)];
 }
 
@@ -247,9 +305,20 @@ export function qiwaMatches(line) {
   return Math.abs(expected - Number(line.qiwaWage)) < 1;
 }
 
+/** Art. 90 — the Kingdom's official currency. */
+export const WAGE_CURRENCY = "SAR";
+
+/**
+ * One line with its derived figures. Overtime is priced by Art. 107 on the actual wage
+ * (base + allowances) plus half the basic hourly — the same formula the payslip shows — so the
+ * run header, the approval gate and the slip never disagree. A settled line keeps its stamp.
+ */
 export function enrichLine(line) {
+  const settled = line?.settledNet != null;
   const otHours = Math.max(0, Number(line.overtimeHours) || 0);
-  const otPay = overtimePay(Number(line.base) || 0, otHours);
+  const otPay = settled
+    ? Number(line.settledOvertimePay) || 0
+    : overtimePay(Number(line.base) || 0, lineOvertimeHours(line), Number(line.allowances) || 0);
   return {
     ...line,
     overtimeHours: otHours,
@@ -286,6 +355,10 @@ export function deriveStationBreakdown(items = []) {
 export function deriveRunTotals(items = []) {
   const enriched = items.map(enrichLine);
   return {
+    // Wage not due by law (sick, injury, unpaid leave, detention) and refunds, named apart so the
+    // header still closes: wage + overtime + refunds − deductions − GOSI − not due = total.
+    wageNotDue: enriched.reduce((s, i) => s + lineWageNotDue(i), 0),
+    refunds: enriched.reduce((s, i) => s + lineRefunds(i), 0),
     heads: enriched.length,
     baseAndAllowances: enriched.reduce((s, i) => s + (Number(i.base) || 0) + (Number(i.allowances) || 0), 0),
     overtime: enriched.reduce((s, i) => s + i.overtimePay, 0),
@@ -568,12 +641,15 @@ export function gosiLine(line, { saudi, onDate, registeredAt } = {}) {
   };
 }
 
-export function holidayPay(base, holidayHours) {
-  const hours = Math.max(0, Number(holidayHours) || 0);
-  return Math.round(hourlyFromBase(base) * ruleValue("hours.ot.premium") * hours * 100) / 100;
+/**
+ * Art. 107(3): hours worked on an official holiday are overtime hours — the hourly actual wage
+ * plus 50% of the basic hourly wage. No separate holiday multiplier exists in the Law.
+ */
+export function holidayPay(base, holidayHours, allowances = 0) {
+  return overtimePay(base, holidayHours, allowances);
 }
 
-export function eidPay(base, eidHours) {
-  const hours = Math.max(0, Number(eidHours) || 0);
-  return Math.round(hourlyFromBase(base) * 2 * hours * 100) / 100;
+/** Eid hours are holiday hours (Art. 107(3)) — the same formula; there is no ×2 in the Law. */
+export function eidPay(base, eidHours, allowances = 0) {
+  return overtimePay(base, eidHours, allowances);
 }

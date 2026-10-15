@@ -3,7 +3,7 @@
 // data.payrollRuns and cloud-synced like every other collection.
 import { getCompanyData, updateCompany } from "@/lib/store";
 import { notifyMoney } from "@/lib/moneyNotifications";
-import { checkArticle90Gate, lineNet, settlementStamp, OT_ANNUAL_MAX_HOURS } from "@/lib/payrollDerivations";
+import { checkArticle90Gate, lineNet, settlementStamp, OT_ANNUAL_MAX_HOURS, SETTLEMENT_FIELDS, WAGE_CURRENCY } from "@/lib/payrollDerivations";
 import { PAYROLL_DENY, canFeedPayroll, canManagePayroll, payrollActor } from "@/lib/payrollRights";
 import { logAudit } from "@/lib/auditLog";
 import { derivePayrollWagePatch } from "@/lib/payrollWageSync";
@@ -42,6 +42,23 @@ function persistContractSplit(employee, persistProfile) {
   assignWageFields(profile, next);
 }
 
+/**
+ * Art. 116: unpaid leave is wage not due, carried on the line as `unpaidLeaveCut`. Lines that
+ * older versions posted for it as "attendance" deductions (ATT-<leave id>) would count twice and
+ * eat into the Art. 93 half-wage cap, so they are taken off the open line here.
+ */
+function dropUnpaidLeaveDeductionLines(item, employee) {
+  const lines = item.deductionLines || [];
+  if (!lines.length) return;
+  const leaveRefs = new Set(["ATT-direct", ...(employee?.leaveRequests || [])
+    .filter((row) => ["unpaid", "maternity_extend"].includes(String(row?.type || "").toLowerCase()))
+    .map((row) => `ATT-${row.id}`)]);
+  const kept = lines.filter((line) => !(line?.source === "attendance" && leaveRefs.has(String(line.sourceRefId || ""))));
+  if (kept.length === lines.length) return;
+  item.deductionLines = kept;
+  item.deductions = kept.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
+}
+
 /** Writes contract split, GOSI, and approved overtime onto an unpaid line. */
 export function applyPayrollWagePatch(item, employee, data, month) {
   const patch = derivePayrollWagePatch(item, employee, { otDecisions: data?.otDecisions, month, company: data });
@@ -62,10 +79,15 @@ export function applyPayrollWagePatch(item, employee, data, month) {
     gosiBlockReason: row.gosiBlockReason,
     overtimeHours: row.overtimeHours,
     overtimeHoursYtd: row.overtimeHoursYtd,
+    holidayOvertimeHours: row.holidayOvertimeHours,
+    unpaidLeaveCut: row.unpaidLeaveCut,
+    detentionCut: row.detentionCut,
+    refunds: row.refunds,
     qiwaWage: row.qiwaWage,
   });
   const before = snapshot(item);
   Object.assign(item, patch.fields);
+  dropUnpaidLeaveDeductionLines(item, employee);
   if (patch.fields.housingAllowance == null) {
     delete item.housingAllowance;
     delete item.transportAllowance;
@@ -103,12 +125,14 @@ export function payrollItemIssues(item) {
   const fields = ["allowances", "bonus", "deductions"];
   if (fields.some((field) => !Number.isFinite(Number(item?.[field])) || Number(item[field]) < 0)) return ["INVALID_AMOUNTS"];
   // A month fully without injury compensation (Art. 139) may lawfully net zero.
-  if (!item?.isOwner && netOf(item) <= 0 && !(Number(item?.injuryUnpaid) > 0) && !(Number(item?.injuryWageStop) > 0) && !(Number(item?.sickUnpaid) > 0)) return ["NET_REQUIRED"];
+  if (!item?.isOwner && netOf(item) <= 0 && !(Number(item?.injuryUnpaid) > 0) && !(Number(item?.injuryWageStop) > 0) && !(Number(item?.sickUnpaid) > 0) && !(Number(item?.unpaidLeaveCut) > 0) && !(Number(item?.detentionCut) > 0)) return ["NET_REQUIRED"];
   if (!checkArticle90Gate(item).ok) return ["ARTICLE_93_EXCEEDED"];
   // Year-to-date when the run carries it: one month can never reach 720 hours, so
   // checking the month alone left the annual ceiling unenforceable.
   if (Number(item.overtimeHoursYtd ?? item.overtimeHours) > OT_ANNUAL_MAX_HOURS) return ["OT_ANNUAL_CAP"];
   if (!/^[A-Z]{3}$/.test(String(item?.currency || ""))) return ["CURRENCY_REQUIRED"];
+  // Art. 90: wages and every sum due are paid in the Kingdom's official currency.
+  if (String(item.currency).toUpperCase() !== WAGE_CURRENCY) return ["CURRENCY_NOT_SAR"];
   return [];
 }
 
@@ -317,7 +341,7 @@ export function setItemPaid(companyId, month, itemId, paid) {
       // later change to the net formula can never rewrite a wage that already moved.
       Object.assign(item, settlementStamp(item));
     } else {
-      for (const field of ["settledNet", "settledOvertimeHours", "settledOvertimePay", "settledGosiEmployee", "settledAt"]) delete item[field];
+      for (const field of SETTLEMENT_FIELDS) delete item[field];
     }
     item.paid = paid;
     item.paidAt = paid ? new Date().toISOString() : null;

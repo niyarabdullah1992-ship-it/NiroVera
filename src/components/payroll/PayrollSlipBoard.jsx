@@ -209,6 +209,34 @@ export function slipRows(item, employee, parts, ar, month) {
       source,
     });
   }
+  // Art. 116 — unpaid leave: wage not due for its days, not an Art. 92 deduction.
+  if ((Number(parts.unpaidLeaveCut) || 0) > 0) {
+    rows.push({
+      id: "unpaidLeave",
+      label: ar ? `إجازة بلا أجر — ${Number(item?.unpaidLeaveDays) || 0} يوماً` : `Unpaid leave — ${Number(item?.unpaidLeaveDays) || 0} days`,
+      amount: Number(parts.unpaidLeaveCut) || 0,
+      minus: true,
+      source: ar ? "المادة 116 · أجر غير مستحق لا حسماً" : "Art. 116 · wage not due, not a deduction",
+    });
+  }
+  // Art. 97 — detained in a work-related case: half the wage up to 180 days.
+  if ((Number(parts.detentionCut) || 0) > 0) {
+    rows.push({
+      id: "detention",
+      label: ar ? `توقيف في قضية تتصل بالعمل — ${Number(item?.detentionDays) || 0} يوماً` : `Work-related detention — ${Number(item?.detentionDays) || 0} days`,
+      amount: Number(parts.detentionCut) || 0,
+      minus: true,
+      source: ar ? "المادة 97 · 50٪ حتى 180 يوماً، يُرد إن بُرّئ" : "Art. 97 · 50% up to 180 days, refunded on acquittal",
+    });
+  }
+  if ((Number(parts.refunds) || 0) > 0) {
+    rows.push({
+      id: "refunds",
+      label: ar ? "مردود للعامل" : "Refund to the worker",
+      amount: Number(parts.refunds) || 0,
+      source: ar ? "المادة 97 بالبراءة · المادة 91 بقبول الاعتراض" : "Art. 97 acquittal · Art. 91 accepted objection",
+    });
+  }
   const injuryDays = Number(item?.injuryDays) || 0;
   if (injuryDays > 0) {
     if (item?.injuryCovered === false) {
@@ -467,8 +495,8 @@ export default function PayrollSlipBoard({
 
   const live = facedForGosi(item, employee, month);
   const parts = lineComponents(live);
-  const gross = parts.base + parts.allowances + parts.bonus + (Number(parts.overtimePay) || 0);
-  const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0);
+  const gross = parts.base + parts.allowances + parts.bonus + (Number(parts.overtimePay) || 0) + (Number(parts.refunds) || 0);
+  const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0) + (Number(parts.unpaidLeaveCut) || 0) + (Number(parts.detentionCut) || 0);
   const rows = slipRows(live, employee, parts, ar, month);
   const allOn = rows.length > 0 && rows.every((row) => picked.has(row.id));
   const toggle = (id) => {

@@ -6,6 +6,7 @@ import { checkResignationGate, checkTerminationGate } from "./contractLawDerivat
 import { citeRule, ruleValue } from "./laborRules.js";
 import { accruedAnnualDaysAtExit } from "./leaveTypes.js";
 import { checkExitCloseoutGate, eosWageBase } from "./laborProtectionGates.js";
+import { suspendedDaysFromUnpaidLeave } from "./contractSuspension.js";
 
 export const ANNUAL_ENTITLEMENT_DAYS = 21;
 export const MS_PER_YEAR = 31557600000;
@@ -17,11 +18,25 @@ function parseLocalDate(isoDate) {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
-export function serviceYears(hireDate, nowMs = Date.now()) {
+/** Service in years to `nowMs`, less contract-suspended days (Art. 116 — unpaid leave beyond 20 a year). */
+export function serviceYears(hireDate, nowMs = Date.now(), suspendedDays = 0) {
   const d = parseLocalDate(hireDate);
   if (!d) return 0;
-  return Math.max(0, (nowMs - d.getTime()) / MS_PER_YEAR);
+  return Math.max(0, (nowMs - d.getTime() - Math.max(0, Number(suspendedDays) || 0) * 86400000) / MS_PER_YEAR);
 }
+
+/**
+ * The day service ends (Arts. 84/87/111): the contract-exit effective date, else the last working
+ * day, else `nowMs`. Award, Art. 87 windows and accrued leave are all measured to it.
+ */
+export function eosEndMs(caseRow = {}, nowMs = Date.now()) {
+  const exit = caseRow?.contractExit || caseRow?.profile?.contractExit || {};
+  const d = parseLocalDate(exit.effectiveDate || exit.lastDay || caseRow?.lastWorkDate || caseRow?.lastDay);
+  return d ? d.getTime() : nowMs;
+}
+
+/** Exit reasons that are the worker leaving through force majeure beyond his will (Art. 87). */
+export const WORKER_FORCE_MAJEURE = "worker_force_majeure";
 
 export function isPreStart(hireDate, nowMs = Date.now()) {
   const d = parseLocalDate(hireDate);
@@ -65,6 +80,8 @@ export function eosResignationFraction(years, onDate) {
 export function art87FullAward(caseRow, nowMs = Date.now()) {
   const exit = caseRow.contractExit || {};
   const reason = String(exit.reason || caseRow.exitReason || "").trim();
+  // Art. 87: the worker who leaves through force majeure beyond his will keeps the full award.
+  if (reason === WORKER_FORCE_MAJEURE || (reason === "resignation" && exit.forceMajeure === true)) return true;
   if (reason && reason !== "resignation") return false;
   if (!isFemale(caseRow.gender || caseRow.profile?.gender)) return false;
   const endIso = localIso(nowMs);
@@ -95,7 +112,7 @@ export function deriveSettlementDeadline(input = {}, nowMs = Date.now()) {
   const onDate = input.today || localIso(nowMs);
   const reason = String(input.reason || input.contractExit?.reason || "").trim();
   const last = String(input.lastWorkDate || input.effectiveDate || input.contractExit?.effectiveDate || "").slice(0, 10);
-  const workerEnded = reason === "resignation" || reason === "article_81";
+  const workerEnded = reason === "resignation" || reason === "article_81" || reason === WORKER_FORCE_MAJEURE;
   const days = workerEnded
     ? ruleValue("eos.settlement.workerDays", onDate)
     : ruleValue("eos.settlement.employerDays", onDate);
@@ -104,6 +121,11 @@ export function deriveSettlementDeadline(input = {}, nowMs = Date.now()) {
     return { ok: true, pending: true, days, workerEnded, due: null, late: false, cite };
   }
   const due = addCalendarDays(last, days);
+  // Art. 88 closes when the settlement is paid — a paid-on-time settlement is never "late".
+  const paidAt = String(input.settlementPaidAt || input.contractExit?.settlementPaidAt || "").slice(0, 10);
+  if (paidAt) {
+    return { ok: true, pending: false, days, workerEnded, lastWorkDate: last, due, late: false, paidAt, paidLate: paidAt > due, closed: true, cite };
+  }
   const late = onDate > due;
   return {
     ok: true,
@@ -217,10 +239,13 @@ function annualEntitlementDays(caseRow, onDate, nowMs) {
   return Math.max(Number(custom) || 0, floor);
 }
 
-export function deriveEos(caseRow, nowMs = Date.now()) {
+export function deriveEos(caseRow, nowMs = eosEndMs(caseRow)) {
   const hireDate = caseRow.hireDate || caseRow.profile?.hireDate || null;
   const preStart = isPreStart(hireDate, nowMs);
-  const years = preStart ? 0 : serviceYears(hireDate, nowMs);
+  const onDate = localIso(nowMs);
+  // Art. 116 + Art. 2: unpaid-leave days beyond 20 a contract year suspend the contract.
+  const suspendedDays = preStart ? 0 : suspendedDaysFromUnpaidLeave(caseRow.leaveRequests || caseRow.profile?.leaveRequests || [], hireDate, onDate);
+  const years = preStart ? 0 : serviceYears(hireDate, nowMs, suspendedDays);
   const eosBase = eosWageBase({
     ...caseRow,
     profile: caseRow.profile || {},
@@ -228,8 +253,9 @@ export function deriveEos(caseRow, nowMs = Date.now()) {
     allowances: caseRow.allowances ?? caseRow.profile?.allowances,
     bonus: caseRow.bonus ?? caseRow.profile?.bonus,
   });
-  const wage = eosBase.wage;
-  const onDate = localIso(nowMs);
+  // Art. 96: piece / commission-only wages settle on the last year's average actual wage.
+  const averageBasis = Number(caseRow.averageWage) > 0 && caseRow.averageWageBasis === true;
+  const wage = averageBasis ? Number(caseRow.averageWage) : eosBase.wage;
   const entitlement = annualEntitlementDays(caseRow, onDate, nowMs);
   const accrued = preStart ? 0 : accruedAnnualDaysAtExit(hireDate, entitlement, onDate);
   const unused = Math.round(unusedAnnualDays(Number(caseRow.annualLeaveUsed) || 0, accrued) * 10) / 10;
@@ -260,6 +286,11 @@ export function deriveEos(caseRow, nowMs = Date.now()) {
   return {
     hireDate,
     preStart,
+    endDate: onDate,
+    suspendedDays,
+    averageBasis,
+    commissionsExcluded: eosBase.commissionsExcluded,
+    commission: eosBase.commission,
     years,
     wage,
     unusedAnnualDays: unused,
@@ -312,7 +343,7 @@ export function enrichOffboardingCase(caseRow, nowMs = Date.now()) {
     assets,
     outstandingCount: outstanding,
     gateOpen: status === "completed" ? false : gateOpen,
-    eos: deriveEos(caseRow, nowMs),
+    eos: deriveEos(caseRow, eosEndMs(caseRow, nowMs)),
     steps: deriveOffboardingSteps({ ...caseRow, assets, status }),
     accessRevoked: !!(caseRow.accessRevoked || status === "completed"),
     qiwaNotified: !!(caseRow.qiwaNotified || status === "completed"),

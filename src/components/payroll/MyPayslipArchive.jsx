@@ -35,8 +35,8 @@ export function payslipArchiveItems(runs = [], employeeIds = [], ar = true) {
     .sort((a, b) => String(b.run.month).localeCompare(String(a.run.month)))
     .map(({ run, line }) => {
       const parts = lineComponents(line);
-      const gross = parts.base + parts.allowances + parts.bonus + (Number(parts.overtimePay) || 0);
-      const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0);
+      const gross = parts.base + parts.allowances + parts.bonus + (Number(parts.overtimePay) || 0) + (Number(parts.refunds) || 0);
+      const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0) + (Number(parts.unpaidLeaveCut) || 0) + (Number(parts.detentionCut) || 0);
       const [y, m] = run.month.split("-").map(Number);
       const lastDay = new Date(y, m, 0).getDate();
       return {

@@ -20,6 +20,7 @@ export const TERMINATION_REASONS = [
   { id: "contract_end", article: "74", ar: "انتهاء المدة", en: "End of term" },
   { id: "resignation", article: "74", ar: "استقالة", en: "Resignation" },
   { id: "force_majeure", article: "74", ar: "قوة قاهرة", en: "Force majeure" },
+  { id: "worker_force_majeure", article: "87", ar: "ترك العامل العمل لقوة قاهرة خارجة عن إرادته — المكافأة كاملة (المادة 87)", en: "Worker left through force majeure beyond his will — full award (Art. 87)" },
   { id: "closure", article: "74", ar: "إغلاق المنشأة / الإفلاس", en: "Closure / insolvency" },
   { id: "retirement", article: "74", ar: "بلوغ سن التقاعد", en: "Retirement age" },
   { id: "death", article: "74", ar: "وفاة العامل", en: "Worker's death" },

@@ -126,7 +126,9 @@ assert.equal(expatGosi.employerShare, 180);
 const capped = gosiLine({ base: 40000, allowances: 10000 }, { saudi: true });
 assert.equal(capped.base, 45000);
 assert.equal(holidayPay(2400, 8), 120);
-assert.equal(eidPay(2400, 8), 160);
+// Art. 107(3): Eid hours are holiday hours — the same Art. 107 formula, no ×2 (deliberately changed from 160).
+assert.equal(eidPay(2400, 8), 120);
+assert.equal(eidPay(2400, 8, 600), holidayPay(2400, 8, 600));
 
 // One net for the whole surface: approved overtime is inside it, and the employee's own
 // GOSI share is withheld from it — only when the line says the employee is Saudi.

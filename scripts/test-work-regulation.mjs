@@ -13,7 +13,8 @@ assert.deepEqual(parseRegulationStep("يوم"), { ok: true, kind: "fine", days: 
 assert.deepEqual(parseRegulationStep("يومان"), { ok: true, kind: "fine", days: 2 });
 assert.deepEqual(parseRegulationStep("حسم يومين"), { ok: true, kind: "fine", days: 2 });
 assert.deepEqual(parseRegulationStep("3 أيام"), { ok: true, kind: "fine", days: 3 });
-assert.equal(parseRegulationStep("فصل مع المكافأة").kind, "dismiss");
+assert.equal(parseRegulationStep("فصل مع المكافأة").kind, "dismissal_with_award", "model Art. 58(6) — with award is its own penalty");
+assert.equal(parseRegulationStep("فصل بدون مكافأة أو إشعار أو تعويض بموجب المادة (الثمانين)").kind, "dismiss");
 assert.equal(parseRegulationStep("7 أيام").ok, false, "over the Art. 70 five-day cap");
 assert.equal(parseRegulationStep("خصم مزاجي").ok, false);
 assert.equal(regulationStepLabel(parseRegulationStep("10%")), "غرامة 10% من أجر يوم");
@@ -21,10 +22,10 @@ for (const c of MODEL_REGULATION.clauses) for (const s of c.steps) assert.ok(par
 
 // Model until the company records its own.
 assert.equal(regulationOf({}).source, "model");
-const own = regulationOf({ workRegulation: { approvalNo: "77", approvedAt: "2026-01-10", clauses: [{ id: "late", ar: "التأخر", steps: ["إنذار كتابي", "10%", "يوم", "يومان"] }] } });
+const own = regulationOf({ workRegulation: { approvalNo: "77", approvedAt: "2026-01-10", announcedAt: "2026-01-11", clauses: [{ id: "late", ar: "التأخر", steps: ["إنذار كتابي", "10%", "يوم", "يومان"] }] } });
 assert.equal(own.source, "own");
 assert.match(regulationRef(own, own.clauses[0]), /البند 1 من لائحة تنظيم العمل المعتمدة رقم 77 بتاريخ 10 يناير 2026/);
-assert.match(regulationRef(MODEL_REGULATION, MODEL_REGULATION.clauses[1]), /البند 2 من النموذج الاسترشادي/);
+assert.match(regulationRef(MODEL_REGULATION, MODEL_REGULATION.clauses[1]), /البند 2 من جدول «أولاً: مخالفات تتعلق بمواعيد العمل» من النموذج الموحد/);
 
 // Draft checks.
 assert.ok(checkRegulationDraft({ approvalNo: "", approvedAt: "", clauses: [] }).length >= 3);

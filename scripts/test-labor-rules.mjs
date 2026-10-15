@@ -379,7 +379,16 @@ const probationRepeatOk = checkProbationGate({
   probationPriorAtEmployer: true,
   probationRehireGapMonths: 6,
 });
-assert.equal(probationRepeatOk.ok, true);
+// Art. 54: the exception still needs the parties' written agreement on file (updated deliberately).
+assert.equal(probationRepeatOk.error, "PROBATION_SECOND_WRITTEN");
+assert.equal(checkProbationGate({
+  probation: true,
+  probationDays: 90,
+  probationPriorAtEmployer: true,
+  probationRehireGapMonths: 6,
+  probationSecondWritten: true,
+  probationSecondFile: { name: "agreement.pdf" },
+}).ok, true);
 
 const resignNone = checkResignationGate({});
 assert.equal(resignNone.ok, false);

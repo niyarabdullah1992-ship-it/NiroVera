@@ -7,6 +7,7 @@ import { toast } from "@/components/ui/use-toast";
 import { decorateDisciplineCase, deriveDisciplineBoard, isDisciplineSettled, isErasedFromEmployeeRecord } from "@/lib/disciplineBoard";
 import {
   checkAdvanceDisciplineGate,
+  checkDisciplineDeliveryGate,
   checkRaiseDisciplineGate,
   checkSignDisciplineGate,
   DISCIPLINE_PENALTY_KINDS,
@@ -39,9 +40,10 @@ import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { ROLE_RANK, canSeeAllStations, hrScopeStations, visibleStations } from "@/lib/permissions";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { useRailSide, useSetRailSide } from "@/lib/railSide";
-import { regulationDate, regulationOf, regulationRef, regulationStepFor } from "@/lib/workRegulation";
+import { checkPublishRegulationGate, planRegulationAck, regulationDate, regulationNextStep, regulationOf, regulationRef, regulationStepFor } from "@/lib/workRegulation";
 import { deadlineText, disciplineDeadlines } from "@/lib/disciplineDeadlines";
 import { ruleValue } from "@/lib/laborRules";
+import { saveDisciplineOnServer } from "@/lib/disciplineServer";
 
 const MANAGE_TAB_ORDER = ["manage", "raise", "calc", "schedule", "law", "archive"];
 const EMPLOYEE_TAB_ORDER = ["mine", "schedule", "law", "archive"];
@@ -202,6 +204,7 @@ export default function Discipline() {
   const [penaltyDays, setPenaltyDays] = useState(1);
   const [discoveredAt, setDiscoveredAt] = useState(() => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date()));
   const [dismissGround, setDismissGround] = useState("");
+  const [art80, setArt80] = useState({});
   const [offSite, setOffSite] = useState(false);
   const [workConnected, setWorkConnected] = useState("");
   const [note, setNote] = useState("");
@@ -367,9 +370,17 @@ export default function Discipline() {
     }
     const stationId = resolveDisciplineWorkStationId(person);
     const now = new Date().toISOString();
-    saveCases([
+    const newId = uid();
+    const serverCheck = (rows) => {
+      const row = rows.find((r) => r.id === newId);
+      saveDisciplineOnServer(company?.id, "raise", row, regulation).then((r) => {
+        if (r.error) toast({ description: ar ? r.reason : r.reasonEn, variant: "destructive" });
+      });
+      return rows;
+    };
+    saveCases(serverCheck([
       {
-        id: uid(),
+        id: newId,
         employeeId,
         stationId,
         status: "notice",
@@ -381,7 +392,8 @@ export default function Discipline() {
         penaltyEn: listedPenaltyLabel(penaltyKind, cutDays, false),
         cutDays,
         deferMonths: kindSpec.deferMonths || 0,
-        dismissGround: penaltyKind === "dismiss" ? dismissGround.trim() : "",
+        dismissGround: penaltyKind === "dismiss" || penaltyKind === "dismissal_with_award" ? dismissGround.trim() : "",
+        ...(penaltyKind === "dismiss" ? { art80: { ...art80, discoveredAt } } : {}),
         ...(clauseStep ? {
           regulationClauseId: clauseStep.clause.id,
           regulationSource: regulation.source,
@@ -406,10 +418,11 @@ export default function Discipline() {
         }],
       },
       ...cases,
-    ]);
+    ]));
     setNote("");
     setClauseId("");
     setDismissGround("");
+    setArt80({});
     setOffSite(false);
     setWorkConnected("");
     setTab("manage");
@@ -439,16 +452,20 @@ export default function Discipline() {
       return;
     }
     if (actionId === "sign") {
-      const signGate = checkSignDisciplineGate(item, { today: board.today, cases });
+      const signGate = checkSignDisciplineGate(item, { today: board.today, cases, regulation });
       if (!signGate.ok) {
         toast({ description: ar ? signGate.reason : signGate.reasonEn, variant: "destructive" });
         return;
       }
-      const signed = { status: "notify", decidedAt: now, signedAt: now, signedBy: who, notifiedAt: item.notifiedAt || now, hearingEndedAt: item.hearingEndedAt || now };
+      const next = item.regulationClauseId ? regulationNextStep(regulation, item.regulationClauseId, item.regulationTime || 1, true) : null;
+      const signed = { status: "notify", decidedAt: now, signedAt: now, signedBy: who, notifiedAt: item.notifiedAt || now, hearingEndedAt: item.hearingEndedAt || now, ...(next ? { regulationNext: next.label } : {}) };
       const person = employees.find((row) => String(row.id) === String(item.employeeId));
       const post = planDisciplineFinePost({ ...item, ...signed }, person, currentUser, board.today);
       const nextLedger = post ? [...ledger, post] : ledger;
       saveCases(cases.map((row) => (row.id === item.id ? { ...row, ...signed, updatedAt: now, fineAmount: post?.amount || row.fineAmount } : row)), { disciplineFineLedger: nextLedger });
+      saveDisciplineOnServer(company?.id, "sign", { ...item, ...signed }, regulation).then((r) => {
+        if (r.error) toast({ description: ar ? r.reason : r.reasonEn, variant: "destructive" });
+      });
       if (company?.id && Number(item.cutDays || 0) > 0) {
         const cutResult = generateDisciplineDeduction(company.id, item.employeeId, { ...item, ...signed }, currentUser);
         if (cutResult === "NO_OPEN_ITEM") {
@@ -550,6 +567,18 @@ export default function Discipline() {
     setAppealDraft("");
   };
 
+  // Model regulation Art. 68 · Law Art. 72 — how and when the decision reached the worker.
+  const recordDelivery = (item, { method, at, ref }) => {
+    const person = employees.find((row) => String(row.id) === String(item.employeeId));
+    const gate = checkDisciplineDeliveryGate({ method, at, ref, employee: person, signedAt: item.signedAt || item.decidedAt, today: board.today });
+    if (!gate.ok) {
+      toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
+      return false;
+    }
+    patch(item, { notifyMethod: method, notifyDeliveredAt: String(at).slice(0, 10), notifyRef: String(ref || "").trim(), notifyRecordedBy: currentUser?.name || "" });
+    return true;
+  };
+
   const withdrawObject = (item) => {
     patch(item, { status: "notify", appealNote: "", appealedAt: "", appealFile: null });
   };
@@ -579,10 +608,34 @@ export default function Discipline() {
             today={board.today}
             regulation={regulation}
             canEdit={adminVoice}
+            employees={employees}
+            meId={currentUser?.id || ""}
+            onAnnounce={() => {
+              const gate = checkPublishRegulationGate(regulation, { today: board.today, ar });
+              if (!gate.ok || !company?.id) {
+                toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
+                return;
+              }
+              updateCompany(company.id, (row) => {
+                row.workRegulation = { ...(row.workRegulation || {}), announcedAt: board.today, announcedBy: currentUser?.name || "", acks: {} };
+              });
+              toast({ description: ar ? `أُعلنت اللائحة — تسري على العمال من ${regulationDate(gate.effectiveFrom, true)}.` : `Announced — binding from ${gate.effectiveFrom}.` });
+            }}
+            onAck={() => {
+              const plan = planRegulationAck(regulation, currentUser);
+              if (!plan.ok || !company?.id) {
+                toast({ description: ar ? plan.reason : plan.reasonEn, variant: "destructive" });
+                return;
+              }
+              updateCompany(company.id, (row) => {
+                row.workRegulation = { ...(row.workRegulation || {}), acks: { ...((row.workRegulation || {}).acks || {}), [plan.employeeId]: plan.ack } };
+              });
+            }}
             onSave={(next) => {
               if (!company?.id) return;
               updateCompany(company.id, (row) => {
-                row.workRegulation = { ...next, savedBy: currentUser?.name || "", savedAt: new Date().toISOString() };
+                // A re-saved regulation is a new version: announce it again (Art. 13) and collect fresh acknowledgements.
+                row.workRegulation = { ...next, savedBy: currentUser?.name || "", savedAt: new Date().toISOString(), version: new Date().toISOString(), announcedAt: "", acks: {} };
               });
               toast({ description: ar ? "حُفظت لائحة تنظيم العمل المعتمدة — كل جزاء جديد يسمّي بنده منها." : "The approved regulation is saved — every new sanction names its clause." });
             }}
@@ -626,6 +679,8 @@ export default function Discipline() {
             workConnected={workConnected}
             onWorkConnected={setWorkConnected}
             dismissGround={dismissGround}
+            art80={art80}
+            onArt80={setArt80}
             onDismissGround={setDismissGround}
             onSubmit={openCase}
             regulation={regulation}
@@ -745,6 +800,8 @@ export default function Discipline() {
                   ar={ar}
                   onAction={onAction}
                   onUploadSigned={onUploadSigned}
+                  onDelivery={recordDelivery}
+                  today={board.today}
                   companyName={company?.name || ""}
                 />
               </div>

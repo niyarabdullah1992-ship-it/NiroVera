@@ -21,7 +21,15 @@ import {
   visibleArbitrationOutcomes,
 } from "../../shared/arbitrationDerivations.ts";
 
+import {
+  checkAdvanceDisciplineGate,
+  checkRaiseDisciplineGate,
+  checkSignDisciplineGate,
+} from "../../shared/disciplineDerivations.ts";
+
 const COMPLIANCE_CATEGORY = "employeeCompliance";
+const DISCIPLINE_CATEGORY = "disciplinaryCases";
+const REGULATION_CATEGORY = "workRegulation";
 const SETTINGS_CATEGORY = "companyMeta";
 const SETTINGS_LEGACY_CATEGORY = "companySettings"; // do-not-write — read fallback only
 const ARBITRATION_CATEGORY = "arbitrationOutcomes";
@@ -353,6 +361,63 @@ Deno.serve(async (req) => {
       await saveBlob(SETTINGS_CATEGORY, Array.isArray(metaBlob?.payload) || !metaBlob ? [settings] : settings);
       await audit("compliance.setGosiEstablishment", `Set GOSI establishment ${number}`);
       return Response.json({ ok: true, gosiEstablishment: number });
+    }
+
+    /**
+     * Saves one sanction file after the same Arts. 66–73 / Art. 80 / model-regulation gates the page runs:
+     * stage "raise" (new file), "sign" (decision), or an advance step ("hearing" | "appeal" | "ruling").
+     * The regulation comes from the stored blob when there is one, else the workspace copy the page sends.
+     */
+    if (action === "disciplineSave") {
+      if (!isManager && body.stage !== "appeal") {
+        return Response.json({ error: "FORBIDDEN", reason: "ملفات الجزاء للإدارة.", reasonEn: "Sanction files are management-only." }, { status: 403 });
+      }
+      const row = (body.caseRow || {}) as Record<string, any>;
+      if (!row.id || !row.employeeId) {
+        return Response.json({ error: "CASE_REQUIRED", reason: "يلزم ملف جزاء مربوط بموظف.", reasonEn: "A sanction file tied to an employee is required." }, { status: 400 });
+      }
+      const blob = await loadBlob(DISCIPLINE_CATEGORY);
+      const cases = (Array.isArray(blob?.payload) ? blob.payload : []) as Array<Record<string, any>>;
+      const regBlob = await loadBlob(REGULATION_CATEGORY);
+      // The regulation lives in the company workspace; a stored blob wins over the copy the page sends.
+      const regRaw = (Array.isArray(regBlob?.payload) ? regBlob.payload[0] : regBlob?.payload) || body.regulation || null;
+      const regulation = regRaw && Array.isArray(regRaw.clauses) && regRaw.clauses.length ? { ...regRaw, source: "own" } : null;
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+      const stage = String(body.stage || "");
+      let gate: any = { ok: true };
+      if (stage === "raise") {
+        const emps = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId });
+        const emp = (emps || []).find((e: any) => String(e.employeeId || e.id) === String(row.employeeId));
+        gate = checkRaiseDisciplineGate({
+          employee: emp ? { id: String(row.employeeId), stationId: emp.stationId || emp.station_id || row.stationId } : null,
+          actor: { id: String(auth.userId || "") },
+          note: row.note,
+          today,
+          discoveredAt: row.discoveredAt,
+          penaltyKind: row.penaltyKind,
+          cutDays: row.cutDays,
+          dismissGround: row.dismissGround,
+          offSite: !!row.offSite,
+          workConnected: row.workConnected,
+          cases: cases.filter((c) => String(c.id) !== String(row.id)),
+        });
+      } else if (stage === "sign") {
+        gate = checkSignDisciplineGate(row, { today, cases: cases.filter((c) => String(c.id) !== String(row.id)), regulation });
+      } else if (["hearing", "appeal", "ruling"].includes(stage)) {
+        gate = checkAdvanceDisciplineGate(row as any, stage, { today, appealNote: row.appealNote, hearingMinutes: row.hearingMinutes });
+      } else {
+        return Response.json({ error: "STAGE_REQUIRED", reason: "حدّد المرحلة.", reasonEn: "Name the stage." }, { status: 400 });
+      }
+      if (!gate.ok) {
+        return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, cite: gate.cite || null }, { status: 400 });
+      }
+      const idx = cases.findIndex((c) => String(c.id) === String(row.id));
+      const saved = { ...(idx >= 0 ? cases[idx] : {}), ...row, companyId: auth.companyId, updatedAt: new Date().toISOString() };
+      if (idx >= 0) cases[idx] = saved;
+      else cases.unshift(saved);
+      await saveBlob(DISCIPLINE_CATEGORY, cases);
+      await audit(`discipline.${stage}`, `Sanction file ${row.id} — ${stage}`, { employeeId: row.employeeId, caseId: row.id });
+      return Response.json({ ok: true, case: saved });
     }
 
     return Response.json({ error: `Unknown action: ${action}` }, { status: 400 });

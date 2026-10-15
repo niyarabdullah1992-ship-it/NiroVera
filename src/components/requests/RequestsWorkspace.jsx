@@ -146,6 +146,7 @@ import { checkRaiseSignableGate, isLetterSignableType } from "@/lib/requestSigni
 import RequestDecisionComposer from "@/components/requests/RequestDecisionComposer";
 import { regulationDate } from "@/lib/workRegulation";
 import { checkGroundedRefusalGate, refusalGroundsFor, refusalText, SERVICE_CERT_AR, SERVICE_CERT_EN } from "@/lib/statutoryRefusal";
+import { checkServiceCertificateGate } from "@/lib/employerDuties";
 import { attendanceOnDate, checkPunchRecordGate, parsePunchClock } from "@/lib/attendancePunch";
 import PendingRequestFinder from "@/components/requests/PendingRequestFinder";
 import ManagerEmployeeRegister from "@/components/requests/ManagerEmployeeRegister";
@@ -4178,7 +4179,9 @@ export default function RequestsWorkspace({
                         laborCalendar,
                         examNoticeIssuedAt: noticeIssued || undefined,
                       })
-                      : checkApproveOtherRequestGate({ ...row, issuedFile: draftIssued[key] });
+                      : row.docKind === "exp" && !checkServiceCertificateGate(row.employee).ok
+                        ? checkServiceCertificateGate(row.employee) // Art. 64(1): join date, end date, profession, last wage on file first
+                        : checkApproveOtherRequestGate({ ...row, issuedFile: draftIssued[key] });
                     const rejectGate = row.family === "leave"
                       ? checkRejectLeaveGate(leaveForGate, {
                         nextStatus: "rejected",

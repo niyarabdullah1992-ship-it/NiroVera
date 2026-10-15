@@ -2,6 +2,8 @@ import React, { useRef, useState } from "react";
 import { isHeatBanDate } from "@/lib/contractLawDerivations";
 import { SAFETY_REPORT_CONTROLS, deriveOpenRiskMap, safetyReportSlaLine } from "@/lib/safetyReportCard";
 import { PERMIT_TYPES } from "@/lib/safetyStandards";
+import { deriveTrainingRegister } from "@/lib/employerDuties";
+import TrainingMedicalPanel from "@/components/safety/TrainingMedicalPanel";
 
 const MONO = "'IBM Plex Mono', monospace";
 
@@ -72,7 +74,7 @@ function Kpi({ label, value, sub, tone }) {
   );
 }
 
-export function SafetyDashboard({ ar, stations, recFor, onOpenRegister }) {
+export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = null, companyId = "", canEdit = false }) {
   const L = (a, e) => (ar ? a : e);
   const now = Date.now();
   const openReports = [];
@@ -150,9 +152,19 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
         <Kpi label={L("مخاطر مفتوحة", "Open hazards")} value={openHazards} sub={L("في نطاقك", "In your scope")} tone={openHazards ? "bad" : "ok"} />
         <Kpi label={L("تصاريح عمل سارية", "Live permits")} value={activePermits} sub={expiringWeek ? (ar ? `${expiringWeek} تنتهي هذا الأسبوع` : `${expiringWeek} expire this week`) : "—"} tone={expiringWeek ? "warn" : "ok"} />
-        <Kpi label={L("إتمام تدريب السلامة", "Safety training")} value="—" sub={L("لا سجل تدريب في النطاق", "No training record in scope")} />
+        {(() => {
+          const scopeIds = new Set(stations.map((s) => String(s.id)));
+          const scoped = (data?.employees || []).filter((e) => scopeIds.has(String(e.stationId || e.station_id || "")));
+          const reg = deriveTrainingRegister({ employees: scoped });
+          const any = scoped.some((e) => (e.trainings || []).length);
+          return any
+            ? <Kpi label={L("إتمام تدريب السلامة", "Safety training")} value={`${Math.round(reg.safetyShare * 100)}%`} sub={ar ? `${reg.trained} من ${reg.headcount} تدرّبوا هذا العام · المواد 42–44` : `${reg.trained} of ${reg.headcount} trained this year`} tone={reg.safetyShare >= 0.8 ? "ok" : "warn"} />
+            : <Kpi label={L("إتمام تدريب السلامة", "Safety training")} value="—" sub={L("لا سجل تدريب في النطاق — يُسجَّل من ملف العامل", "No training record in scope — add it on the worker's file")} />;
+        })()}
         <Kpi label={L("جاهزية الفروع", "Branch readiness")} value={readyAvg == null ? "—" : `${readyAvg}%`} sub={L("الإسعاف · الإطفاء · الإخلاء", "First aid · fire · evacuation")} tone={readyAvg == null ? null : readyAvg >= 80 ? "ok" : "warn"} />
       </div>
+
+      {data ? <TrainingMedicalPanel data={data} companyId={companyId} ar={ar} canEdit={canEdit} /> : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: 14 }}>
         <article style={shell}>
@@ -527,7 +539,7 @@ export function SafetyInjuryTable({ ar, rows }) {
       <header style={{ padding: "12px 14px", borderBottom: "1px solid var(--nv-line)", display: "flex", justifyContent: "space-between", gap: 8 }}>
         <strong style={{ fontSize: 13.5 }}>{L("الحوادث والإصابات", "Incidents and injuries")}</strong>
         <span style={{ fontSize: 11.5, color: shown.some((row) => row.item.card?.injured && row.item.status !== "closed") ? "#9B2335" : "var(--nv-ink3)" }}>
-          {L("إصابة العمل تُبلَّغ فوراً — المادة 133", "A work injury is reported at once — Art. 133")}
+          {L("إصابة العمل تُبلَّغ للتأمينات خلال عشرة أيام أو لمكتب العمل خلال أسبوع — المادة 141 · اللائحة م28", "A work injury is reported to GOSI within ten days, or the labour office within a week — Art. 141 · Regs Art. 28")}
         </span>
       </header>
       <div style={{ overflow: "auto" }}>

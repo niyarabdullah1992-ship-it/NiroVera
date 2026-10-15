@@ -13,7 +13,11 @@ import { MUTED, NAVY_FILL, field, ui } from "@/lib/platformStyles";
 import IdentityCard from "@/components/shared/IdentityCard";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
-import { WORK_PATTERN_OPTIONS, workPatternForcesFixed } from "@/lib/contractLawDerivations";
+import { WORK_PATTERN_OPTIONS, checkProbationGate, workPatternForcesFixed } from "@/lib/contractLawDerivations";
+import { getCompanyData } from "@/lib/store";
+import { checkContractRequiredContent, checkContractSaveGate, contractModelFields, contractSheet } from "@/lib/contractDocument";
+import { printSheet } from "@/lib/printSheet";
+import { readConsentFile } from "@/lib/writtenConsent";
 
 export default function ContractForm({ employee, companyId, contract, ar, onDone }) {
   const [file, setFile] = useState(null);
@@ -31,6 +35,27 @@ export default function ContractForm({ employee, companyId, contract, ar, onDone
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  // Arts. 51–52 · Regs Art. 18: the contract may be generated from the unified model instead of uploaded.
+  const [generate, setGenerate] = useState(Boolean(contract?.generated) || !contract?.fileUrl);
+  const [qiwa, setQiwa] = useState(employee?.profile?.qiwaRegistered !== false && Boolean(employee?.profile?.qiwaRegistered));
+  const [probation, setProbation] = useState(Boolean(employee?.profile?.probation));
+  const [probationDays, setProbationDays] = useState(String(employee?.profile?.probationDays || ""));
+  const [priorProbation, setPriorProbation] = useState(Boolean(employee?.profile?.probationPriorAtEmployer));
+  const [secondWritten, setSecondWritten] = useState(Boolean(employee?.profile?.probationSecondWritten));
+  const [secondFile, setSecondFile] = useState(employee?.profile?.probationSecondFile || null);
+  const companyData = getCompanyData(companyId) || {};
+  const station = (companyData.stations || []).find((row) => String(row.id) === String(employee?.stationId || employee?.station_id || ""));
+  const modelFields = contractModelFields({
+    employee,
+    company: {
+      name: companyData.legalName || companyData.name || "",
+      address: companyData.settings?.address || companyData.address || companyData.settings?.city || "",
+      crNumber: companyData.settings?.crNumber || companyData.crNumber || "",
+    },
+    station,
+    contract: { type: fixed ? "fixed" : contractType, startDate, endDate: fixed ? endDate : "", probation, probationDays: Number(probationDays) || 0 },
+  });
+  const missingContent = generate ? checkContractRequiredContent(modelFields, ar) : [];
   const nonSaudi = nationalityIsSaudi(employee?.nationality || employee?.profile?.nationality) === false;
   const fixed = nonSaudi || workPatternForcesFixed(workPattern) || isFixedContractType(contractType);
   const hasExisting = Boolean(contract?.fileUrl);
@@ -46,7 +71,17 @@ export default function ContractForm({ employee, companyId, contract, ar, onDone
 
   const save = async () => {
     const isPdf = file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
-    if (!hasExisting && !isPdf) {
+    const docGate = checkContractSaveGate({ fields: modelFields, hasFile: hasExisting || isPdf, generated: generate, ar });
+    if (!docGate.ok) {
+      setError(ar ? docGate.reason : docGate.reasonEn);
+      return;
+    }
+    const probGate = checkProbationGate({ probation, probationDays: Number(probationDays) || 0, probationPriorAtEmployer: priorProbation, probationSecondWritten: secondWritten, probationSecondFile: secondFile, today: startDate });
+    if (!probGate.ok) {
+      setError(ar ? probGate.reason : probGate.reasonEn);
+      return;
+    }
+    if (!generate && !hasExisting && !isPdf) {
       setError(ar ? "ارفع عقد العمل بصيغة PDF." : "Upload the employment contract as a PDF.");
       return;
     }
@@ -87,6 +122,12 @@ export default function ContractForm({ employee, companyId, contract, ar, onDone
         fileName = file.name;
       }
       updateEmployeeProfile(companyId, employee.id, {
+        qiwaRegistered: qiwa,
+        probation,
+        probationDays: probation ? Number(probationDays) || 0 : "",
+        probationPriorAtEmployer: probation ? priorProbation : false,
+        probationSecondWritten: probation && priorProbation ? secondWritten : false,
+        probationSecondFile: probation && priorProbation ? secondFile : null,
         contractType: fixed ? "fixed" : contractType,
         contractEndDate: fixed ? (endDate || termGate.endDate || "") : "",
         workPattern,
@@ -99,6 +140,13 @@ export default function ContractForm({ employee, companyId, contract, ar, onDone
           type: fixed ? "fixed" : contractType,
           workPattern,
           renewalCount: fixed ? (Number(renewalCount) || 0) : 0,
+          ...(generate ? {
+            generated: true,
+            generatedAt: new Date().toISOString(),
+            model: modelFields,
+            // A changed contract needs the worker's signature again.
+            workerAck: contract?.generated && JSON.stringify(contract?.model || {}) === JSON.stringify(modelFields) ? (contract?.workerAck || null) : null,
+          } : { generated: false }),
         },
       });
       onDone();
@@ -184,6 +232,52 @@ export default function ContractForm({ employee, companyId, contract, ar, onDone
             ) : null}
           </>
         ) : null}
+        <div data-contract-model="" style={{ display: "flex", flexDirection: "column", gap: 8, border: "1px solid var(--nv-line)", borderRadius: 10, padding: "10px 12px" }}>
+          <label style={{ fontSize: 12, display: "flex", gap: 8, alignItems: "center", color: "var(--nv-ink)" }}>
+            <input type="checkbox" checked={generate} onChange={(e) => { setGenerate(e.target.checked); setError(""); }} />
+            {ar ? "أنشئ العقد من النموذج الموحد (المادة 52 · اللائحة م18) — نسختان بالعربية، ويوقّعه العامل من ملفه" : "Generate from the unified model (Art. 52 · Regs Art. 18) — the worker signs it from their file"}
+          </label>
+          {generate ? (
+            missingContent.length ? (
+              <span data-contract-missing="" style={{ fontSize: 11.5, color: "var(--nv-bad-ink)", lineHeight: 1.7 }}>
+                {ar ? `أكمل في الملف قبل الحفظ: ${missingContent.join("، ")}.` : `Complete on the file first: ${missingContent.join(", ")}.`}
+              </span>
+            ) : (
+              <span style={{ fontSize: 11.5, color: "var(--nv-ok-ink)" }}>{ar ? "محتوى العقد مكتمل وفق النموذج الموحد." : "The contract content is complete."}</span>
+            )
+          ) : null}
+          {generate ? (
+            <button type="button" style={{ ...ui.btnGhost, alignSelf: "flex-start" }} onClick={() => printSheet(contractSheet(modelFields, { ar: true, ref: employee?.id || "" }))}>
+              {ar ? "معاينة العقد وطباعته" : "Preview and print"}
+            </button>
+          ) : null}
+          <label style={{ fontSize: 12, display: "flex", gap: 8, alignItems: "center", color: "var(--nv-ink)" }}>
+            <input type="checkbox" checked={probation} onChange={(e) => setProbation(e.target.checked)} />
+            {ar ? "فترة تجربة منصوص عليها في العقد (المادة 53)" : "Probation stated in the contract (Art. 53)"}
+          </label>
+          {probation ? (
+            <>
+              <input type="number" min={1} max={180} value={probationDays} onChange={(e) => setProbationDays(e.target.value)} placeholder={ar ? "مدة التجربة بالأيام (حتى 180)" : "Probation days (up to 180)"} style={field} />
+              <label style={{ fontSize: 12, display: "flex", gap: 8, alignItems: "center", color: "var(--nv-ink)" }}>
+                <input type="checkbox" checked={priorProbation} onChange={(e) => setPriorProbation(e.target.checked)} />
+                {ar ? "سبق أن خضع للتجربة لدى المنشأة (تجربة ثانية — المادة 54)" : "Already on probation here before (second probation — Art. 54)"}
+              </label>
+              {priorProbation ? (
+                <>
+                  <label style={{ fontSize: 12, display: "flex", gap: 8, alignItems: "center", color: "var(--nv-ink)" }}>
+                    <input type="checkbox" checked={secondWritten} onChange={(e) => setSecondWritten(e.target.checked)} />
+                    {ar ? "اتفق الطرفان كتابةً على التجربة الثانية (مهنة أخرى أو بعد انقطاع ستة أشهر)" : "The parties agreed the second probation in writing"}
+                  </label>
+                  <AttachFileButton ar={ar} accept="application/pdf,image/*" label={secondFile?.name ? (ar ? `الاتفاق: ${secondFile.name}` : `Agreement: ${secondFile.name}`) : (ar ? "أرفق الاتفاق المكتوب" : "Attach the written agreement")} onPick={async (picked) => { if (picked) setSecondFile({ name: picked.name, url: await readConsentFile(picked) }); }} />
+                </>
+              ) : null}
+            </>
+          ) : null}
+          <label style={{ fontSize: 12, display: "flex", gap: 8, alignItems: "center", color: "var(--nv-ink)" }}>
+            <input type="checkbox" checked={qiwa} onChange={(e) => setQiwa(e.target.checked)} />
+            {ar ? "وُثّق العقد في قوى (اللائحة م18/2)" : "Documented on Qiwa (Regs Art. 18(2))"}
+          </label>
+        </div>
         <AttachFileButton
           ar={ar}
           accept="application/pdf,.pdf"

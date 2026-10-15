@@ -316,7 +316,7 @@ export default function Safety() {
       )}
 
       {tab === "dash" && !employeeRail && (
-        <SafetyDashboard ar={ar} stations={stations} recFor={recFor} onOpenRegister={() => setTab("register")} />
+        <SafetyDashboard ar={ar} stations={stations} recFor={recFor} onOpenRegister={() => setTab("register")} data={data} companyId={company?.id} canEdit={!employeeRail} />
       )}
       {tab === "register" && !employeeRail && (
         <SafetyRiskRegister ar={ar} rows={openReportRows} canAct={canEdit || canApprove} onPatch={handlePatchIncident} />

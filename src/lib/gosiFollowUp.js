@@ -149,6 +149,36 @@ export function gosiTasks({ employees = [], company = {}, today, contributory = 
       }
     }
   }
+  // Injuries reported on a safety card (Art. 141 · Regs Art. 28) open the same task as a work-injury leave —
+  // one per employee and injury date, so a card and its leave do not report twice.
+  const byName = (name) => {
+    const n = String(name || "").trim();
+    if (!n) return null;
+    return (employees || []).find((e) => String(e.name || "").trim() === n) || null;
+  };
+  for (const rec of Array.isArray(company?.safety) ? company.safety : []) {
+    for (const item of rec?.incidentLog || []) {
+      const card = item?.card;
+      if (!card?.injured) continue;
+      const injured = key(card.injuryDate || item.at);
+      if (!injured) continue;
+      const emp = card.injuredEmployeeId
+        ? (employees || []).find((e) => String(e.id) === String(card.injuredEmployeeId))
+        : card.injuredSelf !== false
+          ? (employees || []).find((e) => String(e.id) === String(card.reporterId || item.reporterId || ""))
+          : byName(card.injuredName);
+      const employeeId = emp?.id || "";
+      const name = emp?.name || card.injuredName || "";
+      const kind = injuryCovered === false ? "injury_office" : "injury";
+      if (out.some((t) => t.kind === kind && t.from === injured && (employeeId ? t.employeeId === employeeId : t.name === name))) continue;
+      const doneAt = kind === "injury_office" ? item.labourOfficeReportedAt : item.gosiReportedAt;
+      out.push(task({
+        id: `${kind}:${employeeId || `card-${item.id}`}:${injured}`, kind, employeeId, name, incidentId: item.id, stationId: rec.stationId || "",
+        due: addDays(injured, kind === "injury_office" ? LABOUR_OFFICE_INJURY_REPORT_DAYS : GOSI_INJURY_REPORT_DAYS), from: injured,
+        done: Boolean(doneAt), doneAt: doneAt || "", ref: (kind === "injury_office" ? item.labourOfficeRef : item.gosiRef) || "", source: "safety",
+      }, today));
+    }
+  }
   const pay = paymentWindow(today);
   const paid = (company.gosiPayments || {})[pay.month];
   out.push(task({ id: `payment:${pay.month}`, kind: "payment", month: pay.month, due: pay.due, from: `${pay.month}-01`, done: Boolean(paid), doneAt: paid?.at || "", ref: paid?.ref || "" }, today));

@@ -2,7 +2,7 @@
  * The statutory clocks on open sanction files, and the reminders they send before they run out.
  *
  *   المادة 69 — لا يُوقَّع الجزاء بعد انتهاء التحقيق بأكثر من 30 يوماً (تقويمية).
- *   المادة 72 — يُبتّ في التظلّم كتابةً خلال 15 يوماً من تقديمه؛ وللعامل أن يتظلّم خلال 30 يوماً
+ *   المادة 72 — يُبتّ في التظلّم كتابةً خلال 15 يوماً من تقديمه (عدا العطل الرسمية — النموذج الموحد م71)؛ وللعامل أن يتظلّم خلال 30 يوماً
  *               عدا أيام العطل الرسمية من إبلاغه بالقرار. إن لم يُبتّ فله الاعتراض أمام المحاكم العمالية.
  *
  * Managers hear when the signing or ruling window is 7 days, then 2 days, from closing, and once it has
@@ -11,7 +11,7 @@
  */
 
 import { ruleValue } from "./laborRules.js";
-import { countDaysExcludingOfficialHolidays } from "./ummAlQuraCalendar.js";
+import { countDaysExcludingOfficialHolidays, isOfficialHoliday } from "./ummAlQuraCalendar.js";
 import { faceOf } from "./disciplineBoard.js";
 import { regulationDate } from "./workRegulation.js";
 
@@ -35,6 +35,20 @@ function between(a, b) {
 }
 
 export const DEADLINE_SOON_DAYS = 7;
+
+/** The day the `n`-th non-holiday day after `from` falls on (official holidays skipped). */
+export function addDaysExcludingOfficialHolidays(from, n, calendar) {
+  let cursor = dateOnly(from);
+  if (!cursor) return "";
+  let counted = 0;
+  let guard = 0;
+  while (counted < Number(n) && guard < 400) {
+    cursor = addDays(cursor, 1);
+    guard += 1;
+    if (!isOfficialHoliday(cursor, calendar)) counted += 1;
+  }
+  return cursor;
+}
 
 /**
  * Every running clock on the files: { caseId, employeeId, kind: "sign"|"ruling"|"grievance",
@@ -60,8 +74,9 @@ export function disciplineDeadlines({ cases = [], today, calendar } = {}) {
     if (face === "objected") {
       const from = dateOnly(item.appealedAt);
       if (from && !item.rulingNote) {
-        const due = addDays(from, rulingMax);
-        const left = between(day, due);
+        // Model regulation Art. 71(1): fifteen days «عدا أيام العطل الرسمية».
+        const due = addDaysExcludingOfficialHolidays(from, rulingMax, calendar);
+        const left = rulingMax - countDaysExcludingOfficialHolidays(from, day, calendar);
         out.push({ ...base, kind: "ruling", article: "72", from, due, left, over: left < 0, soon: left >= 0 && left <= DEADLINE_SOON_DAYS });
       }
     }

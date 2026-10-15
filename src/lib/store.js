@@ -2617,6 +2617,8 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
       pushEmployeeFileLog(emp, approveStamp.log);
     }
     emp.leaveRequests.unshift(createdRequest);
+    // Recorded straight as approved: the same file effects as an approval (Arts. 114, 116; Model Regs Art. 33).
+    if (approved) applyApprovedLeaveEffectsOnDraft(emp, createdRequest);
   });
   // Route to the assigned HR manager for this employee's station, if any.
   const data = getCompanyData(companyId);

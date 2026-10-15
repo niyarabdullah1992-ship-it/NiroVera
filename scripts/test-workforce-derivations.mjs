@@ -99,13 +99,13 @@ assert.equal(checkConsecutiveWorkGate({ start: "07:00", end: "15:00", restMinute
 
 assert.equal(endDateFromLeaveDays("2026-09-01", 1), "2026-09-01");
 assert.equal(endDateFromLeaveDays("2026-09-01", 5), "2026-09-05");
-assert.equal(remainingLeaveDays({ hireDate: "2025-06-01" }, [{ type: "annual", status: "approved", days: 5 }], "annual", "2026-09-12"), 32);
+assert.equal(remainingLeaveDays({ hireDate: "2025-06-01" }, [{ type: "annual", status: "approved", days: 5 }], "annual", "2026-09-12"), 37); // undated days are spent once (FIFO), not in every year
 assert.equal(remainingLeaveDays(
   { hireDate: "2024-01-01" },
   [{ type: "annual", status: "approved", startDate: "2024-06-01", endDate: "2024-06-10", days: 10 }],
   "annual",
   "2026-09-06",
-), 42);
+), 56); // Arts. 110/111: the 14 days left from 2024 (7 work days used) are still owed (FIFO buckets), not lost
 
 assert.equal(checkAdvanceDisciplineGate({ employeeId: "e1" }, "hearing").ok, false);
 assert.equal(checkAdvanceDisciplineGate({ employeeId: "e1" }, "hearing").cite?.article, "71");

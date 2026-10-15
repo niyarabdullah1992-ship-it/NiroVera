@@ -3,8 +3,8 @@ import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { setStationScope } from "@/lib/stationScopeStore";
-import { postponeResignation, recordIddahBirth, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
-import { approvedLeaveWithdrawWindow, chargeableLeaveDays, checkApproveLeaveGate, checkExamSittingSettleGate, checkLeaveGenderGate, checkRejectLeaveGate, checkSubmitLeaveGate, examNoticeFilesOf, examSatFileOf, examSatState, hasLeaveAttachment, isRealSupportingFile, leaveNeedsAttachment, leaveNeedsArticle118Ack, leaveSpanIncludesOfficialHolidays } from "@/lib/leaveDerivations";
+import { postponeResignation, recordIddahBirth, recordMaternityBirth, recordLeaveBreach, setHajjAnnualQuota, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
+import { approvedLeaveWithdrawWindow, chargeableLeaveDays, checkApproveLeaveGate, checkExamSittingSettleGate, checkLeaveGenderGate, checkRejectLeaveGate, checkSubmitLeaveGate, examNoticeFilesOf, examSatFileOf, examSatState, hasLeaveAttachment, isRealSupportingFile, leaveNeedsAttachment, leaveNeedsArticle118Ack, leaveSpanIncludesOfficialHolidays, hajjAnnualQuotaOf, sickLeaveEndingBefore } from "@/lib/leaveDerivations";
 import { usedLeaveDays } from "@/lib/leaveTypes";
 import { weeklyOffDaysInRange, weeklyOffLabels } from "@/lib/leaveEidOverlap.js";
 import {
@@ -117,12 +117,12 @@ import {
   SUPPORTING_FILE_MAX_BYTES,
 } from "@/lib/requestWorkspace";
 import { isRosterLockedCivicHoliday, laborCalendarOf, officialHolidayKindLabel, officialHolidayLeaveLabel } from "@/lib/ummAlQuraCalendar";
-import { iddahSpanFromEvent, maternityFollowOnSpan } from "@/lib/leaveTypes";
+import { annualAdvanceCap, annualCarryAlerts, iddahSpanFromEvent, maternityFollowOnSpan, therapyLeaveEligibility, unpaidSuspensionPlan } from "@/lib/leaveTypes";
 import { isRamadanHoursSubject, religionOnFile } from "@/lib/laborRules";
 import { profileGender } from "@/lib/employeeProfileFields";
 import { DUTY_REQUEST_META, DUTY_REQUEST_TYPES, checkDutyRequestFields, nursingRightUntil, dutyRequestDetail, dutyRequestEffect, dutyRequestRosterFacts, isDutyRequestType } from "@/lib/dutyRequests";
 import { performsNightWork, pregnancyNightBan } from "@/lib/decision18632";
-import { checkResignationFields, checkPostponeResignationGate, resignationDetail, resignationFacts, resignationState, RESIGNATION_TYPE } from "@/lib/exitRequests";
+import { checkResignationFields, checkPostponeResignationGate, EXIT_ROUTE_NOTICE75, resignationDetail, resignationFacts, resignationRouteFor, resignationState, RESIGNATION_TYPE } from "@/lib/exitRequests";
 import { sunExposureMark } from "@/lib/shiftWeek";
 import { fileDutyHref, rosterPersonHref } from "@/components/schedules/dutyLinks";
 import { leaveApprovalCardNote } from "@/lib/leaveEntitlementCycle";
@@ -554,6 +554,11 @@ export default function RequestsWorkspace({
   const [issuedError, setIssuedError] = useState({});
   const [examSatBusy, setExamSatBusy] = useState({});
   const [iddahBirth, setIddahBirth] = useState({});
+  const [maternityBirth, setMaternityBirth] = useState({});
+  const [breachDraft, setBreachDraft] = useState({});
+  const [leaveDecideFlags, setLeaveDecideFlags] = useState({});
+  const [advanceLeave, setAdvanceLeave] = useState(false);
+  const [joinAnnualToSick, setJoinAnnualToSick] = useState(false);
   const [examSatError, setExamSatError] = useState({});
   const [nightAck, setNightAck] = useState({});
   const [busy, setBusy] = useState(false);
@@ -1040,7 +1045,16 @@ export default function RequestsWorkspace({
         }
         return rows;
       })() : []),
-      ...(isResignation ? (() => {
+      ...(isResignation && resignationRouteFor(subject?.profile) === EXIT_ROUTE_NOTICE75 ? (() => {
+        const facts = resignationFacts({ date: today, route: EXIT_ROUTE_NOTICE75 });
+        return [{
+          ok: true,
+          warn: false,
+          text: ar
+            ? `إشعار كتابي بإنهاء العقد غير محدد المدة — ينتهي العقد في ${regulationDate(facts.noticeEndsOn)} دون قبول (المادة 75).`
+            : `Written notice ending the open-ended contract — it ends on ${facts.noticeEndsOn}, no acceptance needed (Art. 75).`,
+        }];
+      })() : isResignation ? (() => {
         const facts = resignationFacts({ date: today });
         return [{
           ok: true,
@@ -1119,6 +1133,8 @@ export default function RequestsWorkspace({
       examNoticeIssuedAt: leave === "exam" ? examNoticeIssuedAt || undefined : undefined,
       iddahPregnant: leave === "iddah" ? iddahPregnant : undefined,
       companionUnpaidExtend: leave === "maternity_companion" ? companionUnpaidExtend : undefined,
+      advanceLeave: leave === "annual" && advanceLeave ? true : undefined,
+      joinAnnualToSick: leave === "annual" && joinAnnualToSick && !!sickLeaveEndingBefore(subject?.leaveRequests, from) ? true : undefined,
       files: supportingFile ? [supportingFile] : [],
       noOtherEmployerAck: true,
       reason: note || "—",
@@ -1316,6 +1332,8 @@ export default function RequestsWorkspace({
 
   const resetForm = () => {
     setNote("");
+    setAdvanceLeave(false);
+    setJoinAnnualToSick(false);
     setMoneyAmount("");
     setPermFrom("");
     setPermComp(false);
@@ -1427,6 +1445,9 @@ export default function RequestsWorkspace({
           companionUnpaidExtend: leave === "maternity_companion" ? companionUnpaidExtend : undefined,
           noOtherEmployerAck: employerAck,
           deferConsentAt: deferConsent ? new Date().toISOString() : undefined,
+          expectedBirthDate: leave === "maternity" ? (eventDate || undefined) : undefined,
+          advanceLeave: leave === "annual" && advanceLeave ? true : undefined,
+          joinAnnualToSick: leave === "annual" && joinAnnualToSick && !!sickLeaveEndingBefore(subject?.leaveRequests, from) ? true : undefined,
           status: direct ? "approved" : "pending",
           recordedBy: direct ? currentUser?.name : undefined,
           requestedBy: currentUser?.name,
@@ -1480,7 +1501,7 @@ export default function RequestsWorkspace({
           nursingSplit: kind === "nursing_hour" ? nursingSplit : undefined,
           childBirthDate: kind === "nursing_hour" ? childBirthDate : undefined,
           dueDate: kind === "pregnancy_notice" ? dueDate : undefined,
-          lastDay: isResignation ? resignationFacts({ date: today }).deemedAcceptedOn : undefined,
+          lastDay: isResignation ? (resignationRouteFor(subject?.profile) === EXIT_ROUTE_NOTICE75 ? resignationFacts({ date: today, route: EXIT_ROUTE_NOTICE75 }).noticeEndsOn : resignationFacts({ date: today }).deemedAcceptedOn) : undefined,
           employee: subject,
           attendance: isPunchKind ? attendanceOnDate(data?.personalAttendance, subject?.id, from) : undefined,
           days: isTopup ? topupDays : undefined,
@@ -1537,7 +1558,7 @@ export default function RequestsWorkspace({
           nursingSplit: kind === "nursing_hour" ? nursingSplit : undefined,
           childBirthDate: kind === "nursing_hour" ? childBirthDate : undefined,
           dueDate: kind === "pregnancy_notice" ? dueDate : undefined,
-          lastDay: isResignation ? resignationFacts({ date: today }).deemedAcceptedOn : undefined,
+          lastDay: isResignation ? (resignationRouteFor(subject?.profile) === EXIT_ROUTE_NOTICE75 ? resignationFacts({ date: today, route: EXIT_ROUTE_NOTICE75 }).noticeEndsOn : resignationFacts({ date: today }).deemedAcceptedOn) : undefined,
           shiftTypeId: kind === "shift_change" ? (shiftPick || null) : undefined,
           days: isTopup ? topupDays : undefined,
           files: (isTopup || isSignableKind || isStudyConsent || isNightFitness) ? ((isStudyConsent || isNightFitness) && supportingFile ? [supportingFile] : files) : (isDutyKind && supportingFile ? [supportingFile] : undefined),
@@ -1592,12 +1613,16 @@ export default function RequestsWorkspace({
         const leaveRow = noticeIssued && String(row.type || "").toLowerCase() === "exam"
           ? { ...row, examNoticeIssuedAt: noticeIssued }
           : row;
+        const flags = leaveDecideFlags[key] || {};
         if (status === "approved") {
-          const gate = checkApproveLeaveGate(leaveRow, !!leaveKindMeta(row.type)?.requiresFile, {
+          const gate = checkApproveLeaveGate({ ...leaveRow, agreedOtherwise: flags.agreedOtherwise === true || undefined }, !!leaveKindMeta(row.type)?.requiresFile, {
             profile: row.employee?.profile,
             requests: row.employee?.leaveRequests,
             laborCalendar,
             examNoticeIssuedAt: noticeIssued || undefined,
+            company: data,
+            forApproval: true,
+            advanceConsent: flags.advanceConsent === true,
           });
           if (!gate.ok) {
             toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
@@ -1622,6 +1647,9 @@ export default function RequestsWorkspace({
           rejectVerified: !!draftVerified[key],
           lang,
           examNoticeIssuedAt: noticeIssued || undefined,
+          advanceConsent: flags.advanceConsent === true,
+          agreedOtherwise: flags.agreedOtherwise === true,
+          extensionAgreedOtherwise: flags.extensionAgreedOtherwise === true,
         });
         if (decided && decided.ok === false) {
           toast({ description: ar ? decided.reason : decided.reasonEn, variant: "destructive" });
@@ -2929,7 +2957,7 @@ export default function RequestsWorkspace({
               ) : null}
               {isLeave && ["marriage", "bereavement", "bereavement_sibling", "paternity", "maternity", "iddah", "work_injury"].includes(leave) && (
                 <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <span style={{ fontSize: 11, color: MUTED }}>{leave === "iddah" ? (ar ? "تاريخ الوفاة" : "Date of death") : leave === "work_injury" ? (ar ? "تاريخ الإصابة — تمديد العلاج يحمل التاريخ نفسه" : "Injury date — a treatment extension keeps the same date") : (ar ? "تاريخ الواقعة" : "Event date")}</span>
+                  <span style={{ fontSize: 11, color: MUTED }}>{leave === "iddah" ? (ar ? "تاريخ الوفاة" : "Date of death") : leave === "maternity" ? (ar ? "التاريخ المرجح للوضع — بشهادة طبية؛ يُسجَّل الوضع الفعلي بعد الولادة (المادة 151)" : "Expected birth date — per a medical certificate; record the actual birth after it (Article 151)") : leave === "work_injury" ? (ar ? "تاريخ الإصابة — تمديد العلاج يحمل التاريخ نفسه" : "Injury date — a treatment extension keeps the same date") : (ar ? "تاريخ الواقعة" : "Event date")}</span>
                   <PlatformDateField
                     ar={ar}
                     value={eventDate}
@@ -2961,6 +2989,41 @@ export default function RequestsWorkspace({
                   {companionUnpaidExtend ? (ar ? "تمديد شهر بلا أجر بعد المرافقة" : "Unpaid extra month after companion") : (ar ? "شهر بأجر فقط — أضيفي تمديداً بلا أجر" : "Paid month only — add unpaid extension")}
                 </button>
               )}
+              {isLeave && leave === "annual" ? (() => {
+                const alerts = annualCarryAlerts(subject?.profile, subject?.leaveRequests, undefined, company, subject);
+                const sickBefore = from ? sickLeaveEndingBefore(subject?.leaveRequests, from) : null;
+                const cap = annualAdvanceCap(subject?.profile, subject?.leaveRequests, from || undefined, company, subject);
+                return (
+                  <div data-annual-law="1" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {alerts.map((a) => (
+                      <span key={`${a.kind}-${a.start}`} data-carry-alert={a.kind} style={{ fontSize: 11, lineHeight: 1.8, color: a.kind === "overdue" ? BAD : WARN }}>{ar ? a.ar : a.en}</span>
+                    ))}
+                    <button type="button" data-advance-leave="1" onClick={() => setAdvanceLeave((v) => !v)} style={chip(advanceLeave)}>
+                      {advanceLeave
+                        ? (ar ? `مقدمة بنسبة ما قضيته من السنة — المتاح ${cap.cap} يوماً، وتلزم موافقة المنشأة (اللائحة النموذجية م33)` : `Advance pro-rata to time worked — ${cap.cap} days available; the company must consent (Model Regs Art. 33)`)
+                        : (ar ? "طلب جزء من إجازة هذه السنة مقدماً (اللائحة النموذجية م33)" : "Ask for part of this year's leave in advance (Model Regs Art. 33)")}
+                    </button>
+                    {sickBefore ? (
+                      <button type="button" data-join-sick="1" onClick={() => setJoinAnnualToSick((v) => !v)} style={chip(joinAnnualToSick)}>
+                        {joinAnnualToSick
+                          ? (ar ? "موصولة بالإجازة المرضية السابقة (المادة 82)" : "Joined to the preceding sick leave (Article 82)")
+                          : (ar ? "صِل إجازتك السنوية بالمرضية التي تنتهي قبلها (المادة 82، اللائحة م41)" : "Join this annual leave to the sick leave ending the day before (Article 82, Regs Art. 41)")}
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })() : null}
+              {isLeave && leave === "therapy" && therapyLeaveEligibility(subject?.profile) === "unknown" ? (
+                <span data-therapy-note="1" style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
+                  {ar ? "الملحق 2 من اللائحة (ترتيبات ذوي الإعاقة والمرض المزمن): أيام الغياب للعلاج الطبيعي أو الوظيفي أو الكيميائي أو الإشعاعي إجازة مدفوعة الأجر بتقرير الجهة المعالجة. لا يوجد في الملف ما يبيّن الإعاقة أو المرض المزمن — يُعرض للجميع والتقرير يثبت الحالة." : "Regs Annex 2 (disability and chronic-illness accommodations): days absent for physical, occupational, chemo- or radiotherapy are paid leave on the treating provider's report. The file does not record a disability or chronic illness — shown to all; the report proves it."}
+                </span>
+              ) : null}
+              {isLeave && leave === "hajj" && canDecide ? (
+                <label data-hajj-quota="1" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: MUTED }}>
+                  <span>{ar ? `حصة الحج السنوية للمنشأة (المادة 114) — الحالية: ${hajjAnnualQuotaOf(data) ?? "بلا حد"}` : `Company yearly Hajj quota (Article 114) — now: ${hajjAnnualQuotaOf(data) ?? "none"}`}</span>
+                  <input type="number" min="0" defaultValue={hajjAnnualQuotaOf(data) ?? ""} onBlur={(e) => { const res = setHajjAnnualQuota(company.id, e.target.value); if (!res.ok) toast({ description: ar ? res.reason : res.reasonEn, variant: "destructive" }); else refresh?.(); }} style={{ ...fieldStyle(), width: 80, height: 30 }} />
+                </label>
+              ) : null}
               {leave === "iddah" && isRamadanHoursSubject({ profile: subject?.profile }) && (
                 <button type="button" onClick={() => {
                   setIddahPregnant((v) => {
@@ -2999,7 +3062,30 @@ export default function RequestsWorkspace({
                   ) : null}
                 </div>
               )}
-              {isResignation ? (() => {
+              {isResignation && resignationRouteFor(subject?.profile) === EXIT_ROUTE_NOTICE75 ? (() => {
+                const facts = resignationFacts({ date: today, route: EXIT_ROUTE_NOTICE75 });
+                return (
+                  <div data-resignation-fields="notice75" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div data-legal-basis="1" style={{ border: "1px solid var(--nv-line)", borderInlineStart: "3px solid #0B3D27", borderRadius: 8, background: "var(--nv-soft, #F7F9F8)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4, fontSize: 11.5, lineHeight: 1.8, color: "var(--nv-ink2)" }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0B3D27" }}>{ar ? "السند النظامي — المادتان 74/3 و75 (عقد غير محدد المدة)" : "Legal basis — Arts. 74(3) and 75 (open-ended contract)"}</span>
+                      <span>{ar ? "عقدك غير محدد المدة: تنهيه بإشعار كتابي قبل ثلاثين يوماً على الأقل، ولا يحتاج قبولاً ولا يُؤجَّل. يبقى العقد سارياً خلال المهلة." : "Your contract is open-ended: you end it by written notice at least thirty days ahead; it needs no acceptance and is not postponed. The contract runs on during the notice."}</span>
+                    </div>
+                    <ol data-resignation-timeline="notice75" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 0, border: "1px solid var(--nv-line)", borderRadius: 8, overflow: "hidden" }}>
+                      {[
+                        [ar ? "اليوم" : "Today", regulationDate(today), ar ? "يصل الإشعار ويؤرَّخ بهذا اليوم" : "The notice is delivered and dated today"],
+                        [ar ? "في" : "On", regulationDate(facts.noticeEndsOn), ar ? "ينتهي العقد بانقضاء مهلة الإشعار" : "The contract ends when the notice runs out"],
+                      ].map(([k, v, t]) => (
+                        <li key={k} style={{ display: "grid", gridTemplateColumns: "auto auto minmax(0,1fr)", gap: 10, alignItems: "baseline", padding: "8px 12px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", fontSize: 12 }}>
+                          <span style={{ color: MUTED, fontSize: 11 }}>{k}</span>
+                          <strong style={{ color: NAVY, whiteSpace: "nowrap" }}>{v}</strong>
+                          <span style={{ color: "var(--nv-ink2)", lineHeight: 1.7 }}>{t}</span>
+                        </li>
+                      ))}
+                    </ol>
+                    <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.75 }}>{ar ? "الإشعار لا يُسحب بإرادتك وحدك بعد وصوله — يلزم اتفاق صاحب العمل. وتستحق كل حقوقك النظامية." : "Once delivered, the notice is not withdrawn by you alone — the employer must agree. You keep all your statutory rights."}</span>
+                  </div>
+                );
+              })() : isResignation ? (() => {
                 const facts = resignationFacts({ date: today });
                 return (
                   <div data-resignation-fields="1" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3613,7 +3699,21 @@ export default function RequestsWorkspace({
                   {row.family === "leave" && String(row.type || "").toLowerCase() === "work_injury" ? (
                     <WorkInjuryPanel row={row} employee={row.employee || subject} data={data} companyId={company?.id} ar={ar} canDecide={mode === "manage" && canDecide} by={currentUser?.name || ""} onChanged={() => refresh?.()} />
                   ) : null}
-                  {row.type === RESIGNATION_TYPE && (isPendingDecideStatus(st) || st === "revise") ? (() => {
+                  {row.type === RESIGNATION_TYPE && row.exitRoute === EXIT_ROUTE_NOTICE75 && (isPendingDecideStatus(st) || st === "revise" || (st === "approved" && !row.settledAt)) ? (() => {
+                    const rs = resignationState(row, today);
+                    const canAct = mode === "manage" && rowCanDecide && st !== "approved";
+                    return (
+                      <div data-resignation-decision="notice75" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", border: "1px solid var(--nv-line)", borderRadius: 8, background: "var(--nv-soft, #F7F9F8)", fontSize: 12, lineHeight: 1.75, color: "var(--nv-ink2)" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#0B3D27" }}>{ar ? "المادة 75 — إشعار إنهاء عقد غير محدد المدة" : "Article 75 — notice ending an open-ended contract"}</span>
+                        <span>{ar ? `وصل الإشعار ${regulationDate(rs.submitted)} · ينتهي العقد في ${regulationDate(rs.endsOn)} دون قبول ولا تأجيل.` : `Notice delivered ${rs.submitted} · the contract ends on ${rs.endsOn}, with no acceptance or postponement.`}</span>
+                        {canAct ? (
+                          <button type="button" className="nv-dec-approve" disabled={busy} onClick={() => decide(row, "approved")} style={{ alignSelf: "flex-start" }}>
+                            {ar ? `استلمتُ الإشعار — ابدأ إجراءات إنهاء الخدمة في ${regulationDate(rs.endsOn)}` : `Notice received — start offboarding for ${rs.endsOn}`}
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })() : row.type === RESIGNATION_TYPE && (isPendingDecideStatus(st) || st === "revise") ? (() => {
                     const rs = resignationState(row, today);
                     const key = `${row.family}-${row.id}`;
                     const pDays = resignPostpone[key]?.days ?? "";
@@ -3874,6 +3974,89 @@ export default function RequestsWorkspace({
                   {row.family === "leave" && row.type === "exam" ? (
                     <LaborArticleCite article="115" ar={ar} showOfficial showText entitlement />
                   ) : null}
+                  {row.family === "leave" && (row.suspension || row.unpaidComplementDays || row.recoverPay || row.joinAnnualToSick || row.advanceLeave) ? (
+                    <div data-leave-law-facts="1" style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, lineHeight: 1.8 }}>
+                      {row.suspension ? <span style={{ color: WARN }}>{ar ? `العقد موقوف ${row.suspension.days} يوماً (${regulationDate(row.suspension.from)} – ${regulationDate(row.suspension.to)}) — لا تُحسب في الخدمة ولا في الإجازة${row.suspension.contractEndAfter ? `، ومُدّد العقد حتى ${regulationDate(row.suspension.contractEndAfter)}` : ""} (المادة 116، اللائحة م25).` : `Contract suspended ${row.suspension.days} days (${row.suspension.from} – ${row.suspension.to})${row.suspension.contractEndAfter ? `; contract extended to ${row.suspension.contractEndAfter}` : ""} (Art. 116, Regs Art. 25).`}</span> : null}
+                      {row.unpaidComplementDays ? <span style={{ color: WARN }}>{ar ? `تأخر الوضع: ${row.unpaidComplementDays} يوماً مكملة للأسابيع الستة بلا أجر (${regulationDate(row.unpaidComplementFrom)} – ${regulationDate(row.unpaidComplementTo)}) — المادة 151.` : `Late birth: ${row.unpaidComplementDays} unpaid complement days (${row.unpaidComplementFrom} – ${row.unpaidComplementTo}) — Article 151.`}</span> : null}
+                      {row.recoverPay ? <span style={{ color: BAD }}>{ar ? `ثبت العمل لدى صاحب عمل آخر أثناء الإجازة — أجرها قابل للاسترداد (المادة 118): ${row.recoverReason || ""}` : `Proven work for another employer during leave — its pay is recoverable (Article 118): ${row.recoverReason || ""}`}</span> : null}
+                      {row.joinAnnualToSick ? <span style={{ color: MUTED }}>{ar ? "موصولة بالإجازة المرضية السابقة بطلب العامل (المادة 82)." : "Joined to the preceding sick leave at the worker's request (Article 82)."}</span> : null}
+                      {row.advanceLeave ? <span style={{ color: MUTED }}>{ar ? `جزء مقدم من إجازة السنة بنسبة ما قضاه العامل منها${row.advanceConsent ? " — بموافقة المنشأة" : " — يحتاج موافقة المنشأة"} (اللائحة النموذجية م33).` : `An advance of this year's leave pro-rata to time worked${row.advanceConsent ? " — company consented" : " — needs company consent"} (Model Regs Art. 33).`}</span> : null}
+                    </div>
+                  ) : null}
+                  {row.family === "leave" && mode === "manage" && rowCanDecide && isPendingDecideStatus(st) && (row.advanceLeave || (row.type === "unpaid" && (unpaidSuspensionPlan(row.employee?.leaveRequests, row.employee?.profile?.hireDate, row).byRequest[row.id]?.days || 0) > 0)) ? (() => {
+                    const flags = leaveDecideFlags[key] || {};
+                    const set = (k, v) => setLeaveDecideFlags((m) => ({ ...m, [key]: { ...(m[key] || {}), [k]: v } }));
+                    const box = (k, text) => (
+                      <label key={k} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: NAVY, lineHeight: 1.7, cursor: "pointer" }}>
+                        <input type="checkbox" checked={!!flags[k]} onChange={(e) => set(k, e.target.checked)} style={{ marginTop: 3 }} />
+                        <span>{text}</span>
+                      </label>
+                    );
+                    return (
+                      <div data-leave-decide-flags="1" style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", border: "1px solid var(--nv-line3)", background: SURFACE }}>
+                        {row.advanceLeave ? box("advanceConsent", ar ? "توافق المنشأة على منح هذا الجزء مقدماً (اللائحة النموذجية م33)." : "The company consents to grant this part in advance (Model Regs Art. 33).") : null}
+                        {row.type === "unpaid" ? box("agreedOtherwise", ar ? "اتفق الطرفان على ألا يُوقف العقد في هذه الإجازة (المادة 116)." : "The parties agreed the contract is not suspended during this leave (Article 116).") : null}
+                        {row.type === "unpaid" && !flags.agreedOtherwise ? box("extensionAgreedOtherwise", ar ? "اتفق الطرفان على عدم تمديد العقد المحدد المدة بمدة التوقف (اللائحة م25/2)." : "The parties agreed not to extend the fixed-term contract by the suspension (Regs Art. 25(2)).") : null}
+                      </div>
+                    );
+                  })() : null}
+                  {row.family === "leave" && row.type === "maternity" && st === "approved" && !row.actualBirthDate && (() => {
+                    const ownRow = String(row.employee?.id || "") === String(currentUser?.id || "");
+                    if (!(ownRow || rowCanDecide)) return null;
+                    const val = maternityBirth[key] || "";
+                    return (
+                      <div data-maternity-birth="open" style={{ border: "1px solid var(--nv-line3)", background: SURFACE, padding: "10px 11px", display: "flex", flexDirection: "column", gap: 7 }}>
+                        <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
+                          {ar ? `التاريخ المرجح ${regulationDate(row.expectedBirthDate || row.eventDate)}. سجّلي تاريخ الوضع الفعلي: الأسابيع الستة بعده وجوبية، وإن تأخر الوضع فالمدة المكملة لها بلا أجر (المادة 151).` : `Expected ${row.expectedBirthDate || row.eventDate}. Record the actual birth: the six weeks after it are mandatory; if the birth is late, the complement is unpaid (Article 151).`}
+                        </span>
+                        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                          <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 180 }}>
+                            <span style={{ fontSize: 11, color: MUTED }}>{ar ? "تاريخ الوضع الفعلي" : "Actual birth date"}</span>
+                            <PlatformDateField ar={ar} value={val} onChange={(v) => setMaternityBirth((m) => ({ ...m, [key]: v }))} />
+                          </label>
+                          <button type="button" data-maternity-birth-save="1" disabled={!val} onClick={() => {
+                            const res = recordMaternityBirth(company.id, row.employee.id, row.id, val, { actor: currentUser?.name });
+                            if (!res?.ok) { toast({ description: ar ? res?.reason : res?.reasonEn, variant: "destructive" }); return; }
+                            toast({ description: ar ? (res.unpaidComplementDays ? `سُجّل الوضع — ${res.unpaidComplementDays} يوماً مكملة بلا أجر.` : "سُجّل الوضع وضُبطت الإجازة.") : "Birth recorded." });
+                            refresh?.();
+                          }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 38, padding: "0 14px", border: "none", borderRadius: 8, background: val ? "#0B3D27" : "var(--nv-line)", color: val ? "#fff" : MUTED, cursor: val ? "pointer" : "default" }}>
+                            {ar ? "سجّل الوضع" : "Record the birth"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {row.family === "leave" && st === "approved" && mode === "manage" && rowCanDecide && !row.recoverPay && String(row.employee?.id || "") !== String(currentUser?.id || "") && (() => {
+                    const draft = breachDraft[key] || {};
+                    if (!draft.open) {
+                      return (
+                        <button type="button" data-breach-open="1" onClick={() => setBreachDraft((m) => ({ ...m, [key]: { open: true } }))} style={{ alignSelf: "flex-start", fontFamily: "inherit", fontSize: 11, background: "none", border: "none", color: MUTED, textDecoration: "underline", cursor: "pointer", padding: 0 }}>
+                          {ar ? "ثبت عمله لدى صاحب عمل آخر أثناء الإجازة؟ (المادة 118)" : "Proven work for another employer during this leave? (Article 118)"}
+                        </button>
+                      );
+                    }
+                    return (
+                      <div data-breach="open" style={{ border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", padding: "10px 11px", display: "flex", flexDirection: "column", gap: 7 }}>
+                        <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>{ar ? "الإثبات على صاحب العمل: أرفق المستند واكتب ما ثبت. يصبح أجر الإجازة قابلاً للاسترداد في الرواتب (المادة 118)، ويُبلَّغ العامل وله التظلم." : "The burden is on the employer: attach the evidence and write what was proven. The leave pay becomes recoverable in payroll (Article 118); the worker is told and may object."}</span>
+                        <input type="file" accept={SUPPORTING_FILE_ACCEPT} onChange={async (e) => {
+                          const picked = e.target.files?.[0];
+                          if (!picked) return;
+                          const record = await readSupportingFile(picked);
+                          setBreachDraft((m) => ({ ...m, [key]: { ...(m[key] || {}), file: record } }));
+                        }} />
+                        <textarea rows={2} value={draft.reason || ""} placeholder={ar ? "ما الذي ثبت: الجهة والتواريخ" : "What was proven: the employer and the dates"} onChange={(e) => setBreachDraft((m) => ({ ...m, [key]: { ...(m[key] || {}), reason: e.target.value } }))} style={{ border: "1px solid var(--nv-line)", borderRadius: 6, padding: 8, fontFamily: "inherit", fontSize: 12.5, resize: "vertical" }} />
+                        <button type="button" data-breach-save="1" className="nv-dec-reject" onClick={() => {
+                          const res = recordLeaveBreach(company.id, row.employee.id, row.id, { file: draft.file, reason: draft.reason, actorId: currentUser?.id, actorName: currentUser?.name });
+                          if (!res.ok) { toast({ description: ar ? res.reason : res.reasonEn, variant: "destructive" }); return; }
+                          toast({ description: ar ? "سُجّل الإخلال — أجر الإجازة قابل للاسترداد (المادة 118)." : "Recorded — the leave pay is recoverable (Article 118)." });
+                          setBreachDraft((m) => ({ ...m, [key]: undefined }));
+                          refresh?.();
+                        }} style={{ alignSelf: "flex-start" }}>
+                          {ar ? "سجّل الإخلال" : "Record the breach"}
+                        </button>
+                      </div>
+                    );
+                  })()}
                   {row.family === "leave" && row.type === "iddah" && st === "approved" && (() => {
                     const ownRow = String(row.employee?.id || "") === String(currentUser?.id || "");
                     if (row.iddahEndedAtBirth) {

@@ -182,20 +182,20 @@ assert.equal(checkApproveLeaveGate(
 ).error, "LEAVE_GENDER");
 
 const hajjOk = checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: muslimMale, requests: [] },
 );
 assert.equal(hajjOk.ok, true);
 assert.equal(checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: emptyReligionFemale, requests: [] },
 ).error, "LEAVE_RELIGION_REQUIRED", "no religion on file: Hajj waits until HR records it");
 assert.equal(checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: nonMuslimMale, requests: [] },
 ).error, "LEAVE_RELIGION");
 assert.equal(checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: nonMuslimFemale, requests: [] },
 ).error, "LEAVE_RELIGION");
 

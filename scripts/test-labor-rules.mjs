@@ -520,7 +520,8 @@ assert.equal(statutoryLeaveFloor("annual", { hireDate: "2026-01-01" }, "2026-08-
 assert.equal(statutoryLeaveFloor("annual", { hireDate: "2018-01-01" }, "2026-08-01"), 30);
 assert.equal(statutoryLeaveFloor("maternity", {}, "2024-06-01"), 70);
 assert.equal(statutoryLeaveFloor("maternity", {}, "2026-09-06"), 84);
-assert.equal(statutoryLeaveFloor("maternity", { maternityDisabledChild: true }, "2026-09-06"), 114);
+// Art. 151(2): the companion month is its own leave type — never folded into the maternity floor.
+assert.equal(statutoryLeaveFloor("maternity", { maternityDisabledChild: true }, "2026-09-06"), 84);
 assert.equal(leaveCiteRuleId("eid", {}, "2026-09-06"), "leave.eid.cite");
 assert.equal(leaveCiteRuleId("eid", {}, "2026-09-23"), "leave.nationalDay.days");
 assert.equal(leaveCiteRuleId("eid", {}, "2026-02-22"), "leave.foundingDay.days");
@@ -725,35 +726,35 @@ assert.equal(checkPublishGates({
 }).checks.find((c) => c.id === "hours_ramadan")?.ok, true, "Art. 98 week cap counts Ramadan-day hours only, not mixed-week ordinary hours");
 
 const hajjYoung = checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "a.pdf" }], status: "pending" },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "a.pdf" }], status: "pending" },
   false,
   { profile: { religion: "muslim", hireDate: "2025-06-01" }, requests: [] },
 );
 assert.equal(hajjYoung.error, "HAJJ_SERVICE");
 
 const hajjOk = checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "a.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "a.pdf" }], status: "pending", noOtherEmployerAck: true },
   false,
   { profile: { religion: "muslim", hireDate: "2023-01-01" }, requests: [] },
 );
 assert.equal(hajjOk.ok, true);
 
 const hajjLong = checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-20", days: 20, files: [{ name: "a.pdf" }], status: "pending" },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-06-10", days: 20, files: [{ name: "a.pdf" }], status: "pending" },
   false,
   { profile: { religion: "muslim", hireDate: "2020-01-01" }, requests: [] },
 );
 assert.equal(hajjLong.error, "HAJJ_OVER_MAX");
 
 const hajjShort = checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-08", days: 8, files: [{ name: "a.pdf" }], status: "pending" },
+  { type: "hajj", startDate: "2026-05-24", endDate: "2026-05-31", days: 8, files: [{ name: "a.pdf" }], status: "pending" },
   false,
   { profile: { religion: "muslim", hireDate: "2020-01-01" }, requests: [] },
 );
 assert.equal(hajjShort.ok, false);
 assert.equal(hajjShort.error, "HAJJ_UNDER_MIN");
 assert.equal(checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "a.pdf" }], status: "pending", noOtherEmployerAck: true },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 10, files: [{ name: "a.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: { religion: "muslim", hireDate: "2020-01-01", religion: "non_muslim" }, requests: [] },
 ).error, "LEAVE_RELIGION");
 
@@ -792,12 +793,12 @@ assert.equal(checkApproveLeaveGate(
   { profile: { gender: "female" }, requests: [] },
 ).error, "LEAVE_GENDER");
 assert.equal(checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 6, files: [{ name: "a.pdf" }], status: "pending" },
+  { type: "hajj", startDate: "2026-05-22", endDate: "2026-05-31", days: 6, files: [{ name: "a.pdf" }], status: "pending" },
   false,
   { profile: { religion: "muslim", hireDate: "2020-01-01" }, requests: [] },
 ).ok, true, "Hajj min/max uses the calendar span including Eid, not holiday-stripped days");
 assert.equal(checkApproveLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-08", days: 10, files: [{ name: "a.pdf" }], status: "pending" },
+  { type: "hajj", startDate: "2026-05-24", endDate: "2026-05-31", days: 10, files: [{ name: "a.pdf" }], status: "pending" },
   false,
   { profile: { religion: "muslim", hireDate: "2020-01-01" }, requests: [] },
 ).error, "HAJJ_UNDER_MIN");
@@ -1112,7 +1113,7 @@ assert.equal(examSitOpen.error, "EXAM_SAT_UNSETTLED");
 assert.equal(examSatState({ type: "exam", startDate: "2026-09-10", endDate: "2026-09-12", status: "approved" }, { onDate: "2026-09-10" }).settled, false);
 
 const submitBlocked = checkSubmitLeaveGate(
-  { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-08", days: 8 },
+  { type: "hajj", startDate: "2026-05-24", endDate: "2026-05-31", days: 8 },
   { profile: { religion: "muslim", hireDate: "2020-01-01" }, requests: [] },
 );
 assert.equal(submitBlocked.error, "HAJJ_UNDER_MIN");
@@ -1264,7 +1265,8 @@ assert.equal(checkSeeLeaveDecisionGate({ request: locked, employeeId: "e1", acto
 assert.equal(checkSeeLeaveDecisionGate({ request: { ...locked, decisionSeenAt: "2026-09-13T13:00:00.000Z" }, employeeId: "e1", actorId: "e1" }).already, true);
 
 const split = annualBalanceSplit({ hireDate: "2024-01-15" }, [], "2026-09-11");
-assert.equal(split.carryTotal, 21);
+// Arts. 109–111: both untaken years stay owed (FIFO buckets) — the older year is not dropped.
+assert.equal(split.carryTotal, 42);
 assert.equal(split.currentLeft, 21);
 
 const nursingEmp = {

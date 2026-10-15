@@ -9,6 +9,27 @@ import { ruleValue } from "./laborRules.js";
 
 export const RESIGNATION_TYPE = "resignation";
 
+/**
+ * Which law ends the contract when the worker leaves:
+ *  - "notice75": an open-ended (غير محدد المدة) contract — Art. 74(3) + Art. 75: the worker ends it by
+ *    written notice (30 days on a monthly wage), no acceptance needed; it ends when the notice runs out.
+ *  - "resignation79bis": a fixed-term contract — Art. 1 defines resignation for a fixed-term contract;
+ *    Art. 79 bis: accepted, deemed accepted after 30 days, or postponed up to 60.
+ * An empty contract type keeps the Art. 79 bis flow (the file must say open-ended for Art. 75).
+ */
+export const EXIT_ROUTE_NOTICE75 = "notice75";
+export const EXIT_ROUTE_79BIS = "resignation79bis";
+
+export function resignationRouteFor(profile) {
+  const raw = String(profile?.contractType || profile?.contract?.type || "").trim().toLowerCase();
+  if (["indefinite", "unlimited", "open", "open-ended", "غير محدد المدة"].includes(raw)) return EXIT_ROUTE_NOTICE75;
+  return EXIT_ROUTE_79BIS;
+}
+
+function isNotice75(row) {
+  return row?.exitRoute === EXIT_ROUTE_NOTICE75;
+}
+
 function addDays(key, n) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || "").slice(0, 10));
   if (!m) return "";
@@ -24,7 +45,7 @@ function daysBetween(a, b) {
 }
 
 /** Dates that follow from a resignation submitted on `date` with last working day `lastDay`. */
-export function resignationFacts({ date, lastDay } = {}) {
+export function resignationFacts({ date, lastDay, route } = {}) {
   const notice = ruleValue("contract.notice.workerMonthlyDays", date) || 30;
   const accept = ruleValue("contract.resignation.autoAcceptDays", date) || 30;
   const withdraw = ruleValue("contract.resignation.withdrawDays", date) || 7;
@@ -34,19 +55,22 @@ export function resignationFacts({ date, lastDay } = {}) {
     noticeNeed: notice,
     noticeDays,
     noticeShort: noticeDays != null && noticeDays < notice,
-    deemedAcceptedOn: addDays(date, accept),
-    withdrawUntil: addDays(date, withdraw),
-    postponeMax: postpone,
+    deemedAcceptedOn: route === EXIT_ROUTE_NOTICE75 ? "" : addDays(date, accept),
+    withdrawUntil: route === EXIT_ROUTE_NOTICE75 ? "" : addDays(date, withdraw),
+    postponeMax: route === EXIT_ROUTE_NOTICE75 ? 0 : postpone,
+    noticeEndsOn: addDays(date, notice),
+    route: route === EXIT_ROUTE_NOTICE75 ? EXIT_ROUTE_NOTICE75 : EXIT_ROUTE_79BIS,
   };
 }
 
 export function checkResignationFields(input = {}) {
+  const route = input.route === EXIT_ROUTE_NOTICE75 ? EXIT_ROUTE_NOTICE75 : EXIT_ROUTE_79BIS;
   const date = String(input.date || "").slice(0, 10);
   const lastDay = String(input.lastDay || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: "DATE_REQUIRED", reason: "حدد تاريخ تقديم الاستقالة.", reasonEn: "Set the resignation date." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(lastDay)) return { ok: false, error: "LAST_DAY_REQUIRED", reason: "حدد آخر يوم عمل.", reasonEn: "Set the last working day." };
   if (lastDay < date) return { ok: false, error: "LAST_DAY_ORDER", reason: "آخر يوم عمل قبل تاريخ التقديم.", reasonEn: "The last working day is before the submission date." };
-  const facts = resignationFacts({ date, lastDay });
+  const facts = resignationFacts({ date, lastDay, route });
   return {
     ok: true,
     ...facts,
@@ -60,6 +84,12 @@ export function checkResignationFields(input = {}) {
 /** One line for the request card. */
 export function resignationDetail(row, ar = true) {
   if (row?.type !== RESIGNATION_TYPE) return "";
+  if (isNotice75(row)) {
+    const st = resignationState(row);
+    return ar
+      ? `إشعار إنهاء عقد غير محدد المدة — ينتهي العقد في ${st.endsOn} دون حاجة لقبول (المادة 75)`
+      : `Notice ending an open-ended contract — it ends on ${st.endsOn}, no acceptance needed (Art. 75)`;
+  }
   const f = resignationFacts({ date: row.date });
   if (row.deemedAccepted) {
     return ar ? `قُبلت بحكم النظام (المادة 79 مكرر)` : "Accepted by law (Art. 79 bis)";
@@ -82,6 +112,16 @@ export function resignationDetail(row, ar = true) {
 export function resignationState(row, today) {
   const day = String(today || new Date().toISOString()).slice(0, 10);
   const submitted = String(row?.date || row?.createdAt || "").slice(0, 10);
+  if (isNotice75(row)) {
+    // Art. 75: written notice ends the open-ended contract when it runs out — nothing to accept or postpone.
+    const n = resignationFacts({ date: submitted, route: EXIT_ROUTE_NOTICE75 });
+    const endsOn = String(row?.lastDay || "").slice(0, 10) || n.noticeEndsOn;
+    let stage = "notice";
+    if (["withdrawn", "rejected"].includes(row?.status)) stage = row.status;
+    else if (day >= endsOn) stage = row?.status === "approved" && row?.settledAt ? "accepted" : "due";
+    else if (row?.status === "approved") stage = "acknowledged";
+    return { stage, submitted, deemedAcceptedOn: "", endsOn, postponedUntil: "", canPostpone: false, postponeMax: 0, withdrawUntil: "", canWithdraw: false, route: EXIT_ROUTE_NOTICE75 };
+  }
   const f = resignationFacts({ date: submitted });
   const postponedUntil = String(row?.postponedUntil || "").slice(0, 10);
   const accepted = row?.status === "approved";
@@ -106,6 +146,9 @@ export function resignationState(row, today) {
 /** Postponing acceptance: before the 30 days end, a written reason, up to 60 days from today (the explanation date). */
 export function checkPostponeResignationGate({ row, days, reason, today } = {}) {
   const st = resignationState(row, today);
+  if (isNotice75(row)) {
+    return { ok: false, error: "NOTICE75_NO_POSTPONE", reason: "موقوف — العقد غير محدد المدة ينتهي بإشعار العامل الكتابي عند انقضاء مهلته (المادة 75)؛ لا قبول ولا تأجيل فيه.", reasonEn: "Blocked — an open-ended contract ends on the worker's written notice when it runs out (Art. 75); there is no acceptance or postponement." };
+  }
   if (!st.canPostpone) {
     return {
       ok: false,
@@ -130,6 +173,9 @@ export function checkPostponeResignationGate({ row, days, reason, today } = {}) 
 export function checkWithdrawResignationGate(row, today) {
   const st = resignationState(row, today);
   if (st.canWithdraw) return { ok: true };
+  if (isNotice75(row)) {
+    return { ok: false, error: "NOTICE75_WITHDRAW", reason: "إشعار إنهاء العقد غير محدد المدة لا يُسحب بإرادة العامل وحده بعد وصوله — يلزم اتفاق صاحب العمل (المادة 75).", reasonEn: "A notice ending an open-ended contract is not withdrawn by the worker alone once delivered — the employer must agree (Art. 75)." };
+  }
   return {
     ok: false,
     error: "WITHDRAW_CLOSED",
@@ -147,9 +193,10 @@ export function dueResignations(data, today) {
     for (const row of emp.otherRequests || []) {
       if (row?.type !== RESIGNATION_TYPE) continue;
       // "revise" = a resignation the old screen "returned" to postpone — the 30 days still run on it.
-      if (!["pending", "pending_manager", "under_review", "postponed", "revise"].includes(String(row.status || "pending"))) continue;
+      const notice = isNotice75(row);
+      if (!["pending", "pending_manager", "under_review", "postponed", "revise"].includes(String(row.status || "pending")) && !(notice && row.status === "approved" && !row.settledAt)) continue;
       const st = resignationState(row, today);
-      if (st.stage === "due") out.push({ employeeId: emp.id, requestId: row.id, endsOn: st.endsOn, via: st.postponedUntil ? "postponement" : "silence" });
+      if (st.stage === "due") out.push({ employeeId: emp.id, requestId: row.id, endsOn: st.endsOn, via: notice ? "notice75" : st.postponedUntil ? "postponement" : "silence" });
     }
   }
   return out;

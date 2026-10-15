@@ -4,7 +4,7 @@
 
 import { checkResignationGate, checkTerminationGate } from "./contractLawDerivations.ts";
 import { citeRule, ruleValue } from "./laborRules.ts";
-import { accruedAnnualDaysAtExit } from "./leaveDerivations.ts";
+import { accruedAnnualDaysAtExit, unusedAnnualDaysAtExit } from "./leaveDerivations.ts";
 import { suspendedDaysFromUnpaidLeave } from "./contractSuspension.ts";
 
 export const ANNUAL_ENTITLEMENT_DAYS = 21;
@@ -359,7 +359,13 @@ export function deriveEos(caseRow: OffboardingCaseLike, nowMs = eosEndMs(caseRow
   const wage = averageBasis ? Number((caseRow as any).averageWage) : eosBase.wage;
   const entitlement = annualEntitlementDays(caseRow, onDate, nowMs);
   const accrued = preStart ? 0 : accruedAnnualDaysAtExit(hireDate || undefined, entitlement, onDate);
-  const unused = Math.round(unusedAnnualDays(Number(caseRow.annualLeaveUsed) || 0, accrued) * 10) / 10;
+  // Art. 111: with the leave record on hand, every untaken year (FIFO buckets) plus the pro-rata of the
+  // last one is paid — not only the current year. Without it, the old single-year figure stays.
+  const leaveRows = Array.isArray((caseRow as any).leaveRequests) ? (caseRow as any).leaveRequests : (Array.isArray((caseRow as any).profile?.leaveRequests) ? (caseRow as any).profile.leaveRequests : null);
+  const exitDay = String((caseRow as any).contractExit?.effectiveDate || "").slice(0, 10) || onDate;
+  const unused = preStart ? 0 : leaveRows && hireDate
+    ? Math.round(unusedAnnualDaysAtExit({ ...((caseRow as any).profile || {}), hireDate, leaveTotals: (caseRow as any).leaveTotals ?? (caseRow as any).profile?.leaveTotals }, leaveRows, exitDay) * 10) / 10
+    : Math.round(unusedAnnualDays(Number(caseRow.annualLeaveUsed) || 0, accrued) * 10) / 10;
   const full = preStart ? 0 : eosGratuity(years, wage);
   const leave = preStart ? 0 : leaveCashout(wage, unused);
   const exit = caseRow.contractExit || {};

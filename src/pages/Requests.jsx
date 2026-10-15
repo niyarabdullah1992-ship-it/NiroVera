@@ -16,7 +16,7 @@ import {
 import { annualRemainingWithGrants, flattenWorkspaceRows, isUnseenApprovedLeave, managerPendingInbox, requestEmployeeStationId } from "@/lib/requestWorkspace";
 import { requestSelfEmployee } from "@/lib/employeeFileView";
 import { hydrateEmployeesLeave } from "@/lib/leaveDerivations";
-import { openDueAnnualLeaveNotices, openDueNightRotateCycles } from "@/lib/store";
+import { openDueAnnualCarryNotices, openDueAnnualLeaveNotices, openDueNightRotateCycles } from "@/lib/store";
 import { railLaneTabs, useRailSide } from "@/lib/railSide";
 
 function canManageRequests(user, data) {
@@ -57,7 +57,9 @@ export default function Requests() {
     if (!company?.id) return;
     const night = openDueNightRotateCycles(company.id);
     const leave = openDueAnnualLeaveNotices(company.id);
-    if (night.opened?.length || night.notified || leave.opened?.length) refresh?.();
+    // Art. 110: carried days near or past the deferral limit — the worker and manager are told once.
+    const carry = openDueAnnualCarryNotices(company.id);
+    if (night.opened?.length || night.notified || leave.opened?.length || carry.opened?.length) refresh?.();
   }, [company?.id]);
 
   if (!data || !currentUser) return null;

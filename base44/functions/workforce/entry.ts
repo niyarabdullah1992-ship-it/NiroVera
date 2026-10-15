@@ -18,6 +18,9 @@ import {
   isOfficialHolidayDay,
   planAnnualPauseForSick,
   checkIddahBirthGate,
+  checkMaternityBirthGate,
+  checkLeaveBreachGate,
+  unpaidSuspensionPlan,
 } from "../../shared/leaveDerivations.ts";
 import {
   STUDY_CONSENT_TYPE,
@@ -52,7 +55,9 @@ import {
   damageObjectionDeadline,
 } from "../../shared/rightsRequests.ts";
 import {
+  EXIT_ROUTE_NOTICE75,
   RESIGNATION_TYPE,
+  resignationRouteFor,
   checkPostponeResignationGate,
   checkWithdrawResignationGate,
   dueResignations,
@@ -274,7 +279,10 @@ Deno.serve(async (req) => {
         noOtherEmployerAck: body.noOtherEmployerAck === true,
         recordedBy: body.recordedBy ? String(body.recordedBy) : undefined,
         deferConsentAt: body.deferConsentAt ? String(body.deferConsentAt) : undefined,
-      };
+        expectedBirthDate: type === "maternity" ? (String(body.expectedBirthDate || body.eventDate || "").slice(0, 10) || undefined) : undefined,
+        advanceLeave: type === "annual" && body.advanceLeave === true ? true : undefined,
+        joinAnnualToSick: type === "annual" && body.joinAnnualToSick === true ? true : undefined,
+      } as any;
       // Art. 78: the worker sets the job-search day; it is recorded, not asked for approval.
       if (type === "job_search") request.status = "approved";
       const extras = {
@@ -338,8 +346,12 @@ Deno.serve(async (req) => {
       // Art. 79 bis(4): a resignation carries no deferred date — it is dated the day it reaches us.
       if (request.type === RESIGNATION_TYPE) {
         const today = riyadhToday();
+        // Art. 75 (open-ended: 30-day written notice, no acceptance) vs Art. 79 bis (fixed-term resignation).
+        const route = resignationRouteFor(emp.profile);
+        const facts = resignationFacts({ date: today, route });
         request.date = today;
-        request.lastDay = resignationFacts({ date: today }).deemedAcceptedOn;
+        request.exitRoute = route;
+        request.lastDay = route === EXIT_ROUTE_NOTICE75 ? facts.noticeEndsOn : facts.deemedAcceptedOn;
         if (request.status !== "pending") request.status = "pending";
       }
       if (request.type === "permission" && request.compLeave === true) {
@@ -401,9 +413,17 @@ Deno.serve(async (req) => {
       if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
       const req = { ...leaveRequests[idx] };
 
-      const extras = { profile: emp.profile, requests: emp.leaveRequests };
+      const extras: any = { profile: emp.profile, requests: emp.leaveRequests };
       if (action === "approveLeave") {
-        const gate = checkApproveLeaveGate(req, extras);
+        if (body.agreedOtherwise === true) req.agreedOtherwise = true;
+        if (body.extensionAgreedOtherwise === true) req.extensionAgreedOtherwise = true;
+        const gate = checkApproveLeaveGate(req, {
+          ...extras,
+          forApproval: true,
+          advanceConsent: body.advanceConsent === true,
+          // Art. 114 quota: counted across the company's files.
+          company: String(req.type || "").toLowerCase() === "hajj" ? { employees: await loadEmployees(), leavePolicy: { hajjAnnualQuota: body.hajjAnnualQuota } } : undefined,
+        });
         if (!gate.ok) {
           return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, gate }, { status: 422 });
         }
@@ -417,6 +437,35 @@ Deno.serve(async (req) => {
           if (span.start && span.end) {
             req.activeStartDate = span.start;
             req.activeEndDate = span.end;
+          }
+        }
+        const leaveType = String(req.type || "").toLowerCase();
+        let profileNext: any = null;
+        if (leaveType === "annual" && req.advanceLeave === true) {
+          req.advanceConsent = true;
+          req.advanceConsentAt = req.approvedAt;
+        }
+        if (leaveType === "hajj") {
+          profileNext = { ...(emp.profile || {}), hajjPerformed: true, hajjRequestId: req.id, hajjSeason: String(req.startDate || "").slice(0, 4) };
+        }
+        if (leaveType === "unpaid") {
+          // Art. 116 + Regs Art. 25: suspension beyond twenty days; a fixed-term contract is extended by it.
+          const plan = unpaidSuspensionPlan(leaveRequests, emp.profile?.hireDate, req);
+          const mine = plan.byRequest[req.id];
+          if (mine && mine.days > 0) {
+            req.suspension = { days: mine.days, from: mine.from, to: mine.to };
+            const profile: any = { ...(emp.profile || {}) };
+            profile.unpaidSuspendedDays = (Number(profile.unpaidSuspendedDays) || 0) + mine.days;
+            const end = String(profile.contract?.endDate || profile.contractEndDate || "").slice(0, 10);
+            const fixed = ["fixed", "fixed term", "definite", "محدد المدة"].includes(String(profile.contractType || profile.contract?.type || "").trim().toLowerCase());
+            if (fixed && /^\d{4}-\d{2}-\d{2}$/.test(end) && req.extensionAgreedOtherwise !== true) {
+              const next = addCalendarDays(end, mine.days);
+              req.suspension.contractEndBefore = end;
+              req.suspension.contractEndAfter = next;
+              profile.contractEndDate = next;
+              if (profile.contract && typeof profile.contract === "object") profile.contract = { ...profile.contract, endDate: next };
+            }
+            profileNext = profile;
           }
         }
         const row = buildRequestAudit({
@@ -451,7 +500,7 @@ Deno.serve(async (req) => {
           }
         }
         const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
-        await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests, fileLog });
+        await base44.asServiceRole.entities.Employee.update(emp.id, profileNext ? { leaveRequests, fileLog, profile: profileNext } : { leaveRequests, fileLog });
         await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
         return Response.json({ request: req, ok: true, audit: row });
       }
@@ -514,7 +563,10 @@ Deno.serve(async (req) => {
         pending.reviewedBy = auth.name;
         pending.reviewedAt = new Date().toISOString();
         const profilePatch: Record<string, unknown> = {};
-        if (pending.type === RESIGNATION_TYPE) {
+        if (pending.type === RESIGNATION_TYPE && pending.exitRoute === EXIT_ROUTE_NOTICE75) {
+          // Art. 75: the notice is acknowledged; the open-ended contract ends when it runs out.
+          profilePatch.contractExit = { ...(emp.profile?.contractExit || {}), reason: "resignation", route: EXIT_ROUTE_NOTICE75, party: "worker", noticeAt: pending.date || "", resignationSubmittedAt: pending.date || "", effectiveDate: pending.lastDay || "", status: "notice" };
+        } else if (pending.type === RESIGNATION_TYPE) {
           // Art. 79 bis(2): the contract ends from the date the employer accepts.
           const today = riyadhToday();
           profilePatch.contractExit = { ...(emp.profile?.contractExit || {}), reason: "resignation", party: "worker", resignationSubmittedAt: pending.date || "", effectiveDate: today, status: "accepted", acceptedAt: today };
@@ -645,11 +697,16 @@ Deno.serve(async (req) => {
       for (const item of due) {
         const emp: any = emps.find((e: any) => (e.employeeId || e.id) === item.employeeId);
         if (!emp) continue;
+        const notice75 = item.via === "notice75";
         const otherRequests = (emp.otherRequests || []).map((r: any) => (r.id === item.requestId
-          ? { ...r, status: "approved", deemedAccepted: item.via, reviewedBy: "بحكم النظام", reviewedAt: new Date().toISOString(), approvedAt: new Date().toISOString() }
+          ? (notice75
+            ? { ...r, status: "approved", settledAt: today, reviewedBy: r.reviewedBy || "بحكم النظام", reviewedAt: r.reviewedAt || new Date().toISOString(), approvedAt: r.approvedAt || new Date().toISOString() }
+            : { ...r, status: "approved", deemedAccepted: item.via, reviewedBy: "بحكم النظام", reviewedAt: new Date().toISOString(), approvedAt: new Date().toISOString() })
           : r));
         const req = (emp.otherRequests || []).find((r: any) => r.id === item.requestId) || {};
-        const contractExit = { ...(emp.profile?.contractExit || {}), reason: "resignation", party: "worker", resignationSubmittedAt: req.date || "", effectiveDate: item.endsOn, status: "accepted", acceptedAt: item.endsOn, deemed: item.via };
+        const contractExit = notice75
+          ? { ...(emp.profile?.contractExit || {}), reason: "resignation", route: EXIT_ROUTE_NOTICE75, party: "worker", noticeAt: req.date || "", effectiveDate: item.endsOn, status: "ended", endedAt: item.endsOn }
+          : { ...(emp.profile?.contractExit || {}), reason: "resignation", party: "worker", resignationSubmittedAt: req.date || "", effectiveDate: item.endsOn, status: "accepted", acceptedAt: item.endsOn, deemed: item.via };
         await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, profile: { ...(emp.profile || {}), contractExit } });
         await audit("resignation_deemed_accepted", `Resignation of ${emp.name} accepted by law (${item.via}) on ${item.endsOn}`);
       }
@@ -718,6 +775,59 @@ Deno.serve(async (req) => {
       leaveRequests[idx] = r;
       await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
       await audit("iddah_ended_at_birth", `${emp.name} iddah ${r.id} ended at birth ${gate.birthDate}`);
+      return Response.json({ ok: true, request: r });
+    }
+
+    // Art. 151(1): the actual birth re-anchors the six mandatory weeks; a late birth's complement is unpaid.
+    if (action === "recordBirth") {
+      const employeeId = String(body.employeeId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      if (!employeeId || !requestId) return Response.json({ error: "Missing employeeId or requestId" }, { status: 400 });
+      if (!isManager && auth.userId !== employeeId) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
+      const idx = leaveRequests.findIndex((r: any) => r.id === requestId);
+      if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
+      const gate: any = checkMaternityBirthGate(leaveRequests[idx], body.birthDate);
+      if (!gate.ok) return Response.json({ ...gate }, { status: 422 });
+      const r: any = { ...leaveRequests[idx] };
+      r.expectedBirthDate = r.expectedBirthDate || gate.expectedBirthDate || undefined;
+      r.actualBirthDate = gate.birthDate;
+      r.eventDate = gate.birthDate;
+      r.originalStartDate = r.originalStartDate || r.startDate;
+      r.originalEndDate = r.originalEndDate || r.endDate;
+      r.startDate = gate.startDate;
+      r.endDate = gate.endDate;
+      r.days = gate.days;
+      r.paidDays = gate.paidDays;
+      r.unpaidComplementDays = gate.unpaidComplementDays || undefined;
+      r.unpaidComplementFrom = gate.unpaidComplementFrom || undefined;
+      r.unpaidComplementTo = gate.unpaidComplementTo || undefined;
+      if (r.activeStartDate) r.activeStartDate = gate.startDate;
+      if (r.activeEndDate) r.activeEndDate = gate.endDate;
+      leaveRequests[idx] = r;
+      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
+      await audit("maternity_birth_recorded", `${emp.name} maternity ${r.id}: birth ${gate.birthDate}, unpaid complement ${gate.unpaidComplementDays}`);
+      return Response.json({ ok: true, request: r });
+    }
+
+    // Art. 118: proven work for another employer during leave — the leave pay is recoverable.
+    if (action === "recordLeaveBreach") {
+      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const employeeId = String(body.employeeId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
+      const idx = leaveRequests.findIndex((r: any) => r.id === requestId);
+      if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
+      const gate: any = checkLeaveBreachGate(leaveRequests[idx], { file: body.file, reason: body.reason, actorId: auth.userId, subjectId: employeeId });
+      if (!gate.ok) return Response.json({ ...gate }, { status: 422 });
+      const r: any = { ...leaveRequests[idx], recoverPay: true, recoverReason: String(body.reason).trim(), recoverEvidence: body.file, recoverAt: new Date().toISOString(), recoverBy: auth.name };
+      leaveRequests[idx] = r;
+      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
+      await audit("leave_breach_art118", `${emp.name} leave ${r.id}: ${r.recoverReason}`);
       return Response.json({ ok: true, request: r });
     }
 

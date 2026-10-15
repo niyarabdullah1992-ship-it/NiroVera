@@ -1,19 +1,19 @@
 /** Client helpers aligned with base44/shared/leaveDerivations.ts */
 
 import { profileGender } from "./employeeProfileFields.js";
-import { citeLeaveType, citeRule, isRamadanHoursSubject, religionOnFile, ruleAt, ruleValue } from "./laborRules.js";
+import { citeLeaveType, citeRule, isRamadanHoursSubject, religionOnFile, ruleAt, ruleValue, rulingEidSpan } from "./laborRules.js";
 import { daysUntilLeaveStart } from "./leaveEntitlementCycle.js";
-import { officialHolidayKindLabel, officialHolidayList, officialHolidayOn } from "./ummAlQuraCalendar.js";
+import { eidAdhaSpan, officialHolidayKindLabel, officialHolidayList, officialHolidayOn } from "./ummAlQuraCalendar.js";
 import { chargeableAnnualWorkDays, chargeableSpanExcludingHolidays, deriveEidOverlap } from "./leaveEidOverlap.js";
 import { checkGroundedRefusalGate } from "./statutoryRefusal.js";
 import { checkJobSearchDayGate } from "./rightsRequests.js";
-import { annualBalanceSplit, anniversaryYearWindow, getLeaveTotal, leftoverGrantDays, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, usedLeaveDays, serviceYearsFromHire, iddahPaidDays, lastApprovedMaternity, PER_EVENT_LEAVE_TYPES } from "./leaveTypes.js";
+import { annualAdvanceCap, annualBalanceSplit, anniversaryYearWindow, effectiveServiceYears, getLeaveTotal, leftoverGrantDays, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, usedLeaveDays, iddahPaidDays, lastApprovedMaternity, PER_EVENT_LEAVE_TYPES, unpaidSuspensionPlan } from "./leaveTypes.js";
 import { articleOfficialText } from "./laborArticleTexts.js";
 import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAVE_TRACK_PAID } from "./otherRequestDerivations.js";
 import { otherRequestsForEmployeeId } from "./employeeRequestBags.js";
 
 export const CHAPTER_LEAVE_TYPES = [
-  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "work_injury", "emergency", "comp", "job_search", "dialysis", "unpaid",
+  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "work_injury", "emergency", "comp", "job_search", "dialysis", "therapy", "unpaid",
 ];
 
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
@@ -38,6 +38,7 @@ export const LEAVE_TYPES = [
   { key: "comp", total: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
   { key: "job_search", total: null, article: "78", ar: "يوم بحث عن عمل", en: "Job-search day" },
   { key: "dialysis", total: null, article: null, ar: "غسيل كلوي (اللائحة م42)", en: "Kidney dialysis (Regs Art. 42)", requiresFile: true },
+  { key: "therapy", total: null, article: null, ar: "جلسة علاج (اللائحة، الملحق 2)", en: "Therapy session (Regs Annex 2)", requiresFile: true },
   { key: "unpaid", total: null, article: citeLeaveType("unpaid")?.article || null, ar: "بدون راتب", en: "Unpaid" },
 ];
 
@@ -537,6 +538,195 @@ export function checkRejectLeaveGate(request, extras = {}) {
   };
 }
 
+/** Art. 114: the Eid al-Adha span of the Hajj season a leave falls in (owner ruling first). Null when unknown. */
+export function hajjSeasonSpan(onDate, calendar) {
+  const day = String(onDate || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const owner = rulingEidSpan("adha", calendar);
+  if (owner && owner.from.slice(0, 4) === day.slice(0, 4)) return owner;
+  return eidAdhaSpan(Number(day.slice(0, 4)));
+}
+
+/** Art. 114: the employer's yearly cap on Hajj leaves — null when none is set. */
+export function hajjAnnualQuotaOf(company) {
+  const raw = company?.leavePolicy?.hajjAnnualQuota ?? company?.hajjAnnualQuota;
+  if (raw === "" || raw == null) return null;
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** Approved Hajj leaves company-wide in the season of `adhaFrom` (one Hijri year = one season). */
+export function hajjSeasonApprovedCount(employees, adhaFrom, exceptId) {
+  const season = String(adhaFrom || "").slice(0, 4);
+  let n = 0;
+  for (const emp of employees || []) {
+    for (const r of emp?.leaveRequests || []) {
+      if (String(r?.type || "").toLowerCase() !== "hajj" || r.status !== "approved" || (exceptId && r.id === exceptId)) continue;
+      const span = hajjSeasonSpan(r.startDate);
+      const key = span ? span.from.slice(0, 4) : String(r.startDate || "").slice(0, 4);
+      if (key === season) n += 1;
+    }
+  }
+  return n;
+}
+
+/**
+ * Two leaves may not cover the same day (approved or pending). The designed exceptions stay open:
+ * sick inside annual (Regs Art. 26/41 pause), Eid and official holidays (their own gate), and
+ * iddah ↔ maternity (Regs Art. 40(5): the birth ends the iddah).
+ */
+export function checkLeaveOverlapGate(request, extras = {}) {
+  const type = String(request?.type || "").trim().toLowerCase();
+  const start = String(request?.startDate || "").slice(0, 10);
+  const end = String(request?.endDate || start).slice(0, 10);
+  if (!start || !end || isOfficialHolidayLeave(type)) return { ok: true };
+  const designed = (a, b) => {
+    const pair = [a, b].sort().join("+");
+    return pair === "annual+sick" || pair === "iddah+maternity";
+  };
+  const hit = liveLeaveRequests(request, extras).find((row) => {
+    const otherType = String(row.type || "").trim().toLowerCase();
+    if (isOfficialHolidayLeave(otherType) || designed(type, otherType)) return false;
+    const span = leaveCoverRange(row);
+    const otherStart = span.start || String(row.startDate || "").slice(0, 10);
+    const otherEnd = span.end || otherStart;
+    return rangesOverlap(start, end, otherStart, otherEnd);
+  });
+  if (!hit) return { ok: true };
+  const span = leaveCoverRange(hit);
+  return {
+    ok: false,
+    error: "LEAVE_OVERLAP",
+    reason: `موقوف — المدة تتقاطع مع طلب ${leaveTypeLabel(hit.type, true)} ${hit.status === "approved" ? "معتمد" : "قائم"} (${span.start} – ${span.end}). لا تُغطّى الأيام نفسها بإجازتين.`,
+    reasonEn: `Blocked — these dates overlap an ${hit.status === "approved" ? "approved" : "open"} ${leaveTypeLabel(hit.type, false)} request (${span.start} – ${span.end}). The same days are not covered by two leaves.`,
+    overlapId: hit.id || null,
+  };
+}
+
+/**
+ * Model work regulation (Regs Annex 1) Art. 33: with the company's consent, the worker may take part of
+ * this year's annual leave in advance, in proportion to the time worked in the year. The days drawn from
+ * the current year (after older carried days, FIFO) are capped at the pro-rata earned; approval needs consent.
+ */
+export function checkAnnualAdvanceGate(request, extras = {}, days = 0) {
+  const type = String(request?.type || "").trim().toLowerCase();
+  if (type !== "annual" || request?.advanceLeave !== true) return { ok: true };
+  const profile = extras.profile || {};
+  const requests = (extras.requests || profile.leaveRequests || []).filter((r) => r?.id !== request.id);
+  const start = String(request.startDate || "").slice(0, 10);
+  const split = annualBalanceSplit(profile, requests, start, extras.company, extras.employee);
+  const fromCurrent = Math.max(0, (Number(days) || 0) - split.carryLeft);
+  const cap = annualAdvanceCap(profile, requests, start, extras.company, extras.employee);
+  const cite = citeRule("leave.annual.days", start);
+  if (fromCurrent > cap.cap) {
+    return {
+      ok: false,
+      error: "ANNUAL_ADVANCE_CAP",
+      reason: `موقوف — الإجازة المقدمة بنسبة ما قضيته من السنة: المكتسب حتى ${start} ${cap.earned} يوماً، استُخدم منها ${cap.used}، فالمتاح مقدماً ${cap.cap} (اللائحة النموذجية م33).`,
+      reasonEn: `Blocked — an advance is in proportion to the time worked this year: ${cap.earned} days earned by ${start}, ${cap.used} used, so ${cap.cap} may be taken in advance (Model Regs Art. 33).`,
+      cite,
+      cap: cap.cap,
+    };
+  }
+  if (request.status === "pending" && extras.forApproval === true && request.advanceConsent !== true && extras.advanceConsent !== true) {
+    return {
+      ok: false,
+      error: "ANNUAL_ADVANCE_CONSENT",
+      reason: "موقوف — أخذ جزء من الإجازة السنوية مقدماً يحتاج موافقة المنشأة صراحة (اللائحة النموذجية م33).",
+      reasonEn: "Blocked — taking part of the annual leave in advance needs the company's explicit consent (Model Regs Art. 33).",
+      cite,
+    };
+  }
+  return { ok: true, advance: { fromCurrent, cap: cap.cap, earned: cap.earned } };
+}
+
+/** The approved sick leave that ends the day before `start` — for joining annual leave to it (Art. 82, Regs Art. 41). */
+export function sickLeaveEndingBefore(requests, start) {
+  const day = String(start || "").slice(0, 10);
+  if (!day) return null;
+  const prev = addCalendarDays(day, -1);
+  return (requests || []).find((r) => String(r?.type || "").toLowerCase() === "sick" && r.status === "approved" && leaveCoverRange(r).end === prev) || null;
+}
+
+/** Art. 82 (last sentence) + Regs Art. 41: «وللعامل الحق في أن يطلب وصل إجازته السنوية بالمرضية». */
+export function checkJoinAnnualToSickGate(request, extras = {}) {
+  if (request?.joinAnnualToSick !== true) return { ok: true };
+  if (String(request?.type || "").toLowerCase() !== "annual") {
+    return { ok: false, error: "JOIN_SICK_ANNUAL_ONLY", reason: "موقوف — الوصل بالإجازة المرضية للإجازة السنوية فقط (المادة 82).", reasonEn: "Blocked — only annual leave is joined to sick leave (Article 82)." };
+  }
+  const sick = sickLeaveEndingBefore(extras.requests || extras.profile?.leaveRequests, request.startDate);
+  if (!sick) {
+    return {
+      ok: false,
+      error: "JOIN_SICK_NOT_ADJACENT",
+      reason: "موقوف — وصل الإجازة السنوية بالمرضية يبدأ في اليوم التالي لنهاية إجازة مرضية معتمدة (المادة 82، اللائحة م41).",
+      reasonEn: "Blocked — annual leave joined to sick leave starts the day after an approved sick leave ends (Article 82, Regs Art. 41).",
+    };
+  }
+  return { ok: true, joinedSickId: sick.id || null };
+}
+
+/**
+ * Art. 151(1) — recording the actual birth on an approved maternity leave. The six weeks after birth are
+ * mandatory; the twelve paid weeks run from the leave start. When a late birth leaves fewer than six weeks
+ * after it, «فتحتسب المدة المكملة لها إجازة دون أجر» — the complement is unpaid, never refused.
+ */
+export function checkMaternityBirthGate(request, birthDate) {
+  const d = (v) => String(v || "").slice(0, 10);
+  const birth = d(birthDate);
+  if (String(request?.type || "").toLowerCase() !== "maternity") return { ok: false, error: "NOT_MATERNITY", reason: "ليست إجازة وضع.", reasonEn: "Not a maternity leave." };
+  if (request.status !== "approved") return { ok: false, error: "NOT_APPROVED", reason: "تُسجَّل الولادة على إجازة وضع معتمدة.", reasonEn: "Record the birth on an approved maternity leave." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birth)) return { ok: false, error: "BIRTH_REQUIRED", reason: "حدد تاريخ الوضع الفعلي.", reasonEn: "Set the actual birth date." };
+  if (d(request.actualBirthDate)) return { ok: false, error: "BIRTH_ALREADY", reason: `سُجّل الوضع من قبل (${d(request.actualBirthDate)}).`, reasonEn: "The birth is already recorded." };
+  const start = d(request.startDate);
+  const end = d(request.endDate);
+  const onDate = start || birth;
+  const paidDays = ruleValue("leave.maternity.days", onDate);
+  const postDays = ruleValue("leave.maternity.mandatoryPostDays", onDate) || 42;
+  const expected = d(request.expectedBirthDate) || d(request.eventDate);
+  if (start && birth < addCalendarDays(start, -paidDays)) {
+    return { ok: false, error: "BIRTH_DATE_FAR", reason: "تاريخ الوضع بعيد عن بداية الإجازة — راجع التاريخ.", reasonEn: "The birth date is far from the leave start — check it." };
+  }
+  const newStart = !start || birth < start ? birth : start;
+  const paidEnd = addCalendarDays(newStart, paidDays - 1);
+  const postEnd = addCalendarDays(birth, postDays - 1);
+  const keepEnd = end && end < paidEnd ? end : paidEnd;
+  const newEnd = postEnd > keepEnd ? postEnd : keepEnd;
+  const unpaidFrom = postEnd > paidEnd ? addCalendarDays(paidEnd, 1) : "";
+  const unpaidDays = unpaidFrom ? computeLeaveDays(unpaidFrom, postEnd) : 0;
+  return {
+    ok: true,
+    birthDate: birth,
+    expectedBirthDate: expected || "",
+    startDate: newStart,
+    endDate: newEnd,
+    days: computeLeaveDays(newStart, newEnd),
+    paidDays: Math.min(paidDays, computeLeaveDays(newStart, newEnd)),
+    unpaidComplementDays: unpaidDays,
+    unpaidComplementFrom: unpaidFrom,
+    unpaidComplementTo: unpaidDays ? postEnd : "",
+    postBirthEnd: postEnd,
+  };
+}
+
+/**
+ * Art. 118: a worker proven to work for another employer during any leave may be denied the leave pay,
+ * or the employer recovers what was paid. The manager records the proof on the approved leave; payroll
+ * reads leave.recoverPay / recoverReason.
+ */
+export function checkLeaveBreachGate(request, { file, reason, actorId, subjectId } = {}) {
+  if (!request || request.status !== "approved") return { ok: false, error: "LEAVE_NOT_APPROVED", reason: "يُسجَّل الإخلال على إجازة معتمدة.", reasonEn: "Record the breach on an approved leave." };
+  if (actorId && subjectId && String(actorId) === String(subjectId)) return { ok: false, error: "SELF", reason: "لا يسجّل العامل الإخلال على نفسه.", reasonEn: "A worker cannot record this on himself." };
+  if (request.recoverPay === true) return { ok: false, error: "BREACH_ALREADY", reason: "سُجّل الإخلال على هذه الإجازة من قبل.", reasonEn: "Already recorded on this leave." };
+  if (!isRealSupportingFile(file)) {
+    return { ok: false, error: "BREACH_EVIDENCE", reason: "موقوف — الإثبات على صاحب العمل: أرفق مستند العمل لدى صاحب العمل الآخر (المادة 118).", reasonEn: "Blocked — the burden is on the employer: attach the evidence of work for the other employer (Article 118).", cite: citeRule("leave.noOtherEmployer.cite") };
+  }
+  if (String(reason || "").trim().length < 10) {
+    return { ok: false, error: "BREACH_REASON", reason: "اكتب ما ثبت بالتاريخ والجهة (المادة 118).", reasonEn: "Write what was proven, with dates and the other employer (Article 118)." };
+  }
+  return { ok: true };
+}
+
 function checkStatutoryLeaveGates(request, extras, days, onDate, cite) {
   const type = String(request?.type || "").trim().toLowerCase();
   const profile = extras.profile || {};
@@ -575,7 +765,19 @@ function checkStatutoryLeaveGates(request, extras, days, onDate, cite) {
         cite: hajjCite,
       };
     }
-    const years = serviceYearsFromHire(profile.hireDate, onDate);
+    // Art. 114 «بما فيها إجازة عيد الأضحى»: the span holds the Eid al-Adha days.
+    const adha = hajjSeasonSpan(start, extras.laborCalendar || extras.calendar);
+    if (adha && !(start <= adha.from && end >= adha.to)) {
+      return {
+        ok: false,
+        error: "HAJJ_EID_ADHA",
+        reason: `موقوف — إجازة الحج تشمل أيام عيد الأضحى (${adha.from} – ${adha.to}) (المادة 114).`,
+        reasonEn: `Blocked — Hajj leave must include the Eid al-Adha days (${adha.from} – ${adha.to}) (Article 114).`,
+        cite: hajjCite,
+      };
+    }
+    // Suspended contract days (Art. 116, Regs Art. 25) do not count toward the two years.
+    const years = effectiveServiceYears(profile, extras.requests || profile.leaveRequests, onDate);
     if (years < minYears) {
       return {
         ok: false,
@@ -596,6 +798,22 @@ function checkStatutoryLeaveGates(request, extras, days, onDate, cite) {
         reasonEn: "Blocked — Hajj leave is once during service if it has not been performed before.",
         cite: hajjCite,
       };
+    }
+    // Art. 114: the employer may set how many workers get Hajj leave each year.
+    const quota = hajjAnnualQuotaOf(extras.company);
+    if (quota != null && adha) {
+      const taken = hajjSeasonApprovedCount(extras.company?.employees || extras.employees, adha.from, request.id);
+      if (taken >= quota) {
+        return {
+          ok: false,
+          error: "HAJJ_QUOTA",
+          reason: `موقوف — بلغت حصة الحج لهذا الموسم (${quota}) التي حددتها المنشأة (المادة 114). يبقى الحق قائماً لموسم قادم.`,
+          reasonEn: `Blocked — this season's Hajj quota set by the employer (${quota}) is reached (Article 114). The right stays for a later season.`,
+          cite: hajjCite,
+          quota,
+          taken,
+        };
+      }
     }
   }
   if (type === "paternity") {
@@ -845,13 +1063,16 @@ function checkStatutoryLeaveGates(request, extras, days, onDate, cite) {
     }
   }
   if (type === "unpaid") {
-    const cap = ruleValue("leave.unpaid.suspendAfterDays", onDate);
-    if (days > cap) {
+    // Art. 116 + Regs Art. 25: beyond twenty unpaid days (cumulative in the work year) the contract is suspended.
+    const plan = unpaidSuspensionPlan(extras.requests || profile.leaveRequests || [], profile.hireDate, { ...request, id: request.id || "__new" });
+    const mine = plan.byRequest[request.id || "__new"];
+    if (mine && mine.days > 0) {
       return {
         ok: true,
         warning: "CONTRACT_SUSPENDED",
-        reason: `تنبيه — الإجازة بلا أجر فيما زاد على ${cap} يوماً توقف العقد ما لم يتفق الطرفان على خلاف ذلك.`,
-        reasonEn: `Notice — unpaid leave beyond ${cap} days suspends the contract unless the parties agree otherwise.`,
+        suspension: { days: mine.days, from: mine.from, to: mine.to },
+        reason: `تنبيه — ${mine.days} يوماً من هذه الإجازة تتجاوز عشرين يوماً بلا أجر في سنة العمل، فيُعد العقد موقوفاً فيها (${mine.from} – ${mine.to}): لا تُحسب في الخدمة ولا في استحقاق الإجازة، ويُمدد العقد المحدد المدة بقدرها — ما لم يتفق الطرفان على خلاف ذلك (المادة 116، اللائحة م25).`,
+        reasonEn: `Notice — ${mine.days} days of this leave go past twenty unpaid days in the work year, so the contract is suspended for them (${mine.from} – ${mine.to}): they do not count as service or toward leave, and a fixed-term contract is extended by them — unless the parties agree otherwise (Article 116, Regs Art. 25).`,
         cite: citeRule("leave.unpaid.suspendAfterDays", onDate) || cite,
       };
     }
@@ -1087,6 +1308,12 @@ export function checkApproveLeaveGate(request, typeRequiresFile = false, extras 
   if (!official.ok) return official;
   const overlap = checkOfficialHolidayOverlapGate(request, extras);
   if (!overlap.ok) return overlap;
+  const twoLeaves = checkLeaveOverlapGate(request, extras);
+  if (!twoLeaves.ok) return twoLeaves;
+  const joinSick = checkJoinAnnualToSickGate(request, extras);
+  if (!joinSick.ok) return joinSick;
+  const advance = checkAnnualAdvanceGate(request, extras, days);
+  if (!advance.ok) return advance;
   const defer = checkAnnualDeferGate(request, extras);
   if (!defer.ok) return defer;
   const notice = checkAnnualNoticeGate(request, extras);
@@ -1094,9 +1321,6 @@ export function checkApproveLeaveGate(request, typeRequiresFile = false, extras 
   const skipBalance = type === "unpaid" || type === "exam" || type === "hajj" || type === "eid" || type === "iddah" || type === "maternity_extend" || type === "maternity_companion" || request.examRepeat || extras.examRepeat;
   if (type && !skipBalance && extras.profile) {
     const profile = { ...extras.profile };
-    if (type === "maternity" && (request.disabledChild || extras.disabledChild)) {
-      profile.maternityDisabledChild = true;
-    }
     const requests = extras.requests || extras.profile.leaveRequests || [];
     if (type === "grant") {
       const leftover = leftoverGrantDays(profile, requests, onDate);
@@ -1176,6 +1400,9 @@ export function checkApproveLeaveGate(request, typeRequiresFile = false, extras 
     reason: statutory.reason,
     reasonEn: statutory.reasonEn,
     overlap: overlapFacts,
+    suspension: statutory.suspension || null,
+    advance: advance.advance || null,
+    joinedSickId: joinSick.joinedSickId || null,
   };
 }
 

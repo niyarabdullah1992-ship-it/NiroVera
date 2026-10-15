@@ -44,6 +44,7 @@ import { checkPublishRegulationGate, planRegulationAck, regulationDate, regulati
 import { deadlineText, disciplineDeadlines } from "@/lib/disciplineDeadlines";
 import { ruleValue } from "@/lib/laborRules";
 import { saveDisciplineOnServer } from "@/lib/disciplineServer";
+import { regulationVersionEntry } from "@/lib/syncLaw";
 
 const MANAGE_TAB_ORDER = ["manage", "raise", "calc", "schedule", "law", "archive"];
 const EMPLOYEE_TAB_ORDER = ["mine", "schedule", "law", "archive"];
@@ -343,9 +344,18 @@ export default function Discipline() {
     });
   };
 
-  const patch = (item, fields) => {
+  // Every stage of a sanction file reaches the server through disciplineSave, where the gates run again
+  // (the background sync never carries disciplinaryCases). A refusal names its article.
+  const serverSave = (stage, row) => {
+    saveDisciplineOnServer(company?.id, stage, row, regulation).then((r) => {
+      if (r.error) toast({ description: ar ? r.reason : r.reasonEn, variant: "destructive" });
+    });
+  };
+
+  const patch = (item, fields, stage = "") => {
     const now = new Date().toISOString();
     saveCases(cases.map((row) => (row.id === item.id ? { ...row, ...fields, updatedAt: now } : row)));
+    if (stage) serverSave(stage, { ...item, ...fields, updatedAt: now });
   };
 
   const openCase = () => {
@@ -448,7 +458,7 @@ export default function Discipline() {
         notifiedAt: item.notifiedAt || now,
         hearingMode: hearGate.oral ? "oral" : "written",
         hearingMinutes: hearingMinutes || item.hearingMinutes,
-      });
+      }, "hearing");
       return;
     }
     if (actionId === "sign") {
@@ -480,7 +490,7 @@ export default function Discipline() {
       return;
     }
     if (actionId === "close") {
-      patch(item, { status: "closed", rulingAt: now, rulingBy: who, rulingLabel: ar ? "أُغلق" : "Closed", rulingNote: ar ? "استقرّ الملف." : "The file settled." });
+      patch(item, { status: "closed", rulingAt: now, rulingBy: who, rulingLabel: ar ? "أُغلق" : "Closed", rulingNote: ar ? "استقرّ الملف." : "The file settled." }, "close");
       return;
     }
     if (actionId === "keep" || actionId === "lower" || actionId === "void") {
@@ -491,12 +501,12 @@ export default function Discipline() {
       }
     }
     if (actionId === "keep") {
-      patch(item, { status: "ruling", rulingOutcome: "keep", rulingAt: now, rulingBy: who, rulingLabel: ar ? "ثُبِّت الجزاء" : "Sanction upheld", rulingNote: ar ? "نُظر في الاعتراض وصدر القرار. ثُبِّت الجزاء كما وُقّع." : "The objection was heard. The sanction stands as signed." });
+      patch(item, { status: "ruling", rulingOutcome: "keep", rulingAt: now, rulingBy: who, rulingLabel: ar ? "ثُبِّت الجزاء" : "Sanction upheld", rulingNote: ar ? "نُظر في الاعتراض وصدر القرار. ثُبِّت الجزاء كما وُقّع." : "The objection was heard. The sanction stands as signed." }, "ruling");
       return;
     }
     if (actionId === "lower") {
       const voidEntry = planDisciplineFineVoid(item, currentUser, board.today);
-      saveCases(cases.map((row) => (row.id === item.id ? {
+      const lowered = (row) => ({
         ...row,
         status: "ruling",
         rulingOutcome: "lower",
@@ -509,13 +519,15 @@ export default function Discipline() {
         rulingLabel: ar ? "خُفِّض الجزاء" : "Sanction reduced",
         rulingNote: ar ? "خُفِّض إلى إنذار بلا غرامة." : "Reduced to a warning with no fine.",
         updatedAt: now,
-      } : row)), { disciplineFineLedger: [...ledger, voidEntry] });
+      });
+      saveCases(cases.map((row) => (row.id === item.id ? lowered(row) : row)), { disciplineFineLedger: [...ledger, voidEntry] });
+      serverSave("ruling", lowered(item));
       if (company?.id) liftDisciplineDeduction(company.id, item.employeeId, item, currentUser);
       return;
     }
     if (actionId === "void") {
       const voidEntry = planDisciplineFineVoid(item, currentUser, board.today);
-      saveCases(cases.map((row) => (row.id === item.id ? {
+      const voided = (row) => ({
         ...row,
         status: "closed",
         rulingOutcome: "void",
@@ -524,7 +536,9 @@ export default function Discipline() {
         rulingLabel: ar ? "أُلغي الجزاء" : "Sanction voided",
         rulingNote: ar ? "أُلغي الجزاء ورُفع من الملف." : "The sanction was voided and lifted from the file.",
         updatedAt: now,
-      } : row)), { disciplineFineLedger: [...ledger, voidEntry] });
+      });
+      saveCases(cases.map((row) => (row.id === item.id ? voided(row) : row)), { disciplineFineLedger: [...ledger, voidEntry] });
+      serverSave("ruling", voided(item));
       if (company?.id) liftDisciplineDeduction(company.id, item.employeeId, item, currentUser);
     }
   };
@@ -545,7 +559,7 @@ export default function Discipline() {
     if (!file) return;
     const hash = await sha256HexOfFile(file);
     const url = await readConsentFile(file);
-    patch(item, { signedPaper: { name: file.name, hash, url, at: new Date().toISOString() } });
+    patch(item, { signedPaper: { name: file.name, hash, url, at: new Date().toISOString() } }, "paper");
   };
 
   const fileObject = async (item, file) => {
@@ -563,7 +577,7 @@ export default function Discipline() {
       const url = await readConsentFile(file);
       appealFile = { name: file.name, hash, url };
     }
-    patch(item, { status: "appeal", appealNote: text, appealedAt: now, appealFile });
+    patch(item, { status: "appeal", appealNote: text, appealedAt: now, appealFile }, "appeal");
     setAppealDraft("");
   };
 
@@ -575,12 +589,12 @@ export default function Discipline() {
       toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
       return false;
     }
-    patch(item, { notifyMethod: method, notifyDeliveredAt: String(at).slice(0, 10), notifyRef: String(ref || "").trim(), notifyRecordedBy: currentUser?.name || "" });
+    patch(item, { notifyMethod: method, notifyDeliveredAt: String(at).slice(0, 10), notifyRef: String(ref || "").trim(), notifyRecordedBy: currentUser?.name || "" }, "delivery");
     return true;
   };
 
   const withdrawObject = (item) => {
-    patch(item, { status: "notify", appealNote: "", appealedAt: "", appealFile: null });
+    patch(item, { status: "notify", appealNote: "", appealedAt: "", appealFile: null }, "withdraw");
   };
 
   return (
@@ -635,7 +649,10 @@ export default function Discipline() {
               if (!company?.id) return;
               updateCompany(company.id, (row) => {
                 // A re-saved regulation is a new version: announce it again (Art. 13) and collect fresh acknowledgements.
-                row.workRegulation = { ...next, savedBy: currentUser?.name || "", savedAt: new Date().toISOString(), version: new Date().toISOString(), announcedAt: "", acks: {} };
+                // The superseded version stays on record (the server keeps the same history).
+                const prev = row.workRegulation;
+                const versions = [...(Array.isArray(prev?.versions) ? prev.versions : []), ...(prev?.clauses?.length ? [regulationVersionEntry(prev)] : [])];
+                row.workRegulation = { ...next, savedBy: currentUser?.name || "", savedAt: new Date().toISOString(), version: new Date().toISOString(), announcedAt: "", acks: {}, versions };
               });
               toast({ description: ar ? "حُفظت لائحة تنظيم العمل المعتمدة — كل جزاء جديد يسمّي بنده منها." : "The approved regulation is saved — every new sanction names its clause." });
             }}

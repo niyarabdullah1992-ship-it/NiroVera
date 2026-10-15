@@ -31,7 +31,28 @@ export const OBJECT_BLOB_CATEGORIES = Object.freeze([
   "branchEscalationSla",
   "hcmFoundation",
   "hcmPerformance",
+  "workRegulation",
 ]);
+
+/**
+ * Blob categories the client hydrates but never pushes as-is through the generic syncBlob:
+ *   server-action — written only by a backend action whose gates must run first
+ *                   (disciplinaryCases → compliance/disciplineSave, Arts. 66–72).
+ *   derived       — pushed as a projection of another bag (employerDuties ← employees[]).
+ */
+export const NOT_PUSHED_AS_IS = Object.freeze({
+  disciplinaryCases: "server-action",
+  employerDuties: "derived",
+});
+
+export function isServerActionCategory(category) {
+  return NOT_PUSHED_AS_IS[String(category || "")] === "server-action";
+}
+
+/** The categories the generic background sync may push verbatim. */
+export function pushableBlobCategories(categories) {
+  return (categories || []).filter((c) => !NOT_PUSHED_AS_IS[String(c || "")]);
+}
 
 export const LEGACY_FALLBACK = Object.freeze({
   tasks: ["operationsTasks"],

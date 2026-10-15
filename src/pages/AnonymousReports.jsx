@@ -15,6 +15,7 @@ import EscalationInfoBox from "@/components/escalation/EscalationInfoBox";
 import MobileSelect from "@/components/mobile/MobileSelect";
 import VoiceStationList from "@/components/complaints/VoiceStationList";
 import AbuseCasesBoard from "@/components/complaints/AbuseCasesBoard";
+import { abuseCommitteeIds } from "@/lib/syncLaw";
 import { ACCENT, BORDER, MUTED, NAVY, SURFACE, cardShell, field, labelMuted, textarea, ui, BAD, WARN, OK, NEUTRAL } from "@/lib/platformStyles";
 
 const STAT_TYPES = ["complaint", "suggestion"];
@@ -270,6 +271,9 @@ export default function AnonymousReports({ underQueue = false }) {
 
       {(isOwner || canAct || ["director", "hr", "admin", "owner"].includes(currentUser.role)) ? (
         <AbuseCasesBoard data={data} companyId={company?.id} ar={lang === "ar"} by={currentUser.name || ""} />
+      ) : (data?.abuseCases || []).some((r) => abuseCommitteeIds(r).includes(String(currentUser.id || ""))) ? (
+        // A committee member named on a case sees that case only (model regulation Art. 56(1)).
+        <AbuseCasesBoard data={data} companyId={company?.id} ar={lang === "ar"} by={currentUser.name || ""} committeeMemberId={String(currentUser.id || "")} />
       ) : null}
 
       {!isStaff && (

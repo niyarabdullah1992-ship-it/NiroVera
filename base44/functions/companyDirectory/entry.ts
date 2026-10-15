@@ -10,6 +10,7 @@ import {
 } from '../../shared/workspaceDerivations.ts';
 import { POWERCARE_MARK_URL } from '../../shared/brand.ts';
 import { companyMetaCreatePayload, creatorEmployeeRecord } from '../../shared/companyBootstrap.ts';
+import { mergeAbuseCasesWrite, mergeEmployerDutyRoster, mergeWorkRegulationWrite } from '../../shared/syncLaw.ts';
 
 // System emails (OTP codes, welcome messages) go out through the app's connected
 // Gmail account, because the built-in email service refuses recipients who are
@@ -969,8 +970,55 @@ Deno.serve(async (req) => {
       const context = await getActorContext();
       const actorRole = context.actor?.role;
       const privilege = await getActorPrivilege();
+      const storeMerged = async (rows, data) => {
+        if (rows.length) {
+          await base44.asServiceRole.entities.CompanyDataBlob.update(rows[0].id, { payload: data });
+          for (const extra of rows.slice(1)) await base44.asServiceRole.entities.CompanyDataBlob.delete(extra.id);
+        } else {
+          await base44.asServiceRole.entities.CompanyDataBlob.create({ companyId, category, payload: data });
+        }
+        await bumpSignal(base44, companyId);
+      };
+      // Sanction files pass the gates of Arts. 66–72 in compliance/disciplineSave — never a raw snapshot.
+      if (category === 'disciplinaryCases') {
+        return Response.json({
+          error: 'DISCIPLINE_VIA_ACTION',
+          reason: 'ملفات الجزاء تُحفظ عبر مسار الجزاءات بعد فحص شروط المواد 66–72، لا عبر المزامنة العامة.',
+          reasonEn: 'Sanction files are saved through the sanctions action after the Articles 66–72 checks, not through the generic sync.',
+        }, { status: 403 });
+      }
+      // Law Arts. 12–13: senior HR saves/announces a version; anyone adds only their own acknowledgement.
+      if (category === 'workRegulation') {
+        if (privilege === 'none') return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+        const current = rows[0]?.payload && !Array.isArray(rows[0].payload) ? rows[0].payload : {};
+        const merged = mergeWorkRegulationWrite(current, payload, {
+          senior: context.senior, actorId: auth.userId || '', actorName: context.actor?.name || '',
+        });
+        if (merged.changed) await storeMerged(rows, merged.payload);
+        return Response.json({ ok: true, changed: merged.changed });
+      }
+      // Training / medical-exam / held-document registers: HR in scope; records never dropped.
+      if (category === 'employerDuties') {
+        const hr = context.senior || context.permissions.has('manage_employees');
+        if (!hr) return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+        const stations = context.scope === null || context.senior ? null : new Set(context.scope || []);
+        const merged = mergeEmployerDutyRoster(rows[0]?.payload || [], Array.isArray(payload) ? payload : [], (row) => stations === null || stations.has(row?.stationId));
+        await storeMerged(rows, merged);
+        return Response.json({ ok: true });
+      }
+      // Model regulation Art. 56(1): below senior, the filer adds their case; named committee members investigate theirs.
+      if (category === 'abuseCases' && !context.senior) {
+        if (privilege === 'none' || !auth.userId) return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+        const merged = mergeAbuseCasesWrite(rows[0]?.payload || [], Array.isArray(payload) ? payload : [], auth.userId);
+        await storeMerged(rows, merged);
+        return Response.json({ ok: true });
+      }
       let allowed = false;
-      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'branchEscalationSla', 'workProofs', 'visitorProofs', 'disciplinaryCases', 'arbitrationOutcomes', 'assetTransfers', 'orgSeats', 'stationBudgets', 'hcmFoundation', 'hcmPerformance', 'hseCredits', 'attendancePolicy', 'attendanceEmergency', 'abuseCases'].includes(category)) allowed = context.senior;
+      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'branchEscalationSla', 'workProofs', 'visitorProofs', 'arbitrationOutcomes', 'assetTransfers', 'orgSeats', 'stationBudgets', 'hcmFoundation', 'hcmPerformance', 'hseCredits', 'attendancePolicy', 'attendanceEmergency', 'abuseCases'].includes(category)) allowed = context.senior;
+      else if (category === 'trainingPlan') allowed = context.senior || context.permissions.has('manage_employees');
       else if (['hrLevels', 'hrClusters', 'jobGrades'].includes(category)) allowed = context.senior && (!context.actor || context.actor.role === 'director');
       else if (category === 'payrollRuns') allowed = context.senior || context.permissions.has('manage_payroll');
       else if (category === 'schedules') allowed = context.senior || ['pgm', 'station_manager'].includes(actorRole) || context.permissions.has('manage_schedules');
@@ -987,7 +1035,7 @@ Deno.serve(async (req) => {
       }
       // Regular employees may write their OWN records in these categories — their
       // reports, personal entries, and own leave row must never be silently dropped.
-      const SELF_WRITABLE = ['anonymousReports', 'publicReports', 'notifications', 'personalPlaces', 'personalAttendance', 'plannerItems', 'journalEntries', 'leaveRoster', 'abuseCases'];
+      const SELF_WRITABLE = ['anonymousReports', 'publicReports', 'notifications', 'personalPlaces', 'personalAttendance', 'plannerItems', 'journalEntries', 'leaveRoster'];
       const selfWrite = !allowed && privilege === 'self' && SELF_WRITABLE.includes(category);
       // Never fail silently: a rejected write returns 403 so the UI can tell the user.
       if (!allowed && !selfWrite) return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });

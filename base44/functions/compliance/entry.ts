@@ -26,6 +26,7 @@ import {
   checkRaiseDisciplineGate,
   checkSignDisciplineGate,
 } from "../../shared/disciplineDerivations.ts";
+import { DISCIPLINE_WORKER_STAGES, pickDisciplineRegulation, planDisciplineStageWrite } from "../../shared/syncLaw.ts";
 
 const COMPLIANCE_CATEGORY = "employeeCompliance";
 const DISCIPLINE_CATEGORY = "disciplinaryCases";
@@ -369,7 +370,9 @@ Deno.serve(async (req) => {
      * The regulation comes from the stored blob when there is one, else the workspace copy the page sends.
      */
     if (action === "disciplineSave") {
-      if (!isManager && body.stage !== "appeal") {
+      const stage = String(body.stage || "");
+      const workerStage = DISCIPLINE_WORKER_STAGES.includes(stage);
+      if (!isManager && !workerStage) {
         return Response.json({ error: "FORBIDDEN", reason: "ملفات الجزاء للإدارة.", reasonEn: "Sanction files are management-only." }, { status: 403 });
       }
       const row = (body.caseRow || {}) as Record<string, any>;
@@ -378,45 +381,52 @@ Deno.serve(async (req) => {
       }
       const blob = await loadBlob(DISCIPLINE_CATEGORY);
       const cases = (Array.isArray(blob?.payload) ? blob.payload : []) as Array<Record<string, any>>;
+      const idx = cases.findIndex((c) => String(c.id) === String(row.id));
+      const existing = idx >= 0 ? cases[idx] : null;
+      // Art. 72: the grievance and the case thread are the worker's own — never someone else's file.
+      if (!isManager && String(existing?.employeeId ?? row.employeeId) !== String(auth.userId || "")) {
+        return Response.json({ error: "FORBIDDEN", reason: "التظلّم يرفعه صاحب الملف وحده (المادة 72).", reasonEn: "Only the worker on the file may file a grievance (Article 72)." }, { status: 403 });
+      }
+      const planned = planDisciplineStageWrite(stage, existing, row);
+      if (!planned.ok) return Response.json({ error: planned.error, reason: planned.reason, reasonEn: planned.reasonEn }, { status: 400 });
+      const next = planned.row as Record<string, any>;
       const regBlob = await loadBlob(REGULATION_CATEGORY);
-      // The regulation lives in the company workspace; a stored blob wins over the copy the page sends.
-      const regRaw = (Array.isArray(regBlob?.payload) ? regBlob.payload[0] : regBlob?.payload) || body.regulation || null;
-      const regulation = regRaw && Array.isArray(regRaw.clauses) && regRaw.clauses.length ? { ...regRaw, source: "own" } : null;
+      // The stored regulation always wins; the page's copy counts only while the server holds none.
+      const { regulation } = pickDisciplineRegulation(regBlob?.payload, body.regulation);
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
-      const stage = String(body.stage || "");
+      const others = cases.filter((c) => String(c.id) !== String(row.id));
       let gate: any = { ok: true };
       if (stage === "raise") {
         const emps = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId });
-        const emp = (emps || []).find((e: any) => String(e.employeeId || e.id) === String(row.employeeId));
+        const emp = (emps || []).find((e: any) => String(e.employeeId || e.id) === String(next.employeeId));
         gate = checkRaiseDisciplineGate({
-          employee: emp ? { id: String(row.employeeId), stationId: emp.stationId || emp.station_id || row.stationId } : null,
+          employee: emp ? { id: String(next.employeeId), stationId: emp.stationId || emp.station_id || next.stationId } : null,
           actor: { id: String(auth.userId || "") },
-          note: row.note,
+          note: next.note,
           today,
-          discoveredAt: row.discoveredAt,
-          penaltyKind: row.penaltyKind,
-          cutDays: row.cutDays,
-          dismissGround: row.dismissGround,
-          offSite: !!row.offSite,
-          workConnected: row.workConnected,
-          cases: cases.filter((c) => String(c.id) !== String(row.id)),
+          discoveredAt: next.discoveredAt,
+          penaltyKind: next.penaltyKind,
+          cutDays: next.cutDays,
+          dismissGround: next.dismissGround,
+          offSite: !!next.offSite,
+          workConnected: next.workConnected,
+          cases: others,
         });
       } else if (stage === "sign") {
-        gate = checkSignDisciplineGate(row, { today, cases: cases.filter((c) => String(c.id) !== String(row.id)), regulation });
-      } else if (["hearing", "appeal", "ruling"].includes(stage)) {
-        gate = checkAdvanceDisciplineGate(row as any, stage, { today, appealNote: row.appealNote, hearingMinutes: row.hearingMinutes });
-      } else {
-        return Response.json({ error: "STAGE_REQUIRED", reason: "حدّد المرحلة.", reasonEn: "Name the stage." }, { status: 400 });
+        gate = checkSignDisciplineGate(next, { today, cases: others, regulation });
+      } else if (stage === "hearing" || stage === "appeal") {
+        gate = checkAdvanceDisciplineGate(existing as any, stage, { today, appealNote: next.appealNote, hearingMinutes: next.hearingMinutes });
+      } else if (stage === "ruling") {
+        gate = checkAdvanceDisciplineGate(existing as any, "ruling", { today });
       }
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, cite: gate.cite || null }, { status: 400 });
       }
-      const idx = cases.findIndex((c) => String(c.id) === String(row.id));
-      const saved = { ...(idx >= 0 ? cases[idx] : {}), ...row, companyId: auth.companyId, updatedAt: new Date().toISOString() };
+      const saved = { ...next, companyId: auth.companyId, updatedAt: new Date().toISOString() };
       if (idx >= 0) cases[idx] = saved;
       else cases.unshift(saved);
       await saveBlob(DISCIPLINE_CATEGORY, cases);
-      await audit(`discipline.${stage}`, `Sanction file ${row.id} — ${stage}`, { employeeId: row.employeeId, caseId: row.id });
+      await audit(`discipline.${stage}`, `Sanction file ${row.id} — ${stage}`, { employeeId: saved.employeeId, caseId: row.id });
       return Response.json({ ok: true, case: saved });
     }
 

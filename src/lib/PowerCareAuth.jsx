@@ -6,6 +6,8 @@ import {
   repairOwnerSession, cacheCloudData, googleCompanyLogin, companyAccountExists, ensureLocalCompany,
   sendPresenceHeartbeat,
 } from "./store";
+import { keepLocalOverEmptyServer } from "./syncLaw";
+import { flushDisciplineOutbox } from "./disciplineServer";
 import { base44 } from "@/api/base44Client";
 import { DEFAULT_SUBSCRIPTION_PLANS, planConfigForName } from "@/lib/subscriptionPlans";
 import { isLocalPreviewActive, LOCAL_PREVIEW_COMPANY_ID } from "@/lib/localPreview";
@@ -141,6 +143,8 @@ export function AuthProvider({ children }) {
         // Delta sync: one lightweight versions call tells us which collections actually
         // changed on the server — only those get downloaded. If the versions call fails,
         // fall back to hydrating everything (previous behavior).
+        // Retry sanction stages still waiting for the server (each tick; backoff lives in the outbox).
+        flushDisciplineOutbox(s.companyId);
         fetchCloudVersions(s.companyId).then((versions) => {
           const prev = lastVersionsRef.current[s.companyId] || {};
           const changed = (key) => !versions || versions[key] !== prev[key];
@@ -165,7 +169,12 @@ export function AuthProvider({ children }) {
             hydrationTasks.push(
               hydrateBlobFromEntity(s.companyId, category).then((records) => {
                 if (!records) return;
-                cacheCloudData(s.companyId, { [category]: records });
+                // Newly promoted bags: an empty server answer never wipes a local copy not pushed yet.
+                if (keepLocalOverEmptyServer(category, records, getCompanyData(s.companyId)?.[category])) return;
+                const merged = cacheCloudData(s.companyId, { [category]: records });
+                // employerDuties lands on the employees themselves (training, medical, held documents).
+                // disciplinaryCases come back with unconfirmed local stages re-applied on top.
+                if ((category === "employerDuties" || category === "disciplinaryCases") && merged) { setData(merged); return; }
                 setData((prevData) => (prevData ? { ...prevData, [category]: records } : prevData));
               })
             );

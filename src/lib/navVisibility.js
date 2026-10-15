@@ -12,9 +12,6 @@ const BASE = [
   "/app/leave",
   "/app/requests",
   "/app/files",
-  "/app/inventory",
-  "/app/assets",
-  "/app/expenses",
   // The wage surface is split: management resolves into the run, everyone else
   // lands on their own payslip and deductions. Closing the route to employees
   // would close their own wage to them, so the page derives the view and every
@@ -35,8 +32,6 @@ const PLAN_ROUTE_SECTIONS = {
   "/app/assistant": "assistant",
   "/app/tasks": "tasks",
   "/app/escalation": "tasks",
-  "/app/inventory": "inventory",
-  "/app/assets": "assets",
   "/app/attendance": "attendance",
   "/app/calendar": "attendance",
   "/app/shifts": "attendance",
@@ -47,7 +42,6 @@ const PLAN_ROUTE_SECTIONS = {
   "/app/settings": "hr",
   "/app/discipline": "hr",
   "/app/performance": "performance",
-  "/app/expenses": "expenses",
   "/app/payroll": "payroll",
   "/app/safety": "safety",
   "/app/complaints": "complaints",

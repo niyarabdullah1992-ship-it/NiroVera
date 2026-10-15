@@ -42,7 +42,7 @@ for (const key of DO_NOT_WRITE) {
 }
 assert.ok(blobKeys.includes("tasks"), "canonical tasks in BLOB_CATEGORIES");
 assert.ok(blobKeys.includes("arbitrationOutcomes"), "arbitrationOutcomes must be a real store blob");
-assert.ok(blobKeys.includes("stationBudgets"), "stationBudgets must be a real store blob");
+assert.equal(blobKeys.includes("stationBudgets"), false, "expenses module removed — stationBudgets is no longer a store blob");
 
 const functionsDir = join(ROOT, "base44", "functions");
 const writeHits = [];

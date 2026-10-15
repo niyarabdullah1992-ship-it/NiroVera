@@ -36,16 +36,6 @@ import {
   attendanceForCompany,
   readPayrollRuns,
   emptyMoneyDisplay,
-  expenseClaimsBy,
-  assetsHeldBy,
-  readInventoryItems,
-  readStockMovements,
-  readMaterialRequests,
-  locationBalancesOf,
-  totalQtyFromBalances,
-  qtyAtLocation,
-  syncItemQuantityFromBalances,
-  adjustLocationBalance,
   allLeaveRequests,
   allOtherRequests,
   casesForEmployee,
@@ -69,7 +59,7 @@ import {
   normalizeBlobPayload,
   assertWritableEntity,
 } from "../src/lib/canonicalStore.js";
-import { qtyAtStation } from "../src/lib/inventoryDerivations.js";
+import { PURGED_MODULE_KEYS, purgeRemovedModuleKeys } from "../src/lib/purgedModules.js";
 
 // ── registry shape ──────────────────────────────────────────────
 assert.ok(PLATFORM_FACTS.length >= HR_FACTS.length);
@@ -78,8 +68,7 @@ const ids = PLATFORM_FACTS.map((f) => f.id);
 assert.equal(new Set(ids).size, ids.length, "duplicate fact ids");
 
 for (const domain of [
-  "company", "people", "org", "attendance", "payroll", "expenses", "assets",
-  "inventory", "requests", "discipline", "voice", "performance", "safety",
+  "company", "people", "org", "attendance", "payroll", "requests", "discipline", "voice", "performance", "safety",
   "proof", "signing", "notifications", "owner",
 ]) {
   const rows = factsForDomain(domain);
@@ -92,7 +81,7 @@ for (const domain of [
 }
 
 const table = domainTable();
-assert.ok(table.length >= 15);
+assert.ok(table.length >= 14); // expenses, assets, inventory domains removed (HR scope)
 
 // ── company / GOSI homes ────────────────────────────────────────
 assert.equal(factById("company.establishment").home, "company.gosiEstablishment");
@@ -154,7 +143,8 @@ assert.ok(messy.personalAttendance.some((r) => r.id === "att1"));
 assert.equal(messy.attendanceLedger, undefined);
 assert.ok(messy.anonymousReports.some((r) => r.id === "c1"));
 assert.equal(messy.complaintQueue, undefined);
-assert.ok(messy.stationBudgets.some((r) => r.id === "b1"));
+// Inventory / expenses / asset register were removed — their bags are purged, not migrated.
+assert.equal(messy.stationBudgets, undefined);
 assert.equal(messy.expenseBudget, undefined);
 assert.equal(messy.stockBoard, undefined);
 assert.equal(canonicalizePlatformFacts(messy), false);
@@ -235,9 +225,6 @@ assert.equal(readOrgTree(company).length, 1);
 assert.equal(resolveOrgGraph(company).fromLegacy, false);
 assert.equal(attendanceForCompany(readPersonalAttendance(company), "co-x").length, 1);
 assert.equal(readPayrollRuns(company).length, 1);
-assert.equal(expenseClaimsBy(company, "e1").length, 1);
-assert.equal(assetsHeldBy(company, "e1").length, 1);
-assert.equal(readInventoryItems(company).length, 1);
 assert.equal(allLeaveRequests(company).length, 1);
 assert.equal(allOtherRequests(company).length, 1);
 assert.equal(casesForEmployee(company, "e1").length, 1);
@@ -269,7 +256,8 @@ for (const legacy of Object.values(LEGACY_FALLBACK).flat()) {
 assert.ok(factById("attendance.punch").legacyKeys.includes("attendanceLedger"));
 assert.ok(factById("org.tree").legacyKeys.includes("orgStructure"));
 assert.ok(factById("voice.anonymous").legacyKeys.includes("complaintQueue"));
-assert.ok(factById("expense.budget").legacyKeys.includes("expenseBudget"));
+assert.equal(factById("expense.budget"), null);
+for (const domain of ["expenses", "assets", "inventory"]) assert.equal(DOMAIN_MODULES[domain], undefined, `${domain} domain removed`);
 assert.ok(factById("proof.task").legacyKeys.includes("operationsTasks"));
 assert.ok(Object.keys(LEGACY_FALLBACK).includes("personalAttendance"));
 assert.ok(Object.keys(LEGACY_FALLBACK).includes("orgTree"));
@@ -290,31 +278,19 @@ const hr = await import("../src/lib/hrFacts.js");
 assert.equal(hr.readCompanyEstablishment(coA), PREVIEW_ESTABLISHMENT_NUMBER);
 assert.equal(hr.factById("payroll.net").stored, false);
 
-// ── inventory: one qty home (locationBalances) ──────────────────
-assert.equal(factById("inventory.qty").home, "inventoryItems[].locationBalances");
-assert.equal(factById("inventory.unitEntity").writer, "do-not-write");
-assert.ok(DO_NOT_WRITE_ENTITIES.includes("InventoryUnit"));
-const sku = {
-  id: "sku1",
-  locationBalances: [
-    { locationId: "st1", quantity: 3 },
-    { locationId: "st2", quantity: 7 },
-  ],
-  quantity: 999,
-};
-assert.equal(totalQtyFromBalances(sku), 10);
-assert.equal(qtyAtLocation(sku, "st1"), 3);
-assert.equal(qtyAtLocation(sku, "st2"), 7);
-assert.equal(qtyAtLocation(sku, "missing"), 0);
-assert.equal(qtyAtStation(sku, "st1"), 3);
-const synced = syncItemQuantityFromBalances(sku);
-assert.equal(synced.quantity, 10);
-const moved = adjustLocationBalance(sku, "st1", -2);
-assert.equal(qtyAtLocation(moved, "st1"), 1);
-assert.equal(totalQtyFromBalances(moved), 8);
-assert.deepEqual(locationBalancesOf({ currentLocationId: "st9", quantity: 4 }), [{ locationId: "st9", quantity: 4 }]);
-assert.equal(readStockMovements({ stockMovements: [{ id: "m1" }] }).length, 1);
-assert.equal(readMaterialRequests({ materialRequests: [{ id: "r1" }] }).length, 1);
+// ── removed modules: one-time purge of their stored bags ─────────
+const residue = Object.fromEntries(PURGED_MODULE_KEYS.map((key) => [key, [{ id: key }]]));
+residue.employees = [{ id: "e1" }];
+assert.equal(purgeRemovedModuleKeys(residue), true);
+for (const key of PURGED_MODULE_KEYS) assert.equal(Object.prototype.hasOwnProperty.call(residue, key), false, key);
+assert.equal(residue.employees.length, 1, "HR bags untouched");
+assert.equal(purgeRemovedModuleKeys(residue), false, "idempotent");
+const viaCanonical = { id: "co-r", assets: [{ id: "a" }], expenseClaims: [], inventoryItems: [{ id: "i" }], tasks: [] };
+assert.equal(canonicalizePlatformFacts(viaCanonical), true);
+assert.equal(viaCanonical.assets, undefined);
+assert.equal(viaCanonical.inventoryItems, undefined);
+assert.ok(Array.isArray(viaCanonical.tasks));
+assert.ok(PLATFORM_MIGRATION_IDS.includes("platform.purgeRemovedModules"));
 
 // Object blob sync must not wipe maps to []
 assert.deepEqual(
@@ -337,14 +313,13 @@ assert.ok(RETIRED_PROOF_ENTITIES.includes("WorkProof"));
 assert.ok(DO_NOT_WRITE_ENTITIES.includes("WorkProof"));
 assert.throws(() => assertWorkProofBlobHome("WorkProof"), /do-not-write/);
 assert.throws(() => assertWritableEntity("WorkProof"), /do-not-write/);
-assert.throws(() => assertWritableEntity("InventoryUnit"), /do-not-write/);
-assert.equal(assertWritableEntity("InventoryItem"), "InventoryItem");
+assert.equal(DO_NOT_WRITE_ENTITIES.includes("InventoryUnit"), false);
 
 // Fail if any runtime writer still targets entities.WorkProof
 const ROOT = join(import.meta.dirname, "..");
 const WRITE_PATTERNS = [
   /entities\.WorkProof\.(create|update|bulkCreate|bulkUpdate|delete)\b/,
-  /entities\.InventoryUnit\.(create|update|bulkCreate|bulkUpdate)\b/,
+  /entities\.(InventoryItem|InventoryUnit|StockMovement|MaterialRequest|ExpenseClaim|Asset|AssetCustody|AssetMaintenance)\./,
 ];
 function walkFiles(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -361,7 +336,7 @@ for (const root of scanRoots) {
   for (const file of walkFiles(root)) {
     const src = readFileSync(file, "utf8");
     for (const pattern of WRITE_PATTERNS) {
-      // One-shot InventoryUnit.filter hydrate is allowed; writes are not.
+      // Removed modules (inventory / expenses / assets) and retired WorkProof: no runtime touches them.
       if (pattern.test(src)) {
         assert.fail(`retired entity write in ${file.replace(ROOT + "\\", "").replace(ROOT + "/", "")}: ${pattern}`);
       }
@@ -373,6 +348,5 @@ console.log("platform facts ok", {
   facts: PLATFORM_FACTS.length,
   domains: Object.keys(DOMAIN_MODULES).length,
   hrFacts: HR_FACTS.length,
-  inventoryQtyHome: factById("inventory.qty").home,
   workProofHome: factById("proof.workProof").home,
 });

@@ -308,10 +308,11 @@ assert.ok(!collectRequestInbox(archivePeople, [], "e1", "ar").some((row) => row.
 assert.ok(collectRequestFiles(archivePeople).every((row) => !row.signHref));
 assert.ok(collectRequestInbox(archivePeople, [{ userId: "e1", text: "صدرت شهادة تعريف", createdAt: "2026-04-03" }], "e1", "ar").some((row) => row.href === "/app/requests"));
 assert.ok(!collectRequestInbox(archivePeople, [{ userId: "e1", text: "اكتمل التوقيع: محضر معاينة.pdf — يمكن تنزيل النسخة النهائية.", createdAt: "2026-09-10" }], "e1", "ar").some((row) => /اكتمل التوقيع/.test(row.head)));
-assert.ok(!collectRequestInbox(archivePeople, [{ userId: "e1", text: "طلب مخزون بانتظار فرع المصدر — قفازات.", createdAt: "2026-09-10" }], "e1", "ar").some((row) => /مخزون/.test(row.head)), "stock requests stay in المخزون");
+assert.ok(!collectRequestInbox(archivePeople, [{ userId: "e1", text: "طلب مخزون بانتظار فرع المصدر — قفازات.", createdAt: "2026-09-10" }], "e1", "ar").some((row) => /مخزون/.test(row.head)), "leftover stock notices never enter طلباتي");
 assert.ok(!collectRequestInbox(archivePeople, [{ userId: "e1", text: "اعتُمد طلب المخزون ونُفّذ النقل — قفازات.", createdAt: "2026-09-10" }], "e1", "ar").some((row) => /مخزون/.test(row.head)));
 assert.ok(!collectRequestInbox(archivePeople, [{ userId: "e1", text: "Stock request waiting on the supplying station — gloves.", createdAt: "2026-09-10" }], "e1", "en").some((row) => /Stock request/.test(row.head)));
-assert.equal(requestNoticeHref("طلب مخزون بانتظار فرع المصدر — قفازات."), "/app/inventory");
+// The inventory desk was removed: a leftover stock notice no longer routes to /app/inventory (it is purged on read).
+assert.notEqual(requestNoticeHref("طلب مخزون بانتظار فرع المصدر — قفازات."), "/app/inventory");
 assert.equal(requestReplyHref({ mine: true }), "/app/requests");
 assert.equal(requestReplyHref({ selfDecide: true }), "/app/requests/manage");
 assert.equal(requestReplyHref({ manage: true }), "/app/requests/manage");

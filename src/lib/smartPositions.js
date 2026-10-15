@@ -83,30 +83,6 @@ export const SMART_DEPARTMENTS = [
   },
   // Money
   {
-    id: "expenses",
-    ar: "المصروفات",
-    en: "Expenses",
-    hintAr: "مطالبات ومصاريف الفرع",
-    hintEn: "Branch claims and spend",
-    group: "money",
-  },
-  {
-    id: "assets",
-    ar: "الأصول / العهد",
-    en: "Assets / Custody",
-    hintAr: "سجل الأصول والعهدة",
-    hintEn: "Asset register and custody",
-    group: "money",
-  },
-  {
-    id: "inventory",
-    ar: "المخزون",
-    en: "Inventory",
-    hintAr: "صرف وطلبات الفرع",
-    hintEn: "Branch stock and requests",
-    group: "money",
-  },
-  {
     id: "payroll",
     ar: "الرواتب",
     en: "Payroll",
@@ -150,7 +126,7 @@ export const SMART_SECTION_GROUPS = [
   { id: "complaints", ar: "صوت الموظف", en: "Employee Voice" },
   { id: "discipline", ar: "الجزاءات", en: "Sanctions" },
   { id: "compliance", ar: "الالتزام والرعاية", en: "Care & compliance" },
-  { id: "money", ar: "المال والأصول", en: "Money & assets" },
+  { id: "money", ar: "المال", en: "Money" },
   { id: "admin", ar: "المؤسسة", en: "Institution" },
 ];
 
@@ -165,9 +141,6 @@ export const SMART_SECTION_ROUTES = {
   work_proof: ["/app/work-proof", "/app/client-proof", "/app/visitor-proof"],
   signing: ["/app/signing"],
   complaints: ["/app/complaints"],
-  expenses: ["/app/expenses"],
-  assets: ["/app/assets"],
-  inventory: ["/app/inventory"],
   payroll: ["/app/payroll"],
   files: ["/app/files"],
   assistant: ["/app/assistant"],
@@ -187,10 +160,9 @@ export function suggestSmartTitle(permissions = {}, ar = false) {
   const score = scorePermissions(permissions);
   if (score >= 13) return ar ? "مدير تنفيذي للعمليات" : "Executive Operations Director";
   if (has("payroll", "employees") || has("hr", "employees")) return ar ? "مدير موارد بشرية" : "Human Resources Manager";
-  if (has("expenses") || has("payroll")) return ar ? "مسؤول مالية" : "Finance officer";
+  if (has("payroll")) return ar ? "مسؤول مالية" : "Finance officer";
   if (has("safety", "attendance")) return ar ? "مشرف عمليات" : "Operations Supervisor";
   if (has("complaints", "performance")) return ar ? "مدير جودة" : "Quality Manager";
-  if (has("inventory", "attendance")) return ar ? "مشرف تشغيل" : "Operations Coordinator";
   const first = SMART_DEPARTMENTS.find((department) => permissions[department.id]);
   return first ? `${rankLabel(rankFromScore(score), ar)} ${ar ? first.ar : first.en}` : "";
 }

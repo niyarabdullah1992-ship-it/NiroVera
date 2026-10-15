@@ -28,7 +28,6 @@ export const BLOB_VISIBILITY = {
   safety: "scope",
   files: "scope",
   payrollRuns: "payroll",
-  stationBudgets: "senior",
   hrLevels: "senior",
   hrClusters: "senior",
   jobGrades: "shared",
@@ -53,7 +52,6 @@ export const BLOB_VISIBILITY = {
   // without opening rows to non-senior readers. See base44/data/domains.jsonc.
   workProofs: "senior",
   visitorProofs: "senior",
-  assetTransfers: "senior",
   orgSeats: "senior",
   branchEscalationChains: "senior",
   branchEscalationSla: "senior",

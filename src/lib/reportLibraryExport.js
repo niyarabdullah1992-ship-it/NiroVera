@@ -15,9 +15,6 @@ export const SECTION_REPORTS = [
   { id: "shifts", path: "/app/shifts", format: "html", labelAr: "جدول الدوام", labelEn: "Duty roster" },
   { id: "tasks", path: "/app/tasks", format: "pdf", labelAr: "المهام والعمليات", labelEn: "Tasks" },
   { id: "payroll", path: "/app/payroll", format: "xlsx", labelAr: "الرواتب", labelEn: "Payroll" },
-  { id: "expenses", path: "/app/expenses", format: "xlsx", labelAr: "المصروفات", labelEn: "Expenses" },
-  { id: "inventory", path: "/app/inventory", format: "xlsx", labelAr: "المخزون", labelEn: "Inventory" },
-  { id: "assets", path: "/app/assets", format: "xlsx", labelAr: "الأصول والعهد", labelEn: "Assets & custody" },
   { id: "safety", path: "/app/safety", format: "pdf", labelAr: "السلامة HSE", labelEn: "Safety" },
   { id: "performance", path: "/app/performance", format: "pdf", labelAr: "الأداء", labelEn: "Performance" },
   { id: "discipline", path: "/app/discipline", format: "xlsx", labelAr: "الجزاءات", labelEn: "Sanctions" },
@@ -468,104 +465,18 @@ export function buildLibraryReport({
     return { entry, title, periodLabel, headers, rows, stats: [{ value: scoped.length, label: ar ? "بنود المسير" : "Payroll lines" }] };
   }
 
-  if (reportId === "expenses") {
-    const list = (data?.expenseClaims || data?.expenses || []).filter((j) => inPeriod(j.date || j.createdAt || j.submittedAt, period)
-      && (!stationScope || stationScope === "all" || stationInHeaderScope(j.stationId || j.station_id, stationScope, data?.stations)));
-    const headers = ar
-      ? ["المرجع", "التاريخ", "البيان", "قبل الضريبة", "الضريبة", "بعد الضريبة", "الحالة", "الفرع"]
-      : ["Ref", "Date", "Memo", "Before tax", "Tax", "After tax", "Status", "Station"];
-    const rows = list.map((j) => [
-      j.ref || "—",
-      String(j.date || j.createdAt || j.submittedAt || "").slice(0, 10),
-      j.memo || j.title || j.description || j.category || "—",
-      j.beforeTaxAmount ?? "—",
-      j.taxAmount ?? "—",
-      j.afterTaxAmount ?? j.amount ?? 0,
-      j.status || "—",
-      stationName(data, j.stationId || j.station_id),
-    ]);
-    return { entry, title, periodLabel, headers, rows, stats: [{ value: list.length, label: ar ? "مطالبات مصروف" : "Expense claims" }] };
-  }
-
-  if (reportId === "inventory") {
-    const moves = (data?.stockMovements || []).filter((m) =>
-      (!stationScope || stationScope === "all" || stationInHeaderScope(m.stationId || m.station_id || m.locationId, stationScope, data?.stations))
-      && inPeriod(m.date || m.createdAt, period));
-    const items = (data?.inventoryItems || []).filter((item) => item.archived !== true);
-    const headers = moves.length
-      ? (ar ? ["التاريخ", "رقم الحركة", "الصنف", "النوع", "الكمية", "الفرع"] : ["Date", "Movement #", "Item", "Type", "Qty", "Station"])
-      : (ar ? ["الرمز", "الصنف", "الكمية", "الفرع"] : ["Code", "Item", "Qty", "Station"]);
-    const rows = moves.length
-      ? moves.map((m) => [
-        String(m.date || m.createdAt || "").slice(0, 10),
-        m.movementNumber || m.id || "—",
-        m.itemName || m.name || m.itemCode || "—",
-        m.movementType || m.type || "—",
-        m.qty ?? m.quantity ?? 0,
-        stationName(data, m.stationId || m.station_id || m.locationId),
-      ])
-      : items.map((item) => [
-        item.itemCode || "—",
-        item.name || "—",
-        item.quantity ?? item.qty ?? 0,
-        stationName(data, item.stationId || item.currentLocationId),
-      ]);
-    return { entry, title, periodLabel, headers, rows, stats: [{ value: rows.length, label: moves.length ? (ar ? "حركات مخزون" : "Stock moves") : (ar ? "أصناف" : "Items") }] };
-  }
-
-  if (reportId === "assets") {
-    const list = (data?.assets || []).filter((a) =>
-      (!stationScope || stationScope === "all" || stationInHeaderScope(a.stationId, stationScope, data?.stations))
-      && (inPeriod(a.createdAt || a.purchaseDate || a.updatedAt, period) || !a.createdAt));
-    const headers = ar
-      ? ["الرمز", "الأصل", "الحالة", "الحائز", "الفرع"]
-      : ["Code", "Asset", "Status", "Holder", "Station"];
-    const rows = list.map((a) => [
-      a.assetCode || a.qrCode || a.id || "—",
-      a.name || "—",
-      a.status || "—",
-      a.holderName || employeeName(data, a.holderId || a.assignedTo) || "—",
-      stationName(data, a.stationId),
-    ]);
-    return { entry, title, periodLabel, headers, rows, stats: [{ value: list.length, label: ar ? "أصول" : "Assets" }] };
-  }
-
-  if (reportId === "custody") {
-    const list = (data?.assets || []).filter((a) =>
-      (a.status === "in_custody" || a.holderId || a.holderName)
-      && (!stationScope || stationScope === "all" || stationInHeaderScope(a.stationId, stationScope, data?.stations)));
-    const headers = ar
-      ? ["الرمز", "الأصل", "الحائز", "الفرع", "الحالة"]
-      : ["Code", "Asset", "Holder", "Station", "Status"];
-    const rows = list.map((a) => [
-      a.assetCode || a.qrCode || a.id || "—",
-      a.name || "—",
-      a.holderName || employeeName(data, a.holderId || a.assignedTo) || "—",
-      stationName(data, a.stationId),
-      a.status || "—",
-    ]);
-    return { entry, title, periodLabel, headers, rows, stats: [{ value: list.length, label: ar ? "عهد" : "Custody" }] };
-  }
-
   if (reportId === "accounting") {
     const month = typeof period === "string" && /^\d{4}-\d{2}$/.test(period)
       ? period
       : String(period?.from || period || "").slice(0, 7);
-    const claims = data?.expenseClaims || data?.expenses || [];
-    const budgets = data?.stationBudgets || data?.budgets || [];
     const snap = deriveAccountingPeriod({
       month: month || undefined,
-      claims,
-      budgets,
       payrollRuns: data?.payrollRuns || [],
       lang: ar ? "ar" : "en",
     });
     const headers = ar ? ["البند", "القيمة"] : ["Item", "Value"];
     const rows = [
       [ar ? "الشهر" : "Month", snap.month],
-      [ar ? "مصروف منشور" : "Posted spend", snap.expenses.total],
-      [ar ? "عدد المطالبات" : "Claims", snap.expenses.count],
-      [ar ? "ميزانية متبقية" : "Budget remaining", snap.budget.remaining],
       [ar ? "صافي رواتب معتمد" : "Approved payroll net", snap.payroll.posted ? snap.payroll.netTotal : 0],
       [ar ? "حالة المسير" : "Payroll status", snap.payroll.status],
     ];
@@ -576,7 +487,6 @@ export function buildLibraryReport({
       headers,
       rows,
       stats: [
-        { value: snap.expenses.total, label: ar ? "مصروف منشور" : "Posted spend" },
         { value: snap.payroll.posted ? snap.payroll.netTotal : 0, label: ar ? "صافي رواتب" : "Payroll net" },
       ],
     };

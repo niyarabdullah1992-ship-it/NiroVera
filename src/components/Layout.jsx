@@ -224,8 +224,7 @@ export default function Layout({ children }) {
   });
 
   const allowedNav = allowedNavFor(currentUser, data, company);
-  // المخزون is removed from the platform's navigation — employee and management alike.
-  const visibleNavItems = navItems.filter((i) => allowedNav.has(i.to) && String(i.to || "").split("?")[0] !== "/app/inventory");
+  const visibleNavItems = navItems.filter((i) => allowedNav.has(i.to));
   const orderedNavItems = [...visibleNavItems].sort(
     (a, b) => SUITE_GROUP_ORDER.indexOf(a.category) - SUITE_GROUP_ORDER.indexOf(b.category),
   );
@@ -425,23 +424,6 @@ export default function Layout({ children }) {
     "/app/escalation": {
       title: lang === "ar" ? "المهام والعمليات" : "Operations",
       sub: lang === "ar" ? "صندوق المراجعة · سلسلة لكل فرع حتى القمة" : "Review inbox · per-station chain to the top",
-    },
-    "/app/inventory": {
-      title: lang === "ar" ? "المخزون" : "Inventory",
-      sub: lang === "ar" ? "لا مركزي: كل فرع يشتري رصيده · يرى غيره ويطلب · صرف للعمل بمرجع" : "Decentralised: each station buys its stock · sees others and requests · issue to work with a ref",
-    },
-    "/app/assets": new URLSearchParams(location.search).get("view") === "self"
-      ? {
-        title: lang === "ar" ? "العهد" : "Custody",
-        sub: lang === "ar" ? "ما بحوزتك وما طلبت نقله — التسليم بتوقيع الطرفين" : "What you hold and what you asked to move — handover is signed by both sides",
-      }
-      : {
-        title: lang === "ar" ? "الأصول / العهد" : "Assets / Custody",
-        sub: lang === "ar" ? "سجل أصل · حائز واحد · نقل بين الفروع بطلب وموافقة · تسليم بتوقيع الطرفين" : "Asset register · one holder · inter-station transfer by request · dual-sign handover",
-      },
-    "/app/expenses": {
-      title: lang === "ar" ? "المصروفات" : "Expenses",
-      sub: lang === "ar" ? "الوعاء التشغيلي وحده — اعتماد متدرّج بالمبلغ · الإيصال بوابة · لا مخزون ولا أصل" : "Operating vessel only — amount-derived approval · receipt gates · not stock, not an asset",
     },
     "/app/safety": {
       title: lang === "ar" ? "السلامة HSE" : "Safety HSE",

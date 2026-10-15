@@ -90,7 +90,7 @@ function officialHolidayTest(data) {
 import { dashboardSubscription, platformOwnerGate, persistHolidayRulings, persistRamadanRuling, persistSubscriptionPlans } from "./ownerBoard";
 import { addLaborDays, ruleValue } from "./laborRules";
 import { art55FilePatch, laborFilePatch } from "./contractLawDerivations";
-import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, migratePreviewVoiceBranchManager, migratePreviewSigningNotices, migratePreviewEmployeeGenders, migratePreviewOwnerGosiIdentity, migratePreviewGosiEstablishment, migratePreviewAssets, migratePreviewFieldTasks, seedPreviewOwnerNightStreak, seedPreviewAttendanceHistory, seedPreviewProofCycle, seedPreviewWrittenConsent, seedPreviewDiscipline, seedPreviewVoice, seedPreviewPerformance } from "./previewMigrations";
+import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, migratePreviewVoiceBranchManager, migratePreviewSigningNotices, migratePreviewEmployeeGenders, migratePreviewOwnerGosiIdentity, migratePreviewGosiEstablishment, migratePreviewFieldTasks, seedPreviewOwnerNightStreak, seedPreviewAttendanceHistory, seedPreviewProofCycle, seedPreviewWrittenConsent, seedPreviewDiscipline, seedPreviewVoice, seedPreviewPerformance } from "./previewMigrations";
 import { readCompanyEstablishment } from "./facts/company.js";
 import { canonicalizePlatformFacts } from "./facts/migrate.js";
 import { assignEmployeeNumber, ensureEmployeeNumbers } from "./employeeNumber";
@@ -539,7 +539,6 @@ function emptyCompanyData(meta) {
     plannerItems: [],
     journalEntries: [],
     payrollRuns: [],
-    assetTransfers: [],
     smartPositions: [],
     permissionTemplates: [],
     orgSeats: [],
@@ -563,8 +562,6 @@ const COMPANY_ARRAY_KEYS = [
   "personalAttendance", "plannerItems", "journalEntries", "payrollRuns",
   "smartPositions", "permissionTemplates", "orgSeats", "orgStructureLog", "complaintEscalationChain", "workProofs", "visitorProofs", "disciplinaryCases",
   "orgTree", "arbitrationOutcomes",
-  "assetTransfers", "assets", "assetCustody", "assetMaintenance",
-  "expenseClaims", "stationBudgets", "inventoryItems", "materialRequests", "stockMovements",
   "signedDocRegistry", "signingFieldTemplates", "signatureRequests", "abuseCases",
 ];
 
@@ -666,7 +663,6 @@ export function getCompanyData(id) {
     if (seedPreviewDiscipline(data)) persist = true;
     if (seedPreviewVoice(data)) persist = true;
     if (seedPreviewPerformance(data)) persist = true;
-    if (migratePreviewAssets(data)) persist = true;
     if (migratePreviewFieldTasks(data)) persist = true;
   }
   (data.employees || []).forEach((emp) => {
@@ -884,9 +880,9 @@ if (typeof window !== "undefined") {
 export const BLOB_CATEGORIES = [
   "tasks", "reports", "anonymousReports", "publicReports", "safety", "plans",
   "schedules", "hrLevels", "jobGrades", "hrClusters", "files", "notifications", "templates", "targets",
-  "personalPlaces", "personalAttendance", "plannerItems", "journalEntries", "payrollRuns", "assetTransfers", "smartPositions",
+  "personalPlaces", "personalAttendance", "plannerItems", "journalEntries", "payrollRuns", "smartPositions",
   "complaintEscalationChain", "branchEscalationChains", "branchEscalationSla", "orgTree", "orgSeats", "workProofs", "visitorProofs", "disciplinaryCases",
-  "arbitrationOutcomes", "stationBudgets",
+  "arbitrationOutcomes",
   "hcmFoundation", "hcmPerformance", "attendancePolicy", "attendanceEmergency", "hseCredits", "abuseCases",
   "workRegulation", "trainingPlan", "employerDuties",
   ];

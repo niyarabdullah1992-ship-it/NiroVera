@@ -26,7 +26,7 @@ assert.equal(SHIFT_HOURS, 8);
 assert.equal(WEEKLY_HOURS_CAP, 48);
 assert.equal(WEEKLY_OT_CAP_HOURS, 8);
 assert.equal(REPORT_CATALOG.length, 6);
-assert.equal(SCHEDULED_REPORTS.length, 3);
+assert.equal(SCHEDULED_REPORTS.length, 2); // stock alert removed with the inventory module
 assert.equal(parseHm("07:00"), 420);
 assert.equal(parseHm("bad"), null);
 assert.equal(formatMinutes(90), "1:30");

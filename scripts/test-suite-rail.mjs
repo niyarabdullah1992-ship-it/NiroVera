@@ -42,21 +42,16 @@ assert.equal(railFaceHref("/app/complaints", "?tab=mine", "manage"), "/app/compl
 assert.equal(railFaceHref("/app/performance", "?view=manage", "employee"), "/app/performance?view=self");
 assert.equal(railFaceHref("/app/payroll", "?view=manage", "employee"), "/app/payroll?view=self&tab=payslip");
 assert.equal(railFaceHref("/app/payroll", "?view=self&tab=payslip", "manage"), "/app/payroll?view=manage");
-assert.equal(railFaceHref("/app/expenses", "?view=manage", "employee"), "/app/expenses?view=self");
-assert.equal(railFaceHref("/app/assets", "?view=self", "manage"), "/app/assets?view=manage");
-assert.equal(railFaceHref("/app/inventory", "", "employee"), "/app/inventory?view=self");
 assert.equal(employeeMoneyHref("payroll"), "/app/payroll?view=self&tab=payslip");
-assert.equal(employeeMoneyHref("/app/expenses"), "/app/expenses?view=self");
-assert.equal(employeeMoneyHref("assets"), "/app/assets?view=self");
-assert.equal(employeeMoneyHref("inventory"), "/app/inventory?view=self");
+// Expenses, assets and inventory were removed — payroll is the only money surface.
+assert.equal(employeeMoneyHref("/app/expenses"), "");
+assert.equal(employeeMoneyHref("assets"), "");
+assert.equal(employeeMoneyHref("inventory"), "");
 const payrollChip = { appId: "payroll", to: "/app/payroll", label: "الرواتب", badge: 2, glow: "due" };
 assert.equal(faceSectionTarget(payrollChip, "employee").to, "/app/payroll?view=self&tab=payslip");
 assert.equal(faceSectionTarget(payrollChip, "employee").badge, undefined);
 assert.equal(faceSectionTarget(payrollChip, "manage").to, "/app/payroll");
 assert.equal(faceSectionTarget(payrollChip, "manage").badge, 2);
-assert.equal(faceSectionTarget({ appId: "expenses", to: "/app/expenses", badge: 4 }, "employee").to, "/app/expenses?view=self");
-assert.equal(faceSectionTarget({ appId: "assets", to: "/app/assets" }, "employee").to, "/app/assets?view=self");
-assert.equal(faceSectionTarget({ appId: "inventory", to: "/app/inventory" }, "employee").to, "/app/inventory?view=self");
 assert.equal(faceSectionTarget({ appId: "attendance", to: "/app/attendance", badge: 1 }, "employee").to, "/app/attendance");
 assert.equal(faceSectionTarget({ appId: "attendance", to: "/app/attendance", badge: 1 }, "employee").badge, 1);
 assert.deepEqual(railLaneTabs([{ key: "mine" }, { key: "manage" }, { key: "law" }], "employee").map((row) => row.key), ["mine", "law"]);
@@ -97,9 +92,6 @@ const catalog = [
     badge: 2,
     items: [
       { appId: "payroll", to: "/app/payroll" },
-      { appId: "expenses", to: "/app/expenses" },
-      { appId: "assets", to: "/app/assets" },
-      { appId: "inventory", to: "/app/inventory" },
     ],
   }),
   railGroup("daily", {
@@ -236,11 +228,18 @@ const partialManage = sideItems(partial.find((side) => side.id === "manage")).ma
 assert.ok(partialManage.includes("decide"));
 assert.ok(partialManage.includes("duty"));
 assert.ok(partialManage.includes("requests"));
-assert.ok(partialManage.includes("money"));
+// The station-manager money decisions were expenses / assets / inventory — removed. Payroll stays HR-gated.
+assert.equal(partialManage.includes("money"), false);
 assert.equal(partialManage.includes("tasks"), false);
 assert.equal(partialManage.includes("workforce"), false);
 assert.equal(partialManage.includes("people"), false);
-assert.match(sideItems(partial.find((side) => side.id === "manage")).find((item) => item.section === "money").to, /^\/app\/expenses\?view=manage$/);
+const payrollClerk = { id: "p1", role: "employee", hrLevelId: "lvp" };
+const payrollRail = buildSuiteRailClusters(
+  catalog.filter((group) => ["decide", "money"].includes(group.key)),
+  "ar",
+  { user: payrollClerk, data: { ownerId: "other", hrLevels: [{ id: "lvp", active: true, permissions: ["manage_payroll"] }] } },
+);
+assert.match(sideItems(payrollRail.find((side) => side.id === "manage")).find((item) => item.section === "money").to, /^\/app\/payroll\?view=manage$/);
 
 const leaveClerk = { id: "h1", role: "employee", hrLevelId: "lv1" };
 const leaveRail = buildSuiteRailClusters(catalog, "ar", {
@@ -323,7 +322,6 @@ const data = {
   workProofs: [{ id: "wp1", ref: "WP-1", afterStamp: "2026-09-15T08:00:00", raiserId: "emp1" }],
   publicReports: [{ id: "v1", status: "open", message: "صوت يحتاج مراجعة" }],
   disciplinaryCases: [{ id: "d1", employeeId: "emp1", status: "notice" }],
-  expenseClaims: [{ id: "ex1", status: "submitted", amount: 120, stationId: "st1" }],
   payrollRuns: [{ month: "2026-09", status: "draft", items: [{ employeeId: "emp1", netSalary: 1 }] }],
   safety: [{ stationId: "st1", hazards: [{ id: "h1" }, { id: "h2", closedAt: "2026-09-01" }] }],
 };
@@ -366,7 +364,7 @@ assert.equal(live.byApp.tasks, 1);
 assert.equal(live.byApp["work-proof"], 1);
 assert.equal(live.byApp.complaints, 1);
 assert.equal(live.byApp.discipline, 1);
-assert.equal(live.byApp.expenses, 1);
+assert.equal(live.byApp.expenses, undefined, "expenses module removed");
 assert.equal(live.byApp.payroll, 1);
 assert.equal(live.byApp.safety, 1);
 assert.equal(live.byApp.settings, undefined);
@@ -382,7 +380,7 @@ assert.equal(groupSum(["signing"]), 1);
 assert.equal(groupSum(["tasks", "work-proof", "command"]), 2);
 assert.equal(groupSum(["complaints"]), 1);
 assert.equal(groupSum(["discipline"]), 1);
-assert.equal(groupSum(["expenses", "payroll"]), 2);
+assert.equal(groupSum(["payroll"]), 1);
 assert.equal(groupSum(["safety"]), 1);
 assert.equal(groupSum(["files", "assistant", "settings"]), undefined);
 assert.equal(groupSum(["org", "hr"]), undefined);

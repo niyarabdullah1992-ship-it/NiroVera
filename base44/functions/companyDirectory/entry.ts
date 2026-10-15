@@ -1024,7 +1024,7 @@ Deno.serve(async (req) => {
         return Response.json({ ok: true });
       }
       let allowed = false;
-      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'branchEscalationSla', 'workProofs', 'visitorProofs', 'arbitrationOutcomes', 'assetTransfers', 'orgSeats', 'stationBudgets', 'hcmFoundation', 'hcmPerformance', 'hseCredits', 'attendancePolicy', 'attendanceEmergency', 'abuseCases'].includes(category)) allowed = context.senior;
+      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'branchEscalationSla', 'workProofs', 'visitorProofs', 'arbitrationOutcomes', 'orgSeats', 'hcmFoundation', 'hcmPerformance', 'hseCredits', 'attendancePolicy', 'attendanceEmergency', 'abuseCases'].includes(category)) allowed = context.senior;
       else if (category === 'trainingPlan') allowed = context.senior || context.permissions.has('manage_employees');
       else if (['hrLevels', 'hrClusters', 'jobGrades'].includes(category)) allowed = context.senior && (!context.actor || context.actor.role === 'director');
       else if (category === 'payrollRuns') allowed = context.senior || context.permissions.has('manage_payroll');

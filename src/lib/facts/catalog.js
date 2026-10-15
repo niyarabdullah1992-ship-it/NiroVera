@@ -10,7 +10,6 @@ import { PEOPLE_FACTS } from "./people.js";
 import { ORG_FACTS } from "./org.js";
 import { ATTENDANCE_FACTS } from "./attendance.js";
 import { PAYROLL_FACTS } from "./payroll.js";
-import { MONEY_FACTS } from "./money.js";
 import { REQUEST_FACTS } from "./requests.js";
 import { DISCIPLINE_FACTS } from "./discipline.js";
 import { VOICE_FACTS } from "./voice.js";
@@ -49,7 +48,6 @@ export const PLATFORM_FACTS = Object.freeze([
   ...ORG_FACTS,
   ...ATTENDANCE_FACTS,
   ...PAYROLL_FACTS,
-  ...MONEY_FACTS,
   ...REQUEST_FACTS,
   ...DISCIPLINE_FACTS,
   ...VOICE_FACTS,
@@ -67,10 +65,6 @@ export const DOMAIN_MODULES = Object.freeze({
   org: ORG_FACTS,
   attendance: ATTENDANCE_FACTS,
   payroll: PAYROLL_FACTS,
-  expenses: MONEY_FACTS.filter((f) => f.domain === "expenses"),
-  assets: MONEY_FACTS.filter((f) => f.domain === "assets"),
-  inventory: MONEY_FACTS.filter((f) => f.domain === "inventory"),
-  money: MONEY_FACTS,
   requests: REQUEST_FACTS,
   discipline: DISCIPLINE_FACTS,
   voice: VOICE_FACTS,

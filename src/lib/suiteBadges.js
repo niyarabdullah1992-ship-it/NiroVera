@@ -24,7 +24,6 @@ import { nightRotateDue, pendingNightRotate } from "./nightRotateCycle.js";
 import { scheduleForEmployee } from "./nightDueNotify.js";
 import { statutoryGlowState } from "./statutoryItem.js";
 import {
-  readExpenseClaims,
   readPayrollRuns,
   readSafety,
   readSignatureRequests,
@@ -272,10 +271,6 @@ export function pendingDisciplineBadgeCount(data, user) {
   return board.openCount || 0;
 }
 
-function canReviewExpenseClaims(user, data) {
-  return canManageOps(user, data) || user?.role === "financial_officer";
-}
-
 function canReviewPayroll(user, data) {
   if (!user) return false;
   if (isOwner(user, data)) return true;
@@ -283,19 +278,7 @@ function canReviewPayroll(user, data) {
   return hasHrPerm(user, data, "manage_payroll");
 }
 
-function isOpenExpenseClaim(claim, user, data) {
-  const status = claim?.status || "pending";
-  if (status === "pending" || status === "submitted") return canManageOps(user, data) || isOwner(user, data);
-  if (status === "manager_approved") return user?.role === "financial_officer" || isOwner(user, data);
-  return false;
-}
-
-/** المال — claims / payroll runs waiting a decision. */
-export function pendingExpenseBadgeCount(claims = [], user, data) {
-  if (!canReviewExpenseClaims(user, data)) return 0;
-  return (claims || []).filter((claim) => isOpenExpenseClaim(claim, user, data)).length;
-}
-
+/** المال — payroll runs waiting a decision. */
 export function pendingPayrollBadgeCount(runs = [], user, data) {
   if (!canReviewPayroll(user, data)) return 0;
   return (runs || []).filter((run) => {
@@ -356,7 +339,6 @@ export function collectSuiteBadges(input = {}) {
     "work-proof": asSuiteBadge(pendingWorkProofBadgeCount(readWorkProofs(data).filter((row) => scoped(row.stationId)), user)),
     complaints: asSuiteBadge(pendingVoiceBadgeCount(data, user)),
     discipline: asSuiteBadge(pendingDisciplineBadgeCount(data, user)),
-    expenses: asSuiteBadge(pendingExpenseBadgeCount(readExpenseClaims(data).filter((row) => scoped(row.stationId)), user, data)),
     payroll: asSuiteBadge(pendingPayrollBadgeCount(readPayrollRuns(data), user, data)),
     safety: asSuiteBadge(pendingSafetyBadgeCount(readSafety(data).filter((row) => scoped(row.stationId)), user, data)),
   };

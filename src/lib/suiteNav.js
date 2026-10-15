@@ -12,7 +12,6 @@ import {
   FolderOpen,
   Sparkles,
   Banknote,
-  Warehouse,
   Boxes,
   Calculator,
   ReceiptText,
@@ -84,7 +83,6 @@ const LUCIDE_BY_ICON = {
 const ICON_OVERRIDES = {
   command: LayoutDashboard,
   attendance: ClipboardCheck,
-  inventory: Warehouse,
 };
 
 /** Group-level icons for the compact sidebar rail. */
@@ -132,7 +130,7 @@ export function suiteRailGroupMeta(lang = "ar", role = "") {
     people: { icon: RAIL_ICONS.people, label: ar ? "المحطات التي أديرها" : "Stations I manage" },
     discipline: { icon: RAIL_ICONS.discipline, label: ar ? "الجزاءات" : "Sanctions" },
     compliance: { icon: RAIL_ICONS.compliance, label: ar ? (employee ? "بلاغ سلامة" : "السلامة HSE") : (employee ? "Safety report" : "Safety HSE") },
-    money: { icon: RAIL_ICONS.money, label: ar ? "المال والأصول" : "Money & Assets" },
+    money: { icon: RAIL_ICONS.money, label: ar ? "المال" : "Money" },
     admin: { icon: RAIL_ICONS.admin, label: ar ? "الملفات والمساعد" : "Files & assistant" },
   };
 }
@@ -213,8 +211,6 @@ const MOBILE_TAB_IDS = [
   "attendance",
   "tasks",
   "work-proof",
-  "inventory",
-  "expenses",
   "hr",
   "safety",
 ];
@@ -224,8 +220,6 @@ const MOBILE_I18N_KEYS = {
   tasks: "myTasks",
   "work-proof": "workProof",
   attendance: "attendanceScheduling",
-  inventory: "inventory",
-  expenses: "expenses",
   hr: "hr",
   complaints: "allComplaints",
   safety: "safety",

@@ -53,7 +53,7 @@ flowchart LR
 - **Time — الوقت** — Proof Cycle step 1 — person + place + time. Feeds payroll and tasks. `personalAttendance`, `attendanceLedger`, `personalPlaces`, `schedules`, `publishedRotas`, `leaveRoster`, `attendancePolicy`, `attendanceEmergency`
 - **Work proof — إثبات العمل** — Proof Cycle steps 2–4 and 6 — task, review, escalation, client proof. Not signing. `tasks`, `operationsTasks`, `workProofs`, `WorkProof`, `visitorProofs`, `ClientProof`, `PointsLedger`, `targets`, `plans`, `safety`, `hseCredits`, `trainingPlan`, `employerDuties`, `competencyCerts`
 - **Trust / signing — التوقيع والأرشيف** — Proof Cycle step 5 — Secure Sign. Own domain, not WorkProof. `signatureRequests`, `SignedDocument`, `signingFieldTemplates`, `signingChain`, `files`, `smartArchive`, `NiroDocumentReview`
-- **Money — المال** — Payroll, expenses, assets, inventory. Figures from derivations only. `payrollRuns`, `journalEntries`, `expenseClaims`, `stationBudgets`, `expenseBudget`, `assets`, `assetCustody`, `assetMaintenance`, `assetTransfers`, `inventoryItems`, `InventoryUnit`, `materialRequests`, `stockMovements`, `stockBoard`, `ProcurementRequest`, `PurchaseOrder`
+- **Money — المال** — Payroll and WPS. Figures from derivations only. `payrollRuns`, `journalEntries`
 - **Voice / discipline / requests — الصوت والانضباط** — Anonymous voice, complaints, discipline, daily reports. `anonymousReports`, `publicReports`, `complaintQueue`, `AnonymousReportReceipt`, `complaintEscalationChain`, `branchEscalationChains`, `branchEscalationSla`, `disciplinaryCases`, `abuseCases`, `workRegulation`, `laborRules`, `arbitrationOutcomes`, `reports`, `reportAnalytics`, `dailyReports`
 - **Platform — المنصة** — SaaS chrome: plans, billing, visits, translations, chat, assistant. Not the Proof Cycle. `SubscriptionPlan`, `SubscriptionPayment`, `PageVisit`, `UiTranslation`, `ProductFeedback`, `notifications`, `templates`, `plannerItems`, `assistantFacts`, `stationChatGroups`, `stationChat`, `cameras`
 
@@ -71,14 +71,10 @@ Canonical = write here. `legacy` / `do-not-write` = second silo still in the tre
 | **split-workproof-shape** | risky | `workProofs` | `WorkProof` | `base44/functions/workProof/entry.ts:22`<br>`src/pages/WorkProof.jsx:75`<br>`base44/entities/WorkProof.jsonc` | Live data is the workProofs blob (ref, sealId). WorkProof entity still requires proofNumber/workTitle — a second shape, not the runtime store. No entities.WorkProof reader in functions or src/. Do-not-write the entity. |
 | **split-attendance** | risky | `personalAttendance` | `attendanceLedger` | `src/lib/store.js:767`<br>`base44/functions/attendance/entry.ts:16` | Writes go to personalAttendance. attendanceLedger is read-once fallback. attendance function is do-not-invoke-from-frontend. |
 | **split-org** | risky | `orgTree` | `orgStructure` | `src/lib/store.js:768`<br>`base44/functions/org/entry.ts:26` | Writes go to orgTree (node array) plus companyMeta.orgBoard extras. orgStructure is read-once fallback. |
-| **split-budget** | risky | `stationBudgets` | `expenseBudget` | `src/lib/store.js:480`<br>`base44/functions/budget/entry.ts:15` | Writes go to stationBudgets. expenseBudget is read-once fallback. Claims persist on ExpenseClaim. |
-| **split-stock** | risky | `inventoryItems` | `stockBoard` | `src/lib/store.js:480`<br>`base44/functions/stock/entry.ts:15` | stockBoard writes are stopped. Live preview quantity is inventoryItems via inventoryApi. stock function is do-not-invoke-from-frontend. |
 | **split-signing** | risky | `signatureRequests` | `signingChain` | `src/pages/FileSigning.jsx:75`<br>`base44/functions/signing/entry.ts:17` | signingChain writes are stopped. Live envelopes are SignatureRequest via multiSign. signing function is do-not-invoke-from-frontend. |
 | **split-settings** | risky | `companyMeta` | `companySettings` | `src/lib/store.js:690`<br>`base44/functions/settings/entry.ts:17` | Writes go to companyMeta. companySettings is read-once fallback. |
 | **signed-doc-companyId** | risky | `SignedDocument` | — | `base44/entities/SignedDocument.jsonc:23`<br>`base44/entities/SignedDocument.jsonc:40` | SignedDocument.companyId is optional (not in required). Making it required would break public-verify rows created without a tenant. Do not flip required without a backfill. |
-| **orphan-function-silos** | risky | — | — | `src/pages/WorkProof.jsx:75`<br>`src/lib/inventoryApi.js:55` | Frontend never invokes attendance, files, stock, signing, reports, dailyReport, chat, or inventory. Folders kept; new writes to parallel keys are stopped. A leftover call must use the owner of the canonical bag. |
-| **inventory-forced-local** | risky | `inventoryItems` | — | `src/lib/inventoryApi.js:55`<br>`src/pages/Inventory.jsx:5` | inventoryApi.js calls forceLocalInventory on every request. The inventory function (ProcurementRequest, PurchaseOrder, InventoryUnit) is dark from the UI. Preview store is the live path. |
-| **inventory-qty-dual** | fixed | `inventoryItems` | `InventoryUnit` | `src/lib/facts/money.js`<br>`base44/functions/inventory/entry.ts`<br>`base44/entities/InventoryItem.jsonc` | Sole qty home is InventoryItem.locationBalances. Cloud inventory stopped dual-writing InventoryUnit; one-shot hydrate lifts leftover units into locationBalances. |
+| **orphan-function-silos** | risky | — | — | `src/pages/WorkProof.jsx:75` | Frontend never invokes attendance, files, signing, reports, dailyReport, or chat. Folders kept; new writes to parallel keys are stopped. A leftover call must use the owner of the canonical bag. |
 | **arbitration-preview-gap** | fixed | `arbitrationOutcomes` | — | `src/components/hr/ArbitrationEngineBoard.jsx:64`<br>`src/lib/store.js`<br>`src/lib/store.js`<br>`base44/functions/compliance/entry.ts:26` | arbitrationOutcomes is in COMPANY_ARRAY_KEYS and BLOB_CATEGORIES. listArbitrationOutcomes reads the store bag. |
 | **preview-blob-gaps** | info | — | — | `src/lib/store.js`<br>`base44/data/domains.jsonc previewGaps.notInStoreBlobCategories` | Remaining function-owned blobs still outside store BLOB_CATEGORIES. Live HCM/attendance/hseCredits/branchEscalationSla were promoted. Object-map sync uses normalizeBlobPayload so maps are not wiped to []. |
 | **workproof-folder-case** | fixed-visible | `workProofs` | — | `src/pages/WorkProof.jsx:75`<br>`base44/functions/workProof/entry.ts` | Frontend invokes workproof; the function folder on disk is workProof (case-insensitive on Windows, so both resolve there; on Linux only workProof exists). Canonical invoke name: workproof; file paths use workProof. |
@@ -138,26 +134,12 @@ Leave inbox, study_consent, leave top-up, overtime assignment, written consent. 
 
 ### Money — المال
 
-Payroll, expenses, assets, inventory. Figures from derivations only.
+Payroll and WPS. Figures from derivations only.
 
 | key | status | purpose | isolation | relates | never denorm / leak | how a bug looks |
 | --- | --- | --- | --- | --- | --- | --- |
 | `payrollRuns` | canonical | Payroll cycle snapshot. Amounts are derived at run time. | companyId | line employee ids → Employee | Do not persist ministry/WPS figures as editable columns. | Hard-coded net pay on the screen while the run blob differs. |
 | `journalEntries` | canonical | Employee self-service journal / memo lines. | companyId | userId → Employee.employeeId | Not a payroll journal. Do not store net pay here. | Missing companyId = another tenant reads private notes. |
-| `expenseClaims` | canonical | Expense claim with receipt and approval chain. | companyId | requesterId → Employee; stationId → Station | Do not store remaining budget on the claim — derive from station vessel. | Missing companyId = claim paid from another tenant. amount vs afterTaxAmount drift. |
-| `stationBudgets` | canonical | Station expense vessel. Canonical blob + store array. | companyId | stationId → Station | Remaining SAR is derived — do not persist it as the source. | Writes to expenseBudget while the board reads stationBudgets = empty vessel. |
-| `expenseBudget` | legacy-read-fallback | Split silo of stationBudgets. Prefer the canonical key. | companyId | splitOf stationBudgets | Figures come from expenseDerivations.ts — do not store them as source columns. | Writes go to stationBudgets. expenseBudget is read-once fallback. Claims persist on ExpenseClaim. |
-| `assets` | canonical | Physical asset with QR and current custodian. | companyId | holderId → Employee; stationId / purchasedByStationId → Station | Book cost stays on the buying station after transfer. | Empty holderId = asset with no custodian (unit custodian must hold available assets). |
-| `assetCustody` | canonical | AssetCustody tenant row. | companyId | toId → Employee.employeeId | Do not copy tenant rows across companyId. Employee identities, salaries, attendance, proofs, complaints, and chat stay inside the tenant. | Missing companyId on write = cross-tenant leak. |
-| `assetMaintenance` | canonical | AssetMaintenance tenant row. | companyId | — | Do not copy tenant rows across companyId. Employee identities, salaries, attendance, proofs, complaints, and chat stay inside the tenant. | Missing companyId on write = cross-tenant leak. |
-| `assetTransfers` | canonical | CompanyDataBlob category "assetTransfers". | companyId | — | Do not copy tenant rows across companyId. Employee identities, salaries, attendance, proofs, complaints, and chat stay inside the tenant. | Missing companyId on write = cross-tenant leak. |
-| `inventoryItems` | canonical | Stock SKU. Live quantity is locationBalances + currentLocationId. | companyId | companyId; InventoryUnit.itemId → this id | Do not also treat stockBoard as source quantity. | quantity vs locationBalances disagree = phantom stock. |
-| `InventoryUnit` | unused | Retired do-not-write. One-shot hydrate into InventoryItem.locationBalances on list/getItem. Never create/update units again. | companyId | splitOf inventoryItems | Figures come from inventoryDerivations.ts — do not store them as source columns. | Missing companyId on write = cross-tenant leak. |
-| `materialRequests` | canonical | MaterialRequest tenant row. | companyId | requesterId → Employee.employeeId | Figures come from inventoryDerivations.ts — do not store them as source columns. | Missing companyId on write = cross-tenant leak. |
-| `stockMovements` | canonical | StockMovement tenant row. | companyId | performedBy → Employee.employeeId | Figures come from inventoryDerivations.ts — do not store them as source columns. | Missing companyId on write = cross-tenant leak. |
-| `stockBoard` | retired | Split silo of inventoryItems. Prefer the canonical key. | companyId | splitOf inventoryItems | Figures come from inventoryDerivations.ts — do not store them as source columns. | stockBoard writes are stopped. Live preview quantity is inventoryItems via inventoryApi. stock function is do-not-invoke-from-frontend. |
-| `ProcurementRequest` | canonical | ProcurementRequest tenant row. | companyId | — | Figures come from inventoryDerivations.ts — do not store them as source columns. | Missing companyId on write = cross-tenant leak. |
-| `PurchaseOrder` | canonical | PurchaseOrder tenant row. | companyId | — | Figures come from inventoryDerivations.ts — do not store them as source columns. | Missing companyId on write = cross-tenant leak. |
 
 ### Proof cycle — دورة الإثبات
 
@@ -258,4 +240,4 @@ SaaS chrome: plans, billing, visits, translations, assistant. Not the Proof Cycl
 - `powercare_tokens` — per-company session tokens
 - `powercare_local_preview` — preview workspace flag
 
-Catalog: 100 collections across 8 domains.
+Catalog: 86 collections across 8 domains.

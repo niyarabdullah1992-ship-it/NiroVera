@@ -33,13 +33,12 @@ function waitingOf(key, metrics) {
   if (key === "leave") return n(metrics.pendingLeave);
   if (key === "safety") return n(metrics.hazards);
   if (key === "complaints") return n(metrics.complaints);
-  if (key === "expenses") return n(metrics.expenses);
   return 0;
 }
 
 function toneOf(key, waiting) {
   if (waiting <= 0) return null;
-  if (key === "tasks" || key === "signing" || key === "signing-mine" || key === "review" || key === "escalation" || key === "expenses") return "urgent";
+  if (key === "tasks" || key === "signing" || key === "signing-mine" || key === "review" || key === "escalation") return "urgent";
   return "watch";
 }
 
@@ -166,8 +165,6 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       title: ar ? "المال" : "Money",
       items: [
         { key: "payroll", title: ar ? "الرواتب" : "Payroll", note: ar ? "يغذيه الحضور المعتمد" : "Fed by approved attendance", value: metrics.payroll, to: "/app/payroll" },
-        { key: "expenses", title: ar ? "المصروفات" : "Expenses", note: ar ? "مطالبات بانتظار الاعتماد" : "Claims awaiting approval", value: n(metrics.expenses) > 0 ? metrics.expenses : "—", to: "/app/expenses" },
-        { key: "assets", title: ar ? "الأصول / العهد" : "Assets / Custody", note: ar ? "سجل وتسليم ونقل بين الفروع" : "Register, handover, inter-station transfer", value: metrics.assets ?? "—", to: "/app/assets" },
       ],
     },
     {

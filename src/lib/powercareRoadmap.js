@@ -12,6 +12,6 @@ export const roadmapPhases = {
 };
 
 export const strengths = {
-  ar: ["مركز عمليات المالك", "حضور GPS", "توقيع رقمي متعدد الأطراف", "مركز كاميرات وتنبيهات", "مخزون ومشتريات", "رواتب وهيكل تنظيمي", "مصروفات متعددة المراحل", "Niro AI", "دعم متعدد اللغات وRTL"],
-  en: ["Owner Operations Center", "GPS attendance", "Multi-party digital signing", "Camera Center and alerts", "Inventory and procurement", "Payroll and organization structure", "Multi-stage expenses", "Niro AI", "Multilingual and RTL support"],
+  ar: ["مركز عمليات المالك", "حضور GPS", "توقيع رقمي متعدد الأطراف", "مركز كاميرات وتنبيهات", "رواتب وهيكل تنظيمي", "عهدة ومخالصة نهائية", "Niro AI", "دعم متعدد اللغات وRTL"],
+  en: ["Owner Operations Center", "GPS attendance", "Multi-party digital signing", "Camera Center and alerts", "Payroll and organization structure", "Custody and final settlement", "Niro AI", "Multilingual and RTL support"],
 };

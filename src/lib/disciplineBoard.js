@@ -803,9 +803,9 @@ export function disciplineRelatedLinks(item, { employee, ar = true, signedAt } =
   }
   if (/عهد|إتلاف|أصل|عدّة|عدة|custody|asset/i.test(text)) {
     links.push({
-      to: "/app/assets",
+      to: "/app/requests",
       label: ar ? "العهد" : "Custody",
-      tip: ar ? "العهدة تُسلَّم وتُستعاد من سجل الأصول" : "Custody is handed and returned from the assets register",
+      tip: ar ? "العهدة تُطلب في طلباتي وتُستعاد عند انتهاء الخدمة (المادة 65/2)" : "Custody is requested in My Requests and returned at exit (Art. 65(2))",
     });
   }
   links.push({

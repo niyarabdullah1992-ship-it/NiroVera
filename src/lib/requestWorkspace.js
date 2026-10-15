@@ -32,7 +32,7 @@ import {
 } from "./overtimeAssignment.js";
 import { consentTopicMeta, flattenWrittenConsents, hashConsentFile, readConsentFile } from "./writtenConsent.js";
 import { peopleQueryMatches } from "./peopleTreeGraph.js";
-import { formatNotificationText, isInventoryDeskNotice, isRequestWorkspaceNotice } from "./notificationKind.js";
+import { formatNotificationText, isRequestWorkspaceNotice } from "./notificationKind.js";
 import { formatDate } from "./dateFormat.js";
 import { leaveApprovalBlessing } from "./leaveEntitlementCycle.js";
 import { isViewerOwnFile, viewerEmployeeId } from "./employeeFileView.js";
@@ -1696,7 +1696,6 @@ export function manageArchiveRows(employees = [], lang = "ar", extras = {}) {
 
 export function requestNoticeHref(text) {
   const value = String(text || "");
-  if (isInventoryDeskNotice(value)) return "/app/inventory";
   if (/طلبك|إجازتك|وثيقتك|اعتُمدت إجازتك|سُحبت إجازتك|رُفض طلبك|مستحق في طلباتي|سارية في طلباتي/i.test(value)) {
     return "/app/requests";
   }

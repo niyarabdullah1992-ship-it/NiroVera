@@ -61,18 +61,12 @@ function isPath(path, base) {
   return path === base || path.startsWith(`${base}/`);
 }
 
-const MONEY = ["/app/payroll", "/app/expenses", "/app/assets", "/app/inventory"];
+const MONEY = ["/app/payroll"];
 
 /** Personal surface for each money module. Payroll opens قسيمتي, not the wage run. */
 const EMPLOYEE_MONEY_HREF = {
   payroll: "/app/payroll?view=self&tab=payslip",
-  expenses: "/app/expenses?view=self",
-  assets: "/app/assets?view=self",
-  inventory: "/app/inventory?view=self",
   "/app/payroll": "/app/payroll?view=self&tab=payslip",
-  "/app/expenses": "/app/expenses?view=self",
-  "/app/assets": "/app/assets?view=self",
-  "/app/inventory": "/app/inventory?view=self",
 };
 
 export function employeeMoneyHref(idOrPath) {
@@ -85,9 +79,7 @@ export function faceSectionTarget(page, railSide) {
   if (railSide !== "employee" || !page) return page;
   const personal = employeeMoneyHref(page.appId || page.to);
   if (!personal) return page;
-  // On the employee side the asset register is management's; what the employee has is العهد.
-  const custody = String(page.to || "").split("?")[0] === "/app/assets" || page.appId === "assets";
-  return { ...page, to: personal, badge: undefined, glow: undefined, ...(custody ? { label: page.label && /[\u0600-\u06FF]/.test(page.label) ? "العهد" : "Custody" } : null) };
+  return { ...page, to: personal, badge: undefined, glow: undefined };
 }
 
 /**

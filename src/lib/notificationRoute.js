@@ -4,9 +4,6 @@
 const RULES = [
   { route: "/app/signing", keywords: ["signature", "signing", "signed", "sign the", "توقيع", "وقّع", "وقع المستند"] },
   { route: "/app/complaints", keywords: ["complaint", "شكوى", "شكاوى", "بلاغ"] },
-  { route: "/app/inventory", keywords: ["inventory", "stock", "material request", "مخزون", "مواد", "طلب معتمد", "صرف للعمل"] },
-  { route: "/app/expenses", keywords: ["مصروف", "مطالبة مصروف", "المدير المالي", "وعاء الفرع", "operating claim", "expense claim"] },
-  { route: "/app/assets", keywords: ["نقل أصل", "أصل «", "المنشأ يبقى", "asset transfer", "custody"] },
   { route: "/app/attendance", keywords: ["attendance", "check-in", "check in", "checked in", "late", "absent", "shift", "schedule", "حضور", "انصراف", "تأخير", "غياب", "غائب", "وردية", "جدول"] },
   { route: "/app/requests/manage", keywords: ["مستحق موافقة خطية ليلية", "موافقة ليلية سارية", "سحب موافقته الخطية", "night consent is in force", "is due for night", "بانتظار مراجعتك", "needs your review", "بشأن:"] },
   { route: "/app/requests", keywords: ["اعتُمدت إجازتك", "اعتُمدت إجازة", "تهانينا", "مبارك", "شفاك", "تقبّل الله", "عظّم الله", "your leave was approved", "ليلي", "ليلية", "18632", "تقليص الساعات", "night-work", "night work", "موافقة خطية", "written consent"] },

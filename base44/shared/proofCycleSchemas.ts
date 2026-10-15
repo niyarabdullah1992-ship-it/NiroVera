@@ -337,6 +337,21 @@ export const offboardingMarkReturnedSchema = tenantRequestSchema.extend({
   action: z.literal("markReturned"),
   employeeId: employeeIdSchema,
   assetId: entityIdSchema,
+  returnEvidenceName: z.string().max(240).optional(),
+});
+
+/** Employee custody (العهدة) — a light list on the offboarding case, Art. 65(2). */
+export const offboardingAddCustodySchema = tenantRequestSchema.extend({
+  action: z.literal("addCustody"),
+  employeeId: employeeIdSchema,
+  item: z.object({
+    name: z.string().max(200),
+    serial: z.string().max(200).optional(),
+    value: z.union([z.number(), z.string()]).optional(),
+    handedAt: z.string().max(32).optional(),
+    evidenceName: z.string().max(240).optional(),
+    evidenceUrl: z.string().max(2000).optional(),
+  }),
 });
 
 export const offboardingCompleteSchema = tenantRequestSchema.extend({
@@ -345,6 +360,7 @@ export const offboardingCompleteSchema = tenantRequestSchema.extend({
 });
 
 export const offboardingActionSchemas = {
+  addCustody: offboardingAddCustodySchema,
   markReturned: offboardingMarkReturnedSchema,
   complete: offboardingCompleteSchema,
 } as const;

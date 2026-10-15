@@ -32,8 +32,8 @@ export const REPORT_CATALOG = [
     kickerEn: "FINANCE",
     titleAr: "تحليل تكلفة التشغيل بالفرع",
     titleEn: "Cost per station analysis",
-    descAr: "الرواتب والمخزون والصيانة منسوبة لكل فرع على حدة.",
-    descEn: "Payroll, inventory and maintenance attributed per station.",
+    descAr: "الرواتب وقيود اليومية منسوبة لكل فرع على حدة.",
+    descEn: "Payroll and journal lines attributed per station.",
     format: "XLSX",
     needsPeriod: true,
     roles: ["owner", "director", "ops_manager", "admin", "pgm", "financial_officer"],
@@ -108,16 +108,6 @@ export const SCHEDULED_REPORTS = [
     recipientsEn: "CEO · CFO",
     cadenceAr: "أول كل شهر",
     cadenceEn: "1st of month",
-  },
-  {
-    id: "sched_stock",
-    reportId: "stock_alert",
-    titleAr: "تنبيه المخزون تحت الحد",
-    titleEn: "Below-threshold stock alert",
-    recipientsAr: "مدير المشتريات",
-    recipientsEn: "Procurement Manager",
-    cadenceAr: "عند تجاوز الحد",
-    cadenceEn: "On threshold breach",
   },
 ];
 

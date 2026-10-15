@@ -186,26 +186,8 @@ function attendanceAlerts(user, data, allowed, attendanceRows) {
   return acc;
 }
 
-function expenseOpen(claim, user, data) {
-  const status = claim?.status || "pending";
-  const senior = seesAllDutyStations(user, data) || user?.id === data?.ownerId;
-  if (status === "pending" || status === "submitted") {
-    return senior || ["pgm", "station_manager"].includes(user?.role);
-  }
-  if (status === "manager_approved") return user?.role === "financial_officer" || senior;
-  return false;
-}
-
 function moneyAlerts(section, user, data, allowed) {
   const acc = emptyAcc();
-  if (section === "expenses") {
-    const claims = data?.expenseClaims || data?.expenses || [];
-    for (const claim of claims) {
-      if (!expenseOpen(claim, user, data)) continue;
-      bucket(allowed, claim.stationId, 1, "plain", acc);
-    }
-    return acc;
-  }
   if (section === "payroll") {
     const can = !!(user && (
       user.id === data?.ownerId
@@ -221,20 +203,6 @@ function moneyAlerts(section, user, data, allowed) {
       for (const item of run.items) {
         bucket(allowed, item.employeeStationId || item.stationId, 1, "plain", acc);
       }
-    }
-    return acc;
-  }
-  if (section === "assets") {
-    for (const row of data?.assetTransfers || []) {
-      if (row.status !== "pending") continue;
-      bucket(allowed, row.fromStationId || row.stationId, 1, "plain", acc);
-    }
-    return acc;
-  }
-  if (section === "inventory") {
-    for (const row of data?.materialRequests || []) {
-      if (row.status !== "pending") continue;
-      bucket(allowed, row.sourceStationId || row.stationId, 1, "plain", acc);
     }
     return acc;
   }
@@ -264,7 +232,7 @@ function alertsFor(section, user, data, allowed, attendanceRows) {
   if (section === "discipline") return disciplineAlerts(user, data, allowed);
   if (section === "complaints") return voiceAlerts(user, data, allowed);
   if (section === "attendance") return attendanceAlerts(user, data, allowed, attendanceRows);
-  if (section === "payroll" || section === "expenses" || section === "assets" || section === "inventory") {
+  if (section === "payroll") {
     return moneyAlerts(section, user, data, allowed);
   }
   if (section === "safety") return safetyAlerts(data, allowed);
@@ -309,14 +277,12 @@ const NOTICE_SECTIONS = [
   { id: "attendance", ar: "حضور ينتظر المراجعة", en: "Attendance awaiting review", kindAr: "الحضور والدوام", kindEn: "Attendance", route: "/app/attendance?lane=manage" },
   { id: "safety", ar: "مخاطر سلامة مفتوحة", en: "Open safety hazards", kindAr: "السلامة", kindEn: "Safety", route: "/app/safety?lane=manage" },
   { id: "escalation", ar: "مهام تصاعدت", en: "Escalated tasks", kindAr: "التشغيل اليومي", kindEn: "Operations", route: "/app/tasks?lane=manage" },
-  { id: "expenses", ar: "مصروفات بانتظار قرار", en: "Expenses awaiting you", kindAr: "المال والأصول", kindEn: "Money", route: "/app/expenses?view=manage" },
-  { id: "payroll", ar: "مسير بانتظار الاعتماد", en: "Payroll awaiting approval", kindAr: "المال والأصول", kindEn: "Money", route: "/app/payroll?view=manage" },
-  { id: "assets", ar: "نقل أصل بانتظارك", en: "Asset transfer awaiting you", kindAr: "المال والأصول", kindEn: "Money", route: "/app/assets?view=manage" },
+  { id: "payroll", ar: "مسير بانتظار الاعتماد", en: "Payroll awaiting approval", kindAr: "المال", kindEn: "Money", route: "/app/payroll?view=manage" },
 ];
 
 function noticeBand(section, tone) {
   if (tone === "bad" || section === "safety" || section === "escalation") return "urgent";
-  if (tone === "warn" || section === "requests" || section === "attendance" || section === "discipline" || section === "complaints" || section === "expenses" || section === "payroll" || section === "assets" || section === "inventory") {
+  if (tone === "warn" || section === "requests" || section === "attendance" || section === "discipline" || section === "complaints" || section === "payroll") {
     return "decision";
   }
   return "info";

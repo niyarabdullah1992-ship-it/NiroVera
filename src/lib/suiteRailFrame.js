@@ -103,9 +103,7 @@ function canManageMoney(surface, user, data) {
   const senior = ["owner", "director", "ops_manager", "admin"].includes(role) || !!user.isOwner || (!!data?.ownerId && user.id === data.ownerId);
   const stationManager = !senior && ["station_manager", "pgm"].includes(role);
   const financeOfficer = !senior && role === "financial_officer";
-  const stockKeeper = !senior && role === "inventory_keeper";
   if (surface === "payroll") return canAdjustPayroll(user, data);
-  if (surface === "inventory") return senior || stationManager || stockKeeper;
   return senior || stationManager || financeOfficer;
 }
 
@@ -175,7 +173,7 @@ function dutyManageTo(user, data, group) {
 }
 
 function moneyManageTo(user, data, group) {
-  for (const id of ["payroll", "expenses", "assets"]) {
+  for (const id of ["payroll"]) {
     const path = appPath(group, id);
     if (path && canManageMoney(id, user, data)) return withQuery(path, { view: "manage" });
   }
@@ -287,7 +285,7 @@ export function activeSuiteRailKey(sides, category, pathname, search) {
     if (has("performance:employee")) return "performance:employee";
   }
 
-  const moneyPath = category === "money" || ["/app/payroll", "/app/expenses", "/app/assets", "/app/inventory"].some((base) => path === base || path.startsWith(`${base}/`));
+  const moneyPath = category === "money" || ["/app/payroll"].some((base) => path === base || path.startsWith(`${base}/`));
   if (moneyPath) {
     const slip = params.get("tab") === "slip" || params.get("tab") === "payslip";
     const personal = params.get("view") === "self" || (slip && params.get("view") !== "manage");

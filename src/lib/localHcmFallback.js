@@ -55,7 +55,6 @@ const ROLE_JOBS = {
   station_manager: { code: "STM", title: "مدير الفرع", family: "operations" },
   safety_officer: { code: "HSE", title: "مسؤول السلامة", family: "hse" },
   employee: { code: "TEC", title: "فني", family: "operations" },
-  inventory_keeper: { code: "INV", title: "أمين المستودع", family: "operations" },
   financial_officer: { code: "FIN", title: "مسؤول مالي", family: "finance" },
   hr_manager: { code: "HR", title: "موارد بشرية", family: "hr" },
 };

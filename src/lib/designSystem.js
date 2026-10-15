@@ -158,7 +158,7 @@ export const DS_SURFACES = [
   { href: "/app/org", ar: "القوى العاملة", en: "Workforce", jobAr: "المقعد كائن مستقلّ عن الشخص", jobEn: "The seat is independent of the person", empAr: "بطاقته", empEn: "His card", mgrAr: "يعيّن وينقل", mgrEn: "Appoints and transfers" },
   { href: "/app/complaints", ar: "صوت الموظف", en: "Employee voice", jobAr: "بلاغ وحماية ومسار تحقيق", jobEn: "Report, protection, investigation path", empAr: "يرفع صوته", empEn: "Raises his voice", mgrAr: "يفتح ويغلق", mgrEn: "Opens and closes" },
   { href: "/app/safety", ar: "السلامة", en: "Safety", jobAr: "خطر بصورتين ومستوى معتمد", jobEn: "A hazard in two pictures and an adopted level", empAr: "يبلّغ عن خطر", empEn: "Reports a hazard", mgrAr: "يغلق ويعتمد", mgrEn: "Closes and adopts" },
-  { href: "/app/payroll", ar: "المال والأصول", en: "Money and assets", jobAr: "أوعية منفصلة وقيود تُصدَّر", jobEn: "Separate vessels and posted entries", empAr: "كشفه", empEn: "His slip", mgrAr: "كل الطبقات", mgrEn: "Every layer" },
+  { href: "/app/payroll", ar: "المال", en: "Money", jobAr: "الحضور يغذّي المسير وملف مدد", jobEn: "Attendance feeds the run and the Mudad file", empAr: "كشفه", empEn: "His slip", mgrAr: "كل الطبقات", mgrEn: "Every layer" },
   { href: "/app/assistant", ar: "المساعد", en: "Assistant", jobAr: "يسأل السجل داخل صلاحيتك", jobEn: "Asks the register inside your permission", empAr: "يسأل ما يخصّه", empEn: "Asks what is his", mgrAr: "يسأل نطاقه", mgrEn: "Asks his scope" },
   { href: "/app/work-proof", ar: "التحقّق العام", en: "Public verify", jobAr: "بصمة بلا جلسة للحقول المسموح بها", jobEn: "A hash without a session for allowed fields", empAr: "عامّ", empEn: "Public", mgrAr: "عامّ", mgrEn: "Public" },
 ];

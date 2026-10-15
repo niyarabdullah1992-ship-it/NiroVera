@@ -1,8 +1,10 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.38";
 import { authPowerCareSession } from "../../shared/powerCareSession.ts";
 import {
+  checkAddCustodyGate,
   checkCompleteOffboardingGate,
   checkMarkReturnedGate,
+  normalizeCustodyItem,
   enrichOffboardingCase,
   type OffboardingCaseLike,
 } from "../../shared/offboardingDerivations.ts";
@@ -44,7 +46,7 @@ Deno.serve(async (req) => {
     const rawBody = await req.json();
     const action = String(rawBody?.action || "");
     let body = rawBody;
-    if (action === "markReturned" || action === "complete") {
+    if (action === "markReturned" || action === "complete" || action === "addCustody") {
       const parsed = validateOffboardingRequest(rawBody);
       if (!parsed.success) return validationFailed(parsed.error);
       body = parsed.data;
@@ -175,6 +177,21 @@ Deno.serve(async (req) => {
       return Response.json({ error: "Forbidden — HR role required" }, { status: 403 });
     }
 
+    if (action === "addCustody") {
+      const employeeId = String(body.employeeId || "").trim();
+      const data = await loadPayload();
+      const row = findCase(data, employeeId);
+      const gate = checkAddCustodyGate(row, body.item || {}, new Date().toISOString().slice(0, 10));
+      if (!gate.ok) {
+        return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 400 });
+      }
+      const item = normalizeCustodyItem({ ...(body.item || {}), handedAt: body.item?.handedAt || new Date().toISOString().slice(0, 10) }, uid("cst"));
+      row!.assets = [...(row!.assets || []), { ...item, handedBy: auth.name } as typeof item];
+      await savePayload(data);
+      await audit("offboarding.addCustody", `${employeeId}:${item.id}`, { newValue: item.name });
+      return Response.json(respondCase(row));
+    }
+
     if (action === "markReturned") {
       const employeeId = String(body.employeeId || "").trim();
       const assetId = String(body.assetId || "").trim();
@@ -188,6 +205,7 @@ Deno.serve(async (req) => {
       asset.status = "returned";
       asset.returnedAt = new Date().toISOString();
       asset.returnedBy = auth.name;
+      if (body.returnEvidenceName) asset.returnEvidenceName = String(body.returnEvidenceName).slice(0, 240);
       await savePayload(data);
       await audit("offboarding.markReturned", `${employeeId}:${assetId}`, {
         newValue: asset.name,

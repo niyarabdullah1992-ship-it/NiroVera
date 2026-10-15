@@ -309,11 +309,11 @@ export default function Payroll() {
       title={view === SELF ? (ar ? "قسيمتي" : "My payslip") : (ar ? "مسير الأجور" : "Wage run")}
       hint={view === SELF
         ? (ar
-          ? "البصمة تغذّي المسير. المصروف والعهد في مسار واحد، ولكل مسار سطحه."
-          : "The punch feeds the run. Expenses and custody each have their own surface.")
+          ? "البصمة تغذّي المسير، والمسير يغذّي قسيمتك. العهدة تُطلب من طلباتي وتُسلَّم عند انتهاء الخدمة."
+          : "The punch feeds the run, and the run feeds your payslip. Custody is requested in My Requests and returned at exit.")
         : (ar
-          ? "الحضور يغذّي المسير. المسير لا يمسّ أوعية المصروفات والأصول، ومطالبة مصروف لا تُصرف من المسير."
-          : "Attendance feeds the run. The run does not touch expense or asset vessels, and an expense claim is never paid from payroll.")}
+          ? "الحضور يغذّي المسير، والمسير يُقفل قبل ملف مدد. العهدة غير المسلّمة تُحسم في التصفية النهائية وحدها (المادة 91)."
+          : "Attendance feeds the run, and the run closes before the Mudad file. Unreturned custody is set off only in the final settlement (Art. 91).")}
       tabTone={view === SELF ? "gold" : "white"}
       viewNote={view === SELF ? "" : hints[tab]}
       legal={view === SELF && tab === "slip" ? "" : (ar

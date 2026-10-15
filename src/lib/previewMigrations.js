@@ -973,65 +973,6 @@ export function migratePreviewEmployeeGenders(data) {
   return changed;
 }
 
-/** Existing preview workspaces were seeded without a register — operations need real rows. */
-export function migratePreviewAssets(data) {
-  if (!data || !Array.isArray(data.stations) || !data.stations.length) return false;
-  if (Array.isArray(data.assets) && data.assets.length) return false;
-  const north = data.stations.find((row) => /خفجي|Khafji|north/i.test(row.name || "")) || data.stations[0];
-  const east = data.stations.find((row) => /رابغ|Rabigh|east/i.test(row.name || "")) || data.stations[1] || data.stations[0];
-  const manager = (data.employees || []).find((row) => row.id === "emp_manager_preview") || (data.employees || []).find((row) => /أحمد/.test(row.name || ""));
-  const hse = (data.employees || []).find((row) => row.id === "emp_hse_preview") || (data.employees || []).find((row) => /سارة/.test(row.name || ""));
-  data.assets = [
-    {
-      id: "ast_1",
-      name: "مولد احتياطي 80 ك.و",
-      assetCode: "GEN-080",
-      qrCode: "AST-GEN080",
-      category: "معدات تشغيل",
-      stationId: north.id,
-      originStationId: north.id,
-      holderId: manager?.id || null,
-      holderName: manager?.name || "—",
-      status: "in_custody",
-      value: 42000,
-      purchaseDate: "2025-03-12",
-      nextInspectionDate: "2026-12-01",
-    },
-    {
-      id: "ast_2",
-      name: "جهاز فحص عزل",
-      assetCode: "TST-MEG",
-      qrCode: "AST-TSTMEG",
-      category: "أجهزة قياس",
-      stationId: east.id,
-      originStationId: east.id,
-      holderId: hse?.id || null,
-      holderName: hse?.name || "—",
-      status: "available",
-      value: 8500,
-      purchaseDate: "2025-08-20",
-      nextInspectionDate: "2026-10-15",
-    },
-  ];
-  if (!Array.isArray(data.assetCustody) || !data.assetCustody.length) {
-    data.assetCustody = [{
-      id: "cst_1",
-      assetId: "ast_1",
-      fromId: null,
-      fromName: "—",
-      toId: manager?.id || null,
-      toName: manager?.name || "—",
-      stationId: north.id,
-      handedAt: new Date().toISOString(),
-      notes: "initial",
-    }];
-  }
-  if (!Array.isArray(data.assetMaintenance)) data.assetMaintenance = [];
-  if (!Array.isArray(data.assetTransfers)) data.assetTransfers = [];
-  return true;
-}
-
-
 /**
  * Preview attendance history: the seeded roster ran for months with no punches, so «سجلي» showed the
  * owner absent 67 days with Art. 80 warnings. Fill each past published workday with a plausible

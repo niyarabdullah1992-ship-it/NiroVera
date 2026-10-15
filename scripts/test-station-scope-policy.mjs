@@ -15,21 +15,19 @@ assert.equal(suiteAppForPath("/app/attendance")?.group, "duty");
 assert.equal(suiteAppForPath("/app/attendance/shifts")?.id, "shifts");
 assert.equal(suiteAppForPath("/app/safety")?.group, "compliance");
 assert.equal(suiteAppForPath("/app/payroll")?.group, "money");
-assert.equal(suiteAppForPath("/app/assets")?.group, "money");
-assert.equal(suiteAppForPath("/app/inventory")?.id, "inventory");
+// Inventory, assets and expenses were removed from NiroVera (HR scope).
+assert.equal(suiteAppForPath("/app/assets"), null);
+assert.equal(suiteAppForPath("/app/inventory"), null);
+assert.equal(suiteAppForPath("/app/expenses"), null);
 assert.equal(suiteAppForPath("/app/requests/manage")?.group, "requests");
 
 assert.equal(headerAllowsAllStations("/app"), true);
-assert.equal(headerAllowsAllStations("/app/inventory"), true);
-assert.equal(headerAllowsAllStations("/app/inventory/stock"), true);
 assert.equal(headerAllowsAllStations("/app/org"), true);
 assert.equal(headerAllowsAllStations("/app/attendance"), false);
 assert.equal(headerAllowsAllStations("/app/calendar"), false);
 assert.equal(headerAllowsAllStations("/app/shifts"), false);
 assert.equal(headerAllowsAllStations("/app/safety"), false);
 assert.equal(headerAllowsAllStations("/app/payroll"), false);
-assert.equal(headerAllowsAllStations("/app/expenses"), false);
-assert.equal(headerAllowsAllStations("/app/assets"), false);
 assert.equal(headerAllowsAllStations("/app/requests"), false);
 assert.equal(headerAllowsAllStations("/app/complaints"), false);
 assert.equal(headerAllowsAllStations("/app/discipline"), false);
@@ -45,14 +43,7 @@ assert.equal(fallbackStationId({ employee: clerk, stations }), "khf");
 
 assert.equal(pageLocksToOwnWorkplace({ pathname: "/app/attendance", employee: clerk, data: { ownerId: "niyar" } }), true);
 assert.equal(pageLocksToOwnWorkplace({ pathname: "/app/attendance", employee: owner, data: { ownerId: "niyar" } }), false);
-assert.equal(pageLocksToOwnWorkplace({ pathname: "/app/inventory", employee: clerk, data: { ownerId: "niyar" } }), false);
-
-assert.equal(resolvePageStationScope({
-  pathname: "/app/inventory",
-  headerScope: "all",
-  employee: owner,
-  stations,
-}), "all");
+assert.equal(pageLocksToOwnWorkplace({ pathname: "/app/org", employee: clerk, data: { ownerId: "niyar" } }), false);
 
 assert.equal(resolvePageStationScope({
   pathname: "/app/attendance",
@@ -76,14 +67,14 @@ assert.equal(resolvePageStationScope({
 }), "khf");
 
 assert.equal(resolvePageStationScope({
-  pathname: "/app/assets",
+  pathname: "/app/payroll",
   headerScope: "all",
   employee: owner,
   stations,
 }), "all", "money manage face: كل نطاق clears the station filter");
 
 assert.equal(resolvePageStationScope({
-  pathname: "/app/assets",
+  pathname: "/app/payroll",
   search: "?view=self",
   headerScope: "all",
   employee: owner,

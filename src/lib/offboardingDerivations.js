@@ -210,6 +210,7 @@ export function enrichAsset(asset) {
   return {
     ...asset,
     serial: asset.serial || null,
+    value: Math.max(0, Number(asset.value ?? asset.cost) || 0),
     status,
     outstanding: status === "outstanding",
     returnedAt: status === "returned" ? asset.returnedAt || null : null,
@@ -222,6 +223,11 @@ export function outstandingAssets(assets = []) {
 
 export function outstandingCount(assets = []) {
   return outstandingAssets(assets).length;
+}
+
+/** Art. 91 / 88: value of custody not yet returned — what the final settlement may set off. */
+export function custodyDebtOf(assets = []) {
+  return Math.round(outstandingAssets(assets).reduce((sum, a) => sum + a.value, 0) * 100) / 100;
 }
 
 export function isOffboardingGateOpen(assets = []) {
@@ -366,6 +372,55 @@ export function enrichOffboardingCase(caseRow, nowMs = Date.now()) {
     accessRevoked: !!(caseRow.accessRevoked || status === "completed"),
     qiwaNotified: !!(caseRow.qiwaNotified || status === "completed"),
   };
+}
+
+/**
+ * Employee custody (العهدة) lives on the offboarding case as a light list — item, serial or
+ * description, value, handed-at, returned-at, evidence. It is not an asset register.
+ * Art. 65(2): the worker cares for the employer's tools in their custody and returns what is not
+ * consumed; the recorded value is what the Art. 91 final-settlement set-off may reach.
+ */
+export function normalizeCustodyItem(input = {}, id = "") {
+  const value = Number(input.value ?? input.cost ?? 0);
+  return {
+    id: String(input.id || id || ""),
+    name: String(input.name || "").trim(),
+    serial: String(input.serial || input.description || "").trim() || null,
+    value: Number.isFinite(value) ? Math.max(0, Math.round(value * 100) / 100) : 0,
+    handedAt: String(input.handedAt || "").slice(0, 10) || null,
+    evidenceName: String(input.evidenceName || "").trim() || null,
+    evidenceUrl: String(input.evidenceUrl || "").trim() || null,
+    status: "outstanding",
+    returnedAt: null,
+  };
+}
+
+export function checkAddCustodyGate(caseRow, input = {}, todayIso = "") {
+  const cite = "المادة 65(2)";
+  if (!caseRow) {
+    return { ok: false, error: "CASE_NOT_FOUND", reason: "ملف إنهاء الخدمة غير موجود.", reasonEn: "Offboarding case not found." };
+  }
+  if (caseRow.status === "completed") {
+    return { ok: false, error: "ALREADY_COMPLETED", reason: "الخدمة منتهية — لا تُضاف عهدة بعد المخالصة.", reasonEn: "Offboarding is complete — no custody is added after settlement." };
+  }
+  const name = String(input.name || "").trim();
+  if (!name) {
+    return { ok: false, error: "CUSTODY_NAME_REQUIRED", reason: `اسم العهدة مطلوب — ${cite}: العامل يعيد ما في عهدته، فلا بد أن يُسمّى.`, reasonEn: "Custody item name is required — Art. 65(2): the worker returns what is in their custody, so it must be named." };
+  }
+  const raw = input.value ?? input.cost;
+  const value = raw === "" || raw == null ? 0 : Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    return { ok: false, error: "CUSTODY_VALUE_INVALID", reason: "قيمة العهدة رقم غير سالب — منها يُحسب حسم التصفية (المادة 91).", reasonEn: "Custody value must be a non-negative number — the settlement set-off (Art. 91) reads it." };
+  }
+  const handedAt = String(input.handedAt || "").slice(0, 10);
+  if (handedAt && todayIso && handedAt > todayIso) {
+    return { ok: false, error: "CUSTODY_HANDED_FUTURE", reason: "تاريخ التسليم في المستقبل — تُسجّل العهدة يوم تسليمها.", reasonEn: "The handover date is in the future — record custody on the day it is handed over." };
+  }
+  const serial = String(input.serial || "").trim().toLowerCase();
+  if (serial && (caseRow.assets || []).some((row) => String(row.serial || "").trim().toLowerCase() === serial && enrichAsset(row).outstanding)) {
+    return { ok: false, error: "CUSTODY_DUPLICATE", reason: "هذا الرقم التسلسلي مسجّل عهدةً قائمة لهذا الموظف.", reasonEn: "This serial is already an outstanding custody item for this employee." };
+  }
+  return { ok: true };
 }
 
 export function checkMarkReturnedGate(caseRow, assetId) {

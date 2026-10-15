@@ -33,12 +33,6 @@ function pendingSigningCount(data) {
   }).length;
 }
 
-function pendingExpenseCount(data) {
-  return (data?.expenses || data?.expenseClaims || []).filter((row) =>
-    ["submitted", "manager_approved", "pending"].includes(row.status),
-  ).length;
-}
-
 function openHazardCount(data) {
   return (data?.safety || []).reduce(
     (sum, rec) => sum + (rec.hazards || []).filter((hazard) => !hazard.closedAt).length,
@@ -73,8 +67,6 @@ function buildModuleMetrics(data, extra = {}) {
     offboarding: extra.offboarding ?? 0,
     safety: (data?.safety || []).length,
     hazards: extra.hazards ?? openHazardCount(data),
-    expenses: extra.pendingExpenses ?? pendingExpenseCount(data),
-    inventory: data?.inventory?.length || data?.inventoryItems?.length || 0,
     files: data?.files?.length || 0,
     messages: data?.messages?.length || 0,
   };
@@ -424,7 +416,6 @@ export default function Dashboard() {
       activeMembers: activeMembersCount,
       pendingLeave: pendingLeaveCount,
       hazards: openHazards,
-      pendingExpenses: pendingExpenseCount(data),
       escalated: escalatedTasks,
     }),
     ar ? "ما يحتاج قرارك اليوم — كل رقم يفتح قسمه." : "What needs your decision today — each figure opens its section.",

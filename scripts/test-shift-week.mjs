@@ -293,7 +293,7 @@ assert.equal(blocked.checks.find((row) => row.id === "night_rotate")?.ruleId, "h
 assert.equal(blocked.checks.find((row) => row.id === "night_rest")?.ruleId, "hours.night.restHours");
 assert.equal(blocked.checks.find((row) => row.id === "hours_48")?.ruleId, "hours.week.ordinaryMaxHours");
 assert.equal(blocked.checks.find((row) => row.id === "heat_ban")?.ruleId, "hours.heat.startHour");
-assert.equal(blocked.checks.find((row) => row.id === "heat_ban")?.block, false);
+assert.equal(blocked.checks.find((row) => row.id === "heat_ban")?.block, true, "Decision 3337: exposed in the window is a publish block");
 for (const id of MINISTRY_NIGHT_PUBLISH_BLOCK_IDS) {
   assert.equal(blocked.checks.find((row) => row.id === id)?.block, true, `${id} stays a Decision 18632 publish block`);
 }
@@ -1653,7 +1653,7 @@ assert.equal(applyHours("twelve", outsideDay).ok, true, "4×12 outside Ramadan m
 assert.equal(applyHours("twelve", outsideDay, otherEmp).ok, true);
 assert.equal(applyHours("n12", outsideDay).ok, true);
 assert.equal(applyHours("thirteen", outsideDay).error, "WORKPLACE_STAY");
-assert.equal(applyHours("twelve", "2026-02-22", muslimEmp).error, "OFFICIAL_HOLIDAY", "Founding Day blocks even a 12h stay");
+assert.equal(applyHours("twelve", "2026-02-22", muslimEmp).error, "HOLIDAY_WORK_CONFIRM", "Founding Day needs «عمل في العطلة» confirmation (Art. 107(3)) even for a 12h stay");
 
 const outsideFour = weekHours(fourKeys(outsideDay, "twelve", "ahmed"), [twelveStay], muslimEmp, outsideSun);
 assert.equal(outsideFour.checks.find((row) => row.id === "ramadan")?.ok, true);
@@ -1713,7 +1713,7 @@ const fiveTwelve = fiveMorning(ramadanDay, "ahmed");
 for (const key of Object.keys(fiveTwelve)) fiveTwelve[key] = { twelve: ["ahmed"] };
 assert.equal(employeeOnCompressedTwelveWeek({ stationId: "st", shiftTypes: [twelveStay], assignments: fiveTwelve }, muslimEmp, ramadanSun), false);
 assert.equal(weekHours(fiveTwelve, [twelveStay], muslimEmp, ramadanSun).checks.find((row) => row.id === "hours_48")?.ok, false, "five 12h-stay days exceed 48 actual hours");
-assert.equal(applyHours("twelve", "2026-02-22").error, "OFFICIAL_HOLIDAY");
+assert.equal(applyHours("twelve", "2026-02-22").error, "HOLIDAY_WORK_CONFIRM", "Art. 107(3): holiday work needs the named confirmation");
 
 assert.equal(nightRestPairHits(fourNightTwelve, ahmed, fourDutyWeekStart).length, 0, "12 on / 12 off is the 18632 minimum");
 assert.equal(checkWeekPublishGates({
@@ -1879,9 +1879,10 @@ const heatFieldGate = checkWeekPublishGates({
 });
 const heatFieldBan = heatFieldGate.checks.find((row) => row.id === "heat_ban");
 assert.equal(heatFieldBan?.ok, false);
-assert.equal(heatFieldBan?.block, false, "outdoor in-season overlap is a warning, not a publish block");
-assert.ok(heatFieldGate.warnings.some((row) => row.id === "heat_ban"));
-assert.ok(!heatFieldGate.blockers.some((row) => row.id === "heat_ban"));
+// Decision 3337 (updated): exposed in the window in season is a publish BLOCK, not a warning.
+assert.equal(heatFieldBan?.block, true, "outdoor in-season overlap blocks publish (Decision 3337)");
+assert.ok(!heatFieldGate.warnings.some((row) => row.id === "heat_ban"));
+assert.ok(heatFieldGate.blockers.some((row) => row.id === "heat_ban"));
 assert.ok(heatFieldBan?.note.includes(omar.name), "sun-ban notice names the worker");
 assert.match(heatFieldBan?.note || "", /لا يحق لصاحب العمل أن يجبره/);
 assert.ok(heatFieldBan?.note.includes(heatWin.startLabel), "outdoor notice reads heatBanWindow");
@@ -1902,7 +1903,7 @@ const heatOpenBan = heatOpenGate.checks.find((row) => row.id === "heat_ban");
 const heatOpenPlace = heatOpenGate.checks.find((row) => row.id === "heat_place");
 assert.equal(heatOpenBan?.ok, true, "unmarked overlap is not treated as proven open-air");
 assert.equal(heatOpenPlace?.ok, false);
-assert.equal(heatOpenPlace?.block, false, "unmarked place is a named warning, not a silent pass");
+assert.equal(heatOpenPlace?.block, true, "Decision 3337: an unmarked in-season cell must be marked before publish");
 // fc17591/c303cee: heat_place is now the «needs مكشوف/مظلّل» admin notice (the protection wording lives on heat_ban).
 assert.match(heatOpenPlace?.note || "", /يحتاج تحديد مكشوف\/مظلّل/);
 assert.ok(heatOpenPlace?.note.includes(omar.name));
@@ -1943,13 +1944,13 @@ const heatPublishGate = checkWeekPublishGates({
   today: "2026-07-13",
 });
 assert.equal(heatPublishGate.checks.find((row) => row.id === "heat_ban")?.ok, false);
-assert.equal(heatPublishGate.checks.find((row) => row.id === "heat_ban")?.block, false);
-assert.equal(heatPublishGate.blocked, false, "outdoor in-season overlap still allows publish");
-assert.equal(weekPublishSubmitBlock(heatPublishGate, { ar: true }), "");
+assert.equal(heatPublishGate.checks.find((row) => row.id === "heat_ban")?.block, true);
+assert.equal(heatPublishGate.blocked, true, "outdoor in-season overlap blocks publish (Decision 3337)");
+assert.notEqual(weekPublishSubmitBlock(heatPublishGate, { ar: true }), "");
 
 const heatOpenCell = weekCellAlert(heatOpenGate, "omar", "2026-07-13");
 assert.equal(heatOpenCell?.id, "heat_place");
-assert.equal(heatOpenCell?.level, "warn");
+assert.equal(heatOpenCell?.level, "block", "an unmarked in-season cell must be marked before publish (Decision 3337)");
 // c303cee: the unmarked cell asks for the مكشوف/مظلّل mark instead of reprinting the ban notice.
 assert.equal(heatOpenCell?.hint, `${omar.name} — يحتاج تحديد مكشوف/مظلّل في هذا اليوم (القرار 3337).`);
 assert.equal(weekCellAlert(heatIndoorGate, "omar", "2026-07-13"), null);
@@ -1983,8 +1984,8 @@ const heatStripCopy = weekHeatBanStripCopy("2026-07-13", { ar: true });
 assert.equal(heatPlaceStrip.empty, false, "unmarked in-season morning lights the strip");
 assert.equal(heatPlaceStrip.cards.length, 1);
 assert.equal(heatPlaceStrip.cards[0].gateId, "heat_place");
-assert.equal(heatPlaceStrip.cards[0].level, "warn");
-assert.equal(heatPlaceStrip.cards[0].glow, "due");
+assert.equal(heatPlaceStrip.cards[0].level, "block", "Decision 3337: the missing mark now blocks publish");
+assert.equal(heatPlaceStrip.cards[0].glow, "block");
 assert.equal(heatPlaceStrip.cards[0].name, omar.name);
 // fc17591/c303cee: heat_place is the administrative «needs مكشوف/مظلّل» notice; the 3337 protection
 // copy (إنذار حماية + window/season sentence) now sits on the heat_ban card — asserted on heatBanStrip below.
@@ -2003,7 +2004,7 @@ assert.equal(heatPlaceStrip.cards[0].protects.company, true);
 assert.equal(heatPlaceStrip.cards[0].judgment, "يحمي العامل والشركة — حكم المنصة");
 assert.equal(dutyStripBody(heatNotice, omar.name), heatBody);
 assert.doesNotMatch(heatPlaceStrip.cards[0].body, /3337|قرار وزاري/, "instrument stays in the masthead, not the sentence");
-assert.ok(!heatPlaceStrip.anyBlock);
+assert.ok(heatPlaceStrip.anyBlock, "Decision 3337: the missing mark is a publish block");
 {
   const heatBanStrip = weekDutyStripAlerts(heatFieldGate, { employees: [omar], ar: true });
   const banCard = heatBanStrip.cards.find((row) => row.gateId === "heat_ban");
@@ -2037,7 +2038,7 @@ assert.ok(!heatPlaceMine.cards[0].instrument.includes(omar.name));
 
 const heatBanStrip = weekDutyStripAlerts(heatFieldGate, { employees: [omar], ar: true });
 assert.equal(heatBanStrip.cards[0].gateId, "heat_ban");
-assert.equal(heatBanStrip.cards[0].level, "warn");
+assert.equal(heatBanStrip.cards[0].level, "block", "Decision 3337: exposed in the window blocks publish");
 assert.equal(heatBanStrip.cards[0].name, omar.name);
 assert.match(heatBanStrip.cards[0].body, /لا يحق لصاحب العمل أن يجبره/);
 assert.equal(heatBanStrip.cards[0].subject, `بشأن: ${omar.name}`);
@@ -2102,8 +2103,8 @@ const julyMidGate = checkWeekPublishGates({
   today: inSeasonClock,
 });
 assert.equal(julyMidGate.checks.find((row) => row.id === "heat_ban")?.ok, false, "in-season midday outdoor still warns");
-assert.equal(julyMidGate.checks.find((row) => row.id === "heat_ban")?.block, false);
-assert.ok(julyMidGate.warnings.some((row) => row.id === "heat_ban"));
+assert.equal(julyMidGate.checks.find((row) => row.id === "heat_ban")?.block, true);
+assert.ok(julyMidGate.blockers.some((row) => row.id === "heat_ban"));
 assert.equal(weekCellAlert(julyMidGate, "omar", inSeasonKey)?.id, "heat_ban");
 const julyMidStrip = weekDutyStripAlerts(julyMidGate, { employees: [omar], ar: true });
 assert.equal(julyMidStrip.cards[0]?.gateId, "heat_ban");

@@ -39,39 +39,106 @@ export function minutesBetween(start: string, end: string) {
   return m;
 }
 
+/** Clock "HH:MM" → minutes after the shift start (wraps past midnight). */
+function offsetFromStart(start: any, clock: any) {
+  return minutesBetween(start || "00:00", clock || "00:00");
+}
+
 /**
- * Art. 101 — no more than five consecutive hours without a rest of ≥ 30 minutes.
- * A missing restMinutes uses the statutory 30 so existing 8 h windows still publish.
- * restMinutes: 0 is an explicit "no break" and fails when the span exceeds five hours.
+ * Breaks inside a shift as offsets from its start. `breaks` = [{ start, end }] clocks or [{ minutes }]
+ * (an unplaced break). Sorted; unplaced breaks return `null` offsets.
  */
-export function checkConsecutiveWorkGate(input: {
-  start?: string | null;
-  end?: string | null;
-  restMinutes?: number | null;
-  onDate?: string | Date | null;
-}) {
+export function shiftBreaks(shift: any): any[] {
+  const list = Array.isArray(shift?.breaks) ? shift.breaks : [];
+  return list
+    .map((row: any) => {
+      if (row?.start && row?.end) {
+        const from = offsetFromStart(shift.start, row.start);
+        const minutes = minutesBetween(row.start, row.end);
+        return { from, to: from + minutes, minutes };
+      }
+      const minutes = Math.max(0, Number(row?.minutes) || 0);
+      return minutes ? { from: null, to: null, minutes } : null;
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) => (a.from ?? 0) - (b.from ?? 0));
+}
+
+/** Total rest inside a shift — the breaks list when present, else restMinutes. */
+export function shiftRestMinutes(shift: any) {
+  const breaks = shiftBreaks(shift);
+  if (breaks.length) return breaks.reduce((sum: number, row: any) => sum + row.minutes, 0);
+  return shift?.restMinutes == null ? null : Math.max(0, Number(shift.restMinutes) || 0);
+}
+
+/**
+ * Art. 101 — no more than five consecutive hours without a rest of ≥ 30 minutes "each time".
+ * One or more breaks: `breaks` (placed or unplaced) or `breakCount` with `restMinutes` split evenly.
+ * A missing restMinutes uses the statutory 30 so existing 8 h windows still publish.
+ * `continuous103`: the Minister's continuous-work case — rest is organised during work (Art. 103).
+ * `maxConsecutiveHours`: a category ceiling (Regs Art. 23(5) cleaners: 6). `exempt101`: Art. 108 category.
+ */
+export function checkConsecutiveWorkGate(input: any = {}): any {
   const onDate = input.onDate;
-  const maxHours = ruleValue("hours.rest.maxConsecutiveHours", onDate);
+  const maxHours = Number(input.maxConsecutiveHours) > 0 ? Number(input.maxConsecutiveHours) : ruleValue("hours.rest.maxConsecutiveHours", onDate);
   const minRest = ruleValue("hours.rest.duringShiftMinutes", onDate);
   const cite = citeRule("hours.rest.maxConsecutiveHours", onDate);
   const span = minutesBetween(input.start || "00:00", input.end || "00:00");
   const maxMin = maxHours * 60;
+  if (input.exempt101 === true) {
+    return { ok: true, via: "art108", cite: citeRule("hours.art108.cite", onDate), span, maxHours, minRest, restMinutes: 0, maxBlock: span };
+  }
+  if (input.continuous103 === true) {
+    return { ok: true, via: "art103", cite: citeRule("hours.art103.cite", onDate), span, maxHours, minRest, restMinutes: 0, maxBlock: span };
+  }
   if (span <= 0 || span <= maxMin) {
-    return {
-      ok: true as const,
-      cite,
-      span,
-      maxHours,
-      minRest,
-      restMinutes: 0,
-      maxBlock: Math.max(0, span),
-    };
+    return { ok: true, cite, span, maxHours, minRest, restMinutes: 0, maxBlock: Math.max(0, span) };
+  }
+  const placed = shiftBreaks({ start: input.start, breaks: input.breaks });
+  if (placed.length) {
+    const rest = placed.reduce((sum: number, row: any) => sum + row.minutes, 0);
+    const qualifying = placed.filter((row: any) => row.minutes >= minRest);
+    let maxBlock: number;
+    if (!qualifying.length) {
+      maxBlock = span - rest;
+    } else if (qualifying.every((row: any) => row.from != null)) {
+      let cursor = 0;
+      maxBlock = 0;
+      for (const row of qualifying) {
+        maxBlock = Math.max(maxBlock, row.from - cursor);
+        cursor = row.to;
+      }
+      maxBlock = Math.max(maxBlock, span - cursor);
+    } else {
+      maxBlock = Math.ceil(Math.max(0, span - rest) / (qualifying.length + 1));
+    }
+    if (!qualifying.length || maxBlock > maxMin) {
+      return {
+        ok: false,
+        error: qualifying.length ? "REST_5H_BLOCK_TOO_LONG" : "REST_5H_REQUIRED",
+        reason: qualifying.length
+          ? `مع ${qualifying.length} راحة يبقى أطول مقطع ${Math.round((maxBlock / 60) * 10) / 10} ساعة فوق حد ${maxHours} ساعات — ${cite?.labelAr || "المادة 101"}.`
+          : `لا راحة لا تقل عن ${minRest} دقيقة في المرة الواحدة — لا يجوز العمل أكثر من ${maxHours} ساعات متواصلة (${cite?.labelAr || "المادة 101"}).`,
+        reasonEn: qualifying.length
+          ? `With ${qualifying.length} rest(s) the longest block is ${Math.round((maxBlock / 60) * 10) / 10} h above the ${maxHours} h cap — Labour Law ${cite?.labelEn || "Art. 101"}.`
+          : `No rest of at least ${minRest} minutes at a time — no more than ${maxHours} consecutive hours (Labour Law ${cite?.labelEn || "Art. 101"}).`,
+        cite,
+        span,
+        maxHours,
+        minRest,
+        restMinutes: rest,
+        maxBlock,
+        breaks: qualifying.length,
+      };
+    }
+    return { ok: true, cite, span, maxHours, minRest, restMinutes: rest, maxBlock, breaks: qualifying.length };
   }
   const rest = input.restMinutes == null ? minRest : Math.max(0, Number(input.restMinutes) || 0);
+  const count = Math.max(1, Math.floor(Number(input.breakCount) || 1));
   if (rest < minRest) {
     return {
-      ok: false as const,
-      error: "REST_5H_REQUIRED" as const,
+      ok: false,
+      error: "REST_5H_REQUIRED",
       reason: `لا يجوز تشغيل العامل أكثر من ${maxHours} ساعات متواصلة دون راحة لا تقل عن ${minRest} دقيقة — ${cite?.labelAr || "المادة 101"}.`,
       reasonEn: `A worker may not work more than ${maxHours} consecutive hours without a rest of at least ${minRest} minutes — Labour Law ${cite?.labelEn || "Art. 101"}.`,
       cite,
@@ -82,31 +149,26 @@ export function checkConsecutiveWorkGate(input: {
       maxBlock: span,
     };
   }
+  // Each rest must be ≥ minRest "in one go" — a total too small to split stays fewer breaks.
+  const breaks = Math.max(1, Math.min(count, Math.floor(rest / minRest)));
   const work = Math.max(0, span - rest);
-  const maxBlock = Math.ceil(work / 2);
+  const maxBlock = Math.ceil(work / (breaks + 1));
   if (maxBlock > maxMin) {
     return {
-      ok: false as const,
-      error: "REST_5H_BLOCK_TOO_LONG" as const,
-      reason: `حتى مع راحة ${rest} دقيقة يبقى أطول مقطع ${Math.round(maxBlock / 60 * 10) / 10} ساعة فوق حد ${maxHours} ساعات — ${cite?.labelAr || "المادة 101"}.`,
-      reasonEn: `Even with a ${rest}-minute rest the longest block is ${Math.round(maxBlock / 60 * 10) / 10} h above the ${maxHours} h cap — Labour Law ${cite?.labelEn || "Art. 101"}.`,
+      ok: false,
+      error: "REST_5H_BLOCK_TOO_LONG",
+      reason: `حتى مع راحة ${rest} دقيقة يبقى أطول مقطع ${Math.round((maxBlock / 60) * 10) / 10} ساعة فوق حد ${maxHours} ساعات — ${cite?.labelAr || "المادة 101"}.`,
+      reasonEn: `Even with a ${rest}-minute rest the longest block is ${Math.round((maxBlock / 60) * 10) / 10} h above the ${maxHours} h cap — Labour Law ${cite?.labelEn || "Art. 101"}.`,
       cite,
       span,
       maxHours,
       minRest,
       restMinutes: rest,
       maxBlock,
+      breaks,
     };
   }
-  return {
-    ok: true as const,
-    cite,
-    span,
-    maxHours,
-    minRest,
-    restMinutes: rest,
-    maxBlock,
-  };
+  return { ok: true, cite, span, maxHours, minRest, restMinutes: rest, maxBlock, breaks };
 }
 
 export function dateKey(year: number, monthIndex: number, day: number) {

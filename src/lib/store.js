@@ -2,10 +2,10 @@
 // Registry tracks all companies; each company's data lives under its own key.
 import { hoursPolicyOf } from "./laborHoursPolicy.js";
 import { religionOnFile } from "./laborRules.js";
-import { profileGender } from "./employeeProfileFields.js";
+import { isFixedContractType, profileGender } from "./employeeProfileFields.js";
 import { checkJobSearchHoursGate, ART81_CASES, ART81_EXIT_TYPE, DAMAGE_OBJECTION_TYPE, DOCUMENTS_RETURN_TYPE, GRIEVANCE_KINDS, GRIEVANCE_TYPE, LEAVE_CARRY_TYPE, NIGHT_AVOID_TYPE, damageObjectionDeadline, grievanceReplyBy, grievanceState } from "./rightsRequests.js";
 import { daysAr, planLeaveCutForAttendance } from "./leaveCut.js";
-import { checkPostponeResignationGate, checkWithdrawResignationGate, dueResignations, resignationFacts, RESIGNATION_TYPE } from "./exitRequests.js";
+import { checkPostponeResignationGate, checkWithdrawResignationGate, dueResignations, EXIT_ROUTE_NOTICE75, resignationFacts, resignationRouteFor, RESIGNATION_TYPE } from "./exitRequests.js";
 import { checkGroundedRefusalGate, refusalGroundsFor, refusalWorkerLine } from "./statutoryRefusal.js";
 import { isDutyRequestType, nursingRightUntil } from "./dutyRequests.js";
 import { MANAGER_PERMISSIONS, ASSISTANT_PERMISSIONS, groupLevelsByOrder } from "./hrLevels";
@@ -51,8 +51,8 @@ import { calendarDateKey, dayAssignmentMap } from "./attendanceCalendar";
 import { applyWorkplaceManagerRule } from "./peopleTreeGraph";
 import { isWorkplaceStation } from "./stationTree";
 import { appendOrgStructureEvent } from "./orgStructureLog";
-import { leaveCoverRange, leaveTypeLabel, remainingLeaveDays, statutoryLeaveFloor } from "./leaveTypes";
-import { EXAM_NOTICE_KIND, EXAM_SAT_KIND, LEAVE_ROSTER_BLOB, chargeableLeaveDays, checkAlterApprovedLeaveGate, checkApproveLeaveGate, checkAttachExamSatGate, checkRejectLeaveGate, checkSeeLeaveDecisionGate, checkSubmitLeaveGate, computeLeaveDays, leaveDecisionNoticeKey, leaveRosterFromEmployees, planAnnualPauseForSick, checkIddahBirthGate } from "./leaveDerivations";
+import { annualCarryAlerts, anniversaryYearWindow, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, statutoryLeaveFloor, unpaidSuspensionPlan } from "./leaveTypes";
+import { EXAM_NOTICE_KIND, EXAM_SAT_KIND, LEAVE_ROSTER_BLOB, chargeableLeaveDays, checkAlterApprovedLeaveGate, checkApproveLeaveGate, checkAttachExamSatGate, checkRejectLeaveGate, checkSeeLeaveDecisionGate, checkSubmitLeaveGate, computeLeaveDays, leaveDecisionNoticeKey, leaveRosterFromEmployees, planAnnualPauseForSick, checkIddahBirthGate, checkMaternityBirthGate, checkLeaveBreachGate } from "./leaveDerivations";
 import { mergeEmployeeRequestBags, projectDirectoryEmployee, rosterEmployeeById } from "./employeeRequestBags";
 import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_TYPE, STUDY_CONSENT_TYPE, appendRequestAudit, appendRequestRefuseAudit, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkApproveOtherRequestGate, checkApproveStudyConsentGate, checkLeaveTopupDaysGate, checkRefuseRequestReasonGate, checkRejectNightFitnessGate, checkRejectStudyConsentGate, checkRevokeStudyConsentGate, checkSubmitOtherRequestGate, composeStudyConsentReason, otherRequestTypeLabel, requestAuditFileLog, requestRefuseFileLog, stampLeaveTopupOnEmployee, stampNightFitnessOnEmployee } from "./otherRequestDerivations";
 import {
@@ -1841,6 +1841,17 @@ export function settleDueResignations(companyId, now = new Date()) {
       const e = d.employees.find((row) => row.id === item.employeeId);
       const r = (e?.otherRequests || []).find((row) => row.id === item.requestId);
       if (!e || !r) continue;
+      if (item.via === "notice75") {
+        // Art. 75: the notice ran out — the open-ended contract ends; nothing was to be accepted.
+        r.status = "approved";
+        r.settledAt = today;
+        r.reviewedBy = r.reviewedBy || "بحكم النظام";
+        r.reviewedAt = r.reviewedAt || new Date().toISOString();
+        r.approvedAt = r.approvedAt || r.reviewedAt;
+        const ex = e.profile?.contractExit || {};
+        e.profile = { ...(e.profile || {}), contractExit: { ...ex, reason: "resignation", route: EXIT_ROUTE_NOTICE75, party: "worker", noticeAt: r.date || "", effectiveDate: item.endsOn, status: "ended", endedAt: item.endsOn } };
+        continue;
+      }
       r.status = "approved";
       r.deemedAccepted = item.via;
       r.reviewedBy = "بحكم النظام";
@@ -1856,6 +1867,13 @@ export function settleDueResignations(companyId, now = new Date()) {
   for (const item of due) {
     const fresh = getCompanyData(companyId);
     const e = fresh?.employees.find((row) => row.id === item.employeeId);
+    if (item.via === "notice75") {
+      addNotification(companyId, item.employeeId, `انقضت مهلة إشعارك — انتهى عقدك غير محدد المدة في ${regulationDate(item.endsOn)} (المادة 75). مستحقاتك كاملة وفق النظام.`, { key: `resign:${item.requestId}:notice75:${item.employeeId}`, to: "/app/requests" });
+      for (const m of nightDueAdminAudience(fresh, e).filter((u) => u?.id && String(u.id) !== String(item.employeeId))) {
+        addNotification(companyId, m.id, `انتهى عقد ${e?.name || "موظف"} بانقضاء مهلة إشعاره في ${regulationDate(item.endsOn)} (المادة 75) — ابدأ إجراءات إنهاء الخدمة.`, { key: `resign:${item.requestId}:notice75:${m.id}`, to: `/app/employees/${item.employeeId}` });
+      }
+      continue;
+    }
     addNotification(companyId, item.employeeId, item.via === "postponement"
       ? `انتهت مدة تأجيل استقالتك — قُبلت بحكم النظام، وينتهي عقدك في ${regulationDate(item.endsOn)} (المادة 79 مكرر).`
       : `مضى ثلاثون يوماً على استقالتك دون رد — تُعد مقبولة، وينتهي عقدك في ${regulationDate(item.endsOn)} (المادة 79 مكرر).`, { key: `resign:${item.requestId}:deemed:${item.employeeId}`, to: "/app/requests" });
@@ -2484,7 +2502,7 @@ export function addDisciplineMessage(companyId, caseId, { from, text, files, sen
 }
 
 // Leave requests: the worker raises on ملفي; an authorized manager/HR decides on إدارة.
-export function submitLeaveRequest(companyId, employeeId, { type, startDate, endDate, reason, files, eventDate, examRepeat, examNoticeIssuedAt, iddahPregnant, companionUnpaidExtend, days: requestedDays, status, recordedBy, requestedBy, requestedById, noOtherEmployerAck, deferConsentAt }) {
+export function submitLeaveRequest(companyId, employeeId, { type, startDate, endDate, reason, files, eventDate, examRepeat, examNoticeIssuedAt, iddahPregnant, companionUnpaidExtend, days: requestedDays, status, recordedBy, requestedBy, requestedById, noOtherEmployerAck, deferConsentAt, expectedBirthDate, advanceLeave, joinAnnualToSick }) {
   const live = getCompanyData(companyId);
   const subject = rosterEmployeeById(live?.employees, employeeId);
   if (!subject) return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
@@ -2518,6 +2536,8 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
     employeeId,
     noOtherEmployerAck,
     deferConsentAt,
+    advanceLeave: advanceLeave === true || undefined,
+    joinAnnualToSick: joinAnnualToSick === true || undefined,
   }, {
     profile: subject.profile,
     requests: subject.leaveRequests,
@@ -2559,6 +2579,11 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
       companionUnpaidExtend: companionUnpaidExtend || undefined,
       noOtherEmployerAck: noOtherEmployerAck === true,
       deferConsentAt: deferConsentAt || undefined,
+      // Art. 151(1): the expected date (medical certificate) anchors the request; the actual birth is recorded later.
+      expectedBirthDate: leaveKey === "maternity" ? (String(expectedBirthDate || eventDate || "").slice(0, 10) || undefined) : undefined,
+      advanceLeave: leaveKey === "annual" && advanceLeave === true ? true : undefined,
+      joinAnnualToSick: leaveKey === "annual" && joinAnnualToSick === true ? true : undefined,
+      joinedSickId: leaveKey === "annual" && joinAnnualToSick === true ? (gate.joinedSickId || undefined) : undefined,
       files: type === "exam"
         ? (files || []).map((file) => (file && typeof file === "object" ? { ...file, kind: file.kind || EXAM_NOTICE_KIND } : file))
         : (files || []),
@@ -2665,16 +2690,19 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
     const approveRow = issuedAt && String(req?.type || "").toLowerCase() === "exam"
       ? { ...req, examNoticeIssuedAt: issuedAt }
       : req;
-    const gate = checkApproveLeaveGate(approveRow, typeRequiresFile, {
+    const gate = checkApproveLeaveGate({ ...approveRow, agreedOtherwise: extras.agreedOtherwise === true || approveRow?.agreedOtherwise === true || undefined }, typeRequiresFile, {
       profile: emp?.profile,
       requests: emp?.leaveRequests,
       laborCalendar: laborCalendarOf(data),
       company: data,
       examNoticeIssuedAt: issuedAt || undefined,
       onDate: extras.onDate,
+      forApproval: true,
+      advanceConsent: extras.advanceConsent === true,
     });
     if (!gate.ok) return gate;
   }
+  let leaveEffects = null;
   const refuseReason = status === "rejected" ? String(note || "").trim() : "";
   let sickPauses = [];
   const decideVerb = status === "rejected" ? "refuse" : status === "approved" ? "approve" : status === "withdrawn" ? "withdraw" : status === "revise" ? "revise" : "";
@@ -2720,8 +2748,13 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
       if (String(leaveReq.type || "").toLowerCase() === "sick") {
         sickPauses = pauseAnnualForSickOnDraft(employee, leaveReq);
       }
+      leaveEffects = applyApprovedLeaveEffectsOnDraft(employee, leaveReq, extras);
     }
+    if (status === "withdrawn" && prevStatus === "approved") undoApprovedLeaveEffectsOnDraft(employee, leaveReq);
   });
+  if (leaveEffects?.extendedTo) {
+    notifyRequestManagers(companyId, employeeId, `${empName}: العقد محدد المدة مُدّد ${leaveEffects.suspension.days} يوماً حتى ${regulationDate(leaveEffects.extendedTo)} بقدر مدة توقفه في الإجازة بلا أجر (المادة 116، اللائحة م25/2).`);
+  }
   for (const p of sickPauses) {
     const lang = noticeLang(extras);
     const text = lang === "ar"
@@ -2767,6 +2800,185 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
     invokeWorkforce({ action: "rejectLeave", companyId, employeeId, requestId, reason: refuseReason, note: refuseReason, rejectGround: extras.rejectGround, rejectVerified: extras.rejectVerified === true });
   }
   return { ok: true };
+}
+
+/**
+ * Effects of an approved leave on the file (draft). Art. 116 + Regs Art. 25: unpaid days beyond twenty in
+ * the work year suspend the contract — stored on the request; a fixed-term contract is extended by them
+ * unless agreed otherwise. Art. 114: Hajj performed is stamped. Model Regs Art. 33: advance consent kept.
+ */
+function applyApprovedLeaveEffectsOnDraft(employee, leaveReq, extras = {}) {
+  const type = String(leaveReq.type || "").toLowerCase();
+  const out = {};
+  if (type === "annual" && leaveReq.advanceLeave === true) {
+    leaveReq.advanceConsent = true;
+    leaveReq.advanceConsentAt = new Date().toISOString();
+  }
+  if (type === "hajj") {
+    employee.profile = { ...(employee.profile || {}), hajjPerformed: true, hajjRequestId: leaveReq.id, hajjSeason: String(leaveReq.startDate || "").slice(0, 4) };
+  }
+  if (type === "unpaid") {
+    if (extras.agreedOtherwise === true) leaveReq.agreedOtherwise = true;
+    if (extras.extensionAgreedOtherwise === true) leaveReq.extensionAgreedOtherwise = true;
+    const plan = unpaidSuspensionPlan(employee.leaveRequests || [], employee.profile?.hireDate, leaveReq);
+    const mine = plan.byRequest[leaveReq.id];
+    if (mine && mine.days > 0) {
+      leaveReq.suspension = { days: mine.days, from: mine.from, to: mine.to };
+      out.suspension = leaveReq.suspension;
+      const profile = { ...(employee.profile || {}) };
+      profile.unpaidSuspendedDays = (Number(profile.unpaidSuspendedDays) || 0) + mine.days;
+      const end = String(profile.contract?.endDate || profile.contractEndDate || "").slice(0, 10);
+      const fixed = isFixedContractType(profile.contractType || profile.contract?.type);
+      if (fixed && /^\d{4}-\d{2}-\d{2}$/.test(end) && leaveReq.extensionAgreedOtherwise !== true) {
+        const next = addLeaveDays(end, mine.days);
+        leaveReq.suspension.contractEndBefore = end;
+        leaveReq.suspension.contractEndAfter = next;
+        profile.contractEndDate = next;
+        if (profile.contract && typeof profile.contract === "object") profile.contract = { ...profile.contract, endDate: next };
+        out.extendedTo = next;
+      }
+      employee.profile = profile;
+    }
+  }
+  return out;
+}
+
+function undoApprovedLeaveEffectsOnDraft(employee, leaveReq) {
+  const type = String(leaveReq?.type || "").toLowerCase();
+  if (type === "hajj" && employee.profile?.hajjRequestId === leaveReq.id) {
+    const profile = { ...(employee.profile || {}) };
+    delete profile.hajjPerformed;
+    delete profile.hajjRequestId;
+    delete profile.hajjSeason;
+    employee.profile = profile;
+  }
+  if (type === "unpaid" && leaveReq.suspension) {
+    const profile = { ...(employee.profile || {}) };
+    profile.unpaidSuspendedDays = Math.max(0, (Number(profile.unpaidSuspendedDays) || 0) - (Number(leaveReq.suspension.days) || 0));
+    const before = leaveReq.suspension.contractEndBefore;
+    if (before && String(profile.contractEndDate || profile.contract?.endDate || "").slice(0, 10) === leaveReq.suspension.contractEndAfter) {
+      profile.contractEndDate = before;
+      if (profile.contract && typeof profile.contract === "object") profile.contract = { ...profile.contract, endDate: before };
+    }
+    employee.profile = profile;
+    delete leaveReq.suspension;
+  }
+}
+
+function addLeaveDays(iso, n) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || "").slice(0, 10));
+  if (!m) return "";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + Number(n));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Art. 151(1): the actual birth on an approved maternity leave re-anchors the six mandatory weeks after it.
+ * A late birth that leaves fewer than six weeks inside the twelve paid ones adds the complement as unpaid
+ * leave — recorded, never blocked by the balance.
+ */
+export function recordMaternityBirth(companyId, employeeId, requestId, birthDate, extras = {}) {
+  const data = getCompanyData(companyId);
+  const emp = (data?.employees || []).find((e) => e.id === employeeId);
+  const req = (emp?.leaveRequests || []).find((r) => r.id === requestId);
+  const gate = checkMaternityBirthGate(req, birthDate);
+  if (!gate.ok) return gate;
+  updateCompany(companyId, (d) => {
+    const e = d.employees.find((row) => row.id === employeeId);
+    const r = (e?.leaveRequests || []).find((row) => row.id === requestId);
+    if (!r) return;
+    r.expectedBirthDate = r.expectedBirthDate || gate.expectedBirthDate || undefined;
+    r.actualBirthDate = gate.birthDate;
+    r.eventDate = gate.birthDate;
+    r.originalStartDate = r.originalStartDate || r.startDate;
+    r.originalEndDate = r.originalEndDate || r.endDate;
+    r.startDate = gate.startDate;
+    r.endDate = gate.endDate;
+    r.days = gate.days;
+    r.paidDays = gate.paidDays;
+    r.unpaidComplementDays = gate.unpaidComplementDays || undefined;
+    r.unpaidComplementFrom = gate.unpaidComplementFrom || undefined;
+    r.unpaidComplementTo = gate.unpaidComplementTo || undefined;
+    if (r.activeStartDate) r.activeStartDate = gate.startDate;
+    if (r.activeEndDate) r.activeEndDate = gate.endDate;
+    r.auditTrail = [...(r.auditTrail || []), { at: new Date().toISOString(), actor: extras.actor || "", verb: "birth", note: `الوضع ${gate.birthDate}${gate.unpaidComplementDays ? ` — ${gate.unpaidComplementDays} يوماً مكملة بلا أجر` : ""}` }];
+  });
+  const tail = gate.unpaidComplementDays
+    ? ` تأخر الوضع، فتُحتسب ${gate.unpaidComplementDays} يوماً مكملة للأسابيع الستة بلا أجر (${regulationDate(gate.unpaidComplementFrom)} – ${regulationDate(gate.unpaidComplementTo)}).`
+    : "";
+  addNotification(companyId, employeeId, `سُجّل الوضع في ${regulationDate(gate.birthDate)} — الأسابيع الستة بعده وجوبية حتى ${regulationDate(gate.postBirthEnd)} (المادة 151).${tail}`, { to: "/app/requests" });
+  notifyRequestManagers(companyId, employeeId, `${emp?.name || "موظفة"}: سُجّل الوضع في ${regulationDate(gate.birthDate)} وأُعيد ضبط إجازة الوضع حتى ${regulationDate(gate.endDate)} (المادة 151).${gate.unpaidComplementDays ? ` منها ${gate.unpaidComplementDays} يوماً بلا أجر — عدّل الرواتب.` : ""}`);
+  audit(companyId, "maternity_birth_recorded", `Maternity ${requestId} for ${emp?.name || employeeId}: birth ${gate.birthDate}, unpaid complement ${gate.unpaidComplementDays}.`);
+  invokeWorkforce({ action: "recordBirth", companyId, employeeId, requestId, birthDate: gate.birthDate });
+  return { ok: true, ...gate };
+}
+
+/** Art. 118: proven work for another employer during the leave — the leave pay is withheld or recovered. */
+export function recordLeaveBreach(companyId, employeeId, requestId, { file, reason, actorId, actorName } = {}) {
+  const data = getCompanyData(companyId);
+  const emp = (data?.employees || []).find((e) => e.id === employeeId);
+  const req = (emp?.leaveRequests || []).find((r) => r.id === requestId);
+  const gate = checkLeaveBreachGate(req, { file, reason, actorId, subjectId: employeeId });
+  if (!gate.ok) return gate;
+  const now = new Date().toISOString();
+  updateCompany(companyId, (d) => {
+    const e = d.employees.find((row) => row.id === employeeId);
+    const r = (e?.leaveRequests || []).find((row) => row.id === requestId);
+    if (!r) return;
+    r.recoverPay = true;
+    r.recoverReason = String(reason).trim();
+    r.recoverEvidence = file;
+    r.recoverAt = now;
+    r.recoverBy = actorName || "";
+    r.auditTrail = [...(r.auditTrail || []), { at: now, actor: actorName || "", verb: "breach", note: `المادة 118 — ${String(reason).trim()}` }];
+  });
+  addNotification(companyId, employeeId, `سُجّل أنك عملت لدى صاحب عمل آخر أثناء إجازتك (${leaveTypeLabel(req.type, true)}) — لصاحب العمل حرمانك من أجرها أو استرداده (المادة 118). لك التظلم.`, { to: "/app/requests" });
+  audit(companyId, "leave_breach_art118", `Art. 118 breach recorded on ${requestId} for ${emp?.name || employeeId}: ${String(reason).trim()}`);
+  invokeWorkforce({ action: "recordLeaveBreach", companyId, employeeId, requestId, file, reason: String(reason).trim() });
+  return { ok: true };
+}
+
+/** Art. 114: the employer's yearly Hajj quota (empty = no cap). */
+export function setHajjAnnualQuota(companyId, quota) {
+  const raw = quota === "" || quota == null ? null : Math.floor(Number(quota));
+  if (raw != null && !(Number.isFinite(raw) && raw >= 0)) return { ok: false, error: "QUOTA_INVALID", reason: "اكتب عدداً صحيحاً أو اتركه فارغاً.", reasonEn: "Enter a whole number or leave it empty." };
+  updateCompany(companyId, (d) => {
+    d.leavePolicy = { ...(d.leavePolicy || {}), hajjAnnualQuota: raw };
+  });
+  audit(companyId, "hajj_quota_set", `Hajj annual quota set to ${raw == null ? "none" : raw} (Art. 114).`);
+  return { ok: true, quota: raw };
+}
+
+/**
+ * Art. 110 carry notices — once per bucket and kind: the worker gets «تنتهي في» 60 days before the
+ * deferral limit; the manager gets the «مؤجلة دون موافقة» / overdue line to schedule the days.
+ */
+export function openDueAnnualCarryNotices(companyId, onDate) {
+  const data = getCompanyData(companyId);
+  if (!data) return { ok: false, opened: [] };
+  const day = String(onDate || new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date())).slice(0, 10);
+  const due = [];
+  for (const emp of data.employees || []) {
+    if (!emp?.profile?.hireDate) continue;
+    const seen = new Set(emp.profile.annualCarryNoticeKeys || []);
+    for (const a of annualCarryAlerts(emp.profile, emp.leaveRequests || [], day, data, emp)) {
+      const key = `${a.kind}:${a.start}`;
+      if (!seen.has(key)) due.push({ emp, alert: a, key });
+    }
+  }
+  if (!due.length) return { ok: true, opened: [] };
+  updateCompany(companyId, (d) => {
+    for (const row of due) {
+      const e = d.employees.find((item) => item.id === row.emp.id);
+      if (!e) continue;
+      e.profile = { ...(e.profile || {}), annualCarryNoticeKeys: [...(e.profile?.annualCarryNoticeKeys || []), row.key].slice(-24) };
+    }
+  });
+  for (const row of due) {
+    if (row.alert.kind === "expiring") addNotification(companyId, row.emp.id, row.alert.ar, { to: "/app/requests" });
+    notifyRequestManagers(companyId, row.emp.id, `${row.emp.name || "موظف"}: ${row.alert.ar}`);
+  }
+  return { ok: true, opened: due.map((r) => ({ employeeId: r.emp.id, kind: r.alert.kind })) };
 }
 
 /** Regs Art. 40(5): the birth ends a pregnant widow's iddah; what is left of it is not used after birth. */
@@ -3012,7 +3224,10 @@ export function submitOtherRequest(companyId, employeeId, {
   // Art. 79 bis(4): no deferred date in a resignation — it is dated the day it is filed, and the
   // contract ends on acceptance, after 30 days without a reply, or at the end of a postponement.
   const resignToday = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
-  const resignLast = resignationFacts({ date: resignToday }).deemedAcceptedOn;
+  // Art. 75 vs Art. 79 bis: an open-ended contract ends on the worker's 30-day written notice, no acceptance.
+  const resignRoute = type === "resignation" ? resignationRouteFor((getCompanyData(companyId)?.employees || []).find((row) => String(row.id) === String(employeeId))?.profile) : "";
+  const resignFacts = resignationFacts({ date: resignToday, route: resignRoute });
+  const resignLast = resignRoute === EXIT_ROUTE_NOTICE75 ? resignFacts.noticeEndsOn : resignFacts.deemedAcceptedOn;
   if (type === "resignation") {
     const exitGate = checkSubmitOtherRequestGate({ type, reason, date: resignToday, lastDay: resignLast });
     if (!exitGate.ok) return exitGate;
@@ -3134,6 +3349,7 @@ export function submitOtherRequest(companyId, employeeId, {
       childBirthDate: type === "nursing_hour" ? (childBirthDate || undefined) : undefined,
       dueDate: type === "pregnancy_notice" ? (dueDate || undefined) : undefined,
       lastDay: type === "resignation" ? resignLast : undefined,
+      exitRoute: type === "resignation" ? resignRoute : undefined,
       days: type === LEAVE_TOPUP_TYPE ? parseLeaveTopupDaysSafe(days) : type === LEAVE_CARRY_TYPE ? Math.floor(Number(days)) : (days || undefined),
       shiftTypeId: shiftTypeId || undefined,
       stationId: stationId || emp.stationId || undefined,
@@ -4040,7 +4256,7 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
       const now = new Date().toISOString();
       employee.profile = {
         ...(employee.profile || {}),
-        leaveCarryAgreed: [...(employee.profile?.leaveCarryAgreed || []), { requestId: req.id, days: Number(req.days) || 0, at: now }],
+        leaveCarryAgreed: [...(employee.profile?.leaveCarryAgreed || []), { requestId: req.id, days: Number(req.days) || 0, at: now, fromYearStart: anniversaryYearWindow(employee.profile?.hireDate, String(req.createdAt || now).slice(0, 10))?.start || undefined }],
       };
     }
     if (status === "approved" && req.type === NIGHT_AVOID_TYPE) {
@@ -4053,7 +4269,14 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
     if (status === "approved" && req.type === DAMAGE_OBJECTION_TYPE) {
       req.objectionAccepted = true;
     }
-    if (status === "approved" && req.type === "resignation") {
+    if (status === "approved" && req.type === "resignation" && req.exitRoute === EXIT_ROUTE_NOTICE75) {
+      // Art. 75 — the notice is acknowledged; the open-ended contract ends when the notice runs out.
+      const exit = employee.profile?.contractExit || {};
+      employee.profile = {
+        ...(employee.profile || {}),
+        contractExit: { ...exit, reason: "resignation", route: EXIT_ROUTE_NOTICE75, party: "worker", noticeAt: req.date || "", resignationSubmittedAt: req.date || "", effectiveDate: req.lastDay || "", status: "notice" },
+      };
+    } else if (status === "approved" && req.type === "resignation") {
       // Art. 79 bis — accepted: the file's contract-exit record carries the resignation.
       const exit = employee.profile?.contractExit || {};
       employee.profile = {

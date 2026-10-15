@@ -12,7 +12,7 @@ import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAV
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
 
 export const CHAPTER_LEAVE_TYPES = [
-  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "emergency", "comp", "job_search", "dialysis", "unpaid",
+  "annual", "grant", "sick", "maternity", "maternity_extend", "maternity_companion", "iddah", "paternity", "marriage", "bereavement", "bereavement_sibling", "hajj", "eid", "exam", "emergency", "comp", "job_search", "dialysis", "therapy", "unpaid",
 ] as const;
 
 export const LEAVE_TYPES = [
@@ -34,6 +34,7 @@ export const LEAVE_TYPES = [
   { key: "comp", total: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
   { key: "job_search", total: null, article: "78", ar: "يوم بحث عن عمل", en: "Job-search day" },
   { key: "dialysis", total: null, article: null, ar: "غسيل كلوي (اللائحة م42)", en: "Kidney dialysis (Regs Art. 42)", requiresFile: true },
+  { key: "therapy", total: null, article: null, ar: "جلسة علاج (اللائحة، الملحق 2)", en: "Therapy session (Regs Annex 2)", requiresFile: true },
   { key: "unpaid", total: null, article: citeLeaveType("unpaid")?.article ?? null, ar: "بدون راتب", en: "Unpaid" },
 ] as const;
 
@@ -65,6 +66,7 @@ export type LeaveRequestLike = {
   noOtherEmployerAck?: boolean;
   deferConsentAt?: string;
   decisionSeenAt?: string;
+  [key: string]: any;
 };
 
 export type LeaveApproveExtras = {
@@ -104,12 +106,14 @@ export type LeaveApproveExtras = {
     hoursPolicy?: { workPosting?: { weeklyRestDow?: number; weeklyRestDayCount?: number; weeklyOffDows?: number[]; companyRestDows?: number[]; companyRestDays?: number } };
     attendanceSettings?: { hoursPolicy?: { workPosting?: { weeklyRestDow?: number; weeklyRestDayCount?: number } } };
     workPosting?: { weeklyRestDow?: number; weeklyRestDayCount?: number };
+    [key: string]: any;
   };
   otherRequests?: ExamConsentExtras["otherRequests"];
   employee?: ExamConsentExtras["employee"] & { id?: string };
   rejectGround?: string;
   rejectVerified?: boolean;
   skipGrounds?: boolean;
+  [key: string]: any;
 };
 
 export function addCalendarDays(iso: string | undefined, n: number) {
@@ -842,44 +846,211 @@ function usedLeaveDays(requests: LeaveRequestLike[] | undefined, key: string, on
   return approved.reduce((sum, r) => sum + (Number(r.days) || computeLeaveDays(r.startDate, r.endDate) || 0), 0);
 }
 
-function statutoryLeaveFloor(key: string, profile: LeaveApproveExtras["profile"], onDate?: string) {
+function statutoryLeaveFloor(key: string, profile: LeaveApproveExtras["profile"], onDate?: string, requests?: LeaveRequestLike[]) {
   const k = String(key || "").trim().toLowerCase();
   if (k === "annual") {
-    const years = serviceYearsFromHire(profile?.hireDate, onDate);
+    const years = effectiveServiceYears(profile, requests, onDate);
     return years >= 5
       ? ruleValue("leave.annual.afterFiveYearsDays", onDate)
       : ruleValue("leave.annual.days", onDate);
   }
-  if (k === "maternity") {
-    let days = ruleValue("leave.maternity.days", onDate);
-    if (profile?.maternityDisabledChild) {
-      const extra = ruleAt("leave.maternity.disabledChildDays", onDate);
-      if (extra) days += extra.value;
-    }
-    return days;
-  }
+  // Art. 151(1): twelve weeks — the companion month (151(2)) is its own leave type.
+  if (k === "maternity") return ruleValue("leave.maternity.days", onDate);
   const row = LEAVE_TYPES.find((t) => t.key === k);
   return row && "total" in row ? row.total : null;
 }
 
-function getLeaveTotal(profile: LeaveApproveExtras["profile"], key: string, onDate?: string) {
-  const floor = statutoryLeaveFloor(key, profile, onDate);
+function getLeaveTotal(profile: LeaveApproveExtras["profile"], key: string, onDate?: string, requests?: LeaveRequestLike[]) {
+  const floor = statutoryLeaveFloor(key, profile, onDate, requests);
   const custom = profile?.leaveTotals?.[key];
   if (floor == null) return custom ?? null;
   if (custom == null) return floor;
   return Math.max(Number(custom) || 0, floor);
 }
 
-function unusedFromPreviousYear(profile: LeaveApproveExtras["profile"], requests: LeaveRequestLike[] | undefined, onDate?: string) {
+/** Art. 116 + Regs Art. 25 — mirror of src/lib/leaveTypes.js unpaidSuspensionPlan. */
+export function unpaidSuspensionPlan(requests: any[] | undefined, hireDate?: string, extraRequest?: any) {
+  const cap = Number(ruleValue("leave.unpaid.suspendAfterDays")) || 20;
+  const rows: any[] = (requests || [])
+    .filter((r: any) => r && String(r.type || "").toLowerCase() === "unpaid" && r.status === "approved")
+    .filter((r: any) => !extraRequest || r.id !== extraRequest.id);
+  if (extraRequest) rows.push({ ...extraRequest, status: "approved" });
+  rows.sort((a, b) => dateOnly(a.startDate).localeCompare(dateOnly(b.startDate)));
+  const hire = dateOnly(hireDate);
+  const perYear = new Map<string, number>();
+  const days: string[] = [];
+  const byRequest: Record<string, { days: number; from: string; to: string }> = {};
+  for (const r of rows) {
+    const start = dateOnly(r.startDate);
+    const end = dateOnly(r.endDate) || start;
+    if (!start || end < start) continue;
+    let cursor = start;
+    let guard = 0;
+    while (cursor && cursor <= end && guard < 2000) {
+      guard += 1;
+      const yearKey = hire ? (anniversaryYearWindow(hire, cursor)?.start || cursor.slice(0, 4)) : cursor.slice(0, 4);
+      const n = (perYear.get(yearKey) || 0) + 1;
+      perYear.set(yearKey, n);
+      if (n > cap && r.agreedOtherwise !== true) {
+        days.push(cursor);
+        const key = r.id || `${start}:${end}`;
+        const row = byRequest[key] || { days: 0, from: cursor, to: cursor };
+        row.days += 1;
+        row.to = cursor;
+        byRequest[key] = row;
+      }
+      cursor = addCalendarDays(cursor, 1);
+    }
+  }
+  days.sort();
+  return { cap, days, byRequest };
+}
+
+export function unpaidSuspensionDays(requests: any[] | undefined, from?: string, to?: string, hireDate?: string) {
+  const a = dateOnly(from) || "0000-01-01";
+  const b = dateOnly(to) || "9999-12-31";
+  return unpaidSuspensionPlan(requests, hireDate).days.filter((d) => d >= a && d <= b).length;
+}
+
+export function effectiveServiceYears(profile: any, requests: any[] | undefined, onDate?: string) {
+  const years = serviceYearsFromHire(profile?.hireDate, onDate);
+  const list = requests || profile?.leaveRequests;
+  const suspended = Array.isArray(list)
+    ? unpaidSuspensionDays(list, profile?.hireDate, onDate, profile?.hireDate)
+    : Math.max(0, Number(profile?.unpaidSuspendedDays) || 0);
+  return Math.max(0, years - suspended / 365.25);
+}
+
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+
+function anniversaryWindowsThrough(hire: string, day: string) {
+  const cur = anniversaryYearWindow(hire, day);
+  if (!cur) return [] as { start: string; end: string }[];
+  const out: { start: string; end: string }[] = [];
+  let w = anniversaryYearWindow(hire, hire);
+  let guard = 0;
+  while (w && w.start <= cur.start && guard < 80) {
+    out.push(w);
+    w = anniversaryYearWindow(hire, addCalendarDays(w.end, 1));
+    guard += 1;
+  }
+  return out.length ? out : [cur];
+}
+
+/** Arts. 109–111 FIFO buckets — mirror of src/lib/leaveTypes.js annualBalanceBuckets. */
+export function annualBalanceBuckets(profile: any, requests: any[] | undefined, onDate?: string, company?: any, employee?: any, opts: { until?: string } = {}) {
   const hire = dateOnly(profile?.hireDate);
-  const current = anniversaryYearWindow(hire, onDate);
-  if (!current || !hire || current.start === hire) return 0;
-  const prevEnd = addCalendarDays(current.start, -1);
-  const prev = anniversaryYearWindow(hire, prevEnd);
-  if (!prev) return 0;
-  const entitlement = getLeaveTotal(profile, "annual", prev.end) ?? 0;
-  const used = usedLeaveDays(requests, "annual", prev.end, hire);
-  return Math.max(0, entitlement - used);
+  if (!hire) return [] as any[];
+  const day = dateOnly(onDate) || riyadhDay();
+  const until = dateOnly(opts.until);
+  const list: any[] = Array.isArray(requests) ? requests : [];
+  const windows = anniversaryWindowsThrough(hire, until || day);
+  if (!windows.length) return [] as any[];
+  const susp = unpaidSuspensionPlan(list, hire).days;
+  const curIdx = windows.length - 1;
+  const buckets: any[] = windows.map((win, i) => {
+    const full = getLeaveTotal(profile, "annual", win.end, list) ?? 0;
+    const len = inclusiveDays(win.start, win.end) || 365;
+    const lastDay = i === curIdx && until ? (until < win.end ? until : win.end) : win.end;
+    const counted = until && i === curIdx ? (lastDay < win.start ? 0 : inclusiveDays(win.start, lastDay)) : len;
+    const suspended = susp.filter((d) => d >= win.start && d <= lastDay).length;
+    const entitled = round2(Number(full) * Math.max(0, counted - suspended) / len);
+    return { year: Number(win.start.slice(0, 4)), start: win.start, end: win.end, full, entitled, suspendedDays: suspended, used: 0, usedInCurrent: 0, over: 0, left: entitled };
+  });
+  const emp = employee || (profile ? { profile } : null);
+  const charged = list.filter((r) => (String(r?.type || "").toLowerCase() === "annual" && r.status === "approved")
+    || (String(r?.type || "").toLowerCase() === "exam" && r?.status === "approved" && r?.examPayFrom === "annual"));
+  const chunks: { start: string; idx: number; days: number }[] = [];
+  for (const r of charged) {
+    const start = dateOnly(r.startDate);
+    let end = dateOnly(r.endDate) || (start ? addCalendarDays(start, Math.max(1, Number(r.days) || 1) - 1) : "");
+    if (!start || !end) {
+      chunks.push({ start: windows[curIdx].start, idx: curIdx, days: Number(r.days) || 0 });
+      continue;
+    }
+    if (until && end > until) end = until;
+    windows.forEach((win, idx) => {
+      const a0 = start > win.start ? start : win.start;
+      const a1 = end < win.end ? end : win.end;
+      if (a0 > a1) return;
+      chunks.push({ start: a0, idx, days: chargeableAnnualDays(a0, a1, undefined, company, emp) });
+    });
+  }
+  chunks.sort((a, b) => a.start.localeCompare(b.start));
+  for (const c of chunks) {
+    let need = Math.max(0, Number(c.days) || 0);
+    for (let i = 0; i <= c.idx && need > 0; i += 1) {
+      const b = buckets[i];
+      const take = Math.min(b.left, need);
+      if (take <= 0) continue;
+      b.left = round2(b.left - take);
+      b.used = round2(b.used + take);
+      if (c.idx === curIdx) b.usedInCurrent = round2(b.usedInCurrent + take);
+      need = round2(need - take);
+    }
+    if (need > 0) {
+      const b = buckets[c.idx];
+      b.used = round2(b.used + need);
+      b.over = round2(b.over + need);
+      if (c.idx === curIdx) b.usedInCurrent = round2(b.usedInCurrent + need);
+    }
+  }
+  const agreed: Record<number, number> = {};
+  for (const row of profile?.leaveCarryAgreed || []) {
+    const at = dateOnly(row?.fromYearStart) || dateOnly(row?.at);
+    const n = Math.max(0, Number(row?.days) || 0);
+    const idx = at ? windows.findIndex((w) => w.start <= at && at <= w.end) : -1;
+    if (idx >= 0 && n) agreed[idx] = (agreed[idx] || 0) + n;
+  }
+  buckets.forEach((b, i) => {
+    b.status = i === curIdx ? "current" : i === curIdx - 1 ? "carried" : "overdue";
+    b.deadline = i === curIdx ? "" : buckets[i + 1].end;
+    b.agreed = i === curIdx ? 0 : Math.min(b.left, agreed[i] || 0);
+    b.unagreed = i === curIdx ? 0 : round2(Math.max(0, b.left - b.agreed));
+    b.warnFrom = b.deadline ? addCalendarDays(b.deadline, -60) : "";
+    b.warn = b.status === "carried" && b.left > 0 && !!b.warnFrom && day >= b.warnFrom;
+  });
+  return buckets;
+}
+
+export function annualBalanceSplit(profile: any, requests: any[] | undefined, onDate?: string, company?: any, employee?: any) {
+  const buckets = annualBalanceBuckets(profile, requests, onDate, company, employee);
+  if (!buckets.length) {
+    const currentTotal = getLeaveTotal(profile, "annual", onDate, requests);
+    const used = usedLeaveDays(requests, "annual", onDate, profile?.hireDate, undefined, company, employee);
+    const currentLeft = currentTotal == null ? 0 : Math.max(0, Number(currentTotal) - used);
+    return { currentTotal, currentUsed: used, currentLeft, carryTotal: 0, carryUsed: 0, carryLeft: 0, remaining: currentLeft };
+  }
+  const cur = buckets[buckets.length - 1];
+  const older = buckets.slice(0, -1);
+  const carryUsed = round2(older.reduce((n, b) => n + (b.usedInCurrent || 0), 0));
+  const carryLeft = round2(older.reduce((n, b) => n + b.left, 0));
+  return { currentTotal: cur.entitled, currentUsed: cur.used, currentLeft: cur.left, carryTotal: round2(carryUsed + carryLeft), carryUsed, carryLeft, remaining: round2(cur.left + carryLeft) };
+}
+
+function unusedFromPreviousYear(profile: LeaveApproveExtras["profile"], requests: LeaveRequestLike[] | undefined, onDate?: string) {
+  return annualBalanceSplit(profile, requests, onDate).carryTotal;
+}
+
+/** Art. 111 — every untaken year plus the pro-rata of the last one, up to the exit day. */
+export function unusedAnnualDaysAtExit(profile: any, requests: any[] | undefined, exitDate?: string, company?: any, employee?: any) {
+  const exit = dateOnly(exitDate) || riyadhDay();
+  const buckets = annualBalanceBuckets(profile, requests, exit, company, employee, { until: exit });
+  if (!buckets.length) return 0;
+  const entitled = buckets.reduce((n, b) => n + b.entitled, 0);
+  const used = buckets.reduce((n, b) => n + b.used, 0);
+  return round2(Math.max(0, entitled - used));
+}
+
+export function annualAdvanceCap(profile: any, requests: any[] | undefined, onDate?: string, company?: any, employee?: any) {
+  const day = dateOnly(onDate) || riyadhDay();
+  const buckets = annualBalanceBuckets(profile, requests, day, company, employee);
+  const cur = buckets[buckets.length - 1];
+  if (!cur) return { earned: 0, used: 0, cap: 0 };
+  const len = inclusiveDays(cur.start, cur.end) || 365;
+  const elapsed = day < cur.start ? 0 : inclusiveDays(cur.start, day < cur.end ? day : cur.end);
+  const earned = Math.floor(cur.entitled * (elapsed / len) * 10) / 10;
+  return { earned, used: cur.used, cap: round2(Math.max(0, earned - cur.used)) };
 }
 
 export function leaveNeedsArticle118Ack(type?: string) {
@@ -930,9 +1101,7 @@ export function checkAnnualDeferGate(request: LeaveRequestLike | null | undefine
   const profile = extras.profile || {};
   const start = String(request?.startDate || "").slice(0, 10);
   const requests = extras.requests || profile.leaveRequests || [];
-  const usedThisYear = usedLeaveDays(requests, "annual", start, profile.hireDate);
-  const carryTotal = unusedFromPreviousYear(profile, requests, start);
-  const carryLeft = Math.max(0, carryTotal - Math.min(carryTotal, usedThisYear));
+  const carryLeft = annualBalanceSplit(profile, requests, start, extras.company, extras.employee).carryLeft;
   if (carryLeft <= 0) return { ok: true as const };
   const win = anniversaryYearWindow(profile.hireDate, start);
   if (!win) return { ok: true as const };
@@ -966,9 +1135,7 @@ export function deriveExamLeaveSettlement(request: LeaveRequestLike | null | und
   }
   const dates = checkLeaveDatesGate(request);
   const days = Number(request?.days) > 0 ? Number(request?.days) : ("days" in dates ? dates.days : 0) || 0;
-  const total = getLeaveTotal(extras.profile, "annual", request?.startDate);
-  const used = usedLeaveDays(extras.requests || extras.profile?.leaveRequests || [], "annual", request?.startDate, extras.profile?.hireDate);
-  const remaining = total == null ? null : Math.max(0, total - used);
+  const remaining = extras.profile ? annualBalanceSplit(extras.profile, extras.requests || extras.profile?.leaveRequests || [], request?.startDate).remaining : null;
   return {
     track: EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID,
     payFrom: remaining != null && days > 0 && remaining >= days ? "annual" as const : "unpaid" as const,
@@ -1096,6 +1263,12 @@ export function checkApproveLeaveGate(
   if (!official.ok) return official;
   const overlap = checkOfficialHolidayOverlapGate(request, extras);
   if (!overlap.ok) return overlap;
+  const twoLeaves = checkLeaveOverlapGate(request, extras);
+  if (!twoLeaves.ok) return twoLeaves;
+  const joinSick = checkJoinAnnualToSickGate(request, extras);
+  if (!joinSick.ok) return joinSick;
+  const advance = checkAnnualAdvanceGate(request, extras, days);
+  if (!advance.ok) return advance;
   if (type === "hajj") {
     const hajjCite = citeRule("leave.hajj.days", onDate) || cite;
     if (!isRamadanHoursSubject({ profile: extras.profile })) {
@@ -1129,7 +1302,19 @@ export function checkApproveLeaveGate(
         cite: hajjCite,
       };
     }
-    const years = serviceYearsFromHire(extras.profile?.hireDate, onDate);
+    // Art. 114 «بما فيها إجازة عيد الأضحى».
+    const adha = hajjSeasonSpan(start, extras.laborCalendar);
+    if (adha && !(start <= adha.from && end >= adha.to)) {
+      return {
+        ok: false as const,
+        error: "HAJJ_EID_ADHA",
+        reason: `موقوف — إجازة الحج تشمل أيام عيد الأضحى (${adha.from} – ${adha.to}) (المادة 114).`,
+        reasonEn: `Blocked — Hajj leave must include the Eid al-Adha days (${adha.from} – ${adha.to}) (Article 114).`,
+        cite: hajjCite,
+      };
+    }
+    // Suspended contract days (Art. 116, Regs Art. 25) do not count toward the two years.
+    const years = effectiveServiceYears(extras.profile, extras.requests || extras.profile?.leaveRequests, onDate);
     if (years < minYears) {
       return {
         ok: false as const,
@@ -1150,6 +1335,20 @@ export function checkApproveLeaveGate(
         reasonEn: "Blocked — Hajj leave is once during service if it has not been performed before.",
         cite: hajjCite,
       };
+    }
+    // Art. 114: the employer may set how many workers get Hajj leave each year.
+    const quota = hajjAnnualQuotaOf(extras.company);
+    if (quota != null && adha) {
+      const taken = hajjSeasonApprovedCount(extras.company?.employees || extras.employees, adha.from, request.id);
+      if (taken >= quota) {
+        return {
+          ok: false as const,
+          error: "HAJJ_QUOTA",
+          reason: `موقوف — بلغت حصة الحج لهذا الموسم (${quota}) التي حددتها المنشأة (المادة 114). يبقى الحق قائماً لموسم قادم.`,
+          reasonEn: `Blocked — this season's Hajj quota set by the employer (${quota}) is reached (Article 114). The right stays for a later season.`,
+          cite: hajjCite,
+        };
+      }
     }
   }
   if (type === "paternity") {
@@ -1405,20 +1604,21 @@ export function checkApproveLeaveGate(
       warningReasonEn = `Notice — days beyond ${paid} are unpaid up to the extra month (Article 151(2)).`;
     }
   }
+  let suspension: { days: number; from: string; to: string } | null = null;
   if (type === "unpaid") {
-    const cap = ruleValue("leave.unpaid.suspendAfterDays", onDate);
-    if (days > cap) {
+    // Art. 116 + Regs Art. 25: beyond twenty unpaid days in the work year the contract is suspended.
+    const plan = unpaidSuspensionPlan(extras.requests || extras.profile?.leaveRequests || [], extras.profile?.hireDate, { ...request, id: request.id || "__new" });
+    const mine = plan.byRequest[request.id || "__new"];
+    if (mine && mine.days > 0) {
+      suspension = mine;
       warning = "CONTRACT_SUSPENDED";
-      warningReason = `تنبيه — الإجازة بلا أجر فيما زاد على ${cap} يوماً توقف العقد ما لم يتفق الطرفان على خلاف ذلك.`;
-      warningReasonEn = `Notice — unpaid leave beyond ${cap} days suspends the contract unless the parties agree otherwise.`;
+      warningReason = `تنبيه — ${mine.days} يوماً من هذه الإجازة تتجاوز عشرين يوماً بلا أجر في سنة العمل، فيُعد العقد موقوفاً فيها (${mine.from} – ${mine.to}) ما لم يتفق الطرفان على خلاف ذلك (المادة 116، اللائحة م25).`;
+      warningReasonEn = `Notice — ${mine.days} days of this leave go past twenty unpaid days in the work year, so the contract is suspended for them (${mine.from} – ${mine.to}) unless the parties agree otherwise (Article 116, Regs Art. 25).`;
     }
   }
   const skipBalance = type === "unpaid" || type === "exam" || type === "hajj" || type === "eid" || type === "iddah" || type === "maternity_extend" || type === "maternity_companion" || request.examRepeat;
   if (type && !skipBalance && extras.profile) {
-    const profile = { ...extras.profile };
-    if (type === "maternity" && (request.disabledChild || extras.disabledChild)) {
-      profile.maternityDisabledChild = true;
-    }
+    const profile: any = { ...extras.profile };
     const requests = extras.requests || extras.profile?.leaveRequests || [];
     if (type === "grant") {
       const granted = (profile.discretionaryGrants || []).reduce((n, grant) => n + Math.max(0, Number(grant.days) || 0), 0);
@@ -1436,7 +1636,28 @@ export function checkApproveLeaveGate(
         };
       }
     }
-    const total = getLeaveTotal(profile, type, onDate);
+    if (type === "annual") {
+      // Arts. 109–111: FIFO buckets — every untaken year stays in the balance.
+      const split = annualBalanceSplit(profile, requests, onDate, extras.company, extras.employee);
+      const granted = (profile.discretionaryGrants || []).reduce((n: number, grant: any) => n + Math.max(0, Number(grant.days) || 0), 0);
+      const overflow = Math.max(0, split.currentUsed - Number(split.currentTotal || 0) - split.carryLeft);
+      const grants = Math.max(0, granted - usedLeaveDays(requests, "grant", onDate, profile.hireDate) - overflow);
+      const remaining = round2(split.remaining + grants);
+      const total = round2(Number(split.currentTotal || 0) + split.carryTotal);
+      if (days > remaining) {
+        return {
+          ok: false as const,
+          error: "LEAVE_BALANCE_EXCEEDED",
+          reason: `موقوف — يتجاوز الطلب الرصيد النظامي (المتبقي ${remaining} من ${total} يوماً، منها ${split.carryLeft} ترحيل).`,
+          reasonEn: `Blocked — the request exceeds the statutory balance (${remaining} of ${total} days left, including ${split.carryLeft} carried).`,
+          cite,
+          remaining,
+          total,
+          days,
+        };
+      }
+    }
+    const total = type === "annual" ? null : getLeaveTotal(profile, type, onDate);
     if (total != null) {
       const perEvent = PER_EVENT_LEAVE_TYPES.includes(type);
       const used = usedLeaveDays(extras.requests || extras.profile?.leaveRequests || [], type, onDate, extras.profile?.hireDate, undefined, undefined, undefined, perEvent ? { eventDate: request.eventDate || extras.eventDate, exceptId: request.id } : {});
@@ -1468,7 +1689,7 @@ export function checkApproveLeaveGate(
       warningReasonEn,
     };
   }
-  return { ok: true as const, days, cite, via: examVia || null, examNoticeIssuedAt: examIssuedAt, warning, reason: warningReason, reasonEn: warningReasonEn };
+  return { ok: true as const, days, cite, via: examVia || null, examNoticeIssuedAt: examIssuedAt, warning, reason: warningReason, reasonEn: warningReasonEn, suspension, advance: (advance as any).advance || null, joinedSickId: (joinSick as any).joinedSickId || null };
 }
 
 /** Article 117 sick-pay bands: 30 full, 60 at three-quarters, 30 unpaid. */
@@ -1783,4 +2004,173 @@ export function checkIddahBirthGate(request: any, birthDate: any) {
   if (end && birth > end) return { ok: false, error: "BIRTH_AFTER_IDDAH", reason: "تاريخ الوضع بعد نهاية العدة — لا أثر له عليها.", reasonEn: "The birth is after the iddah ended — no effect." };
   const newEnd = birth > start ? addCalendarDays(birth, -1) : start;
   return { ok: true, birthDate: birth, endDate: newEnd, days: computeLeaveDays(start, newEnd), cutDays: end ? Math.max(0, computeLeaveDays(start, end) - computeLeaveDays(start, newEnd)) : 0 };
+}
+
+// ---- Mirrors of src/lib/leaveDerivations.js (Arts. 82, 114, 118, 151; Model Regs Art. 33) ----
+
+function overlapsRange(a0: string, a1: string, b0: string, b1: string) {
+  return !!a0 && !!a1 && !!b0 && !!b1 && a0 <= b1 && b0 <= a1;
+}
+
+/** Art. 114: the Eid al-Adha span of the Hajj season (owner ruling first). Null when unknown. */
+export function hajjSeasonSpan(onDate?: string, calendar?: LaborCalendar | null) {
+  const day = String(onDate || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const owner: any = rulingEidSpan("adha", calendar);
+  if (owner && String(owner.from).slice(0, 4) === day.slice(0, 4)) return { from: String(owner.from), to: String(owner.to) };
+  const from = ARAFAH_DAYS.find((row) => row.startsWith(day.slice(0, 4)));
+  if (!from) return null;
+  const days = Number(ruleValue("leave.eid.adhaDays", from)) || 4;
+  return { from, to: addCalendarDays(from, days - 1) };
+}
+
+export function hajjAnnualQuotaOf(company: any) {
+  const raw = company?.leavePolicy?.hajjAnnualQuota ?? company?.hajjAnnualQuota;
+  if (raw === "" || raw == null) return null;
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+export function hajjSeasonApprovedCount(employees: any[] | undefined, adhaFrom: string, exceptId?: string) {
+  const season = String(adhaFrom || "").slice(0, 4);
+  let n = 0;
+  for (const emp of employees || []) {
+    for (const r of emp?.leaveRequests || []) {
+      if (String(r?.type || "").toLowerCase() !== "hajj" || r.status !== "approved" || (exceptId && r.id === exceptId)) continue;
+      const span = hajjSeasonSpan(r.startDate);
+      const key = span ? span.from.slice(0, 4) : String(r.startDate || "").slice(0, 4);
+      if (key === season) n += 1;
+    }
+  }
+  return n;
+}
+
+/** Two leaves may not cover the same day — sick in annual, Eid, and iddah↔maternity stay open. */
+export function checkLeaveOverlapGate(request: any, extras: LeaveApproveExtras = {}) {
+  const type = String(request?.type || "").trim().toLowerCase();
+  const start = String(request?.startDate || "").slice(0, 10);
+  const end = String(request?.endDate || start).slice(0, 10);
+  if (!start || !end || type === "eid") return { ok: true as const };
+  const designed = (a: string, b: string) => {
+    const pair = [a, b].sort().join("+");
+    return pair === "annual+sick" || pair === "iddah+maternity";
+  };
+  const hit: any = liveLeaveRequests(request, extras).find((row: any) => {
+    const otherType = String(row.type || "").trim().toLowerCase();
+    if (otherType === "eid" || designed(type, otherType)) return false;
+    const span = leaveCoverRange(row);
+    const otherStart = span.start || String(row.startDate || "").slice(0, 10);
+    return overlapsRange(start, end, otherStart, span.end || otherStart);
+  });
+  if (!hit) return { ok: true as const };
+  const span = leaveCoverRange(hit);
+  return {
+    ok: false as const,
+    error: "LEAVE_OVERLAP",
+    reason: `موقوف — المدة تتقاطع مع طلب إجازة ${hit.status === "approved" ? "معتمد" : "قائم"} (${span.start} – ${span.end}). لا تُغطّى الأيام نفسها بإجازتين.`,
+    reasonEn: `Blocked — these dates overlap an ${hit.status === "approved" ? "approved" : "open"} leave request (${span.start} – ${span.end}). The same days are not covered by two leaves.`,
+  };
+}
+
+/** Model Regs Art. 33 — advance of this year's leave, pro-rata to time worked, with the company's consent. */
+export function checkAnnualAdvanceGate(request: any, extras: LeaveApproveExtras = {}, days = 0) {
+  const type = String(request?.type || "").trim().toLowerCase();
+  if (type !== "annual" || request?.advanceLeave !== true) return { ok: true as const };
+  const profile: any = extras.profile || {};
+  const requests = (extras.requests || profile.leaveRequests || []).filter((r: any) => r?.id !== request.id);
+  const start = String(request.startDate || "").slice(0, 10);
+  const split = annualBalanceSplit(profile, requests, start, extras.company, extras.employee);
+  const fromCurrent = Math.max(0, (Number(days) || 0) - split.carryLeft);
+  const cap = annualAdvanceCap(profile, requests, start, extras.company, extras.employee);
+  if (fromCurrent > cap.cap) {
+    return {
+      ok: false as const,
+      error: "ANNUAL_ADVANCE_CAP",
+      reason: `موقوف — الإجازة المقدمة بنسبة ما قضيته من السنة: المكتسب حتى ${start} ${cap.earned} يوماً، استُخدم منها ${cap.used}، فالمتاح مقدماً ${cap.cap} (اللائحة النموذجية م33).`,
+      reasonEn: `Blocked — an advance is in proportion to the time worked this year: ${cap.earned} days earned by ${start}, ${cap.used} used, so ${cap.cap} may be taken in advance (Model Regs Art. 33).`,
+    };
+  }
+  if (request.status === "pending" && extras.forApproval === true && request.advanceConsent !== true && extras.advanceConsent !== true) {
+    return {
+      ok: false as const,
+      error: "ANNUAL_ADVANCE_CONSENT",
+      reason: "موقوف — أخذ جزء من الإجازة السنوية مقدماً يحتاج موافقة المنشأة صراحة (اللائحة النموذجية م33).",
+      reasonEn: "Blocked — taking part of the annual leave in advance needs the company's explicit consent (Model Regs Art. 33).",
+    };
+  }
+  return { ok: true as const, advance: { fromCurrent, cap: cap.cap, earned: cap.earned } };
+}
+
+export function sickLeaveEndingBefore(requests: any[] | undefined, start?: string) {
+  const day = String(start || "").slice(0, 10);
+  if (!day) return null;
+  const prev = addCalendarDays(day, -1);
+  return (requests || []).find((r: any) => String(r?.type || "").toLowerCase() === "sick" && r.status === "approved" && leaveCoverRange(r).end === prev) || null;
+}
+
+/** Art. 82 + Regs Art. 41: the worker may ask to join annual leave to sick leave. */
+export function checkJoinAnnualToSickGate(request: any, extras: LeaveApproveExtras = {}) {
+  if (request?.joinAnnualToSick !== true) return { ok: true as const };
+  if (String(request?.type || "").toLowerCase() !== "annual") {
+    return { ok: false as const, error: "JOIN_SICK_ANNUAL_ONLY", reason: "موقوف — الوصل بالإجازة المرضية للإجازة السنوية فقط (المادة 82).", reasonEn: "Blocked — only annual leave is joined to sick leave (Article 82)." };
+  }
+  const sick: any = sickLeaveEndingBefore(extras.requests || extras.profile?.leaveRequests, request.startDate);
+  if (!sick) {
+    return {
+      ok: false as const,
+      error: "JOIN_SICK_NOT_ADJACENT",
+      reason: "موقوف — وصل الإجازة السنوية بالمرضية يبدأ في اليوم التالي لنهاية إجازة مرضية معتمدة (المادة 82، اللائحة م41).",
+      reasonEn: "Blocked — annual leave joined to sick leave starts the day after an approved sick leave ends (Article 82, Regs Art. 41).",
+    };
+  }
+  return { ok: true as const, joinedSickId: sick.id || null };
+}
+
+/** Art. 151(1): record the actual birth; a late birth's missing post-birth weeks are unpaid, never refused. */
+export function checkMaternityBirthGate(request: any, birthDate: any) {
+  const d = (v: any) => String(v || "").slice(0, 10);
+  const birth = d(birthDate);
+  if (String(request?.type || "").toLowerCase() !== "maternity") return { ok: false as const, error: "NOT_MATERNITY", reason: "ليست إجازة وضع.", reasonEn: "Not a maternity leave." };
+  if (request.status !== "approved") return { ok: false as const, error: "NOT_APPROVED", reason: "تُسجَّل الولادة على إجازة وضع معتمدة.", reasonEn: "Record the birth on an approved maternity leave." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birth)) return { ok: false as const, error: "BIRTH_REQUIRED", reason: "حدد تاريخ الوضع الفعلي.", reasonEn: "Set the actual birth date." };
+  if (d(request.actualBirthDate)) return { ok: false as const, error: "BIRTH_ALREADY", reason: `سُجّل الوضع من قبل (${d(request.actualBirthDate)}).`, reasonEn: "The birth is already recorded." };
+  const start = d(request.startDate);
+  const end = d(request.endDate);
+  const onDate = start || birth;
+  const paidDays = Number(ruleValue("leave.maternity.days", onDate)) || 84;
+  const postDays = Number(ruleValue("leave.maternity.mandatoryPostDays", onDate)) || 42;
+  const expected = d(request.expectedBirthDate) || d(request.eventDate);
+  if (start && birth < addCalendarDays(start, -paidDays)) {
+    return { ok: false as const, error: "BIRTH_DATE_FAR", reason: "تاريخ الوضع بعيد عن بداية الإجازة — راجع التاريخ.", reasonEn: "The birth date is far from the leave start — check it." };
+  }
+  const newStart = !start || birth < start ? birth : start;
+  const paidEnd = addCalendarDays(newStart, paidDays - 1);
+  const postEnd = addCalendarDays(birth, postDays - 1);
+  const keepEnd = end && end < paidEnd ? end : paidEnd;
+  const newEnd = postEnd > keepEnd ? postEnd : keepEnd;
+  const unpaidFrom = postEnd > paidEnd ? addCalendarDays(paidEnd, 1) : "";
+  const unpaidDays = unpaidFrom ? computeLeaveDays(unpaidFrom, postEnd) : 0;
+  return {
+    ok: true as const,
+    birthDate: birth,
+    expectedBirthDate: expected || "",
+    startDate: newStart,
+    endDate: newEnd,
+    days: computeLeaveDays(newStart, newEnd),
+    paidDays: Math.min(paidDays, computeLeaveDays(newStart, newEnd)),
+    unpaidComplementDays: unpaidDays,
+    unpaidComplementFrom: unpaidFrom,
+    unpaidComplementTo: unpaidDays ? postEnd : "",
+    postBirthEnd: postEnd,
+  };
+}
+
+/** Art. 118: proven work for another employer during leave → the leave pay is withheld or recovered. */
+export function checkLeaveBreachGate(request: any, { file, reason, actorId, subjectId }: any = {}) {
+  if (!request || request.status !== "approved") return { ok: false as const, error: "LEAVE_NOT_APPROVED", reason: "يُسجَّل الإخلال على إجازة معتمدة.", reasonEn: "Record the breach on an approved leave." };
+  if (actorId && subjectId && String(actorId) === String(subjectId)) return { ok: false as const, error: "SELF", reason: "لا يسجّل العامل الإخلال على نفسه.", reasonEn: "A worker cannot record this on himself." };
+  if (request.recoverPay === true) return { ok: false as const, error: "BREACH_ALREADY", reason: "سُجّل الإخلال على هذه الإجازة من قبل.", reasonEn: "Already recorded on this leave." };
+  if (!isRealSupportingFile(file)) return { ok: false as const, error: "BREACH_EVIDENCE", reason: "موقوف — الإثبات على صاحب العمل: أرفق مستند العمل لدى صاحب العمل الآخر (المادة 118).", reasonEn: "Blocked — the burden is on the employer: attach the evidence of work for the other employer (Article 118)." };
+  if (String(reason || "").trim().length < 10) return { ok: false as const, error: "BREACH_REASON", reason: "اكتب ما ثبت بالتاريخ والجهة (المادة 118).", reasonEn: "Write what was proven, with dates and the other employer (Article 118)." };
+  return { ok: true as const };
 }

@@ -193,6 +193,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
       contractExit: employee?.profile?.contractExit || caseRow.contractExit,
       gender: employee?.profile?.gender,
       profile: employee?.profile,
+      leaveRequests: employee?.leaveRequests,
     })
     : null;
   const settlement = deriveSettlementDeadline({

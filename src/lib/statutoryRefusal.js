@@ -29,6 +29,11 @@ export const REFUSAL_GROUNDS = {
     { key: "report_unverifiable", ar: "التقرير لا يظهر عند التحقق من الجهة الطبية", en: "The report does not verify with the provider" },
     DATES,
   ],
+  therapy: [
+    { key: "no_report", ar: "لم يُقدَّم تقرير من الجهة المعالجة يثبت الجلسة العلاجية في هذه الأيام (اللائحة، الملحق 2)", en: "No report from the treating provider shows a therapy session on these days (Regs Annex 2)" },
+    { key: "report_unverifiable", ar: "التقرير لا يظهر عند التحقق من الجهة الطبية", en: "The report does not verify with the provider" },
+    DATES,
+  ],
   marriage: [PROOF, DATES, SAME_EVENT],
   bereavement: [PROOF, DATES, { key: "relation", ar: "صلة القرابة ليست من المنصوص عليها في المادة 113", en: "The relation is not one Article 113 names" }, SAME_EVENT],
   bereavement_sibling: [PROOF, DATES, SAME_EVENT],

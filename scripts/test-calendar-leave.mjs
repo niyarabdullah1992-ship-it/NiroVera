@@ -243,6 +243,7 @@ const LEAVE_BLESS_TONE = {
   comp: /تهانينا|بارك/,
   job_search: /وفّقك|بارك/,
   dialysis: /شفاك|عافاك/,
+  therapy: /شفاك|عافاك/,
   unpaid: /تهانينا|بارك/,
 };
 
@@ -251,6 +252,7 @@ const overlayDays = [
   "2026-09-17", "2026-09-20", "2026-09-21", "2026-09-22",
   "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-27", "2026-09-28", "2026-09-29",
   "2026-09-30", "2026-10-01", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07",
+  "2026-10-08",
 ];
 assert.equal(LEAVE_TYPES.length, overlayDays.length, "every raise-able leave type has a paint day");
 
@@ -277,7 +279,7 @@ for (const [index, row] of LEAVE_TYPES.entries()) {
   assert.match(notice, tone, `${row.key} notice tone`);
   assert.match(card, tone, `${row.key} card tone`);
   assert.match(card, /التقويم التشغيلي|جدول الدوام/);
-  if (row.key === "sick" || row.key === "work_injury" || row.key === "bereavement" || row.key === "bereavement_sibling" || row.key === "iddah" || row.key === "dialysis") {
+  if (row.key === "sick" || row.key === "work_injury" || row.key === "bereavement" || row.key === "bereavement_sibling" || row.key === "iddah" || row.key === "dialysis" || row.key === "therapy") {
     assert.ok(!/تهانينا|مبارك/.test(leaveApprovalBlessing(row.key)), `${row.key} stays compassionate`);
     assert.ok(!/العدّة|العدة/.test(leaveApprovalBlessing(row.key)), `${row.key} does not call Art. 113 عدة`);
   } else {

@@ -43,7 +43,7 @@ function employeeFileStatus(employee, ar) {
   return { label: ar ? "على رأس العمل" : "On the job", kind: "ok" };
 }
 import { eosGratuity } from "./offboardingDerivations.js";
-import { citeRule, laborDayKey, ruleValue } from "./laborRules.js";
+import { citeRule, laborDayKey, ruleValue, religionOnFile } from "./laborRules.js";
 import { officialHolidayList } from "./ummAlQuraCalendar.js";
 import { effectiveCutDays, effectivePenalty, faceOf, fmtDisciplineDate, isErasedFromEmployeeRecord, penaltyShiftLabel } from "./disciplineBoard.js";
 import { HOSPITAL_FAR_MINUTES } from "./allowanceKinds.js";
@@ -512,7 +512,8 @@ export function leaveCatalogFor(profile, ar = true, calendar, onDate) {
   const gender = profileGender(profile);
   const female = gender === "female";
   const male = gender === "male";
-  const muslim = isRamadanHoursSubject({ profile });
+  // Hajj and the iddah length follow the religion on file — nothing is assumed when it is empty.
+  const muslim = religionOnFile({ profile }) === "muslim";
   const groups = [
     {
       title: ar ? "رصيد يتراكم" : "A balance that accumulates",
@@ -560,7 +561,7 @@ export function leaveCatalogFor(profile, ar = true, calendar, onDate) {
         { name: leaveTypeLabel("maternity", ar), art: "151", ent: ar ? "12 أسبوعاً توزّعها كيف شاءت" : "12 weeks she may place as she chooses", wage: ar ? "بأجر كامل" : "Full pay", cond: ar ? "يُحظر تشغيلها 6 أسابيع بعد الوضع" : "She may not be put to work for 6 weeks after birth" },
         { name: leaveTypeLabel("maternity_extend", ar), art: "151", ent: ar ? "شهر بلا أجر بعد انتهاء الوضع" : "One unpaid month after maternity ends", wage: ar ? "بغير أجر — بلا إيقاف عقد 116" : "Unpaid — not an Art. 116 suspension", cond: ar ? "بعد وضع معتمد" : "After approved maternity" },
         { name: leaveTypeLabel("maternity_companion", ar), art: "151", ent: ar ? "شهر بأجر · وشهر بلا أجر" : "One paid month · one unpaid month", wage: ar ? "بأجر كامل ثم بغير أجر" : "Full pay then unpaid", cond: ar ? "مولود مريض أو ذو إعاقة يحتاج مرافقاً · تقرير طبي" : "Sick or disabled newborn needing a companion · medical report" },
-        { name: leaveTypeLabel("iddah", ar), art: "160", ent: isRamadanHoursSubject({ profile }) ? (ar ? "4 أشهر وعشرة أيام — بطلب" : "4 months and 10 days — by request") : (ar ? "15 يوماً — بطلب" : "15 days — by request"), wage: isRamadanHoursSubject({ profile }) ? (ar ? "بأجر كامل — وتمديد بغير أجر عند الحمل حتى الوضع" : "Full pay — unpaid extension if pregnant until birth") : (ar ? "بأجر كامل" : "Full pay"), cond: ar ? "وثيقة الوفاة · لا عمل لدى الغير" : "Death certificate · no other employer" },
+        { name: leaveTypeLabel("iddah", ar), art: "160", ent: !religionOnFile({ profile }) ? (ar ? "حسب الديانة: 130 يوماً للمسلمة و15 لغيرها — حدّد الديانة في الملف" : "By religion: 130 days for a Muslim, 15 otherwise — set the religion on file") : religionOnFile({ profile }) === "muslim" ? (ar ? "4 أشهر وعشرة أيام — بطلب" : "4 months and 10 days — by request") : (ar ? "15 يوماً — بطلب" : "15 days — by request"), wage: isRamadanHoursSubject({ profile }) ? (ar ? "بأجر كامل — وتمديد بغير أجر عند الحمل حتى الوضع" : "Full pay — unpaid extension if pregnant until birth") : (ar ? "بأجر كامل" : "Full pay"), cond: ar ? "وثيقة الوفاة · لا عمل لدى الغير" : "Death certificate · no other employer" },
       ],
     });
   }
@@ -773,7 +774,8 @@ export function buildEmployeeFileView({
   const sick1 = pct(sickFullLeft, sickFull);
   const sick2 = pct(sickMidLeft, sickMid);
   const usedHajj = usedLeaveDays(employee?.leaveRequests || [], "hajj", day, hireIso);
-  const muslim = isRamadanHoursSubject({ profile });
+  // Hajj and the iddah length follow the religion on file — nothing is assumed when it is empty.
+  const muslim = religionOnFile({ profile }) === "muslim";
   const balances = [
     { name: ar ? "سنوية — المستحق النظامي" : "Annual — statutory", art: ar ? "المادة 109" : "Art. 109", val: ar ? `من ${statutory} — ${countAr(annualLeft ?? 0, "يوم متبقٍ", "يومان متبقيان", "أيام متبقية", "يوماً متبقياً")}` : `${annualLeft ?? 0} of ${statutory}`, ...annualBar },
     { name: ar ? "مرضية — المرتبة الأولى" : "Sick — first band", art: ar ? "المادة 117" : "Art. 117", val: ar ? `من ${sickFull} — ${countAr(sickFullLeft, "يوم متبقٍ", "يومان متبقيان", "أيام متبقية", "يوماً متبقياً")}` : `${sickFullLeft} of ${sickFull}`, ...sick1 },

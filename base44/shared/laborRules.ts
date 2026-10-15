@@ -517,6 +517,15 @@ export function lastRamadanDay(win: RamadanWindow | null | undefined, calendar?:
 }
 
 /** Art. 98: apply unless the file explicitly records non-Muslim. Empty religion stays protected. */
+/** Religion on the file: "muslim", "non_muslim", or "" when nothing is recorded (Hajj and iddah wait for it). */
+export function religionOnFile(employee: { profile?: { religion?: string } | null; religion?: string } | null | undefined): "" | "muslim" | "non_muslim" {
+  const raw = String(employee?.profile?.religion || employee?.religion || "").trim().toLowerCase();
+  if (!raw) return "";
+  const compact = raw.replace(/[\s-]+/g, "_");
+  if (compact === "non_muslim" || raw.includes("غير مسلم") || raw.includes("غير مسلمة")) return "non_muslim";
+  return "muslim";
+}
+
 export function isRamadanHoursSubject(employee?: { religion?: string; profile?: { religion?: string } } | null) {
   const raw = String(employee?.profile?.religion || employee?.religion || "").trim().toLowerCase();
   if (!raw) return true;

@@ -85,7 +85,8 @@ for (const profile of [muslimFemale, emptyReligionFemale, muslimMale, emptyRelig
 }
 
 for (const profile of [muslimFemale, emptyReligionFemale, nonMuslimFemale]) {
-  for (const key of FEMALE_ONLY) assert.ok(has(profile, key), `female must see ${key}`);
+  // Iddah's length follows the religion (Art. 160) — with none on file it waits until HR sets it.
+  for (const key of FEMALE_ONLY) assert.ok(has(profile, key) || (key === "iddah" && profile === emptyReligionFemale), `female must see ${key}`);
   for (const key of MALE_ONLY) assert.ok(!has(profile, key), `female must not see ${key}`);
 }
 
@@ -94,8 +95,12 @@ for (const profile of [muslimMale, emptyReligionMale, nonMuslimMale]) {
   for (const key of FEMALE_ONLY) assert.ok(!has(profile, key), `male must not see ${key}`);
 }
 
-for (const profile of [muslimFemale, emptyReligionFemale, muslimMale, emptyReligionMale]) {
-  assert.ok(has(profile, "hajj"), "Muslim / empty religion sees Hajj (Art. 114 — فريضة الحج)");
+for (const profile of [muslimFemale, muslimMale]) {
+  assert.ok(has(profile, "hajj"), "a Muslim on file sees Hajj (Art. 114)");
+}
+for (const profile of [emptyReligionFemale, emptyReligionMale]) {
+  assert.ok(!has(profile, "hajj"), "no religion on file: Hajj waits until it is recorded");
+  assert.ok(!has(profile, "iddah"), "no religion on file: iddah waits until it is recorded");
 }
 for (const profile of [nonMuslimFemale, nonMuslimMale]) {
   assert.ok(!has(profile, "hajj"), "recorded non-Muslim does not see Hajj");
@@ -127,7 +132,7 @@ const iddahEmptyReligion = checkApproveLeaveGate(
   { type: "iddah", startDate: "2026-01-01", endDate: "2026-05-10", days: 130, files: deathFile, status: "pending", eventDate: "2026-01-01", noOtherEmployerAck: true },
   { profile: emptyReligionFemale, requests: [] },
 );
-assert.equal(iddahEmptyReligion.ok, true, "empty religion uses Muslim 130-day iddah");
+assert.equal(iddahEmptyReligion.error, "LEAVE_RELIGION_REQUIRED", "no religion on file: the iddah length is not guessed (Art. 160)");
 
 const iddahNonMuslimOk = checkApproveLeaveGate(
   { type: "iddah", startDate: "2026-01-01", endDate: "2026-01-15", days: 15, files: deathFile, status: "pending", eventDate: "2026-01-01", noOtherEmployerAck: true },
@@ -184,7 +189,7 @@ assert.equal(hajjOk.ok, true);
 assert.equal(checkApproveLeaveGate(
   { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: emptyReligionFemale, requests: [] },
-).ok, true, "empty religion may take Hajj");
+).error, "LEAVE_RELIGION_REQUIRED", "no religion on file: Hajj waits until HR records it");
 assert.equal(checkApproveLeaveGate(
   { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "hajj.pdf" }], status: "pending", noOtherEmployerAck: true },
   { profile: nonMuslimMale, requests: [] },

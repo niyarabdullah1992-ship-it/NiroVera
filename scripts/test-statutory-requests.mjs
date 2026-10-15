@@ -77,3 +77,18 @@ console.log("statutory requests ok");
   assert.equal(checkLeaveCarryGate({ days: 2, remaining: null, reason: "سفر" }).ok, true);
   console.log("review fixes ok");
 }
+// Religion decides Hajj and iddah: never assumed when the file has none.
+{
+  const { leaveTypesForProfile } = await import("../src/lib/leaveTypes.js");
+  const { checkLeaveReligionGate } = await import("../src/lib/leaveDerivations.js");
+  const keys = (p) => leaveTypesForProfile(p).map((t) => t.key);
+  assert.ok(keys({ gender: "male", religion: "muslim" }).includes("hajj"));
+  assert.ok(!keys({ gender: "male", religion: "non_muslim" }).includes("hajj"));
+  assert.ok(!keys({ gender: "male" }).includes("hajj"), "no religion on file: no Hajj");
+  assert.ok(!keys({ gender: "female" }).includes("iddah"), "no religion on file: no iddah until its length is known");
+  assert.ok(keys({ gender: "female", religion: "non_muslim" }).includes("iddah"));
+  assert.ok(!keys({ gender: "female", religion: "muslim" }).includes("paternity"));
+  assert.equal(checkLeaveReligionGate({ type: "hajj" }, { profile: {} }).error, "LEAVE_RELIGION_REQUIRED");
+  assert.equal(checkLeaveReligionGate({ type: "hajj" }, { profile: { religion: "muslim" } }).ok, true);
+  console.log("religion on file ok");
+}

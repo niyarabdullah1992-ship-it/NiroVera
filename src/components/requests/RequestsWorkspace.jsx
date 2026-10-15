@@ -117,7 +117,7 @@ import {
 } from "@/lib/requestWorkspace";
 import { isRosterLockedCivicHoliday, laborCalendarOf, officialHolidayKindLabel, officialHolidayLeaveLabel } from "@/lib/ummAlQuraCalendar";
 import { iddahSpanFromEvent, maternityFollowOnSpan } from "@/lib/leaveTypes";
-import { isRamadanHoursSubject } from "@/lib/laborRules";
+import { isRamadanHoursSubject, religionOnFile } from "@/lib/laborRules";
 import { profileGender } from "@/lib/employeeProfileFields";
 import { DUTY_REQUEST_META, DUTY_REQUEST_TYPES, checkDutyRequestFields, dutyRequestDetail, dutyRequestEffect, dutyRequestRosterFacts, isDutyRequestType } from "@/lib/dutyRequests";
 import { performsNightWork, pregnancyNightBan } from "@/lib/decision18632";
@@ -1291,8 +1291,8 @@ export default function RequestsWorkspace({
   ];
   const hajjLine = (() => {
     const p = subject?.profile || {};
-    const nonMuslimFemale = profileGender(p) === "female" && !isRamadanHoursSubject({ profile: p });
-    if (nonMuslimFemale) return null;
+    // Hajj is for a Muslim on file (Art. 114) — no line when the religion is another or not recorded.
+    if (religionOnFile({ profile: p }) !== "muslim") return null;
     if (hajjTaken) return ar ? "استُخدمت — مرة واحدة في الخدمة" : "Used — once in service";
     const hire = String(p.hireDate || "").slice(0, 10);
     if (/^\d{4}-\d{2}-\d{2}$/.test(hire)) {
@@ -2086,7 +2086,16 @@ export default function RequestsWorkspace({
                     : "Husband death is requested as iddah (Article 160), not the five-day type. Article 113 here is parent or child only."}
                 </span>
               ) : null}
-              {profileGender(subject?.profile) === "female" && !isRamadanHoursSubject({ profile: subject?.profile }) ? (
+              {!religionOnFile({ profile: subject?.profile }) ? (
+                <span data-religion-missing="1" style={{ fontSize: 11.5, color: "var(--nv-warn-ink, #8A5A12)", lineHeight: 1.7, fontWeight: 600 }}>
+                  {ar
+                    ? (mode === "manage"
+                      ? "الديانة غير محددة في ملف الموظف — لا تظهر له إجازة الحج ولا العدة حتى تحددها من ملفه (الهوية والتوظيف)."
+                      : "ديانتك غير محددة في ملفك — لا تظهر لك إجازة الحج ولا العدة حتى تحددها الموارد البشرية.")
+                    : "Religion is not on file — Hajj and iddah stay hidden until HR sets it."}
+                </span>
+              ) : null}
+              {profileGender(subject?.profile) === "female" && religionOnFile({ profile: subject?.profile }) === "non_muslim" ? (
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
                   {ar ? "غير مسلمة على الملف: العدّة 15 يوماً، ولا حج." : "Non-Muslim on file: 15-day iddah, and no Hajj."}
                 </span>
@@ -2555,7 +2564,16 @@ export default function RequestsWorkspace({
                     : "Husband death is requested as iddah (Article 160), not the five-day type. Article 113 here is parent or child only."}
                 </span>
               )}
-              {profileGender(subject?.profile) === "female" && !isRamadanHoursSubject({ profile: subject?.profile }) && (
+              {!religionOnFile({ profile: subject?.profile }) ? (
+                <span data-religion-missing="1" style={{ fontSize: 11.5, color: "var(--nv-warn-ink, #8A5A12)", lineHeight: 1.7, fontWeight: 600 }}>
+                  {ar
+                    ? (mode === "manage"
+                      ? "الديانة غير محددة في ملف الموظف — لا تظهر له إجازة الحج ولا العدة حتى تحددها من ملفه (الهوية والتوظيف)."
+                      : "ديانتك غير محددة في ملفك — لا تظهر لك إجازة الحج ولا العدة حتى تحددها الموارد البشرية.")
+                    : "Religion is not on file — Hajj and iddah stay hidden until HR sets it."}
+                </span>
+              ) : null}
+              {profileGender(subject?.profile) === "female" && religionOnFile({ profile: subject?.profile }) === "non_muslim" && (
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
                   {ar ? "غير مسلمة على الملف: العدّة 15 يوماً، ولا حج." : "Non-Muslim on file: 15-day iddah, and no Hajj."}
                 </span>

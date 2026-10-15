@@ -1,7 +1,7 @@
 // Shared leave category config used across leave components.
 
 import { profileGender } from "./employeeProfileFields.js";
-import { citeLeaveType, isRamadanHoursSubject, ruleAt, ruleValue } from "./laborRules.js";
+import { citeLeaveType, isRamadanHoursSubject, religionOnFile, ruleAt, ruleValue } from "./laborRules.js";
 import { chargeableAnnualWorkDays, chargeableSpanExcludingHolidays } from "./leaveEidOverlap.js";
 import { officialHolidayKindLabel, officialHolidayLeaveLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
 
@@ -16,7 +16,7 @@ export const LEAVE_TYPES = [
   { key: "maternity", defaultTotal: ruleValue("leave.maternity.days"), article: citeLeaveType("maternity")?.article || null, gender: "female", requiresFile: true, ar: "أمومة", en: "Maternity" },
   { key: "maternity_extend", defaultTotal: ruleValue("leave.maternity.unpaidExtendDays"), article: citeLeaveType("maternity_extend")?.article || "151", gender: "female", ar: "تمديد وضع بلا أجر", en: "Unpaid maternity extension" },
   { key: "maternity_companion", defaultTotal: ruleValue("leave.maternity.disabledChildDays"), article: citeLeaveType("maternity_companion")?.article || "151", gender: "female", requiresFile: true, ar: "مرافقة مولود مريض/معاق", en: "Sick or disabled-child companion" },
-  { key: "iddah", defaultTotal: ruleValue("leave.iddah.days"), article: citeLeaveType("iddah")?.article || null, gender: "female", requiresFile: true, ar: "عدّة وفاة الزوج", en: "Iddah" },
+  { key: "iddah", defaultTotal: ruleValue("leave.iddah.days"), article: citeLeaveType("iddah")?.article || null, gender: "female", religionDependent: true, requiresFile: true, ar: "عدّة وفاة الزوج", en: "Iddah" },
   { key: "paternity", defaultTotal: ruleValue("leave.paternity.days"), article: citeLeaveType("paternity")?.article || null, gender: "male", ar: "أبوة", en: "Paternity" },
   { key: "hajj", defaultTotal: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article || null, religion: "muslim", ar: "حج", en: "Hajj" },
   { key: "eid", defaultTotal: null, article: citeLeaveType("eid")?.article || null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
@@ -97,6 +97,8 @@ export function leaveTypesForProfile(profile) {
     if (ty.gender && ty.gender !== g) return false;
     if (ty.religion === "muslim" && !muslim) return false;
     if (ty.religion === "non_muslim" && muslim) return false;
+    // Religion decides these (Hajj — Art. 114; iddah 130 or 15 days — Art. 160): hidden until it is on the file.
+    if ((ty.religion || ty.religionDependent) && !religionOnFile({ profile })) return false;
     // Art. 78: only while a notice given by the employer runs.
     if (ty.employerNoticeOnly) {
       const exit = profile?.contractExit || {};

@@ -151,7 +151,7 @@ assert.ok(
 );
 assert.match(
   view.idCards.flatMap((card) => card.rows || []).find((row) => row.field === "religion")?.v || "",
-  /مسلم/,
+  /مسلم|غير محددة/,
 );
 assert.equal(view.platforms.length, 5);
 const gosiWage = view.wageRows.find((row) => row.field === "gosiRegisteredAt");

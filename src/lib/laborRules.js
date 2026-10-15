@@ -437,6 +437,22 @@ export function lastRamadanDay(win, calendar) {
 }
 
 /** Art. 98: apply unless the file explicitly records non-Muslim. Empty religion stays protected. */
+/**
+ * The religion recorded on the file: "muslim", "non_muslim", or "" when nothing is recorded.
+ * Leaves that depend on it (Hajj — Art. 114; iddah length — Art. 160) wait until it is set.
+ */
+export function religionOnFile(employee) {
+  const raw = String(employee?.profile?.religion || employee?.religion || "").trim().toLowerCase();
+  if (!raw) return "";
+  const compact = raw.replace(/[\s-]+/g, "_");
+  if (compact === "non_muslim" || raw.includes("غير مسلم") || raw.includes("غير مسلمة")) return "non_muslim";
+  return "muslim";
+}
+
+/**
+ * Ramadan hours (Art. 98) for Muslims. An empty file keeps the reduced hours — the reading that
+ * protects the worker — until the religion is recorded.
+ */
 export function isRamadanHoursSubject(employee) {
   const raw = String(employee?.profile?.religion || employee?.religion || "").trim().toLowerCase();
   if (!raw) return true;

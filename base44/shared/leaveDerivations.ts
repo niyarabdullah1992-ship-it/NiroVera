@@ -6,7 +6,7 @@
 import { articleOfficialText } from "./laborArticleTexts.ts";
 import { checkGroundedRefusalGate } from "./statutoryRefusal.ts";
 import { checkJobSearchDayGate } from "./rightsRequests.ts";
-import { addLaborDays, citeLeaveType, citeRule, isRamadanHoursSubject, lastRamadanDay, ownerHolidayBag, RAMADAN_WINDOWS, rulingCivicDate, rulingEidSpan, ruleAt, ruleValue, type LaborCalendar } from "./laborRules.ts";
+import { addLaborDays, citeLeaveType, citeRule, isRamadanHoursSubject, religionOnFile, lastRamadanDay, ownerHolidayBag, RAMADAN_WINDOWS, rulingCivicDate, rulingEidSpan, ruleAt, ruleValue, type LaborCalendar } from "./laborRules.ts";
 import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAVE_TRACK_PAID, type ExamConsentExtras } from "./otherRequestDerivations.ts";
 
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
@@ -1063,6 +1063,16 @@ export function checkApproveLeaveGate(
     };
   }
   const type = String(request.type || "").trim().toLowerCase();
+  if ((type === "hajj" || type === "iddah") && !religionOnFile({ profile: extras.profile || {} })) {
+    return {
+      ok: false as const,
+      error: "LEAVE_RELIGION_REQUIRED",
+      reason: type === "hajj"
+        ? "موقوف — إجازة الحج للمسلم (المادة 114). الديانة غير محددة في الملف — تحددها الموارد البشرية أولاً."
+        : "موقوف — مدة العدة تختلف بالديانة: 130 يوماً للمسلمة و15 يوماً لغيرها (المادة 160). الديانة غير محددة في الملف — تحددها الموارد البشرية أولاً.",
+      reasonEn: "Blocked — this leave depends on the religion on file, which is empty. HR sets it first.",
+    };
+  }
   const gender = checkLeaveGenderGate(request, extras);
   if (!gender.ok) return gender;
   const rawDays = Number(request.days) > 0 ? Number(request.days) : computed;

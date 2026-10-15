@@ -1,5 +1,6 @@
 // PowerCare data layer — localStorage-based, multi-tenant with full company isolation.
 // Registry tracks all companies; each company's data lives under its own key.
+import { religionOnFile } from "./laborRules.js";
 import { profileGender } from "./employeeProfileFields.js";
 import { ART81_CASES, ART81_EXIT_TYPE, DAMAGE_OBJECTION_TYPE, DOCUMENTS_RETURN_TYPE, LEAVE_CARRY_TYPE, NIGHT_AVOID_TYPE, damageObjectionDeadline } from "./rightsRequests.js";
 import { daysAr, planLeaveCutForAttendance } from "./leaveCut.js";
@@ -1675,6 +1676,34 @@ export function openDueNecessityNotices(companyId, now = new Date()) {
   const plans = planNecessityNotices({ data, today, existingKeys, audienceOf: (employee) => nightDueAdminAudience(data, employee) });
   for (const plan of plans) addNotification(companyId, plan.userId, plan.text, { key: plan.key, to: plan.to });
   return { ok: true, notified: plans.length };
+}
+
+/**
+ * The religion decides Hajj (Art. 114) and the iddah length (Art. 160). An employee with none on file
+ * gets one notice to HR (and to the worker) to complete it. Idempotent per employee.
+ */
+export function openDueReligionNotices(companyId) {
+  const data = getCompanyData(companyId);
+  if (!data) return { ok: true, notified: 0 };
+  const seen = new Set((data.notifications || []).map((row) => row.key).filter(Boolean));
+  let notified = 0;
+  for (const emp of data.employees || []) {
+    if (!emp?.id || religionOnFile(emp)) continue;
+    for (const m of nightDueAdminAudience(data, emp).filter((u) => u?.id && String(u.id) !== String(emp.id))) {
+      const key = `religion-missing:${emp.id}:${m.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      addNotification(companyId, m.id, `الديانة غير محددة في ملف ${emp.name || "موظف"} — حدّدها ليظهر له ما يخصه من الإجازات: الحج للمسلم (المادة 114)، ومدة العدة 130 يوماً للمسلمة أو 15 لغيرها (المادة 160).`, { key, to: `/app/employees/${emp.id}?tab=identity` });
+      notified += 1;
+    }
+    const own = `religion-missing:${emp.id}:self`;
+    if (!seen.has(own)) {
+      seen.add(own);
+      addNotification(companyId, emp.id, "ديانتك غير محددة في ملفك — طلبت المنصة من الموارد البشرية تحديدها، وحتى ذلك لا تظهر لك إجازة الحج ولا العدة.", { key: own, to: "/app/requests" });
+      notified += 1;
+    }
+  }
+  return { ok: true, notified };
 }
 
 /** Regs 22 bis — remind the worker before his comp-leave date, and managers once it has passed. Idempotent per key. */

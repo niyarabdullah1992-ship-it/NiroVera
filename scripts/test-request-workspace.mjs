@@ -511,7 +511,7 @@ assert.ok(annual.carryTotal >= 21);
 assert.ok(lawArticleCards("leave", "118", "ar").some((row) => row.art === "118" && row.live));
 assert.ok(holidays.find((row) => row.id === "adha")?.from);
 
-const kinds = leaveKindsFor({ hireDate: "2024-01-15", discretionaryGrants: [{ days: 2 }], gender: "male" }, true, []);
+const kinds = leaveKindsFor({ hireDate: "2024-01-15", discretionaryGrants: [{ days: 2 }], gender: "male", religion: "muslim" }, true, []);
 assert.equal(kinds.find((row) => row.key === "annual")?.article, "109");
 assert.match(kinds.find((row) => row.key === "annual")?.cite || "", /المادة 109/);
 assert.equal(kinds.find((row) => row.key === "sick")?.article, "117");
@@ -569,7 +569,8 @@ assert.equal(leaveKindMeta("paternity").ar, "أبوة");
 assert.equal(leaveKindMeta("maternity").ar, "أمومة");
 assert.equal(leaveKindMeta("paternity").en, "Paternity");
 assert.ok(!kinds.some((row) => row.ar === "مولود" || row.ar === "وضع"));
-const femaleKinds = leaveKindsFor({ hireDate: "2024-01-15", gender: "female" }, true, []);
+const femaleKinds = leaveKindsFor({ hireDate: "2024-01-15", gender: "female", religion: "muslim" }, true, []);
+assert.ok(!leaveKindsFor({ hireDate: "2024-01-15", gender: "female" }, true, []).some((row) => row.key === "iddah"), "no religion on file: iddah waits");
 assert.equal(femaleKinds.find((row) => row.key === "maternity")?.ar, "أمومة");
 assert.equal(femaleKinds.find((row) => row.key === "iddah")?.article, "160");
 assert.match(femaleKinds.find((row) => row.key === "iddah")?.cap || "", /130/);
@@ -684,11 +685,11 @@ const maternityAck = checkSubmitLeaveGate(
 assert.equal(maternityAck.ok, true);
 assert.equal(checkSubmitLeaveGate(
   { type: "iddah", startDate: "2026-01-01", endDate: "2026-05-10", days: 130, files: [{ name: "death.pdf" }], status: "pending", eventDate: "2026-01-01" },
-  { profile: { gender: "female", hireDate: "2024-01-15" }, requests: [] },
+  { profile: { gender: "female", religion: "muslim", hireDate: "2024-01-15" }, requests: [] },
 ).error, "NO_OTHER_EMPLOYER_ACK");
 assert.equal(checkSubmitLeaveGate(
   { type: "iddah", startDate: "2026-01-01", endDate: "2026-05-10", days: 130, files: [{ name: "death.pdf" }], status: "pending", eventDate: "2026-01-01", noOtherEmployerAck: true },
-  { profile: { gender: "female", hireDate: "2024-01-15" }, requests: [] },
+  { profile: { gender: "female", religion: "muslim", hireDate: "2024-01-15" }, requests: [] },
 ).ok, true);
 
 assert.equal(leaveNeedsAttachment({ type: "sick", days: 1 }), true);

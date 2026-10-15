@@ -727,34 +727,34 @@ assert.equal(checkPublishGates({
 const hajjYoung = checkApproveLeaveGate(
   { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "a.pdf" }], status: "pending" },
   false,
-  { profile: { hireDate: "2025-06-01" }, requests: [] },
+  { profile: { religion: "muslim", hireDate: "2025-06-01" }, requests: [] },
 );
 assert.equal(hajjYoung.error, "HAJJ_SERVICE");
 
 const hajjOk = checkApproveLeaveGate(
   { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "a.pdf" }], status: "pending", noOtherEmployerAck: true },
   false,
-  { profile: { hireDate: "2023-01-01" }, requests: [] },
+  { profile: { religion: "muslim", hireDate: "2023-01-01" }, requests: [] },
 );
 assert.equal(hajjOk.ok, true);
 
 const hajjLong = checkApproveLeaveGate(
   { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-20", days: 20, files: [{ name: "a.pdf" }], status: "pending" },
   false,
-  { profile: { hireDate: "2020-01-01" }, requests: [] },
+  { profile: { religion: "muslim", hireDate: "2020-01-01" }, requests: [] },
 );
 assert.equal(hajjLong.error, "HAJJ_OVER_MAX");
 
 const hajjShort = checkApproveLeaveGate(
   { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-08", days: 8, files: [{ name: "a.pdf" }], status: "pending" },
   false,
-  { profile: { hireDate: "2020-01-01" }, requests: [] },
+  { profile: { religion: "muslim", hireDate: "2020-01-01" }, requests: [] },
 );
 assert.equal(hajjShort.ok, false);
 assert.equal(hajjShort.error, "HAJJ_UNDER_MIN");
 assert.equal(checkApproveLeaveGate(
   { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 10, files: [{ name: "a.pdf" }], status: "pending", noOtherEmployerAck: true },
-  { profile: { hireDate: "2020-01-01", religion: "non_muslim" }, requests: [] },
+  { profile: { religion: "muslim", hireDate: "2020-01-01", religion: "non_muslim" }, requests: [] },
 ).error, "LEAVE_RELIGION");
 
 const paternityLate = checkApproveLeaveGate(
@@ -794,12 +794,12 @@ assert.equal(checkApproveLeaveGate(
 assert.equal(checkApproveLeaveGate(
   { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-10", days: 6, files: [{ name: "a.pdf" }], status: "pending" },
   false,
-  { profile: { hireDate: "2020-01-01" }, requests: [] },
+  { profile: { religion: "muslim", hireDate: "2020-01-01" }, requests: [] },
 ).ok, true, "Hajj min/max uses the calendar span including Eid, not holiday-stripped days");
 assert.equal(checkApproveLeaveGate(
   { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-08", days: 10, files: [{ name: "a.pdf" }], status: "pending" },
   false,
-  { profile: { hireDate: "2020-01-01" }, requests: [] },
+  { profile: { religion: "muslim", hireDate: "2020-01-01" }, requests: [] },
 ).error, "HAJJ_UNDER_MIN");
 
 const marriageMissing = checkApproveLeaveGate(
@@ -897,7 +897,7 @@ const annualOverEid = checkApproveLeaveGate(
 assert.equal(annualOverEid.error, "LEAVE_OVERLAP");
 
 const iddahFile = [{ name: "death.pdf", url: "/death.pdf" }];
-const iddahMuslim = { gender: "female" };
+const iddahMuslim = { gender: "female", religion: "muslim" };
 assert.equal(checkLeaveGenderGate({ type: "iddah" }, { profile: { gender: "male" } }).error, "LEAVE_GENDER");
 assert.equal(checkLeaveGenderGate({ type: "iddah" }, { profile: {} }).error, "LEAVE_GENDER_REQUIRED");
 assert.equal(checkLeaveGenderGate({ type: "iddah" }, { profile: iddahMuslim }).ok, true);
@@ -1113,7 +1113,7 @@ assert.equal(examSatState({ type: "exam", startDate: "2026-09-10", endDate: "202
 
 const submitBlocked = checkSubmitLeaveGate(
   { type: "hajj", startDate: "2026-06-01", endDate: "2026-06-08", days: 8 },
-  { profile: { hireDate: "2020-01-01" }, requests: [] },
+  { profile: { religion: "muslim", hireDate: "2020-01-01" }, requests: [] },
 );
 assert.equal(submitBlocked.error, "HAJJ_UNDER_MIN");
 

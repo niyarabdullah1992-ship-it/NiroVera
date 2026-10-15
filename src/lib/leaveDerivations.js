@@ -1,7 +1,7 @@
 /** Client helpers aligned with base44/shared/leaveDerivations.ts */
 
 import { profileGender } from "./employeeProfileFields.js";
-import { citeLeaveType, citeRule, isRamadanHoursSubject, ruleAt, ruleValue } from "./laborRules.js";
+import { citeLeaveType, citeRule, isRamadanHoursSubject, religionOnFile, ruleAt, ruleValue } from "./laborRules.js";
 import { daysUntilLeaveStart } from "./leaveEntitlementCycle.js";
 import { officialHolidayKindLabel, officialHolidayList, officialHolidayOn } from "./ummAlQuraCalendar.js";
 import { chargeableAnnualWorkDays, chargeableSpanExcludingHolidays, deriveEidOverlap } from "./leaveEidOverlap.js";
@@ -178,6 +178,21 @@ function riyadhCivilDay(now = new Date()) {
 
 export function profileLeaveGender(profile) {
   return profileGender(profile);
+}
+
+/** Hajj (114) and iddah (160) turn on the religion recorded on the file — never assumed when it is empty. */
+export function checkLeaveReligionGate(request, extras = {}) {
+  const type = String(request?.type || "").trim().toLowerCase();
+  if (type !== "hajj" && type !== "iddah") return { ok: true };
+  if (religionOnFile({ profile: extras.profile || {} })) return { ok: true };
+  return {
+    ok: false,
+    error: "LEAVE_RELIGION_REQUIRED",
+    reason: type === "hajj"
+      ? "موقوف — إجازة الحج للمسلم (المادة 114). الديانة غير محددة في الملف — تحددها الموارد البشرية أولاً."
+      : "موقوف — مدة العدة تختلف بالديانة: 130 يوماً للمسلمة و15 يوماً لغيرها (المادة 160). الديانة غير محددة في الملف — تحددها الموارد البشرية أولاً.",
+    reasonEn: "Blocked — this leave depends on the religion on file, which is empty. HR sets it first.",
+  };
 }
 
 /** Maternity (151) is female-only; paternity (113) is male-only. Missing gender is a named stop, not a silent allow. */
@@ -1024,6 +1039,8 @@ export function checkApproveLeaveGate(request, typeRequiresFile = false, extras 
   const dates = checkLeaveDatesGate(request);
   if (!dates.ok) return dates;
   const type = String(request.type || "").trim().toLowerCase();
+  const religion = checkLeaveReligionGate(request, extras);
+  if (!religion.ok) return religion;
   const gender = checkLeaveGenderGate(request, extras);
   if (!gender.ok) return gender;
   const calendar = extras.laborCalendar || extras.calendar;

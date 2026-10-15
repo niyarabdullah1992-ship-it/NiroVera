@@ -48,7 +48,14 @@ export function applyStage(stage, row, incoming) {
     }
   }
   if (STAGE_STATUS[stage]) next.status = STAGE_STATUS[stage];
-  if (stage === "ruling") next.status = incoming?.status === "closed" ? "closed" : "ruling";
+  if (stage === "ruling") {
+    // Same as the server: uphold / lower to a warning / void — penalty fields never grow.
+    const outcome = str(incoming?.rulingOutcome);
+    for (const f of ["penaltyKind", "penalty", "penaltyAr", "penaltyEn", "penaltyId", "cutDays", "fineAmount", "deferMonths"]) next[f] = row[f];
+    if (outcome === "lower") Object.assign(next, { penaltyKind: "warning", penalty: str(incoming?.penalty) || row.penalty, cutDays: 0, fineAmount: 0 });
+    next.rulingOutcome = outcome;
+    next.status = outcome === "void" ? "closed" : "ruling";
+  }
   return next;
 }
 
@@ -72,12 +79,22 @@ export function writeOutbox(storage, companyId, list) {
   }
 }
 
+/** How long a just-queued stage is left to its own send before a tick may resend it (reload mid-send). */
+export const SEND_TIMEOUT_MS = 30000;
+
+export const caseIdOf = (job) => str(job?.caseRow?.id);
+
+/** Pending stages of one case, in the order they were recorded — they must reach the server in that order. */
+export function stagesForCase(list, caseId) {
+  return (list || []).filter((j) => caseIdOf(j) === str(caseId));
+}
+
 /** Adds (or replaces) a pending stage. The latest write of a stage for a case supersedes the older one. */
 export function enqueueStage(list, job, now = Date.now()) {
   const key = `${job.caseRow?.id}:${job.stage}`;
   const rest = (list || []).filter((j) => j.key !== key);
   const jid = `${key}:${now}:${Math.random().toString(36).slice(2, 8)}`;
-  return [...rest, { jid, key, stage: job.stage, caseRow: job.caseRow, regulation: job.regulation || null, queuedAt: now, tries: 0, nextAt: now }];
+  return [...rest, { jid, key, stage: job.stage, caseRow: job.caseRow, regulation: job.regulation || null, queuedAt: now, tries: 0, nextAt: now + SEND_TIMEOUT_MS }];
 }
 
 /**
@@ -91,7 +108,10 @@ export function settleStage(list, jid, result, now = Date.now()) {
   const job = (list || []).find((j) => j.jid === jid);
   if (!job) return { list: list || [], rejected: null };
   if (result?.ok) return { list: list.filter((j) => j.jid !== jid), rejected: null };
-  if (result?.error && result?.reason) {
+  // "No such file" while an earlier stage of the same case (its raise) is still queued is not final.
+  const earlierQueued = list.some((j) => j.jid !== jid && caseIdOf(j) === caseIdOf(job) && list.indexOf(j) < list.indexOf(job));
+  const definitive = result?.error && result?.reason && !(result.error === "DISCIPLINE_CASE_MISSING" && earlierQueued);
+  if (definitive) {
     return { list: list.filter((j) => j.jid !== jid), rejected: { ...job, error: result.error, reason: result.reason, reasonEn: result.reasonEn || "" } };
   }
   const tries = (job.tries || 0) + 1;

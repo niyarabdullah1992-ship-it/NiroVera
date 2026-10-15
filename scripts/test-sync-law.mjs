@@ -178,8 +178,12 @@ const memStore = () => { const m = new Map(); return { getItem: (k) => (m.has(k)
 t("outbox stage fields and re-application match the server", () => {
   assert.deepEqual(outbox.DISCIPLINE_STAGE_FIELDS, ts.DISCIPLINE_STAGE_FIELDS);
   const existing = { id: "c1", employeeId: "e1", status: "hearing", cutDays: 2, messages: [{ id: "m1" }] };
-  for (const [stage, inc] of [["appeal", { status: "closed", appealNote: "x", cutDays: 0 }], ["message", { messages: [{ id: "m2" }] }], ["ruling", { status: "closed", rulingOutcome: "void" }], ["sign", { signedAt: "t", status: "zzz" }]]) {
+  for (const [stage, inc] of [["appeal", { status: "closed", appealNote: "x", cutDays: 0 }], ["message", { messages: [{ id: "m2" }] }], ["sign", { signedAt: "t", status: "zzz" }]]) {
     assert.deepEqual(outbox.applyStage(stage, existing, inc), ts.planDisciplineStageWrite(stage, existing, inc).row, stage);
+  }
+  const appealed = { ...existing, status: "appeal", penaltyKind: "deduction", fineAmount: 300 };
+  for (const inc of [{ rulingOutcome: "void" }, { rulingOutcome: "lower", penalty: "إنذار" }, { rulingOutcome: "keep", cutDays: 5, penaltyKind: "dismiss" }]) {
+    assert.deepEqual(outbox.applyStage("ruling", appealed, inc), ts.planDisciplineStageWrite("ruling", appealed, inc).row, inc.rulingOutcome);
   }
 });
 
@@ -244,6 +248,111 @@ t("hydration re-applies the outbox (store.cacheCloudData) and the session tick r
   assert.match(store, /applyPendingStages\(nextUpdates\.disciplinaryCases, pending\)/);
   const auth = readFileSync(new URL("../src/lib/PowerCareAuth.jsx", import.meta.url), "utf8");
   assert.match(auth, /flushDisciplineOutbox\(s\.companyId\)/);
+});
+
+
+/* ----------------------------- review fixes ----------------------------- */
+t("R1: a later stage waits behind its case's queued raise; CASE_MISSING is not final while it does", () => {
+  let list = outbox.enqueueStage([], { stage: "raise", caseRow: { id: "c1" } }, 1);
+  list = outbox.enqueueStage(list, { stage: "message", caseRow: { id: "c2" } }, 2);
+  list = outbox.enqueueStage(list, { stage: "hearing", caseRow: { id: "c1" } }, 3);
+  assert.deepEqual(outbox.stagesForCase(list, "c1").map((j) => j.stage), ["raise", "hearing"]);
+  const hearing = list[2];
+  const missing = { ok: false, error: "DISCIPLINE_CASE_MISSING", reason: "لا ملف", reasonEn: "none" };
+  const kept = outbox.settleStage(list, hearing.jid, missing, 10);
+  assert.equal(kept.rejected, null);
+  assert.equal(kept.list.length, 3);
+  // once the raise is gone (stored or refused), the same answer is final
+  const noRaise = list.filter((j) => j.stage !== "raise");
+  assert.equal(outbox.settleStage(noRaise, hearing.jid, missing).rejected.error, "DISCIPLINE_CASE_MISSING");
+  const src = readFileSync(new URL("../src/lib/disciplineServer.js", import.meta.url), "utf8");
+  assert.match(src, /stagesForCase\(readOutbox\(storage\(\), companyId\), caseId\)/);
+  assert.match(src, /if \(!result\.ok && !rejected\) break;/);
+});
+
+t("R2: signing sends the posted fine so a later lower/void can reverse it", () => {
+  const page = readFileSync(new URL("../src/pages/Discipline.jsx", import.meta.url), "utf8");
+  assert.match(page, /"sign", \{ \.\.\.item, \.\.\.signed, fineAmount: post\?\.amount/);
+});
+
+t("R3: raise opens a notice only — stage fields stripped, employee of an existing case kept", () => {
+  const smuggled = { id: "c1", employeeId: "e1", note: "late", status: "closed", signedAt: "x", signedBy: "y", rulingOutcome: "void", appealNote: "z", notifyMethod: "hand", signedPaper: {}, cutDays: 2, messages: [{ id: "m1" }] };
+  const r = ts.planDisciplineStageWrite("raise", null, smuggled, { now: "2026-05-01T00:00:00Z" });
+  assert.equal(r.row.status, "notice");
+  for (const f of ["signedAt", "signedBy", "rulingOutcome", "appealNote", "notifyMethod", "signedPaper"]) assert.equal(r.row[f], undefined, f);
+  assert.equal(r.row.cutDays, 2);
+  assert.equal(r.row.notifiedAt, "2026-05-01T00:00:00Z");
+  assert.equal(r.row.messages.length, 1);
+  const again = ts.planDisciplineStageWrite("raise", { id: "c1", employeeId: "e1", status: "notice", notifiedAt: "t0", messages: [] }, { ...smuggled, employeeId: "e2" });
+  assert.equal(again.row.employeeId, "e1");
+  assert.equal(again.row.notifiedAt, "t0");
+  assert.equal(ts.planDisciplineStageWrite("raise", null, smuggled, { worker: true }).error, "FORBIDDEN");
+});
+
+t("R4: a worker's message is stamped by the server; no evidence from a worker", () => {
+  const existing = { id: "c1", employeeId: "e1", status: "notify", messages: [{ id: "m1", from: "hr" }], evidence: ["note"] };
+  const r = ts.planDisciplineStageWrite("message", existing, { messages: [{ id: "m1" }, { id: "m2", from: "hr", senderName: "HR Boss", createdAt: "1999", text: "hi" }], evidence: ["forged"] },
+    { worker: true, actor: { id: "e1", name: "Ali" }, now: "2026-05-02T00:00:00Z" });
+  const m2 = r.row.messages[1];
+  assert.equal(m2.from, "employee");
+  assert.equal(m2.senderName, "Ali");
+  assert.equal(m2.senderId, "e1");
+  assert.equal(m2.createdAt, "2026-05-02T00:00:00Z");
+  assert.equal(m2.text, "hi");
+  assert.deepEqual(r.row.evidence, ["note"]);
+  assert.equal(ts.planDisciplineStageWrite("ruling", { ...existing, status: "appeal" }, { rulingOutcome: "void" }, { worker: true }).error, "FORBIDDEN");
+  const hr = ts.planDisciplineStageWrite("message", existing, { messages: [{ id: "m3", from: "hr", senderName: "HR" }], evidence: ["file"] });
+  assert.equal(hr.row.messages[1].from, "hr");
+  assert.deepEqual(hr.row.evidence, ["note", "file"]);
+});
+
+t("R5: a just-queued stage is not due for a tick resend; sends are tracked per job id and per case", () => {
+  const list = outbox.enqueueStage([], { stage: "sign", caseRow: { id: "c1" } }, 1000);
+  assert.equal(list[0].nextAt, 1000 + outbox.SEND_TIMEOUT_MS);
+  assert.equal(outbox.dueStages(list, 1000).length, 0);
+  assert.equal(outbox.dueStages(list, 1000 + outbox.SEND_TIMEOUT_MS).length, 1);
+  const src = readFileSync(new URL("../src/lib/disciplineServer.js", import.meta.url), "utf8");
+  assert.match(src, /inFlightJids\.has\(job\.jid\)/);
+  assert.match(src, /caseChains\.get\(lock\)/);
+});
+
+t("R6: close only from a heard or signed file; ruling only on a grievance, never heavier; delivery after signing", () => {
+  const base = { id: "c1", employeeId: "e1", penaltyKind: "deduction", penalty: "يومان", cutDays: 2, fineAmount: 200 };
+  for (const st of ["hearing", "decision", "notify"]) assert.equal(ts.planDisciplineStageWrite("close", { ...base, status: st }, {}).row.status, "closed", st);
+  for (const st of ["notice", "appeal", "ruling", "closed"]) assert.equal(ts.planDisciplineStageWrite("close", { ...base, status: st }, {}).error, "DISCIPLINE_CLOSE_STAGE", st);
+  assert.equal(ts.planDisciplineStageWrite("ruling", { ...base, status: "notify" }, { rulingOutcome: "keep" }).error, "DISCIPLINE_RULING_STAGE");
+  assert.equal(ts.planDisciplineStageWrite("ruling", { ...base, status: "appeal" }, { rulingOutcome: "raise" }).error, "DISCIPLINE_RULING_OUTCOME");
+  const keep = ts.planDisciplineStageWrite("ruling", { ...base, status: "appeal" }, { rulingOutcome: "keep", penaltyKind: "dismiss", cutDays: 5, fineAmount: 999 }).row;
+  assert.equal(keep.penaltyKind, "deduction");
+  assert.equal(keep.cutDays, 2);
+  assert.equal(keep.status, "ruling");
+  const lower = ts.planDisciplineStageWrite("ruling", { ...base, status: "appeal" }, { rulingOutcome: "lower", penaltyKind: "dismiss", cutDays: 5 }).row;
+  assert.equal(lower.penaltyKind, "warning");
+  assert.equal(lower.cutDays, 0);
+  assert.equal(lower.fineAmount, 0);
+  const voided = ts.planDisciplineStageWrite("ruling", { ...base, status: "appeal" }, { rulingOutcome: "void", status: "ruling" }).row;
+  assert.equal(voided.status, "closed");
+  assert.equal(voided.fineAmount, 200);
+  const signed = { ...base, status: "notify", signedAt: "2026-05-01T10:00:00Z" };
+  const opts = { today: "2026-05-10" };
+  assert.equal(ts.planDisciplineStageWrite("delivery", { ...base, status: "hearing" }, { notifyMethod: "hand", notifyDeliveredAt: "2026-05-02" }, opts).error, "DISCIPLINE_NOT_SIGNED");
+  assert.equal(ts.planDisciplineStageWrite("paper", { ...base, status: "hearing" }, { signedPaper: {} }, opts).error, "DISCIPLINE_NOT_SIGNED");
+  assert.equal(ts.planDisciplineStageWrite("delivery", signed, { notifyMethod: "fax", notifyDeliveredAt: "2026-05-02" }, opts).error, "DISCIPLINE_DELIVERY_METHOD");
+  assert.equal(ts.planDisciplineStageWrite("delivery", signed, { notifyMethod: "hand", notifyDeliveredAt: "2026-04-30" }, opts).error, "DISCIPLINE_DELIVERY_DATE");
+  assert.equal(ts.planDisciplineStageWrite("delivery", signed, { notifyMethod: "hand", notifyDeliveredAt: "2026-05-11" }, opts).error, "DISCIPLINE_DELIVERY_DATE");
+  assert.equal(ts.planDisciplineStageWrite("delivery", signed, { notifyMethod: "registered_mail", notifyDeliveredAt: "2026-05-02" }, opts).error, "DISCIPLINE_DELIVERY_REF");
+  assert.equal(ts.planDisciplineStageWrite("delivery", signed, { notifyMethod: "hand", notifyDeliveredAt: "2026-05-02" }, opts).row.notifyMethod, "hand");
+  assert.ok(ts.planDisciplineStageWrite("paper", signed, { signedPaper: { hash: "h" } }, opts).row.signedPaper.hash);
+});
+
+t("R7: HR scope for duty registers is checked against the Employee record's station, not the pushed row", () => {
+  const stationOf = (id) => ({ e1: "s1", e2: "s2" })[id];
+  const incoming = [{ employeeId: "e2", stationId: "s1", medicalExams: [{ id: "forged" }] }, { employeeId: "e1", stationId: "s9", trainings: [{ id: "t1" }] }];
+  const out = ts.mergeEmployerDutyRoster([], incoming, (row) => row.stationId === "s1", stationOf);
+  assert.deepEqual(out.map((r) => r.employeeId), ["e1"]);
+  assert.equal(out[0].stationId, "s1");
+  const dir = readFileSync(new URL("../base44/functions/companyDirectory/entry.ts", import.meta.url), "utf8");
+  assert.match(dir, /stationById\.get\(String\(employeeId\)\)/);
 });
 
 /* ----------------------------- 4. abuse cases ----------------------------- */

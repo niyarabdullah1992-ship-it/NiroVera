@@ -387,13 +387,16 @@ Deno.serve(async (req) => {
       if (!isManager && String(existing?.employeeId ?? row.employeeId) !== String(auth.userId || "")) {
         return Response.json({ error: "FORBIDDEN", reason: "التظلّم يرفعه صاحب الملف وحده (المادة 72).", reasonEn: "Only the worker on the file may file a grievance (Article 72)." }, { status: 403 });
       }
-      const planned = planDisciplineStageWrite(stage, existing, row);
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+      // A worker writes as themself: no evidence, messages stamped with the session's name and the server time.
+      const planned = planDisciplineStageWrite(stage, existing, row, {
+        worker: !isManager, actor: { id: String(auth.userId || ""), name: auth.name }, now: new Date().toISOString(), today,
+      });
       if (!planned.ok) return Response.json({ error: planned.error, reason: planned.reason, reasonEn: planned.reasonEn }, { status: 400 });
       const next = planned.row as Record<string, any>;
       const regBlob = await loadBlob(REGULATION_CATEGORY);
       // The stored regulation always wins; the page's copy counts only while the server holds none.
       const { regulation } = pickDisciplineRegulation(regBlob?.payload, body.regulation);
-      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
       const others = cases.filter((c) => String(c.id) !== String(row.id));
       let gate: any = { ok: true };
       if (stage === "raise") {

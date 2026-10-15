@@ -13,10 +13,9 @@
 import { base44 } from "@/api/base44Client";
 import { getCompanyToken } from "@/lib/store";
 import { LOCAL_PREVIEW_COMPANY_ID, isLocalPreviewActive } from "@/lib/localPreview";
-import { OUTBOX_PREFIX, dueStages, enqueueStage, readOutbox, settleStage, writeOutbox } from "@/lib/disciplineOutbox";
+import { OUTBOX_PREFIX, caseIdOf, dueStages, enqueueStage, readOutbox, settleStage, stagesForCase, writeOutbox } from "@/lib/disciplineOutbox";
 
 const storage = () => (typeof localStorage !== "undefined" ? localStorage : null);
-const inFlight = new Set();
 const isPreview = (companyId) => companyId === LOCAL_PREVIEW_COMPANY_ID || isLocalPreviewActive();
 
 async function send(companyId, { stage, caseRow, regulation }) {
@@ -46,24 +45,51 @@ function settle(companyId, jid, result) {
   return rejected;
 }
 
-/** Sends every due pending stage for the company, oldest first. Safe to call on every tick. */
-export async function flushDisciplineOutbox(companyId) {
-  if (!companyId || isPreview(companyId) || inFlight.has(companyId)) return;
-  const due = dueStages(readOutbox(storage(), companyId));
-  if (!due.length) return;
-  inFlight.add(companyId);
-  try {
-    for (const job of due) {
-      const result = await send(companyId, job);
+const caseChains = new Map(); // `${companyId}:${caseId}` → promise: one case's stages go out one at a time
+const inFlightJids = new Set();
+
+/**
+ * Sends one case's pending stages oldest-first, stopping at the first that does not settle (offline,
+ * backoff, transient error) so a later stage never overtakes an earlier one. `callerJid` is the stage the
+ * page just recorded: the whole case is tried now, and that stage's answer is returned to the page (which
+ * shows it); refusals of other stages are announced with "powercare:discipline-rejected".
+ */
+function runCase(companyId, caseId, callerJid = "") {
+  const lock = `${companyId}:${caseId}`;
+  const prev = caseChains.get(lock) || Promise.resolve();
+  const run = prev.catch(() => {}).then(async () => {
+    let callerResult = null;
+    for (const job of stagesForCase(readOutbox(storage(), companyId), caseId)) {
+      if (inFlightJids.has(job.jid)) break;
+      if (!callerJid && job.nextAt && job.nextAt > Date.now()) break;
+      inFlightJids.add(job.jid);
+      let result;
+      try {
+        result = await send(companyId, job);
+      } finally {
+        inFlightJids.delete(job.jid);
+      }
       const rejected = settle(companyId, job.jid, result);
-      if (rejected && typeof window !== "undefined") {
+      // A stage not yet settled (e.g. waiting behind its raise) reads as queued, not as a refusal.
+      if (job.jid === callerJid) callerResult = !result.ok && !rejected ? { ok: false, offline: true, queued: true } : result;
+      else if (rejected && typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("powercare:discipline-rejected", { detail: rejected }));
       }
-      if (result.offline) break; // still offline — the rest wait for the next attempt
+      if (!result.ok && !rejected) break; // not settled — later stages of this case wait behind it
     }
-  } finally {
-    inFlight.delete(companyId);
-  }
+    return callerResult;
+  });
+  caseChains.set(lock, run);
+  run.finally(() => { if (caseChains.get(lock) === run) caseChains.delete(lock); });
+  return run;
+}
+
+/** Sends every due pending stage for the company, case by case, oldest first. Safe to call on every tick. */
+export async function flushDisciplineOutbox(companyId) {
+  if (!companyId || isPreview(companyId)) return;
+  const list = readOutbox(storage(), companyId);
+  const cases = [...new Set(dueStages(list).map(caseIdOf).filter(Boolean))];
+  await Promise.all(cases.map((caseId) => runCase(companyId, caseId)));
 }
 
 export function pendingDisciplineStages(companyId) {
@@ -89,8 +115,7 @@ export async function saveDisciplineOnServer(companyId, stage, caseRow, regulati
   const queued = enqueueStage(readOutbox(storage(), companyId), { stage, caseRow, regulation });
   writeOutbox(storage(), companyId, queued);
   const { jid } = queued[queued.length - 1];
-  const r = await send(companyId, { stage, caseRow, regulation });
-  // The caller shows an immediate refusal itself; only later refusals use the event.
-  settle(companyId, jid, r);
-  return r;
+  // Earlier stages of this case still queued go first; this one waits its turn.
+  const r = await runCase(companyId, String(caseRow.id), jid);
+  return r || { ok: false, offline: true, queued: true };
 }

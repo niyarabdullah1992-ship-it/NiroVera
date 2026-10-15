@@ -473,7 +473,8 @@ export default function Discipline() {
       const post = planDisciplineFinePost({ ...item, ...signed }, person, currentUser, board.today);
       const nextLedger = post ? [...ledger, post] : ledger;
       saveCases(cases.map((row) => (row.id === item.id ? { ...row, ...signed, updatedAt: now, fineAmount: post?.amount || row.fineAmount } : row)), { disciplineFineLedger: nextLedger });
-      saveDisciplineOnServer(company?.id, "sign", { ...item, ...signed }, regulation).then((r) => {
+      // The fine posted at signing travels with it, so a later lower/void can reverse it (planDisciplineFineVoid).
+      saveDisciplineOnServer(company?.id, "sign", { ...item, ...signed, fineAmount: post?.amount || item.fineAmount || 0 }, regulation).then((r) => {
         if (r.error) toast({ description: ar ? r.reason : r.reasonEn, variant: "destructive" });
       });
       if (company?.id && Number(item.cutDays || 0) > 0) {

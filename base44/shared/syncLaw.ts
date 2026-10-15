@@ -166,7 +166,7 @@ function unionById(a: any[], b: any[]) {
  * Per-employee duty rows. `canWrite(row)` decides whether this writer may touch an employee's row
  * (senior: all; HR with manage_employees: their scope). A record is never removed by a snapshot.
  */
-export function mergeEmployerDutyRoster(priorRows: any[], incomingRows: any[], canWrite: (row: any) => boolean = () => true) {
+export function mergeEmployerDutyRoster(priorRows: any[], incomingRows: any[], canWrite: (row: any) => boolean = () => true, stationOf: ((employeeId: string) => string | null | undefined) | null = null) {
   const prior = Array.isArray(priorRows) ? priorRows : [];
   const incoming = Array.isArray(incomingRows) ? incomingRows : [];
   const out = new Map<string, any>();
@@ -175,8 +175,10 @@ export function mergeEmployerDutyRoster(priorRows: any[], incomingRows: any[], c
     if (!r?.employeeId) continue;
     const key = str(r.employeeId);
     const before = out.get(key);
-    if (!canWrite(before || r)) continue;
-    const next: any = { ...(before || {}), id: key, employeeId: key, stationId: r.stationId ?? before?.stationId ?? null };
+    // The employee's station comes from the Employee record when known — never from the pushed row.
+    const station = stationOf ? (stationOf(key) ?? null) : (r.stationId ?? before?.stationId ?? null);
+    if (!canWrite({ employeeId: key, stationId: station })) continue;
+    const next: any = { ...(before || {}), id: key, employeeId: key, stationId: station };
     for (const list of LISTS) next[list] = unionById(before?.[list], r[list]);
     if (Object.prototype.hasOwnProperty.call(r, "occupationalExposure")) next.occupationalExposure = !!r.occupationalExposure;
     if (Object.prototype.hasOwnProperty.call(r, "exposureHazard")) next.exposureHazard = str(r.exposureHazard);
@@ -203,42 +205,105 @@ export const DISCIPLINE_STAGE_FIELDS: Record<string, string[]> = {
 /** Stages a worker may send for their own file (Art. 72 grievance, and the case thread). */
 export const DISCIPLINE_WORKER_STAGES = ["appeal", "withdraw", "message"];
 
+/** Statuses a file may be closed from — the board offers «close» on a heard file (no sanction) or a signed one. */
+export const DISCIPLINE_CLOSE_FROM = ["hearing", "decision", "notify"];
+/** Art. 72 grievance rulings: uphold, lower to a written warning, or void — never a heavier penalty. */
+export const DISCIPLINE_RULING_OUTCOMES = ["keep", "lower", "void"];
+const DISCIPLINE_DELIVERY_METHOD_IDS = ["hand", "registered_mail", "email"];
+const PENALTY_FIELDS = ["penaltyKind", "penalty", "penaltyAr", "penaltyEn", "penaltyId", "cutDays", "fineAmount", "deferMonths"];
+const ALL_STAGE_FIELDS = [...new Set(Object.values(DISCIPLINE_STAGE_FIELDS).flat())];
+const RAISE_KEEPS = ["penaltyKind", "penalty", "cutDays", "messages", "evidence"];
+const dayOf = (v: unknown) => { const d = str(v).slice(0, 10); return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : ""; };
+const refuse = (error: string, reason: string, reasonEn: string) => ({ ok: false as const, error, reason, reasonEn });
+const msgKey = (m: any) => (m && typeof m === "object" ? str(m.id || m.hash || JSON.stringify(m)) : str(m));
+
 /**
  * Builds the row disciplineSave stores: the server row plus only this stage's fields from the page.
- * Messages/evidence only grow. Returns { ok, row } or a named refusal.
+ * Messages/evidence only grow. A worker (non-manager) writes as themself: no evidence, and each new
+ * message is stamped from:"employee" with the authenticated name and the server time.
+ * Returns { ok, row } or a named refusal.
  */
-export function planDisciplineStageWrite(stage: string, existing: any, incoming: any) {
+export function planDisciplineStageWrite(stage: string, existing: any, incoming: any, opts: { worker?: boolean; actor?: { id?: string; name?: string }; now?: string; today?: string } = {}) {
   const s = str(stage);
+  const now = opts.now || new Date().toISOString();
+  const today = dayOf(opts.today) || now.slice(0, 10);
+  const inc = incoming || {};
   if (s === "raise") {
+    if (opts.worker) return refuse("FORBIDDEN", "ملفات الجزاء للإدارة.", "Sanction files are management-only.");
     if (existing && str(existing.status) && existing.status !== "notice") {
-      return { ok: false, error: "DISCIPLINE_CASE_EXISTS", reason: "ملف الجزاء قائم وتجاوز مرحلة الإبلاغ — لا يُعاد فتحه (المادة 71).", reasonEn: "The sanction file already exists past the notice stage (Article 71)." };
+      return refuse("DISCIPLINE_CASE_EXISTS", "ملف الجزاء قائم وتجاوز مرحلة الإبلاغ — لا يُعاد فتحه (المادة 71).", "The sanction file already exists past the notice stage (Article 71).");
     }
-    return { ok: true, row: { ...(existing || {}), ...(incoming || {}) } };
+    // A raise opens the notice only: no hearing, signature, grievance or ruling rides along (Art. 71).
+    const body: any = { ...inc };
+    // The proposed penalty (checked by the raise gate) and the opening note stay; everything later is stripped.
+    for (const f of ALL_STAGE_FIELDS) if (!RAISE_KEEPS.includes(f)) delete body[f];
+    const row: any = { ...(existing || {}), ...body, status: "notice", notifiedAt: existing?.notifiedAt || now };
+    if (existing?.employeeId) row.employeeId = existing.employeeId;
+    if (existing) { row.messages = existing.messages || []; row.evidence = existing.evidence || []; }
+    return { ok: true, row };
   }
   const fields = DISCIPLINE_STAGE_FIELDS[s];
-  if (!fields) return { ok: false, error: "STAGE_REQUIRED", reason: "حدّد المرحلة.", reasonEn: "Name the stage." };
+  if (!fields) return refuse("STAGE_REQUIRED", "حدّد المرحلة.", "Name the stage.");
   if (!existing) {
-    return { ok: false, error: "DISCIPLINE_CASE_MISSING", reason: "لا ملف جزاء محفوظ بهذا الرقم — يُفتح الملف أولاً بالإبلاغ (المادة 71).", reasonEn: "No stored sanction file with this id — open it with the notice first (Article 71)." };
+    return refuse("DISCIPLINE_CASE_MISSING", "لا ملف جزاء محفوظ بهذا الرقم — يُفتح الملف أولاً بالإبلاغ (المادة 71).", "No stored sanction file with this id — open it with the notice first (Article 71).");
   }
+  if (opts.worker && !DISCIPLINE_WORKER_STAGES.includes(s)) return refuse("FORBIDDEN", "ملفات الجزاء للإدارة.", "Sanction files are management-only.");
   if (s === "withdraw" && existing.status !== "appeal") {
-    return { ok: false, error: "DISCIPLINE_NO_APPEAL", reason: "لا تظلّم قائم لسحبه (المادة 72).", reasonEn: "There is no pending grievance to withdraw (Article 72)." };
+    return refuse("DISCIPLINE_NO_APPEAL", "لا تظلّم قائم لسحبه (المادة 72).", "There is no pending grievance to withdraw (Article 72).");
+  }
+  if (s === "close" && !DISCIPLINE_CLOSE_FROM.includes(str(existing.status))) {
+    return refuse("DISCIPLINE_CLOSE_STAGE", "يُغلق الملف بعد سماع الدفاع (بلا جزاء) أو بعد توقيع القرار — لا قبل ذلك، ولا أثناء تظلّم قائم (المادتان 71–72).", "A file closes after the defence is heard (no sanction) or after signing — not earlier, nor during a pending grievance (Arts. 71–72).");
+  }
+  if (s === "ruling") {
+    if (existing.status !== "appeal") return refuse("DISCIPLINE_RULING_STAGE", "يُبتّ في التظلّم القائم فقط (المادة 72).", "Only a pending grievance is ruled on (Article 72).");
+    if (!DISCIPLINE_RULING_OUTCOMES.includes(str(inc.rulingOutcome))) {
+      return refuse("DISCIPLINE_RULING_OUTCOME", "نتيجة التظلّم: تثبيت الجزاء، أو تخفيفه إلى إنذار، أو إلغاؤه — ولا يُشدَّد على المتظلّم (المادة 72).", "A grievance ruling upholds, lowers to a warning, or voids — never a heavier penalty (Article 72).");
+    }
+  }
+  if ((s === "delivery" || s === "paper") && !dayOf(existing.signedAt || existing.decidedAt)) {
+    return refuse("DISCIPLINE_NOT_SIGNED", "لا يُسجَّل إبلاغ القرار أو نسخته الموقّعة قبل توقيعه (المادة 72 · النموذج م68).", "The decision's delivery or signed copy is recorded only after signing (Art. 72 · model Art. 68).");
+  }
+  if (s === "delivery") {
+    const when = dayOf(inc.notifyDeliveredAt);
+    if (!DISCIPLINE_DELIVERY_METHOD_IDS.includes(str(inc.notifyMethod))) {
+      return refuse("DISCIPLINE_DELIVERY_METHOD", "اختر طريقة إبلاغ القرار: يداً بيد، أو بريد مسجّل، أو بريد إلكتروني ثابت في الملف (المادة 72 · النموذج م68).", "Pick how the decision was delivered (Art. 72 · model Art. 68).");
+    }
+    if (!when || when > today || when < dayOf(existing.signedAt || existing.decidedAt)) {
+      return refuse("DISCIPLINE_DELIVERY_DATE", "تاريخ الإبلاغ يقع بين تاريخ توقيع القرار واليوم.", "The delivery date falls between the signing date and today.");
+    }
+    if (inc.notifyMethod === "registered_mail" && !str(inc.notifyRef).trim()) {
+      return refuse("DISCIPLINE_DELIVERY_REF", "اكتب رقم الإرسال المسجّل.", "Enter the registered-mail tracking number.");
+    }
   }
   const row: any = { ...existing };
   for (const f of fields) {
-    if (!incoming || !Object.prototype.hasOwnProperty.call(incoming, f)) continue;
+    if (!Object.prototype.hasOwnProperty.call(inc, f)) continue;
+    if (f === "evidence" && opts.worker) continue;
     if (f === "messages" || f === "evidence") {
-      const seen = new Set((existing[f] || []).map((m: any) => (m && typeof m === "object" ? str(m.id || m.hash || JSON.stringify(m)) : str(m))));
-      const add = (incoming[f] || []).filter((m: any) => !seen.has(m && typeof m === "object" ? str(m.id || m.hash || JSON.stringify(m)) : str(m)));
+      const seen = new Set((existing[f] || []).map(msgKey));
+      let add = (inc[f] || []).filter((m: any) => !seen.has(msgKey(m)));
+      if (f === "messages" && opts.worker) {
+        add = add.map((m: any) => ({ ...(m && typeof m === "object" ? m : { text: str(m) }), from: "employee", senderName: str(opts.actor?.name), senderId: str(opts.actor?.id), createdAt: now }));
+      }
       row[f] = [...(existing[f] || []), ...add];
     } else if (f === "appealNote" && s === "message") {
-      row.appealNote = existing.appealNote || incoming.appealNote || "";
+      row.appealNote = existing.appealNote || inc.appealNote || "";
     } else {
-      row[f] = incoming[f];
+      row[f] = inc[f];
     }
+  }
+  if (s === "ruling") {
+    const outcome = str(inc.rulingOutcome);
+    for (const f of PENALTY_FIELDS) row[f] = existing[f];
+    if (outcome === "lower") {
+      // Lowered to a written warning with no fine — the only lighter step the board offers.
+      Object.assign(row, { penaltyKind: "warning", penalty: str(inc.penalty) || existing.penalty, cutDays: 0, fineAmount: 0 });
+    }
+    row.rulingOutcome = outcome;
   }
   // The stage, not the page, decides where the file now stands.
   const status: Record<string, string> = { hearing: "hearing", sign: "notify", appeal: "appeal", withdraw: "notify", close: "closed" };
   if (status[s]) row.status = status[s];
-  if (s === "ruling") row.status = incoming?.status === "closed" ? "closed" : "ruling";
+  if (s === "ruling") row.status = str(inc.rulingOutcome) === "void" ? "closed" : "ruling";
   return { ok: true, row };
 }

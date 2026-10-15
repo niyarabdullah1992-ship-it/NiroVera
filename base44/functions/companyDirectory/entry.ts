@@ -1004,7 +1004,14 @@ Deno.serve(async (req) => {
         if (!hr) return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });
         const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
         const stations = context.scope === null || context.senior ? null : new Set(context.scope || []);
-        const merged = mergeEmployerDutyRoster(rows[0]?.payload || [], Array.isArray(payload) ? payload : [], (row) => stations === null || stations.has(row?.stationId));
+        // Scope is checked against each employee's station on the Employee entity, not the pushed row.
+        const people = await base44.asServiceRole.entities.Employee.filter({ companyId });
+        const stationById = new Map((people || []).map((e) => [String(e.employeeId), e.stationId || e.station_id || null]));
+        const merged = mergeEmployerDutyRoster(
+          rows[0]?.payload || [], Array.isArray(payload) ? payload : [],
+          (row) => stationById.has(String(row.employeeId)) && (stations === null || stations.has(row.stationId)),
+          (employeeId) => stationById.get(String(employeeId)) ?? null,
+        );
         await storeMerged(rows, merged);
         return Response.json({ ok: true });
       }

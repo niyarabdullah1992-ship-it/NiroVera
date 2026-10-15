@@ -41,30 +41,33 @@ assert.equal(actorMayGenerate({ role: "employee" }, catalogById("board_summary")
 assert.equal(actorMayGenerate({ role: "director" }, catalogById("board_summary")), true);
 assert.equal(actorMayGenerate({ role: "employee", owner: true }, catalogById("audit_trail")), true);
 
+// The timesheet reads the ROSTERED shift (no fixed 07:00 / 8 h) and deducts rest (Art. 102) — the
+// same reading as the attendance board (actualDuty.js). 2026-08-02 is a Sunday working day.
+const MORNING = { id: "m", start: "07:00", end: "15:00", restMinutes: 30 };
 const present = deriveTimesheetDay({
-  date: "2026-08-01",
+  date: "2026-08-02",
   checkIn: "07:05",
   checkOut: "16:10",
-});
+}, { shift: MORNING });
 assert.equal(present.status, "present");
 assert.equal(present.ordinaryMinutes, 480);
-assert.equal(present.overtimeMinutes, 65); // 07:05→16:10 = 545 − 480
+assert.equal(present.overtimeMinutes, 35); // 07:05→16:10 = 545 − 30 rest = 515 − 480
 assert.equal(present.late, false);
 
 const late = deriveTimesheetDay({
-  date: "2026-08-02",
+  date: "2026-08-03",
   checkIn: "07:22",
   checkOut: "15:00",
-});
+}, { shift: MORNING });
 assert.equal(late.status, "late");
 assert.ok(late.lateMinutes > 0);
 assert.equal(late.overtimeMinutes, 0);
 
 const open = deriveTimesheetDay({
-  date: "2026-08-03",
+  date: "2026-08-04",
   checkIn: "07:00",
   checkOut: null,
-});
+}, { shift: MORNING });
 assert.equal(open.openCheckout, true);
 assert.equal(open.ordinaryMinutes, 0);
 

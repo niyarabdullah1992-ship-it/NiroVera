@@ -4,6 +4,8 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { useI18n } from "@/lib/i18n";
 import { isOnApprovedLeave } from "@/lib/leaveTypes";
 import { checkPublishGates } from "@/lib/shiftDerivations";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { laborDayKey } from "@/lib/laborRules";
 import { ShieldCheck } from "lucide-react";
 import { ACCENT, MUTED, NAVY, RADIUS, PAPER_SHADOW, dot, statusBannerQuiet } from "@/lib/platformStyles";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
@@ -51,7 +53,7 @@ const CHECK_NOTES = {
 /**
  * Pre-publication rota checks (hours, rest, coverage).
  */
-export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTypes, assignments, canManage }) {
+export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTypes, assignments, schedule = null, canManage }) {
   const { company, data } = useAuth();
   const { lang } = useI18n();
   const ar = lang === "ar";
@@ -75,7 +77,23 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
         }
       }
     });
-    return checkPublishGates({ year, monthIndex, shiftTypes, assignments, onLeaveIds, namesById });
+    // Fallback when the cloud function is unavailable: the same per-person 18632 / juvenile (161–166) / 3337 blocks as the server.
+    const station = (data?.stations || []).find((row) => String(row?.id) === String(stationId)) || null;
+    return checkPublishGates({
+      year,
+      monthIndex,
+      shiftTypes,
+      assignments,
+      onLeaveIds,
+      namesById,
+      employees: data?.employees || [],
+      schedule: schedule || { shiftTypes, assignments },
+      station,
+      settings: data?.settings || null,
+      company,
+      laborCalendar: laborCalendarOf(data),
+      today: laborDayKey(new Date()),
+    });
   };
 
   const refresh = async () => {
@@ -110,7 +128,7 @@ export default function RotaPublishPanel({ stationId, year, monthIndex, shiftTyp
   useEffect(() => {
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stationId, year, monthIndex, JSON.stringify(shiftTypes), JSON.stringify(assignments)]);
+  }, [stationId, year, monthIndex, JSON.stringify(shiftTypes), JSON.stringify(assignments), JSON.stringify(schedule?.sunExposure || null)]);
 
   const publish = async () => {
     if (!canManage || !company?.id) return;

@@ -3,6 +3,8 @@ import OtDecisionBoard from "@/components/schedules/OtDecisionBoard";
 import { isOtDecisionOpen } from "@/lib/attendanceDerivations";
 import { weekKeyFromDate } from "@/lib/shiftWeek";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { plannedOtWeeks } from "@/lib/otDecisionPlan";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
 
 /**
  * Art. 107 — where overtime decisions actually get made. One OtDecisionBoard per (week, station)
@@ -10,17 +12,20 @@ import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
  *  - manage: every week with an open entry, for the people this manager sees.
  *  - mine: only weeks with an open entry for the viewer — so a worker answers his cap-consent request
  *    and sees the overtime that waits for a decision. Nothing open → nothing rendered.
+ *  - both: the current and next week's PLANNED overtime from the published roster (plannedOtWeeks) also
+ *    shows — labelled «مخطط — لم يُعمل بعد», not payable until the punches prove it (Art. 107).
  */
 export default function OtDecisionsPanel({ data, companyId: companyIdProp, currentUser, employees = [], mode = "manage", canEdit = false, ar = true, onSaved }) {
   const companyId = companyIdProp || data?.id || data?.companyId || "";
   const laborCalendar = useMemo(() => laborCalendarOf(data), [data]);
   const otDecisions = data?.otDecisions || {};
+  const today = toRiyadhDateKey();
   const groups = useMemo(() => {
     const ids = new Set((employees || []).map((employee) => String(employee?.id || "")).filter(Boolean));
     const weeks = new Map();
-    const add = (weekKey, employee) => {
+    const add = (weekKey, employee, rosterStationId) => {
       if (!weeks.has(weekKey)) weeks.set(weekKey, new Map());
-      const stationId = String(employee?.profile?.workStationId || employee?.stationId || data?.stations?.[0]?.id || "");
+      const stationId = String(rosterStationId || employee?.profile?.workStationId || employee?.stationId || data?.stations?.[0]?.id || "");
       const byStation = weeks.get(weekKey);
       if (!byStation.has(stationId)) byStation.set(stationId, []);
       const list = byStation.get(stationId);
@@ -35,6 +40,12 @@ export default function OtDecisionsPanel({ data, companyId: companyIdProp, curre
       const employee = employees.find((row) => String(row.id) === employeeId);
       add(weekKeyFromDate(day), employee);
     }
+    // Planned roster overtime for the current and next week — shown before it is punched, never payable yet.
+    for (const planned of plannedOtWeeks(data, employees, { today })) {
+      if (!ids.has(planned.employeeId)) continue;
+      const employee = employees.find((row) => String(row.id) === planned.employeeId);
+      add(planned.weekKey, employee, planned.stationId);
+    }
     return [...weeks.entries()]
       .sort((a, b) => String(b[0]).localeCompare(String(a[0])))
       .flatMap(([weekKey, byStation]) => [...byStation.entries()].map(([stationId, list]) => ({
@@ -43,7 +54,7 @@ export default function OtDecisionsPanel({ data, companyId: companyIdProp, curre
         schedule: (data?.schedules || []).find((row) => String(row.stationId) === stationId) || null,
         employees: list,
       })));
-  }, [employees, otDecisions, data, mode]);
+  }, [employees, otDecisions, data, mode, today]);
 
   if (!groups.length) return null;
   return (
@@ -66,6 +77,7 @@ export default function OtDecisionsPanel({ data, companyId: companyIdProp, curre
             mode={mode}
             ar={ar}
             onSaved={onSaved}
+            today={today}
           />
         </div>
       ))}

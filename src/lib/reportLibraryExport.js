@@ -1,6 +1,6 @@
 import { deriveTeamAttendanceToday } from "@/lib/attendance";
 import { listLocalTodayAttendance, mergeAttendanceRows } from "@/lib/localAttendanceFallback";
-import { deriveAttendanceOtAnalysis, REPORT_CATALOG } from "@/lib/reportsDerivations";
+import { deriveAttendanceOtAnalysis, deriveAttendanceRowDay, REPORT_CATALOG } from "@/lib/reportsDerivations";
 import { allowedNavFor } from "@/lib/navVisibility";
 import { buildLocalOpsBoard } from "@/lib/localOpsFallback";
 import { netOf } from "@/lib/payroll";
@@ -129,19 +129,23 @@ function attendanceOtDays(data, employees, period) {
       const employeeId = row.employeeId || row.employee_id;
       const checkIn = row.check_in_at || row.checkInAt || null;
       const checkOut = row.check_out_at || row.checkOutAt || null;
-      const workHours = row.work_hours ?? row.workHours ?? (row.ordinaryMinutes ? Number(row.ordinaryMinutes) / 60 : "");
+      // Same reading as the attendance board: rostered shift + actual duty (rest deducted, Art. 107 overtime, flags).
+      const day = deriveAttendanceRowDay(row, data);
+      const workHours = day.workedMinutes != null ? Math.round((day.workedMinutes / 60) * 10) / 10 : "";
       return {
         employeeId,
         employeeName: row.employeeName || employeeName(data, employeeId),
         stationId: row.stationId || row.station_id || data?.employees?.find((e) => e.id === employeeId)?.stationId,
-        date: String(row.date || row.dateKey || "").slice(0, 10),
+        date: day.date,
         checkIn,
         checkOut,
         workHours,
-        ordinaryMinutes: Number(row.ordinaryMinutes || (Number(workHours) || 0) * 60) || 0,
-        overtimeMinutes: Number(row.overtimeMinutes || row.overtime_minutes) || 0,
-        lateMinutes: Number(row.lateMinutes || row.late_minutes) || 0,
-        status: row.status || (checkIn ? "present" : "absent"),
+        ordinaryMinutes: day.ordinaryMinutes,
+        overtimeMinutes: day.overtimeMinutes,
+        lateMinutes: day.lateMinutes,
+        status: row.status === "leave" || row.status === "rest" ? row.status : day.status,
+        shiftLabel: day.shiftLabel || (day.rostered ? day.shiftStart : ""),
+        flags: day.flags || [],
         excusedAbsence: !!(row.excused || row.excusedAbsence),
         manual: row.manual_override || row.location_status === "manual" || row.locationStatus === "manual",
       };
@@ -218,16 +222,18 @@ export function buildLibraryReport({
     const days = attendanceOtDays(data, team, period);
     const analysis = deriveAttendanceOtAnalysis(days);
     const headers = ar
-      ? ["الموظف", "الفرع", "التاريخ", "الحالة", "عادي (د)", "إضافي (د)", "تأخير (د)"]
-      : ["Employee", "Station", "Date", "Status", "Ordinary (m)", "OT (m)", "Late (m)"];
+      ? ["الموظف", "الفرع", "التاريخ", "الوردية", "الحالة", "عادي (د)", "إضافي (د)", "تأخير (د)", "تنبيهات"]
+      : ["Employee", "Station", "Date", "Shift", "Status", "Ordinary (m)", "OT (m)", "Late (m)", "Flags"];
     const rows = days.map((d) => [
       d.employeeName,
       stationName(data, d.stationId),
       d.date,
+      d.shiftLabel || (ar ? "خارج الجدول" : "Unrostered"),
       attendanceStatusLabel(d, ar),
       d.ordinaryMinutes,
       d.overtimeMinutes,
       d.lateMinutes,
+      (d.flags || []).map((flag) => (ar ? flag.reason : flag.reasonEn)).join(" · "),
     ]);
     return {
       entry,

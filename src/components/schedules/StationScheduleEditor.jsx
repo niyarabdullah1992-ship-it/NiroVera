@@ -359,6 +359,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
         monthIndex={cursor.month}
         shiftTypes={shiftTypes}
         assignments={assignments}
+        schedule={schedule}
         canManage={canManage}
       />
     </div>

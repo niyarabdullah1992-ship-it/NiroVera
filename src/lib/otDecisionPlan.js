@@ -8,7 +8,7 @@
 
 import { checkOtDecisionGate, isOtDecisionOpen, overtimeYearUsageOutsideAssignments } from "./attendanceDerivations.js";
 import { deriveActualDuty } from "./actualDuty.js";
-import { employeeShiftOnDay, holidayWorkOn, weekNamedOvertime } from "./shiftWeek.js";
+import { addDays, employeeShiftOnDay, holidayWorkOn, parseDateKey, weekDateKeys, weekKeyFromDate, weekNamedOvertime, weekPublishState } from "./shiftWeek.js";
 import { laborCalendarOf } from "./ummAlQuraCalendar.js";
 import { toRiyadhDateKey } from "./riyadhDate.js";
 import { OT_STATUS, isOvertimeAssignment, otCompensationOf, parseOtHours, OT_COMP_CREDIT } from "./overtimeAssignment.js";
@@ -286,4 +286,69 @@ export function planOtDecision(live, employeeId, dateKey, {
     },
     result: { ok: true, decision: gate.decision },
   };
+}
+
+/* ---------------- planned roster overtime (a plan, not proof) ---------------- */
+
+export const PLANNED_OT_LABEL_AR = "مخطط — لم يُعمل بعد";
+export const PLANNED_OT_LABEL_EN = "Planned — not worked yet";
+
+/**
+ * How the decision board treats one day — the same rules as planOtDecision:
+ * - punches proved it → a decision the manager owes (pay or compensatory leave, never reject);
+ * - a holiday entry stamped from the published roster but unproven → «planned»; payable only once the
+ *   day has passed (OT_NOT_WORKED_YET before), and closable as «not worked»;
+ * - roster-named overtime with no entry at all → «planned», not payable: the decision opens when the
+ *   punches stamp the day (stampActualOvertime);
+ * - any other open entry (an assignment re-opened, a cap-consent request) → decidable as before.
+ */
+export function otDayStatus(entry, dateKey, today) {
+  const day = OT_KEY_DAY(dateKey);
+  const asOf = String(today || toRiyadhDateKey()).slice(0, 10);
+  if (entry && !isOtDecisionOpen(entry)) return { planned: false, payable: false, closable: false, decided: true };
+  if (entry?.workedProven === true) return { planned: false, payable: true, closable: false, decided: false };
+  if (entry?.holiday === true) return { planned: true, payable: day < asOf, closable: true, decided: false };
+  if (entry) return { planned: false, payable: true, closable: false, decided: false };
+  return { planned: true, payable: false, closable: false, decided: false };
+}
+
+function scheduleForWeek(d, employee, weekKey) {
+  const own = String(employee?.profile?.workStationId || employee?.stationId || "");
+  const list = [...(d?.schedules || [])].sort((a, b) => (String(b.stationId) === own) - (String(a.stationId) === own));
+  const keys = weekDateKeys(weekKey);
+  return list.find((schedule) => keys.some((key) => employeeShiftOnDay(schedule, employee.id, key))) || null;
+}
+
+/**
+ * Art. 107 — overtime the PUBLISHED roster already names for the current and next week (beyond the
+ * day/week cap, weekly rest, confirmed holiday work) that no punch has proven yet. Shown on the board
+ * labelled «مخطط — لم يُعمل بعد»: visible to the manager and the worker, never payable until worked.
+ * Returns [{ weekKey, stationId, employeeId, rows: [{ dateKey, overtimeMinutes, kind }] }].
+ */
+export function plannedOtWeeks(d, employees = [], { today } = {}) {
+  const asOf = String(today || toRiyadhDateKey()).slice(0, 10);
+  const todayDate = parseDateKey(asOf) || new Date();
+  const current = weekKeyFromDate(todayDate);
+  const next = weekKeyFromDate(addDays(parseDateKey(current), 7));
+  const calendar = laborCalendarOf(d);
+  const out = [];
+  for (const employee of employees || []) {
+    if (!employee?.id) continue;
+    for (const weekKey of [current, next]) {
+      const schedule = scheduleForWeek(d, employee, weekKey);
+      if (!schedule) continue;
+      const state = weekPublishState(schedule, weekKey, todayDate);
+      if (!(state.kind === "published" || (state.kind === "edited" && state.snap))) continue;
+      const named = weekNamedOvertime(schedule, employee, weekKey, d, calendar, true);
+      const byDay = new Map();
+      for (const row of named.rows || []) {
+        if (!(row.overtimeMinutes > 0)) continue;
+        byDay.set(row.dateKey, { dateKey: row.dateKey, kind: row.kind, overtimeMinutes: (byDay.get(row.dateKey)?.overtimeMinutes || 0) + row.overtimeMinutes });
+      }
+      const rows = [...byDay.values()].filter((row) => otDayStatus(d?.otDecisions?.[`${employee.id}:${row.dateKey}`], row.dateKey, asOf).planned);
+      if (!rows.length) continue;
+      out.push({ weekKey, stationId: String(schedule.stationId || ""), employeeId: String(employee.id), rows });
+    }
+  }
+  return out;
 }

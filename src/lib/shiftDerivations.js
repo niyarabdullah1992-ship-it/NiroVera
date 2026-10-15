@@ -2,6 +2,7 @@
 
 import { citeRule, isRamadanDay, isRamadanHoursSubject, ruleValue } from "./laborRules.js";
 import { checkHeatBanGate, heatBanWindow, isHeatBanDate, monthHasHeatBanDay, shiftOverlapsNight } from "./contractLawDerivations.js";
+import { rosterLawChecks } from "./rosterLawGates.js";
 
 export function minutesBetween(start, end) {
   const [sh, sm] = String(start || "0:0").split(":").map(Number);
@@ -230,6 +231,13 @@ export function checkPublishGates({
   restDow = 5,
   namesById = {},
   employees = [],
+  // Full schedule (sunExposure marks, night flags) — enables the 18632 / juvenile / 3337 per-person blocks, as on the server.
+  schedule = null,
+  station = null,
+  settings = null,
+  company = null,
+  laborCalendar = null,
+  today = undefined,
 }) {
   const onLeave = new Set([...onLeaveIds].map(String));
   const days = daysInMonth(year, monthIndex);
@@ -392,8 +400,10 @@ export function checkPublishGates({
   }
 
   const consecArticle = citeRule("hours.rest.maxConsecutiveHours", onDate)?.article;
+  const policy = { ...(company?.hoursPolicy || {}), ...(company?.attendanceSettings?.hoursPolicy || {}) };
+  const continuous103 = policy.continuousWork103 === true || String(policy.continuousWork103) === "true";
   const consecFails = shiftTypes
-    .map((st) => ({ st, gate: checkConsecutiveWorkGate({ start: st.start, end: st.end, restMinutes: st.restMinutes, onDate }) }))
+    .map((st) => ({ st, gate: checkConsecutiveWorkGate({ start: st.start, end: st.end, restMinutes: st.restMinutes, breaks: st.breaks, breakCount: st.breakCount, continuous103, onDate }) }))
     .filter((row) => !row.gate.ok);
   const consecFail = consecFails[0] || null;
   const heatFails = shiftTypes
@@ -490,14 +500,14 @@ export function checkPublishGates({
       id: "weekly_rest",
       ok: restOk,
       article: weeklyRestArticle,
-      labelAr: restOk ? `راحة أسبوعية ${weeklyRestHours} ساعة متصلة` : `${restBreachName} بلا يوم راحة`,
-      labelEn: restOk ? `${weeklyRestHours} h continuous weekly rest` : `${restBreachName} has no rest day`,
+      labelAr: restOk ? `راحة أسبوعية ${weeklyRestHours} ساعة متصلة` : `${restBreachName} مجدول أسبوعًا كاملًا بلا يوم راحة`,
+      labelEn: restOk ? `${weeklyRestHours} h continuous weekly rest` : `${restBreachName} is scheduled a full week with no rest day`,
     },
     {
       id: "coverage",
       ok: openCells === 0,
-      labelAr: openCells === 0 ? "كل ورديات الشهر مُسندة" : `${openCells} خلية بلا إسناد`,
-      labelEn: openCells === 0 ? "Every shift this month is assigned" : `${openCells} unassigned cells`,
+      labelAr: openCells === 0 ? "كل ورديات الشهر مُسندة" : `${openCells} خلية في الشهر بلا إسناد`,
+      labelEn: openCells === 0 ? "Every shift this month is assigned" : `${openCells} cell${openCells === 1 ? "" : "s"} unassigned this month`,
     },
     {
       id: "leave_excluded",
@@ -531,6 +541,26 @@ export function checkPublishGates({
       labelEn: nightCount ? `${nightCount} shifts enter ${nightWin} (night work — night worker if ${nightWorkerHours} hours or more)` : "No shift enters the night window this month",
     },
   ];
+
+  if (schedule) {
+    // Same per-person blocks as the server checkPublishGates (18632, juveniles 161–166, 3337) — same ids, same rule rows.
+    const law = rosterLawChecks({
+      year,
+      monthIndex,
+      schedule: { ...schedule, shiftTypes, assignments },
+      employees,
+      station,
+      settings,
+      company,
+      laborCalendar,
+      today,
+    });
+    const lawIds = new Set(law.map((row) => row.id));
+    for (let i = checks.length - 1; i >= 0; i -= 1) if (lawIds.has(checks[i].id)) checks.splice(i, 1);
+    for (const row of law) {
+      checks.push({ id: row.id, ok: row.ok, block: row.block, article: row.article, labelAr: row.labelAr, labelEn: row.labelEn, noteAr: row.noteAr, noteEn: row.noteEn });
+    }
+  }
 
   const failed = checks.find((c) => !c.ok && c.block !== false) || null;
   return { checks, blocked: !!failed, failed, openCells, weeklyMaxHours, coveragePct };

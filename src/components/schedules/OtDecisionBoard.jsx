@@ -9,6 +9,8 @@ import LawGateAlertRow from "@/components/shared/LawGateAlertRow";
 import { toast } from "@/components/ui/use-toast";
 import { SW } from "@/lib/shiftWeek";
 import { viewerEmployeeId } from "@/lib/employeeFileView";
+import { otDayStatus, PLANNED_OT_LABEL_AR, PLANNED_OT_LABEL_EN } from "@/lib/otDecisionPlan";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
 
 /**
  * Live Art. 107 overtime decision — hours derived from the published rota
@@ -27,7 +29,9 @@ export default function OtDecisionBoard({
   mode = "manage",
   ar = true,
   onSaved,
+  today,
 }) {
+  const asOf = String(today || toRiyadhDateKey()).slice(0, 10);
   const [consent, setConsent] = useState({});
   const [enjoyDate, setEnjoyDate] = useState({});
   const [windowAgreed, setWindowAgreed] = useState({});
@@ -66,12 +70,16 @@ export default function OtDecisionBoard({
       const pack = { ...named, totalHours };
       const decided = items.map((row) => {
         const entry = otDecisions[`${employee.id}:${row.dateKey}`] || null;
-        return { ...row, decision: entry && !isOtDecisionOpen(entry) ? entry : null, open: entry && isOtDecisionOpen(entry) ? entry : null };
+        // Planned roster overtime (no punches yet) stays visible but is not payable until worked (Art. 107).
+        const status = otDayStatus(entry, row.dateKey, asOf);
+        return { ...row, status, decision: entry && !isOtDecisionOpen(entry) ? entry : null, open: entry && isOtDecisionOpen(entry) ? entry : null };
       });
+      const plannedHours = Math.round(decided.filter((row) => row.status.planned).reduce((sum, row) => sum + row.overtimeHours, 0) * 100) / 100;
+      pack.plannedHours = plannedHours;
       const pending = decided.filter((row) => !row.decision);
       return { employee, pack, ytd, pending, decided };
     }).filter((row) => row.pack.totalHours > 0);
-  }, [employees, schedule, weekStart, company, laborCalendar, otDecisions, ar]);
+  }, [employees, schedule, weekStart, company, laborCalendar, otDecisions, ar, asOf]);
 
   const mine = mode === "mine";
   const viewerId = viewerEmployeeId(currentUser);
@@ -89,9 +97,6 @@ export default function OtDecisionBoard({
           pillLabel={ar ? "بلا أثر" : "No effect"}
           summary={ar ? "قرار الإضافي — المادة 107" : "Overtime decision — Art. 107"}
         />
-        <div style={{ marginTop: 8 }}>
-          <LaborArticleCite ruleId="hours.ot.premium" ar={ar} />
-        </div>
         <p style={{ margin: "8px 0 0", fontSize: 12, color: SW.muted, lineHeight: 1.7 }}>
           {ar
             ? "لا ساعات إضافية مشتقّة من الجدول المنشور في هذا الأسبوع — فوق العادي أو في الراحة الأسبوعية أو العيد."
@@ -150,11 +155,13 @@ export default function OtDecisionBoard({
           ar={ar}
           article="107"
           status="waiting"
-          pillLabel={ar ? "ينتظر" : "Waiting"}
+          pillLabel={visible.every((row) => row.decided.every((item) => item.status.planned))
+            ? (ar ? "مخطط" : "Planned")
+            : (ar ? "ينتظر" : "Waiting")}
           summary={ar ? "قرار الإضافي — أجر الساعة + 50% أو إجازة تعويضية بموافقة العامل" : "Overtime decision — hourly + 50% or compensatory leave with consent"}
         />
+        {/* «المادة 107» is already the row's chip above — only the compensatory-leave cite is added here. */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <LaborArticleCite ruleId="hours.ot.premium" ar={ar} />
           <LaborArticleCite ruleId="hours.ot.compLeave.cite" ar={ar} />
         </div>
         <LaborArticleCite ruleId="hours.ot.premium" ar={ar} showText showChip={false} />
@@ -171,8 +178,8 @@ export default function OtDecisionBoard({
           ) : null}
           <span style={{ fontSize: 11, color: SW.muted }}>
             {ar
-              ? `${row.pack.totalHours} ساعة إضافية هذا الأسبوع · السنوي المعتمد ${row.ytd} / ${cap}`
-              : `${row.pack.totalHours} OT hours this week · approved YTD ${row.ytd} / ${cap}`}
+              ? `${row.pack.totalHours} ساعة إضافية هذا الأسبوع${row.pack.plannedHours ? ` (منها ${row.pack.plannedHours} مخطط لم يُعمل بعد)` : ""} · السنوي المعتمد ${row.ytd} / ${cap}`
+              : `${row.pack.totalHours} OT hours this week${row.pack.plannedHours ? ` (${row.pack.plannedHours} planned, not worked yet)` : ""} · approved YTD ${row.ytd} / ${cap}`}
           </span>
           {row.decided.map((item) => {
             const key = `${row.employee.id}:${item.dateKey}`;
@@ -181,6 +188,16 @@ export default function OtDecisionBoard({
               <div key={key} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 0", borderTop: `1px solid ${SW.hair}` }}>
                 <span style={{ fontSize: 12, fontWeight: 600 }}>{item.dateKey} · {item.overtimeHours} {ar ? "ساعة" : "h"}</span>
                 <span style={{ fontSize: 11, color: SW.mid, lineHeight: 1.7 }}>{item.label}</span>
+                {item.status.planned && !saved ? (
+                  <span data-ot-planned="1" style={{ fontSize: 11, color: SW.ink, lineHeight: 1.7 }}>
+                    <span style={{ fontWeight: 600, padding: "1px 8px", border: `1px solid ${SW.line}`, borderRadius: 999, marginInlineEnd: 6 }}>
+                      {ar ? PLANNED_OT_LABEL_AR : PLANNED_OT_LABEL_EN}
+                    </span>
+                    {item.status.payable
+                      ? (ar ? "لا حضور يثبته — يُصرف إن عُمل، أو يُغلق «لم يُعمل»." : "No punches prove it — paid if it was worked, or closed as «not worked».")
+                      : (ar ? "من الجدول المنشور — لا يُصرف قبل أن يُعمل ويثبته الحضور والانصراف (المادة 107)." : "From the published roster — not payable until worked and proven by the punches (Art. 107).")}
+                  </span>
+                ) : null}
                 {item.proven ? (
                   <span data-ot-proven="1" style={{ fontSize: 11, color: SW.ink, lineHeight: 1.7 }}>
                     {ar ? "مثبتة بالحضور والانصراف — تُصرف أو تُعوَّض بإجازة، ولا تُرفض (المادة 107)." : "Proven by the punches — paid or taken as compensatory leave, never rejected (Art. 107)."}
@@ -209,9 +226,13 @@ export default function OtDecisionBoard({
                         : (ar ? `${premium} — معتمد للمسير` : `${premium} — approved for payroll`)}
                   </span>
                 ) : mine ? (
-                  <span style={{ fontSize: 11, color: SW.gold }}>{ar ? "بانتظار قرار المسؤول" : "Awaiting the manager's decision"}</span>
-                ) : canEdit && item.open?.decision !== "pending_worker_cap_consent" ? (
+                  item.status.planned && !item.status.payable ? null : (
+                    <span style={{ fontSize: 11, color: SW.gold }}>{ar ? "بانتظار قرار المسؤول" : "Awaiting the manager's decision"}</span>
+                  )
+                ) : canEdit && item.status.planned && !item.status.payable && !item.status.closable ? null
+                : canEdit && item.open?.decision !== "pending_worker_cap_consent" ? (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                    {item.status.payable ? (<>
                     <label style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6 }}>
                       <input
                         type="checkbox"
@@ -252,7 +273,8 @@ export default function OtDecisionBoard({
                     >
                       {premium}
                     </button>
-                    {item.plannedOnly ? (
+                    </>) : null}
+                    {item.status.closable ? (
                       <button
                         type="button"
                         data-ot-not-worked="1"
@@ -263,6 +285,7 @@ export default function OtDecisionBoard({
                         {ar ? "لم يُعمل — إغلاق" : "Not worked — close"}
                       </button>
                     ) : null}
+                    {item.status.payable ? (
                     <button
                       type="button"
                       disabled={busy === key}
@@ -271,6 +294,7 @@ export default function OtDecisionBoard({
                     >
                       {ar ? "إجازة تعويضية" : "Compensatory leave"}
                     </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

@@ -15,6 +15,7 @@ import {
   type OtDayLike,
   type TimesheetCloseLike,
 } from "../../shared/reportsDerivations.ts";
+import { shiftOnDay } from "../../shared/rosterLawGates.ts";
 
 /**
  * do-not-invoke-from-frontend — daily reports live on the `reports` blob (store + dailyReport).
@@ -103,6 +104,38 @@ Deno.serve(async (req) => {
           p && p.companyId === auth.companyId && p.employeeId && p.date,
       );
       return base;
+    };
+
+    /**
+     * The timesheet reads each day against the person's ROSTERED shift (any station's roster, their own
+     * first) and the company hours policy — the same reading as the attendance board, never 07:00 / 8 h.
+     */
+    const timesheetDayReader = async (employeeId: string) => {
+      const blobOf = async (category: string) => {
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId: auth.companyId, category }).catch(() => []);
+        return rows?.[0]?.payload;
+      };
+      const schedules: any[] = await blobOf("schedules").then((p: any) => (Array.isArray(p) ? p.filter((s: any) => s && s.stationId) : [])).catch(() => []);
+      const metaRaw: any = await blobOf("companyMeta").catch(() => null);
+      const meta: any = Array.isArray(metaRaw) ? metaRaw[0] || {} : metaRaw || {};
+      const emps: any[] = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId }).catch(() => []);
+      const employee = (emps || []).find((e: any) => String(e?.id) === employeeId || String(e?.employeeId) === employeeId) || { id: employeeId };
+      const ids = [employee.id, employee.employeeId, employeeId].filter(Boolean).map(String);
+      const own = String(employee?.profile?.workStationId || employee?.stationId || "");
+      const ordered = [...schedules].sort((a, b) => Number(String(b.stationId) === own) - Number(String(a.stationId) === own));
+      const company = { hoursPolicy: meta.hoursPolicy || {}, attendanceSettings: meta.attendanceSettings || {}, workPosting: meta.workPosting };
+      const laborCalendar = meta.laborCalendar || meta.settings?.laborCalendar || null;
+      return (p: any) => {
+        let shift: any = null;
+        for (const schedule of ordered) {
+          for (const id of ids) {
+            shift = shiftOnDay(schedule, id, p.date);
+            if (shift) break;
+          }
+          if (shift) break;
+        }
+        return deriveTimesheetDay(p, { shift, employee, company, laborCalendar });
+      };
     };
 
     const savePayload = async (_payload: ReportsPayload) => {
@@ -265,7 +298,8 @@ Deno.serve(async (req) => {
         closed: false,
       };
       const punches = data.punches.filter((p) => p.employeeId === employeeId && p.date.startsWith(period));
-      const days = punches.map((p) => deriveTimesheetDay(p));
+      const readDay = await timesheetDayReader(employeeId);
+      const days = punches.map((p) => readDay(p));
       const totals = deriveTimesheetTotals(days);
       return Response.json({
         ok: true,
@@ -297,7 +331,8 @@ Deno.serve(async (req) => {
         closed: false,
       };
       const punches = data.punches.filter((p) => p.employeeId === employeeId && p.date.startsWith(period));
-      const totals = deriveTimesheetTotals(punches.map((p) => deriveTimesheetDay(p)));
+      const readDay = await timesheetDayReader(employeeId);
+      const totals = deriveTimesheetTotals(punches.map((p) => readDay(p)));
       const gate = checkCloseTimesheetGate({
         sheet: existing,
         employeeId,

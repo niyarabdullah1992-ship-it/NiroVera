@@ -5,7 +5,7 @@
 import { getCompanyData, updateCompany } from "@/lib/store";
 import { logAudit } from "@/lib/auditLog";
 import { checkArticle90Gate, checkArticle92LoanGate, contractWage } from "@/lib/payrollDerivations";
-import { checkCourtDebtGate, checkDamageLineGate, COURT_DEBT_KINDS, damageRefundsFor } from "@/lib/payrollLaw";
+import { checkCourtDebtGate, checkDamageLineGate, COURT_DEBT_KINDS, damageCaseIdFor, damageCaseOfLine, damageRefundsFor } from "@/lib/payrollLaw";
 import { runLockReason } from "@/lib/payroll";
 import { PAYROLL_DENY, canFeedPayroll, canManagePayroll, ownsPayrollItem, payrollFeedInReach } from "@/lib/payrollRights";
 
@@ -106,7 +106,8 @@ export function addDeductionLine(companyId, month, item, line, actor) {
     // the worker's fifteen-working-day objection window.
     const gate = checkDamageLineGate({ amount, monthlyWage: contractWage(item), monthUsed: sumOf("damage"), noticeOn: line.damageNoticeOn });
     if (!gate.ok) return gate.error;
-    lawExtras = { damageNoticeOn: String(line.damageNoticeOn).slice(0, 10), objectionLastDay: gate.objectionLastDay };
+    // The damage case id ties instalments together and lets an objection name exactly what it contests.
+    lawExtras = { damageNoticeOn: String(line.damageNoticeOn).slice(0, 10), objectionLastDay: gate.objectionLastDay, damageCaseId: damageCaseIdFor(line) };
   }
   if (line.source === "court_debt") {
     const kind = COURT_DEBT_KINDS.some((row) => row.key === line.courtDebtKind) ? line.courtDebtKind : "other";
@@ -225,13 +226,42 @@ export function backfillLegacyDeduction(companyId, month, item) {
  * charge drops to zero (keeping what was charged); a line already paid is refunded on the current
  * month's open line as `damageRefunds`. Idempotent — a refunded line is stamped `refundedAt`.
  */
+/** Every damage line of one employee across runs, with where it lives. */
+function employeeDamageLines(runs, employeeId) {
+  const out = [];
+  for (const run of runs || []) {
+    const item = (run.items || []).find((row) => row.employeeId === employeeId);
+    for (const line of item?.deductionLines || []) if (line?.source === "damage") out.push({ line, item, run });
+  }
+  return out;
+}
+
+/** An objection raised before it carried its case: linked to the case its notice day names, if one exists. */
+function linkObjectionCase(objection, lines) {
+  if (objection?.type !== "damage_objection" || objection.damageCaseId || objection.deductionLineId) return false;
+  const told = String(objection.notifiedOn || "").slice(0, 10);
+  if (!told) return false;
+  const caseId = `DMG-${told}`;
+  if (!lines.some(({ line }) => damageCaseOfLine(line) === caseId)) return false;
+  objection.damageCaseId = caseId;
+  return true;
+}
+
 export function reconcileDamageObjections(companyId, currentMonth) {
   const data = getCompanyData(companyId);
   // Read first: the page calls this on every open, and a write with nothing to do is noise.
-  const due = (data?.employees || []).some((employee) => (data.payrollRuns || []).some((run) => {
-    const item = (run.items || []).find((row) => row.employeeId === employee.id);
-    return item?.deductionLines?.length && damageRefundsFor(employee.otherRequests || [], item.deductionLines).length > 0;
-  }));
+  const due = (data?.employees || []).some((employee) => {
+    const objections = (employee.otherRequests || []).filter((row) => row?.type === "damage_objection");
+    if (!objections.length) return false;
+    const lines = employeeDamageLines(data.payrollRuns, employee.id);
+    if (!lines.length) return false;
+    const linked = objections.map((o) => {
+      const copy = { ...o };
+      linkObjectionCase(copy, lines);
+      return copy;
+    });
+    return damageRefundsFor(linked, lines.map((row) => row.line)).length > 0;
+  });
   if (!due) return 0;
   let changed = 0;
   updateCompany(companyId, (d) => {
@@ -239,30 +269,33 @@ export function reconcileDamageObjections(companyId, currentMonth) {
     for (const employee of d.employees || []) {
       const objections = employee.otherRequests || [];
       if (!objections.some((row) => row?.type === "damage_objection")) continue;
-      for (const run of d.payrollRuns || []) {
-        const item = (run.items || []).find((row) => row.employeeId === employee.id);
-        if (!item?.deductionLines?.length) continue;
-        for (const refund of damageRefundsFor(objections, item.deductionLines)) {
-          const line = item.deductionLines.find((row) => row.id === refund.lineId);
-          const at = new Date().toISOString();
-          if (!item.paid && item.settledNet == null) {
-            if (line.originalAmount == null) line.originalAmount = Number(line.amount) || 0;
-            line.amount = 0;
-            line.disputeStatus = "accepted";
-            line.refundedAt = at;
-            line.refundObjectionId = refund.objectionId;
-            item.deductions = deductionsTotal(item);
-            changed += 1;
-            continue;
-          }
-          const open = (current?.items || []).find((row) => row.employeeId === employee.id && !row.paid && row.settledNet == null);
-          if (!open) continue;
-          open.damageRefunds = Math.round(((Number(open.damageRefunds) || 0) + refund.amount) * 100) / 100;
+      const lines = employeeDamageLines(d.payrollRuns, employee.id);
+      if (!lines.length) continue;
+      for (const o of objections) linkObjectionCase(o, lines);
+      for (const refund of damageRefundsFor(objections, lines.map((row) => row.line))) {
+        const hit = lines.find((row) => row.line.id === refund.lineId);
+        if (!hit) continue;
+        const { line, item } = hit;
+        const at = new Date().toISOString();
+        if (!item.paid && item.settledNet == null) {
+          if (line.originalAmount == null) line.originalAmount = Number(line.amount) || 0;
+          line.amount = Math.round(Math.max(0, line.originalAmount - refund.amount) * 100) / 100;
+          line.disputeStatus = "accepted";
           line.refundedAt = at;
+          line.refundedAmount = refund.amount;
           line.refundObjectionId = refund.objectionId;
-          line.refundedInMonth = currentMonth;
+          item.deductions = deductionsTotal(item);
           changed += 1;
+          continue;
         }
+        const open = (current?.items || []).find((row) => row.employeeId === employee.id && !row.paid && row.settledNet == null);
+        if (!open) continue;
+        open.damageRefunds = Math.round(((Number(open.damageRefunds) || 0) + refund.amount) * 100) / 100;
+        line.refundedAt = at;
+        line.refundedAmount = refund.amount;
+        line.refundObjectionId = refund.objectionId;
+        line.refundedInMonth = currentMonth;
+        changed += 1;
       }
     }
   });

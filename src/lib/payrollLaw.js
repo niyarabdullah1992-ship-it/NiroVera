@@ -263,18 +263,69 @@ export function checkDamageLineGate({ amount, monthlyWage, monthUsed = 0, notice
 }
 
 /**
- * Accepted Art. 91 objections → what is owed back. An objection matches a damage line by its
- * `deductionLineId`, else by the notice day and amount.
+ * Art. 91 — the damage case a deduction line belongs to. Lines carry `damageCaseId` from the day they
+ * are created (instalments of one damage share it); a line from before that field falls back to the
+ * case its notice day names (`DMG-<notice day>`), never to an amount.
+ */
+export function damageCaseOfLine(line) {
+  if (!line) return "";
+  if (line.damageCaseId) return String(line.damageCaseId);
+  const told = dateOnly(line.damageNoticeOn);
+  return told ? `DMG-${told}` : `DMG-line-${line.id || ""}`;
+}
+
+/** The damage case id a new damage line gets: the one passed, else the notice day's case. */
+export function damageCaseIdFor({ damageCaseId, damageNoticeOn } = {}) {
+  const given = String(damageCaseId || "").trim();
+  if (given) return given;
+  const told = dateOnly(damageNoticeOn);
+  return told ? `DMG-${told}` : "";
+}
+
+/** The case an objection is about: its `damageCaseId`, else the case of its `deductionLineId`. */
+export function damageCaseOfObjection(objection, damageLines = []) {
+  if (objection?.damageCaseId) return String(objection.damageCaseId);
+  if (objection?.deductionLineId) {
+    const line = (damageLines || []).find((row) => row?.id === objection.deductionLineId);
+    return line ? damageCaseOfLine(line) : "";
+  }
+  return "";
+}
+
+/**
+ * Accepted Art. 91 objections → what is owed back. An objection must name its case (`damageCaseId`)
+ * or a line (`deductionLineId`) — no guessing by notice day and amount. All lines of that case (every
+ * instalment, across months) are refunded up to the accepted amount (`acceptedAmount`, else the
+ * objected `amount`, else the whole case), oldest first; each line is refunded once.
+ * `damageLines` should hold every damage line of the employee (all runs) so instalments add up.
  */
 export function damageRefundsFor(objections = [], damageLines = []) {
   const accepted = (objections || []).filter((row) => String(row?.type) === "damage_objection" && isApproved(row));
+  const lines = (damageLines || []).filter((line) => line?.source === "damage");
   const out = [];
-  for (const line of damageLines || []) {
-    if (line?.source !== "damage" || line.refundedAt) continue;
-    const charged = Number(line.originalAmount ?? line.amount) || 0;
-    const hit = accepted.find((o) => (o.deductionLineId && o.deductionLineId === line.id)
-      || (dateOnly(o.notifiedOn) && dateOnly(o.notifiedOn) === dateOnly(line.damageNoticeOn) && Math.abs((Number(o.amount) || 0) - charged) < 1));
-    if (hit && charged > 0) out.push({ lineId: line.id, objectionId: hit.id, amount: r2(charged) });
+  const used = new Set();
+  for (const o of accepted) {
+    const caseId = damageCaseOfObjection(o, lines);
+    if (!caseId) continue;
+    const ofCase = lines
+      .filter((line) => damageCaseOfLine(line) === caseId)
+      .sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+    const capRaw = Number(o.acceptedAmount ?? o.amount);
+    let left = Number.isFinite(capRaw) && capRaw > 0 ? capRaw : Infinity;
+    // What earlier runs of this reconcile already gave back on this case counts against the cap.
+    for (const line of ofCase) {
+      if (line.refundedAt && (!line.refundObjectionId || line.refundObjectionId === o.id)) left -= Number(line.refundedAmount ?? line.originalAmount ?? line.amount) || 0;
+    }
+    for (const line of ofCase) {
+      if (left <= 0.005) break;
+      if (line.refundedAt || used.has(line.id)) continue;
+      const charged = Number(line.originalAmount ?? line.amount) || 0;
+      if (charged <= 0) continue;
+      const amount = r2(Math.min(charged, left));
+      used.add(line.id);
+      left -= amount;
+      out.push({ lineId: line.id, objectionId: o.id, caseId, amount });
+    }
   }
   return out;
 }
@@ -285,8 +336,9 @@ export function damageRefundsFor(objections = [], damageLines = []) {
  * The month under a work-related detention: half the wage for the first 180 days, nothing beyond.
  * `detention` = { from, to?, acquittedAt? }. Returns days and the wage not due on the line.
  */
-export function detentionMonth({ detention, month, monthlyWage = 0 } = {}) {
-  const empty = { days: 0, halfDays: 0, unpaidDays: 0, cut: 0 };
+export function detentionMonth({ detention, month, monthlyWage = 0, skipDays } = {}) {
+  const empty = { days: 0, halfDays: 0, unpaidDays: 0, cut: 0, dayKeys: [] };
+  const skip = new Set(skipDays || []);
   const from = dateOnly(detention?.from);
   const range = monthRange(month);
   if (!from || !range) return empty;
@@ -294,11 +346,14 @@ export function detentionMonth({ detention, month, monthlyWage = 0 } = {}) {
   const maxDays = Number(ruleValue("payroll.detention.maxDays")) || 180;
   const ratio = Number(ruleValue("payroll.detention.payRatio")) || 0.5;
   const daily = dailyWage(monthlyWage);
-  const out = { ...empty };
+  const out = { ...empty, dayKeys: [] };
   for (const d of eachDay(from, to)) {
     if (d < range.start || d > range.end) continue;
+    // A day already not due for another reason (unpaid leave) is counted once — under that reason.
+    if (skip.has(d)) continue;
     const index = Math.round((parse(d).getTime() - parse(from).getTime()) / DAY) + 1;
     out.days += 1;
+    out.dayKeys.push(d);
     if (index <= maxDays) out.halfDays += 1;
     else out.unpaidDays += 1;
   }
@@ -322,10 +377,10 @@ export function detentionRefund({ detention, monthlyWage = 0 } = {}) {
 /** Approved unpaid-leave days (Art. 116, and the unpaid maternity extension) in the month, and the wage not due. */
 export function unpaidLeaveMonth({ employee, month, monthlyWage = 0 } = {}) {
   const range = monthRange(month);
-  if (!range) return { days: 0, cut: 0 };
+  if (!range) return { days: 0, cut: 0, dayKeys: [] };
   const rows = (employee?.leaveRequests || []).filter((row) => ["unpaid", "maternity_extend"].includes(String(row?.type || "").toLowerCase()) && isApproved(row));
   const days = new Set(rows.flatMap(requestDays).filter((d) => d >= range.start && d <= range.end));
-  return { days: days.size, cut: r2(days.size * dailyWage(monthlyWage)) };
+  return { days: days.size, cut: r2(days.size * dailyWage(monthlyWage)), dayKeys: [...days].sort() };
 }
 
 // ─── Art. 107(3) — holiday hours are overtime ─────────────────────────────────────────────────

@@ -9,6 +9,7 @@ import useStationScope from "@/hooks/useStationScope";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { pageKicker } from "@/lib/moduleMeta";
 import RequestsWorkspace from "@/components/requests/RequestsWorkspace";
+import OtDecisionsPanel from "@/components/schedules/OtDecisionsPanel";
 import { pendingManagerDecideCount, pendingRequestsCount } from "@/lib/otherRequestDerivations";
 import {
   openWrittenConsentCount,
@@ -208,6 +209,10 @@ export default function Requests() {
         </div>
       )}
     >
+      {/* Art. 107 / Regs Art. 22 — my overtime awaiting a decision, and the cap-consent request I answer. */}
+      {!manageLane && self?.id ? (
+        <OtDecisionsPanel data={data} companyId={company?.id} currentUser={currentUser} employees={[self]} mode="mine" ar={ar} onSaved={refresh} />
+      ) : null}
       <RequestsWorkspace
         employees={manageLane ? scopedAdminEmployees : [self]}
         stations={adminStations}

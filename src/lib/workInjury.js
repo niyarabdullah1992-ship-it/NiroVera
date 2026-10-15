@@ -80,7 +80,9 @@ function episodeStarts(leaves) {
  * statutory reduction of the wage — a quarter of the daily actual wage for every day past the 60th.
  * Not an Art. 92 deduction and not leave: the law sets the compensation itself.
  */
-export function injuryMonth({ employee, company, month, monthlyWage = 0 }) {
+export function injuryMonth({ employee, company, month, monthlyWage = 0, skipDays }) {
+  const skip = new Set(skipDays || []);
+  const dayKeys = [];
   const covered = gosiHazardCoverage(company);
   const leaves = injuryLeaves(employee);
   const starts = episodeStarts(leaves);
@@ -92,6 +94,9 @@ export function injuryMonth({ employee, company, month, monthlyWage = 0 }) {
   let excludedDays = 0;
   for (const row of leaves) {
     for (let key = row.start < first ? first : row.start; key <= row.end && key <= last; key = addDays(key, 1)) {
+      // Counted once: a day already not due under unpaid leave or detention is not charged again.
+      if (skip.has(key)) continue;
+      dayKeys.push(key);
       if (row.art139) { excludedDays += 1; continue; }
       const index = daysBetween(starts[row.injuryDate], key) + 1;
       if (index > INJURY_FULL_DAYS) reducedDays += 1; else fullDays += 1;
@@ -105,7 +110,7 @@ export function injuryMonth({ employee, company, month, monthlyWage = 0 }) {
   const hospitalDays = covered === false ? 0 : leaves.reduce((sum, row) => sum + Math.max(0, Number(row.hospitalDays) || 0), 0);
   const wageStop = covered !== false && gosiInjuryWageMode(company) === "stop" ? Math.round(daily * days * 100) / 100 : 0;
   const allowance = covered !== false ? gosiAllowance({ dailyWage: daily, days, hospitalDays: Math.min(hospitalDays, days) }) : 0;
-  return { covered, fullDays, reducedDays, excludedDays, days, reduction, unpaid, wageStop, allowance, hospitalDays };
+  return { covered, fullDays, reducedDays, excludedDays, days, reduction, unpaid, wageStop, allowance, hospitalDays, dayKeys };
 }
 
 /**

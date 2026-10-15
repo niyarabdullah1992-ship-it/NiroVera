@@ -1,0 +1,74 @@
+import React, { useMemo } from "react";
+import OtDecisionBoard from "@/components/schedules/OtDecisionBoard";
+import { isOtDecisionOpen } from "@/lib/attendanceDerivations";
+import { weekKeyFromDate } from "@/lib/shiftWeek";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+
+/**
+ * Art. 107 — where overtime decisions actually get made. One OtDecisionBoard per (week, station)
+ * that has an open decision (pending pay/comp-leave, or a Regs Art. 22 cap-consent request).
+ *  - manage: every week with an open entry, for the people this manager sees.
+ *  - mine: only weeks with an open entry for the viewer — so a worker answers his cap-consent request
+ *    and sees the overtime that waits for a decision. Nothing open → nothing rendered.
+ */
+export default function OtDecisionsPanel({ data, companyId: companyIdProp, currentUser, employees = [], mode = "manage", canEdit = false, ar = true, onSaved }) {
+  const companyId = companyIdProp || data?.id || data?.companyId || "";
+  const laborCalendar = useMemo(() => laborCalendarOf(data), [data]);
+  const otDecisions = data?.otDecisions || {};
+  const groups = useMemo(() => {
+    const ids = new Set((employees || []).map((employee) => String(employee?.id || "")).filter(Boolean));
+    const weeks = new Map();
+    const add = (weekKey, employee) => {
+      if (!weeks.has(weekKey)) weeks.set(weekKey, new Map());
+      const stationId = String(employee?.profile?.workStationId || employee?.stationId || data?.stations?.[0]?.id || "");
+      const byStation = weeks.get(weekKey);
+      if (!byStation.has(stationId)) byStation.set(stationId, []);
+      const list = byStation.get(stationId);
+      if (!list.some((row) => row.id === employee.id)) list.push(employee);
+    };
+    for (const [key, entry] of Object.entries(otDecisions)) {
+      if (!isOtDecisionOpen(entry) || !entry) continue;
+      const cut = key.lastIndexOf(":");
+      const employeeId = key.slice(0, cut);
+      const day = key.slice(cut + 1);
+      if (!ids.has(employeeId) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+      const employee = employees.find((row) => String(row.id) === employeeId);
+      add(weekKeyFromDate(day), employee);
+    }
+    return [...weeks.entries()]
+      .sort((a, b) => String(b[0]).localeCompare(String(a[0])))
+      .flatMap(([weekKey, byStation]) => [...byStation.entries()].map(([stationId, list]) => ({
+        key: `${weekKey}:${stationId}`,
+        weekKey,
+        schedule: (data?.schedules || []).find((row) => String(row.stationId) === stationId) || null,
+        employees: list,
+      })));
+  }, [employees, otDecisions, data, mode]);
+
+  if (!groups.length) return null;
+  return (
+    <div data-ot-decisions={mode} style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
+      {groups.map((group) => (
+        <div key={group.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ fontSize: 11, color: "var(--nv-muted, #6B7280)" }}>
+            {ar ? `أسبوع ${group.weekKey}` : `Week of ${group.weekKey}`}
+          </span>
+          <OtDecisionBoard
+            schedule={group.schedule}
+            employees={group.employees}
+            weekStart={group.weekKey}
+            company={data}
+            companyId={companyId}
+            laborCalendar={laborCalendar}
+            otDecisions={otDecisions}
+            currentUser={currentUser}
+            canEdit={canEdit}
+            mode={mode}
+            ar={ar}
+            onSaved={onSaved}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}

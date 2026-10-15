@@ -30,6 +30,7 @@ const AttendancePolicyPage = lazy(() => import("@/components/attendance/Attendan
 const AttendanceMonthCalendar = lazy(() => import("@/components/attendance/AttendanceMonthCalendar"));
 const MyRecordPage = lazy(() => import("@/components/attendance/MyRecordPage"));
 const AttendanceDailyDashboard = lazy(() => import("@/components/attendance/AttendanceDailyDashboard"));
+const OtDecisionsPanel = lazy(() => import("@/components/schedules/OtDecisionsPanel"));
 function TabLoader() {
   return (
     <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
@@ -332,6 +333,10 @@ export default function Attendance() {
           ) : null}
           {activeTab === "team" && isManager && (
             <AttendanceDailyDashboard employees={employees} currentUser={currentUser} company={company} data={data} t={t} onQueueCount={setQueueCount} />
+          )}
+          {/* Art. 107 — pending overtime and holiday-work decisions the punches / published roster opened. */}
+          {activeTab === "team" && isManager && (
+            <OtDecisionsPanel data={data} companyId={company?.id} currentUser={currentUser} employees={employees} mode="manage" canEdit ar={ar} onSaved={refresh} />
           )}
           {activeTab === "record" && (
             <MyRecordPage me={self} currentUser={currentUser} company={company} data={data} lang={lang} />

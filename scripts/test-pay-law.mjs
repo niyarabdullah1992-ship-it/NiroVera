@@ -128,7 +128,7 @@ assert.ok(Math.abs((atExit.years - suspended.years) * feOff.MS_PER_YEAR - 10 * 8
 // ── 6. Arts. 116 / 93 — unpaid leave is wage not due, outside the half-wage cap ──────────────
 const employeeUnpaid = { leaveRequests: [{ type: "unpaid", status: "approved", startDate: "2026-10-05", endDate: "2026-10-14" }] };
 const um = unpaidLeaveMonth({ employee: employeeUnpaid, month: "2026-10", monthlyWage: 3000 });
-assert.deepEqual(um, { days: 10, cut: 1000 });
+assert.deepEqual({ days: um.days, cut: um.cut }, { days: 10, cut: 1000 });
 const unpaidLine = { base: 3000, allowances: 0, deductions: 1400, unpaidLeaveCut: 1000 };
 assert.equal(fe.checkArticle93Gate(unpaidLine).ok, true);
 assert.ok(!fe.lineIssues(unpaidLine).includes("ARTICLE_93_EXCEEDED"));
@@ -145,10 +145,11 @@ assert.equal(dmg.ok, true);
 assert.equal(dmg.objectionLastDay, "2026-10-22");
 assert.equal(ruleValue("payroll.damage.objectionWorkingDays"), 15);
 const refunds = damageRefundsFor(
-  [{ id: "o1", type: "damage_objection", status: "approved", notifiedOn: "2026-10-01", amount: 400 }],
+  // Updated deliberately (review fix 7): the objection names its damage case — no day+amount guess.
+  [{ id: "o1", type: "damage_objection", status: "approved", notifiedOn: "2026-10-01", amount: 400, damageCaseId: "DMG-2026-10-01" }],
   [{ id: "l1", source: "damage", amount: 400, damageNoticeOn: "2026-10-01" }, { id: "l2", source: "advance", amount: 300 }],
 );
-assert.deepEqual(refunds, [{ lineId: "l1", objectionId: "o1", amount: 400 }]);
+assert.deepEqual(refunds, [{ lineId: "l1", objectionId: "o1", caseId: "DMG-2026-10-01", amount: 400 }]);
 assert.deepEqual(damageRefundsFor([{ id: "o1", type: "damage_objection", status: "pending", notifiedOn: "2026-10-01", amount: 400 }], [{ id: "l1", source: "damage", amount: 400, damageNoticeOn: "2026-10-01" }]), []);
 assert.equal(fe.lineNet({ base: 3000, allowances: 0, damageRefunds: 400 }), 3400);
 
@@ -281,7 +282,7 @@ assert.ok(be.lineIssues({ base: 3000, allowances: 0, currency: "EUR" }).includes
 // Detention from 2026-01-01: October is past day 180 for part of... days 274+ → all unpaid.
 const det = { from: "2026-09-01" };
 const sep = detentionMonth({ detention: det, month: "2026-09", monthlyWage: 3000 });
-assert.deepEqual(sep, { days: 30, halfDays: 30, unpaidDays: 0, cut: 1500 });
+assert.deepEqual({ ...sep, dayKeys: undefined }, { days: 30, halfDays: 30, unpaidDays: 0, cut: 1500, dayKeys: undefined });
 const longDet = detentionMonth({ detention: { from: "2026-01-01", to: "2026-07-31" }, month: "2026-06", monthlyWage: 3000 });
 assert.equal(longDet.halfDays + longDet.unpaidDays, 30);
 assert.ok(longDet.unpaidDays > 0); // day 181 onward is unpaid

@@ -137,6 +137,11 @@ export function therapyLeaveEligibility(profile) {
   return "unknown";
 }
 
+/** Art. 116 — the parties agreed this unpaid leave does not suspend the contract. */
+export function unpaidAgreedOtherwise(r) {
+  return r?.agreedOtherwise === true || r?.contractNotSuspended === true || r?.agreedNotSuspended === true;
+}
+
 /**
  * Art. 116 + Regs Art. 25: unpaid leave beyond twenty days suspends the contract and every effect of it,
  * unless the parties agree otherwise. Counted per work (hire-anniversary) year, cumulatively — the Law's
@@ -146,7 +151,7 @@ export function therapyLeaveEligibility(profile) {
 export function unpaidSuspensionPlan(requests, hireDate, extraRequest) {
   const cap = ruleValue("leave.unpaid.suspendAfterDays") || 20;
   const rows = (requests || [])
-    .filter((r) => r && String(r.type || "").toLowerCase() === "unpaid" && r.status === "approved")
+    .filter((r) => r && String(r.type || "").toLowerCase() === "unpaid" && ["approved", "accepted"].includes(String(r.status || "").toLowerCase()))
     .filter((r) => !extraRequest || r.id !== extraRequest.id);
   if (extraRequest) rows.push({ ...extraRequest, status: "approved" });
   rows.sort((a, b) => dateOnly(a.startDate).localeCompare(dateOnly(b.startDate)));
@@ -156,7 +161,7 @@ export function unpaidSuspensionPlan(requests, hireDate, extraRequest) {
   const byRequest = {};
   for (const r of rows) {
     const start = dateOnly(r.startDate);
-    const end = dateOnly(r.endDate) || start;
+    const end = dateOnly(r.endDate) || (start && Number(r.days) > 1 ? addCalendarDays(start, Math.round(Number(r.days)) - 1) : start);
     if (!start || end < start) continue;
     let cursor = start;
     let guard = 0;
@@ -165,7 +170,8 @@ export function unpaidSuspensionPlan(requests, hireDate, extraRequest) {
       const yearKey = hire ? (anniversaryYearWindow(hire, cursor)?.start || cursor.slice(0, 4)) : cursor.slice(0, 4);
       const n = (perYear.get(yearKey) || 0) + 1;
       perYear.set(yearKey, n);
-      if (n > cap && r.agreedOtherwise !== true) {
+      // «ما لم يتفق الطرفان على خلاف ذلك» — any of the agreement flags keeps the contract running.
+      if (n > cap && !unpaidAgreedOtherwise(r)) {
         days.push(cursor);
         const s = byRequest[r.id || `${start}:${end}`] || { days: 0, from: cursor, to: cursor };
         s.days += 1;
@@ -522,6 +528,18 @@ function agreedCarryByBucket(profile, windows) {
 }
 
 /**
+ * A migrated employee's annual-leave opening balance: `profile.leaveOpeningBalance = { asOf, days }` —
+ * the unused days on file at `asOf` (every year up to that day, accrual included). Null when absent.
+ */
+export function leaveOpeningBalanceOf(profile) {
+  const row = profile?.leaveOpeningBalance;
+  const asOf = dateOnly(row?.asOf);
+  const days = Number(row?.days);
+  if (!asOf || !Number.isFinite(days) || days < 0) return null;
+  return { asOf, days };
+}
+
+/**
  * Arts. 109–111: one leave bucket per hire-anniversary year. Days are consumed FIFO — the oldest year
  * first — so days carried from an older year are never lost by spending in a later one. Returns
  * [{ year, start, end, entitled, used, left, status, agreed, unagreed, deadline, warnFrom, warn }].
@@ -541,26 +559,39 @@ export function annualBalanceBuckets(profile, requests, onDate, company, employe
   if (!windows.length) return [];
   const susp = unpaidSuspensionPlan(list, hire).days;
   const curIdx = windows.length - 1;
+  // A migrated file's opening balance replaces every year up to its day; leave taken on or before it
+  // is already inside that figure.
+  const opening = leaveOpeningBalanceOf(profile);
   const buckets = windows.map((win, i) => {
     const full = getLeaveTotal(profile, "annual", win.end, list) ?? 0;
     const len = inclusiveDays(win.start, win.end) || 365;
     const lastDay = i === curIdx && until ? (until < win.end ? until : win.end) : win.end;
     const counted = until && i === curIdx ? (lastDay < win.start ? 0 : inclusiveDays(win.start, lastDay)) : len;
     const suspended = susp.filter((d) => d >= win.start && d <= lastDay).length;
-    const entitled = round2(full * Math.max(0, counted - suspended) / len);
+    let entitled = round2(full * Math.max(0, counted - suspended) / len);
+    if (opening && win.end < opening.asOf) entitled = 0;
+    else if (opening && win.start <= opening.asOf) {
+      // The year holding the opening day: its balance on file, plus accrual after that day only.
+      const from = addCalendarDays(opening.asOf, 1);
+      const after = lastDay < from ? 0 : inclusiveDays(from, lastDay);
+      const suspAfter = susp.filter((d) => d >= from && d <= lastDay).length;
+      entitled = round2(opening.days + full * Math.max(0, after - suspAfter) / len);
+    }
     return { year: Number(win.start.slice(0, 4)), start: win.start, end: win.end, full, entitled, suspendedDays: suspended, used: 0, usedInCurrent: 0, over: 0, left: entitled };
   });
   const emp = employee || (profile ? { profile } : null);
   const charged = list.filter((r) => (String(r?.type || "").toLowerCase() === "annual" && r.status === "approved") || examLeaveChargesAnnual(r));
   const chunks = [];
   for (const r of charged) {
-    const start = dateOnly(r.startDate);
+    let start = dateOnly(r.startDate);
     let end = dateOnly(r.endDate) || (start ? addCalendarDays(start, Math.max(1, Number(r.days) || 1) - 1) : "");
     if (!start || !end) {
       chunks.push({ start: windows[curIdx].start, idx: curIdx, days: Number(r.days) || 0 });
       continue;
     }
     if (until && end > until) end = until;
+    if (opening && end <= opening.asOf) continue;
+    if (opening && start <= opening.asOf) start = addCalendarDays(opening.asOf, 1);
     windows.forEach((win, idx) => {
       const span = overlapRange(start, end, win.start, win.end);
       if (!span) return;

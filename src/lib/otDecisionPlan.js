@@ -10,6 +10,25 @@ import { checkOtDecisionGate, isOtDecisionOpen, overtimeYearUsageOutsideAssignme
 import { deriveActualDuty } from "./actualDuty.js";
 import { employeeShiftOnDay, holidayWorkOn, weekNamedOvertime } from "./shiftWeek.js";
 import { laborCalendarOf } from "./ummAlQuraCalendar.js";
+import { toRiyadhDateKey } from "./riyadhDate.js";
+import { OT_STATUS, isOvertimeAssignment, otCompensationOf, parseOtHours, OT_COMP_CREDIT } from "./overtimeAssignment.js";
+
+const OT_KEY_DAY = (dayKey) => String(dayKey || "").slice(0, 10);
+
+/**
+ * Minutes an approved overtime ASSIGNMENT (any compensation — pay or compensatory leave) already
+ * covers on that day. Those hours were compensated through the assignment (Art. 107 / Regs Art. 22 bis),
+ * so the punch path must not open a second decision for them.
+ */
+export function assignmentMinutesOn(employee, dayKey, { compensation } = {}) {
+  const day = OT_KEY_DAY(dayKey);
+  return (employee?.otherRequests || []).reduce((sum, row) => {
+    if (!isOvertimeAssignment(row) || row.status !== OT_STATUS.approved) return sum;
+    if (compensation && otCompensationOf(row) !== compensation) return sum;
+    if (String(row.date || "").slice(0, 10) !== day) return sum;
+    return sum + Math.round((parseOtHours(row.hours) || 0) * 60);
+  }, 0);
+}
 
 /**
  * Art. 107(3) — confirmed «عمل في العطلة» on a published week becomes an otDecisions entry flagged
@@ -28,22 +47,58 @@ export function stampHolidayWorkOvertime(d, schedule, weekStart) {
       const key = `${employee.id}:${row.dateKey}`;
       const prev = d.otDecisions[key];
       if (prev && !isOtDecisionOpen(prev)) continue;
+      // The roster is a plan, not proof: once punches proved the day, their ACTUAL minutes stay —
+      // a re-publish never raises (or lowers) them back to the planned figure.
+      const proven = prev?.workedProven === true;
       d.otDecisions[key] = {
         ...(prev || {}),
         decision: prev?.decision === "pending_worker_cap_consent" ? prev.decision : "pending",
         holiday: true,
         kind: "holiday",
         article: "107/3",
-        overtimeMinutes: Math.max(Number(prev?.overtimeMinutes) || 0, row.overtimeMinutes),
+        overtimeMinutes: proven ? Number(prev.actualMinutes ?? prev.overtimeMinutes) || 0 : row.overtimeMinutes,
         plannedMinutes: row.overtimeMinutes,
-        source: prev?.source === "actual_punch" ? "actual_punch" : "holiday_work",
-        workedProven: prev?.workedProven || undefined,
+        source: proven ? "actual_punch" : "holiday_work",
+        workedProven: proven || undefined,
         at: new Date().toISOString(),
       };
       stamped.push(key);
     }
   }
   return stamped;
+}
+
+/**
+ * Art. 107(3) — the holiday duty was withdrawn from the roster: the open entry the publish stamped
+ * from the PLAN goes with it. An entry the punches proved, or one already decided, stays.
+ */
+export function withdrawHolidayWorkOvertime(d, employeeId, dayKey) {
+  const key = `${employeeId}:${OT_KEY_DAY(dayKey)}`;
+  const prev = d?.otDecisions?.[key];
+  if (!prev || !isOtDecisionOpen(prev) || prev.workedProven === true || prev.source !== "holiday_work") return false;
+  delete d.otDecisions[key];
+  return true;
+}
+
+/**
+ * Regs Art. 22 bis — a compensatory-leave assignment approved after the punches already opened a
+ * decision for the same day: the assigned hours leave that open entry (they are compensated by the
+ * leave), so the same hours are never also paid. Returns the minutes left on the entry.
+ */
+export function absorbAssignmentIntoActualOt(d, employeeId, request) {
+  if (!isOvertimeAssignment(request) || otCompensationOf(request) !== OT_COMP_CREDIT) return null;
+  const key = `${employeeId}:${OT_KEY_DAY(request.date)}`;
+  const prev = d?.otDecisions?.[key];
+  if (!prev || !isOtDecisionOpen(prev) || prev.source !== "actual_punch") return null;
+  const covered = Math.round((parseOtHours(request.hours) || 0) * 60);
+  const left = Math.max(0, (Number(prev.overtimeMinutes) || 0) - covered);
+  if (left <= 0) {
+    delete d.otDecisions[key];
+    return 0;
+  }
+  prev.overtimeMinutes = left;
+  prev.assignmentMinutes = (Number(prev.assignmentMinutes) || 0) + covered;
+  return left;
 }
 
 /** The rostered shift this person holds that day on any station's roster (their own first). */
@@ -78,15 +133,47 @@ export function stampActualOvertime(d, employee, dayKey, row) {
   d.otDecisions = d.otDecisions || {};
   const key = `${employee.id}:${dayKey}`;
   const prev = d.otDecisions[key];
-  if (prev && !isOtDecisionOpen(prev)) {
+  // A planned-only entry the manager closed as «not worked» reopens when punches prove the day.
+  const closedUnworked = prev && prev.decision === "reject" && prev.workedProven !== true;
+  if (prev && !isOtDecisionOpen(prev) && !closedUnworked) {
     prev.actualMinutes = actual.overtimeMinutes;
+    // A PAID assignment already approved for the day («ot_assignment»): its hours are not opened again.
+    // Punches beyond it reopen the day as ONE pending decision for the full actual minutes (the
+    // assignment's hours inside), so no hour is lost and none is paid twice.
+    const assigned = prev.source === "ot_assignment" ? Number(prev.overtimeMinutes) || 0 : 0;
+    if (assigned > 0 && actual.overtimeMinutes > assigned) {
+      d.otDecisions[key] = {
+        ...prev,
+        decision: "pending",
+        assignmentMinutes: assigned,
+        assignmentDecision: prev.decision,
+        overtimeMinutes: actual.overtimeMinutes,
+        source: "actual_punch",
+        workedProven: true,
+        flags: actual.flags.map((flag) => flag.error),
+        at: new Date().toISOString(),
+      };
+    }
     return actual;
   }
+  // Hours an approved COMPENSATORY-LEAVE assignment already compensates are not opened again here —
+  // otherwise the same hours are paid and taken as leave. (A paid assignment owns its own decided
+  // «ot_assignment» entry, handled above; when the punches came first, the open entry carries it.)
+  const covered = assignmentMinutesOn(employee, dayKey, { compensation: OT_COMP_CREDIT });
+  const minutes = Math.max(0, actual.overtimeMinutes - covered);
+  row.otCoveredByAssignment = covered || undefined;
+  if (minutes <= 0) {
+    if (prev && isOtDecisionOpen(prev) && prev.source === "actual_punch") delete d.otDecisions[key];
+    return actual;
+  }
+  const reopened = closedUnworked ? { decision: "pending", by: undefined, reopenedAt: new Date().toISOString() } : {};
   d.otDecisions[key] = {
     ...(prev || {}),
-    decision: prev?.decision === "pending_worker_cap_consent" ? prev.decision : "pending",
-    overtimeMinutes: actual.overtimeMinutes,
+    ...reopened,
+    decision: !closedUnworked && prev?.decision === "pending_worker_cap_consent" ? prev.decision : "pending",
+    overtimeMinutes: minutes,
     actualMinutes: actual.overtimeMinutes,
+    assignmentMinutes: covered || undefined,
     holiday: actual.holiday || prev?.holiday === true || undefined,
     kind: actual.kind || prev?.kind,
     source: "actual_punch",
@@ -112,6 +199,7 @@ export function planOtDecision(live, employeeId, dateKey, {
   windowAgreed,
   extraHoursYtd = 0,
   extraCreditDaysYtd = 0,
+  today,
 } = {}) {
   const day = String(dateKey || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
@@ -120,12 +208,27 @@ export function planOtDecision(live, employeeId, dateKey, {
   const key = `${employeeId}:${day}`;
   const existing = live?.otDecisions?.[key] || null;
   const punch = (live?.personalAttendance || []).find((row) => String(row.employeeId) === String(employeeId) && String(row.date || "").slice(0, 10) === day);
-  const workedProven = existing?.workedProven === true || existing?.holiday === true
+  // Only real punches prove work (Art. 107). A holiday entry stamped from the published roster is a
+  // PLAN: it may be paid once worked, or closed as «not worked» — it is never proof by itself.
+  const workedProven = existing?.workedProven === true
     || !!(punch && (punch.checkOutAt || punch.check_out_at));
   const workerCapConsent = !!existing?.workerCapConsentAt;
-  const minutes = existing?.workedProven || existing?.holiday
-    ? Math.max(Number(overtimeMinutes) || 0, Number(existing.overtimeMinutes) || 0)
-    : overtimeMinutes;
+  // Punches are the figure: a proven entry is decided on its own minutes (net of any compensatory-leave
+  // assignment), never on a planned or typed figure.
+  const proven = existing?.workedProven === true ? Number(existing.overtimeMinutes) || 0 : 0;
+  const minutes = proven > 0
+    ? proven
+    : (Number(overtimeMinutes) || Number(existing?.overtimeMinutes) || 0);
+  const asOf = String(today || toRiyadhDateKey()).slice(0, 10);
+  const plannedOnly = existing?.holiday === true && !workedProven;
+  if (plannedOnly && day >= asOf && String(decision || "approve") !== "reject") {
+    return {
+      ok: false,
+      error: "OT_NOT_WORKED_YET",
+      reason: "موقوف — المادة 107: العمل في العطلة ما زال مخططاً في الجدول ولم يُثبته الحضور والانصراف بعد — يُقرَّر أجره بعد أن يُعمل.",
+      reasonEn: "Blocked — Article 107: the holiday work is still only planned on the roster and no punches prove it yet — its pay is decided once it is worked.",
+    };
+  }
   const usage = overtimeYearUsageOutsideAssignments(live?.otDecisions, employeeId, day);
   const gate = checkOtDecisionGate({
     overtimeMinutes: minutes,
@@ -179,6 +282,7 @@ export function planOtDecision(live, employeeId, dateKey, {
       annualCapConsent: workerCapConsent ? true : undefined,
       enjoyDate: enjoyDate || undefined,
       windowAgreed: windowAgreed === true ? true : undefined,
+      notWorked: plannedOnly && gate.decision === "reject" ? true : undefined,
     },
     result: { ok: true, decision: gate.decision },
   };

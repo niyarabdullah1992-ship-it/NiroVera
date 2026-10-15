@@ -54,20 +54,23 @@ function requestDays(r) {
  * The month's sick days split into the Art. 117 bands, counted from the first sick leave of the
  * statutory year, and what they take off the wage. Daily wage = monthly actual wage ÷ 30.
  */
-export function sickMonth({ employee, month, monthlyWage = 0, calendar } = {}) {
+export function sickMonth({ employee, month, monthlyWage = 0, calendar, skipDays } = {}) {
   const range = monthRange(month);
-  const empty = { days: 0, fullDays: 0, quarterDays: 0, unpaidDays: 0, beyondDays: 0, reduction: 0, unpaid: 0, daily: 0 };
+  const empty = { days: 0, fullDays: 0, quarterDays: 0, unpaidDays: 0, beyondDays: 0, reduction: 0, unpaid: 0, daily: 0, dayKeys: [] };
+  const skip = new Set(skipDays || []);
   if (!range) return empty;
   const requests = (employee?.leaveRequests || []).filter((r) => typeOf(r) === "sick" && approved(r));
   if (!requests.length) return empty;
   const days = [...new Set(requests.flatMap(requestDays))].sort().filter((d) => chargeableSickDays(d, d, calendar) > 0);
-  const inMonth = days.filter((d) => d >= range.start && d <= range.end);
+  // Days already not due for a stronger reason (unpaid leave, detention, injury) keep their place in
+  // the Art. 117 band count but are not charged twice.
+  const inMonth = days.filter((d) => d >= range.start && d <= range.end && !skip.has(d));
   if (!inMonth.length) return empty;
   const full = Number(ruleValue("leave.sick.fullPayDays")) || 30;
   const mid = Number(ruleValue("leave.sick.halfPayDays")) || 60;
   const unpaidBand = Number(ruleValue("leave.sick.unpaidDays")) || 30;
   const midRatio = Number(ruleValue("leave.sick.midPayRatio")) || 0.75;
-  const out = { ...empty, days: inMonth.length };
+  const out = { ...empty, days: inMonth.length, dayKeys: inMonth };
   for (const d of inMonth) {
     const win = sickStatutoryYearWindow(requests, d);
     const index = days.filter((x) => x >= win.start && x <= d).length;

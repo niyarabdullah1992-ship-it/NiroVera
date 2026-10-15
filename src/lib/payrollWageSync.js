@@ -83,6 +83,17 @@ export function derivePayrollWagePatch(item, employee, { otDecisions, month, com
     ? approvedOvertimeHoursForYear(otDecisions, item.employeeId, month)
     : Math.max(0, Number(item.overtimeHoursYtd) || 0);
 
+  // Wage not due — each calendar day once, under the strongest reason: unpaid leave (116) >
+  // detention (97) > work injury (137/139) > sick bands (117). The later reasons skip days the
+  // earlier ones already took; lineWageNotDue also caps the total at the month's wage.
+  const monthlyWage = base + allowances;
+  const unpaidPart = employee && month ? unpaidLeaveMonth({ employee, month, monthlyWage }) : null;
+  const detention = employee?.profile?.workDetention;
+  const detPart = employee && month && detention?.from ? detentionMonth({ detention, month, monthlyWage, skipDays: unpaidPart?.dayKeys }) : null;
+  const injSkip = [...(unpaidPart?.dayKeys || []), ...(detPart?.dayKeys || [])];
+  const injPart = employee && month ? injuryMonth({ employee, company, month, monthlyWage, skipDays: injSkip }) : null;
+  const sickPart = employee && month ? sickMonth({ employee, month, monthlyWage, skipDays: [...injSkip, ...(injPart?.dayKeys || [])] }) : null;
+
   const fields = {
     base,
     allowances,
@@ -94,27 +105,26 @@ export function derivePayrollWagePatch(item, employee, { otDecisions, month, com
     // Art. 137 (establishment outside GOSI occupational hazards): 75% after the 60th day; Art. 139 days unpaid.
     ...(() => {
       if (!employee || !month) return { injuryDays: 0, injuryReducedDays: 0, injuryReduction: 0, injuryUnpaid: 0, injuryCovered: null };
-      const inj = injuryMonth({ employee, company, month, monthlyWage: base + allowances });
+      const inj = injPart;
       return { injuryDays: inj.days, injuryReducedDays: inj.reducedDays, injuryExcludedDays: inj.excludedDays, injuryReduction: inj.reduction, injuryUnpaid: inj.unpaid, injuryCovered: inj.covered, injuryWageStop: inj.wageStop, injuryAllowance: inj.allowance, injuryHospitalDays: inj.hospitalDays };
     })(),
     // Art. 117: the month's sick days in their bands — three-quarters after 30, unpaid after 90.
     ...(() => {
       if (!employee || !month) return { sickDays: 0, sickQuarterDays: 0, sickUnpaidDays: 0, sickReduction: 0, sickUnpaid: 0 };
-      const sick = sickMonth({ employee, month, monthlyWage: base + allowances });
+      const sick = sickPart;
       return { sickDays: sick.days, sickFullDays: sick.fullDays, sickQuarterDays: sick.quarterDays, sickUnpaidDays: sick.unpaidDays + sick.beyondDays, sickReduction: sick.reduction, sickUnpaid: sick.unpaid };
     })(),
     // Art. 116: approved unpaid-leave days are wage not due — they cut the gross, never an Art. 92
     // deduction line, so they stay outside the Art. 93 half-wage cap.
     ...(() => {
       if (!employee || !month) return { unpaidLeaveDays: 0, unpaidLeaveCut: 0 };
-      const unpaid = unpaidLeaveMonth({ employee, month, monthlyWage: base + allowances });
+      const unpaid = unpaidPart;
       return { unpaidLeaveDays: unpaid.days, unpaidLeaveCut: unpaid.cut };
     })(),
     // Art. 97: detained in a work-related case — half the wage up to 180 days; refund on acquittal.
     ...(() => {
-      const detention = employee?.profile?.workDetention;
       if (!employee || !month || !detention?.from) return { detentionDays: 0, detentionCut: 0, refunds: 0 };
-      const det = detentionMonth({ detention, month, monthlyWage: base + allowances });
+      const det = detPart;
       const acquittedMonth = String(detention.acquittedAt || "").slice(0, 7);
       const refund = acquittedMonth === month ? detentionRefund({ detention, monthlyWage: base + allowances }) : 0;
       return { detentionDays: det.days, detentionCut: det.cut, refunds: refund };

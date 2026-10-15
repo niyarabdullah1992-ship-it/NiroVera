@@ -102,7 +102,8 @@ export function lineNet(line) {
   const settled = Number(line?.settledNet);
   if (line?.settledNet != null && Number.isFinite(settled)) return settled;
   if (line?.paid) return (Number(line.base) || 0) + (Number(line.allowances) || 0) + (Number(line.bonus) || 0) - (Number(line.deductions) || 0);
-  return lineGross(line) - (Number(line.deductions) || 0) - gosiEmployeeWithheld(line) - lineWageNotDue(line);
+  // Never negative: a month fully not due nets to zero, not to a debt on the worker.
+  return Math.max(0, lineGross(line) - (Number(line.deductions) || 0) - gosiEmployeeWithheld(line) - lineWageNotDue(line));
 }
 
 /**
@@ -111,7 +112,11 @@ export function lineNet(line) {
  * unpaid half while detained in a work-related case (97).
  */
 export function lineWageNotDue(line) {
-  return lineInjuryCut(line) + lineSickCut(line) + lineUnpaidLeaveCut(line) + lineDetentionCut(line);
+  const sum = lineInjuryCut(line) + lineSickCut(line) + lineUnpaidLeaveCut(line) + lineDetentionCut(line);
+  // Days are counted once across reasons upstream (payrollWageSync); whatever the inputs, the wage not
+  // due can never exceed the month's contractual wage.
+  const wage = Math.max(0, (Number(line?.base) || 0) + (Number(line?.allowances) || 0));
+  return wage > 0 ? Math.min(sum, wage) : sum;
 }
 
 /** Art. 116: approved unpaid-leave days are wage not due — they reduce the gross, they are not deducted. */

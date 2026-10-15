@@ -77,7 +77,8 @@ import {
 } from "./overtimeAssignment";
 import { overtimeYearUsageOutsideAssignments } from "./attendanceDerivations";
 import { employeeRosterOtContext } from "./shiftWeek";
-import { planOtDecision, stampActualOvertime, stampHolidayWorkOvertime } from "./otDecisionPlan.js";
+import { damageCaseIdFor } from "./payrollLaw.js";
+import { absorbAssignmentIntoActualOt, planOtDecision, stampActualOvertime, stampHolidayWorkOvertime, withdrawHolidayWorkOvertime } from "./otDecisionPlan.js";
 import { compLeaveDaysInYear as compLeaveDaysInYearForCap, otHoursInYear as otHoursInYearForCap } from "./overtimeAssignment.js";
 import { isOfficialHoliday, laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePlatformOwnerBoard } from "./ummAlQuraCalendar";
 
@@ -1463,7 +1464,33 @@ function noticeLang(extras) {
   return extras?.lang === "en" || extras?.lang === "ar" ? extras.lang : getUiLang();
 }
 
-function notifyRequestManagers(companyId, employeeId, text) {
+/**
+ * Art. 107 — a pending overtime / holiday-work decision was opened: the managers are told once per
+ * key (employee:day). Stamps run inside a draft, so they queue here and flush after the write.
+ */
+const otPendingNoticeQueue = [];
+function queueOtPendingNotice(employeeId, dayKey, holiday) {
+  if (employeeId && dayKey) otPendingNoticeQueue.push({ employeeId, dayKey: String(dayKey).slice(0, 10), holiday: !!holiday });
+}
+function flushOtPendingNotices(companyId) {
+  const list = otPendingNoticeQueue.splice(0, otPendingNoticeQueue.length);
+  const data = getCompanyData(companyId);
+  for (const row of list) {
+    const entry = data?.otDecisions?.[`${row.employeeId}:${row.dayKey}`];
+    if (!entry || !isOtDecisionOpenEntry(entry)) continue;
+    const emp = (data?.employees || []).find((e) => String(e.id) === String(row.employeeId));
+    const hours = Math.round(((Number(entry.overtimeMinutes) || 0) / 60) * 100) / 100;
+    const text = row.holiday || entry.holiday
+      ? `عمل في العطلة لـ${emp?.name || "موظف"} يوم ${regulationDate(row.dayKey)} (${hours} ساعة) — ينتظر قرارك: أجر الساعة + 50% أو إجازة تعويضية بموافقته (المادة 107/3). من «حضور الفريق».`
+      : `ساعات إضافية لـ${emp?.name || "موظف"} يوم ${regulationDate(row.dayKey)} (${hours} ساعة) — تنتظر قرارك: أجر الساعة + 50% أو إجازة تعويضية بموافقته (المادة 107). من «حضور الفريق».`;
+    notifyRequestManagers(companyId, row.employeeId, text, { key: `ot_pending:${row.employeeId}:${row.dayKey}`, to: "/app/attendance?tab=team" });
+  }
+}
+function isOtDecisionOpenEntry(entry) {
+  return entry?.decision === "pending" || entry?.decision === "pending_worker_cap_consent";
+}
+
+function notifyRequestManagers(companyId, employeeId, text, extra) {
   const data = getCompanyData(companyId);
   const emp = data?.employees.find((row) => row.id === employeeId);
   if (!emp || !text) return;
@@ -1474,7 +1501,7 @@ function notifyRequestManagers(companyId, employeeId, text) {
   for (const manager of list) {
     if (!manager?.id || seen.has(String(manager.id)) || String(manager.id) === String(employeeId)) continue;
     seen.add(String(manager.id));
-    addNotification(companyId, manager.id, text);
+    addNotification(companyId, manager.id, text, extra);
   }
 }
 
@@ -3198,6 +3225,7 @@ export function submitOtherRequest(companyId, employeeId, {
   days, paper, requestedBy, requestedById, program, institution, issuedFile,
   examDate, until, permanent, from, to, timeTo, placement, dueDate, lastDay, amount, moneyKind, nursingSplit, childBirthDate, compLeave,
   notifiedOn, art81Case, ack, remaining, nightAvoidKind, gender, jobSearch, grievanceKind,
+  damageCaseId, deductionLineId,
 }) {
   if (type === "permission" && jobSearch === true) {
     // Art. 78: up to eight job-search hours a week during the employer's notice — told, not asked.
@@ -3339,6 +3367,10 @@ export function submitOtherRequest(companyId, employeeId, {
       grievanceKind: type === GRIEVANCE_TYPE ? grievanceKind : undefined,
       grievanceReplyBy: type === GRIEVANCE_TYPE ? grievanceReplyBy(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date()), officialHolidayTest(d)) : undefined,
       objectionLastDay: type === DAMAGE_OBJECTION_TYPE ? damageObjectionDeadline(notifiedOn) : undefined,
+      // Art. 91: the objection names the damage case it contests (instalments share it) — the refund
+      // follows that case, never a guess by day and amount.
+      damageCaseId: type === DAMAGE_OBJECTION_TYPE ? (String(damageCaseId || "").trim() || (deductionLineId ? undefined : damageCaseIdFor({ damageNoticeOn: notifiedOn })) || undefined) : undefined,
+      deductionLineId: type === DAMAGE_OBJECTION_TYPE && deductionLineId ? String(deductionLineId) : undefined,
       art81Case: type === ART81_EXIT_TYPE ? art81Case : undefined,
       nightAvoidKind: type === NIGHT_AVOID_TYPE ? nightAvoidKind : undefined,
       avoidFrom: type === NIGHT_AVOID_TYPE ? String(from || "").slice(0, 10) : undefined,
@@ -3532,7 +3564,8 @@ function stampPunchRequestOnDraft(draft, employee, request, reviewerName) {
   if (idx >= 0) list[idx] = { ...list[idx], ...row };
   else list.push(row);
   draft.personalAttendance = list;
-  stampActualOvertime(draft, employee, day, idx >= 0 ? list[idx] : row);
+  const stamped = stampActualOvertime(draft, employee, day, idx >= 0 ? list[idx] : row);
+  if (stamped?.ok && isOtDecisionOpenEntry(draft.otDecisions?.[`${employee.id}:${day}`])) queueOtPendingNotice(employee.id, day, stamped.holiday);
   request.time = clock;
   request.attendanceId = row.id;
   return { ok: true, row };
@@ -3578,8 +3611,10 @@ export function recordManualAttendance(companyId, { employeeId, kind, date, time
     else list.push(row);
     draft.personalAttendance = list;
     saved = idx >= 0 ? list[idx] : row;
-    stampActualOvertime(draft, emp || employee, day, saved);
+    const stamped = stampActualOvertime(draft, emp || employee, day, saved);
+    if (stamped?.ok && isOtDecisionOpenEntry(draft.otDecisions?.[`${employeeId}:${day}`])) queueOtPendingNotice(employeeId, day, stamped.holiday);
   });
+  flushOtPendingNotices(companyId);
   audit(companyId, type === "checkout_fix" ? "manual_checkout" : "manual_checkin", `${by || "manager"} recorded ${type} for ${employee.name} on ${day}.`);
   return { ok: true, attendance: toCloudAttendanceRow(saved) };
 }
@@ -4248,6 +4283,8 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
       if (status === "approved") {
         stampOvertimeCreditOnEmployee(employee, req);
         stampOvertimePayOnDraft(d, employee.id, req, reviewerName);
+        // Regs Art. 22 bis: hours this leave already compensates leave an open punch decision.
+        absorbAssignmentIntoActualOt(d, employee.id, req);
       }
     }
     if (req.type === "manual_punch" || req.type === "checkout_fix") {
@@ -4321,6 +4358,7 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
         : `اعتُمد تكليفك الإضافي: ${offer.known ? otSar(offer.pay.total) : "أجر الساعات"} يُضاف إلى مسير الشهر.`)
       : "رُدّ تكليف الساعات الإضافية — السبب في طلباتي.", { to: "/app/requests" });
   }
+  flushOtPendingNotices(companyId);
   if (pending?.type === DAMAGE_OBJECTION_TYPE && (status === "approved" || status === "rejected")) {
     addNotification(companyId, employeeId, status === "approved"
       ? `قُبل اعتراضك على خصم الإتلاف (${pending.amount} ر.س) — يُرد إليك ما اقتُطع في المسير.`
@@ -4979,6 +5017,8 @@ export function setEmployeeDayShift(companyId, stationId, dateKey, employeeId, s
       } else if (!placeId && emp.holidayWork[placeKey]) {
         delete emp.holidayWork[placeKey];
       }
+      // Withdrawn from the roster: the open entry the publish stamped from the plan goes too.
+      if (!placeId) withdrawHolidayWorkOvertime(d, emp.id, placeKey);
     }
     // Stamp leave days as rest so weekday templates cannot leave a ghost night on Art. 112 days.
     clearRosterLeaveGhostAssignments(entry, emp ? [emp] : [], weekDateKeys(weekStartDate(dateKey)), calendar);
@@ -5102,8 +5142,12 @@ export function publishWeek(companyId, stationId, weekStartKey, { by } = {}) {
     };
     entry.weekDirty = entry.weekDirty || {};
     delete entry.weekDirty[weekKey];
-    stampHolidayWorkOvertime(d, entry, weekStartKey || new Date());
+    for (const key of stampHolidayWorkOvertime(d, entry, weekStartKey || new Date())) {
+      const cut = key.lastIndexOf(":");
+      queueOtPendingNotice(key.slice(0, cut), key.slice(cut + 1), true);
+    }
   });
+  flushOtPendingNotices(companyId);
   return { ok: true };
 }
 

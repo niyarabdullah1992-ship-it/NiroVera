@@ -343,6 +343,13 @@ function annualEntitlementDays(caseRow: OffboardingCaseLike, onDate: string, now
   return Math.max(Number(custom) || 0, floor);
 }
 
+/** Art. 111 — the leave record covers the service: an annual-leave request on file, or an opening balance. */
+export function eosLeaveRecordCovers(leaveRows: any, openingBalance: any) {
+  const annual = Array.isArray(leaveRows) && leaveRows.some((row: any) => String(row?.type || "").toLowerCase() === "annual");
+  const opening = !!(openingBalance && String(openingBalance.asOf || "").slice(0, 10) && Number.isFinite(Number(openingBalance.days)));
+  return annual || opening;
+}
+
 export function deriveEos(caseRow: OffboardingCaseLike, nowMs = eosEndMs(caseRow)) {
   const hireDate = caseRow.hireDate || caseRow.profile?.hireDate || null;
   const preStart = isPreStart(hireDate, nowMs);
@@ -359,12 +366,13 @@ export function deriveEos(caseRow: OffboardingCaseLike, nowMs = eosEndMs(caseRow
   const wage = averageBasis ? Number((caseRow as any).averageWage) : eosBase.wage;
   const entitlement = annualEntitlementDays(caseRow, onDate, nowMs);
   const accrued = preStart ? 0 : accruedAnnualDaysAtExit(hireDate || undefined, entitlement, onDate);
-  // Art. 111: with the leave record on hand, every untaken year (FIFO buckets) plus the pro-rata of the
-  // last one is paid — not only the current year. Without it, the old single-year figure stays.
+  // Art. 111 — mirror of the client rule: FIFO only when the leave record covers the service (an annual
+  // request on file, or profile.leaveOpeningBalance); otherwise accrued less annualLeaveUsed.
   const leaveRows = Array.isArray((caseRow as any).leaveRequests) ? (caseRow as any).leaveRequests : (Array.isArray((caseRow as any).profile?.leaveRequests) ? (caseRow as any).profile.leaveRequests : null);
+  const openingBalance = (caseRow as any).profile?.leaveOpeningBalance ?? (caseRow as any).leaveOpeningBalance;
   const exitDay = String((caseRow as any).contractExit?.effectiveDate || "").slice(0, 10) || onDate;
-  const unused = preStart ? 0 : leaveRows && hireDate
-    ? Math.round(unusedAnnualDaysAtExit({ ...((caseRow as any).profile || {}), hireDate, leaveTotals: (caseRow as any).leaveTotals ?? (caseRow as any).profile?.leaveTotals }, leaveRows, exitDay) * 10) / 10
+  const unused = preStart ? 0 : eosLeaveRecordCovers(leaveRows, openingBalance) && hireDate
+    ? Math.round(unusedAnnualDaysAtExit({ ...((caseRow as any).profile || {}), hireDate, leaveTotals: (caseRow as any).leaveTotals ?? (caseRow as any).profile?.leaveTotals, leaveOpeningBalance: openingBalance }, leaveRows || [], exitDay) * 10) / 10
     : Math.round(unusedAnnualDays(Number(caseRow.annualLeaveUsed) || 0, accrued) * 10) / 10;
   const full = preStart ? 0 : eosGratuity(years, wage);
   const leave = preStart ? 0 : leaveCashout(wage, unused);

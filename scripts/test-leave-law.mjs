@@ -78,9 +78,10 @@ const approvedAnnual = (id, startDate, endDate) => ({ id, type: "annual", status
   assert.equal(ts.unusedAnnualDaysAtExit(profile, [], "2024-07-01"), exitDays);
   const taken = unusedAnnualDaysAtExit(profile, [approvedAnnual("x", "2024-08-01", "2024-08-30")], "2024-07-01");
   assert.equal(taken, exitDays, "leave after the exit day does not reduce the payout");
-  // deriveEos reads the leave record (leave-days input only).
+  // deriveEos reads the leave record when it covers the service (an annual request on file here).
+  // Updated deliberately (review fix 4): an EMPTY leave array no longer counts as a record.
   const now = new Date(2024, 6, 1, 12).getTime();
-  const eos = deriveEos({ hireDate: "2022-01-01", base: 3000, allowances: 0, leaveRequests: [], profile: { hireDate: "2022-01-01" } }, now);
+  const eos = deriveEos({ hireDate: "2022-01-01", base: 3000, allowances: 0, leaveRequests: [approvedAnnual("x", "2024-08-01", "2024-08-30")], profile: { hireDate: "2022-01-01" } }, now);
   assert.equal(eos.unusedAnnualDays, Math.round(exitDays * 10) / 10);
   const legacy = deriveEos({ hireDate: "2022-01-01", base: 3000, allowances: 0, annualLeaveUsed: 0 }, now);
   assert.ok(legacy.unusedAnnualDays < eos.unusedAnnualDays, "without a leave record the old single-year figure stays");

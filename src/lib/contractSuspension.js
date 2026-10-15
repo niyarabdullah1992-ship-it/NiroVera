@@ -9,12 +9,17 @@
  *
  * So, per contract year (counted from the hire date), unpaid-leave days up to 20 stay inside
  * the service; every day beyond is a suspended day that does not count. A leave the parties
- * agreed would not suspend the contract (`contractNotSuspended: true`) is left out.
+ * agreed would not suspend the contract (`agreedOtherwise` / `contractNotSuspended` /
+ * `agreedNotSuspended`) suspends nothing.
+ *
+ * Single source of truth: the day-by-day count is leaveTypes.unpaidSuspensionPlan (the same plan the
+ * leave branch shows when the request is approved) — this module only windows and groups it.
  *
  * Pure: no store, node-testable.
  */
 
 import { ruleValue } from "./laborRules.js";
+import { unpaidAgreedOtherwise, unpaidSuspensionPlan } from "./leaveTypes.js";
 
 const DAY = 86400000;
 
@@ -37,48 +42,35 @@ function addYears(d, n) {
   return iso(dt);
 }
 
-const APPROVED = ["approved", "accepted"];
-
 /** Approved unpaid leave that counts toward suspension (Art. 116). */
 export function isSuspendingUnpaidLeave(row) {
   if (!row) return false;
   if (String(row.type || "").toLowerCase() !== "unpaid") return false;
-  if (!APPROVED.includes(String(row.status || "").toLowerCase())) return false;
-  if (row.contractNotSuspended === true || row.agreedNotSuspended === true) return false;
-  return true;
-}
-
-function leaveDays(row) {
-  const a = dateOnly(row.startDate);
-  if (!a) return [];
-  const b = dateOnly(row.endDate) || iso(new Date(parse(a).getTime() + (Math.max(1, Number(row.days) || 1) - 1) * DAY));
-  const out = [];
-  for (let t = parse(a).getTime(), end = parse(b).getTime(); t <= end; t += DAY) out.push(iso(new Date(t)));
-  return out;
+  if (!["approved", "accepted"].includes(String(row.status || "").toLowerCase())) return false;
+  return !unpaidAgreedOtherwise(row);
 }
 
 /**
  * Suspended days between `from` (hire date — contract years run from it) and `to`, with the
- * per-year breakdown. Returns { days, allowance, years: [{ start, end, unpaid, suspended }] }.
+ * per-year breakdown. Returns { days, allowance, years: [{ start, end, suspended }] }.
  */
 export function suspensionDetail(leaveRequests = [], from, to, { allowance } = {}) {
   const start = dateOnly(from);
   const end = dateOnly(to);
-  const free = Number.isFinite(Number(allowance)) ? Number(allowance) : Number(ruleValue("leave.unpaid.suspendAfterDays")) || 20;
+  const plan = unpaidSuspensionPlan(leaveRequests || [], start || undefined);
+  const free = Number.isFinite(Number(allowance)) ? Number(allowance) : Number(plan.cap) || Number(ruleValue("leave.unpaid.suspendAfterDays")) || 20;
   if (!start || !end || end < start) return { days: 0, allowance: free, years: [] };
-  const days = [...new Set((leaveRequests || []).filter(isSuspendingUnpaidLeave).flatMap(leaveDays))]
-    .filter((d) => d >= start && d <= end)
-    .sort();
+  const days = plan.days.filter((d) => d >= start && d <= end);
   const years = [];
   if (!days.length) return { days: 0, allowance: free, years };
   for (let n = 0; ; n += 1) {
     const ys = addYears(start, n);
     if (ys > end) break;
     const ye = iso(new Date(parse(addYears(start, n + 1)).getTime() - DAY));
-    const unpaid = days.filter((d) => d >= ys && d <= ye).length;
-    if (unpaid) years.push({ start: ys, end: ye, unpaid, suspended: Math.max(0, unpaid - free) });
+    const suspended = days.filter((d) => d >= ys && d <= ye).length;
+    if (suspended) years.push({ start: ys, end: ye, suspended });
   }
-  return { days: years.reduce((s, y) => s + y.suspended, 0), allowance: free, years };
+  return { days: days.length, allowance: free, years };
 }
 
 /** Unpaid-leave days beyond 20 in each contract year — they do not count as service. */

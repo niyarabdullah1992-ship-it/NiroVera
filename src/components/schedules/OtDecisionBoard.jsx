@@ -8,6 +8,7 @@ import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import LawGateAlertRow from "@/components/shared/LawGateAlertRow";
 import { toast } from "@/components/ui/use-toast";
 import { SW } from "@/lib/shiftWeek";
+import { viewerEmployeeId } from "@/lib/employeeFileView";
 
 /**
  * Live Art. 107 overtime decision — hours derived from the published rota
@@ -47,13 +48,17 @@ export default function OtDecisionBoard({
         const entry = otDecisions[`${employee.id}:${key}`];
         if (!entry || !(entry.workedProven || entry.holiday)) continue;
         const prev = byDay.get(key);
-        const minutes = Math.max(Number(entry.overtimeMinutes) || 0, prev?.overtimeMinutes || 0);
+        // Punches replace the plan (never max over it); a planned-only holiday entry shows its plan.
+        const minutes = entry.workedProven
+          ? Number(entry.overtimeMinutes) || 0
+          : Math.max(Number(entry.overtimeMinutes) || 0, prev?.overtimeMinutes || 0);
         byDay.set(key, {
           ...(prev || { dateKey: key, kind: entry.kind || (entry.holiday ? "holiday" : "actual"), ruleId: "hours.ot.premium" }),
           overtimeMinutes: minutes,
           overtimeHours: Math.round((minutes / 60) * 100) / 100,
           label: entry.holiday ? (ar ? HOLIDAY_WORK_LABEL_AR : HOLIDAY_WORK_LABEL_EN) : (prev?.label || (ar ? "ساعات عُملت فعلاً بحسب الحضور والانصراف — إضافي (المادة 107)" : "Hours actually worked per the punches — overtime (Art. 107)")),
           proven: !!entry.workedProven,
+          plannedOnly: !!entry.holiday && !entry.workedProven,
         });
       }
       const items = [...byDay.values()].sort((a, b) => String(a.dateKey).localeCompare(String(b.dateKey)));
@@ -69,8 +74,9 @@ export default function OtDecisionBoard({
   }, [employees, schedule, weekStart, company, laborCalendar, otDecisions, ar]);
 
   const mine = mode === "mine";
+  const viewerId = viewerEmployeeId(currentUser);
   const visible = mine
-    ? rows.filter((row) => String(row.employee.id) === String(currentUser?.id))
+    ? rows.filter((row) => !!viewerId && String(row.employee.id) === viewerId)
     : rows;
 
   if (!visible.length) {
@@ -116,7 +122,9 @@ export default function OtDecisionBoard({
     toast({
       description: result.capConsentRequested
         ? (ar ? result.reason : result.reasonEn)
-        : result.decision === "comp_leave"
+        : result.decision === "reject"
+          ? (ar ? "أُغلق اليوم: العمل المخطط لم يُعمل." : "Closed: the planned work was not done.")
+          : result.decision === "comp_leave"
           ? (ar ? "سُجّلت إجازة تعويضية بموافقة العامل." : "Compensatory leave recorded with the worker's consent.")
           : (ar ? "سُجّل صرف الإضافي." : "Overtime pay recorded."),
     });
@@ -125,8 +133,8 @@ export default function OtDecisionBoard({
 
   /** Regs Art. 22 — the worker's own answer to passing the annual cap. */
   const answerCap = (dateKey, accept) => {
-    if (!companyId || !currentUser?.id) return;
-    const result = answerOtCapConsent(companyId, currentUser.id, dateKey, { accept, by: currentUser?.name });
+    if (!companyId || !viewerId) return;
+    const result = answerOtCapConsent(companyId, viewerId, dateKey, { accept, by: currentUser?.name });
     if (!result.ok) {
       toast({ description: ar ? result.reason : result.reasonEn, variant: "destructive" });
       return;
@@ -195,7 +203,9 @@ export default function OtDecisionBoard({
                     {saved.decision === "comp_leave"
                       ? (ar ? "إجازة تعويضية بموافقة مسجّلة" : "Compensatory leave with recorded consent")
                       : saved.decision === "reject"
-                        ? (ar ? "رُفض الصرف — الساعات مسجّلة" : "Pay rejected — hours stay recorded")
+                        ? (saved.notWorked
+                          ? (ar ? "أُغلق — العمل المخطط لم يُعمل" : "Closed — the planned work was not done")
+                          : (ar ? "رُفض الصرف — الساعات مسجّلة" : "Pay rejected — hours stay recorded"))
                         : (ar ? `${premium} — معتمد للمسير` : `${premium} — approved for payroll`)}
                   </span>
                 ) : mine ? (
@@ -242,6 +252,17 @@ export default function OtDecisionBoard({
                     >
                       {premium}
                     </button>
+                    {item.plannedOnly ? (
+                      <button
+                        type="button"
+                        data-ot-not-worked="1"
+                        disabled={busy === key}
+                        onClick={() => decide(row.employee.id, item.dateKey, "reject", item.overtimeMinutes, [item.kind])}
+                        style={{ fontFamily: "inherit", fontSize: 11, padding: "6px 10px", border: `1px solid ${SW.line}`, background: SW.card, color: SW.mid, cursor: "pointer" }}
+                      >
+                        {ar ? "لم يُعمل — إغلاق" : "Not worked — close"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       disabled={busy === key}

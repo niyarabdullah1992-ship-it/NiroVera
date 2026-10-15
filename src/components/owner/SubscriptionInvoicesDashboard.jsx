@@ -104,7 +104,7 @@ export default function SubscriptionInvoicesDashboard({ ar }) {
       <div style={ownerGrid}>
         <OwnerStatTile label={ar ? "إجمالي الفواتير" : "All invoices"} value={periodInvoices.length} />
         <OwnerStatTile label={ar ? "مدفوعة" : "Paid"} value={paid.length} state="ok" />
-        <OwnerStatTile label={ar ? "مستحقة" : "Outstanding"} value={due.length} state={due.length ? "warn" : "mute"} />
+        <OwnerStatTile label={ar ? "مستحقة" : "Outstanding"} value={due.length} state={due.length ? "warn" : "mute"} ar={ar} flag={ar ? "بانتظار السداد" : "Awaiting payment"} />
         <OwnerStatTile
           label={ar ? "إجمالي المحصل" : "Total collected"}
           value={money(totalPaid, paid[0]?.currency || "USD", ar)}

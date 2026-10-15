@@ -1,7 +1,8 @@
 /** Design system law for /app — Design System v2.
  *  Six form rules + two behaviour rules + named surfaces.
  *  Document cards: 12px radius, 1px line, soft paper shadow.
- *  Status lives on the top 3px edge. Controls 10px. Chips 999.
+ *  Cards are calm (no coloured edge); status is a small chip beside the title,
+ *  shown only for warn/bad (see src/lib/statusFlag.js). Controls 10px. Chips 999.
  *  Tokens live in CSS `--nv-*`.
  */
 
@@ -31,12 +32,11 @@ export function dsDegree(stateId, degree = "ink") {
   return `var(--nv-${token}-${key})`;
 }
 
+/** Calm document card. `stateId` is kept for callers; the state shows as a chip, never an edge. */
 export function docFrame(stateId) {
-  const fill = stateId ? dsDegree(stateId, "fill") : "var(--nv-line)";
   return {
     background: "var(--nv-card)",
     border: "1px solid var(--nv-line)",
-    borderTop: `${DS_EDGE_PX}px solid ${fill}`,
     borderRadius: DS_RADIUS,
     boxShadow: DS_SHADOW,
   };
@@ -65,10 +65,10 @@ export const DS_FORM_RULES = [
     num: "01",
     ar: "الوثيقة لا اللوحة",
     en: "Document, not a dashboard",
-    dAr: "حدّ هيكل 1px يبني العمق، وشريط 3px على الحرف الأعلى وحده يحمل الحالة. السطح يُقرأ مستنداً: جداول وحقائق وأرقام مواد.",
-    dEn: "A 1px structure border builds depth. A 3px strip on the top edge alone carries status. The surface reads as a document.",
-    noAr: "لا إطار ملوّن يحيط البطاقة، ولا ظلّ يعوّض عن الحدّ، ولا حدّ أسمك من 3px.",
-    noEn: "No coloured frame around the card, no shadow instead of a border, no edge thicker than 3px.",
+    dAr: "حدّ هيكل 1px يبني العمق، والبطاقة هادئة بلا شريط ملوّن. الحالة كلمة في شارة صغيرة بجوار العنوان، تظهر فقط حين يحتاج الأمر متابعة أو إجراء. السطح يُقرأ مستنداً: جداول وحقائق وأرقام مواد.",
+    dEn: "A 1px structure border builds depth; the card stays calm with no coloured strip. Status is a word in a small chip beside the title, shown only when something needs attention or action. The surface reads as a document.",
+    noAr: "لا شريط ملوّن على حرف البطاقة، ولا إطار ملوّن يحيطها، ولا ظلّ يعوّض عن الحدّ.",
+    noEn: "No coloured strip on a card edge, no coloured frame around it, no shadow instead of a border.",
   },
   {
     id: "pair",

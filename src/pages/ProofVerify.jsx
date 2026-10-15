@@ -45,11 +45,11 @@ export default function ProofVerify() {
         )}
 
         {!loading && (!id || info?.found === false) && (
-          <IdentityCard icon={ShieldX} rail="#DC2626" title={ar ? "رقم الإثبات غير موجود في السجل." : "This proof reference does not exist in the registry."} />
+          <IdentityCard icon={ShieldX} tone="bad" ar={ar} flag={ar ? "غير موجود" : "Not found"} title={ar ? "رقم الإثبات غير موجود في السجل." : "This proof reference does not exist in the registry."} />
         )}
 
         {!loading && info?.found && info.revoked && (
-          <IdentityCard icon={ShieldX} rail="#B45309" title={ar ? "تم سحب هذا الإثبات من قبل الجهة المُصدِرة." : "This proof was withdrawn by the issuer."} />
+          <IdentityCard icon={ShieldX} tone="warn" ar={ar} flag={ar ? "مسحوب" : "Withdrawn"} title={ar ? "تم سحب هذا الإثبات من قبل الجهة المُصدِرة." : "This proof was withdrawn by the issuer."} />
         )}
 
         {!loading && info?.found && !info.revoked && <PublicProofReport info={info} hashMatches={hashMatches} ar={ar} />}

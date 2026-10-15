@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import { Link, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -586,8 +587,11 @@ export default function Complaints() {
           <>
             <div className="nv-disc-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
               {board.stats.map((stat) => (
-                <div key={stat.lbl} className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, borderTop: `3px solid ${stat.accent}`, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                  <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{stat.lbl}</span>
+                <div key={stat.lbl} className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+                    <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{stat.lbl}</span>
+                    <StatusFlag tone={stat.tone} flag={stat.flag} ar={ar} />
+                  </span>
                   <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
                     <span dir="ltr" style={{ fontSize: 26, fontWeight: 700, color: stat.accent, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{stat.val}</span>
                     {stat.unit ? <span style={{ fontSize: 12, fontWeight: 600, color: stat.accent }}>{stat.unit}</span> : null}

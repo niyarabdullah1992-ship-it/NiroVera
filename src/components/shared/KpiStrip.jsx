@@ -5,7 +5,7 @@ import { ACCENT, DANGER, INK, MUTED, statCard, num } from "@/lib/platformStyles"
  * Paper KPI tiles inside a stamp — no navy rail.
  * @param {{ stats: { label: string, value: string | number, hint?: string, suffix?: string, tone?: "ok" | "warn" | "danger" | null }[] }} props
  */
-export default function KpiStrip({ stats = [], rail = false }) {
+export default function KpiStrip({ stats = [] }) {
   if (!stats.length) return null;
 
   const valueColor = (tone) => {
@@ -13,12 +13,6 @@ export default function KpiStrip({ stats = [], rail = false }) {
     if (tone === "warn") return "#B45309";
     if (tone === "ok") return ACCENT;
     return INK;
-  };
-  const railColor = (tone) => {
-    if (tone === "danger") return "#8a1c2b";
-    if (tone === "warn") return "#c9962b";
-    if (tone === "ok") return "var(--nv-accent, #1E9E63)";
-    return "var(--nv-navy, #14284B)";
   };
 
   return (
@@ -37,7 +31,6 @@ export default function KpiStrip({ stats = [], rail = false }) {
           style={{
             ...statCard,
             padding: "14px 16px",
-            borderTop: rail ? `3px solid ${railColor(item.tone)}` : undefined,
           }}
         >
           <div style={{ fontSize: 11, fontWeight: 500, color: MUTED }}>

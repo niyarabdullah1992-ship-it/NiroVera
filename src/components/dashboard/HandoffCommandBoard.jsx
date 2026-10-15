@@ -5,6 +5,7 @@ import {
 } from "@/lib/platformStyles";
 import { LEAVE_STYLE } from "@/lib/shiftWeek";
 import { setStationScope } from "@/lib/stationScopeStore";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import useStationScope from "@/hooks/useStationScope";
 
 const MONO = "'IBM Plex Mono', monospace";
@@ -44,6 +45,19 @@ function leaveTag() {
     borderRadius: 999,
   };
 }
+
+/** Accent → status tone for the chip (bad/warn only; ok stays colourless). */
+function accentTone(accent) {
+  if (accent === BAD) return "bad";
+  if (accent === WARN) return "warn";
+  return null;
+}
+
+const KPI_FLAG = {
+  attendance: { bad: { ar: "حضور منخفض", en: "Low attendance" }, warn: { ar: "دون المعتاد", en: "Below usual" } },
+  decisions: { bad: { ar: "بانتظار قرارك", en: "Awaiting you" } },
+  readiness: { bad: { ar: "جاهزية ضعيفة", en: "Weak readiness" }, warn: { ar: "يحتاج متابعة", en: "Needs attention" } },
+};
 
 function kpiAccent(key, value) {
   if (key === "attendance") {
@@ -190,7 +204,10 @@ export default function HandoffCommandBoard({
         {kpis.map((kpi) => {
           const body = (
             <>
-              <span style={{ fontSize: 12, color: MUTED }}>{kpi.label}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+                <span style={{ fontSize: 12, color: MUTED }}>{kpi.label}</span>
+                <StatusFlag tone={accentTone(kpi.accent)} ar={ar} flag={(() => { const f = KPI_FLAG[kpi.key]?.[accentTone(kpi.accent)]; return f ? (ar ? f.ar : f.en) : ""; })()} />
+              </span>
               <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
                 <span dir="ltr" style={{ fontFamily: MONO, fontSize: 30, fontWeight: 500, color: kpi.accent, lineHeight: 1.05 }}>
                   {kpi.value}
@@ -203,7 +220,6 @@ export default function HandoffCommandBoard({
           const face = {
             background: CARD,
             border: `1px solid ${LINE}`,
-            borderTop: `3px solid ${kpi.accent}`,
             borderRadius: 14,
             boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
             padding: "14px 16px",
@@ -415,7 +431,6 @@ export default function HandoffCommandBoard({
                 style={{
                   background: active ? "var(--nv-hover)" : CARD,
                   border: `1px solid ${active ? "#C5DBCD" : LINE}`,
-                  borderTop: `3px solid ${tone}`,
                   borderRadius: 12,
                   padding: "12px 14px",
                   cursor: "pointer",
@@ -428,10 +443,10 @@ export default function HandoffCommandBoard({
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={dot(tone)} />
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: NAVY, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {s.name}
                   </span>
+                  <StatusFlag tone={accentTone(tone)} ar={ar} flag={tone === BAD ? (ar ? "بنود مفتوحة كثيرة" : "Heavy open load") : (ar ? "بنود مفتوحة تتزايد" : "Open items rising")} />
                   {s.code ? (
                     <span dir="ltr" style={{ fontSize: 10, color: MUTED, fontFamily: MONO }}>{s.code}</span>
                   ) : null}

@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import { isHeatBanDate } from "@/lib/contractLawDerivations";
 import { SAFETY_REPORT_CONTROLS, deriveOpenRiskMap, safetyReportSlaLine } from "@/lib/safetyReportCard";
 import { PERMIT_TYPES } from "@/lib/safetyStandards";
@@ -585,8 +586,11 @@ export function SafetyMinistryPanel({ ar, criticalOpen, controlLabel, controlTon
     ["قرار 3337", L("لا عمل مكشوف 12:00–15:00 من 15 يونيو إلى 15 سبتمبر", "No exposed work 12:00–15:00 from 15 June to 15 September"), inSeason ? L("الموسم قائم", "Season is open") : L("بلا أثر", "No effect"), inSeason ? "warn" : ""],
   ];
   return (
-    <details style={{ ...shell, padding: 0, borderColor: criticalOpen ? "#9B2335" : undefined, boxShadow: criticalOpen ? "inset 0 3px 0 #9B2335" : shell.boxShadow }}>
-      <summary style={{ padding: "12px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: criticalOpen ? "#9B2335" : "var(--nv-ink)" }}>{L("مرجعية الوزارة", "Ministry reference")}</summary>
+    <details style={{ ...shell, padding: 0 }}>
+      <summary style={{ padding: "12px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>
+        {L("مرجعية الوزارة", "Ministry reference")}
+        {criticalOpen ? <StatusFlag tone="bad" ar={ar} flag={L("خطر حرج مفتوح", "Critical hazard open")} style={{ marginInlineStart: 8, verticalAlign: "middle" }} /> : null}
+      </summary>
       <div style={{ borderTop: "1px solid var(--nv-line)" }}>
         {rows.map((row) => (
           <div key={row[0]} style={{ display: "grid", gridTemplateColumns: "140px minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "10px 14px", borderBottom: "1px solid var(--nv-line2)" }}>

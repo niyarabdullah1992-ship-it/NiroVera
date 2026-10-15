@@ -248,7 +248,6 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
           width: box.width,
           background: "var(--nv-card)",
           border: "1px solid var(--nv-line)",
-          borderTop: "3px solid var(--nv-ok-fill)",
           borderRadius: 10,
           boxShadow: "0 18px 44px rgba(12,20,16,.18)",
           display: "flex",

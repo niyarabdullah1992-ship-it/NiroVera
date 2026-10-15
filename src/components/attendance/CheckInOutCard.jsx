@@ -23,7 +23,7 @@ import {
   localCheckIn,
   localCheckOut,
 } from "@/lib/localAttendanceFallback";
-import { ACCENT, BORDER, CARD, MUTED, NAVY, SURFACE, ui } from "@/lib/platformStyles";
+import { BORDER, CARD, MUTED, NAVY, SURFACE, ui } from "@/lib/platformStyles";
 import { submitOtherRequest } from "@/lib/store";
 import { checkSubmitOtherRequestGate } from "@/lib/otherRequestDerivations";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
@@ -281,7 +281,6 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       ? "awaiting_out"
       : "done";
 
-  const accentColor = phase === "awaiting_out" ? ACCENT : phase === "done" ? "#137a49" : NAVY;
   const clockLabel = toWesternDigits(formatTime(new Date(tick).toISOString(), format, "en-GB"));
   const locationFailed = /OUTSIDE_STATION|GPS_REQUIRED|STATION_LOCATION|location|موقع|النطاق/i.test(error || "");
   const forgotten = isForgottenCheckout(shift, attendance, tick);
@@ -329,7 +328,6 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         className="nv-att-card"
         data-testid="check-in-out-card"
       >
-        <div style={{ height: 3, background: accentColor }} />
         <div style={{ padding: "10px 14px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
           <div style={{ flex: "1 1 180px", minWidth: 0 }}>
             <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: NAVY }}>

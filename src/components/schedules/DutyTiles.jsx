@@ -1,7 +1,7 @@
 import React from "react";
 import { DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
 import { mono } from "@/components/schedules/scheduleChrome";
-import { dutyEdge } from "@/components/schedules/dutyStatus";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 
 /**
  * One skeleton for the three employee duty pages (بصمتي · سجلي · جدولي):
@@ -9,8 +9,12 @@ import { dutyEdge } from "@/components/schedules/dutyStatus";
  * Layout classes live in index.css (.nv-duty-tiles / .nv-duty-board / .nv-duty-col).
  */
 
-/** KPI tile — card, 3px status edge on top, muted label, value, optional note. */
-export function DutyTile({ tone = "mute", label, children, note, dataKey }) {
+/**
+ * KPI tile — calm card (1px line, no coloured edge), muted label, value, optional note.
+ * Status shows only as a small chip beside the label when tone is warn/bad;
+ * `flag` names it (e.g. «تأخير مسجّل»), else the default «يحتاج متابعة» / «يحتاج إجراء».
+ */
+export function DutyTile({ tone = "mute", label, children, note, dataKey, flag, ar = true }) {
   return (
     <div
       data-duty-tile={dataKey || undefined}
@@ -30,8 +34,10 @@ export function DutyTile({ tone = "mute", label, children, note, dataKey }) {
         textAlign: "start",
       }}
     >
-      <span aria-hidden style={{ position: "absolute", insetInline: 0, top: 0, height: 3, background: dutyEdge(tone) }} />
-      <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.4 }}>{label}</span>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+        <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.4 }}>{label}</span>
+        <StatusFlag tone={tone} flag={flag} ar={ar} />
+      </span>
       {children}
       {note ? <span style={{ fontSize: 11, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.6 }}>{note}</span> : null}
     </div>

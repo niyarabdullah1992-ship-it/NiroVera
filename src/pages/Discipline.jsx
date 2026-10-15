@@ -296,17 +296,17 @@ export default function Discipline() {
     : [];
   const overCount = files.filter((card) => (card.meters || []).some((m) => m.over)).length;
   // The platform's three tiles: what waits on you first (wider), then open files, then the cut in force.
-  const statTile = (stat, key, tone) => (stat ? (
-    <DutyTile key={key} dataKey={key} tone={tone} label={stat.lbl} note={stat.note || ""}>
+  const statTile = (stat, key, tone, flag) => (stat ? (
+    <DutyTile key={key} dataKey={key} tone={tone} ar={ar} flag={flag} label={stat.lbl} note={stat.note || ""}>
       <DutyNumber value={stat.val} unit={stat.unit || ""} />
     </DutyTile>
   ) : null);
   const manageTiles = adminVoice ? [
-    <DutyTile key="due" dataKey="disc-due" tone={overCount ? "bad" : waiting.length ? "warn" : "ok"} label={ar ? "بانتظار قرارك" : "Waiting on you"} note={overCount ? (ar ? `${overCount} تجاوز مهلة نظامية` : `${overCount} past a statutory window`) : (ar ? "كلها ضمن المهل النظامية (69 · 72)" : "All within the statutory windows (69 · 72)")}>
+    <DutyTile key="due" dataKey="disc-due" tone={overCount ? "bad" : waiting.length ? "warn" : "ok"} ar={ar} flag={overCount ? (ar ? "تجاوز مهلة نظامية" : "Past a statutory window") : (ar ? "بانتظار قرارك" : "Your decision")} label={ar ? "بانتظار قرارك" : "Waiting on you"} note={overCount ? (ar ? `${overCount} تجاوز مهلة نظامية` : `${overCount} past a statutory window`) : (ar ? "كلها ضمن المهل النظامية (69 · 72)" : "All within the statutory windows (69 · 72)")}>
       <DutyNumber value={String(waiting.length)} unit={ar ? "ملف" : "files"} />
     </DutyTile>,
-    statTile(board.stats[1], "disc-open", files.length ? "warn" : "mute"),
-    statTile(board.stats[3], "disc-cut", String(board.stats[3]?.val || "0").startsWith("0") ? "mute" : "bad"),
+    statTile(board.stats[1], "disc-open", files.length ? "warn" : "mute", ar ? "ملفات مفتوحة" : "Open files"),
+    statTile(board.stats[3], "disc-cut", String(board.stats[3]?.val || "0").startsWith("0") ? "mute" : "bad", ar ? "حسم نافذ" : "Cut in force"),
   ].filter(Boolean) : null;
   const manageSide = adminVoice ? (
     <OpsSideSlab

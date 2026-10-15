@@ -9,7 +9,7 @@ import { chip, SectionHead, slab } from "@/components/schedules/scheduleChrome";
 /**
  * Employee presenter of the same week-check rows as حكم المنصة.
  * Section title is تنبيهاتي. Cards never name a coworker.
- * Default chrome matches platform تنبيهات (statusBanner + 3px top edge).
+ * Default chrome matches platform تنبيهات (statusBanner — soft fill, no coloured top edge).
  * Pass quietEdge for جدول — soft fill + 1px line only; night_rotate / 18632 stay there.
  * Without quietEdge (employee file): omit night consent — it lives in طلباتي or الجدول only.
  */

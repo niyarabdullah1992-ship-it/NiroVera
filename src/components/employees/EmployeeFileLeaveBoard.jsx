@@ -83,7 +83,7 @@ export default function EmployeeFileLeaveBoard({ view, ar }) {
               {view.filedEmpty || (ar ? "لا توجد طلبات إجازة بعد" : "No leave written on the file yet")}
             </div>
           ) : (view.filed || []).map((row) => (
-            <div key={`${row.type}-${row.meta}`} style={{ padding: "12px 20px", borderBottom: "1px solid var(--nv-line2)", borderInlineEnd: "3px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 4 }}>
+            <div key={`${row.type}-${row.meta}`} style={{ padding: "12px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 4 }}>
               <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "baseline" }}>
                 <span style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>{row.type}</span>

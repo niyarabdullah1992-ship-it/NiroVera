@@ -319,6 +319,8 @@ export default function VisitorProof() {
     <DutyTile
       key="last"
       dataKey="vp-last"
+      ar={ar}
+      flag={ar ? "يغادر اليوم" : "Leaves today"}
       tone={lastDay ? "warn" : "mute"}
       label={ar ? "ينتهي تصريحه اليوم" : "Pass ends today"}
       note={ar ? "سجّل المغادرة عند الخروج" : "Record leaving on the way out"}
@@ -328,6 +330,8 @@ export default function VisitorProof() {
     <DutyTile
       key="over"
       dataKey="vp-overstay"
+      ar={ar}
+      flag={ar ? "مغادرة غير مسجّلة" : "No exit recorded"}
       tone={overstay ? "bad" : "mute"}
       label={ar ? "تجاوز موعده" : "Past the date"}
       note={ar ? "انتهى التصريح ولم تُسجَّل مغادرة" : "Pass ended with no leaving recorded"}

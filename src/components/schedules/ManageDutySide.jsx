@@ -326,7 +326,7 @@ export function PendingDutyRequestsCard({ ar = true, people = [] }) {
   const rows = pendingDutyRequests(people).slice(0, 8);
   if (!rows.length) return null;
   return (
-    <section data-roster-duty-requests="1" style={{ ...slab, display: "flex", flexDirection: "column", overflow: "hidden", borderTop: "3px solid var(--nv-warn-fill)" }}>
+    <section data-roster-duty-requests="1" style={{ ...slab, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <SectionHead
         title={ar ? "طلبات الدوام المعلّقة" : "Pending duty requests"}
         note={ar ? "تمسّ هذا الجدول — قرّرها قبل النشر" : "They touch this roster — decide before publishing"}

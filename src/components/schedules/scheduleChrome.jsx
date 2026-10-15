@@ -5,7 +5,7 @@ import { DS_CONTROL_RADIUS, DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
  * One chrome for every جدول الدوام surface.
  * Panel = slab (card fill, 1px line, shell radius). Section head = 15/700 + 12 muted note.
  * Chip = 24px tall, control radius, 1px border, tone from the ok/warn/bad/mute families.
- * Status never fills a card — it sits on a 3px top edge or on the number.
+ * Status never fills a card — it sits in a small chip beside the label (warn/bad only) or on the number.
  */
 export const slab = {
   background: "var(--nv-card, #fff)",

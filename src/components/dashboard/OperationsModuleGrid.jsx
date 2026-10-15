@@ -1,4 +1,5 @@
 import React from "react";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import { Link } from "react-router-dom";
 import { canAccessPath } from "@/lib/navVisibility";
 import { formatUiNumber } from "@/lib/dateFormat";
@@ -272,7 +273,6 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
         <div className="nv-dash-cycle">
           {cycle.map((item) => {
             const urgent = item.tone === "urgent";
-            const watch = item.tone === "watch";
             return (
               <Link
                 key={item.step}
@@ -283,7 +283,6 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
                   gap: 6,
                   padding: "14px 14px",
                   border: `1px solid ${LINE}`,
-                  borderTop: `3px solid ${urgent ? BAD : watch ? WARN : OK}`,
                   borderRadius: 12,
                   textDecoration: "none",
                   minWidth: 0,
@@ -291,14 +290,14 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
                 }}
               >
                 <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: MUTED }}>{item.step}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{item.title}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{item.title}</span>
+                  <StatusFlag tone={item.tone} ar={ar} flag={item.flag} />
+                </span>
                 <span dir="ltr" style={{ fontFamily: MONO, fontSize: 26, fontWeight: 500, color: urgent ? BAD : "var(--nv-ink)", lineHeight: 1.05, unicodeBidi: "isolate" }}>
                   {item.value}
                 </span>
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{item.note}</span>
-                {urgent || watch ? (
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: urgent ? BAD : WARN }} />
-                ) : null}
               </Link>
             );
           })}

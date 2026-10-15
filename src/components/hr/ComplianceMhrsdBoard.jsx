@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -99,10 +100,11 @@ function bandMute(id) {
   return "var(--nv-ok-soft)";
 }
 
-function bandEdge(id) {
-  if (id === "red") return "var(--nv-bad-fill)";
-  if (id === "low_green") return "var(--nv-warn-fill)";
-  return "var(--nv-ok-fill)";
+/** Nitaqat band → status chip tone (red = action, low green = attention, else none). */
+function bandTone(id) {
+  if (id === "red") return "bad";
+  if (id === "low_green") return "warn";
+  return null;
 }
 
 function readinessSignal(level, clear) {
@@ -415,25 +417,26 @@ export default function ComplianceMhrsdBoard() {
     background: "var(--nv-btn-fill)",
     color: "var(--nv-btn-ink)",
   };
-  const readinessEdge = readinessRows.some((row) => row.readiness.level === "blocked")
-    ? "var(--nv-bad-fill)"
+  const readinessTone = readinessRows.some((row) => row.readiness.level === "blocked")
+    ? "bad"
     : readinessRows.some((row) => row.readiness.blockers.length > 0)
-      ? "var(--nv-warn-fill)"
-      : "var(--nv-ok-fill)";
-  const expiryEdge = expiringList.some((row) => Number(row.days) < 0)
-    ? "var(--nv-bad-fill)"
+      ? "warn"
+      : null;
+  const expiryTone = expiringList.some((row) => Number(row.days) < 0)
+    ? "bad"
     : expiringList.length
-      ? "var(--nv-warn-fill)"
-      : "var(--nv-ok-fill)";
+      ? "warn"
+      : null;
 
   return (
     <div id="compliance-center" style={{ display: "flex", flexDirection: "column", gap: "16px" }} dir={ar ? "rtl" : "ltr"}>
       {/* L2234–2268 Nitaqat card — primary glance at top of compliance centre */}
-      <section style={{ ...PAPER, borderTop: `3px solid ${bandEdge(bandId)}` }}>
+      <section style={PAPER}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
               {ar ? "نطاقات — نسبة التوطين" : "Nitaqat — Saudization rate"}
+              <StatusFlag tone={bandTone(bandId)} ar={ar} flag={bandId === "red" ? (ar ? "النطاق الأحمر" : "Red band") : (ar ? "قريب من الحد" : "Near the line")} />
             </div>
             <div style={{ fontSize: "11px", color: "var(--nv-ink3)", marginTop: "4px", maxWidth: "620px", lineHeight: 1.65 }}>
               {ar
@@ -594,9 +597,10 @@ export default function ComplianceMhrsdBoard() {
 
       {/* Per-station readiness — the same derivation the quick-switch palette shows */}
       {readinessRows.length > 0 && (
-        <section style={{ ...PAPER, borderTop: `3px solid ${readinessEdge}` }}>
+        <section style={PAPER}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
             <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+              <StatusFlag tone={readinessTone} ar={ar} flag={readinessTone === "bad" ? (ar ? "مانع مفتوح" : "Open blocker") : (ar ? "نواقص قائمة" : "Gaps open")} style={{ marginBottom: 6 }} />
               <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
                 {readinessNews.blockedCount === 0
                   ? (ar ? "لا فرع بمانع مفتوح في هذا النطاق" : "No station has an open blocker in this scope")
@@ -712,9 +716,10 @@ export default function ComplianceMhrsdBoard() {
       )}
 
       {/* App GOSI / expiry extras — same card chrome */}
-      <section style={{ ...PAPER, borderTop: `3px solid ${expiryEdge}` }}>
-        <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
+      <section style={PAPER}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
           {ar ? "التأمينات الاجتماعية (GOSI) والوثائق المنتهية" : "GOSI & expiring documents"}
+          <StatusFlag tone={expiryTone} ar={ar} flag={expiryTone === "bad" ? (ar ? "وثيقة منتهية" : "Document expired") : (ar ? "وثيقة تقترب من الانتهاء" : "Expiring soon")} />
         </div>
         <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px" }}>
           {ar

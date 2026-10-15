@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import { DS_CONTROL_RADIUS, DS_EDGE_PX, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
+import { DS_CONTROL_RADIUS, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
 
 export const ORG_MONO = { fontFamily: "'IBM Plex Mono', monospace" };
 
@@ -181,7 +181,6 @@ export function OrgWorkforceNodeCard({
         border: empty
           ? `1px dashed ${VACANT_DASH}`
           : `1px solid ${selected ? "#0B3D27" : "var(--nv-org-card-line, #DCE3DF)"}`,
-        ...( !empty && byGrade && gradeColor ? { borderTop: `3px solid ${gradeColor}` } : {}),
         borderRadius: 6,
         overflow: "hidden",
         boxShadow: isMe
@@ -196,6 +195,7 @@ export function OrgWorkforceNodeCard({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, padding: "6px 12px", minHeight: 30, boxSizing: "border-box", background: bandBg }}>
+        {!empty && byGrade && gradeColor ? <span aria-hidden data-grade-swatch="1" style={{ width: 8, height: 8, borderRadius: 2, flex: "none", background: gradeColor }} /> : null}
         <span title={unitTip || gradeTip || actingText || undefined} style={{ flex: "1 1 auto", minWidth: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: bandInk }}>
           {face}
         </span>
@@ -349,15 +349,11 @@ export const orgStack = {
   gap: 14,
 };
 
-export function orgPaper(state = "mute") {
-  const fill = state === "ok" ? "var(--nv-ok-fill)"
-    : state === "warn" ? "var(--nv-warn-fill)"
-      : state === "bad" ? "var(--nv-bad-fill)"
-        : "var(--nv-line)";
+/** Calm paper — no coloured edge; `state` is kept for callers (status shows as a chip, see StatusFlag). */
+export function orgPaper(state = "mute") { // eslint-disable-line no-unused-vars
   return {
     background: "var(--nv-card)",
     border: "1px solid var(--nv-line)",
-    borderTop: `${DS_EDGE_PX}px solid ${fill}`,
     borderRadius: DS_RADIUS,
     boxShadow: DS_SHADOW,
     boxSizing: "border-box",

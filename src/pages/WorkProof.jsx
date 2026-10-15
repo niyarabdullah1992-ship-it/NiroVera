@@ -776,6 +776,8 @@ export default function WorkProof() {
     <DutyTile
       key="now"
       dataKey="wp-now"
+      ar={ar}
+      flag={ar ? "صورة «بعد» مستحقة" : "After photo due"}
       tone={workingNow ? "warn" : "mute"}
       label={ar ? "يعمل في الفرع الآن" : "Working at the branch now"}
       note={ar ? "بدأ العمل وصورة «بعد» لم تُرفق بعد" : "Started, the after photo is still due"}
@@ -785,6 +787,8 @@ export default function WorkProof() {
     <DutyTile
       key="ready"
       dataKey="wp-ready"
+      ar={ar}
+      flag={ar ? "بقي الختم" : "Seal pending"}
       tone={needsFinish ? "warn" : "mute"}
       label={ar ? "يحتاج إنهاء" : "Needs finishing"}
       note={ar ? "الصورتان مرفوعتان — بقي الختم" : "Both photos in — only the seal is left"}

@@ -595,7 +595,7 @@ export default function PerfMineBoard({ lang, employee, data }) {
         </div>
       </div>
 
-      <details data-perf-card style={{ ...card, borderTop: `3px solid ${GOLD}`, padding: "12px 16px" }}>
+      <details data-perf-card style={{ ...card, padding: "12px 16px" }}>
         <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700, color: INK }}>{ar ? "مرجع الوزارة" : "Ministry reference"}</summary>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
           {LAWS.map((row) => (

@@ -260,7 +260,7 @@ export default function OpsTaskDetail({
       />
 
       {deleted && (
-        <OpsTaskSection tone="bad" title={ar ? "محذوفة — تبقى في السجل" : "Deleted — stays in the record"}>
+        <OpsTaskSection tone="bad" ar={ar} flag={ar ? "محذوفة" : "Deleted"} title={ar ? "محذوفة — تبقى في السجل" : "Deleted — stays in the record"}>
           <div style={{ fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.65 }}>
             {doneN > 0
               ? (ar

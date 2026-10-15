@@ -34,8 +34,9 @@ assert.equal(catalog.behave[1].id, "named");
 const frame = docFrame("blocked");
 assert.equal(frame.borderRadius, 12);
 assert.match(String(frame.boxShadow), /nv-shadow/);
-assert.match(frame.borderTop, /3px/);
-assert.match(frame.borderTop, /nv-bad-fill/);
+// Calm cards: no coloured top edge — status is a chip beside the title (src/lib/statusFlag.js).
+assert.equal(frame.borderTop, undefined);
+assert.equal(frame.border, "1px solid var(--nv-line)");
 
 const chip = stateChip("settled");
 assert.equal(chip.borderRadius, 999);

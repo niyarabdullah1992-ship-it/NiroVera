@@ -63,7 +63,7 @@ export default function SaasAnalyticsDashboard({ lang }) {
         <>
           <div style={ownerGrid}>
             {metrics.map(([label, value, state]) => (
-              <OwnerStatTile key={label} label={label} value={value} state={state} />
+              <OwnerStatTile key={label} label={label} value={value} state={state} ar={ar} />
             ))}
           </div>
           <SubscriberAnalytics data={data} ar={ar} />

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import { Link } from "react-router-dom";
 import {
   designSystemCatalog,
@@ -106,11 +107,12 @@ export default function DesignSystemBoard({ ar = true }) {
                 label: ar ? "النموذج" : "Model",
                 body: (
                   <div style={{ ...docFrame("waiting"), overflow: "hidden" }}>
-                    <span style={{ display: "block", padding: "10px 13px", borderBottom: `1px solid ${BORDER}`, fontSize: 12.5, fontWeight: 700 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: "10px 13px", borderBottom: `1px solid ${BORDER}`, fontSize: 12.5, fontWeight: 700 }}>
                       {ar ? "بطاقة بحالة واحدة" : "One-state card"}
+                      <StatusFlag tone="warn" ar={ar} />
                     </span>
                     <span style={{ display: "block", padding: "10px 13px", fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.85 }}>
-                      {ar ? "حدّ هيكل رقيق، وشريط 3px على الحرف البادئ يحمل الحالة." : "A thin structure edge, and a 3px start mark carries status."}
+                      {ar ? "حدّ هيكل رقيق، والحالة شارة نصية بجوار العنوان — لا شريط ملوّن." : "A thin structure edge; status is a text chip beside the title — no coloured strip."}
                     </span>
                   </div>
                 ),

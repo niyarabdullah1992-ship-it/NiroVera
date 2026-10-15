@@ -1,4 +1,5 @@
 import React from "react";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import { chip, mono, sourceBadge, statusTone } from "@/components/schedules/scheduleChrome";
 
 /**
@@ -93,10 +94,10 @@ export default function MinistrySourceCards({ cards = [], active = "all", onPick
                 boxShadow: on ? "0 0 0 1px var(--nv-navy)" : "none",
               }}
             >
-              <span aria-hidden style={{ position: "absolute", insetInline: 0, top: 0, height: 3, background: `var(--nv-${card.tone}-fill)` }} />
-              <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
                 <span style={ministryBadgeStyle(card.badge ? "" : card.key, ar, badgeFace(card.badge || ministryBadgeText(card.key, ar)))}>{card.badge || ministryBadgeText(card.key, ar)}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.45, minWidth: 0 }}>{card.title}</span>
+                <StatusFlag tone={card.tone} ar={ar} flag={card.tone === "bad" ? (ar ? "مانع قائم" : "Blocker open") : card.tone === "warn" ? (ar ? "تنبيه قائم" : "Alert open") : ""} />
               </span>
               <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7, flex: "1 1 auto" }}>{card.scope}</span>
               <span

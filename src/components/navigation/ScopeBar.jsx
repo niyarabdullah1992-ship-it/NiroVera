@@ -273,7 +273,6 @@ export default function ScopeBar({
               left: notifBox.left,
               width: notifBox.width,
               zIndex: 82,
-              borderTop: `3px solid ${manage ? "#0B3D27" : "#C8A45A"}`,
               borderRadius: 8,
               overflow: "hidden",
               boxShadow: "0 18px 44px rgba(12,20,16,.18)",

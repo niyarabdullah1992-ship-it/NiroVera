@@ -35,7 +35,7 @@ const LAWS = [
 
 function LawPanel({ ar }) {
   return (
-    <details data-perf-card style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderTop: "3px solid #C8A45A", borderRadius: 14, padding: "12px 16px" }}>
+    <details data-perf-card style={{ background: PERF_WHITE, border: `1px solid ${PERF_LINE}`, borderRadius: 14, padding: "12px 16px" }}>
       <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "مرجع الوزارة" : "Ministry reference"}</summary>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
         {LAWS.map((row) => (

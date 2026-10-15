@@ -153,6 +153,8 @@ export default function MyRecordPage({ me, currentUser, company, data, lang = "a
       <DutyTiles>
         <DutyTile
           dataKey="attended"
+          ar={ar}
+          flag={ar ? "أقل من المجدول" : "Below schedule"}
           tone={yearTotals ? (yearTotals.scheduled && yearTotals.attended < yearTotals.scheduled ? "warn" : "ok") : (totals.scheduled && totals.attended < totals.scheduled ? "warn" : "ok")}
           label={ar ? `أيام الحضور — ${yearWord || monthWord}` : `Days attended — ${yearWord || monthWord}`}
           note={ar
@@ -163,6 +165,8 @@ export default function MyRecordPage({ me, currentUser, company, data, lang = "a
         </DutyTile>
         <DutyTile
           dataKey="late"
+          ar={ar}
+          flag={ar ? "تأخير مسجّل" : "Lateness on file"}
           tone={(yearTotals || totals).lateMinutes ? "warn" : "ok"}
           label={ar ? `التأخير — ${yearWord || monthWord}` : `Lateness — ${yearWord || monthWord}`}
           note={(yearTotals || totals).lateDays

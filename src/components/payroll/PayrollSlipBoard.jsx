@@ -8,12 +8,6 @@ import { payrollSaudiFlag } from "@/lib/payrollWageSync";
 import { citeRule } from "@/lib/laborRules";
 import { MUTED, NAVY, field, ui, CARD, BORDER } from "@/lib/platformStyles";
 
-const EDGE = {
-  net: "#3C7D50",
-  gross: "#0B3D27",
-  deduct: "#C8A45A",
-};
-
 const TONE = {
   ok: { labelAr: "✓ مستقر", labelEn: "✓ Steady", color: "#2F6B43", background: "#E6F2EA" },
   warn: { labelAr: "! تنبيه", labelEn: "! Alert", color: "#8A5A12", background: "#FBF3E1" },
@@ -49,9 +43,9 @@ function depositHint(item, ar) {
   return ar ? "يُودع في موعده عبر مدد" : "Deposited on time via Mudad";
 }
 
-function StatTile({ label, value, hint, edge, ink }) {
+function StatTile({ label, value, hint, ink }) {
   return (
-    <div style={{ flex: "1 1 180px", minWidth: 0, padding: "14px 16px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, borderTop: `3px solid ${edge}`, background: CARD }}>
+    <div style={{ flex: "1 1 180px", minWidth: 0, padding: "14px 16px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: CARD }}>
       <div style={{ fontSize: 12, color: MUTED }}>{label}</div>
       <div dir="ltr" style={{ marginTop: 8, fontFamily: "'IBM Plex Mono', monospace", fontSize: 22, fontWeight: 700, color: ink, textAlign: "end", lineHeight: 1.15 }}>{value}</div>
       <div style={{ marginTop: 6, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>{hint}</div>
@@ -533,14 +527,12 @@ export default function PayrollSlipBoard({
           label={ar ? `صافي ${String(monthLabel || "").replace(/\s+\d{4}$/, "")}` : `Net · ${monthLabel}`}
           value={sarAfter(Math.max(0, parts.net))}
           hint={depositHint(item, ar)}
-          edge={EDGE.net}
           ink="#2F6B43"
         />
         <StatTile
           label={ar ? "الإجمالي" : "Gross"}
           value={sarAfter(gross)}
           hint={ar ? "أساسي + بدلات + إضافي" : "Base + allowances + overtime"}
-          edge={EDGE.gross}
           ink={NAVY}
         />
         <StatTile
@@ -549,7 +541,6 @@ export default function PayrollSlipBoard({
           hint={parts.gosiEmployee
             ? (ar ? "التأمينات · بمصدرها" : "GOSI · with its source")
             : (ar ? "بسند مكتوب" : "With a written instrument")}
-          edge={EDGE.deduct}
           ink={NAVY}
         />
       </div>

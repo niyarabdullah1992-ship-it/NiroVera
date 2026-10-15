@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import Nv7SectionHead from "@/components/shared/Nv7SectionHead";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import {
   ORG_MONO,
   orgChip,
@@ -49,6 +50,7 @@ export default function OrgWorkforceHero({
       label: ar ? "شاغرة" : "Vacant",
       value: health?.vacantSeats ?? health?.vacant ?? 0,
       tone: (health?.vacantSeats ?? health?.vacant ?? 0) > 0 ? "warn" : undefined,
+      flag: ar ? "وظائف تنتظر التعيين" : "Seats to fill",
     },
     {
       id: "acting",
@@ -65,7 +67,6 @@ export default function OrgWorkforceHero({
   ];
 
   const hasHits = Boolean(query.trim() && searchHits?.length);
-  const kpiTone = { warn: "#C8A45A", ok: "#3C7D50" };
 
   return (
     <div style={{ ...orgStack, gap: 12 }} className="nv-org-hero">
@@ -102,9 +103,11 @@ export default function OrgWorkforceHero({
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
             {stats.map((stat) => (
-              <div key={stat.id} style={{ position: "relative", overflow: "hidden", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 2 }}>
-                <span aria-hidden style={{ position: "absolute", top: 0, insetInline: 0, height: 3, background: kpiTone[stat.tone] || "var(--nv-navy)" }} />
-                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-muted)" }}>{stat.label}</span>
+              <div key={stat.id} style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-muted)" }}>{stat.label}</span>
+                  <StatusFlag tone={stat.tone} flag={stat.flag} ar={ar} />
+                </span>
                 <strong dir="ltr" style={{ ...ORG_MONO, fontSize: 18, fontWeight: 700, color: "var(--nv-ink)" }}>{stat.value}</strong>
               </div>
             ))}

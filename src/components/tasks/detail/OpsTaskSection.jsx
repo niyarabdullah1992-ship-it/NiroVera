@@ -1,6 +1,7 @@
 import React from "react";
-import { docFrame, DS_STATES } from "@/lib/designSystem";
+import { docFrame } from "@/lib/designSystem";
 import { MUTED } from "@/lib/platformStyles";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 
 const TONE_STATE = {
   warn: "waiting",
@@ -8,8 +9,8 @@ const TONE_STATE = {
   bad: "blocked",
 };
 
-/** Uniform section card — DS v2 paper + 3px top status edge (same family as طلباتي). */
-export default function OpsTaskSection({ title, hint, count, aside, tone, children }) {
+/** Uniform section card — calm DS v2 paper; warn/bad shows as a chip beside the title (no coloured edge). */
+export default function OpsTaskSection({ title, hint, count, aside, tone, flag, ar = true, children }) {
   const stateId = TONE_STATE[tone] || null;
   const frame = stateId
     ? docFrame(stateId)
@@ -19,9 +20,7 @@ export default function OpsTaskSection({ title, hint, count, aside, tone, childr
         borderRadius: 12,
         boxShadow: "var(--nv-paper)",
       };
-  const titleColor = stateId
-    ? `var(--nv-${DS_STATES[stateId].token}-ink)`
-    : "var(--nv-ink)";
+  const titleColor = "var(--nv-ink)";
 
   return (
     <section
@@ -43,6 +42,7 @@ export default function OpsTaskSection({ title, hint, count, aside, tone, childr
               <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 700, color: titleColor }}>
                 {stateId ? null : <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", borderRadius: 2, flexShrink: 0 }} />}
                 {title}
+                <StatusFlag tone={tone} flag={flag} ar={ar} />
               </div>
             ) : null}
             {hint ? (

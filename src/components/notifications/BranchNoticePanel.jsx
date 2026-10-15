@@ -98,7 +98,6 @@ export default function BranchNoticePanel({
         flexDirection: "column",
         background: "var(--nv-card)",
         border: "1px solid var(--nv-line)",
-        borderTop: "3px solid var(--nv-navy)",
         borderRadius: 8,
         boxShadow: "0 18px 44px rgba(12,20,16,.18)",
         overflow: "hidden",

@@ -1,6 +1,7 @@
 import React, { useContext } from "react";
-import { BORDER, CARD, INK, MUTED, NAVY_FILL, PAPER_SHADOW, RADIUS, SURFACE } from "@/lib/platformStyles";
+import { BORDER, CARD, INK, MUTED, PAPER_SHADOW, RADIUS, SURFACE } from "@/lib/platformStyles";
 import { StampNestContext } from "@/components/shared/stampNestContext";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 
 /** Outer operational paper — used only when this card IS the page frame, never inside a stamp. */
 export const identityFrame = {
@@ -25,7 +26,7 @@ export const identityIconWrap = {
   justifyContent: "center",
 };
 
-function CardHeader({ Icon, kicker, title, subtitle, meta, nested, hasBody }) {
+function CardHeader({ Icon, kicker, title, subtitle, meta, nested, hasBody, tone, flag, ar }) {
   return (
     <header
       style={{
@@ -50,10 +51,13 @@ function CardHeader({ Icon, kicker, title, subtitle, meta, nested, hasBody }) {
             <div style={{ fontSize: 10, fontWeight: 600, color: MUTED, letterSpacing: "0.04em" }}>{kicker}</div>
           ) : null}
           {title ? (
-            <div style={{ fontSize: 14, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {title}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                {title}
+              </div>
+              <StatusFlag tone={tone} flag={flag} ar={ar} />
             </div>
-          ) : null}
+          ) : <StatusFlag tone={tone} flag={flag} ar={ar} />}
           {subtitle ? (
             <div style={{ fontSize: 11, color: MUTED, marginTop: 3, lineHeight: 1.55 }}>{subtitle}</div>
           ) : null}
@@ -83,7 +87,6 @@ export function ChromeBox({ children, padded = true, bodyStyle, style }) {
       data-nv="identity"
       style={{ ...identityFrame, ...style }}
     >
-      <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />
       <div style={{ ...(padded ? { padding: "18px 20px" } : {}), ...bodyStyle }}>{children}</div>
     </div>
   );
@@ -95,7 +98,9 @@ export default function IdentityCard({
   title,
   subtitle,
   meta,
-  rail = NAVY_FILL,
+  tone,
+  flag,
+  ar,
   children,
   dir,
   bodyStyle,
@@ -103,6 +108,7 @@ export default function IdentityCard({
   className,
 }) {
   const nested = useContext(StampNestContext);
+  const isAr = ar ?? (dir ? dir === "rtl" : true);
   const hasHeader = Boolean(Icon || kicker || title || subtitle || meta);
   const hasBody = children != null;
   const header = hasHeader ? (
@@ -114,6 +120,9 @@ export default function IdentityCard({
       meta={meta}
       nested={nested}
       hasBody={hasBody}
+      tone={tone}
+      flag={flag}
+      ar={isAr}
     />
   ) : null;
 
@@ -135,7 +144,6 @@ export default function IdentityCard({
       style={identityFrame}
       dir={dir}
     >
-      <div aria-hidden style={{ height: 3, background: rail }} />
       {header}
       {hasBody ? (
         <div style={{ padding: 16, background: bodySurface ? SURFACE : CARD, ...bodyStyle }}>

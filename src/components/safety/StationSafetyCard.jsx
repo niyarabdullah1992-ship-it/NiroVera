@@ -11,7 +11,7 @@ import PermitWorkTab from "@/components/safety/PermitWorkTab";
 import SafetyTabsSettings from "@/components/safety/SafetyTabsSettings";
 import { checklistCompliance } from "@/lib/safetyStandards";
 import { safetyLevelMeta } from "@/lib/safetyLogic";
-import { ACCENT, BORDER, MUTED, NAVY, NAVY_FILL, SURFACE, NEUTRAL, CARD } from "@/lib/platformStyles";
+import { ACCENT, BORDER, MUTED, NAVY, SURFACE, NEUTRAL, CARD } from "@/lib/platformStyles";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
 export default function StationSafetyCard({ station, rec, canEdit, canApprove, canCustomize, approvalIssues = [], lang, signerName, onUpdate, onDisabledTabsChange, onCloseHazard, onApprove, onRevokeApproval, onIncident, defaultExpanded = false, layer = "full" }) {
@@ -58,7 +58,6 @@ export default function StationSafetyCard({ station, rec, canEdit, canApprove, c
           }}
       dir={ar ? "rtl" : "ltr"}
     >
-      {nested ? null : <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />}
       <div
         style={{
           display: "flex",

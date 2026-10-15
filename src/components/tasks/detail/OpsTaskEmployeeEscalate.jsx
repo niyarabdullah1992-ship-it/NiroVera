@@ -20,7 +20,7 @@ export default function OpsTaskEmployeeEscalate({
   if (!isAssignee || (n < 1 && !canEscalate)) return null;
 
   return (
-    <OpsTaskSection tone="warn" title={ar ? "حق التصعيد" : "Right to escalate"}>
+    <OpsTaskSection tone="warn" ar={ar} title={ar ? "حق التصعيد" : "Right to escalate"}>
       <div style={{ fontSize: 12, color: "var(--nv-warn-ink)", lineHeight: 1.65 }}>
         {canEscalate
           ? (ar

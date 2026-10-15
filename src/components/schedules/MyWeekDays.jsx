@@ -186,7 +186,6 @@ export default function MyWeekDays({
                 minWidth: 0,
               }}
             >
-              {tone ? <span aria-hidden style={{ position: "absolute", insetInline: 0, top: 0, height: 3, background: tone.fill }} /> : null}
               <div className="nv-my-day-head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
                 <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: today ? "var(--nv-navy)" : SW.ink }}>{weekdayLabel(day.wd, ar)}</span>

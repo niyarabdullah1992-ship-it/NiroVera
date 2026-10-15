@@ -110,7 +110,6 @@ export default function PublicSignSignaturePanel({
 
       {showReject ? (
         <div style={{ margin: 16, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden", background: SURFACE }}>
-          <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
             <div>
               <p style={{ margin: 0, fontSize: 16, fontWeight: 650, color: NAVY }}>{ar ? "رفض" : "Refuse"}</p>

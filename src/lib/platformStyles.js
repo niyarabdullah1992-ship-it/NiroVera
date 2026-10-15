@@ -1,7 +1,7 @@
 /**
  * Shared platform style helpers — Design System v2.
  * - document cards 14 · controls 10 · chips 999 · status dots stay circular
- * - 1px line + paper shadow; status is a 3px top edge, never a coloured frame
+ * - 1px line + paper shadow; cards stay calm: status is a small chip beside the title (warn/bad only), never a coloured edge or frame
  * - /app page → SectionShell / PlatformStampShell
  * - titled module → IdentityCard
  * - nested box / table → cardShell / tableShell
@@ -9,7 +9,7 @@
  * - structure is deep green #0B3D27; warn stays gold, danger stays #9B2335
  */
 
-import { DS_CONTROL_RADIUS, DS_EDGE_PX, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "./designSystem.js";
+import { DS_CONTROL_RADIUS, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "./designSystem.js";
 
 /** Document / slab corner. */
 export const RADIUS = DS_RADIUS;
@@ -176,12 +176,11 @@ export function pillCount(active) {
   };
 }
 
-/** Soft fill + status line + 3px top edge — same chrome as EmpAlertsStrip / تنبيهات. */
+/** Soft fill + status line — no coloured top edge (the soft fill already carries the tone). */
 export const statusBanner = {
   ok: {
     borderRadius: RADIUS,
     border: "1px solid var(--nv-ok-line)",
-    borderTop: `${DS_EDGE_PX}px solid var(--nv-ok-fill)`,
     background: "var(--nv-ok-soft)",
     padding: "12px 14px",
     fontSize: 13,
@@ -191,7 +190,6 @@ export const statusBanner = {
   warn: {
     borderRadius: RADIUS,
     border: "1px solid var(--nv-warn-line)",
-    borderTop: `${DS_EDGE_PX}px solid var(--nv-warn-fill)`,
     background: "var(--nv-warn-soft)",
     padding: "12px 14px",
     fontSize: 13,
@@ -201,7 +199,6 @@ export const statusBanner = {
   bad: {
     borderRadius: RADIUS,
     border: "1px solid var(--nv-bad-line)",
-    borderTop: `${DS_EDGE_PX}px solid var(--nv-bad-fill)`,
     background: "var(--nv-bad-soft)",
     padding: "12px 14px",
     fontSize: 13,

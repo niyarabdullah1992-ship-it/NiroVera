@@ -1094,6 +1094,7 @@ export function buildEmployeeFileView({
         color: live ? "var(--nv-warn-ink)" : "var(--nv-ink3)",
         bg: live ? "var(--nv-warn-soft)" : "var(--nv-soft)",
         border: live ? "var(--nv-warn-line)" : "var(--nv-line)",
+        tone: live ? "warn" : null,
       };
     });
 

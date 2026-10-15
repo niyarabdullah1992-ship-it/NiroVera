@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Download, Loader2, RefreshCw, Undo2 } from "lucide-react";
 import IdentityCard from "@/components/shared/IdentityCard";
 import { signGhostBtn, signKicker, signPrimaryBtn, signProofGrid } from "@/components/files/signingUi";
-import { ACCENT, BORDER, DANGER, MUTED, NAVY, NAVY_FILL, SURFACE, textarea } from "@/lib/platformStyles";
+import { BORDER, DANGER, MUTED, NAVY, SURFACE, textarea } from "@/lib/platformStyles";
 import SigningAuditTrail from "@/components/files/SigningAuditTrail";
 import { DEADLINE_REFUSAL_REASON, REFUSAL_DEADLINE, retractDaysLabel } from "@/lib/multiSignDerivations";
 import { formatUiNumber } from "@/lib/dateFormat";
@@ -111,7 +111,6 @@ export default function PublicSignStateCard({ ar, type, info, done, message, onR
     [ar ? "الأطراف" : "Parties", info ? `${formatUiNumber(info.signedCount, ar)} / ${formatUiNumber(info.totalCount, ar)}` : "—"],
     [ar ? "الموقّع" : "Signer", info?.signer?.name || "—"],
   ];
-  const rail = success ? ACCENT : rejected || deleted ? NAVY_FILL : type === "error" ? DANGER : NAVY_FILL;
   const coolingGrid = canRetract
     ? { ...signProofGrid, border: "1px solid var(--nv-line)", background: "var(--nv-warn-soft)" }
     : signProofGrid;
@@ -124,7 +123,9 @@ export default function PublicSignStateCard({ ar, type, info, done, message, onR
           title={title}
           subtitle={subtitle}
           dir={ar ? "rtl" : "ltr"}
-          rail={rail}
+          tone={type === "error" && !success ? "bad" : undefined}
+          flag={ar ? "تعذّر الإجراء" : "Could not complete"}
+          ar={ar}
           bodySurface
         >
           <div style={{ ...coolingGrid, marginBottom: 16, borderRadius: 12 }}>

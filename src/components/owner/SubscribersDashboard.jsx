@@ -89,7 +89,7 @@ export default function SubscribersDashboard({ ar }) {
         <>
           <div style={ownerGrid}>
             {stats.map((stat) => (
-              <OwnerStatTile key={stat.label} label={stat.label} value={stat.value} warn={stat.warn} state={stat.warn ? "warn" : "mute"} />
+              <OwnerStatTile key={stat.label} label={stat.label} value={stat.value} warn={stat.warn} state={stat.warn ? "warn" : "mute"} ar={ar} />
             ))}
           </div>
 

@@ -9,7 +9,7 @@ export default function OpsTaskApprovalBox({ ar, busy, canManage, points, target
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   return (
-    <OpsTaskSection tone="warn" title={canManage ? (ar ? "بانتظار اعتمادك" : "Awaiting your approval") : (ar ? "بانتظار اعتماد المستوى الحالي" : "Awaiting the current level")}>
+    <OpsTaskSection tone="warn" ar={ar} flag={ar ? "قرار مطلوب" : "Decision due"} title={canManage ? (ar ? "بانتظار اعتمادك" : "Awaiting your approval") : (ar ? "بانتظار اعتماد المستوى الحالي" : "Awaiting the current level")}>
       <div style={{ fontSize: 12, color: "var(--nv-warn-ink)", lineHeight: 1.65, textWrap: "pretty" }}>
         {ar
           ? `اكتمل العدد ${targetN}/${targetN} وأُرفق الإثبات. الاعتماد يمنح ${points} نقطة ويُقفل أمر العمل. الرفض يُعيد المهمة للمنفّذ، وسببه يظهر في مراسلات البطاقة. بعد ثلاثة رفض يحق للمنفّذ التصعيد.`

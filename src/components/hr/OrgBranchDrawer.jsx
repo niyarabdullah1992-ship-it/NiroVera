@@ -148,7 +148,7 @@ function DrawerShell({ ar, title, sub, chain, onClose, children }) {
           overflow: "auto",
         }}
       >
-        <div style={{ padding: "16px 18px", borderTop: "3px solid var(--nv-navy)", borderBottom: "1px solid var(--nv-line)", background: "var(--nv-hover)", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--nv-line)", background: "var(--nv-hover)", display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <strong style={{ font: "700 16px 'Readex Pro', var(--font-heading), sans-serif", color: "var(--nv-ink)" }}>{title}</strong>
             <span style={{ flex: 1 }} />

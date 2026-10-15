@@ -2105,6 +2105,8 @@ export default function Operations() {
     <DutyTile
       key="late"
       dataKey="ops-overdue"
+      ar={ar}
+      flag={ar ? "تجاوز الموعد" : "Past due"}
       tone={cc.overdue ? "bad" : "mute"}
       label={ar ? "متأخرة" : "Overdue"}
       note={ar ? "تجاوزت موعد استحقاقها ولم تُنجز" : "Past due and not done"}
@@ -2114,6 +2116,8 @@ export default function Operations() {
     <DutyTile
       key="await"
       dataKey="ops-awaiting"
+      ar={ar}
+      flag={employeeFace ? (ar ? "بانتظار الاعتماد" : "Awaiting approval") : (ar ? "بانتظار اعتمادك" : "Your approval")}
       tone={cc.awaiting ? "warn" : "mute"}
       label={employeeFace ? (ar ? "عند المشرف" : "With the supervisor") : (ar ? "تنتظر اعتمادك" : "Awaiting your approval")}
       note={employeeFace

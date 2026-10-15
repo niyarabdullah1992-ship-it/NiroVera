@@ -310,6 +310,8 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     <DutyTiles>
       <DutyTile
         dataKey="team-today"
+        ar={ar}
+        flag={ar ? "لم يكتمل الحضور" : "Not all in yet"}
         tone={!todayAtt.scheduled ? "mute" : todayAtt.presentLike >= todayAtt.scheduled ? "ok" : "warn"}
         label={ar ? "الفريق اليوم" : "The team today"}
         note={ar
@@ -328,6 +330,8 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
       </DutyTile>
       <DutyTile
         dataKey="absent"
+        ar={ar}
+        flag={ar ? "غياب دون إجازة" : "Absent, no leave"}
         tone={absentClosed ? "bad" : "mute"}
         label={ar ? "غاب" : "Absent"}
         note={ar

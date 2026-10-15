@@ -3,7 +3,7 @@ import { Search, Users, Radio, CornerDownLeft, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SearchResults from "@/components/navigation/SearchResults";
 import { visibleEmployees, visibleStations } from "@/lib/permissions";
-import { BORDER, MUTED, NAVY, NAVY_FILL, dialogOverlay, CARD } from "@/lib/platformStyles";
+import { BORDER, MUTED, NAVY, dialogOverlay, CARD } from "@/lib/platformStyles";
 import { identityFrame } from "@/components/shared/IdentityCard";
 import { openHireDrawer } from "@/lib/orgHire";
 import { searchGroupLabel } from "@/lib/suiteNav";
@@ -147,7 +147,6 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
         }}
         dir={ar ? "rtl" : "ltr"}
       >
-        <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />
         <div
           style={{
             display: "flex",

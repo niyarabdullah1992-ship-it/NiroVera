@@ -52,7 +52,7 @@ export function dutyTone(toneOrKey) {
   return DUTY_TONES[dutyStatus(toneOrKey).tone] || DUTY_TONES.rest;
 }
 
-/** 3px top edge of a tile / card. `mute` keeps the neutral hairline. */
+/** Status fill for dots/meters (cards no longer carry a coloured edge). `mute` keeps the neutral hairline. */
 export function dutyEdge(tone) {
   if (!tone || tone === "mute") return "var(--nv-line)";
   return dutyTone(tone).fill;

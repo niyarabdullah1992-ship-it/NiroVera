@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { base44 } from "@/api/base44Client";
@@ -98,8 +99,8 @@ export default function EmployeeDashboard({ user, company, data }) {
 
   const kpis = [
     { key: "open", label: ar ? "مهام مفتوحة" : "Open tasks", value: open.length, hint: ar ? "للتنفيذ" : "To execute", to: "/app/tasks", accent: open.length ? "var(--nv-ink)" : OK },
-    { key: "await", label: ar ? "بانتظار الاعتماد" : "Awaiting approval", value: awaiting.length, hint: ar ? "بعد الإثبات" : "After proof", to: "/app/tasks", accent: awaiting.length ? WARN : "var(--nv-ink)" },
-    { key: "late", label: ar ? "متأخرة" : "Overdue", value: overdue.length, hint: ar ? "تحتاج متابعة" : "Need follow-up", to: "/app/tasks", accent: overdue.length ? BAD : "var(--nv-ink)" },
+    { key: "await", label: ar ? "بانتظار الاعتماد" : "Awaiting approval", value: awaiting.length, hint: ar ? "بعد الإثبات" : "After proof", to: "/app/tasks", accent: awaiting.length ? WARN : "var(--nv-ink)", tone: awaiting.length ? "warn" : null, flag: ar ? "عند المشرف" : "With supervisor" },
+    { key: "late", label: ar ? "متأخرة" : "Overdue", value: overdue.length, hint: ar ? "تحتاج متابعة" : "Need follow-up", to: "/app/tasks", accent: overdue.length ? BAD : "var(--nv-ink)", tone: overdue.length ? "bad" : null, flag: ar ? "تجاوز الموعد" : "Past due" },
     { key: "points", label: ar ? "نقاطي" : "My points", value: points, hint: ar ? "تُمنح عند الاعتماد فقط" : "Awarded on approval only", to: "/app/performance?view=self", accent: "var(--nv-ink)" },
   ];
 
@@ -130,7 +131,6 @@ export default function EmployeeDashboard({ user, company, data }) {
             style={{
               background: CARD,
               border: `1px solid ${LINE}`,
-              borderTop: `3px solid ${k.accent}`,
               padding: "14px 16px",
               display: "flex",
               flexDirection: "column",
@@ -140,7 +140,10 @@ export default function EmployeeDashboard({ user, company, data }) {
               color: "inherit",
             }}
           >
-            <span style={{ fontSize: 12, color: MUTED }}>{k.label}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+              <span style={{ fontSize: 12, color: MUTED }}>{k.label}</span>
+              <StatusFlag tone={k.tone} flag={k.flag} ar={ar} />
+            </span>
             <span dir="ltr" style={{ fontFamily: MONO, fontSize: 30, fontWeight: 500, color: k.accent, lineHeight: 1.05 }}>{k.value}</span>
             <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{k.hint}</span>
           </Link>

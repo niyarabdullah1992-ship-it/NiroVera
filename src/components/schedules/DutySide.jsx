@@ -36,7 +36,7 @@ export function HeatAwarenessCard({ heatCopy, ar = true }) {
   if (!heatCopy) return null;
   const warn = dutyTone("warn");
   return (
-    <section data-heat-awareness="1" role="note" style={{ ...slab, display: "flex", flexDirection: "column", borderTop: `3px solid ${warn.fill}` }}>
+    <section data-heat-awareness="1" role="note" style={{ ...slab, display: "flex", flexDirection: "column" }}>
       <SectionHead
         title={ar ? "توعية — حظر العمل المكشوف" : "Awareness — open-sun ban"}
         note={ar ? `القرار 3337 · ${heatCopy.window}` : `Decision 3337 · ${heatCopy.window}`}

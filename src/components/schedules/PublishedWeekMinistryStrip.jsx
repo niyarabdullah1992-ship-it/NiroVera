@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import { DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
 
 // Block-level values must NOT set direction:ltr or unicode-bidi:plaintext — in an RTL column either one
@@ -9,12 +10,6 @@ const mono = {
   fontVariantNumeric: "tabular-nums",
 };
 
-function toneEdge(tone) {
-  if (tone === "bad") return "var(--nv-bad-fill)";
-  if (tone === "warn") return "var(--nv-warn-fill)";
-  if (tone === "ok") return "var(--nv-ok-fill)";
-  return "var(--nv-line)";
-}
 
 /**
  * Four derived facts on the published week: hours, official holidays,
@@ -36,6 +31,7 @@ export default function PublishedWeekMinistryStrip({ facts, ar = true, manageHre
       value: facts.holidays || "—",
       note: facts.holidayNote,
       tone: facts.holidays && facts.holidays !== "—" ? "warn" : "ok",
+      flag: ar ? "عطلة في الأسبوع" : "Holiday this week",
     },
     {
       key: "rules",
@@ -45,6 +41,7 @@ export default function PublishedWeekMinistryStrip({ facts, ar = true, manageHre
         ? facts.constraints.map((row) => row.cite).filter((cite) => cite && cite !== "—").slice(0, 3).join(" · ") || facts.constraints[0].title
         : (ar ? "لا قيد مفتوح" : "No open constraint"),
       tone: facts.constraints?.some((row) => row.tone === "bad") ? "bad" : (facts.constraints?.length ? "warn" : "ok"),
+      flag: facts.constraints?.some((row) => row.tone === "bad") ? (ar ? "قيد مانع" : "Blocking constraint") : (ar ? "قيد مفتوح" : "Open constraint"),
     },
     {
       key: "compliance",
@@ -76,9 +73,11 @@ export default function PublishedWeekMinistryStrip({ facts, ar = true, manageHre
               overflow: "hidden",
             }}
           >
-            {/* status lives on the 3px top edge only — never a filled card */}
-            <span aria-hidden style={{ position: "absolute", insetInline: 0, top: 0, height: 3, background: toneEdge(cell.tone) }} />
-            <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.4 }}>{cell.label}</span>
+            {/* calm card — status is a chip beside the label, only when warn/bad */}
+            <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+              <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.4 }}>{cell.label}</span>
+              <StatusFlag tone={cell.tone} ar={ar} flag={cell.flag} />
+            </span>
             <strong style={{ ...(/^[\d.,%—–-]+$/.test(String(cell.value || "—")) ? mono : { letterSpacing: 0 }), fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: "var(--nv-ink)", textAlign: "start" }}>{cell.value || "—"}</strong>
             <span style={{ fontSize: 11, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.6, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{cell.note || "—"}</span>
           </div>

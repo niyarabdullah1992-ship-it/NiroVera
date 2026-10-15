@@ -12,7 +12,7 @@ import {
   deriveStationBreakdown,
 } from "@/lib/payrollDerivations";
 import { toast } from "@/components/ui/use-toast";
-import { ACCENT, MUTED, NAVY, NEUTRAL, OK, ui, CARD, SURFACE } from "@/lib/platformStyles";
+import { MUTED, NAVY, NEUTRAL, OK, ui, CARD, SURFACE } from "@/lib/platformStyles";
 import IdentityCard from "@/components/shared/IdentityCard";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 
@@ -251,7 +251,6 @@ export default function PayrollRunBoard({ month: monthProp, lang = "ar", station
                 ? (ar ? " — الاعتماد على مستوى المنشأة" : " — approval is establishment-wide")
                 : (ar ? " — قبل الاعتماد" : " — before approval")
             }`}
-            rail={approved ? ACCENT : NAVY}
             dir={ar ? "rtl" : "ltr"}
             meta={(
               <>

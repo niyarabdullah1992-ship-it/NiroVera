@@ -20,13 +20,28 @@ import {
 } from "./decision18632.js";
 import { isRamadanHoursSubject, profileGender } from "./employeeProfileFields.js";
 import { citeLeaveType, citeRule, explainRule, isRamadanDay, laborDayKey, laborDaysBetween, ruleValue } from "./laborRules.js";
-import { ageYearsOn, deriveNamedOvertime, hoursPolicyOf, isJuvenile, isWeeklyRestDay, ordinaryDayCap } from "./laborHoursPolicy.js";
+import {
+  ageYearsOn,
+  art100ApprovalOf,
+  art108CategoryOf,
+  art108Limits,
+  art108WeekCap,
+  checkArt105BankGate,
+  checkThreeWeekAverageGate,
+  checkWorkPostingGate,
+  deriveNamedOvertime,
+  hoursBasisOf,
+  hoursPolicyOf,
+  isEmployeeOffDay,
+  isJuvenile,
+  isWeeklyRestDay,
+} from "./laborHoursPolicy.js";
 import { checkJuvenileHoursGate } from "./laborProtectionGates.js";
 import { fridaySwapGaps, juvenileDocGaps, nightEmployerDutyGaps } from "./ministryExtras.js";
 import { approvedLeaveOnDay, isNursingSubject, isOnApprovedLeave, leaveTypeLabel } from "./leaveTypes.js";
 import { isEidHoliday } from "./leaveEidOverlap.js";
 import { isOfficialHoliday, officialHolidayLeaveLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
-import { checkConsecutiveWorkGate, minutesBetween } from "./shiftDerivations.js";
+import { checkConsecutiveWorkGate, minutesBetween, shiftBreaks, shiftRestMinutes } from "./shiftDerivations.js";
 import {
   attachPlatformJudgment,
   judgmentProtects,
@@ -439,9 +454,10 @@ export function actualShiftHours(shift, onDate, employee) {
   if (!span) return 0;
   const consecMax = ruleValue("hours.rest.maxConsecutiveHours", onDate);
   const minRestMin = ruleValue("hours.rest.duringShiftMinutes", onDate);
-  const restMin = shift.restMinutes == null
+  const recorded = shiftRestMinutes(shift);
+  const restMin = recorded == null
     ? (span > consecMax ? minRestMin : 0)
-    : Math.max(0, Number(shift.restMinutes) || 0);
+    : recorded;
   const deducted = isNursingSubject(employee, onDate) ? Math.min(restMin, minRestMin) : restMin;
   return Math.max(0, Math.round((span - deducted / 60) * 10) / 10);
 }
@@ -450,26 +466,27 @@ export function actualShiftHours(shift, onDate, employee) {
  * Art. 101 stay vs Art. 106 actual vs Art. 101 consecutive rest.
  * A 12-hour window is workplace stay, not twelve hours of actual work.
  */
-export function checkWorkplaceStayDutyGate({ shift, onDate, employee } = {}) {
+export function checkWorkplaceStayDutyGate({ shift, onDate, employee, company } = {}) {
   if (!shift?.start || !shift?.end) {
     return { ok: false, error: "SHIFT_REQUIRED", reason: "حدد بداية الوردية ونهايتها.", reasonEn: "Set the shift start and end." };
   }
   const span = shiftHours(shift);
   const actual = actualShiftHours(shift, onDate, employee);
-  const workplaceMax = ruleValue("hours.workplace.maxHours", onDate);
-  const exceptionDay = ruleValue("hours.ot.exceptionDayHours", onDate);
-  const consec = checkConsecutiveWorkGate({
-    start: shift.start,
-    end: shift.end,
-    restMinutes: shift.restMinutes,
-    onDate,
-  });
+  // Art. 108 category (Regs Art. 23) replaces the 12h stay / 10h actual ceilings for that person.
+  const limits108 = art108Limits(employee, onDate);
+  const workplaceMax = limits108 ? limits108.workplaceHours : ruleValue("hours.workplace.maxHours", onDate);
+  const exceptionDay = limits108 ? limits108.dayHours : ruleValue("hours.ot.exceptionDayHours", onDate);
+  const consec = dutyConsecutiveGate(shift, onDate, employee, company);
   if (span > workplaceMax) {
     return {
       ok: false,
       error: "WORKPLACE_STAY",
-      reason: `البقاء ${span} ساعة يتجاوز المادة 101 (${workplaceMax} ساعة في موقع العمل).`,
-      reasonEn: `A ${span}h stay exceeds Article 101 (${workplaceMax}h at the workplace).`,
+      reason: limits108
+        ? `البقاء ${span} ساعة يترك أقل من ${limits108.dailyRestHours || 10} ساعات راحة متواصلة في الأربع والعشرين (اللائحة م23/7).`
+        : `البقاء ${span} ساعة يتجاوز المادة 101 (${workplaceMax} ساعة في موقع العمل).`,
+      reasonEn: limits108
+        ? `A ${span}h stay leaves under ${limits108.dailyRestHours || 10} continuous rest hours in twenty-four (Regs Art. 23(7)).`
+        : `A ${span}h stay exceeds Article 101 (${workplaceMax}h at the workplace).`,
       span,
       actual,
       workplaceMax,
@@ -491,9 +508,13 @@ export function checkWorkplaceStayDutyGate({ shift, onDate, employee } = {}) {
   if (actual > exceptionDay) {
     return {
       ok: false,
-      error: "ART_106_DAY",
-      reason: `الساعات الفعلية ${actual} تتجاوز المادة 106 (${exceptionDay} ساعات حتى في الاستثناء). اجعل الراحة داخل الوردية كافية.`,
-      reasonEn: `Actual hours ${actual} exceed Article 106 (${exceptionDay}h even in exceptions). Put enough rest inside the stay.`,
+      error: limits108 ? "ART_108_DAY" : "ART_106_DAY",
+      reason: limits108
+        ? `الساعات الفعلية ${actual} تتجاوز سقف فئة المادة 108 (${Math.round(exceptionDay * 100) / 100} ساعة — اللائحة م23).`
+        : `الساعات الفعلية ${actual} تتجاوز المادة 106 (${exceptionDay} ساعات حتى في الاستثناء). اجعل الراحة داخل الوردية كافية.`,
+      reasonEn: limits108
+        ? `Actual hours ${actual} exceed the Art. 108 category cap (${Math.round(exceptionDay * 100) / 100}h — Regs Art. 23).`
+        : `Actual hours ${actual} exceed Article 106 (${exceptionDay}h even in exceptions). Put enough rest inside the stay.`,
       span,
       actual,
       workplaceMax,
@@ -552,9 +573,35 @@ export function isTwelveStayDuty(shift, onDate) {
  * Five days × 8 hours uses the daily cap — Muslims drop to 6 in Ramadan.
  * Four days × 12h stay + four rest uses the weekly criterion — the 12h stay remains.
  */
-export function ramadanUsesDailySixCap(shift, onDate, employee) {
+export function ramadanUsesDailySixCap(shift, onDate, employee, company) {
   if (isJuvenile(employee, onDate)) return true;
+  // Art. 108 categories carry their own Ramadan day ceiling (Regs Art. 23) — not the six.
+  if (art108CategoryOf(employee).category) return false;
+  // Art. 98 basis on record decides; only an unrecorded basis falls back to the shift's shape.
+  const { basis } = hoursBasisOf(company, employee);
+  if (basis === "daily") return true;
+  if (basis === "weekly") return false;
   return !isTwelveStayDuty(shift, onDate);
+}
+
+/**
+ * Art. 101 five-hour rule for one person's duty — breaks list / count, Art. 103 continuous work,
+ * and the Art. 108 category (Regs Art. 23: cleaners six consecutive hours; other categories outside 101).
+ */
+export function dutyConsecutiveGate(shift, onDate, employee, company) {
+  const limits = art108Limits(employee, onDate);
+  const policy = hoursPolicyOf(company, employee);
+  return checkConsecutiveWorkGate({
+    start: shift?.start,
+    end: shift?.end,
+    restMinutes: shift?.restMinutes,
+    breaks: shift?.breaks,
+    breakCount: shift?.breakCount,
+    onDate,
+    continuous103: policy.continuousWork103 === true,
+    maxConsecutiveHours: limits?.consecutiveHours || undefined,
+    exempt101: !!limits && limits.consecutiveHours == null,
+  });
 }
 
 /** This week's duties are only 12h-stay days, and at most four — the compressed system. */
@@ -762,6 +809,7 @@ export function resolveNightRestAssignTarget({
   weekStart,
   ordinaryOnly = false,
   employees = [],
+  holidayWorkConfirmed = false,
 } = {}) {
   const gate = checkShiftChangeApplyGate({
     schedule,
@@ -770,6 +818,7 @@ export function resolveNightRestAssignTarget({
     shiftTypeId,
     laborCalendar,
     employees,
+    holidayWorkConfirmed,
   });
   if (gate.ok) {
     return { ok: true, jumped: false, dateKey, shiftTypeId, gate };
@@ -1696,10 +1745,53 @@ export function weekRosterEmployees(schedule, employees = [], stationId, dateKey
   });
 }
 
-/** Approved طلباتي leave or a fixed Art. 112 official holiday (roster paints leave, not duty). */
+/* ----------------------- Art. 107(3) — work on an official holiday ----------------------- */
+export const HOLIDAY_WORK_LABEL_AR = "عمل في العطلة — ساعاته إضافي (م107/3)";
+export const HOLIDAY_WORK_LABEL_EN = "Holiday work — its hours are overtime (Art. 107(3))";
+
+/** The confirmed «عمل في العطلة» record on this person's file for that day, or null. */
+export function holidayWorkOn(employee, dateKey) {
+  const key = String(dateKey || "").slice(0, 10);
+  const row = employee?.holidayWork?.[key];
+  if (!row || row.withdrawnAt) return null;
+  return row;
+}
+
+/** Can this person be asked to work this holiday at all? Juveniles never (Art. 164). */
+export function checkHolidayWorkGate({ employee, dateKey, laborCalendar, confirmed } = {}) {
+  if (!isOfficialHoliday(dateKey, laborCalendar)) return { ok: true, holiday: false };
+  if (isJuvenile(employee, dateKey)) {
+    return {
+      ok: false,
+      error: "JUVENILE_REST_BAN",
+      reason: "موقوف — المادة 164: لا تشغيل للحدث في أيام الأعياد والعطلات الرسمية.",
+      reasonEn: "Blocked — Article 164: a juvenile may not work on Eid or official holidays.",
+      articleKey: "164",
+      holiday: true,
+    };
+  }
+  if (confirmed === true || holidayWorkOn(employee, dateKey)) {
+    return { ok: true, holiday: true, overtimeAll: true, label: HOLIDAY_WORK_LABEL_AR, labelEn: HOLIDAY_WORK_LABEL_EN };
+  }
+  const hit = officialHolidayOn(dateKey, laborCalendar);
+  const nameAr = hit ? officialHolidayLeaveLabel(hit.id, true, laborCalendar) : "العطلة الرسمية";
+  const nameEn = hit ? officialHolidayLeaveLabel(hit.id, false, laborCalendar) : "the official holiday";
+  return {
+    ok: false,
+    error: "HOLIDAY_WORK_CONFIRM",
+    needsConfirm: true,
+    holiday: true,
+    reason: `${nameAr} إجازة بأجر كامل (المادة 112). للعمل فيها أكّد «${HOLIDAY_WORK_LABEL_AR}» — كل ساعاته تُصرف إضافياً ولا تُترك بلا أجر.`,
+    reasonEn: `${nameEn} is full-pay leave (Article 112). To work it, confirm “${HOLIDAY_WORK_LABEL_EN}” — every hour is paid as overtime, never left unpaid.`,
+  };
+}
+
+/** Approved طلباتي leave or a fixed Art. 112 official holiday (roster paints leave, not duty) —
+ *  unless the holiday was confirmed as «عمل في العطلة» (Art. 107(3)). */
 export function isRosterLeaveDay(employee, dateKey, laborCalendar) {
   if (isOnApprovedLeave(employee, dateKey)) return true;
-  return isOfficialHoliday(dateKey, laborCalendar);
+  if (!isOfficialHoliday(dateKey, laborCalendar)) return false;
+  return !holidayWorkOn(employee, dateKey);
 }
 
 export function leaveOnDayView(employee, dateKey, ar = true, laborCalendar) {
@@ -1720,6 +1812,7 @@ export function leaveOnDayView(employee, dateKey, ar = true, laborCalendar) {
   }
   const hit = officialHolidayOn(dateKey, laborCalendar);
   if (!hit) return null;
+  if (holidayWorkOn(employee, dateKey)) return null;
   const cite = citeLeaveType("eid", dateKey);
   return {
     request: null,
@@ -1741,19 +1834,77 @@ export function employeeWeekHours(schedule, employeeId, weekStart, employee, lab
   }, 0);
 }
 
-/** Art. 107 named OT from this week's published rota versus 98/99/Ramadan/164. */
+/**
+ * Art. 107 named OT from this week's rota versus 98/99/108/Ramadan — the SAME reading the publish gate
+ * uses («overtime_107»), so the OT board and the gate never disagree:
+ * - rest day = this person's own off weekdays (file, then establishment) — Arts 104/107(3);
+ * - the 4-on/4-off 12h-stay week reads on the weekly criterion (Art. 107(2)) and has no fixed off weekday;
+ * - Art. 108 categories use their Regs Art. 23 ceilings; juveniles carry no overtime (Art. 164 blocks instead);
+ * - confirmed «عمل في العطلة» hours are overtime in full (Art. 107(3)).
+ */
 export function weekNamedOvertime(schedule, employee, weekStart, company, laborCalendar, ar = true) {
+  const keys = weekDateKeys(weekStart);
+  if (!employee?.id || keys.some((key) => isJuvenile(employee, key))) {
+    return deriveNamedOvertime({ days: [], employee, company, laborCalendar, ar });
+  }
+  const compressed = employeeOnCompressedTwelveWeek(schedule, employee, weekStart);
   const days = weekDays(weekStart).map((day) => {
-    const onLeave = !!(employee && isRosterLeaveDay(employee, day.key, laborCalendar));
-    const shift = !onLeave && employee?.id ? employeeShiftOnDay(schedule, employee.id, day.key) : null;
+    const onLeave = isRosterLeaveDay(employee, day.key, laborCalendar);
+    const shift = !onLeave ? employeeShiftOnDay(schedule, employee.id, day.key) : null;
     return {
       key: day.key,
       hours: shift ? actualShiftHours(shift, day.key, employee) : 0,
-      restDay: !!shift && isWeeklyRestDay(day.key, company, day.key),
-      holiday: isOfficialHoliday(day.key, laborCalendar),
+      restDay: !!shift && !compressed && isEmployeeOffDay(day.key, company, employee),
+      holiday: !!shift && isOfficialHoliday(day.key, laborCalendar),
     };
   });
-  return deriveNamedOvertime({ days, employee, company, laborCalendar, ar });
+  return deriveNamedOvertime({
+    days,
+    employee,
+    company,
+    laborCalendar,
+    criterion: compressed ? "weekly" : "",
+    ar,
+  });
+}
+
+/**
+ * Arts 101/106 — the rostered shift behind an overtime assignment on that day: its workplace stay,
+ * its actual hours, and the week's rostered actual hours. Empty roster → nulls (callers fall back).
+ */
+export function employeeRosterOtContext(schedules = [], employee, dateKey, laborCalendar) {
+  const day = String(dateKey || "").slice(0, 10);
+  if (!employee?.id || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return { presenceHours: null, ordinaryHours: null, rosterWeekHours: null, shift: null };
+  const own = String(employee?.profile?.workStationId || employee?.stationId || "");
+  const list = [...(schedules || [])].sort((a, b) => (String(b.stationId) === own) - (String(a.stationId) === own));
+  const schedule = list.find((row) => weekDateKeys(day).some((key) => employeeShiftOnDay(row, employee.id, key))) || null;
+  if (!schedule) return { presenceHours: null, ordinaryHours: null, rosterWeekHours: null, shift: null };
+  const shift = isRosterLeaveDay(employee, day, laborCalendar) ? null : employeeShiftOnDay(schedule, employee.id, day);
+  return {
+    shift,
+    presenceHours: shift ? shiftHours(shift) : 0,
+    ordinaryHours: shift ? actualShiftHours(shift, day, employee) : 0,
+    rosterWeekHours: Math.round(employeeWeekHours(schedule, employee.id, day, employee, laborCalendar) * 10) / 10,
+  };
+}
+
+/** Days this week with no duty (rest or leave) — Art. 104 rest-day count. */
+export function weekRestDayCount(schedule, employee, weekStart, laborCalendar) {
+  if (!employee?.id) return 7;
+  return weekDateKeys(weekStart).filter((key) => (
+    isRosterLeaveDay(employee, key, laborCalendar) || !employeeShiftOnDay(schedule, employee.id, key)
+  )).length;
+}
+
+/** Art. 105 — consecutive weeks (this one back) with no rest day: the rest being banked. */
+export function bankedRestWeeks(schedule, employee, weekStart, laborCalendar, lookback = 12) {
+  const start = weekStartDate(weekStart);
+  let weeks = 0;
+  for (let back = 0; back < lookback; back += 1) {
+    if (weekRestDayCount(schedule, employee, addDays(start, -7 * back), laborCalendar) > 0) break;
+    weeks += 1;
+  }
+  return weeks;
 }
 
 export function weekValidityOptions(ar = true) {
@@ -1817,7 +1968,7 @@ function hasAnyAssignment(schedule, dateKey) {
   return (schedule.shiftTypes || []).some((shift) => (day[shift.id] || []).length > 0);
 }
 
-export function checkShiftChangeApplyGate({ schedule, employee, dateKey, shiftTypeId, employees = [], laborCalendar } = {}) {
+export function checkShiftChangeApplyGate({ schedule, employee, dateKey, shiftTypeId, employees = [], laborCalendar, holidayWorkConfirmed, company } = {}) {
   if (!dateKey) {
     return { ok: false, error: "DATE_REQUIRED", reason: "حدد يوم الوردية.", reasonEn: "Set the shift date." };
   }
@@ -1829,13 +1980,10 @@ export function checkShiftChangeApplyGate({ schedule, employee, dateKey, shiftTy
       reasonEn: "Someone on approved leave is never assigned a shift.",
     };
   }
-  if (isOfficialHoliday(dateKey, laborCalendar)) {
-    return {
-      ok: false,
-      error: "OFFICIAL_HOLIDAY",
-      reason: "لا تُسند وردية في إجازة اليوم الوطني أو يوم التأسيس أو العيد بأجر كامل — المادة 112. الخلية مقفلة باسمها.",
-      reasonEn: "A shift is not assigned on National Day, Founding Day, or Eid leave at full pay — Article 112. The cell is locked under that leave name.",
-    };
+  if (shiftTypeId && isOfficialHoliday(dateKey, laborCalendar)) {
+    // Art. 107(3): holiday work is possible, but only confirmed by name and paid as overtime.
+    const holiday = checkHolidayWorkGate({ employee, dateKey, laborCalendar, confirmed: holidayWorkConfirmed });
+    if (!holiday.ok) return holiday;
   }
   const next = shiftTypeId ? (schedule?.shiftTypes || []).find((shift) => shift.id === shiftTypeId) : null;
   if (shiftTypeId && !next) {
@@ -1889,7 +2037,7 @@ export function checkShiftChangeApplyGate({ schedule, employee, dateKey, shiftTy
     }
   }
   if (next) {
-    const stay = checkWorkplaceStayDutyGate({ shift: next, onDate: dateKey, employee });
+    const stay = checkWorkplaceStayDutyGate({ shift: next, onDate: dateKey, employee, company });
     if (!stay.ok) return stay;
   }
   if (next && employee) {
@@ -1897,12 +2045,12 @@ export function checkShiftChangeApplyGate({ schedule, employee, dateKey, shiftTy
       employee,
       shift: next,
       onDate: dateKey,
-      company: null,
+      company: company || null,
       laborCalendar,
     });
     if (!juvenile.ok) return juvenile;
   }
-  if (next && isRamadanDay(dateKey, laborCalendar) && isRamadanHoursSubject(employee) && ramadanUsesDailySixCap(next, dateKey, employee)) {
+  if (next && isRamadanDay(dateKey, laborCalendar) && isRamadanHoursSubject(employee) && ramadanUsesDailySixCap(next, dateKey, employee, company)) {
     const hrs = actualShiftHours(next, dateKey, employee);
     const cap = ruleValue("hours.ramadan.ordinaryHours", dateKey);
     if (hrs > cap) {
@@ -2253,6 +2401,12 @@ export function checkWeekPublishGates({
   const juvenileAgeBad = [];
   const juvenileNightBad = [];
   const juvenileHoursBad = [];
+  const legacy108 = [];
+  const art100Average = [];
+  const restBanked = [];
+  const restBankBlocked = [];
+  const policyWeek = hoursPolicyOf(company);
+  const art100 = art100ApprovalOf(company);
   let leaveDays = 0;
   let approvedLeaveDays = 0;
   let officialHolidayLeaveDays = 0;
@@ -2270,6 +2424,8 @@ export function checkWeekPublishGates({
     let hours = 0;
     let ramadanHours = 0;
     let restDays = 0;
+    let dutyDays = 0;
+    if (art108CategoryOf(employee).legacy && !legacy108.includes(employee.name)) legacy108.push(employee.name);
     const keys = days.map((day) => day.key);
     keys.forEach((key, index) => {
       const day = days[index];
@@ -2302,25 +2458,29 @@ export function checkWeekPublishGates({
         return;
       }
       assigned += 1;
+      dutyDays += 1;
       const spanHrs = shiftHours(shift);
       const hrs = actualShiftHours(shift, key, employee);
       hours += hrs;
-      // Unreachable while official holidays are roster leave — kept as a safety net.
+      const limits = art108Limits(employee, key, laborCalendar);
+      // Art. 107(3): a confirmed «عمل في العطلة» day — allowed, all of it overtime (never a block).
       if (isOfficialHoliday(key, laborCalendar)) {
-        const label = `${employee.name} (${day.day} ${MONTHS_AR[day.month]})`;
+        const label = `${employee.name} (${day.day} ${MONTHS_AR[day.month]} · ${hrs} ${ar ? "ساعة" : "h"})`;
         if (!holidayWork.includes(label)) holidayWork.push(label);
       }
-      if (isRamadanDay(key, laborCalendar) && isRamadanHoursSubject(employee) && ramadanUsesDailySixCap(shift, key, employee)) {
+      if (isRamadanDay(key, laborCalendar) && isRamadanHoursSubject(employee) && ramadanUsesDailySixCap(shift, key, employee, company)) {
         ramadanHours += hrs;
         if (hrs > ramadanDayCap) {
           const label = `${employee.name} (${day.day} ${MONTHS_AR[day.month]})`;
           if (!ramadanOverDay.includes(label)) ramadanOverDay.push(label);
         }
       }
-      if (spanHrs > workplaceMax && !perDayOver12.includes(employee.name)) perDayOver12.push(employee.name);
-      if (hrs > exceptionDay && !perDayOver10.includes(employee.name)) perDayOver10.push(employee.name);
-      const rest = shift.restMinutes == null ? restMinutesNeed : Number(shift.restMinutes) || 0;
-      const consec = checkConsecutiveWorkGate({ start: shift.start, end: shift.end, restMinutes: rest, onDate: key });
+      // Art. 108 category (Regs Art. 23) replaces the 12h stay and the 10h day for that person.
+      const stayCap = limits ? limits.workplaceHours : workplaceMax;
+      const dayCapBlock = limits ? limits.dayHours : exceptionDay;
+      if (spanHrs > stayCap && !perDayOver12.includes(employee.name)) perDayOver12.push(employee.name);
+      if (hrs > dayCapBlock && !perDayOver10.includes(employee.name)) perDayOver10.push(employee.name);
+      const consec = dutyConsecutiveGate(shift, key, employee, company);
       if (!consec.ok && !noBreak.includes(shift.label || shift.id)) noBreak.push(shift.label || shift.id);
       const juvenile = checkJuvenileRosterGate({
         employee,
@@ -2344,10 +2504,34 @@ export function checkWeekPublishGates({
       nightNoRest.push(employee.name);
     }
     totalHours += hours;
-    if (hours > weeklyCap) overCap.push(employee.name);
-    if (hours > exceptionWeek) over60.push(employee.name);
+    const personWeekCap = art108WeekCap(employee, onDate, laborCalendar, dutyDays) ?? weeklyCap;
+    if (art100.approved && !art108CategoryOf(employee).category) {
+      // Art. 100 with the Ministry's approval on record: the week is read as a three-week average.
+      const back = (n) => employeeWeekHours(schedule, employee.id, addDays(weekStartDate(weekStart), -7 * n), employee, laborCalendar);
+      const avgGate = checkThreeWeekAverageGate({ weekHours: [hours, back(1), back(2)], onDate, employee, company, laborCalendar });
+      if (!avgGate.ok) {
+        overCap.push(employee.name);
+        art100Average.push({ employee, avg: Math.round(avgGate.avg * 10) / 10 });
+      }
+    } else if (hours > personWeekCap) {
+      overCap.push(employee.name);
+    }
+    if (hours > exceptionWeek && !art108CategoryOf(employee).category) over60.push(employee.name);
     if (ramadanHours > ramadanWeekCap && !ramadanOverWeek.includes(employee.name)) ramadanOverWeek.push(employee.name);
-    if (restDays === 0) noWeeklyRest.push(employee.name);
+    if (restDays === 0) {
+      // Art. 105: banked weekly rest (remote / continuous work) with worker agreement + Ministry approval.
+      if (policyWeek.remoteRestBank105) {
+        const bankedWeeks = bankedRestWeeks(schedule, employee, weekStart, laborCalendar);
+        const bank = checkArt105BankGate({ company, employee, bankedWeeks });
+        if (bank.ok) restBanked.push({ employee, weeks: bankedWeeks });
+        else {
+          restBankBlocked.push({ employee, weeks: bankedWeeks, reason: bank.reason, reasonEn: bank.reasonEn });
+          noWeeklyRest.push(employee.name);
+        }
+      } else {
+        noWeeklyRest.push(employee.name);
+      }
+    }
     const eidRestDays = days.filter((day) => isEidHoliday(day.key, laborCalendar) && isWeeklyRestDay(day.key, company, day.key));
     if (eidRestDays.length) {
       const otherRest = days.filter((day) => {
@@ -2470,7 +2654,7 @@ export function checkWeekPublishGates({
     const juvenile = duty.some((row) => isJuvenile(employee, row.key));
 
     // Art. 104(2): at least 24 continuous hours — a rest "day" shortened by a night spill-over is not enough.
-    if (!noWeeklyRest.includes(employee.name)) {
+    if (!noWeeklyRest.includes(employee.name) && !restBanked.some((row) => row.employee === employee)) {
       const longest = longestWeeklyRestHours(schedule, employee, weekStart, laborCalendar);
       if (longest != null && longest < weeklyRestHoursNeed) weeklyRest24Short.push({ employee, hours: longest });
     }
@@ -2478,28 +2662,24 @@ export function checkWeekPublishGates({
     // Art. 98: Ramadan weekly 36 for the weekly criterion (12h-stay duties are not cut to 6 a day).
     if (isRamadanHoursSubject(employee)) {
       const ramadanDuty = duty.filter((row) => isRamadanDay(row.key, laborCalendar));
-      const stayDays = ramadanDuty.filter((row) => !ramadanUsesDailySixCap(row.shift, row.key, employee));
+      const stayDays = ramadanDuty.filter((row) => !ramadanUsesDailySixCap(row.shift, row.key, employee, company));
       if (stayDays.length) {
         const total = Math.round(ramadanDuty.reduce((sum, row) => sum + actualShiftHours(row.shift, row.key, employee), 0) * 10) / 10;
         if (total > ramadanWeekCap) ramadanWeekCriterionOver.push({ employee, hours: total, days: stayDays.map((row) => row.key) });
       }
     }
 
-    // Art. 107(1): hours past the daily ordinary cap (daily criterion) are overtime at +50%.
-    const exempt108 = hoursPolicyOf(company, employee).hoursExempt108;
-    if (!exempt108 && !juvenile && !employeeOnCompressedTwelveWeek(schedule, employee, weekStart)) {
-      let ot = 0;
-      const otDays = [];
-      for (const row of duty) {
-        if (isRamadanDay(row.key, laborCalendar) && isRamadanHoursSubject(employee)) continue;
-        const cap = ordinaryDayCap(employee, company, row.key, laborCalendar);
-        const actual = actualShiftHours(row.shift, row.key, employee);
-        if (cap && actual > cap) {
-          ot += actual - cap;
-          otDays.push(row.key);
-        }
+    // Art. 107: one reading with the OT board (weekNamedOvertime) — off days, 4-on/12h, Art. 108, holidays.
+    {
+      const named = weekNamedOvertime(schedule, employee, weekStart, company, laborCalendar, ar);
+      if (named.totalHours > 0) {
+        overtimeNamed.push({
+          employee,
+          hours: Math.round(named.totalHours * 10) / 10,
+          days: [...new Set(named.rows.map((row) => row.dateKey).filter(Boolean))],
+          holidayHours: Math.round(named.rows.filter((row) => row.kind === "holiday").reduce((sum, row) => sum + row.overtimeHours, 0) * 10) / 10,
+        });
       }
-      if (ot > 0) overtimeNamed.push({ employee, hours: Math.round(ot * 10) / 10, days: otDays });
     }
 
     // Art. 151(1): no duty in the six mandatory weeks after birth.
@@ -2563,6 +2743,7 @@ export function checkWeekPublishGates({
     return `${row.name} (${labels.join(ar ? "، " : ", ")})`;
   });
 
+  const workPosting = checkWorkPostingGate({ company, station, settings });
   const ramadan = days.some((day) => isRamadanDay(day.key, laborCalendar));
   const ramadanBlocked = ramadanOverDay.length > 0 || ramadanOverWeek.length > 0;
   const nightWin = nightWindowLabel(onDate);
@@ -2585,8 +2766,14 @@ export function checkWeekPublishGates({
       ...articleChip("hours.week.ordinaryMaxHours", onDate),
       title: ar ? `أعلى حمل أسبوعي ${weeklyCap} ساعة` : `Weekly load cap ${weeklyCap} hours`,
       note: overCap.length
-        ? (ar ? `${names(overCap)} يتجاوزون ${weeklyCap} ساعة. المحسوب أثقل أسبوع لأثقل موظف.` : `${names(overCap)} exceed ${weeklyCap} hours.`)
-        : (ar ? `لا أحد يتجاوز ${weeklyCap} ساعة في هذا الأسبوع — محسوبة لكل أسبوع تقويمي على حدة.` : `Nobody exceeds ${weeklyCap} hours this calendar week.`),
+        ? (ar
+          ? `${names(overCap)} يتجاوزون ${weeklyCap} ساعة${art100Average.length ? ` (متوسط ثلاثة أسابيع: ${art100Average.map((row) => `${row.employee.name} ${row.avg}`).join("، ")} — المادة 100)` : ""}. المحسوب أثقل أسبوع لأثقل موظف.`
+          : `${names(overCap)} exceed ${weeklyCap} hours${art100Average.length ? ` (three-week average: ${art100Average.map((row) => `${row.employee.name} ${row.avg}`).join(", ")} — Art. 100)` : ""}.`)
+        : art100.approved
+          ? (ar
+            ? `التناوب بموافقة الوزارة رقم ${art100.no} بتاريخ ${art100.date}: يُقرأ الحد بمتوسط ثلاثة أسابيع لا يتجاوز ${weeklyCap} ساعة (المادة 100).`
+            : `Rotation under Ministry approval ${art100.no} of ${art100.date}: the cap reads as a three-week average within ${weeklyCap} hours (Art. 100).`)
+          : (ar ? `لا أحد يتجاوز ${weeklyCap} ساعة في هذا الأسبوع — محسوبة لكل أسبوع تقويمي على حدة.` : `Nobody exceeds ${weeklyCap} hours this calendar week.`),
     },
     {
       id: "hours_106",
@@ -2626,7 +2813,11 @@ export function checkWeekPublishGates({
       title: ar ? `لا عمل أكثر من ${consecHours} ساعات متواصلة دون راحة ${restMinutesNeed} دقيقة` : `No more than ${consecHours} consecutive hours without a ${restMinutesNeed}-minute rest`,
       note: noBreak.length
         ? (ar ? `${names(noBreak)} — وردية تتجاوز ${consecHours} ساعات بلا راحة مقرّرة.` : `${names(noBreak)} — a shift exceeds ${consecHours} hours without a rest.`)
-        : (ar ? `كل وردية تتجاوز ${consecHours} ساعات فيها راحة ${restMinutesNeed} دقيقة. والراحة ليست ساعات عمل — المادة 102.` : `Shifts over ${consecHours} hours include a ${restMinutesNeed}-minute rest. Rest is not working time — Art. 102.`),
+        : policyWeek.continuousWork103
+          ? (ar
+            ? "عمل مستمر بقرار الوزير (المادة 103): فترة الصلاة والطعام والراحة تنظمها إدارة المنشأة أثناء العمل، فلا يُشترط التوقف بعد خمس ساعات."
+            : "Continuous work by Minister's decision (Art. 103): prayer, food and rest are organised by management during work, so no stop after five hours is required.")
+          : (ar ? `كل وردية تتجاوز ${consecHours} ساعات فيها راحة ${restMinutesNeed} دقيقة في المرة الواحدة — راحة واحدة أو أكثر. والراحة ليست ساعات عمل — المادة 102.` : `Shifts over ${consecHours} hours include ${restMinutesNeed}-minute rests (one or more). Rest is not working time — Art. 102.`),
     },
     {
       id: "eid_rest_compensate",
@@ -2645,8 +2836,14 @@ export function checkWeekPublishGates({
       ...articleChip("hours.rest.weeklyHours", onDate),
       title: ar ? `راحة أسبوعية ${weeklyRestHours} ساعة متصلة` : `${weeklyRestHours}-hour continuous weekly rest`,
       note: noWeeklyRest.length
-        ? (ar ? `${names(noWeeklyRest)} — بلا يوم راحة كامل في هذا الأسبوع.` : `${names(noWeeklyRest)} have no full rest day this week.`)
-        : (ar ? "لكل موظف يوم راحة كامل في هذا الأسبوع، ولا يُستبدل بأجر." : "Everyone has a full rest day this week, never replaced by pay."),
+        ? (ar
+          ? `${names(noWeeklyRest)} — بلا يوم راحة كامل في هذا الأسبوع.${restBankBlocked.length ? ` ${restBankBlocked.map((row) => row.reason).filter(Boolean)[0] || ""}` : ""}`
+          : `${names(noWeeklyRest)} have no full rest day this week.${restBankBlocked.length ? ` ${restBankBlocked.map((row) => row.reasonEn).filter(Boolean)[0] || ""}` : ""}`)
+        : restBanked.length
+          ? (ar
+            ? `${restBanked.map((row) => `${row.employee.name} (${row.weeks} أسبوع)`).join("، ")} — راحة أسبوعية مُجمَّعة باتفاق العمال وموافقة الوزارة، حتى ${ruleValue("hours.art105.bankMaxWeeks", onDate)} أسابيع (المادة 105).`
+            : `${restBanked.map((row) => `${row.employee.name} (${row.weeks} wk)`).join(", ")} — weekly rest banked by worker agreement and Ministry approval, up to ${ruleValue("hours.art105.bankMaxWeeks", onDate)} weeks (Art. 105).`)
+          : (ar ? "لكل موظف يوم راحة كامل في هذا الأسبوع، ولا يُستبدل بأجر." : "Everyone has a full rest day this week, never replaced by pay."),
     },
     {
       id: "night_rotate",
@@ -2775,13 +2972,13 @@ export function checkWeekPublishGates({
     {
       id: "heat_ban",
       ok: sunField.length === 0,
-      block: false,
-      // A breach shown as «مخالفة» to the manager and the worker — never a publish block (product decision).
+      // Decision 3337: an exposed worker inside 12:00–15:00 in season is not published — a block.
+      block: true,
       violation: sunField.length > 0,
       ...articleChip("hours.heat.startHour", onDate, "قرار 3337"),
       title: ar ? "لا يجوز التشغيل تحت أشعة الشمس في ساعات الحظر" : "No work under direct sun in the ban hours",
       note: sunField.length
-        ? `${weekHeatBanWorkerNotice(names(sunWho(sunField)), onDate, { ar })} ${ar ? "مخالفة لا تمنع النشر — تُسجَّل ويراها الموظف، وعند 12:00 يصل تنبيه للإدارة وللموظف." : "A violation that does not block publishing — recorded and visible to the worker; at 12:00 the manager and the worker are alerted."}`
+        ? `${weekHeatBanWorkerNotice(names(sunWho(sunField)), onDate, { ar })} ${ar ? "لا يُنشر الجدول حتى تُنقل الوردية خارج ساعات الحظر أو يُحدَّد العمل «مظلّل» (القرار 3337)." : "The roster is not published until the shift moves out of the ban hours or the work is marked shaded (Decision 3337)."}`
         : heatSeason
           ? (ar ? `موسم الحظر ساري (${heatWin.seasonAr}) ولا موظف مُحدَّد «مكشوف» في وردية تمسّ ${heatWin.startLabel} – ${heatWin.endLabel}.` : `Heat-ban season is in force (${heatWin.seasonEn}) and nobody marked field is on a shift touching ${heatWin.startLabel}–${heatWin.endLabel}.`)
           : (ar ? "خارج موسم حظر الشمس." : "Outside the heat-ban season."),
@@ -2789,7 +2986,8 @@ export function checkWeekPublishGates({
     {
       id: "heat_place",
       ok: sunUnset.length === 0,
-      block: false,
+      // Decision 3337: in season a cell touching the window needs its exposed / shaded mark before publish.
+      block: true,
       ...articleChip("hours.heat.startHour", onDate, "قرار 3337"),
       title: ar ? "يحتاج تحديد مكشوف/مظلّل" : "Needs a exposed / shaded mark",
       note: sunUnset.length
@@ -2819,21 +3017,69 @@ export function checkWeekPublishGates({
     {
       id: "official_holiday",
       // Leftover duty under Art. 112 leave paint does not block publish (cleared on publish).
-      // holidayWork is a safety net for a non-leave holiday duty path that should not occur.
-      ok: holidayWork.length === 0,
-      block: true,
+      // Confirmed «عمل في العطلة» (Art. 107(3)) is allowed and named in «holiday_work_107».
+      ok: true,
+      block: false,
       ...articleChip("leave.eid.cite", onDate),
-      title: ar ? "لا وردية في إجازة العيد أو اليوم الوطني أو يوم التأسيس" : "No shift on Eid, National Day, or Founding Day leave",
+      title: ar ? "العيد واليوم الوطني ويوم التأسيس إجازة بأجر كامل" : "Eid, National Day and Founding Day are full-pay leave",
       note: holidayWork.length
         ? (ar
-          ? `${names(holidayWork)} — ${holidayNamesPhrase} بأجر كامل (المادة 112).`
-          : `${names(holidayWork)} — ${holidayNamesPhrase} at full pay (Article 112).`)
+          ? `${names(holidayWork)} — ${HOLIDAY_WORK_LABEL_AR}. ${holidayNamesPhrase} تبقى إجازة لمن لم يُؤكَّد عمله فيها (المادة 112).`
+          : `${names(holidayWork)} — ${HOLIDAY_WORK_LABEL_EN}. ${holidayNamesPhrase} stays leave for anyone not confirmed (Article 112).`)
         : holidayGhostClash.length
           ? (ar
             ? `${names(holidayGhostClash)} — بقايا تعيين تحت ${holidayNamesPhrase} المقفلة (المادة 112). الخلية إجازة، والبقايا تُمسح عند النشر.`
             : `${names(holidayGhostClash)} — leftover duty under locked ${holidayNamesPhrase} (Article 112). The cell stays leave; leftovers clear on publish.`)
           : (ar ? "لا تعيين يمسّ إجازة العيد أو اليوم الوطني أو يوم التأسيس." : "No assignment falls on Eid, National Day, or Founding Day leave."),
       ghostClash: holidayGhostClash.length > 0,
+    },
+    {
+      id: "holiday_work_107",
+      ok: holidayWork.length === 0,
+      block: false,
+      applicable: holidayWork.length > 0,
+      ...articleChip("hours.ot.premium", onDate),
+      title: ar ? HOLIDAY_WORK_LABEL_AR : HOLIDAY_WORK_LABEL_EN,
+      note: holidayWork.length
+        ? (ar
+          ? `${names(holidayWork)} — كل ساعات العمل في ${holidayNamesPhrase} إضافية بأجر الساعة + 50% (المادة 107/3). عند النشر تُسجَّل بانتظار قرار الصرف ولا تُترك بلا أجر.`
+          : `${names(holidayWork)} — every hour worked on ${holidayNamesPhrase} is overtime at hourly wage + 50% (Art. 107(3)). On publish it is recorded awaiting the pay decision, never left unpaid.`)
+        : (ar ? "لا عمل مؤكَّد في عطلة رسمية هذا الأسبوع." : "No confirmed holiday work this week."),
+    },
+    {
+      id: "art108_category",
+      ok: legacy108.length === 0,
+      block: false,
+      applicable: legacy108.length > 0,
+      ...articleChip("hours.art108.cite", onDate),
+      title: ar ? "فئة المادة 108 تُحدَّد بالاسم" : "Name the Article 108 category",
+      note: legacy108.length
+        ? (ar
+          ? `${names(legacy108)} — على الملف «مستثنى من المادة 108» بلا فئة. اختر الفئة (إدارة عليا، تجهيزية/تكميلية، متقطع، حراسة، نظافة) لتُطبَّق حدود اللائحة م23؛ حتى ذلك تُطبَّق الحدود العادية.`
+          : `${names(legacy108)} — the file says “Art. 108 exempt” with no category. Choose one (senior management, preparatory, intermittent, guard, cleaner) to apply Regs Art. 23 limits; ordinary limits apply until then.`)
+        : (ar ? "كل استثناء من المادة 108 محدد الفئة." : "Every Article 108 exemption names its category."),
+    },
+    {
+      id: "art100_approval",
+      ok: !(art100.rotating && !art100.recorded),
+      block: false,
+      applicable: art100.rotating,
+      ...articleChip("hours.art100.averageWeeks", onDate),
+      title: ar ? "التناوب بمتوسط ثلاثة أسابيع — موافقة الوزارة" : "Rotation averaged over three weeks — Ministry approval",
+      note: art100.approved
+        ? (ar ? `موافقة الوزارة رقم ${art100.no} بتاريخ ${art100.date} مسجّلة — يحل متوسط ثلاثة أسابيع محل حد 48 الأسبوعي (المادة 100).` : `Ministry approval ${art100.no} of ${art100.date} is on record — the three-week average replaces the weekly 48 cap (Art. 100).`)
+        : (ar ? "التناوب مفعّل لكن رقم موافقة الوزارة وتاريخها غير مسجّلين — يبقى حد 48 ساعة لكل أسبوع (المادة 100)." : "Rotation is on but the Ministry approval number and date are not recorded — the 48-hour cap stays per week (Art. 100)."),
+    },
+    {
+      id: "work_posting",
+      ok: workPosting.ok,
+      block: false,
+      error: workPosting.ok ? null : workPosting.error,
+      ...articleChip("hours.posting.cite", onDate),
+      title: ar ? "جدول مواعيد العمل معلن في موقع العمل" : "Work-hours table posted at the workplace",
+      note: workPosting.ok
+        ? (ar ? `مُعلن${workPosting.postedAt ? ` منذ ${workPosting.postedAt}` : ""}: مواعيد العمل وفترات الراحة ويوم الراحة ومواعيد النوبات (المادة 17).` : `Posted${workPosting.postedAt ? ` since ${workPosting.postedAt}` : ""}: hours, rest periods, rest day and shift times (Art. 17).`)
+        : (ar ? workPosting.reason : workPosting.reasonEn),
     },
     {
       id: "juvenile",
@@ -3111,19 +3357,24 @@ export function checkWeekPublishGates({
         return;
       }
       if (!shift) return;
+      if (isOfficialHoliday(key, laborCalendar)) {
+        markCell(employee.id, key, "holiday_work_107", "warn", ar ? HOLIDAY_WORK_LABEL_AR : HOLIDAY_WORK_LABEL_EN);
+      }
       if (eidRestDue.includes(employee.name) && isEidHoliday(key, laborCalendar) && isWeeklyRestDay(key, company, key)) {
         markCell(employee.id, key, "eid_rest_compensate", "warn");
       }
-      if (isRamadanDay(key, laborCalendar) && isRamadanHoursSubject(employee) && ramadanUsesDailySixCap(shift, key, employee) && actualShiftHours(shift, key, employee) > ramadanDayCap) {
+      if (isRamadanDay(key, laborCalendar) && isRamadanHoursSubject(employee) && ramadanUsesDailySixCap(shift, key, employee, company) && actualShiftHours(shift, key, employee) > ramadanDayCap) {
         markCell(employee.id, key, "ramadan", "block");
       }
       if (ramadanOverWeek.includes(employee.name) && isRamadanDay(key, laborCalendar)) {
         markCell(employee.id, key, "ramadan", "block");
       }
-      if (shiftHours(shift) > workplaceMax) markCell(employee.id, key, "workplace", "block");
-      if (actualShiftHours(shift, key, employee) > exceptionDay) markCell(employee.id, key, "hours_106", "block");
-      const rest = shift.restMinutes == null ? restMinutesNeed : Number(shift.restMinutes) || 0;
-      if (!checkConsecutiveWorkGate({ start: shift.start, end: shift.end, restMinutes: rest, onDate: key }).ok) {
+      {
+        const limits = art108Limits(employee, key, laborCalendar);
+        if (shiftHours(shift) > (limits ? limits.workplaceHours : workplaceMax)) markCell(employee.id, key, "workplace", "block");
+        if (actualShiftHours(shift, key, employee) > (limits ? limits.dayHours : exceptionDay)) markCell(employee.id, key, "hours_106", "block");
+      }
+      if (!dutyConsecutiveGate(shift, key, employee, company).ok) {
         markCell(employee.id, key, "rest_5h", "block");
       }
       if (overCap.includes(employee.name)) markCell(employee.id, key, "hours_48", "block");
@@ -3162,7 +3413,7 @@ export function checkWeekPublishGates({
         if (sunFieldCells.has(cellKey)) {
           markCell(employee.id, key, "heat_ban", "block", weekHeatBanWorkerNotice(employee.name, key, { ar }));
         } else if (sunUnsetCells.has(cellKey)) {
-          markCell(employee.id, key, "heat_place", "warn", ar
+          markCell(employee.id, key, "heat_place", "block", ar
             ? `${employee.name} — يحتاج تحديد مكشوف/مظلّل في هذا اليوم (القرار 3337).`
             : `${employee.name} — needs a exposed / shaded mark on this day (Decision 3337).`);
         }
@@ -3215,7 +3466,11 @@ export function checkWeekPublishGates({
     juvenilesThisWeek,
     birthDatesKnown,
     weeklyRest24Short: weeklyRest24Short.map((row) => ({ employeeId: row.employee.id, name: row.employee.name, hours: row.hours })),
-    overtimeNamed: overtimeNamed.map((row) => ({ employeeId: row.employee.id, name: row.employee.name, hours: row.hours, days: row.days })),
+    overtimeNamed: overtimeNamed.map((row) => ({ employeeId: row.employee.id, name: row.employee.name, hours: row.hours, days: row.days, holidayHours: row.holidayHours || 0 })),
+    holidayWork,
+    restBanked: restBanked.map((row) => ({ employeeId: row.employee.id, name: row.employee.name, weeks: row.weeks })),
+    legacy108,
+    workPosting,
     postnatalDuty: postnatalDuty.map((row) => ({ employeeId: row.employee.id, name: row.employee.name, days: row.days })),
     nursingOnDuty,
     cellMarks,
@@ -3248,6 +3503,7 @@ export const WEEK_CELL_ALERT_IDS = new Set([
   "weekly_rest_24h",
   "ramadan_week_36",
   "overtime_107",
+  "holiday_work_107",
   "maternity_postnatal",
   "juvenile_night_gap",
   "juvenile_hazard",

@@ -311,6 +311,12 @@ export function checkSettleAbsenceGate(input) {
   return { ok: true, days, windowDays: SETTLEMENT_WINDOW_DAYS };
 }
 
+/** An otDecisions entry still waiting on a decision — written by publish (holiday work) or by punches. */
+export function isOtDecisionOpen(entry) {
+  if (!entry) return true;
+  return entry.decision === "pending" || entry.decision === "pending_worker_cap_consent";
+}
+
 export function checkOtDecisionGate(input) {
   const ot = Math.max(0, Number(input.overtimeMinutes) || 0);
   if (ot <= 0) {
@@ -339,6 +345,16 @@ export function checkOtDecisionGate(input) {
       error: "DECISION_REQUIRED",
       reason: "يلزم اعتماد الإضافي للصرف، أو رفضه، أو إجازة تعويضية بموافقة العامل — الساعات تبقى مسجّلة.",
       reasonEn: "Approve overtime for pay, reject it, or grant compensatory leave with the worker's consent — hours stay recorded.",
+    };
+  }
+  // Art. 107: hours the punches (or a confirmed holiday duty) prove were worked are owed —
+  // the manager chooses pay or compensatory leave, never «unpaid».
+  if (decision === "reject" && input.workedProven === true) {
+    return {
+      ok: false,
+      error: "OT_WORKED_NO_REJECT",
+      reason: "موقوف — المادة 107: الحضور والانصراف يثبتان أن الساعات عُملت فعلاً، وأجرها واجب. اختر الصرف بأجر الساعة + 50% أو إجازة تعويضية بموافقة العامل.",
+      reasonEn: "Blocked — Article 107: the punches prove these hours were worked and their pay is owed. Choose pay at hourly + 50% or compensatory leave with the worker's consent.",
     };
   }
   const onDate = laborDayKey(input.onDate);

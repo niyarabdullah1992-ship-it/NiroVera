@@ -247,8 +247,12 @@ assert.equal(checkEmployeeAcceptOtGate({ compensation: "pay", ack: true }).ok, t
 assert.equal(checkEmployeeAcceptOtGate({ compensation: "credit", ack: true, hours: 8, date: "2026-09-13" }).creditDays, 1.5);
 assert.equal(checkOtAnnualCapGate({ hours: 1, date: "2026-09-13", overtimeHoursYtd: 720 }).error, "OT_ANNUAL_CAP");
 assert.equal(checkOtAnnualCapGate({ hours: 1, date: "2026-09-13", overtimeHoursYtd: 720, annualCapConsent: true }).ok, true);
-assert.equal(checkRaiseOtAssignmentGate({ reason: "ضغط", hours: 8, date: "2026-09-13", overtimeHoursYtd: 720 }).error, "OT_ANNUAL_CAP");
-assert.equal(checkRaiseOtAssignmentGate({ reason: "ضغط", hours: 8, date: "2026-09-13", overtimeHoursYtd: 720, annualCapConsent: true }).ok, true);
+// Regs Art. 22 (updated): the manager's raise no longer carries the consent — it records «consent requested»
+// and the worker's acceptance (checkEmployeeAcceptOtGate with his annualCapConsent) carries it.
+assert.equal(checkRaiseOtAssignmentGate({ reason: "ضغط", hours: 8, date: "2026-09-13", overtimeHoursYtd: 720 }).capConsentRequested, true);
+assert.equal(checkRaiseOtAssignmentGate({ reason: "ضغط", hours: 8, date: "2026-09-13", overtimeHoursYtd: 720, annualCapConsent: true }).capConsentRequested, true, "a manager tick is not the worker's consent");
+assert.equal(checkEmployeeAcceptOtGate({ compensation: "pay", ack: true, hours: 8, date: "2026-09-13", overtimeHoursYtd: 720 }).error, "OT_ANNUAL_CAP");
+assert.equal(checkEmployeeAcceptOtGate({ compensation: "pay", ack: true, hours: 8, date: "2026-09-13", overtimeHoursYtd: 720, annualCapConsent: true }).ok, true);
 assert.equal(checkCompLeaveWindowGate({ compensation: "credit", date: "2026-09-13", enjoyDate: "2027-01-01" }).error, "COMP_LEAVE_WINDOW");
 assert.equal(checkCompLeaveWindowGate({ compensation: "credit", date: "2026-09-13", enjoyDate: "2027-01-01", windowAgreed: true }).ok, true);
 assert.equal(checkCompLeaveYearCapGate({ compensation: "credit", hours: 8, date: "2026-09-13", creditDaysYtd: 30 }).error, "COMP_LEAVE_YEAR_CAP");

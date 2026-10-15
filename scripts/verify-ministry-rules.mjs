@@ -349,13 +349,13 @@ check("checkHeatBanGate names HEAT_BAN", checkHeatBanGate({ start: "08:00", end:
   check("3337 cell: field + morning in season raises heat_ban", g1.checks.find((c) => c.id === "heat_ban")?.ok, false, "3337 p.1");
   check("3337 cell: heat_ban names only the field worker", (g1.sunField || []).map((r) => r.employeeId).join(","), "e1");
   check("3337 cell: heat_ban note names the person", /عامل/.test(g1.checks.find((c) => c.id === "heat_ban")?.note || ""), true);
-  check("3337 violation: exposed in window is a violation, never a publish block", [g1.checks.find((c) => c.id === "heat_ban")?.violation, g1.checks.find((c) => c.id === "heat_ban")?.block].join(","), "true,false");
+  check("3337 violation: exposed in window is a violation AND a publish block", [g1.checks.find((c) => c.id === "heat_ban")?.violation, g1.checks.find((c) => c.id === "heat_ban")?.block].join(","), "true,true");
   check("3337 violation: board row reads «مخالفة»", buildLawGatesBoard({ gates: g1, onDate: "2026-07-20", ar: true }).heat.rows.find((r) => r.id === "exposed")?.status, "violation");
   check("3337 cell: office + morning in season passes", (g1.sunField || []).some((r) => r.employeeId === "e2"), false);
   check("3337 cell: all marked → heat_place passes", g1.checks.find((c) => c.id === "heat_place")?.ok, true);
   const g2 = run(schedWith(base, [MORN, EVE, NGT]), "2026-07-19", "2026-07-19", [EMP, E2]);
   check("3337 cell: unset morning in season warns heat_place", g2.checks.find((c) => c.id === "heat_place")?.ok, false);
-  check("3337 cell: unset is a warning, never a publish block", g2.checks.find((c) => c.id === "heat_place")?.block, false);
+  check("3337 cell: unset in season needs the mark before publish (block)", g2.checks.find((c) => c.id === "heat_place")?.block, true);
   check("3337 cell: unset warning text asks field/office", /مكشوف\/مظلّل/.test(g2.checks.find((c) => c.id === "heat_place")?.note || ""), true);
   // 18632 requirements (a) and (f) — declared on the roster like the facility flags; an alert, never a block.
   const nightSched = (extra = {}) => ({ ...schedWith({ "2026-09-14": { ngt: ["e1"] } }, [MORN, EVE, NGT]), ...extra });
@@ -436,8 +436,10 @@ check("Art. 101: 5h shift needs no rest", checkConsecutiveWorkGate({ start: "07:
   check("Art. 162: under 15 blocked", checkJuvenileRosterGate({ employee: under, shift: MORN, onDate: D }).error, "JUVENILE_UNDER_AGE");
 }
 // Art. 100 three-week average only when rotating
-check("Art. 100: 3-week average above 48 blocked when rotating", checkThreeWeekAverageGate({ weekHours: [54, 50, 46], onDate: D, employee: EMP, company: { hoursPolicy: { rotatingShifts: true } } }).error, "ARTICLE_100_AVERAGE");
-check("Art. 100: 3-week average within 48 passes", checkThreeWeekAverageGate({ weekHours: [54, 46, 44], onDate: D, employee: EMP, company: { hoursPolicy: { rotatingShifts: true } } }).ok, true);
+const ROT100 = { hoursPolicy: { rotatingShifts: true, art100ApprovalNo: "M-100-7", art100ApprovalDate: "2026-01-05" } };
+check("Art. 100: 3-week average above 48 blocked when rotating with Ministry approval", checkThreeWeekAverageGate({ weekHours: [54, 50, 46], onDate: D, employee: EMP, company: ROT100 }).error, "ARTICLE_100_AVERAGE");
+check("Art. 100: rotating without the approval number/date averages nothing", checkThreeWeekAverageGate({ weekHours: [54, 50, 46], onDate: D, employee: EMP, company: { hoursPolicy: { rotatingShifts: true } } }).approvalMissing, true);
+check("Art. 100: 3-week average within 48 passes", checkThreeWeekAverageGate({ weekHours: [54, 46, 44], onDate: D, employee: EMP, company: ROT100 }).ok, true);
 
 /* ------------------------------------------------------------------ */
 section("Labour Law — roster checks added from the M/51 text (Arts. 98, 104, 107, 151, 154, 161, 163, 165)");
@@ -503,7 +505,10 @@ section("Labour Law — roster checks added from the M/51 text (Arts. 98, 104, 1
   check("Art. 107: no overtime → board row 107 void", labourRow(noOt, "107")?.status, "void");
   const compressed = run({ "2026-09-13": { day12: ["e1"] }, "2026-09-14": { day12: ["e1"] }, "2026-09-15": { day12: ["e1"] }, "2026-09-16": { day12: ["e1"] } }, [EMP]);
   check("Art. 107(2): 4×12h-stay week (weekly criterion, 44h) is not daily overtime", gate(compressed, "overtime_107")?.ok, true);
-  check("Art. 108: hours-exempt file is out of overtime_107", gate(run({ "2026-09-14": { long: ["e1"] } }, [{ ...EMP, profile: { hoursExempt108: true } }]), "overtime_107")?.ok, true);
+  check("Art. 108: senior-management category is out of overtime_107", gate(run({ "2026-09-14": { long: ["e1"] } }, [{ ...EMP, profile: { hoursCategory108: "management" } }]), "overtime_107")?.ok, true);
+  const legacy = run({ "2026-09-14": { long: ["e1"] } }, [{ ...EMP, profile: { hoursExempt108: true } }]);
+  check("Art. 108: a bare legacy boolean is not an exemption — ordinary OT applies", gate(legacy, "overtime_107")?.ok, false);
+  check("Art. 108: a bare legacy boolean asks for the category (warning)", `${gate(legacy, "art108_category")?.ok}/${gate(legacy, "art108_category")?.block}`, "false/false");
 
   // Art. 151(1) — six mandatory weeks after birth.
   const mom = { ...EMP, profile: { gender: "female", childBirthDate: "2026-09-01" } };
@@ -549,7 +554,7 @@ section("Labour Law — roster checks added from the M/51 text (Arts. 98, 104, 1
   check("Art. 162: a birth date on file → row 162 settled", labourRow(kidOk, "162")?.status, "settled");
   check("Art. 165: juvenile on roster without documents → juvenile_docs warns (not a block)", `${gate(kidOk, "juvenile_docs")?.ok}/${gate(kidOk, "juvenile_docs")?.block}`, "false/false", "labor-law.pdf Art. 165");
   check("Art. 165: board row 165 open with the name", `${labourRow(kidOk, "165")?.status}/${labourRow(kidOk, "165")?.who}`, "waiting/حدث");
-  const kidDocs = { ...kid, profile: { ...kid.profile, juvenileIdDoc: true, juvenileFitnessCert: true, juvenileGuardianConsent: true, juvenileOfficeNotifiedAt: "2026-09-01" } };
+  const kidDocs = { ...kid, profile: { ...kid.profile, juvenileIdDoc: true, juvenileFitnessCert: true, juvenileGuardianConsent: true, juvenileOfficeNotifiedAt: "2026-09-01", guardianFullName: "سالم بن محمد العتيبي", juvenileResidence: "الرس — حي الخالدية" } };
   const kidFiled = run({ "2026-09-13": { jEve: ["k1"] }, "2026-09-14": { jLate: ["k1"] } }, [kidDocs]);
   check("Art. 165–166: documents + office notice on file → juvenile_docs passes, row settled", `${gate(kidFiled, "juvenile_docs")?.ok}/${labourRow(kidFiled, "165")?.status}`, "true/settled");
   check("Art. 165: no juvenile → row 165 void", labourRow(noOt, "165")?.status, "void");

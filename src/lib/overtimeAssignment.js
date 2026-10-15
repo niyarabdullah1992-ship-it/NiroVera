@@ -392,8 +392,24 @@ export function checkOtDayWeekGate(input = {}) {
       cite: citeRule("hours.juvenile.ordinaryHours", date),
     };
   }
+  // Art. 101 (12h at the workplace) applies to EVERY assignment — read from the rostered shift, not 8h.
+  const rosteredActual = input.ordinaryHours != null && input.ordinaryHours !== "" ? Math.max(0, Number(input.ordinaryHours) || 0) : null;
+  const presence = input.presenceHours != null && input.presenceHours !== "" ? Math.max(0, Number(input.presenceHours) || 0) : rosteredActual;
+  const stayCap = Number(ruleValue("hours.workplace.maxHours", date)) || 12;
+  if (presence != null && presence + perDay > stayCap + 0.001) {
+    const room = Math.max(0, Math.round((stayCap - presence) * 100) / 100);
+    return {
+      ok: false,
+      error: "OT_WORKPLACE_STAY",
+      reason: `موقوف — المادة 101: لا يبقى العامل في مكان العمل أكثر من ${stayCap} ساعة في اليوم. ورديته المجدولة ${presence} ساعة بقاء، فالمتاح ${room} ساعة — والتكليف ${perDay} في اليوم.`,
+      reasonEn: `Blocked — Article 101: a worker may not stay at the workplace more than ${stayCap} hours a day. The rostered shift is ${presence} h, so ${room} h is left — this assignment is ${perDay} h a day.`,
+      cite: citeRule("hours.workplace.maxHours", date),
+      perDay,
+      room,
+    };
+  }
   if (!input.article106) return { ok: true, perDay };
-  const ordinary = Number(input.ordinaryHours) || Number(ruleValue("hours.shift.ordinaryHours", date)) || 8;
+  const ordinary = rosteredActual != null ? rosteredActual : (Number(ruleValue("hours.shift.ordinaryHours", date)) || 8);
   const dayCap = Number(ruleValue("hours.ot.exceptionDayHours", date)) || 10;
   const weekCap = Number(ruleValue("hours.ot.exceptionWeekHours", date)) || 60;
   if (ordinary + perDay > dayCap + 0.001) {
@@ -414,7 +430,10 @@ export function checkOtDayWeekGate(input = {}) {
     .filter((row) => weekStart(row.date) === week)
     .reduce((sum, row) => sum + ((parseOtHours(row.hours) || 0) / otAssignmentDays(row)) * Math.min(otAssignmentDays(row), 7), 0);
   const thisWeek = perDay * Math.min(days, 7);
-  const ordinaryWeek = ordinary * 6;
+  // The week's rostered actual hours when known (store / RequestsWorkspace pass them), else six ordinary days.
+  const ordinaryWeek = input.rosterWeekHours != null && input.rosterWeekHours !== ""
+    ? Math.max(0, Number(input.rosterWeekHours) || 0)
+    : ordinary * 6;
   const total = Math.round((ordinaryWeek + others + thisWeek) * 100) / 100;
   if (total > weekCap + 0.001) {
     return {
@@ -442,10 +461,13 @@ export function checkRaiseOtAssignmentGate(input) {
   if (!art106.ok) return art106;
   const limits = checkOtDayWeekGate({ ...input, hours: hoursGate.hours, date: dateGate.date, dateTo: dateGate.dateTo });
   if (!limits.ok) return limits;
-  const cap = checkOtAnnualCapGate({ ...input, hours: hoursGate.hours, date: dateGate.date });
-  if (!cap.ok) return cap;
+  // Regs Art. 22: passing the annual cap needs the WORKER's consent — asked of him on acceptance,
+  // never ticked by the manager. The raise goes ahead with «consent requested».
+  const capRaw = checkOtAnnualCapGate({ ...input, annualCapConsent: false, hours: hoursGate.hours, date: dateGate.date });
+  const cap = capRaw.ok ? capRaw : { ...capRaw, ok: true, capConsentRequested: true };
   return {
     ok: true,
+    capConsentRequested: !capRaw.ok,
     hours: hoursGate.hours,
     date: dateGate.date,
     dateTo: dateGate.dateTo,

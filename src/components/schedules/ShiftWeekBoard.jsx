@@ -16,7 +16,10 @@ import {
   openDueNightRotateCycles,
   setSunExposure,
   updateShiftType,
+  confirmHolidayWork,
 } from "@/lib/store";
+import { HOLIDAY_WORK_LABEL_AR, HOLIDAY_WORK_LABEL_EN, holidayWorkOn } from "@/lib/shiftWeek";
+import { isJuvenile as isJuvenileOn } from "@/lib/laborHoursPolicy.js";
 import { nextDistinctShift, repairedShiftWindow, STANDARD_SHIFT_WINDOWS, formatShiftHm, shiftHoursLine, shiftWindowKey } from "@/lib/shiftDerivations";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
@@ -224,6 +227,8 @@ export default function ShiftWeekBoard({
   const manageMonth = mode === "manage";
   /** «empId:dayKey» of the cell that just entered the sun-ban window and is asking مكشوف / مظلّل. */
   const [sunPrompt, setSunPrompt] = useState(null);
+  // Art. 107(3): «عمل في العطلة» is armed on the first click and confirmed on the second.
+  const [holidayArm, setHolidayArm] = useState("");
   const [monthCursor, setMonthCursor] = useState(() => monthCursorOf(new Date()));
   const [weekStart, setWeekStart] = useState(() => (
     linkWeek
@@ -530,6 +535,24 @@ export default function ShiftWeekBoard({
     } else {
       setRestJumpNote("");
     }
+  };
+
+  const confirmHolidayCell = (employee, day) => {
+    if (!canEdit || !companyId || !stationId) return;
+    const key = `${employee.id}:${day.key}`;
+    if (holidayArm !== key) {
+      setHolidayArm(key);
+      return;
+    }
+    setHolidayArm("");
+    const shiftId = (brush && types.some((row) => row.id === brush)) ? brush : (ordinaryShiftId(types, "morning", day.key) || types[0]?.id || null);
+    const result = confirmHolidayWork(companyId, stationId, day.key, employee.id, shiftId, { by: currentUser?.name, weekStart });
+    if (!result.ok) {
+      toast({ description: ar ? result.reason : result.reasonEn, variant: "destructive" });
+      return;
+    }
+    toast({ description: ar ? `${employee.name} — ${HOLIDAY_WORK_LABEL_AR}. تُسجَّل عند النشر بانتظار قرار الصرف.` : `${employee.name} — ${HOLIDAY_WORK_LABEL_EN}. Recorded on publish awaiting the pay decision.` });
+    refresh?.();
   };
 
   const applyOrdinaryHours = (employee, kind, dateKey) => {
@@ -1528,6 +1551,22 @@ export default function ShiftWeekBoard({
                             </span>
                           )}
                         </button>
+                        {leave?.source === "official_holiday" && canEdit && !isJuvenileOn(employee, day.key) ? (
+                          <button
+                            type="button"
+                            data-holiday-work={holidayArm === `${employee.id}:${day.key}` ? "armed" : "1"}
+                            onClick={(e) => { e.stopPropagation(); confirmHolidayCell(employee, day); }}
+                            title={ar ? `${HOLIDAY_WORK_LABEL_AR} — العطلة إجازة بأجر كامل (المادة 112)؛ العمل فيها بتأكيد، وكل ساعاته إضافية.` : `${HOLIDAY_WORK_LABEL_EN} — the holiday is full-pay leave (Art. 112); working it needs confirmation and every hour is overtime.`}
+                            style={{ position: "absolute", insetInline: 6, bottom: 5, zIndex: 2, fontFamily: "inherit", fontSize: 9, fontWeight: 600, lineHeight: 1.3, padding: "2px 4px", borderRadius: 6, cursor: "pointer", border: "1px solid var(--nv-shift-holiday-ink, #6B5320)", background: holidayArm === `${employee.id}:${day.key}` ? "var(--nv-shift-holiday-ink, #6B5320)" : "var(--nv-card)", color: holidayArm === `${employee.id}:${day.key}` ? "#fff" : "var(--nv-shift-holiday-ink, #6B5320)" }}
+                          >
+                            {holidayArm === `${employee.id}:${day.key}` ? (ar ? "تأكيد: ساعاته إضافي" : "Confirm: all OT") : (ar ? "عمل في العطلة" : "Holiday work")}
+                          </button>
+                        ) : null}
+                        {!leave && shift && holidayWorkOn(employee, day.key) ? (
+                          <span data-holiday-work-on="1" title={ar ? HOLIDAY_WORK_LABEL_AR : HOLIDAY_WORK_LABEL_EN} style={{ position: "absolute", insetInlineStart: 4, top: 3, fontSize: 8.5, fontWeight: 700, color: "var(--nv-shift-holiday-ink, #6B5320)", pointerEvents: "none" }}>
+                            {ar ? "عطلة · إضافي" : "Holiday · OT"}
+                          </span>
+                        ) : null}
                         {sunAsk && canEdit && sunPrompt === `${employee.id}:${day.key}` ? (
                           <div
                             role="dialog"

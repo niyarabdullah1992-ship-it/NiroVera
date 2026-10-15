@@ -114,21 +114,18 @@ export function checkPunchRecordGate({
         : "Check-in blocked — you have approved leave for this day.",
     };
   }
+  // Art. 107(3): work on an official holiday is recorded (never refused) and every hour is overtime.
+  // Juveniles stay barred (Art. 164) by the juvenile gate below.
   const holiday = officialHolidayOn(day, laborCalendar);
-  if (holiday) {
-    const arName = officialHolidayLeaveLabel(holiday.id, true, laborCalendar);
-    const enName = officialHolidayLeaveLabel(holiday.id, false, laborCalendar);
-    return {
-      ok: false,
-      error: "OFFICIAL_HOLIDAY",
-      reason: kind === "checkout_fix"
-        ? `${arName} بأجر كامل — لا تصحيح انصراف (المادة 112).`
-        : `${arName} بأجر كامل — لا تسجيل حضور (المادة 112).`,
-      reasonEn: kind === "checkout_fix"
-        ? `${enName} is full-pay leave — checkout is not corrected (Article 112).`
-        : `${enName} is full-pay leave — no punch (Article 112).`,
-    };
-  }
+  const holidayNote = holiday
+    ? {
+      holiday: true,
+      overtimeAll: true,
+      holidayName: officialHolidayLeaveLabel(holiday.id, true, laborCalendar),
+      note: `${officialHolidayLeaveLabel(holiday.id, true, laborCalendar)} — عمل في العطلة: ساعاته كلها إضافي (م107/3).`,
+      noteEn: `${officialHolidayLeaveLabel(holiday.id, false, laborCalendar)} — holiday work: every hour is overtime (Art. 107(3)).`,
+    }
+    : {};
   if (kind === "manual_punch") {
     if (hasIn(attendance)) {
       return {
@@ -149,7 +146,7 @@ export function checkPunchRecordGate({
       laborCalendar,
     });
     if (!juvenileIn.ok) return juvenileIn;
-    return { ok: true, kind, date: day, time: parsePunchClock(time) };
+    return { ok: true, kind, date: day, time: parsePunchClock(time), ...holidayNote };
   }
   if (!hasIn(attendance)) {
     return {
@@ -178,7 +175,7 @@ export function checkPunchRecordGate({
     laborCalendar,
   });
   if (!juvenileOut.ok) return juvenileOut;
-  return { ok: true, kind, date: day, time: parsePunchClock(time) };
+  return { ok: true, kind, date: day, time: parsePunchClock(time), ...holidayNote };
 }
 
 export function buildManualAttendanceRow({

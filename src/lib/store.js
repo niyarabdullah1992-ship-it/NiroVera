@@ -75,7 +75,9 @@ import {
   stampOvertimeCreditOnEmployee,
   stampOvertimePayOnDraft,
 } from "./overtimeAssignment";
-import { checkOtDecisionGate, overtimeYearUsageOutsideAssignments } from "./attendanceDerivations";
+import { overtimeYearUsageOutsideAssignments } from "./attendanceDerivations";
+import { employeeRosterOtContext } from "./shiftWeek";
+import { planOtDecision, stampActualOvertime, stampHolidayWorkOvertime } from "./otDecisionPlan.js";
 import { compLeaveDaysInYear as compLeaveDaysInYearForCap, otHoursInYear as otHoursInYearForCap } from "./overtimeAssignment.js";
 import { isOfficialHoliday, laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePlatformOwnerBoard } from "./ummAlQuraCalendar";
 
@@ -796,6 +798,8 @@ function pushCompanyDataToCloud(id, data) {
     stationChatGroups: data.stationChatGroups,
     crossStationChatEnabled: data.crossStationChatEnabled,
     settings: data.settings,
+    // The server publish gate reads Art. 103 / night-facility flags from here.
+    hoursPolicy: data.hoursPolicy || undefined,
     employeeNoSeq: data.employeeNoSeq || data.settings?.employeeNoSeq || 0,
     reportBranding: data.reportBranding,
     orgStructureLog: data.orgStructureLog || [],
@@ -3528,6 +3532,7 @@ function stampPunchRequestOnDraft(draft, employee, request, reviewerName) {
   if (idx >= 0) list[idx] = { ...list[idx], ...row };
   else list.push(row);
   draft.personalAttendance = list;
+  stampActualOvertime(draft, employee, day, idx >= 0 ? list[idx] : row);
   request.time = clock;
   request.attendanceId = row.id;
   return { ok: true, row };
@@ -3572,7 +3577,8 @@ export function recordManualAttendance(companyId, { employeeId, kind, date, time
     if (idx >= 0) list[idx] = { ...list[idx], ...row };
     else list.push(row);
     draft.personalAttendance = list;
-    saved = row;
+    saved = idx >= 0 ? list[idx] : row;
+    stampActualOvertime(draft, emp || employee, day, saved);
   });
   audit(companyId, type === "checkout_fix" ? "manual_checkout" : "manual_checkin", `${by || "manager"} recorded ${type} for ${employee.name} on ${day}.`);
   return { ok: true, attendance: toCloudAttendanceRow(saved) };
@@ -3589,8 +3595,12 @@ export function submitOtAssignment(companyId, employeeId, input = {}) {
   if (!emp) {
     return { ok: false, error: "EMPLOYEE_NOT_FOUND", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
   }
+  const rosterOt = employeeRosterOtContext(data?.schedules, emp, input.date, laborCalendarOf(data));
   const gate = checkRaiseOtAssignmentGate({
     ...input,
+    ordinaryHours: input.ordinaryHours ?? rosterOt.ordinaryHours,
+    presenceHours: input.presenceHours ?? rosterOt.presenceHours,
+    rosterWeekHours: input.rosterWeekHours ?? rosterOt.rosterWeekHours,
     employee: emp,
     otherRequests: emp.otherRequests,
   });
@@ -3616,6 +3626,8 @@ export function submitOtAssignment(companyId, employeeId, input = {}) {
       article106: gate.article106,
       article106Ground: gate.article106Ground,
       manager106Ack: gate.article106 ? true : undefined,
+      // Regs Art. 22: over the annual cap the worker's own acceptance carries the consent.
+      annualCapConsentRequested: gate.capConsentRequested ? true : undefined,
       files,
       stationId: input.stationId || employee.stationId || undefined,
       status: OT_STATUS.pending_employee,
@@ -4924,6 +4936,8 @@ function applyEmployeeDayShift(entry, dateKey, employeeId, shiftTypeId) {
 export function setEmployeeDayShift(companyId, stationId, dateKey, employeeId, shiftTypeId, {
   weekStart,
   ordinaryOnly = false,
+  holidayWorkConfirmed = false,
+  by = "",
 } = {}) {
   const data = getCompanyData(companyId);
   const employee = data?.employees?.find((row) => row.id === employeeId);
@@ -4938,6 +4952,7 @@ export function setEmployeeDayShift(companyId, stationId, dateKey, employeeId, s
     laborCalendar,
     weekStart: weekStart || weekStartDate(dateKey),
     ordinaryOnly,
+    holidayWorkConfirmed,
   });
   if (!resolved.ok) return resolved;
   const placeKey = resolved.dateKey;
@@ -4947,6 +4962,15 @@ export function setEmployeeDayShift(companyId, stationId, dateKey, employeeId, s
     const entry = getOrCreateSchedule(d, stationId);
     const emp = (d.employees || []).find((row) => row.id === employeeId);
     const calendar = laborCalendarOf(d);
+    // Art. 107(3): the confirmed «عمل في العطلة» lives on the file; clearing the duty withdraws it.
+    if (emp && isOfficialHoliday(placeKey, calendar)) {
+      emp.holidayWork = emp.holidayWork || {};
+      if (placeId && (holidayWorkConfirmed || emp.holidayWork[placeKey])) {
+        emp.holidayWork[placeKey] = { ...(emp.holidayWork[placeKey] || {}), confirmedAt: emp.holidayWork[placeKey]?.confirmedAt || new Date().toISOString(), by: emp.holidayWork[placeKey]?.by || by || "", stationId, withdrawnAt: undefined };
+      } else if (!placeId && emp.holidayWork[placeKey]) {
+        delete emp.holidayWork[placeKey];
+      }
+    }
     // Stamp leave days as rest so weekday templates cannot leave a ghost night on Art. 112 days.
     clearRosterLeaveGhostAssignments(entry, emp ? [emp] : [], weekDateKeys(weekStartDate(dateKey)), calendar);
     applyEmployeeDayShift(entry, placeKey, employeeId, placeId);
@@ -5035,6 +5059,7 @@ export function publishWeek(companyId, stationId, weekStartKey, { by } = {}) {
     stationId,
     station: (live.stations || []).find((row) => String(row.id) === String(stationId)),
     settings: live.settings,
+    company: live,
     ar: true,
     laborCalendar: laborCalendarOf(live),
   });
@@ -5068,6 +5093,7 @@ export function publishWeek(companyId, stationId, weekStartKey, { by } = {}) {
     };
     entry.weekDirty = entry.weekDirty || {};
     delete entry.weekDirty[weekKey];
+    stampHolidayWorkOvertime(d, entry, weekStartKey || new Date());
   });
   return { ok: true };
 }
@@ -5246,45 +5272,75 @@ export function setOtDecision(companyId, employeeId, dateKey, {
   overtimeMinutes,
   by,
   workerConsent,
-  annualCapConsent,
   enjoyDate,
   windowAgreed,
 } = {}) {
   const live = getCompanyData(companyId);
+  const employee = (live?.employees || []).find((row) => row.id === employeeId);
   const day = String(dateKey || "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-    return { ok: false, error: "DATE_REQUIRED", reason: "حدد يوم الإضافي.", reasonEn: "Set the overtime day." };
-  }
-  const key = `${employeeId}:${day}`;
-  const gate = checkOtDecisionGate({
-    overtimeMinutes,
+  const plan = planOtDecision(live, employeeId, day, {
     decision,
-    alreadyDecided: !!live?.otDecisions?.[key],
+    overtimeMinutes,
+    by,
     workerConsent,
-    annualCapConsent,
     enjoyDate,
     windowAgreed,
-    onDate: day,
-    overtimeHoursYtd: Math.round((overtimeYearUsageOutsideAssignments(live?.otDecisions, employeeId, day).hours
-      + otHoursInYearForCap((live?.employees || []).find((row) => row.id === employeeId)?.otherRequests, day.slice(0, 4))) * 10) / 10,
-    creditDaysYtd: Math.round((overtimeYearUsageOutsideAssignments(live?.otDecisions, employeeId, day).creditDays
-      + compLeaveDaysInYearForCap((live?.employees || []).find((row) => row.id === employeeId)?.otherRequests, day.slice(0, 4))) * 1000) / 1000,
+    extraHoursYtd: otHoursInYearForCap(employee?.otherRequests, day.slice(0, 4)),
+    extraCreditDaysYtd: compLeaveDaysInYearForCap(employee?.otherRequests, day.slice(0, 4)),
   });
-  if (!gate.ok) return gate;
+  if (!plan.ok) return plan;
   updateCompany(companyId, (d) => {
     d.otDecisions = d.otDecisions || {};
-    d.otDecisions[key] = {
-      decision: gate.decision,
-      overtimeMinutes: gate.overtimeMinutes,
-      at: new Date().toISOString(),
-      by: by || "",
-      workerConsent: gate.workerConsent || undefined,
-      annualCapConsent: annualCapConsent === true ? true : undefined,
-      enjoyDate: enjoyDate || undefined,
-      windowAgreed: windowAgreed === true ? true : undefined,
-    };
+    d.otDecisions[plan.key] = { ...(d.otDecisions[plan.key] || {}), ...plan.entry };
   });
-  return { ok: true, decision: gate.decision };
+  if (plan.capConsentRequested) {
+    addNotification(companyId, employeeId, `طلب موافقتك على تجاوز سقف الإضافي السنوي ${plan.cap} ساعة (اللائحة م22) — ${day}.`, { kind: "ot_cap_consent", dateKey: day });
+  }
+  return plan.result;
+}
+
+/** Regs Art. 22 — the worker answers the request to pass the annual overtime cap. */
+export function answerOtCapConsent(companyId, employeeId, dateKey, { accept, by } = {}) {
+  const live = getCompanyData(companyId);
+  const day = String(dateKey || "").slice(0, 10);
+  const key = `${employeeId}:${day}`;
+  const entry = live?.otDecisions?.[key];
+  if (!entry || entry.decision !== "pending_worker_cap_consent") {
+    return { ok: false, error: "NO_CAP_CONSENT_REQUEST", reason: "لا طلب موافقة على تجاوز السقف لهذا اليوم.", reasonEn: "No cap-consent request for this day." };
+  }
+  if (accept !== true) {
+    updateCompany(companyId, (d) => {
+      const row = d.otDecisions?.[key];
+      if (!row) return;
+      row.capConsentDeclinedAt = new Date().toISOString();
+      row.decision = "pending";
+    });
+    return { ok: true, declined: true };
+  }
+  updateCompany(companyId, (d) => {
+    const row = d.otDecisions?.[key];
+    if (!row) return;
+    row.workerCapConsentAt = new Date().toISOString();
+    row.workerCapConsentBy = by || employeeId;
+    row.decision = "pending";
+  });
+  const requested = entry.requestedDecision || "approve";
+  return setOtDecision(companyId, employeeId, day, {
+    decision: requested,
+    overtimeMinutes: entry.overtimeMinutes,
+    by: entry.capConsentRequestedBy || by,
+    workerConsent: entry.workerConsent === true,
+    enjoyDate: entry.enjoyDate,
+    windowAgreed: entry.windowAgreed === true,
+  });
+}
+
+/** Art. 107(3) — confirm «عمل في العطلة» for one person on one holiday, then roster the shift. */
+export function confirmHolidayWork(companyId, stationId, dateKey, employeeId, shiftTypeId, { by, weekStart } = {}) {
+  if (!shiftTypeId) {
+    return { ok: false, error: "SHIFT_REQUIRED", reason: "اختر الوردية للعمل في العطلة.", reasonEn: "Choose the shift for the holiday work." };
+  }
+  return setEmployeeDayShift(companyId, stationId, dateKey, employeeId, shiftTypeId, { weekStart, holidayWorkConfirmed: true, by });
 }
 
 export function setNightConsent(companyId, employeeId, consented) {

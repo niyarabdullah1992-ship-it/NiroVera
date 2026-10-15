@@ -2,7 +2,7 @@
 // Registry tracks all companies; each company's data lives under its own key.
 import { religionOnFile } from "./laborRules.js";
 import { profileGender } from "./employeeProfileFields.js";
-import { ART81_CASES, ART81_EXIT_TYPE, DAMAGE_OBJECTION_TYPE, DOCUMENTS_RETURN_TYPE, LEAVE_CARRY_TYPE, NIGHT_AVOID_TYPE, damageObjectionDeadline } from "./rightsRequests.js";
+import { checkJobSearchHoursGate, ART81_CASES, ART81_EXIT_TYPE, DAMAGE_OBJECTION_TYPE, DOCUMENTS_RETURN_TYPE, LEAVE_CARRY_TYPE, NIGHT_AVOID_TYPE, damageObjectionDeadline } from "./rightsRequests.js";
 import { daysAr, planLeaveCutForAttendance } from "./leaveCut.js";
 import { checkPostponeResignationGate, checkWithdrawResignationGate, dueResignations, resignationFacts, RESIGNATION_TYPE } from "./exitRequests.js";
 import { checkGroundedRefusalGate, refusalGroundsFor, refusalWorkerLine } from "./statutoryRefusal.js";
@@ -2858,8 +2858,17 @@ export function submitOtherRequest(companyId, employeeId, {
   purpose, party, lang, showSalary, docKind, status, recordedBy, title,
   days, paper, requestedBy, requestedById, program, institution, issuedFile,
   examDate, until, permanent, from, to, timeTo, placement, dueDate, lastDay, amount, moneyKind, nursingSplit, childBirthDate, compLeave,
-  notifiedOn, art81Case, ack, remaining, nightAvoidKind, gender,
+  notifiedOn, art81Case, ack, remaining, nightAvoidKind, gender, jobSearch,
 }) {
+  if (type === "permission" && jobSearch === true) {
+    // Art. 78: up to eight job-search hours a week during the employer's notice — told, not asked.
+    const subjectEmp = (getCompanyData(companyId)?.employees || []).find((row) => row.id === employeeId);
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+    const js = checkJobSearchHoursGate({ employee: subjectEmp, date, time, timeTo, today });
+    if (!js.ok) return js;
+    status = "approved";
+    recordedBy = recordedBy || subjectEmp?.name || "";
+  }
   if ([DAMAGE_OBJECTION_TYPE, LEAVE_CARRY_TYPE, ART81_EXIT_TYPE, NIGHT_AVOID_TYPE, DOCUMENTS_RETURN_TYPE].includes(type)) {
     const subjectEmp = (getCompanyData(companyId)?.employees || []).find((row) => row.id === employeeId);
     const annualLeft = type === LEAVE_CARRY_TYPE && subjectEmp ? remainingLeaveDays(subjectEmp.profile, subjectEmp.leaveRequests, "annual") : remaining;
@@ -2996,6 +3005,7 @@ export function submitOtherRequest(companyId, employeeId, {
       time: time || undefined,
       timeTo: type === "permission" ? (timeTo || undefined) : undefined,
       compLeave: type === "permission" && compLeave === true ? true : undefined,
+      jobSearch: type === "permission" && jobSearch === true ? true : undefined,
       placement: type === "nursing_hour" ? (placement || undefined) : undefined,
       nursingSplit: type === "nursing_hour" && nursingSplit ? nursingSplit : undefined,
       childBirthDate: type === "nursing_hour" ? (childBirthDate || undefined) : undefined,
@@ -3117,6 +3127,9 @@ export function submitOtherRequest(companyId, employeeId, {
         `مخالفة حظر الشمس — ${emp?.name || "موظف"} يبلّغ أنه كُلّف بعمل مكشوف يوم ${raised.date || ""} في ساعات الحظر (القرار 3337). انقله إلى مكان مظلّل وقرّر البلاغ في الطلبات.`,
       );
     }
+  }
+  if (raised && type === "permission" && jobSearch === true) {
+    notifyRequestManagers(companyId, filed?.id || employeeId, `${filed?.name || "موظف"} أشعر بساعات بحث عن عمل يوم ${regulationDate(raised.date)} (${raised.time}–${raised.timeTo}) بأجرها — حق له خلال مهلة إشعارك، ثماني ساعات في الأسبوع (المادة 78)، لا يحتاج اعتماداً.`);
   }
   if (raised && type === ART81_EXIT_TYPE) {
     // Art. 81: the worker leaves today, keeping all his rights. The file carries the exit at once.

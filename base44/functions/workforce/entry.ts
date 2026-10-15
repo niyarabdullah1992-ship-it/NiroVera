@@ -30,6 +30,7 @@ import {
 } from "../../shared/otherRequestDerivations.ts";
 import { checkGroundedRefusalGate } from "../../shared/statutoryRefusal.ts";
 import { checkTakeCompLeaveGate } from "../../shared/compLeaveBalance.ts";
+import { checkOtDayWeekGate } from "../../shared/otLimits.ts";
 import {
   ART81_EXIT_TYPE,
   DAMAGE_OBJECTION_TYPE,
@@ -37,6 +38,7 @@ import {
   LEAVE_CARRY_TYPE,
   NIGHT_AVOID_TYPE,
   checkArt81Gate,
+  checkJobSearchHoursGate,
   checkDamageObjectionGate,
   checkDocumentsReturnGate,
   checkLeaveCarryGate,
@@ -340,6 +342,15 @@ Deno.serve(async (req) => {
           return a != null && b != null && b > a ? (b - a) / 60 : Number(request.hours) || 0;
         })(), on: request.date, exceptId: request.id });
         if (!comp.ok) return Response.json({ ...comp }, { status: 422 });
+      }
+      if (request.type === "overtime" && (request.assignment === true || request.source === "assignment")) {
+        const limits = checkOtDayWeekGate({ ...request, employee: emp, otherRequests: emp.otherRequests, exceptId: request.id });
+        if (!limits.ok) return Response.json({ ...limits }, { status: 422 });
+      }
+      if (request.type === "permission" && request.jobSearch === true) {
+        const js = checkJobSearchHoursGate({ employee: emp, date: request.date, time: request.time, timeTo: request.timeTo, today: riyadhToday(), exceptId: request.id });
+        if (!js.ok) return Response.json({ ...js }, { status: 422 });
+        request.status = "approved";
       }
       const rights = checkRightsSubmit(request, emp);
       if (!rights.ok) return Response.json({ ...rights }, { status: 422 });

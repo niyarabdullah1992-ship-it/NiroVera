@@ -140,7 +140,53 @@ export function checkJobSearchDayGate({ employee, startDate, endDate, today, exc
   if (start > notice.until) return { ok: false, error: "AFTER_NOTICE", reason: `مهلة الإشعار تنتهي ${notice.until}.`, reasonEn: `The notice ends ${notice.until}.` };
   const sameWeek = (employee?.leaveRequests || []).some((r) => r.id !== exceptId && String(r.type) === JOB_SEARCH_LEAVE && ["approved", "pending"].includes(r.status) && weekKey(r.startDate) === weekKey(start));
   if (sameWeek) return { ok: false, error: "WEEK_USED", reason: "أخذت يوم البحث عن عمل لهذا الأسبوع — يوم واحد في الأسبوع (المادة 78).", reasonEn: "You already have this week's job-search day (Art. 78)." };
+  if (jobSearchHoursInWeek(employee, start, exceptId) > 0) {
+    return { ok: false, error: "WEEK_HOURS_USED", reason: "اخترت ساعات البحث عن عمل لهذا الأسبوع — إما يوم كامل أو ثماني ساعات في الأسبوع (المادة 78).", reasonEn: "This week already uses job-search hours — a full day or eight hours a week (Art. 78)." };
+  }
   return { ok: true, until: notice.until };
+}
+
+const clock = (v) => {
+  const m = String(v || "").match(/^(\d{1,2}):(\d{2})/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+/** Job-search hours already taken (approved or pending) in the week of `day`. */
+export function jobSearchHoursInWeek(employee, day, exceptId) {
+  const wk = weekKey(day);
+  return (employee?.otherRequests || [])
+    .filter((r) => r?.id !== exceptId && r?.type === "permission" && r.jobSearch === true && ["approved", "pending"].includes(r.status) && weekKey(r.date) === wk)
+    .reduce((sum, r) => {
+      const a = clock(r.time);
+      const b = clock(r.timeTo);
+      return sum + (a != null && b != null && b > a ? (b - a) / 60 : 0);
+    }, 0);
+}
+
+/**
+ * Art. 78 — "ثماني ساعات أثناء الأسبوع": instead of the full day, up to eight hours in the week, split as
+ * the worker wishes, during the employer's notice, told at least the day before. Not asked for approval.
+ */
+export function checkJobSearchHoursGate({ employee, date, time, timeTo, today, exceptId } = {}) {
+  const day = dateOnly(today) || new Date().toISOString().slice(0, 10);
+  const notice = employerNoticeOf(employee, day);
+  if (!notice) {
+    return { ok: false, error: "NO_EMPLOYER_NOTICE", reason: "ساعات البحث عن عمل للعامل خلال مهلة إشعار صادرة من صاحب العمل فقط (المادة 78).", reasonEn: "Job-search hours apply only during a notice given by the employer (Art. 78)." };
+  }
+  const on = dateOnly(date);
+  if (!on || on <= day) return { ok: false, error: "NOTICE_DAY_BEFORE", reason: "أشعر صاحب العمل في اليوم السابق على الأقل — اختر يوماً بعد اليوم (المادة 78).", reasonEn: "Tell the employer at least the day before (Art. 78)." };
+  if (on > notice.until) return { ok: false, error: "AFTER_NOTICE", reason: `مهلة الإشعار تنتهي ${notice.until}.`, reasonEn: `The notice ends ${notice.until}.` };
+  const a = clock(time);
+  const b = clock(timeTo);
+  if (a == null || b == null || b <= a) return { ok: false, error: "TIME_REQUIRED", reason: "حدد من الساعة وإلى الساعة.", reasonEn: "Set the hours." };
+  const hours = (b - a) / 60;
+  const fullDay = (employee?.leaveRequests || []).some((r) => r.id !== exceptId && String(r.type) === JOB_SEARCH_LEAVE && ["approved", "pending"].includes(r.status) && weekKey(r.startDate) === weekKey(on));
+  if (fullDay) return { ok: false, error: "WEEK_USED", reason: "أخذت يوم البحث عن عمل كاملاً لهذا الأسبوع — إما اليوم أو الساعات (المادة 78).", reasonEn: "This week's full job-search day is taken (Art. 78)." };
+  const used = jobSearchHoursInWeek(employee, on, exceptId);
+  if (used + hours > 8 + 0.001) {
+    return { ok: false, error: "WEEK_HOURS_OVER", reason: `ساعات البحث عن عمل لا تزيد على ثماني ساعات في الأسبوع — استخدمت ${used} والمطلوب ${hours} (المادة 78).`, reasonEn: `At most eight job-search hours a week — used ${used}, asking ${hours} (Art. 78).` };
+  }
+  return { ok: true, hours, left: 8 - used - hours, until: notice.until };
 }
 
 export function checkNightAvoidGate({ kind, from, until, file, gender } = {}) {

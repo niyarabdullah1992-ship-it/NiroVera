@@ -55,3 +55,26 @@ console.log("cloud parity ok");
   }
   console.log("comp balance parity ok");
 }
+{
+  const fe = await import("../src/lib/overtimeAssignment.js");
+  const be = await import("../base44/shared/otLimits.ts");
+  const kid = { profile: { birthDate: "2010-01-01" } };
+  const cases = [
+    { date: "2026-10-20", hours: 3, article106: true },
+    { date: "2026-10-20", hours: 2, article106: true },
+    { date: "2026-10-20", hours: 1, employee: kid },
+    { date: "2026-10-20", hours: 2, article106: true, otherRequests: [{ id: "x", type: "overtime", assignment: true, article106: true, status: "approved", hours: 6, date: "2026-10-19", dateTo: "2026-10-21" }, { id: "y", type: "overtime", assignment: true, article106: true, status: "approved", hours: 6, date: "2026-10-22", dateTo: "2026-10-24" }] },
+  ];
+  for (const c of cases) assert.equal(be.checkOtDayWeekGate(c).error, fe.checkOtDayWeekGate(c).error, JSON.stringify(c).slice(0, 80));
+  const feR = await import("../src/lib/rightsRequests.js");
+  const beR = await import("../base44/shared/rightsRequests.ts");
+  const w = { profile: { contractExit: { party: "employer", effectiveDate: "2026-11-14" } }, leaveRequests: [], otherRequests: [{ id: "p1", type: "permission", jobSearch: true, status: "approved", date: "2026-10-19", time: "08:00", timeTo: "13:00" }] };
+  for (const c of [{ time: "08:00", timeTo: "11:00" }, { time: "08:00", timeTo: "12:00" }]) {
+    const args = { employee: w, date: "2026-10-21", today: "2026-10-15", ...c };
+    assert.equal(beR.checkJobSearchHoursGate(args).error, feR.checkJobSearchHoursGate(args).error);
+  }
+  assert.equal(feR.checkJobSearchHoursGate({ employee: w, date: "2026-10-21", today: "2026-10-15", time: "08:00", timeTo: "12:00" }).error, "WEEK_HOURS_OVER", "5 h used + 4 h > 8 h (Art. 78)");
+  assert.equal(feR.checkJobSearchHoursGate({ employee: w, date: "2026-10-21", today: "2026-10-15", time: "08:00", timeTo: "11:00" }).ok, true);
+  assert.equal(feR.checkJobSearchDayGate({ employee: w, startDate: "2026-10-21", endDate: "2026-10-21", today: "2026-10-15" }).error, "WEEK_HOURS_USED", "a day or the hours, not both");
+  console.log("ot limits + job-search hours parity ok");
+}

@@ -132,6 +132,7 @@ import StatutoryItem from "@/components/labor/StatutoryItem";
 import WrittenConsentInbox from "@/components/requests/WrittenConsentInbox";
 import WrittenConsentRaise from "@/components/requests/WrittenConsentRaise";
 import RightsRequestRaise from "@/components/requests/RightsRequestRaise";
+import { employerNoticeOf, jobSearchHoursInWeek } from "@/lib/rightsRequests";
 import { otAssignmentLine, otOffer, otOfferLines, sar as sarText, hoursAr } from "@/lib/otOffer";
 import { compBalance, compDays } from "@/lib/compLeave";
 import RequestArchiveBoard from "@/components/requests/RequestArchiveBoard";
@@ -570,6 +571,7 @@ export default function RequestsWorkspace({
   const [punchTime, setPunchTime] = useState("");
   const [permFrom, setPermFrom] = useState("");
   const [permComp, setPermComp] = useState(false);
+  const [permJob, setPermJob] = useState(false);
   const [permTo, setPermTo] = useState("");
   const [shiftPick, setShiftPick] = useState("");
   const [nursingPlacement, setNursingPlacement] = useState("start");
@@ -1522,7 +1524,8 @@ export default function RequestsWorkspace({
           permanent: isNightFitness ? fitnessPermanent : undefined,
           time: isPunchKind ? parsePunchClock(punchTime) : (kind === "permission" ? permFrom : undefined),
           timeTo: kind === "permission" ? permTo : undefined,
-          compLeave: kind === "permission" && permComp ? true : undefined,
+          compLeave: kind === "permission" && permComp && !permJob ? true : undefined,
+          jobSearch: kind === "permission" && permJob ? true : undefined,
           placement: kind === "nursing_hour" ? nursingPlacement : undefined,
           nursingSplit: kind === "nursing_hour" ? nursingSplit : undefined,
           childBirthDate: kind === "nursing_hour" ? childBirthDate : undefined,
@@ -3027,7 +3030,15 @@ export default function RequestsWorkspace({
                         : (ar ? "القرار 3337: لا يجوز تشغيلك تحت أشعة الشمس من 12:00 إلى 15:00 بين 15 يونيو و15 سبتمبر. البلاغ يصل الإدارة، وعند الاعتماد يُسجَّل يومك «مظلّل» في الجدول." : "Decision 3337: you may not be made to work in direct sun 12:00–15:00 from 15 June to 15 September. The report reaches management; on approval your day is marked shaded on the roster.")}
                     </span>
                   ) : null}
-                  {kind === "permission" && compBalance(subject).left > 0 ? (
+                  {kind === "permission" && employerNoticeOf(subject, today) ? (
+                    <label data-perm-jobsearch="1" style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: NAVY, lineHeight: 1.7, cursor: "pointer", padding: "8px 10px", border: "1px solid var(--nv-line)", background: "var(--nv-soft)", borderRadius: 8 }}>
+                      <input type="checkbox" checked={permJob} onChange={(e) => { setPermJob(e.target.checked); if (e.target.checked) setPermComp(false); }} style={{ marginTop: 3 }} />
+                      <span>{ar
+                        ? `ساعات بحث عن عمل بأجرها — المادة 78: خلال مهلة إشعار صاحب العمل (حتى ${regulationDate(employerNoticeOf(subject, today).until)}) لك يوم كامل أو ثماني ساعات في الأسبوع، تحددها وتُشعر قبلها بيوم، ولا تحتاج اعتماداً. ${jobSearchHoursInWeek(subject, from || today) > 0 ? `استخدمت هذا الأسبوع ${hoursAr(jobSearchHoursInWeek(subject, from || today))}.` : "لم تستخدم شيئاً منها هذا الأسبوع."}`
+                        : "Paid job-search hours — Art. 78: during the employer's notice, a full day or eight hours a week, told a day ahead, no approval."}</span>
+                    </label>
+                  ) : null}
+                  {kind === "permission" && !permJob && compBalance(subject).left > 0 ? (
                     <label data-perm-comp="1" style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, color: NAVY, lineHeight: 1.7, cursor: "pointer", padding: "8px 10px", border: "1px solid var(--nv-ok-line)", background: "var(--nv-ok-soft)", borderRadius: 8 }}>
                       <input type="checkbox" checked={permComp} onChange={(e) => setPermComp(e.target.checked)} style={{ marginTop: 3 }} />
                       <span>{ar ? `من رصيدي التعويضي — متبقٍّ ${hoursAr(compBalance(subject).left)} (إجازة مدفوعة عن ساعات إضافية سابقة، اللائحة 22 مكرر)` : `From my comp balance — ${compBalance(subject).left} h left`}</span>

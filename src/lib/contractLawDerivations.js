@@ -97,6 +97,57 @@ export function checkProbationGate(input = {}) {
       cite: citeRule("contract.probation.once.cite", input.today),
     };
   }
+  if (prior) {
+    // Art. 54: a second probation is allowed only «باتفاق طرفي العقد كتابة» — the written agreement on file.
+    const written = isTruthy(row.probationSecondWritten ?? profile.probationSecondWritten ?? input.probationSecondWritten);
+    const file = row.probationSecondFile ?? profile.probationSecondFile ?? input.probationSecondFile;
+    if (!written || !(file && (file.name || file.url || typeof file === "string"))) {
+      return {
+        ok: false,
+        error: "PROBATION_SECOND_WRITTEN",
+        reason: "موقوف — التجربة الثانية لدى صاحب العمل نفسه لا تجوز إلا باتفاق الطرفين كتابةً؛ أرفق الاتفاق المكتوب (المادة 54).",
+        reasonEn: "Blocked — a second probation with the same employer needs the parties' written agreement; attach it (Article 54).",
+        cite: citeRule("contract.probation.once.cite", input.today),
+      };
+    }
+  }
+  // Regs Art. 19(1): probation may be split into several periods only if they are contiguous and stated at signing.
+  const segments = row.probationSegments ?? profile.probationSegments ?? input.probationSegments;
+  if (Array.isArray(segments) && segments.length > 1) {
+    const atSigning = isTruthy(row.probationSegmentsAtSigning ?? profile.probationSegmentsAtSigning ?? input.probationSegmentsAtSigning);
+    if (!atSigning) {
+      return {
+        ok: false,
+        error: "PROBATION_SPLIT_UNSTATED",
+        reason: "موقوف — تقسيم مدة التجربة إلى مدد يُنص عليه بوضوح عند إبرام العقد (اللائحة التنفيذية م19/1).",
+        reasonEn: "Blocked — splitting probation must be stated clearly when the contract is signed (Regs Art. 19(1)).",
+        cite,
+      };
+    }
+    const sorted = [...segments].map((s) => ({ from: String(s?.from || "").slice(0, 10), to: String(s?.to || "").slice(0, 10) })).sort((a, b) => a.from.localeCompare(b.from));
+    let total = 0;
+    for (let i = 0; i < sorted.length; i += 1) {
+      const s = sorted[i];
+      const len = s.from && s.to ? Math.round((Date.parse(`${s.to}T00:00:00Z`) - Date.parse(`${s.from}T00:00:00Z`)) / 86400000) + 1 : 0;
+      if (len < 1) return { ok: false, error: "PROBATION_SPLIT_DATES", reason: "اكتب بداية ونهاية كل مدة من مدد التجربة.", reasonEn: "Enter the start and end of each probation period.", cite };
+      total += len;
+      if (i > 0) {
+        const prevEnd = Date.parse(`${sorted[i - 1].to}T00:00:00Z`);
+        if (Date.parse(`${s.from}T00:00:00Z`) - prevEnd !== 86400000) {
+          return {
+            ok: false,
+            error: "PROBATION_SPLIT_GAP",
+            reason: "موقوف — مدد التجربة المقسّمة تكون متصلة لا فاصل بينها (اللائحة التنفيذية م19/1).",
+            reasonEn: "Blocked — split probation periods must be contiguous (Regs Art. 19(1)).",
+            cite,
+          };
+        }
+      }
+    }
+    if (total > max) {
+      return { ok: false, error: "PROBATION_OVER_MAX", reason: `موقوف — مجموع مدد التجربة لا يتجاوز ${max} يوماً (المادة 53).`, reasonEn: `Blocked — total probation may not exceed ${max} days (Article 53).`, cite, days: total, max };
+    }
+  }
   return { ok: true, active: true, days, max, cite };
 }
 

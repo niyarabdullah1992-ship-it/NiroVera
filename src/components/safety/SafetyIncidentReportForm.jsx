@@ -74,6 +74,8 @@ const EMPTY = {
   action: "",
   controlIndex: -1,
   injured: false,
+  injuredSelf: true,
+  injuredName: "",
   photoName: "",
   anonymous: false,
   stopped: false,
@@ -239,12 +241,22 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
           </div>
 
           {form.injured ? (
+            <div data-injured-who="" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button type="button" onClick={() => patch({ injuredSelf: true, injuredName: "" })} style={toggleStyle(form.injuredSelf)}>{L("المصاب أنا", "I was hurt")}</button>
+              <button type="button" onClick={() => patch({ injuredSelf: false })} style={toggleStyle(!form.injuredSelf)}>{L("المصاب زميل", "A colleague was hurt")}</button>
+              {!form.injuredSelf ? (
+                <input value={form.injuredName} onChange={(event) => patch({ injuredName: event.target.value })} placeholder={L("اسم المصاب", "Name of the injured")} style={{ flex: 1, minWidth: 160, height: 36, padding: "0 10px", border: "1px solid var(--nv-line)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, background: "var(--nv-card)", color: "var(--nv-ink)" }} />
+              ) : null}
+            </div>
+          ) : null}
+
+          {form.injured ? (
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)", borderRadius: 10, padding: "10px 12px" }}>
               <strong style={{ color: "#9B2335", fontSize: 16, lineHeight: 1 }}>!</strong>
               <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.7 }}>
                 {L(
-                  "قدّم الإسعاف الأولي أولاً (المادة 125). الإصابة تُبلَّغ للجهة المختصة والتأمينات الاجتماعية في المهلة النظامية (المادة 133)، وتُصنَّف وتُسجَّل في سجل الإصابات.",
-                  "Give first aid first (Art. 125). The injury is reported to the competent authority and social insurance within the statutory window (Art. 133), then classified in the injury log."
+                  "قدّم الإسعاف الأولي أولاً من خزانة الإسعافات (المادة 142). تُبلَّغ الإصابة للتأمينات الاجتماعية خلال عشرة أيام، أو لمكتب العمل خلال أسبوع إن لم تكن المنشأة خاضعة لفرع الأخطار المهنية (المادة 141 · اللائحة م28)، وتُصنَّف وتُسجَّل في سجل الإصابات.",
+                  "Give first aid first from the first-aid cabinet (Art. 142). The injury is reported to GOSI within ten days, or to the labour office within a week if outside the hazards branch (Art. 141 · Regs Art. 28), then classified in the injury log."
                 )}
               </span>
             </div>
@@ -441,7 +453,8 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
           <strong style={{ fontSize: 14 }}>{L("المرجعية", "References")}</strong>
           {[
             [L("نظام العمل", "Labor Law"), L("الباب الثامن · م 121–128", "Chapter 8 · Arts. 121–128")],
-            [L("المادة 133", "Article 133"), L("إبلاغ إصابة العمل", "Reporting a work injury")],
+            [L("المادة 141 · اللائحة م28", "Art. 141 · Regs Art. 28"), L("إبلاغ إصابة العمل", "Reporting a work injury")],
+            [L("المادة 142", "Article 142"), L("خزانة الإسعافات الأولية", "First-aid cabinet")],
             ["ISO 45001", L("بند 6.1.2 · تحديد المخاطر", "6.1.2 · Hazard identification")],
             ["ISO 45001", L("بند 8.1.2 · هرم الضوابط", "8.1.2 · Hierarchy of controls")],
             ["ISO 45001", L("بند 5.4 · مشاركة العاملين", "5.4 · Worker participation")],

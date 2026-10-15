@@ -7,6 +7,7 @@ import { leaveEffects } from "@/lib/payrollLeaveEffects";
 import { allowanceMatrix, employerCost, monthVariance, payrollStages, wpsPrecheck } from "@/lib/payrollReview";
 import { serviceYearsFromHire } from "@/lib/leaveTypes";
 import { chip, SectionHead, slab, sourceBadge } from "@/components/schedules/scheduleChrome";
+import { payEquityReview, PAY_EQUITY_THRESHOLD } from "@/lib/employerDuties";
 
 /**
  * مسير الأجور as one cycle: the stages in order at the top (each ready, to do, waiting), then what
@@ -59,6 +60,7 @@ export default function PayrollCycleReview({
   items = [],
   prevItems = [],
   employeeForItem = () => null,
+  employees = [],
   stationName = (id) => id,
   stationOf = (l) => l.stationId,
   stations = [],
@@ -357,6 +359,27 @@ export default function PayrollCycleReview({
           </table>
         </div>
       </Fold>
+      {(() => {
+        // Law Art. 61(4) — same job and grade, pay gaps by sex, nationality, age or disability: a review item, never a block.
+        const equity = payEquityReview({ employees });
+        return (
+          <Fold
+            id="pay-equity"
+            defaultOpen={equity.items.length > 0}
+            title={ar ? "مراجعة تكافؤ الأجور (المادة 61/4)" : "Pay-equity review (Art. 61(4))"}
+            note={ar
+              ? `في الوظيفة والدرجة نفسيهما: فرق الوسيط بين الفئات فوق ${Math.round(PAY_EQUITY_THRESHOLD * 100)}٪ يُراجَع — لا يمنع المسير، ويُتحقق أنه لسبب مشروع لا تمييز.`
+              : `Same job and grade: a median gap above ${Math.round(PAY_EQUITY_THRESHOLD * 100)}% is reviewed — it does not block the run.`}
+            trailing={<span style={chip(equity.items.length ? "warn" : "ok")}>{equity.items.length ? (ar ? `${equity.items.length} للمراجعة` : `${equity.items.length} to review`) : (ar ? "لا فرق يتجاوز الحد" : "No gap over the threshold")}</span>}
+          >
+            <div data-pay-equity="" style={{ display: "flex", flexDirection: "column" }}>
+              {equity.items.length ? equity.items.map((it) => (
+                <div key={`${it.title}-${it.grade}-${it.dimension}`} style={{ ...td, lineHeight: 1.8 }}>{ar ? it.reason : it.reasonEn}</div>
+              )) : <div style={td}>{ar ? `قورنت ${equity.cohorts} مجموعة وظيفية — لا فرق يتجاوز الحد.` : `${equity.cohorts} job groups compared — no gap over the threshold.`}</div>}
+            </div>
+          </Fold>
+        );
+      })()}
     </div>
   );
 }

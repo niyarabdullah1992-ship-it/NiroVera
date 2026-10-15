@@ -1,6 +1,7 @@
 import { deriveSaudiStatus, checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
 import { assignEmployeeNumber, employeeNumberTaken } from "@/lib/employeeNumber";
 import { checkProbationGate, workPatternForcesFixed } from "@/lib/contractLawDerivations";
+import { checkHiringAgeGate } from "@/lib/employerDuties";
 import { getCompanyData, logAudit, updateCompany } from "@/lib/store";
 import { createOrgRecord } from "@/lib/orgTree";
 import { canAddStation } from "@/lib/planLimits";
@@ -906,9 +907,19 @@ export function hireFromSeat(companyId, input) {
       probationPriorAtEmployer: input.probationPriorAtEmployer ?? input.profile?.probationPriorAtEmployer,
       probationOtherProfession: input.probationOtherProfession ?? input.profile?.probationOtherProfession,
       probationRehireGapMonths: input.probationRehireGapMonths ?? input.profile?.probationRehireGapMonths,
+      probationSecondWritten: input.probationSecondWritten ?? input.profile?.probationSecondWritten,
+      probationSecondFile: input.probationSecondFile ?? input.profile?.probationSecondFile,
+      probationSegments: input.probationSegments ?? input.profile?.probationSegments,
+      probationSegmentsAtSigning: input.probationSegmentsAtSigning ?? input.profile?.probationSegmentsAtSigning,
     });
     if (!probationGate.ok) {
       error = probationGate.error;
+      return;
+    }
+    // Art. 162 — no one under fifteen is employed.
+    const ageGate = checkHiringAgeGate({ birthDate: input.birthDate || input.profile?.birthDate, hireDate });
+    if (!ageGate.ok) {
+      error = ageGate.error;
       return;
     }
     const approver = unitOwner(data, seat.stationId, seat.approverId);

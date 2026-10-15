@@ -392,6 +392,7 @@ export default function Payroll() {
             items={faced}
             prevItems={prevItems}
             employeeForItem={employeeForItem}
+            employees={data.employees || []}
             stationName={(id) => (id === UNASSIGNED_STATION_ID || id === "__unassigned__" ? (ar ? "غير مخصص" : "Unassigned") : (data.stations || []).find((s) => s.id === id)?.name || id)}
             stationOf={(item) => itemStationId(item) || "__unassigned__"}
             stations={data.stations || []}

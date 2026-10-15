@@ -4252,7 +4252,7 @@ export function setWorkInjuryOutcome(companyId, employeeId, requestId, { kind = 
  * متابعة التأمينات — record that a GOSI action was done in «تأميناتي أعمال» (the platform is not
  * connected to GOSI; this keeps the date and the GOSI reference as proof).
  */
-export function recordGosiAction(companyId, { kind, employeeId, injuryDate = "", month = "", at = "", ref = "", by = "", wage = null } = {}) {
+export function recordGosiAction(companyId, { kind, employeeId, injuryDate = "", month = "", at = "", ref = "", by = "", wage = null, incidentId = "" } = {}) {
   const day = String(at || new Date().toISOString().slice(0, 10)).slice(0, 10);
   const reference = String(ref || "").trim();
   const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
@@ -4263,6 +4263,15 @@ export function recordGosiAction(companyId, { kind, employeeId, injuryDate = "",
       d.gosiPayments = { ...(d.gosiPayments || {}), [month]: { at: day, ref: reference, by } };
       hit = true;
       return;
+    }
+    // An injury from a safety card (Art. 141): the proof sits on the card as well as any injury leave.
+    if (incidentId && (kind === "injury" || kind === "injury_office")) {
+      for (const rec of d.safety || []) {
+        const item = (rec.incidentLog || []).find((row) => row.id === incidentId);
+        if (!item) continue;
+        if (kind === "injury") { item.gosiReportedAt = day; item.gosiRef = reference; } else { item.labourOfficeReportedAt = day; item.labourOfficeRef = reference; }
+        hit = true;
+      }
     }
     const emp = (d.employees || []).find((e) => e.id === employeeId);
     if (!emp) return;

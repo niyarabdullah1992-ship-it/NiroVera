@@ -199,6 +199,11 @@ export function buildSafetyReportCard(detail, at = new Date()) {
     controlAr: ctrl?.ar || "",
     controlEn: ctrl?.en || "",
     injured: Boolean(detail.injured),
+    ...(detail.injured ? {
+      injuredSelf: detail.injuredSelf !== false,
+      injuredName: String(detail.injuredName || "").trim().slice(0, 120),
+      injuredEmployeeId: String(detail.injuredEmployeeId || "").slice(0, 80),
+    } : {}),
     photoName: String(detail.photoName || "").trim().slice(0, 180),
     anonymous: Boolean(detail.anonymous),
     stopped: Boolean(detail.stopped),

@@ -35,6 +35,9 @@ import EmployeeFileSummary from "@/components/employees/EmployeeFileSummary";
 import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employees/EmployeeFileFieldCard";
 import EmployeeFileLeaveBoard from "@/components/employees/EmployeeFileLeaveBoard";
 import EmployeeFileDocsBoard from "@/components/employees/EmployeeFileDocsBoard";
+import EmployerDutiesCard from "@/components/employees/EmployerDutiesCard";
+import ContractTab from "@/components/employees/ContractTab";
+import { checkHiringAgeGate } from "@/lib/employerDuties";
 import EmployeeFileGrowthBoard from "@/components/employees/EmployeeFileGrowthBoard";
 import EmployeeFileVoiceBoard from "@/components/employees/EmployeeFileVoiceBoard";
 import { buildEmployeeFileView, employeeFileDraftSeed, employeeFileVoice, isViewerOwnFile, serviceLabel, splitEmployeeFileDraft } from "@/lib/employeeFileView";
@@ -191,6 +194,12 @@ export default function EmployeeProfile() {
     });
     if (!consentGate.ok) {
       toast({ description: ar ? consentGate.reason : consentGate.reasonEn, variant: "destructive" });
+      return;
+    }
+    // Art. 162 — a birth date that puts the worker under fifteen at hiring is refused.
+    const ageGate = checkHiringAgeGate({ birthDate: profile.birthDate ?? employee.profile?.birthDate, hireDate: profile.hireDate ?? employee.profile?.hireDate });
+    if (!ageGate.ok) {
+      toast({ description: ar ? ageGate.reason : ageGate.reasonEn, variant: "destructive" });
       return;
     }
     if (!canEditSalary) {
@@ -580,6 +589,8 @@ export default function EmployeeProfile() {
         {tab === "docs" && (
           <>
             <EmployeeFileDocsBoard view={view} ar={ar} />
+            {canEditContract || isSelf ? <ContractTab employee={employee} companyId={company.id} canEdit={canEditContract && !isSelf} viewerId={currentUser.id} /> : null}
+            <EmployerDutiesCard employee={employee} companyId={company.id} ar={ar} canManage={canManage && !isSelf} by={currentUser.name || ""} />
             <CertificatesTab
               employee={employee}
               companyId={company.id}

@@ -862,17 +862,30 @@ export function deriveDisciplineTimers(caseRow, today, laborCalendar) {
   };
 }
 
-export function checkSignDisciplineGate(caseRow, { files = [], today, cases = [] } = {}) {
+export function checkSignDisciplineGate(caseRow, { files = [], today, cases = [], regulation = null } = {}) {
   const listed = checkListedPenaltyGate(caseRow, today);
   if (!listed.ok) return listed;
-  if (listed.kind === "dismiss" && !String(caseRow?.dismissGround || "").trim()) {
-    return {
-      ok: false,
-      error: "DISCIPLINE_DISMISS_GROUND",
-      reason: "الفصل لا يُوقَّع إلا بذكر الحالة المقررة في النظام (المادة 66).",
-      reasonEn: "Dismissal is not signed without the prescribed statutory case (Article 66).",
-      cite: citeRule("eos.art80.cite", today),
-    };
+  if (listed.kind === "dismiss") {
+    const art80 = checkArt80DismissGate(caseRow, { today, stage: "sign" });
+    if (!art80.ok) return art80;
+  }
+  if (listed.kind === "dismissal_with_award") {
+    const award = checkAwardDismissGate(caseRow, { today });
+    if (!award.ok) return award;
+  }
+  const dup = checkDisciplineDoubleFileGate(caseRow, { cases, today });
+  if (!dup.ok) return dup;
+  if (regulation?.source === "own" && caseRow?.regulationClauseId) {
+    const standing = regulationStanding(regulation, today);
+    if (standing.id === "announced") {
+      return {
+        ok: false,
+        error: "DISCIPLINE_REGULATION_NOT_IN_FORCE",
+        reason: `موقوف — لائحة تنظيم العمل تسري على العمال من اليوم التالي لإعلانها (${standing.effectiveFrom}) — النموذج الموحد م72.`,
+        reasonEn: `Blocked — the regulation binds workers from the day after its announcement (${standing.effectiveFrom}).`,
+        cite: citeRule("discipline.listedOnly.cite", today),
+      };
+    }
   }
   const place = checkWorkplaceDisciplineGate(caseRow, { today });
   if (!place.ok) return place;

@@ -8,7 +8,10 @@ import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { FileText } from "lucide-react";
 import { EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { deriveArt55Conversion } from "@/lib/contractLawDerivations";
-import { applyDueLaborRules } from "@/lib/store";
+import { applyDueLaborRules, updateEmployeeProfile } from "@/lib/store";
+import { checkContractAckGate, contractSheet, contractTermsText } from "@/lib/contractDocument";
+import { printSheet } from "@/lib/printSheet";
+import { toast } from "@/components/ui/use-toast";
 import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";
 
 const PDF_CHIP = {
@@ -51,7 +54,58 @@ function niceDate(iso, ar) {
 }
 
 /** Platform isTabContract — L2741–2762 */
-export default function ContractTab({ employee, companyId, canEdit }) {
+async function sha256Text(text) {
+  try {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(text)));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return "";
+  }
+}
+
+/** The worker reads the generated contract and signs it from their own file (Arts. 51–52). */
+function ContractAck({ employee, companyId, contract, viewerId, ar }) {
+  const [ack, setAck] = useState(false);
+  if (!contract?.generated) return null;
+  const signed = contract.workerAck;
+  const mine = String(viewerId || "") === String(employee?.id || "");
+  return (
+    <div data-contract-ack={signed ? "signed" : "pending"} style={{ marginTop: 14, padding: "12px 14px", borderRadius: 11, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{ar ? "العقد المُنشأ من النموذج الموحد" : "Contract generated from the unified model"}</span>
+        <span style={signed ? OK : WARN}>{signed ? (ar ? `وقّعه العامل ${String(signed.at).slice(0, 10)}` : `Signed ${String(signed.at).slice(0, 10)}`) : (ar ? "بانتظار توقيع العامل" : "Awaiting the worker's signature")}</span>
+        <span style={{ flex: 1 }} />
+        <button type="button" style={ui.btnGhost} onClick={() => printSheet(contractSheet(contract.model || {}, { ar: true, ref: employee?.id || "" }))}>{ar ? "اطبع النسختين" : "Print both copies"}</button>
+      </div>
+      {!signed && mine ? (
+        <>
+          <label style={{ fontSize: 12, display: "flex", gap: 8, alignItems: "center", color: "var(--nv-ink)" }}>
+            <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
+            {ar ? "قرأت العقد ولائحة تنظيم العمل، وأوقّع عليه بالموافقة." : "I read the contract and the work regulation, and I sign in agreement."}
+          </label>
+          <button
+            type="button"
+            style={{ ...ui.btnGhost, alignSelf: "flex-start" }}
+            onClick={async () => {
+              const gate = checkContractAckGate({ contract, employee, viewerId, ack });
+              if (!gate.ok) {
+                toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
+                return;
+              }
+              const hash = await sha256Text(contractTermsText(contract.model || {}));
+              updateEmployeeProfile(companyId, employee.id, { contract: { workerAck: { at: new Date().toISOString(), name: employee.name || "", hash } } });
+            }}
+          >
+            {ar ? "وقّع العقد" : "Sign the contract"}
+          </button>
+        </>
+      ) : null}
+      {signed?.hash ? <span style={{ fontSize: 10.5, color: MUTED, fontFamily: "'IBM Plex Mono',monospace", direction: "ltr" }}>SHA-256 {signed.hash.slice(0, 16)}…</span> : null}
+    </div>
+  );
+}
+
+export default function ContractTab({ employee, companyId, canEdit, viewerId = "" }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const profile = employee.profile || {};
@@ -124,7 +178,7 @@ export default function ContractTab({ employee, companyId, canEdit }) {
             onClick={() => setEditing(true)}
             style={ui.btnGhost}
           >
-            {contract?.fileUrl ? (ar ? "تحديث العقد" : "Update contract") : (ar ? "رفع عقد" : "Upload contract")}
+            {contract?.fileUrl || contract?.generated ? (ar ? "تحديث العقد" : "Update contract") : (ar ? "أنشئ العقد أو ارفعه" : "Generate or upload the contract")}
           </button>
         ) : (
           <span style={{ fontSize: "10px", color: MUTED }}>{ar ? "للإدارة فقط" : "Management only"}</span>
@@ -190,6 +244,8 @@ export default function ContractTab({ employee, companyId, canEdit }) {
           </div>
         ))}
       </div>
+
+      <ContractAck employee={employee} companyId={companyId} contract={contract} viewerId={viewerId} ar={ar} />
 
       {fileName ? (
         <a

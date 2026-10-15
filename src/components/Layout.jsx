@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
+import { openDueEmployerDutyNotices } from "@/lib/employerDutyNotices";
 import { updateCompany, getCompanyData, getCompanyToken, openDueHeatBanNotices, openDueDisciplineDeadlineNotices, openDueNecessityNotices, openDueCompLeaveNotices, openDueReligionNotices, openDueGrievanceNotices, settleDueResignations } from "@/lib/store";
 import { base44 } from "@/api/base44Client";
 import { toast } from "@/components/ui/use-toast";
@@ -66,6 +67,7 @@ export default function Layout({ children }) {
       try { settleDueResignations(company.id); } catch { /* best-effort; runs again next tick */ }
       try { openDueReligionNotices(company.id); } catch { /* notices are best-effort */ }
       try { openDueGrievanceNotices(company.id); } catch { /* notices are best-effort */ }
+      try { openDueEmployerDutyNotices(company.id); } catch { /* notices are best-effort */ }
     };
     tick();
     const timer = window.setInterval(tick, 60000);

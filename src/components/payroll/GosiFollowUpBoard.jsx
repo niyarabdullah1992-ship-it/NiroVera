@@ -64,7 +64,7 @@ export default function GosiFollowUpBoard({ data, companyId, ar = true, by = "",
     const d = draft(t.id);
     const emp = employees.find((e) => e.id === t.employeeId);
     const wage = emp ? contributoryWage(employeeWageSplit(emp.profile || {}, emp), payrollSaudiFlag(emp) !== false) : null;
-    recordGosiAction(companyId, { kind: t.kind, employeeId: t.employeeId, injuryDate: t.from, month: t.month, at: d.at, ref: d.ref, by, wage });
+    recordGosiAction(companyId, { kind: t.kind, employeeId: t.employeeId, injuryDate: t.from, month: t.month, at: d.at, ref: d.ref, by, wage, incidentId: t.incidentId || "" });
     onChanged?.();
   };
   const input = { fontFamily: "inherit", fontSize: 12, height: 34, padding: "0 10px", border: "1px solid var(--nv-line)", borderRadius: 8, background: "var(--nv-card)", color: "var(--nv-ink)", boxSizing: "border-box" };

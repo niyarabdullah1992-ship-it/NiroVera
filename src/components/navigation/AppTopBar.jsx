@@ -1,6 +1,5 @@
 import React from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Search } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { faceSectionTarget, useRailSide } from "@/lib/railSide";
 import { suiteSectionPagesForSide } from "@/lib/suiteRailFrame";
@@ -42,7 +41,7 @@ function frameButton(extra) {
 export default function AppTopBar({
   pageTitle,
   isSyncing,
-  onSearch,
+  onSearch: _onSearch,
   hideLang = false,
   sectionPages = [],
   activeNavItem,
@@ -165,16 +164,6 @@ export default function AppTopBar({
                 {lang === "ar" ? "EN" : "ع"}
               </button>
             )}
-            <button
-              type="button"
-              className="nv-frame-iconbtn"
-              onClick={onSearch}
-              aria-label={ar ? "البحث العام" : "Global search"}
-              title={ar ? "ابحث · Ctrl+K" : "Search · Ctrl+K"}
-              style={frameButton({ width: 34, padding: 0, color: "var(--nv-ink3, #555C66)" })}
-            >
-              <Search style={{ width: 15, height: 15 }} strokeWidth={1.75} />
-            </button>
           </div>
         </div>
 

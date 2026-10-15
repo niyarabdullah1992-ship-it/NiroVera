@@ -32,6 +32,9 @@ import PlatformDateField from "@/components/shared/PlatformDateField";
 import AttachFileButton from "@/components/shared/AttachFileButton";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { toast } from "@/components/ui/use-toast";
+import AbuseCaseRaise from "@/components/complaints/AbuseCaseRaise";
+
+const ABUSE_KIND = "abuse_complaint"; // model regulation Arts. 54–56 — its own confidential case, not an other-request
 
 /**
  * «حقوق نظامية أخرى» — worker requests the Labour Law and decision 18632 provide for: carrying annual
@@ -140,14 +143,19 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
               <span style={{ fontSize: 10.5, color: MUTED }}>{ar ? k.hintAr : k.hintEn}</span>
             </button>
           ))}
+          <button type="button" data-rights-kind={ABUSE_KIND} onClick={() => setKind(ABUSE_KIND)} style={pick(kind === ABUSE_KIND)}>
+            <span style={{ fontWeight: kind === ABUSE_KIND ? 700 : 500, color: NAVY, fontSize: 12.5 }}>{ar ? "شكوى إيذاء أو تحرش" : "Abuse or harassment complaint"}</span>
+            <span style={{ fontSize: 10.5, color: MUTED }}>{ar ? "سرية · خلال 5 أيام عمل · النموذج الموحد م55" : "Confidential · within 5 working days · model Art. 55"}</span>
+          </button>
         </div>
-        {meta.article === "regs71"
+        {kind === ABUSE_KIND ? null : meta.article === "regs71"
           ? <span style={{ fontSize: 11, fontWeight: 700, color: "#0B3D27" }}>{ar ? "اللائحة التنفيذية لنظام العمل (القرار 115921 لعام 1446هـ) — المادة 71، التظلم" : "Labour Law Implementing Regulations (decision 115921, 1446H) — Art. 71, grievance"}</span>
           : meta.article === "18632"
           ? <span style={{ fontSize: 11, fontWeight: 700, color: "#0B3D27" }}>{ar ? "القرار الوزاري 18632 (1441/1/30هـ) — ثالثاً، الخدمات الصحية (ج)" : "Ministerial decision 18632 — third, health services (c)"}</span>
           : <LaborArticleCite article={meta.article} ar={ar} showOfficial showText />}
       </div>
 
+      {kind === ABUSE_KIND ? <AbuseCaseRaise employee={employee} companyId={companyId} ar={ar} onSent={() => { refresh?.(); onSent?.(); }} /> : (
       <div style={block}>
         {kind === LEAVE_CARRY_TYPE ? (
           <>
@@ -295,6 +303,7 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
           {kind === ART81_EXIT_TYPE ? (ar ? "سجّل ترك العمل وأبلغ الإدارة" : "Record leaving and tell management") : (ar ? "أرسل الطلب" : "Send the request")}
         </button>
       </div>
+      )}
     </div>
   );
 }

@@ -970,7 +970,7 @@ Deno.serve(async (req) => {
       const actorRole = context.actor?.role;
       const privilege = await getActorPrivilege();
       let allowed = false;
-      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'branchEscalationSla', 'workProofs', 'visitorProofs', 'disciplinaryCases', 'arbitrationOutcomes', 'assetTransfers', 'orgSeats', 'stationBudgets', 'hcmFoundation', 'hcmPerformance', 'hseCredits', 'attendancePolicy', 'attendanceEmergency'].includes(category)) allowed = context.senior;
+      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'branchEscalationSla', 'workProofs', 'visitorProofs', 'disciplinaryCases', 'arbitrationOutcomes', 'assetTransfers', 'orgSeats', 'stationBudgets', 'hcmFoundation', 'hcmPerformance', 'hseCredits', 'attendancePolicy', 'attendanceEmergency', 'abuseCases'].includes(category)) allowed = context.senior;
       else if (['hrLevels', 'hrClusters', 'jobGrades'].includes(category)) allowed = context.senior && (!context.actor || context.actor.role === 'director');
       else if (category === 'payrollRuns') allowed = context.senior || context.permissions.has('manage_payroll');
       else if (category === 'schedules') allowed = context.senior || ['pgm', 'station_manager'].includes(actorRole) || context.permissions.has('manage_schedules');
@@ -987,7 +987,7 @@ Deno.serve(async (req) => {
       }
       // Regular employees may write their OWN records in these categories — their
       // reports, personal entries, and own leave row must never be silently dropped.
-      const SELF_WRITABLE = ['anonymousReports', 'publicReports', 'notifications', 'personalPlaces', 'personalAttendance', 'plannerItems', 'journalEntries', 'leaveRoster'];
+      const SELF_WRITABLE = ['anonymousReports', 'publicReports', 'notifications', 'personalPlaces', 'personalAttendance', 'plannerItems', 'journalEntries', 'leaveRoster', 'abuseCases'];
       const selfWrite = !allowed && privilege === 'self' && SELF_WRITABLE.includes(category);
       // Never fail silently: a rejected write returns 403 so the UI can tell the user.
       if (!allowed && !selfWrite) return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });

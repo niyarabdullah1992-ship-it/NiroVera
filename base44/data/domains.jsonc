@@ -93,6 +93,7 @@
   "previewGaps": {
     "specialSync": ["companyMeta", "leaveRoster"],
     "notInStoreBlobCategories": [
+      "workRegulation",
       "companySettings",
       "attendanceLedger",
       "publishedRotas",
@@ -167,6 +168,8 @@
       "otherRequests": "leave",
       "leaveRoster": "leave",
       "disciplinaryCases": "trust",
+      "abuseCases": "trust",
+      "workRegulation": "trust",
       "stationChat": "trust",
       "stationChatGroups": "trust",
       "arbitrationOutcomes": "trust",
@@ -1370,6 +1373,32 @@
           "identity": ["id", "companyId"],
           "personRef": "employeeId",
           "visibility": "senior"
+        },
+        {
+          "key": "abuseCases",
+          "kind": "blob",
+          "blobCategory": "abuseCases",
+          "storeKey": "abuseCases",
+          "owner": "complaints",
+          "ownerFile": "src/lib/abuseStore.js",
+          "derivation": "src/lib/abuseComplaint.js",
+          "identity": ["id", "companyId"],
+          "personRef": "reporterId",
+          "visibility": "self",
+          "notes": "Workplace-abuse complaints (model work regulation Arts. 54–56). Confidential: the filer reads their own; senior HR reads all."
+        },
+        {
+          "key": "workRegulation",
+          "kind": "blob",
+          "blobCategory": "workRegulation",
+          "storeKey": "workRegulation",
+          "owner": "hcm",
+          "ownerFile": "src/pages/Discipline.jsx",
+          "derivation": "src/lib/workRegulation.js",
+          "identity": ["companyId"],
+          "personRef": null,
+          "visibility": "senior",
+          "notes": "The establishment's approved work regulation (Law Arts. 12–13; Annex 1 model). Object, not array. Read by compliance/disciplineSave when stored; else the page sends its copy."
         },
         {
           "key": "laborRules",

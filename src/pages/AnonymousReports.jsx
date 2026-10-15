@@ -14,6 +14,7 @@ import EscalationSteps from "@/components/escalation/EscalationSteps";
 import EscalationInfoBox from "@/components/escalation/EscalationInfoBox";
 import MobileSelect from "@/components/mobile/MobileSelect";
 import VoiceStationList from "@/components/complaints/VoiceStationList";
+import AbuseCasesBoard from "@/components/complaints/AbuseCasesBoard";
 import { ACCENT, BORDER, MUTED, NAVY, SURFACE, cardShell, field, labelMuted, textarea, ui, BAD, WARN, OK, NEUTRAL } from "@/lib/platformStyles";
 
 const STAT_TYPES = ["complaint", "suggestion"];
@@ -266,6 +267,10 @@ export default function AnonymousReports({ underQueue = false }) {
       </p>
 
       <EscalationInfoBox t={t} />
+
+      {(isOwner || canAct || ["director", "hr", "admin", "owner"].includes(currentUser.role)) ? (
+        <AbuseCasesBoard data={data} companyId={company?.id} ar={lang === "ar"} by={currentUser.name || ""} />
+      ) : null}
 
       {!isStaff && (
         <>

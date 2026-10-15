@@ -560,7 +560,7 @@ const COMPANY_ARRAY_KEYS = [
   "orgTree", "arbitrationOutcomes",
   "assetTransfers", "assets", "assetCustody", "assetMaintenance",
   "expenseClaims", "stationBudgets", "inventoryItems", "materialRequests", "stockMovements",
-  "signedDocRegistry", "signingFieldTemplates", "signatureRequests",
+  "signedDocRegistry", "signingFieldTemplates", "signatureRequests", "abuseCases",
 ];
 
 function normalizeCompanyData(data) {
@@ -869,7 +869,7 @@ export const BLOB_CATEGORIES = [
   "personalPlaces", "personalAttendance", "plannerItems", "journalEntries", "payrollRuns", "assetTransfers", "smartPositions",
   "complaintEscalationChain", "branchEscalationChains", "branchEscalationSla", "orgTree", "orgSeats", "workProofs", "visitorProofs", "disciplinaryCases",
   "arbitrationOutcomes", "stationBudgets",
-  "hcmFoundation", "hcmPerformance", "attendancePolicy", "attendanceEmergency", "hseCredits",
+  "hcmFoundation", "hcmPerformance", "attendancePolicy", "attendanceEmergency", "hseCredits", "abuseCases",
   ];
 const lastSyncedBlobJSON = {};
 async function syncBlobToEntity(companyId, category, payload) {

@@ -35,6 +35,8 @@ export const BLOB_VISIBILITY = {
   templates: "shared",
   complaintEscalationChain: "shared",
   disciplinaryCases: "senior",
+  // Model regulation Art. 56(1) — confidential: the filer reads their own; senior HR reads all.
+  abuseCases: "self",
   arbitrationOutcomes: "senior",
   attendancePolicy: "shared",
   attendanceEmergency: "shared",

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { addDisciplineMessage } from "@/lib/store";
+import { addDisciplineMessage, getCompanyData } from "@/lib/store";
+import { saveDisciplineOnServer } from "@/lib/disciplineServer";
 import { Send } from "lucide-react";
 import CommentFiles, { CommentAttachments } from "@/components/tasks/CommentFiles";
 import { BORDER, MUTED, NAVY, SURFACE, field, ui } from "@/lib/platformStyles";
@@ -26,6 +27,9 @@ export default function DisciplineCaseThread({
       files,
       senderName: currentUser?.name,
     });
+    // The thread reaches the server through disciplineSave too (messages only grow there).
+    const saved = (getCompanyData(companyId)?.disciplinaryCases || []).find((c) => c.id === caseRow.id);
+    if (saved) saveDisciplineOnServer(companyId, "message", saved);
     setText("");
     setFiles([]);
   };

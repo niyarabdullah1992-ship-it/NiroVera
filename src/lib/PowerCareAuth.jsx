@@ -6,6 +6,7 @@ import {
   repairOwnerSession, cacheCloudData, googleCompanyLogin, companyAccountExists, ensureLocalCompany,
   sendPresenceHeartbeat,
 } from "./store";
+import { keepLocalOverEmptyServer } from "./syncLaw";
 import { base44 } from "@/api/base44Client";
 import { DEFAULT_SUBSCRIPTION_PLANS, planConfigForName } from "@/lib/subscriptionPlans";
 import { isLocalPreviewActive, LOCAL_PREVIEW_COMPANY_ID } from "@/lib/localPreview";
@@ -165,7 +166,11 @@ export function AuthProvider({ children }) {
             hydrationTasks.push(
               hydrateBlobFromEntity(s.companyId, category).then((records) => {
                 if (!records) return;
-                cacheCloudData(s.companyId, { [category]: records });
+                // Newly promoted bags: an empty server answer never wipes a local copy not pushed yet.
+                if (keepLocalOverEmptyServer(category, records, getCompanyData(s.companyId)?.[category])) return;
+                const merged = cacheCloudData(s.companyId, { [category]: records });
+                // employerDuties lands on the employees themselves (training, medical, held documents).
+                if (category === "employerDuties" && merged) { setData(merged); return; }
                 setData((prevData) => (prevData ? { ...prevData, [category]: records } : prevData));
               })
             );

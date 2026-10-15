@@ -96,7 +96,8 @@ import { canonicalizePlatformFacts } from "./facts/migrate.js";
 import { assignEmployeeNumber, ensureEmployeeNumbers } from "./employeeNumber";
 import { migratePreviewStationPins } from "./previewStationPins";
 import { attachSharedGradesToTitles, ensureProductLadder } from "./jobGradeTitles";
-import { assertWritableCategory, isDoNotWrite, normalizeBlobPayload } from "./canonicalStore";
+import { assertWritableCategory, isDoNotWrite, isServerActionCategory, normalizeBlobPayload, pushableBlobCategories } from "./canonicalStore";
+import { applyEmployerDutyRoster, employerDutyRosterFromEmployees } from "./syncLaw.js";
 import { visibleArbitrationOutcomes } from "./arbitrationEngine";
 import {
   WRITTEN_CONSENT_TYPE,
@@ -730,6 +731,10 @@ export function cacheCloudData(companyId, updates) {
   }
   if (nextUpdates.stations) nextUpdates.stations = mergeLocalDemoRecords(current.stations, nextUpdates.stations, "stations", companyId);
   let next = { ...current, ...nextUpdates };
+  // Training / medical / held-document registers come back as one row per employee — lay them onto the people.
+  if ((nextUpdates.employees || nextUpdates.employerDuties) && Array.isArray(next.employerDuties)) {
+    next.employees = applyEmployerDutyRoster(next.employees, next.employerDuties);
+  }
   try {
     next = reconcileStationReferences(next);
   } catch (error) {
@@ -788,7 +793,9 @@ function pushCompanyDataToCloud(id, data) {
   if (isLocalPreviewWorkspace(id)) return;
   syncEmployeesToEntity(id, data.employees);
   syncStationsToEntity(id, data.stations);
-  BLOB_CATEGORIES.forEach((category) => syncBlobToEntity(id, category, data[category]));
+  // disciplinaryCases go through compliance/disciplineSave only; employerDuties is projected from employees.
+  pushableBlobCategories(BLOB_CATEGORIES).forEach((category) => syncBlobToEntity(id, category, data[category]));
+  syncBlobToEntity(id, "employerDuties", employerDutyRosterFromEmployees(data.employees));
   syncBlobToEntity(id, LEAVE_ROSTER_BLOB, leaveRosterFromEmployees(data.employees));
   syncBlobToEntity(id, "companyMeta", [{
     id: "meta",
@@ -875,11 +882,13 @@ export const BLOB_CATEGORIES = [
   "complaintEscalationChain", "branchEscalationChains", "branchEscalationSla", "orgTree", "orgSeats", "workProofs", "visitorProofs", "disciplinaryCases",
   "arbitrationOutcomes", "stationBudgets",
   "hcmFoundation", "hcmPerformance", "attendancePolicy", "attendanceEmergency", "hseCredits", "abuseCases",
+  "workRegulation", "trainingPlan", "employerDuties",
   ];
 const lastSyncedBlobJSON = {};
 async function syncBlobToEntity(companyId, category, payload) {
   if (isLocalPreviewWorkspace(companyId)) return;
   if (isDoNotWrite(category)) return;
+  if (isServerActionCategory(category)) return;
   assertWritableCategory(category);
   const normalized = normalizeBlobPayload(category, payload);
   const key = `${companyId}_${category}`;

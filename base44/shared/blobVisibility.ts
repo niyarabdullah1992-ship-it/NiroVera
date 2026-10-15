@@ -7,7 +7,10 @@
 // handlers = سلسلة معالجة البلاغات فقط (senior / manage_complaints)، ويرى المُبلِّغ بلاغاته
 // payroll  = senior أو manage_payroll
 // senior   = الإدارة العليا فقط
+// abuse    = ملف الإيذاء السري: الشاكي، وأعضاء لجنة ذلك الملف بأسمائهم، والإدارة العليا (النموذج م56/1)
 // shared   = بيانات تشغيلية مشتركة (فروع، إعدادات، هيكل) — مرئية للجميع
+import { canReadAbuseCase, redactRegulationAcks } from "./syncLaw.ts";
+
 export const BLOB_VISIBILITY = {
   notifications: "self",
   journalEntries: "self",
@@ -35,8 +38,14 @@ export const BLOB_VISIBILITY = {
   templates: "shared",
   complaintEscalationChain: "shared",
   disciplinaryCases: "senior",
-  // Model regulation Art. 56(1) — confidential: the filer reads their own; senior HR reads all.
-  abuseCases: "self",
+  // Model regulation Art. 56(1) — confidential: the filer, that case's named committee members, senior HR.
+  abuseCases: "abuse",
+  // Law Art. 13 — the announced regulation is for every worker to read; each sees only their own acknowledgement.
+  workRegulation: "shared",
+  // Regs Art. 15(4) training plan — course list by role, no personal data.
+  trainingPlan: "shared",
+  // Training / medical-exam / held-document registers — the worker reads their own row; senior HR all.
+  employerDuties: "self",
   arbitrationOutcomes: "senior",
   attendancePolicy: "shared",
   attendanceEmergency: "shared",
@@ -59,6 +68,7 @@ export const OBJECT_BLOB_CATEGORIES = [
   "branchEscalationSla",
   "hcmFoundation",
   "hcmPerformance",
+  "workRegulation",
 ];
 
 export function isObjectBlobCategory(category: string) {
@@ -74,7 +84,7 @@ export function normalizeBlobPayload(category: string, payload: unknown) {
 }
 
 // الحقول الحساسة في سجل الموظف — لا تُرسل إلا لصاحبها أو لمن يدير الموظفين.
-export const SENSITIVE_EMPLOYEE_FIELDS = ["hrMessages", "leaveRequests", "otherRequests", "certificates", "profile", "phone", "email"];
+export const SENSITIVE_EMPLOYEE_FIELDS = ["hrMessages", "leaveRequests", "otherRequests", "certificates", "profile", "phone", "email", "medicalExams", "trainings"];
 export const REQUEST_EMPLOYEE_FIELDS = ["leaveRequests", "otherRequests"];
 
 export function redactEmployee(record) {
@@ -109,6 +119,7 @@ export function filterBlobPayload(category, payload, context) {
   // Object-map categories: never coerce to [] — that wiped branchEscalationChains.
   if (isObjectBlobCategory(category) || (payload && typeof payload === "object" && !Array.isArray(payload))) {
     const empty = isObjectBlobCategory(category) ? {} : [];
+    if (category === "workRegulation") return context.senior ? (payload || empty) : redactRegulationAcks(payload, context.userId);
     if (context.senior) return payload && typeof payload === "object" ? payload : empty;
     if (rule === "shared") return payload && typeof payload === "object" ? payload : empty;
     if (rule === undefined || rule === "senior") return empty;
@@ -121,6 +132,7 @@ export function filterBlobPayload(category, payload, context) {
   if (rule === "senior") return [];
   if (rule === "payroll") return context.permissions.has("manage_payroll") ? rows : [];
   if (rule === "self") return rows.filter((item) => recordOwner(item) === context.userId);
+  if (rule === "abuse") return rows.filter((item) => canReadAbuseCase(item, { userId: context.userId, senior: false }));
   if (rule === "handlers") {
     if (context.permissions.has("manage_complaints") || context.isComplaintHandler) return rows;
     return rows.filter((item) => context.ownReportIds.has(item.id));

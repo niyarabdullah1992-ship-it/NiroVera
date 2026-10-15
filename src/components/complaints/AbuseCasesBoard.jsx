@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { abuseCommitteeIds } from "@/lib/syncLaw";
 import { toast } from "@/components/ui/use-toast";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import {
@@ -127,8 +128,12 @@ function CaseRow({ row, ar, companyId, employees, disciplinaryCases, today, cale
 }
 
 /** Senior HR's view of the confidential workplace-abuse cases (model regulation Arts. 54–56). */
-export default function AbuseCasesBoard({ data, companyId, ar = true, by = "" }) {
-  const cases = useMemo(() => (Array.isArray(data?.abuseCases) ? data.abuseCases : []), [data?.abuseCases]);
+export default function AbuseCasesBoard({ data, companyId, ar = true, by = "", committeeMemberId = "" }) {
+  const cases = useMemo(() => {
+    const all = Array.isArray(data?.abuseCases) ? data.abuseCases : [];
+    // A committee member (not senior HR) sees only the cases they sit on — model regulation Art. 56(1).
+    return committeeMemberId ? all.filter((r) => abuseCommitteeIds(r).includes(committeeMemberId)) : all;
+  }, [data?.abuseCases, committeeMemberId]);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
   const calendar = laborCalendarOf(data);
   const open = cases.filter((r) => r.status !== "closed");

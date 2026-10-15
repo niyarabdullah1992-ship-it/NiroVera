@@ -93,7 +93,6 @@
   "previewGaps": {
     "specialSync": ["companyMeta", "leaveRoster"],
     "notInStoreBlobCategories": [
-      "workRegulation",
       "companySettings",
       "attendanceLedger",
       "publishedRotas",
@@ -967,6 +966,32 @@
           "notes": "Synced via store BLOB_CATEGORIES."
         },
         {
+          "key": "trainingPlan",
+          "kind": "blob",
+          "blobCategory": "trainingPlan",
+          "storeKey": "trainingPlan",
+          "owner": "companyDirectory",
+          "ownerFile": "src/components/safety/TrainingMedicalPanel.jsx",
+          "derivation": "src/lib/employerDuties.js",
+          "identity": ["id", "companyId"],
+          "personRef": null,
+          "visibility": "shared",
+          "notes": "Annual training plan by role (Implementing Regs Art. 15(4); Law Arts. 42–43). Synced via store BLOB_CATEGORIES; written by senior HR or manage_employees."
+        },
+        {
+          "key": "employerDuties",
+          "kind": "blob",
+          "blobCategory": "employerDuties",
+          "storeKey": "employerDuties",
+          "owner": "companyDirectory",
+          "ownerFile": "src/lib/employerDutiesStore.js",
+          "derivation": "src/lib/syncLaw.js",
+          "identity": ["employeeId", "companyId"],
+          "personRef": "employeeId",
+          "visibility": "self",
+          "notes": "One row per employee: trainings (Law Arts. 42–48), periodic medical exams (Art. 143), documents held by the employer (Regs Art. 6). Projected from employees[] at push (like leaveRoster) and laid back onto employees on hydration. syncBlob merges via syncLaw.mergeEmployerDutyRoster — HR in scope only; records never dropped."
+        },
+        {
           "key": "competencyCerts",
           "kind": "blob",
           "blobCategory": "competencyCerts",
@@ -1372,7 +1397,8 @@
           "derivation": "base44/shared/disciplineDerivations.ts",
           "identity": ["id", "companyId"],
           "personRef": "employeeId",
-          "visibility": "senior"
+          "visibility": "senior",
+          "notes": "Written only by compliance/disciplineSave (gates of Arts. 66–72 run on the server row; each stage may set only its own fields — syncLaw.planDisciplineStageWrite). Hydrated via BLOB_CATEGORIES but never pushed by the generic sync (canonicalStore NOT_PUSHED_AS_IS); syncBlob refuses it with DISCIPLINE_VIA_ACTION."
         },
         {
           "key": "abuseCases",
@@ -1384,8 +1410,8 @@
           "derivation": "src/lib/abuseComplaint.js",
           "identity": ["id", "companyId"],
           "personRef": "reporterId",
-          "visibility": "self",
-          "notes": "Workplace-abuse complaints (model work regulation Arts. 54–56). Confidential: the filer reads their own; senior HR reads all."
+          "visibility": "abuse",
+          "notes": "Workplace-abuse complaints (model work regulation Arts. 54–56). Confidential: readable by the filer, the members named on that case's committee, and senior HR. Below senior, syncBlob merges via syncLaw.mergeAbuseCasesWrite (filer adds own case; committee members write investigation fields of their case)."
         },
         {
           "key": "workRegulation",
@@ -1397,8 +1423,8 @@
           "derivation": "src/lib/workRegulation.js",
           "identity": ["companyId"],
           "personRef": null,
-          "visibility": "senior",
-          "notes": "The establishment's approved work regulation (Law Arts. 12–13; Annex 1 model). Object, not array. Read by compliance/disciplineSave when stored; else the page sends its copy."
+          "visibility": "shared",
+          "notes": "The establishment's approved work regulation (Law Arts. 12–13; Annex 1 model). Object, not array. Synced via BLOB_CATEGORIES; syncBlob merges via syncLaw.mergeWorkRegulationWrite (senior saves/announces versions, old versions kept in versions[], each worker adds only their own server-stamped acknowledgement). Non-senior readers see only their own ack. compliance/disciplineSave reads the stored copy; the page copy only while none is stored."
         },
         {
           "key": "laborRules",

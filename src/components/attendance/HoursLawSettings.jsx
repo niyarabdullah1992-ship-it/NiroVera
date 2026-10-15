@@ -37,6 +37,7 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
     art105MinistryConsent: live.art105MinistryConsent,
     art105BankedWeeks: live.art105BankedWeeks || "",
     hoursBasis: live.hoursBasis || "",
+    stationBasis: Object.fromEntries((company?.stations || []).map((st) => [String(st.id), st.hoursBasis || ""])),
     art100ApprovalNo: live.art100ApprovalNo || "",
     art100ApprovalDate: live.art100ApprovalDate || "",
     nurseryChildrenCount: live.nurseryChildrenCount || "",
@@ -107,6 +108,14 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
           };
         })(),
       };
+    });
+    // Art. 98 basis per site (the employee file may still differ).
+    updateCompany(company.id, (d) => {
+      for (const st of d.stations || []) {
+        const basis = draft.stationBasis?.[String(st.id)];
+        if (basis === "daily" || basis === "weekly") st.hoursBasis = basis;
+        else delete st.hoursBasis;
+      }
     });
     onSaved?.();
   };
@@ -209,6 +218,20 @@ export default function HoursLawSettings({ company, employees = [], canEdit, ar 
             <option value="weekly">{ar ? "أسبوعي — 48 ساعة (36 في رمضان للمسلمين)" : "Weekly — 48 h (36 in Ramadan for Muslims)"}</option>
           </select>
         </label>
+        {(company?.stations || []).length ? (
+          <div data-hours-basis-sites="1" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+            {(company?.stations || []).map((st) => (
+              <label key={st.id} style={{ fontSize: 11, color: MUTED }}>
+                {ar ? `الموقع: ${st.name || st.id}` : `Site: ${st.name || st.id}`}
+                <select value={draft.stationBasis?.[String(st.id)] || ""} disabled={!canEdit} onChange={(e) => setDraft((prev) => ({ ...prev, stationBasis: { ...(prev.stationBasis || {}), [String(st.id)]: e.target.value } }))} style={{ ...field, marginTop: 6 }}>
+                  <option value="">{ar ? "كالمنشأة" : "As the company"}</option>
+                  <option value="daily">{ar ? "يومي — 8 ساعات" : "Daily — 8 h"}</option>
+                  <option value="weekly">{ar ? "أسبوعي — 48 ساعة" : "Weekly — 48 h"}</option>
+                </select>
+              </label>
+            ))}
+          </div>
+        ) : null}
         <Flag
           label={ar ? "العمل بالتناوب بمتوسط ثلاثة أسابيع (المادة 100)" : "Rotation averaged over three weeks (Art. 100)"}
           note={ar ? "بموافقة الوزارة فقط — سجّل رقم الموافقة وتاريخها، وإلا يبقى حد 48 لكل أسبوع." : "Ministry approval only — record its number and date, otherwise the 48 cap stays per week."}

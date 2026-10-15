@@ -118,7 +118,7 @@ export function deriveActualDuty({
     start: clock(inM),
     end: clock(outM),
     breaks: recordedBreaks || undefined,
-    restMinutes: recordedBreaks ? undefined : (presence > consecMax * 60 ? (rosterRest == null ? undefined : rosterRest) : 0),
+    restMinutes: recordedBreaks ? breakMinutes : (presence > consecMax * 60 ? (rosterRest == null ? undefined : rosterRest) : 0),
     breakCount: shift?.breakCount,
     onDate,
     continuous103: policy.continuousWork103 === true,

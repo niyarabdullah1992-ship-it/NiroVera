@@ -75,9 +75,9 @@ import {
   stampOvertimeCreditOnEmployee,
   stampOvertimePayOnDraft,
 } from "./overtimeAssignment";
-import { checkOtDecisionGate, isOtDecisionOpen, overtimeYearUsageOutsideAssignments } from "./attendanceDerivations";
-import { employeeRosterOtContext, holidayWorkOn, weekNamedOvertime } from "./shiftWeek";
-import { deriveActualDuty } from "./actualDuty.js";
+import { overtimeYearUsageOutsideAssignments } from "./attendanceDerivations";
+import { employeeRosterOtContext } from "./shiftWeek";
+import { planOtDecision, stampActualOvertime, stampHolidayWorkOvertime } from "./otDecisionPlan.js";
 import { compLeaveDaysInYear as compLeaveDaysInYearForCap, otHoursInYear as otHoursInYearForCap } from "./overtimeAssignment.js";
 import { isOfficialHoliday, laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePlatformOwnerBoard } from "./ummAlQuraCalendar";
 
@@ -4873,89 +4873,6 @@ export function publishWeek(companyId, stationId, weekStartKey, { by } = {}) {
   return { ok: true };
 }
 
-/**
- * Art. 107(3) — confirmed «عمل في العطلة» on a published week becomes an otDecisions entry flagged
- * `holiday: true`, every hour as overtime, decision «pending» for the manager's pay choice (never unpaid).
- * Payroll reads otDecisions[*].holiday. An entry already decided is never rewritten.
- */
-function stampHolidayWorkOvertime(d, schedule, weekStart) {
-  const calendar = laborCalendarOf(d);
-  d.otDecisions = d.otDecisions || {};
-  for (const employee of d.employees || []) {
-    if (!employee?.holidayWork) continue;
-    const named = weekNamedOvertime(schedule, employee, weekStart, d, calendar, true);
-    for (const row of named.rows) {
-      if (row.kind !== "holiday" || !holidayWorkOn(employee, row.dateKey)) continue;
-      const key = `${employee.id}:${row.dateKey}`;
-      const prev = d.otDecisions[key];
-      if (prev && !isOtDecisionOpen(prev)) continue;
-      d.otDecisions[key] = {
-        ...(prev || {}),
-        decision: prev?.decision === "pending_worker_cap_consent" ? prev.decision : "pending",
-        holiday: true,
-        kind: "holiday",
-        article: "107/3",
-        overtimeMinutes: Math.max(Number(prev?.overtimeMinutes) || 0, row.overtimeMinutes),
-        plannedMinutes: row.overtimeMinutes,
-        source: prev?.source === "actual_punch" ? "actual_punch" : "holiday_work",
-        at: new Date().toISOString(),
-      };
-    }
-  }
-}
-
-/** The rostered shift this person holds that day on any station's roster (their own first). */
-function rosterShiftFor(d, employee, dayKey) {
-  const own = String(employee?.profile?.workStationId || employee?.stationId || "");
-  const list = [...(d.schedules || [])].sort((a, b) => (String(b.stationId) === own) - (String(a.stationId) === own));
-  for (const schedule of list) {
-    const shift = employeeShiftOnDay(schedule, employee.id, dayKey);
-    if (shift) return shift;
-  }
-  return null;
-}
-
-/**
- * Arts 101/106/107 — a checked-out day is read against the rostered shift and its ACTUAL overtime
- * is written to otDecisions for the manager (pending). Worked hours are proven: they can be paid or
- * turned into compensatory leave, never rejected (checkOtDecisionGate «OT_WORKED_NO_REJECT»).
- */
-function stampActualOvertime(d, employee, dayKey, row) {
-  if (!employee?.id || !row) return null;
-  const checkIn = row.checkInAt || row.check_in_at;
-  const checkOut = row.checkOutAt || row.check_out_at;
-  if (!checkIn || !checkOut) return null;
-  const calendar = laborCalendarOf(d);
-  const shift = rosterShiftFor(d, employee, dayKey);
-  const actual = deriveActualDuty({ checkIn, checkOut, shift, onDate: dayKey, employee, company: d, laborCalendar: calendar, breaks: row.breaks });
-  if (!actual.ok) return actual;
-  row.workedMinutes = actual.workedMinutes;
-  row.overtimeMinutes = actual.overtimeMinutes;
-  row.actualFlags = actual.flags.map((flag) => flag.error);
-  if (actual.overtimeMinutes <= 0) return actual;
-  d.otDecisions = d.otDecisions || {};
-  const key = `${employee.id}:${dayKey}`;
-  const prev = d.otDecisions[key];
-  if (prev && !isOtDecisionOpen(prev)) {
-    prev.actualMinutes = actual.overtimeMinutes;
-    return actual;
-  }
-  d.otDecisions[key] = {
-    ...(prev || {}),
-    decision: prev?.decision === "pending_worker_cap_consent" ? prev.decision : "pending",
-    overtimeMinutes: actual.overtimeMinutes,
-    actualMinutes: actual.overtimeMinutes,
-    plannedMinutes: prev?.plannedMinutes,
-    holiday: actual.holiday || prev?.holiday === true || undefined,
-    kind: actual.kind || prev?.kind,
-    source: "actual_punch",
-    workedProven: true,
-    flags: actual.flags.map((flag) => flag.error),
-    at: new Date().toISOString(),
-  };
-  return actual;
-}
-
 export function announceRamadanStart(companyId, year, shift, { by } = {}) {
   const n = Number(shift);
   if (n !== -1 && n !== 0 && n !== 1) {
@@ -5134,79 +5051,27 @@ export function setOtDecision(companyId, employeeId, dateKey, {
   windowAgreed,
 } = {}) {
   const live = getCompanyData(companyId);
-  const day = String(dateKey || "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-    return { ok: false, error: "DATE_REQUIRED", reason: "حدد يوم الإضافي.", reasonEn: "Set the overtime day." };
-  }
-  const key = `${employeeId}:${day}`;
-  const existing = live?.otDecisions?.[key] || null;
   const employee = (live?.employees || []).find((row) => row.id === employeeId);
-  // Proven work: a checked-out punch on that day, or a confirmed holiday duty (Art. 107(3)).
-  const punch = (live?.personalAttendance || []).find((row) => String(row.employeeId) === String(employeeId) && String(row.date || "").slice(0, 10) === day);
-  const workedProven = existing?.workedProven === true || existing?.holiday === true
-    || !!(punch && (punch.checkOutAt || punch.check_out_at));
-  // Regs Art. 22: consent to pass the annual cap is the WORKER's — recorded from his acceptance, never a manager box.
-  const workerCapConsent = !!existing?.workerCapConsentAt;
-  const minutes = existing?.workedProven ? Math.max(Number(overtimeMinutes) || 0, Number(existing.overtimeMinutes) || 0) : overtimeMinutes;
-  const gateInput = {
-    overtimeMinutes: minutes,
+  const day = String(dateKey || "").slice(0, 10);
+  const plan = planOtDecision(live, employeeId, day, {
     decision,
-    alreadyDecided: !!existing && !isOtDecisionOpen(existing),
+    overtimeMinutes,
+    by,
     workerConsent,
-    annualCapConsent: workerCapConsent,
     enjoyDate,
     windowAgreed,
-    workedProven,
-    onDate: day,
-    overtimeHoursYtd: Math.round((overtimeYearUsageOutsideAssignments(live?.otDecisions, employeeId, day).hours
-      + otHoursInYearForCap(employee?.otherRequests, day.slice(0, 4))) * 10) / 10,
-    creditDaysYtd: Math.round((overtimeYearUsageOutsideAssignments(live?.otDecisions, employeeId, day).creditDays
-      + compLeaveDaysInYearForCap(employee?.otherRequests, day.slice(0, 4))) * 1000) / 1000,
-  };
-  const gate = checkOtDecisionGate(gateInput);
-  if (!gate.ok && gate.error === "OT_ANNUAL_CAP") {
-    // Record «consent requested» — the worker accepts (or not) from طلباتي; the decision waits for him.
-    updateCompany(companyId, (d) => {
-      d.otDecisions = d.otDecisions || {};
-      d.otDecisions[key] = {
-        ...(d.otDecisions[key] || {}),
-        decision: "pending_worker_cap_consent",
-        requestedDecision: String(decision || "approve"),
-        overtimeMinutes: Math.max(0, Number(minutes) || 0),
-        capConsentRequestedAt: new Date().toISOString(),
-        capConsentRequestedBy: by || "",
-        workerConsent: workerConsent === true ? true : undefined,
-        enjoyDate: enjoyDate || undefined,
-        windowAgreed: windowAgreed === true ? true : undefined,
-        workedProven: workedProven || undefined,
-      };
-    });
-    addNotification(companyId, employeeId, `طلب موافقتك على تجاوز سقف الإضافي السنوي ${gate.cap} ساعة (اللائحة م22) — ${day}.`, { kind: "ot_cap_consent", dateKey: day });
-    return {
-      ok: true,
-      decision: "pending_worker_cap_consent",
-      capConsentRequested: true,
-      reason: `طُلبت موافقة العامل على تجاوز ${gate.cap} ساعة في السنة (اللائحة م22) — القرار ينتظر قبوله من طلباتي.`,
-      reasonEn: `The worker's consent to pass ${gate.cap} hours a year was requested (Regs Art. 22) — the decision waits for his acceptance in My Requests.`,
-    };
-  }
-  if (!gate.ok) return gate;
+    extraHoursYtd: otHoursInYearForCap(employee?.otherRequests, day.slice(0, 4)),
+    extraCreditDaysYtd: compLeaveDaysInYearForCap(employee?.otherRequests, day.slice(0, 4)),
+  });
+  if (!plan.ok) return plan;
   updateCompany(companyId, (d) => {
     d.otDecisions = d.otDecisions || {};
-    const prev = d.otDecisions[key] || {};
-    d.otDecisions[key] = {
-      ...prev,
-      decision: gate.decision,
-      overtimeMinutes: gate.overtimeMinutes,
-      at: new Date().toISOString(),
-      by: by || "",
-      workerConsent: gate.workerConsent || undefined,
-      annualCapConsent: workerCapConsent ? true : undefined,
-      enjoyDate: enjoyDate || undefined,
-      windowAgreed: windowAgreed === true ? true : undefined,
-    };
+    d.otDecisions[plan.key] = { ...(d.otDecisions[plan.key] || {}), ...plan.entry };
   });
-  return { ok: true, decision: gate.decision };
+  if (plan.capConsentRequested) {
+    addNotification(companyId, employeeId, `طلب موافقتك على تجاوز سقف الإضافي السنوي ${plan.cap} ساعة (اللائحة م22) — ${day}.`, { kind: "ot_cap_consent", dateKey: day });
+  }
+  return plan.result;
 }
 
 /** Regs Art. 22 — the worker answers the request to pass the annual overtime cap. */

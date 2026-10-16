@@ -4,6 +4,7 @@ import { formatDayMonthYear, formatMonthYear } from "./dateFormat.js";
 import { employeeScheduledOn, hasPublishedScheduleOn } from "./attendanceCalendar.js";
 import { countPersonalHseDuty, deriveFairHseRates, PERF_WEIGHTS } from "./perfDerivations.js";
 import { taskBelongsTo, taskIsProven } from "./hcmDerivations.js";
+import { taskQualitySummary } from "./taskQuality.js";
 
 export const MIN_PROOF = 5;
 
@@ -266,6 +267,8 @@ export function personFacts(employee, from, to, data) {
     proof,
     assigned,
     proven: proven.length,
+    // Task quality on the one five-level scale (النموذج الموحد م19) — beside the score, not inside it.
+    quality: taskQualitySummary(proven, employee.id),
   };
 }
 

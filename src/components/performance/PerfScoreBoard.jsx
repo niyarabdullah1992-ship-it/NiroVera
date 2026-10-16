@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { taskQualityLine } from "@/lib/taskQuality";
+import { modelLaw } from "@/lib/modelArticleTexts";
+import { StatuteLink } from "@/components/shared/RightHint";
 import { useAuth } from "@/lib/PowerCareAuth";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { visibleStations } from "@/lib/permissions";
@@ -577,6 +580,13 @@ export default function PerfScoreBoard({
                   <strong dir="ltr" style={{ ...mono, fontSize: 26, lineHeight: 1.2 }}>{openRow.a.proof}</strong>
                   <span style={{ fontSize: 11, color: PERF_MUTED }}>{ar ? `مهام معتمدة · الحد ${MIN_PROOF}` : `Approved tasks · floor ${MIN_PROOF}`}</span>
                   </div>
+              </div>
+              <div data-perf-quality={openRow.a.quality?.n || 0} style={{ padding: "9px 14px", borderBottom: `1px solid ${PERF_SOFT}`, fontSize: 12, color: PERF_BODY, lineHeight: 1.7, display: "flex", alignItems: "baseline", gap: 8 }}>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <strong style={{ color: "var(--nv-ink)" }}>{ar ? "جودة المهام: " : "Task quality: "}</strong>
+                  {taskQualityLine(openRow.a.quality, ar)}
+                </span>
+                <StatuteLink ar={ar} law={modelLaw(["18", "19"], ar)} />
               </div>
               <div style={{ display: "flex", borderBottom: `1px solid ${PERF_SOFT}` }}>
                 {[["drv", ar ? "المحرّكات" : "Drivers"], ["trend", ar ? "المسار" : "Months"], ["log", ar ? "الأدلة" : "Proof"]].map(([id, label]) => (

@@ -8,7 +8,7 @@ import {
   HIERARCHY_OF_CONTROLS,
 } from "../../shared/hseDerivations.ts";
 import { PERF_WEIGHTS, countPersonalHseDuty, scoreBoard } from "../../shared/perfDerivations.ts";
-import { taskPoints } from "../../shared/opsDerivations.ts";
+import { taskPointsFor, taskQualitySummary } from "../../shared/taskQuality.ts";
 
 const SAFETY_CATEGORY = "safety";
 const TASKS_CATEGORY = "tasks";
@@ -291,7 +291,8 @@ Deno.serve(async (req) => {
           t.assignMode === "all" && (!t.stationId || t.stationId === e.stationId),
         );
         const approved = mine.filter((t: any) => t.approvedAt || t.status === "completed");
-        const pts = approved.reduce((n: number, t: any) => n + (Number(t.pointsAwarded) || taskPoints(t.priority, t.effortWeight)), 0);
+        // Each person's own quality-level points (legacy approvals keep their grant).
+        const pts = approved.reduce((n: number, t: any) => n + taskPointsFor(t, eid), 0);
         const ontime = approved.length
           ? Math.round((approved.filter((t: any) => {
             if (!t.dueAt || !t.approvedAt) return true;
@@ -303,6 +304,8 @@ Deno.serve(async (req) => {
           employeeId: eid,
           name: e.name,
           pts,
+          // Model Art. 19 — the same five-level scale, averaged over approved tasks that carry a level.
+          quality: taskQualitySummary(approved, eid),
           ontimePct: ontime,
           closure: closureByStation[e.stationId] || 0,
           reportPts: reportByEmp[eid] || 0,
@@ -314,7 +317,8 @@ Deno.serve(async (req) => {
         };
       });
 
-      const board = scoreBoard(rows);
+      const qualityById = new Map(rows.map((r: any) => [String(r.employeeId), r.quality]));
+      const board = scoreBoard(rows).map((r: any) => ({ ...r, quality: qualityById.get(String(r.employeeId)) || null }));
       return Response.json({ board, weights: PERF_WEIGHTS });
     }
 

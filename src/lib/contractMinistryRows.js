@@ -2,17 +2,16 @@
  * «أنظمة الوزارة — ما يخص العقد» — rows for the contract tab of the employee file.
  * Status is read from the file through the existing derivations; rules the platform does not run
  * read «للعلم». Pure (node-testable); the component only lays them out.
+ * The return ticket (model Art. 11) and the cases that end a contract (model Art. 57) read in
+ * «أنظمة الوزارة — نهاية الخدمة» (lib/offboardingMinistryRows), not here.
  */
 import { deriveArt55Conversion, deriveRegs1Conversion } from "./contractLawDerivations.js";
 import { deriveSaudiStatus, localDateKey } from "./complianceDerivations.js";
 import { isFixedContractType } from "./employeeProfileFields.js";
-import { deriveReturnTicket } from "./returnTicket.js";
 import {
   ajeerRegsNote,
-  contractEndModelNote,
   labourCourtRegsNote,
   nonSaudiFixedRegsNote,
-  repatriationModelNote,
   tempConversionRegsNote,
   workplaceClauseRegsNote,
 } from "./implementingRegsNotes.js";
@@ -30,12 +29,6 @@ export const CONTRACT_MINISTRY_CARDS = (ar = true) => [
     badge: ar ? "اللائحة" : "Regs",
     title: ar ? "اللائحة التنفيذية — العقد" : "Implementing Regulations — the contract",
     scope: ar ? "المؤقت والعرضي (م1)، عقد غير السعودي (م12)، أجير (م13)، شرط مكان العمل (م20)، المحاكم العمالية." : "Temporary and casual (Art. 1), non-Saudi contract (12), Ajeer (13), workplace clause (20), labour courts.",
-  },
-  {
-    key: "model",
-    badge: ar ? "النموذج الموحد" : "Model reg.",
-    title: ar ? "النموذج الموحد — انتهاء العقد والعودة" : "Model regulation — the end and the return",
-    scope: ar ? "حالات انتهاء العقد (م57)، تذكرة العودة عند انتهاء الخدمة (م11)." : "The cases that end the contract (Art. 57), the return ticket (Art. 11).",
   },
 ];
 
@@ -102,25 +95,5 @@ export function contractMinistryRows(employee = {}, { today, ar = true } = {}) {
   rows.push({ key: "regs-13", source: "regs", badge: ar ? "اللائحة م13" : "Regs Art. 13", title: ar ? "العمل عبر برنامج أجير" : "Work through Ajeer", note: ajeerRegsNote(ar), status: "void", pill: info(ar) });
   rows.push({ key: "regs-20", source: "regs", badge: ar ? "اللائحة م20" : "Regs Art. 20", title: ar ? "شرط مكان العمل في العقد = موافقة على النقل (المادة 58)" : "A workplace clause = consent to transfer (Art. 58)", note: workplaceClauseRegsNote(ar), status: "void", pill: info(ar) });
   rows.push({ key: "regs-courts", source: "regs", badge: ar ? "اللائحة م1/2 · 17 · 27" : "Regs 1(2) · 17 · 27", title: ar ? "اختصاص المحاكم العمالية" : "Labour-court jurisdiction", note: labourCourtRegsNote(ar), status: "void", pill: info(ar) });
-  const ticket = deriveReturnTicket(employee);
-  rows.push({
-    key: "model-11",
-    source: "model",
-    badge: ar ? "النموذج الموحد م11" : "Model Art. 11",
-    title: ar ? "تذكرة عودة غير السعودي عند انتهاء الخدمة على المنشأة (المادة 40/1)" : "A non-Saudi's return ticket at the end of service is on the company (Art. 40(1))",
-    note: repatriationModelNote(ar),
-    ...(ticket.state === "owed"
-      ? { status: "alert", pill: ar ? "مستحقة — لم تُسجَّل" : "Owed — not recorded" }
-      : ticket.state === "provided"
-        ? { status: "settled", pill: ar ? `أُمِّنت ${ticket.ticket.providedAt}` : `Provided ${ticket.ticket.providedAt}` }
-        : ticket.state === "excepted"
-          ? { status: "settled", pill: ar ? "استثناء م11/4 مسجّل" : "Art. 11(4) exception" }
-          : ticket.state === "na"
-            ? { status: "void", pill: ar ? "لا ينطبق" : "Not applicable" }
-            : ticket.state === "unknown"
-              ? { status: "waiting", pill: ar ? "الجنسية غير محسومة" : "Nationality unsettled" }
-              : { status: "void", pill: ar ? "عند انتهاء الخدمة" : "At the end of service" }),
-  });
-  rows.push({ key: "model-57", source: "model", badge: ar ? "النموذج الموحد م57" : "Model Art. 57", title: ar ? "حالات انتهاء عقد العمل" : "When the contract ends", note: contractEndModelNote(ar), status: "void", pill: info(ar) });
   return rows;
 }

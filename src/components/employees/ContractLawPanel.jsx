@@ -12,6 +12,9 @@ export default function ContractLawPanel({ employee, ar = true, today }) {
       title={ar ? "أنظمة الوزارة — ما يخص العقد" : "Ministry rules — the contract"}
       cards={CONTRACT_MINISTRY_CARDS(ar)}
       rows={rows}
+      footer={ar
+        ? "انتهاء العقد (النموذج الموحد م57) وتذكرة العودة (م11) في «أنظمة الوزارة — نهاية الخدمة» مع ملف إنهاء الخدمة."
+        : "How a contract ends (model Art. 57) and the return ticket (Art. 11) read in «Ministry rules — the end of service» with the exit file."}
     />
   );
 }

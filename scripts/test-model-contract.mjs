@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 // Model regulation Art. 11 — the return ticket at the end of service: derived from nationality and the
-// exit, gating the close-out, read in the contract panel; the server twin answers the same.
+// exit, gating the close-out, read in the end-of-service panel; the server twin answers the same.
 import * as fe from "../src/lib/returnTicket.js";
 import * as be from "../base44/shared/returnTicket.ts";
 import { checkCompleteOffboardingGate } from "../src/lib/offboardingDerivations.js";
 import { checkCompleteOffboardingGate as beComplete } from "../base44/shared/offboardingDerivations.ts";
 import { contractMinistryRows } from "../src/lib/contractMinistryRows.js";
+import { offboardingMinistryRows } from "../src/lib/offboardingMinistryRows.js";
 
 let n = 0;
 const ok = (name, fn) => { fn(); n += 1; console.log(`✓ ${name}`); };
@@ -37,11 +38,13 @@ ok("the exit file does not close while the ticket is owed — client and server"
   assert.equal(beComplete(caseRow, { employee: expat(), contractExit: expat().profile.contractExit, today: "2026-10-16" }).error, "RETURN_TICKET_OWED");
 });
 
-ok("contract panel row reads the same state", () => {
-  const row = (e) => contractMinistryRows(e, { today: "2026-10-16", ar: true }).find((r) => r.key === "model-11");
-  assert.equal(row(expat()).status, "alert");
+ok("end-of-service panel row reads the same state; the contract panel no longer repeats it", () => {
+  const row = (e) => offboardingMinistryRows({ employee: e, today: "2026-10-16", ar: true }).find((r) => r.key === "model-11");
+  assert.equal(row(expat()).status, "blocked", "owed blocks the close-out");
+  assert.match(row(expat()).pill, /مانع للإغلاق/);
   assert.equal(row(saudi).status, "void");
   assert.equal(row(expat({ returnTicket: { providedAt: "2026-10-16" } })).status, "settled");
+  assert.equal(contractMinistryRows(expat(), { today: "2026-10-16" }).some((r) => r.key === "model-11" || r.key === "model-57"), false);
 });
 
 ok("server twin parity", () => {

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { mono, SectionHead, slab } from "@/components/schedules/scheduleChrome";
 import MinistrySourceCards, { Counter, ministryBadgeStyle, MinistryRow, RegsSourceLine } from "@/components/schedules/MinistrySourceCards";
+import { ministryCounts } from "@/lib/ministryCounts";
+import useHashScroll from "@/hooks/useHashScroll";
 
 /**
  * «أنظمة الوزارة — …» for a surface that has no week roster: the same frame as VoiceLawPanel and
@@ -15,15 +17,13 @@ function Num({ children }) {
   return <span dir="ltr" style={mono}>{children}</span>;
 }
 
-const tally = (list) => ({
-  block: list.filter((row) => row.status === "blocked" || row.status === "violation").length,
-  alert: list.filter((row) => row.status === "alert" || row.status === "waiting").length,
-  met: list.filter((row) => row.status === "settled").length,
-  info: list.filter((row) => row.status === "void").length,
-});
+/** The same counts the «الامتثال الوزاري» index reads (lib/ministryCounts). */
+const tally = ministryCounts;
 
-export default function MinistryLawPanel({ ar = true, title, note, cards = [], rows = [], dataKey = "law", footer }) {
+export default function MinistryLawPanel({ ar = true, title, note, cards = [], rows = [], dataKey = "law", footer, id }) {
   const [source, setSource] = useState("all");
+  const anchor = id || `nv-ministry-${dataKey}`;
+  useHashScroll(anchor);
   const counters = (t) => (
     <>
       {t.block ? <Counter value={t.block} label={ar ? "مانع" : "block"} tone="bad" /> : null}
@@ -41,7 +41,7 @@ export default function MinistryLawPanel({ ar = true, title, note, cards = [], r
     .map((card) => ({ card, rows: rows.filter((row) => row.source === card.key) }));
 
   return (
-    <section data-ministry-law={dataKey} style={{ ...slab, display: "flex", flexDirection: "column" }}>
+    <section id={anchor} data-ministry-law={dataKey} style={{ ...slab, display: "flex", flexDirection: "column", scrollMarginTop: 88 }}>
       <SectionHead
         title={title}
         note={note ?? (ar

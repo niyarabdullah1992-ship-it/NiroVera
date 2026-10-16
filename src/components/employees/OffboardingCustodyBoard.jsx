@@ -15,6 +15,7 @@ import {
 import { averageActualWage, deriveFinalSettlement, isAverageWageBasis } from "@/lib/payrollLaw";
 import { recordFinalSettlementPaid } from "@/lib/payrollLawStore";
 import RightHint from "@/components/shared/RightHint";
+import OffboardingLawPanel from "@/components/employees/OffboardingLawPanel";
 import { payHintFor } from "@/lib/rightHints.pay";
 import { compPayout, hoursWord } from "@/lib/compLeave";
 import { toast } from "@/components/ui/use-toast";
@@ -718,6 +719,8 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
         )}
       </div>
       )}
+      {/* «أنظمة الوزارة — نهاية الخدمة» — the same award / comp figures as the settlement above. */}
+      {custodyOnly ? null : <OffboardingLawPanel employee={employee} caseRow={caseRow} eos={eos} comp={eos ? comp : null} ar={ar} />}
     </div>
   );
 }

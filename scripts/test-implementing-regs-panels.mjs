@@ -53,14 +53,14 @@ ok("Regs Art. 1: temporary/casual past 90 days converts; seasonal is outside; no
   assert.equal(exited.converts, false, "counted to the exit date, not today");
 });
 
-ok("contract panel: Regs 1 / 12 derived, 13 / 20 / courts / model 57 for reference", () => {
+ok("contract panel: Regs 1 / 12 derived, 13 / 20 / courts for reference", () => {
   const rows = contractMinistryRows({ hireDate: "2026-07-01", profile: { workPattern: "temporary", nationality: "مصري", contractType: "indefinite" } }, { today: D, ar: true });
   const by = (key) => rows.find((row) => row.key === key);
   assert.equal(by("regs-1").status, "alert");
   assert.equal(by("regs-12").status, "alert");
   assert.equal(by("regs-12").pill, "مسجّل غير محدد المدة");
-  ["regs-13", "regs-20", "regs-courts", "model-57"].forEach((key) => assert.equal(by(key).status, "void"));
-  assert.match(by("model-57").badge, /النموذج الموحد م57/);
+  ["regs-13", "regs-20", "regs-courts"].forEach((key) => assert.equal(by(key).status, "void"));
+  assert.equal(by("model-57"), undefined, "model 57 reads in the end-of-service panel");
   const fixed = contractMinistryRows({ profile: { nationality: "مصري", contractType: "fixed" } }, { today: D });
   assert.equal(fixed.find((row) => row.key === "regs-12").status, "settled");
 });

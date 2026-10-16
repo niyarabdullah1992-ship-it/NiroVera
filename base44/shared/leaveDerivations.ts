@@ -79,7 +79,7 @@ export type LeaveApproveExtras = {
     maternityDisabledChild?: boolean;
     annualDeferConsentAt?: string;
     leaveRequests?: LeaveRequestLike[];
-    discretionaryGrants?: { days?: number }[];
+    discretionaryGrants?: { days?: number; type?: string }[];
   };
   requests?: LeaveRequestLike[];
   type?: string;
@@ -805,12 +805,56 @@ function statutoryLeaveFloor(key: string, profile: LeaveApproveExtras["profile"]
   return row && "total" in row ? row.total : null;
 }
 
+/**
+ * Mirror of src/lib/leaveTypes.js — leave types the company may grant extra days on, with no upper cap.
+ * Annual is never one of them: its entitlement is fixed by Art. 109.
+ */
+export const GRANTABLE_LEAVE_KEYS = ["grant", "emergency"];
+const GRANT_EXTENDS_TOTAL_KEYS = ["emergency"];
+
+/** Granted days on one type. A grant without `type` is a discretionary «رصيد» grant. */
+export function grantedDaysOfType(profile: any, type = "grant") {
+  const key = String(type || "grant").trim().toLowerCase();
+  return ((profile?.discretionaryGrants || []) as any[])
+    .filter((grant) => String(grant?.type || "grant").trim().toLowerCase() === key)
+    .reduce((n: number, grant: any) => n + Math.max(0, Number(grant?.days) || 0), 0);
+}
+
 function getLeaveTotal(profile: LeaveApproveExtras["profile"], key: string, onDate?: string, requests?: LeaveRequestLike[]) {
   const floor = statutoryLeaveFloor(key, profile, onDate, requests);
   const custom = profile?.leaveTotals?.[key];
-  if (floor == null) return custom ?? null;
-  if (custom == null) return floor;
-  return Math.max(Number(custom) || 0, floor);
+  const k = String(key || "").trim().toLowerCase();
+  const extra = GRANT_EXTENDS_TOTAL_KEYS.includes(k) ? grantedDaysOfType(profile, k) : 0;
+  if (floor == null) return custom == null ? (extra || null) : (Number(custom) || 0) + extra;
+  if (custom == null) return floor + extra;
+  return Math.max(Number(custom) || 0, floor) + extra;
+}
+
+/** Mirror of grantedLeaveBalances in src/lib/leaveTypes.js — «متبقٍّ X من Y» per granted type. */
+export function grantedLeaveBalances(profile: any, requests: any[] | undefined, onDate?: string, company?: any, employee?: any) {
+  const label = (key: string, ar: boolean) => {
+    if (key === "grant") return ar ? "رصيد ممنوح" : "Granted days";
+    const row: any = LEAVE_TYPES.find((t: any) => t.key === key);
+    return row ? (ar ? row.ar : row.en) : key;
+  };
+  return GRANTABLE_LEAVE_KEYS.map((key) => {
+    const granted = grantedDaysOfType(profile, key);
+    if (!(granted > 0)) return null;
+    if (key === "grant") {
+      const split = annualBalanceSplit(profile, requests, onDate, company, employee);
+      const overflow = Math.max(0, split.currentUsed - Number(split.currentTotal || 0) - split.carryLeft);
+      const remaining = Math.max(0, granted - usedLeaveDays(requests, "grant", onDate, profile?.hireDate) - overflow);
+      return { key, granted, total: granted, used: Math.max(0, granted - remaining), remaining };
+    }
+    const total = Number(getLeaveTotal(profile, key, onDate)) || 0;
+    const used = usedLeaveDays(requests, key, onDate, profile?.hireDate);
+    return { key, granted, total, used, remaining: Math.max(0, total - used) };
+  }).filter(Boolean).map((row: any) => ({
+    ...row,
+    ar: label(row.key, true),
+    en: label(row.key, false),
+    pct: row.total ? Math.max(0, Math.min(100, Math.round((row.remaining / row.total) * 100))) : 0,
+  }));
 }
 
 /** Art. 116 — the parties agreed this unpaid leave does not suspend the contract. */
@@ -1591,7 +1635,7 @@ export function checkApproveLeaveGate(
     const profile: any = { ...extras.profile };
     const requests = extras.requests || extras.profile?.leaveRequests || [];
     if (type === "grant") {
-      const granted = (profile.discretionaryGrants || []).reduce((n, grant) => n + Math.max(0, Number(grant.days) || 0), 0);
+      const granted = grantedDaysOfType(profile, "grant");
       const remaining = Math.max(0, granted - usedLeaveDays(requests, "grant", onDate, profile.hireDate));
       if (days > remaining) {
         return {
@@ -1609,7 +1653,7 @@ export function checkApproveLeaveGate(
     if (type === "annual") {
       // Arts. 109–111: FIFO buckets — every untaken year stays in the balance.
       const split = annualBalanceSplit(profile, requests, onDate, extras.company, extras.employee);
-      const granted = (profile.discretionaryGrants || []).reduce((n: number, grant: any) => n + Math.max(0, Number(grant.days) || 0), 0);
+      const granted = grantedDaysOfType(profile, "grant");
       const overflow = Math.max(0, split.currentUsed - Number(split.currentTotal || 0) - split.carryLeft);
       const grants = Math.max(0, granted - usedLeaveDays(requests, "grant", onDate, profile.hireDate) - overflow);
       const remaining = round2(split.remaining + grants);

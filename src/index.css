@@ -2519,19 +2519,22 @@ html.dark .nv-req-balance {
   display: inline-block;
   flex: none;
 }
+/* طلباتي list head — the same SectionHead as every request panel (15/700, hairline, no ornament). */
 .nv-req-inbox-head.is-mine {
-  background: #fff;
-  color: #111418;
-  border-bottom: 1px solid #EEF1EF;
-}
-.dark .nv-req-inbox-head.is-mine,
-html.dark .nv-req-inbox-head.is-mine {
-  background: #1C2922;
-  color: #E7F0EA;
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background: var(--nv-card, #fff);
+  color: var(--nv-ink, #111418);
+  border-bottom: 1px solid var(--nv-line2, #EEF2F7);
 }
 .nv-req-inbox-head.is-mine h2 {
   color: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+}
+.nv-req-inbox-head.is-mine h2 span {
+  display: none;
+}
+.nv-req-inbox-head.is-mine .nv-req-inbox-meta {
+  color: var(--nv-muted);
 }
 .nv-req-inbox-meta {
   font-size: 12px;
@@ -2764,15 +2767,15 @@ label.nv-attach,
   gap: 6px;
   width: 100%;
   box-sizing: border-box;
-  height: 42px;
-  padding: 0 18px;
-  border-radius: 999px;
-  border: 1.5px solid color-mix(in srgb, var(--nv-ok-fill, #137A49) 38%, #C5D5CB);
+  height: 38px;
+  padding: 0 14px;
+  border-radius: var(--nv-radius-control, 8px);
+  border: 1px dashed var(--nv-line, #D5DCD8);
   background: var(--nv-card, #fff);
-  color: var(--nv-ink, #14213D);
+  color: var(--nv-ink2, #334155);
   font-family: inherit;
-  font-size: 13.5px;
-  font-weight: 650;
+  font-size: 12.5px;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: 0;
   text-align: center;
@@ -2805,8 +2808,220 @@ label.nv-attach:disabled,
 }
 .nv-req-decision .nv-attach,
 .nv-req-decision-attach {
-  height: 36px;
+  height: 34px;
+  font-size: 12px;
+}
+/* طلباتي — the one attachment control: dashed hairline row, paperclip, need + types in muted text. */
+.nv-dropzone-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.nv-dropzone,
+.nv-dropzone-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: var(--nv-card, #fff);
+  color: var(--nv-ink, #111418);
+  font-family: inherit;
+  text-align: start;
+}
+.nv-dropzone {
+  min-height: 52px;
+  padding: 9px 12px;
+  border: 1px dashed var(--nv-line, #D5DCD8);
+  cursor: pointer;
+  box-shadow: none;
+}
+.nv-dropzone:hover,
+.nv-dropzone:focus-visible,
+.nv-dropzone.is-over {
+  border-color: var(--nv-ok-fill, #3C7D50);
+  background: var(--nv-ok-soft, #EEF6F1);
+  outline: none;
+}
+.nv-dropzone:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.nv-dropzone-clip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--nv-soft, #F7F9F8);
+  color: var(--nv-ink2, #334155);
+}
+.nv-dropzone-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.nv-dropzone-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.nv-dropzone-label {
   font-size: 12.5px;
+  font-weight: 600;
+  color: var(--nv-ink, #111418);
+}
+.nv-dropzone-need,
+.nv-dropzone-hint {
+  font-size: 11px;
+  color: var(--nv-muted, #5B665F);
+  line-height: 1.6;
+}
+.nv-dropzone-file {
+  min-height: 44px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid var(--nv-line, #E2E8F0);
+}
+.nv-dropzone-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--nv-ink, #111418);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: plaintext;
+}
+a.nv-dropzone-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.nv-dropzone-size {
+  flex-shrink: 0;
+  font-family: var(--font-mono, 'IBM Plex Mono', monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--nv-muted, #5B665F);
+}
+.nv-dropzone-remove {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--nv-muted, #5B665F);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.nv-dropzone-remove:hover,
+.nv-dropzone-remove:focus-visible {
+  background: var(--nv-soft, #F7F9F8);
+  color: var(--nv-ink, #111418);
+  outline: none;
+}
+.nv-dropzone-error {
+  font-size: 11px;
+  color: var(--nv-bad-ink, #8A1C2B);
+  line-height: 1.6;
+}
+/* Second-level choice under a request type — subordinate to the dark parent tile. */
+.nv-req-sub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
+  gap: 6px;
+}
+.nv-req-sub-grid.is-wide {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+}
+.nv-req-sub-opt {
+  appearance: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--nv-line, #E2E8F0);
+  background: var(--nv-card, #fff);
+  color: var(--nv-ink, #111418);
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+  box-shadow: none;
+}
+.nv-req-sub-opt:hover,
+.nv-req-sub-opt:focus-visible {
+  border-color: color-mix(in srgb, var(--nv-ok-fill, #3C7D50) 45%, var(--nv-line, #E2E8F0));
+  outline: none;
+}
+.nv-req-sub-opt[aria-checked="true"] {
+  border-color: color-mix(in srgb, var(--nv-ok-fill, #3C7D50) 70%, transparent);
+  background: var(--nv-ok-soft, #EEF6F1);
+}
+.nv-req-sub-check {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--nv-line, #D5DCD8);
+  background: var(--nv-card, #fff);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+.nv-req-sub-opt[aria-checked="true"] .nv-req-sub-check {
+  border-color: var(--nv-ok-fill, #3C7D50);
+  background: var(--nv-ok-fill, #3C7D50);
+}
+.nv-req-sub-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.nv-req-sub-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--nv-ink, #111418);
+}
+.nv-req-sub-line {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--nv-muted, #5B665F);
+}
+.nv-req-sub-opt.is-muted .nv-req-sub-title {
+  color: var(--nv-ink2, #334155);
+}
+.nv-req-sub-note {
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--nv-muted, #5B665F);
 }
 .nv-req-decision-chosen {
   display: flex;
@@ -3332,7 +3547,6 @@ html.dark .nv7-section-head {
 
 /* إدارة — institutional decision register: light head, case meta, one decision bar. */
 .nv-req-inbox-head.is-manage { gap: 10px; }
-.nv-req-inbox-head.is-manage h2 span { background: #C8A45A; width: 14px; }
 .nv-req-inbox-head.is-manage .nv-req-inbox-meta { color: var(--nv-muted); }
 .nv-req-grid.is-manage-register .nv-req-cards { background: var(--nv-card); padding: 0; gap: 0; }
 .nv-req-grid.is-manage-register .nv-req-card {

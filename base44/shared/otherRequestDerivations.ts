@@ -1,4 +1,7 @@
-/** Study consent — mirrors src/lib/otherRequestDerivations.js. */
+/** Study consent, leave grants and request attachments — mirrors src/lib/otherRequestDerivations.js. */
+import { citeLeaveType } from "./laborRules.ts";
+// Read only inside functions, so the import cycle with leaveDerivations.ts stays harmless.
+import { GRANTABLE_LEAVE_KEYS } from "./leaveDerivations.ts";
 
 export const STUDY_CONSENT_TYPE = "study_consent";
 export const STUDY_CONSENT_LABEL_AR = "موافقة دراسية";
@@ -797,4 +800,100 @@ export function checkRejectNightFitnessGate(request: { type?: string } | null | 
     messageAr: "اكتب سبب رفض طلب اللياقة الليلية.",
     messageEn: "Write why the night-fitness request is refused.",
   });
+}
+
+export const LEAVE_TOPUP_TYPE = "leave_topup";
+const RESIGNATION_TYPE = "resignation";
+const NIGHT_AVOID_TYPE = "night_avoid";
+
+function parseGrantDays(value: unknown) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  const days = Math.round(n);
+  if (days < 1 || Math.abs(n - days) > 1e-9) return null;
+  return days;
+}
+
+/** The named reason a grant to annual leave is refused — the article comes from the rule catalog. */
+export function annualGrantBlockedReason(onDate?: string) {
+  const art = citeLeaveType("annual", onDate)?.article || "";
+  return {
+    ar: `رصيد السنوية ثابت بالنظام${art ? ` (المادة ${art})` : ""} — لا يُرفع.`,
+    en: `The annual entitlement is fixed by law${art ? ` (Art. ${art})` : ""} — it is not raised.`,
+  };
+}
+
+/** Mirror of checkLeaveGrantGate: whole days above zero, no upper cap; annual is refused (Art. 109). */
+export function checkLeaveGrantGate(input: { pool?: string; leaveType?: string; days?: unknown; onDate?: string } = {}) {
+  const pool = String(input.pool || input.leaveType || "").trim().toLowerCase();
+  if (pool === "annual") {
+    const why = annualGrantBlockedReason(input.onDate);
+    return { ok: false as const, error: "ANNUAL_FIXED", reason: why.ar, reasonEn: why.en };
+  }
+  if (!GRANTABLE_LEAVE_KEYS.includes(pool)) {
+    return { ok: false as const, error: "POOL_REQUIRED", reason: "اختر الرصيد الذي تُضاف إليه الأيام.", reasonEn: "Pick the balance the days are added to." };
+  }
+  const days = parseGrantDays(input.days);
+  if (days == null) {
+    return { ok: false as const, error: "DAYS_INVALID", reason: "حدد عدد الأيام — رقماً صحيحاً أكبر من صفر.", reasonEn: "Set the days — a whole number greater than zero." };
+  }
+  return { ok: true as const, pool, days };
+}
+
+/** A recorded grant on the file — the balance card derives «متبقٍّ X من Y» from these. */
+export function leaveGrantRecord({ pool = "grant", days, reason = "", by = "", at, requestId }: { pool?: string; days: number; reason?: string; by?: string; at?: string; requestId?: string }) {
+  return {
+    id: `grant_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+    type: pool,
+    days,
+    reason: String(reason || "").trim(),
+    by: by || "",
+    at: String(at || new Date().toISOString()).slice(0, 10),
+    requestId: requestId || undefined,
+  };
+}
+
+/** Art. 79 bis / Art. 75: a resignation needs no reason; every other request keeps its named reason. */
+export function requestReasonRequired(type?: string) {
+  return String(type || "") !== RESIGNATION_TYPE;
+}
+
+export const REQUEST_ATTACH_ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
+export const REQUEST_ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+export const REQUEST_ATTACH_MAX_FILES = 5;
+const REQUEST_ATTACH_TYPES = ["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"];
+export const REQUEST_ATTACH_REQUIRED_TYPES = [STUDY_CONSENT_TYPE, NIGHT_FITNESS_TYPE, NIGHT_AVOID_TYPE, "pregnancy_notice"];
+
+export function requestAttachmentRule(type?: string) {
+  const key = String(type || "");
+  return {
+    allowed: true,
+    required: REQUEST_ATTACH_REQUIRED_TYPES.includes(key),
+    accept: REQUEST_ATTACH_ACCEPT,
+    maxBytes: REQUEST_ATTACH_MAX_BYTES,
+    maxFiles: REQUEST_ATTACH_MAX_FILES,
+  };
+}
+
+export function checkRequestFilesGate(files: unknown) {
+  if (files == null) return { ok: true as const, files: [] as unknown[] };
+  if (!Array.isArray(files)) {
+    return { ok: false as const, error: "FILES_INVALID", reason: "المرفقات غير مقروءة.", reasonEn: "The attachments could not be read." };
+  }
+  const list = files.filter(Boolean);
+  if (list.length > REQUEST_ATTACH_MAX_FILES) {
+    return { ok: false as const, error: "FILES_TOO_MANY", reason: `لا تُرفق أكثر من ${REQUEST_ATTACH_MAX_FILES} ملفات.`, reasonEn: `Attach at most ${REQUEST_ATTACH_MAX_FILES} files.` };
+  }
+  for (const file of list as Array<{ name?: string; type?: string; size?: number }>) {
+    const name = String(file?.name || "").trim();
+    const mime = String(file?.type || "").toLowerCase();
+    if (!name) return { ok: false as const, error: "FILE_NAME_REQUIRED", reason: "مرفق بلا اسم.", reasonEn: "An attachment has no name." };
+    if (mime && !REQUEST_ATTACH_TYPES.includes(mime) && !/\.(pdf|jpe?g|png|webp)$/i.test(name)) {
+      return { ok: false as const, error: "FILE_TYPE", reason: "الصيغ المدعومة: PDF، JPG، PNG، WEBP.", reasonEn: "Supported formats: PDF, JPG, PNG, WEBP." };
+    }
+    if ((Number(file?.size) || 0) > REQUEST_ATTACH_MAX_BYTES) {
+      return { ok: false as const, error: "FILE_TOO_LARGE", reason: "يجب ألا يتجاوز حجم الملف 10 ميجابايت.", reasonEn: "The file must not exceed 10 MB." };
+    }
+  }
+  return { ok: true as const, files: list };
 }

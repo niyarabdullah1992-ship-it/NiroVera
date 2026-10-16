@@ -31,6 +31,10 @@ import {
   checkRefuseRequestReasonGate,
   checkRejectNightFitnessGate,
   checkRejectStudyConsentGate,
+  checkLeaveGrantGate,
+  checkRequestFilesGate,
+  LEAVE_TOPUP_TYPE,
+  leaveGrantRecord,
   requestAuditFileLog,
   requestRefuseFileLog,
 } from "../../shared/otherRequestDerivations.ts";
@@ -295,6 +299,9 @@ Deno.serve(async (req) => {
         advanceLeave: type === "annual" && body.advanceLeave === true ? true : undefined,
         joinAnnualToSick: type === "annual" && body.joinAnnualToSick === true ? true : undefined,
       } as any;
+      // One attachment rule for every request in طلباتي: PDF or image, at most 10 MB each.
+      const leaveFiles = checkRequestFilesGate(request.files);
+      if (!leaveFiles.ok) return Response.json({ ...leaveFiles }, { status: 422 });
       // Art. 78: the worker sets the job-search day; it is recorded, not asked for approval.
       if (type === "job_search") request.status = "approved";
       const extras = {
@@ -355,6 +362,16 @@ Deno.serve(async (req) => {
         status: String(incoming.status || "pending"),
         createdAt: incoming.createdAt || new Date().toISOString(),
       };
+      const attached = checkRequestFilesGate(request.files);
+      if (!attached.ok) return Response.json({ ...attached }, { status: 422 });
+      request.files = attached.files;
+      // An added balance goes to a grantable type, any number of whole days — never to annual (Art. 109).
+      if (request.type === LEAVE_TOPUP_TYPE) {
+        const grant = checkLeaveGrantGate({ pool: request.leaveType || "grant", days: request.days, onDate: riyadhToday() });
+        if (!grant.ok) return Response.json({ ...grant }, { status: 422 });
+        request.leaveType = grant.pool;
+        request.days = grant.days;
+      }
       // Art. 79 bis(4): a resignation carries no deferred date — it is dated the day it reaches us.
       if (request.type === RESIGNATION_TYPE) {
         const today = riyadhToday();
@@ -621,6 +638,17 @@ Deno.serve(async (req) => {
         }
         if (pending.type === LEAVE_CARRY_TYPE) {
           profilePatch.leaveCarryAgreed = [...(emp.profile?.leaveCarryAgreed || []), { requestId: pending.id, days: Number(pending.days) || 0, at: pending.reviewedAt }];
+        }
+        if (pending.type === LEAVE_TOPUP_TYPE && !pending.balanceApplied) {
+          const grant = checkLeaveGrantGate({ pool: pending.leaveType || "grant", days: pending.days, onDate: riyadhToday() });
+          if (!grant.ok) return Response.json({ ...grant }, { status: 422 });
+          profilePatch.discretionaryGrants = [
+            leaveGrantRecord({ pool: grant.pool, days: grant.days, reason: pending.reason, by: auth.name, at: pending.reviewedAt, requestId: pending.id }),
+            ...(emp.profile?.discretionaryGrants || []),
+          ];
+          pending.balanceApplied = true;
+          pending.appliedDays = grant.days;
+          pending.leaveType = grant.pool;
         }
         if (pending.type === DAMAGE_OBJECTION_TYPE) pending.objectionAccepted = true;
         if (pending.type === DOCUMENTS_RETURN_TYPE) pending.documentsReturnedAt = pending.reviewedAt;

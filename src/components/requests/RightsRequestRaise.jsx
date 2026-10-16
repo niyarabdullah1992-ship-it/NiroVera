@@ -25,7 +25,9 @@ import { todayRiyadh } from "@/lib/requestWorkspace";
 import { hashConsentFile, readConsentFile } from "@/lib/writtenConsent";
 import { BORDER, CARD, CONTROL_RADIUS, MUTED, NAVY } from "@/lib/platformStyles";
 import PlatformDateField from "@/components/shared/PlatformDateField";
-import AttachFileButton from "@/components/shared/AttachFileButton";
+import AttachDropzone from "@/components/shared/AttachDropzone";
+import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
+import { checkRequestFilesGate, requestAttachmentRule } from "@/lib/otherRequestDerivations";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { toast } from "@/components/ui/use-toast";
 
@@ -46,7 +48,6 @@ const RIGHTS_ELSEWHERE = ["contract_copy", NIGHT_AVOID_TYPE, GRIEVANCE_TYPE, DAM
 const field = { fontFamily: "inherit", fontSize: 12.5, padding: "10px 12px", border: `1px solid ${BORDER}`, background: CARD, color: "var(--nv-ink)", outline: "none", width: "100%", boxSizing: "border-box", borderRadius: CONTROL_RADIUS };
 const block = { padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 };
 const label = { fontSize: 11.5, color: MUTED };
-const pick = (on) => ({ fontFamily: "inherit", textAlign: "start", display: "flex", flexDirection: "column", gap: 3, padding: "10px 12px", borderRadius: 8, cursor: "pointer", background: on ? "#EAF3EE" : "var(--nv-card)", border: on ? "1.5px solid #3C7D50" : "1px solid var(--nv-line)" });
 
 export default function RightsRequestRaise({ employee, companyId, ar = true, refresh, onSent, initialKind = "" }) {
   const today = todayRiyadh();
@@ -62,6 +63,7 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
   const [ack, setAck] = useState(false);
   const [file, setFile] = useState(null);
   const [fileBusy, setFileBusy] = useState(false);
+  const [fileError, setFileError] = useState("");
   const [busy, setBusy] = useState(false);
   const [avoidKind, setAvoidKind] = useState("");
   const [avoidFrom, setAvoidFrom] = useState("");
@@ -81,15 +83,21 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
         : checkArt81Gate({ caseKey, reason, ack });
 
   const pickFile = async (picked) => {
-    if (!picked) return;
+    setFileError("");
+    if (!picked) { setFile(null); return; }
+    const shape = checkRequestFilesGate([{ name: picked.name, size: picked.size, type: picked.type }]);
+    if (!shape.ok) { setFileError(ar ? shape.reason : shape.reasonEn); return; }
     setFileBusy(true);
     try {
       const [hash, url] = await Promise.all([hashConsentFile(picked), readConsentFile(picked)]);
       setFile({ name: picked.name, size: picked.size, type: picked.type, url, hash });
+    } catch {
+      setFileError(ar ? "تعذّر قراءة الملف." : "Could not read the file.");
     } finally {
       setFileBusy(false);
     }
   };
+  const attachRule = requestAttachmentRule(kind);
 
   const send = () => {
     if (!gate.ok || busy || !employee?.id) return;
@@ -131,14 +139,11 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
       <div style={block}>
         {kind === NIGHT_AVOID_TYPE ? null : (<>
         <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? "نوع الطلب" : "Request"}</span>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,180px),1fr))", gap: 6 }}>
+        <SubTypeGrid label={ar ? "نوع الطلب" : "Request"}>
           {kinds.map((k) => (
-            <button key={k.key} type="button" data-rights-kind={k.key} onClick={() => setKind(k.key)} style={pick(kind === k.key)}>
-              <span style={{ fontWeight: kind === k.key ? 700 : 500, color: NAVY, fontSize: 12.5 }}>{ar ? k.ar : k.en}</span>
-              <span style={{ fontSize: 10.5, color: MUTED }}>{ar ? k.hintAr : k.hintEn}</span>
-            </button>
+            <SubTypeOption key={k.key} dataKey={k.key} on={kind === k.key} title={ar ? k.ar : k.en} sub={ar ? k.hintAr : k.hintEn} onClick={() => { setKind(k.key); setFileError(""); }} />
           ))}
-        </div>
+        </SubTypeGrid>
         </>)}
         {meta.article === "18632"
           ? <span style={{ fontSize: 11, fontWeight: 700, color: "#0B3D27" }}>{ar ? "القرار الوزاري 18632 (1441/1/30هـ) — ثالثاً، الخدمات الصحية (ج)" : "Ministerial decision 18632 — third, health services (c)"}</span>
@@ -217,12 +222,19 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
           <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} style={{ ...field, resize: "vertical" }} />
         </label>
 
-        {kind !== LEAVE_CARRY_TYPE && kind !== DOCUMENTS_RETURN_TYPE ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <AttachFileButton ar={ar} accept="application/pdf,image/jpeg,image/png,image/webp" busy={fileBusy} label={file ? (ar ? "تغيير المرفق" : "Change attachment") : kind === NIGHT_AVOID_TYPE ? (ar ? "أرفق الشهادة الطبية — مطلوبة" : "Attach the certificate — required") : (ar ? "أرفق ما يثبت — اختياري" : "Attach proof — optional")} onPick={pickFile} />
-            {file ? <span style={{ fontSize: 11.5 }} dir="ltr">{file.name}</span> : null}
-          </div>
-        ) : null}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={label}>{kind === NIGHT_AVOID_TYPE ? (ar ? "الشهادة الطبية" : "Medical certificate") : (ar ? "ما يثبت طلبك — بلا توقيع رقمي" : "Proof for your request — no digital signature")}</span>
+          <AttachDropzone
+            ar={ar}
+            accept={attachRule.accept}
+            required={attachRule.required}
+            busy={fileBusy}
+            file={file}
+            error={fileError}
+            onPick={pickFile}
+            onClear={() => { setFile(null); setFileError(""); }}
+          />
+        </div>
 
         {kind === ART81_EXIT_TYPE ? (
           <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12, lineHeight: 1.7, color: NAVY, cursor: "pointer" }}>

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { getLeaveTotal } from "../src/lib/leaveTypes.js";
 import {
-  LEAVE_TOPUP_MAX_DAYS,
   LEAVE_TOPUP_TYPE,
   OTHER_REQUEST_TYPES,
   STUDY_CONSENT_IRREVOCABLE_AR,
@@ -21,16 +20,13 @@ import {
   checkSubmitStudyConsentGate,
   hasIrrevocableStudyConsent,
   studyConsentState,
-  applyAnnualLeaveTopup,
   archivedOtherCount,
   checkAdminLeaveCreditGate,
   checkLeaveTopupDaysGate,
   checkApproveOtherRequestGate,
   checkSubmitOtherRequestGate,
-  DISCRETIONARY_GRANT_CAP,
   flattenOtherRequests,
   hasPendingLeaveTopup,
-  incrementAnnualLeaveTotal,
   isManagerDecideOtherRequest,
   LEAVE_CREDIT_POOLS,
   otherRequestTypeLabel,
@@ -148,34 +144,33 @@ assert.equal(otherRequestTypeLabel(LEAVE_TOPUP_TYPE, true), "رفع رصيد إ�
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي" }).error, "DAYS_INVALID");
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 0 }).error, "DAYS_INVALID");
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 1.5 }).error, "DAYS_INVALID");
-assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: LEAVE_TOPUP_MAX_DAYS + 1 }).error, "DAYS_INVALID");
+// No upper cap on an added balance — only a whole number above zero.
+assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 31 }).ok, true);
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "لا", days: 3 }).error, "REASON_REQUIRED");
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 3 }).ok, true);
+// Annual is never raised (Art. 109): the request names the reason.
+assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 3, leaveType: "annual" }).error, "ANNUAL_FIXED");
 assert.equal(checkLeaveTopupDaysGate({ days: 3 }).days, 3);
-assert.equal(DISCRETIONARY_GRANT_CAP, 5);
-assert.ok(LEAVE_CREDIT_POOLS.some((row) => row.key === "annual" && row.ar === "رصيد سنوي"));
-assert.ok(LEAVE_CREDIT_POOLS.some((row) => row.key === "grant" && row.ar === "أيام تقديرية"));
-assert.equal(checkAdminLeaveCreditGate({ pool: "annual", days: 3, reason: "إضافة من الإدارة" }).ok, true);
+assert.ok(LEAVE_CREDIT_POOLS.some((row) => row.key === "annual" && row.fixed === true));
+assert.ok(LEAVE_CREDIT_POOLS.some((row) => row.key === "grant" && row.ar === "رصيد ممنوح"));
+assert.equal(checkAdminLeaveCreditGate({ pool: "annual", days: 3, reason: "إضافة من الإدارة" }).error, "ANNUAL_FIXED");
 assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "إضافة من الإدارة", profile: {} }).ok, true);
 assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "إضافة من الإدارة", canCredit: false }).error, "ROLE_REQUIRED");
 
 const hired = { hireDate: "2024-01-15" };
 assert.equal(getLeaveTotal(hired, "annual", "2026-09-13"), 21);
-const raised = applyAnnualLeaveTopup(hired, 3, "2026-09-13");
-assert.equal(raised.ok, true);
-assert.equal(raised.nextTotal, 24);
-assert.equal(raised.profile.leaveTotals.annual, 24);
-assert.equal(getLeaveTotal(raised.profile, "annual", "2026-09-13"), 24);
-const stacked = applyAnnualLeaveTopup({ hireDate: "2024-01-15", leaveTotals: { annual: 25 } }, 3, "2026-09-13");
-assert.equal(stacked.nextTotal, 28);
 
+// An approved top-up becomes a grant on its balance — the annual total stays the statutory one.
 const emp = { profile: { hireDate: "2024-01-15" } };
-const topupReq = { type: LEAVE_TOPUP_TYPE, days: 3, status: "pending" };
-assert.equal(stampLeaveTopupOnEmployee(emp, topupReq).nextTotal, 24);
-assert.equal(emp.profile.leaveTotals.annual, 24);
+const topupReq = { id: "t1", type: LEAVE_TOPUP_TYPE, days: 3, status: "pending", reason: "منحة" };
+assert.equal(stampLeaveTopupOnEmployee(emp, topupReq).days, 3);
+assert.equal(emp.profile.leaveTotals?.annual, undefined);
+assert.equal(emp.profile.discretionaryGrants[0].type, "grant");
+assert.equal(emp.profile.discretionaryGrants[0].days, 3);
 assert.equal(topupReq.balanceApplied, true);
 assert.equal(stampLeaveTopupOnEmployee(emp, topupReq).skipped, true);
-assert.equal(emp.profile.leaveTotals.annual, 24);
+assert.equal(emp.profile.discretionaryGrants.length, 1);
+assert.equal(stampLeaveTopupOnEmployee({ profile: {} }, { type: LEAVE_TOPUP_TYPE, days: 3, leaveType: "annual" }).error, "ANNUAL_FIXED");
 assert.equal(hasPendingLeaveTopup([{ type: LEAVE_TOPUP_TYPE, status: "pending" }]), true);
 assert.equal(hasPendingLeaveTopup([{ type: LEAVE_TOPUP_TYPE, status: "approved" }]), false);
 
@@ -277,7 +272,6 @@ assert.equal(stampOvertimeCreditOnEmployee(creditEmp, creditReq).hours, 12, "8 o
 assert.equal(creditReq.compGranted, true);
 assert.equal(stampOvertimeCreditOnEmployee(creditEmp, creditReq).skipped, true);
 assert.equal(creditEmp.profile.leaveTotals?.annual, undefined, "annual leave is not touched");
-assert.equal(incrementAnnualLeaveTotal({ hireDate: "2024-01-15" }, 1.5, "2026-09-13").nextTotal, 22.5);
 
 const waiting = [{ otherRequests: [normalAssign] }];
 assert.equal(pendingOtherCount(waiting), 1);

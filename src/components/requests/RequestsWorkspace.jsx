@@ -5,20 +5,21 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { setStationScope } from "@/lib/stationScopeStore";
 import { postponeResignation, recordIddahBirth, recordMaternityBirth, recordLeaveBreach, setHajjAnnualQuota, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
 import { approvedLeaveWithdrawWindow, chargeableLeaveDays, checkApproveLeaveGate, checkExamSittingSettleGate, checkLeaveGenderGate, checkRejectLeaveGate, checkSubmitLeaveGate, examNoticeFilesOf, examSatFileOf, examSatState, hasLeaveAttachment, isRealSupportingFile, leaveNeedsAttachment, leaveNeedsArticle118Ack, leaveSpanIncludesOfficialHolidays, hajjAnnualQuotaOf, sickLeaveEndingBefore } from "@/lib/leaveDerivations";
-import { usedLeaveDays } from "@/lib/leaveTypes";
+import { grantedLeaveBalances, usedLeaveDays } from "@/lib/leaveTypes";
 import { weeklyOffDaysInRange, weeklyOffLabels } from "@/lib/leaveEidOverlap.js";
 import {
   checkApproveOtherRequestGate,
   checkApproveStudyConsentGate,
   checkExamStudyConsentGate,
-  checkLeaveTopupDaysGate,
+  checkLeaveGrantGate,
+  annualGrantBlockedReason,
+  requestAttachmentRule,
   checkRefuseRequestReasonGate,
   checkRejectNightFitnessGate,
   checkRejectStudyConsentGate,
   checkRevokeStudyConsentGate,
   checkSubmitOtherRequestGate,
   hasIrrevocableStudyConsent,
-  LEAVE_TOPUP_MAX_DAYS,
   LEAVE_TOPUP_TYPE,
   NIGHT_FITNESS_FILE_REQUIRED_AR,
   NIGHT_FITNESS_FILE_REQUIRED_EN,
@@ -77,7 +78,6 @@ import {
   annualRemainingWithGrants,
   balanceRows,
   countAr,
-  DISCRETIONARY_GRANT_CAP,
   DOC_KINDS,
   formatArDate,
   grantDaysOf,
@@ -121,15 +121,15 @@ import {
 } from "@/lib/requestWorkspace";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { annualAdvanceCap, annualCarryAlerts, iddahSpanFromEvent, maternityFollowOnSpan, therapyLeaveEligibility, unpaidSuspensionPlan } from "@/lib/leaveTypes";
-import { isRamadanHoursSubject, religionOnFile } from "@/lib/laborRules";
+import { citeLeaveType, isRamadanHoursSubject, religionOnFile } from "@/lib/laborRules";
 import { profileGender } from "@/lib/employeeProfileFields";
 import { DUTY_REQUEST_META, DUTY_REQUEST_TYPES, checkDutyRequestFields, nursingRightUntil, dutyRequestDetail, dutyRequestEffect, dutyRequestRosterFacts, isDutyRequestType } from "@/lib/dutyRequests";
 import { performsNightWork, pregnancyNightBan } from "@/lib/decision18632";
-import { checkResignationFields, checkPostponeResignationGate, EXIT_ROUTE_NOTICE75, resignationDetail, resignationFacts, resignationRouteFor, resignationState, RESIGNATION_TYPE } from "@/lib/exitRequests";
+import { checkResignationFields, checkPostponeResignationGate, EXIT_ROUTE_NOTICE75, RESIGNATION_REASON_HINT_AR, RESIGNATION_REASON_HINT_EN, resignationDetail, resignationFacts, resignationRouteFor, resignationState, RESIGNATION_TYPE } from "@/lib/exitRequests";
 import { sunExposureMark } from "@/lib/shiftWeek";
 import { fileDutyHref, rosterPersonHref } from "@/components/schedules/dutyLinks";
 import { leaveApprovalCardNote } from "@/lib/leaveEntitlementCycle";
-import { BORDER, CARD, CONTROL_RADIUS, MUTED, NAVY, PAPER_SHADOW, PILL_RADIUS, RADIUS, SURFACE } from "@/lib/platformStyles";
+import { BORDER, CARD, CONTROL_RADIUS, MUTED, NAVY, PILL_RADIUS, SURFACE } from "@/lib/platformStyles";
 import { REQUESTS_LAW_FOOT_AR, REQUESTS_LAW_FOOT_EN, REQUESTS_LAW_LEDE_AR, REQUESTS_LAW_LEDE_EN } from "@/lib/platformJudgment";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import RightHint from "@/components/shared/RightHint";
@@ -161,6 +161,9 @@ import RequestEmployeePicker from "@/components/requests/RequestEmployeePicker";
 import RequestSelfSignBlock from "@/components/requests/RequestSelfSignBlock";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import AttachFileButton from "@/components/shared/AttachFileButton";
+import AttachDropzone from "@/components/shared/AttachDropzone";
+import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
+import { SectionHead, slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import { employeeWageSplit } from "@/lib/employeeFileView";
 import { gosiHazardCoverage, gosiInjuryWageMode, injuryStatus } from "@/lib/workInjury";
 
@@ -172,7 +175,7 @@ const BAD = "var(--nv-bad-ink)";
 /** إدارة tiles — what management may file for a worker, each with its basis. */
 const MANAGE_KIND_HINTS = {
   leave: { ar: "تسجيل إجازة نيابة عن الموظف", en: "Record leave for a worker", hintAr: "اضطرارية أو إصابة عمل — بمستند مؤيد", hintEn: "Emergency or work injury — with the supporting paper" },
-  leave_credit: { ar: "زيادة رصيد إجازة", en: "Add leave balance", hintAr: "رصيد سنوي (م 109) أو أيام تقديرية", hintEn: "Annual (Art. 109) or discretionary days" },
+  leave_credit: { ar: "زيادة رصيد إجازة", en: "Add leave balance", hintAr: "رصيد ممنوح أو اضطرارية — بلا حد أعلى؛ السنوية ثابتة", hintEn: "Granted or emergency days — no cap; annual is fixed" },
   ot_assign: { ar: "تكليف بعمل إضافي", en: "Overtime assignment", hintAr: "م 107 · والإجباري م 106", hintEn: "Art. 107 · mandatory Art. 106" },
   permission: { ar: "تسجيل استئذان", en: "Record a permission", hintAr: "يُقيَّد معتمداً — لا يُحتسب تأخيراً", hintEn: "Recorded approved — not lateness" },
   nursing_hour: { ar: "تسجيل ساعة الرضاعة", en: "Record a nursing hour", hintAr: "م 154 · للعاملة المرضع", hintEn: "Art. 154 · nursing worker" },
@@ -265,19 +268,12 @@ function DutyRequestDecisionPanel({ row, data, ar }) {
 }
 
 /** إدارة: raising for a worker is the exception — folded under the decision list. ملفي: the form stays open. */
-function RaiseFold({ manage, ar, children }) {
-  if (!manage) return <div className="nv-req-raise" style={{ display: "flex", flexDirection: "column", gap: 16 }}>{children}</div>;
+/** Raise column. Employee and management share one frame — the sheet's SectionHead names the lane. */
+function RaiseFold({ manage, children }) {
   return (
-    <section className="nv-req-raise nv-req-manage-raise" data-manage-raise="1" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 2px" }}>
-        <span aria-hidden style={{ width: 14, height: 2, background: "#C8A45A", borderRadius: 2 }} />
-        <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{ar ? "طلبات من الإدارة" : "Requests from management"}</strong>
-          <span style={{ fontSize: 11.5, color: MUTED }}>{ar ? "ما ترفعه الإدارة باسم الموظف — يُقيَّد باسمك في ملفه وسجل التدقيق." : "What management files for a worker — recorded in your name on the file and the audit trail."}</span>
-        </span>
-      </div>
+    <div className={manage ? "nv-req-raise nv-req-manage-raise" : "nv-req-raise"} data-manage-raise={manage ? "1" : undefined} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {children}
-    </section>
+    </div>
   );
 }
 
@@ -398,39 +394,6 @@ function headChip(on, mine) {
   };
 }
 
-function pickBox(on) {
-  return {
-    fontFamily: "inherit",
-    textAlign: "start",
-    fontSize: 12,
-    padding: "9px 11px",
-    border: `1px solid ${on ? NAVY_FILL : "var(--nv-page, var(--nv-line3))"}`,
-    background: on ? "var(--nv-hover)" : CARD,
-    cursor: "pointer",
-    display: "flex",
-    flexDirection: "column",
-    gap: 3,
-    borderRadius: CONTROL_RADIUS,
-  };
-}
-
-function leaveTypeChip(on) {
-  return {
-    fontFamily: "inherit",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "stretch",
-    gap: 3,
-    padding: "9px 11px",
-    borderRadius: 9,
-    cursor: "pointer",
-    textAlign: "start",
-    background: on ? "#E6F2EA" : CARD,
-    border: on ? "1.5px solid #3C7D50" : "1px solid #E4E9E6",
-    color: on ? "#0B3D27" : "var(--nv-ink, #111418)",
-  };
-}
-
 function leadingLetter(label) {
   return Array.from(String(label || "").trim())[0] || "";
 }
@@ -470,13 +433,8 @@ function fieldStyle() {
   };
 }
 
-const slab = {
-  background: CARD,
-  border: `1px solid ${BORDER}`,
-  borderRadius: RADIUS,
-  boxShadow: PAPER_SHADOW,
-  overflow: "hidden",
-};
+/** The section frame for every طلباتي panel — the same slab as جدول الدوام (scheduleChrome). */
+const slab = { ...chromeSlab, overflow: "hidden" };
 
 function stateSkin(status) {
   if (status === "not_needed") return { color: MUTED, bg: "var(--nv-mute-soft, var(--nv-soft))", border: "var(--nv-line3, var(--nv-soft))", edge: "var(--nv-mute-fill, #C7CCD6)" };
@@ -587,7 +545,8 @@ export default function RequestsWorkspace({
   const [employerAck, setEmployerAck] = useState(false);
   const [deferConsent, setDeferConsent] = useState(false);
   const [topupDays, setTopupDays] = useState(1);
-  const [creditPool, setCreditPool] = useState("annual");
+  const [topupPool, setTopupPool] = useState("grant");
+  const [creditPool, setCreditPool] = useState("grant");
   const [creditDays, setCreditDays] = useState(1);
   const [otHours, setOtHours] = useState("2");
   const [otTo, setOtTo] = useState("");
@@ -744,8 +703,10 @@ export default function RequestsWorkspace({
     employee: subject,
     otherRequests: subject?.otherRequests,
   });
-  const topupDaysGate = checkLeaveTopupDaysGate({ days: topupDays });
+  // «رفع رصيد إجازة»: any whole number of days on a grantable balance — annual is fixed (Art. 109).
+  const topupDaysGate = checkLeaveGrantGate({ pool: topupPool, days: topupDays });
   const topupDaysOk = topupDaysGate.ok;
+  const topupPoolRow = LEAVE_CREDIT_POOLS.find((row) => row.key === topupPool);
   const leaveKinds = leaveKindsFor(subject?.profile, ar, subject?.leaveRequests, subject);
   useEffect(() => {
     if (kind !== "leave") return;
@@ -871,21 +832,21 @@ export default function RequestsWorkspace({
         <strong style={{ fontSize: 13 }}>{ar ? "نوع طلب الدوام" : "Duty request type"}</strong>
         <span style={{ fontSize: 11, color: MUTED }}>{ar ? "كل طلب يظهر أثره في الحضور والدوام" : "Each one shows up in Time & attendance"}</span>
       </div>
-      <div className="nv-req-kind-grid">
+      <SubTypeGrid label={ar ? "نوع طلب الدوام" : "Duty request type"}>
         {dutyKindsHere.map((row) => {
           const meta = DUTY_REQUEST_META[row.id] || {};
           return (
-            <KindFrameCard
+            <SubTypeOption
               key={row.id}
+              dataKey={row.id}
               on={kind === row.id}
-              letter={leadingLetter(ar ? meta.ar : meta.en)}
               title={ar ? meta.ar : meta.en}
-              hint={ar ? meta.hintAr : meta.hintEn}
+              sub={ar ? meta.hintAr : meta.hintEn}
               onClick={() => setKind(row.id)}
             />
           );
         })}
-      </div>
+      </SubTypeGrid>
     </div>
   ) : null;
   const pickLeaveType = (row) => {
@@ -1004,7 +965,7 @@ export default function RequestsWorkspace({
     : isTopup
     ? [
       { ok: topupDaysOk, text: topupDaysOk
-        ? (ar ? `يُطلب إضافة ${topupDays} يوماً إلى الرصيد السنوي (21 أو 30 بحسب سنوات الخدمة).` : `${topupDays} extra days will be added to the annual balance (21 or 30 by years of service).`)
+        ? (ar ? `يُطلب إضافة ${topupDays} ${topupDays >= 3 && topupDays <= 10 ? "أيام" : "يوماً"} إلى «${topupPoolRow?.ar || ""}» — بعد الاعتماد تظهر في «رصيد إجازاتي».` : `${topupDays} days requested on «${topupPoolRow?.en || ""}» — once approved they show in My leave balance.`)
         : (ar ? topupDaysGate.reason : topupDaysGate.reasonEn) },
       { ok: note.trim().length >= 3, text: note.trim().length >= 3
         ? (ar ? "السبب مكتوب — يظهر في طابور القرار." : "The reason is written — it appears in the decision queue.")
@@ -1018,7 +979,9 @@ export default function RequestsWorkspace({
       { ok: !docMeta.custom || !!otherName.trim(), text: docMeta.custom ? (otherName.trim() ? (ar ? `الوثيقة المطلوبة: ${otherName.trim()}` : "اكتب اسم الوثيقة.") : (ar ? "اكتب اسم الوثيقة: «أخرى» بلا اسم لا يمكن إصدارها." : "Name the document.")) : (ar ? "النوع محدّد مسبقاً — لا يحتاج اسماً." : "The type is already named.") },
       { ok: !!purpose.trim(), text: purpose.trim() ? (ar ? `الغرض: ${purpose.trim()}` : `Purpose: ${purpose.trim()}`) : (ar ? "اكتب الغرض: الوثيقة تُصاغ عليه." : "Write the purpose — the letter is drafted from it.") },
       { ok: !!party.trim(), text: party.trim() ? (ar ? `موجّهة إلى: ${party.trim()}` : `Addressed to: ${party.trim()}`) : (ar ? "اكتب الجهة الموجّه إليها." : "Name the addressee.") },
-      { ok: true, text: ar ? "لا ترفع شيئاً — الشركة تُصدر الوثيقة وتُسلّمها لك على هذه البطاقة." : "Nothing to upload — the company issues the letter and delivers it on this card." },
+      { ok: true, text: supportingFile
+        ? (ar ? `مرفق اختياري: ${supportingFile.name} — الشركة تُصدر الوثيقة وتُسلّمها لك على هذه البطاقة.` : `Optional file: ${supportingFile.name} — the company issues the letter on this card.`)
+        : (ar ? "المرفق اختياري — الشركة تُصدر الوثيقة وتُسلّمها لك على هذه البطاقة." : "A file is optional — the company issues the letter and delivers it on this card.") },
       { ok: true, text: docMeta.salary ? (showSalary ? (ar ? "الراتب يظهر في الوثيقة." : "Salary appears on the letter.") : (ar ? "الراتب مخفي — المسمى ومدة الخدمة فقط." : "Salary hidden — title and service only.")) : (ar ? "هذا النوع لا يذكر الراتب أصلاً." : "This type never states salary.") },
       { ok: true, text: ar ? `بعد الرفع: القرار في طلباتي من ${docMeta.approverAr} — بلا توقيع رقمي.` : `After raise: the decision stays in My Requests with ${docMeta.approverEn} — no digital signature.` },
     ]
@@ -1027,7 +990,9 @@ export default function RequestsWorkspace({
         ? (counted > 0
           ? `${ar ? countAr(counted, "يوم واحد محسوب", "يومان محسوبان", "أيام محسوبة", "يوماً محسوباً") : `${counted} counted days`} — ${formatArDate(from, lang)} → ${formatArDate(to, lang)}${leave === "iddah" ? (ar ? " · بأجر كامل ولا تُخصم من السنوية" : " · full pay, not taken from annual") : leaveSpanIncludesOfficialHolidays(leave) && holidayHit.length ? (ar ? " · العيد داخل المدة (المادة 114)" : " · Eid is inside the span (Art. 114)") : ""}`
           : (ar ? "حدّد تاريخين صحيحين." : "Set a valid date range."))
-        : (from ? (ar ? `اليوم: ${formatArDate(from, lang)}` : `Day: ${formatArDate(from, lang)}`) : (ar ? "حدد التاريخ." : "Set the date.")) },
+        : isResignation
+          ? (ar ? `اليوم: ${formatArDate(today, lang)}` : `Day: ${formatArDate(today, lang)}`)
+          : (from ? (ar ? `اليوم: ${formatArDate(from, lang)}` : `Day: ${formatArDate(from, lang)}`) : (ar ? "حدد التاريخ." : "Set the date.")) },
       { ok: !needsDoc || hasDoc, text: !needsDoc
         ? (hasDoc
           ? (ar ? `مرفق اختياري: ${supportingFile.name} — بلا توقيع.` : `Optional file: ${supportingFile.name} — no signature.`)
@@ -1050,7 +1015,10 @@ export default function RequestsWorkspace({
       (isLeave && leave === "annual")
         // Annual leave is a right (Art. 109) — the employer sets its timing (Art. 110); no reason is owed.
         ? { ok: true, text: note.trim() ? (ar ? "ملاحظتك تظهر لمديرك." : "Your note shows to your manager.") : (ar ? "الإجازة السنوية حق لا يحتاج سبباً — مديرك يقرّر توقيتها فقط (المادة 110)." : "Annual leave is a right and needs no reason — your manager sets only its timing (Art. 110).") }
-        : { ok: !!note.trim(), text: note.trim() ? (ar ? "السبب مكتوب — يظهر في طابور القرار." : "The reason is written — it appears in the decision queue.") : (ar ? "اكتب السبب: كل طلب يحمل سببه في سجل التدقيق." : "Write the reason — every request carries it in the audit trail.") },
+        : isResignation
+          // Art. 79 bis / 75: no reason is owed for a resignation — the worker may still write one.
+          ? { ok: true, text: note.trim() ? (ar ? "سببك مكتوب — يصل مع الاستقالة." : "Your reason is written — it goes with the resignation.") : (ar ? `السبب ${RESIGNATION_REASON_HINT_AR}.` : `Reason: ${RESIGNATION_REASON_HINT_EN}.`) }
+          : { ok: !!note.trim(), text: note.trim() ? (ar ? "السبب مكتوب — يظهر في طابور القرار." : "The reason is written — it appears in the decision queue.") : (ar ? "اكتب السبب: كل طلب يحمل سببه في سجل التدقيق." : "Write the reason — every request carries it in the audit trail.") },
       ...(isPunchKind ? (() => {
         const punch = checkPunchRecordGate({
           type: otherType,
@@ -1264,6 +1232,82 @@ export default function RequestsWorkspace({
     });
   };
 
+  // The one attachment control for every request raised here (see AttachDropzone).
+  const attachZone = ({ required = false, hint = "", label } = {}) => (
+    <AttachDropzone
+      ref={fileInputRef}
+      ar={ar}
+      accept={SUPPORTING_FILE_ACCEPT}
+      required={required}
+      busy={fileBusy}
+      file={supportingFile}
+      error={fileError}
+      hint={hint}
+      label={label}
+      onPick={onSupportingFile}
+      onClear={clearSupportingFile}
+    />
+  );
+
+  const grantRows = grantedLeaveBalances(subject?.profile, subject?.leaveRequests, undefined, company, subject);
+  // Leave types sit under the «إجازة» tile as a calm sub-picker. «رصيد ممنوح» shows only while granted days
+  // remain; «رفع رصيد إجازة» asks the company for more. الإدارة records only the types a worker cannot file.
+  const grantLeft = grantRows.find((g) => g.key === "grant");
+  const leaveSubPicker = (
+    <SubTypeGrid label={ar ? "نوع الإجازة" : "Leave type"}>
+      {leaveKinds.filter((row) => (row.key !== "grant" || (selfOnly && grantLeft?.remaining > 0)) && (!manageLeave || MANAGE_LEAVE_KEYS.includes(row.key))).map((row) => (
+        <SubTypeOption
+          key={row.key}
+          dataKey={row.key}
+          on={isLeave && leave === row.key}
+          title={row.key === "grant" ? (ar ? "رصيد ممنوح" : "Granted days") : (ar ? row.ar : row.en)}
+          sub={row.key === "grant" && grantLeft ? (ar ? `متبقٍّ ${grantLeft.remaining} من ${grantLeft.total} يوماً` : `${grantLeft.remaining} of ${grantLeft.total} days left`) : row.cap}
+          badge={<StatutoryItem article={row.article} label={!row.article ? row.cite : undefined} ar={ar} entitlement={!!row.article} compact />}
+          onClick={() => pickLeaveType(row)}
+        />
+      ))}
+      {manageLeave || mode === "manage" ? null : (
+        <SubTypeOption
+          key="leave_topup"
+          dataKey="leave_topup"
+          on={isTopup}
+          title={ar ? "رفع رصيد إجازة" : "Leave balance top-up"}
+          sub={ar ? "أيام تمنحها المنشأة — بلا حد أعلى، ولا تُضاف إلى السنوية" : "Days the company grants — no upper cap, never on annual"}
+          badge={<StatutoryItem label={ar ? "قرار المنشأة" : "Company"} ar={ar} compact />}
+          onClick={() => { setKind("leave_topup"); setEmployerAck(false); }}
+        />
+      )}
+    </SubTypeGrid>
+  );
+
+  // Which balance an added grant lands on. Annual is shown with its fixed-by-law reason and never takes days.
+  const poolPicker = (value, onPick) => {
+    const annualFixed = annualGrantBlockedReason();
+    return (
+      <SubTypeGrid label={ar ? "الرصيد" : "Balance"}>
+        {LEAVE_CREDIT_POOLS.map((row) => {
+          const live = grantRows.find((g) => g.key === row.key);
+          const sub = row.fixed
+            ? (ar ? annualFixed.ar : annualFixed.en)
+            : [ar ? row.hintAr : row.hintEn, live ? (ar ? `متبقٍّ الآن ${live.remaining} من ${live.total}` : `${live.remaining} of ${live.total} left now`) : ""].filter(Boolean).join(" · ");
+          const cite = row.fixed ? (citeLeaveType("annual")?.article || "") : "";
+          return (
+            <SubTypeOption
+              key={row.key}
+              dataKey={row.key}
+              on={value === row.key}
+              muted={!!row.fixed}
+              title={ar ? row.ar : row.en}
+              sub={sub}
+              badge={cite ? <StatutoryItem article={cite} ar={ar} entitlement compact /> : <StatutoryItem label={ar ? "قرار المنشأة" : "Company"} ar={ar} compact />}
+              onClick={() => onPick(row.key)}
+            />
+          );
+        })}
+      </SubTypeGrid>
+    );
+  };
+
   const onSignedPaper = async (picked) => {
     if (!picked) {
       setSignedPaper(null);
@@ -1318,8 +1362,8 @@ export default function RequestsWorkspace({
       source: "product",
       name: ar ? "الأيام التقديرية" : "Discretionary days",
       impl: ar
-        ? `أيام بتقدير الإدارة فوق المستحق. سقف ${DISCRETIONARY_GRANT_CAP} في السنة، لا تُرحَّل ولا تُصرف نقداً؛ المادة 111 تُلزم بالمستحق النظامي فقط.`
-        : `Days granted above the statutory floor. Cap ${DISCRETIONARY_GRANT_CAP} a year; they do not carry and are not paid in cash. Article 111 binds the statutory entitlement only.`,
+        ? "أيام تمنحها المنشأة فوق المستحق، بلا حد أعلى، ولا تُضاف إلى السنوية الثابتة بالنظام؛ لا تُرحَّل ولا تُصرف نقداً — المادة 111 تُلزم بالمستحق النظامي فقط."
+        : "Days the company grants above the statutory floor, no upper cap, never added to the fixed annual entitlement; they do not carry and are not paid in cash. Article 111 binds the statutory entitlement only.",
       live: balanceRuleLive,
     }];
   const balances = balanceRows(subject?.profile, subject?.leaveRequests, lang);
@@ -1391,7 +1435,8 @@ export default function RequestsWorkspace({
       setTo("");
     }
     setTopupDays(1);
-    setCreditPool("annual");
+    setTopupPool("grant");
+    setCreditPool("grant");
     setCreditDays(1);
     setOtHours("2");
     setOtTo("");
@@ -1533,8 +1578,10 @@ export default function RequestsWorkspace({
           employee: subject,
           attendance: isPunchKind ? attendanceOnDate(data?.personalAttendance, subject?.id, from) : undefined,
           days: isTopup ? topupDays : undefined,
-          file: (isSignableKind || isStudyConsent || isNightFitness) ? supportingFile : undefined,
-          files: (isTopup || isSignableKind || isStudyConsent || isNightFitness) ? files : undefined,
+          leaveType: isTopup ? topupPool : undefined,
+          file: (isCustody || isStudyConsent || isNightFitness) ? supportingFile : undefined,
+          // Every request carries its attachment through the same path (custody adds the signed paper).
+          files: (isCustody || isStudyConsent || isNightFitness) ? files : (supportingFile ? [supportingFile] : undefined),
           paper: isSignableKind ? signedPaper : undefined,
           program: isStudyConsent ? studyProgram : undefined,
           institution: isStudyConsent ? studyInstitution : undefined,
@@ -1589,7 +1636,8 @@ export default function RequestsWorkspace({
           lastDay: isResignation ? (resignationRouteFor(subject?.profile) === EXIT_ROUTE_NOTICE75 ? resignationFacts({ date: today, route: EXIT_ROUTE_NOTICE75 }).noticeEndsOn : resignationFacts({ date: today }).deemedAcceptedOn) : undefined,
           shiftTypeId: kind === "shift_change" ? (shiftPick || null) : undefined,
           days: isTopup ? topupDays : undefined,
-          files: (isTopup || isSignableKind || isStudyConsent || isNightFitness) ? ((isStudyConsent || isNightFitness) && supportingFile ? [supportingFile] : files) : (isDutyKind && supportingFile ? [supportingFile] : undefined),
+          leaveType: isTopup ? topupPool : undefined,
+          files: isCustody ? files : (supportingFile ? [supportingFile] : undefined),
           issuedFile: isStudyConsent && direct ? studyApprovalFile : undefined,
           paper: isSignableKind ? signedPaper : undefined,
           purpose: purpose.trim() || undefined,
@@ -2168,11 +2216,9 @@ export default function RequestsWorkspace({
         {(showRaiseForm || (mode === "manage" && canDecide)) ? (
         <RaiseFold manage={mode === "manage"} open={fileRecordOpen} onOpen={setFileRecordOpen} ar={ar}>
         {showRaiseForm && selfOnly ? (
-        <section style={{ ...slab, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-            <strong style={{ fontSize: 15 }}>{ar ? "طلب جديد" : "New request"}</strong>
-            <span style={{ fontSize: 11.5, color: MUTED }}>{ar ? "اختر نوع الطلب" : "Pick a request type"}</span>
-          </div>
+        <section style={{ ...slab, display: "flex", flexDirection: "column" }}>
+          <SectionHead title={ar ? "طلب جديد" : "New request"} note={ar ? "اختر نوع الطلب — الشروط والأثر من نظام العمل." : "Pick a request type — conditions and effect come from the Labour Law."} />
+          <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div className="nv-req-kind-grid">
             {mineTiles.map((tile) => (
               <KindFrameCard
@@ -2205,7 +2251,7 @@ export default function RequestsWorkspace({
                 </span>
               ) : null}
               {!religionOnFile({ profile: subject?.profile }) ? (
-                <span data-religion-missing="1" style={{ fontSize: 11.5, color: "var(--nv-warn-ink, #8A5A12)", lineHeight: 1.7, fontWeight: 600 }}>
+                <span data-religion-missing="1" className="nv-req-sub-note">
                   {ar
                     ? (mode === "manage"
                       ? "الديانة غير محددة في ملف الموظف — لا تظهر له إجازة الحج ولا العدة حتى تحددها من ملفه (الهوية والتوظيف)."
@@ -2218,28 +2264,7 @@ export default function RequestsWorkspace({
                   {ar ? "غير مسلمة على الملف: العدّة 15 يوماً، ولا حج." : "Non-Muslim on file: 15-day iddah, and no Hajj."}
                 </span>
               ) : null}
-              <div className="nv-req-kind-grid">
-                {leaveKinds.filter((row) => row.key !== "grant").map((row) => {
-                  const title = ar ? row.ar : row.en;
-                  return (
-                    <KindFrameCard
-                      key={row.key}
-                      on={isLeave && leave === row.key}
-                      letter={leadingLetter(title)}
-                      title={title}
-                      hint={row.cap}
-                      onClick={() => pickLeaveType(row)}
-                    />
-                  );
-                })}
-                <KindFrameCard
-                  on={isTopup}
-                  letter={leadingLetter(ar ? "رفع رصيد إجازة" : "Leave balance top-up")}
-                  title={ar ? "رفع رصيد إجازة" : "Leave balance top-up"}
-                  hint={ar ? "رصيد مرحّل · بلا تاريخ — الإضافي له رصيده التعويضي" : "Carried balance · no dates — overtime has its own comp balance"}
-                  onClick={() => { setKind("leave_topup"); setEmployerAck(false); }}
-                />
-              </div>
+              {leaveSubPicker}
               {isLeave && leave === "comp" ? (() => {
                 // Regs 22 bis — the comp balance is in hours, apart from annual leave.
                 const bal = compBalance(subject);
@@ -2275,76 +2300,77 @@ export default function RequestsWorkspace({
                 workerText={ar ? "ثلاث ساعات فأكثر داخل النافذة." : "Three hours or more in the window."}
               />
               <NightWorkRightsTable ar={ar} rows={nightWorkRequestRights()} />
-              <div className="nv-req-kind-grid">
+              <SubTypeGrid wide label={ar ? "طلبات العمل الليلي" : "Night-work requests"}>
                 {nightWorkRequestRights().map((row) => (
-                  <KindFrameCard
+                  <SubTypeOption
                     key={row.id}
+                    dataKey={row.id}
                     on={isNightFitness && nightRight === row.id}
-                    letter={row.letter}
                     title={ar ? row.ar : row.en}
-                    hint={ar
+                    sub={ar
                       ? `${row.performer ? "يؤدي عملاً ليلياً" : "عامل ليلي فقط"} · ${row.hintAr}`
                       : `${row.performer ? "Performs night work" : "Night worker only"} · ${row.hintEn}`}
                     onClick={() => { setKind("night_fitness"); setNightRight(row.id); }}
                   />
                 ))}
-                <KindFrameCard
+                <SubTypeOption
                   key={NIGHT_AVOID_TYPE}
+                  dataKey={NIGHT_AVOID_TYPE}
                   on={kind === "rights" && rightsKind === NIGHT_AVOID_TYPE}
-                  letter={ar ? "ص" : "H"}
                   title={ar ? "تجنب العمل الليلي لسبب صحي" : "Avoid night work for health"}
-                  hint={ar ? "بشهادة طبية · نقل لعمل نهاري مماثل أو 6 ساعات بالأجر نفسه (ثالثاً ج)" : "With a medical certificate · similar day work or 6 h, same pay (third, c)"}
+                  sub={ar ? "بشهادة طبية · نقل لعمل نهاري مماثل أو 6 ساعات بالأجر نفسه (ثالثاً ج)" : "With a medical certificate · similar day work or 6 h, same pay (third, c)"}
                   onClick={() => { setKind("rights"); setRightsKind(NIGHT_AVOID_TYPE); }}
                 />
                 {allowedKinds.some((row) => row.id === "family_duties") ? (
-                  <KindFrameCard
+                  <SubTypeOption
                     key="family_duties"
+                    dataKey="family_duties"
                     on={kind === "family_duties"}
-                    letter={ar ? "ع" : "F"}
                     title={ar ? "إبلاغ بمسؤوليات عائلية" : "Family responsibilities notice"}
-                    hint={ar ? "يؤدي عملاً ليلياً · مراعاة في الإسناد الليلي (هـ)" : "Performs night work · considered for night assignment (e)"}
+                    sub={ar ? "يؤدي عملاً ليلياً · مراعاة في الإسناد الليلي (هـ)" : "Performs night work · considered for night assignment (e)"}
                     onClick={() => { setKind("family_duties"); setFrom((prev) => prev || today); setTo((prev) => prev || today); }}
                   />
                 ) : null}
-              </div>
+              </SubTypeGrid>
               {isNightFitnessRaise ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 6 }}>
-                  <button type="button" onClick={() => setFitnessPermanent(false)} style={leaveTypeChip(!fitnessPermanent)}>
-                    <strong style={{ fontSize: 12.5 }}>{ar ? "بين تاريخين" : "Between two dates"}</strong>
-                    <span style={{ fontSize: 11, color: "var(--nv-ink2)" }}>{ar ? `${NIGHT_FITNESS_RANGE_AR} — تسقط بعد تاريخ النهاية` : `${NIGHT_FITNESS_RANGE_EN} — it lapses after the end date`}</span>
-                  </button>
-                  <button type="button" onClick={() => { setFitnessPermanent(true); setFitnessTo(""); }} style={leaveTypeChip(fitnessPermanent)}>
-                    <strong style={{ fontSize: 12.5 }}>{ar ? "مفتوحة حتى التراجع" : "Open until withdrawn"}</strong>
-                    <span style={{ fontSize: 11, color: "var(--nv-ink2)" }}>{ar ? `${NIGHT_FITNESS_PERMANENT_AR} — سارية حتى تسحبها أو تنتهي اللياقة` : `${NIGHT_FITNESS_PERMANENT_EN} — valid until you withdraw or fitness ends`}</span>
-                  </button>
-                </div>
+                <SubTypeGrid label={ar ? "مدة التقرير" : "Report period"}>
+                  <SubTypeOption
+                    on={!fitnessPermanent}
+                    title={ar ? "بين تاريخين" : "Between two dates"}
+                    sub={ar ? `${NIGHT_FITNESS_RANGE_AR} — تسقط بعد تاريخ النهاية` : `${NIGHT_FITNESS_RANGE_EN} — it lapses after the end date`}
+                    onClick={() => setFitnessPermanent(false)}
+                  />
+                  <SubTypeOption
+                    on={fitnessPermanent}
+                    title={ar ? "مفتوحة حتى التراجع" : "Open until withdrawn"}
+                    sub={ar ? `${NIGHT_FITNESS_PERMANENT_AR} — سارية حتى تسحبها أو تنتهي اللياقة` : `${NIGHT_FITNESS_PERMANENT_EN} — valid until you withdraw or fitness ends`}
+                    onClick={() => { setFitnessPermanent(true); setFitnessTo(""); }}
+                  />
+                </SubTypeGrid>
               ) : null}
             </div>
           ) : null}
+          </div>
         </section>
         ) : null}
         {showRaiseForm ? (
         <section className="nv-req-leave-sheet" style={{ ...slab, display: "flex", flexDirection: "column" }}>
-          <div className="nv-req-leave-head">
-            <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span className="nv-req-title" style={{ fontSize: 14 }}>
-                {mode === "manage" ? (ar ? "رفع طلب لموظف" : "File a request for a worker") : (_kindTitle || (ar ? "طلب جديد" : "New request"))}
-              </span>
-              {mode !== "manage" && isLeave && leave === "sick" ? <LaborArticleCite article="117" ar={ar} entitlement /> : null}
-              {mode !== "manage" && isLeave && leave !== "sick" && leaveMeta?.article ? <LaborArticleCite article={leaveMeta.article} ar={ar} entitlement /> : null}
-              {mode !== "manage" && isStudyConsent ? <LaborArticleCite article="115" ar={ar} entitlement /> : null}
-            </span>
-            {mode === "manage" || !selfOnly ? (
-            <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
-              {mode === "manage"
-                ? (ar ? "باسمك كمدير، يُحفظ في ملف الموظف. الإجازات والوثائق يرفعها الموظف؛ أنت تعتمد أو ترفض." : "In your name as manager, it is filed on the employee. Leave and documents are raised by the worker; you approve or refuse.")
-                : (ar ? "اختر النوع — الشروط والأثر يُقرآن من نظام العمل." : "Pick the type — conditions and effect are read from the Labour Law.")}
-            </span>
-            ) : null}
-          </div>
+          <SectionHead
+            title={mode === "manage" ? (ar ? "طلبات من الإدارة" : "Requests from management") : (_kindTitle || (ar ? "طلب جديد" : "New request"))}
+            note={mode === "manage"
+              ? (ar ? "ما ترفعه الإدارة باسم الموظف — يُقيَّد باسمك في ملفه وسجل التدقيق. الإجازات والوثائق يرفعها الموظف؛ أنت تعتمد أو ترفض." : "What management files for a worker — recorded in your name on the file and the audit trail. Leave and documents are raised by the worker; you approve or refuse.")
+              : !selfOnly ? (ar ? "اختر النوع — الشروط والأثر يُقرآن من نظام العمل." : "Pick the type — conditions and effect are read from the Labour Law.") : null}
+            trailing={mode === "manage" ? null : (
+              <>
+                {isLeave && leave === "sick" ? <LaborArticleCite article="117" ar={ar} entitlement /> : null}
+                {isLeave && leave !== "sick" && leaveMeta?.article ? <LaborArticleCite article={leaveMeta.article} ar={ar} entitlement /> : null}
+                {isStudyConsent ? <LaborArticleCite article="115" ar={ar} entitlement /> : null}
+              </>
+            )}
+          />
 
           {!selfOnly && (
-            <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 8 }}>
               <RequestEmployeePicker
                 employees={employees}
                 stations={stations}
@@ -2373,7 +2399,7 @@ export default function RequestsWorkspace({
           )}
 
           {mode === "manage" ? (
-          <div className="nv-req-kind-grid" data-manage-kinds="1" style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)" }}>
+          <div className="nv-req-kind-grid" data-manage-kinds="1" style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)" }}>
             {kindChips.map((row) => {
               const meta = MANAGE_KIND_HINTS[row.id] || {};
               const title = meta.ar ? (ar ? meta.ar : meta.en) : (ar ? row.ar : row.en);
@@ -2400,7 +2426,7 @@ export default function RequestsWorkspace({
             ) : null}
           </div>
           ) : selfOnly ? null : (
-          <div className="nv-req-kind-grid" style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)" }}>
+          <div className="nv-req-kind-grid" style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)" }}>
             {mineTiles.map((tile) => (
               <KindFrameCard
                 key={tile.id}
@@ -2423,7 +2449,7 @@ export default function RequestsWorkspace({
             subject ? <ModelRequestRaise key={`${kind}-${subject.id}`} kind={kind} employee={subject} companyId={company?.id} actor={currentUser} ar={ar} refresh={refresh} defaultDailyRate={data?.settings?.missionDailyRate || ""} /> : null
           ) : (<>
           {isStudyConsent && (
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? STUDY_CONSENT_LABEL_AR : STUDY_CONSENT_LABEL_EN}</span>
               <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.75 }}>{ar ? STUDY_CONSENT_SUBTITLE_AR : STUDY_CONSENT_SUBTITLE_EN}</span>
               <LaborArticleCite article="115" ar={ar} showOfficial showText entitlement />
@@ -2452,43 +2478,19 @@ export default function RequestsWorkspace({
                 <PlatformDateField ar={ar} value={studyStart} onChange={setStudyStart} />
               </label>
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ar ? "ملاحظة اختيارية — الجدول أو المرحلة" : "Optional note — schedule or stage"} style={fieldStyle()} />
-              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontSize: 11, color: MUTED }}>{ar ? "مرفق الانتساب — إلزامي، صورة أو PDF" : "Enrolment file — required, image or PDF"}</span>
-                <AttachFileButton
-                  ref={fileInputRef}
-                  ar={ar}
-                  accept={SUPPORTING_FILE_ACCEPT}
-                  busy={fileBusy}
-                  label={ar ? "أرفق خطاب القبول أو الجدول" : "Attach the acceptance letter or schedule"}
-                  onPick={onSupportingFile}
-                />
-                {supportingFile?.name ? (
-                  <span style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
-                    {supportingFile.url ? (
-                      <a href={supportingFile.url} download={supportingFile.name} style={{ color: OK, fontWeight: 600, textDecoration: "none" }}>
-                        {supportingFile.name}{supportingFile.size ? ` · ${formatFileSize(supportingFile.size, ar)}` : ""}
-                      </a>
-                    ) : (
-                      <span style={{ color: OK, fontWeight: 600 }}>{supportingFile.name}</span>
-                    )}
-                    <button type="button" onClick={clearSupportingFile} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "4px 10px", border: `1px solid ${BORDER}`, background: CARD, color: MUTED, cursor: "pointer" }}>
-                      {ar ? "أزل المرفق" : "Remove"}
-                    </button>
-                  </span>
-                ) : (
-                  <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.8 }}>
-                    {fileBusy ? (ar ? "جارٍ قراءة الملف…" : "Reading the file…") : (ar ? "أرفق خطاب القبول أو الجدول أو إثبات الانتساب. لا يُطلب توقيع رقمي." : "Attach the acceptance letter, schedule, or enrolment proof. Digital signing is not required.")}
-                  </span>
-                )}
-                {fileError ? <span style={{ fontSize: 11, color: BAD }}>{fileError}</span> : null}
-              </label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: 11, color: MUTED }}>{ar ? "مرفق الانتساب — خطاب القبول أو الجدول" : "Enrolment file — acceptance letter or schedule"}</span>
+                {attachZone({ required: true })}
+              </div>
               {canDecide ? (
-                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <span style={{ fontSize: 11, color: MUTED }}>{ar ? "ملف الموافقة — إلزامي عند التسجيل المباشر" : "Consent letter — required on a direct record"}</span>
-                  <AttachFileButton
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontSize: 11, color: MUTED }}>{ar ? "ملف الموافقة — عند التسجيل المباشر" : "Consent letter — on a direct record"}</span>
+                  <AttachDropzone
                     ar={ar}
                     accept={SUPPORTING_FILE_ACCEPT}
+                    required
                     busy={fileBusy}
+                    file={studyApprovalFile}
                     label={ar ? "أرفق ملف الموافقة" : "Attach the consent letter"}
                     onPick={(picked) => {
                       if (!picked) {
@@ -2502,18 +2504,13 @@ export default function RequestsWorkspace({
                       });
                     }}
                   />
-                  {studyApprovalFile?.name ? (
-                    <span style={{ fontSize: 11, color: OK, fontWeight: 600 }}>{studyApprovalFile.name}</span>
-                  ) : (
-                    <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.8 }}>{ar ? "ارفع ملف الموافقة إذا سجّلت الاعتماد مباشرة." : "Upload the consent letter if you record approval directly."}</span>
-                  )}
-                </label>
+                </div>
               ) : null}
             </div>
           )}
 
           {isNightFitness && mode !== "manage" && !isNightFitnessRaise && nightRightMeta ? (
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 8 }}>
               <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink)" }}>{ar ? nightRightMeta.ar : nightRightMeta.en}</span>
                 <LaborArticleCite decisionId="18632" ar={ar} showOfficial showText entitlement />
@@ -2544,7 +2541,7 @@ export default function RequestsWorkspace({
           ) : null}
 
           {isNightFitnessRaise && mode !== "manage" && (
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? NIGHT_FITNESS_LABEL_AR : NIGHT_FITNESS_LABEL_EN}</span>
               <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.75 }}>{ar ? NIGHT_FITNESS_SUBTITLE_AR : NIGHT_FITNESS_SUBTITLE_EN}</span>
               <LaborArticleCite decisionId="18632" ar={ar} showOfficial showText entitlement />
@@ -2584,53 +2581,28 @@ export default function RequestsWorkspace({
                 </label>
               )}
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ar ? "ملاحظة اختيارية — العيادة أو رقم التقرير" : "Optional note — clinic or report number"} style={fieldStyle()} />
-              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontSize: 11, color: MUTED }}>{ar ? "تقرير اللياقة — إلزامي، صورة أو PDF" : "Fitness report — required, image or PDF"}</span>
-                <AttachFileButton
-                  ref={fileInputRef}
-                  ar={ar}
-                  accept={SUPPORTING_FILE_ACCEPT}
-                  busy={fileBusy}
-                  label={ar ? "أرفق تقرير اللياقة" : "Attach the fitness report"}
-                  onPick={onSupportingFile}
-                />
-                {supportingFile?.name ? (
-                  <span style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
-                    {supportingFile.url ? (
-                      <a href={supportingFile.url} download={supportingFile.name} style={{ color: OK, fontWeight: 600, textDecoration: "none" }}>
-                        {supportingFile.name}{supportingFile.size ? ` · ${formatFileSize(supportingFile.size, ar)}` : ""}
-                      </a>
-                    ) : (
-                      <span style={{ color: OK, fontWeight: 600 }}>{supportingFile.name}</span>
-                    )}
-                    <button type="button" onClick={clearSupportingFile} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "4px 10px", border: `1px solid ${BORDER}`, background: CARD, color: MUTED, cursor: "pointer" }}>
-                      {ar ? "أزل المرفق" : "Remove"}
-                    </button>
-                  </span>
-                ) : (
-                  <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.8 }}>
-                    {fileBusy ? (ar ? "جارٍ قراءة الملف…" : "Reading the file…") : (ar ? "أرفق تقرير اللياقة الطبية للعمل الليلي. لا يُطلب توقيع رقمي." : "Attach the night-work medical fitness report. Digital signing is not required.")}
-                  </span>
-                )}
-                {fileError ? <span style={{ fontSize: 11, color: BAD }}>{fileError}</span> : null}
-              </label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: 11, color: MUTED }}>{ar ? "تقرير اللياقة الطبية للعمل الليلي" : "Night-work medical fitness report"}</span>
+                {attachZone({ required: true })}
+              </div>
             </div>
           )}
 
           {isDoc && (
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? "نوع الوثيقة" : "Document type"}</span>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,160px),1fr))", gap: 6 }}>
+              <SubTypeGrid label={ar ? "نوع الوثيقة" : "Document type"}>
                 {DOC_KINDS.map((row) => (
-                  <button key={row.id} type="button" onClick={() => { setDoc2(row.id); setShowSalary(row.salary); }} style={pickBox(doc2 === row.id)}>
-                    <span style={{ fontWeight: doc2 === row.id ? 700 : 500, color: NAVY }}>{ar ? row.ar : row.en}</span>
-                    <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.6 }}>
-                      {(row.salary ? (ar ? "يذكر الراتب · " : "States salary · ") : (ar ? "بلا راتب · " : "No salary · "))}
-                      {ar ? `اعتماد: ${row.approverAr}` : `Approval: ${row.approverEn}`}
-                    </span>
-                  </button>
+                  <SubTypeOption
+                    key={row.id}
+                    dataKey={row.id}
+                    on={doc2 === row.id}
+                    title={ar ? row.ar : row.en}
+                    sub={`${row.salary ? (ar ? "يذكر الراتب · " : "States salary · ") : (ar ? "بلا راتب · " : "No salary · ")}${ar ? `اعتماد: ${row.approverAr}` : `Approval: ${row.approverEn}`}`}
+                    onClick={() => { setDoc2(row.id); setShowSalary(row.salary); }}
+                  />
                 ))}
-              </div>
+              </SubTypeGrid>
               {docMeta.id === "exp" ? (
                 <div data-art64="1" style={{ border: "1px solid var(--nv-line)", borderInlineStart: "3px solid #0B3D27", borderRadius: 8, background: "var(--nv-soft, #F7F9F8)", padding: "9px 12px", fontSize: 11.5, lineHeight: 1.8, color: "var(--nv-ink2)" }}>
                   {ar ? SERVICE_CERT_AR : SERVICE_CERT_EN}
@@ -2678,7 +2650,7 @@ export default function RequestsWorkspace({
           )}
 
           {!selfOnly && (isLeave || isTopup) && (
-            <div style={{ padding: isLeave && needsDates ? "14px 20px 0" : "14px 20px", borderBottom: isLeave && needsDates ? "none" : "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: isLeave ? 6 : 9 }}>
+            <div style={{ padding: isLeave && needsDates ? "14px 18px 0" : "14px 20px", borderBottom: isLeave && needsDates ? "none" : "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: isLeave ? 6 : 9 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? "نوع الإجازة" : "Leave type"}</span>
               {!profileGender(subject?.profile) && (
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
@@ -2693,7 +2665,7 @@ export default function RequestsWorkspace({
                 </span>
               )}
               {!religionOnFile({ profile: subject?.profile }) ? (
-                <span data-religion-missing="1" style={{ fontSize: 11.5, color: "var(--nv-warn-ink, #8A5A12)", lineHeight: 1.7, fontWeight: 600 }}>
+                <span data-religion-missing="1" className="nv-req-sub-note">
                   {ar
                     ? (mode === "manage"
                       ? "الديانة غير محددة في ملف الموظف — لا تظهر له إجازة الحج ولا العدة حتى تحددها من ملفه (الهوية والتوظيف)."
@@ -2706,31 +2678,12 @@ export default function RequestsWorkspace({
                   {ar ? "غير مسلمة على الملف: العدّة 15 يوماً، ولا حج." : "Non-Muslim on file: 15-day iddah, and no Hajj."}
                 </span>
               )}
-              <div style={selfOnly
-                ? { display: "flex", flexWrap: "wrap", gap: 6 }
-                : { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,150px),1fr))", gap: 6 }}>
-                {leaveKinds.filter((row) => row.key !== "grant" && (!manageLeave || MANAGE_LEAVE_KEYS.includes(row.key))).map((row) => (
-                  <button key={row.key} type="button" className="nv-chip" onClick={() => { setKind("leave"); setLeave(row.key); clearSupportingFile(); if (row.key === "iddah" && eventDate) { const span = iddahSpanFromEvent(eventDate, subject?.profile); if (span.start) { setFrom(span.start); setTo(span.end); } } if (row.key === "maternity_extend" || row.key === "maternity_companion") { const span = maternityFollowOnSpan(subject?.leaveRequests, row.defaultTotal || 30); if (span.start) { setFrom(span.start); setTo(span.end); } setCompanionUnpaidExtend(false); } }} style={selfOnly ? chip(isLeave && leave === row.key) : pickBox(isLeave && leave === row.key)}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: isLeave && leave === row.key ? 700 : 500, color: selfOnly && isLeave && leave === row.key ? "#fff" : NAVY }}>{ar ? row.ar : row.en}</span>
-                      <StatutoryItem article={row.article} label={!row.article ? row.cite : undefined} ar={ar} entitlement={!!row.article} />
-                    </span>
-                    <span style={{ fontSize: 10, color: selfOnly && isLeave && leave === row.key ? "rgba(255,255,255,.86)" : MUTED, lineHeight: 1.6 }}>{row.cap}</span>
-                  </button>
-                ))}
-                {manageLeave ? null : <button type="button" onClick={() => { setKind("leave_topup"); setEmployerAck(false); }} style={pickBox(isTopup)}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: isTopup ? 700 : 500, color: NAVY }}>{ar ? "رصيد" : "Balance"}</span>
-                    <StatutoryItem label={ar ? "قرار تشغيلي" : "Operational"} ar={ar} />
-                  </span>
-                  <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.6 }}>{ar ? "الموظف يطلب زيادة · المسؤول يزيدها" : "The worker requests more · the manager adds it"}</span>
-                </button>}
-              </div>
+              {leaveSubPicker}
             </div>
           )}
 
           {isOtAssign && (
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? "تكليف ساعات إضافية" : "Overtime assignment"}</span>
               <LaborArticleCite article={ot106 ? "106" : "107"} ar={ar} showOfficial tone={ot106 ? "warn" : undefined} />
               <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
@@ -2759,48 +2712,34 @@ export default function RequestsWorkspace({
               {ot106 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 11px", border: "1px solid var(--nv-warn-line)", background: "var(--nv-warn-soft)" }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: WARN }}>{ar ? "المادة 106 — اختر سبباً واحداً وأرفق ملف الواقعة" : "Article 106 — pick one ground and attach the incident file"}</span>
-                  {ARTICLE_106_GROUNDS.map((g) => (
-                    <button key={g.key} type="button" onClick={() => setOtGround(g.key)} style={pickBox(otGround === g.key)}>
-                      <span style={{ fontWeight: otGround === g.key ? 700 : 500, color: NAVY }}>{ar ? g.ar : g.en}</span>
-                      <span style={{ fontSize: 10, color: MUTED }}>{ar ? `المادة ${g.article}` : `Art. ${g.article}`}</span>
-                    </button>
-                  ))}
-                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <span style={{ fontSize: 11, color: MUTED }}>{ar ? "ملف الواقعة — صورة أو PDF، بلا توقيع" : "Incident file — image or PDF, no signature"}</span>
-                    <AttachFileButton
-                      ref={fileInputRef}
-                      ar={ar}
-                      accept={SUPPORTING_FILE_ACCEPT}
-                      busy={fileBusy}
-                      label={ar ? "أرفق ملف الواقعة" : "Attach the incident file"}
-                      onPick={onSupportingFile}
-                    />
-                    {supportingFile?.name ? (
-                      <span style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
-                        {supportingFile.url ? (
-                          <a href={supportingFile.url} download={supportingFile.name} style={{ color: OK, fontWeight: 600, textDecoration: "none" }}>
-                            {supportingFile.name}{supportingFile.size ? ` · ${formatFileSize(supportingFile.size, ar)}` : ""}
-                          </a>
-                        ) : (
-                          <span style={{ color: OK, fontWeight: 600 }}>{supportingFile.name}</span>
-                        )}
-                        <button type="button" onClick={clearSupportingFile} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "4px 10px", border: `1px solid ${BORDER}`, background: CARD, color: MUTED, cursor: "pointer" }}>
-                          {ar ? "أزل المرفق" : "Remove"}
-                        </button>
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.8 }}>
-                        {fileBusy ? (ar ? "جارٍ قراءة الملف…" : "Reading the file…") : (ar ? "أرفق الورقة. لا يُطلب توقيع رقمي." : "Attach the paper. Digital signing is not required.")}
-                      </span>
-                    )}
-                    {fileError ? <span style={{ fontSize: 11, color: BAD }}>{fileError}</span> : null}
-                  </label>
+                  <SubTypeGrid wide label={ar ? "حالة المادة 106" : "Article 106 ground"}>
+                    {ARTICLE_106_GROUNDS.map((g) => (
+                      <SubTypeOption
+                        key={g.key}
+                        dataKey={g.key}
+                        on={otGround === g.key}
+                        title={ar ? g.ar : g.en}
+                        badge={<StatutoryItem article={g.article} ar={ar} entitlement compact />}
+                        onClick={() => setOtGround(g.key)}
+                      />
+                    ))}
+                  </SubTypeGrid>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontSize: 11, color: MUTED }}>{ar ? "ملف الواقعة — بلا توقيع" : "Incident file — no signature"}</span>
+                    {attachZone({ required: true })}
+                  </div>
                   <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, color: NAVY, lineHeight: 1.7, cursor: "pointer" }}>
                     <input type="checkbox" checked={ot106Ack} onChange={(e) => setOt106Ack(e.target.checked)} style={{ marginTop: 3 }} />
                     <span>{ar ? "أقرّ بأن واقعة استثنائية قائمة وفق السبب المختار من المادة 106." : "I attest that an exceptional situation exists under the chosen Article 106 ground."}</span>
                   </label>
                 </div>
               ) : null}
+              {ot106 ? null : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontSize: 11, color: MUTED }}>{ar ? "مرفق — بلا توقيع" : "Attachment — no signature"}</span>
+                  {attachZone()}
+                </div>
+              )}
               {otRaiseGate.capConsentRequested ? (
                 <span data-ot-cap-requested="1" style={{ fontSize: 12, color: NAVY, lineHeight: 1.7 }}>
                   {ar ? "ستُطلب موافقة العامل على تجاوز سقف 720 ساعة في السنة عند قبوله التكليف (اللائحة 22)." : "The worker will be asked to consent to passing the annual 720-hour cap when accepting (regs Art. 22)."}
@@ -2810,92 +2749,52 @@ export default function RequestsWorkspace({
           )}
 
           {isTopup && (
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 600 }}>{canDecide ? (ar ? "زيادة رصيد الموظف" : "Add to the employee's balance") : (ar ? "طلب زيادة الرصيد" : "Request more leave days")}</span>
+            <div data-topup-form="1" style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? "طلب رصيد إضافي" : "Request extra leave days"}</span>
               <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
                 {ar
-                  ? `خانة واحدة: الموظف يطلب زيادة، والمسؤول يزيد الرصيد السنوي (نفس حقل 21/30 يوماً) بعد الاعتماد أو بالتسجيل المباشر. ليست أخذ إجازة. المتبقي الآن ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)}.`
-                  : `One slot: the worker requests more days, and the manager adds them to the annual balance (the same 21/30-day field) on approval or by direct record. This is not taking leave. Now ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)}.`}
+                  ? "تطلب أياماً تمنحها المنشأة فوق رصيدك — تظهر بعد الاعتماد في «رصيد إجازاتي» بما بقي منها. ليست أخذ إجازة. والسنوية ثابتة بالنظام فلا يُضاف إليها."
+                  : "You ask for days the company grants above your balance — once approved they show in My leave balance with what is left. This is not taking leave. Annual leave is fixed by law and takes no additions."}
               </span>
+              {poolPicker(topupPool, setTopupPool)}
               <label style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 160 }}>
-                <span style={{ fontSize: 11, color: MUTED }}>{ar ? "الأيام الإضافية" : "Extra days"}</span>
+                <span style={{ fontSize: 11, color: MUTED }}>{ar ? "عدد الأيام" : "Days"}</span>
                 <input
                   type="number"
                   min={1}
-                  max={LEAVE_TOPUP_MAX_DAYS}
+                  step={1}
+                  inputMode="numeric"
+                  dir="ltr"
                   value={topupDays}
                   onChange={(e) => setTopupDays(Math.max(0, Math.round(Number(e.target.value) || 0)))}
                   style={{ ...fieldStyle(), fontFamily: "'IBM Plex Mono', monospace" }}
                 />
               </label>
-              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ar ? "سبب زيادة الرصيد — إلزامي" : "Why the balance should increase — required"} style={fieldStyle()} />
-              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span style={{ fontSize: 11, color: MUTED }}>{ar ? "مرفق مؤيد — اختياري، بلا توقيع" : "Supporting file — optional, no signature"}</span>
-                <AttachFileButton
-                  ref={fileInputRef}
-                  ar={ar}
-                  accept={SUPPORTING_FILE_ACCEPT}
-                  busy={fileBusy}
-                  label={ar ? "أرفق الملف المؤيد" : "Attach the supporting file"}
-                  onPick={onSupportingFile}
-                />
-                {supportingFile?.name ? (
-                  <span style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
-                    {supportingFile.url ? (
-                      <a href={supportingFile.url} download={supportingFile.name} style={{ color: OK, fontWeight: 600, textDecoration: "none" }}>
-                        {supportingFile.name}{supportingFile.size ? ` · ${formatFileSize(supportingFile.size, ar)}` : ""}
-                      </a>
-                    ) : (
-                      <span style={{ color: OK, fontWeight: 600 }}>
-                        {supportingFile.name}{supportingFile.size ? ` · ${formatFileSize(supportingFile.size, ar)}` : ""}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={clearSupportingFile}
-                      style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "4px 10px", border: `1px solid ${BORDER}`, background: CARD, color: MUTED, cursor: "pointer" }}
-                    >
-                      {ar ? "أزل المرفق" : "Remove"}
-                    </button>
-                  </span>
-                ) : (
-                  <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.8 }}>
-                    {fileBusy
-                      ? (ar ? "جارٍ قراءة الملف…" : "Reading the file…")
-                      : (ar ? "مذكرة أو ورقة إن وُجدت. لا يُطلب توقيع رقمي." : "A note or paper if you have one. Digital signing is not required.")}
-                  </span>
-                )}
-                {fileError ? <span style={{ fontSize: 11, color: BAD }}>{fileError}</span> : null}
-              </label>
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ar ? "سبب طلب الرصيد — إلزامي" : "Why you need the days — required"} style={fieldStyle()} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: 11, color: MUTED }}>{ar ? "مرفق مؤيد — مذكرة أو ورقة إن وُجدت" : "Supporting file — a note or paper if you have one"}</span>
+                {attachZone()}
+              </div>
             </div>
           )}
 
           {isLeaveCredit && (
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div data-credit-form="1" style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? "إضافة رصيد — من الإدارة" : "Add leave balance — from management"}</span>
               <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
                 {ar
-                  ? `تُضاف الأيام مباشرة إلى ملف الموظف دون طلب منه. ليست أخذ إجازة ولا موافقة ذاتية. المتبقي الآن ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)} · تقديري ${annual.leftoverGrants}.`
-                  : `Days are credited straight to the employee file without a worker request. Not taking leave and not self-approval. Now ${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)} · discretionary ${annual.leftoverGrants}.`}
+                  ? "تُضاف الأيام مباشرة إلى ملف الموظف دون طلب منه، بأي عدد — بلا حد أعلى. يراها الموظف في «رصيد إجازاتي» بما بقي منها. ليست أخذ إجازة ولا موافقة ذاتية."
+                  : "Days land straight on the employee file without a worker request, any number — no upper cap. The worker sees them in My leave balance with what is left. Not taking leave and not self-approval."}
               </span>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,150px),1fr))", gap: 6 }}>
-                {LEAVE_CREDIT_POOLS.map((row) => (
-                  <button key={row.key} type="button" onClick={() => setCreditPool(row.key)} style={pickBox(creditPool === row.key)}>
-                    <span style={{ fontWeight: creditPool === row.key ? 700 : 500, color: NAVY }}>{ar ? row.ar : row.en}</span>
-                    <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.6 }}>
-                      {row.key === "annual"
-                        ? (ar ? "نفس حقل 21/30 يوماً" : "Same 21/30-day field")
-                        : (ar ? `سقف ${DISCRETIONARY_GRANT_CAP} أيام تقديرية` : `Cap ${DISCRETIONARY_GRANT_CAP} discretionary days`)}
-                    </span>
-                  </button>
-                ))}
-              </div>
+              {poolPicker(creditPool, setCreditPool)}
               <label style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 160 }}>
                 <span style={{ fontSize: 11, color: MUTED }}>{ar ? "الأيام المضافة" : "Days to add"}</span>
                 <input
                   type="number"
                   min={1}
-                  max={creditPool === "grant" ? DISCRETIONARY_GRANT_CAP : LEAVE_TOPUP_MAX_DAYS}
+                  step={1}
+                  inputMode="numeric"
+                  dir="ltr"
                   value={creditDays}
                   onChange={(e) => setCreditDays(Math.max(0, Math.round(Number(e.target.value) || 0)))}
                   style={{ ...fieldStyle(), fontFamily: "'IBM Plex Mono', monospace" }}
@@ -2905,8 +2804,8 @@ export default function RequestsWorkspace({
             </div>
           )}
 
-          {needsDates && (
-            <div key={isLeave ? leave : kind} className="nv-req-leave-copy" style={{ padding: isLeave ? "6px 20px 14px" : "14px 20px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: isLeave ? 6 : 10 }}>
+          {(needsDates || isResignation) && (
+            <div key={isLeave ? leave : kind} className="nv-req-leave-copy" style={{ padding: isLeave ? "6px 18px 14px" : "14px 20px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: isLeave ? 6 : 10 }}>
               {isLeave ? (
                 <>
                   <div data-legal-basis="1" style={{ border: "1px solid var(--nv-line)", borderInlineStart: "3px solid #0B3D27", borderRadius: 8, background: "var(--nv-soft, #F7F9F8)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
@@ -2976,6 +2875,7 @@ export default function RequestsWorkspace({
                   ) : null}
                 </>
               ) : null}
+              {isResignation ? null : (
               <div style={{ display: "grid", gridTemplateColumns: isLeave ? "repeat(auto-fit, minmax(min(100%, 148px), 1fr))" : (isPunchKind ? "minmax(0,1fr) 120px" : "minmax(0,1fr)"), gap: isLeave ? 6 : 9, width: "100%" }}>
                 <label style={{ display: "flex", flexDirection: "column", gap: isLeave ? 6 : 4, minWidth: 0 }}>
                   <span style={isLeave ? { fontSize: 12, fontWeight: 600, color: NAVY, lineHeight: 1.35 } : { fontSize: 11, color: MUTED }}>{isLeave ? (ar ? "من" : "From") : (ar ? "التاريخ" : "Date")}</span>
@@ -3034,6 +2934,7 @@ export default function RequestsWorkspace({
                   </label>
                 ) : null}
               </div>
+              )}
               {isLeave && leave === "annual" && from && to ? (
                 <AnnualLeaveBreakdown from={from} to={to} calendar={laborCalendarOf(data)} company={company} employee={subject} ar={ar} own={mode !== "manage"} />
               ) : null}
@@ -3306,13 +3207,12 @@ export default function RequestsWorkspace({
                 const cap = Math.round(wage * 0.1);
                 const amt = Number(moneyAmount) || 0;
                 const months = cap > 0 && amt > 0 ? Math.ceil(amt / cap) : 0;
-                const seg = (on) => ({ fontFamily: "inherit", fontSize: 12.5, fontWeight: on ? 700 : 500, padding: "8px 14px", borderRadius: 8, border: `1px solid ${on ? "#0B3D27" : "var(--nv-line)"}`, background: on ? "#0B3D27" : "var(--nv-card)", color: on ? "#fff" : "var(--nv-ink2)", cursor: "pointer" });
                 return (
                   <div data-money-fields="1" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div role="radiogroup" style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <button type="button" role="radio" aria-checked={moneyKind === "advance"} onClick={() => setMoneyKind("advance")} style={seg(moneyKind === "advance")}>{ar ? "سلفة — تُسترد من الراتب" : "Advance — recovered from pay"}</button>
-                      <button type="button" role="radio" aria-checked={moneyKind === "allowance"} onClick={() => setMoneyKind("allowance")} style={seg(moneyKind === "allowance")}>{ar ? "بدل — يُصرف ولا يُسترد" : "Allowance — paid, not recovered"}</button>
-                    </div>
+                    <SubTypeGrid label={ar ? "نوع المبلغ" : "Amount type"}>
+                      <SubTypeOption on={moneyKind === "advance"} dataKey="advance" title={ar ? "سلفة" : "Advance"} sub={ar ? "تُسترد من الراتب بأقساط" : "Recovered from pay in instalments"} onClick={() => setMoneyKind("advance")} />
+                      <SubTypeOption on={moneyKind === "allowance"} dataKey="allowance" title={ar ? "بدل" : "Allowance"} sub={ar ? "يُصرف ولا يُسترد" : "Paid, not recovered"} onClick={() => setMoneyKind("allowance")} />
+                    </SubTypeGrid>
                     <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                       <span style={{ fontSize: 11, color: MUTED }}>{ar ? "المبلغ (ر.س) — إلزامي" : "Amount (SAR) — required"}</span>
                       <input data-money-amount="1" dir="ltr" inputMode="decimal" value={moneyAmount} onChange={(e) => setMoneyAmount(e.target.value.replace(/[^\d.]/g, ""))} placeholder="0" style={fieldStyle()} />
@@ -3327,7 +3227,17 @@ export default function RequestsWorkspace({
                   </div>
                 );
               })() : null}
-              {isLeave ? null : (
+              {isResignation ? (
+                <label data-resignation-reason="1" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span style={{ fontSize: 11, color: MUTED }}>{ar ? `سبب الاستقالة — ${RESIGNATION_REASON_HINT_AR}` : `Reason — ${RESIGNATION_REASON_HINT_EN}`}</span>
+                  <textarea
+                    rows={3}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    style={{ ...fieldStyle(), height: "auto", minHeight: 76, padding: "8px 10px", lineHeight: 1.7, resize: "vertical" }}
+                  />
+                </label>
+              ) : isLeave ? null : (
                 <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={isMoney ? (ar ? "سبب الطلب — إلزامي" : "Reason — required") : (ar ? "تفصيل الطلب — إلزامي" : "Request detail — required")} style={fieldStyle()} />
               )}
               {needs118 ? (
@@ -3345,66 +3255,39 @@ export default function RequestsWorkspace({
                 </label>
               ) : null}
               {!isSignableKind && (
-              <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div data-attach-kind={isLeave ? leave : kind} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={{ fontSize: 11, color: MUTED }}>
                   {kind === "pregnancy_notice"
-                    ? (ar ? "التقرير الطبي — إلزامي، صورة أو PDF (القرار 18632)" : "Medical report — required, image or PDF (Decision 18632)")
+                    ? (ar ? "التقرير الطبي (القرار 18632)" : "Medical report (Decision 18632)")
                     : needsDoc
-                    ? (ar ? `المستند المؤيد — إلزامي، صورة أو PDF${leaveMeta.article ? ` (المادة ${leaveMeta.article})` : ""}` : `Supporting paper — required, image or PDF${leaveMeta.article ? ` (Art. ${leaveMeta.article})` : ""}`)
-                    : (ar ? "مرفق — اختياري، صورة أو PDF، بلا توقيع" : "Attachment — optional, image or PDF, no signature")}
+                    ? (ar ? `المستند المؤيد${leaveMeta.article ? ` (المادة ${leaveMeta.article})` : ""} — لا يُطلب توقيع رقمي لهذا المرفق` : `Supporting paper${leaveMeta.article ? ` (Art. ${leaveMeta.article})` : ""} — no digital signature`)
+                    : isResignation
+                    ? (ar ? "خطاب الاستقالة الموقّع — إن وُجد" : "Signed resignation letter — if you have one")
+                    : (ar ? "مرفق — بلا توقيع رقمي" : "Attachment — no digital signature")}
                 </span>
-                <AttachFileButton
-                  ref={fileInputRef}
-                  ar={ar}
-                  accept={SUPPORTING_FILE_ACCEPT}
-                  busy={fileBusy}
-                  label={needsDoc ? (ar ? "أرفق المستند المؤيد" : "Attach the supporting paper") : (ar ? "أرفق الملف" : "Attach the file")}
-                  onPick={onSupportingFile}
-                />
-                {supportingFile?.name ? (
-                  <span style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
-                    {supportingFile.url ? (
-                      <a href={supportingFile.url} download={supportingFile.name} style={{ color: OK, fontWeight: 600, textDecoration: "none" }}>
-                        {supportingFile.name}{supportingFile.size ? ` · ${formatFileSize(supportingFile.size, ar)}` : ""}
-                      </a>
-                    ) : (
-                      <span style={{ color: OK, fontWeight: 600 }}>
-                        {supportingFile.name}{supportingFile.size ? ` · ${formatFileSize(supportingFile.size, ar)}` : ""}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={clearSupportingFile}
-                      style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "4px 10px", border: `1px solid ${BORDER}`, background: CARD, color: MUTED, cursor: "pointer" }}
-                    >
-                      {ar ? "أزل المرفق" : "Remove"}
-                    </button>
-                  </span>
-                ) : (
-                  <span style={{ fontSize: 10, color: MUTED, lineHeight: 1.8 }}>
-                    {fileBusy
-                      ? (ar ? "جارٍ قراءة الملف…" : "Reading the file…")
-                      : needsDoc
-                        ? (leave === "exam"
-                          ? (ar ? "أرفق جدول المواعيد أو ورقة الأيام. إثبات أداء الامتحان يُرفع لاحقاً على بطاقة الطلب بعد بدء الأيام — المادة 115." : "Attach the timetable or exam-dates paper. Sitting proof is uploaded later on this request after the exam days begin — Article 115.")
-                          : (ar ? "أرفق الورقة أو التقرير. لا يُطلب توقيع رقمي لهذا المرفق." : "Attach the paper or report. Digital signing is not required for this attachment."))
-                        : (ar ? "لك حرية إرفاق ملف. لا يُطلب توقيع رقمي لهذا المرفق." : "You may attach a file. Digital signing is not required for this attachment.")}
-                  </span>
-                )}
-                {fileError ? <span style={{ fontSize: 11, color: BAD }}>{fileError}</span> : null}
-              </label>
+                {attachZone({
+                  required: needsDoc || (!isLeave && requestAttachmentRule(otherType).required),
+                  hint: needsDoc && leave === "exam"
+                    ? (ar ? "جدول المواعيد أو ورقة الأيام" : "The timetable or exam-dates paper")
+                    : "",
+                })}
+              </div>
               )}
             </div>
           )}
 
           {isDoc && (
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)" }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ar ? "ملاحظة للموارد البشرية — اختياري" : "Note for HR — optional"} style={fieldStyle()} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: 11, color: MUTED }}>{ar ? "نموذج الجهة إن طلبت صيغة معيّنة" : "The addressee's form, if it asks for a set wording"}</span>
+                {attachZone()}
+              </div>
             </div>
           )}
 
           {isCustody && (
-            <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)" }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)" }}>
               <RequestSelfSignBlock
                 ar={ar}
                 file={supportingFile}
@@ -3429,15 +3312,15 @@ export default function RequestsWorkspace({
           )}
 
           <div style={selfOnly
-            ? { margin: "0 18px", display: "flex", flexDirection: "column", gap: 8, background: "var(--nv-soft, #F7F9F8)", border: "1px solid #EEF1EF", borderRadius: 10, padding: "12px 14px" }
-            : { padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 8 }}>
+            ? { margin: "0 18px", display: "flex", flexDirection: "column", gap: 8, background: "var(--nv-soft, #F7F9F8)", border: "1px solid var(--nv-line2, #EEF1EF)", borderRadius: 8, padding: "12px 14px" }
+            : { padding: "14px 18px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 8 }}>
             {gateDefs.map((g, i) => (
               <div key={g.id || g.text || i} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 10, alignItems: "start" }}>
                 <span style={{
                   width: selfOnly ? 20 : 16, height: selfOnly ? 20 : 16, borderRadius: selfOnly ? "50%" : 4, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: selfOnly ? 11 : 10, fontWeight: 700, marginTop: 2, flex: "none",
-                  color: g.ok ? (selfOnly ? "#2F6B43" : OK) : (g.warn || !g.ok ? (selfOnly ? "#8A5A12" : (g.warn ? WARN : BAD)) : BAD),
+                  color: g.ok ? OK : (selfOnly || g.warn ? WARN : BAD),
                   border: selfOnly ? "none" : `1px solid ${g.ok ? "var(--nv-ok-line)" : g.warn ? "var(--nv-warn-line)" : "var(--nv-bad-line)"}`,
-                  background: g.ok ? "#E6F2EA" : "#FBF3E1",
+                  background: g.ok ? "var(--nv-ok-soft, #E6F2EA)" : "var(--nv-warn-soft, #FBF3E1)",
                 }}>
                   {g.ok ? "✓" : "!"}
                 </span>
@@ -3449,18 +3332,18 @@ export default function RequestsWorkspace({
           </div>
 
           {!(isNightFitness && !isNightFitnessRaise) ? (
-          <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 9 }}>
+          <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 9 }}>
             <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.85 }}>
               {isOtAssign
                 ? (ar ? "أثر الاعتماد: إن اختار أجر إضافي يُوسم للمسير. إن اختار رصيداً يُزاد leaveTotals.annual بنفس مسار رفع الرصيد. لا إقرار 118." : "On approval: overtime pay is marked for payroll. Leave credit increments leaveTotals.annual on the same top-up path. No Article 118.")
                 : isLeaveCredit
-                ? (ar ? "أثر الإضافة: تُزاد الأيام فوراً في الملف باسمك. السنوي عبر مسار رفع الرصيد؛ التقديري في منحة مسجّلة. لا يوم إجازة ولا أثر على الجدول." : "On credit: days land on the file in your name now. Annual uses the top-up path; discretionary is a recorded grant. No leave day and no rota effect.")
+                ? (ar ? "أثر الإضافة: تُسجَّل منحة في الملف باسمك فوراً، ويراها الموظف في «رصيد إجازاتي» بما بقي منها. لا يوم إجازة ولا أثر على الجدول." : "On credit: a grant is recorded on the file in your name now; the worker sees it in My leave balance with what is left. No leave day and no rota effect.")
                 : isTopup
-                ? (ar ? "أثر الاعتماد: يُزاد الرصيد السنوي بنفس حقل 21/30 يوماً. لا يوم إجازة ولا أثر على الجدول، ولا إقرار 118." : "On approval: the annual balance (the same 21/30-day field) increases. No leave day, no rota effect, and no Article 118.")
+                ? (ar ? "أثر الاعتماد: تُسجَّل الأيام منحةً على الرصيد المختار وتظهر في «رصيد إجازاتي» — السنوية لا تتغيّر. لا يوم إجازة ولا أثر على الجدول، ولا إقرار 118." : "On approval: the days are recorded as a grant on the chosen balance and show in My leave balance — annual is unchanged. No leave day, no rota effect, and no Article 118.")
                 : isDoc
                 ? (ar ? `بعد الرفع: وثيقة بلغة ${docLang === "ar" ? "عربية" : "إنجليزية"} تُصدر وتبقى في الملف. الاعتماد بلا سبب جائز؛ الرفض يكتب سبباً يُحفظ في سجل التدقيق.` : "After raise: a letter is issued and stays on the file. Approve may skip a note; refuse writes a named reason on the audit trail.")
                 : isGrant
-                  ? (ar ? "أثر الاعتماد: يُخصم من الأيام التقديرية — لا من الرصيد السنوي. يوم الإجازة يُقفل في جدول الدوام." : "On approval: taken from discretionary days — not the annual balance. The leave day locks on the rota.")
+                  ? (ar ? "أثر الاعتماد: يُخصم من الرصيد الممنوح — لا من الرصيد السنوي. يوم الإجازة يُقفل في جدول الدوام." : "On approval: taken from the granted days — not the annual balance. The leave day locks on the rota.")
                 : isStudyConsent
                   ? (ar ? "أثر الاعتماد: تُسجَّل موافقة دراسية نهائية — الشركة لا ترجع عنها — وينتقل مسار إجازة الامتحان إلى الأجر (المادة 115). الدراسة لا تتوقف برفض الموافقة." : "On approval: study consent is final — the company does not withdraw it — and exam leave moves to the paid track (Article 115). Refusal does not stop studying.")
                 : isNightFitness
@@ -3469,7 +3352,7 @@ export default function RequestsWorkspace({
                   ? (ar ? "أثر الاعتماد: يوم الإجازة يصير خلية مقفلة في جدول الدوام، وخارج حساب الحضور في التقويم." : "On approval: the leave day locks on the rota and drops out of attendance on the calendar.")
                   : (ar ? "أثر الاعتماد: يُسجَّل في سجل التدقيق ويظهر في التقويم التشغيلي يوم الواقعة." : "On approval: it is written to the audit trail and appears on the operational calendar.")}
             </span>
-            <button type="button" disabled={!canSend || busy} onClick={() => send(manageLeave)} style={{ fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", height: 40, width: "100%", border: "none", borderRadius: CONTROL_RADIUS, fontSize: 13, fontWeight: 700, background: mode === "manage" ? (canSend ? "var(--nv-navy)" : "var(--nv-warn-fill)") : (canSend ? "#3C7D50" : "#E4E9E6"), color: mode === "manage" || canSend ? "#fff" : "#5B665F", cursor: canSend ? "pointer" : "default" }}>
+            <button type="button" disabled={!canSend || busy} onClick={() => send(manageLeave)} style={{ fontFamily: "inherit", display: "inline-flex", alignItems: "center", justifyContent: "center", height: 40, width: "100%", border: "none", borderRadius: CONTROL_RADIUS, fontSize: 13, fontWeight: 700, background: canSend ? "var(--nv-ok-fill, #3C7D50)" : "var(--nv-soft, #E4E9E6)", color: canSend ? "#fff" : "var(--nv-muted, #5B665F)", cursor: canSend ? "pointer" : "default" }}>
               {sendLabel}
             </button>
             {canDecide && !isOtAssign && !isLeaveCredit && !isSignableKind && !manageLeave && (
@@ -3502,11 +3385,11 @@ export default function RequestsWorkspace({
                 const num = { fontSize: 20, fontWeight: 700, color: "#fff", fontVariantNumeric: "tabular-nums" };
                 const sub = { fontSize: 11.5, color: "#C5DBCD" };
                 const row = { padding: "12px 18px", borderBottom: "1px solid rgba(255,255,255,.1)", display: "flex", flexDirection: "column", gap: 8 };
-                const head = (name, article, right) => (
+                const head = (name, article, right, label) => (
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <strong style={{ fontSize: 13, color: "#fff" }}>{name}</strong>
-                      <StatutoryItem article={article} ar={ar} entitlement />
+                      <StatutoryItem article={article || undefined} label={article ? undefined : label} ar={ar} entitlement={!!article} />
                     </span>
                     {right}
                   </div>
@@ -3554,6 +3437,18 @@ export default function RequestsWorkspace({
                         </span>
                       </div>
                     ) : null}
+                    {grantRows.map((g) => (
+                      // Days the company granted (any number, no cap) — one row per type, derived from the file.
+                      <div key={g.key} data-balance={`granted-${g.key}`} style={row}>
+                        {head(ar ? g.ar : g.en, "", (
+                          <span style={sub}><span style={num}>{g.remaining}</span> {ar ? `متبقٍّ من ${g.total} يوماً` : `left of ${g.total} days`}</span>
+                        ), ar ? "قرار المنشأة" : "Company")}
+                        <span className="nv-req-bar" style={{ background: "rgba(255,255,255,.18)" }}><span style={{ width: `${g.pct}%`, background: "#8FB79C" }} /></span>
+                        {g.key !== "grant" ? (
+                          <span style={{ fontSize: 11, color: "#A9CDB8", lineHeight: 1.7 }}>{ar ? `منها ${g.granted} ممنوحة فوق الرصيد الاضطراري.` : `${g.granted} of them granted above the emergency balance.`}</span>
+                        ) : null}
+                      </div>
+                    ))}
                     {(() => {
                       // Work injury has no balance — it lasts until recovery. It shows only while one is on file.
                       const st = injuryStatus({ employee: subject, company: data, today });
@@ -3623,7 +3518,12 @@ export default function RequestsWorkspace({
                 );
               })()}
               <div style={{ padding: "10px 18px", fontSize: 10.5, color: "#A9CDB8", lineHeight: 1.7 }}>
-                {ar ? "الأرقام من رصيد الملف. الزيادة من «رفع رصيد إجازة»." : "Figures come from the file. A top-up is requested, then decided."}
+                {(() => {
+                  const art = citeLeaveType("annual")?.article;
+                  return ar
+                    ? `الأرقام من رصيد الملف. السنوية ثابتة بالنظام${art ? ` (المادة ${art})` : ""} ولا يُضاف إليها؛ ما تمنحه المنشأة يظهر هنا بما بقي منه، ويُطلب من «رفع رصيد إجازة».`
+                    : `Figures come from the file. Annual leave is fixed by law${art ? ` (Art. ${art})` : ""} and takes no additions; days the company grants show here with what is left, requested from Leave balance top-up.`;
+                })()}
               </div>
             </section>
           ) : null}
@@ -4298,7 +4198,7 @@ export default function RequestsWorkspace({
                         note={noteVal}
                         onNote={(value) => setDraftNotes((m) => ({ ...m, [key]: value }))}
                         showFile={showIssuedFile}
-                        fileOptional={row.type !== STUDY_CONSENT_TYPE && !(issuesFile && row.type !== "custody" && !(row.senderFile || row.file || row.files?.[0]))}
+                        fileOptional={row.type !== STUDY_CONSENT_TYPE && !(issuesFile && row.type !== "custody" && !(row.senderFile || row.paper))}
                         fileTitle={issuesFile && row.type !== "custody" ? (ar ? "الوثيقة المختومة" : "Stamped letter") : ""}
                         fileLabel={row.type === STUDY_CONSENT_TYPE
                           ? (ar ? "ارفع ملف الموافقة" : "Upload the consent letter")
@@ -4307,7 +4207,7 @@ export default function RequestsWorkspace({
                           ? (ar ? `مطلوب · ${SERVICE_CERT_AR}` : `Required · ${SERVICE_CERT_EN}`)
                           : row.type === STUDY_CONSENT_TYPE
                           ? (ar ? "مطلوب قبل الاعتماد · PDF أو صورة. يُسلَّم للموظف على البطاقة." : "Required before approval · PDF or image. Delivered to the worker on this card.")
-                          : issuesFile && row.type !== "custody" && !(row.senderFile || row.file || row.files?.[0])
+                          : issuesFile && row.type !== "custody" && !(row.senderFile || row.paper)
                             ? (ar ? "مطلوب — الوثيقة الصادرة المختومة تُسلَّم للموظف على البطاقة · PDF أو صورة" : "Required — the issued stamped letter is delivered on the card · PDF or image")
                             : (ar ? "اختياري · PDF أو صورة" : "Optional · PDF or image")}
                         file={draftIssued[key] || null}
@@ -4526,13 +4426,6 @@ export default function RequestsWorkspace({
 function computeDaysSafe(row) {
   if (!row?.startDate || !row?.endDate) return Number(row?.days) || 0;
   return Math.max(1, Math.round((new Date(row.endDate) - new Date(row.startDate)) / 86400000) + 1);
-}
-
-function formatFileSize(bytes, ar) {
-  const n = Number(bytes) || 0;
-  if (n >= 1024 * 1024) return ar ? `${(n / (1024 * 1024)).toFixed(1)} م.ب` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  if (n >= 1024) return ar ? `${Math.max(1, Math.round(n / 1024))} ك.ب` : `${Math.max(1, Math.round(n / 1024))} KB`;
-  return ar ? `${n} بايت` : `${n} B`;
 }
 
 function leaveFileLabel(row, ar) {

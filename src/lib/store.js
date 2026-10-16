@@ -57,7 +57,7 @@ import { appendOrgStructureEvent } from "./orgStructureLog";
 import { annualCarryAlerts, anniversaryYearWindow, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, statutoryLeaveFloor, unpaidSuspensionPlan } from "./leaveTypes";
 import { EXAM_NOTICE_KIND, EXAM_SAT_KIND, LEAVE_ROSTER_BLOB, voidLegacyHolidayRequestsIn, chargeableLeaveDays, checkAlterApprovedLeaveGate, checkApproveLeaveGate, checkAttachExamSatGate, checkRejectLeaveGate, checkSeeLeaveDecisionGate, checkSubmitLeaveGate, computeLeaveDays, leaveDecisionNoticeKey, leaveRosterFromEmployees, planAnnualPauseForSick, checkIddahBirthGate, checkMaternityBirthGate, checkLeaveBreachGate } from "./leaveDerivations";
 import { mergeEmployeeRequestBags, projectDirectoryEmployee, rosterEmployeeById } from "./employeeRequestBags";
-import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_TYPE, STUDY_CONSENT_TYPE, appendRequestAudit, appendRequestRefuseAudit, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkApproveOtherRequestGate, checkApproveStudyConsentGate, checkLeaveTopupDaysGate, checkRefuseRequestReasonGate, checkRejectNightFitnessGate, checkRejectStudyConsentGate, checkRevokeStudyConsentGate, checkSubmitOtherRequestGate, composeStudyConsentReason, otherRequestTypeLabel, requestAuditFileLog, requestRefuseFileLog, stampLeaveTopupOnEmployee, stampNightFitnessOnEmployee } from "./otherRequestDerivations";
+import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_TYPE, STUDY_CONSENT_TYPE, appendRequestAudit, appendRequestRefuseAudit, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkApproveOtherRequestGate, checkApproveStudyConsentGate, checkLeaveGrantGate, checkRefuseRequestReasonGate, checkRejectNightFitnessGate, checkRejectStudyConsentGate, checkRevokeStudyConsentGate, checkSubmitOtherRequestGate, composeStudyConsentReason, otherRequestTypeLabel, requestAuditFileLog, leaveGrantRecord, requestRefuseFileLog, stampLeaveTopupOnEmployee, stampNightFitnessOnEmployee } from "./otherRequestDerivations";
 import {
   attendanceOnDate,
   buildManualAttendanceRow,
@@ -3269,7 +3269,7 @@ export function submitOtherRequest(companyId, employeeId, {
   days, paper, requestedBy, requestedById, program, institution, issuedFile,
   examDate, until, permanent, from, to, timeTo, placement, dueDate, lastDay, amount, moneyKind, nursingSplit, childBirthDate, compLeave,
   notifiedOn, art81Case, ack, remaining, nightAvoidKind, gender, jobSearch, grievanceKind,
-  damageCaseId, deductionLineId, details,
+  damageCaseId, deductionLineId, details, leaveType,
 }) {
   if (type === "permission" && jobSearch === true) {
     // Art. 78: up to eight job-search hours a week during the employer's notice — told, not asked.
@@ -3394,7 +3394,7 @@ export function submitOtherRequest(companyId, employeeId, {
   const fitnessTo = type === NIGHT_FITNESS_TYPE ? (fitnessGate?.permanent ? "" : (fitnessGate?.to ?? to ?? until)) : undefined;
   const fitnessPermanent = type === NIGHT_FITNESS_TYPE ? !!(fitnessGate?.permanent ?? permanent) : undefined;
   if (type === LEAVE_TOPUP_TYPE || isLetterSignableType(type)) {
-    const gate = checkSubmitOtherRequestGate({ type, reason, date, days, file, files, paper: signedPaper });
+    const gate = checkSubmitOtherRequestGate({ type, reason, date, days, file, files, paper: signedPaper, leaveType });
     if (!gate.ok) return gate;
   }
   if (type === "manual_punch" || type === "checkout_fix") {
@@ -3457,6 +3457,7 @@ export function submitOtherRequest(companyId, employeeId, {
       lastDay: type === "resignation" ? resignLast : undefined,
       exitRoute: type === "resignation" ? resignRoute : undefined,
       days: type === LEAVE_TOPUP_TYPE ? parseLeaveTopupDaysSafe(days) : type === LEAVE_CARRY_TYPE ? Math.floor(Number(days)) : (days || undefined),
+      leaveType: type === LEAVE_TOPUP_TYPE ? (String(leaveType || "grant").trim() || "grant") : undefined,
       shiftTypeId: shiftTypeId || undefined,
       stationId: stationId || emp.stationId || undefined,
       files: files || [],
@@ -3494,7 +3495,8 @@ export function submitOtherRequest(companyId, employeeId, {
       request.issuedFile = stampedIssued;
       request.approvalFile = stampedIssued;
     }
-    if (isLetterSignableType(type) && file) {
+    // Custody is the one letter type raised with a paper to sign; a document request's file is supporting proof.
+    if (isLetterSignableType(type) && file && (type === "custody" || signedPaper)) {
       request.senderFile = file;
       if (signedPaper) request.paper = signedPaper;
     }
@@ -4223,8 +4225,8 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
     if (!letterGate.ok) return letterGate;
   }
   if (status === "approved" && pending?.type === LEAVE_TOPUP_TYPE && !pending.balanceApplied) {
-    const daysGate = checkLeaveTopupDaysGate(pending);
-    if (!daysGate.ok) return daysGate;
+    const grantGate = checkLeaveGrantGate({ pool: pending.leaveType || "grant", days: pending.days });
+    if (!grantGate.ok) return grantGate;
   }
   if (status === "approved" && pending?.type === NIGHT_FITNESS_TYPE) {
     const probe = stampNightFitnessOnEmployee(
@@ -4517,8 +4519,6 @@ function applyDutyRequestOnDraft(d, employee, req) {
   }
 }
 
-const DISCRETIONARY_GRANT_CAP = 5;
-
 /**
  * Art. 139 — a written management finding that the injury was self-inflicted, from deliberate
  * misconduct, or that treatment was refused without a lawful reason. The leave's days then carry
@@ -4686,79 +4686,51 @@ export function setInjuryGosiStatus(companyId, employeeId, injuryDate, status, {
   return n ? { ok: true, rows: n } : { ok: false, error: "NOT_FOUND" };
 }
 
-export function grantDiscretionaryDays(companyId, employeeId, { days, reason, by }) {
-  const n = Math.max(1, Math.min(30, Math.round(Number(days) || 0)));
+/** A recorded grant on one leave balance — any whole number of days, no cap; never annual (Art. 109). */
+export function grantDiscretionaryDays(companyId, employeeId, { days, reason, by, pool = "grant" }) {
   const why = String(reason || "").trim();
   if (!why) {
     return { ok: false, error: "REASON_REQUIRED", reason: "اكتب سبب المنح.", reasonEn: "Write why the days are granted." };
   }
+  const gate = checkLeaveGrantGate({ pool, days });
+  if (!gate.ok) return gate;
   const data = getCompanyData(companyId);
   const emp = data?.employees.find((e) => e.id === employeeId);
   if (!emp) {
     return { ok: false, error: "EMPLOYEE_REQUIRED", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
-  }
-  const used = (emp.profile?.discretionaryGrants || []).reduce((sum, grant) => sum + Math.max(0, Number(grant.days) || 0), 0);
-  if (used + n > DISCRETIONARY_GRANT_CAP) {
-    return {
-      ok: false,
-      error: "GRANT_CAP",
-      reason: `يتجاوز سقف ${DISCRETIONARY_GRANT_CAP} أيام تقديرية في السنة.`,
-      reasonEn: `Exceeds the ${DISCRETIONARY_GRANT_CAP}-day discretionary cap for the year.`,
-    };
   }
   updateCompany(companyId, (d) => {
     const employee = d.employees.find((e) => e.id === employeeId);
     if (!employee) return;
     employee.profile = employee.profile || {};
     employee.profile.discretionaryGrants = [
-      { id: uid("grant"), days: n, reason: why, by: by || "", at: new Date().toISOString().slice(0, 10) },
+      leaveGrantRecord({ pool: gate.pool, days: gate.days, reason: why, by }),
       ...(employee.profile.discretionaryGrants || []),
     ];
   });
-  audit(companyId, "discretionary_leave_grant", `${n} discretionary days for ${emp.name}${why ? ` — ${why}` : ""}`);
-  return { ok: true, days: n };
+  audit(companyId, "discretionary_leave_grant", `${gate.days} ${gate.pool} days for ${emp.name}${why ? ` — ${why}` : ""}`);
+  return { ok: true, days: gate.days, pool: gate.pool };
 }
 
 /**
- * إدارة → إضافة رصيد: credit annual or discretionary balance without the employee raising leave.
- * Annual reuses the leave_topup stamp as an approved management act; grant uses discretionaryGrants.
+ * إدارة → إضافة رصيد: a recorded grant on a grantable balance, without the employee raising leave.
+ * Annual is refused by the gate — its entitlement is fixed by the Labour Law.
  */
-export function creditEmployeeLeaveBalance(companyId, employeeId, { pool, days, reason, by, byId, canCredit = true } = {}) {
+export function creditEmployeeLeaveBalance(companyId, employeeId, { pool, days, reason, by, canCredit = true } = {}) {
   const data = getCompanyData(companyId);
   const emp = data?.employees.find((e) => e.id === employeeId);
   if (!emp) {
     return { ok: false, error: "EMPLOYEE_REQUIRED", reason: "الموظف غير موجود.", reasonEn: "Employee was not found." };
   }
-  const gate = checkAdminLeaveCreditGate({
-    pool,
-    days,
-    reason,
-    profile: emp.profile,
-    canCredit,
-  });
+  const gate = checkAdminLeaveCreditGate({ pool, days, reason, profile: emp.profile, canCredit });
   if (!gate.ok) return gate;
   const actor = String(by || "").trim();
-  const why = gate.reason;
-  if (gate.pool === "grant") {
-    const granted = grantDiscretionaryDays(companyId, employeeId, { days: gate.days, reason: why, by: actor });
-    if (!granted.ok) return granted;
-    addNotification(companyId, employeeId, `أُضيف ${granted.days} أيام تقديرية إلى رصيدك${why ? ` — ${why}` : ""}.`);
-    return { ok: true, pool: "grant", days: granted.days };
-  }
-  const saved = submitOtherRequest(companyId, employeeId, {
-    type: LEAVE_TOPUP_TYPE,
-    reason: why,
-    days: gate.days,
-    status: "approved",
-    recordedBy: actor || undefined,
-    requestedBy: actor || undefined,
-    requestedById: byId || undefined,
-    stationId: emp.stationId,
-  });
-  if (saved && saved.ok === false) return saved;
-  addNotification(companyId, employeeId, `أُضيف ${gate.days} أيام إلى رصيدك السنوي${why ? ` — ${why}` : ""}.`);
-  audit(companyId, "leave_balance_credit", `${gate.days} annual days for ${emp.name} by ${actor}${why ? ` — ${why}` : ""}`);
-  return { ok: true, pool: "annual", days: gate.days };
+  const granted = grantDiscretionaryDays(companyId, employeeId, { days: gate.days, reason: gate.reason, by: actor, pool: gate.pool });
+  if (!granted.ok) return granted;
+  const label = leaveTypeLabel(gate.pool === "grant" ? "grant" : gate.pool, true);
+  addNotification(companyId, employeeId, `أُضيف ${granted.days} ${granted.days > 10 || granted.days < 3 ? "يوماً" : "أيام"} إلى رصيدك (${gate.pool === "grant" ? "رصيد ممنوح" : label})${gate.reason ? ` — ${gate.reason}` : ""}.`, { to: "/app/requests" });
+  audit(companyId, "leave_balance_credit", `${granted.days} ${gate.pool} days for ${emp.name} by ${actor}${gate.reason ? ` — ${gate.reason}` : ""}`);
+  return { ok: true, pool: gate.pool, days: granted.days };
 }
 
 export function addPoints(companyId, employeeId, points, reason) {

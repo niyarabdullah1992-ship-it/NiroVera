@@ -7,6 +7,10 @@ import { ruleValue } from "./laborRules.ts";
 
 export const RESIGNATION_TYPE = "resignation";
 
+/** The law asks no reason for a resignation — the field is there for the worker, never required. */
+export const RESIGNATION_REASON_HINT_AR = "اختياري — لا يُشترط ذكر سبب للاستقالة";
+export const RESIGNATION_REASON_HINT_EN = "Optional — a resignation needs no reason";
+
 /**
  * Which law ends the contract when the worker leaves:
  *  - "notice75": an open-ended (غير محدد المدة) contract — Art. 74(3) + Art. 75: the worker ends it by

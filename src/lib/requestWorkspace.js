@@ -10,6 +10,7 @@ import {
   annualBalanceSplit,
   getLeaveTotal,
   grantDaysOf,
+  grantedDaysOfType,
   leftoverGrantDays,
   leaveTypeLabel,
   leaveTypesForProfile,
@@ -21,7 +22,7 @@ import {
 import { officialHolidayList } from "./ummAlQuraCalendar.js";
 import { approvedLeaveWithdrawWindow, computeLeaveDays, examSatState, HOLIDAY_REQUEST_NOT_NEEDED, hasExamSatProof, holidayNotNeededLabel, isRealSupportingFile, LEAVE_TYPES, voidLegacyHolidayRequest } from "./leaveDerivations.js";
 import { nightRotateStage } from "./nightRotateCycle.js";
-import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_LABEL_AR, NIGHT_FITNESS_LABEL_EN, NIGHT_FITNESS_PERMANENT_AR, NIGHT_FITNESS_TYPE, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkRefuseRequestReasonGate, checkSubmitStudyConsentGate, collectRequestAuditLogs, collectRequestRefuseLogs, DISCRETIONARY_GRANT_CAP as OTHER_DISCRETIONARY_GRANT_CAP, hasRequestRefuseAudit, isManagerDecideOtherRequest, LEAVE_CREDIT_POOLS, nightFitnessState, otherRequestTypeLabel, reconstructRequestAudit, requestAuditEventType, requestAuditFileLog, resolveStudyConsentFields, STUDY_CONSENT_FILE_REQUIRED_AR, STUDY_CONSENT_FILE_REQUIRED_EN, STUDY_CONSENT_LABEL_AR, STUDY_CONSENT_LABEL_EN, STUDY_CONSENT_TYPE, studyConsentState } from "./otherRequestDerivations.js";
+import { LEAVE_TOPUP_TYPE, checkLeaveGrantGate, NIGHT_FITNESS_LABEL_AR, NIGHT_FITNESS_LABEL_EN, NIGHT_FITNESS_PERMANENT_AR, NIGHT_FITNESS_TYPE, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkRefuseRequestReasonGate, checkSubmitStudyConsentGate, collectRequestAuditLogs, collectRequestRefuseLogs, hasRequestRefuseAudit, isManagerDecideOtherRequest, LEAVE_CREDIT_POOLS, nightFitnessState, otherRequestTypeLabel, reconstructRequestAudit, requestAuditEventType, requestAuditFileLog, resolveStudyConsentFields, STUDY_CONSENT_FILE_REQUIRED_AR, STUDY_CONSENT_FILE_REQUIRED_EN, STUDY_CONSENT_LABEL_AR, STUDY_CONSENT_LABEL_EN, STUDY_CONSENT_TYPE, studyConsentState } from "./otherRequestDerivations.js";
 import { nightMedicalReportOf } from "./decision18632.js";
 import {
   assignmentFileName,
@@ -71,8 +72,6 @@ export async function readSupportingFile(file) {
     hash,
   });
 }
-
-export const DISCRETIONARY_GRANT_CAP = OTHER_DISCRETIONARY_GRANT_CAP;
 
 export { checkAdminLeaveCreditGate, LEAVE_CREDIT_POOLS };
 
@@ -130,14 +129,14 @@ export function isManageRaiseKind(kindId) {
     || REQUEST_KINDS.some((row) => row.id === kindId && row.manageDuty);
 }
 
-/** Checklist rows for the إدارة credit form. */
+/** Checklist rows for the إدارة credit form — the same gate as the store and the server. */
 export function composeAdminLeaveCreditGates(input = {}, lang = "ar") {
   const ar = lang === "ar";
-  const gate = checkAdminLeaveCreditGate(input);
   const pool = String(input.pool || "").trim();
+  const poolRow = LEAVE_CREDIT_POOLS.find((row) => row.key === pool);
   const days = Math.round(Number(input.days) || 0);
   const why = String(input.reason || "").trim();
-  const used = grantDaysOf(input.profile);
+  const grant = checkLeaveGrantGate({ pool, days: input.days, onDate: input.onDate });
   return uniqueNamedGates([
     {
       id: "ROLE_REQUIRED",
@@ -147,31 +146,18 @@ export function composeAdminLeaveCreditGates(input = {}, lang = "ar") {
         : (ar ? "إضافة الرصيد لمن يقرر على الطلبات فقط." : "Only managers who decide on requests may credit leave balance."),
     },
     {
-      id: "POOL_REQUIRED",
-      ok: pool === "annual" || pool === "grant",
-      text: pool === "annual"
-        ? (ar ? "يُزاد الرصيد السنوي (نفس حقل 21/30 يوماً)." : "The annual balance (the same 21/30-day field) increases.")
-        : pool === "grant"
-          ? (ar ? `أيام تقديرية فوق المستحق — سقف ${DISCRETIONARY_GRANT_CAP} في السنة.` : `Discretionary days above the statutory floor — cap ${DISCRETIONARY_GRANT_CAP} a year.`)
-          : (ar ? "اختر الرصيد السنوي أو الأيام التقديرية." : "Pick the annual balance or discretionary days."),
+      id: "POOL",
+      ok: grant.ok || grant.error === "DAYS_INVALID",
+      text: grant.error === "ANNUAL_FIXED" || grant.error === "POOL_REQUIRED"
+        ? (ar ? grant.reason : grant.reasonEn)
+        : (ar ? `تُضاف إلى «${poolRow?.ar || pool}» — بلا حد أعلى.` : `Added to «${poolRow?.en || pool}» — no upper cap.`),
     },
     {
       id: "DAYS_INVALID",
-      ok: gate.ok || (gate.error !== "DAYS_INVALID" && days >= 1),
-      text: gate.error === "DAYS_INVALID"
-        ? (ar ? gate.reason : gate.reasonEn)
-        : pool === "annual"
-          ? (ar ? `يُضاف ${days || "—"} يوماً إلى الرصيد السنوي.` : `${days || "—"} days will be added to the annual balance.`)
-          : (ar ? `تُمنح ${days || "—"} أيام تقديرية.` : `${days || "—"} discretionary days will be granted.`),
-    },
-    {
-      id: "GRANT_CAP",
-      ok: pool !== "grant" || gate.ok || gate.error !== "GRANT_CAP",
-      text: pool !== "grant"
-        ? (ar ? "سقف الأيام التقديرية لا يسري على الرصيد السنوي." : "The discretionary cap does not apply to the annual balance.")
-        : gate.error === "GRANT_CAP"
-          ? (ar ? gate.reason : gate.reasonEn)
-          : (ar ? `الممنوح سابقاً ${used} · المتاح ${Math.max(0, DISCRETIONARY_GRANT_CAP - used)}.` : `Already granted ${used} · ${Math.max(0, DISCRETIONARY_GRANT_CAP - used)} left.`),
+      ok: grant.error !== "DAYS_INVALID",
+      text: grant.error === "DAYS_INVALID"
+        ? (ar ? grant.reason : grant.reasonEn)
+        : (ar ? `تُمنح ${days} ${days >= 3 && days <= 10 ? "أيام" : "يوماً"}.` : `${days} days will be granted.`),
     },
     {
       id: "REASON_REQUIRED",
@@ -649,6 +635,8 @@ export function leaveKindsFor(profile, ar = true, requests, employee) {
         ? (comp && comp.left > 0
           ? (ar ? `رصيدك ${hoursAr(comp.left)} — حتى ${formatArDate(comp.nextTakeBy, "ar")}` : `${comp.left} h left — by ${comp.nextTakeBy}`)
           : (ar ? "لا رصيد بعد — يتكوّن حين تختار الإجازة بدل أجر الإضافي" : "No balance yet — it comes from overtime taken as leave"))
+      : row.key === "emergency" && grantedDaysOfType(profile, "emergency") > 0
+        ? (ar ? `${countAr(row.defaultTotal || 0, "يوم", "يومان", "أيام", "يوماً")} + ${grantedDaysOfType(profile, "emergency")} ممنوحة` : `${row.defaultTotal} days + ${grantedDaysOfType(profile, "emergency")} granted`)
       : row.key === "exam"
         ? (ar ? "أيام الامتحان الفعلية — لا تُرفض إن استوفت" : "Actual exam days — a qualifying file is not refused")
         : row.defaultTotal
@@ -885,8 +873,8 @@ export function flattenWorkspaceRows(employees = [], lang = "ar") {
       ? (ar ? NIGHT_FITNESS_LABEL_AR : NIGHT_FITNESS_LABEL_EN)
       : request.type === LEAVE_TOPUP_TYPE
       ? (ar
-        ? `رفع رصيد إجازة${request.days ? ` · ${countAr(request.days, "يوم", "يومان", "أيام", "يوماً")}` : ""}`
-        : `Leave balance top-up${request.days ? ` · ${request.days} days` : ""}`)
+        ? `رفع رصيد إجازة${request.days ? ` · ${countAr(request.days, "يوم", "يومان", "أيام", "يوماً")}` : ""}${request.leaveType && request.leaveType !== "grant" ? ` · ${leaveTypeLabel(request.leaveType, true)}` : ""}`
+        : `Leave balance top-up${request.days ? ` · ${request.days} days` : ""}${request.leaveType && request.leaveType !== "grant" ? ` · ${leaveTypeLabel(request.leaveType, false)}` : ""}`)
       : isOvertimeAssignment(request)
         ? otAssignmentTitle(request, ar)
       : (request.title || request.otherTitle

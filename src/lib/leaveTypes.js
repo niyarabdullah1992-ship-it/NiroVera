@@ -296,9 +296,11 @@ export function getLeaveTotal(profile, key, onDate, requests) {
   // previous Muslim floor must not outrank the 15-day non-Muslim entitlement.
   if (k === "iddah" || k === "maternity_extend" || k === "maternity_companion") return floor;
   const custom = profile?.leaveTotals?.[key];
-  if (floor == null) return custom ?? null;
-  if (custom == null) return floor;
-  return Math.max(Number(custom) || 0, floor);
+  // Days the company granted on top of an internal balance (never annual — Art. 109 is fixed).
+  const extra = GRANT_EXTENDS_TOTAL_KEYS.includes(k) ? grantedDaysOfType(profile, k) : 0;
+  if (floor == null) return custom == null ? (extra || null) : (Number(custom) || 0) + extra;
+  if (custom == null) return floor + extra;
+  return Math.max(Number(custom) || 0, floor) + extra;
 }
 
 function dateOnly(iso) {
@@ -473,8 +475,25 @@ export function endDateFromLeaveDays(startDate, days) {
   return addCalendarDays(startDate, n - 1);
 }
 
+/**
+ * Leave types the company may grant extra days on, with no upper cap. Annual is not one of them:
+ * its entitlement is fixed by Art. 109 (21 days, 30 after five years) and never raised by a grant.
+ * «grant» is the discretionary «رصيد» leave; «emergency» is the internal emergency balance.
+ */
+export const GRANTABLE_LEAVE_KEYS = ["grant", "emergency"];
+/** Types whose total is the floor plus the granted days (grant itself is all granted days). */
+const GRANT_EXTENDS_TOTAL_KEYS = ["emergency"];
+
+/** Granted days on one type. A grant without `type` is a discretionary «رصيد» grant. */
+export function grantedDaysOfType(profile, type = "grant") {
+  const key = String(type || "grant").trim().toLowerCase();
+  return (profile?.discretionaryGrants || [])
+    .filter((grant) => String(grant?.type || "grant").trim().toLowerCase() === key)
+    .reduce((n, grant) => n + Math.max(0, Number(grant.days) || 0), 0);
+}
+
 export function grantDaysOf(profile) {
-  return (profile?.discretionaryGrants || []).reduce((n, grant) => n + Math.max(0, Number(grant.days) || 0), 0);
+  return grantedDaysOfType(profile, "grant");
 }
 
 /** Discretionary days still available — grant leave and annual overflow share this pool. */
@@ -482,6 +501,29 @@ export function leftoverGrantDays(profile, requests, onDate, company, employee) 
   const split = annualBalanceSplit(profile, requests, onDate, company, employee);
   const overflow = Math.max(0, (split.currentUsed + split.carryUsed) - (split.currentTotal || 0) - split.carryTotal);
   return Math.max(0, grantDaysOf(profile) - usedLeaveDays(requests, "grant", onDate, profile?.hireDate) - overflow);
+}
+
+/**
+ * «رصيد إجازاتي» — one row per leave type the company granted days on: the total it opens (Y) and what
+ * is left of it (X). Derived from the file's grants and approved leave only — never a stored figure.
+ */
+export function grantedLeaveBalances(profile, requests, onDate, company, employee) {
+  return GRANTABLE_LEAVE_KEYS.map((key) => {
+    const granted = grantedDaysOfType(profile, key);
+    if (!(granted > 0)) return null;
+    if (key === "grant") {
+      const remaining = leftoverGrantDays(profile, requests, onDate, company, employee);
+      return { key, granted, total: granted, used: Math.max(0, granted - remaining), remaining };
+    }
+    const total = getLeaveTotal(profile, key, onDate) || 0;
+    const used = usedLeaveDays(requests, key, onDate, profile?.hireDate);
+    return { key, granted, total, used, remaining: Math.max(0, total - used) };
+  }).filter(Boolean).map((row) => ({
+    ...row,
+    ar: row.key === "grant" ? "رصيد ممنوح" : leaveTypeLabel(row.key, true),
+    en: row.key === "grant" ? "Granted days" : leaveTypeLabel(row.key, false),
+    pct: row.total ? Math.max(0, Math.min(100, Math.round((row.remaining / row.total) * 100))) : 0,
+  }));
 }
 
 export function remainingLeaveDays(profile, requests, key = "annual", onDate, company, employee) {

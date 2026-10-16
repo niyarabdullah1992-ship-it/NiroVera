@@ -30,7 +30,6 @@ import {
   inboxNoticeShowsBody,
   requestNoticeHref,
   requestDecisionLivesInWorkspace,
-  DISCRETIONARY_GRANT_CAP,
   DOC_KINDS,
   flattenWorkspaceRows,
   isEndedInboxRequest,
@@ -458,14 +457,14 @@ assert.equal(checkApproveOtherRequestGate({
 assert.equal(consentRowHref({ id: "wcon_1", signToken: "sig.tok" }), "/app/requests#consent-wcon_1");
 assert.doesNotMatch(consentRowHref({ id: "wcon_1", signToken: "sig.tok" }), /signing/);
 assert.match(leaveKindsFor({ hireDate: "2024-01-15", gender: "female" }, true, []).find((row) => row.key === "maternity")?.cap || "", /84 يوماً/);
-assert.equal(DISCRETIONARY_GRANT_CAP, 5);
-assert.equal(checkAdminLeaveCreditGate({ pool: "annual", days: 2, reason: "منحة تشغيل" }).ok, true);
+assert.equal(checkAdminLeaveCreditGate({ pool: "annual", days: 2, reason: "منحة تشغيل" }).error, "ANNUAL_FIXED");
 assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "منحة تشغيل", profile: {} }).ok, true);
 assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "منحة تشغيل", canCredit: false }).error, "ROLE_REQUIRED");
 assert.equal(checkAdminLeaveCreditGate({ days: 2, reason: "منحة تشغيل" }).error, "POOL_REQUIRED");
-assert.equal(checkAdminLeaveCreditGate({ pool: "annual", days: 2, reason: "لا" }).error, "REASON_REQUIRED");
-assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 6, reason: "منحة تشغيل", profile: {} }).error, "GRANT_CAP");
-assert.ok(composeAdminLeaveCreditGates({ pool: "annual", days: 2, reason: "منحة تشغيل" }, "ar").some((row) => row.id === "NO_EMPLOYEE_LEAVE" && row.ok));
+assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "لا" }).error, "REASON_REQUIRED");
+assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 60, reason: "منحة تشغيل", profile: { discretionaryGrants: [{ days: 40 }] } }).ok, true, "no cap on granted days");
+assert.ok(composeAdminLeaveCreditGates({ pool: "grant", days: 2, reason: "منحة تشغيل" }, "ar").some((row) => row.id === "NO_EMPLOYEE_LEAVE" && row.ok));
+assert.ok(composeAdminLeaveCreditGates({ pool: "annual", days: 2, reason: "منحة تشغيل" }, "ar").some((row) => row.id === "POOL" && !row.ok && /المادة 109/.test(row.text)));
 
 const holidays = officialHolidays("2026-09-11");
 assert.ok(holidays.find((row) => row.id === "national")?.from === "2026-09-23");
@@ -1304,14 +1303,14 @@ assert.match(workspaceSrc, /leave_credit/, "إدارة composes admin leave cred
 assert.match(workspaceSrc, /creditEmployeeLeaveBalance/, "admin credit uses the store helper");
 assert.match(workspaceSrc, /composeAdminLeaveCreditGates/, "admin credit uses named gates");
 assert.match(workspaceSrc, /إضافة رصيد/, "manage chip names إضافة رصيد");
-assert.match(workspaceSrc, /الموظف يطلب زيادة/, "one Balance card covers worker request and manager add");
+assert.match(workspaceSrc, /أيام تمنحها المنشأة — بلا حد أعلى/, "the worker asks for granted days; management adds them — no cap, never annual");
 assert.doesNotMatch(workspaceSrc, /أيام تُضاف للسنوي — ليست أخذ إجازة/, "duplicate raise-balance card is gone");
 assert.match(workspaceSrc, /row\.id !== "leave_topup"/, "top-up is never a kind chip — Balance card on ملفي only");
 assert.doesNotMatch(workspaceSrc, /row\.id !== "leave_topup" \|\| mode === "manage"/, "top-up is not re-opened as a manage chip");
 assert.match(storeSrc, /creditEmployeeLeaveBalance/, "store exports admin leave credit");
 assert.match(storeSrc, /leave_balance_credit|discretionary_leave_grant/, "admin credit writes an audit event");
-assert.match(workspaceSrc, /لك حرية إرفاق ملف/, "every leave type offers optional unsigned attach");
-assert.match(workspaceSrc, /طلب زيادة الرصيد|زيادة رصيد الموظف/, "workspace names the single balance slot");
+assert.match(workspaceSrc, /\{attachZone\(\{\n\s+required: needsDoc \|\| \(!isLeave && requestAttachmentRule\(otherType\)\.required\)/, "every leave and request type offers the one attachment control, optional unless its rule requires it");
+assert.match(workspaceSrc, /طلب رصيد إضافي/, "workspace names the single balance slot");
 assert.match(workspaceSrc, /PlatformDateField/, "طلباتي date fields are not a bare US-locale input");
 assert.match(workspaceSrc, /CONSENT_MINISTRY_HINT_AR/, "night consent on طلباتي uses the shared ministry hint");
 assert.match(workspaceSrc, /أوافق/, "night agree is the worker's choice on طلباتي");

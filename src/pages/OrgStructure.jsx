@@ -9,7 +9,7 @@ import { syncWorkplaceManagers } from "@/lib/peopleTree";
 import { orgChainHealth } from "@/lib/orgChain";
 import OrgWorkforceHero from "@/components/hr/OrgWorkforceHero";
 import OrgWorkforceAdminPanels from "@/components/hr/OrgWorkforceAdminPanels";
-import OrgTemplateBoard from "@/components/hr/OrgTemplateBoard";
+import OrgTemplateBoard, { OrgChartUpkeep } from "@/components/hr/OrgTemplateBoard";
 import OrgFormerFilesBoard from "@/components/hr/OrgFormerFilesBoard";
 import HireSeatDrawer from "@/components/hr/HireSeatDrawer";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
@@ -24,7 +24,8 @@ import OrgSeatRegister from "@/components/hr/orgdesign/OrgSeatRegister";
 import OrgHealthBoard from "@/components/hr/orgdesign/OrgHealthBoard";
 import OrgDoaBoard from "@/components/hr/orgdesign/OrgDoaBoard";
 import OrgChangesBoard from "@/components/hr/orgdesign/OrgChangesBoard";
-import MyOrgPlace from "@/components/hr/orgdesign/MyOrgPlace";
+import OrgFocusChart from "@/components/hr/orgdesign/OrgFocusChart";
+import { SectionHead } from "@/components/hr/orgdesign/orgDesignUi";
 
 const PANES = ["chart", "seats", "health", "authority", "changes"];
 
@@ -96,6 +97,21 @@ export default function OrgStructure() {
   const canEditDesign = Boolean(data && currentUser && canEditOrgDesign(currentUser, data));
   const requestedPane = searchParams.get("pane");
   const pane = PANES.includes(requestedPane) ? requestedPane : "chart";
+  // «التركيز» (my card first) is the default chart; «الشجرة كاملة» is the secondary canvas for HR.
+  const chartMode = searchParams.get("chart") === "full" ? "full" : "focus";
+  const setChartMode = useCallback((next) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "full") params.set("chart", "full");
+    else params.delete("chart");
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
+  const focusParam = searchParams.get("focus") || "";
+  const clearFocus = useCallback(() => {
+    if (!searchParams.get("focus")) return;
+    const params = new URLSearchParams(searchParams);
+    params.delete("focus");
+    setSearchParams(params);
+  }, [searchParams, setSearchParams]);
   const [changeSeed, setChangeSeed] = useState(null);
   const setPane = useCallback((next) => {
     const params = new URLSearchParams(searchParams);
@@ -266,7 +282,15 @@ export default function OrgStructure() {
           <div className="nv-org-page">
             {!isAdminView ? (
               <PageErrorBoundary resetKey="mine">
-                <MyOrgPlace ar={ar} data={data} user={currentUser} companyId={company.id} scope="subtree" />
+                <section className="nv-od" aria-label={ar ? "مكاني في الهيكل" : "My place in the structure"}>
+                  <SectionHead
+                    title={ar ? "مكاني في الهيكل" : "My place in the structure"}
+                    hint={ar
+                      ? "تفتح الصفحة على بطاقتك: فوقها مديرك وسلسلة الإدارة، وتحتها فريقك، وبجانبها زملاؤك. انقر أي بطاقة لتنتقل إليها. للاطلاع فقط — التغيير في الهيكل عبر الموارد البشرية."
+                      : "Opens on your card: your manager and chain above, your team below, your peers beside. Click any card to move to it. Read-only — structural changes go through HR."}
+                  />
+                  <OrgFocusChart ar={ar} data={data} user={currentUser} companyId={company.id} scope="mine" />
+                </section>
               </PageErrorBoundary>
             ) : (
               <>
@@ -277,6 +301,7 @@ export default function OrgStructure() {
                   canWrite={canWrite}
                   isAdminView={isAdminView}
                   showTools={pane === "chart"}
+                  showSearch={chartMode === "full"}
                   query={query}
                   onQueryChange={setQuery}
                   searchHits={searchHits}
@@ -295,10 +320,10 @@ export default function OrgStructure() {
                     </>
                   )}
                   onTrunk={() => setTrunkSignal((n) => n + 1)}
-                  onFocusHr={() => setHrSignal((n) => n + 1)}
+                  onFocusHr={chartMode === "full" ? () => setHrSignal((n) => n + 1) : undefined}
                   onToggleFull={() => setFullSignal((n) => n + 1)}
                   fullActive={fullActive}
-                  onAddBranch={() => setAddBranchSignal((n) => n + 1)}
+                  onAddBranch={chartMode === "full" ? () => setAddBranchSignal((n) => n + 1) : undefined}
                   onPrint={() => setPrintSignal((n) => n + 1)}
                   onGoEsc={goEsc}
                   onGoPerm={goPerm}
@@ -307,7 +332,7 @@ export default function OrgStructure() {
                     setPane("authority");
                     scrollPanel(gradesRef);
                   }}
-                  onToggleByGrade={() => setByGrade((value) => !value)}
+                  onToggleByGrade={chartMode === "full" ? () => setByGrade((value) => !value) : undefined}
                   byGrade={byGrade}
                   onGoLog={goLog}
                   onGoFormer={goFormer}
@@ -332,23 +357,36 @@ export default function OrgStructure() {
                   <PageErrorBoundary resetKey={`${view}:${pane}`}>
                     {pane === "chart" ? (
                       <>
-                        <OrgTemplateBoard
-                          lang={lang}
-                          onHire={openHire}
-                          addBranchSignal={addBranchSignal}
-                          embedded
-                          query={query}
-                          onQueryChange={setQuery}
-                          pickHit={pickHit}
-                          onPickHitConsumed={() => setPickHit(null)}
-                          trunkSignal={trunkSignal}
-                          fullSignal={fullSignal}
-                          printSignal={printSignal}
-                          hrSignal={hrSignal}
-                          onFullChange={setFullActive}
-                          onSearchHits={handleSearchHits}
-                          byGrade={byGrade}
-                        />
+                        <div className="nv-od-filters" role="group" aria-label={ar ? "طريقة العرض" : "Chart mode"} style={{ marginBottom: 12 }}>
+                          <button type="button" className="nv-od-chip" aria-pressed={chartMode === "focus"} onClick={() => setChartMode("focus")}>{ar ? "التركيز" : "Focus"}</button>
+                          <button type="button" className="nv-od-chip" aria-pressed={chartMode === "full"} onClick={() => setChartMode("full")}>{ar ? "الشجرة كاملة" : "Whole tree"}</button>
+                        </div>
+                        {chartMode === "focus" ? (
+                          <>
+                            <OrgChartUpkeep lang={lang} />
+                            <OrgFocusChart ar={ar} data={data} user={currentUser} companyId={company.id} scope="all" canWrite={canWrite} onHire={openHire} />
+                          </>
+                        ) : (
+                          <OrgTemplateBoard
+                            lang={lang}
+                            onHire={openHire}
+                            addBranchSignal={addBranchSignal}
+                            embedded
+                            query={query}
+                            onQueryChange={setQuery}
+                            pickHit={pickHit}
+                            onPickHitConsumed={() => setPickHit(null)}
+                            trunkSignal={trunkSignal}
+                            fullSignal={fullSignal}
+                            printSignal={printSignal}
+                            hrSignal={hrSignal}
+                            onFullChange={setFullActive}
+                            onSearchHits={handleSearchHits}
+                            byGrade={byGrade}
+                            focusId={focusParam}
+                            onClearFocus={clearFocus}
+                          />
+                        )}
                         <OrgFormerFilesBoard data={data} ar={ar} boardRef={formerRef} />
                       </>
                     ) : null}

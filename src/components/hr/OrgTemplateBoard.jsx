@@ -50,6 +50,49 @@ const stageBtn = {
   fontFamily: "inherit",
 };
 
+/**
+ * Chart upkeep that runs wherever the chart opens (focus or whole tree): the company root unit,
+ * the workplace-manager sync, and the demo tree for an empty company.
+ */
+export function OrgChartUpkeep({ lang = "ar" }) {
+  const ar = lang === "ar";
+  const { company, data, currentUser } = useAuth();
+  const companyName = data?.settings?.companyName || company?.name || (ar ? "المنشأة" : "Company");
+  const canWrite = Boolean(currentUser && (
+    currentUser.id === data?.ownerId
+    || ["owner", "director", "admin", "pgm", "hr_manager"].includes(currentUser.role)
+  ));
+  const demoSeeded = useRef(false);
+
+  useEffect(() => {
+    if (!company?.id || !canWrite || demoSeeded.current || !data) return;
+    const already = (data?.employees || []).some((employee) =>
+      String(employee.email || "").toLowerCase().endsWith("@demo.nirovera.local")
+    );
+    if (already) {
+      demoSeeded.current = true;
+      seedDemoOrgTree(company.id, { ar });
+      return;
+    }
+    try {
+      const result = seedDemoOrgTree(company.id, { ar });
+      demoSeeded.current = result.ok && (result.hired > 0 || result.demoCount > 0);
+      if (result.hired > 0) toast({ description: result.message });
+    } catch (error) {
+      demoSeeded.current = false;
+      console.error("NiroVera demo org seed:", error);
+    }
+  }, [company?.id, canWrite, ar, data?.employees]);
+
+  useEffect(() => {
+    if (!company?.id || !canWrite) return;
+    ensureCompanyRootStation(company.id, companyName, ar);
+    syncWorkplaceManagers(company.id);
+  }, [company?.id, canWrite, companyName, ar]);
+
+  return null;
+}
+
 export default function OrgTemplateBoard({
   lang = "ar",
   onHire,
@@ -66,6 +109,8 @@ export default function OrgTemplateBoard({
   onFullChange,
   onSearchHits,
   byGrade = false,
+  focusId = "",
+  onClearFocus,
 }) {
   const ar = lang === "ar";
   const { company, data, currentUser } = useAuth();
@@ -97,7 +142,6 @@ export default function OrgTemplateBoard({
     currentUser.id === data?.ownerId
     || ["owner", "director", "admin", "pgm", "hr_manager"].includes(currentUser.role)
   ));
-  const demoSeeded = useRef(false);
 
   const livePeople = useMemo(() => {
     try {
@@ -118,12 +162,22 @@ export default function OrgTemplateBoard({
   }, [people, open, data?.stations]);
   const chart = useMemo(() => {
     try {
-      return buildWorkforceSeatChart(data, { ar });
+      return buildWorkforceSeatChart(data, { ar, meId: currentUser?.id || "" });
     } catch (error) {
       console.error("NiroVera workforce chart:", error);
       return { roots: [], flat: [] };
     }
-  }, [data, ar]);
+  }, [data, ar, currentUser?.id]);
+  // The canvas opens on a card, not an arbitrary spot: the chosen focus (?focus=) or the viewer.
+  const revealNodeId = useMemo(() => {
+    const want = String(focusId || "");
+    const hit = want
+      ? chart.flat.find((node) => node.seatId === want || node.id === want || node.employeeId === want)
+      : null;
+    if (hit) return hit.id;
+    const me = chart.flat.find((node) => node.employeeId && node.employeeId === String(currentUser?.id || ""));
+    return me?.id || chart.roots[0]?.id || "";
+  }, [chart, focusId, currentUser?.id]);
   const directoryNodes = useMemo(() => {
     const rows = [];
     const walk = (list, parentId) => {
@@ -137,32 +191,6 @@ export default function OrgTemplateBoard({
   }, [chart]);
   const publishIssues = useMemo(() => structurePublishIssues(data, ar), [data, ar]);
   const publishedAt = data?.settings?.orgPublishedAt;
-
-  useEffect(() => {
-    if (!company?.id || !canWrite || demoSeeded.current || !data) return;
-    const already = (data?.employees || []).some((employee) =>
-      String(employee.email || "").toLowerCase().endsWith("@demo.nirovera.local")
-    );
-    if (already) {
-      demoSeeded.current = true;
-      seedDemoOrgTree(company.id, { ar });
-      return;
-    }
-    try {
-      const result = seedDemoOrgTree(company.id, { ar });
-      demoSeeded.current = result.ok && (result.hired > 0 || result.demoCount > 0);
-      if (result.hired > 0) toast({ description: result.message });
-    } catch (error) {
-      demoSeeded.current = false;
-      console.error("NiroVera demo org seed:", error);
-    }
-  }, [company?.id, canWrite, ar, data?.employees]);
-
-  useEffect(() => {
-    if (!company?.id || !canWrite) return;
-    ensureCompanyRootStation(company.id, companyName, ar);
-    syncWorkplaceManagers(company.id);
-  }, [company?.id, canWrite, companyName, ar]);
 
   useEffect(() => {
     if (!addBranchSignal || !canWrite) return;
@@ -249,6 +277,22 @@ export default function OrgTemplateBoard({
     setSafeZoom(Number.isFinite(next) ? next : 1);
     setOffset({ x: 0, y: 0 });
   };
+  /** Move the stage so a card sits centred across and near the top of the canvas. */
+  const centerOn = (nodeId) => {
+    const viewport = viewportRef.current;
+    if (!viewport || !nodeId) return;
+    const esc = typeof CSS !== "undefined" && CSS.escape ? CSS.escape(nodeId) : nodeId.replace(/"/g, '\\"');
+    const card = viewport.querySelector(`[data-org-node="${esc}"]`);
+    if (!card) return;
+    const vp = viewport.getBoundingClientRect();
+    const box = card.getBoundingClientRect();
+    const dx = (vp.left + vp.width / 2) - (box.left + box.width / 2);
+    const dy = (vp.top + Math.min(140, vp.height * 0.25)) - box.top;
+    setOffset((current) => ({ x: current.x + dx, y: current.y + dy }));
+  };
+  const scheduleCenter = (nodeId) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => centerOn(nodeId)));
+  };
   const scheduleFit = () => {
     requestAnimationFrame(() => requestAnimationFrame(fitTree));
   };
@@ -287,6 +331,12 @@ export default function OrgTemplateBoard({
     node.addEventListener("wheel", onWheel, { passive: false });
     return () => node.removeEventListener("wheel", onWheel);
   }, [fullscreen]);
+
+  // Open (and re-open after a focus change) centred on the focus card.
+  useEffect(() => {
+    if (chartView !== "people" || !revealNodeId) return;
+    scheduleCenter(revealNodeId);
+  }, [revealNodeId, chartView, fullscreen]);
 
   useEffect(() => {
     if (!selectedStationId) return;
@@ -359,6 +409,7 @@ export default function OrgTemplateBoard({
 
   return (
     <>
+      <OrgChartUpkeep lang={lang} />
       {(panel => (fullscreen ? createPortal(panel, document.body) : panel))(
         <OrgPanel ar={ar} fullscreen={fullscreen} embedded={embedded && !fullscreen}>
           {embedded && !fullscreen ? (
@@ -394,7 +445,17 @@ export default function OrgTemplateBoard({
                 ar={ar}
                 htmlStrip
               />
-              <button type="button" onClick={() => setOffset({ x: 0, y: 0 })} style={stageBtn}>{ar ? "توسيط" : "Center"}</button>
+              <button
+                type="button"
+                onClick={() => {
+                  onClearFocus?.();
+                  const me = chart.flat.find((node) => node.employeeId && node.employeeId === String(currentUser?.id || ""));
+                  scheduleCenter(me?.id || revealNodeId);
+                }}
+                style={stageBtn}
+              >
+                {ar ? "تمركز عليّ" : "Center on me"}
+              </button>
               <span style={{ flex: 1 }} />
               <span className="nv-org-stage-bar__hint">
                 {ar ? "اسحب للتحريك · العجلة أو إصبعان للتكبير" : "Drag to pan · wheel or pinch to zoom"}
@@ -574,6 +635,7 @@ export default function OrgTemplateBoard({
                   }}
                   byGrade={byGrade}
                   dense={dense}
+                  revealId={revealNodeId}
                 />
               ) : (
                         <span style={{ marginBlockStart: 16, fontSize: 12, color: MUTED }}>

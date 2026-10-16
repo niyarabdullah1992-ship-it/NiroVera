@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { OrgWorkforceCol, OrgWorkforceNodeCard, ORG_NODE_W, ORG_TREE_LINE } from "@/components/hr/orgUi";
+import { OrgWorkforceCol, OrgWorkforceNodeCard, ORG_TREE_LINE } from "@/components/hr/orgUi";
 
 function initialsOf(name) {
   const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
@@ -54,10 +54,13 @@ export default function OrgWorkforceChart({
   onOpenDetails,
   byGrade = false,
   dense = false,
+  revealId = "",
 }) {
   const [opened, setOpened] = useState(() => new Set());
   const [closed, setClosed] = useState(() => new Set());
   const spineNext = useMemo(() => (spine && !full ? pathMap(roots, focusId) : new Map()), [spine, full, roots, focusId]);
+  // The card the canvas opens on (the viewer or the chosen focus) is never folded away.
+  const revealNext = useMemo(() => (revealId ? pathMap(roots, revealId) : new Map()), [roots, revealId]);
 
   const shownKids = (node) => {
     const kids = node?.children || [];
@@ -68,7 +71,7 @@ export default function OrgWorkforceChart({
       const next = spineNext.get(node.id);
       return next ? kids.filter((child) => child.id === next) : [];
     }
-    if (skeletonOpen(node)) return kids;
+    if (skeletonOpen(node) || revealNext.has(node.id)) return kids;
     return [];
   };
 
@@ -123,7 +126,7 @@ export default function OrgWorkforceChart({
             />
           </>
         ) : null}
-        <OrgWorkforceCol>
+        <OrgWorkforceCol nodeId={node.id}>
           <OrgWorkforceNodeCard
             name={node.name}
             title={node.title}

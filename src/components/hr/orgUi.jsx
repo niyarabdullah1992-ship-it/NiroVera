@@ -326,9 +326,10 @@ export function OrgWorkforceNodeCard({
 }
 
 /** Column wrapper matching HTML colStyle (272px + side margin). */
-export function OrgWorkforceCol({ children, style }) {
+export function OrgWorkforceCol({ children, style, nodeId }) {
   return (
     <div
+      data-org-node={nodeId || undefined}
       style={{
         display: "flex",
         flexDirection: "column",

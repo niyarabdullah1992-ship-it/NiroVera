@@ -52,6 +52,7 @@ import { deadlineText, disciplineDeadlines } from "@/lib/disciplineDeadlines";
 import { ruleValue } from "@/lib/laborRules";
 import { saveDisciplineOnServer } from "@/lib/disciplineServer";
 import { regulationVersionEntry } from "@/lib/syncLaw";
+import { sanctionRecordState } from "@/lib/penaltiesRecord";
 
 const MANAGE_TAB_ORDER = ["manage", "raise", "calc", "schedule", "law", "archive"];
 const EMPLOYEE_TAB_ORDER = ["mine", "schedule", "law", "archive"];
@@ -338,7 +339,11 @@ export default function Discipline() {
     setTimeout(() => document.querySelector("[data-grievance-raise]")?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
   };
   // Signed is archive-settled for the company, but stays on ملفي live so the employee can object.
-  const mineLiveCards = mineCards.filter((card) => card.face.id === "signed" || !isDisciplineSettled(card.item));
+  // Model Arts. 69 · 61: nothing leaves the record; a signed penalty past the fold date (discipline.record.eraseDays,
+  // never under the 180-day cooloff) only moves under «سوابق» in the worker's own list.
+  const mineAllLive = mineCards.filter((card) => card.face.id === "signed" || !isDisciplineSettled(card.item));
+  const mineLiveCards = mineAllLive.filter((card) => !sanctionRecordState(card.item, { today: board.today }).foldedForWorker);
+  const mineOlderCards = mineAllLive.filter((card) => sanctionRecordState(card.item, { today: board.today }).foldedForWorker);
   const kindSpec = listedPenaltyKind(penaltyKind) || DISCIPLINE_PENALTY_KINDS[0];
   const cutDays = kindSpec.days.includes(0) && kindSpec.days.length === 1 ? 0 : Number(penaltyDays) || kindSpec.days[0] || 0;
   const ledger = data?.disciplineFineLedger || [];
@@ -984,6 +989,23 @@ export default function Discipline() {
               />
               </React.Fragment>
             ))}
+
+            {mineOlderCards.length ? (
+              <details data-discipline-older="" style={PACK_CARD}>
+                <summary style={{ cursor: "pointer", padding: "8px 12px", fontSize: 12.5, fontWeight: 700 }}>
+                  {ar ? `سوابق مضى على توقيعها أكثر من سنة (${mineOlderCards.length})` : `Earlier penalties, signed over a year ago (${mineOlderCards.length})`}
+                </summary>
+                <p style={{ margin: 0, padding: "0 14px 8px", fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
+                  {ar ? "لا يُشدَّد بها جزاء جديد بعد 180 يوماً من إبلاغها (النموذج الموحد م61)، وتبقى في صحيفة الجزاءات بملف خدمتك (م69) — لا تُحذف." : "They raise no new penalty after 180 days from notice (model Art. 61) and stay in the penalties record of your service file (Art. 69)."}
+                </p>
+                {mineOlderCards.map((card) => (
+                  <div key={`older-${card.item.id}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "8px 14px", borderTop: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
+                    <span>{card.mineTitle || card.item.penalty || "—"}</span>
+                    <span dir="ltr" style={{ color: "var(--nv-muted)", fontSize: 12 }}>{String(card.item.signedAt || card.item.decidedAt || "").slice(0, 10)}</span>
+                  </div>
+                ))}
+              </details>
+            ) : null}
 
             <section data-grievance-mine="" style={PACK_CARD}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)", flexWrap: "wrap" }}>

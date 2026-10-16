@@ -46,6 +46,7 @@ import { eosGratuity } from "./offboardingDerivations.js";
 import { citeRule, laborDayKey, ruleValue, religionOnFile } from "./laborRules.js";
 import { officialHolidayList } from "./ummAlQuraCalendar.js";
 import { effectiveCutDays, effectivePenalty, faceOf, fmtDisciplineDate, isErasedFromEmployeeRecord, penaltyShiftLabel } from "./disciplineBoard.js";
+import { sanctionRecordState } from "./penaltiesRecord.js";
 import { HOSPITAL_FAR_MINUTES } from "./allowanceKinds.js";
 import { WAGE_TYPE_OPTIONS } from "./consentEffects.js";
 
@@ -1095,6 +1096,17 @@ export function buildEmployeeFileView({
         bg: live ? "var(--nv-warn-soft)" : "var(--nv-soft)",
         border: live ? "var(--nv-warn-line)" : "var(--nv-line)",
         tone: live ? "warn" : null,
+        // Model Art. 69: the record's three fields — the offence, the day it happened, the penalty — and
+        // whether it can still raise a repeat (Art. 61). Nothing here is ever dropped.
+        offence: String(item.regulationOffence || "").trim(),
+        occurredAt: fmtDisciplineDate(item.discoveredAt || item.createdAt, ar),
+        repeat: (() => {
+          const st = sanctionRecordState(item, { today: day });
+          if (!st.signed) return "";
+          return st.countsForRepeat
+            ? (ar ? `يُحتسب في التكرار حتى ${st.repeatUntil}` : `Counts for a repeat until ${st.repeatUntil}`)
+            : (ar ? `مضى ${st.cooloff} يوماً على إبلاغه — لا يُشدَّد به (م61)` : `${st.cooloff} days since notice — no increase (Art. 61)`);
+        })(),
       };
     });
 

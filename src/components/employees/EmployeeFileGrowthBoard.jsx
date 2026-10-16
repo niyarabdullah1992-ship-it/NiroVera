@@ -33,8 +33,8 @@ export default function EmployeeFileGrowthBoard({ view, ar, self = false }) {
       <section className="nv-doc" style={paper}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-            <span style={{ fontSize: 16, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0 }}>{ar ? "الجزاءات التأديبية" : "Disciplinary sanctions"}</span>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--nv-ink2)", lineHeight: 1.75 }}>{ar ? "لا جزاء بلا إبلاغ وتحقيق وسماع دفاع." : "No sanction without notice, investigation and a hearing."}</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0 }}>{ar ? "صحيفة الجزاءات" : "Penalties record"}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--nv-ink2)", lineHeight: 1.75 }}>{ar ? "نوع المخالفة وتاريخ وقوعها والجزاء الموقّع — تُحفظ في ملف الخدمة ولا يُمحى منها جزاء (النموذج الموحد م69). للموارد البشرية والمدير؛ والموظف يرى جزاءاته في «الجزاءات»." : "The offence, the day it happened and the penalty — kept in the service file, nothing erased (model Art. 69). HR and managers only; the worker sees his in Sanctions."}</span>
           </div>
           <Link
             to="/app/discipline"
@@ -44,7 +44,7 @@ export default function EmployeeFileGrowthBoard({ view, ar, self = false }) {
           </Link>
         </div>
         {(view.penalties || []).length === 0 ? (
-          <div style={{ padding: "16px 20px", fontSize: 13, fontWeight: 500, color: "var(--nv-ink2)" }}>{ar ? "لا جزاء على سجل الموظف الظاهر." : "No sanction on the visible record."}</div>
+          <div style={{ padding: "16px 20px", fontSize: 13, fontWeight: 500, color: "var(--nv-ink2)" }}>{ar ? "لا جزاء في صحيفة الموظف." : "No penalty on the record."}</div>
         ) : view.penalties.map((row) => (
           <div
             key={`${row.t}-${row.at}`}
@@ -65,11 +65,19 @@ export default function EmployeeFileGrowthBoard({ view, ar, self = false }) {
               </span>
               <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink2)", whiteSpace: "nowrap" }}>{row.at}</span>
             </div>
+            {row.offence ? (
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)", lineHeight: 1.75 }}>
+                {ar ? `المخالفة: ${row.offence}` : `Offence: ${row.offence}`}
+              </span>
+            ) : null}
             {row.reason ? (
               <span style={{ fontSize: 13, fontWeight: 600, color: "var(--nv-ink)", lineHeight: 1.75 }}>
                 {row.reason}
               </span>
             ) : null}
+            <span style={{ fontSize: 12, fontWeight: 500, color: "var(--nv-ink2)" }}>
+              {ar ? `وقعت ${row.occurredAt || "—"}` : `Happened ${row.occurredAt || "—"}`}{row.repeat ? ` · ${row.repeat}` : ""}
+            </span>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
               {row.tone ? null : <span style={{ fontSize: 12, fontWeight: 700, color: row.color || "var(--nv-ink3)" }}>{row.state}</span>}
               <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink2)" }}>{row.wageEff}</span>

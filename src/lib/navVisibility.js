@@ -107,6 +107,9 @@ export function allowedNavFor(user, data, company) {
 
 export function canAccessPath(pathname, user, data, company) {
   if (!canAccessPlanPath(pathname, company)) return false;
+  // «مكاني في الهيكل»: every signed-in person opens /app/org; the page itself shows non-HR viewers
+  // only their own place (and managers their subtree), and the server enforces the same.
+  if (user && (pathname === "/app/org" || pathname.startsWith("/app/org/"))) return true;
   const allowed = allowedNavFor(user, data, company);
   const smartRoute = Object.values(SMART_SECTION_ROUTES)
     .flatMap((routes) => (Array.isArray(routes) ? routes : routes ? [routes] : []))

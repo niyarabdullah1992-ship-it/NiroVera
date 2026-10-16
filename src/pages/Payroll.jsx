@@ -53,6 +53,7 @@ import {
   reconcileDamageObjections,
 } from "@/lib/payrollDeductions";
 import PayrollLawPanel from "@/components/payroll/PayrollLawPanel";
+import PayrollMinistryPanel from "@/components/payroll/PayrollMinistryPanel";
 import PayrollMineDeductions from "@/components/payroll/PayrollMineDeductions";
 import { notifyMoney } from "@/lib/moneyNotifications";
 import useStationScope from "@/hooks/useStationScope";
@@ -424,6 +425,16 @@ export default function Payroll() {
       )}
 
       {tab === "run" && view === MANAGE && (
+        <PayrollMinistryPanel
+          ar={ar}
+          data={data}
+          month={month}
+          items={managedVisible.map(faceOf)}
+          employeeForItem={employeeForItem}
+        />
+      )}
+
+      {tab === "run" && view === MANAGE && (
         <PayrollRunBoard
           month={month}
           lang={lang}
@@ -531,6 +542,7 @@ export default function Payroll() {
             )}
             {me ? <AllowanceLedgerCard employee={me} ar={ar} /> : null}
             {me ? <SiteConditionsCard employee={me} station={station} ar={ar} /> : null}
+            {me ? <PayrollMinistryPanel ar={ar} data={data} month={month} items={myItem ? [myItem] : []} self /> : null}
           </div>
         );
       })()}

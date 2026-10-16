@@ -46,6 +46,7 @@ const Discipline = lazy(() => import('./pages/Discipline'));
 const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'));
 const HRStructureManagement = lazy(() => import('./pages/HRStructureManagement'));
 const OrgStructure = lazy(() => import('./pages/OrgStructure'));
+const OrgChart = lazy(() => import('./pages/OrgChart'));
 const CompanySettings = lazy(() => import('./pages/CompanySettings'));
 const Payroll = lazy(() => import('./pages/Payroll'));
 const Performance = lazy(() => import('./pages/Performance'));
@@ -239,6 +240,7 @@ function AppRoutes() {
       <Route path="/app/employees/:employeeId" element={<RequireAuth><EmployeeProfile /></RequireAuth>} />
       <Route path="/app/hr" element={<RequireAuth><HRStructureManagement /></RequireAuth>} />
       <Route path="/app/org" element={<RequireAuth><OrgStructure /></RequireAuth>} />
+      <Route path="/app/org/chart" element={<OrgChart />} />
       <Route path="/app/owner" element={<Navigate to="/owner" replace />} />
       <Route path="/app/settings" element={<RequireAuth><CompanySettings /></RequireAuth>} />
       <Route path="/app/payroll" element={<RequireAuth><Payroll /></RequireAuth>} />

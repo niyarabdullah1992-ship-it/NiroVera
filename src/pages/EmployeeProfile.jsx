@@ -23,6 +23,7 @@ import LoginAccessCard from "@/components/employees/LoginAccessCard";
 import AccountSettingsCard from "@/components/employees/AccountSettingsCard";
 import DeleteEmployeeAccountCard from "@/components/employees/DeleteEmployeeAccountCard";
 import OffboardingTab from "@/components/employees/OffboardingTab";
+import RequestsMinistryPanel from "@/components/requests/RequestsMinistryPanel";
 import OffboardingCustodyBoard from "@/components/employees/OffboardingCustodyBoard";
 import EmpAlertsStrip from "@/components/employees/EmpAlertsStrip";
 import AssignmentTab from "@/components/employees/AssignmentTab";
@@ -474,9 +475,14 @@ export default function EmployeeProfile() {
         )}
 
         {tab === "duty" && (
-          /* The file keeps the duty days and hours on file and the absence/lateness record (Art. 80).
-             The ministry-rules panel lives in طلباتي — not repeated here. */
-          <EmployeeFileDutyBoard employee={employee} data={data} currentUser={currentUser} lang={lang} />
+          /* The file keeps the duty days and hours, the absence/lateness record (Art. 80) and what the
+             Ministry rules saved on it. */
+          <>
+            <EmployeeFileDutyBoard employee={employee} data={data} currentUser={currentUser} lang={lang} />
+            {/* What the file keeps under the Ministry rules — night-work duties, pregnancy notice, exposed-work
+                reports, nursing hour, contract changes — feeds the roster and attendance. */}
+            <RequestsMinistryPanel ar={ar} lang={lang} subject={employee} own={isSelf} dutyHref={null} fileMode />
+          </>
         )}
 
         {tab === "compliance" && (

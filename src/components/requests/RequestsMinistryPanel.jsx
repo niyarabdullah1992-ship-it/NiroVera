@@ -98,7 +98,7 @@ function fileFacts(profile = {}, ar = true) {
 }
 
 export default function RequestsMinistryPanel({ ar = true, lang = "ar", subject, liveArticle = "", liveKind = "", own = true, dutyHref = "/app/attendance", fileMode = false }) {
-  // In the employee file the leave tab already lists every leave article and the duty tab holds the
+  // In the employee file leave lives in طلباتي (every leave article there) and the duty tab holds the
   // night medical report — the panel keeps only what has no other home there.
   const FILE_LABOUR = new Set(["75", "79 مكرر", "58", "59", "60"]);
   const [source, setSource] = useState("all");
@@ -241,7 +241,7 @@ export default function RequestsMinistryPanel({ ar = true, lang = "ar", subject,
       key: "labour",
       title: fileMode ? (rows.some((row) => row.key === "labour-154") ? (ar ? "نظام العمل — العقد والرضاعة" : "Labour Law — contract and nursing") : (ar ? "نظام العمل — العقد" : "Labour Law — contract")) : (ar ? "نظام العمل — الإجازات والعقد" : "Labour Law — leave and contract"),
       scope: fileMode
-        ? (ar ? `${rows.some((row) => row.key === "labour-154") ? "ساعة الرضاعة، " : ""}الاستقالة والإشعار، تغيير شروط العقد. الإجازات في تبويب «الإجازات».` : "Resignation and notice, contract changes. Leave is in the Leave tab.")
+        ? (ar ? `${rows.some((row) => row.key === "labour-154") ? "ساعة الرضاعة، " : ""}الاستقالة والإشعار، تغيير شروط العقد. الإجازات في طلباتي.` : "Resignation and notice, contract changes. Leave is in My requests.")
         : (ar ? "الإجازات بأنواعها، ساعة الرضاعة، الاستقالة والإشعار، تغيير شروط العقد." : "All leave types, the nursing hour, resignation and notice, contract changes."),
     },
   ].filter((card) => !fileMode || rows.some((row) => row.source === card.key)).map((card) => {

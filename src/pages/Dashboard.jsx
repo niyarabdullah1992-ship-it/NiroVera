@@ -73,27 +73,14 @@ function buildModuleMetrics(data, extra = {}) {
 }
 
 /** Header figure on the green — a link to the section that owns it. */
-/** Header figure on the green frame — always the same calm pill. A pending queue is an action, not an
- *  alarm: it gets «افتح ›» instead of a gold highlight (one accent; colour is meaning, not decoration). */
-function HeadStat({ to, label, value, hot = false, ar = true }) {
+/** Header figure on the green frame — the same open column as طلباتي: small label, number, a note line.
+ *  No box: the figures sit on the green, divided by a thin rule. A pending queue reads as an action. */
+function HeadStat({ to, label, value, note = "", action = "" }) {
   return (
-    <Link
-      to={to}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "6px 12px",
-        borderRadius: 8,
-        textDecoration: "none",
-        background: "rgba(255,255,255,.08)",
-        border: "1px solid rgba(255,255,255,.22)",
-        color: "#fff",
-      }}
-    >
-      <span style={{ fontSize: 11.5, color: "#C5DBCD" }}>{label}</span>
-      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, fontWeight: 600, color: "#fff", unicodeBidi: "isolate" }}>{value}</span>
-      {hot ? <span style={{ fontSize: 11, fontWeight: 600, color: "#fff", textDecoration: "underline", textUnderlineOffset: 3 }}>{ar ? "افتح ›" : "Open ›"}</span> : null}
+    <Link to={to} style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-start", textDecoration: "none", color: "#fff" }}>
+      <span style={{ fontSize: 10.5, color: "#A9CDB8" }}>{label}</span>
+      <span dir="ltr" style={{ fontSize: 20, fontWeight: 700, color: "#fff", unicodeBidi: "isolate", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>{value}</span>
+      <span style={{ fontSize: 10, color: action ? "#fff" : "#C5DBCD", fontWeight: action ? 600 : 400, minHeight: 14 }}>{action || note || "\u00a0"}</span>
     </Link>
   );
 }
@@ -255,16 +242,24 @@ export default function Dashboard() {
             ? "الأرقام مشتقّة من السجل والنطاق المعروض — ليست تقديراً ولا تُختلق. ملفي = محطة العمل · إدارة = فرع واحد."
             : "Figures are derived from the registry and the current scope — not estimated or invented. My file = work station · Manage = one branch."}
           meta={(
-            <div style={{ display: "flex", alignItems: "stretch", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-              <HeadStat to={personalFace ? "/app/attendance" : "/app/attendance?lane=manage"} label={ar ? "حضور اليوم" : "Today's attendance"} value={`${Math.round(attendanceRate)}%`} />
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <HeadStat
+                to={personalFace ? "/app/attendance" : "/app/attendance?lane=manage"}
+                label={ar ? "حضور اليوم" : "Today's attendance"}
+                value={`${Math.round(attendanceRate)}%`}
+                note={ar ? "من المجدولين" : "Of those scheduled"}
+              />
               {!personalFace ? (
-                <HeadStat
-                  to="/app/requests/manage"
-                  label={ar ? "بانتظار قرارك" : "Awaiting you"}
-                  value={pendingLeaveEarly}
-                  hot={pendingLeaveEarly > 0}
-                  ar={ar}
-                />
+                <>
+                  <span aria-hidden style={{ width: 1, height: 28, background: "rgba(255,255,255,.28)" }} />
+                  <HeadStat
+                    to="/app/requests/manage"
+                    label={ar ? "بانتظار قرارك" : "Awaiting you"}
+                    value={pendingLeaveEarly}
+                    note={ar ? "لا شيء معلّق" : "Nothing pending"}
+                    action={pendingLeaveEarly > 0 ? (ar ? "افتح القرار ›" : "Open the decision ›") : ""}
+                  />
+                </>
               ) : null}
             </div>
           )}

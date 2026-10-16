@@ -18,6 +18,7 @@ import { printReport } from "@/lib/printReport";
 import { deriveInspectionPack } from "@/lib/inspectionPackDerivations";
 import { COMPLIANCE_MINISTRY_CARDS, complianceMinistryRows } from "@/lib/complianceMinistryRows";
 import MinistryLawPanel from "@/components/schedules/MinistryLawPanel";
+import MinistryComplianceIndex from "@/components/hr/MinistryComplianceIndex";
 import StatutoryItem from "@/components/labor/StatutoryItem";
 import { BOE_LABOUR_LAW_URL, HRSD_IMPLEMENTING_REGS_URL, HRSD_LABOUR_LAW_EDITION, HRSD_LABOUR_LAW_PDF } from "@/lib/laborRules";
 
@@ -432,6 +433,8 @@ export default function ComplianceMhrsdBoard() {
 
   return (
     <div id="compliance-center" style={{ display: "flex", flexDirection: "column", gap: "16px" }} dir={ar ? "rtl" : "ltr"}>
+      {/* «الامتثال الوزاري» — one line per section, counted from that section's own panel rows; each opens it. */}
+      <MinistryComplianceIndex ar={ar} />
       {/* L2234–2268 Nitaqat card — primary glance at top of compliance centre */}
       <section style={PAPER}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>

@@ -161,9 +161,10 @@ export function MinistryRow({ source, badge, status, pill, title, note, sub, com
       data-ministry-row={rowKey || undefined}
       data-status={status}
       style={{
-        display: "grid",
-        gridTemplateColumns: "auto minmax(0,1fr) auto",
-        alignItems: compact ? "center" : "start",
+        // Wraps instead of a fixed three-column grid: on a phone the pill drops under the title.
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: compact ? "center" : "flex-start",
         gap: 10,
         padding: compact ? "7px 18px" : "10px 18px",
         borderBottom: "1px solid var(--nv-line2, #EEF2F7)",
@@ -171,7 +172,7 @@ export function MinistryRow({ source, badge, status, pill, title, note, sub, com
       }}
     >
       <span style={ministryBadgeStyle(badge ? "" : source, ar, badgeFace(badge || ministryBadgeText(source, ar)))}>{badge || ministryBadgeText(source, ar)}</span>
-      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: "1 1 220px" }}>
         <span style={{ fontSize: compact ? 12 : 12.5, fontWeight: compact ? 500 : 600, color: compact ? "var(--nv-ink2)" : "var(--nv-ink)", lineHeight: 1.55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: compact ? "nowrap" : "normal" }}>
           {title}
           {clause ? <span style={{ fontWeight: 500, color: "var(--nv-muted)" }}>{` — ${clause}`}</span> : null}
@@ -179,8 +180,8 @@ export function MinistryRow({ source, badge, status, pill, title, note, sub, com
         {!compact && note ? <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>{note}</span> : null}
         {sub ? <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.5 }}>{sub}</span> : null}
       </span>
-      <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, minWidth: 0, maxWidth: "100%" }}>
-        <span style={chip(tone, { fontWeight: 600 })} title={typeof pill === "string" ? pill : undefined}>{pill}</span>
+      <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, minWidth: 0, maxWidth: "100%", marginInlineStart: "auto" }}>
+        <span style={chip(tone, { fontWeight: 600, height: "auto", minHeight: 24, whiteSpace: "normal", lineHeight: 1.45, paddingBlock: 3, maxWidth: "100%" })} title={typeof pill === "string" ? pill : undefined}>{pill}</span>
         {action || null}
       </span>
     </div>

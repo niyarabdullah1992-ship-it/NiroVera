@@ -22,6 +22,7 @@ function expiringDocs(view) {
 }
 
 export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
+  const soon = expiringDocs(view);
   const livePenalties = (view.penalties || []).filter((row) => /نافذ|ساري|اعتراض|force|object/i.test(`${row.state || ""}`));
   const rows = view.compliance || [];
   const met = rows.filter((row) => row.ok && !row.warn).length;
@@ -201,7 +202,6 @@ export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
         <div style={{ display: "flex", flexDirection: "column" }}>
           {[
             { cite: "م 51 · 53", text: rows.find((row) => row.id === "contract")?.note || "—" },
-            { cite: "م 109", text: leave?.note || "—" },
             { cite: "م 122", text: soon.length ? (ar ? "شهادة تنتهي خلال 30 يوماً" : "A certificate ends within 30 days") : (ar ? "لا تحذير انتهاء على الوثائق المؤرّخة" : "No dated document is inside the warning window") },
             { cite: ar ? "نطاقات" : "Nitaqat", text: rows.find((row) => row.id === "gosi")?.note || "—" },
           ].map((row) => (

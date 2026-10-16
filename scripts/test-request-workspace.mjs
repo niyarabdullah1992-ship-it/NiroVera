@@ -164,7 +164,9 @@ assert.ok(composeRequestKinds("manage").some((row) => row.id === "leave_credit" 
 assert.ok(!composeRequestKinds("mine").some((row) => row.id === "leave_credit"), "ملفي does not compose admin credit");
 assert.ok(composeRequestKinds("manage").some((row) => row.id === "ot_assign"));
 assert.ok(!composeRequestKinds("mine").some((row) => row.id === "ot_assign"));
-assert.deepEqual(composeRequestKinds("manage").map((row) => row.id).sort(), ["leave", "leave_credit", "nursing_hour", "ot_assign", "other", "permission", "pregnancy_notice"], "manage raise is leave on behalf + OT + credit + recorded duty requests + other");
+assert.deepEqual(composeRequestKinds("manage").map((row) => row.id).sort(), ["leave", "leave_credit", "mission", "nursing_hour", "ot_assign", "other", "permission", "pregnancy_notice"], "manage raise is leave on behalf + OT + credit + recorded duty requests + a mission decision (model Art. 24) + other");
+assert.ok(!composeRequestKinds("mine").some((row) => row.id === "mission"), "a mission is the manager's decision, not raised from ملفي");
+assert.ok(composeRequestKinds("mine").some((row) => row.id === "relocation"), "relocation expenses are claimed from ملفي (model Arts. 9/12)");
 assert.ok(!composeRequestKinds("manage").some((row) => row.id === "heat_report"), "an exposed-work report is the worker's, never raised by management");
 assert.equal(isManageRaiseKind("ot_assign"), true);
 assert.equal(isManageRaiseKind("leave_credit"), true);

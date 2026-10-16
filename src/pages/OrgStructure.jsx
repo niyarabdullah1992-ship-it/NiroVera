@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { OPEN_HIRE_EVENT } from "@/lib/orgHire";
@@ -24,7 +24,7 @@ import OrgSeatRegister from "@/components/hr/orgdesign/OrgSeatRegister";
 import OrgHealthBoard from "@/components/hr/orgdesign/OrgHealthBoard";
 import OrgDoaBoard from "@/components/hr/orgdesign/OrgDoaBoard";
 import OrgChangesBoard from "@/components/hr/orgdesign/OrgChangesBoard";
-import OrgFocusChart from "@/components/hr/orgdesign/OrgFocusChart";
+import OrgChartEntry from "@/components/hr/orgdesign/OrgChartEntry";
 import { SectionHead } from "@/components/hr/orgdesign/orgDesignUi";
 
 const PANES = ["chart", "seats", "health", "authority", "changes"];
@@ -97,7 +97,7 @@ export default function OrgStructure() {
   const canEditDesign = Boolean(data && currentUser && canEditOrgDesign(currentUser, data));
   const requestedPane = searchParams.get("pane");
   const pane = PANES.includes(requestedPane) ? requestedPane : "chart";
-  // «التركيز» (my card first) is the default chart; «الشجرة كاملة» is the secondary canvas for HR.
+  // The chart itself is full screen (/app/org/chart); «الفروع والدليل» keeps the HR branch tools here.
   const chartMode = searchParams.get("chart") === "full" ? "full" : "focus";
   const setChartMode = useCallback((next) => {
     const params = new URLSearchParams(searchParams);
@@ -106,6 +106,11 @@ export default function OrgStructure() {
     setSearchParams(params, { replace: true });
   }, [searchParams, setSearchParams]);
   const focusParam = searchParams.get("focus") || "";
+  const navigate = useNavigate();
+  // an old /app/org?focus=<seat> link opens the full-screen chart on that card
+  useEffect(() => {
+    if (focusParam && chartMode === "focus") navigate(`/app/org/chart?focus=${encodeURIComponent(focusParam)}`, { replace: true, state: { from: "/app/org" } });
+  }, [focusParam, chartMode, navigate]);
   const clearFocus = useCallback(() => {
     if (!searchParams.get("focus")) return;
     const params = new URLSearchParams(searchParams);
@@ -286,10 +291,10 @@ export default function OrgStructure() {
                   <SectionHead
                     title={ar ? "مكاني في الهيكل" : "My place in the structure"}
                     hint={ar
-                      ? "تفتح الصفحة على بطاقتك: فوقها مديرك وسلسلة الإدارة، وتحتها فريقك، وبجانبها زملاؤك. انقر أي بطاقة لتنتقل إليها. للاطلاع فقط — التغيير في الهيكل عبر الموارد البشرية."
-                      : "Opens on your card: your manager and chain above, your team below, your peers beside. Click any card to move to it. Read-only — structural changes go through HR."}
+                      ? "للاطلاع فقط — ترى سلسلة إدارتك وزملاءك وفريقك. التغيير في الهيكل عبر الموارد البشرية."
+                      : "Read-only — your management chain, peers and team. Structural changes go through HR."}
                   />
-                  <OrgFocusChart ar={ar} data={data} user={currentUser} companyId={company.id} scope="mine" />
+                  <OrgChartEntry ar={ar} data={data} user={currentUser} scope="mine" />
                 </section>
               </PageErrorBoundary>
             ) : (
@@ -358,13 +363,13 @@ export default function OrgStructure() {
                     {pane === "chart" ? (
                       <>
                         <div className="nv-od-filters" role="group" aria-label={ar ? "طريقة العرض" : "Chart mode"} style={{ marginBottom: 12 }}>
-                          <button type="button" className="nv-od-chip" aria-pressed={chartMode === "focus"} onClick={() => setChartMode("focus")}>{ar ? "التركيز" : "Focus"}</button>
-                          <button type="button" className="nv-od-chip" aria-pressed={chartMode === "full"} onClick={() => setChartMode("full")}>{ar ? "الشجرة كاملة" : "Whole tree"}</button>
+                          <button type="button" className="nv-od-chip" aria-pressed={chartMode === "focus"} onClick={() => setChartMode("focus")}>{ar ? "المخطط" : "Chart"}</button>
+                          <button type="button" className="nv-od-chip" aria-pressed={chartMode === "full"} onClick={() => setChartMode("full")}>{ar ? "الفروع والدليل" : "Branches & directory"}</button>
                         </div>
                         {chartMode === "focus" ? (
                           <>
                             <OrgChartUpkeep lang={lang} />
-                            <OrgFocusChart ar={ar} data={data} user={currentUser} companyId={company.id} scope="all" canWrite={canWrite} onHire={openHire} />
+                            <OrgChartEntry ar={ar} data={data} user={currentUser} scope="all" />
                           </>
                         ) : (
                           <OrgTemplateBoard

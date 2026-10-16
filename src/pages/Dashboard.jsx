@@ -73,7 +73,9 @@ function buildModuleMetrics(data, extra = {}) {
 }
 
 /** Header figure on the green — a link to the section that owns it. */
-function HeadStat({ to, label, value, hot = false }) {
+/** Header figure on the green frame — always the same calm pill. A pending queue is an action, not an
+ *  alarm: it gets «افتح ›» instead of a gold highlight (one accent; colour is meaning, not decoration). */
+function HeadStat({ to, label, value, hot = false, ar = true }) {
   return (
     <Link
       to={to}
@@ -84,13 +86,14 @@ function HeadStat({ to, label, value, hot = false }) {
         padding: "6px 12px",
         borderRadius: 8,
         textDecoration: "none",
-        background: hot ? "rgba(200,164,90,.18)" : "rgba(255,255,255,.08)",
-        border: `1px solid ${hot ? "rgba(200,164,90,.7)" : "rgba(255,255,255,.22)"}`,
+        background: "rgba(255,255,255,.08)",
+        border: "1px solid rgba(255,255,255,.22)",
         color: "#fff",
       }}
     >
       <span style={{ fontSize: 11.5, color: "#C5DBCD" }}>{label}</span>
       <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, fontWeight: 600, color: "#fff", unicodeBidi: "isolate" }}>{value}</span>
+      {hot ? <span style={{ fontSize: 11, fontWeight: 600, color: "#fff", textDecoration: "underline", textUnderlineOffset: 3 }}>{ar ? "افتح ›" : "Open ›"}</span> : null}
     </Link>
   );
 }
@@ -260,6 +263,7 @@ export default function Dashboard() {
                   label={ar ? "بانتظار قرارك" : "Awaiting you"}
                   value={pendingLeaveEarly}
                   hot={pendingLeaveEarly > 0}
+                  ar={ar}
                 />
               ) : null}
             </div>

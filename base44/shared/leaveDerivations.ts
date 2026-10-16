@@ -6,7 +6,7 @@
 import { articleOfficialText } from "./laborArticleTexts.ts";
 import { checkGroundedRefusalGate } from "./statutoryRefusal.ts";
 import { checkJobSearchDayGate } from "./rightsRequests.ts";
-import { addLaborDays, citeLeaveType, citeRule, isRamadanHoursSubject, religionOnFile, lastRamadanDay, ownerHolidayBag, RAMADAN_WINDOWS, rulingCivicDate, rulingEidSpan, ruleAt, ruleValue, type LaborCalendar } from "./laborRules.ts";
+import { addLaborDays, citeLeaveType, citeRule, isRamadanHoursSubject, religionOnFile, lastRamadanDay, RAMADAN_WINDOWS, rulingCivicDate, rulingEidSpan, ruleAt, ruleValue, type LaborCalendar } from "./laborRules.ts";
 import { checkExamStudyConsentGate, EXAM_LEAVE_TRACK_ANNUAL_OR_UNPAID, EXAM_LEAVE_TRACK_PAID, type ExamConsentExtras } from "./otherRequestDerivations.ts";
 
 export const LEAVE_THRESHOLD_DAYS = ruleValue("leave.attachment.thresholdDays");
@@ -641,10 +641,34 @@ export function isOfficialHolidayLeave(type?: string) {
   return String(type || "").trim().toLowerCase() === "eid";
 }
 
+/** Art. 112 holidays apply from the platform calendar — no request is raised, approved or counted. */
+export const HOLIDAY_AUTOMATIC = "HOLIDAY_AUTOMATIC";
+/** Status a legacy pending holiday request carries once voided: no decision is needed. */
+export const HOLIDAY_REQUEST_NOT_NEEDED = "not_needed";
+
+/** Old «العطل الرسمية» request rows — history only; the roster, attendance and payroll read the calendar. */
+export function isLegacyHolidayRequest(row?: LeaveRequestLike | null) {
+  return !!row && isOfficialHolidayLeave(row.type);
+}
+
+/** A pending legacy holiday request becomes «لا حاجة» — approved ones stay as historical records. */
+export function voidLegacyHolidayRequest<T extends LeaveRequestLike>(row: T, at = ""): T {
+  if (!isLegacyHolidayRequest(row)) return row;
+  const status = String(row.status || "pending");
+  if (status !== "pending" && status !== "revise") return row;
+  return {
+    ...row,
+    status: HOLIDAY_REQUEST_NOT_NEEDED,
+    voidReason: HOLIDAY_AUTOMATIC,
+    voidedAt: (row as { voidedAt?: string }).voidedAt || at || undefined,
+  } as T;
+}
+
 function liveLeaveRequests(request: LeaveRequestLike | null | undefined, extras: LeaveApproveExtras) {
   const id = String(request?.id || "").trim();
   return (extras.requests || extras.profile?.leaveRequests || []).filter((row) => {
     if (!row) return false;
+    if (isLegacyHolidayRequest(row)) return false;
     const otherId = String(row.id || "").trim();
     if (id && otherId && otherId === id) return false;
     const status = String(row.status || "pending");
@@ -652,96 +676,17 @@ function liveLeaveRequests(request: LeaveRequestLike | null | undefined, extras:
   });
 }
 
-function officialHolidayKindLabelTs(id: string, calendar?: LaborCalendar | null) {
-  const key = String(id || "").trim().toLowerCase();
-  const row = ownerHolidayBag(calendar)?.[key];
-  const custom = row?.overridden === true ? String(row.nameAr || "").trim().replace(/^إجازة\s+/, "") : "";
-  if (custom) return custom;
-  if (key === "national") return "اليوم الوطني";
-  if (key === "founding") return "يوم التأسيس";
-  if (key === "fitr") return "عيد الفطر";
-  if (key === "adha") return "عيد الأضحى";
-  return "";
-}
-
+/** Art. 112: official holidays are not requested — National, Founding, Fitr and Adha lock on the roster
+ *  from the platform calendar for everyone, as full-pay leave. A new «eid» request is refused by name. */
 export function checkOfficialHolidayLeaveGate(request: LeaveRequestLike | null | undefined, extras: LeaveApproveExtras = {}) {
   if (!isOfficialHolidayLeave(request?.type)) return { ok: true as const };
   const start = dateOnly(request?.startDate);
-  const end = dateOnly(request?.endDate);
-  const calendar = extras.laborCalendar;
-  const startHit = start ? officialHolidayOnDay(start, calendar) : null;
-  const cite = citeRule(
-    startHit?.id === "national" ? "leave.nationalDay.days"
-      : startHit?.id === "founding" ? "leave.foundingDay.days"
-        : "leave.eid.cite",
-    start || extras.onDate,
-  ) || citeRule("leave.eid.cite", start || extras.onDate);
-  const named = (id: string) => {
-    const kind = officialHolidayKindLabelTs(id, calendar);
-    return kind ? `إجازة ${kind}` : "العطلة الرسمية";
-  };
-  if (!start || !end || end < start) {
-    return {
-      ok: false as const,
-      error: "OFFICIAL_HOLIDAY_DATES",
-      reason: "موقوف — إجازة العيد لأيامها الثابتة فقط. إجازة اليوم الوطني ويوم التأسيس مقفلتان في الجدول بلا طلب.",
-      reasonEn: "Blocked — Eid leave is only for its fixed dates. National Day and Founding Day leave lock on the roster with no request.",
-      cite,
-    };
-  }
-  let span: { id: string; from: string } | null = null;
-  let cursor: string | null = start;
-  while (cursor && cursor <= end) {
-    const hit = officialHolidayOnDay(cursor, calendar);
-      if (!hit) {
-        const national = rulingCivicDate("national", calendar);
-        const founding = rulingCivicDate("founding", calendar);
-        const moved = !!(national?.overridden || founding?.overridden);
-        return {
-          ok: false as const,
-          error: "OFFICIAL_HOLIDAY_DATES",
-          reason: moved
-            ? `موقوف — إجازة ${officialHolidayKindLabelTs("national", calendar)} و${officialHolidayKindLabelTs("founding", calendar)} مقفلتان في الجدول بلا طلب؛ اطلب العيد على أيامه فقط.`
-            : "موقوف — إجازة اليوم الوطني (23 سبتمبر) وإجازة يوم التأسيس (22 فبراير) مقفلتان في الجدول بلا طلب؛ اطلب العيد على أيامه فقط.",
-          reasonEn: moved
-            ? `Blocked — National Day and Founding Day leave lock on the roster with no request; request Eid on its dates only.`
-            : "Blocked — National Day leave (23 September) and Founding Day leave (22 February) lock on the roster with no request; request Eid on its dates only.",
-          cite,
-        };
-      }
-    if (!span) span = hit;
-    else if (hit.id !== span.id || hit.from !== span.from) {
-      return {
-        ok: false as const,
-        error: "OFFICIAL_HOLIDAY_MIX",
-        reason: `موقوف — اطلب ${named(span.id)} في طلب مستقل عن ${named(hit.id)}.`,
-        reasonEn: "Blocked — request each official holiday in its own request.",
-        cite,
-      };
-    }
-    cursor = addLaborDays(cursor, 1);
-  }
-  return { ok: true as const, cite };
-}
-
-export function checkOfficialHolidayOverlapGate(request: LeaveRequestLike | null | undefined, extras: LeaveApproveExtras = {}) {
-  const type = String(request?.type || "").trim().toLowerCase();
-  const start = dateOnly(request?.startDate);
-  const end = dateOnly(request?.endDate);
   const cite = citeRule("leave.eid.cite", start || extras.onDate);
-  const hit = liveLeaveRequests(request, extras).find((row) => {
-    const otherStart = dateOnly(row.startDate);
-    const otherEnd = dateOnly(row.endDate) || otherStart;
-    if (!start || !end || !otherStart || !otherEnd || start > otherEnd || otherStart > end) return false;
-    if (isOfficialHolidayLeave(type)) return true;
-    return isOfficialHolidayLeave(row.type);
-  });
-  if (!hit) return { ok: true as const };
   return {
     ok: false as const,
-    error: "LEAVE_OVERLAP",
-    reason: "موقوف — المدة تتقاطع مع طلب إجازة قائم. إجازة اليوم الوطني ويوم التأسيس مقفلتان بلا طلب؛ اطلب العيد بطلب مستقل خارج السنوية.",
-    reasonEn: "Blocked — these dates overlap an existing leave request. National Day and Founding Day lock with no request; request Eid separately, outside annual leave.",
+    error: HOLIDAY_AUTOMATIC,
+    reason: "موقوف — العطل الرسمية (اليوم الوطني، يوم التأسيس، عيد الفطر، عيد الأضحى) ثابتة في المنصة وتُطبَّق تلقائياً في الجدول بأجر كامل — لا تُطلب (المادة 112).",
+    reasonEn: "Blocked — official holidays (National Day, Founding Day, Eid al-Fitr, Eid al-Adha) are fixed in the platform and apply on the roster automatically at full pay — they are not requested (Article 112).",
     cite,
   };
 }
@@ -1241,6 +1186,8 @@ export function checkApproveLeaveGate(
       reasonEn: "Only pending leave requests can be approved.",
     };
   }
+  const official = checkOfficialHolidayLeaveGate(request, extras);
+  if (!official.ok) return official;
   const start = String(request.startDate || "").slice(0, 10);
   const end = String(request.endDate || "").slice(0, 10);
   const iso = /^\d{4}-\d{2}-\d{2}$/;
@@ -1286,10 +1233,6 @@ export function checkApproveLeaveGate(
   if (!defer.ok) return defer;
   const notice = checkAnnualNoticeGate(request, extras);
   if (!notice.ok) return notice;
-  const official = checkOfficialHolidayLeaveGate(request, extras);
-  if (!official.ok) return official;
-  const overlap = checkOfficialHolidayOverlapGate(request, extras);
-  if (!overlap.ok) return overlap;
   const twoLeaves = checkLeaveOverlapGate(request, extras);
   if (!twoLeaves.ok) return twoLeaves;
   const joinSick = checkJoinAnnualToSickGate(request, extras);
@@ -1765,6 +1708,8 @@ export function isOnApprovedLeave(requests: LeaveRequestLike[] | null | undefine
   if (!day) return false;
   return (requests || []).some((request) => {
     if (request.status !== "approved") return false;
+    // Art. 112: the holiday comes from the calendar — an old approved «eid» row is history, not cover.
+    if (isLegacyHolidayRequest(request)) return false;
     const { start, end } = leaveCoverRange(request);
     return !!start && !!end && start <= day && day <= end;
   });

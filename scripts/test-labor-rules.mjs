@@ -875,36 +875,25 @@ assert.equal(annualOverlap.compensateRestDays, 1);
 assert.equal(annualOverlap.chargeable, 5); // work days only — see chargeableAnnualDays above
 assert.equal(mergeHolidayHit({ id: "fitr", from: "2026-03-20" }, { id: "national", from: "2026-03-20" }).absorbedCivic, "national");
 assert.equal(mergeHolidayHit({ id: "fitr", from: "2026-03-20" }, { id: "national", from: "2026-03-20" }).id, "fitr");
-const eidRequestOk = checkApproveLeaveGate(
-  { type: "eid", startDate: "2026-05-26", endDate: "2026-05-29", days: 4, status: "pending", noOtherEmployerAck: true },
-  false,
-  { profile: { hireDate: "2026-01-01" }, requests: [] },
-);
-assert.equal(eidRequestOk.ok, true);
-const eidNotHoliday = checkApproveLeaveGate(
-  { type: "eid", startDate: "2026-09-11", endDate: "2026-09-12", days: 2, status: "pending", noOtherEmployerAck: true },
-  false,
-  { profile: { hireDate: "2026-01-01" }, requests: [] },
-);
-assert.equal(eidNotHoliday.error, "OFFICIAL_HOLIDAY_DATES");
-const eidMix = checkApproveLeaveGate(
-  { type: "eid", startDate: "2026-09-23", endDate: "2026-09-24", days: 2, status: "pending", noOtherEmployerAck: true },
-  false,
-  { profile: { hireDate: "2026-01-01" }, requests: [] },
-);
-assert.equal(eidMix.error, "OFFICIAL_HOLIDAY_DATES");
-const eidOverAnnual = checkApproveLeaveGate(
-  { type: "eid", startDate: "2026-05-26", endDate: "2026-05-29", days: 4, status: "pending", noOtherEmployerAck: true },
-  false,
-  { profile: { hireDate: "2026-01-01" }, requests: eidInsideAnnual },
-);
-assert.equal(eidOverAnnual.error, "LEAVE_OVERLAP");
+// Art. 112: official holidays apply from the calendar — an «eid» request is refused by name, whatever its dates.
+for (const [startDate, endDate] of [["2026-05-26", "2026-05-29"], ["2026-09-11", "2026-09-12"], ["2026-09-23", "2026-09-24"]]) {
+  const eidRequest = checkApproveLeaveGate(
+    { type: "eid", startDate, endDate, days: 2, status: "pending", noOtherEmployerAck: true },
+    false,
+    { profile: { hireDate: "2026-01-01" }, requests: [] },
+  );
+  assert.equal(eidRequest.ok, false);
+  assert.equal(eidRequest.error, "HOLIDAY_AUTOMATIC");
+  assert.match(eidRequest.reason, /تُطبَّق تلقائياً/);
+  assert.match(eidRequest.reason, /لا تُطلب \(المادة 112\)/);
+}
+// A legacy approved Eid request is history only: annual leave over Eid is extended, not blocked by it.
 const annualOverEid = checkApproveLeaveGate(
   { type: "annual", startDate: "2026-05-24", endDate: "2026-06-02", days: 10, status: "pending", noOtherEmployerAck: true },
   false,
   { profile: { hireDate: "2026-01-01" }, requests: [{ type: "eid", status: "approved", startDate: "2026-05-26", endDate: "2026-05-29", days: 4 }] },
 );
-assert.equal(annualOverEid.error, "LEAVE_OVERLAP");
+assert.equal(annualOverEid.ok, true, annualOverEid.reason);
 
 const iddahFile = [{ name: "death.pdf", url: "/death.pdf" }];
 const iddahMuslim = { gender: "female", religion: "muslim" };

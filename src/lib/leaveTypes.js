@@ -19,7 +19,7 @@ export const LEAVE_TYPES = [
   { key: "iddah", defaultTotal: ruleValue("leave.iddah.days"), article: citeLeaveType("iddah")?.article || null, gender: "female", religionDependent: true, requiresFile: true, ar: "عدّة وفاة الزوج", en: "Iddah" },
   { key: "paternity", defaultTotal: ruleValue("leave.paternity.days"), article: citeLeaveType("paternity")?.article || null, gender: "male", ar: "أبوة", en: "Paternity" },
   { key: "hajj", defaultTotal: ruleValue("leave.hajj.days"), article: citeLeaveType("hajj")?.article || null, religion: "muslim", ar: "حج", en: "Hajj" },
-  { key: "eid", defaultTotal: null, article: citeLeaveType("eid")?.article || null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
+  { key: "eid", defaultTotal: null, automatic: true, article: citeLeaveType("eid")?.article || null, ar: "اليوم الوطني · يوم التأسيس · العيد", en: "National Day · Founding Day · Eid" },
   { key: "work_injury", defaultTotal: null, article: null, requiresFile: true, ar: "إصابة عمل", en: "Work injury" },
   { key: "emergency", defaultTotal: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
   { key: "comp", defaultTotal: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
@@ -778,6 +778,9 @@ export function leaveCoverRange(request) {
 
 function leaveRequestCoversDay(request, day) {
   if (!request || request.status !== "approved") return false;
+  // Art. 112: official holidays apply from the platform calendar (officialHolidayOn) — an old approved
+  // «eid» request is kept as history only, so the day is never counted twice or read as a request.
+  if (String(request.type || "").trim().toLowerCase() === "eid") return false;
   const { start, end } = leaveCoverRange(request);
   return !!start && !!end && start <= day && day <= end;
 }

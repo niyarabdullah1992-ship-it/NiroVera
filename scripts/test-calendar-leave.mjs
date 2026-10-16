@@ -250,16 +250,19 @@ const LEAVE_BLESS_TONE = {
 const overlayDays = [
   "2026-09-13", "2026-09-14", "2026-09-15", "2026-09-16",
   "2026-09-17", "2026-09-20", "2026-09-21", "2026-09-22",
-  "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-27", "2026-09-28", "2026-09-29",
+  "2026-09-23", "2026-09-24", "2026-09-25", "2026-09-27", "2026-09-28",
   "2026-09-30", "2026-10-01", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-07",
   "2026-10-08",
 ];
-assert.equal(LEAVE_TYPES.length, overlayDays.length, "every raise-able leave type has a paint day");
+// Art. 112 official holidays are not raised — they paint from the calendar, never from a request.
+const RAISEABLE = LEAVE_TYPES.filter((row) => !row.automatic);
+assert.deepEqual(LEAVE_TYPES.filter((row) => row.automatic).map((row) => row.key), ["eid"]);
+assert.equal(RAISEABLE.length, overlayDays.length, "every raise-able leave type has a paint day");
 
 const allTypesPerson = {
   id: "all-types",
   name: "عمر ناصر",
-  leaveRequests: LEAVE_TYPES.map((row, index) => ({
+  leaveRequests: RAISEABLE.map((row, index) => ({
     id: `lv_${row.key}`,
     status: "approved",
     type: row.key,
@@ -269,7 +272,7 @@ const allTypesPerson = {
   })),
 };
 
-for (const [index, row] of LEAVE_TYPES.entries()) {
+for (const [index, row] of RAISEABLE.entries()) {
   const day = overlayDays[index];
   const notice = leaveDecisionNoticeText({ status: "approved", type: row.key, startDate: day, endDate: day });
   const card = leaveApprovalCardNote({ type: row.key, startDate: day, endDate: day });

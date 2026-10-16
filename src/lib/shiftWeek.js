@@ -1788,7 +1788,8 @@ export function checkHolidayWorkGate({ employee, dateKey, laborCalendar, confirm
 }
 
 /** Approved طلباتي leave or a fixed Art. 112 official holiday (roster paints leave, not duty) —
- *  unless the holiday was confirmed as «عمل في العطلة» (Art. 107(3)). */
+ *  unless the holiday was confirmed as «عمل في العطلة» (Art. 107(3)). Every official holiday — National,
+ *  Founding, Eid al-Fitr, Eid al-Adha — comes from the platform calendar with no request. */
 export function isRosterLeaveDay(employee, dateKey, laborCalendar) {
   if (isOnApprovedLeave(employee, dateKey)) return true;
   if (!isOfficialHoliday(dateKey, laborCalendar)) return false;
@@ -1799,12 +1800,9 @@ export function leaveOnDayView(employee, dateKey, ar = true, laborCalendar) {
   const request = approvedLeaveOnDay(employee, dateKey);
   if (request) {
     const cite = citeLeaveType(request.type, dateKey);
-    const hit = request.type === "eid" ? officialHolidayOn(dateKey, laborCalendar) : null;
     return {
       request,
-      type: hit
-        ? officialHolidayLeaveLabel(hit.id, ar, laborCalendar)
-        : leaveTypeLabel(request.type, ar, undefined, dateKey, laborCalendar),
+      type: leaveTypeLabel(request.type, ar, undefined, dateKey, laborCalendar),
       article: ar ? (cite?.labelAr || "") : (cite?.labelEn || ""),
       articleId: cite?.article || "",
       style: LEAVE_STYLE,

@@ -331,6 +331,13 @@ export function officialHolidayLeaveLabel(id, ar = true, calendar) {
   return ar ? `إجازة ${kind.replace(/^إجازة\s+/, "")}` : (/leave$/i.test(kind) ? kind : `${kind} leave`);
 }
 
+/** Art. 112 — every official holiday (National, Founding, Eid al-Fitr, Eid al-Adha) locks the rota from
+ *  this calendar for everyone, as full-pay leave. None of them is a طلباتي raise. */
+export function isAutomaticOfficialHoliday(id) {
+  const key = String(id || "").trim().toLowerCase();
+  return key === "national" || key === "founding" || key === "fitr" || key === "adha";
+}
+
 /** National Day / Founding Day — Art. 112 locks the rota; not a طلباتي raise. */
 export function isRosterLockedCivicHoliday(id) {
   const key = String(id || "").trim().toLowerCase();

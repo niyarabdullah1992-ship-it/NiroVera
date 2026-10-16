@@ -24,11 +24,11 @@ import { openDueAnnualLeaveNotices, openDueNightRotateCycles, updateCompany } fr
 import { useRailSide } from "@/lib/railSide";
 import { calendarOverlayEmployees } from "@/lib/shiftWeek";
 import { DutyHowTo } from "@/components/schedules/ManageDutySide";
+import { fileDutyHref } from "@/components/schedules/dutyLinks";
 
 const ShiftsPlatformBoard = lazy(() => import("@/components/schedules/ShiftsPlatformBoard"));
 const AttendancePolicyPage = lazy(() => import("@/components/attendance/AttendancePolicyPage"));
 const AttendanceMonthCalendar = lazy(() => import("@/components/attendance/AttendanceMonthCalendar"));
-const MyRecordPage = lazy(() => import("@/components/attendance/MyRecordPage"));
 const AttendanceDailyDashboard = lazy(() => import("@/components/attendance/AttendanceDailyDashboard"));
 const OtDecisionsPanel = lazy(() => import("@/components/schedules/OtDecisionsPanel"));
 function TabLoader() {
@@ -132,7 +132,7 @@ export default function Attendance() {
 
   if (!data || !currentUser) return null;
 
-  // الموظف: كشفي + تقويمي merged into «سجلي — الشهر» (?tab=record). The old addresses land there.
+  // الموظف: «سجلي» (and كشفي / تقويمي before it) folded into التقويم التشغيلي. The old addresses land there.
   if (location.pathname === "/app/attendance" && searchParams.get("tab") === "calendar") {
     return <Navigate to={searchParams.get("lane") === "manage" ? "/app/shifts?lane=manage" : "/app/calendar"} replace />;
   }
@@ -140,10 +140,12 @@ export default function Attendance() {
   if ((location.pathname.endsWith("/calendar")) && searchParams.get("lane") === "manage") {
     return <Navigate to="/app/shifts?lane=manage" replace />;
   }
-  if (location.pathname === "/app/attendance" && ["mine", "report"].includes(searchParams.get("tab") || "")) {
-    const next = new URLSearchParams(searchParams);
-    next.set("tab", "record");
-    return <Navigate to={`/app/attendance?${next.toString()}`} replace />;
+  if (location.pathname === "/app/attendance" && ["record", "mine", "report"].includes(searchParams.get("tab") || "")) {
+    if (searchParams.get("lane") === "manage") return <Navigate to="/app/attendance?lane=manage" replace />;
+    // «مسيرتي» lives on the person's own file duty tab; a day or the month opens the calendar.
+    if (searchParams.get("focus") === "career") return <Navigate to={fileDutyHref(currentUser.id, { focus: "career" })} replace />;
+    const day = searchParams.get("day");
+    return <Navigate to={day ? `/app/calendar?day=${encodeURIComponent(day)}` : "/app/calendar"} replace />;
   }
   if (location.pathname === "/app/attendance" && (searchParams.get("tab") === "settings" || searchParams.get("tab") === "map")) {
     return <Navigate to="/app/attendance?tab=policy" replace />;
@@ -165,7 +167,6 @@ export default function Attendance() {
   const defaultHubTab = "punch";
   const mineTabs = [
     { key: "punch", label: ar ? "بصمتي" : "My punch" },
-    { key: "record", label: ar ? "سجلي" : "My record" },
   ];
   const manageTabs = isManager
     ? [
@@ -174,16 +175,15 @@ export default function Attendance() {
       ]
     : [];
   const hubTabs = lane === "manage" && isManager ? manageTabs : mineTabs;
-  const allowedTabs = new Set([...mineTabs.map((item) => item.key), ...manageTabs.map((item) => item.key), "mine", "report", "roster", "map", "settings", "policy"]);
+  const allowedTabs = new Set([...mineTabs.map((item) => item.key), ...manageTabs.map((item) => item.key), "roster", "map", "settings", "policy"]);
   const requested = routeTab || tab;
   let activeTab = lane === "manage" && isManager ? "team" : defaultHubTab;
   if (focusShifts && lane === "manage" && isManager) activeTab = "schedule";
   else if (requested && allowedTabs.has(requested)) {
     if (requested === "roster") activeTab = "punch";
     else if (lane === "mine" && ["team", "map", "analytics", "settings", "policy"].includes(requested)) activeTab = "punch";
-    else if (lane === "manage" && ["punch", "mine", "record", "roster", "report"].includes(requested)) activeTab = "team";
+    else if (lane === "manage" && ["punch", "roster"].includes(requested)) activeTab = "team";
     else if (requested === "map" || requested === "settings") activeTab = lane === "manage" && isManager ? "policy" : "punch";
-    else if (requested === "report" || requested === "mine") activeTab = "record";
     else activeTab = requested;
   }
 
@@ -236,14 +236,15 @@ export default function Attendance() {
           lane="mine"
           title={ar ? "التقويم التشغيلي — الشهر" : "Operations calendar — the month"}
           hint={ar
-            ? "جدول فرعك كاملاً يوماً بيوم: من حضر ومن تأخّر ومن غاب. سجلّك الشخصي في «سجلي»."
-            : "Your whole branch day by day: on time, late, absent. Your own record is in My record."}
+            ? "جدول فرعك كاملاً يوماً بيوم: من حضر ومن تأخّر ومن غاب — وسطر «شهري» يعدّ غيابك وتأخيرك بالأرقام التي يقرؤها المسير."
+            : "Your whole branch day by day: on time, late, absent — and the My month line counts your absence and lateness with the figures payroll reads."}
           laneBar={<DutyLaneBar ar={ar} canManage={canManageDuty} lane="mine" onLane={setLane} manageCount={teamEmployees.length} />}
         >
           <Suspense fallback={<TabLoader />}>
             <AttendanceMonthCalendar
               employees={calendarEmployees}
               currentUser={currentUser}
+              me={self}
               company={company}
               data={data}
               lane="mine"
@@ -269,15 +270,10 @@ export default function Attendance() {
           title: ar ? "حضور الفريق — اليوم" : "Team attendance — today",
           hint: ar ? "مَن حضر ومَن تأخّر، وما ينتظر قرارك اليوم. الجدول يخطّط والحضور يلتقط." : "Who is in, who is late, and what waits for your decision today. The roster plans; attendance captures.",
         })
-    : (hubTool === "record"
-      ? {
-          title: ar ? "سجلي — الشهر" : "My record — the month",
-          hint: ar ? "ماذا حدث في دوامي هذا الشهر؟ كل يوم بحالته — الأرقام نفسها التي يقرؤها المسير." : "What happened in my duty this month? Each day with its status — the same figures payroll reads.",
-        }
-      : {
-          title: ar ? "بصمتي — اليوم" : "My punch — today",
-          hint: ar ? "ماذا أفعل الآن؟ سجّل حضورك وانصرافك على ورديتك المنشورة." : "What do I do now? Punch in and out on your published shift.",
-        });
+    : {
+        title: ar ? "بصمتي — اليوم" : "My punch — today",
+        hint: ar ? "ماذا أفعل الآن؟ سجّل حضورك وانصرافك على ورديتك المنشورة." : "What do I do now? Punch in and out on your published shift.",
+      };
   // «كيف أستخدم هذا القسم؟» — only on each lane's first page, four lines at most.
   const howTo = manageLane
     ? (hubTool === "team"
@@ -299,13 +295,13 @@ export default function Attendance() {
       ? (ar
         ? [
           "«بصمتي»: سجّل حضورك وانصرافك من الزر عند بدء ورديتك المنشورة.",
-          "«سجلي»: أيام الشهر بحالتها — الأرقام نفسها التي يقرؤها المسير.",
+          "«التقويم التشغيلي»: أيام الشهر بحالتها، وسطر «شهري» يعدّ غيابك وتأخيرك — الأرقام نفسها التي يقرؤها المسير.",
           "«جدولي»: ورديات الأسبوع، ومنه تطلب تغيير وردية. الإجازة من «طلباتي».",
           "«تنبيهاتي» في الجانب: كل تنبيه يفتح اليوم أو الطلب الذي يخصّه.",
         ]
         : [
           "My punch: check in and out with the button when your published shift starts.",
-          "My record: each day of the month with its status — the figures payroll reads.",
+          "Operations calendar: each day of the month, and the My month line counts your absence and lateness — the figures payroll reads.",
           "My roster: the week's shifts; ask for a shift change there. Leave is in My Requests.",
           "My alerts on the side: each alert opens the day or request it is about.",
         ])
@@ -337,9 +333,6 @@ export default function Attendance() {
           {/* Art. 107 — pending overtime and holiday-work decisions the punches / published roster opened. */}
           {activeTab === "team" && isManager && (
             <OtDecisionsPanel data={data} companyId={company?.id} currentUser={currentUser} employees={employees} mode="manage" canEdit ar={ar} onSaved={refresh} />
-          )}
-          {activeTab === "record" && (
-            <MyRecordPage me={self} currentUser={currentUser} company={company} data={data} lang={lang} />
           )}
           {activeTab === "policy" && isManager && (
             <AttendancePolicyPage

@@ -4401,7 +4401,7 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
   }
   if (status === "approved" && isDutyRequestType(pending?.type)) {
     const copy = {
-      permission: "اعتُمد استئذانك — لا يُحتسب تأخيراً ولا خروجاً مبكراً في سجلي.",
+      permission: "اعتُمد استئذانك — لا يُحتسب تأخيراً ولا خروجاً مبكراً في التقويم التشغيلي.",
       shift_change: "اعتُمد تغيير ورديتك — الجدول محدَّث.",
       nursing_hour: "اعتُمدت ساعة الرضاعة (المادة 154) — تُحسب من ساعات العمل الفعلية.",
       pregnancy_notice: "سُجّل إبلاغ الحمل — لا عمل ليلي قبل الوضع بـ24 أسبوعاً (القرار 18632).",

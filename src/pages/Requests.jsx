@@ -179,7 +179,7 @@ export default function Requests() {
           {ar ? "ترفع طلبك هنا ويقرّره مديرك، ويظهر أثره في " : "Raise your request here; your manager decides, and the effect shows on "}
           <Link to="/app/shifts" style={linkInk}>{ar ? "جدول الدوام" : "the duty roster"}</Link>
           {ar ? " و" : " and "}
-          <Link to="/app/attendance?tab=record" style={linkInk}>{ar ? "سجل الحضور" : "the attendance record"}</Link>
+          <Link to="/app/calendar" style={linkInk}>{ar ? "سجل الحضور" : "the attendance record"}</Link>
           .
         </>
       )}

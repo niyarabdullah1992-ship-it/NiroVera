@@ -53,11 +53,12 @@ for (const file of files) {
 }
 assert.deepEqual(hits, [], `coloured top strips left: ${hits.join(", ")}`);
 
-// 6. DutyTile: no top span; flag chip by tone; MyRecordPage passes the specific flags.
+// 6. DutyTile: no top span; flag chip by tone. «سجلي» folded into the calendar's «شهري» line,
+//    which keeps the specific problem flags as chips.
 const tile = readFileSync(join(root, "components/schedules/DutyTiles.jsx"), "utf8");
 assert.doesNotMatch(tile, /height: 3/);
 assert.match(tile, /<StatusFlag tone=\{tone\} flag=\{flag\} ar=\{ar\} label=/);
-const rec = readFileSync(join(root, "components/attendance/MyRecordPage.jsx"), "utf8");
+const rec = readFileSync(join(root, "components/attendance/MyMonthLine.jsx"), "utf8");
 assert.match(rec, /أقل من المجدول/);
 assert.match(rec, /Below schedule/);
 assert.match(rec, /تأخير مسجّل/);

@@ -92,8 +92,7 @@ export const DUTY_SEARCH_PAGES = [
   { key: "shifts-manage", side: "manage", words: ["جدول الدوام", "الروستر", "roster", "duty roster"] },
   { key: "policy", side: "manage", words: ["السياسه والمواقع", "السياسه", "المواقع", "policy", "sites"] },
   { key: "punch", side: "employee", words: ["بصمتي", "البصمه", "بصمه", "my punch", "punch"] },
-  { key: "record", side: "employee", words: ["سجلي", "كشفي", "my record", "record"] },
-  { key: "calendar", side: "employee", words: ["التقويم التشغيلي", "التقويم", "تقويمي", "calendar"] },
+  { key: "calendar", side: "employee", words: ["التقويم التشغيلي", "التقويم", "تقويمي", "سجلي", "كشفي", "calendar", "my record", "record"] },
   { key: "shifts", side: "employee", words: ["جدولي", "my roster", "my shifts"] },
 ];
 

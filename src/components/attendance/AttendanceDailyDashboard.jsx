@@ -355,7 +355,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
               : dutyLabel(key, ar);
           const chipStyle = decide ? dutyChip("alert") : notYetRow ? dutyChip("rest") : dutyChip(key);
           const self = String(employee.id) === String(currentUser?.id);
-          const href = self ? "/app/attendance?tab=record" : fileDutyHref(employee.id);
+          const href = self ? "/app/calendar" : fileDutyHref(employee.id);
           return (
             <div key={employee.id} data-team-row={status} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 10, alignItems: "center", padding: "10px 18px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", borderInlineStart: "1px solid var(--nv-line2, #EEF1EF)", minWidth: 0 }}>
               <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
@@ -373,7 +373,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
               </span>
               <span style={{ ...chipStyle, height: 22, fontSize: 11 }}>{label}</span>
               {href ? (
-                <Link to={href} data-team-open={employee.id} style={openLinkStyle()} title={self ? (ar ? "سجلي" : "My record") : (ar ? "ملف الدوام" : "Duty file")}>
+                <Link to={href} data-team-open={employee.id} style={openLinkStyle()} title={self ? (ar ? "التقويم التشغيلي" : "Operations calendar") : (ar ? "ملف الدوام" : "Duty file")}>
                   {ar ? "افتح ›" : "Open ›"}
                 </Link>
               ) : <span />}

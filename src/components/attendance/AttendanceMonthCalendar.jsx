@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useI18n } from "@/lib/i18n";
@@ -17,6 +17,8 @@ import { isViewerOwnFile } from "@/lib/employeeFileView";
 import { FileSelfBadge } from "@/components/employees/ProfileHero";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import DateNav from "@/components/schedules/DateNav";
+import { dateFromKey } from "@/components/schedules/dutyLinks";
+import MyMonthLine, { myCellMark, useMyMonthDays } from "@/components/attendance/MyMonthLine";
 import {
   BROKE,
   CHAIN,
@@ -98,16 +100,27 @@ function fmtArDate(iso, months) {
   return `${Number(parts[2])} ${months[Number(parts[1]) - 1]} ${parts[0]}`;
 }
 
-export default function AttendanceMonthCalendar({ employees = [], currentUser, company, data, kicker, lane, canManage = false, framed = false }) {
+export default function AttendanceMonthCalendar({ employees = [], currentUser, me = null, company, data, kicker, lane, canManage = false, framed = false }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const months = monthsOf(ar);
   const weekdays = weekdaysOf(ar);
   const now = new Date();
   const todayKey = calendarDateKey(now);
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth());
-  const [selected, setSelected] = useState(now.getDate());
+  // «?day=yyyy-mm-dd» (old «سجلي» links, search hits) opens that month with the day picked.
+  const [searchParams] = useSearchParams();
+  const askedDay = searchParams.get("day") || "";
+  const askedDate = dateFromKey(askedDay);
+  const [year, setYear] = useState(askedDate ? askedDate.getFullYear() : now.getFullYear());
+  const [month, setMonth] = useState(askedDate ? askedDate.getMonth() : now.getMonth());
+  const [selected, setSelected] = useState(askedDate ? askedDate.getDate() : now.getDate());
+  useEffect(() => {
+    const date = dateFromKey(askedDay);
+    if (!date) return;
+    setYear(date.getFullYear());
+    setMonth(date.getMonth());
+    setSelected(date.getDate());
+  }, [askedDay]);
   const forcedView = lane ? "team" : null;
   const [view, setView] = useState(forcedView || "team");
   useEffect(() => {
@@ -129,6 +142,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
   const stationList = data?.stations || [];
   const workStationId = employeeWorkStationId(currentUser);
   const mineLane = lane === "mine";
+  const myself = mineLane ? (me || currentUser) : null;
+  // My own month (what «سجلي» counted): absences, lateness, attendance against the schedule.
+  const mine = useMyMonthDays({ employee: myself, company, data, year, month, ar });
   const workStation = findStationById(stationList, workStationId);
   const workStationName = stationDisplayName(workStation);
   const workBranch = rosterBranchPhrase(workStationName, ar);
@@ -402,6 +418,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
     { label: ar ? "إثبات زائر" : "Visitor proof", color: OC.goldBg, border: OC.goldBd },
     { label: ar ? "بلاغ سلامة" : "HSE", color: OC.absBg, border: OC.absBd },
     { label: ar ? "إجازة معتمدة" : "Approved leave", color: OC.leaveBg, border: OC.leaveBd },
+    ...(myself ? [{ label: ar ? "يومك: غبت أو تأخرت" : "Your day: absent or late", color: OC.absBg, border: OC.absBd }] : []),
   ];
 
   const mkStat = (id, label, value, color) => {
@@ -528,6 +545,20 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
         </div>
       </section>
 
+      {myself ? (
+        <MyMonthLine
+          me={myself}
+          company={company}
+          data={data}
+          year={year}
+          month={month}
+          selectedDay={selected}
+          monthName={`${months[month]} ${year}`}
+          mine={mine}
+          ar={ar}
+        />
+      ) : null}
+
       {/* No «ملفك يرى فرع … فقط» notice here — the employee file stays on its own branch without saying so. */}
 
       <section style={{ ...shell, padding: "12px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
@@ -600,6 +631,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                   const hit = !filtering || matchCell(cell);
                   const rec = cell.rec;
                   const items = cellItems(rec);
+                  const myMark = myself ? myCellMark(mine.byKey[cell.key], ar) : null;
                   return (
                     <button
                       key={cell.key}
@@ -609,6 +641,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                         fontFamily: "inherit",
                         textAlign: "start",
                         position: "relative",
+                        minWidth: 0,
                         minHeight: 104,
                         padding: "9px 10px",
                         border: "none",
@@ -647,6 +680,11 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                       ) : (
                         <span style={{ fontSize: 11, color: OC.muted }}>{cell.weekend ? (ar ? "عطلة" : "Off") : (cell.future ? (ar ? "مجدول" : "Scheduled") : "")}</span>
                       )}
+                      {myMark ? (
+                        <span data-my-mark={myMark.kind} title={myMark.text} style={{ fontSize: 10, fontWeight: 600, color: myMark.kind === "absent" ? OC.abs : OC.goldText, background: myMark.kind === "absent" ? OC.absBg : OC.goldBg, border: `1px solid ${myMark.kind === "absent" ? OC.absBd : OC.goldBd}`, padding: "1px 6px", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", boxSizing: "border-box" }}>
+                          {myMark.text}
+                        </span>
+                      ) : null}
                       {items.length ? (
                         <span style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: "auto" }}>
                           {items.map((item) => (

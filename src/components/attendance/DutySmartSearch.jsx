@@ -176,7 +176,7 @@ export default function DutySmartSearch({ ar = true, side = "employee", pages = 
       });
       const tally = tallyDutyDays(days.filter((day) => day.key <= todayKey));
       const own = String(person.id) === String(currentUser?.id);
-      const personHref = own ? myRecordHref({ focus: "career" }) : fileDutyHref(person.id, { focus: "career" });
+      const personHref = own ? myRecordHref({ focus: "career", employeeId: person.id }) : fileDutyHref(person.id, { focus: "career" });
       const longSpan = keys.length > 31;
       const statuses = parsed.statuses.length ? parsed.statuses : (longSpan || !parsed.period ? ["absent", "late", "leave"] : []);
       if (!parsed.statuses.length && (!parsed.period || longSpan || (manage && !named.length))) {
@@ -220,7 +220,7 @@ export default function DutySmartSearch({ ar = true, side = "employee", pages = 
   const go = (item) => {
     if (!item) return;
     const href = item.kind === "page" ? item.page.to : item.href;
-    const targetSide = item.kind === "page" ? item.page.side : (item.href.startsWith("/app/attendance?tab=record") ? "employee" : "");
+    const targetSide = item.kind === "page" ? item.page.side : (item.href.startsWith("/app/calendar") ? "employee" : "");
     if (targetSide && targetSide !== railSide && (targetSide === "employee" || targetSide === "manage")) setRailSide?.(targetSide);
     setOpen(false);
     inputRef.current?.blur();

@@ -1,11 +1,11 @@
 /**
  * Lane-specific section pages for الحضور والدوام.
  * الموظف sees only what is personal — three pages, one question each:
- *   بصمتي (اليوم) · سجلي (الشهر — كشفي + تقويمي merged) · جدولي (الأسبوع);
+ *   بصمتي (اليوم) · التقويم التشغيلي (الشهر — «سجلي» folded in: my absence and lateness) · جدولي (الأسبوع);
  * الإدارة sees only the team (حضور الفريق · جدول الدوام · السياسة والمواقع).
  * Routes stay the same — only the strip and its labels change per lane.
  */
-import { CalendarClock, CalendarDays, CalendarRange, Fingerprint, MapPinned, Users } from "lucide-react";
+import { CalendarClock, CalendarRange, Fingerprint, MapPinned, Users } from "lucide-react";
 
 const DUTY_PATHS = ["/app/attendance", "/app/shifts", "/app/calendar"];
 
@@ -68,21 +68,13 @@ export function dutySectionPages({ side, ar, canPolicy = false, badge = null }) 
         : []),
     ];
   }
-  const recordTabs = ["record", "mine", "report"];
   return [
     {
       key: "punch",
       to: "/app/attendance",
       label: ar ? "بصمتي" : "My punch",
       icon: Fingerprint,
-      match: (path, search) => clean(path) === "/app/attendance" && !recordTabs.includes(tabOf(search)),
-    },
-    {
-      key: "record",
-      to: "/app/attendance?tab=record",
-      label: ar ? "سجلي" : "My record",
-      icon: CalendarDays,
-      match: (path, search) => clean(path) === "/app/attendance" && recordTabs.includes(tabOf(search)),
+      match: (path) => clean(path) === "/app/attendance",
     },
     {
       key: "calendar",

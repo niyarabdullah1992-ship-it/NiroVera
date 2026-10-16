@@ -9,8 +9,8 @@
  *   /app/shifts?week=<yyyy-mm-dd>&day=<yyyy-mm-dd>        → جدولي on that week, the day outlined
  *   /app/employees/<id>?tab=duty                          → the file's duty tab
  *   /app/employees/<id>?tab=duty&day=<yyyy-mm-dd>         → the file's duty tab on that day's week + year
- *   /app/attendance?tab=record&day=<yyyy-mm-dd>           → سجلي on that month, the day open
- *   /app/attendance?tab=record&focus=career               → سجلي, scrolled to «مسيرتي»
+ *   /app/calendar?day=<yyyy-mm-dd>                        → التقويم التشغيلي on that month, the day picked
+ *   (old /app/attendance?tab=record… addresses redirect: a day → the calendar, focus=career → own file)
  *   /app/attendance?lane=manage&focus=queue               → حضور الفريق, scrolled to «يحتاج قرارك»
  */
 
@@ -43,12 +43,13 @@ export function fileDutyHref(employeeId, { day = "", focus = "" } = {}) {
   return `/app/employees/${encodeURIComponent(employeeId)}?${qs.toString()}`;
 }
 
-/** سجلي on one day (its month, the day card open) — or on «مسيرتي» with `focus: "career"`. */
-export function myRecordHref({ day = "", focus = "" } = {}) {
-  const qs = new URLSearchParams({ tab: "record" });
-  if (day) qs.set("day", String(day));
-  if (focus) qs.set("focus", String(focus));
-  return `/app/attendance?${qs.toString()}`;
+/**
+ * My own duty on one day: the operational calendar on that month with the day picked (where «سجلي»
+ * now lives) — or, with `focus: "career"` and my id, «مسيرتي» on my own file duty tab.
+ */
+export function myRecordHref({ day = "", focus = "", employeeId = "" } = {}) {
+  if (focus === "career" && employeeId) return fileDutyHref(employeeId, { focus: "career" });
+  return day ? `/app/calendar?day=${encodeURIComponent(String(day))}` : "/app/calendar";
 }
 
 export function rosterPersonHref(employeeId, weekKey = "") {

@@ -491,6 +491,7 @@ export default function RequestsWorkspace({
   initialFilter = "",
   focusStationId = "",
   initialRightsKind = "",
+  initialDocKind = "",
 }) {
   const ar = lang === "ar";
   const { company, currentUser, refresh, data } = useAuth();
@@ -518,7 +519,8 @@ export default function RequestsWorkspace({
     }
   }, [initialKind]);
   const [leave, setLeave] = useState("annual");
-  const [doc2, setDoc2] = useState("salary");
+  // ?kind=doc&doc=exp (service certificate, Art. 64) or doc=contract (Art. 51) preselects the document.
+  const [doc2, setDoc2] = useState(() => (DOC_KINDS.some((row) => row.id === initialDocKind) ? initialDocKind : "salary"));
   const [from, setFrom] = useState(() => (initialKind === "leave" ? "" : today));
   const [to, setTo] = useState(() => (initialKind === "leave" ? "" : today));
   const [note, setNote] = useState("");

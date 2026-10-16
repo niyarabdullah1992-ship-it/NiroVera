@@ -225,6 +225,7 @@ export default function Requests() {
         initialFilter={initialFilter}
         focusStationId={manageLane && canManage ? inboxFocusStationId : ""}
         initialRightsKind={new URLSearchParams(location.search || "").get("right") || ""}
+        initialDocKind={new URLSearchParams(location.search || "").get("doc") || ""}
       />
     </SuiteWorkspaceFrame>
   );

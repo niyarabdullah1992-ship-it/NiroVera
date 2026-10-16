@@ -1,217 +1,426 @@
-import React from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useId, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
+import { buildMyFileCard, fileSealCode } from "@/lib/myFileCard";
+import { buildServiceStory } from "@/lib/serviceStory";
+import { buildFileReadiness } from "@/lib/fileReadiness";
+import RightHint from "@/components/shared/RightHint";
+import { toast } from "@/components/ui/use-toast";
 
-const paper = {
-  background: "var(--nv-card)",
-  border: "1px solid var(--nv-line)",
-  borderRadius: 12,
-  overflow: "hidden",
-  display: "flex",
-  flexDirection: "column",
+/*
+ * «ملفي — سيرة عملي الموثّقة». Three things, in this order:
+ *   بطاقتي المهنية — the person on one document-like card, sealed with a code derived from its facts;
+ *   قصة خدمتي     — what happened on the file, by year, each line with who did it and what proves it;
+ *   جاهزية ملفي   — what is missing or ending, and whose move it is.
+ * Leave, balances and injuries stay in طلباتي; pay stays in قسيمتي. Nothing here repeats them.
+ */
+
+const SEAL_INK = "#C8A45A";
+const mono = { fontFamily: "'IBM Plex Mono', monospace" };
+const paper = { background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, overflow: "hidden" };
+const heading = { margin: 0, fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "var(--nv-ink)" };
+const sub = { margin: "3px 0 0", fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.7 };
+const greenLink = { fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: "var(--nv-ok-ink)", background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "none", whiteSpace: "nowrap" };
+
+const CHIP = {
+  ok: { color: "var(--nv-ok-ink)", background: "var(--nv-ok-soft)" },
+  warn: { color: "var(--nv-warn-ink)", background: "var(--nv-warn-soft)" },
+  bad: { color: "var(--nv-bad-ink)", background: "var(--nv-bad-soft)" },
+  mute: { color: "var(--nv-mute-ink)", background: "var(--nv-mute-soft)" },
 };
 
-const mono = { fontFamily: "'IBM Plex Mono', monospace" };
-
-function factOf(view, key) {
-  return (view.facts || []).find((row) => row.k === key) || null;
+function Chip({ tone = "mute", children, title }) {
+  return (
+    <span title={title} style={{ ...CHIP[tone], fontSize: 10.5, fontWeight: 700, lineHeight: 1, padding: "4px 7px", borderRadius: 999, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 4 }}>
+      {children}
+    </span>
+  );
 }
 
-function expiringDocs(view) {
-  return (view.docs || []).filter((row) => row.days != null && row.days <= EXPIRY_WARN_DAYS);
+function SectionHead({ title, note, end }) {
+  return (
+    <header style={{ padding: "16px 20px 14px", borderBottom: "1px solid var(--nv-line)", display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+        <h3 style={heading}>{title}</h3>
+        {note ? <p style={sub}>{note}</p> : null}
+      </div>
+      {end}
+    </header>
+  );
 }
 
-export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
-  const soon = expiringDocs(view);
-  const livePenalties = (view.penalties || []).filter((row) => /نافذ|ساري|اعتراض|force|object/i.test(`${row.state || ""}`));
-  const rows = view.compliance || [];
-  const met = rows.filter((row) => row.ok && !row.warn).length;
-  const scored = rows.filter((row) => row.ok || row.warn || row.state).length || rows.length;
-  const score = scored ? `${Math.round((met / scored) * 100)}%` : "—";
-  const links = [
-    {
-      label: ar ? "الجزاءات" : "Sanctions",
-      summary: livePenalties.length ? (livePenalties[0].t || livePenalties[0].state) : (ar ? "لا ساري" : "None live"),
-      state: livePenalties.length ? (ar ? "ساري" : "Live") : (ar ? "لا ساري" : "Clear"),
-      tab: "growth",
-    },
-    {
-      label: ar ? "الطلبات" : "Requests",
-      summary: view.hasPendingLeave ? (view.pendingPointer || "—") : (view.filed?.length ? (ar ? `${view.filed.length} مثبتة` : `${view.filed.length} on file`) : "—"),
-      state: view.hasPendingLeave ? (ar ? "بانتظار القرار" : "Awaiting") : (ar ? "في الملف" : "On file"),
-      href: view.pendingHref || "/app/requests",
-    },
-    {
-      label: ar ? "التوقيعات" : "Signatures",
-      summary: "—",
-      state: ar ? "افتح" : "Open",
-      href: "/app/signing",
-    },
-    {
-      label: ar ? "السلامة" : "Safety",
-      summary: soon.length ? (ar ? "شهادة تنتهي قريباً" : "A certificate ends soon") : "—",
-      state: ar ? "افتح" : "Open",
-      href: "/app/safety",
-    },
-    {
-      label: ar ? "صوتي" : "My voice",
-      summary: "—",
-      state: ar ? "في التدرّج" : "On progression",
-      tab: "growth",
-    },
-    {
-      label: ar ? "القسيمة" : "Payslip",
-      summary: factOf(view, ar ? "الأجر الشهري" : "Monthly wage")?.v || "—",
-      state: ar ? "افتح" : "Open",
-      href: "/app/payroll?view=self&tab=payslip",
-    },
-  ];
+/* ─────────────────────────── the seal ─────────────────────────── */
+
+function ProofSeal({ code, ar, size = 148 }) {
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const ring = ar ? "ختم الإثبات • ملف موثّق من سجلاته • " : "PROOF SEAL • A FILE PROVEN BY ITS RECORDS • ";
+  const [a, b] = code ? [code.slice(0, 9), code.slice(10)] : ["····-····", "····"];
+  return (
+    <svg width={size} height={size} viewBox="0 0 160 160" role="img" aria-label={ar ? `ختم الإثبات — رمز الملف ${code || ""}` : `Proof seal — file code ${code || ""}`} style={{ display: "block", transform: "rotate(-7deg)" }}>
+      <defs>
+        <path id={`ring${uid}`} d="M80,80 m-58,0 a58,58 0 1,1 116,0 a58,58 0 1,1 -116,0" />
+        <filter id={`ink${uid}`} x="-5%" y="-5%" width="110%" height="110%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="n" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="1.6" />
+        </filter>
+      </defs>
+      <g fill="none" stroke={SEAL_INK} filter={`url(#ink${uid})`} opacity="0.95">
+        <circle cx="80" cy="80" r="75" strokeWidth="2.4" />
+        <circle cx="80" cy="80" r="70" strokeWidth="0.9" />
+        <circle cx="80" cy="80" r="45" strokeWidth="0.9" />
+      </g>
+      <g fill={SEAL_INK} filter={`url(#ink${uid})`}>
+        {/* Arabic keeps its joins: no letter-spacing or stretched length on the ring, only a repeat. */}
+        <text fontSize="10.5" fontWeight="700" letterSpacing={ar ? 0 : 0.6} style={{ fontFamily: "var(--font-heading)" }}>
+          <textPath href={`#ring${uid}`} startOffset="0" {...(ar ? {} : { textLength: 360, lengthAdjust: "spacing" })}>{ar ? ring + ring : ring}</textPath>
+        </text>
+        <text x="80" y="66" textAnchor="middle" fontSize="8.5" fontWeight="600" style={{ fontFamily: "var(--font-heading)" }}>{ar ? "رمز الملف" : "FILE CODE"}</text>
+        <text x="80" y="84" textAnchor="middle" fontSize="12.5" fontWeight="700" direction="ltr" style={mono}>{a}</text>
+        <text x="80" y="100" textAnchor="middle" fontSize="12.5" fontWeight="700" direction="ltr" style={mono}>{b}</text>
+      </g>
+    </svg>
+  );
+}
+
+const PRINT_CSS = `
+@page { size: A5 landscape; margin: 10mm; }
+@media print {
+  body * { visibility: hidden !important; }
+  .nv-myfile-card, .nv-myfile-card * { visibility: visible !important; }
+  .nv-myfile-card {
+    position: fixed !important; inset: 0 !important; margin: 0 !important; box-shadow: none !important;
+    --nv-card: #fff; --nv-ink: #111418; --nv-ink2: #3A4048; --nv-ink3: #555C66; --nv-line: #DCE3DF;
+    --nv-soft: #F5F7F6; --nv-warn-ink: #8A5A12; --nv-warn-soft: #FBF3E1;
+    background: #fff !important; color: #111418 !important;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .nv-myfile-noprint { display: none !important; }
+}`;
+
+/** Print the card alone, A5 landscape — a scoped stylesheet lives only for this print. */
+function printCard() {
+  const style = document.createElement("style");
+  style.setAttribute("data-myfile-print", "1");
+  style.textContent = PRINT_CSS;
+  document.head.appendChild(style);
+  const drop = () => style.remove();
+  window.addEventListener("afterprint", drop, { once: true });
+  try {
+    window.print();
+  } finally {
+    setTimeout(drop, 1500);
+  }
+}
+
+/* ─────────────────────────── 1 · بطاقتي المهنية ─────────────────────────── */
+
+function ProfessionalCard({ card, ar, self, companyName }) {
+  const navigate = useNavigate();
+  const [code, setCode] = useState("");
+  useEffect(() => {
+    let live = true;
+    fileSealCode(card.sealText).then((c) => { if (live) setCode(c); });
+    return () => { live = false; };
+  }, [card.sealText]);
+
+  const verify = async () => {
+    try { await navigator.clipboard?.writeText(code); } catch { /* the code stays visible on the seal */ }
+    if (self) {
+      toast({ description: ar ? `نُسخ رمز الملف ${code}. أرفقه بطلب شهادة الخدمة — تصدر مختومة وتُتحقق من صفحة التحقق (المادة 64).` : `File code ${code} copied. Attach it to the service-certificate request — it is issued sealed and verifiable (Art. 64).` });
+      navigate("/app/requests?kind=doc&doc=exp");
+    } else {
+      toast({ description: ar ? `نُسخ رمز الملف ${code}. يطابق بيانات الملف الآن؛ أي تعديل على بيان أساسي يغيّره.` : `File code ${code} copied. It matches the file now; editing a key fact changes it.` });
+    }
+  };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* No figure row here: leave lives in طلباتي, sanctions and documents have their own lines below. */}
-      <section style={paper}>
-        <header style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 180 }}>
-            <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{ar ? "امتثال الملف لأنظمة الوزارة" : "File compliance"}</strong>
-            <span style={{ fontSize: 12, color: "var(--nv-ink3)" }}>
-              {scored ? (ar ? `${met} من ${scored} متطلباً مستوفٍ` : `${met} of ${scored} met`) : "—"}
+    <section className="nv-myfile-card" aria-label={ar ? (self ? "بطاقتي المهنية" : "بطاقته المهنية") : "Professional card"} style={{ position: "relative", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, padding: "22px clamp(16px,4vw,28px) 20px", boxShadow: "var(--nv-paper)" }}>
+      <span aria-hidden style={{ position: "absolute", inset: 6, border: "1px solid var(--nv-line)", borderRadius: 10, pointerEvents: "none" }} />
+      <div style={{ position: "relative", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", paddingBottom: 14, marginBottom: 16, borderBottom: "1px solid var(--nv-line)" }}>
+        <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ar ? 0 : 1.2, color: "var(--nv-ink2)" }}>{ar ? (self ? "بطاقتي المهنية" : "بطاقته المهنية") : (self ? "My professional card" : "Professional card")}</span>
+        {companyName ? <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>· {companyName}</span> : null}
+        <button type="button" className="nv-myfile-noprint" onClick={printCard} style={{ marginInlineStart: "auto", fontFamily: "inherit", fontSize: 12, fontWeight: 600, height: 30, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "transparent", color: "var(--nv-ink)", cursor: "pointer" }}>
+          {ar ? "اطبع البطاقة" : "Print card"}
+        </button>
+      </div>
+
+      <div style={{ position: "relative", display: "flex", flexWrap: "wrap", gap: "20px 28px", alignItems: "flex-start" }}>
+        <div style={{ flex: "1 1 280px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+            <span aria-hidden style={{ width: 56, height: 56, flex: "none", borderRadius: "50%", border: "1px solid var(--nv-line)", background: "var(--nv-soft)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-heading)", fontSize: 19, fontWeight: 700, color: "var(--nv-ink)" }}>
+              {card.initials}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: "var(--font-heading)", fontSize: 20, fontWeight: 700, color: "var(--nv-ink)", lineHeight: 1.35, overflowWrap: "anywhere" }}>{card.name}</div>
+              <div style={{ fontSize: 13, color: "var(--nv-ink2)", lineHeight: 1.6, overflowWrap: "anywhere" }}>{card.job} <span style={{ color: "var(--nv-ink3)" }}>·</span> {card.branch}</div>
+            </div>
+          </div>
+          <dl style={{ margin: 0 }}>
+            {card.rows.map((row) => (
+              <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,9em) minmax(0,1fr)", gap: 12, alignItems: "baseline", padding: "8px 0", borderTop: "1px dotted var(--nv-line)" }}>
+                <dt style={{ fontSize: 12, color: "var(--nv-ink3)" }}>{row.k}</dt>
+                <dd style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--nv-ink)", display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", minWidth: 0, overflowWrap: "anywhere" }}>
+                  <span dir={row.mono ? "ltr" : undefined} style={row.mono ? { ...mono, fontSize: 12.5 } : undefined}>{row.v}</span>
+                  {row.gap ? <Chip tone="warn">{ar ? "ناقص" : "Missing"}</Chip> : null}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        <div style={{ flex: "0 1 190px", margin: "0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center", paddingTop: 4 }}>
+          <ProofSeal code={code} ar={ar} />
+          <button type="button" className="nv-myfile-noprint" onClick={verify} disabled={!code} style={{ ...greenLink, opacity: code ? 1 : 0.5 }}>
+            {ar ? (self ? "تحقق — اطلب شهادة خدمة مختومة ‹" : "تحقق — انسخ رمز الملف") : (self ? "Verify — request a sealed certificate ›" : "Verify — copy the file code")}
+          </button>
+          <span style={{ fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.65, maxWidth: 190 }}>
+            {ar ? "الرمز مشتق من بيانات البطاقة ولا يُخزَّن — يتغيّر إن تغيّر أي بيان فيها." : "Derived from the card's facts, never stored — it changes when any of them does."}
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─────────────────────────── 2 · قصة خدمتي ─────────────────────────── */
+
+const PROOF_TONE = { sealed: "warn", signed: "ok", ack: "ok", log: "mute" };
+
+function ServiceStory({ story, ar, self }) {
+  const title = ar ? (self ? "قصة خدمتي" : "قصة خدمته") : (self ? "My service story" : "Service story");
+  return (
+    <section style={paper}>
+      <SectionHead
+        title={title}
+        note={story.count
+          ? (ar ? "كل سطر من سجل في الملف: متى، ومن أجراه، وما يثبته — الأحدث أولاً." : "Each line comes from a record: when, who, and what proves it — newest first.")
+          : null}
+      />
+      {story.count === 0 ? (
+        <p style={{ margin: 0, padding: "16px 20px", fontSize: 12.5, color: "var(--nv-ink3)" }}>
+          {ar ? "لا حدث مثبتاً في الملف بعد." : "Nothing proven on the file yet."}
+        </p>
+      ) : story.years.map((y) => (
+        <details key={y.year} open={y.open} style={{ borderTop: "1px solid var(--nv-line)" }}>
+          <summary style={{ cursor: "pointer", padding: "12px 20px" }}>
+            <strong dir="ltr" style={{ ...mono, fontSize: 15, color: "var(--nv-ink)", marginInlineEnd: 10 }}>{y.year}</strong>
+            <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>
+              {ar ? (y.events.length === 1 ? "حدث واحد" : y.events.length === 2 ? "حدثان" : `${y.events.length} ${y.events.length <= 10 ? "أحداث" : "حدثاً"}`) : `${y.events.length} event${y.events.length === 1 ? "" : "s"}`}
+            </span>
+          </summary>
+          <ol style={{ listStyle: "none", margin: 0, padding: "0 20px 14px" }}>
+            {y.events.map((e, i) => (
+              <li key={e.id} style={{ display: "grid", gridTemplateColumns: "14px minmax(0,1fr)", gap: 12 }}>
+                <span aria-hidden style={{ position: "relative", display: "block" }}>
+                  <span style={{ position: "absolute", insetInlineStart: 6, top: 0, bottom: 0, width: 1, background: i === y.events.length - 1 ? "transparent" : "var(--nv-line)" }} />
+                  <span style={{ position: "absolute", insetInlineStart: 2, top: 9, width: 9, height: 9, borderRadius: "50%", background: "var(--nv-card)", border: "1.5px solid var(--nv-ink3)" }} />
+                </span>
+                <div style={{ padding: "4px 0 14px", minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, color: "var(--nv-ink)", lineHeight: 1.75, overflowWrap: "anywhere" }}>{e.text}</div>
+                  <div style={{ marginTop: 3, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11.5, color: "var(--nv-ink3)" }}>
+                    <span>{e.at}</span>
+                    <span aria-hidden>·</span>
+                    <span>{e.actor}</span>
+                    <Chip tone={PROOF_TONE[e.proof.id]} title={e.proof.hash ? `SHA-256 ${e.proof.hash}…` : undefined}>
+                      {e.proof.label}
+                      {e.proof.hash ? <span dir="ltr" style={{ ...mono, fontWeight: 500 }}>{e.proof.hash}</span> : null}
+                    </Chip>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </details>
+      ))}
+    </section>
+  );
+}
+
+/* ─────────────────────────── 3 · جاهزية ملفي ─────────────────────────── */
+
+const STATE_CHIP = {
+  missing: { tone: "mute", ar: "ناقص", en: "Missing" },
+  expiring: { tone: "warn", ar: "ينتهي قريباً", en: "Ending soon" },
+  expired: { tone: "bad", ar: "منتهٍ", en: "Expired" },
+};
+
+function ReadinessAction({ action, onOpenTab }) {
+  if (!action?.label) return null;
+  if (action.to) return <Link to={action.to} style={greenLink}>{action.label} ‹</Link>;
+  return <button type="button" onClick={() => onOpenTab?.(action.tab)} style={greenLink}>{action.label} ‹</button>;
+}
+
+function Readiness({ readiness, ar, self, onOpenTab }) {
+  const { open, done, total, filled } = readiness;
+  const pct = total ? Math.round((filled / total) * 100) : 100;
+  const title = ar ? (self ? "جاهزية ملفي" : "جاهزية ملفه") : (self ? "My file readiness" : "File readiness");
+  return (
+    <section style={paper}>
+      <SectionHead
+        title={title}
+        note={ar ? (self ? "ما ينقص الملف أو يقترب انتهاؤه، وعلى من الخطوة." : "What the file misses or is about to lose, and whose move it is.") : "What is missing or ending, and whose move it is."}
+        end={(
+          <div style={{ flex: "0 1 200px", minWidth: 150, display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 12.5, color: "var(--nv-ink)", fontWeight: 600 }}>
+              {ar ? `${filled} من ${total} مكتمل` : `${filled} of ${total} complete`}
+            </span>
+            <span role="meter" aria-valuemin={0} aria-valuemax={total} aria-valuenow={filled} aria-label={title} style={{ display: "block", height: 4, borderRadius: 999, background: "var(--nv-line)", overflow: "hidden" }}>
+              <span style={{ display: "block", height: "100%", width: `${pct}%`, background: "var(--nv-ok-fill)", borderRadius: 999 }} />
             </span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 120, height: 6, borderRadius: 999, background: "var(--nv-line)", overflow: "hidden" }}>
-              <div style={{ height: "100%", width: score === "—" ? "0%" : score, borderRadius: 999, background: met === scored && scored ? "#3C7D50" : "#C8A45A" }} />
-            </div>
-            <strong dir="ltr" style={{ ...mono, fontSize: 20, color: "var(--nv-ink)" }}>{score}</strong>
-          </div>
-        </header>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,280px),1fr))" }}>
-          {rows.length === 0 ? (
-            <div style={{ padding: "14px 18px", fontSize: 12, color: "var(--nv-ink3)" }}>—</div>
-          ) : rows.map((row) => (
-            <button
-              key={row.id}
-              type="button"
-              onClick={() => onOpenTab?.(row.tab)}
-              style={{
-                fontFamily: "inherit",
-                textAlign: "start",
-                border: "none",
-                borderBottom: "1px solid var(--nv-line2)",
-                background: "transparent",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 18px",
-              }}
-            >
-              <span style={{ width: 24, height: 24, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, flex: "none", color: row.color, background: row.bg }}>
-                {row.ok && !row.warn ? "✓" : row.warn ? "!" : "✕"}
-              </span>
-              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{row.label}</span>
-                <span style={{ fontSize: 11.5, color: row.warn || !row.ok ? row.color : "var(--nv-ink3)" }}>{row.note || row.state || "—"}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
+        )}
+      />
+      {open.length === 0 ? (
+        <p style={{ margin: 0, padding: "16px 20px", fontSize: 12.5, color: "var(--nv-ink3)" }}>
+          {ar ? "الملف مكتمل — لا نقص ولا انتهاء قريب." : "The file is complete — nothing missing or ending soon."}
+        </p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {open.map((item) => {
+            const chip = STATE_CHIP[item.state] || STATE_CHIP.missing;
+            return (
+              <li key={item.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px 14px", padding: "12px 20px", borderTop: "1px solid var(--nv-line)" }}>
+                <span aria-hidden style={{ width: 10, height: 10, flex: "none", borderRadius: "50%", border: "1.5px solid var(--nv-ink3)" }} />
+                <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{item.label}</span>
+                    <Chip tone={chip.tone}>{ar ? chip.ar : chip.en}</Chip>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.7, marginTop: 2 }}>{item.note}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginInlineStart: "auto" }}>
+                  <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", fontWeight: 600 }}>{item.ownerLabel}</span>
+                  {item.hint ? <RightHint hint={item.hint} ar={ar} /> : null}
+                  <ReadinessAction action={item.action} onOpenTab={onOpenTab} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {done.length ? (
+        <details style={{ borderTop: "1px solid var(--nv-line)" }}>
+          <summary style={{ cursor: "pointer", padding: "11px 20px", fontSize: 12, color: "var(--nv-ink3)" }}>
+            {ar ? `المكتمل (${done.length})` : `Complete (${done.length})`}
+          </summary>
+          <ul style={{ listStyle: "none", margin: 0, padding: "0 20px 12px" }}>
+            {done.map((item) => (
+              <li key={item.id} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "5px 0", fontSize: 12.5 }}>
+                <span aria-hidden style={{ color: "var(--nv-ok-ink)", fontWeight: 700 }}>✓</span>
+                <span style={{ color: "var(--nv-ink)" }}>{item.label}</span>
+                <span style={{ color: "var(--nv-ink3)", fontSize: 11.5, minWidth: 0, overflowWrap: "anywhere" }}>{item.note}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </section>
+  );
+}
 
-      <section style={paper}>
-        <header style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-          <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{ar ? "السجلات المرتبطة" : "Linked records"}</strong>
-          <span style={{ fontSize: 12, color: "var(--nv-ink3)" }}>{ar ? "تفتح سجلها ولا تُنسخ هنا" : "They open their own record"}</span>
-        </header>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1.4fr) auto", gap: 12, padding: "8px 18px", fontSize: 11, color: "var(--nv-ink3)", borderBottom: "1px solid var(--nv-line)" }}>
-          <span>{ar ? "السجل" : "Record"}</span>
-          <span>{ar ? "الملخّص" : "Summary"}</span>
-          <span>{ar ? "الحالة" : "State"}</span>
-        </div>
-        {links.map((row) => {
+/* ─────────────────────────── 4 · compliance and linked records ─────────────────────────── */
+
+function ComplianceList({ rows, ar, onOpenTab }) {
+  const met = rows.filter((row) => row.ok && !row.warn).length;
+  // GOSI's note carries the contributory wage — pay lives in قسيمتي, so it is not repeated here.
+  const noteOf = (row) => (row.id === "gosi" ? (row.ok ? (ar ? "مشترك" : "Registered") : (ar ? "لا رقم اشتراك" : "No GOSI number")) : (row.note || row.state || "—"));
+  return (
+    <section style={paper}>
+      <SectionHead
+        title={ar ? "امتثال الملف لأنظمة الوزارة" : "File compliance"}
+        end={<span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)" }}>{ar ? `${met} من ${rows.length} مستوفٍ` : `${met} of ${rows.length} met`}</span>}
+      />
+      {rows.length === 0 ? <p style={{ margin: 0, padding: "14px 20px", fontSize: 12, color: "var(--nv-ink3)" }}>—</p> : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {rows.map((row) => {
+            const tone = row.ok && !row.warn ? "ok" : row.warn ? "warn" : "bad";
+            return (
+              <li key={row.id} style={{ borderTop: "1px solid var(--nv-line)" }}>
+                <button type="button" onClick={() => onOpenTab?.(row.tab)} style={{ fontFamily: "inherit", textAlign: "start", width: "100%", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "4px 12px", padding: "11px 20px" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)", minWidth: "7em" }}>{row.label}</span>
+                  <span style={{ flex: "1 1 180px", minWidth: 0, fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.7 }}>{noteOf(row)}</span>
+                  <Chip tone={tone}>{row.state}</Chip>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function LinkedRecords({ view, ar, self, onOpenTab }) {
+  const live = (view.penalties || []).filter((row) => row.tone === "warn").length;
+  const soon = (view.docs || []).some((row) => row.days != null && row.days <= EXPIRY_WARN_DAYS);
+  const links = [
+    { label: ar ? "التدرّج والجزاءات" : "Progression and sanctions", what: live ? (ar ? `${live === 1 ? "جزاء ساري" : `${live} جزاءات سارية`}` : `${live} live`) : (ar ? "لا جزاء ساري" : "None live"), tab: "growth" },
+    { label: ar ? (self ? "طلباتي" : "الطلبات") : "Requests", what: view.hasPendingLeave ? view.pendingPointer : (ar ? "الإجازات والأرصدة والإصابات تُتابَع هناك" : "Leave, balances and injuries live there"), href: view.pendingHref || "/app/requests" },
+    { label: ar ? (self ? "قسيمتي" : "المسير") : "Payslip", what: ar ? "الأجر وبنوده يُقرأ هناك لا هنا" : "Pay is read there, not here", href: self ? "/app/payroll?view=self&tab=payslip" : "/app/payroll" },
+    { label: ar ? "التوقيعات" : "Signatures", what: ar ? "المستندات المختومة وصفحة التحقق" : "Sealed documents and verification", href: "/app/signing" },
+    { label: ar ? "السلامة" : "Safety", what: soon ? (ar ? "شهادة تنتهي قريباً" : "A certificate ends soon") : (ar ? "الشهادات والتدريب الإلزامي" : "Certificates and mandatory training"), href: "/app/safety" },
+  ];
+  const row = { display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "4px 12px", padding: "11px 20px", textDecoration: "none", color: "inherit", fontFamily: "inherit", textAlign: "start", width: "100%", border: "none", background: "transparent", cursor: "pointer", boxSizing: "border-box" };
+  return (
+    <section style={paper}>
+      <SectionHead title={ar ? "السجلات المرتبطة" : "Linked records"} note={ar ? "تفتح سجلها ولا تُنسخ هنا." : "They open their own record."} />
+      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        {links.map((l) => {
           const inner = (
             <>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{row.label}</span>
-              <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.6 }}>{row.summary || "—"}</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#3C7D50" }}>{row.state}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)", minWidth: "7em" }}>{l.label}</span>
+              <span style={{ flex: "1 1 180px", minWidth: 0, fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.7 }}>{l.what}</span>
+              <span style={greenLink}>{ar ? "افتح ‹" : "Open ›"}</span>
             </>
           );
-          const style = {
-            display: "grid",
-            gridTemplateColumns: "minmax(0,1.2fr) minmax(0,1.4fr) auto",
-            gap: 12,
-            alignItems: "center",
-            padding: "11px 18px",
-            borderBottom: "1px solid var(--nv-line2)",
-            textDecoration: "none",
-            color: "inherit",
-            background: "transparent",
-            fontFamily: "inherit",
-            textAlign: "start",
-            width: "100%",
-            cursor: "pointer",
-          };
-          if (row.href) return <Link key={row.label} to={row.href} style={style}>{inner}</Link>;
-          return <button key={row.label} type="button" onClick={() => onOpenTab?.(row.tab)} style={style}>{inner}</button>;
-        })}
-      </section>
-
-      <section style={paper}>
-        <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "ما يحتاج إجراءً" : "Needs action"}</span>
-          <span style={{ marginInlineStart: "auto", fontSize: 11, color: "var(--nv-ink3)" }}>{view.todoNote}</span>
-        </div>
-        {(view.todos || []).length === 0 ? (
-          <div style={{ padding: "14px 18px", fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.8 }}>
-            {ar ? "لا نقص ولا تجديد معلّق على هذا الملف." : "No gap or renewal is pending on this file."}
-          </div>
-        ) : view.todos.map((item) => {
-          const style = {
-            fontFamily: "inherit",
-            textAlign: "start",
-            width: "100%",
-            boxSizing: "border-box",
-            padding: "12px 18px",
-            border: "none",
-            borderBottom: "1px solid var(--nv-line2)",
-            background: "transparent",
-            cursor: "pointer",
-            display: "grid",
-            gridTemplateColumns: "auto minmax(0,1fr) auto",
-            gap: 11,
-            alignItems: "start",
-            textDecoration: "none",
-            color: "inherit",
-          };
-          const body = (
-            <>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: item.color, marginTop: 6 }} />
-              <span style={{ fontSize: 12, color: "var(--nv-ink)", lineHeight: 1.8, minWidth: 0 }}>{item.text}</span>
-              <span style={{ fontSize: 10, fontWeight: 600, color: item.color, whiteSpace: "nowrap" }}>{item.tag}</span>
-            </>
+          return (
+            <li key={l.label} style={{ borderTop: "1px solid var(--nv-line)" }}>
+              {l.href ? <Link to={l.href} style={row}>{inner}</Link> : <button type="button" onClick={() => onOpenTab?.(l.tab)} style={row}>{inner}</button>}
+            </li>
           );
-          if (item.href) return <Link key={`${item.tab}-${item.text}`} to={item.href} style={style}>{body}</Link>;
-          return <button key={`${item.tab}-${item.text}`} type="button" onClick={() => onOpenTab?.(item.tab)} style={style}>{body}</button>;
         })}
-      </section>
+      </ul>
+    </section>
+  );
+}
 
-      <details style={{ ...paper, borderRadius: 12 }}>
-        <summary style={{ padding: "12px 18px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--nv-ink)", background: "var(--nv-soft)" }}>
-          {ar ? "مرجع الوزارة على هذا الملف" : "Ministry reference on this file"}
-        </summary>
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          {[
-            { cite: "م 51 · 53", text: rows.find((row) => row.id === "contract")?.note || "—" },
-            { cite: "م 122", text: soon.length ? (ar ? "شهادة تنتهي خلال 30 يوماً" : "A certificate ends within 30 days") : (ar ? "لا تحذير انتهاء على الوثائق المؤرّخة" : "No dated document is inside the warning window") },
-            { cite: ar ? "نطاقات" : "Nitaqat", text: rows.find((row) => row.id === "gosi")?.note || "—" },
-          ].map((row) => (
-            <div key={row.cite} style={{ display: "grid", gridTemplateColumns: "110px minmax(0,1fr)", gap: 12, padding: "10px 18px", borderTop: "1px solid var(--nv-line2)" }}>
-              <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: "#C8A45A" }}>{row.cite}</span>
-              <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>{row.text}</span>
-            </div>
-          ))}
-        </div>
-      </details>
+/* ─────────────────────────── the tab ─────────────────────────── */
+
+export default function EmployeeFileSummary({
+  view,
+  ar,
+  onOpenTab,
+  employee,
+  isSelf = false,
+  roleLabel = "",
+  stationName = "",
+  companyName = "",
+  cases = [],
+  assets = [],
+  regulation = null,
+}) {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+  const card = useMemo(() => buildMyFileCard({ employee, roleLabel, stationName, ar, today }), [employee, roleLabel, stationName, ar, today]);
+  const story = useMemo(() => buildServiceStory({ employee, cases, assets, regulation, roleLabel, selfView: isSelf, ar, today }), [employee, cases, assets, regulation, roleLabel, isSelf, ar, today]);
+  const readiness = useMemo(() => buildFileReadiness({ employee, regulation, roleLabel, view: isSelf ? "employee" : "manager", ar, today }), [employee, regulation, roleLabel, isSelf, ar, today]);
+
+  return (
+    <div data-myfile="" style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+      <div style={{ padding: "4px 2px 0" }}>
+        <h2 style={{ margin: 0, fontFamily: "var(--font-heading)", fontSize: 19, fontWeight: 700, color: "var(--nv-ink)" }}>
+          {ar ? (isSelf ? "ملفي — سيرة عملي الموثّقة" : "ملفه — سيرة عمله الموثّقة") : (isSelf ? "My file — a proven work record" : "File — a proven work record")}
+        </h2>
+        <p style={sub}>
+          {ar
+            ? "ما في هذه الصفحة مشتق من سجلات الملف، وكل سطر معه ما يثبته. الإجازات في طلباتي، والأجر في قسيمتي."
+            : "Everything here is derived from the file's records, each line with its proof. Leave is in My requests, pay in My payslip."}
+        </p>
+      </div>
+      <ProfessionalCard card={card} ar={ar} self={isSelf} companyName={companyName} />
+      <ServiceStory story={story} ar={ar} self={isSelf} />
+      <Readiness readiness={readiness} ar={ar} self={isSelf} onOpenTab={onOpenTab} />
+      <ComplianceList rows={view.compliance || []} ar={ar} onOpenTab={onOpenTab} />
+      <LinkedRecords view={view} ar={ar} self={isSelf} onOpenTab={onOpenTab} />
     </div>
   );
 }

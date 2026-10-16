@@ -47,6 +47,7 @@ import { toast } from "@/components/ui/use-toast";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { syncEmployeeSalaryToPayroll } from "@/lib/payroll";
 import { gosiRegistrationIso } from "@/lib/facts";
+import { regulationOf } from "@/lib/workRegulation";
 
 const TABS = [
   { key: "summary", ar: "ملخّص الملف", en: "File summary" },
@@ -377,7 +378,7 @@ export default function EmployeeProfile() {
                   cursor: "pointer",
                 }}
               >
-                {ar ? item.ar : item.en}
+                {item.key === "summary" && isSelf ? (ar ? "ملفي" : "My file") : (ar ? item.ar : item.en)}
               </button>
             );
           })}
@@ -385,7 +386,21 @@ export default function EmployeeProfile() {
 
         <EmpAlertsStrip employee={employee} currentUser={currentUser} lang={lang} />
 
-        {tab === "summary" && <EmployeeFileSummary view={view} ar={ar} onOpenTab={openTab} />}
+        {tab === "summary" && (
+          <EmployeeFileSummary
+            view={view}
+            ar={ar}
+            onOpenTab={openTab}
+            employee={employee}
+            isSelf={isSelf}
+            roleLabel={roleLabel}
+            stationName={stationName}
+            companyName={company?.name || ""}
+            cases={data.disciplinaryCases || []}
+            assets={data.assets || []}
+            regulation={regulationOf(data)}
+          />
+        )}
 
         {tab === "identity" && (
           <>

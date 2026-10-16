@@ -53,6 +53,8 @@ export const BLOB_VISIBILITY = {
   workProofs: "senior",
   visitorProofs: "senior",
   orgSeats: "senior",
+  // Org design (DoA rows, change requests, thresholds) — owner/HR; employees read their place via org/myPlace.
+  orgDesign: "senior",
   branchEscalationChains: "senior",
   branchEscalationSla: "senior",
   hcmFoundation: "senior",
@@ -67,6 +69,7 @@ export const OBJECT_BLOB_CATEGORIES = [
   "hcmFoundation",
   "hcmPerformance",
   "workRegulation",
+  "orgDesign",
 ];
 
 export function isObjectBlobCategory(category: string) {

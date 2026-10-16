@@ -208,6 +208,12 @@
         "neverDenorm": "Permissions are on smartPositions / templates, not copied onto the seat as figures.",
         "bugLooks": "Orphan employeeId = empty seat that still blocks a hire."
       },
+      "orgDesign": {
+        "purpose": "Org design layer: span/vacancy thresholds, delegation-of-authority rows, dated org change requests and their signed decisions.",
+        "relates": "doa.approverSeatId → orgSeats; doa.unitId → Station; changes.ops → orgSeats / Station",
+        "neverDenorm": "Span, health, headcount and approval paths are derived in orgDesign.js — never stored.",
+        "bugLooks": "A published decision edited or removed = the as-of chart lies; a voice kind in doa = complaints routed to a manager."
+      },
       "orgTree": {
         "purpose": "Serialized org graph (nodes + edges) for the people tree.",
         "relates": "node.refId → Employee or Station",
@@ -515,6 +521,19 @@
           "identity": ["id", "companyId"],
           "personRef": "employeeId",
           "visibility": "senior"
+        },
+        {
+          "key": "orgDesign",
+          "kind": "blob",
+          "blobCategory": "orgDesign",
+          "storeKey": "orgDesign",
+          "owner": "org",
+          "ownerFile": "base44/functions/org/entry.ts",
+          "derivation": "base44/shared/orgDesignDerivations.ts",
+          "identity": ["companyId"],
+          "personRef": null,
+          "visibility": "senior",
+          "notes": "Object-map blob {settings, doa, changes}. Written through companyDirectory syncBlob → mergeOrgDesignWrite (published decisions immutable)."
         },
         {
           "key": "orgTree",

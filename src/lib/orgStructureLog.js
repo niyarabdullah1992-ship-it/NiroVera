@@ -123,6 +123,11 @@ export function formatOrgStructureEvent(event, ar = true) {
       ? `منصب «${event.to || ""}» تحت ${who || branch}`
       : `Seat «${event.to || ""}» under ${who || branch}`;
   }
+  if (event.type === "decision") {
+    return ar
+      ? `قرار تنظيمي ${event.to || ""}: «${event.toName || ""}» — يسري ${event.until || "—"}`
+      : `Org decision ${event.to || ""}: “${event.toName || ""}” — effective ${event.until || "—"}`;
+  }
   if (event.type === "hr") {
     return ar
       ? `${who || "—"} مدير الموارد البشرية لـ«${branch}»`

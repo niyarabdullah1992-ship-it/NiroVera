@@ -49,7 +49,7 @@ flowchart LR
 ```
 
 - **Company — الشركة** — Tenant envelope, session, blob store. Isolation starts here. `CompanyAccount`, `CompanySession`, `LoginOtp`, `CompanyDataBlob`, `companyMeta`, `companySettings`, `SyncSignal`, `AuditLog`
-- **People — الناس** — Employee, contract, org seat, hire, offboard. Person ref for every later domain. `employees`, `EmployeeCredential`, `User`, `stations`, `orgSeats`, `orgTree`, `orgStructure`, `orgStructureLog`, `smartPositions`, `permissionTemplates`, `hrLevels`, `hrClusters`, `jobGrades`, `hcmFoundation`, `hcmPerformance`, `hiringPipeline`, `offboardingCustody`, `employeeCompliance`, `leaveRequests`, `otherRequests`
+- **People — الناس** — Employee, contract, org seat, hire, offboard. Person ref for every later domain. `employees`, `EmployeeCredential`, `User`, `stations`, `orgSeats`, `orgDesign`, `orgTree`, `orgStructure`, `orgStructureLog`, `smartPositions`, `permissionTemplates`, `hrLevels`, `hrClusters`, `jobGrades`, `hcmFoundation`, `hcmPerformance`, `hiringPipeline`, `offboardingCustody`, `employeeCompliance`, `leaveRequests`, `otherRequests`
 - **Time — الوقت** — Proof Cycle step 1 — person + place + time. Feeds payroll and tasks. `personalAttendance`, `attendanceLedger`, `personalPlaces`, `schedules`, `publishedRotas`, `leaveRoster`, `attendancePolicy`, `attendanceEmergency`
 - **Work proof — إثبات العمل** — Proof Cycle steps 2–4 and 6 — task, review, escalation, client proof. Not signing. `tasks`, `operationsTasks`, `workProofs`, `WorkProof`, `visitorProofs`, `ClientProof`, `PointsLedger`, `targets`, `plans`, `safety`, `hseCredits`, `trainingPlan`, `employerDuties`, `competencyCerts`
 - **Trust / signing — التوقيع والأرشيف** — Proof Cycle step 5 — Secure Sign. Own domain, not WorkProof. `signatureRequests`, `SignedDocument`, `signingFieldTemplates`, `signingChain`, `files`, `smartArchive`, `NiroDocumentReview`
@@ -94,6 +94,7 @@ Employee, station, contract seat, hire, offboard. Person ref for every later dom
 | `User` | platform | Base44 platform user (admin/user). Not a tenant employee. | none | — | Do not add companyId here; it is platform-scoped. | Treating User.id as employeeId mixes platform admins into the roster. |
 | `stations` | canonical | Workplace / org node. Check-in GPS and hire seat live here. | companyId | managerId → Employee; parentStationId → Station | Do not rename stationId without previewMigrations + every reader. | Missing companyId = workplace leaks across tenants. Orphan parentStationId = broken org tree. |
 | `orgSeats` | canonical | Org chart seat bound to one employee. | companyId | employeeId → Employee | Permissions are on smartPositions / templates, not copied onto the seat as figures. | Orphan employeeId = empty seat that still blocks a hire. |
+| `orgDesign` | canonical | Org design layer: span/vacancy thresholds, delegation-of-authority rows, dated org change requests and their signed decisions. | companyId | doa.approverSeatId → orgSeats; doa.unitId → Station; changes.ops → orgSeats / Station | Span, health, headcount and approval paths are derived in orgDesign.js — never stored. | A published decision edited or removed = the as-of chart lies; a voice kind in doa = complaints routed to a manager. |
 | `orgTree` | canonical | Serialized org graph (nodes + edges) for the people tree. | companyId | node.refId → Employee or Station | Prefer orgTree over orgStructure. | orgStructure split = tree drawn from the empty silo. |
 | `orgStructure` | legacy-read-fallback | Split silo of orgTree. Prefer the canonical key. | companyId | splitOf orgTree | Figures come from orgDerivations.ts — do not store them as source columns. | Writes go to orgTree (node array) plus companyMeta.orgBoard extras. orgStructure is read-once fallback. |
 | `orgStructureLog` | canonical | Synced inside companyMeta, not its own blob category. | companyId | — | Figures come from orgDerivations.ts — do not store them as source columns. | Missing companyId on write = cross-tenant leak. |
@@ -240,4 +241,4 @@ SaaS chrome: plans, billing, visits, translations, assistant. Not the Proof Cycl
 - `powercare_tokens` — per-company session tokens
 - `powercare_local_preview` — preview workspace flag
 
-Catalog: 86 collections across 8 domains.
+Catalog: 87 collections across 8 domains.

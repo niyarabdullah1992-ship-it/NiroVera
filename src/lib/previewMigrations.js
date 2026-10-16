@@ -1035,3 +1035,123 @@ export function seedPreviewAttendanceHistory(data, today = previewTodayKey()) {
   data.previewAttendanceHistorySeeded = true;
   return added > 0;
 }
+
+/**
+ * Org design demo: a department under الخفجي, seats for every preview person (incl. a long-vacant,
+ * a frozen, a planned and an acting-covered seat), headcount budgets, one DoA row, one published
+ * decision (for the as-of view) and one change awaiting approval. Existing users and roles stay.
+ */
+export function seedPreviewOrgDesign(data, today = previewTodayKey()) {
+  if (!data || data.previewOrgDesignSeeded) return false;
+  const stations = Array.isArray(data.stations) ? data.stations : [];
+  const people = Array.isArray(data.employees) ? data.employees : [];
+  const north = stations.find((row) => row.id === "st_north_preview");
+  const east = stations.find((row) => row.id === "st_east_preview");
+  if (!north || !east) return false;
+  const shift = (days) => {
+    const d = new Date(`${today}T12:00:00`);
+    d.setDate(d.getDate() + days);
+    return previewTodayKey(d);
+  };
+  const person = (id) => people.find((row) => row.id === id);
+  const nationality = { emp_manager_preview: "سعودي", emp_hassan_preview: "سعودي", emp_noura_preview: "سعودية", emp_hse_preview: "سعودية" };
+  Object.entries(nationality).forEach(([id, value]) => {
+    const row = person(id);
+    if (row && !row.profile?.nationality) row.profile = { ...(row.profile || {}), nationality: value };
+  });
+  const omar = person("emp_field_preview");
+  if (omar && !omar.profile?.qiwaTitle) omar.profile = { ...(omar.profile || {}), qiwaTitle: "فني كهرباء" };
+
+  const deptId = "st_ops_dept_preview";
+  if (!stations.some((row) => row.id === deptId)) {
+    stations.push({
+      id: deptId,
+      name: "قسم التشغيل والصيانة",
+      parentStationId: north.id,
+      orgLevel: "department",
+      headcountBudget: 4,
+      createdAt: `${shift(-120)}T08:00:00.000Z`,
+      lat: north.lat,
+      lng: north.lng,
+      radiusMeters: north.radiusMeters || 200,
+    });
+  }
+  data.orgSeats = Array.isArray(data.orgSeats) ? data.orgSeats : [];
+  const addSeat = (seat) => {
+    if (data.orgSeats.some((row) => row.id === seat.id)) return;
+    if (seat.employeeId && data.orgSeats.some((row) => String(row.employeeId) === String(seat.employeeId))) return;
+    data.orgSeats.push({ listId: "field", gradeId: "", approverId: data.ownerId || null, createdAt: `${shift(-200)}T08:00:00.000Z`, ...seat });
+  };
+  addSeat({ id: "seat_ops_sup", code: "KHF-OPS-01", title: "مشرف تشغيل", qiwaTitle: "مشرف تشغيل", stationId: north.id, employeeId: "emp_manager_preview", deputySeatId: "seat_tech_hassan" });
+  addSeat({ id: "seat_tech_omar", code: "KHF-OPS-02", title: "فني ميداني", qiwaTitle: "فني ميداني", stationId: north.id, employeeId: "emp_field_preview" });
+  addSeat({ id: "seat_tech_hassan", code: "KHF-OPS-03", title: "فني ميداني", stationId: north.id, employeeId: "emp_hassan_preview" });
+  addSeat({ id: "seat_hse_sara", code: "RBG-HSE-01", title: "ضابط سلامة", stationId: east.id, employeeId: "emp_hse_preview", dottedToSeatId: "seat_ops_sup" });
+  addSeat({ id: "seat_cs_noura", code: "RBG-CS-01", title: "أخصائية عملاء", stationId: east.id, employeeId: "emp_noura_preview" });
+  addSeat({ id: "seat_mgr_rabigh", code: "RBG-MGR-01", title: "مدير فرع رابغ", stationId: east.id, employeeId: null, vacatedAt: `${shift(-110)}T08:00:00.000Z` });
+  addSeat({ id: "seat_planner_frozen", code: "OPS-PLN-01", title: "مخطط صيانة", stationId: deptId, employeeId: null, state: "frozen" });
+  addSeat({ id: "seat_rel_eng", code: "OPS-ENG-01", title: "مهندس موثوقية", stationId: deptId, employeeId: null, state: "planned", plannedFrom: shift(30), saudiOnly: true });
+  const vac = data.orgSeats.find((row) => row.id === "seat_vac_tech");
+  if (vac) {
+    vac.stationId = deptId;
+    vac.code = vac.code || "OPS-TEC-01";
+    if (!vac.vacatedAt) vac.vacatedAt = `${shift(-75)}T08:00:00.000Z`;
+  }
+
+  // أحمد covers the vacant Rabigh manager seat — started long enough ago to cross the acting limit.
+  const ahmed = person("emp_manager_preview");
+  if (ahmed && !(ahmed.actingAssignments || []).some((row) => row.seatId === "seat_mgr_rabigh")) {
+    ahmed.actingAssignments = [
+      ...(ahmed.actingAssignments || []),
+      { id: "act_preview_rabigh", seatId: "seat_mgr_rabigh", title: "مدير فرع رابغ", stationId: east.id, listId: "field", from: shift(-100), until: shift(5), createdAt: `${shift(-100)}T08:00:00.000Z` },
+    ];
+  }
+
+  const design = data.orgDesign && typeof data.orgDesign === "object" && !Array.isArray(data.orgDesign) ? data.orgDesign : {};
+  design.settings = design.settings || {};
+  design.doa = Array.isArray(design.doa) ? design.doa : [];
+  design.changes = Array.isArray(design.changes) ? design.changes : [];
+  if (!design.doa.some((row) => row.id === "doa_preview_leave")) {
+    design.doa.push({ id: "doa_preview_leave", kind: "leave", unitId: north.id, approverSeatId: "seat_ops_sup", limit: 5, escalateToSeatId: null, note: "الإجازات القصيرة لفريق الخفجي يعتمدها مشرف التشغيل" });
+  }
+  if (!design.changes.some((row) => row.id === "orgchg_preview_budget")) {
+    design.changes.push({
+      id: "orgchg_preview_budget",
+      title: "ميزانية عدد موظفي قسم التشغيل والصيانة",
+      reason: "اعتماد خطة القوى العاملة للربع.",
+      effectiveDate: shift(-40),
+      ops: [{ type: "setBudget", stationId: deptId, budget: 4 }],
+      status: "published",
+      createdById: data.ownerId || "",
+      createdBy: "نيار عبدالله",
+      createdAt: `${shift(-45)}T09:00:00.000Z`,
+      approvedById: data.ownerId || "",
+      approvedBy: "نيار عبدالله",
+      approvedAt: `${shift(-41)}T09:00:00.000Z`,
+      publishedAt: `${shift(-40)}T06:00:00.000Z`,
+      publishedBy: "نيار عبدالله",
+      inverse: [{ entity: "station", id: deptId, before: { headcountBudget: null } }],
+      decision: { seal: "NV-ORG-0001-PRV1", hash: "PREVIEWDECISION01", by: "نيار عبدالله", at: `${shift(-40)}T06:00:00.000Z` },
+    });
+  }
+  if (!design.changes.some((row) => row.id === "orgchg_preview_quality")) {
+    design.changes.unshift({
+      id: "orgchg_preview_quality",
+      title: "وحدة الجودة تحت فرع رابغ",
+      reason: "فصل فحص الجودة عن التشغيل اليومي، ونقل منصب الفني الشاغر إليها.",
+      effectiveDate: shift(7),
+      ops: [
+        { type: "createUnit", unitId: "st_quality_preview", name: "وحدة الجودة", parentId: east.id, orgLevel: "unit", budget: 2 },
+        { type: "moveSeat", seatId: "seat_vac_tech", toStationId: "st_quality_preview" },
+      ],
+      status: "pending",
+      createdById: "emp_hse_preview",
+      createdBy: "سارة حسن",
+      createdAt: `${shift(-2)}T10:00:00.000Z`,
+      submittedAt: `${shift(-1)}T10:00:00.000Z`,
+      submittedBy: "سارة حسن",
+    });
+  }
+  data.orgDesign = design;
+  data.previewOrgDesignSeeded = true;
+  return true;
+}

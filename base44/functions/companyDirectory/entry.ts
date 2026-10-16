@@ -13,6 +13,7 @@ import { POWERCARE_MARK_URL } from '../../shared/brand.ts';
 import { companyMetaCreatePayload, creatorEmployeeRecord } from '../../shared/companyBootstrap.ts';
 import { mergeAbuseCasesWrite, mergeEmployerDutyRoster, mergeWorkRegulationWrite } from '../../shared/syncLaw.ts';
 import { enforceEmployeeFileWrite } from '../../shared/employeeFileGate.ts';
+import { mergeOrgDesignWrite } from '../../shared/orgDesignDerivations.ts';
 
 // System emails (OTP codes, welcome messages) go out through the app's connected
 // Gmail account, because the built-in email service refuses recipients who are
@@ -1052,6 +1053,25 @@ Deno.serve(async (req) => {
         const merged = mergeAbuseCasesWrite(rows[0]?.payload || [], Array.isArray(payload) ? payload : [], auth.userId);
         await storeMerged(rows, merged);
         return Response.json({ ok: true });
+      }
+      // Org design: owner and HR design the structure; published org decisions are immutable,
+      // the author never approves his own change, voice never enters the authority matrix.
+      if (category === 'orgDesign') {
+        const role = String(context.actor?.role || auth.role || '');
+        const owner = !!(auth.admin || auth.role === 'owner');
+        const canEdit = owner || ['director', 'admin', 'hr_manager'].includes(role) || context.permissions.has('manage_employees');
+        if (!canEdit) {
+          return Response.json({
+            error: 'ORG_EDIT_HR_ONLY',
+            reason: 'تصميم الهيكل للمالك والموارد البشرية.',
+            reasonEn: 'Structure design is for the owner and HR.',
+          }, { status: 403 });
+        }
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+        const prior = rows[0]?.payload && !Array.isArray(rows[0].payload) ? rows[0].payload : {};
+        const merged = mergeOrgDesignWrite(prior, payload, { userId: auth.userId || '', owner, canEdit });
+        await storeMerged(rows, merged.payload);
+        return Response.json({ ok: true, refused: merged.refused });
       }
       let allowed = false;
       if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'branchEscalationSla', 'workProofs', 'visitorProofs', 'arbitrationOutcomes', 'orgSeats', 'hcmFoundation', 'hcmPerformance', 'hseCredits', 'attendancePolicy', 'attendanceEmergency', 'abuseCases'].includes(category)) allowed = context.senior;

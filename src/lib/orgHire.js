@@ -269,6 +269,9 @@ export function setActingAssignment(companyId, employeeId, input) {
   if (!companyId || !employeeId || !stationId || !/^\d{4}-\d{2}-\d{2}$/.test(until)) {
     return { ok: false, error: "FIELDS" };
   }
+  // Optional dated start (acting from a future day); the end is required and ends it automatically.
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(input?.from || "").slice(0, 10)) ? String(input.from).slice(0, 10) : "";
+  if (from && from > until) return { ok: false, error: "FIELDS" };
   let error = "";
   updateCompany(companyId, (data) => {
     const employee = (data.employees || []).find((item) => item.id === employeeId);
@@ -293,6 +296,7 @@ export function setActingAssignment(companyId, employeeId, input) {
       title: String(input.title || seat?.title || employee.position || "").trim(),
       stationId,
       listId: String(input.listId || seat?.listId || ""),
+      ...(from ? { from } : {}),
       until,
       createdAt: new Date().toISOString(),
     });

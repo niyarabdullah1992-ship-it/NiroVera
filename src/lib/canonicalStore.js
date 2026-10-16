@@ -29,6 +29,7 @@ export const OBJECT_BLOB_CATEGORIES = Object.freeze([
   "hcmFoundation",
   "hcmPerformance",
   "workRegulation",
+  "orgDesign",
 ]);
 
 /**

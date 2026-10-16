@@ -262,6 +262,7 @@ export default function JobObjectiveBoard({ lang = "ar" }) {
         band={state.calibrationBand}
         busy={busy}
         onRun={run}
+        grievances={state.grievances || []}
       />
 
       {/* goal plan editor */}

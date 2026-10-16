@@ -26,6 +26,7 @@ import {
   type PositionLike,
 } from "../../shared/hcmDerivations.ts";
 import { countPersonalHseDuty, deriveFairHseRates } from "../../shared/perfDerivations.ts";
+import { checkDecidePerfGrievanceGate, checkPerfGrievanceGate, checkReportElementsGate, perfLevelOf, perfReportsFor } from "../../shared/perfReport.ts";
 
 const FOUNDATION_CATEGORY = "hcmFoundation";
 const PERFORMANCE_CATEGORY = "hcmPerformance";
@@ -51,6 +52,9 @@ type PerformanceConfig = {
     derivedScore: number;
     rating: number;
     justification: string | null;
+    elements?: Record<string, number> | null;
+    level?: number | null;
+    grievance?: Record<string, unknown> | null;
     ratedBy: string | null;
     ratedByName: string | null;
     ratedAt: string;
@@ -68,6 +72,12 @@ function uid(prefix: string) {
 
 function emptyFoundation(): Foundation {
   return { orgUnits: [], jobs: [], positions: [], actions: [] };
+}
+
+function openPerfGrievances(perf: PerformanceConfig) {
+  return perf.ratings
+    .filter((r) => r.grievance && !(r.grievance as Record<string, unknown>).decision)
+    .map((r) => ({ ratingId: r.id, employeeId: r.employeeId, cycleId: r.cycleId, period: perf.cycles.find((c) => c.id === r.cycleId)?.period || "", rating: r.rating, ...(r.grievance as Record<string, unknown>) }));
 }
 
 function emptyPerformance(): PerformanceConfig {
@@ -431,12 +441,36 @@ Deno.serve(async (req) => {
         cycle,
         cycles: perf.cycles,
         progress: deriveCycleProgress({ cycle, board: visible, ratings: perf.ratings }),
+        // Model Arts. 20 · 71: open grievances on approved reports — HR decides in writing.
+        grievances: isManager ? openPerfGrievances(perf) : [],
         defaultObjectives: DEFAULT_OBJECTIVES,
         plans: perf.plans,
         jobs: data.jobs,
         calibrationBand: CALIBRATION_BAND,
         formula: "objective attainment × objective weight ÷ 100 — task objectives count approved task weight only (priority × effort)",
       });
+    }
+
+    /* ─────────────── model Arts. 18–20: the worker's copy of his report and his grievance ─────────────── */
+
+    if (action === "myPerfReports") {
+      const perf = await loadPerformance();
+      const employeeId = isManager && body.employeeId ? String(body.employeeId) : String(auth.userId || "");
+      return Response.json({ ok: true, reports: perfReportsFor({ cycles: perf.cycles, ratings: perf.ratings, employeeId }) });
+    }
+
+    if (action === "filePerfGrievance") {
+      const perf = await loadPerformance();
+      const employeeId = String(auth.userId || "");
+      const report = perfReportsFor({ cycles: perf.cycles, ratings: perf.ratings, employeeId }).find((r) => r.ratingId === String(body.ratingId || "")) || null;
+      const today = todayKey();
+      const gate = checkPerfGrievanceGate({ report, reason: body.reason, today });
+      if (!gate.ok) return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 422 });
+      const idx = perf.ratings.findIndex((r) => r.id === report!.ratingId);
+      perf.ratings[idx] = { ...perf.ratings[idx], grievance: { filedAt: today, reason: String(body.reason).trim(), by: auth.name, byId: employeeId, replyBy: gate.replyBy } };
+      await saveBlob(PERFORMANCE_CATEGORY, perf);
+      await audit("hcm.perfGrievance", `Grievance on the ${report!.period} report by ${employeeId}`, { reason: String(body.reason).trim() });
+      return Response.json({ ok: true, reports: perfReportsFor({ cycles: perf.cycles, ratings: perf.ratings, employeeId }) });
     }
 
     /* ───────────────────────────── mutations ───────────────────────────── */
@@ -696,12 +730,17 @@ Deno.serve(async (req) => {
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, band: gate.band || null }, { status: 422 });
       }
+      // Model Arts. 18–19: the report rates competence, conduct and attendance on the five levels.
+      const report = checkReportElementsGate(body.elements);
+      if (!report.ok) return Response.json({ error: report.error, reason: report.reason, reasonEn: report.reasonEn }, { status: 422 });
       const record = {
         id: uid("rate"),
         cycleId: cycle!.id,
         employeeId: String(body.employeeId),
         derivedScore: gate.derived,
         rating: gate.rating,
+        level: perfLevelOf(gate.rating)?.level ?? null,
+        elements: report.elements,
         justification: gate.justification,
         ratedBy: auth.userId,
         ratedByName: auth.name,
@@ -715,6 +754,24 @@ Deno.serve(async (req) => {
         { reason: record.justification, oldValue: String(record.derivedScore), newValue: String(record.rating) },
       );
       return Response.json({ ok: true, rating: record, ratings: perf.ratings });
+    }
+
+    if (action === "decidePerfGrievance") {
+      const perf = await loadPerformance();
+      const idx = perf.ratings.findIndex((r) => r.id === String(body.ratingId || ""));
+      if (idx < 0) return Response.json({ error: "REPORT_NOT_FOUND", reason: "التقرير غير موجود." }, { status: 404 });
+      const rating = perf.ratings[idx];
+      const gate = checkDecidePerfGrievanceGate({ grievance: rating.grievance, decision: body.decision, note: body.note, actorId: auth.userId, employeeId: rating.employeeId, newRating: body.newRating });
+      if (!gate.ok) return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 422 });
+      const revised = body.decision === "upheld" && gate.newRating != null;
+      perf.ratings[idx] = {
+        ...rating,
+        ...(revised ? { rating: gate.newRating, level: perfLevelOf(gate.newRating)?.level ?? null, ratingBeforeGrievance: rating.rating } : {}),
+        grievance: { ...(rating.grievance || {}), decision: body.decision, note: String(body.note).trim(), decidedAt: todayKey(), decidedBy: auth.name },
+      };
+      await saveBlob(PERFORMANCE_CATEGORY, perf);
+      await audit("hcm.decidePerfGrievance", `Grievance on ${rating.employeeId}'s report ${body.decision}`, { reason: String(body.note).trim(), oldValue: String(rating.rating), newValue: String(perf.ratings[idx].rating) });
+      return Response.json({ ok: true, ratings: perf.ratings });
     }
 
     return Response.json({ error: `Unknown action: ${action}` }, { status: 400 });

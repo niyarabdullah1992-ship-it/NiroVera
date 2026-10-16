@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PlatformDateField from "@/components/shared/PlatformDateField";
+import PerfReportCopy from "@/components/performance/PerfReportCopy";
+import { useAuth } from "@/lib/PowerCareAuth";
 import { AR_GREGORIAN_MONTHS } from "@/lib/dateFormat";
 import { taskBelongsTo, taskIsProven, provenTaskWeight } from "@/lib/hcmDerivations";
 import { countPersonalHseDuty } from "@/lib/perfDerivations";
@@ -324,6 +326,7 @@ function printMine({ ar, employee, job, place, period, score, band, drivers, mon
 /** The signed-in person's own derived score. No other people, no cycle tools. */
 export default function PerfMineBoard({ lang, employee, data }) {
   const ar = lang === "ar";
+  const { company } = useAuth();
   const today = isoDay();
   const floor = useMemo(() => recordFloor(employee, data), [employee, data]);
   const presets = useMemo(() => minePresets(today, floor), [today, floor]);
@@ -594,6 +597,8 @@ export default function PerfMineBoard({ lang, employee, data }) {
           </section>
         </div>
       </div>
+
+      <PerfReportCopy ar={ar} employee={employee} companyId={company?.id} />
 
       <details data-perf-card style={{ ...card, padding: "12px 16px" }}>
         <summary style={{ cursor: "pointer", fontSize: 13, fontWeight: 700, color: INK }}>{ar ? "مرجع الوزارة" : "Ministry reference"}</summary>

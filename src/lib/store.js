@@ -1837,7 +1837,7 @@ export function cutLeaveForAttendance(companyId, employeeId, { day, actorId } = 
   const fresh = getCompanyData(companyId);
   const e2 = fresh?.employees.find((row) => row.id === employeeId);
   for (const m of nightDueAdminAudience(fresh, e2).filter((u) => u?.id && String(u.id) !== String(employeeId))) {
-    addNotification(companyId, m.id, `${e2?.name || "موظف"} حضر للعمل في ${regulationDate(dayKey)} أثناء إجازته (${label}) — قُطعت الإجازة من ذلك اليوم وعاد ${daysAr(plan.freedDays)} لرصيده.`, { key: `leavecut:${plan.leave.id}:${dayKey}:${m.id}`, to: `/app/employees/${employeeId}?tab=leave` });
+    addNotification(companyId, m.id, `${e2?.name || "موظف"} حضر للعمل في ${regulationDate(dayKey)} أثناء إجازته (${label}) — قُطعت الإجازة من ذلك اليوم وعاد ${daysAr(plan.freedDays)} لرصيده.`, { key: `leavecut:${plan.leave.id}:${dayKey}:${m.id}`, to: "/app/requests/manage" });
   }
   audit(companyId, "leave_cut_attended", `${e2?.name || employeeId} cut leave ${plan.leave.id} from ${dayKey} (attended).`);
   invokeWorkforce({ action: "cutLeave", companyId, employeeId, day: dayKey, keptDays: plan.keptDays });

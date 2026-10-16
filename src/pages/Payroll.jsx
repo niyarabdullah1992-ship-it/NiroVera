@@ -36,11 +36,11 @@ import GosiFollowUpBoard from "@/components/payroll/GosiFollowUpBoard";
 import PayrollEosBoard from "@/components/payroll/PayrollEosBoard";
 import { AllowanceLedgerCard, PayslipEstimateCard, SiteConditionsCard } from "@/components/payroll/PayslipLedger";
 import { requestSelfEmployee } from "@/lib/employeeFileView";
-import { Link } from "react-router-dom";
 import { derivePayrollMonthAttendance } from "@/lib/payrollMonthAttendance";
 import PayrollCycleReview from "@/components/payroll/PayrollCycleReview";
 import { previousMonth } from "@/lib/payrollReview";
 import MyPayslipArchive from "@/components/payroll/MyPayslipArchive";
+import MyRightsList, { PAY_RIGHT_IDS } from "@/components/dashboard/MyRightsList";
 import PayrollSlipBoard from "@/components/payroll/PayrollSlipBoard";
 import PayrollArchiveBoard, { shiftMonthKey } from "@/components/payroll/PayrollArchiveBoard";
 import {
@@ -503,6 +503,7 @@ export default function Payroll() {
         const station = (data.stations || []).find((s) => s.id === me?.stationId) || {};
         return (
           <div data-my-payslip="1" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <MyRightsList employee={me} data={data} ar={ar} only={PAY_RIGHT_IDS} title={ar ? "حقوق راتبي" : "My pay rights"} lede={ar ? "موعد راتبك وحد الخصم منه — من ملفك." : "Your payday and the deduction cap — from your file."} />
             {myItem ? (
               <PayrollSlipBoard
                 monthLabel={monthLabel}
@@ -530,11 +531,6 @@ export default function Payroll() {
             )}
             {me ? <AllowanceLedgerCard employee={me} ar={ar} /> : null}
             {me ? <SiteConditionsCard employee={me} station={station} ar={ar} /> : null}
-            {me ? (
-              <Link to={`/app/employees/${me.id}?tab=payslip`} data-open-file-payslip="1" style={{ alignSelf: "flex-start", fontSize: 12.5, fontWeight: 700, color: "#0F5535" }}>
-                {ar ? "قسيمتي في ملفي ←" : "My payslip on my file →"}
-              </Link>
-            ) : null}
           </div>
         );
       })()}

@@ -36,7 +36,7 @@ const FILE_DUTY_CSS = `
  * Gates run on this employee alone, so no coworker's hours or alerts reach the file. On one's own
  * file a folded, read-only branch week (names and shift cells only) sits under the panel.
  */
-export default function EmployeeFileDutyBoard({ employee, data, currentUser, lang = "ar" }) {
+export default function EmployeeFileDutyBoard({ employee, data, currentUser, lang = "ar", recordOnly = false }) {
   const ar = lang === "ar";
   const { format: timeFormat } = useTimeFormat();
   const own = isViewerOwnFile(employee, currentUser);
@@ -111,6 +111,7 @@ export default function EmployeeFileDutyBoard({ employee, data, currentUser, lan
       <style>{FILE_DUTY_CSS}</style>
       <div className="nv-duty-board">
         <div className="nv-duty-col">
+          {recordOnly ? null : (<>
           <section data-file-week="1" style={{ ...slab, display: "flex", flexDirection: "column" }}>
             <SectionHead
               title={own ? (ar ? "أسبوعي في الجدول" : "My week on the roster") : (ar ? `أسبوع ${firstName} في الجدول` : `${firstName}'s week on the roster`)}
@@ -163,6 +164,7 @@ export default function EmployeeFileDutyBoard({ employee, data, currentUser, lan
             own={own}
             alertsLabel={voice.warnings}
           />
+          </>)}
 
           <DutyYearBar
             ar={ar}
@@ -186,7 +188,7 @@ export default function EmployeeFileDutyBoard({ employee, data, currentUser, lan
             focusDay={askedDay}
             view={own ? "employee" : "manager"}
             dayHref={own ? (day) => myRecordHref({ day: day.key }) : null}
-            onDay={own ? null : (day) => {
+            onDay={own || recordOnly ? null : (day) => {
               const date = dateFromKey(day.key);
               if (date) setWeekStart(weekStartDate(date));
               window.requestAnimationFrame?.(() => revealNode(document.querySelector("[data-file-week]"), { block: "start" }));
@@ -195,10 +197,10 @@ export default function EmployeeFileDutyBoard({ employee, data, currentUser, lan
 
         </div>
 
-        <aside className="nv-duty-col nv-duty-side">
+        {recordOnly ? null : <aside className="nv-duty-col nv-duty-side">
           {/* Open week checks are listed once — in «أنظمة الوزارة» beside the week; no second alerts rail. */}
           <HoursOnFile employee={employee} data={data} lang={lang} embedded />
-        </aside>
+        </aside>}
       </div>
     </div>
   );

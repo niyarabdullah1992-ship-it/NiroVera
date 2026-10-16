@@ -73,7 +73,7 @@ export default function TrainingMedicalPanel({ data, companyId, ar = true, canEd
               {status.last ? (ar ? `آخر فحص ${status.last.at}: ${status.last.result}` : `Last ${status.last.at}`) : (ar ? "لم يُفحص" : "Never examined")} · {ar ? `القادم ${status.due}` : `next ${status.due}`}
             </span>
             <span style={{ flex: 1 }} />
-            <RightHint ar={ar} hint={medicalExamHint(employee, { view: "manager", ar, to: `/app/employees/${employee.id}?tab=docs` })} />
+            <RightHint ar={ar} hint={medicalExamHint(employee, { view: "manager", ar, to: `/app/employees/${employee.id}?tab=compliance` })} />
           </div>
         ))}
         {!med.rows.length ? <div style={row}><span style={muted}>{ar ? "لا عامل مسجّل كمعرّض لخطر مهني — يُسجَّل من ملف العامل." : "No worker recorded as exposed."}</span></div> : null}

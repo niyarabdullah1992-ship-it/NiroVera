@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import FigureRow from "@/components/shared/FigureRow";
-import MyRightsList from "@/components/dashboard/MyRightsList";
+import MyRightsList, { PAY_RIGHT_IDS } from "@/components/dashboard/MyRightsList";
 import { requestSelfEmployee } from "@/lib/employeeFileView";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
@@ -111,7 +111,7 @@ export default function EmployeeDashboard({ user, company, data }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <EmployeeTour user={user} company={company} />
       {/* «حقوقي» — my rights in plain lines, each computed from my own file. */}
-      <MyRightsList employee={selfEmployee} data={data} ar={ar} />
+      <MyRightsList employee={selfEmployee} data={data} ar={ar} exclude={PAY_RIGHT_IDS} />
       <QuickCheckInCard currentUser={user} company={company} />
 
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>

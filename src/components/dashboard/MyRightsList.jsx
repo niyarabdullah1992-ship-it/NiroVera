@@ -18,7 +18,10 @@ function routeOf(action) {
  * «حقوقي» — the worker's rights in plain lines, one per right, computed from his file
  * (src/lib/myRights.js). A list with thin rules, not cards.
  */
-export default function MyRightsList({ employee, data, ar = true, title, lede }) {
+/** Salary rights (payday Art. 90, deduction cap Art. 93) are read in قسيمتي, not repeated elsewhere. */
+export const PAY_RIGHT_IDS = ["payday", "deduction-cap"];
+
+export default function MyRightsList({ employee, data, ar = true, title, lede, only = null, exclude = null }) {
   const today = todayRiyadh();
   const calendar = laborCalendarOf(data);
   const lines = buildMyRights({
@@ -29,7 +32,8 @@ export default function MyRightsList({ employee, data, ar = true, title, lede })
     isHoliday: (iso) => isOfficialHoliday(iso, calendar),
     isOff: (iso) => isWeeklyRestDay(iso, data) || isOfficialHoliday(iso, calendar),
   });
-  if (!employee || !lines.length) return null;
+  const shown = lines.filter((line) => (!only || only.includes(line.id)) && !(exclude && exclude.includes(line.id)));
+  if (!employee || !shown.length) return null;
   return (
     <section className="nv-rights" dir={ar ? "rtl" : "ltr"} data-my-rights="1">
       <header className="nv-rights-head">
@@ -37,7 +41,7 @@ export default function MyRightsList({ employee, data, ar = true, title, lede })
         <span className="nv-rights-lede">{lede || (ar ? "من ملفك — كل سطر برقمه ومادته." : "From your file — each line with its figure and article.")}</span>
       </header>
       <ul className="nv-rights-list">
-        {lines.map((line) => (
+        {shown.map((line) => (
           <li key={line.id} data-right={line.id}>
             <span className="nv-rights-text">
               <span>{line.text}</span>

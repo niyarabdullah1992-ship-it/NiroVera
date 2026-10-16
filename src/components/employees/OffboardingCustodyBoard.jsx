@@ -105,7 +105,7 @@ const actStyle = {
 };
 
 /** Platform isTabOff — L2811–2872 */
-export default function OffboardingCustodyBoard({ employee, canManage = false, lang = "ar" }) {
+export default function OffboardingCustodyBoard({ employee, canManage = false, lang = "ar", custodyOnly = false }) {
   const ar = lang === "ar";
   const { company, currentUser, data } = useAuth();
   const [caseRow, setCaseRow] = useState(null);
@@ -378,11 +378,11 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }} dir={ar ? "rtl" : "ltr"}>
-      <div style={offGateStyle}>{gateText}</div>
+      {custodyOnly ? null : <div style={offGateStyle}>{gateText}</div>}
 
       <div style={card}>
         <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
-          {ar ? "العهد المسجّلة" : "Custody held"}
+          {custodyOnly ? (ar ? "عهدتي" : "My custody") : (ar ? "العهد المسجّلة" : "Custody held")}
         </div>
         <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.65 }}>
           {ar
@@ -487,7 +487,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
         )}
       </div>
 
-      {eos && (
+      {eos && !custodyOnly && (
         <div style={card}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
             <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
@@ -655,6 +655,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
         </div>
       )}
 
+      {custodyOnly ? null : (
       <div style={card}>
         <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
           {ar ? "إنهاء الخدمة" : "Offboarding"}
@@ -716,6 +717,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

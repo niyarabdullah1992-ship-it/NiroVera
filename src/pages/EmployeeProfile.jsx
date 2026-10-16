@@ -18,24 +18,19 @@ import { employeeJobGrade } from "@/lib/jobGrades";
 import ProfileHero from "@/components/employees/ProfileHero";
 import ProfileCompletionCard, { profileCompletionStats } from "@/components/employees/ProfileCompletionCard";
 import CertificatesTab from "@/components/employees/CertificatesTab";
-import LeaveTab from "@/components/employees/LeaveTab";
 import DisciplineOnFile from "@/components/employees/DisciplineOnFile";
 import LoginAccessCard from "@/components/employees/LoginAccessCard";
 import AccountSettingsCard from "@/components/employees/AccountSettingsCard";
 import DeleteEmployeeAccountCard from "@/components/employees/DeleteEmployeeAccountCard";
 import OffboardingTab from "@/components/employees/OffboardingTab";
+import OffboardingCustodyBoard from "@/components/employees/OffboardingCustodyBoard";
 import EmpAlertsStrip from "@/components/employees/EmpAlertsStrip";
 import AssignmentTab from "@/components/employees/AssignmentTab";
 import WorkInjuryPanel from "@/components/requests/WorkInjuryPanel";
-import { AllowanceLedgerCard, PayslipEstimateCard, SiteConditionsCard } from "@/components/payroll/PayslipLedger";
-import MyPayslipArchive from "@/components/payroll/MyPayslipArchive";
-import RequestsMinistryPanel from "@/components/requests/RequestsMinistryPanel";
+import { AllowanceLedgerCard, SiteConditionsCard } from "@/components/payroll/PayslipLedger";
 import EmployeeFileDutyBoard from "@/components/employees/EmployeeFileDutyBoard";
 import EmployeeFileSummary from "@/components/employees/EmployeeFileSummary";
-import MyRightsList from "@/components/dashboard/MyRightsList";
 import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employees/EmployeeFileFieldCard";
-import EmployeeFileLeaveBoard from "@/components/employees/EmployeeFileLeaveBoard";
-import EmployeeFileDocsBoard from "@/components/employees/EmployeeFileDocsBoard";
 import EmployerDutiesCard from "@/components/employees/EmployerDutiesCard";
 import { contractHint, fileAlertHint } from "@/lib/rightHints.disc";
 import ContractTab from "@/components/employees/ContractTab";
@@ -58,12 +53,10 @@ const TABS = [
   { key: "summary", ar: "ملخّص الملف", en: "File summary" },
   { key: "identity", ar: "الهوية والتوظيف", en: "Identity and employment" },
   { key: "contract", ar: "العقد والأجر", en: "Contract and wage" },
-  { key: "payslip", ar: "قسيمتي والبدلات", en: "Payslip and allowances" },
-  { key: "duty", ar: "الدوام وأنظمة الوزارة", en: "Duty and ministry rules" },
-  { key: "leave", ar: "الإجازات", en: "Leave" },
+  { key: "duty", ar: "سجل الدوام", en: "Duty record" },
   { key: "compliance", ar: "الالتزام والمنصات", en: "Compliance and platforms" },
   { key: "growth", ar: "التدرّج والجزاءات", en: "Progression and sanctions" },
-  { key: "docs", ar: "الوثائق والعهد", en: "Documents and custody" },
+  { key: "docs", ar: "العهد", en: "Custody" },
   { key: "audit", ar: "سجل الملف", en: "File log" },
 ];
 
@@ -72,7 +65,10 @@ const LEGACY_TAB = {
   salary: "contract",
   hours: "duty",
   schedule: "duty",
-  certificates: "docs",
+  certificates: "identity",
+  // Leave lives in طلباتي and the payslip in قسيمتي — the file does not repeat them.
+  leave: "summary",
+  payslip: "contract",
   assignment: "growth",
 };
 
@@ -390,15 +386,6 @@ export default function EmployeeProfile() {
 
         <EmpAlertsStrip employee={employee} currentUser={currentUser} lang={lang} />
 
-        {tab === "summary" ? (
-          <MyRightsList
-            employee={employee}
-            data={data}
-            ar={ar}
-            title={isSelf ? (ar ? "حقوقي" : "My rights") : (ar ? "حقوقه" : "His rights")}
-            lede={isSelf ? undefined : (ar ? "من ملفه — ما تلتزم به الشركة له، كل سطر برقمه ومادته." : "From his file — what the company owes him, each line with its article.")}
-          />
-        ) : null}
         {tab === "summary" && <EmployeeFileSummary view={view} ar={ar} onOpenTab={openTab} />}
 
         {tab === "identity" && (
@@ -419,6 +406,13 @@ export default function EmployeeProfile() {
                 </Link>
               </section>
             ) : null}
+            <CertificatesTab
+              employee={employee}
+              companyId={company.id}
+              canEdit={isSelf || canManage}
+              canApprove={canApproveCerts}
+              currentUser={currentUser}
+            />
           </>
         )}
 
@@ -462,17 +456,9 @@ export default function EmployeeProfile() {
             />
           </div>
         )}
-
-        {tab === "payslip" && (
-          <div data-file-payslip="1" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <PayslipEstimateCard
-              employee={employee}
-              ar={ar}
-              view={isSelf ? "employee" : "manager"}
-              stationName={stationName}
-              monthLabel={new Date().toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { month: "long", year: "numeric" })}
-            />
-            <MyPayslipArchive employee={employee} runs={data.payrollRuns || []} ar={ar} lang={lang} companyName={company?.name || ""} />
+        {tab === "contract" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {canEditContract || isSelf ? <ContractTab employee={employee} companyId={company.id} canEdit={canEditContract && !isSelf} viewerId={currentUser.id} /> : null}
             <AllowanceLedgerCard employee={employee} ar={ar} />
             <SiteConditionsCard
               employee={employee}
@@ -483,20 +469,19 @@ export default function EmployeeProfile() {
               onDraft={setDraftField}
               canEdit={canEditFile}
             />
+            {canManage && !isSelf ? <OffboardingTab employee={employee} companyId={company.id} currentUser={currentUser} canManage /> : null}
           </div>
         )}
 
         {tab === "duty" && (
-          <>
-            <EmployeeFileDutyBoard employee={employee} data={data} currentUser={currentUser} lang={lang} />
-            {/* Ministry rules a request touches — the roster rules sit above in the same tab. */}
-            <RequestsMinistryPanel ar={ar} lang={lang} subject={employee} own={isSelf} dutyHref={null} fileMode />
-          </>
+          /* What the file keeps: the year and career record of absence and lateness (Art. 80 evidence).
+             The live week and its rules are in جدولي / الحضور — not repeated here. */
+          <EmployeeFileDutyBoard employee={employee} data={data} currentUser={currentUser} lang={lang} recordOnly />
         )}
 
-        {tab === "leave" && (
+        {tab === "compliance" && (
           <>
-            <EmployeeFileLeaveBoard view={view} ar={ar} />
+            <EmployerDutiesCard employee={employee} companyId={company.id} ar={ar} canManage={canManage && !isSelf} by={currentUser.name || ""} />
             {(employee.leaveRequests || []).some((row) => String(row.type || "").toLowerCase() === "work_injury" && (row.status || "") === "approved") ? (
               <section data-file-injuries="1" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
                 <span style={{ fontSize: 15, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "إصابات العمل — المواد 132 إلى 139" : "Work injuries — Arts. 132 to 139"}</span>
@@ -512,18 +497,6 @@ export default function EmployeeProfile() {
                   ))}
               </section>
             ) : null}
-            <LeaveTab
-              employee={employee}
-              companyId={company.id}
-              currentUser={currentUser}
-              isSelf={isSelf}
-              canApprove={canApproveLeave}
-            />
-          </>
-        )}
-
-        {tab === "compliance" && (
-          <>
 
             {!profileCompletionStats(employee).done && (
               <ProfileCompletionCard
@@ -599,24 +572,8 @@ export default function EmployeeProfile() {
         )}
 
         {tab === "docs" && (
-          <>
-            <EmployeeFileDocsBoard view={view} ar={ar} />
-            {canEditContract || isSelf ? <ContractTab employee={employee} companyId={company.id} canEdit={canEditContract && !isSelf} viewerId={currentUser.id} /> : null}
-            <EmployerDutiesCard employee={employee} companyId={company.id} ar={ar} canManage={canManage && !isSelf} by={currentUser.name || ""} />
-            <CertificatesTab
-              employee={employee}
-              companyId={company.id}
-              canEdit={isSelf || canManage}
-              canApprove={canApproveCerts}
-              currentUser={currentUser}
-            />
-            <OffboardingTab
-              employee={employee}
-              companyId={company.id}
-              currentUser={currentUser}
-              canManage={canManage && !isSelf}
-            />
-          </>
+          /* «عهدتي» — only the custody list; documents and certificates sit in الهوية, duties in الالتزام. */
+          <OffboardingCustodyBoard employee={employee} canManage={canManage && !isSelf} lang={lang} custodyOnly />
         )}
 
         {tab === "audit" && (

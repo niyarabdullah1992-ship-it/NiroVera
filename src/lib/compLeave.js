@@ -175,7 +175,7 @@ export function planCompLeaveNotices({ data, today, existingKeys = [], audienceO
       }
       if (left < 0 && !g.agreedLater) {
         for (const m of (audienceOf ? audienceOf(employee) : []).filter((u) => u?.id && String(u.id) !== String(employee.id))) {
-          push(m.id, `comp:${employee.id}:${g.id}:over:${m.id}`, `فات موعد تمتع ${employee.name || "موظف"} بإجازته التعويضية (${hoursWord(g.left)}، الموعد ${g.takeBy}) — حدّد معه موعداً؛ ولا تسقط، وإن ترك العمل تُصرف أجرتها (اللائحة 22 مكرر).`, `/app/employees/${employee.id}?tab=leave`);
+          push(m.id, `comp:${employee.id}:${g.id}:over:${m.id}`, `فات موعد تمتع ${employee.name || "موظف"} بإجازته التعويضية (${hoursWord(g.left)}، الموعد ${g.takeBy}) — حدّد معه موعداً؛ ولا تسقط، وإن ترك العمل تُصرف أجرتها (اللائحة 22 مكرر).`, "/app/requests/manage");
         }
       }
     }

@@ -694,7 +694,7 @@ export function buildEmployeeFileView({
     },
     {
       id: "docs",
-      tab: "docs",
+      tab: "identity",
       label: ar ? "الوثائق" : "Documents",
       ok: worstDoc >= 0,
       warn: worstDoc <= EXPIRY_WARN_DAYS,
@@ -723,7 +723,7 @@ export function buildEmployeeFileView({
   }
   for (const doc of validityWarn) {
     todos.push({
-      tab: "docs",
+      tab: "identity",
       text: `${ar ? doc.docLabelAr : doc.docLabelEn} — ${doc.days < 0 ? (ar ? "منتهية" : "expired") : niceFileDate(doc.expiryDate, ar)}`,
       tag: doc.days < 0 ? (ar ? "منتهية" : "Expired") : (ar ? "تجديد" : "Renew"),
       kind: doc.days < 0 ? "bad" : "warn",

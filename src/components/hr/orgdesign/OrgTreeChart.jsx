@@ -1,23 +1,33 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   buildOrgFocusTree,
   deriveFocusNeighborhood,
   focusMove,
+  orderKeys,
   resolveFocusKey,
   searchFocusTree,
   unseatedPlace,
 } from "@/lib/orgFocus";
 import {
   TREE_GEOMETRY,
+  cardHeight,
+  chartCard,
   clampZoom,
   countLine,
-  deriveTreeView,
-  gridWidth,
+  defaultExpanded,
+  expandAllKeys,
+  layoutOrgTree,
+  pathTo,
+  readExpanded,
   readTreeOptions,
+  revealPath,
   stepZoom,
+  toggleExpanded,
   treeCounts,
 } from "@/lib/orgTreeLayout";
+import { cardHealthIndex, orgAdminHref, orgCardActions } from "@/lib/orgChartActions";
 import { buildWorkforceSeatChart } from "@/lib/workforceSeatChart";
 import { todayKey } from "@/lib/orgDesign";
 import OrgEmployeePreview from "@/components/hr/OrgEmployeePreview";
@@ -27,13 +37,14 @@ import "./orgTree.css";
 
 const OPTIONS_KEY = "nv-org-tree-options";
 const ZOOM_KEY = "nv-org-tree-zoom";
-const EASE = "cubic-bezier(.2,.8,.2,1)";
+const CHILD_LIMIT = 24;
+const EXPAND_LIMIT = 600;
 
-function readStore(key) {
-  try { return window.localStorage.getItem(key); } catch { return null; }
+function readStore(key, session = false) {
+  try { return (session ? window.sessionStorage : window.localStorage).getItem(key); } catch { return null; }
 }
-function writeStore(key, value) {
-  try { window.localStorage.setItem(key, value); } catch { /* private window: settings stay for this visit */ }
+function writeStore(key, value, session = false) {
+  try { (session ? window.sessionStorage : window.localStorage).setItem(key, value); } catch { /* private window: kept for this visit only */ }
 }
 
 function useMedia(query) {
@@ -51,48 +62,45 @@ function useMedia(query) {
 }
 
 /* ── icons (inline, currentColor) ─────────────────────────────── */
+const svg = (children, size = 18, sw = 1.8) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" aria-hidden>{children}</svg>
+);
 const Icon = {
-  back: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 6l6 6-6 6" /></svg>
-  ),
-  search: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></svg>
-  ),
-  minus: (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden><path d="M5 12h14" /></svg>),
-  plus: (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden><path d="M5 12h14M12 5v14" /></svg>),
-  download: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>
-  ),
-  gear: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-    </svg>
-  ),
-  card: (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2" /><path d="M6 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14.5 10h3.5M14.5 13.5h3.5" />
-    </svg>
-  ),
-  person: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden><circle cx="12" cy="8.5" r="3.5" /><path d="M5 19.5c1.3-3.2 3.9-4.8 7-4.8s5.7 1.6 7 4.8" /></svg>
-  ),
-  chevL: (<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M15 5L8 12l7 7z" /></svg>),
-  chevR: (<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M9 5l7 7-7 7z" /></svg>),
+  back: svg(<path d="M9 6l6 6-6 6" />),
+  search: svg(<><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4 4" /></>, 16),
+  minus: svg(<path d="M5 12h14" />),
+  plus: svg(<path d="M5 12h14M12 5v14" />),
+  fit: svg(<path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" />),
+  full: svg(<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />),
+  download: svg(<path d="M12 4v11M7 10l5 5 5-5M5 20h14" />),
+  gear: svg(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>, 18, 1.7),
+  card: svg(<><rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2" /><path d="M6 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14.5 10h3.5M14.5 13.5h3.5" /></>, 18, 1.6),
+  dots: (<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="6" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="18" cy="12" r="1.6" /></svg>),
+  person: svg(<><circle cx="12" cy="8.5" r="3.5" /><path d="M5 19.5c1.3-3.2 3.9-4.8 7-4.8s5.7 1.6 7 4.8" /></>, 20, 1.7),
+  chev: svg(<path d="M7 10l5 5 5-5" />, 14, 2),
 };
 
 /* ── one card ─────────────────────────────────────────────────── */
-function TreeCard({ card, ar, options, isFocus, highlighted, onFocus, onDetails, cardRef }) {
+function TreeCard({ card, place, ar, options, w, h, isFocus, highlighted, flag, hasMenu, menuOpen, onSelect, onToggle, onDetails, onMenu }) {
   const name = card.vacant ? (ar ? "شاغر" : "Vacant") : (card.name || "—");
-  const counts = options.counts ? countLine(card, ar) : "";
-  const matrix = options.counts && card.matrix ? `${card.matrix} ${ar ? "مصفوفة" : "Matrix"}` : "";
+  const kids = card.childKeys?.length || 0;
+  const counts = countLine(card, ar);
+  // figures in mono (Latin digits); words stay in the platform font
+  const countText = counts
+    ? <span dir="ltr" className="nv-ot-count__n">{counts}</span>
+    : card.open
+      ? <><span dir="ltr" className="nv-ot-count__n">{Number(card.open)}</span> {ar ? "شاغر" : "open"}</>
+      : <span dir="ltr" className="nv-ot-count__n">{kids}</span>;
   const label = [
     name,
     card.title,
     options.unit ? card.unit : "",
-    counts ? (ar ? `${card.direct} مباشر من ${card.total}` : `${card.direct} direct of ${card.total}`) : "",
     card.isMe ? (ar ? "أنت" : "you") : "",
+    flag ? (ar ? flag.ar : flag.en) : "",
   ].filter(Boolean).join("، ");
+  const toggleLabel = ar
+    ? `${place.expanded ? "طيّ" : "افتح"} فريق ${name}${counts ? ` — ${card.direct} مباشر من ${card.total}` : ""}`
+    : `${place.expanded ? "Fold" : "Open"} ${name}'s team${counts ? ` — ${card.direct} direct of ${card.total}` : ""}`;
   return (
     <article
       className="nv-ot-card"
@@ -100,46 +108,85 @@ function TreeCard({ card, ar, options, isFocus, highlighted, onFocus, onDetails,
       data-focus={isFocus ? "1" : "0"}
       data-vacant={card.vacant ? "1" : "0"}
       data-me={card.isMe ? "1" : "0"}
+      data-open={place.expanded ? "1" : "0"}
+      style={{ left: place.left, top: place.y, width: w, height: h }}
     >
       <button
-        ref={cardRef}
         type="button"
         className="nv-ot-card__hit"
         data-key={card.key}
         aria-current={isFocus ? "true" : undefined}
         aria-label={label}
-        onClick={() => (isFocus ? onDetails(card) : onFocus(card.key))}
-      >
-        <span className="nv-ot-avatar" aria-hidden>
-          {card.avatarUrl ? <img src={card.avatarUrl} alt="" loading="lazy" /> : card.vacant ? Icon.person : initialsOf(card.name)}
+        onClick={() => (isFocus ? onDetails(card) : onSelect(card.key))}
+      />
+      <span className="nv-ot-avatar" aria-hidden>
+        {card.avatarUrl ? <img src={card.avatarUrl} alt="" loading="lazy" /> : card.vacant ? Icon.person : initialsOf(card.name)}
+      </span>
+      <span className="nv-ot-card__text">
+        <span className="nv-ot-card__name" aria-hidden>
+          <span className="nv-ot-card__nm">{highlighted ? <mark>{name}</mark> : name}</span>
+          {card.isMe ? <span className="nv-ot-me">{ar ? "أنت" : "You"}</span> : null}
         </span>
-        <span className="nv-ot-card__text">
-          <span className="nv-ot-card__name">
-            {highlighted ? <mark>{name}</mark> : name}
-            {card.isMe ? <span className="nv-ot-me">{ar ? "أنت" : "You"}</span> : null}
-          </span>
-          {card.title ? <span className="nv-ot-card__title">{card.title}</span> : null}
-          {options.unit && card.unit ? <span className="nv-ot-card__meta">{card.unit}</span> : null}
-          {options.seatCode && card.seatCode ? <span className="nv-ot-code" dir="ltr">{card.seatCode}</span> : null}
-          {counts || matrix ? (
-            <span className="nv-ot-card__counts">
-              {counts ? <span dir="ltr">{counts}</span> : null}
-              {counts && matrix ? <span aria-hidden> · </span> : null}
-              {matrix ? <span>{matrix}</span> : null}
-            </span>
+        {card.title ? <span className="nv-ot-card__title" aria-hidden>{card.title}</span> : null}
+        {options.unit && card.unit ? <span className="nv-ot-card__meta" aria-hidden>{card.unit}</span> : null}
+        {options.seatCode && card.seatCode ? <span className="nv-ot-code" dir="ltr" aria-hidden>{card.seatCode}</span> : null}
+        <span className="nv-ot-card__foot">
+          {kids ? (
+            <button
+              type="button"
+              className="nv-ot-count"
+              aria-expanded={place.expanded}
+              aria-label={toggleLabel}
+              title={ar ? "مباشر / الفريق كله — اضغط لفتح الفريق أو طيّه" : "Direct / whole team — click to open or fold"}
+              onClick={() => onToggle(card.key)}
+            >
+              {options.counts ? countText : null}
+              <span className="nv-ot-count__chev" aria-hidden>{Icon.chev}</span>
+            </button>
           ) : null}
+          {flag ? <span className="nv-ot-flag" data-tone={flag.kind === "ACTING_OVER_LIMIT" ? "bad" : "warn"} aria-hidden>{ar ? flag.ar : flag.en}</span> : null}
         </span>
-      </button>
-      <button
-        type="button"
-        className="nv-ot-card__open"
-        onClick={() => onDetails(card)}
-        aria-label={ar ? `بطاقة ${name}` : `${name} card`}
-        title={ar ? "بطاقة" : "Card"}
-      >
-        {Icon.card}
-      </button>
+      </span>
+      <span className="nv-ot-card__acts">
+        <button
+          type="button"
+          className="nv-ot-card__open"
+          onClick={() => onDetails(card)}
+          aria-label={ar ? `بطاقة ${name}` : `${name} card`}
+          title={ar ? "البطاقة" : "Card"}
+        >
+          {Icon.card}
+        </button>
+        {hasMenu ? (
+          <button
+            type="button"
+            className="nv-ot-card__open"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={ar ? `إجراءات ${name}` : `Actions for ${name}`}
+            title={ar ? "إجراءات" : "Actions"}
+            onClick={(event) => onMenu(card, event.currentTarget)}
+          >
+            {Icon.dots}
+          </button>
+        ) : null}
+      </span>
     </article>
+  );
+}
+
+/* ── «+n» / «طيّ» cards for long teams ── */
+function FoldCard({ place, ar, w, h, onClick }) {
+  return (
+    <button
+      type="button"
+      className="nv-ot-more"
+      data-k={place.key}
+      style={{ left: place.left, top: place.y, width: w, height: h }}
+      onClick={onClick}
+    >
+      {place.more ? (ar ? `+ ${Number(place.more)} آخرون` : `+ ${place.more} more`) : (ar ? "طيّ الفريق الطويل" : "Fold the long team")}
+    </button>
   );
 }
 
@@ -159,7 +206,7 @@ function TreeSearch({ ar, tree, onPick }) {
     <div className="nv-ot-search" role="search">
       <span className="nv-ot-search__icon" aria-hidden>{Icon.search}</span>
       <input
-        className="nv-ot-search__input"
+        className="nv-ot-search__input nv-search-field"
         type="search"
         value={query}
         placeholder={ar ? "ابحث عن شخص" : "Search for people"}
@@ -222,19 +269,117 @@ function Popover({ open, onClose, label, children, anchorRef }) {
   return <div ref={ref} className="nv-ot-menu nv-ot-pop" role="dialog" aria-label={label}>{children}</div>;
 }
 
+/** The per-card action menu (HR): fixed to the viewport beside the card's «⋯». */
+function CardMenu({ ar, card, anchor, actions, onPick, onClose }) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+  useLayoutEffect(() => {
+    if (!anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const w = 272;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const rtl = getComputedStyle(anchor).direction === "rtl";
+    let left = rtl ? r.left : r.right - w;
+    left = Math.max(8, Math.min(vw - w - 8, left));
+    const below = r.bottom + 6;
+    const height = ref.current?.offsetHeight || 320;
+    const top = below + height > vh - 8 ? Math.max(8, r.top - height - 6) : below;
+    setPos({ left, top, width: w });
+  }, [anchor, actions.length]);
+  useEffect(() => {
+    const onDown = (event) => {
+      if (ref.current?.contains(event.target) || anchor?.contains(event.target)) return;
+      onClose();
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") { event.stopPropagation(); onClose(); anchor?.focus(); return; }
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      const items = [...(ref.current?.querySelectorAll("[role='menuitem']:not([aria-disabled='true'])") || [])];
+      const at = items.indexOf(document.activeElement);
+      const next = event.key === "ArrowDown" ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
+      items[next]?.focus();
+    };
+    const onScroll = () => onClose();
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey, true);
+    window.addEventListener("resize", onScroll);
+    requestAnimationFrame(() => ref.current?.querySelector("[role='menuitem']:not([aria-disabled='true'])")?.focus());
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [anchor, onClose]);
+  const groups = ["open", "seat", "decide", "look"];
+  const who = card.vacant ? (ar ? "منصب شاغر" : "Open seat") : card.name;
+  return createPortal(
+    <div
+      ref={ref}
+      className="nv-ot-menu nv-ot-cardmenu"
+      role="menu"
+      aria-label={ar ? `إجراءات ${who}` : `Actions for ${who}`}
+      dir={ar ? "rtl" : "ltr"}
+      style={pos ? { left: pos.left, top: pos.top, width: pos.width } : { visibility: "hidden" }}
+    >
+      <p className="nv-ot-cardmenu__head"><b>{who}</b>{card.title ? <span>{card.title}</span> : null}</p>
+      {groups.map((g) => {
+        const rows = actions.filter((a) => a.group === g);
+        if (!rows.length) return null;
+        return (
+          <div key={g} className="nv-ot-cardmenu__group" role="group">
+            {rows.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                role="menuitem"
+                className="nv-ot-pop__item"
+                aria-disabled={a.blocked ? "true" : undefined}
+                onClick={() => { if (!a.blocked) onPick(a.id); }}
+              >
+                <span className="nv-ot-cardmenu__label">
+                  {ar ? a.ar : a.en}
+                  {a.count ? <span className="nv-ot-cardmenu__n" dir="ltr">{a.count}</span> : null}
+                </span>
+                {a.blocked ? <span className="nv-ot-cardmenu__why">{ar ? a.blocked.ar : a.blocked.en}</span> : null}
+              </button>
+            ))}
+          </div>
+        );
+      })}
+    </div>,
+    document.body,
+  );
+}
+
 /**
- * The whole org tree with one focus — full screen, SAP-style structure in NiroVera's identity.
+ * The org chart — one tree for the full screen (/app/org/chart) and for «الفروع والدليل» on /app/org.
  *
- * The chain from the top of the structure to the focused card runs down one column; beside each
- * chain card sit its siblings (the others under the same manager) as a grid; under the focus sit
- * its direct reports. Any card becomes the focus (?focus=<seatId>, back/forward walk the history);
- * cards glide to their new places (FLIP), new ones fade in; prefers-reduced-motion turns it off.
- * Keys on the chart: ↑ manager · ↓ first report · ←/→ sibling · +/− zoom.
+ * SAP-style: compact cards (avatar, name, title, «مباشر / الكل»); pressing the count opens that
+ * card's team under it in neat rows. Any number of cards stay open at once (a Set, kept per viewer
+ * in sessionStorage); clicking a card selects it without folding anything. Search opens the path to
+ * the person found. Keys: arrows move, Enter opens/folds, Esc folds or steps up, + − 0 zoom.
  *
- * scope "all" (HR/owner) reads the whole tree and opens the seat card with its actions;
- * scope "mine" receives a pruned tree — chain, peers, own subtree — and a read-only card.
+ * scope "all" (HR/owner) reads the whole tree, opens the employee/seat drawer and the «⋯» menu of
+ * admin actions (each routed to the screen that owns it, through its own gate); scope "mine"
+ * receives a pruned tree — chain, peers, own subtree — and a read-only card.
  */
-export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine", canWrite = false, onHire, onBack, backLabel = "" }) {
+export default function OrgTreeChart({
+  ar,
+  data,
+  user,
+  companyId,
+  scope = "mine",
+  canWrite = false,
+  onHire,
+  onBack,
+  backLabel = "",
+  variant = "page",
+  onAction,
+  reveal = null,
+}) {
+  const embedded = variant === "embedded";
   const day = todayKey();
   const tree = useMemo(
     () => buildOrgFocusTree(data, { viewerId: user?.id || "", scope, ar, day }),
@@ -243,15 +388,17 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
   const counts = useMemo(() => treeCounts(tree), [tree]);
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
-  const focusKey = resolveFocusKey(tree, searchParams.get("focus") || "");
+  const navigate = useNavigate();
+  const urlFocus = embedded ? "" : (searchParams.get("focus") || "");
 
   const narrow = useMedia("(max-width: 760px)");
-  const twoCols = useMedia("(min-width: 520px)");
   const reduceMotion = useMedia("(prefers-reduced-motion: reduce)");
 
   const [options, setOptions] = useState(() => readTreeOptions(readStore(OPTIONS_KEY)));
   const [zoom, setZoomState] = useState(() => clampZoom(readStore(ZOOM_KEY) || 1));
-  const setZoom = useCallback((next) => {
+  const zoomAnchor = useRef(null);
+  const setZoom = useCallback((next, anchor = null) => {
+    zoomAnchor.current = anchor;
     setZoomState((cur) => {
       const z = clampZoom(typeof next === "function" ? next(cur) : next);
       writeStore(ZOOM_KEY, String(z));
@@ -265,202 +412,290 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
       return next;
     });
   };
-  const [openLevels, setOpenLevels] = useState(() => new Set());
+
+  /* opened cards — a Set per viewer, kept for the session (back from a drawer or a pane keeps it) */
+  const storeKey = `nv-org-expanded:${companyId || ""}:${user?.id || ""}:${scope}`;
+  const [expanded, setExpanded] = useState(() => {
+    const stored = readExpanded(readStore(storeKey, true), tree);
+    const base = stored || defaultExpanded(tree, tree.viewerKey || tree.roots[0] || "");
+    const want = resolveFocusKey(tree, urlFocus);
+    return urlFocus && want ? revealPath(base, tree, want) : base;
+  });
+  useEffect(() => { writeStore(storeKey, JSON.stringify([...expanded]), true); }, [storeKey, expanded]);
+  const [showAll, setShowAll] = useState(() => new Set());
+  const [selected, setSelected] = useState(() => resolveFocusKey(tree, urlFocus));
+  const [capNote, setCapNote] = useState(false);
   const [details, setDetails] = useState(null);
+  const [menu, setMenu] = useState(null);
   const [highlight, setHighlight] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [announce, setAnnounce] = useState("");
-  const [edges, setEdges] = useState({ left: false, right: false });
 
   const scrollerRef = useRef(null);
   const stageRef = useRef(null);
   const sizerRef = useRef(null);
   const settingsBtn = useRef(null);
   const downloadBtn = useRef(null);
-  const positions = useRef(new Map());
-  const lastFocus = useRef("");
+  const pendingScroll = useRef({ key: resolveFocusKey(tree, urlFocus), mode: "center", smooth: false });
   const moveDomFocus = useRef(false);
 
   const compact = options.density === "compact";
   const cardW = compact ? TREE_GEOMETRY.compactCardW : TREE_GEOMETRY.cardW;
-  const { gap, colGap } = TREE_GEOMETRY;
-  const chainW = cardW + 16;
-  const maxCols = narrow ? (twoCols ? 2 : 1) : TREE_GEOMETRY.maxCols;
+  const cardH = cardHeight(options, compact);
+  const indent = narrow ? 28 : 40;
+  /* columns per team row: as many as the canvas holds at 100% (2…6), one on a phone */
+  const [canvasW, setCanvasW] = useState(() => (typeof window !== "undefined" ? window.innerWidth - (embedded ? 320 : 72) : 1200));
+  useLayoutEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const cs = getComputedStyle(el);
+      setCanvasW(el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const maxCols = narrow ? 1 : Math.max(2, Math.min(6, Math.floor((canvasW - indent + TREE_GEOMETRY.gap) / (cardW + TREE_GEOMETRY.gap))));
+  const rtl = Boolean(ar);
 
-  const view = useMemo(
-    () => (focusKey ? deriveTreeView(tree, focusKey, { counts, siblingLimit: narrow ? 0 : 8, openLevels, maxCols }) : null),
-    [tree, focusKey, counts, narrow, openLevels, maxCols],
+  const layout = useMemo(
+    () => layoutOrgTree(tree, expanded, { cardW, cardH, gap: TREE_GEOMETRY.gap, rowGap: compact ? 26 : 32, indent, maxCols, childLimit: CHILD_LIMIT, showAll }),
+    [tree, expanded, cardW, cardH, compact, indent, maxCols, showAll],
+  );
+  const W = layout.width;
+  const H = layout.height;
+  const physX = useCallback((x, w = 0) => (rtl ? W - x - w : x), [rtl, W]);
+
+  const health = useMemo(
+    () => (scope === "all" && canWrite ? cardHealthIndex(tree, data, { day }) : new Map()),
+    [scope, canWrite, tree, data, day],
   );
 
-  // a new focus folds the sibling grids opened for the previous one
-  useEffect(() => { setOpenLevels(new Set()); }, [focusKey]);
+  /* ── scrolling to a card by its layout place (cards glide, so the DOM may lag) ── */
+  const scrollToKey = useCallback((key, mode = "center", smooth = true) => {
+    const scroller = scrollerRef.current;
+    const stage = stageRef.current;
+    const place = layout.index.get(key);
+    if (!scroller || !stage || !place) return false;
+    const s = scroller.getBoundingClientRect();
+    const st = stage.getBoundingClientRect();
+    const z = zoom || 1;
+    const cx = st.left + physX(place.x, cardW) * z;
+    const cy = st.top + place.y * z;
+    const w = cardW * z;
+    const h = cardH * z;
+    let dx = 0;
+    let dy = 0;
+    if (mode === "center") {
+      dx = cx + w / 2 - (s.left + s.width / 2);
+      dy = cy - (s.top + Math.min(120, s.height * 0.22));
+    } else {
+      const pad = 24;
+      // "team": the card and the first rows of the team just opened under it
+      const span = h + (mode === "team" ? Math.min(s.height * 0.45, 260) * z : 0);
+      if (cx < s.left + pad) dx = cx - s.left - pad;
+      else if (cx + w > s.right - pad) dx = cx + w - s.right + pad;
+      if (cy < s.top + pad) dy = cy - s.top - pad;
+      else if (cy + span > s.bottom - pad) dy = Math.min(cy - s.top - pad, cy + span - s.bottom + pad);
+    }
+    if (Math.abs(dx) + Math.abs(dy) < 1) return true;
+    scroller.scrollBy({ left: dx, top: dy, behavior: smooth && !reduceMotion ? "smooth" : "auto" });
+    return true;
+  }, [layout, zoom, physX, cardW, cardH, reduceMotion]);
 
-  const setFocus = useCallback((key, { fromSearch = false } = {}) => {
-    if (!key) return;
-    moveDomFocus.current = true;
+  const select = useCallback((key, { fromSearch = false, scroll = "nearest", domFocus = true } = {}) => {
+    if (!key || !tree.nodes.has(key)) return;
+    setSelected(key);
     setHighlight(fromSearch ? key : "");
-    if (key === focusKey) return;
-    const params = new URLSearchParams(searchParams);
-    if (key === tree.viewerKey) params.delete("focus");
-    else params.set("focus", key);
-    setSearchParams(params, { state: location.state }); // push: back/forward walk the focus history
-  }, [focusKey, searchParams, setSearchParams, tree.viewerKey, location.state]);
-
-  /* stage width at 100% — the chain column sits at the inline end; grids reach toward the start */
-  const stageW = useMemo(() => {
-    if (!view || narrow) return 0;
-    let w = chainW;
-    view.levels.forEach((level) => {
-      const n = level.siblings.length + (level.hidden ? 1 : 0);
-      if (n) w = Math.max(w, chainW + colGap + gridWidth(Math.min(maxCols, n), { cardW, gap }));
+    setExpanded((cur) => {
+      const path = pathTo(tree, key).slice(0, -1);
+      return path.every((k) => cur.has(k)) ? cur : revealPath(cur, tree, key);
     });
-    if (view.reports.length) w = Math.max(w, gridWidth(view.reportCols, { cardW, gap }));
-    return w;
-  }, [view, narrow, chainW, colGap, maxCols, cardW, gap]);
+    pendingScroll.current = { key, mode: scroll, smooth: true };
+    moveDomFocus.current = domFocus;
+    if (!embedded) {
+      const params = new URLSearchParams(searchParams);
+      if (key === tree.viewerKey) params.delete("focus");
+      else params.set("focus", key);
+      setSearchParams(params, { replace: true, state: location.state });
+    }
+  }, [tree, embedded, searchParams, setSearchParams, location.state]);
+
+  const toggle = useCallback((key) => {
+    setExpanded((cur) => {
+      const opening = !cur.has(key);
+      if (opening) pendingScroll.current = { key, mode: "team", smooth: true };
+      return toggleExpanded(cur, key);
+    });
+  }, []);
+
+  /* a parent asks to show a card (branch search, «وحدة الموارد البشرية») */
+  useEffect(() => {
+    if (!reveal?.key) return;
+    const key = resolveFocusKey(tree, reveal.key);
+    if (key) select(key, { fromSearch: true, scroll: "center" });
+  }, [reveal?.nonce]);
+
+  const expandAll = () => {
+    const res = expandAllKeys(tree, EXPAND_LIMIT);
+    setExpanded(res.expanded);
+    setShowAll(new Set());
+    setCapNote(res.capped);
+  };
+  const collapseAll = () => {
+    setExpanded(new Set());
+    setShowAll(new Set());
+    setCapNote(false);
+    const top = tree.roots[0];
+    if (top) { setSelected(top); pendingScroll.current = { key: top, mode: "center", smooth: true }; }
+  };
+  const backToMe = () => {
+    const me = tree.viewerKey || tree.roots[0] || "";
+    setExpanded(defaultExpanded(tree, me));
+    setShowAll(new Set());
+    setCapNote(false);
+    select(me, { scroll: "center" });
+  };
 
   /* keep the sizer as big as the scaled stage so scrolling reaches every edge */
   useLayoutEffect(() => {
-    const stage = stageRef.current;
     const sizer = sizerRef.current;
-    if (!stage || !sizer) return undefined;
-    const fit = () => {
-      sizer.style.width = narrow ? "100%" : `${Math.ceil(stage.offsetWidth * zoom)}px`;
-      sizer.style.height = `${Math.ceil(stage.offsetHeight * zoom)}px`;
-    };
-    fit();
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const ro = new ResizeObserver(fit);
-    ro.observe(stage);
-    return () => ro.disconnect();
-  }, [zoom, narrow, stageW]);
+    if (!sizer) return;
+    sizer.style.width = `${Math.ceil(W * zoom)}px`;
+    sizer.style.height = `${Math.ceil(H * zoom)}px`;
+  }, [W, H, zoom]);
 
-  /* FLIP: measure where every card is now, glide it from where it was, fade in the new ones */
+  /* zoom around a point (wheel / pinch) — the point under the pointer stays put */
   useLayoutEffect(() => {
+    const a = zoomAnchor.current;
+    zoomAnchor.current = null;
+    const scroller = scrollerRef.current;
     const stage = stageRef.current;
-    if (!stage || !view) return;
-    const base = stage.getBoundingClientRect();
+    if (!a || !scroller || !stage) return;
+    const st = stage.getBoundingClientRect();
+    scroller.scrollBy({ left: st.left + a.sx * zoom - a.cx, top: st.top + a.sy * zoom - a.cy, behavior: "auto" });
+  }, [zoom]);
+  const anchorAt = (clientX, clientY) => {
+    const stage = stageRef.current;
+    if (!stage) return null;
+    const st = stage.getBoundingClientRect();
     const z = zoom || 1;
-    const next = new Map();
-    const moves = [];
-    stage.querySelectorAll("[data-k]").forEach((el) => {
-      const r = el.getBoundingClientRect();
-      const p = { x: (r.left - base.left) / z, y: (r.top - base.top) / z };
-      next.set(el.dataset.k, p);
-      moves.push([el, p]);
-    });
-    const focusChanged = lastFocus.current !== focusKey;
-    const first = !lastFocus.current;
-    const animate = !reduceMotion && !first && positions.current.size > 0;
-    const prev = positions.current;
-    positions.current = next;
-    lastFocus.current = focusKey;
+    return { sx: (clientX - st.left) / z, sy: (clientY - st.top) / z, cx: clientX, cy: clientY };
+  };
+  const centerAnchor = () => {
+    const s = scrollerRef.current?.getBoundingClientRect();
+    return s ? anchorAt(s.left + s.width / 2, s.top + s.height / 2) : null;
+  };
+  const zoomBy = (dir) => setZoom((z) => stepZoom(z, dir), centerAnchor());
 
-    // bring the focus into view before anything starts moving (scroll targets the final place)
-    const focusEl = stage.querySelector(`[data-k="${CSS.escape(focusKey)}"]`);
-    if (focusChanged && focusEl) {
-      focusEl.scrollIntoView({ block: narrow ? "start" : "center", inline: "center", behavior: first || reduceMotion ? "auto" : "smooth" });
+  /* after a layout change: scroll to the pending card, move DOM focus there */
+  useLayoutEffect(() => {
+    const p = pendingScroll.current;
+    if (p?.key) {
+      if (scrollToKey(p.key, p.mode, p.smooth)) pendingScroll.current = null;
     }
-    if (moveDomFocus.current) {
+    if (moveDomFocus.current && selected) {
       moveDomFocus.current = false;
-      focusEl?.querySelector(".nv-ot-card__hit")?.focus({ preventScroll: true });
+      const el = stageRef.current?.querySelector(`[data-k="${CSS.escape(selected)}"] .nv-ot-card__hit`);
+      el?.focus({ preventScroll: true });
     }
-    if (!animate) return;
-    let fresh = 0;
-    moves.forEach(([el, p]) => {
-      if (typeof el.animate !== "function") return;
-      const old = prev.get(el.dataset.k);
-      if (old) {
-        const dx = old.x - p.x;
-        const dy = old.y - p.y;
-        if (Math.abs(dx) + Math.abs(dy) < 1) return;
-        el.animate(
-          [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "translate(0, 0)" }],
-          { duration: 320, easing: EASE },
-        );
-      } else if (focusChanged || prev.size) {
-        el.animate(
-          [{ opacity: 0, transform: "translateY(10px) scale(.98)" }, { opacity: 1, transform: "none" }],
-          { duration: 280, easing: EASE, delay: Math.min(fresh * 14, 160), fill: "backwards" },
-        );
-        fresh += 1;
-      }
-    });
-  }, [view, zoom, options, narrow, focusKey, reduceMotion]);
+  }, [layout, selected, scrollToKey]);
 
-  /* announce the focus for screen readers */
+  /* announce the selection for screen readers */
   useEffect(() => {
-    if (!view) return;
-    const f = view.focus;
+    const f = selected ? chartCard(tree, counts, selected) : null;
+    if (!f) return;
     const who = f.vacant ? (ar ? "منصب شاغر" : "Open seat") : f.name;
     setAnnounce(ar
-      ? `التركيز على ${who}${f.title ? `، ${f.title}` : ""}. ${f.direct} تحت إدارته مباشرة من ${f.total}.`
-      : `Focused on ${who}${f.title ? `, ${f.title}` : ""}. ${f.direct} direct of ${f.total}.`);
-  }, [focusKey]);
+      ? `${who}${f.title ? `، ${f.title}` : ""}. ${f.direct} تحت إدارته مباشرة من ${f.total}.`
+      : `${who}${f.title ? `, ${f.title}` : ""}. ${f.direct} direct of ${f.total}.`);
+  }, [selected, tree, counts, ar]);
 
-  /* side arrows: show only when there is more to the left / right */
-  const measureEdges = useCallback(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const max = el.scrollWidth - el.clientWidth;
-    if (max <= 2) { setEdges((e) => (e.left || e.right ? { left: false, right: false } : e)); return; }
-    const rtl = getComputedStyle(el).direction === "rtl";
-    // modern browsers: rtl scrollLeft runs 0 → −max
-    const fromLeft = rtl ? max + el.scrollLeft : el.scrollLeft;
-    const next = { left: fromLeft > 2, right: fromLeft < max - 2 };
-    setEdges((e) => (e.left === next.left && e.right === next.right ? e : next));
-  }, []);
-  useEffect(() => {
-    measureEdges();
-    const el = scrollerRef.current;
-    if (!el) return undefined;
-    el.addEventListener("scroll", measureEdges, { passive: true });
-    window.addEventListener("resize", measureEdges);
-    const id = window.setTimeout(measureEdges, 400);
-    return () => {
-      el.removeEventListener("scroll", measureEdges);
-      window.removeEventListener("resize", measureEdges);
-      window.clearTimeout(id);
-    };
-  }, [measureEdges, view, zoom]);
-  const pan = (dir) => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir * el.clientWidth * 0.6, behavior: reduceMotion ? "auto" : "smooth" });
+  const fit = () => {
+    const scroller = scrollerRef.current;
+    if (!scroller || !W || !H) return;
+    const cs = getComputedStyle(scroller);
+    const availW = scroller.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const availH = scroller.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    setZoom(Math.min(1, availW / W, Math.max(availH, 200) / H));
+    requestAnimationFrame(() => scroller.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   };
 
-  /* ctrl/⌘ + wheel (and trackpad pinch) zooms; a plain wheel scrolls */
+  /* wheel: a mouse wheel notch or a pinch (ctrl) zooms around the pointer; a trackpad scroll pans */
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return undefined;
     const onWheel = (event) => {
-      if (!event.ctrlKey && !event.metaKey) return;
+      const mouseNotch = event.deltaMode === 1 || (event.deltaX === 0 && Math.abs(event.deltaY) >= 50 && Number.isInteger(event.deltaY));
+      if (!event.ctrlKey && !event.metaKey && !mouseNotch) return;
+      if (event.shiftKey) return;
       event.preventDefault();
-      setZoom((z) => z * (1 - Math.max(-0.2, Math.min(0.2, event.deltaY * 0.004))));
+      const factor = event.ctrlKey || event.metaKey
+        ? 1 - Math.max(-0.2, Math.min(0.2, event.deltaY * 0.01))
+        : (event.deltaY > 0 ? 0.9 : 1.1);
+      const stage = stageRef.current;
+      if (!stage) return;
+      const st = stage.getBoundingClientRect();
+      setZoomState((z) => {
+        const next = clampZoom(z * factor);
+        zoomAnchor.current = { sx: (event.clientX - st.left) / z, sy: (event.clientY - st.top) / z, cx: event.clientX, cy: event.clientY };
+        writeStore(ZOOM_KEY, String(next));
+        return next;
+      });
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [setZoom]);
+  }, []);
 
-  /* drag the empty canvas to pan (mouse); touch scrolls natively */
+  /* drag the canvas to pan (mouse); two fingers pinch to zoom (touch) */
   const drag = useRef(null);
+  const touches = useRef(new Map());
+  const pinch = useRef(null);
   const onPointerDown = (event) => {
-    if (event.pointerType !== "mouse" || event.button !== 0) return;
-    if (event.target.closest("button, a, input, [role='dialog'], .nv-ot-card")) return;
+    if (event.pointerType === "touch") {
+      touches.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (touches.current.size === 2) {
+        const [a, b] = [...touches.current.values()];
+        pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, z: zoom };
+      }
+      return;
+    }
+    if (event.button !== 0) return;
+    if (event.target.closest("button, a, input, [role='dialog'], [role='menu'], .nv-ot-card, .nv-ot-mini")) return;
     const el = scrollerRef.current;
     drag.current = { x: event.clientX, y: event.clientY, left: el.scrollLeft, top: el.scrollTop, id: event.pointerId };
     el.setPointerCapture?.(event.pointerId);
     el.dataset.drag = "1";
   };
   const onPointerMove = (event) => {
+    if (event.pointerType === "touch") {
+      if (!touches.current.has(event.pointerId)) return;
+      touches.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pinch.current && touches.current.size === 2) {
+        const [a, b] = [...touches.current.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        const mid = anchorAt((a.x + b.x) / 2, (a.y + b.y) / 2);
+        setZoom(pinch.current.z * (d / pinch.current.d), mid);
+      }
+      return;
+    }
     const d = drag.current;
     if (!d) return;
     const el = scrollerRef.current;
     el.scrollLeft = d.left - (event.clientX - d.x);
     el.scrollTop = d.top - (event.clientY - d.y);
   };
-  const endDrag = () => {
+  const endDrag = (event) => {
+    if (event?.pointerType === "touch") {
+      touches.current.delete(event.pointerId);
+      if (touches.current.size < 2) pinch.current = null;
+      return;
+    }
     const el = scrollerRef.current;
     if (drag.current && el) {
       el.releasePointerCapture?.(drag.current.id);
@@ -470,24 +705,90 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
   };
 
   const onKeyDown = (event) => {
-    if (details || settingsOpen || downloadOpen) return;
+    if (details || settingsOpen || downloadOpen || menu) return;
     const tag = String(event.target?.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select") return;
     if (event.altKey || event.ctrlKey || event.metaKey) return;
-    if (event.key === "+" || event.key === "=") { event.preventDefault(); setZoom((z) => stepZoom(z, 1)); return; }
-    if (event.key === "-" || event.key === "_") { event.preventDefault(); setZoom((z) => stepZoom(z, -1)); return; }
-    if (event.key === "0") { event.preventDefault(); setZoom(1); return; }
-    const map = {
-      ArrowUp: "up",
-      ArrowDown: "down",
-      ArrowLeft: ar ? "next" : "prev",
-      ArrowRight: ar ? "prev" : "next",
-    };
+    if (event.key === "+" || event.key === "=") { event.preventDefault(); zoomBy(1); return; }
+    if (event.key === "-" || event.key === "_") { event.preventDefault(); zoomBy(-1); return; }
+    if (event.key === "0") { event.preventDefault(); setZoom(1, centerAnchor()); return; }
+    const key = selected;
+    if (!key || !tree.nodes.has(key)) return;
+    const node = tree.nodes.get(key);
+    if (event.key === "Enter" && event.target?.classList?.contains("nv-ot-card__hit")) {
+      event.preventDefault();
+      if (node.childKeys.length) toggle(key);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setHighlight("");
+      if (expanded.has(key) && node.childKeys.length) toggle(key);
+      else if (node.parentKey) select(node.parentKey);
+      return;
+    }
+    const map = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: ar ? "next" : "prev", ArrowRight: ar ? "prev" : "next" };
     const dir = map[event.key];
-    if (!dir || !focusKey) return;
+    if (!dir) return;
     event.preventDefault();
-    const next = focusMove(tree, focusKey, dir);
-    if (next) setFocus(next);
+    if (dir === "down") {
+      const first = orderKeys(tree, node.childKeys)[0];
+      if (!first) return;
+      if (!expanded.has(key)) setExpanded((cur) => toggleExpanded(cur, key));
+      select(first);
+      return;
+    }
+    const next = focusMove(tree, key, dir);
+    if (next && layout.index.has(next)) select(next);
+  };
+
+  /* minimap: the whole chart in a corner, the visible part as a frame; click to go there */
+  const [frame, setFrame] = useState(null);
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setOverflows(W * zoom > el.clientWidth - 40 || H * zoom > el.clientHeight - 40);
+  }, [W, H, zoom]);
+  const showMini = !narrow && !embedded && overflows && layout.cards.length > 8;
+  useEffect(() => {
+    if (!showMini) return undefined;
+    const el = scrollerRef.current;
+    if (!el) return undefined;
+    let raf = 0;
+    const measure = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const stage = stageRef.current;
+        if (!stage) return;
+        const s = el.getBoundingClientRect();
+        const st = stage.getBoundingClientRect();
+        const z = zoom || 1;
+        setFrame({ x: (s.left - st.left) / z, y: (s.top - st.top) / z, w: s.width / z, h: s.height / z });
+      });
+    };
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    const late = window.setTimeout(measure, 400);
+    return () => {
+      cancelAnimationFrame(raf);
+      el.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+      window.clearTimeout(late);
+    };
+  }, [showMini, zoom, W, H]);
+  const miniGo = (event) => {
+    const svgEl = event.currentTarget;
+    const r = svgEl.getBoundingClientRect();
+    const px = ((event.clientX - r.left) / r.width) * W;
+    const py = ((event.clientY - r.top) / r.height) * H;
+    const scroller = scrollerRef.current;
+    const stage = stageRef.current;
+    if (!scroller || !stage) return;
+    const s = scroller.getBoundingClientRect();
+    const st = stage.getBoundingClientRect();
+    scroller.scrollBy({ left: st.left + px * zoom - (s.left + s.width / 2), top: st.top + py * zoom - (s.top + s.height / 2), behavior: reduceMotion ? "auto" : "smooth" });
   };
 
   /* download: print / PDF of the chart, or a PNG of the current view */
@@ -512,11 +813,11 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
           const clone = doc.querySelector(".nv-ot-stage");
           if (clone) clone.style.transform = "none";
           // html2canvas splits joined Arabic letters when letter-spacing is set
-          doc.querySelectorAll(".nv-ot-stage *").forEach((node) => { node.style.letterSpacing = "0"; });
+          doc.querySelectorAll(".nv-ot-stage *").forEach((node) => { node.style.letterSpacing = "0"; node.style.transition = "none"; node.style.animation = "none"; });
         },
       });
       const link = document.createElement("a");
-      const who = view?.focus?.name || "org";
+      const who = (selected && tree.nodes.get(selected)?.name) || "org";
       link.download = `${ar ? "الهيكل" : "org-chart"}-${who}.png`.replace(/\s+/g, "-");
       link.href = canvas.toDataURL("image/png");
       link.click();
@@ -536,6 +837,26 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
     ? (data?.employees || []).find((row) => String(row.id) === String(details.employeeId)) || null
     : null;
 
+  /* the «⋯» menu */
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const menuActions = menu ? orgCardActions(menu.card, { data, user, canWrite: hrDrawer && canWrite, health: health.get(menu.card.key) }) : [];
+  const runAction = (id) => {
+    const card = menu?.card;
+    setMenu(null);
+    if (!card) return;
+    if (id === "file") { setDetails(card); return; }
+    if (id === "hire") { onHire?.({ stationId: card.stationId || "", seatId: card.seatId || "" }); return; }
+    if (onAction?.(id, card)) return;
+    const href = orgAdminHref(id, card);
+    if (href) navigate(href, { state: { from: `${location.pathname}${location.search}` } });
+  };
+
+  const openFull = () => {
+    const params = new URLSearchParams();
+    if (selected && selected !== tree.viewerKey) params.set("focus", selected);
+    navigate(`/app/org/chart${params.toString() ? `?${params}` : ""}`, { state: { from: `${location.pathname}${location.search}` } });
+  };
+
   const zoomPct = `${Math.round(zoom * 100)}%`;
   const back = onBack ? (
     <button type="button" className="nv-ot-back" onClick={onBack}>
@@ -546,23 +867,31 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
 
   const topBar = (
     <header className="nv-ot-bar">
-      {back}
-      <span className="nv-ot-title">
-        <span className="nv-ot-title__kicker">{ar ? "القوى العاملة" : "Workforce"}</span>
-        <b>{ar ? "المخطط التنظيمي" : "Org chart"}</b>
-      </span>
-      <TreeSearch ar={ar} tree={tree} onPick={(key) => setFocus(key, { fromSearch: true })} />
-      {tree.viewerKey && focusKey !== tree.viewerKey ? (
-        <button type="button" className="nv-ot-tool nv-ot-tool--text" onClick={() => setFocus(tree.viewerKey)}>
-          {ar ? "عودة إليّ" : "Back to me"}
-        </button>
-      ) : null}
+      {embedded ? null : back}
+      {embedded ? null : (
+        <span className="nv-ot-title">
+          <span className="nv-ot-title__kicker">{ar ? "القوى العاملة" : "Workforce"}</span>
+          <b>{ar ? "المخطط التنظيمي" : "Org chart"}</b>
+        </span>
+      )}
+      <TreeSearch ar={ar} tree={tree} onPick={(key) => select(key, { fromSearch: true, scroll: "center" })} />
+      <div className="nv-ot-tools nv-ot-tools--text" role="group" aria-label={ar ? "الفروع" : "Branches"}>
+        <button type="button" className="nv-ot-tool nv-ot-tool--label" onClick={expandAll}>{ar ? "توسيع الكل" : "Expand all"}</button>
+        <button type="button" className="nv-ot-tool nv-ot-tool--label" onClick={collapseAll}>{ar ? "طيّ الكل" : "Collapse all"}</button>
+        {tree.viewerKey ? (
+          <button type="button" className="nv-ot-tool nv-ot-tool--label" onClick={backToMe}>{ar ? "إعادة للتركيز عليّ" : "Back to me"}</button>
+        ) : null}
+      </div>
       <span className="nv-ot-bar__fill" />
       <div className="nv-ot-tools" role="toolbar" aria-label={ar ? "أدوات المخطط" : "Chart tools"}>
-        <button type="button" className="nv-ot-tool" onClick={() => setZoom((z) => stepZoom(z, -1))} aria-label={ar ? "تصغير" : "Zoom out"} title={ar ? "تصغير" : "Zoom out"}>{Icon.minus}</button>
-        <button type="button" className="nv-ot-tool nv-ot-tool--pct" onClick={() => setZoom(1)} aria-label={ar ? `التكبير ${zoomPct} — اضغط للعودة إلى 100%` : `Zoom ${zoomPct} — reset to 100%`} title="100%">{zoomPct}</button>
-        <button type="button" className="nv-ot-tool" onClick={() => setZoom((z) => stepZoom(z, 1))} aria-label={ar ? "تكبير" : "Zoom in"} title={ar ? "تكبير" : "Zoom in"}>{Icon.plus}</button>
+        <button type="button" className="nv-ot-tool" onClick={() => zoomBy(-1)} aria-label={ar ? "تصغير" : "Zoom out"} title={ar ? "تصغير" : "Zoom out"}>{Icon.minus}</button>
+        <button type="button" className="nv-ot-tool nv-ot-tool--pct" onClick={() => setZoom(1, centerAnchor())} aria-label={ar ? `التكبير ${zoomPct} — اضغط للعودة إلى 100%` : `Zoom ${zoomPct} — reset to 100%`} title="100%">{zoomPct}</button>
+        <button type="button" className="nv-ot-tool" onClick={() => zoomBy(1)} aria-label={ar ? "تكبير" : "Zoom in"} title={ar ? "تكبير" : "Zoom in"}>{Icon.plus}</button>
+        <button type="button" className="nv-ot-tool" onClick={fit} aria-label={ar ? "ملاءمة المخطط للشاشة" : "Fit to screen"} title={ar ? "ملاءمة" : "Fit"}>{Icon.fit}</button>
         <span className="nv-ot-tools__sep" aria-hidden />
+        {embedded ? (
+          <button type="button" className="nv-ot-tool" onClick={openFull} aria-label={ar ? "شاشة كاملة" : "Full screen"} title={ar ? "شاشة كاملة" : "Full screen"}>{Icon.full}</button>
+        ) : null}
         <div className="nv-ot-anchor">
           <button
             ref={downloadBtn}
@@ -620,10 +949,10 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
   );
 
   /* a viewer with no seat on the chart: say where they belong, calmly */
-  if (!view) {
+  if (!layout.cards.length) {
     const place = user?.id ? unseatedPlace(data, user.id) : null;
     return (
-      <div className="nv-ot">
+      <div className="nv-ot" data-variant={variant}>
         {topBar}
         <div className="nv-ot-empty">
           <h1>{place?.name || (ar ? "مكانك في الهيكل" : "Your place")}</h1>
@@ -638,27 +967,36 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
     );
   }
 
-  const cardProps = (card) => ({
-    card,
-    ar,
-    options,
-    isFocus: card.key === focusKey,
-    highlighted: highlight === card.key,
-    onFocus: setFocus,
-    onDetails: setDetails,
-  });
-  const toggleLevel = (key) => setOpenLevels((cur) => {
-    const next = new Set(cur);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    return next;
-  });
-  const lastIndex = view.levels.length - 1;
-  const printScale = stageW ? Math.min(1, 1040 / stageW) : 1;
+  const crumbs = selected && tree.nodes.has(selected) ? pathTo(tree, selected) : [];
+  const hasMenu = hrDrawer && canWrite;
+  const printScale = W ? Math.min(1, 1040 / W) : 1;
+  const miniScale = showMini ? Math.min(160 / W, 132 / H) : 0;
 
   return (
-    <div className="nv-ot" data-density={options.density} data-narrow={narrow ? "1" : "0"}>
+    <div className="nv-ot" data-variant={variant} data-density={options.density} data-narrow={narrow ? "1" : "0"} data-motion={reduceMotion ? "0" : "1"}>
       {topBar}
+      {crumbs.length > 1 || capNote ? (
+        <nav className="nv-ot-crumbs" aria-label={ar ? "مسار البطاقة المحددة" : "Path to the selected card"}>
+          <ol>
+            {crumbs.map((k, i) => {
+              const n = tree.nodes.get(k);
+              const last = i === crumbs.length - 1;
+              return (
+                <li key={k}>
+                  <button type="button" aria-current={last ? "true" : undefined} onClick={() => select(k, { scroll: "center" })}>
+                    {n.vacant ? (ar ? "شاغر" : "Vacant") : n.name}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+          {capNote ? (
+            <span className="nv-ot-crumbs__note">
+              {ar ? `فُتح حتى ${EXPAND_LIMIT} بطاقة — افتح ما بعدها من الأرقام.` : `Opened up to ${EXPAND_LIMIT} cards — open the rest from the counts.`}
+            </span>
+          ) : null}
+        </nav>
+      ) : null}
       <div
         ref={scrollerRef}
         className="nv-ot-scroller"
@@ -668,107 +1006,94 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        aria-label={ar ? "مخطط الهيكل كاملاً" : "Full org chart"}
+        aria-label={ar ? "المخطط التنظيمي" : "Org chart"}
         role="region"
       >
         <div ref={sizerRef} className="nv-ot-sizer">
           <div
             ref={stageRef}
             className="nv-ot-stage"
+            role="tree"
+            aria-label={ar ? "شجرة الهيكل" : "Structure tree"}
             style={{
-              "--card-w": `${cardW}px`,
-              "--chain-w": `${chainW}px`,
-              "--col-gap": `${colGap}px`,
-              "--gap": `${gap}px`,
+              width: `${W}px`,
+              height: `${H}px`,
               "--print-scale": printScale,
-              width: narrow ? `${100 / zoom}%` : `${stageW}px`,
               transform: zoom === 1 ? undefined : `scale(${zoom})`,
             }}
           >
-            {view.levels.map((level, index) => {
-              const sibN = level.siblings.length + (level.hidden ? 1 : 0);
-              const showGrid = !narrow && sibN > 0;
-              const cols = Math.min(maxCols, Math.max(1, sibN));
-              const gw = gridWidth(cols, { cardW, gap });
-              const isLast = index === lastIndex;
-              const open = openLevels.has(level.key);
-              const total = level.siblings.length + level.hidden;
-              const sibLabel = ar
-                ? `${open ? "إخفاء" : "عرض"} ${Number(total)} في المستوى نفسه`
-                : `${open ? "Hide" : "Show"} ${total} at this level`;
+            {layout.lines.map((line) => (
+              <span
+                key={line.id}
+                className="nv-ot-line"
+                data-dir={line.h ? "v" : "h"}
+                aria-hidden
+                style={line.h
+                  ? { left: physX(line.x) - 0.75, top: line.y, height: line.h }
+                  : { left: physX(line.x, line.w), top: line.y - 0.75, width: line.w }}
+              />
+            ))}
+            {layout.cards.map((place) => {
+              const at = { ...place, left: physX(place.x, cardW) };
+              if (place.more || place.less) {
+                return (
+                  <FoldCard
+                    key={place.key}
+                    place={at}
+                    ar={ar}
+                    w={cardW}
+                    h={cardH}
+                    onClick={() => setShowAll((cur) => toggleExpanded(cur, place.parentKey))}
+                  />
+                );
+              }
+              const card = chartCard(tree, counts, place.key);
               return (
-                <section
-                  key={level.key}
-                  className="nv-ot-row"
-                  data-root={index === 0 ? "1" : "0"}
-                  aria-label={level.card.vacant ? (ar ? "منصب شاغر" : "Open seat") : level.card.name}
-                >
-                  {showGrid && index > 0 ? (
-                    <>
-                      <span className="nv-ot-bus" aria-hidden style={{ width: `${chainW / 2 + colGap + gw / 2}px` }} />
-                      <span className="nv-ot-tick" aria-hidden style={{ insetInlineEnd: `${chainW + colGap + gw / 2}px` }} />
-                    </>
-                  ) : null}
-                  {showGrid ? (
-                    <div className="nv-ot-grid nv-ot-grid--sibs" style={{ "--cols": cols }}>
-                      {level.siblings.map((card) => <TreeCard key={card.key} {...cardProps(card)} />)}
-                      {level.hidden || open ? (
-                        <button type="button" className="nv-ot-more" onClick={() => toggleLevel(level.key)} aria-expanded={open}>
-                          {open
-                            ? (ar ? "طيّ" : "Fold")
-                            : (ar ? `+ ${Number(level.hidden)} آخرون` : `+ ${level.hidden} more`)}
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  <div className="nv-ot-chain">
-                    {index > 0 ? <span className="nv-ot-stem nv-ot-stem--top" aria-hidden /> : null}
-                    <TreeCard {...cardProps(level.card)} />
-                    {narrow && total > 0 ? (
-                      <>
-                        <span className="nv-ot-stem nv-ot-stem--short" aria-hidden />
-                        <button type="button" className="nv-ot-peers" onClick={() => toggleLevel(level.key)} aria-expanded={open}>{sibLabel}</button>
-                        {open ? (
-                          <div className="nv-ot-grid nv-ot-grid--panel" style={{ "--cols": maxCols }}>
-                            {level.siblings.map((card) => <TreeCard key={card.key} {...cardProps(card)} />)}
-                          </div>
-                        ) : null}
-                      </>
-                    ) : null}
-                    {!isLast || view.reports.length ? <span className="nv-ot-stem nv-ot-stem--fill" aria-hidden /> : null}
-                  </div>
-                </section>
+                <TreeCard
+                  key={place.key}
+                  card={card}
+                  place={at}
+                  ar={ar}
+                  options={options}
+                  w={cardW}
+                  h={cardH}
+                  isFocus={place.key === selected}
+                  highlighted={highlight === place.key}
+                  flag={health.get(place.key)?.flag || null}
+                  hasMenu={hasMenu}
+                  menuOpen={menu?.card.key === place.key}
+                  onSelect={(key) => select(key, { scroll: "nearest" })}
+                  onToggle={toggle}
+                  onDetails={setDetails}
+                  onMenu={(c, anchor) => setMenu((cur) => (cur?.card.key === c.key ? null : { card: c, anchor }))}
+                />
               );
             })}
-            {view.reports.length ? (
-              <section className="nv-ot-row nv-ot-row--reports" aria-label={ar ? "تحت إدارته مباشرة" : "Direct reports"}>
-                <span className="nv-ot-stem nv-ot-stem--reports" aria-hidden />
-                <div className="nv-ot-grid nv-ot-grid--reports" style={{ "--cols": view.reportCols }}>
-                  {view.reports.map((card) => <TreeCard key={card.key} {...cardProps(card)} />)}
-                </div>
-              </section>
-            ) : (
-              <p className="nv-ot-none">
-                {view.focus.vacant
-                  ? (ar ? "منصب شاغر — لا أحد تحته بعد." : "Open seat — nobody under it yet.")
-                  : (ar ? "لا أحد تحت إدارته مباشرة." : "No direct reports.")}
-              </p>
-            )}
           </div>
         </div>
       </div>
 
-      {edges.left ? (
-        <button type="button" className="nv-ot-arrow" data-side="left" onClick={() => pan(-1)} aria-label={ar ? "تحريك المخطط يساراً" : "Pan left"}>{Icon.chevL}</button>
-      ) : null}
-      {edges.right ? (
-        <button type="button" className="nv-ot-arrow" data-side="right" onClick={() => pan(1)} aria-label={ar ? "تحريك المخطط يميناً" : "Pan right"}>{Icon.chevR}</button>
+      {showMini && frame ? (
+        <div className="nv-ot-mini" aria-hidden>
+          <svg width={Math.round(W * miniScale)} height={Math.round(H * miniScale)} viewBox={`0 0 ${W} ${H}`} onClick={miniGo}>
+            {layout.cards.map((c) => (
+              <rect key={c.key} x={physX(c.x, cardW)} y={c.y} width={cardW} height={cardH} rx="14" data-focus={c.key === selected ? "1" : "0"} />
+            ))}
+            <rect className="nv-ot-mini__frame" x={Math.max(0, frame.x)} y={Math.max(0, frame.y)} width={Math.min(W, frame.w)} height={Math.min(H, frame.h)} />
+          </svg>
+        </div>
       ) : null}
 
-      <p className="nv-ot-keys" aria-hidden>
-        {ar ? "↑ المدير · ↓ أول من تحته · ← → المستوى نفسه · + − تكبير · اسحب للتحريك" : "↑ manager · ↓ first report · ← → same level · + − zoom · drag to pan"}
-      </p>
+      {embedded || narrow ? null : (
+        <p className="nv-ot-keys" aria-hidden>
+          {ar ? "↑ ↓ ← → تنقّل · Enter يفتح الفريق · Esc يطوي · + − تكبير · اسحب للتحريك" : "Arrows move · Enter opens the team · Esc folds · + − zoom · drag to pan"}
+        </p>
+      )}
       <p className="nv-ot-sr" aria-live="polite">{announce}</p>
+
+      {menu ? (
+        <CardMenu ar={ar} card={menu.card} anchor={menu.anchor} actions={menuActions} onPick={runAction} onClose={closeMenu} />
+      ) : null}
 
       {details && !hrDrawer ? (
         <OrgCardDrawer
@@ -792,6 +1117,7 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
           companyName={data?.settings?.companyName || ""}
           ar={ar}
           onHire={onHire}
+          onOpenBranch={onAction ? (stationId) => { setDetails(null); onAction("branch", { stationId }); } : undefined}
           onClose={() => setDetails(null)}
         />
       ) : null}

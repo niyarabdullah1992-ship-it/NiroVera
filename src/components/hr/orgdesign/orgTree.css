@@ -1,8 +1,9 @@
 /*
- * Full-screen org tree (/app/org/chart) in the platform's identity: cards = slab geometry
- * (--nv-card, 1px --nv-line, radius 12, --nv-paper), controls radius 8, names and figures in ink
- * (IBM Plex Mono, Latin digits), one green accent for the focus only. Tokens only — dark mode
- * follows --nv-*. Logical properties throughout so RTL and LTR mirror without extra rules.
+ * The org chart (/app/org/chart, and embedded in «الفروع والدليل») in the platform's identity:
+ * a quiet dotted canvas (SAP-style), cards = slab geometry (--nv-card, 1px --nv-line, radius 12),
+ * controls radius 8, names and figures in ink (IBM Plex Mono, Latin digits), one green accent for
+ * the selected card only, warm/red chips only for real problems. Tokens only — dark mode follows
+ * --nv-*. Cards and lines are placed by the layout (physical left/top, mirrored in JS for RTL).
  */
 
 .nv-ot {
@@ -71,8 +72,9 @@
 .nv-ot-tool[aria-expanded="true"] { background: var(--nv-hover); color: var(--nv-ink); }
 .nv-ot-tool--pct { min-width: 56px; font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--nv-ink); }
 .nv-ot-tool--text { white-space: nowrap; border: 1px solid var(--nv-line); background: var(--nv-card); height: 36px; padding: 0 12px; font-size: 12px; font-weight: 600; border-radius: var(--nv-radius-control, 8px); color: var(--nv-ink); }
-.nv-ot-back:focus-visible, .nv-ot-tool:focus-visible, .nv-ot-more:focus-visible, .nv-ot-peers:focus-visible,
-.nv-ot-arrow:focus-visible, .nv-ot-pop button:focus-visible, .nv-ot-card__open:focus-visible {
+.nv-ot-tool--label { font-size: 12px; font-weight: 600; padding: 0 10px; white-space: nowrap; }
+.nv-ot-back:focus-visible, .nv-ot-tool:focus-visible, .nv-ot-more:focus-visible, .nv-ot-count:focus-visible,
+.nv-ot-pop button:focus-visible, .nv-ot-card__open:focus-visible, .nv-ot-crumbs button:focus-visible {
   outline: 2px solid var(--nv-navy); outline-offset: 1px;
 }
 
@@ -94,75 +96,79 @@
 }
 .nv-ot-seg button[aria-checked="true"] { border-color: var(--nv-navy); color: var(--nv-btn-ink, #fff); background: var(--nv-navy); font-weight: 700; }
 
-/* ── canvas ── */
+/* ── breadcrumb of the selected card ── */
+.nv-ot-crumbs {
+  flex: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0;
+  padding: 6px 20px; background: var(--nv-card); border-bottom: 1px solid var(--nv-line); font-size: 12px;
+}
+.nv-ot-crumbs ol { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 2px; min-width: 0; }
+.nv-ot-crumbs li { display: inline-flex; align-items: center; gap: 2px; }
+.nv-ot-crumbs li + li::before { content: "›"; color: var(--nv-muted); padding-inline: 4px; }
+[dir="rtl"] .nv-ot-crumbs li + li::before { content: "‹"; }
+.nv-ot-crumbs button {
+  font: inherit; font-size: 12px; color: var(--nv-ink2, var(--nv-ink)); background: none; border: none; cursor: pointer;
+  padding: 3px 6px; border-radius: 6px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.nv-ot-crumbs button:hover { background: var(--nv-hover); color: var(--nv-ink); }
+.nv-ot-crumbs button[aria-current="true"] { color: var(--nv-ink); font-weight: 700; }
+.nv-ot-crumbs__note { color: var(--nv-muted); font-size: 11.5px; }
+
+/* ── canvas: a quiet light surface with a faint dot grid that scrolls with the chart ── */
 .nv-ot-scroller {
   flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; outline: none;
-  padding: 32px 40px 56px; cursor: grab; overscroll-behavior: contain;
-  background: var(--nv-org-canvas, var(--nv-page));
+  padding: 28px 36px 64px; cursor: grab; overscroll-behavior: contain; touch-action: pan-x pan-y;
+  background-color: var(--nv-org-canvas, var(--nv-page));
+  background-image: radial-gradient(var(--nv-org-dot, var(--nv-line)) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  background-attachment: local;
 }
 .nv-ot-scroller[data-drag="1"] { cursor: grabbing; user-select: none; }
-.nv-ot-sizer { position: relative; margin-inline: auto; overflow: hidden; }
-.nv-ot-stage { transform-origin: top left; }
-[dir="rtl"] .nv-ot-stage { transform-origin: top right; }
+.nv-ot-sizer { position: relative; overflow: hidden; }
+.nv-ot-stage { position: relative; transform-origin: top left; }
+[dir="rtl"] .nv-ot-stage { transform-origin: top right; margin-inline-start: 0; }
 
-.nv-ot-row {
-  position: relative; display: flex; justify-content: flex-end; align-items: stretch; gap: var(--col-gap);
-  padding-top: 28px;
-}
-.nv-ot-row[data-root="1"] { padding-top: 0; }
-.nv-ot-chain { width: var(--chain-w); flex: none; display: flex; flex-direction: column; align-items: center; }
-.nv-ot-stem { display: block; width: 0; border-inline-start: 1.5px solid var(--ot-line); flex: none; }
-.nv-ot-stem--top { position: absolute; top: 0; height: 28px; inset-inline-end: calc(var(--chain-w) / 2); }
-.nv-ot-stem--fill { flex: 1 1 auto; min-height: 0; }
-.nv-ot-stem--short { height: 10px; }
-.nv-ot-bus {
-  position: absolute; top: 14px; height: 0; inset-inline-end: calc(var(--chain-w) / 2);
-  border-top: 1.5px solid var(--ot-line);
-}
-.nv-ot-tick { position: absolute; top: 14px; height: 14px; width: 0; border-inline-start: 1.5px solid var(--ot-line); }
-
-.nv-ot-grid {
-  display: grid; gap: var(--gap); grid-template-columns: repeat(var(--cols, 4), var(--card-w));
-  align-content: start; flex: none;
-}
-.nv-ot-row--reports { justify-content: flex-end; }
-.nv-ot-stem--reports { position: absolute; top: 0; height: 28px; inset-inline-end: calc(var(--chain-w) / 2); }
-.nv-ot-none { margin: 18px 0 0; font-size: 12.5px; color: var(--nv-muted); width: var(--chain-w); margin-inline-start: auto; text-align: center; }
-
-.nv-ot-more, .nv-ot-peers {
-  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: var(--nv-radius, 12px);
-  color: var(--nv-ink2, var(--nv-ink)); background: transparent; border: 1px dashed var(--nv-mute-fill, var(--nv-line));
-}
-.nv-ot-more { min-height: 64px; }
-.nv-ot-more:hover, .nv-ot-peers:hover { background: var(--nv-hover); color: var(--nv-ink); }
-.nv-ot-peers { padding: 6px 12px; min-height: 32px; }
+/* connector lines (trunk → bus → tick) */
+.nv-ot-line { position: absolute; display: block; background: var(--ot-line); pointer-events: none; }
+.nv-ot-line[data-dir="v"] { width: 1.5px; }
+.nv-ot-line[data-dir="h"] { height: 1.5px; }
 
 /* ── card ── */
+.nv-ot-card, .nv-ot-more { position: absolute; }
 .nv-ot-card {
-  position: relative; display: flex; align-items: flex-start; gap: 4px; min-width: 0; width: 100%;
-  min-height: 86px; padding: 12px 10px 12px 14px; padding-inline: 14px 8px;
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+  padding: 10px 8px 10px 14px; padding-inline: 14px 6px;
   background: var(--nv-card); border: 1px solid var(--nv-line); border-radius: var(--nv-radius, 12px);
   box-shadow: 0 1px 2px var(--nv-shadow2, rgba(0, 0, 0, .04));
-  transition: border-color .15s ease, box-shadow .15s ease;
 }
+.nv-ot[data-motion="1"] .nv-ot-card, .nv-ot[data-motion="1"] .nv-ot-more {
+  transition: left .32s cubic-bezier(.2, .8, .2, 1), top .32s cubic-bezier(.2, .8, .2, 1), border-color .15s ease, box-shadow .15s ease;
+  animation: nv-ot-in .28s cubic-bezier(.2, .8, .2, 1) both;
+}
+.nv-ot[data-motion="1"] .nv-ot-line {
+  transition: left .32s cubic-bezier(.2, .8, .2, 1), top .32s cubic-bezier(.2, .8, .2, 1), width .32s cubic-bezier(.2, .8, .2, 1), height .32s cubic-bezier(.2, .8, .2, 1);
+  animation: nv-ot-fade .32s ease both;
+}
+@keyframes nv-ot-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes nv-ot-fade { from { opacity: 0; } to { opacity: 1; } }
+
 .nv-ot-card:hover { border-color: var(--nv-mute-fill, var(--nv-line)); box-shadow: 0 4px 14px var(--nv-shadow, rgba(0, 0, 0, .06)); }
-.nv-ot-card[data-vacant="1"] { border-style: dashed; background: transparent; box-shadow: none; }
+.nv-ot-card[data-vacant="1"] { border-style: dashed; background: color-mix(in oklab, var(--nv-card) 55%, transparent); box-shadow: none; }
 .nv-ot-card[data-focus="1"] {
   border-color: var(--nv-accent); box-shadow: 0 0 0 3px var(--nv-accent-soft), 0 6px 18px var(--nv-shadow, rgba(0, 0, 0, .06));
 }
 .nv-ot-card:has(.nv-ot-card__hit:focus-visible) { outline: 2px solid var(--nv-navy); outline-offset: 2px; }
 .nv-ot-card__hit {
-  font: inherit; text-align: start; background: none; border: none; padding: 0; margin: 0; cursor: pointer; color: inherit;
-  display: flex; gap: 12px; align-items: center; min-width: 0; flex: 1;
+  position: absolute; inset: 0; z-index: 0; border-radius: inherit; background: none; border: none; padding: 0; margin: 0;
+  cursor: pointer; font: inherit;
 }
-.nv-ot-card__hit::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
 .nv-ot-card__hit:focus-visible { outline: none; }
+.nv-ot-avatar, .nv-ot-card__text { position: relative; z-index: 1; pointer-events: none; }
+.nv-ot-card__acts { position: relative; z-index: 1; flex: none; display: flex; flex-direction: column; gap: 2px; align-self: center; }
 .nv-ot-card__open {
-  position: relative; z-index: 1; flex: none; width: 30px; height: 30px; border-radius: 8px; border: none; background: transparent;
+  flex: none; width: 30px; height: 30px; border-radius: 8px; border: none; background: transparent;
   color: var(--nv-muted); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-  align-self: center;
 }
-.nv-ot-card__open:hover { background: var(--nv-hover); color: var(--nv-ink); }
+.nv-ot-card__open:hover, .nv-ot-card__open[aria-expanded="true"] { background: var(--nv-hover); color: var(--nv-ink); }
 
 .nv-ot-avatar {
   width: 52px; height: 52px; border-radius: 50%; flex: none; overflow: hidden;
@@ -178,51 +184,89 @@
 .nv-ot-card__text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
 .nv-ot-card__name {
   font-size: 13.5px; font-weight: 700; line-height: 1.45; color: var(--nv-ink);
-  display: flex; gap: 6px; align-items: center; flex-wrap: wrap; overflow-wrap: anywhere;
+  display: flex; gap: 6px; align-items: center; min-width: 0;
 }
+.nv-ot-card__nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nv-ot-card__name mark { background: var(--nv-warn-soft); color: var(--nv-ink); border-radius: 4px; padding: 0 3px; }
 .nv-ot-card[data-vacant="1"] .nv-ot-card__name { color: var(--nv-muted); font-weight: 600; }
-.nv-ot-card__title {
-  font-size: 12px; line-height: 1.5; color: var(--nv-ink2, var(--nv-ink));
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+.nv-ot-card__title, .nv-ot-card__meta {
+  font-size: 12px; line-height: 1.5; color: var(--nv-ink2, var(--nv-ink)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.nv-ot-card__meta { font-size: 11.5px; color: var(--nv-muted); line-height: 1.5; }
-.nv-ot-code { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 10.5px; font-weight: 500; color: var(--nv-muted); }
-.nv-ot-card__counts { font-size: 11.5px; font-weight: 600; color: var(--nv-ink); margin-top: 2px; }
-.nv-ot-card__counts [dir="ltr"] { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-variant-numeric: tabular-nums; }
+.nv-ot-card__meta { font-size: 11.5px; color: var(--nv-muted); }
+.nv-ot-code { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 10.5px; font-weight: 500; color: var(--nv-muted); line-height: 1.7; }
 .nv-ot-me {
-  display: inline-flex; align-items: center; height: 20px; padding: 0 7px; box-sizing: border-box;
+  flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; box-sizing: border-box;
   font-size: 10.5px; font-weight: 600; color: var(--nv-mute-ink, var(--nv-muted));
   background: var(--nv-mute-soft, var(--nv-soft)); border: 1px solid var(--nv-mute-line, var(--nv-line)); border-radius: var(--nv-radius-control, 8px);
 }
 
-/* compact density */
-.nv-ot[data-density="compact"] .nv-ot-card { min-height: 64px; padding-block: 8px; padding-inline: 10px 4px; }
-.nv-ot[data-density="compact"] .nv-ot-avatar { width: 38px; height: 38px; font-size: 12.5px; }
-.nv-ot[data-density="compact"] .nv-ot-card__hit { gap: 9px; }
-.nv-ot[data-density="compact"] .nv-ot-card__name { font-size: 12.5px; }
-.nv-ot[data-density="compact"] .nv-ot-card__title { font-size: 11.5px; -webkit-line-clamp: 1; }
-.nv-ot[data-density="compact"] .nv-ot-row { padding-top: 22px; }
-.nv-ot[data-density="compact"] .nv-ot-row[data-root="1"] { padding-top: 0; }
-.nv-ot[data-density="compact"] .nv-ot-stem--top,
-.nv-ot[data-density="compact"] .nv-ot-stem--reports { height: 22px; }
-.nv-ot[data-density="compact"] .nv-ot-bus, .nv-ot[data-density="compact"] .nv-ot-tick { top: 11px; }
-.nv-ot[data-density="compact"] .nv-ot-tick { height: 11px; }
-
-/* ── side arrows ── */
-.nv-ot-arrow {
-  position: fixed; top: 50%; transform: translateY(-50%); z-index: 4;
-  width: 40px; height: 80px; border-radius: var(--nv-radius-control, 8px); border: 1px solid var(--nv-line);
-  background: var(--nv-card); color: var(--nv-ink2, var(--nv-ink)); cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center;
-  box-shadow: 0 6px 18px var(--nv-shadow, rgba(0, 0, 0, .08));
+/* the count: «مباشر / الكل» — the button that opens this card's team */
+.nv-ot-card__foot { display: flex; align-items: center; gap: 6px; min-height: 24px; margin-top: 2px; min-width: 0; }
+.nv-ot-count {
+  pointer-events: auto; font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+  height: 24px; padding: 0 6px 0 8px; padding-inline: 8px 4px; margin-inline-start: -8px;
+  border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--nv-ink);
+  font-size: 12px; font-weight: 600;
 }
-.nv-ot-arrow:hover { color: var(--nv-ink); border-color: var(--nv-mute-fill, var(--nv-line)); }
-.nv-ot-arrow[data-side="left"] { left: 14px; }
-.nv-ot-arrow[data-side="right"] { right: 14px; }
+.nv-ot-count__n { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-variant-numeric: tabular-nums; }
+.nv-ot-count:hover { background: var(--nv-hover); border-color: var(--nv-line); }
+.nv-ot-count__chev { display: inline-flex; color: var(--nv-muted); }
+.nv-ot[data-motion="1"] .nv-ot-count__chev { transition: transform .2s ease; }
+.nv-ot-count[aria-expanded="true"] { background: var(--nv-soft); border-color: var(--nv-line); }
+.nv-ot-count[aria-expanded="true"] .nv-ot-count__chev { transform: rotate(180deg); color: var(--nv-ink); }
+.nv-ot-flag {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px;
+  font-size: 10.5px; font-weight: 600; color: var(--nv-warn-ink); background: var(--nv-warn-soft);
+}
+.nv-ot-flag[data-tone="bad"] { color: var(--nv-bad-ink); background: var(--nv-bad-soft); }
+
+/* «+n آخرون» / «طيّ» */
+.nv-ot-more {
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; border-radius: var(--nv-radius, 12px);
+  color: var(--nv-ink2, var(--nv-ink)); background: color-mix(in oklab, var(--nv-card) 55%, transparent);
+  border: 1px dashed var(--nv-mute-fill, var(--nv-line));
+}
+.nv-ot-more:hover { background: var(--nv-hover); color: var(--nv-ink); }
+
+/* compact density */
+.nv-ot[data-density="compact"] .nv-ot-card { padding-block: 6px; padding-inline: 10px 4px; gap: 9px; }
+.nv-ot[data-density="compact"] .nv-ot-avatar { width: 38px; height: 38px; font-size: 12.5px; }
+.nv-ot[data-density="compact"] .nv-ot-card__name { font-size: 12.5px; line-height: 1.35; }
+.nv-ot[data-density="compact"] .nv-ot-card__title { font-size: 11.5px; line-height: 1.35; }
+.nv-ot[data-density="compact"] .nv-ot-card__foot { min-height: 20px; margin-top: 0; }
+.nv-ot[data-density="compact"] .nv-ot-count { height: 20px; font-size: 11.5px; }
+.nv-ot[data-density="compact"] .nv-ot-card__acts { flex-direction: row; }
+.nv-ot[data-density="compact"] .nv-ot-card__open { width: 26px; height: 26px; }
+
+/* ── the «⋯» action menu ── */
+.nv-ot-cardmenu { position: fixed; top: 0; z-index: 80; padding: 6px; max-height: min(70vh, 520px); overflow-y: auto; }
+.nv-ot-cardmenu__head { margin: 0; padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 1px; border-bottom: 1px solid var(--nv-line); }
+.nv-ot-cardmenu__head b { font-size: 13px; color: var(--nv-ink); }
+.nv-ot-cardmenu__head span { font-size: 11.5px; color: var(--nv-muted); }
+.nv-ot-cardmenu__group { display: flex; flex-direction: column; padding: 4px 0; }
+.nv-ot-cardmenu__group + .nv-ot-cardmenu__group { border-top: 1px solid var(--nv-line2, var(--nv-line)); }
+.nv-ot-cardmenu .nv-ot-pop__item { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 8px 10px; }
+.nv-ot-cardmenu .nv-ot-pop__item:focus-visible { outline: 2px solid var(--nv-navy); outline-offset: -2px; }
+.nv-ot-cardmenu .nv-ot-pop__item[aria-disabled="true"] { cursor: not-allowed; color: var(--nv-muted); }
+.nv-ot-cardmenu .nv-ot-pop__item[aria-disabled="true"]:hover { background: none; }
+.nv-ot-cardmenu__label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nv-ot-cardmenu__n { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 11.5px; font-weight: 600; color: var(--nv-ink); font-variant-numeric: tabular-nums; }
+.nv-ot-cardmenu__why { font-size: 11px; line-height: 1.5; color: var(--nv-muted); }
+
+/* ── minimap ── */
+.nv-ot-mini {
+  position: absolute; bottom: 76px; inset-inline-end: 20px; z-index: 4; padding: 6px; opacity: .94;
+  background: var(--nv-card); border: 1px solid var(--nv-line); border-radius: var(--nv-radius-control, 8px);
+  box-shadow: 0 6px 18px var(--nv-shadow, rgba(0, 0, 0, .08)); line-height: 0;
+}
+.nv-ot-mini svg { display: block; cursor: pointer; }
+.nv-ot-mini rect { fill: var(--nv-mute-fill, var(--nv-line)); }
+.nv-ot-mini rect[data-focus="1"] { fill: var(--nv-accent); }
+.nv-ot-mini .nv-ot-mini__frame { fill: var(--nv-accent-soft); fill-opacity: .35; stroke: var(--nv-accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 
 .nv-ot-keys {
-  position: fixed; bottom: 12px; inset-inline-start: 20px; margin: 0; font-size: 11px; color: var(--nv-muted);
+  position: absolute; bottom: 12px; inset-inline-start: 20px; margin: 0; font-size: 11px; color: var(--nv-muted);
   background: var(--nv-card); border: 1px solid var(--nv-line); border-radius: 8px; padding: 4px 10px; pointer-events: none;
 }
 
@@ -231,38 +275,37 @@
 .nv-ot-empty p { margin: 0; font-size: 13.5px; color: var(--nv-ink2, var(--nv-ink)); }
 .nv-ot-empty__note { color: var(--nv-muted) !important; line-height: 1.8; }
 
-/* ── phones / narrow: the chain stacks; siblings fold under each chain card ── */
+/* ── embedded in «الفروع والدليل» on /app/org: same chart, inside the slab ── */
+.nv-ot[data-variant="embedded"] {
+  position: relative; inset: auto; height: clamp(460px, 74vh, 820px);
+  border-top: 1px solid var(--nv-line); overflow: hidden;
+}
+.nv-ot[data-variant="embedded"] .nv-ot-bar { padding: 8px 12px; }
+.nv-ot[data-variant="embedded"] .nv-ot-crumbs { padding: 5px 12px; }
+.nv-ot[data-variant="embedded"] .nv-ot-scroller { padding: 20px 24px 48px; }
+
+/* ── phones / narrow: one column per team, a shorter indent ── */
 .nv-ot[data-narrow="1"] .nv-ot-bar { padding: 8px 12px; gap: 8px; }
 .nv-ot[data-narrow="1"] .nv-ot-search { order: 5; flex: 1 1 100%; }
 .nv-ot[data-narrow="1"] .nv-ot-back { padding: 0 8px; }
 .nv-ot[data-narrow="1"] .nv-ot-title__kicker { display: none; }
-.nv-ot[data-narrow="1"] .nv-ot-tool--text { height: 32px; padding: 0 8px; font-size: 12px; }
 .nv-ot[data-narrow="1"] .nv-ot-tools__sep { margin: 0 1px; }
 .nv-ot[data-narrow="1"] .nv-ot-tool { min-width: 30px; padding: 0 4px; }
+.nv-ot[data-narrow="1"] .nv-ot-tool--label { padding: 0 7px; font-size: 11.5px; }
 .nv-ot[data-narrow="1"] .nv-ot-tool--pct { min-width: 44px; font-size: 12px; }
-.nv-ot[data-narrow="1"] .nv-ot-scroller { padding: 18px 16px 104px; cursor: auto; }
-.nv-ot[data-narrow="1"] .nv-ot-row { justify-content: center; }
-.nv-ot[data-narrow="1"] .nv-ot-chain { width: 100%; max-width: 380px; }
-.nv-ot[data-narrow="1"] .nv-ot-stem--top,
-.nv-ot[data-narrow="1"] .nv-ot-stem--reports { inset-inline-end: 50%; }
-.nv-ot[data-narrow="1"] .nv-ot-grid { width: 100%; grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr)); }
-.nv-ot[data-narrow="1"] .nv-ot-row--reports { justify-content: center; }
-.nv-ot[data-narrow="1"] .nv-ot-grid--panel {
-  margin-top: 8px; padding: 8px; border-radius: var(--nv-radius, 12px); background: var(--nv-soft, var(--nv-page)); border: 1px solid var(--nv-line);
-}
-.nv-ot[data-narrow="1"] .nv-ot-none { width: auto; margin-inline: auto; }
-.nv-ot[data-narrow="1"] .nv-ot-keys { display: none; }
-.nv-ot[data-narrow="1"] .nv-ot-arrow { display: none; }
-.nv-ot[data-narrow="1"] .nv-ot-avatar { width: 46px; height: 46px; }
+.nv-ot[data-narrow="1"] .nv-ot-tools--text { order: 6; }
+.nv-ot[data-narrow="1"] .nv-ot-crumbs { padding: 5px 12px; }
+.nv-ot[data-narrow="1"] .nv-ot-scroller { padding: 16px 16px 64px; }
+.nv-ot[data-narrow="1"] .nv-ot-avatar { width: 44px; height: 44px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .nv-ot-card { transition: none; }
+  .nv-ot-card, .nv-ot-more, .nv-ot-line, .nv-ot-count__chev { transition: none !important; animation: none !important; }
 }
 
 /* ── print / PDF: the chart only, scaled to the page ── */
 @media print {
-  .nv-ot { position: static; background: #fff; }
-  .nv-ot-bar, .nv-ot-arrow, .nv-ot-keys, .nv-ot-card__open { display: none !important; }
+  .nv-ot { position: static; background: #fff; height: auto !important; }
+  .nv-ot-bar, .nv-ot-crumbs, .nv-ot-keys, .nv-ot-mini, .nv-ot-card__acts { display: none !important; }
   .nv-ot-scroller { overflow: visible; padding: 0; background: #fff; }
   .nv-ot-sizer { width: auto !important; height: auto !important; overflow: visible; }
   .nv-ot-stage { transform: none !important; zoom: var(--print-scale, 1); }

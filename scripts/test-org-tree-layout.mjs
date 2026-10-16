@@ -1,6 +1,5 @@
 /**
- * Full tree with focus (/app/org/chart): chain from the top to the focus, sibling grids beside
- * each chain card, the focus's reports below; direct / total / matrix counts; an employee's
+ * Org chart layout helpers: direct / total / matrix counts; an employee's
  * pruned tree counts only what they may see; zoom steps and stored card options.
  */
 import assert from "node:assert/strict";
@@ -10,8 +9,9 @@ import {
   clampZoom,
   columnsFor,
   countLine,
-  deriveTreeView,
+  defaultExpanded,
   gridWidth,
+  layoutOrgTree,
   pathTo,
   readTreeOptions,
   stepZoom,
@@ -74,45 +74,17 @@ assert.equal(counts.get("s_w3").total, 0);
 assert.equal(counts.get("s_r").matrix, 1, "w2's dotted line lands on r");
 assert.equal(counts.get("s_m").matrix, 0);
 
-/* the view around w1 */
-const v = deriveTreeView(all, "s_w1", { counts });
-assert.deepEqual(v.path, ["s_o", "s_m", "s_w1"], "top → focus");
-assert.deepEqual(pathTo(all, "s_w1"), v.path);
-assert.deepEqual(v.levels.map((l) => l.key), v.path);
-assert.equal(v.focus.key, "s_w1");
-assert.equal(v.levels[0].siblings.length, 0, "a single top has no siblings");
-assert.deepEqual(v.levels[1].siblings.map((c) => c.key), ["s_r"], "beside the branch manager: the other branch");
-const peers = v.levels[2].siblings.map((c) => c.key);
-assert.ok(!peers.includes("s_w1"), "the chain card is not repeated in its grid");
-assert.equal(peers[peers.length - 1], "s_vac", "open seats close the row");
-assert.deepEqual(v.reports.map((c) => c.key), ["s_w3", "s_frz"]);
-assert.equal(v.reportCols, 2);
-assert.equal(v.levels[1].card.direct, 3);
-assert.equal(v.levels[1].card.total, 4);
-assert.equal(v.rendered, 3 + 1 + peers.length + 2, "only chain, grids and reports are drawn");
-
-/* sibling limit and opening a level */
-const tight = deriveTreeView(all, "s_w1", { counts, siblingLimit: 1 });
-assert.equal(tight.levels[2].siblings.length, 1);
-assert.equal(tight.levels[2].hidden, peers.length - 1);
-const opened = deriveTreeView(all, "s_w1", { counts, siblingLimit: 1, openLevels: new Set(["s_w1"]) });
-assert.equal(opened.levels[2].hidden, 0);
-assert.equal(deriveTreeView(all, "nope"), null);
-
-/* re-focus on the top: its reports are the second level */
-const top = deriveTreeView(all, "s_o", { counts });
-assert.equal(top.levels.length, 1);
-assert.deepEqual(top.reports.map((c) => c.key).sort(), ["s_m", "s_r"]);
+/* the chain to w1 (the multi-branch layout itself is covered by test-org-expand) */
+assert.deepEqual(pathTo(all, "s_w1"), ["s_o", "s_m", "s_w1"], "top → card");
 
 /* an employee's tree — counts only what they may see */
 const mine = buildOrgFocusTree(data, { viewerId: "w1", scope: "mine", day: DAY });
 const mc = treeCounts(mine);
 assert.equal(mc.get("s_o").direct, 1, "the other branch is not even counted");
 assert.ok(!mc.has("s_r"));
-const mv = deriveTreeView(mine, mine.viewerKey, { counts: mc });
-assert.deepEqual(mv.path, ["s_o", "s_m", "s_w1"]);
-assert.equal(mv.levels[1].siblings.length, 0, "the manager's peers stay hidden");
-assert.ok(!mv.levels[2].siblings.some((c) => c.vacant), "peer open seats are not in an employee's view");
+assert.deepEqual(pathTo(mine, mine.viewerKey), ["s_o", "s_m", "s_w1"]);
+assert.deepEqual(mine.nodes.get("s_o").childKeys, ["s_m"], "the manager's peers stay hidden");
+assert.ok(!mine.nodes.get("s_m").childKeys.some((k) => mine.nodes.get(k).vacant), "peer open seats are not in an employee's view");
 assert.equal(mc.get("s_r"), undefined);
 for (const node of mine.nodes.values()) assert.ok(node.dottedToKey === "" || mine.nodes.has(node.dottedToKey), "no dotted line into a hidden branch");
 
@@ -147,9 +119,9 @@ big.ownerId = "e0";
 const bt = buildOrgFocusTree(big, { viewerId: "e599", scope: "all", day: DAY });
 const t0 = Date.now();
 const bc = treeCounts(bt);
-const bv = deriveTreeView(bt, bt.viewerKey, { counts: bc });
-assert.ok(Date.now() - t0 < 200, "counts + view in well under a frame budget");
+const bv = layoutOrgTree(bt, defaultExpanded(bt, bt.viewerKey), { childLimit: 24 });
+assert.ok(Date.now() - t0 < 200, "counts + layout in well under a frame budget");
 assert.equal(bc.get(bt.roots[0]).total, 599);
-assert.ok(bv.rendered < 60, `rendered ${bv.rendered} cards, not 600`);
+assert.ok(bv.cards.length < 60, `rendered ${bv.cards.length} cards, not 600`);
 
 console.log("PASS test-org-tree-layout");

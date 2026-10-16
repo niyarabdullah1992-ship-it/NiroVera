@@ -12,9 +12,9 @@ import OrgTreeChart from "@/components/hr/orgdesign/OrgTreeChart";
 const HR_ROLES = ["owner", "director", "admin", "pgm", "hr_manager", "ops_manager"];
 
 /**
- * /app/org/chart — the whole org tree with one focus, full screen: no rail, no header, no other
- * sections; only «رجوع» back to where the viewer came from, search, zoom, download and options.
- * Opens on the viewer's own card; ?focus=<seatId> opens on another.
+ * /app/org/chart — the whole org tree, full screen: no rail, no header, no other sections; only
+ * «رجوع» back to where the viewer came from, search, open/fold all, zoom, download and options.
+ * Opens on the viewer's own card with their chain open; ?focus=<seatId> opens the path to another.
  *
  * HR / owner read the whole tree (scope "all"); everyone else — or ?scope=mine — receives the
  * pruned tree (chain, peers, own subtree), filtered in the data, not only hidden on screen.
@@ -62,6 +62,7 @@ export default function OrgChart() {
       <div className="powercare-shell" dir={ar ? "rtl" : "ltr"} lang={ar ? "ar" : "en"}>
         <PageErrorBoundary resetKey={`tree:${scope}`}>
           <OrgTreeChart
+            key={`${scope}:${currentUser?.id || ""}`}
             ar={ar}
             data={data}
             user={currentUser}

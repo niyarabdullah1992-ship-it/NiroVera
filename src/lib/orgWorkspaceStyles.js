@@ -49,18 +49,3 @@ export const orgBtnPrimary = (disabled = false) => ({
   ...ui.btnCreate,
   ...(disabled ? { opacity: 0.5, cursor: "not-allowed" } : null),
 });
-
-/** Physical center — RTL overflow must not park the tree on the left in fullscreen. */
-export function orgTreeStageStyle(offset, zoom) {
-  return {
-    position: "absolute",
-    left: "50%",
-    top: 20,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    width: "max-content",
-    transform: `translateX(-50%) translate3d(${offset.x || 0}px, ${offset.y || 0}px, 0) scale(${zoom || 1})`,
-    transformOrigin: "top center",
-  };
-}

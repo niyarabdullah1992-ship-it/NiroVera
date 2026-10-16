@@ -25,6 +25,7 @@ import OrgHealthBoard from "@/components/hr/orgdesign/OrgHealthBoard";
 import OrgDoaBoard from "@/components/hr/orgdesign/OrgDoaBoard";
 import OrgChangesBoard from "@/components/hr/orgdesign/OrgChangesBoard";
 import OrgChartEntry from "@/components/hr/orgdesign/OrgChartEntry";
+import { changeSeedFromParams } from "@/lib/orgChartActions";
 
 const PANES = ["chart", "seats", "health", "authority", "changes"];
 
@@ -42,18 +43,14 @@ export default function OrgStructure() {
   const [hire, setHire] = useState(null);
   const [addBranchSignal, setAddBranchSignal] = useState(0);
   const [query, setQuery] = useState("");
-  const [trunkSignal] = useState(0);
-  const [fullSignal] = useState(0);
   const [printSignal] = useState(0);
   const [hrSignal, setHrSignal] = useState(0);
   const [pickHit, setPickHit] = useState(null);
-  const [, setFullActive] = useState(false);
   const [searchHits, setSearchHits] = useState([]);
   const [openEsc, setOpenEsc] = useState(false);
   const [openPerm, setOpenPerm] = useState(false);
   const [openLog, setOpenLog] = useState(false);
   const [openGrades, setOpenGrades] = useState(false);
-  const [byGrade, setByGrade] = useState(false);
   const escRef = useRef(null);
   const permRef = useRef(null);
   const logRef = useRef(null);
@@ -110,15 +107,31 @@ export default function OrgStructure() {
   useEffect(() => {
     if (focusParam && chartMode === "focus") navigate(`/app/org/chart?focus=${encodeURIComponent(focusParam)}`, { replace: true, state: { from: "/app/org" } });
   }, [focusParam, chartMode, navigate]);
-  const clearFocus = useCallback(() => {
-    if (!searchParams.get("focus")) return;
-    const params = new URLSearchParams(searchParams);
-    params.delete("focus");
-    setSearchParams(params);
-  }, [searchParams, setSearchParams]);
   const [changeSeed, setChangeSeed] = useState(null);
   const [seatFocus, setSeatFocus] = useState("");
   const clearSeatFocus = useCallback(() => setSeatFocus(""), []);
+  // the org chart's «⋯» actions land here: ?pane=seats&seat= opens the seat card,
+  // ?pane=changes&op=…&seat= opens a change request seeded with that seat (read once, then dropped)
+  const branchParam = chartMode === "full" ? (searchParams.get("branch") || "") : "";
+  useEffect(() => {
+    if (searchParams.get("hire")) return;
+    const seat = searchParams.get("seat") || "";
+    if (!seat || (pane !== "seats" && pane !== "changes")) return;
+    if (pane === "seats") setSeatFocus(seat);
+    else {
+      const seed = changeSeedFromParams(searchParams);
+      if (seed) setChangeSeed(seed);
+    }
+    const params = new URLSearchParams(searchParams);
+    params.delete("seat");
+    params.delete("op");
+    setSearchParams(params, { replace: true });
+  }, [pane, searchParams, setSearchParams]);
+  const clearBranchParam = useCallback(() => {
+    const params = new URLSearchParams(searchParams);
+    params.delete("branch");
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
   const setPane = useCallback((next) => {
     const params = new URLSearchParams(searchParams);
     if (next === "chart") params.delete("pane");
@@ -361,8 +374,6 @@ export default function OrgStructure() {
                                 </>
                               )}
                               onFocusHr={() => setHrSignal((n) => n + 1)}
-                              onToggleByGrade={() => setByGrade((value) => !value)}
-                              byGrade={byGrade}
                               onAddBranch={canWrite ? () => setAddBranchSignal((n) => n + 1) : undefined}
                             />
                             <OrgTemplateBoard
@@ -374,15 +385,12 @@ export default function OrgStructure() {
                               onQueryChange={setQuery}
                               pickHit={pickHit}
                               onPickHitConsumed={() => setPickHit(null)}
-                              trunkSignal={trunkSignal}
-                              fullSignal={fullSignal}
                               printSignal={printSignal}
                               hrSignal={hrSignal}
-                              onFullChange={setFullActive}
                               onSearchHits={handleSearchHits}
-                              byGrade={byGrade}
-                              focusId={focusParam}
-                              onClearFocus={clearFocus}
+                              focusId={chartMode === "full" ? focusParam : ""}
+                              branchId={branchParam}
+                              onBranchConsumed={clearBranchParam}
                             />
                           </>
                         )}

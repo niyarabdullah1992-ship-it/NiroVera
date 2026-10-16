@@ -16,6 +16,7 @@ import {
   weekStartDate,
 } from "@/lib/shiftWeek";
 import useStationScope from "@/hooks/useStationScope";
+import { isStationScopeManual } from "@/lib/stationScopeStore";
 import { formatShiftHm, shiftHoursLine } from "@/lib/shiftDerivations";
 import { statusBannerQuiet } from "@/lib/platformStyles";
 import { calendarDateKey } from "@/lib/attendanceCalendar";
@@ -77,7 +78,7 @@ export default function MyScheduleView({
   // manages that branch. My own week above stays on my work branch.
   const headerScope = useStationScope();
   const branchView = useMemo(() => {
-    const scoped = headerScope && headerScope !== "all" ? String(headerScope) : "";
+    const scoped = headerScope && headerScope !== "all" && isStationScopeManual() ? String(headerScope) : "";
     if (!scoped || String(scoped) === String(station?.id || "")) return null;
     const managesIt = Boolean(
       currentUser && (

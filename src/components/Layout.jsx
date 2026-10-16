@@ -315,7 +315,7 @@ export default function Layout({ children }) {
       if (target) target.read = true;
     });
     setNotifOpen(false);
-    if (n.stationId) setStationScope(n.stationId);
+    if (n.stationId) setStationScope(n.stationId, { manual: false });
     navigate(n.to || routeForNotification(n.text));
   };
 

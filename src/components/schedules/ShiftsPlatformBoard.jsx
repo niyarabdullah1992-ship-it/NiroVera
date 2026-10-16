@@ -1,4 +1,5 @@
 import React, { Suspense, lazy } from "react";
+import { isStationScopeManual } from "@/lib/stationScopeStore";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { canCreateTasks, isCompanyOwner } from "@/lib/permissions";
@@ -14,10 +15,12 @@ export default function ShiftsPlatformBoard({ lang = "ar", kicker, lane = "mine"
   const { data, currentUser, company } = useAuth();
   const headerScope = useStationScope();
   const mine = lane !== "manage";
+  // الإدارة opens on my own work branch; a branch picked by hand in the header (this tab) takes over.
+  const manualScope = isStationScopeManual();
   const table = rosterTableStation({
     lane: mine ? "mine" : "manage",
     employee: currentUser,
-    headerScope,
+    headerScope: manualScope ? headerScope : "all",
     stations: data?.stations || [],
     fallbackStationId: currentUser?.managedStations?.[0] || data?.stations?.[0]?.id || null,
   });
@@ -36,7 +39,7 @@ export default function ShiftsPlatformBoard({ lang = "ar", kicker, lane = "mine"
   });
   const stationId = table.stationId;
   /** «كل الفروع» in the header still opens one branch editor — said once, under the page head. */
-  const scopeNote = !mine && table.headerAll && stationId && table.stationName ? (
+  const scopeNote = !mine && table.headerAll && (!headerScope || headerScope === "all") && stationId && table.stationName ? (
     <div style={{ ...slab, padding: "11px 18px", borderInlineStart: "3px solid var(--nv-warn-fill)", fontSize: 11.5, color: SW.gold, lineHeight: 1.7 }}>
       {ar
         ? `هذا محرّر فرع ${table.stationName} — النطاق «كل الفروع» لا يخلط جداول الفروع. اختر فرعاً من الهيدر لتبديل المحرر.`

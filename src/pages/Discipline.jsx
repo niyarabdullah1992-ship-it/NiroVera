@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import DisciplineRightsPanel from "@/components/discipline/DisciplineRightsPanel";
 import { Link, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -40,7 +41,7 @@ import { DisciplineHero } from "@/components/discipline/DisciplineCaseCard";
 import RightHint from "@/components/shared/RightHint";
 import FigureRow from "@/components/shared/FigureRow";
 import { KpiAction } from "@/components/shared/StatusFlag";
-import { disciplineCaseHint, disciplineRuleHint } from "@/lib/rightHints.disc";
+import { disciplineCaseHint } from "@/lib/rightHints.disc";
 import { generateDisciplineDeduction, liftDisciplineDeduction } from "@/lib/deductionGenerators";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { ROLE_RANK, canSeeAllStations, hrScopeStations, visibleStations } from "@/lib/permissions";
@@ -1071,17 +1072,7 @@ export default function Discipline() {
               <DamageObjectionRaise key={damagePrefill?.at || "general"} employee={meRow} companyId={company?.id} ar={ar} refresh={refresh} prefill={damagePrefill} onSent={() => { setDamageOpen(false); setDamagePrefill(null); }} />
             ) : null}
 
-            <section style={PACK_CARD}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)" }}>
-                <strong style={{ fontSize: 13 }}>{ar ? "حقوقي في هذا المسار" : "My rights on this path"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({RIGHTS.length})</span></strong>
-              </div>
-              {RIGHTS.map((row) => (
-                <div key={row.ruleId} data-disc-right={row.ruleId} style={{ display: "flex", gap: 12, alignItems: "baseline", justifyContent: "space-between", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)" }}>
-                  <span style={{ fontSize: 12.5, color: "var(--nv-ink)", lineHeight: 1.7, minWidth: 0 }}>{ar ? row.ar : row.en}</span>
-                  <RightHint ar={ar} onDate={board.today} hint={disciplineRuleHint(row.ruleId, ar ? row.ar : row.en, { view: "employee", ar, today: board.today })} />
-                </div>
-              ))}
-            </section>
+            <DisciplineRightsPanel rights={RIGHTS} ar={ar} today={board.today} />
 
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "11px 16px", fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
               <span>

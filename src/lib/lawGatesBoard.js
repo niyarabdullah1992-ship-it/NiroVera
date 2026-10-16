@@ -12,6 +12,7 @@ import { hoursPolicyOf } from "./laborHoursPolicy.js";
 import { ruleValue } from "./laborRules.js";
 import { statusFromWeekCheck } from "./lawGateStatus.js";
 import { NIGHT_WORK_RIGHTS } from "./nightWorkRights.js";
+import { eidOverlapRegsNote, juvenileNightRegsNote, overtimeRegsNote, regsDecisionLine } from "./implementingRegsNotes.js";
 
 function checkById(gates, id) {
   return (gates?.checks || []).find((row) => row?.id === id) || null;
@@ -418,6 +419,8 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
         return voidPill(ar, overtime ? undefined : (ar ? "يُقرَّر في قسم الإضافي" : "Decided on the OT board"));
       })(),
       checkId: "overtime_107",
+      // Regs Arts. 22 / 22 bis — the 720h cap and compensatory leave, enforced on the OT board.
+      regs: overtimeRegsNote(ar, onDate),
     },
     {
       article: "108",
@@ -448,22 +451,7 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
         return { status: "settled", who: "" };
       })(),
       checkId: holiday?.id,
-    },
-    {
-      article: "113",
-      summary: ar
-        ? "إجازة زواج أو وفاة الزوج/الأصول/الفروع خمسة أيام · وفاة الأخ/الأخت ثلاثة · ولادة مولود ثلاثة خلال سبعة أيام من الواقعة"
-        : "Marriage or death of spouse/ascendants/descendants: five days · sibling death: three · childbirth: three within seven days of the event",
-      status: "void",
-      pillLabel: ar ? "بلا أثر" : "No effect",
-    },
-    {
-      article: "115",
-      summary: ar
-        ? "إجازة امتحان بأيامه الفعلية · إشعار 15 يوماً · الوثائق المؤيدة"
-        : "Exam leave for actual exam days · 15 days' notice · supporting documents",
-      status: "void",
-      pillLabel: ar ? "بلا أثر" : "No effect",
+      regs: eidOverlapRegsNote(ar),
     },
     {
       article: "149",
@@ -541,6 +529,8 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
         return { status: "void", who: "", pillLabel: ar ? "بلا أثر" : "No effect" };
       })(),
       checkId: juvenileNight && !juvenileNight.ok ? juvenileNight.id : (juvenileGap && !juvenileGap.ok ? juvenileGap.id : (juvenileNight?.id || "juvenile_night")),
+      // Regs Art. 34 — the exceptions; the roster does not grant them, so they read as information.
+      regs: juvenileNightRegsNote(ar),
     },
     {
       article: "164",
@@ -582,6 +572,7 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
     footer: ar
       ? "نظام العمل الصادر بالمرسوم الملكي م/51. كل صف يُفحص على الأسبوع المعروض ويكتب أثره في سجل الموظف. ما يخص الليل أو حظر الشمس يبقى في لوحه."
       : "Labour Law issued by Royal Decree M/51. Each row is checked on the week shown and recorded on the employee file. Night and sun-ban duties stay on their own panels.",
+    regsSource: regsDecisionLine(ar),
     rows,
   };
 }

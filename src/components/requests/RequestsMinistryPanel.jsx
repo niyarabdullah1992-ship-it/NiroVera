@@ -4,6 +4,14 @@ import { lawArticleCards } from "@/lib/requestWorkspace";
 import { profileLeaveGender } from "@/lib/leaveDerivations";
 import { injuryLeaves, injuryStatus } from "@/lib/workInjury";
 import { nursingSplitLabel, nursingSplitOf } from "@/lib/dutyRequests";
+import {
+  annualLeaveRegsNote,
+  disabilityDefinitionsRegsNote,
+  sickLeaveRegsNote,
+  treatmentDaysRegsNote,
+  unpaidLeaveRegsNote,
+  workplaceClauseRegsNote,
+} from "@/lib/implementingRegsNotes";
 import { chipButton, mono, quietAction, SectionHead, slab } from "@/components/schedules/scheduleChrome";
 import MinistrySourceCards, {
   Counter,
@@ -12,6 +20,7 @@ import MinistrySourceCards, {
   ministryBadgeText,
   MinistryRow,
   MinistrySourceTabs,
+  RegsSourceLine,
 } from "@/components/schedules/MinistrySourceCards";
 
 /**
@@ -48,6 +57,14 @@ const LABOUR_TYPES = {
   60: [],
 };
 const FEMALE_ONLY = new Set(["151", "160", "154"]);
+
+/** Implementing Regulations that rest on a Labour Law article — read under that article's row. */
+const REGS_ON_ARTICLE = {
+  109: annualLeaveRegsNote,
+  116: unpaidLeaveRegsNote,
+  117: sickLeaveRegsNote,
+  58: workplaceClauseRegsNote,
+};
 
 function Num({ children }) {
   return <span dir="ltr" style={mono}>{children}</span>;
@@ -127,7 +144,7 @@ export default function RequestsMinistryPanel({ ar = true, lang = "ar", subject,
           source: "labour",
           badge: ar ? `م ${card.art}` : `Art. ${card.art}`,
           title: card.name || (ar ? `المادة ${card.art}` : `Article ${card.art}`),
-          note: card.impl || card.hint || "",
+          note: [card.impl || card.hint || "", REGS_ON_ARTICLE[card.art]?.(ar) || ""].filter(Boolean).join(" · "),
           status: info ? "void" : (facts.resignation && types.includes("resignation") ? "settled" : statusOf(types, requests, card.art)),
           sub: types.includes("resignation") ? facts.resignation : undefined,
           info,
@@ -146,6 +163,17 @@ export default function RequestsMinistryPanel({ ar = true, lang = "ar", subject,
         live: liveKind === "nursing_hour",
       });
     }
+    // Model Art. 42 + Annex 2 — dialysis and treatment days are paid leave on the provider's report.
+    // Leave lives in طلباتي; the employee file keeps only contract rules.
+    if (!fileMode) list.push({
+      key: "model-42",
+      source: "labour",
+      badge: ar ? "النموذج الموحد م42" : "Model Art. 42",
+      title: ar ? "الغسيل الكلوي وأيام العلاج — الملحق 2" : "Dialysis and treatment days — Annex 2",
+      note: `${treatmentDaysRegsNote(ar)} — ${disabilityDefinitionsRegsNote(ar)}`,
+      status: statusOf(["dialysis"], requests),
+      live: liveKind === "leave:dialysis",
+    });
     const injuryOnFile = injuryLeaves(subject).length > 0;
     if (!fileMode || injuryOnFile) list.push({
       key: "labour-gosi",
@@ -346,6 +374,7 @@ export default function RequestsMinistryPanel({ ar = true, lang = "ar", subject,
           {own ? (ar ? "أنظمة الدوام في الحضور والدوام" : "Duty rules in Attendance") : (ar ? "أنظمة الدوام في تبويب الدوام" : "Duty rules in the Duty tab")}
         </Link> : null}
       </div>
+      <RegsSourceLine ar={ar} />
     </section>
   );
 }

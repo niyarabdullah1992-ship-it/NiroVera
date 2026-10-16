@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { mono, SectionHead, slab } from "@/components/schedules/scheduleChrome";
-import MinistrySourceCards, { Counter, ministryBadgeStyle, MinistryRow } from "@/components/schedules/MinistrySourceCards";
+import MinistrySourceCards, { Counter, ministryBadgeStyle, MinistryRow, RegsSourceLine } from "@/components/schedules/MinistrySourceCards";
 import RightHint from "@/components/shared/RightHint";
 import { citeRule } from "@/lib/laborRules";
 import { disciplineRuleHint } from "@/lib/rightHints.disc";
@@ -124,6 +124,7 @@ export default function DisciplineRightsPanel({ rights = [], ar = true, today })
           ))}
         </div>
       ))}
+      <RegsSourceLine ar={ar} />
     </section>
   );
 }

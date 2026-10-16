@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { mono, SectionHead, slab } from "@/components/schedules/scheduleChrome";
-import MinistrySourceCards, { Counter, ministryBadgeStyle, MinistryRow } from "@/components/schedules/MinistrySourceCards";
+import MinistrySourceCards, { Counter, ministryBadgeStyle, MinistryRow, RegsSourceLine } from "@/components/schedules/MinistrySourceCards";
 
 /**
  * «أنظمة الوزارة — ما يخص صوت الموظف» — the same frame, source cards, group bands and rows as
@@ -98,6 +98,7 @@ export default function VoiceLawPanel({ ar, breached = 0 }) {
           ))}
         </div>
       ))}
+      <RegsSourceLine ar={ar} />
     </section>
   );
 }

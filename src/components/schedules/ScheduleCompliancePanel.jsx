@@ -29,6 +29,7 @@ import MinistrySourceCards, {
   MinistryRow,
   MinistrySourceTabs,
   ministrySourceLabel,
+  RegsSourceLine,
 } from "@/components/schedules/MinistrySourceCards";
 
 const OPEN_STATUS = new Set(["blocked", "violation", "waiting", "alert", "coming"]);
@@ -99,7 +100,8 @@ export function flattenBoard(board, gates, ar) {
       status: row.status,
       pillLabel: row.pillLabel,
       title,
-      summary: row.summary === title ? "" : row.summary,
+      // Implementing Regulations that rest on this article (e.g. Regs 22/22 bis on 107) read under it.
+      summary: [row.summary === title ? "" : row.summary, row.regs || ""].filter(Boolean).join(" · "),
       who: row.who || "",
       detail: row.detail || "",
       checkId: row.checkId || "",
@@ -482,6 +484,7 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
           ) : null}
         </div>
       ) : null}
+      <RegsSourceLine ar={ar} />
     </section>
   );
 });

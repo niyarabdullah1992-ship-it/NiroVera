@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { deriveDisciplineLawBoard } from "@/lib/disciplineBoard";
 import { citeRule } from "@/lib/laborRules";
 import { mono, quietAction, SectionHead, slab, sourceBadge } from "@/components/schedules/scheduleChrome";
-import MinistrySourceCards, { Counter, MinistryRow } from "@/components/schedules/MinistrySourceCards";
+import MinistrySourceCards, { Counter, MinistryRow, RegsSourceLine } from "@/components/schedules/MinistrySourceCards";
 
 /**
  * «أنظمة الوزارة — ما يخص الجزاءات» — the same frame, cards, groups and rows as «أنظمة الوزارة» in طلباتي.
@@ -144,6 +144,7 @@ export default function DisciplineLawBoard({ cases, employees, ar, today, own = 
         </p>
         <Link to="/app/payroll?tab=deduct" style={quietAction({ fontSize: 12, color: "var(--nv-ok-ink)" })}>{ar ? "الحسم في مسير الرواتب" : "The cut in payroll"}</Link>
       </div>
+      <RegsSourceLine ar={ar} />
     </section>
   );
 }

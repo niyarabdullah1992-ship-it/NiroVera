@@ -25,6 +25,7 @@ import MinistrySourceCards, {
   ministryBadgeText,
   MinistryRow,
   MinistrySourceTabs,
+  RegsSourceLine,
 } from "@/components/schedules/MinistrySourceCards";
 
 const RANK = { blocked: 0, violation: 0, alert: 1, waiting: 1, settled: 2, void: 3 };
@@ -558,6 +559,7 @@ export default function MinistryPersonalPanel({
           </Link>
         ) : null}
       </div>
+      <RegsSourceLine ar={ar} />
     </section>
   );
 }

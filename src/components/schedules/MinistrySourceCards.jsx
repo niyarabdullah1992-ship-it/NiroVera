@@ -1,6 +1,7 @@
 import React from "react";
 import { StatusFlag } from "@/components/shared/StatusFlag";
 import { chip, mono, sourceBadge, statusTone } from "@/components/schedules/scheduleChrome";
+import { regsDecisionLine } from "@/lib/implementingRegsNotes";
 
 /**
  * The three ministry sources — 18632 / 3337 / نظام العمل — as one balanced row of cards.
@@ -183,5 +184,14 @@ export function MinistryRow({ source, badge, status, pill, title, note, sub, com
         {action || null}
       </span>
     </div>
+  );
+}
+
+/** The instrument every «اللائحة» row cites — one quiet line at the foot of each «أنظمة الوزارة» panel. */
+export function RegsSourceLine({ ar = true, style }) {
+  return (
+    <p data-regs-source="115921" style={{ margin: 0, padding: "8px 18px 12px", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7, ...style }}>
+      {regsDecisionLine(ar)}
+    </p>
   );
 }

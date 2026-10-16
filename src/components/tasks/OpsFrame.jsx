@@ -31,10 +31,10 @@ export default function OpsFrame({ ar = true, lane = "mine", section = null, tit
   );
 }
 
-/** List / plan switch on the green head (light on dark). */
+/** Page switch on the green head (light on dark). An option may carry a `count` (mono, ink-on-white when on); wraps on a phone. */
 export function HeroSwitch({ options = [], value, onChange, label }) {
   return (
-    <div role="tablist" aria-label={label} data-hero-switch="1" style={{ display: "inline-flex", gap: 4, padding: 3, borderRadius: 9, background: "rgba(255,255,255,.10)", border: "1px solid rgba(255,255,255,.22)" }}>
+    <div role="tablist" aria-label={label} data-hero-switch="1" style={{ display: "inline-flex", flexWrap: "wrap", maxWidth: "100%", boxSizing: "border-box", gap: 4, padding: 3, borderRadius: 9, background: "rgba(255,255,255,.10)", border: "1px solid rgba(255,255,255,.22)" }}>
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -46,6 +46,10 @@ export function HeroSwitch({ options = [], value, onChange, label }) {
             onClick={() => onChange?.(o.value)}
             style={{
               fontFamily: "inherit",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
               height: 30,
               minWidth: 72,
               padding: "0 12px",
@@ -59,6 +63,9 @@ export function HeroSwitch({ options = [], value, onChange, label }) {
             }}
           >
             {o.label}
+            {o.count ? (
+              <span dir="ltr" style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", fontSize: 10.5, fontWeight: 600, opacity: on ? 0.75 : 0.85 }}>{o.count}</span>
+            ) : null}
           </button>
         );
       })}

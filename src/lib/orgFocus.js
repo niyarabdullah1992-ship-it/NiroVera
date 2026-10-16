@@ -15,7 +15,7 @@ import { stationParentId } from "./stationTree.js";
 const str = (value) => String(value ?? "").trim();
 
 /** Keep only what a card shows. File data (employee numbers, hire dates, grades) never travels. */
-const CARD_FIELDS = ["key", "id", "seatId", "employeeId", "stationId", "name", "title", "unit", "seatCode", "state", "vacant", "isMe"];
+const CARD_FIELDS = ["key", "id", "seatId", "employeeId", "stationId", "name", "title", "unit", "seatCode", "state", "vacant", "isMe", "avatarUrl", "dottedToKey"];
 
 export const FOCUS_STATE_LABELS = {
   vacant: { ar: "شاغر", en: "Vacant" },
@@ -72,6 +72,9 @@ export function buildOrgFocusTree(data, { viewerId = "", scope = "mine", ar = tr
       state,
       vacant: Boolean(raw.vacant),
       isMe: Boolean(viewerId) && str(raw.employeeId) === str(viewerId),
+      avatarUrl: raw.vacant ? "" : str(raw.avatarUrl),
+      // a dotted (matrix) line to another seat — counted on that seat's card as «مصفوفة»
+      dottedToKey: str(seat?.dottedToSeatId),
       parentKey: parentKey || "",
       childKeys: [],
     };
@@ -146,6 +149,7 @@ function pruneToViewer(tree, scope) {
     const src = tree.nodes.get(key);
     const node = {};
     CARD_FIELDS.forEach((field) => { node[field] = src[field]; });
+    if (!keep.has(node.dottedToKey)) node.dottedToKey = ""; // a line into a hidden branch says nothing
     node.parentKey = keep.has(src.parentKey) ? src.parentKey : "";
     node.childKeys = src.childKeys.filter((child) => keep.has(child));
     nodes.set(key, node);
@@ -176,7 +180,7 @@ export function focusCard(tree, key) {
 }
 
 /** People before open seats; then by name/title so the order is stable. */
-function orderKeys(tree, keys) {
+export function orderKeys(tree, keys) {
   return [...keys].sort((a, b) => {
     const x = tree.nodes.get(a);
     const y = tree.nodes.get(b);

@@ -53,12 +53,15 @@ function SectionHead({ title, note, end }) {
 
 function ProofSeal({ code, ar, size = 148 }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const ring = ar ? "ختم الإثبات • ملف موثّق من سجلاته • " : "PROOF SEAL • A FILE PROVEN BY ITS RECORDS • ";
+  const top = ar ? "ختم الإثبات" : "PROOF SEAL";
+  const bottom = ar ? "ملف موثّق من سجلاته" : "PROVEN BY ITS RECORDS";
   const [a, b] = code ? [code.slice(0, 9), code.slice(10)] : ["····-····", "····"];
   return (
     <svg width={size} height={size} viewBox="0 0 160 160" role="img" aria-label={ar ? `ختم الإثبات — رمز الملف ${code || ""}` : `Proof seal — file code ${code || ""}`} style={{ display: "block", transform: "rotate(-7deg)" }}>
       <defs>
-        <path id={`ring${uid}`} d="M80,80 m-58,0 a58,58 0 1,1 116,0 a58,58 0 1,1 -116,0" />
+        {/* Two arcs read upright: the title over the top, the line under the bottom (a full RTL ring path drops Arabic in Chromium). */}
+        <path id={`top${uid}`} d="M24,80 a56,56 0 0,1 112,0" />
+        <path id={`bot${uid}`} d="M16,80 a64,64 0 0,0 128,0" />
         <filter id={`ink${uid}`} x="-5%" y="-5%" width="110%" height="110%">
           <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="n" />
           <feDisplacementMap in="SourceGraphic" in2="n" scale="1.6" />
@@ -70,11 +73,15 @@ function ProofSeal({ code, ar, size = 148 }) {
         <circle cx="80" cy="80" r="45" strokeWidth="0.9" />
       </g>
       <g fill={SEAL_INK} filter={`url(#ink${uid})`}>
-        {/* Arabic keeps its joins: no letter-spacing or stretched length on the ring, only a repeat. */}
-        <text fontSize="10.5" fontWeight="700" letterSpacing={ar ? 0 : 0.6} style={{ fontFamily: "var(--font-heading)" }}>
-          <textPath href={`#ring${uid}`} startOffset="0" {...(ar ? {} : { textLength: 360, lengthAdjust: "spacing" })}>{ar ? ring + ring : ring}</textPath>
+        <text fontSize="12" fontWeight="700" textAnchor="middle" style={{ fontFamily: "var(--font-heading)" }}>
+          <textPath href={`#top${uid}`} startOffset="50%">{top}</textPath>
         </text>
-        <text x="80" y="66" textAnchor="middle" fontSize="8.5" fontWeight="600" style={{ fontFamily: "var(--font-heading)" }}>{ar ? "رمز الملف" : "FILE CODE"}</text>
+        <text fontSize="9.5" fontWeight="700" textAnchor="middle" style={{ fontFamily: "var(--font-heading)" }}>
+          <textPath href={`#bot${uid}`} startOffset="50%">{bottom}</textPath>
+        </text>
+        <text x="15" y="83" textAnchor="middle" fontSize="8">✦</text>
+        <text x="145" y="83" textAnchor="middle" fontSize="8">✦</text>
+        <text x="80" y="66" textAnchor="middle" fontSize="9.5" fontWeight="600" style={{ fontFamily: "var(--font-heading)" }}>{ar ? "رمز الملف" : "FILE CODE"}</text>
         <text x="80" y="84" textAnchor="middle" fontSize="12.5" fontWeight="700" direction="ltr" style={mono}>{a}</text>
         <text x="80" y="100" textAnchor="middle" fontSize="12.5" fontWeight="700" direction="ltr" style={mono}>{b}</text>
       </g>
@@ -95,6 +102,7 @@ const PRINT_CSS = `
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .nv-myfile-noprint { display: none !important; }
+  .nv-myfile-printonly { display: flex !important; }
 }`;
 
 /** Print the card alone, A5 landscape — a scoped stylesheet lives only for this print. */
@@ -134,6 +142,8 @@ function ProfessionalCard({ card, ar, self, companyName }) {
   };
 
   return (
+    <>
+    <style>{".nv-myfile-printonly{display:none}"}</style>
     <section className="nv-myfile-card" aria-label={ar ? (self ? "بطاقتي المهنية" : "بطاقته المهنية") : "Professional card"} style={{ position: "relative", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, padding: "22px clamp(16px,4vw,28px) 20px", boxShadow: "var(--nv-paper)" }}>
       <span aria-hidden style={{ position: "absolute", inset: 6, border: "1px solid var(--nv-line)", borderRadius: 10, pointerEvents: "none" }} />
       <div style={{ position: "relative", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", paddingBottom: 14, marginBottom: 16, borderBottom: "1px solid var(--nv-line)" }}>
@@ -146,7 +156,7 @@ function ProfessionalCard({ card, ar, self, companyName }) {
 
       <div style={{ position: "relative", display: "flex", flexWrap: "wrap", gap: "20px 28px", alignItems: "flex-start" }}>
         <div style={{ flex: "1 1 280px", minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+          <div className="nv-myfile-printonly" style={{ alignItems: "center", gap: 14, marginBottom: 16 }}>
             <span aria-hidden style={{ width: 56, height: 56, flex: "none", borderRadius: "50%", border: "1px solid var(--nv-line)", background: "var(--nv-soft)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-heading)", fontSize: 19, fontWeight: 700, color: "var(--nv-ink)" }}>
               {card.initials}
             </span>
@@ -179,6 +189,7 @@ function ProfessionalCard({ card, ar, self, companyName }) {
         </div>
       </div>
     </section>
+    </>
   );
 }
 
@@ -203,7 +214,7 @@ function ServiceStory({ story, ar, self }) {
       ) : story.years.map((y) => (
         <details key={y.year} open={y.open} style={{ borderTop: "1px solid var(--nv-line)" }}>
           <summary style={{ cursor: "pointer", padding: "12px 20px" }}>
-            <strong dir="ltr" style={{ ...mono, fontSize: 15, color: "var(--nv-ink)", marginInlineEnd: 10 }}>{y.year}</strong>
+            <strong style={{ ...mono, fontSize: 15, color: "var(--nv-ink)", marginInlineEnd: 10, display: "inline-block" }}>{y.year}</strong>
             <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>
               {ar ? (y.events.length === 1 ? "حدث واحد" : y.events.length === 2 ? "حدثان" : `${y.events.length} ${y.events.length <= 10 ? "أحداث" : "حدثاً"}`) : `${y.events.length} event${y.events.length === 1 ? "" : "s"}`}
             </span>
@@ -320,36 +331,6 @@ function Readiness({ readiness, ar, self, onOpenTab }) {
 
 /* ─────────────────────────── 4 · compliance and linked records ─────────────────────────── */
 
-function ComplianceList({ rows, ar, onOpenTab }) {
-  const met = rows.filter((row) => row.ok && !row.warn).length;
-  // GOSI's note carries the contributory wage — pay lives in قسيمتي, so it is not repeated here.
-  const noteOf = (row) => (row.id === "gosi" ? (row.ok ? (ar ? "مشترك" : "Registered") : (ar ? "لا رقم اشتراك" : "No GOSI number")) : (row.note || row.state || "—"));
-  return (
-    <section style={paper}>
-      <SectionHead
-        title={ar ? "امتثال الملف لأنظمة الوزارة" : "File compliance"}
-        end={<span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)" }}>{ar ? `${met} من ${rows.length} مستوفٍ` : `${met} of ${rows.length} met`}</span>}
-      />
-      {rows.length === 0 ? <p style={{ margin: 0, padding: "14px 20px", fontSize: 12, color: "var(--nv-ink3)" }}>—</p> : (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {rows.map((row) => {
-            const tone = row.ok && !row.warn ? "ok" : row.warn ? "warn" : "bad";
-            return (
-              <li key={row.id} style={{ borderTop: "1px solid var(--nv-line)" }}>
-                <button type="button" onClick={() => onOpenTab?.(row.tab)} style={{ fontFamily: "inherit", textAlign: "start", width: "100%", border: "none", background: "transparent", cursor: "pointer", display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "4px 12px", padding: "11px 20px" }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)", minWidth: "7em" }}>{row.label}</span>
-                  <span style={{ flex: "1 1 180px", minWidth: 0, fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.7 }}>{noteOf(row)}</span>
-                  <Chip tone={tone}>{row.state}</Chip>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
-
 function LinkedRecords({ view, ar, self, onOpenTab }) {
   const live = (view.penalties || []).filter((row) => row.tone === "warn").length;
   const soon = (view.docs || []).some((row) => row.days != null && row.days <= EXPIRY_WARN_DAYS);
@@ -419,7 +400,7 @@ export default function EmployeeFileSummary({
       <ProfessionalCard card={card} ar={ar} self={isSelf} companyName={companyName} />
       <ServiceStory story={story} ar={ar} self={isSelf} />
       <Readiness readiness={readiness} ar={ar} self={isSelf} onOpenTab={onOpenTab} />
-      <ComplianceList rows={view.compliance || []} ar={ar} onOpenTab={onOpenTab} />
+      {/* The ministry compliance rows (contract, GOSI, insurance, documents) are the readiness items above — not repeated. */}
       <LinkedRecords view={view} ar={ar} self={isSelf} onOpenTab={onOpenTab} />
     </div>
   );

@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { OK, WARN, BAD, statusBanner } from "@/lib/platformStyles";
 import { checkContractTermGate, collectEmployeeValidityDocs, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { deriveProbationProgress, deriveArt55Conversion } from "@/lib/contractLawDerivations";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import RightHint from "@/components/shared/RightHint";
+import { fileAlertHint } from "@/lib/rightHints.disc";
 import { annualEntitlementDue } from "@/lib/leaveEntitlementCycle";
 import { employeeFileVoice } from "@/lib/employeeFileView";
 
@@ -63,7 +64,7 @@ export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
       });
     } else if (term.warning === "ART55_CONVERTED") {
       rows.push({
-        label: ar ? "المادة 55" : "Article 55",
+        label: ar ? "تحوّل العقد" : "Contract conversion",
         value: ar ? (term.reason || "يُعد غير محدد المدة") : (term.reasonEn || "Deemed indefinite"),
         chipText: ar ? "يُكتب في الملف" : "Written to file",
         chipStyle: WARN,
@@ -92,7 +93,7 @@ export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
           : (ar ? `${probation.remaining} يومًا` : `${probation.remaining} days`),
         chipText: probation.warning === "PROBATION_ENDED" ? (ar ? "انتهت" : "Ended") : (ar ? "تنبيه 15 يوماً" : "15-day watch"),
         chipStyle: probation.warning === "PROBATION_ENDED" ? BAD : WARN,
-        ruleId: "contract.probation.warnDays",
+        ruleId: "contract.probation.maxDays",
       });
     }
     const leaveDue = annualEntitlementDue(employee);
@@ -102,7 +103,7 @@ export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
         value: leaveDue.kind === "year_end" || String(leaveDue.noticeKey || "").endsWith("year_end")
           ? (ar ? `${leaveDue.remaining} يوماً متبقية قبل نهاية سنة الاستحقاق` : `${leaveDue.remaining} days left before the entitlement year ends`)
           : (ar ? `سنة الاستحقاق بدأت — رصيد ${leaveDue.remaining} يوماً` : `Entitlement year started — ${leaveDue.remaining} days`),
-        chipText: ar ? "المادة 109" : "Art. 109",
+        chipText: ar ? "مستحقة" : "Due",
         chipStyle: WARN,
         href: "/app/requests",
         ruleId: "leave.annual.days",
@@ -111,7 +112,7 @@ export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
     const art55 = deriveArt55Conversion(employee);
     if (art55.converts && term.warning !== "ART55_CONVERTED") {
       rows.push({
-        label: ar ? "المادة 55" : "Article 55",
+        label: ar ? "تحوّل العقد" : "Contract conversion",
         value: ar ? (art55.reason || "يُعد غير محدد المدة") : (art55.reasonEn || "Deemed indefinite"),
         chipText: ar ? "يُكتب في الملف" : "Written to file",
         chipStyle: BAD,
@@ -119,7 +120,7 @@ export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
       });
     } else if (art55.approaching) {
       rows.push({
-        label: ar ? "المادة 55" : "Article 55",
+        label: ar ? "تحوّل العقد" : "Contract conversion",
         value: ar ? "اقتراب حد التجديد أو الأربع سنوات" : "Near the renewal or four-year cap",
         chipText: ar ? "متابعة" : "Watch",
         chipStyle: WARN,
@@ -158,9 +159,11 @@ export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
             ) : (
               <span style={{ fontSize: 11, color: "var(--nv-ink2, #3C4657)", lineHeight: 1.85, minWidth: 0 }}>{a.label} — {a.value}</span>
             )}
-            <span style={{ fontSize: 10, fontWeight: 600, color: a.chipStyle?.color || "var(--nv-warn-ink)", whiteSpace: "nowrap" }}>{a.chipText}</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: a.chipStyle?.color || "var(--nv-warn-ink)" }}>{a.chipText}</span>
+              {a.ruleId ? <RightHint ar={ar} hint={fileAlertHint(a, employee, { view: voice.own ? "employee" : "manager", ar })} /> : null}
+            </span>
           </div>
-          {a.ruleId ? <LaborArticleCite ruleId={a.ruleId} ar={ar} /> : null}
         </div>
       ))}
     </section>

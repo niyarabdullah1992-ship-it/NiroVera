@@ -8,6 +8,8 @@ import { printDisciplinePaper } from "@/lib/disciplineDoc";
 import { regulationDate } from "@/lib/workRegulation";
 import { DetailHero, HeroBar, HeroFigure, HeroPill, HeroPrintButton } from "@/components/tasks/detail/DetailKit";
 import EscalationLadder from "@/components/shared/EscalationLadder";
+import RightHint from "@/components/shared/RightHint";
+import { disciplineCaseHint } from "@/lib/rightHints.disc";
 
 const ACTION = "#3C7D50";
 const GOLD = "#C8A45A";
@@ -108,13 +110,13 @@ export function DisciplineHero({ card, ar = true, mine = false, companyName = ""
         />
       )}
       facts={[
-        { label: ar ? "الجزاء (المادة 66)" : "Penalty (Art. 66)", value: card.penalty || "—", tone: "gold" },
+        { label: ar ? "الجزاء" : "Penalty", value: card.penalty || "—", tone: "gold" },
         card.item?.regulationRef ? {
-          label: ar ? "بند اللائحة (المادة 67)" : "Regulation clause (Art. 67)",
+          label: ar ? "بند اللائحة" : "Regulation clause",
           value: `${card.item.regulationOffence || "—"}${card.item.regulationTime ? (ar ? ` · المرة ${["الأولى", "الثانية", "الثالثة", "الرابعة"][card.item.regulationTime - 1] || card.item.regulationTime}` : ` · time ${card.item.regulationTime}`) : ""}`,
         } : null,
         card.cut > 0 ? { label: ar ? "الحسم" : "The cut", value: `${Math.round(card.cut).toLocaleString("en-US")} ${ar ? "ر.س" : "SAR"}`, mono: true, tone: "bad" } : null,
-        ...(card.meters || []).map((m) => ({ label: `${m.label} · ${ar ? "م" : "Art."} ${m.article}`, value: m.text || "—", mono: true, tone: m.over ? "bad" : undefined })),
+        ...(card.meters || []).map((m) => ({ label: m.label, value: m.text || "—", mono: true, tone: m.over ? "bad" : undefined })),
       ]}
     >
       <div style={{ background: "var(--nv-card)", borderRadius: 12, padding: "12px 12px 6px" }}>
@@ -151,7 +153,7 @@ function DeliveryProof({ item, ar, today, onDelivery }) {
   const input = { fontFamily: "inherit", fontSize: 13, height: 38, padding: "0 10px", border: "1px solid var(--nv-line)", borderRadius: 8, background: "var(--nv-page)", color: "var(--nv-ink)", boxSizing: "border-box", minWidth: 0 };
   return (
     <div data-disc-delivery="" style={{ margin: "0 20px 12px", display: "flex", flexDirection: "column", gap: 8, border: "1px solid var(--nv-line)", borderInlineStart: `3px solid ${GOLD}`, borderRadius: 8, padding: "10px 14px" }}>
-      <span style={{ fontSize: 12.5, fontWeight: 700 }}>{ar ? "إثبات إبلاغ العامل بالقرار (المادة 72 · النموذج م68)" : "Proof the decision reached the worker (Art. 72 · model Art. 68)"}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 700 }}>{ar ? "إثبات إبلاغ العامل بالقرار" : "Proof the decision reached the worker"}</span>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,180px),1fr))", gap: 8 }}>
         <select value={method} onChange={(e) => setMethod(e.target.value)} style={input} aria-label={ar ? "طريقة الإبلاغ" : "Delivery method"}>
           {DISCIPLINE_DELIVERY_METHODS.map((m) => <option key={m.id} value={m.id}>{ar ? m.ar : m.en}</option>)}
@@ -164,7 +166,7 @@ function DeliveryProof({ item, ar, today, onDelivery }) {
   );
 }
 
-export default function DisciplineCaseCard({ card, ar, onAction, onUploadSigned, onDelivery, today = "", companyName = "" }) {
+export default function DisciplineCaseCard({ card, ar, onAction, onUploadSigned, onDelivery, today = "", companyName = "", isHoliday }) {
   const primary = card.actions.find((action) => action.kind === "go") || card.actions[0] || null;
   const rest = card.actions.filter((action) => action !== primary);
 
@@ -229,6 +231,12 @@ export default function DisciplineCaseCard({ card, ar, onAction, onUploadSigned,
           <ConsentFileLink file={card.signedPaper} ar={ar}>{ar ? "نزّل الموقَّعة" : "Download the signed copy"}</ConsentFileLink>
         ) : null}
         <span style={{ flex: 1 }} />
+        <RightHint
+          ar={ar}
+          onDate={today}
+          hint={disciplineCaseHint(card.item, { view: "manager", ar, today, isHoliday, employee: card.employee })}
+          onAction={() => document.querySelector("[data-discipline-case] footer")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+        />
         <span style={{ fontSize: 11.5, color: "var(--nv-ink2)" }}>{ar ? "كل خطوة تُسجَّل باسمك ووقتها في التدقيق." : "Every step is stored with your name and time."}</span>
       </footer>
 

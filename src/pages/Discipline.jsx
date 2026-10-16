@@ -32,14 +32,15 @@ import DisciplineLawBoard from "@/components/discipline/DisciplineLawBoard";
 import DisciplineMineCard from "@/components/discipline/DisciplineMineCard";
 import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
 import OpsSideSlab, { OpsListHead } from "@/components/tasks/OpsSideSlab";
-import { DutyNumber, DutyTile } from "@/components/schedules/DutyTiles";
-import { KpiAction } from "@/components/shared/StatusFlag";
 import { DisciplineHero } from "@/components/discipline/DisciplineCaseCard";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import RightHint from "@/components/shared/RightHint";
+import FigureRow from "@/components/shared/FigureRow";
+import { KpiAction } from "@/components/shared/StatusFlag";
+import { disciplineCaseHint, disciplineRuleHint } from "@/lib/rightHints.disc";
 import { generateDisciplineDeduction, liftDisciplineDeduction } from "@/lib/deductionGenerators";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { ROLE_RANK, canSeeAllStations, hrScopeStations, visibleStations } from "@/lib/permissions";
-import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { useRailSide, useSetRailSide } from "@/lib/railSide";
 import { checkPublishRegulationGate, planRegulationAck, regulationDate, regulationNextStep, regulationOf, regulationRef, regulationStepFor } from "@/lib/workRegulation";
 import { deadlineText, disciplineDeadlines } from "@/lib/disciplineDeadlines";
@@ -215,6 +216,7 @@ export default function Discipline() {
   const [clauseId, setClauseId] = useState("");
   const regulation = useMemo(() => regulationOf(data), [data]);
   const laborCalendar = laborCalendarOf(data);
+  const hintIsHoliday = (iso) => isOfficialHoliday(iso, laborCalendar);
   const scopedStation = stations.find((row) => String(row.id) === String(stationScope));
   const scopeLabel = scopedStation?.name || "";
 
@@ -297,20 +299,22 @@ export default function Discipline() {
     : [];
   const overCount = files.filter((card) => (card.meters || []).some((m) => m.over)).length;
   // The platform's three tiles: what waits on you first (wider), then open files, then the cut in force.
-  const statTile = (stat, key, tone, flag) => (stat ? (
-    <DutyTile key={key} dataKey={key} tone={tone} ar={ar} flag={flag} label={stat.lbl} note={stat.note || ""}>
-      <DutyNumber value={stat.val} unit={stat.unit || ""} />
-    </DutyTile>
-  ) : null);
-  const manageTiles = adminVoice ? [
-    <DutyTile key="due" dataKey="disc-due" tone={overCount ? "bad" : "mute"} ar={ar} flag={ar ? "تجاوز مهلة نظامية" : "Past a statutory window"} label={ar ? "بانتظار قرارك" : "Waiting on you"} note={overCount ? (ar ? `${overCount} تجاوز مهلة نظامية` : `${overCount} past a statutory window`) : (ar ? "كلها ضمن المهل النظامية (69 · 72)" : "All within the statutory windows (69 · 72)")}>
-      <DutyNumber value={String(waiting.length)} unit={ar ? "ملف" : "files"} />
-      {waiting.length ? <KpiAction ar={ar} onClick={() => document.querySelector('[data-ops-side="disc-side"]')?.scrollIntoView({ behavior: "smooth", block: "start" })} /> : null}
-    </DutyTile>,
+  // «سطر لا بطاقة»: what waits on you first, then open files, then the cut in force — one row, no boxes.
+  const figOf = (stat, key) => (stat ? { key, label: stat.lbl, value: stat.val, suffix: stat.unit || "", hint: stat.note || "" } : null);
+  const manageFigures = adminVoice ? [
+    {
+      key: "disc-due",
+      label: ar ? "بانتظار قرارك" : "Waiting on you",
+      value: String(waiting.length),
+      suffix: ar ? "ملف" : "files",
+      tone: overCount ? "bad" : undefined,
+      flag: overCount ? (ar ? "تجاوز مهلة نظامية" : "Past a statutory window") : "",
+      hint: overCount ? (ar ? `${overCount} تجاوز مهلة نظامية` : `${overCount} past a statutory window`) : (ar ? "كلها ضمن المهل النظامية" : "All within the statutory windows"),
+    },
     // Open files and a cut in force are states, not problems — no chip (KPI law).
-    statTile(board.stats[1], "disc-open", "mute", ""),
-    statTile(board.stats[3], "disc-cut", "mute", ""),
-  ].filter(Boolean) : null;
+    figOf(board.stats[1], "disc-open"),
+    figOf(board.stats[3], "disc-cut"),
+  ].filter(Boolean) : [];
   const manageSide = adminVoice ? (
     <OpsSideSlab
       ar={ar}
@@ -328,7 +332,7 @@ export default function Discipline() {
             title: card.employee?.name || "—",
             count: dl ? dl.text.split(" ")[0] : "",
             tone: dl?.over ? "bad" : "gold",
-            line: [card.item.note || card.item.reason, dl ? `${dl.label} (${ar ? "م" : "Art."} ${dl.art})` : ""].filter(Boolean).join(" · "),
+            line: [card.item.note || card.item.reason, dl ? dl.label : ""].filter(Boolean).join(" · "),
             action: { key: "open", label: ar ? "افتح الملف" : "Open the file", onClick: () => { setCaseSel(String(card.item.id)); document.querySelector("[data-discipline-case]")?.scrollIntoView({ behavior: "smooth", block: "start" }); } },
           };
         }),
@@ -615,7 +619,7 @@ export default function Discipline() {
           ? "ما على ملفك من جزاءات، ومهلة تظلّمك من كلٍّ منها (المادة 72). التظلّم حقّك وحدك ويُرفع كتابةً."
           : "The sanctions on your file and your grievance window for each (Art. 72). The grievance is yours alone, in writing.")}
       meta={<HeroSwitch options={tabs} value={activeFace} onChange={setTab} label={ar ? "صفحات الجزاءات" : "Sanction pages"} />}
-      tiles={adminVoice && activeFace === "manage" ? manageTiles : null}
+      tiles={null}
       side={adminVoice && activeFace === "manage" ? manageSide : null}
     >
       <div data-discipline-face={activeFace} style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink)", fontSize: 13 }}>
@@ -731,9 +735,11 @@ export default function Discipline() {
 
         {adminVoice && activeFace === "manage" ? (
           <>
+            {manageFigures.length ? <FigureRow ar={ar} figures={manageFigures} /> : null}
+            {waiting.length ? <KpiAction ar={ar} style={{ alignSelf: "flex-start", fontSize: 12 }} onClick={() => document.querySelector('[data-ops-side="disc-side"], [data-disc-rows]')?.scrollIntoView({ behavior: "smooth", block: "start" })} /> : null}
             <OpsListHead
               title={ar ? `ملفات الجزاء · ${files.length}` : `Sanction files · ${files.length}`}
-              note={ar ? "كل ملف بمرحلته، والجزاء المقترح أو الموقَّع، ومهلته النظامية (69 قبل التوقيع · 72 بعده)، وما استُهلك من سقف الشهر (70)." : "Each file with its stage, the proposed or signed penalty, its statutory window (69 before signing · 72 after), and the month's cap used (70)."}
+              note={ar ? "كل ملف بمرحلته، والجزاء المقترح أو الموقَّع، ومهلته النظامية، وما استُهلك من سقف الشهر." : "Each file with its stage, the proposed or signed penalty, its statutory window, and the month's cap used."}
               trailing={(
                 <button type="button" data-disc-raise="1" onClick={() => setTab("raise")} style={{ fontFamily: "inherit", height: 36, padding: "0 16px", borderRadius: 10, border: "none", background: "#0B3D27", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
                   {ar ? "ارفع جزاءً" : "Raise a sanction"}
@@ -763,9 +769,9 @@ export default function Discipline() {
               </section>
             ) : null}
             {files.length === 0 ? (
-              <section data-discipline-empty="" style={{ ...PACK_CARD, borderRadius: 12, padding: "26px 18px", textAlign: "center", fontSize: 13, color: "var(--nv-muted)" }}>
-                {ar ? "لا ملفات جزاء مفتوحة في نطاقك." : "No open sanction files in your scope."}
-              </section>
+              <p data-discipline-empty="" style={{ margin: 0, fontSize: 12.5, color: "var(--nv-muted)" }}>
+                {ar ? "لا شيء معلّق — لا ملفات جزاء مفتوحة في نطاقك." : "Nothing pending — no open sanction files in your scope."}
+              </p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <ol data-disc-rows="1" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -824,6 +830,7 @@ export default function Discipline() {
                   onDelivery={recordDelivery}
                   today={board.today}
                   companyName={company?.name || ""}
+                  isHoliday={hintIsHoliday}
                 />
               </div>
             )}
@@ -861,16 +868,27 @@ export default function Discipline() {
           <div data-discipline-mine="" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <OpsListHead
               title={ar ? `ما على ملفي · ${mineLiveCards.length}` : `On my file · ${mineLiveCards.length}`}
-              note={ar ? "كل جزاء بمرحلته ومهلة اعتراضك عليه (المادة 72). الاعتراض حقّك وحدك، ويُرفع كتابةً." : "Each sanction with its stage and your objection window (Art. 72). Objecting is yours alone, in writing."}
+              note={ar ? "كل جزاء بمرحلته ومهلة اعتراضك عليه. الاعتراض حقّك وحدك، ويُرفع كتابةً." : "Each sanction with its stage and your objection window. Objecting is yours alone, in writing."}
             />
             {mineLiveCards.length === 0 ? (
-              <section style={{ ...PACK_CARD, borderRadius: 12, padding: "26px 18px", textAlign: "center", fontSize: 13, color: "var(--nv-muted)" }}>
-                {ar ? "لا جزاء مفتوح على ملفك." : "No open sanction on your file."}
-              </section>
+              <p style={{ margin: 0, fontSize: 12.5, color: "var(--nv-muted)" }}>
+                {ar ? "لا شيء معلّق — لا جزاء مفتوح على ملفك." : "Nothing pending — no open sanction on your file."}
+              </p>
             ) : null}
             {mineLiveCards.map((card) => (
               <React.Fragment key={`mine-${card.item.id}`}>
               <DisciplineHero card={card} ar={ar} mine companyName={company?.name || ""} />
+              <div data-disc-mine-hint="" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12, color: "var(--nv-ink2)" }}>
+                <span>{card.mineState}</span>
+                <RightHint
+                  ar={ar}
+                  onDate={board.today}
+                  hint={disciplineCaseHint(card.item, { view: "employee", ar, today: board.today, isHoliday: hintIsHoliday, employee: card.employee })}
+                  onAction={(action) => {
+                    if (action.kind === "object") document.querySelector("[data-discipline-objection]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                />
+              </div>
               <DisciplineMineCard
                 key={`act-${card.item.id}`}
                 card={card}
@@ -887,14 +905,10 @@ export default function Discipline() {
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)" }}>
                 <strong style={{ fontSize: 13 }}>{ar ? "حقوقي في هذا المسار" : "My rights on this path"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({RIGHTS.length})</span></strong>
               </div>
-              <div className="nv-disc-gates" style={packHead("104px minmax(0,1fr)")}>
-                <span style={{ paddingInlineStart: 12 }}>{ar ? "المرجع" : "Reference"}</span>
-                <span style={{ paddingInlineStart: 10, borderInlineStart: "1px solid var(--nv-line)" }}>{ar ? "حقوقي في هذا المسار" : "My rights on this path"}</span>
-              </div>
               {RIGHTS.map((row) => (
-                <div key={row.ruleId} className="nv-disc-gates" style={{ display: "grid", gridTemplateColumns: "104px minmax(0,1fr)", gap: 12, padding: "10px 14px", borderBottom: "1px solid var(--nv-line2)", alignItems: "center" }}>
-                  <LaborArticleCite ruleId={row.ruleId} ar={ar} />
+                <div key={row.ruleId} data-disc-right={row.ruleId} style={{ display: "flex", gap: 12, alignItems: "baseline", justifyContent: "space-between", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)" }}>
                   <span style={{ fontSize: 12.5, color: "var(--nv-ink)", lineHeight: 1.7, minWidth: 0 }}>{ar ? row.ar : row.en}</span>
+                  <RightHint ar={ar} onDate={board.today} hint={disciplineRuleHint(row.ruleId, ar ? row.ar : row.en, { view: "employee", ar, today: board.today })} />
                 </div>
               ))}
             </section>

@@ -37,6 +37,7 @@ import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employ
 import EmployeeFileLeaveBoard from "@/components/employees/EmployeeFileLeaveBoard";
 import EmployeeFileDocsBoard from "@/components/employees/EmployeeFileDocsBoard";
 import EmployerDutiesCard from "@/components/employees/EmployerDutiesCard";
+import { contractHint, fileAlertHint } from "@/lib/rightHints.disc";
 import ContractTab from "@/components/employees/ContractTab";
 import { checkHiringAgeGate } from "@/lib/employerDuties";
 import EmployeeFileGrowthBoard from "@/components/employees/EmployeeFileGrowthBoard";
@@ -427,7 +428,7 @@ export default function EmployeeProfile() {
               card={{
                 title: ar ? "عقد العمل" : "Employment contract",
                 what: ar ? "نوع العقد ومدّته من نظام العمل؛ النسخة المكتوبة والتوثيق مسؤولية صاحب العمل." : "Type and term come from the Law; the written copy is the employer's duty.",
-                tag: ar ? "المادة 51 · 75 · 98" : "Art. 51 · 75 · 98",
+                hint: contractHint(employee, { view: isSelf ? "employee" : "manager", ar }),
                 rows: view.contract,
                 note: view.contractNote,
               }}
@@ -441,7 +442,7 @@ export default function EmployeeProfile() {
               card={{
                 title: ar ? "مكافأة نهاية الخدمة" : "End-of-service award",
                 what: ar ? "تقدير مشتق من مدة الخدمة والأجر الأخير." : "An estimate derived from service length and last wage.",
-                tag: ar ? "المادة 84 · 85" : "Art. 84 · 85",
+                hint: fileAlertHint({ ruleId: "eos.gratuity.cite", value: "" }, employee, { view: isSelf ? "employee" : "manager", ar }),
                 rows: view.eos,
                 note: view.eosNote,
               }}

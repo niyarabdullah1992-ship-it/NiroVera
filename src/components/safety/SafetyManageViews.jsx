@@ -1,4 +1,6 @@
 import React, { useRef, useState } from "react";
+import RightHint from "@/components/shared/RightHint";
+import { injuryHint } from "@/lib/rightHints.disc";
 import { StatusFlag } from "@/components/shared/StatusFlag";
 import { isHeatBanDate } from "@/lib/contractLawDerivations";
 import { SAFETY_REPORT_CONTROLS, deriveOpenRiskMap, safetyReportSlaLine } from "@/lib/safetyReportCard";
@@ -540,7 +542,7 @@ export function SafetyInjuryTable({ ar, rows }) {
       <header style={{ padding: "12px 14px", borderBottom: "1px solid var(--nv-line)", display: "flex", justifyContent: "space-between", gap: 8 }}>
         <strong style={{ fontSize: 13.5 }}>{L("الحوادث والإصابات", "Incidents and injuries")}</strong>
         <span style={{ fontSize: 11.5, color: shown.some((row) => row.item.card?.injured && row.item.status !== "closed") ? "#9B2335" : "var(--nv-ink3)" }}>
-          {L("إصابة العمل تُبلَّغ للتأمينات خلال عشرة أيام أو لمكتب العمل خلال أسبوع — المادة 141 · اللائحة م28", "A work injury is reported to GOSI within ten days, or the labour office within a week — Art. 141 · Regs Art. 28")}
+          {L("إصابة العمل تُبلَّغ للتأمينات خلال عشرة أيام أو لمكتب العمل خلال أسبوع", "A work injury is reported to GOSI within ten days, or the labour office within a week")}
         </span>
       </header>
       <div style={{ overflow: "auto" }}>
@@ -565,7 +567,10 @@ export function SafetyInjuryTable({ ar, rows }) {
                 </div>
                 <span style={{ fontSize: 12 }}>{kind}</span>
                 <span style={{ fontFamily: MONO, direction: "ltr", fontSize: 12 }}>{row.item.at ? String(row.item.at).slice(0, 10) : "—"}</span>
-                <span style={{ fontSize: 12 }}>{status}</span>
+                <span style={{ fontSize: 12, display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {status}
+                  {card.injured || card.kind === 3 ? <RightHint ar={ar} hint={injuryHint(row.item, { view: "manager", ar })} /> : null}
+                </span>
               </div>
             );
           }) : <p style={{ margin: 0, padding: 18, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}
@@ -580,8 +585,8 @@ export function SafetyMinistryPanel({ ar, criticalOpen, controlLabel, controlTon
   const inSeason = isHeatBanDate(new Date());
   const rows = [
     ["م 121·122", L("الحماية من الأخطار", "Protection from hazards"), criticalOpen ? L("مخالفة", "Breach") : L("مستوفٍ", "Met"), criticalOpen ? "bad" : "ok"],
-    ["م 125", L("وسائل الإسعافات الأولية", "First-aid means"), "—", ""],
-    ["م 133", L("مهلة إبلاغ الإصابة", "Injury reporting deadline"), injuryOpen ? L("مفتوح — يُبلَّغ فوراً", "Open — report at once") : "—", injuryOpen ? "bad" : ""],
+    ["م 142", L("وسائل الإسعافات الأولية", "First-aid means"), "—", ""],
+    ["م 141 · اللائحة م28", L("مهلة إبلاغ الإصابة", "Injury reporting deadline"), injuryOpen ? L("مفتوح — يُبلَّغ فوراً", "Open — report at once") : "—", injuryOpen ? "bad" : ""],
     ["ISO 45001 §8.1.2", L("ضابط لكل خطر", "A control for every hazard"), controlLabel || "—", controlTone || ""],
     ["قرار 3337", L("لا عمل مكشوف 12:00–15:00 من 15 يونيو إلى 15 سبتمبر", "No exposed work 12:00–15:00 from 15 June to 15 September"), inSeason ? L("الموسم قائم", "Season is open") : L("بلا أثر", "No effect"), inSeason ? "warn" : ""],
   ];

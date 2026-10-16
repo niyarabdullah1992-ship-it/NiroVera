@@ -34,6 +34,7 @@ import { isArticle106Assignment, isOvertimeAssignment, otCompensationOf } from "
 import { nursingRightUntil } from "./dutyRequests.js";
 import { heatBanWindow } from "./contractLawDerivations.js";
 import { PAY_HINT_BUILDERS } from "./rightHints.pay.js";
+import { DISC_HINT_BUILDERS } from "./rightHints.disc.js";
 
 export const LABOUR_COURT_URL = "https://najiz.sa";
 
@@ -510,6 +511,7 @@ const OTHER_ALIAS = {
 /** Registry of every builder, keyed by request/leave type — exposed so tests can check coverage. */
 export const RIGHT_HINT_BUILDERS = { leave: LEAVE, other: OTHER, leaveAlias: LEAVE_ALIAS, otherAlias: OTHER_ALIAS };
 RIGHT_HINT_BUILDERS.pay = PAY_HINT_BUILDERS;
+RIGHT_HINT_BUILDERS.disc = DISC_HINT_BUILDERS;
 
 /**
  * The hint for one request row (as flattenWorkspaceRows builds it: { family, type, status, employee, … }).

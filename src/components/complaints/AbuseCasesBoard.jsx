@@ -14,6 +14,8 @@ import {
 } from "@/lib/abuseComplaint";
 import { closeAbuseCase, decideAbuseCase, formAbuseCommittee, recordAbuseHearing, recordAbuseSeparation } from "@/lib/abuseStore";
 import { BORDER, MUTED, NAVY, cardShell, field } from "@/lib/platformStyles";
+import RightHint from "@/components/shared/RightHint";
+import { abuseCaseHint } from "@/lib/rightHints.disc";
 
 const card = { ...cardShell, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 };
 const btn = (solid) => ({ fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, height: 34, padding: "0 12px", borderRadius: 8, border: solid ? "none" : `1px solid ${BORDER}`, background: solid ? "#0B3D27" : "var(--nv-card)", color: solid ? "#fff" : "var(--nv-ink)", cursor: "pointer", whiteSpace: "nowrap" });
@@ -48,6 +50,7 @@ function CaseRow({ row, ar, companyId, employees, disciplinaryCases, today, cale
         <span style={{ fontSize: 11, color: MUTED }}>{ar ? kind?.ar : kind?.en}</span>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 11.5, fontWeight: 700 }}>{ar ? ABUSE_STEPS[step].ar : ABUSE_STEPS[step].en}</span>
+        <RightHint ar={ar} hint={abuseCaseHint(row, { view: "manager", ar, today, calendar })} />
       </div>
       <span style={{ fontSize: 12.5, lineHeight: 1.7 }}>
         {ar ? `${row.reporterRole === "witness" ? "بلاغ من شاهد" : "من المتضرر"}: ${row.reporterName || "—"} · المشكو في حقه: ${row.accusedName || "—"} · الواقعة ${row.incidentAt}` : `${row.reporterRole} ${row.reporterName} · accused ${row.accusedName} · ${row.incidentAt}`}
@@ -56,8 +59,8 @@ function CaseRow({ row, ar, companyId, employees, disciplinaryCases, today, cale
       {clocks.map((c) => (
         <span key={c.id} data-abuse-clock={c.id} style={{ fontSize: 12, fontWeight: 700, color: c.over ? "var(--nv-bad-ink)" : c.soon ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)" }}>
           {c.over
-            ? (ar ? `انقضت مهلة التحقيق (${c.due}) — خمسة أيام عمل من تلقي الشكوى (النموذج م55/2).` : `Inquiry window passed (${c.due}) — model Art. 55(2).`)
-            : (ar ? `مهلة التحقيق: يبقى ${c.left} يوم عمل — حتى ${c.due} (النموذج م55/2).` : `Inquiry: ${c.left} working day(s) left — until ${c.due}.`)}
+            ? (ar ? `انقضت مهلة التحقيق (${c.due}) — خمسة أيام عمل من تلقي الشكوى.` : `Inquiry window passed (${c.due}).`)
+            : (ar ? `مهلة التحقيق: يبقى ${c.left} يوم عمل — حتى ${c.due}.` : `Inquiry: ${c.left} working day(s) left — until ${c.due}.`)}
         </span>
       ))}
       {flags.map((f) => <span key={f.caseId} data-abuse-retaliation="" style={{ fontSize: 12, color: "var(--nv-warn-ink)" }}>{ar ? f.reason : f.reasonEn}</span>)}

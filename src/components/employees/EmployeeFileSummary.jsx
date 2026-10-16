@@ -1,4 +1,5 @@
 import React from "react";
+import FigureRow from "@/components/shared/FigureRow";
 import { Link } from "react-router-dom";
 import { EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 
@@ -30,7 +31,7 @@ export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
     {
       label: ar ? "رصيد الإجازة السنوية" : "Annual leave",
       value: leave?.v || "—",
-      note: leave?.note || (ar ? "المادة 109" : "Art. 109"),
+      note: leave?.note || "",
       bar: "#3C7D50",
     },
     {
@@ -44,6 +45,7 @@ export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
       value: String(livePenalties.length),
       note: livePenalties.length ? (livePenalties[0].state || "—") : (ar ? "لا ساري" : "None live"),
       bar: livePenalties.length ? "#9B2335" : "#3C7D50",
+      flag: livePenalties.length ? (ar ? "ساري" : "Live") : "",
     },
     {
       label: ar ? "وثائق تنتهي قريباً" : "Documents ending soon",
@@ -97,16 +99,17 @@ export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div className="nv-file-kpis" style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 10 }}>
-        {kpis.map((item) => (
-          <div key={item.label} style={{ position: "relative", overflow: "hidden", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 2 }}>
-            <span style={{ position: "absolute", insetInlineStart: 0, top: 0, bottom: 0, width: 3, background: item.bar }} />
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-ink3)" }}>{item.label}</span>
-            <strong style={{ fontSize: 18, color: "var(--nv-ink)", lineHeight: 1.4 }}>{item.value}</strong>
-            <span style={{ fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.6 }}>{item.note}</span>
-          </div>
-        ))}
-      </div>
+      <FigureRow
+        ar={ar}
+        figures={kpis.map((item, i) => ({
+          key: `file-kpi-${i}`,
+          label: item.label,
+          value: item.value,
+          hint: item.note,
+          tone: item.flag ? "bad" : undefined,
+          flag: item.flag || "",
+        }))}
+      />
 
       <section style={paper}>
         <header style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>

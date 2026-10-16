@@ -38,6 +38,7 @@ import { AllowanceLedgerCard, PayslipEstimateCard, SiteConditionsCard } from "@/
 import { requestSelfEmployee } from "@/lib/employeeFileView";
 import { derivePayrollMonthAttendance } from "@/lib/payrollMonthAttendance";
 import PayrollCycleReview from "@/components/payroll/PayrollCycleReview";
+import { stationWithSite } from "@/lib/siteRemoteness";
 import { previousMonth } from "@/lib/payrollReview";
 import MyPayslipArchive from "@/components/payroll/MyPayslipArchive";
 import MyRightsList, { PAY_RIGHT_IDS } from "@/components/dashboard/MyRightsList";
@@ -402,7 +403,7 @@ export default function Payroll() {
             employees={data.employees || []}
             stationName={(id) => (id === UNASSIGNED_STATION_ID || id === "__unassigned__" ? (ar ? "غير مخصص" : "Unassigned") : (data.stations || []).find((s) => s.id === id)?.name || id)}
             stationOf={(item) => itemStationId(item) || "__unassigned__"}
-            stations={data.stations || []}
+            stations={(data.stations || []).map((st) => stationWithSite(data, st.id))}
             attGaps={attGaps}
             issueCount={issueCount}
             deductionGaps={deductionGaps}
@@ -511,7 +512,7 @@ export default function Payroll() {
       {tab === "slip" && view === SELF && (() => {
         // قسيمتي: the run's line when the month has one; otherwise the file's own reading of the month.
         const me = myItem ? employeeForItem(myItem) : requestSelfEmployee(currentUser, data.employees || []);
-        const station = (data.stations || []).find((s) => s.id === me?.stationId) || {};
+        const station = stationWithSite(data, me?.stationId);
         return (
           <div data-my-payslip="1" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <MyRightsList employee={me} data={data} ar={ar} only={PAY_RIGHT_IDS} title={ar ? "حقوق راتبي" : "My pay rights"} lede={ar ? "موعد راتبك وحد الخصم منه — من ملفك." : "Your payday and the deduction cap — from your file."} />

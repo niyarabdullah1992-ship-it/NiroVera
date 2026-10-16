@@ -147,3 +147,80 @@ export function qiwaRegsNote(ar = true) {
     ? "اللائحة م7 (قنوات التوظيف) · م8 (نسب التوطين — نطاقات) · م10 (تراخيص التوظيف والاستقدام والإسناد) · م14 (الاستقدام ونقل الخدمات وتغيير المهنة) — تُدار عبر منصة قوى."
     : "Regs Art. 7 (employment channels) · Art. 8 (Saudization — Nitaqat) · Art. 10 (recruitment and outsourcing licences) · Art. 14 (recruitment, transfer of services, change of profession) — handled on Qiwa.";
 }
+
+/** Regs Art. 21 — forced labour defined; Art. 61(5) (housing) binds the private and non-profit sectors. */
+export function forcedLabourRegsNote(ar = true) {
+  return ar
+    ? "اللائحة م21/1: تشغيل العامل سخرة كل عمل أو خدمة تُفرض عنوة عليه ولم ينص عليها العقد وتتم تحت التهديد بعقاب ولم يؤدها بمحض اختياره — عدا ما تفرضه الطوارئ أو القوة القاهرة كالحروب والحرائق والفيضانات والمجاعات والزلازل والأوبئة · م21/2: السكن اللائق أو بدله (المادة 61/5) يسري على القطاع الخاص والقطاع غير الربحي، والنقل أو بدله في المادة 61/6."
+    : "Regs Art. 21(1): forced labour is any work or service imposed on the worker by force, not in his contract, under threat of a penalty and not freely given — except what emergencies or force majeure impose (war, fire, flood, famine, earthquake, epidemics) · Art. 21(2): decent housing or its allowance (Art. 61(5)) applies to the private and non-profit sectors; transport or its allowance is Art. 61(6).";
+}
+
+/** Regs Art. 30 — remote places (Art. 146). */
+export function remotePlacesRegsNote(ar = true) {
+  return ar
+    ? "اللائحة م30: البعيد عن العمران موقع يبعد عن النطاق العمراني الذي تحدده الأمانات والبلديات أكثر من 50 كم بطريق معبّد أو 25 كم بغير معبّد، أو تجمع سكاني لا تتوفر به المرافق والخدمات — وتترتب عليه المادة 146 (حوانيت، ترفيه، رعاية طبية وعلاج الأسرة، مدارس، مساجد، محو أمية بحسب ما يحدده الوزير) والمادة 147 (مساكن أو مخيمات ووجبات)."
+    : "Regs Art. 30: a remote place is a site more than 50 km from the municipal urban boundary by paved road or 25 km unpaved, or a cluster without utilities and services — Art. 146 (shops, recreation, medical care and family treatment, schools, mosques, literacy as the Minister sets) and Art. 147 (housing or camps, meals) follow.";
+}
+
+/** Model Arts. 9 and 12 — transfer with a change of residence. */
+export function relocationModelNote(ar = true) {
+  return ar
+    ? "النموذج الموحد م9: لا نقل يقتضي تغيير محل الإقامة بغير موافقة العامل كتابةً، وفي الضرورة العارضة حتى ثلاثين يوماً في السنة تتحمل المنشأة انتقاله وإقامته · م12: يستحق المنقول نفقات نقله ومن يعولهم شرعاً المقيمين معه، والإركاب ونقل الأمتعة، ما لم يكن النقل بناءً على رغبته."
+    : "Model Art. 9: no transfer that changes the residence without the worker's written consent; in an incidental necessity of up to thirty days a year the company bears his travel and stay · Art. 12: the transferred worker is owed his and his resident dependants' travel, tickets and moving costs, unless the move was his own wish.";
+}
+
+/** Model Art. 24 — secondment. */
+export function missionModelNote(ar = true) {
+  return ar
+    ? "النموذج الموحد م24: في الانتداب خارج مقر العمل تؤمّن المنشأة وسائل النقل (أو مقابلها بموافقة العامل)، ومقابل السكن والطعام ما لم تؤمّنه، والبدل اليومي حسب درجة العامل — تُحدَّد في قرار الانتداب، وتُحتسب من مغادرة مقر العمل إلى العودة."
+    : "Model Art. 24: on a mission away from the base the company provides transport (or cash with the worker's consent), lodging and food or their cost, and a daily allowance by grade — set in the mission decision and counted from leaving the base to returning.";
+}
+
+/** Model Art. 11 — tickets: at the start, on annual leave, and the return at the end of service. */
+export function repatriationModelNote(ar = true) {
+  return ar
+    ? "النموذج الموحد م11: الإركاب عند التعاقد وعند الإجازة السنوية بحسب العقد، وعند انتهاء الخدمة طبقاً للمادة 40/1 (تذكرة عودة العامل غير السعودي إلى بلده) — ولا تتحملها المنشأة إن ثبت عدم صلاحيته خلال التجربة، أو رغب العودة دون سبب مشروع، أو رُحّل لمخالفة بقرار إداري أو حكم قضائي."
+    : "Model Art. 11: tickets at hiring and on annual leave as the contract says, and at the end of service per Art. 40(1) (the non-Saudi worker's return ticket home) — not borne if he proved unfit in probation, chose to return without a legitimate reason, or was deported for a violation.";
+}
+
+/** Model Art. 46 — wage when the establishment prevents a ready worker. */
+export function preventedWageModelNote(ar = true) {
+  return ar
+    ? "النموذج الموحد م46: إذا حضر العامل في الوقت المحدد أو تبيّن أنه مستعد للعمل ولم يمنعه إلا سبب راجع إلى المنشأة فله أجر المدة التي لم يؤدِّ فيها العمل."
+    : "Model Art. 46: a worker who came on time, or was shown ready, and was kept from working only by a cause on the company's side is owed the wage for that time.";
+}
+
+/** Model Arts. 18–20 — the annual performance report. */
+export function performanceReportModelNote(ar = true) {
+  return ar
+    ? "النموذج الموحد م18: تقرير أداء مرة في السنة على الأقل يتضمن المقدرة والكفاءة، والسلوك والتعاون، والمواظبة · م19: بمقياس من خمسة مستويات · م20: يعدّه الرئيس المباشر ويعتمده صاحب الصلاحية، ويُخطر العامل بصورة منه فور اعتماده، وله التظلم منه وفق قواعد التظلم (م71)."
+    : "Model Art. 18: a performance report at least once a year covering ability and competence, conduct and cooperation, and attendance · Art. 19: on a five-level scale · Art. 20: prepared by the direct manager, approved by the authority, a copy given to the worker on approval, who may grieve it under Art. 71.";
+}
+
+/** Model Arts. 21–23 — increments and promotions. */
+export function incrementsModelNote(ar = true) {
+  return ar
+    ? "النموذج الموحد م21: العلاوة السنوية بحسب المركز المالي، ويستحقها من نال «متوسط» على الأقل بعد سنة من التحاقه أو من علاوته السابقة · م22: الترقية بوظيفة أعلى شاغرة، ومؤهلاتها، و«فوق المتوسط» على الأقل في آخر تقرير، وموافقة صاحب الصلاحية · م23: عند التساوي: ترشيح صاحب الصلاحية، ثم التقدير الأعلى، ثم الشهادات والدورات، ثم الخبرة، ثم الأقدمية."
+    : "Model Art. 21: the annual increment follows the company's finances; due to whoever rated at least «average» a year after joining or after the last increment · Art. 22: promotion needs a vacant higher post, its qualifications, at least «above average» on the last report, and the authority's approval · Art. 23: ties go to the authority's nominee, then the higher rating, then qualifications and courses, then experience, then seniority.";
+}
+
+/** Model Arts. 47–48 — prohibited items and the worker's duties. */
+export function workerDutiesModelNote(ar = true) {
+  return ar
+    ? "النموذج الموحد م47: على المنشأة ومن له سلطة على العمال منع دخول أي مادة محرّمة شرعاً إلى أماكن العمل، وتُطبَّق على من وُجدت لديه أو تعاطاها العقوبات المقررة · م48: على العامل إنجاز العمل وفق أصول المهنة وتعليمات المنشأة، والعناية بأدواتها وإعادة غير المستهلك، وحسن السلوك، والعون دون أجر إضافي في الكوارث، والخضوع للفحوص الطبية المطلوبة، وحفظ الأسرار المهنية."
+    : "Model Art. 47: the company and anyone with authority over workers keep any religiously forbidden substance out of the workplace, and the set penalties apply to whoever holds or uses it · Art. 48: the worker does the work by the trade's rules and lawful instructions, cares for the company's tools and returns what is unused, behaves well, helps without extra pay in disasters, takes required medical exams, and keeps work secrets.";
+}
+
+/** Model Art. 53 — the uniform. */
+export function uniformModelNote(ar = true) {
+  return ar
+    ? "النموذج الموحد م53/1: تضع المنشأة اشتراطات زي العاملين: لا يعارض الأحكام الشرعية، ومظهر مهني لائق يناسب المهام، ومحتشم غير شفاف، مع العقوبات المترتبة على مخالفتها، وتُعلَن على حدة في مكان ظاهر أو بوسيلة تكفل علم الخاضعين لها وإقرارهم بالعلم بها."
+    : "Model Art. 53(1): the company sets the staff uniform rules — consistent with Sharia, a decent professional look fit for the tasks, modest and not transparent — with the penalties for breaching them, announced separately in a visible place or by a means that ensures those bound know them and acknowledge it.";
+}
+
+/** Model Art. 69 (with Arts. 61 and 68) — the penalties record in the service file. */
+export function penaltiesRecordModelNote(ar = true) {
+  return ar
+    ? "النموذج الموحد م69: لكل عامل صحيفة جزاءات يُدوَّن فيها نوع المخالفة وتاريخ وقوعها والجزاء الموقّع، وتُحفظ في ملف خدمته · م61: لا يُشدَّد الجزاء عند التكرار إذا انقضى على المخالفة السابقة مائة وثمانون يوماً من إبلاغه بها · م68: يُبلَّغ العامل كتابةً بالجزاء وبما يتعرض له عند التكرار."
+    : "Model Art. 69: each worker has a penalties record listing the offence, the date it happened and the penalty, kept in his service file · Art. 61: no increase on a repeat once 180 days have passed since he was told of the previous penalty · Art. 68: the worker is told in writing of the penalty and of what a repeat brings.";
+}

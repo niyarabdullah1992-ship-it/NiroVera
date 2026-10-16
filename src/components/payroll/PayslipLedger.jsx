@@ -298,7 +298,7 @@ export function SiteConditionsCard({ employee, station = {}, ar = true, editing 
   const label = (v) => (asYesNo(v) === "yes" ? (ar ? "نعم" : "Yes") : asYesNo(v) === "no" ? (ar ? "لا" : "No") : "—");
   const rows = [
     { k: ar ? "أقرب مستشفى (بالدقائق)" : "Nearest hospital (minutes)", field: canEdit ? "hospitalMinutes" : "", type: "number", raw: profile.hospitalMinutes ?? "", v: site.minutes == null ? "—" : (ar ? `${site.minutes} دقيقة${profile.hospitalMinutes == null && station.hospitalMinutes != null ? " · من الفرع" : ""}` : `${site.minutes} min`), locked: !canEdit },
-    { k: ar ? "موقع بعيد عن العمران" : "Remote from towns", field: canEdit ? "remoteSite" : "", raw: asYesNo(profile.remoteSite), options: yesNo, v: label(profile.remoteSite ?? station.remoteSite), locked: !canEdit },
+    { k: ar ? "موقع بعيد عن العمران" : "Remote from towns", field: canEdit ? "remoteSite" : "", raw: asYesNo(profile.remoteSite), options: yesNo, v: `${label(profile.remoteSite ?? station.remoteSite)}${profile.remoteSite == null && station.remoteness?.known ? ` · ${ar ? station.remoteness.reasonAr : station.remoteness.reasonEn}` : ""}`, locked: !canEdit },
     { k: ar ? "عيادة أو مسعف في الموقع" : "Clinic or medic on site", field: canEdit ? "medicalOnSite" : "", raw: asYesNo(profile.medicalOnSite), options: yesNo, v: label(profile.medicalOnSite ?? station.medicalOnSite), locked: !canEdit },
     { k: ar ? "وجبات مؤمَّنة" : "Meals provided", field: canEdit ? "mealsProvided" : "", raw: asYesNo(profile.mealsProvided), options: yesNo, v: label(profile.mealsProvided ?? station.mealsProvided), locked: !canEdit },
   ];
@@ -307,8 +307,8 @@ export function SiteConditionsCard({ employee, station = {}, ar = true, editing 
       <SectionHead
         title={ar ? "ظروف موقع العمل وما تُلزم به" : "Work-site conditions and what they oblige"}
         note={ar
-          ? `يُفعَّل التزام الترتيبات الطبية متى زاد بُعد أقرب مستشفى على ${HOSPITAL_FAR_MINUTES} دقيقة (معيار المنشأة) أو كان الموقع بعيداً عن العمران — والأماكن البعيدة عن العمران تحدّدها اللائحة (المادة 146).`
-          : `Medical duties switch on when the nearest hospital is past ${HOSPITAL_FAR_MINUTES} minutes (establishment criterion) or the site is remote — the Regulation defines remote places (Art. 146).`}
+          ? `يُفعَّل التزام الترتيبات الطبية متى زاد بُعد أقرب مستشفى على ${HOSPITAL_FAR_MINUTES} دقيقة (معيار المنشأة) أو كان الموقع بعيداً عن العمران — والبعيد عن العمران (اللائحة م30) ما زاد على 50 كم عن النطاق العمراني بطريق معبّد أو 25 كم بغير معبّد، أو تجمع بلا مرافق وخدمات؛ يُسجَّل على الفرع في «السلامة ← التفتيش والجاهزية».`
+          : `Medical duties switch on when the nearest hospital is past ${HOSPITAL_FAR_MINUTES} minutes (establishment criterion) or the site is remote — Regs Art. 30: over 50 km from the urban boundary by paved road or 25 km unpaved, or a cluster without services; recorded on the branch under Safety → Inspection.`}
         trailing={site.duties.length ? (
           <span style={chip(site.open ? "warn" : "ok")}>{site.open ? (ar ? `${site.open} التزام بلا تغطية` : `${site.open} duty uncovered`) : (ar ? "الالتزامات مغطّاة" : "Duties covered")}</span>
         ) : null}

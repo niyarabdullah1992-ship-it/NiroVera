@@ -10,6 +10,9 @@ import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { updateSafetyRecord, recordSafetyIncident, closeSafetyHazard, approveSafetyRecord, revokeSafetyApproval, patchSafetyIncident } from "@/lib/safetyStore";
 import { safetyApprovalIssues } from "@/lib/safetyLogic";
 import SafetyIncidentReportForm from "@/components/safety/SafetyIncidentReportForm";
+import StationSiteDutiesCard from "@/components/safety/StationSiteDutiesCard";
+import { firstAidSummary } from "@/lib/firstAidCabinet";
+import { deriveRemoteness } from "@/lib/siteRemoteness";
 import SafetyOverviewTab from "@/components/safety/SafetyOverviewTab";
 import { SafetyComplyBoard, SafetyDashboard, SafetyInjuryTable, SafetyMinistryPanel, SafetyRiskRegister } from "@/components/safety/SafetyManageViews";
 import { toast } from "@/components/ui/use-toast";
@@ -90,6 +93,23 @@ export default function Safety() {
       : {};
     updateSafetyRecord(company.id, id, { ...updates, ...extra, approvedBy: null, approvedAt: null }, currentUser.name);
   };
+
+  // Regs Arts. 29–30: the site record and the first-aid check sit on the station's safety record,
+  // stamped with who and when — they do not reset the branch-level approval.
+  const stamp = () => ({ recordedBy: currentUser.name || "", recordedAt: new Date().toISOString() });
+  const handleSaveSite = (id, site) => {
+    updateSafetyRecord(company.id, id, { site: { ...site, ...stamp() } }, currentUser.name);
+    toast({ description: ar ? "سُجّل موقع الفرع — يُشتق «بعيد عن العمران» منه (اللائحة م30)." : "Site recorded — remoteness is derived from it (Regs Art. 30)." });
+  };
+  const handleSaveCabinet = (id, cabinet) => {
+    const at = new Date().toISOString();
+    updateSafetyRecord(company.id, id, { firstAidCabinet: { ...cabinet, checkedBy: currentUser.name || "", checkedAt: at } }, currentUser.name);
+    toast({ description: ar ? "حُفظ فحص خزانة الإسعافات (اللائحة م29)." : "First-aid cabinet check saved (Regs Art. 29)." });
+  };
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+  const aidSummary = firstAidSummary(stations, recFor, { today: todayKey });
+  const remoteCount = stations.filter((station) => deriveRemoteness(recFor(station.id)?.site || {}, station.remoteSite).remote).length;
+  const siteUnknown = stations.filter((station) => !deriveRemoteness(recFor(station.id)?.site || {}, station.remoteSite).known).length;
 
   const handleApprove = (id) => {
     const result = approveSafetyRecord(company.id, id, currentUser.name);
@@ -327,6 +347,7 @@ export default function Safety() {
       {tab === "inspect" && !employeeRail && (
         <>
           <SafetyComplyBoard ar={ar} stations={stations} recFor={recFor} part="inspect" />
+          <StationSiteDutiesCard ar={ar} stations={stations} recFor={recFor} canEdit={canEdit} today={todayKey} onSaveSite={handleSaveSite} onSaveCabinet={handleSaveCabinet} />
           {levelApproval}
         </>
       )}
@@ -342,7 +363,7 @@ export default function Safety() {
         </>
       )}
       {!employeeRail ? (
-        <SafetyMinistryPanel ar={ar} criticalOpen={criticalOpen} controlLabel={controlLabel} controlTone={controlTone} injuryOpen={injuryOpen} />
+        <SafetyMinistryPanel ar={ar} criticalOpen={criticalOpen} controlLabel={controlLabel} controlTone={controlTone} injuryOpen={injuryOpen} firstAid={aidSummary} remoteCount={remoteCount} siteUnknown={siteUnknown} stationCount={stations.length} />
       ) : null}
       </div>
     </PlatformStampShell>

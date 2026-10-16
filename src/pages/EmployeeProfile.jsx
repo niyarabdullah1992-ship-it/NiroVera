@@ -30,6 +30,7 @@ import OffboardingCustodyBoard from "@/components/employees/OffboardingCustodyBo
 import EmpAlertsStrip from "@/components/employees/EmpAlertsStrip";
 import AssignmentTab from "@/components/employees/AssignmentTab";
 import { AllowanceLedgerCard, SiteConditionsCard } from "@/components/payroll/PayslipLedger";
+import { stationWithSite } from "@/lib/siteRemoteness";
 import EmployeeFileSummary from "@/components/employees/EmployeeFileSummary";
 import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employees/EmployeeFileFieldCard";
 import EmployerDutiesCard from "@/components/employees/EmployerDutiesCard";
@@ -489,7 +490,7 @@ export default function EmployeeProfile() {
             <AllowanceLedgerCard employee={employee} ar={ar} />
             <SiteConditionsCard
               employee={employee}
-              station={(data.stations || []).find((s) => s.id === employee.stationId) || {}}
+              station={stationWithSite(data, employee.stationId)}
               ar={ar}
               editing={editing}
               draft={draft}

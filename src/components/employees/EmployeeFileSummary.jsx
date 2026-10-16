@@ -1,21 +1,19 @@
-import React, { useEffect, useId, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
-import { buildMyFileCard, fileSealCode } from "@/lib/myFileCard";
+import { buildMyFileCard } from "@/lib/myFileCard";
 import { buildServiceStory } from "@/lib/serviceStory";
 import { buildFileReadiness } from "@/lib/fileReadiness";
 import RightHint from "@/components/shared/RightHint";
-import { toast } from "@/components/ui/use-toast";
 
 /*
  * «ملفي — سيرة عملي الموثّقة». Three things, in this order:
- *   بطاقتي المهنية — the person on one document-like card, sealed with a code derived from its facts;
+ *   بطاقتي المهنية — the key file facts on one card, with print and the service-certificate request;
  *   قصة خدمتي     — what happened on the file, by year, each line with who did it and what proves it;
  *   جاهزية ملفي   — what is missing or ending, and whose move it is.
  * Leave, balances and injuries stay in طلباتي; pay stays in قسيمتي. Nothing here repeats them.
  */
 
-const SEAL_INK = "#C8A45A";
 const mono = { fontFamily: "'IBM Plex Mono', monospace" };
 const paper = { background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, overflow: "hidden" };
 const heading = { margin: 0, fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "var(--nv-ink)" };
@@ -50,44 +48,6 @@ function SectionHead({ title, note, end }) {
 }
 
 /* ─────────────────────────── the seal ─────────────────────────── */
-
-function ProofSeal({ code, ar, size = 148 }) {
-  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const top = ar ? "ختم الإثبات" : "PROOF SEAL";
-  const bottom = ar ? "ملف موثّق من سجلاته" : "PROVEN BY ITS RECORDS";
-  const [a, b] = code ? [code.slice(0, 9), code.slice(10)] : ["····-····", "····"];
-  return (
-    <svg width={size} height={size} viewBox="0 0 160 160" role="img" aria-label={ar ? `ختم الإثبات — رمز الملف ${code || ""}` : `Proof seal — file code ${code || ""}`} style={{ display: "block", transform: "rotate(-7deg)" }}>
-      <defs>
-        {/* Two arcs read upright: the title over the top, the line under the bottom (a full RTL ring path drops Arabic in Chromium). */}
-        <path id={`top${uid}`} d="M24,80 a56,56 0 0,1 112,0" />
-        <path id={`bot${uid}`} d="M16,80 a64,64 0 0,0 128,0" />
-        <filter id={`ink${uid}`} x="-5%" y="-5%" width="110%" height="110%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="7" result="n" />
-          <feDisplacementMap in="SourceGraphic" in2="n" scale="1.6" />
-        </filter>
-      </defs>
-      <g fill="none" stroke={SEAL_INK} filter={`url(#ink${uid})`} opacity="0.95">
-        <circle cx="80" cy="80" r="75" strokeWidth="2.4" />
-        <circle cx="80" cy="80" r="70" strokeWidth="0.9" />
-        <circle cx="80" cy="80" r="45" strokeWidth="0.9" />
-      </g>
-      <g fill={SEAL_INK} filter={`url(#ink${uid})`}>
-        <text fontSize="12" fontWeight="700" textAnchor="middle" style={{ fontFamily: "var(--font-heading)" }}>
-          <textPath href={`#top${uid}`} startOffset="50%">{top}</textPath>
-        </text>
-        <text fontSize="9.5" fontWeight="700" textAnchor="middle" style={{ fontFamily: "var(--font-heading)" }}>
-          <textPath href={`#bot${uid}`} startOffset="50%">{bottom}</textPath>
-        </text>
-        <text x="15" y="83" textAnchor="middle" fontSize="8">✦</text>
-        <text x="145" y="83" textAnchor="middle" fontSize="8">✦</text>
-        <text x="80" y="66" textAnchor="middle" fontSize="9.5" fontWeight="600" style={{ fontFamily: "var(--font-heading)" }}>{ar ? "رمز الملف" : "FILE CODE"}</text>
-        <text x="80" y="84" textAnchor="middle" fontSize="12.5" fontWeight="700" direction="ltr" style={mono}>{a}</text>
-        <text x="80" y="100" textAnchor="middle" fontSize="12.5" fontWeight="700" direction="ltr" style={mono}>{b}</text>
-      </g>
-    </svg>
-  );
-}
 
 const PRINT_CSS = `
 @page { size: A5 landscape; margin: 10mm; }
@@ -124,70 +84,45 @@ function printCard() {
 
 function ProfessionalCard({ card, ar, self, companyName }) {
   const navigate = useNavigate();
-  const [code, setCode] = useState("");
-  useEffect(() => {
-    let live = true;
-    fileSealCode(card.sealText).then((c) => { if (live) setCode(c); });
-    return () => { live = false; };
-  }, [card.sealText]);
-
-  const verify = async () => {
-    try { await navigator.clipboard?.writeText(code); } catch { /* the code stays visible on the seal */ }
-    if (self) {
-      toast({ description: ar ? `نُسخ رمز الملف ${code}. أرفقه بطلب شهادة الخدمة — تصدر مختومة وتُتحقق من صفحة التحقق (المادة 64).` : `File code ${code} copied. Attach it to the service-certificate request — it is issued sealed and verifiable (Art. 64).` });
-      navigate("/app/requests?kind=doc&doc=exp");
-    } else {
-      toast({ description: ar ? `نُسخ رمز الملف ${code}. يطابق بيانات الملف الآن؛ أي تعديل على بيان أساسي يغيّره.` : `File code ${code} copied. It matches the file now; editing a key fact changes it.` });
-    }
-  };
-
+  const title = ar ? (self ? "بطاقتي المهنية" : "بطاقته المهنية") : (self ? "My professional card" : "Professional card");
+  const btn = { fontFamily: "inherit", fontSize: 12.5, fontWeight: 600, height: 34, padding: "0 14px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap" };
   return (
     <>
     <style>{".nv-myfile-printonly{display:none}"}</style>
-    <section className="nv-myfile-card" aria-label={ar ? (self ? "بطاقتي المهنية" : "بطاقته المهنية") : "Professional card"} style={{ position: "relative", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, padding: "22px clamp(16px,4vw,28px) 20px", boxShadow: "var(--nv-paper)" }}>
-      <span aria-hidden style={{ position: "absolute", inset: 6, border: "1px solid var(--nv-line)", borderRadius: 10, pointerEvents: "none" }} />
-      <div style={{ position: "relative", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", paddingBottom: 14, marginBottom: 16, borderBottom: "1px solid var(--nv-line)" }}>
-        <span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ar ? 0 : 1.2, color: "var(--nv-ink2)" }}>{ar ? (self ? "بطاقتي المهنية" : "بطاقته المهنية") : (self ? "My professional card" : "Professional card")}</span>
-        {companyName ? <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>· {companyName}</span> : null}
-        <button type="button" className="nv-myfile-noprint" onClick={printCard} style={{ marginInlineStart: "auto", fontFamily: "inherit", fontSize: 12, fontWeight: 600, height: 30, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "transparent", color: "var(--nv-ink)", cursor: "pointer" }}>
-          {ar ? "اطبع البطاقة" : "Print card"}
-        </button>
-      </div>
-
-      <div style={{ position: "relative", display: "flex", flexWrap: "wrap", gap: "20px 28px", alignItems: "flex-start" }}>
-        <div style={{ flex: "1 1 280px", minWidth: 0 }}>
-          <div className="nv-myfile-printonly" style={{ alignItems: "center", gap: 14, marginBottom: 16 }}>
-            <span aria-hidden style={{ width: 56, height: 56, flex: "none", borderRadius: "50%", border: "1px solid var(--nv-line)", background: "var(--nv-soft)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-heading)", fontSize: 19, fontWeight: 700, color: "var(--nv-ink)" }}>
-              {card.initials}
-            </span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: "var(--font-heading)", fontSize: 20, fontWeight: 700, color: "var(--nv-ink)", lineHeight: 1.35, overflowWrap: "anywhere" }}>{card.name}</div>
-              <div style={{ fontSize: 13, color: "var(--nv-ink2)", lineHeight: 1.6, overflowWrap: "anywhere" }}>{card.job} <span style={{ color: "var(--nv-ink3)" }}>·</span> {card.branch}</div>
-            </div>
-          </div>
-          <dl style={{ margin: 0 }}>
-            {card.rows.map((row) => (
-              <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,9em) minmax(0,1fr)", gap: 12, alignItems: "baseline", padding: "8px 0", borderTop: "1px dotted var(--nv-line)" }}>
-                <dt style={{ fontSize: 12, color: "var(--nv-ink3)" }}>{row.k}</dt>
-                <dd style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--nv-ink)", display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", minWidth: 0, overflowWrap: "anywhere" }}>
-                  <span dir={row.mono ? "ltr" : undefined} style={row.mono ? { ...mono, fontSize: 12.5 } : undefined}>{row.v}</span>
-                  {row.gap ? <Chip tone="warn">{ar ? "ناقص" : "Missing"}</Chip> : null}
-                </dd>
-              </div>
-            ))}
-          </dl>
+    <section className="nv-myfile-card" aria-label={title} style={paper}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "14px 20px", borderBottom: "1px solid var(--nv-line)" }}>
+        <div style={{ minWidth: 0, flex: "1 1 200px" }}>
+          <h3 style={heading}>{title}</h3>
+          {companyName ? <p style={sub}>{companyName}</p> : null}
         </div>
-
-        <div style={{ flex: "0 1 190px", margin: "0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center", paddingTop: 4 }}>
-          <ProofSeal code={code} ar={ar} />
-          <button type="button" className="nv-myfile-noprint" onClick={verify} disabled={!code} style={{ ...greenLink, opacity: code ? 1 : 0.5 }}>
-            {ar ? (self ? "تحقق — اطلب شهادة خدمة مختومة ‹" : "تحقق — انسخ رمز الملف") : (self ? "Verify — request a sealed certificate ›" : "Verify — copy the file code")}
+        <div className="nv-myfile-noprint" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button type="button" onClick={printCard} style={{ ...btn, border: "1px solid var(--nv-line)", background: "transparent", color: "var(--nv-ink)" }}>
+            {ar ? "طباعة" : "Print"}
           </button>
-          <span style={{ fontSize: 11, color: "var(--nv-ink3)", lineHeight: 1.65, maxWidth: 190 }}>
-            {ar ? "الرمز مشتق من بيانات البطاقة ولا يُخزَّن — يتغيّر إن تغيّر أي بيان فيها." : "Derived from the card's facts, never stored — it changes when any of them does."}
-          </span>
+          {self ? (
+            <button type="button" onClick={() => navigate("/app/requests?kind=doc&doc=exp")} style={{ ...btn, border: "1px solid var(--nv-ok-ink)", background: "var(--nv-ok-ink)", color: "#fff" }}>
+              {ar ? "طلب شهادة خدمة" : "Request service certificate"}
+            </button>
+          ) : null}
         </div>
       </div>
+      <div className="nv-myfile-printonly" style={{ alignItems: "center", gap: 14, padding: "16px 20px 0" }}>
+        <div>
+          <div style={{ fontFamily: "var(--font-heading)", fontSize: 20, fontWeight: 700, color: "var(--nv-ink)" }}>{card.name}</div>
+          <div style={{ fontSize: 13, color: "var(--nv-ink2)" }}>{card.job} · {card.branch}</div>
+        </div>
+      </div>
+      <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,150px),1fr))" }}>
+        {card.rows.map((row) => (
+          <div key={row.id} style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2, var(--nv-line))", minWidth: 0 }}>
+            <dt style={{ fontSize: 11.5, color: "var(--nv-ink3)", marginBottom: 4 }}>{row.k}</dt>
+            <dd style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--nv-ink)", display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", overflowWrap: "anywhere" }}>
+              <span dir={row.mono ? "ltr" : undefined} style={row.mono ? { ...mono, fontSize: 13 } : undefined}>{row.v}</span>
+              {row.gap ? <Chip tone="warn">{ar ? "ناقص" : "Missing"}</Chip> : null}
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
     </>
   );

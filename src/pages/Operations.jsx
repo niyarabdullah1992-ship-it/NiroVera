@@ -60,7 +60,12 @@ import {
   redistributeLocalOpsPace,
   rejectLocalTask,
   escalateLocalOpsByEmployee,
+  localTaskRecipients,
+  objectLocalTaskQuality,
+  decideLocalTaskQuality,
 } from "@/lib/localOpsFallback";
+import { canDecideQualityObjection, taskQualityFor } from "@/lib/taskQuality";
+import OpsQualityPicker from "@/components/tasks/detail/OpsQualityPicker";
 import { isLocalPreviewActive } from "@/lib/localPreview";
 import OpsNewTaskModal from "@/components/tasks/OpsNewTaskModal";
 import OpsReassignModal from "@/components/tasks/OpsReassignModal";
@@ -180,6 +185,7 @@ export default function Operations() {
   const [showCreate, setShowCreate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [rejectFor, setRejectFor] = useState(null);
+  const [approveFor, setApproveFor] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [endDelegationFor, setEndDelegationFor] = useState(null);
   const [endDelegationReason, setEndDelegationReason] = useState("");
@@ -1365,7 +1371,24 @@ export default function Operations() {
     }
   };
 
-  const approve = async (task) => {
+  /** The people who receive the task's points — the server's rule — named for the per-person level. */
+  const qualityAssigneesFor = (task) => localTaskRecipients(task, data).map((id) => ({
+    id,
+    name: (data?.employees || []).find((e) => String(e.id || e.employeeId) === String(id))?.name || id,
+  }));
+
+  const approvedToast = (body, task) => {
+    const pts = body?.awarded?.points ?? task?.pointsAwarded ?? taskPoints(task.priority, task.effortWeight);
+    toast({
+      title: ar ? "اعتُمد الإنجاز" : "Approved",
+      description: ar
+        ? `مُنحت ${pts} نقطة بمستوى الجودة المختار — تظهر في الأداء، ويراها المنفّذ مع سببها`
+        : `Granted ${pts} points at the chosen quality level — visible in Performance, with its reason to the assignee`,
+    });
+  };
+
+  // Approval always carries a quality level (one scale to the annual report). Without one, open the picker.
+  const approve = async (task, quality) => {
     if (!canReview(task)) {
       toast({
         title: ar ? "ليس مستواك" : "Not your level",
@@ -1376,52 +1399,49 @@ export default function Operations() {
       });
       return;
     }
+    if (!quality?.level) { setApproveFor(task); return; }
+    const runLocal = () => approveLocalTask(company.id, task.id, { reviewer: currentUser, data, quality });
     setBusy(true);
     try {
       if (localMode || isLocalPreviewActive()) {
-        const body = approveLocalTask(company.id, task.id, { reviewer: currentUser, data });
+        const body = runLocal();
         if (localRefused(body)) {
           toast({ title: ar ? "رُفض الاعتماد" : "Approve blocked", description: ar ? body.reason : (body.reasonEn || body.reason), variant: "destructive" });
           return;
         }
         setTasks(buildLocalOpsBoard({ tasks: body.tasks, scope, stations: data?.stations || [] }).tasks);
         setCounts(body.counts);
+        setApproveFor(null);
         await refresh?.();
-        toast({
-          title: ar ? "اعتُمد الإنجاز" : "Approved",
-          description: ar
-            ? `مُنحت ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} نقطة — تظهر في الأداء`
-            : `Granted ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} points — visible in Performance`,
-        });
+        approvedToast(body, task);
         return;
       }
-      const res = await ops({ action: "approve", taskId: task.id });
+      const res = await ops({
+        action: "approve",
+        taskId: task.id,
+        qualityLevel: quality.level,
+        qualityReason: quality.reason || "",
+        qualityOverrides: quality.overrides || {},
+        lang,
+      });
       const body = res?.data || res;
       if (body?.error) throw opsRefusal(body);
       if (company?.id) await syncPointsFromCloud(company.id);
       await refresh?.();
-      toast({
-        title: ar ? "اعتُمد الإنجاز" : "Approved",
-        description: ar
-          ? `مُنحت ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} نقطة — تظهر في الأداء`
-          : `Granted ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} points — visible in Performance`,
-      });
+      setApproveFor(null);
+      approvedToast(body, task);
       setCounts(body.counts || null);
       await reload();
     } catch (err) {
       if (company?.id && !isOpsRefusal(err) && (isLocalPreviewActive() || localMode)) {
         try {
-          const body = approveLocalTask(company.id, task.id, { reviewer: currentUser, data });
+          const body = runLocal();
           if (localRefused(body)) throw err;
           setTasks(buildLocalOpsBoard({ tasks: body.tasks, scope, stations: data?.stations || [] }).tasks);
           setCounts(body.counts);
+          setApproveFor(null);
           await refresh?.();
-          toast({
-            title: ar ? "اعتُمد الإنجاز" : "Approved",
-            description: ar
-              ? `مُنحت ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} نقطة — تظهر في الأداء`
-              : `Granted ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} points — visible in Performance`,
-          });
+          approvedToast(body, task);
           return;
         } catch {
           /* fall through */
@@ -1432,6 +1452,48 @@ export default function Operations() {
       setBusy(false);
     }
   };
+
+  /** One path for the objection and its decision: server first, the same gates offline. */
+  const qualityCall = async ({ payload, local, done }) => {
+    setBusy(true);
+    try {
+      if (localMode || isLocalPreviewActive()) {
+        const body = local();
+        if (localRefused(body)) {
+          toast({ title: ar ? "لم يُسجَّل" : "Not recorded", description: ar ? body.reason : (body.reasonEn || body.reason), variant: "destructive" });
+          return;
+        }
+        setTasks(buildLocalOpsBoard({ tasks: body.tasks, scope, stations: data?.stations || [] }).tasks);
+        setCounts(body.counts);
+        await refresh?.();
+        toast({ title: done });
+        return;
+      }
+      const res = await ops({ ...payload, lang });
+      const body = res?.data || res;
+      if (body?.error) throw opsRefusal(body);
+      if (company?.id && payload.action === "decideQualityObjection") await syncPointsFromCloud(company.id);
+      await refresh?.();
+      toast({ title: done });
+      await reload();
+    } catch (err) {
+      toast({ title: ar ? "لم يُسجَّل" : "Not recorded", description: err.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const objectQuality = (task, reason) => qualityCall({
+    payload: { action: "qualityObjection", taskId: task.id, reason },
+    local: () => objectLocalTaskQuality(company.id, task.id, { employee: currentUser, reason }),
+    done: ar ? "أُرسل اعتراضك — يبتّ فيه رئيس المعتمِد أو الموارد البشرية كتابةً" : "Objection sent — decided in writing by the approver's superior or HR",
+  });
+
+  const decideQuality = (task, decisionInput) => qualityCall({
+    payload: { action: "decideQualityObjection", taskId: task.id, ...decisionInput },
+    local: () => decideLocalTaskQuality(company.id, task.id, { decider: currentUser, data, ...decisionInput }),
+    done: ar ? "سُجّل البتّ في الاعتراض — يُبلَّغ للموظف" : "Decision recorded — sent to the employee",
+  });
 
   const toastRejectOutcome = (taskAfter) => {
     const n = opsRejectionCount(taskAfter || {});
@@ -1867,6 +1929,15 @@ export default function Operations() {
   };
   const ownerInitials = (name) => String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
   const creatorName = (task) => taskCreatorName(task, data?.employees || []);
+  const viewerId = currentUser?.id || currentUser?.employeeId || null;
+  // «مهامي»: each approved task names its quality level and reason — the viewer's own when he is an assignee.
+  const qualityText = (t) => {
+    if (t.deletedAt || !(t.status === "completed" || t.approvedAt)) return "";
+    const q = taskQualityFor(t, viewerId) || taskQualityFor(t, null);
+    if (!q) return ar ? "الجودة: بلا مستوى" : "Quality: no level";
+    const open = (t.qualityObjections || []).some((o) => String(o.employeeId) === String(viewerId) && !o.decision);
+    return `${ar ? "الجودة" : "Quality"}: ${q.level} — ${ar ? q.label.ar : q.label.en}${q.reason ? ` (${q.reason})` : ""}${open ? (ar ? " · اعتراضك بانتظار البتّ" : " · objection pending") : ""}`;
+  };
   const archiveItems = archivedTasks.map((t) => {
     const doneN = Math.max(0, Number(t.completedCount) || 0);
     const targetN = Math.max(1, Number(t.targetCount) || 1);
@@ -1874,6 +1945,7 @@ export default function Operations() {
       id: t.id,
       title: t.title,
       text: [
+        qualityText(t),
         t.ref,
         stationName(t.stationId),
         taskAssignScopeLabel(t, ar),
@@ -2325,6 +2397,7 @@ export default function Operations() {
                   createdIds={createdIds}
                   renderActions={renderActions}
                   compact={density === "compact"}
+                  viewerId={viewerId}
                 />
               )}
             </section>
@@ -2346,6 +2419,7 @@ export default function Operations() {
           createdIds={createdIds}
           renderActions={renderActions}
           compact={density === "compact"}
+          viewerId={viewerId}
         />
       )}
 
@@ -2375,7 +2449,11 @@ export default function Operations() {
           lang={lang}
           onClose={() => setOpenTaskId(null)}
           onLog={(opts) => logDone(openTask, opts)}
-          onApprove={() => approve(openTask)}
+          onApprove={(quality) => approve(openTask, quality)}
+          qualityAssignees={qualityAssigneesFor(openTask)}
+          canDecideQuality={canDecideQualityObjection(openTask, currentUser, data)}
+          onObjectQuality={(reason) => objectQuality(openTask, reason)}
+          onDecideQuality={(payload) => decideQuality(openTask, payload)}
           onReject={(reason) => reject(openTask, reason)}
           onEmployeeEscalate={(reason) => employeeEscalate(openTask, reason)}
           canEmployeeEscalate={canEmployeeEscalateOpsTask(openTask, currentUser, data)}
@@ -2483,6 +2561,25 @@ export default function Operations() {
                 {ar ? "تأكيد إنهاء الوكالة" : "Confirm end delegation"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {approveFor && (
+        <div style={dialogOverlay} onClick={() => setApproveFor(null)}>
+          <div data-approve-dialog="1" style={{ ...dialogCard, maxWidth: 460, width: "calc(100% - 32px)", maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: INK }}>{ar ? "اعتماد الإنجاز" : "Approve the work"}</div>
+            <p style={{ margin: "6px 0 12px", fontSize: 11, lineHeight: 1.7, color: MUTED }}>
+              {`${approveFor.ref || ""} · ${approveFor.title || ""}`}
+            </p>
+            <OpsQualityPicker
+              ar={ar}
+              task={approveFor}
+              assignees={qualityAssigneesFor(approveFor)}
+              busy={busy}
+              onCancel={() => setApproveFor(null)}
+              onConfirm={(quality) => approve(approveFor, quality)}
+            />
           </div>
         </div>
       )}

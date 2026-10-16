@@ -5,6 +5,7 @@ import { pointsWord, taskContributions, taskDueChip, taskLastEntry, taskLastSeve
 import OpsAssignmentRefChip from "@/components/tasks/OpsAssignmentRefChip";
 import OpsDispatchChip from "@/components/tasks/OpsDispatchChip";
 import { INK, emptyState } from "@/lib/platformStyles";
+import { taskQualityFor } from "@/lib/taskQuality";
 
 /** Work-order cards — same chrome as work proof and visitor proof. */
 
@@ -134,7 +135,25 @@ function clockOf(iso) {
   return { hm, when: same(d, today) ? "today" : same(d, y) ? "yesterday" : `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}` };
 }
 
-function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen, renderActions, justCreated, compact = false }) {
+/** The approved task's quality on the one five-level scale — the viewer's own level when he is an assignee. */
+function QualityLine({ task, viewerId, ar }) {
+  if (task.status !== "completed" && !task.approvedAt) return null;
+  const q = taskQualityFor(task, viewerId) || taskQualityFor(task, null);
+  if (!q) {
+    return <span data-quality-line="none" style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "الجودة: بلا مستوى (اعتُمدت قبل المستويات)" : "Quality: no level (approved before levels)"}</span>;
+  }
+  const objected = (task.qualityObjections || []).some((o) => String(o.employeeId) === String(viewerId) && !o.decision);
+  return (
+    <span data-quality-line={q.level} style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.6 }}>
+      {ar ? "الجودة: " : "Quality: "}
+      <strong style={{ color: "var(--nv-ink)" }}>{`${q.level} — ${ar ? q.label.ar : q.label.en}`}</strong>
+      {q.reason ? <span style={{ color: "var(--nv-muted)" }}>{` · ${q.reason}`}</span> : null}
+      {objected ? <span style={{ color: "var(--nv-warn-ink)" }}>{ar ? " · اعتراضك بانتظار البتّ" : " · your objection is pending"}</span> : null}
+    </span>
+  );
+}
+
+function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen, renderActions, justCreated, compact = false, viewerId = null }) {
   const [hover, setHover] = useState(false);
   const weight = Number(task.effortWeight) || 3;
   const weightLabel = ar ? WEIGHT_LABEL[weight]?.ar : WEIGHT_LABEL[weight]?.en;
@@ -304,6 +323,8 @@ function TaskRow({ task, ar, stationName, ownerName, ownerInitials, onOpen, rend
         </div>
       ) : null}
 
+      <QualityLine task={task} viewerId={viewerId} ar={ar} />
+
       <footer style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", paddingTop: 10, borderTop: "1px solid var(--nv-line2, #EEF2F7)" }}>
         <span data-points="1" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: pts.granted ? "var(--nv-ok-ink)" : "#8A5A12" }}>
           <Star size={13} strokeWidth={2} aria-hidden />
@@ -327,6 +348,7 @@ export function OpsTaskCards({
   renderActions,
   createdIds,
   compact = false,
+  viewerId = null,
 }) {
   const ar = lang === "ar";
   return (
@@ -341,6 +363,7 @@ export function OpsTaskCards({
           ownerInitials={ownerInitials}
           onOpen={onOpen}
           renderActions={renderActions}
+          viewerId={viewerId}
           justCreated={createdIds?.includes(task.id)}
           compact={compact}
         />
@@ -361,6 +384,7 @@ export default function OpsTasksTable({
   renderActions,
   createdIds,
   compact = false,
+  viewerId = null,
 }) {
   const ar = lang === "ar";
 
@@ -402,6 +426,7 @@ export default function OpsTasksTable({
       renderActions={renderActions}
       createdIds={createdIds}
       compact={compact}
+      viewerId={viewerId}
     />
   );
 }

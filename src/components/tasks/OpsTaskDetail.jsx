@@ -7,6 +7,7 @@ import OpsTaskHeader from "@/components/tasks/detail/OpsTaskHeader";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
 import OpsTaskChain from "@/components/tasks/detail/OpsTaskChain";
 import OpsTaskApprovalBox from "@/components/tasks/detail/OpsTaskApprovalBox";
+import OpsTaskQualityBox from "@/components/tasks/detail/OpsTaskQualityBox";
 import OpsTaskEmployeeEscalate from "@/components/tasks/detail/OpsTaskEmployeeEscalate";
 import OpsTaskAttachments from "@/components/tasks/detail/OpsTaskAttachments";
 import OpsTaskDiscussion from "@/components/tasks/detail/OpsTaskDiscussion";
@@ -68,6 +69,10 @@ export default function OpsTaskDetail({
   currentUserId,
   employees = [],
   chain = [],
+  qualityAssignees = [],
+  canDecideQuality = false,
+  onObjectQuality,
+  onDecideQuality,
 }) {
   const [draftQty, setDraftQty] = useState(0);
   const [draftIssue, setDraftIssue] = useState(false);
@@ -306,7 +311,7 @@ export default function OpsTaskDetail({
       ) : null}
 
       {awaiting && !approved && !deleted && (
-        <OpsTaskApprovalBox ar={ar} busy={busy} canManage={canManage} points={points} targetN={targetN} currentLevelLabel={currentLevelLabel} escalationSteps={escalationSteps} t={t} lang={lang} onApprove={onApprove} onReject={onReject} />
+        <OpsTaskApprovalBox ar={ar} busy={busy} canManage={canManage} points={points} targetN={targetN} currentLevelLabel={currentLevelLabel} task={task} assignees={qualityAssignees} onApprove={onApprove} onReject={onReject} />
       )}
       {!approved && !awaiting && !deleted && (
         <OpsTaskEmployeeEscalate
@@ -318,12 +323,18 @@ export default function OpsTaskDetail({
           onEscalate={onEmployeeEscalate}
         />
       )}
-          {approved && (
-        <OpsTaskSection tone="ok" title={ar ? "اعتُمد الإنجاز" : "Completion approved"}>
-          <div style={{ fontSize: 12, color: "var(--nv-ok-ink)", lineHeight: 1.65 }}>
-            {ar ? `مُنحت ${task.pointsAwarded ?? points} نقطة — دخلت في نسبة الأداء وسجل التدقيق.` : `${task.pointsAwarded ?? points} points granted — in the performance score and audit trail.`}
-            </div>
-        </OpsTaskSection>
+      {approved && (
+        <OpsTaskQualityBox
+          ar={ar}
+          task={task}
+          points={points}
+          viewerId={currentUserId || currentUser?.id}
+          canDecide={canDecideQuality}
+          busy={busy}
+          employees={employees}
+          onObject={onObjectQuality}
+          onDecide={onDecideQuality}
+        />
       )}
 
       <OpsTaskAttachments

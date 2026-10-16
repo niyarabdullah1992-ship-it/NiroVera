@@ -25,10 +25,34 @@ export const opsLogCompletionSchema = opsBase.extend({
   scope: z.string().nullable().optional(),
 });
 
+const qualityLevelSchema = z.coerce.number().int().min(1).max(5);
+
 export const opsApproveSchema = opsBase.extend({
   action: z.literal("approve"),
   taskId: entityIdSchema,
+  // Required by name in the handler (QUALITY_LEVEL_REQUIRED), so the refusal is the platform's own.
+  qualityLevel: qualityLevelSchema.optional(),
+  qualityReason: z.string().max(500).optional(),
+  qualityOverrides: z.record(z.object({ level: qualityLevelSchema, reason: z.string().max(500).optional() }).passthrough()).optional(),
+  lang: z.enum(["ar", "en"]).optional(),
   scope: z.string().nullable().optional(),
+});
+
+export const opsQualityObjectionSchema = opsBase.extend({
+  action: z.literal("qualityObjection"),
+  taskId: entityIdSchema,
+  reason: z.string().max(2000).optional(),
+  lang: z.enum(["ar", "en"]).optional(),
+});
+
+export const opsDecideQualityObjectionSchema = opsBase.extend({
+  action: z.literal("decideQualityObjection"),
+  taskId: entityIdSchema,
+  objectionId: z.string().min(1).max(200),
+  decision: z.string().max(20).optional(),
+  note: z.string().max(2000).optional(),
+  newLevel: qualityLevelSchema.optional(),
+  lang: z.enum(["ar", "en"]).optional(),
 });
 
 export const opsRejectSchema = opsBase.extend({
@@ -169,6 +193,8 @@ export const opsDeleteSchema = opsBase.extend({
 export const opsActionSchemas = {
   logCompletion: opsLogCompletionSchema,
   approve: opsApproveSchema,
+  qualityObjection: opsQualityObjectionSchema,
+  decideQualityObjection: opsDecideQualityObjectionSchema,
   reject: opsRejectSchema,
   employeeEscalate: opsEmployeeEscalateSchema,
   attendanceStatus: opsAttendanceStatusSchema,

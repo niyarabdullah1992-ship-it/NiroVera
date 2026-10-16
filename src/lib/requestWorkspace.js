@@ -629,7 +629,7 @@ export function leaveKindsFor(profile, ar = true, requests, employee) {
           ? (ar ? `${leftover} أيام تقديرية متبقية` : `${leftover} discretionary days left`)
           : (ar ? "لا رصيد تقديري بعد" : "No discretionary days left"))
       : row.key === "eid"
-        ? (ar ? "الوطني 1 · التأسيس 1 مقفلان في الجدول بلا طلب · الفطر 4 · الأضحى 4 بطلب" : "National 1 · Founding 1 locked on the roster · Fitr 4 · Adha 4 by request")
+        ? (ar ? "ثابتة في المنصة · الوطني 1 · التأسيس 1 مقفلان في الجدول بلا طلب · الفطر 4 · الأضحى 4 بطلب" : "Fixed in the platform · National 1 · Founding 1 locked on the roster · Fitr 4 · Adha 4 by request")
       : row.key === "iddah"
         ? (isRamadanHoursSubject({ profile })
           ? (ar ? "130 يوماً بأجر — تمديد بلا أجر للحامل حتى الوضع" : "130 paid days — unpaid extension if pregnant until birth")

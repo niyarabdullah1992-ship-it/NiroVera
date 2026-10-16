@@ -35,6 +35,7 @@ import VoiceAuditTrail from "@/components/complaints/VoiceAuditTrail";
 import VoiceChainBoard from "@/components/complaints/VoiceChainBoard";
 import VoiceGuaranteeList from "@/components/complaints/VoiceGuaranteeList";
 import VoiceLawPanel from "@/components/complaints/VoiceLawPanel";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import VoiceMineBoard from "@/components/complaints/VoiceMineBoard";
 import VoiceQueueList from "@/components/complaints/VoiceQueueList";
 import VoiceDecisionCard from "@/components/complaints/VoiceDecisionCard";
@@ -731,7 +732,12 @@ export default function Complaints() {
           </>
         ) : null}
 
-        <VoiceLawPanel ar={ar} breached={activeFace === "manage" ? board.overdue.length : mineBreaches} />
+        <VoiceLawPanel
+          ar={ar}
+          breached={activeFace === "manage" ? board.overdue.length : mineBreaches}
+          abuseCases={activeFace === "manage" ? runAbuse : myAbuse}
+          calendar={laborCalendarOf(data)}
+        />
       </div>
     </SuiteWorkspaceFrame>
   );

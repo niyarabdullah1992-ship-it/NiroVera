@@ -264,3 +264,27 @@ export function abuseStepIndex(row) {
   const i = ABUSE_STEPS.findIndex((s) => s.id === row?.status);
   return i < 0 ? 0 : i;
 }
+
+/**
+ * Model Arts. 54–56 as the «أنظمة الوزارة» panel reads them — counted from the cases, no estimate.
+ *   inquiry  — open cases still inside the five-working-day window (55/2) · overdue — past it
+ *   decided  — cases closed with a written recommendation · exposed — cases not kept confidential (56/1)
+ */
+export function abuseLawStatus(cases = [], { today, calendar, restWeekdays } = {}) {
+  const list = Array.isArray(cases) ? cases : [];
+  let inquiry = 0;
+  let overdue = 0;
+  for (const row of list) {
+    for (const c of abuseCaseClocks(row, { today, calendar, restWeekdays })) {
+      if (c.over) overdue += 1;
+      else inquiry += 1;
+    }
+  }
+  return {
+    total: list.length,
+    inquiry,
+    overdue,
+    decided: list.filter((row) => ["decided", "closed"].includes(String(row?.status || ""))).length,
+    exposed: list.filter((row) => row?.confidential === false).length,
+  };
+}

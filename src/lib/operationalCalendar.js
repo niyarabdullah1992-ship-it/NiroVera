@@ -1,9 +1,9 @@
 import {
   calendarDateKey,
-  dayAttendanceStatus,
   employeeScheduledOn,
-  hasPublishedScheduleOn,
 } from "./attendanceCalendar.js";
+import { dutyPersonState, myDutyDay } from "./dutyDay.js";
+import { laborCalendarOf } from "./ummAlQuraCalendar.js";
 import { liveCalendarProofs } from "./calendarProofs.js";
 import {
   visitorProofClockSource,
@@ -12,7 +12,7 @@ import {
   visitorProofsOnly,
 } from "./visitorProof.js";
 import { hydrateEmployeesLeave } from "./leaveDerivations.js";
-import { approvedLeaveOnDay, isStatutoryOffDay, leaveTypeLabel, weekendLeavePeople } from "./leaveTypes.js";
+import { approvedLeaveOnDay, leaveTypeLabel } from "./leaveTypes.js";
 import { citeLeaveType } from "./laborRules.js";
 import { LEAVE_CITE_STYLE, LEAVE_STYLE } from "./shiftWeek.js";
 import {
@@ -193,14 +193,6 @@ export function chainBreakFor(rows, { gpsRequired, dateKey, todayKey }) {
   return null;
 }
 
-function personState(status) {
-  if (status === "late") return "late";
-  if (status === "absent") return "abs";
-  if (status === "on_leave") return "leave";
-  if (status === "present") return "on";
-  return null;
-}
-
 export function deriveDayRecord({
   date,
   employees = [],
@@ -223,59 +215,37 @@ export function deriveDayRecord({
   const roster = view === "me" && currentUser
     ? hydrated.filter((employee) => String(employee.id) === String(currentUser.id))
     : hydrated;
-  const weekendHits = weekend ? weekendLeavePeople(roster, dateKey) : null;
-  if (weekend && (!weekendHits || !weekendHits.length)) return null;
-
   const byEmployee = Object.fromEntries(
     (rows || []).map((row) => [String(row.employee_id ?? row.employeeId), row]),
   );
+  // One source of truth: each person's state is the same duty-day derivation the employee's «شهري»
+  // line and file read (myDutyDay) — absence only on an assigned published shift, lateness net of
+  // excusals, leave and official holidays outside attendance. A person's day reads the whole roster
+  // (as on their file); the station scope only decides who is listed.
+  const scope = Array.isArray(data?.schedules) ? data : { ...(data || {}), schedules };
+  const calendar = laborCalendarOf(data);
   const people = [];
-  if (weekendHits) {
-    for (const hit of weekendHits) {
-      people.push({
-        id: hit.id,
-        name: hit.name,
-        state: "leave",
-        time: "—",
-        lateMinutes: 0,
-        filed: hit.request || null,
-        clash: employeeScheduledOn(schedules, hit.id, dateKey),
-      });
-    }
-  } else {
-    for (const employee of roster) {
-      const request = approvedLeaveOnDay(employee, dateKey);
-      const off = isStatutoryOffDay(employee, dateKey);
-      const onLeave = !!off;
-      const status = dayAttendanceStatus({
-        employee,
-        row: byEmployee[String(employee.id)],
-        dateKey,
-        schedules,
-        todayKey,
-        onLeave,
-      });
-      const state = personState(status);
-      if (!state) continue;
-      const row = byEmployee[String(employee.id)];
-      const lateMinutes = Number(row?.late_minutes ?? row?.lateMinutes ?? 0) || 0;
-      const clash = state === "leave" && off?.kind !== "official" && employeeScheduledOn(schedules, employee.id, dateKey);
-      people.push({
-        id: employee.id,
-        name: employee.name || employee.id,
-        state,
-        time: (state === "abs" || state === "leave") ? "—" : clockOf(row?.check_in_at || row?.checkInAt),
-        lateMinutes,
-        filed: request || null,
-        clash,
-      });
-    }
+  for (const employee of roster) {
+    const row = byEmployee[String(employee.id)];
+    const day = myDutyDay({ employee, data: scope, row, key: dateKey, todayKey, calendar });
+    const state = dutyPersonState(day);
+    if (!state) continue;
+    const request = approvedLeaveOnDay(employee, dateKey);
+    const clash = state === "leave" && day.off?.kind !== "official" && employeeScheduledOn(schedules, employee.id, dateKey);
+    people.push({
+      id: employee.id,
+      name: employee.name || employee.id,
+      state,
+      time: (state === "abs" || state === "leave") ? "—" : clockOf(day.inAt),
+      lateMinutes: day.inAt ? day.lateMinutes : 0,
+      filed: request || null,
+      clash,
+    });
   }
+  // Fri/Sat stay quiet unless someone has a state (worked, absent from an assigned shift, or on leave).
+  if (weekend && !people.length) return null;
 
-  const published = hasPublishedScheduleOn(schedules, dateKey);
-  const rosterPeople = (!published && !rows.length)
-    ? people.filter((person) => person.state === "leave")
-    : people;
+  const rosterPeople = people;
 
   const on = rosterPeople.filter((p) => p.state === "on").length;
   const late = rosterPeople.filter((p) => p.state === "late").length;

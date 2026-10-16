@@ -418,7 +418,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
     { label: ar ? "إثبات زائر" : "Visitor proof", color: OC.goldBg, border: OC.goldBd },
     { label: ar ? "بلاغ سلامة" : "HSE", color: OC.absBg, border: OC.absBd },
     { label: ar ? "إجازة معتمدة" : "Approved leave", color: OC.leaveBg, border: OC.leaveBd },
-    ...(myself ? [{ label: ar ? "يومك: غبت أو تأخرت" : "Your day: absent or late", color: OC.absBg, border: OC.absBd }] : []),
+    ...(myself ? [{ label: ar ? "«أنا:» يومك أنت — غبت أو تأخرت" : "“Me:” your own day — absent or late", color: OC.abs, border: OC.abs }] : []),
   ];
 
   const mkStat = (id, label, value, color) => {
@@ -681,8 +681,10 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                         <span style={{ fontSize: 11, color: OC.muted }}>{cell.weekend ? (ar ? "عطلة" : "Off") : (cell.future ? (ar ? "مجدول" : "Scheduled") : "")}</span>
                       )}
                       {myMark ? (
-                        <span data-my-mark={myMark.kind} title={myMark.text} style={{ fontSize: 10, fontWeight: 600, color: myMark.kind === "absent" ? OC.abs : OC.goldText, background: myMark.kind === "absent" ? OC.absBg : OC.goldBg, border: `1px solid ${myMark.kind === "absent" ? OC.absBd : OC.goldBd}`, padding: "1px 6px", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", boxSizing: "border-box" }}>
-                          {myMark.text}
+                        // My own day — its own small line under the branch counters, never mistaken for them.
+                        <span data-my-mark={myMark.kind} title={myMark.text} style={{ display: "flex", alignItems: "center", gap: 4, width: "100%", fontSize: 10, fontWeight: 600, color: myMark.kind === "absent" ? OC.abs : OC.goldText, borderTop: `1px dashed ${OC.soft}`, paddingTop: 4, minWidth: 0 }}>
+                          <span aria-hidden style={{ width: 6, height: 6, borderRadius: 999, flex: "none", background: myMark.kind === "absent" ? OC.abs : OC.gold }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{ar ? "أنا: " : "Me: "}{myMark.text}</span>
                         </span>
                       ) : null}
                       {items.length ? (

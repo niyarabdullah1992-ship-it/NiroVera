@@ -80,7 +80,8 @@ export default function MyMonthLine({ me, company, data, year, month, selectedDa
   const myDay = selectedKey ? byKey[selectedKey] || null : null;
   const lastLate = days.filter((day) => day.key <= todayKey && day.lateMinutes > 0 && day.inAt).pop() || null;
   const lateFor = myDay && myDay.lateMinutes > 0 && myDay.inAt ? myDay : lastLate;
-  const below = totals.scheduled > 0 && totals.attended < totals.scheduled;
+  // A day still open today is not a missed day — the flag rises only on a recorded absence.
+  const below = totals.absent > 0;
   const timeOf = (iso) => (iso ? toWesternDigits(formatTime(iso, timeFormat, "en-GB")) : "—");
   const canFix = (day) => !!day && day.key <= todayKey && !["leave", "holiday", "upcoming"].includes(day.status)
     && (!!day.shift || !!day.inAt || ["absent", "pending", "open"].includes(day.status));

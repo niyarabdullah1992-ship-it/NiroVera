@@ -865,7 +865,7 @@ export function buildEmployeeFileView({
     {
       kicker: ar ? "الاتصال" : "Contact",
       title: ar ? "التواصل والطوارئ" : "Reach and emergency",
-      tag: ar ? "يُحدّثه الموظف" : "The employee updates this",
+      tag: ar ? "يطلب الموظف تحديثه" : "The employee asks to update it",
       rows: [
         row(ar ? "الجوال" : "Mobile", employee?.phone, "", "", "phone", "text", { raw: employee?.phone || "", secret: true }),
         row(ar ? "البريد" : "Email", employee?.email, "", "", "", "text", { secret: true }),

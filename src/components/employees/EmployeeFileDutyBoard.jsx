@@ -173,6 +173,7 @@ export default function EmployeeFileDutyBoard({ employee, data, currentUser, lan
             mode={yearMode}
             onMode={changeYearMode}
             anchor={career.anchor}
+            view={own ? "employee" : "manager"}
           />
 
           <DutyCareerSection
@@ -183,6 +184,7 @@ export default function EmployeeFileDutyBoard({ employee, data, currentUser, lan
             onMode={changeYearMode}
             openId={askedYearId || (focus === "career" ? (selectedYear?.id || "") : "")}
             focusDay={askedDay}
+            view={own ? "employee" : "manager"}
             dayHref={own ? (day) => myRecordHref({ day: day.key }) : null}
             onDay={own ? null : (day) => {
               const date = dateFromKey(day.key);

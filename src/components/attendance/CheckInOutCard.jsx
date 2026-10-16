@@ -29,6 +29,8 @@ import { checkSubmitOtherRequestGate } from "@/lib/otherRequestDerivations";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import { parsePunchClock, riyadhNowClock } from "@/lib/attendancePunch";
 import { dutyTone } from "@/components/schedules/dutyStatus";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
 
 const STATUS_PILL = {
   present: { bg: "var(--nv-accent-soft)", fg: "#15803D", bd: "#BBF7D0", ar: "حاضر", en: "Present" },
@@ -471,9 +473,10 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             ? (isLate ? (ar ? `متأخر ${lateMinutes || "—"} دقيقة` : `Late ${lateMinutes || "—"} min`) : (ar ? "في الوقت" : "On time"))
             : (ar ? "بانتظار ضغطتك" : "Waiting for your tap"),
           value: inn ? inTime : "—",
+          hint: inn && isLate && lateMinutes ? attRightHint("lateness", { date: toRiyadhDateKey(), minutes: lateMinutes }, { view: "employee", ar }) : null,
         },
         ...(band?.label
-          ? [{ key: "rest", kind: "plan", label: ar ? "الراحة" : "Break", note: ar ? "تُخصم من المنجز · المادة 101" : "Excluded from worked time · Art. 101", value: band.label }]
+          ? [{ key: "rest", kind: "plan", label: ar ? "الراحة" : "Break", note: ar ? "تُخصم من المنجز" : "Excluded from worked time", value: band.label, hint: attRightHint("rest", {}, { view: "employee", ar }) }]
           : []),
         { key: "end", kind: "plan", label: ar ? "نهاية الوردية" : "Shift ends", note: ar ? "من الجدول المنشور" : "From the published rota", value: endClock },
         {
@@ -653,6 +656,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                     <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                       <span style={{ fontSize: 12.5, fontWeight: step.kind === "punch" ? 700 : 600, color: step.kind === "punch" ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{step.label}</span>
                       <span style={{ fontSize: 11, color: step.state === "late" ? "var(--nv-warn-ink)" : "var(--nv-muted)", lineHeight: 1.5 }}>{step.note}</span>
+                      {step.hint ? <RightHint ar={ar} hint={step.hint} style={{ alignSelf: "flex-start" }} /> : null}
                     </span>
                     <span style={{ whiteSpace: "nowrap", paddingTop: 1 }}>
                       <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: step.kind === "punch" ? 15 : 13, fontWeight: step.kind === "punch" ? 700 : 500, color: step.value === "—" ? "var(--nv-mute-fill, #C5CEC9)" : step.kind === "punch" ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{step.value}</span>
@@ -698,7 +702,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))" }}>
               {band?.label
                 ? (ar ? "الجزء المخطّط هو الراحة — لا تُحتسب ساعات عمل." : "The hatched part is the break — not counted as work.")
-                : (ar ? "راحة الوردية تُخصم من المنجز — المادة 101" : "Shift rest is excluded from worked time — Art. 101")}
+                : (ar ? "راحة الوردية تُخصم من المنجز" : "Shift rest is excluded from worked time")}
             </span>
           </div>
         </div>

@@ -7,6 +7,8 @@ import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
 import { chipButton, mono, SectionHead, slab } from "@/components/schedules/scheduleChrome";
 import { dutyChip, dutyLabel, dutyTone } from "@/components/schedules/dutyStatus";
 import { openLinkStyle } from "@/components/schedules/dutyLinks";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
 
 const CAREER_CSS = `
 .nv-career-grid { display: grid; grid-template-columns: minmax(0, 2.3fr) repeat(5, minmax(0, 1fr)); gap: 8px; align-items: center; }
@@ -102,21 +104,21 @@ function MeterRow({ ar, label, value, limit, notice, level, foot }) {
  * Article 80(7) as information on one contract year: intermittent days against 30 (warning mark 20)
  * and the longest consecutive run against 15 (warning mark 10). Never a decision.
  */
-export function Art80Meter({ ar, reading, compact = false }) {
+export function Art80Meter({ ar, reading, compact = false, view = "employee" }) {
   if (!reading) return null;
   const { intermittent, consecutive } = reading;
   const interFoot = intermittent.level === "over"
-    ? (ar ? "تجاوز ثلاثين يوماً في السنة العقدية — الحالة الواردة في المادة 80 (7)، ويسبق الفصل فيها إنذار كتابي بعد عشرين يوماً، مع إتاحة الفرصة للعامل لبيان أسباب معارضته." : "Over thirty days in the contract year — the Article 80(7) case; a written warning after twenty days precedes dismissal, and the worker is given a chance to state his objection.")
+    ? (ar ? "تجاوز ثلاثين يوماً في السنة العقدية." : "Over thirty days in the contract year.")
     : intermittent.level === "notice"
-      ? (ar ? "بلغ عشرين يوماً — المادة 80 (7) تشترط إنذاراً كتابياً بعد غياب عشرين يوماً قبل أي فصل في هذه الحالة." : "Twenty days reached — Article 80(7) requires a written warning after twenty days of absence before any dismissal in this case.")
-      : (ar ? "الحدّ في المادة 80 (7): أكثر من ثلاثين يوماً خلال السنة العقدية الواحدة." : "The Article 80(7) line: more than thirty days within one contract year.");
+      ? (ar ? "بلغ عشرين يوماً — حدّ الإنذار الكتابي." : "Twenty days reached — the written-warning mark.")
+      : (ar ? "الحدّ: أكثر من ثلاثين يوماً في السنة العقدية." : "The line: more than thirty days in one contract year.");
   const streakRange = consecutive.value > 0 && consecutive.from
     ? (ar ? ` (${fmtDayKey(consecutive.from, ar)} – ${fmtDayKey(consecutive.to, ar)})` : ` (${fmtDayKey(consecutive.from, ar)} – ${fmtDayKey(consecutive.to, ar)})`)
     : "";
   const consFoot = consecutive.level === "over"
-    ? (ar ? `أكثر من خمسة عشر يوماً متتالية${streakRange} — الحالة الثانية في المادة 80 (7)، ويسبقها إنذار كتابي بعد انقطاع عشرة أيام.` : `More than fifteen consecutive days${streakRange} — the second Article 80(7) case, preceded by a written warning after ten days.`)
+    ? (ar ? `أكثر من خمسة عشر يوماً متتالية${streakRange}.` : `More than fifteen consecutive days${streakRange}.`)
     : consecutive.level === "notice"
-      ? (ar ? `انقطاع عشرة أيام فأكثر${streakRange} — المادة 80 (7) تشترط إنذاراً كتابياً في هذه الحالة.` : `Ten or more days of interruption${streakRange} — Article 80(7) requires a written warning in this case.`)
+      ? (ar ? `انقطاع عشرة أيام فأكثر${streakRange} — حدّ الإنذار الكتابي.` : `Ten or more days in a row${streakRange} — the written-warning mark.`)
       : (ar ? `الحدّ: أكثر من خمسة عشر يوماً متتالية${streakRange}.` : `The line: more than fifteen consecutive days${streakRange}.`);
   return (
     <div data-art80="1" style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
@@ -140,6 +142,7 @@ export function Art80Meter({ ar, reading, compact = false }) {
           foot={consFoot}
         />
       </div>
+      <RightHint ar={ar} style={{ alignSelf: "flex-start" }} hint={attRightHint("absence", { days: intermittent.value, streak: consecutive.value }, { view, ar })} />
       {compact ? null : (
         <details style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
           <summary style={{ cursor: "pointer", color: "var(--nv-ink2)", fontWeight: 600 }}>
@@ -182,7 +185,7 @@ function YearPicker({ ar, years = [], value = "", onPick, label }) {
   );
 }
 
-export function DutyYearBar({ ar, title, years = [], selected, onSelect, mode, onMode, anchor }) {
+export function DutyYearBar({ ar, title, years = [], selected, onSelect, mode, onMode, anchor, view = "employee" }) {
   const covered = years.filter((year) => year.covered);
   const resetNote = mode === "calendar"
     ? (ar ? "تُحسب من جديد كل سنة ميلادية — من 1 يناير إلى 31 ديسمبر." : "Counts restart every calendar year — 1 January to 31 December.")
@@ -220,7 +223,7 @@ export function DutyYearBar({ ar, title, years = [], selected, onSelect, mode, o
             </span>
           ) : null}
         </div>
-        {selected && mode === "contract" ? <Art80Meter ar={ar} reading={selected.art80} /> : null}
+        {selected && mode === "contract" ? <Art80Meter ar={ar} reading={selected.art80} view={view} /> : null}
         {selected && mode === "calendar" ? (
           <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
             {ar ? "المادة 80 (7) تقرأ الغياب على السنة العقدية — بدّل إلى «عقدية» لقراءة حدودها." : "Article 80(7) reads absence on the contract year — switch to “Contract” to read its lines."}
@@ -249,7 +252,7 @@ function num(value, _tone) {
  * «مسيرتي — الغياب والتأخير عبر السنوات»: one row per year since the contract start, newest first,
  * every count restarting with the year. A row opens its days. Read-only.
  */
-export function DutyCareerSection({ ar, title, note, years = [], mode, onMode, dayHref, onDay, openId: openProp = "", focusDay = "" }) {
+export function DutyCareerSection({ ar, title, note, years = [], mode, onMode, dayHref, onDay, openId: openProp = "", focusDay = "", view = "employee" }) {
   const [openId, setOpenId] = useState(openProp);
   const [all, setAll] = useState({});
   const [seenProp, setSeenProp] = useState(openProp);
@@ -309,7 +312,7 @@ export function DutyCareerSection({ ar, title, note, years = [], mode, onMode, d
                   </strong>
                   {year.current ? <span style={dutyChip("ok", { height: 20, fontSize: 10 })}>{ar ? "الحالية" : "Current"}</span> : null}
                   {year.art80 && (year.art80.intermittent.level === "over" || year.art80.consecutive.level === "over") ? (
-                    <span style={dutyChip("bad", { height: 20, fontSize: 10 })}>{ar ? "تجاوز حدّ المادة 80" : "Over Art. 80 line"}</span>
+                    <span style={dutyChip("bad", { height: 20, fontSize: 10 })}>{ar ? "تجاوز حدّ الغياب" : "Over the absence line"}</span>
                   ) : year.art80 && (year.art80.intermittent.level === "notice" || year.art80.consecutive.level === "notice") ? (
                     <span style={dutyChip("warn", { height: 20, fontSize: 10 })}>{ar ? "بلغ حدّ الإنذار" : "Warning mark"}</span>
                   ) : null}
@@ -327,7 +330,7 @@ export function DutyCareerSection({ ar, title, note, years = [], mode, onMode, d
             </button>
             {open ? (
               <div data-career-days={year.id} style={{ padding: "4px 18px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-                {year.art80 ? <div style={{ padding: "8px 0 4px" }}><Art80Meter ar={ar} reading={year.art80} compact /></div> : null}
+                {year.art80 ? <div style={{ padding: "8px 0 4px" }}><Art80Meter ar={ar} reading={year.art80} compact view={view} /></div> : null}
                 {!list.length ? (
                   <span style={{ fontSize: 12.5, color: "var(--nv-muted)", padding: "6px 0" }}>
                     {ar ? "لا غياب ولا تأخير مسجّل في هذه السنة." : "No absence or lateness on record this year."}

@@ -1,6 +1,11 @@
 import React, { useMemo, useState } from "react";
+import { Sun } from "lucide-react";
 import {
   employeeShiftOnDay,
+  employeeWeekHours,
+  SUN_FIELD,
+  SUN_OFFICE,
+  sunExposureCellState,
   LEAVE_STYLE,
   leaveOnDayView,
   REST_STYLE,
@@ -15,9 +20,10 @@ import { isViewerOwnFile } from "@/lib/employeeFileView";
 import { FileSelfBadge } from "@/components/employees/ProfileHero";
 import { chip, Collapsible, mono, slab } from "@/components/schedules/scheduleChrome";
 
-const NAME_COL = 132;
-const GRID = `${NAME_COL}px repeat(7,minmax(78px,1fr))`;
-const MIN_W = NAME_COL + 7 * 78;
+// Same grid as the editor («تعيينات الفرع»): 128px names, seven day columns.
+const NAME_COL = 128;
+const GRID = `${NAME_COL}px repeat(7,minmax(70px,1fr))`;
+const MIN_W = 620;
 
 const CSS = `
 .nv-branch-ro-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -37,16 +43,9 @@ function HoursSpan({ shift, lang, format }) {
   const end = formatShiftHm(shift?.end, format, lang);
   if (!start && !end) return null;
   const clock = (label) => <span dir="ltr" style={{ ...mono, fontVariantNumeric: "tabular-nums" }}>{label}</span>;
-  if (start && end) {
-    return (
-      <span dir="ltr" style={{ display: "inline-flex", flexWrap: "wrap", justifyContent: "center", columnGap: 3 }}>
-        {clock(start)}
-        <span aria-hidden>–</span>
-        {clock(end)}
-      </span>
-    );
-  }
-  return clock(start || end);
+  // The editor's wording: «من 07:00 إلى 15:00».
+  if (lang === "ar") return start && end ? <>من {clock(start)} إلى {clock(end)}</> : clock(start || end);
+  return start && end ? <>{clock(start)}–{clock(end)}</> : clock(start || end);
 }
 
 /**
@@ -130,15 +129,22 @@ export default function BranchRosterReadOnly({
                       borderInlineStart: mine ? "3px solid var(--nv-ok-fill)" : "3px solid transparent",
                       padding: "8px 10px",
                       display: "flex",
-                      alignItems: "center",
-                      gap: 6,
+                      flexDirection: "column",
+                      justifyContent: "center",
+                      gap: 1,
                       minWidth: 0,
                     }}
                   >
-                    <span style={{ fontSize: 12, fontWeight: mine ? 700 : 600, color: SW.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: "1 1 auto" }} title={employee.name}>
-                      {employee.name}
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                      <span style={{ fontSize: 12, fontWeight: mine ? 700 : 600, color: SW.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: "1 1 auto" }} title={employee.name}>
+                        {employee.name}
+                      </span>
+                      {mine ? <FileSelfBadge ar={ar} /> : null}
                     </span>
-                    {mine ? <FileSelfBadge ar={ar} /> : null}
+                    {/* Hours are shown on your own row only — never a colleague's. */}
+                    {mine ? (
+                      <span style={{ fontSize: 10.5, color: SW.muted }}><span style={mono}>{employeeWeekHours(schedule, employee.id, weekStart, employee, laborCalendar)}</span> {ar ? "س" : "h"}</span>
+                    ) : null}
                   </span>
                   {days.map((day) => {
                     const leave = leaveOnDayView(employee, day.key, ar, laborCalendar);
@@ -146,6 +152,9 @@ export default function BranchRosterReadOnly({
                     const holiday = leave?.source === "official_holiday";
                     const style = leave ? (leave.style || LEAVE_STYLE) : (shift ? shiftTypeStyle(shift, types.findIndex((row) => row.id === shift.id)) : REST_STYLE);
                     const empty = !published && !shift && !leave;
+                    // Your own heat placement (مكشوف/مظلّل) shows on your row, read only; colleagues' stays hidden.
+                    const sun = mine && shift ? sunExposureCellState(schedule, employee.id, day.key, { shift }) : null;
+                    const sunMark = sun?.asks && sun.mark ? sun.mark : "";
                     const label = leave
                       ? (holiday || mine ? leave.type : (ar ? "إجازة" : "Leave"))
                       : shift ? shift.label : empty ? (ar ? "بلا جدول" : "No roster") : (ar ? "راحة" : "Rest");
@@ -160,9 +169,10 @@ export default function BranchRosterReadOnly({
                           alignItems: "center",
                           justifyContent: "center",
                           gap: 3,
-                          minHeight: 52,
+                          minHeight: 60,
                           minWidth: 0,
-                          padding: "5px 4px",
+                          padding: sunMark ? "6px 4px 30px" : "6px 4px",
+                          position: "relative",
                           boxSizing: "border-box",
                           margin: leave ? 3 : 0,
                           borderRadius: leave ? 8 : 0,
@@ -179,8 +189,33 @@ export default function BranchRosterReadOnly({
                       >
                         <span style={cellText}>{label}</span>
                         {shift ? (
-                          <span style={{ fontSize: 9.5, opacity: 0.85, lineHeight: 1.4, fontWeight: 500, maxWidth: "100%" }}>
+                          <span style={{ fontSize: 9, opacity: 0.85, lineHeight: 1.45, fontWeight: 500, maxWidth: "100%", textAlign: "center" }} dir={ar ? "rtl" : "ltr"}>
                             <HoursSpan shift={shift} lang={lang} format={timeFormat} />
+                          </span>
+                        ) : null}
+                        {sunMark ? (
+                          <span
+                            data-ro-sun={sunMark}
+                            style={{
+                              position: "absolute",
+                              insetInline: 4,
+                              bottom: 4,
+                              height: 22,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 4,
+                              fontSize: 10.5,
+                              fontWeight: 700,
+                              borderRadius: 6,
+                              background: sunMark === SUN_FIELD ? "var(--nv-bad, #B42318)" : "var(--nv-ok, #1F7A4D)",
+                              color: "#fff",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                            }}
+                          >
+                            <Sun aria-hidden style={{ width: 11, height: 11, flex: "none" }} strokeWidth={2.4} />
+                            {sunMark === SUN_FIELD ? (ar ? "مكشوف" : "Exposed") : sunMark === SUN_OFFICE ? (ar ? "مظلّل" : "Shaded") : ""}
                           </span>
                         ) : null}
                       </span>

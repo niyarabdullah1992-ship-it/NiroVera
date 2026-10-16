@@ -485,6 +485,46 @@ function serviceYears(start, today) {
 }
 
 /** Article 55 — Saudi fixed-term continuation. Converts the file when the statutory test is met. */
+/**
+ * Regs Art. 1(1) — a temporary or casual contract (work pattern «مؤقت / عرضي») that continues past
+ * `contract.casual.maxDays` (90) becomes a contract under the whole Labour Law, whatever the visa title.
+ * Seasonal work is outside the paragraph (it names «المؤقت أو العرضي» only).
+ * Counted from the contract start (or hire date) to today, or to the exit date when the file has one.
+ *   applies   — the pattern is temporary/casual · converts — the days passed the limit
+ *   approaching — fifteen days or fewer are left · needsStart — no start date on file
+ */
+export function deriveRegs1Conversion(input = {}) {
+  const { row, profile } = profileOf(input);
+  const today = input.today || localDateKey();
+  const limit = ruleValue("contract.casual.maxDays", today);
+  const pattern = String(profile.workPattern || profile.contract?.workPattern || row.workPattern || "").trim().toLowerCase();
+  const base = { ok: true, applies: false, converts: false, approaching: false, limit, cite: citeRule("contract.casual.maxDays", today) };
+  if (pattern !== "temporary") return { ...base, seasonal: pattern === "seasonal" };
+  const start = String(profile.contract?.startDate || profile.hireDate || row.hireDate || "").slice(0, 10);
+  if (!parseDay(start)) return { ...base, applies: true, needsStart: true };
+  const exit = String(profile.contractExit?.effectiveDate || "").slice(0, 10);
+  const through = parseDay(exit) && exit < today ? exit : today;
+  const from = parseDay(start);
+  const to = parseDay(through);
+  const days = to >= from ? Math.round((to.getTime() - from.getTime()) / 86400000) + 1 : 0;
+  const convertsOn = addDays(start, limit);
+  const converts = days > limit;
+  return {
+    ...base,
+    applies: true,
+    days,
+    convertsOn,
+    converts,
+    approaching: !converts && limit - days <= 15,
+    reason: converts
+      ? `استمر العقد المؤقت أو العرضي ${days} يوماً — تجاوز ${limit} يوماً فتحوّل منذ ${convertsOn} إلى عقد يخضع لجميع أحكام نظام العمل (اللائحة م1).`
+      : "",
+    reasonEn: converts
+      ? `The temporary or casual contract ran ${days} days — past ${limit}, so since ${convertsOn} it is a contract under the whole Labour Law (Regs Art. 1).`
+      : "",
+  };
+}
+
 export function deriveArt55Conversion(input = {}) {
   const { row, profile } = profileOf(input);
   const type = String(profile.contractType || row.contractType || profile.contract?.type || "").toLowerCase();

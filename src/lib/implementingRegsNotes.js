@@ -98,12 +98,12 @@ export function juvenileNightRegsNote(ar = true) {
     : "Regs Art. 34: a juvenile may work at night by exception in a family-only establishment, vocational schools and training centres, bakeries outside 21:00–04:00, and force majeure or emergencies.";
 }
 
-/** Regs Art. 1(1) — temporary / casual work running past ninety days. */
-export const TEMP_CONVERSION_DAYS = 90;
-export function tempConversionRegsNote(ar = true) {
+/** Regs Art. 1(1) — temporary / casual work running past ninety days (contract.casual.maxDays). */
+export function tempConversionRegsNote(ar = true, onDate) {
+  const days = rv("contract.casual.maxDays", onDate, 90);
   return ar
-    ? `اللائحة م1: إذا استمر العقد المؤقت أو العرضي أكثر من ${TEMP_CONVERSION_DAYS} يوماً تحوّل إلى عقد يخضع لجميع أحكام نظام العمل، أياً كان مسمى التأشيرة أو مدة الإقامة.`
-    : `Regs Art. 1: a temporary or casual contract that runs past ${TEMP_CONVERSION_DAYS} days becomes a contract under the whole Labour Law, whatever the visa title or residence term.`;
+    ? `اللائحة م1: إذا استمر العقد المؤقت أو العرضي أكثر من ${days} يوماً تحوّل إلى عقد يخضع لجميع أحكام نظام العمل، أياً كان مسمى التأشيرة أو مدة الإقامة.`
+    : `Regs Art. 1: a temporary or casual contract that runs past ${days} days becomes a contract under the whole Labour Law, whatever the visa title or residence term.`;
 }
 
 /** Regs Arts. 1(2), 17 and 27 ثالثاً — the labour courts' jurisdiction. */

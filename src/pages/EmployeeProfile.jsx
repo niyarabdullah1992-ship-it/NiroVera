@@ -34,6 +34,7 @@ import EmployeeFileSummary from "@/components/employees/EmployeeFileSummary";
 import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employees/EmployeeFileFieldCard";
 import EmployerDutiesCard from "@/components/employees/EmployerDutiesCard";
 import { contractHint, fileAlertHint } from "@/lib/rightHints.disc";
+import ContractLawPanel from "@/components/employees/ContractLawPanel";
 import ContractTab from "@/components/employees/ContractTab";
 import FileArchiveTab from "@/components/employees/FileArchiveTab";
 import { checkHiringAgeGate } from "@/lib/employerDuties";
@@ -484,6 +485,7 @@ export default function EmployeeProfile() {
         {tab === "contract" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {canEditContract || isSelf ? <ContractTab employee={employee} companyId={company.id} canEdit={canEditContract && !isSelf} viewerId={currentUser.id} /> : null}
+            {canEditContract || isSelf ? <ContractLawPanel employee={employee} ar={ar} /> : null}
             <AllowanceLedgerCard employee={employee} ar={ar} />
             <SiteConditionsCard
               employee={employee}

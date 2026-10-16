@@ -15,7 +15,8 @@ import {
   taskAssigneeIds,
 } from "./opsDerivations.js";
 import { checkApproveWorkProofGate } from "./workProofDerivations.js";
-import { collectVoiceItems, deriveVoiceBoard } from "./voiceBoard.js";
+import { deriveVoiceBoard, viewerOpenAbuseCount, viewerVoiceQueueItems } from "./voiceBoard.js";
+import { isVoiceHrReceiver } from "./voicePrivacy.js";
 import { deriveDisciplineBoard } from "./disciplineBoard.js";
 import { deriveWpsStatus } from "./payrollDerivations.js";
 import { canSeeManagedNightDue, managedDutyEmployees, nightDueAdminCoveredEmployees, nightDueScopeEmployees, requestInboxEmployees, requestInboxMaySee, requestManageEmployees } from "./dutyScope.js";
@@ -232,16 +233,14 @@ function canManageVoice(user, data) {
     || ["director", "ops_manager", "pgm", "station_manager"].includes(user?.role)
     || hasHrPerm(user, data, "view_anonymous_reports")
     || hasHrPerm(user, data, "manage_anonymous_reports")
+    || isVoiceHrReceiver(user, data)
   );
 }
 
-/** صوت الموظف — open voices in the reviewer's queue. */
+/** صوت الموظف — open voices in the reviewer's queue (HR-only channels count for HR only). */
 export function pendingVoiceBadgeCount(data, user) {
   if (!canManageVoice(user, data)) return 0;
-  const items = collectVoiceItems({
-    publicReports: data?.publicReports,
-    anonymousReports: data?.anonymousReports,
-  });
+  const items = viewerVoiceQueueItems(data, user);
   const board = deriveVoiceBoard({
     items,
     employees: data?.employees || [],
@@ -249,7 +248,7 @@ export function pendingVoiceBadgeCount(data, user) {
     canManage: true,
     userId: user?.id,
   });
-  return board.openCount || 0;
+  return (board.openCount || 0) + viewerOpenAbuseCount(data, user);
 }
 
 function canManageDiscipline(user, data) {

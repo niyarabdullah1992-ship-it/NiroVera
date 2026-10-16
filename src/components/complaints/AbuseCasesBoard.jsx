@@ -28,7 +28,7 @@ function Result(res, ar, ok) {
 }
 
 /** One confidential case with its next step (model regulation Arts. 55–56). */
-function CaseRow({ row, ar, companyId, employees, disciplinaryCases, today, calendar, by }) {
+function CaseRow({ row, ar, companyId, employees, disciplinaryCases, today, calendar, by, canRun = true }) {
   const [members, setMembers] = useState([]);
   const [decisionRef, setDecisionRef] = useState("");
   const [hearing, setHearing] = useState({ who: "", role: "complainant", statement: "", signedByParty: false, signedByCommittee: false });
@@ -65,7 +65,7 @@ function CaseRow({ row, ar, companyId, employees, disciplinaryCases, today, cale
       ))}
       {flags.map((f) => <span key={f.caseId} data-abuse-retaliation="" style={{ fontSize: 12, color: "var(--nv-warn-ink)" }}>{ar ? f.reason : f.reasonEn}</span>)}
 
-      {row.status === "filed" ? (
+      {row.status === "filed" && canRun ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={small}>{ar ? "شكّل لجنة التحقيق بقرار من المسؤول المختص — لا يكون أحد الطرفين عضواً فيها (م55/2)." : "Form the committee by decision of the competent official (Art. 55(2))."}</span>
           <select multiple value={members} onChange={(e) => setMembers([...e.target.selectedOptions].map((o) => o.value))} style={{ ...field, height: 90 }}>
@@ -118,7 +118,7 @@ function CaseRow({ row, ar, companyId, employees, disciplinaryCases, today, cale
         </>
       ) : null}
 
-      {row.status === "decided" ? (
+      {row.status === "decided" && canRun ? (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span style={small}>{ar ? `التوصية: ${ABUSE_OUTCOMES.find((o) => o.id === row.outcome?.id)?.ar || ""}${row.outcome?.recommendation ? ` — ${row.outcome.recommendation}` : ""}` : row.outcome?.id}</span>
           <span style={{ flex: 1 }} />
@@ -130,13 +130,18 @@ function CaseRow({ row, ar, companyId, employees, disciplinaryCases, today, cale
   );
 }
 
-/** Senior HR's view of the confidential workplace-abuse cases (model regulation Arts. 54–56). */
-export default function AbuseCasesBoard({ data, companyId, ar = true, by = "", committeeMemberId = "" }) {
+/**
+ * HR's inbox of the confidential workplace-abuse cases (model regulation Arts. 54–56), inside
+ * «صوت الموظف» › إدارة. `cases` arrives already filtered by voicePrivacy (never the accused, never a
+ * line manager); a committee member who is not HR sees only the cases he sits on and cannot form
+ * the committee or close the file.
+ */
+export default function AbuseCasesBoard({ data, companyId, ar = true, by = "", committeeMemberId = "", cases: given = null, canRun = true }) {
   const cases = useMemo(() => {
-    const all = Array.isArray(data?.abuseCases) ? data.abuseCases : [];
+    const all = Array.isArray(given) ? given : (Array.isArray(data?.abuseCases) ? data.abuseCases : []);
     // A committee member (not senior HR) sees only the cases they sit on — model regulation Art. 56(1).
     return committeeMemberId ? all.filter((r) => abuseCommitteeIds(r).includes(committeeMemberId)) : all;
-  }, [data?.abuseCases, committeeMemberId]);
+  }, [given, data?.abuseCases, committeeMemberId]);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
   const calendar = laborCalendarOf(data);
   const open = cases.filter((r) => r.status !== "closed");
@@ -152,7 +157,7 @@ export default function AbuseCasesBoard({ data, companyId, ar = true, by = "", c
         <span style={small}>{ar ? ABUSE_GOV_PATH_AR : ABUSE_GOV_PATH_EN}</span>
       </div>
       {cases.length ? cases.map((row) => (
-        <CaseRow key={row.id} row={row} ar={ar} companyId={companyId} employees={data?.employees || []} disciplinaryCases={data?.disciplinaryCases || []} today={today} calendar={calendar} by={by} />
+        <CaseRow key={row.id} row={row} ar={ar} companyId={companyId} employees={data?.employees || []} disciplinaryCases={data?.disciplinaryCases || []} today={today} calendar={calendar} by={by} canRun={canRun} />
       )) : <span style={{ ...small, textAlign: "center", padding: 12 }}>{ar ? "لا قضايا." : "No cases."}</span>}
     </section>
   );

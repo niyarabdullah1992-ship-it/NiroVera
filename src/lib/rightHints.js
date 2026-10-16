@@ -25,7 +25,7 @@ import {
   daysAfterExcludingHolidays,
   damageObjectionDeadline,
   employerNoticeOf,
-  grievanceState,
+  grievanceState, GRIEVANCE_ROUTE,
 } from "./rightsRequests.js";
 import { EXIT_ROUTE_NOTICE75, RESIGNATION_TYPE, resignationState } from "./exitRequests.js";
 import { compBalance } from "./compLeave.js";
@@ -71,7 +71,7 @@ const product = (ar) => ({ product: true, label: ar ? "قرار تشغيلي" : 
 
 /* ── ready flows ────────────────────────────────────────────────────────── */
 const ACT = {
-  grievance: (ar) => ({ kind: "rights", rightsKind: GRIEVANCE_TYPE, label: ar ? "قدّم تظلماً" : "File a grievance" }),
+  grievance: (ar) => ({ kind: "rights", rightsKind: GRIEVANCE_TYPE, to: GRIEVANCE_ROUTE, label: ar ? "قدّم تظلماً" : "File a grievance" }),
   objection: (ar) => ({ kind: "rights", rightsKind: DAMAGE_OBJECTION_TYPE, label: ar ? "اعترض على الخصم" : "Object to the deduction" }),
   documents: (ar) => ({ kind: "rights", rightsKind: DOCUMENTS_RETURN_TYPE, label: ar ? "اطلب وثائقك" : "Ask for your documents" }),
   court: (ar) => ({ kind: "href", href: LABOUR_COURT_URL, external: true, label: ar ? "المحكمة العمالية (ناجز)" : "Labour court (Najiz)" }),

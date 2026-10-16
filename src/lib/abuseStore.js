@@ -4,6 +4,7 @@
  */
 import { addNotification, getCompanyData, logAudit, updateCompany } from "@/lib/store";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { voiceHrReceivers } from "@/lib/voicePrivacy";
 import {
   checkAbuseCommitteeGate,
   checkAbuseHearingGate,
@@ -36,12 +37,11 @@ export function fileAbuseCase(companyId, input = {}) {
   updateCompany(companyId, (d) => {
     d.abuseCases = [row, ...(Array.isArray(d.abuseCases) ? d.abuseCases : [])];
   });
-  logAudit(companyId, "abuse_case_filed", `Workplace-abuse ${row.reporterRole === "witness" ? "report" : "complaint"} filed (${row.id}).`);
-  // Only HR seniors hear of it — never the accused (confidentiality, model Art. 56(1)).
-  for (const e of data?.employees || []) {
-    if (String(e.id) === String(row.accusedId) || String(e.id) === String(row.reporterId)) continue;
-    if (!["owner", "director", "hr", "admin"].includes(e.role) && String(e.id) !== String(data?.ownerId)) continue;
-    addNotification(companyId, e.id, "وصلت شكوى إيذاء سرية — شكّل لجنة التحقيق خلال خمسة أيام عمل (النموذج م55/2).", { key: `abuse:${row.id}:filed` });
+  // Neutral audit line: the trail records that a confidential HR file exists, never who or about whom.
+  logAudit(companyId, "hr_confidential_filed", `Confidential HR file recorded (${row.id}).`);
+  // Only HR / the administration hear of it — never the accused, never a line manager (model Art. 56(1)).
+  for (const e of voiceHrReceivers(data, { exclude: [row.accusedId, row.reporterId], item: { reporterId: row.reporterId } })) {
+    addNotification(companyId, e.id, "وصلت شكوى إيذاء سرية — شكّل لجنة التحقيق خلال خمسة أيام عمل (النموذج م55/2).", { key: `abuse:${row.id}:filed`, to: "/app/complaints?tab=manage" });
   }
   return { ok: true, id: row.id, lastDay: gate.lastDay };
 }

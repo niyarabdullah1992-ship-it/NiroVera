@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { setStationScope } from "@/lib/stationScopeStore";
 import { postponeResignation, recordIddahBirth, recordMaternityBirth, recordLeaveBreach, setHajjAnnualQuota, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
@@ -136,7 +136,7 @@ import StatutoryItem from "@/components/labor/StatutoryItem";
 import WrittenConsentInbox from "@/components/requests/WrittenConsentInbox";
 import WrittenConsentRaise from "@/components/requests/WrittenConsentRaise";
 import RightsRequestRaise from "@/components/requests/RightsRequestRaise";
-import { employerNoticeOf, jobSearchHoursInWeek, NIGHT_AVOID_TYPE } from "@/lib/rightsRequests";
+import { ABUSE_COMPLAINT_KIND, employerNoticeOf, GRIEVANCE_TYPE, jobSearchHoursInWeek, NIGHT_AVOID_TYPE, rightsRouteFor } from "@/lib/rightsRequests";
 import { otAssignmentLine, otOffer, otOfferLines, sar as sarText, hoursAr } from "@/lib/otOffer";
 import { compBalance, compDays } from "@/lib/compLeave";
 import RequestArchiveBoard from "@/components/requests/RequestArchiveBoard";
@@ -187,7 +187,7 @@ const MINE_TILES = [
   { id: "money", ar: "سلفة أو بدل", en: "Advance or allowance", hintAr: "م 92 · القسط لا يزيد على 10% من الأجر", hintEn: "Art. 92 · an instalment stays within 10% of the wage", letter: "ف" },
   { id: "custody", ar: "عهدة", en: "Custody", hintAr: "تسليم أو إرجاع", hintEn: "Hand over or return", letter: "ع" },
   { id: "resignation", ar: "تقديم استقالة", en: "Resignation", hintAr: "م 79 مكرر · لا تُرفض", hintEn: "Art. 79 bis · not refused", letter: "س" },
-  { id: "rights", ar: "حقوق نظامية أخرى", en: "Other legal rights", hintAr: "م 64 · 81 · 91 · 110 — الوثائق، ترك العمل، خصم الإتلاف، تأجيل الإجازة", hintEn: "Arts. 64 · 81 · 91 · 110", letter: "ح" },
+  { id: "rights", ar: "حقوق نظامية أخرى", en: "Other legal rights", hintAr: "م 64 · 81 · 91 · 110 — الوثائق، ترك العمل، خصم الإتلاف، تأجيل الإجازة. التظلّم في «الجزاءات»، وشكوى التحرش في «صوت الموظف»", hintEn: "Arts. 64 · 81 · 91 · 110. Grievances sit in Sanctions; harassment in Employee voice", letter: "ح" },
   { id: "other", ar: "طلب آخر", en: "Other request", hintAr: "يُوصف في السبب", hintEn: "Described in the reason", letter: "آ" },
 ];
 
@@ -494,6 +494,7 @@ export default function RequestsWorkspace({
   initialDocKind = "",
 }) {
   const ar = lang === "ar";
+  const navigate = useNavigate();
   const { company, currentUser, refresh, data } = useAuth();
   const self = requestSelfEmployee(currentUser, employees) || currentUser;
   const today = todayRiyadh();
@@ -2008,6 +2009,11 @@ export default function RequestsWorkspace({
   // The one action a «⚖ حقك / التزامك» hint offers, run in place.
   const runHintAction = (row, action) => {
     if (!action) return;
+    if (action.kind === "rights" && (action.rightsKind === GRIEVANCE_TYPE || action.rightsKind === ABUSE_COMPLAINT_KIND)) {
+      // The grievance lives in «الجزاءات», the abuse complaint in «صوت الموظف» — not in طلباتي.
+      navigate(rightsRouteFor(action.rightsKind));
+      return;
+    }
     if (action.kind === "rights") {
       setConsentPicked(false);
       setKind("rights");

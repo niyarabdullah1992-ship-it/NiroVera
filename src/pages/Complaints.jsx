@@ -24,6 +24,7 @@ import {
 } from "@/lib/complaintDerivations";
 import { getRoleLabel } from "@/lib/roles";
 import { voicePublicId,
+  ABUSE_VOICE_CHANNEL,
   channelOf,
   collectVoiceItems,
   deriveVoiceBoard,
@@ -40,6 +41,21 @@ import VoiceDecisionCard from "@/components/complaints/VoiceDecisionCard";
 import VoiceRaiseCard from "@/components/complaints/VoiceRaiseCard";
 import VoiceRelatedLinks from "@/components/complaints/VoiceRelatedLinks";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
+import AbuseCaseRaise from "@/components/complaints/AbuseCaseRaise";
+import AbuseCasesBoard from "@/components/complaints/AbuseCasesBoard";
+import { ABUSE_STEPS, ABUSE_KINDS, abuseStepIndex } from "@/lib/abuseComplaint";
+import {
+  canHandleHrVoice,
+  canRunAbuseCase,
+  filterAbuseCasesForViewer,
+  filterVoiceForViewer,
+  hrVoiceChain,
+  isHrOnlyVoice,
+  isVoiceHrReceiver,
+  namedComplaintChain,
+  voiceChainFor,
+  voiceHrReceivers,
+} from "@/lib/voicePrivacy";
 import { railLaneTabs, useRailSide } from "@/lib/railSide";
 
 const field = {
@@ -55,6 +71,8 @@ const field = {
   boxSizing: "border-box",
 };
 
+const fmtDay = (iso) => String(iso || "").slice(0, 10) || "—";
+
 function actionStyle(kind, off) {
   if (off) return { background: "var(--nv-card)", color: "var(--nv-muted)", border: "1px solid var(--nv-line)", borderRadius: 999, cursor: "default" };
   if (kind === "go") return { background: "#3C7D50", color: "#fff", border: "1px solid #3C7D50", borderRadius: 999, cursor: "pointer" };
@@ -69,15 +87,18 @@ export default function Complaints() {
   const employees = data?.employees || [];
   const stations = data?.stations || [];
   const stationScope = useStationScope();
+  // HR / the administration receive the HR-only channels (suggestion, confidential, harassment).
+  const hrReceiver = isVoiceHrReceiver(currentUser, data);
   const canManage = Boolean(currentUser && (
-    data?.ownerId === currentUser.id
+    hrReceiver
+    || data?.ownerId === currentUser.id
     || ["director", "ops_manager", "pgm", "station_manager"].includes(currentUser.role)
     || hasHRPermission(currentUser, data, "view_anonymous_reports")
     || hasHRPermission(currentUser, data, "manage_anonymous_reports")
   ));
-  // Same ladder as المهام: the branch line from the org, same people at each level.
+  // الشكوى الجهرية: the same ladder as المهام — the branch line from the org — closing at HR.
   const chain = useMemo(() => {
-    const tiers = branchReviewTiers(data, currentUser?.stationId);
+    const tiers = namedComplaintChain(branchReviewTiers(data, currentUser?.stationId), data);
     if (tiers.length) return tiers;
     const ids = data?.complaintEscalationChain || [];
     if (ids.length) return deriveEscalationChain(ids, employees);
@@ -95,31 +116,37 @@ export default function Complaints() {
     const author = employees.find((row) => String(row.id) === String(item?.authorId));
     return String(author?.stationId || "");
   };
+  // Suggestion / confidential complaint: the single HR tier — no ladder, never the manager.
+  const hrChain = useMemo(() => hrVoiceChain(data), [data]);
   const chainFor = (item) => {
-    const tiers = branchReviewTiers(data, stationOfVoice(item));
+    if (isHrOnlyVoice(item)) return hrChain;
+    const tiers = voiceChainFor(item, branchReviewTiers(data, stationOfVoice(item)), data);
     return tiers.length ? tiers : chain;
   };
   /** Only the people on the voice's ladder, from its current level up, rule on it (owner/admin always). */
   const isVoiceReviewer = (item) => {
     if (!currentUser) return false;
+    if (isHrOnlyVoice(item)) return canHandleHrVoice(item, currentUser, data);
     if (currentUser.isOwner || currentUser.role === "owner" || currentUser.role === "admin" || String(data?.ownerId || "") === String(currentUser.id)) return true;
-    const tiers = branchReviewTiers(data, stationOfVoice(item));
-    if (!tiers.some((tier) => tier.handlerIds.length)) return canManage;
+    const tiers = chainFor(item);
+    if (!tiers.some((tier) => (tier.handlerIds || []).length)) return canManage;
     const level = Math.max(0, Number(item?.escalationLevel) || 0);
     return tiers.slice(level).some((tier) => tier.handlerIds.includes(String(currentUser.id)));
   };
 
+  // The privacy layer first: what this viewer may see at all (HR-only channels → HR or the author).
   const allItems = useMemo(
-    () => collectVoiceItems({ publicReports: data?.publicReports, anonymousReports: data?.anonymousReports }),
-    [data?.publicReports, data?.anonymousReports],
+    () => filterVoiceForViewer(collectVoiceItems({ publicReports: data?.publicReports, anonymousReports: data?.anonymousReports }), currentUser, data),
+    [data?.publicReports, data?.anonymousReports, data?.employees, data?.hrLevels, currentUser?.id],
   );
   const queueItems = useMemo(() => {
     if (!canManage) return undefined;
     return allItems.filter((item) => {
+      if (isHrOnlyVoice(item) && !canHandleHrVoice(item, currentUser, data)) return false;
       const author = employees.find((row) => String(row.id) === String(item.authorId));
       return matchesStationScope(item.stationId || author?.stationId, stationScope);
     });
-  }, [allItems, canManage, employees, stationScope]);
+  }, [allItems, canManage, employees, stationScope, currentUser?.id]);
 
   const board = useMemo(
     () => deriveVoiceBoard({
@@ -150,7 +177,12 @@ export default function Complaints() {
     params.set("tab", next);
     setSearchParams(params, { replace: true });
   };
-  const [channel, setChannel] = useState("suggestion");
+  // ?channel=abuse (old طلباتي links) opens the harassment form.
+  const [channel, setChannel] = useState(() => (["suggestion", "complaint", "anonymous", "abuse"].includes(searchParams.get("channel")) ? searchParams.get("channel") : "suggestion"));
+  const asked = searchParams.get("channel");
+  useEffect(() => {
+    if (["suggestion", "complaint", "anonymous", "abuse"].includes(asked)) setChannel(asked);
+  }, [asked]);
   const [pickedId, setPickedId] = useState("");
   const [prio, setPrio] = useState("low");
   const [topicId, setTopicId] = useState("wage");
@@ -186,7 +218,16 @@ export default function Complaints() {
     });
   }, [company?.id, data?.publicReports, data?.anonymousReports, chain]);
 
-  const picked = channelOf(channel);
+  const hrOnlyPicked = channel !== "complaint";
+  const picked = channel === "abuse" ? ABUSE_VOICE_CHANNEL : channelOf(channel);
+  const me = employees.find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
+  // Abuse cases: HR runs them; a named committee member sees his; the filer follows his own.
+  const visibleAbuse = useMemo(() => filterAbuseCasesForViewer(data?.abuseCases || [], currentUser, data), [data, currentUser]);
+  const runAbuse = visibleAbuse.filter((row) => canRunAbuseCase(row, currentUser, data));
+  const sitAbuse = visibleAbuse.filter((row) => !canRunAbuseCase(row, currentUser, data)
+    && String(row.reporterId || row.userId) !== String(currentUser?.id));
+  const myAbuse = visibleAbuse.filter((row) => String(row.reporterId || row.userId) === String(currentUser?.id));
+  const openAbuseCount = runAbuse.filter((row) => !["decided", "closed"].includes(String(row.status || ""))).length;
   const titleOk = title.trim().length >= 6;
   const bodyOk = body.trim().length >= 15;
   const dateOk = channel === "suggestion" || /^\d{4}-\d{2}-\d{2}$/.test(when);
@@ -194,8 +235,10 @@ export default function Complaints() {
   const ackOk = channel === "anonymous" || ack;
   const canSend = titleOk && bodyOk && dateOk && wantOk && ackOk && Boolean(company?.id);
   const homeManagerId = stations.find((row) => row.id === resolveVoiceWorkStationId(currentUser))?.managerId;
-  const startTier = chain[firstReviewLevel(chain, currentUser?.id, homeManagerId)] || chain[0];
-  const firstTier = ar ? (startTier?.labelAr || "مدير الفرع") : (startTier?.labelEn || "the station manager");
+  const startTier = hrOnlyPicked ? hrChain[0] : (chain[firstReviewLevel(chain, currentUser?.id, homeManagerId)] || chain[0]);
+  const firstTier = hrOnlyPicked
+    ? (ar ? "الموارد البشرية" : "HR")
+    : (ar ? (startTier?.labelAr || "مدير الفرع") : (startTier?.labelEn || "the station manager"));
   const roleLabel = currentUser?.role ? getRoleLabel(company, currentUser.role, t) : "";
   const reporter = channel === "anonymous"
     ? (ar ? "يصل برقم — لا يُسجَّل اسمك" : "It arrives as a number — your name is not stored")
@@ -207,7 +250,7 @@ export default function Complaints() {
   const tabs = railLaneTabs(canManage
     ? [
       { key: "mine", num: "01", ar: "ملفي", en: "My file" },
-      { key: "manage", num: "02", ar: "إدارة", en: "Manage", count: board.openCount },
+      { key: "manage", num: "02", ar: "إدارة", en: "Manage", count: board.openCount + openAbuseCount },
     ]
     : [
       { key: "mine", num: "01", ar: "ملفي", en: "My file", count: board.mineOpen },
@@ -215,7 +258,7 @@ export default function Complaints() {
   const manageSettledCount = board.settled.length;
 
   const pickChannel = (id) => {
-    const next = channelOf(id);
+    const next = id === "abuse" ? ABUSE_VOICE_CHANNEL : channelOf(id);
     setChannel(id);
     setPrio(next.defaultPrio);
   };
@@ -232,7 +275,7 @@ export default function Complaints() {
   };
 
   const send = () => {
-    if (!company?.id) return;
+    if (!company?.id || channel === "abuse") return;
     const usage = getAnonUsage(company.id, currentUser?.id);
     const limits = {
       day: data?.settings?.rateLimitDaily,
@@ -248,8 +291,21 @@ export default function Complaints() {
     const now = new Date().toISOString();
     const station = stations.find((row) => row.id === stationId);
     const managerId = station?.managerId;
-    const startLevel = firstReviewLevel(chain, currentUser?.id, managerId);
+    // HR-only channels sit at the single HR tier; only the open complaint starts at the manager.
+    const startLevel = hrOnlyPicked ? 0 : firstReviewLevel(chain, currentUser?.id, managerId);
     const notice = { outcome: "raised", channel, title: gate.title };
+    const tellReceivers = () => {
+      if (hrOnlyPicked) {
+        // Never the manager: the notice goes to HR / the administration only.
+        for (const hr of voiceHrReceivers(data, { exclude: [currentUser?.id], item: { stationId } })) {
+          addNotification(company.id, hr.id, voiceDecisionNoticeText(notice, lang), { voiceNotice: notice, to: "/app/complaints?tab=manage" });
+        }
+        return;
+      }
+      if (managerId && String(managerId) !== String(currentUser?.id)) {
+        addNotification(company.id, managerId, voiceDecisionNoticeText(notice, lang), { voiceNotice: notice });
+      }
+    };
     const voiceFields = {
       topicId,
       requestText: want.trim(),
@@ -285,9 +341,7 @@ export default function Complaints() {
         ];
       });
       setAnonReceipt(anonymousId);
-      if (managerId && String(managerId) !== String(currentUser?.id)) {
-        addNotification(company.id, managerId, voiceDecisionNoticeText(notice, lang), { voiceNotice: notice });
-      }
+      tellReceivers();
     } else {
       updateCompany(company.id, (row) => {
         row.publicReports = [
@@ -316,9 +370,7 @@ export default function Complaints() {
         ];
       });
       setAnonReceipt("");
-      if (managerId && String(managerId) !== String(currentUser?.id)) {
-        addNotification(company.id, managerId, voiceDecisionNoticeText(notice, lang), { voiceNotice: notice });
-      }
+      tellReceivers();
     }
     setTitle("");
     setBody("");
@@ -440,7 +492,7 @@ export default function Complaints() {
   const queueFilters = [
     ["due", ar ? "ضاق وقتها" : "Due soon", dueSoon.length],
     ["over", ar ? "تجاوزت" : "Overdue", board.overdue.length],
-    ["anon", ar ? "مجهولة" : "Anonymous", board.open.filter((card) => card.item.channel === "anonymous").length],
+    ...(hrReceiver ? [["anon", ar ? "سرية" : "Confidential", board.open.filter((card) => card.item.channel === "anonymous").length]] : []),
     ["all", ar ? "الكل" : "All", board.open.length],
     ["archive", ar ? "الأرشيف" : "Archive", manageSettledCount],
   ];
@@ -455,9 +507,13 @@ export default function Complaints() {
   const submitText = canSend
     ? (ar ? `أرسل ${picked.ar} إلى ${firstTier}` : `Send ${picked.en} to ${firstTier}`)
     : (ar ? `أكمل البنود لإرسال ${picked.ar}` : `Complete the items to send ${picked.en}`);
-  const slaLine = ar
-    ? `المهلة ${picked.hours} ساعة. ما لا يُراجع فيها يُرفع للمدير التالي تلقائياً، ولا يُغلق بلا قرار مكتوب.`
-    : `The window is ${picked.hours} hours. What is not reviewed in time is raised to the next manager, and nothing closes without a written ruling.`;
+  const slaLine = hrOnlyPicked
+    ? (ar
+      ? `المهلة ${picked.hours} ساعة لدى الموارد البشرية — بلا تصعيد ولا مرور بمديرك، ولا تُغلق بلا قرار مكتوب.`
+      : `The window is ${picked.hours} hours with HR — no ladder, never via your manager; nothing closes without a written ruling.`)
+    : (ar
+      ? `المهلة ${picked.hours} ساعة عند كل مستوى. ما لا يُراجع فيها يُرفع للمستوى التالي تلقائياً حتى الموارد البشرية، ولا يُغلق بلا قرار مكتوب.`
+      : `The window is ${picked.hours} hours at each level. What is not reviewed in time climbs automatically up to HR, and nothing closes without a written ruling.`);
   const mineBreaches = board.mine.filter((card) => card.overdue).length;
 
   return (
@@ -561,22 +617,48 @@ export default function Complaints() {
                     slaLine={slaLine}
                     reporter={reporter}
                     channelRow={picked}
+                    abuseSlot={channel === "abuse" ? (
+                      <AbuseCaseRaise employee={me} companyId={company?.id} ar={ar} onSent={() => setMineFace("live")} />
+                    ) : null}
                     receipt={anonReceipt ? (ar
-                      ? `أُرسل بلا هويّة. رقم المتابعة ${anonReceipt} — تابع القرار في الأرشيف بهذا الرقم، ولن يصلك ردّ شخصي.`
+                      ? `أُرسل بلا هويّة إلى الموارد البشرية. رقم المتابعة ${anonReceipt} — تتابع قراره في ملفك بهذا الرقم.`
                       : `Sent with no identity. Follow-up number ${anonReceipt} — watch the archive for that number; there is no personal reply.`) : ""}
                   />
                   <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
                     {/* Settled voices live in «الأرشيف» only; each open card already carries its chain. */}
                     <VoiceMineBoard cards={board.mine.filter((card) => !card.settled)} chain={chain} ar={ar} onEscalate={(card) => escalate(card, true)} />
+                    {myAbuse.length ? (
+                      <section data-abuse-mine="" className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 10 }}>
+                        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--nv-line)", fontSize: 13, fontWeight: 700 }}>
+                          {ar ? `شكاوى التحرش أو الإيذاء · ${myAbuse.length}` : `Harassment or abuse complaints · ${myAbuse.length}`}
+                        </div>
+                        {myAbuse.map((row) => {
+                          const kind = ABUSE_KINDS.find((k) => k.id === row.kind);
+                          const step = ABUSE_STEPS[abuseStepIndex(row)] || ABUSE_STEPS[0];
+                          return (
+                            <div key={row.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
+                              <span style={{ minWidth: 0 }}>{ar ? kind?.ar : kind?.en} · {fmtDay(row.filedAt)}</span>
+                              <span style={{ fontWeight: 700, color: "var(--nv-ok-ink)" }}>{ar ? step.ar : step.en}</span>
+                            </div>
+                          );
+                        })}
+                        <div style={{ padding: "8px 14px", fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "تصل إلى الموارد البشرية فقط — لا يراها مديرك." : "HR only — your manager does not see it."}</div>
+                      </section>
+                    ) : null}
+                    {sitAbuse.length ? (
+                      <AbuseCasesBoard data={data} companyId={company?.id} ar={ar} by={currentUser?.name || ""} cases={sitAbuse} committeeMemberId={String(currentUser?.id || "")} canRun={false} />
+                    ) : null}
                     {/* The channel promises are on the channel tiles; only the two shared guarantees stay. */}
                     <VoiceGuaranteeList rows={board.promises.slice(-2)} ar={ar} />
                   </div>
                 </div>
-                {board.mine.some((card) => !card.settled) ? null : <VoiceChainBoard chain={board.chain} note={board.chainNote} ar={ar} />}
+                {board.mine.some((card) => !card.settled) ? null : (hrOnlyPicked
+                  ? <VoiceChainBoard chain={[{ num: "01", name: ar ? "الموارد البشرية" : "Human Resources", mark: "✓", bg: "var(--nv-ok-ink)", border: "var(--nv-ok-ink)", color: "var(--nv-ink)", weight: 700 }]} note={ar ? "يصل إلى الموارد البشرية وحدها، بلا تصعيد ولا مرور بمديرك أو مدير الفرع." : "It reaches HR alone — no ladder, never via your manager or the branch manager."} ar={ar} />
+                  : <VoiceChainBoard chain={board.chain} note={board.chainNote} ar={ar} />)}
                 <p style={{ margin: 0, fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
                   {ar
-                    ? <>الاعتراض على جزاء موقَّع مسار آخر: <Link to="/app/discipline" style={{ color: "inherit" }}>الجزاءات</Link>.</>
-                    : <>Objecting to a signed sanction is a different path: <Link to="/app/discipline" style={{ color: "inherit" }}>Sanctions</Link>.</>}
+                    ? <>التظلّم من قرار أو إجراء أو جزاء مسار آخر: <Link to="/app/discipline?tab=mine&raise=grievance" style={{ color: "inherit" }}>الجزاءات</Link>.</>
+                    : <>A grievance on a decision, action or sanction is a different path: <Link to="/app/discipline?tab=mine&raise=grievance" style={{ color: "inherit" }}>Sanctions</Link>.</>}
                 </p>
               </div>
             )}
@@ -585,9 +667,12 @@ export default function Complaints() {
 
         {canManage && activeFace === "manage" ? (
           <>
+            {hrReceiver && runAbuse.length ? (
+              <AbuseCasesBoard data={data} companyId={company?.id} ar={ar} by={currentUser?.name || ""} cases={runAbuse} />
+            ) : null}
             <FigureRow
               ar={ar}
-              figures={board.stats.map((stat, i) => ({
+              figures={board.stats.filter((stat) => hrReceiver || stat.id !== "anon").map((stat, i) => ({
                 key: `voice-${i}`,
                 label: stat.lbl,
                 value: stat.val,

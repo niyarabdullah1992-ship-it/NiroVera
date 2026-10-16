@@ -65,8 +65,8 @@ export const SUITE_GROUPS = [
     ar: "صوت الموظف",
     en: "Employee Voice",
     num: "07",
-    blurbAr: "اقتراح وشكوى وبلاغ مجهول بمسار تصعيد.",
-    blurbEn: "Suggestion, complaint, and anonymous report with an escalation path.",
+    blurbAr: "شكوى جهرية بسلم تصعيد، وشكوى سرية واقتراح وشكوى تحرش إلى الموارد البشرية وحدها.",
+    blurbEn: "An open complaint on an escalation ladder; confidential complaints, suggestions and harassment to HR alone.",
   },
   {
     id: "people",
@@ -295,8 +295,8 @@ export const SUITE_APPS = [
     public: true,
     ar: "صوت الموظف",
     en: "Employee Voice",
-    blurbAr: "اقتراح وشكوى وبلاغ مجهول بمسار تصعيد.",
-    blurbEn: "Suggestion, complaint, and anonymous report with an escalation path.",
+    blurbAr: "شكوى جهرية بسلم تصعيد، وشكوى سرية واقتراح وشكوى تحرش إلى الموارد البشرية وحدها.",
+    blurbEn: "An open complaint on an escalation ladder; confidential complaints, suggestions and harassment to HR alone.",
     icon: "megaphone",
   },
   {

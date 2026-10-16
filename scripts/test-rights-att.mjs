@@ -56,7 +56,7 @@ ok("lateness hint — warning first, deduction only after (Art. 66)", () => {
   assert.match(h.right, /12 دقيقة/);
   assert.match(h.right, /إنذار كتابي/);
   assert.match(h.right, /لا حسم قبل الإنذار/);
-  assert.equal(h.action.to, "/app/requests?kind=rights&right=grievance");
+  assert.equal(h.action.to, "/app/discipline?tab=mine&raise=grievance");
   const m = attRightHint("lateness", { date: "2026-10-12", minutes: 12, occurrence: 2 }, M);
   shape(m, "التزامك");
   assert.match(m.right, /حسم 5%/);

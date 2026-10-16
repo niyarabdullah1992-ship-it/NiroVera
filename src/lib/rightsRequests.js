@@ -19,6 +19,21 @@ export const JOB_SEARCH_LEAVE = "job_search";
 export const DOCUMENTS_RETURN_TYPE = "documents_return";
 export const NIGHT_AVOID_TYPE = "night_avoid";
 export const GRIEVANCE_TYPE = "grievance";
+/** The workplace-abuse complaint is a confidential HR case raised in «صوت الموظف», not a rights request. */
+export const ABUSE_COMPLAINT_KIND = "abuse_complaint";
+
+/** Regs Art. 71 grievance is raised from «الجزاءات», beside the sanction it may concern. */
+export const GRIEVANCE_ROUTE = "/app/discipline?tab=mine&raise=grievance";
+/** Harassment / abuse is raised in «صوت الموظف» and reaches HR only. */
+export const ABUSE_ROUTE = "/app/complaints?tab=mine&channel=abuse";
+
+/** Where a «⚖ حقك» rights action opens: the grievance and abuse flows left طلباتي. */
+export function rightsRouteFor(kind) {
+  const k = String(kind || "");
+  if (k === GRIEVANCE_TYPE) return GRIEVANCE_ROUTE;
+  if (k === ABUSE_COMPLAINT_KIND) return ABUSE_ROUTE;
+  return `/app/requests?kind=rights&right=${encodeURIComponent(k)}`;
+}
 
 /** Decision 18632 (ثالثاً ج): who may ask to be moved off night work on a medical certificate. */
 export const NIGHT_AVOID_KINDS = [

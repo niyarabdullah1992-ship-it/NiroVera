@@ -24,6 +24,7 @@ import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { hasSeenSuiteWelcome } from "@/lib/suiteApps";
 import { openWrittenConsentCount } from "@/lib/writtenConsent";
 import { useRailSide } from "@/lib/railSide";
+import { viewerVoiceQueueItems } from "@/lib/voiceBoard";
 
 function pendingSigningCount(data) {
   return (data?.signatureRequests || []).filter((row) => {
@@ -51,7 +52,8 @@ function buildModuleMetrics(data, extra = {}) {
     completedTasks: completed,
     openTasks: extra.openTasks ?? Math.max(0, taskTotal - completed),
     escalated: extra.escalated ?? tasks.filter(isEscalated).length,
-    complaints: extra.complaints ?? (data?.anonymousReports || []).filter((row) => row.status === "open").length,
+    // Voice counts are the viewer's own queue (voiceBoard.viewerVoiceQueueItems) — never a company total.
+    complaints: extra.complaints ?? 0,
     reports: extra.reports ?? reports.length,
     pendingReports: extra.pendingReports ?? reports.filter((row) => row.status === "pending").length,
     payroll: data?.payroll?.length || 0,
@@ -191,7 +193,8 @@ export default function Dashboard() {
   const tree = data.stations || [];
   const stations = visibleStations(currentUser, data).filter((s) => matchesStationScope(s.id, headerScope, tree));
   const stationIds = new Set(stations.map((s) => s.id));
-  const anonOpenCount = (data.anonymousReports || []).filter((a) => stationIds.has(a.stationId) && a.status === "open").length;
+  // HR-only voices (anonymous, suggestion) never count on a manager's board.
+  const anonOpenCount = viewerVoiceQueueItems(data, currentUser).filter((a) => (!a.stationId || stationIds.has(a.stationId)) && a.status === "open").length;
   const isEmployee = currentUser.role === "employee";
   const personalFace = isEmployee || railSide === "employee";
   const teamEmployees = visibleEmployees(currentUser, data).filter((employee) =>

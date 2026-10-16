@@ -11,6 +11,7 @@ import { isDutyRequestType, nursingRightUntil } from "./dutyRequests.js";
 import { MANAGER_PERMISSIONS, ASSISTANT_PERMISSIONS, groupLevelsByOrder } from "./hrLevels";
 import { base44 } from "@/api/base44Client";
 import { sendEmailAlert } from "./emailAlerts";
+import { isHrOnlyVoice, voiceHrReceivers } from "./voicePrivacy.js";
 import { getUiLang } from "./dateFormat";
 import { toRiyadhDateKey } from "./riyadhDate";
 import { reconcileStationReferences } from "./stationConsistency";
@@ -1415,15 +1416,23 @@ function emailNewEvents(companyId, data, before) {
       );
     }
   });
+  const anonIds = new Set((data.anonymousReports || []).map((r) => r.id));
   const newReports = [
     ...(data.anonymousReports || []).filter((r) => !before.anrIds.has(r.id)),
     ...(data.publicReports || []).filter((r) => !before.pubIds.has(r.id)),
   ];
   newReports.forEach((r) => {
     const station = (data.stations || []).find((s) => s.id === (r.stationId || data.stations?.[0]?.id));
-    const manager = (data.employees || []).find((e) => e.id === station?.managerId);
-    const toEmail = manager?.email || getCompanyMeta(companyId)?.ownerEmail;
-    if (toEmail) {
+    // Anonymous reports and suggestions reach HR only — the branch manager is never emailed about them.
+    const hrOnly = isHrOnlyVoice(anonIds.has(r.id) ? { ...r, bucket: "anon" } : r);
+    const manager = hrOnly ? null : (data.employees || []).find((e) => e.id === station?.managerId);
+    const hrEmails = hrOnly
+      ? voiceHrReceivers(data, { exclude: [r.authorId, r.rateActorId], item: r }).map((e) => e.email).filter(Boolean)
+      : [];
+    const toEmails = hrOnly
+      ? (hrEmails.length ? hrEmails : [getCompanyMeta(companyId)?.ownerEmail].filter(Boolean))
+      : [manager?.email || getCompanyMeta(companyId)?.ownerEmail].filter(Boolean);
+    for (const toEmail of toEmails) {
       sendEmailAlert(
         companyId, toEmail,
         "PowerCare — شكوى/بلاغ جديد بانتظار المراجعة",

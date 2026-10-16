@@ -14,7 +14,7 @@
  */
 import { ruleValue } from "./laborRules.js";
 import { regulationDate } from "./workRegulation.js";
-import { GRIEVANCE_TYPE, NIGHT_AVOID_TYPE } from "./rightsRequests.js";
+import { GRIEVANCE_TYPE, NIGHT_AVOID_TYPE, rightsRouteFor } from "./rightsRequests.js";
 import { heatBanWindow } from "./contractLawDerivations.js";
 import { nursingRightUntil } from "./dutyRequests.js";
 import { art108CategoryLabel, isJuvenile } from "./laborHoursPolicy.js";
@@ -48,7 +48,7 @@ const dec = (id, ar) => ({ decisionId: String(id), label: ar ? `القرار ${i
 const regs = (n, ar) => ({ regs: String(n), label: ar ? `اللائحة م${n}` : `Regs Art. ${n}` });
 
 /* ── ready flows ───────────────────────────────────────────────────────── */
-const rightsTo = (kind) => `/app/requests?kind=rights&right=${kind}`;
+const rightsTo = (kind) => rightsRouteFor(kind);
 const ACT = {
   grievance: (ar) => ({ kind: "rights", rightsKind: GRIEVANCE_TYPE, to: rightsTo(GRIEVANCE_TYPE), label: ar ? "قدّم تظلماً" : "File a grievance" }),
   nightAvoid: (ar) => ({ kind: "rights", rightsKind: NIGHT_AVOID_TYPE, to: rightsTo(NIGHT_AVOID_TYPE), label: ar ? "اطلب تجنّب العمل الليلي" : "Ask to avoid night work" }),

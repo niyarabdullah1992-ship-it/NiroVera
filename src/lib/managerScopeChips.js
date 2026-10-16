@@ -10,7 +10,7 @@ import { managerPendingInbox, requestEmployeeStationId } from "./requestWorkspac
 import { pendingManagerDecideCount } from "./otherRequestDerivations.js";
 import { nightDueAdminEmployees, nightDueEmployeeCount, pendingPunchQueueCount } from "./suiteBadges.js";
 import { faceOf, isDisciplineSettled } from "./disciplineBoard.js";
-import { collectVoiceItems, deriveVoiceBoard } from "./voiceBoard.js";
+import { deriveVoiceBoard, viewerVoiceQueueItems } from "./voiceBoard.js";
 import { deriveWpsStatus } from "./payrollDerivations.js";
 import { isEscalated } from "./opsDerivations.js";
 
@@ -150,10 +150,8 @@ function voiceAlerts(user, data, allowed) {
   ));
   if (!can) return acc;
   const employees = data?.employees || [];
-  const items = collectVoiceItems({
-    publicReports: data?.publicReports,
-    anonymousReports: data?.anonymousReports,
-  });
+  // HR-only channels never bump a manager's chip — the queue is the viewer's own (voiceBoard).
+  const items = viewerVoiceQueueItems(data, user);
   for (const stationId of allowed) {
     const queue = items.filter((item) => {
       const author = employees.find((row) => String(row.id) === String(item.authorId));

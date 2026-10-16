@@ -14,7 +14,7 @@
 import { ruleValue } from "./laborRules.js";
 import { overtimePay } from "./payrollDerivations.js";
 import { regulationDate } from "./workRegulation.js";
-import { DAMAGE_OBJECTION_TYPE, GRIEVANCE_TYPE, damageObjectionDeadline } from "./rightsRequests.js";
+import { DAMAGE_OBJECTION_TYPE, GRIEVANCE_TYPE, damageObjectionDeadline, rightsRouteFor } from "./rightsRequests.js";
 
 const COURT_URL = "https://najiz.sa";
 
@@ -58,7 +58,7 @@ const art = (a, ar) => ({ article: String(a), label: ar ? `المادة ${a}` : 
 const model = (n, ar) => ({ regs: `model-${n}`, label: ar ? `اللائحة النموذجية م${n}` : `Model regulation Art. ${n}` });
 const gosiLaw = (ar) => ({ product: true, label: ar ? "نظام التأمينات" : "GOSI law" });
 
-const rightsTo = (kind) => `/app/requests?kind=rights&right=${encodeURIComponent(kind)}`;
+const rightsTo = (kind) => rightsRouteFor(kind);
 const ACT = {
   grievance: (ar) => ({ kind: "rights", rightsKind: GRIEVANCE_TYPE, to: rightsTo(GRIEVANCE_TYPE), label: ar ? "قدّم تظلماً" : "File a grievance" }),
   objection: (ar) => ({ kind: "rights", rightsKind: DAMAGE_OBJECTION_TYPE, to: rightsTo(DAMAGE_OBJECTION_TYPE), label: ar ? "اعترض على الخصم" : "Object to the deduction" }),

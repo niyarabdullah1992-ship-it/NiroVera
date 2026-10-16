@@ -133,7 +133,9 @@ assert.deepEqual(
   employeeSide.groups.map((group) => ({ label: group.label, items: group.items.map((item) => item.label) })),
   [
     { label: "يومي", items: ["بصمتي", "مهامي", "بلاغ سلامة"] },
-    { label: "طلباتي", items: ["طلباتي", "توقيعاتي", "صوت الموظف"] },
+    // Complaints and suggestions are not requests — «صوت الموظف» is its own group, never under طلباتي.
+    { label: "طلباتي", items: ["طلباتي", "توقيعاتي"] },
+    { label: "صوت الموظف", items: ["صوت الموظف"] },
     { label: "ملفي", items: ["قسيمتي", "أدائي", "الجزاءات", "الهيكل"] },
   ],
 );

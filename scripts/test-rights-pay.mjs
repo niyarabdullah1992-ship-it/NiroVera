@@ -54,7 +54,7 @@ ok("wage: due date, WPS, Art. 94 for delay; payday moved to the previous working
   assert.match(e.right, /حماية الأجور/);
   assert.match(e.ifNot, /المادة 94/);
   assert.equal(e.law.article, "90");
-  assert.equal(e.action.to, "/app/requests?kind=rights&right=grievance");
+  assert.equal(e.action.to, "/app/discipline?tab=mine&raise=grievance");
   assert.equal(m.due, "2026-10-27");
   assert.equal(m.action.to, "/app/payroll?tab=wps");
   const shifted = payHintFor("wage", { today, amount: 7000, payday: { due: "2026-10-29", scheduled: "2026-10-30", shifted: true } });

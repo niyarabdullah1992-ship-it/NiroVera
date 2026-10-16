@@ -7,6 +7,7 @@
  */
 import { isWorkplaceStation, scopedStationIdsForUser } from "./stationTree.js";
 import { SUITE_APPS, suiteAppOnSide } from "./suiteApps.js";
+import { isVoiceHrReceiver } from "./voicePrivacy.js";
 
 export const RAIL_SIDES = [
   { id: "employee", ar: "الموظف", en: "Employee" },
@@ -20,7 +21,9 @@ export const RAIL_SIDE_COLOR = {
 
 const EMPLOYEE_GROUPS = [
   { id: "day", ar: "يومي", en: "Today", sections: ["duty", "daily", "compliance"] },
-  { id: "asks", ar: "طلباتي", en: "My requests", sections: ["requests", "signing", "complaints"] },
+  { id: "asks", ar: "طلباتي", en: "My requests", sections: ["requests", "signing"] },
+  // Complaints and suggestions are not requests: they live in their own «صوت الموظف» group, never under طلباتي.
+  { id: "voice", ar: "صوت الموظف", en: "Employee voice", sections: ["complaints"] },
   { id: "mine", ar: "ملفي", en: "My file", sections: ["payslip", "performance", "discipline", "org"] },
 ];
 
@@ -124,6 +127,7 @@ function canManageVoice(user, data) {
     || ["director", "ops_manager", "pgm", "station_manager"].includes(user?.role)
     || hrPerm(user, data, "view_anonymous_reports")
     || hrPerm(user, data, "manage_anonymous_reports")
+    || isVoiceHrReceiver(user, data)
   );
 }
 

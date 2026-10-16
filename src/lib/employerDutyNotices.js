@@ -8,6 +8,7 @@
 import { addNotification, getCompanyData } from "@/lib/store";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { planAbuseNotices } from "@/lib/abuseComplaint";
+import { voiceHrReceivers } from "@/lib/voicePrivacy";
 import { deriveHeldDocumentViolations, medicalExamStatus, trainingDocumentationDue } from "@/lib/employerDuties";
 
 function hrAudience(data) {
@@ -23,7 +24,8 @@ export function planEmployerDutyNotices(data, today, existingKeys = []) {
     seen.add(key);
     out.push({ userId, key, text, to });
   };
-  for (const n of planAbuseNotices({ cases: data?.abuseCases || [], today, calendar: laborCalendarOf(data), restWeekdays: data?.settings?.weeklyRestDays, audience, existingKeys: [...seen] })) {
+  // Abuse clocks go to the HR receivers only (planAbuseNotices also skips the accused).
+  for (const n of planAbuseNotices({ cases: data?.abuseCases || [], today, calendar: laborCalendarOf(data), restWeekdays: data?.settings?.weeklyRestDays, audience: voiceHrReceivers(data), existingKeys: [...seen] })) {
     push(n.userId, n.key, n.text, n.to);
   }
   for (const emp of data?.employees || []) {

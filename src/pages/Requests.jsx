@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { ABUSE_COMPLAINT_KIND, GRIEVANCE_TYPE, rightsRouteFor } from "@/lib/rightsRequests";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { canCreateTasks, hasHRPermission, hrScopeStations, visibleEmployees, visibleStations } from "@/lib/permissions";
@@ -110,6 +111,11 @@ export default function Requests() {
       ? canManage
       : canManage && path.endsWith("/manage");
   const askedKind = new URLSearchParams(location.search || "").get("kind") || "";
+  // Old links: the grievance moved to «الجزاءات», the abuse complaint to «صوت الموظف».
+  const askedRight = new URLSearchParams(location.search || "").get("right") || "";
+  if (askedKind === "rights" && (askedRight === GRIEVANCE_TYPE || askedRight === ABUSE_COMPLAINT_KIND)) {
+    return <Navigate to={rightsRouteFor(askedRight)} replace />;
+  }
   const initialKind = path.endsWith("/other")
     ? "other"
     : (["permission", "shift_change", "nursing_hour", "pregnancy_notice", "heat_report", "family_duties", "manual", "outfix", "resignation", "rights"].includes(askedKind)

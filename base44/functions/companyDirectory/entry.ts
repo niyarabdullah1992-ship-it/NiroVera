@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 import { createMimeMessage } from 'npm:mimetext@3.0.24';
 import { fetchWithRetry } from '../../shared/fetchRetry.ts';
+import { filterVoiceRowsForServer, isServerVoiceHrReader, mergeVoiceWriteForServer, VOICE_CATEGORIES } from '../../shared/voicePrivacy.ts';
 import { filterBlobPayload, redactEmployee, attachEmployeeRequestFields, canSeeEmployeeRequests, APPEND_ONLY_CATEGORIES, inspectAppendOnly, normalizeBlobPayload, isObjectBlobCategory } from '../../shared/blobVisibility.ts';
 import {
   WORKSPACE_SEARCH_MAX,
@@ -1016,7 +1017,16 @@ Deno.serve(async (req) => {
         return Response.json({ ok: true });
       }
       // Model regulation Art. 56(1): below senior, the filer adds their case; named committee members investigate theirs.
-      if (category === 'abuseCases' && !context.senior) {
+      // HR / the administration run the cases; rows they cannot read (a case naming them) stay as stored.
+      if (category === 'abuseCases' && isServerVoiceHrReader({ ...context, userId: auth.userId })) {
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+        const prior = Array.isArray(rows[0]?.payload) ? rows[0].payload : [];
+        const merged = mergeVoiceWriteForServer('abuseCases', prior, Array.isArray(payload) ? payload : [], { ...context, userId: auth.userId });
+        const ids = new Set(merged.map((row) => String(row?.id)));
+        await storeMerged(rows, [...merged, ...prior.filter((row) => !ids.has(String(row?.id)))]);
+        return Response.json({ ok: true });
+      }
+      if (category === 'abuseCases') {
         if (privilege === 'none' || !auth.userId) return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });
         const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
         const merged = mergeAbuseCasesWrite(rows[0]?.payload || [], Array.isArray(payload) ? payload : [], auth.userId);
@@ -1057,6 +1067,21 @@ Deno.serve(async (req) => {
         const prior = Array.isArray(existing[0]?.payload) ? existing[0].payload : [];
         const others = prior.filter((item) => ownerOf(item) !== auth.userId);
         data = [...mine, ...others];
+      }
+      // A writer who cannot read the HR-only voice rows keeps them untouched (he never received them).
+      if ((category === 'publicReports' || category === 'anonymousReports') && !isServerVoiceHrReader({ ...context, userId: auth.userId })) {
+        const receipts = await base44.asServiceRole.entities.AnonymousReportReceipt.filter({ companyId, employeeId: auth.userId || '__none__' });
+        const merged = mergeVoiceWriteForServer(category, Array.isArray(existing[0]?.payload) ? existing[0].payload : [], Array.isArray(data) ? data : [], {
+          ...context, userId: auth.userId, ownReportIds: new Set(receipts.map((receipt) => receipt.reportId)),
+        });
+        const seen = new Set();
+        data = merged.filter((row) => {
+          const id = String(row?.id || '');
+          if (!id) return true;
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
       }
       if (isObjectBlobCategory(category) && selfWrite) {
         return Response.json({ error: 'Forbidden: object blob categories are not self-writable' }, { status: 403 });
@@ -1152,6 +1177,21 @@ Deno.serve(async (req) => {
       if (!category) return Response.json({ error: 'Missing category' }, { status: 400 });
       const context = await getActorContext();
       const existing = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+      // صوت الموظف: the HR-only channels (confidential complaint, suggestion, harassment) reach HR and
+      // the administration only — a line manager never downloads them, senior role or not.
+      if (VOICE_CATEGORIES.includes(String(category))) {
+        const rows = Array.isArray(existing[0]?.payload) ? existing[0].payload : [];
+        const receipts = await base44.asServiceRole.entities.AnonymousReportReceipt.filter({ companyId, employeeId: auth.userId || '__none__' });
+        const voiceContext = {
+          ...context,
+          userId: auth.userId,
+          isComplaintHandler: ['pgm', 'station_manager'].includes(context.actor?.role),
+          ownReportIds: new Set(receipts.map((receipt) => receipt.reportId)),
+        };
+        const ladder = context.senior ? rows : filterBlobPayload(category, rows, voiceContext);
+        const ladderIds = new Set(ladder.map((row) => String(row?.id)));
+        return Response.json({ payload: filterVoiceRowsForServer(String(category), rows, voiceContext, (row) => ladderIds.has(String(row?.id))) });
+      }
       if (context.senior || String(category).startsWith('niroMemory:')) {
         return Response.json({ payload: existing[0]?.payload || [] });
       }

@@ -12,7 +12,7 @@ const block = { padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)",
 const label = { fontSize: 11.5, color: MUTED };
 
 /**
- * «شكوى إيذاء أو تحرش» in طلباتي — the worker (or a witness) files a confidential case with the
+ * «شكوى إيذاء أو تحرش» in «صوت الموظف» (HR only, never the manager) — the worker (or a witness) files a confidential case with the
  * establishment within five working days (model regulation Art. 55(1)). If the accused is the owner or
  * the top authority, the internal route is closed and the government path is shown instead.
  */

@@ -10,6 +10,7 @@ import {
   voiceKind,
 } from "./complaintDerivations.js";
 import { countAr } from "./disciplineBoard.js";
+import { canHandleHrVoice, canSeeVoiceItem, filterAbuseCasesForViewer, isHrOnlyVoice, isOwnVoice, isVoiceHrReceiver } from "./voicePrivacy.js";
 
 export const VOICE_CHANNELS = [
   {
@@ -26,15 +27,15 @@ export const VOICE_CHANNELS = [
     blurbEn: "Improve a process, a practice, or a station.",
     lawAr: "لائحة تنظيم العمل",
     lawEn: "Work regulations",
-    promiseAr: "يصل باسمك ليُمكن التواصل معك. يُراجَع ويُعتمد أو يُعاد بملاحظة مكتوبة.",
-    promiseEn: "It arrives in your name so you can be reached. It is reviewed, then adopted or returned with a written note.",
+    promiseAr: "يصل باسمك إلى الموارد البشرية وحدها ليُمكن التواصل معك — لا يمر بمديرك ولا يُصعَّد. يُراجَع ويُعتمد أو يُعاد بملاحظة مكتوبة.",
+    promiseEn: "It reaches HR alone in your name so you can be reached — it does not pass your manager and does not climb. It is reviewed, then adopted or returned with a written note.",
     hours: 96,
     defaultPrio: "low",
   },
   {
     id: "complaint",
-    ar: "شكوى",
-    en: "Complaint",
+    ar: "شكوى جهرية",
+    en: "Open complaint",
     accent: "var(--nv-warn-fill)",
     color: "var(--nv-warn-ink)",
     bg: "var(--nv-warn-soft)",
@@ -45,15 +46,15 @@ export const VOICE_CHANNELS = [
     blurbEn: "A right you claim, or a harm that fell on you.",
     lawAr: "المادة 220 · التسوية الودية",
     lawEn: "Article 220 · amicable settlement",
-    promiseAr: "تُعالَج بالاسم لأن معالجتها تحتاج تفصيلاً منك. لا تُتخذ سبباً لجزاء، ولك بعد المسار الداخلي التسوية الودية ثم المحكمة العمالية.",
+    promiseAr: "شكوى جهرية: تُعالَج بالاسم وتبدأ عند مديرك المباشر، وتتصعّد درجةً عند كل مهلة تفوت حتى الموارد البشرية. لا تُتخذ سبباً لجزاء، ولك بعد المسار الداخلي التسوية الودية ثم المحكمة العمالية.",
     promiseEn: "It is handled in your name because it needs your detail. It is not a ground for a sanction. After the internal path you may seek amicable settlement, then the labour court.",
     hours: 48,
     defaultPrio: "medium",
   },
   {
     id: "anonymous",
-    ar: "بلاغ مجهول",
-    en: "Anonymous report",
+    ar: "شكوى سرية",
+    en: "Confidential complaint",
     accent: "var(--nv-bad-fill)",
     color: "var(--nv-bad-ink)",
     bg: "var(--nv-bad-soft)",
@@ -64,12 +65,39 @@ export const VOICE_CHANNELS = [
     blurbEn: "A risk or a breach you fear naming yourself over.",
     lawAr: "الباب الثامن · السلامة",
     lawEn: "Chapter eight · safety",
-    promiseAr: "يصل برقم لا باسم. لا تُسجَّل هويّتك ولا يُمكن ردّها من الرقم، ولذلك لا يصلك ردّ شخصي بل يُنشر القرار بالرقم.",
-    promiseEn: "It arrives as a number, not a name. Your identity is not stored and cannot be recovered from the number, so there is no personal reply — the ruling is published by number.",
+    promiseAr: "شكوى سرية: تصل برقم لا باسم إلى الموارد البشرية وحدها، بلا تصعيد ولا مرور بمديرك. تتابع قرارها برقم المتابعة في ملفك.",
+    promiseEn: "A confidential complaint: it reaches HR alone as a number, with no ladder and never via your manager. Follow its ruling by the follow-up number on your file.",
     hours: 24,
     defaultPrio: "high",
   },
 ];
+
+/**
+ * «شكوى إيذاء أو تحرش» — the fourth tile of the raise card. Not a voice row: a confidential HR case
+ * (abuseCases, model regulation Arts. 54–56) that reaches HR only.
+ */
+export const ABUSE_VOICE_CHANNEL = {
+  id: "abuse",
+  ar: "شكوى تحرش أو إيذاء",
+  en: "Harassment or abuse",
+  identityAr: "سرية",
+  identityEn: "Confidential",
+  windowAr: "5 أيام عمل",
+  windowEn: "5 working days",
+  lawAr: "النموذج الموحد م54–56",
+  lawEn: "Model regulation Arts. 54–56",
+  promiseAr: "تصل باسمك إلى الموارد البشرية وحدها، وتُحقَّق بسرية بلجنة ليس فيها أحد الطرفين خلال خمسة أيام عمل، ولا يطّلع عليها المشكو في حقه.",
+  promiseEn: "It reaches HR alone in your name and is investigated confidentially within five working days by a committee without the parties; the accused never sees it.",
+  hours: 0,
+  defaultPrio: "high",
+};
+
+/** Where each channel goes — the calm line under the tiles. */
+export function voiceRouteLine(channelId, ar = true) {
+  const hrOnly = channelId === "suggestion" || channelId === "anonymous" || channelId === "abuse";
+  if (hrOnly) return ar ? "تصل إلى الموارد البشرية فقط — لا يراها مديرك" : "Reaches HR only — your manager does not see it";
+  return ar ? "تبدأ عند مديرك وتتصعّد إن لم تُحل" : "Starts with your manager and climbs if not resolved";
+}
 
 export const VOICE_PRIOs = [
   { id: "low", hours: 96, ar: "منخفضة — 96 ساعة", en: "Low — 96 hours" },
@@ -178,6 +206,30 @@ export function collectVoiceItems({ publicReports = [], anonymousReports = [] } 
     anonymousId: row.anonymousId || `AN-${String(row.id || "").slice(-4).toUpperCase()}`,
   }));
   return [...named, ...hidden];
+}
+
+const LADDER_ROLES = ["director", "ops_manager", "pgm", "station_manager"];
+
+/**
+ * The open voices one viewer is queued on — the single source for badges, chips and counts.
+ * HR-only channels count only for an HR receiver in scope; a named complaint for the ladder roles.
+ * Never the viewer's own voice.
+ */
+export function viewerVoiceQueueItems(data, user) {
+  if (!user?.id) return [];
+  const items = collectVoiceItems({ publicReports: data?.publicReports, anonymousReports: data?.anonymousReports });
+  const ladder = LADDER_ROLES.includes(user.role) || isVoiceHrReceiver(user, data);
+  return items.filter((item) => {
+    if (isOwnVoice(item, user)) return false;
+    if (isHrOnlyVoice(item)) return canHandleHrVoice(item, user, data);
+    return ladder;
+  });
+}
+
+/** Open abuse files this viewer runs or sits on (never the accused, never a line manager). */
+export function viewerOpenAbuseCount(data, user) {
+  return filterAbuseCasesForViewer(data?.abuseCases || [], user, data)
+    .filter((row) => String(row.reporterId || row.userId) !== String(user?.id) && !["decided", "closed"].includes(String(row.status || ""))).length;
 }
 
 export function voiceRelatedLinks(item, { employeeId, ar = true } = {}) {
@@ -366,11 +418,15 @@ export function employeeVoiceArchiveCards({
   nowMs = Date.now(),
   chain = defaultEscalationChain(),
   canManage = false,
+  viewer = null,
+  data = null,
 } = {}) {
   const want = String(employeeId || "").trim();
   if (!want) return [];
+  // A suggestion reaches HR only: on someone else's file it shows to HR, never to his manager.
   const items = collectVoiceItems({ publicReports, anonymousReports: [] })
-    .filter((row) => String(row.authorId) === want && row.channel !== "anonymous");
+    .filter((row) => String(row.authorId) === want && row.channel !== "anonymous")
+    .filter((row) => !viewer || canSeeVoiceItem(row, viewer, data || { employees }));
   return items
     .map((item) => decorateVoiceItem(item, {
       employees,
@@ -382,6 +438,13 @@ export function employeeVoiceArchiveCards({
       currentUser: { id: want },
     }))
     .filter((card) => card.settled);
+}
+
+function isOwnRow(row, userId) {
+  const uid = String(userId || "");
+  if (!uid) return false;
+  if (row.channel === "anonymous") return String(row.rateActorId || "") === uid;
+  return String(row.authorId) === uid;
 }
 
 export function deriveVoiceBoard({
@@ -404,15 +467,13 @@ export function deriveVoiceBoard({
     ? queueItems
     : canManage
       ? items
-      : items.filter((row) => {
-        const mineNamed = row.channel !== "anonymous" && String(row.authorId) === String(userId);
-        const settledAnon = row.channel === "anonymous" && (row.status === "closed" || row.status === "rejected");
-        const sameStation = !workStation || String(row.stationId || "") === workStation;
-        return mineNamed || (settledAnon && sameStation);
-      });
+      // A worker sees only what he raised — an anonymous report by its follow-up number (rate actor),
+      // never another branch voice: no line, count or published ruling reaches a non-receiver.
+      : items.filter((row) => isOwnRow(row, userId));
+  void workStation;
   const cards = scoped.map((item) => decorateVoiceItem(item, { employees, stations, ar, nowMs, chain: ladder(item), canManage }));
   const mine = items
-    .filter((row) => String(row.authorId) === String(userId) && row.channel !== "anonymous")
+    .filter((row) => isOwnRow(row, userId))
     .map((item) => decorateVoiceItem(item, { employees, stations, ar, nowMs, chain: ladder(item), currentUser: { id: userId }, canManage }));
   const open = cards.filter((card) => !card.settled);
   const overdue = open.filter((card) => card.overdue);
@@ -437,7 +498,7 @@ export function deriveVoiceBoard({
       { val: String(stats.openCount), unit: "", lbl: ar ? "بانتظار المراجعة" : "Awaiting review", note: ar ? "في نطاقك" : "In your scope", accent: "var(--nv-ink)", action: stats.openCount > 0 },
       { val: String(stats.breachedCount), unit: "", lbl: ar ? "تجاوزت مهلتها" : "Past the window", note: stats.breachedCount ? (ar ? "رُفعت للمدير التالي تلقائياً" : "Raised to the next manager") : (ar ? "لا تجاوز" : "On time"), accent: "var(--nv-ink)", tone: stats.breachedCount ? "bad" : null, flag: ar ? "صُعّدت تلقائياً" : "Auto-escalated" },
       { val: String(stats.avgResponseHours), unit: ar ? "ساعة" : "h", lbl: ar ? "متوسط زمن المراجعة" : "Average review time", note: settled.length ? (ar ? "محسوب على ما استقرّ" : "On what has settled") : (ar ? "محسوب على المفتوح — لا قرار بعد" : "On the open set — no ruling yet"), accent: "var(--nv-ink)" },
-      { val: String(scoped.filter((row) => row.channel === "anonymous").length), unit: "", lbl: ar ? "بلاغات مجهولة" : "Anonymous reports", note: ar ? "بلا هويّة — لا ردّ شخصي" : "No identity — no personal reply", accent: "var(--nv-ink)" },
+      { id: "anon", val: String(scoped.filter((row) => row.channel === "anonymous").length), unit: "", lbl: ar ? "بلاغات مجهولة" : "Anonymous reports", note: ar ? "بلا هويّة — لا ردّ شخصي" : "No identity — no personal reply", accent: "var(--nv-ink)" },
     ],
     pulse,
     pulseKind: overdue.length ? "bad" : open.length ? "warn" : "ok",
@@ -461,7 +522,7 @@ export function deriveVoiceBoard({
       : `It starts with ${chain[0]?.labelEn || "the station manager"} and climbs one step each time the window is missed, up to ${chain[chain.length - 1]?.labelEn || "operations"}. You may raise it once if it was returned and you do not accept the note.`,
     promises: VOICE_CHANNELS.map((row) => ({ tag: ar ? row.ar : row.en, t: ar ? row.promiseAr : row.promiseEn })).concat([
       { tag: ar ? "لا انتقام" : "No reprisal", t: ar ? "رفع الصوت لا يُتخذ سبباً لجزاء ولا لتغيير وردية — وأي جزاء يُربط به يُبطل في قسم الجزاءات." : "Raising a voice is not a ground for a sanction or a shift change — a sanction tied to it is voided in Sanctions." },
-      { tag: ar ? "لا إهمال" : "No neglect", t: ar ? "ما لا يُراجع في مهلته يُرفع للمدير التالي تلقائياً، فلا يسقط الصوت بالسكوت." : "What is not reviewed in time is raised to the next manager, so a voice does not fall by silence." },
+      { tag: ar ? "لا إهمال" : "No neglect", t: ar ? "الشكوى الجهرية التي لا تُراجع في مهلتها تُرفع للمستوى التالي تلقائياً حتى الموارد البشرية، والسرية والاقتراح عند الموارد البشرية بمهلتها — فلا يسقط الصوت بالسكوت." : "An open complaint not reviewed in time climbs automatically up to HR; confidential complaints and suggestions sit with HR on their window — a voice does not fall by silence." },
     ]),
   };
 }

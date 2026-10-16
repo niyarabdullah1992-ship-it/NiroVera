@@ -30,6 +30,8 @@ import DisciplineArchiveBoard from "@/components/discipline/DisciplineArchiveBoa
 import DisciplineCaseCard from "@/components/discipline/DisciplineCaseCard";
 import DisciplineLawBoard from "@/components/discipline/DisciplineLawBoard";
 import DisciplineMineCard from "@/components/discipline/DisciplineMineCard";
+import GrievanceRaise from "@/components/discipline/GrievanceRaise";
+import { GRIEVANCE_KINDS, GRIEVANCE_TYPE, grievanceState } from "@/lib/rightsRequests";
 import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
 import OpsSideSlab, { OpsListHead } from "@/components/tasks/OpsSideSlab";
 import { DisciplineHero } from "@/components/discipline/DisciplineCaseCard";
@@ -165,7 +167,7 @@ const RIGHTS = [
 export default function Discipline() {
   const { lang } = useI18n();
   const ar = lang === "ar";
-  const { data, company, currentUser } = useAuth();
+  const { data, company, currentUser, refresh } = useAuth();
   const railSide = useRailSide();
   const setRailSide = useSetRailSide();
   const cases = data?.disciplinaryCases || [];
@@ -212,6 +214,16 @@ export default function Discipline() {
   const [workConnected, setWorkConnected] = useState("");
   const [note, setNote] = useState("");
   const [appealDraft, setAppealDraft] = useState("");
+  // «تظلّم» (regs Art. 71) lives here: from a sanction line (prefilled) or for a decision/action.
+  const [grievanceOpen, setGrievanceOpen] = useState(() => searchParams.get("raise") === "grievance");
+  const [grievancePrefill, setGrievancePrefill] = useState(null);
+  const raiseAsked = searchParams.get("raise");
+  useEffect(() => {
+    if (raiseAsked !== "grievance") return;
+    setGrievanceOpen(true);
+    // The grievance is the worker's own act — it opens on the employee side.
+    setRailSide("employee");
+  }, [raiseAsked]);
   const [caseSel, setCaseSel] = useState("");
   const [clauseId, setClauseId] = useState("");
   const regulation = useMemo(() => regulationOf(data), [data]);
@@ -267,6 +279,22 @@ export default function Discipline() {
   );
 
   const myOpen = mineCards.filter((card) => card.face.id === "signed").length;
+  const meRow = employees.find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
+  const myGrievances = (meRow?.otherRequests || []).filter((row) => row?.type === GRIEVANCE_TYPE)
+    .slice().sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
+  const openGrievance = (card) => {
+    const item = card?.item;
+    const told = String(item?.notifyDeliveredAt || item?.signedAt || item?.decidedAt || "").slice(0, 10);
+    setGrievancePrefill(item ? {
+      grievanceKind: "penalty",
+      notifiedOn: told,
+      reason: "",
+      sanctionRef: card.mineTitle || "",
+      at: Date.now(),
+    } : null);
+    setGrievanceOpen(true);
+    setTimeout(() => document.querySelector("[data-grievance-raise]")?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+  };
   // Signed is archive-settled for the company, but stays on ملفي live so the employee can object.
   const mineLiveCards = mineCards.filter((card) => card.face.id === "signed" || !isDisciplineSettled(card.item));
   const kindSpec = listedPenaltyKind(penaltyKind) || DISCIPLINE_PENALTY_KINDS[0];
@@ -886,8 +914,22 @@ export default function Discipline() {
                   hint={disciplineCaseHint(card.item, { view: "employee", ar, today: board.today, isHoliday: hintIsHoliday, employee: card.employee })}
                   onAction={(action) => {
                     if (action.kind === "object") document.querySelector("[data-discipline-objection]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    if (action.kind === "rights" && action.rightsKind === GRIEVANCE_TYPE) openGrievance(card);
                   }}
                 />
+                {/* A signed sanction: its own objection is the grievance (Art. 72) when open; otherwise regs 71. */}
+                {["signed", "closed"].includes(card.face.id) ? (
+                  <button
+                    type="button"
+                    data-disc-grieve={card.item.id}
+                    onClick={() => (card.canObject
+                      ? document.querySelector("[data-discipline-objection]")?.scrollIntoView({ behavior: "smooth", block: "center" })
+                      : openGrievance(card))}
+                    style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", marginInlineStart: "auto" }}
+                  >
+                    {ar ? "تظلّم" : "Grieve"}
+                  </button>
+                ) : null}
               </div>
               <DisciplineMineCard
                 key={`act-${card.item.id}`}
@@ -900,6 +942,39 @@ export default function Discipline() {
               />
               </React.Fragment>
             ))}
+
+            <section data-grievance-mine="" style={PACK_CARD}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 13 }}>{ar ? "تظلّماتي" : "My grievances"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({myGrievances.length})</span></strong>
+                <button
+                  type="button"
+                  data-grievance-general=""
+                  onClick={() => { setGrievancePrefill(null); setGrievanceOpen((v) => !v || Boolean(grievancePrefill)); }}
+                  style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", marginInlineStart: "auto" }}
+                >
+                  {ar ? "تظلّم من قرار أو إجراء" : "Grieve a decision or action"}
+                </button>
+              </div>
+              {myGrievances.length === 0 ? (
+                <div style={{ padding: "9px 14px", fontSize: 12, color: "var(--nv-muted)" }}>{ar ? "لا تظلّم مرفوع." : "No grievance filed."}</div>
+              ) : myGrievances.map((row) => {
+                const st = grievanceState(row, board.today, hintIsHoliday) || {};
+                const kindRow = GRIEVANCE_KINDS.find((k) => k.key === row.grievanceKind);
+                const stage = st.stage === "accepted" ? (ar ? "قُبل" : "Accepted")
+                  : st.stage === "refused" ? (ar ? `رُفض — المحكمة حتى ${regulationDate(st.courtBy)}` : `Refused — court by ${st.courtBy}`)
+                    : st.stage === "overdue" ? (ar ? `لم يُبتّ فيه — المحكمة حتى ${regulationDate(st.courtBy)}` : `Undecided — court by ${st.courtBy}`)
+                      : (ar ? `بانتظار البتّ حتى ${regulationDate(st.replyBy)}` : `Awaiting a ruling by ${st.replyBy}`);
+                return (
+                  <div key={row.id} data-grievance-row={row.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
+                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{ar ? kindRow?.ar : kindRow?.en} · {String(row.reason || "").slice(0, 60)}</span>
+                    <span style={{ fontWeight: 700, color: st.stage === "accepted" ? "var(--nv-ok-ink)" : "var(--nv-ink2)" }}>{stage}</span>
+                  </div>
+                );
+              })}
+            </section>
+            {grievanceOpen ? (
+              <GrievanceRaise key={grievancePrefill?.at || "general"} employee={meRow} companyId={company?.id} ar={ar} refresh={refresh} prefill={grievancePrefill} onSent={() => { setGrievanceOpen(false); setGrievancePrefill(null); }} />
+            ) : null}
 
             <section style={PACK_CARD}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)" }}>

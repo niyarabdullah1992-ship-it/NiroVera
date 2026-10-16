@@ -1,5 +1,6 @@
 import React from "react";
 import { buildMyRights } from "@/lib/myRights";
+import { rightsRouteFor } from "@/lib/rightsRequests";
 import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { isWeeklyRestDay } from "@/lib/laborHoursPolicy";
 import { todayRiyadh } from "@/lib/requestWorkspace";
@@ -9,7 +10,7 @@ import { HintAction, ScaleGlyph, StatuteLink } from "@/components/shared/RightHi
 function routeOf(action) {
   if (!action) return null;
   if (action.href) return action;
-  if (action.kind === "rights") return { ...action, to: `/app/requests?kind=rights&right=${encodeURIComponent(action.rightsKind || "")}` };
+  if (action.kind === "rights") return { ...action, to: rightsRouteFor(action.rightsKind) };
   if (action.kind === "raise") return { ...action, to: "/app/requests" };
   return action.to ? action : null;
 }

@@ -59,7 +59,7 @@ ok("notice stage — Art. 71 hearing; manager clock is 30 days from discovery (A
   assert.match(m.ifNot, /المادة 69/);
   const e = disciplineCaseHint(item, { view: "employee", today });
   assert.equal(e.action.rightsKind, "grievance");
-  assert.equal(e.action.to, "/app/requests?kind=rights&right=grievance");
+  assert.equal(e.action.to, "/app/discipline?tab=mine&raise=grievance", "the grievance is raised from «الجزاءات»");
   assert.equal(e.due, "", "due is only for the manager");
 });
 

@@ -10,7 +10,7 @@ import {
   Shield,
 } from "lucide-react";
 import AttachFileButton from "@/components/shared/AttachFileButton";
-import { VOICE_CHANNELS, VOICE_TOPICS } from "@/lib/voiceBoard";
+import { ABUSE_VOICE_CHANNEL, VOICE_CHANNELS, VOICE_TOPICS, voiceRouteLine } from "@/lib/voiceBoard";
 
 const TOPIC_ICON = {
   wage: Banknote,
@@ -75,6 +75,7 @@ export default function VoiceRaiseCard({
   reporter,
   channelRow,
   receipt,
+  abuseSlot = null,
 }) {
   const topic = VOICE_TOPICS.find((row) => row.id === topicId) || VOICE_TOPICS[0];
   return (
@@ -96,13 +97,14 @@ export default function VoiceRaiseCard({
       <div style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
         {stepHead("1", ar ? "القناة — تحدّد الهوية والمهلة" : "Channel — identity and window")}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
-          {VOICE_CHANNELS.map((row) => {
+          {[...VOICE_CHANNELS, ABUSE_VOICE_CHANNEL].map((row) => {
             const on = channel === row.id;
             const anon = row.id === "anonymous";
             return (
               <button
                 key={row.id}
                 type="button"
+                data-voice-channel={row.id}
                 onClick={() => onChannel(row.id)}
                 style={{
                   fontFamily: "inherit",
@@ -122,8 +124,12 @@ export default function VoiceRaiseCard({
                 <span style={{ fontSize: 11, color: on ? "#D5E3DA" : "var(--nv-muted)" }}>
                   {ar ? row.identityAr : row.identityEn}
                   {" · "}
-                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{row.hours}</span>
-                  {ar ? " ساعة" : " h"}
+                  {row.windowAr ? (ar ? row.windowAr : row.windowEn) : (
+                    <>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{row.hours}</span>
+                      {ar ? " ساعة" : " h"}
+                    </>
+                  )}
                 </span>
               </button>
             );
@@ -135,6 +141,12 @@ export default function VoiceRaiseCard({
           </span>
           <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>{ar ? channelRow.promiseAr : channelRow.promiseEn}</span>
         </div>
+        {/* Who receives it, in one calm line — HR-only channels never pass the manager. */}
+        <span data-voice-route={channel === "complaint" ? "ladder" : "hr"} style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ok-ink)", lineHeight: 1.7 }}>
+          {voiceRouteLine(channel, ar)}
+        </span>
+
+        {abuseSlot ? abuseSlot : (<>
 
         {stepHead("2", ar ? "الموضوع" : "Subject")}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 }}>
@@ -269,6 +281,7 @@ export default function VoiceRaiseCard({
           {submitText}
         </button>
         <span style={{ fontSize: 11.5, color: "var(--nv-muted)", textAlign: "center", lineHeight: 1.7 }}>{slaLine}</span>
+        </>)}
       </div>
     </article>
   );

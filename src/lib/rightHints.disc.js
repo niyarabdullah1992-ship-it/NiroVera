@@ -16,7 +16,7 @@
  */
 import { citeRule, ruleAt, ruleValue } from "./laborRules.js";
 import { regulationDate } from "./workRegulation.js";
-import { daysAfterExcludingHolidays, DOCUMENTS_RETURN_TYPE, GRIEVANCE_TYPE } from "./rightsRequests.js";
+import { daysAfterExcludingHolidays, DOCUMENTS_RETURN_TYPE, GRIEVANCE_TYPE, rightsRouteFor } from "./rightsRequests.js";
 import { faceOf, penaltyLabel } from "./disciplineBoard.js";
 import { art80Ground, resolvePenaltyKind } from "./disciplineDerivations.js";
 import { HELD_DOCUMENT_KINDS, medicalExamStatus, trainingDocumentationDue } from "./employerDuties.js";
@@ -62,7 +62,7 @@ export function lawOfRule(ruleId, ar = true, onDate) {
 }
 
 /* ── ready flows ────────────────────────────────────────────────────────── */
-const rightsTo = (kind) => `/app/requests?kind=rights&right=${encodeURIComponent(kind)}`;
+const rightsTo = (kind) => rightsRouteFor(kind);
 const ACT = {
   grievance: (ar) => ({ kind: "rights", rightsKind: GRIEVANCE_TYPE, to: rightsTo(GRIEVANCE_TYPE), label: ar ? "قدّم تظلماً" : "File a grievance" }),
   documents: (ar) => ({ kind: "rights", rightsKind: DOCUMENTS_RETURN_TYPE, to: rightsTo(DOCUMENTS_RETURN_TYPE), label: ar ? "اطلب وثائقك" : "Ask for your documents" }),

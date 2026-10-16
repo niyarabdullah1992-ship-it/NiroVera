@@ -17,6 +17,8 @@ export default function EmployeeFileVoiceBoard({
   ar = true,
   canManage = false,
   chainIds = [],
+  viewer = null,
+  data = null,
 }) {
   const chain = useMemo(() => {
     if (chainIds?.length) return deriveEscalationChain(chainIds, employees);
@@ -37,8 +39,11 @@ export default function EmployeeFileVoiceBoard({
       ar,
       chain,
       canManage,
+      // Required: without a viewer the HR-only suggestions would show on a manager's view of the file.
+      viewer: viewer || { id: "" },
+      data: data || { employees },
     }),
-    [publicReports, employee?.id, employees, stations, ar, chain, canManage],
+    [publicReports, employee?.id, employees, stations, ar, chain, canManage, viewer, data],
   );
 
   return (

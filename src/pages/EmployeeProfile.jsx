@@ -551,6 +551,8 @@ export default function EmployeeProfile() {
               ar={ar}
               canManage={canManage}
               chainIds={data.complaintEscalationChain || []}
+              viewer={currentUser}
+              data={data}
             />
             <AssignmentTab
               employee={employee}

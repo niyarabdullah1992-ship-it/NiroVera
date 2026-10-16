@@ -58,7 +58,7 @@ export default function DisciplineMineCard({ card, ar, draft, onDraft, onObject,
             <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
               <strong style={{ fontSize: 17, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "اعتراضي على هذا الجزاء" : "My objection to this sanction"}</strong>
               <span style={{ fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
-                {ar ? "يُحال إلى من لم يوقّع الجزاء، ويُبتّ فيه خلال 15 يوماً (المادة 72)." : "It goes to whoever did not sign, and is decided within 15 days (Article 72)."}
+                {ar ? "يُحال إلى من لم يوقّع الجزاء، ويُبتّ فيه كتابةً خلال 15 يوماً." : "It goes to whoever did not sign, and is decided in writing within 15 days."}
               </span>
             </div>
             <span style={{

@@ -4,10 +4,11 @@ import ContractForm from "@/components/employees/ContractForm";
 import { BORDER, MUTED, NAVY, OK, WARN, BAD, SURFACE, ui } from "@/lib/platformStyles";
 import { CONTRACT_TYPE_OPTIONS, isFixedContractType, optionLabel } from "@/lib/employeeProfileFields";
 import IdentityCard from "@/components/shared/IdentityCard";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import RightHint from "@/components/shared/RightHint";
+import { contractHint, fileAlertHint } from "@/lib/rightHints.disc";
 import { FileText } from "lucide-react";
 import { EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
-import { deriveArt55Conversion } from "@/lib/contractLawDerivations";
+import { deriveArt55Conversion, deriveProbationProgress } from "@/lib/contractLawDerivations";
 import { applyDueLaborRules, updateEmployeeProfile } from "@/lib/store";
 import { checkContractAckGate, contractSheet, contractTermsText } from "@/lib/contractDocument";
 import { printSheet } from "@/lib/printSheet";
@@ -137,7 +138,7 @@ export default function ContractTab({ employee, companyId, canEdit, viewerId = "
     { label: ar ? "نوع العقد" : "Contract type", value: type || "—", chipText: "", chipStyle: null },
     ...(probation ? [{
       label: ar ? "فترة التجربة" : "Probation",
-      value: ar ? "طبقة على العقد — ليست نوعاً ثالثاً. غير السعودي يبقى محدد المدة (المادة 37)." : "Overlay on the contract — not a third type. A non-Saudi file stays fixed-term (Article 37).",
+      value: ar ? "طبقة على العقد — ليست نوعاً ثالثاً. غير السعودي يبقى محدد المدة." : "Overlay on the contract — not a third type. A non-Saudi file stays fixed-term.",
       chipText: ar ? "تجربة" : "Probation",
       chipStyle: WARN,
     }] : []),
@@ -154,11 +155,14 @@ export default function ContractTab({ employee, companyId, canEdit, viewerId = "
   const fileName = contract?.fileName
     || (contract?.fileUrl ? (ar ? "عقد العمل الموقّع.pdf" : "Signed employment contract.pdf") : null);
 
-  const typeRuleId = isFixedContractType(typeRaw)
-    ? "contract.fixed.cite"
-    : (typeRaw ? "contract.indefinite.cite" : null);
   const renewals = profile.contractRenewalCount ?? contract?.renewalCount;
   const appliedAt = profile.art55AppliedAt;
+  const hctx = { view: viewerId && String(viewerId) === String(employee.id) ? "employee" : "manager", ar };
+  const hint = contractHint(employee, { ...hctx, probation: probation ? deriveProbationProgress(employee) : null });
+  const patternRules = profile.workPattern === "flexible"
+    ? ["contract.pattern.flexible.cite", "contract.pattern.flexible.nitaqatHours"]
+    : profile.workPattern === "part_time" ? ["contract.pattern.partTime.cite"]
+      : (profile.workPattern === "temporary" || profile.workPattern === "seasonal") ? ["contract.casual.maxDays"] : [];
 
   return (
     <IdentityCard
@@ -166,9 +170,9 @@ export default function ContractTab({ employee, companyId, canEdit, viewerId = "
       kicker={ar ? "عقد مكتوب" : "Written contract"}
       title={ar ? "عقد العمل" : "Employment contract"}
       subtitle={ar
-        ? "نوع العقد يستشهد بالمادة 75 أو 55. النسخة المكتوبة والتوثيق من المادة 51. نموذج الوزارة من المادة 52."
-        : "Contract type cites Article 75 or 55. The written copy and documentation are Article 51. The Ministry model is Article 52."}
-      meta={<LaborArticleCite ruleId={typeRuleId || "contract.written.cite"} ar={ar} />}
+        ? "عقد مكتوب من نسختين على نموذج الوزارة، ونوعه يحدد طريقة إنهائه."
+        : "A written contract in two copies on the Ministry model; its type sets how it ends."}
+      meta={<RightHint ar={ar} hint={hint} />}
       dir={ar ? "rtl" : "ltr"}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap", marginBottom: 12 }}>
@@ -184,21 +188,17 @@ export default function ContractTab({ employee, companyId, canEdit, viewerId = "
           <span style={{ fontSize: "10px", color: MUTED }}>{ar ? "للإدارة فقط" : "Management only"}</span>
         )}
       </div>
-      {typeRuleId ? <div style={{ marginBottom: 14 }}><LaborArticleCite ruleId={typeRuleId} ar={ar} showText /></div> : null}
-      <LaborArticleCite ruleId="contract.written.cite" ar={ar} showText />
-      <LaborArticleCite ruleId="contract.model.cite" ar={ar} showText />
-      {probation ? <LaborArticleCite ruleId="contract.probation.excludeOfficialHolidays.cite" ar={ar} showText /> : null}
-      {profile.workPattern === "flexible" ? (
-        <>
-          <LaborArticleCite ruleId="contract.pattern.flexible.cite" ar={ar} showText />
-          <LaborArticleCite ruleId="contract.pattern.flexible.nitaqatHours" ar={ar} showText />
-        </>
-      ) : null}
-      {profile.workPattern === "part_time" ? <LaborArticleCite ruleId="contract.pattern.partTime.cite" ar={ar} showText /> : null}
-      {(profile.workPattern === "temporary" || profile.workPattern === "seasonal") ? <LaborArticleCite ruleId="contract.casual.maxDays" ar={ar} showText /> : null}
+      {patternRules.map((id) => {
+        const h = fileAlertHint({ ruleId: id, value: "" }, employee, hctx);
+        return (
+          <div key={id} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, fontSize: 12, color: MUTED, lineHeight: 1.7, marginBottom: 6 }}>
+            <span style={{ minWidth: 0 }}>{h?.right}</span>
+            <RightHint ar={ar} hint={h} />
+          </div>
+        );
+      })}
       {(isFixedContractType(typeRaw) || appliedAt || art55.converts || art55.approaching) ? (
         <div style={{ marginTop: 14 }}>
-          <LaborArticleCite ruleId="contract.fixed.continuation.cite" ar={ar} showText />
           {renewals != null && String(renewals) !== "" ? (
             <p style={{ margin: "8px 0 0", fontSize: 12, color: MUTED }}>
               {ar ? `تجديدات مسجّلة: ${renewals}` : `Recorded renewals: ${renewals}`}

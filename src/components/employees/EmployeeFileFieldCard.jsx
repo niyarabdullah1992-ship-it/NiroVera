@@ -1,4 +1,5 @@
 import React from "react";
+import RightHint from "@/components/shared/RightHint";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { gosiRegistrationIso, gosiSubscriberClass } from "@/lib/facts";
 import { MUTED, NAVY } from "@/lib/platformStyles";
@@ -93,7 +94,9 @@ export default function EmployeeFileFieldCard({ card, editing, draft, onDraft, c
           <span style={{ fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "var(--nv-ink)" }}>{card.title}</span>
           {card.what ? <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{card.what}</span> : null}
         </div>
-        {card.tag || card.state ? (
+        {card.hint ? (
+          <span style={{ marginInlineStart: "auto" }}><RightHint ar={ar} hint={card.hint} /></span>
+        ) : card.tag || card.state ? (
           <span style={{ marginInlineStart: "auto", maxWidth: "100%", fontSize: 10, fontWeight: 600, color: card.tagColor || card.color || MUTED, background: card.tagBg || card.bg || "var(--nv-soft)", border: `1px solid ${card.tagBorder || card.border || "var(--nv-line)"}`, borderRadius: 999, padding: "2px 9px", whiteSpace: "normal", lineHeight: 1.5, textAlign: "center" }}>
             {card.tag || card.state}
           </span>

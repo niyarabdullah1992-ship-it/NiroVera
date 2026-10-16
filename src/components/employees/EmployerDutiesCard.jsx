@@ -15,6 +15,8 @@ import {
   returnHeldDocument,
   setOccupationalExposure,
 } from "@/lib/employerDutiesStore";
+import RightHint from "@/components/shared/RightHint";
+import { heldDocumentHint, medicalExamHint, serviceCertificateHint, trainingHint } from "@/lib/rightHints.disc";
 
 const paper = { background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" };
 const head = { padding: "14px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", flexDirection: "column", gap: 3 };
@@ -39,13 +41,15 @@ export default function EmployerDutiesCard({ employee, companyId, ar = true, can
   const med = medicalExamStatus(employee);
   const violations = heldDocumentViolations(employee);
   const contractType = employee.profile?.contractType === "fixed" ? "fixed" : "indefinite";
+  const hctx = { view: canManage ? "manager" : "employee", ar, today: today(), employee };
+  const medHint = medicalExamHint(employee, hctx);
 
   return (
     <div data-employer-duties="" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,330px),1fr))", gap: 16 }}>
       <section style={paper} data-training-file="">
         <div style={head}>
           <strong style={{ fontSize: 15 }}>{ar ? "سجل التدريب" : "Training record"}</strong>
-          <span style={muted}>{ar ? "البرنامج ونوعه ومدته وساعاته والجهة والتكلفة، ويُوثّق خلال 30 يوماً (المواد 42–48 · اللائحة م15–16)." : "Program, kind, dates, hours, provider and cost — documented within 30 days (Arts. 42–48 · Regs 15–16)."}</span>
+          <span style={muted}>{ar ? "البرنامج ونوعه ومدته وساعاته والجهة والتكلفة، ويُوثّق خلال 30 يوماً." : "Program, kind, dates, hours, provider and cost — documented within 30 days."}</span>
         </div>
         {(employee.trainings || []).length ? employee.trainings.map((r) => {
           const doc = trainingDocumentationDue(r);
@@ -60,9 +64,10 @@ export default function EmployerDutiesCard({ employee, companyId, ar = true, can
                   {canManage ? <button type="button" style={btn} onClick={() => done(markTrainingDocumented(companyId, employee.id, r.id, today(), by), ar)}>{ar ? "وُثّق في المنصة" : "Documented"}</button> : null}
                 </>
               ) : null}
+              <RightHint ar={ar} hint={trainingHint(r, hctx)} />
             </div>
           );
-        }) : <div style={row}><span style={muted}>{ar ? "لا تدريب مسجل." : "No training on file."}</span></div>}
+        }) : <div style={row}><span style={muted}>{ar ? "لا شيء مسجّل." : "Nothing on file."}</span></div>}
         {canManage ? (
           <div style={{ ...row, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,130px),1fr))" }}>
             <input value={t.course} onChange={(e) => setT({ ...t, course: e.target.value })} placeholder={ar ? "البرنامج" : "Program"} style={input} />
@@ -84,13 +89,16 @@ export default function EmployerDutiesCard({ employee, companyId, ar = true, can
       <section style={paper} data-medical-file="">
         <div style={head}>
           <strong style={{ fontSize: 15 }}>{ar ? "الفحص الطبي الدوري" : "Periodic medical exam"}</strong>
-          <span style={muted}>{ar ? "المعرّض لاحتمال الإصابة بمرض مهني يُفحص فحصاً شاملاً مرة كل سنة على الأقل، وتُثبت النتيجة في السجل وفي ملفه (المادة 143 · اللائحة م5/6)." : "Workers exposed to an occupational disease are examined at least yearly (Art. 143)."}</span>
+          <span style={muted}>{ar ? "المعرّض لخطر مرض مهني يُفحص فحصاً شاملاً مرة كل سنة على الأقل." : "Workers exposed to an occupational disease are examined at least yearly."}</span>
         </div>
         <div style={row}>
           {med.required ? (
             <span style={{ fontWeight: 700, color: med.over ? "var(--nv-bad-ink)" : med.soon ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)" }}>
               {med.over ? (ar ? `الفحص متأخر منذ ${med.due}` : `Overdue since ${med.due}`) : (ar ? `الفحص القادم ${med.due}` : `Next exam ${med.due}`)}{med.unfit ? (ar ? " · آخر نتيجة: غير لائق" : " · last result: unfit") : ""}
             </span>
+          ) : null}
+          {med.required ? (
+            <><span style={{ flex: 1 }} /><RightHint ar={ar} hint={medHint} /></>
           ) : <span style={muted}>{ar ? "غير مسجّل كمعرّض لخطر مهني." : "Not recorded as exposed."}</span>}
         </div>
         {(employee.medicalExams || []).map((x) => (
@@ -121,8 +129,16 @@ export default function EmployerDutiesCard({ employee, companyId, ar = true, can
       <section style={paper} data-held-docs="">
         <div style={head}>
           <strong style={{ fontSize: 15 }}>{ar ? "وثائق لدى المنشأة" : "Documents held by the employer"}</strong>
-          <span style={muted}>{ar ? "لا يحتفظ صاحب العمل بجواز سفر العامل غير السعودي ولا إقامته ولا بطاقة تأمينه الطبي (اللائحة التنفيذية م6)، ويعيد عند انتهاء العقد كل ما أودعه العامل (المادة 64/2)." : "The employer may not keep a non-Saudi worker's passport, iqama or insurance card (Regs Art. 6)."}</span>
+          <span style={muted}>{ar ? "لا تُحتجز وثائق العامل غير السعودي، ويُعاد كل ما أودعه عند انتهاء العقد." : "A non-Saudi worker's documents are not held; deposits return at contract end."}</span>
         </div>
+        {employee.profile?.contractExit ? (
+          <div style={row} data-service-cert="">
+            <span style={{ fontWeight: 700 }}>{ar ? "شهادة الخدمة" : "Service certificate"}</span>
+            <span style={muted}>{ar ? "دون مقابل عند انتهاء العلاقة" : "Free at the end of service"}</span>
+            <span style={{ flex: 1 }} />
+            <RightHint ar={ar} hint={serviceCertificateHint(employee, hctx)} />
+          </div>
+        ) : null}
         {violations.map((v) => <div key={`${v.kind}-${v.since}`} data-held-violation="" style={{ ...row, color: "var(--nv-bad-ink)", fontWeight: 600 }}>{ar ? v.reason : v.reasonEn}</div>)}
         {(employee.profile?.heldDocuments || []).map((d) => (
           <div key={d.id} style={row}>
@@ -130,6 +146,7 @@ export default function EmployerDutiesCard({ employee, companyId, ar = true, can
             <span style={muted}>{ar ? `منذ ${d.heldSince}` : `since ${d.heldSince}`}{d.returnedAt ? (ar ? ` · أُعيدت ${d.returnedAt}` : ` · returned ${d.returnedAt}`) : ""}</span>
             <span style={{ flex: 1 }} />
             {canManage && !d.returnedAt ? <button type="button" style={btn} onClick={() => done(returnHeldDocument(companyId, employee.id, d.id, today(), by), ar)}>{ar ? "أُعيدت للعامل" : "Returned"}</button> : null}
+            <RightHint ar={ar} hint={heldDocumentHint(d, employee, hctx)} />
           </div>
         ))}
         {canManage ? (

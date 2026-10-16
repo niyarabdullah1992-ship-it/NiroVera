@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { toast } from "@/components/ui/use-toast";
 import { updateCompany } from "@/lib/store";
 import { deriveMedicalRegister, deriveTrainingRegister, trainingPlanGaps } from "@/lib/employerDuties";
+import RightHint from "@/components/shared/RightHint";
+import { medicalExamHint } from "@/lib/rightHints.disc";
 
 const shell = { background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column" };
 const row = { padding: "9px 16px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12.5, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" };
@@ -34,14 +36,14 @@ export default function TrainingMedicalPanel({ data, companyId, ar = true, canEd
       <article style={shell} data-training-register="">
         <div style={{ ...row, flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
           <strong style={{ fontSize: 13.5 }}>{ar ? `سجل التدريب ${reg.year}` : `Training register ${reg.year}`}</strong>
-          <span style={muted}>{ar ? `${reg.trained} من ${reg.headcount} تدرّبوا · السعوديون ${Math.round(reg.saudiShare * 100)}% · ${reg.hours} ساعة (اللائحة م5/5)` : `${reg.trained} of ${reg.headcount} trained · ${reg.hours} hours`}</span>
+          <span style={muted}>{ar ? `${reg.trained} من ${reg.headcount} تدرّبوا · السعوديون ${Math.round(reg.saudiShare * 100)}% · ${reg.hours} ساعة` : `${reg.trained} of ${reg.headcount} trained · ${reg.hours} hours`}</span>
         </div>
         {reg.programs.map((p) => (
           <div key={`${p.course}-${p.kind}`} style={row}><span style={{ fontWeight: 700 }}>{p.course}</span><span style={muted}>{`${p.count} · ${p.days} ${ar ? "يوماً" : "days"} · ${p.provider}`}</span></div>
         ))}
-        {reg.undocumented.length ? <div style={{ ...row, color: "var(--nv-bad-ink)" }}>{ar ? `لم يُوثَّق ${reg.undocumented.length} تدريب خلال 30 يوماً في منصة الوزارة (اللائحة م16/أولاً/4).` : `${reg.undocumented.length} trainings not documented within 30 days.`}</div> : null}
+        {reg.undocumented.length ? <div style={{ ...row, color: "var(--nv-bad-ink)" }}>{ar ? `لم يُوثَّق ${reg.undocumented.length} تدريب خلال 30 يوماً في منصة الوزارة.` : `${reg.undocumented.length} trainings not documented within 30 days.`}</div> : null}
         <div style={{ ...row, flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
-          <strong style={{ fontSize: 12.5 }}>{ar ? "خطة التدريب لكل مهنة (اللائحة م15/4)" : "Training plan per job (Regs Art. 15(4))"}</strong>
+          <strong style={{ fontSize: 12.5 }}>{ar ? "خطة التدريب لكل مهنة" : "Training plan per job"}</strong>
         </div>
         {gaps.length ? gaps.map((g) => (
           <div key={g.id} style={row}>
@@ -49,7 +51,7 @@ export default function TrainingMedicalPanel({ data, companyId, ar = true, canEd
             <span style={muted}>{`${g.role || (ar ? "الكل" : "All")} · ${g.done}/${g.target}`}</span>
             {g.missing.length ? <span style={{ ...muted, color: "var(--nv-warn-ink)" }}>{ar ? `لم يحضر: ${g.missing.slice(0, 5).join("، ")}` : `Not yet: ${g.missing.slice(0, 5).join(", ")}`}</span> : null}
           </div>
-        )) : <div style={row}><span style={muted}>{ar ? "لا خطة تدريب لهذا العام." : "No training plan this year."}</span></div>}
+        )) : <div style={row}><span style={muted}>{ar ? "لا شيء معلّق — لا خطة تدريب لهذا العام." : "Nothing pending — no training plan this year."}</span></div>}
         {canEdit ? (
           <div style={row}>
             <input value={plan.course} onChange={(e) => setPlan({ ...plan, course: e.target.value })} placeholder={ar ? "البرنامج" : "Program"} style={{ ...input, flex: 1 }} />
@@ -62,7 +64,7 @@ export default function TrainingMedicalPanel({ data, companyId, ar = true, canEd
       <article style={shell} data-medical-register="">
         <div style={{ ...row, flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
           <strong style={{ fontSize: 13.5 }}>{ar ? "سجل الفحص الطبي الدوري" : "Periodic medical-exam register"}</strong>
-          <span style={muted}>{ar ? `${med.exposed} معرّضون لخطر مهني · ${med.overdue} متأخر · ${med.soon} خلال 30 يوماً (المادة 143 · اللائحة م5/6)` : `${med.exposed} exposed · ${med.overdue} overdue · ${med.soon} due soon`}</span>
+          <span style={muted}>{ar ? `${med.exposed} معرّضون لخطر مهني · ${med.overdue} متأخر · ${med.soon} خلال 30 يوماً` : `${med.exposed} exposed · ${med.overdue} overdue · ${med.soon} due soon`}</span>
         </div>
         {med.rows.map(({ employee, status }) => (
           <div key={employee.id} style={row}>
@@ -70,6 +72,8 @@ export default function TrainingMedicalPanel({ data, companyId, ar = true, canEd
             <span style={{ ...muted, color: status.over ? "var(--nv-bad-ink)" : status.soon ? "var(--nv-warn-ink)" : "var(--nv-ink2)" }}>
               {status.last ? (ar ? `آخر فحص ${status.last.at}: ${status.last.result}` : `Last ${status.last.at}`) : (ar ? "لم يُفحص" : "Never examined")} · {ar ? `القادم ${status.due}` : `next ${status.due}`}
             </span>
+            <span style={{ flex: 1 }} />
+            <RightHint ar={ar} hint={medicalExamHint(employee, { view: "manager", ar, to: `/app/employees/${employee.id}?tab=docs` })} />
           </div>
         ))}
         {!med.rows.length ? <div style={row}><span style={muted}>{ar ? "لا عامل مسجّل كمعرّض لخطر مهني — يُسجَّل من ملف العامل." : "No worker recorded as exposed."}</span></div> : null}

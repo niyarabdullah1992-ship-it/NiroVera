@@ -44,7 +44,7 @@ import { KpiAction } from "@/components/shared/StatusFlag";
 import { disciplineCaseHint } from "@/lib/rightHints.disc";
 import { generateDisciplineDeduction, liftDisciplineDeduction } from "@/lib/deductionGenerators";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
-import { ROLE_RANK, canSeeAllStations, hrScopeStations, visibleStations } from "@/lib/permissions";
+import { canManageDiscipline, disciplineManageCases, scopeEqualOrWider } from "@/lib/disciplineManageScope";
 import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { useRailSide, useSetRailSide } from "@/lib/railSide";
 import { checkPublishRegulationGate, planRegulationAck, regulationDate, regulationNextStep, regulationOf, regulationRef, regulationStepFor } from "@/lib/workRegulation";
@@ -80,40 +80,6 @@ const TAB_LABEL = {
 
 function uid() {
   return `dsc_${Date.now().toString(36)}`;
-}
-
-function managedScope(person, data) {
-  if (!person) return { all: false, ids: new Set() };
-  if (canSeeAllStations(person) || String(person.id) === String(data?.ownerId || "")) return { all: true, ids: new Set() };
-  if (person.hrLevelId) {
-    const scope = hrScopeStations(person, data);
-    if (scope === null) return { all: true, ids: new Set() };
-    return { all: false, ids: new Set((scope || []).map(String)) };
-  }
-  if (["station_manager", "pgm", "ops_manager", "director"].includes(person.role)) {
-    return { all: false, ids: new Set(visibleStations(person, data).map((row) => String(row.id))) };
-  }
-  return { all: false, ids: new Set() };
-}
-
-/** A sanction is not raised on yourself, or on someone whose scope is equal or wider. */
-function scopeEqualOrWider(person, actor, data) {
-  if (!person || !actor) return false;
-  if (String(person.id) === String(actor.id)) return true;
-  const theirs = managedScope(person, data);
-  const mine = managedScope(actor, data);
-  if (theirs.all) return true;
-  if (mine.all) return false;
-  if (!theirs.ids.size) return false;
-  if (!mine.ids.size) return true;
-  const personRank = ROLE_RANK[person.role] || 0;
-  const actorRank = ROLE_RANK[actor.role] || 0;
-  if (personRank >= actorRank && personRank >= ROLE_RANK.station_manager && theirs.ids.size >= mine.ids.size) return true;
-  let covers = true;
-  mine.ids.forEach((id) => {
-    if (!theirs.ids.has(id)) covers = false;
-  });
-  return covers && theirs.ids.size >= mine.ids.size;
 }
 
 const PACK_CARD = {
@@ -181,21 +147,16 @@ export default function Discipline() {
   const employees = data?.employees || [];
   const stations = data?.stations || [];
   const stationScope = useStationScope();
-  const canManage = Boolean(currentUser && (data?.ownerId === currentUser.id || currentUser.hrLevelId || ["director", "ops_manager", "station_manager"].includes(currentUser.role)));
+  const canManage = canManageDiscipline(currentUser, data);
   const scopedEmployees = canManage
     ? employees.filter((person) => matchesStationScope(person.stationId || person.station_id, stationScope))
     : employees;
   const raiseTargets = scopedEmployees.filter((person) => !scopeEqualOrWider(person, currentUser, data));
-  const visibleCases = (canManage ? cases : cases.filter((item) => item.employeeId === currentUser?.id))
-    .filter((item) => {
-      if (!canManage) return true;
-      const person = employees.find((row) => String(row.id) === String(item.employeeId));
-      // Management never sees its own file, nor one it could not have raised — those live on ملفي
-      // and with whoever sits above (the same rule as raising).
-      if (String(item.employeeId) === String(currentUser?.id)) return false;
-      if (person && scopeEqualOrWider(person, currentUser, data)) return false;
-      return matchesStationScope(item.stationId || person?.stationId || person?.station_id, stationScope);
-    });
+  // Management never sees its own file, nor one it could not have raised — those live on ملفي
+  // and with whoever sits above (the same rule as raising). Shared with the compliance index.
+  const visibleCases = canManage
+    ? disciplineManageCases(data, currentUser, { inScope: (sid) => matchesStationScope(sid, stationScope) })
+    : cases.filter((item) => item.employeeId === currentUser?.id);
   const mine = cases.filter((item) => item.employeeId === currentUser?.id);
   const liveCases = visibleCases.filter((item) => !isDisciplineSettled(item));
   const [searchParams, setSearchParams] = useSearchParams();

@@ -915,4 +915,15 @@ export function deriveDisciplineLawBoard({
   };
 }
 
+/**
+ * «أنظمة الوزارة — ما يخص الجزاءات» rows with a status in the shared ministry shape: blocked when the
+ * article stopped an action, waiting when it applies to an open file now, void for reference. The
+ * law board lists them and the «الامتثال الوزاري» index counts them.
+ */
+export function disciplineLawRows({ cases = [], employees = [], ar = true, today } = {}) {
+  return deriveDisciplineLawBoard({ cases, employees, ar, today, filter: "all" }).rows
+    .filter((row) => String(row.art || "").trim() && row.art !== "—")
+    .map((row) => ({ ...row, key: row.id, source: "labour", status: row.blocked ? "blocked" : row.live ? "waiting" : "void" }));
+}
+
 export { employeeContractWage, buildDisciplineRegister };

@@ -11,8 +11,7 @@ import { updateSafetyRecord, recordSafetyIncident, closeSafetyHazard, approveSaf
 import { safetyApprovalIssues } from "@/lib/safetyLogic";
 import SafetyIncidentReportForm from "@/components/safety/SafetyIncidentReportForm";
 import StationSiteDutiesCard from "@/components/safety/StationSiteDutiesCard";
-import { firstAidSummary } from "@/lib/firstAidCabinet";
-import { deriveRemoteness } from "@/lib/siteRemoteness";
+import { safetyMinistryFacts } from "@/lib/safetyMinistryRows";
 import SafetyOverviewTab from "@/components/safety/SafetyOverviewTab";
 import { SafetyComplyBoard, SafetyDashboard, SafetyInjuryTable, SafetyMinistryPanel, SafetyRiskRegister } from "@/components/safety/SafetyManageViews";
 import { toast } from "@/components/ui/use-toast";
@@ -107,9 +106,9 @@ export default function Safety() {
     toast({ description: ar ? "حُفظ فحص خزانة الإسعافات (اللائحة م29)." : "First-aid cabinet check saved (Regs Art. 29)." });
   };
   const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
-  const aidSummary = firstAidSummary(stations, recFor, { today: todayKey });
-  const remoteCount = stations.filter((station) => deriveRemoteness(recFor(station.id)?.site || {}, station.remoteSite).remote).length;
-  const siteUnknown = stations.filter((station) => !deriveRemoteness(recFor(station.id)?.site || {}, station.remoteSite).known).length;
+  // Reports, hazards, the first-aid check (Regs 29) and the site distance (Regs 30) in scope — the same
+  // facts «مرجعية الوزارة» and the «الامتثال الوزاري» index read (lib/safetyMinistryRows).
+  const ministryFacts = safetyMinistryFacts({ stations, recFor, today: todayKey });
 
   const handleApprove = (id) => {
     const result = approveSafetyRecord(company.id, id, currentUser.name);
@@ -145,22 +144,7 @@ export default function Safety() {
     });
   };
 
-  const reportRows = stations.flatMap((station) => {
-    const rec = recFor(station.id);
-    return (rec?.incidentLog || []).map((item) => ({
-      stationId: station.id,
-      stationName: station.name || "—",
-      item,
-    }));
-  });
-  const openReportRows = reportRows.filter((row) => row.item?.status !== "closed");
-  const criticalOpen = openReportRows.some((row) => (row.item.card?.score || 0) >= 15 || row.item.card?.levelKey === "critical");
-  const injuryOpen = openReportRows.some((row) => row.item.card?.injured || row.item.card?.kind === 3);
-  const openHazards = stations.flatMap((station) => (recFor(station.id)?.hazards || []).filter((hazard) => !hazard?.closedAt));
-  const trackedReports = openReportRows.filter((row) => !row.item.card?.positive);
-  const controlGap = trackedReports.some((row) => !row.item.card?.controlId) || openHazards.some((hazard) => !hazard?.controlId);
-  const controlLabel = !trackedReports.length && !openHazards.length ? "—" : controlGap ? (ar ? "ناقص" : "Missing") : (ar ? "مستوفٍ" : "Met");
-  const controlTone = !trackedReports.length && !openHazards.length ? "" : controlGap ? "warn" : "ok";
+  const { reportRows, openReportRows } = ministryFacts;
 
   const handlePatchIncident = (stationId, incidentId, patch) => {
     const saved = patchSafetyIncident(company.id, stationId, incidentId, patch, currentUser.name);
@@ -363,7 +347,7 @@ export default function Safety() {
         </>
       )}
       {!employeeRail ? (
-        <SafetyMinistryPanel ar={ar} criticalOpen={criticalOpen} controlLabel={controlLabel} controlTone={controlTone} injuryOpen={injuryOpen} firstAid={aidSummary} remoteCount={remoteCount} siteUnknown={siteUnknown} stationCount={stations.length} />
+        <SafetyMinistryPanel ar={ar} facts={ministryFacts} onDate={todayKey} />
       ) : null}
       </div>
     </PlatformStampShell>

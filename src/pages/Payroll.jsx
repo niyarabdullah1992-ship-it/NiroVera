@@ -6,7 +6,6 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import {
   ensurePayrollRun,
   getRun,
-  isPayrollEmployee,
   monthKey,
   netOf,
   payrollItemIssues,
@@ -24,9 +23,9 @@ import PayrollTableRows from "@/components/payroll/PayrollTableRows";
 import OwnerPayrollToggle from "@/components/payroll/OwnerPayrollToggle";
 import PayrollSyncDialog from "@/components/payroll/PayrollSyncDialog";
 import PayrollTemplateCard from "@/components/payroll/PayrollTemplateCard";
-import { canAdjustPayroll, hrScopeStations } from "@/lib/permissions";
+import { canAdjustPayroll } from "@/lib/permissions";
 import { toast } from "@/components/ui/use-toast";
-import { stationIdForTreeEmployee } from "@/lib/orgTree";
+import { payrollManageScope, UNASSIGNED_STATION_ID } from "@/lib/payrollManageScope";
 import DeductionLinesDialog from "@/components/payroll/DeductionLinesDialog";
 import PayrollRunBoard from "@/components/payroll/PayrollRunBoard";
 import PayrollWpsBoard from "@/components/payroll/PayrollWpsBoard";
@@ -68,7 +67,6 @@ import { MANAGE, SELF, canManageSurface, resolveFinanceView } from "@/lib/financ
 import { useRailSide } from "@/lib/railSide";
 import { PAYROLL_DENY, payrollDenyReason } from "@/lib/payrollRights";
 
-const UNASSIGNED_STATION_ID = "__unassigned__";
 const MANAGE_LAYERS = ["run", "att", "lines", "deduct", "gosi", "eos", "slip", "wps", "files", "archive"];
 // An employee is not "management minus buttons" here: the whole run is somebody
 // else's business. What is theirs is the one line charged to their own name.
@@ -130,28 +128,13 @@ export default function Payroll() {
 
   const run = getRun(data, month);
   const items = run?.items || [];
-  const payrollScope = currentUser?.hrLevelId
-    ? hrScopeStations(currentUser, data)
-    : currentUser?.role === "pgm" ? (currentUser.managedStations || []) : null;
-  const stationIdOf = (stationId) => stationId || null;
-  const employeeStationId = (employee) => stationIdOf(stationIdForTreeEmployee(data, employee.id) || employee.stationId);
-  const payrollEmployees = (data.employees || []).filter((employee) => isPayrollEmployee(employee, includeOwner) && (payrollScope === null || payrollScope.includes(employeeStationId(employee))));
-  const ownerIds = new Set(includeOwner ? [] : (data.employees || []).filter((employee) => employee.role === "owner").map((employee) => employee.id));
-  const employeeForItem = (item) => (data.employees || []).find((employee) => employee.id === item.employeeId) || payrollEmployees.find((employee) => employee.id === item.employeeId) || {
-    id: item.employeeId,
-    name: item.employeeName || (ar ? "موظف سابق" : "Former employee"),
-    position: item.employeePosition || "",
-    stationId: stationIdOf(item.employeeStationId),
-  };
-  const itemStationId = (item) => {
-    const employee = (data.employees || []).find((entry) => entry.id === item.employeeId);
-    return employee ? employeeStationId(employee) : stationIdOf(item.employeeStationId);
-  };
+  // Whose lines this manager sees — shared with the «الامتثال الوزاري» index (lib/payrollManageScope).
+  const { payrollScope, payrollEmployees, ownerIds, employeeForItem, itemStationId, inScope: lineInScope } = payrollManageScope(data, currentUser, { ar });
   const allowedStations = (data.stations || []).filter((station) => payrollScope === null || payrollScope.includes(station.id));
   const filterStations = [...allowedStations, { id: UNASSIGNED_STATION_ID, name: ar ? "غير مخصص" : "Unassigned" }];
   const allowedStationIds = new Set(filterStations.map((station) => station.id));
   const selectedStationIds = stationFilter.filter((id) => allowedStationIds.has(id));
-  const scopedItems = items.filter((item) => !ownerIds.has(item.employeeId) && (payrollEmployees.some((employee) => employee.id === item.employeeId) || (item.employeeName && (payrollScope === null || payrollScope.includes(itemStationId(item))))));
+  const scopedItems = items.filter(lineInScope);
   const managedVisible = selectedStationIds.length === 0 ? scopedItems : scopedItems.filter((item) => selectedStationIds.includes(itemStationId(item) || UNASSIGNED_STATION_ID));
   // The personal view is a single line: the one charged to the signed-in person.
   // Station scope has nothing to do with it, and nobody else's wage passes through.

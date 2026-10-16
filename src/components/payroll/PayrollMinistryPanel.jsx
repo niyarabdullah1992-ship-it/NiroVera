@@ -1,11 +1,6 @@
 import React, { useMemo } from "react";
 import MinistryLawPanel from "@/components/schedules/MinistryLawPanel";
-import { isWeeklyRestDay } from "@/lib/laborHoursPolicy";
-import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
-import { companyPayday, wageOverdue } from "@/lib/payrollLaw";
-import { PAYROLL_MINISTRY_CARDS, payrollMinistryRows } from "@/lib/payrollMinistryRows";
-import { stationWithSite } from "@/lib/siteRemoteness";
-import { preventedDaysInMonth } from "@/lib/modelRequests";
+import { PAYROLL_MINISTRY_CARDS, payrollPanelRows } from "@/lib/payrollMinistryRows";
 
 const todayIso = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
 
@@ -16,20 +11,10 @@ const todayIso = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh
  */
 export default function PayrollMinistryPanel({ ar = true, data, month, items = [], employeeForItem, self = false }) {
   const today = todayIso();
-  const calendar = useMemo(() => laborCalendarOf(data), [data]);
-  const rows = useMemo(() => {
-    const isOff = (day) => isWeeklyRestDay(day, data) || isOfficialHoliday(day, calendar);
-    const pay = self ? null : companyPayday(data?.settings, month, isOff);
-    const overdue = self ? null : wageOverdue({ settings: data?.settings, month, items, today, isOff, employeeOf: employeeForItem });
-    const personOf = (line) => (typeof employeeForItem === "function" ? employeeForItem(line) : null)
-      || (data?.employees || []).find((row) => String(row.id) === String(line?.employeeId)) || null;
-    const siteOf = (line) => {
-      const person = personOf(line);
-      return person ? stationWithSite(data, person.stationId) : null;
-    };
-    const preventedOf = (line) => preventedDaysInMonth(personOf(line), month).size;
-    return payrollMinistryRows({ lines: items, self, pay, overdue, ar, onDate: today, siteOf, preventedOf });
-  }, [data, calendar, month, items, employeeForItem, self, ar, today]);
+  const rows = useMemo(
+    () => payrollPanelRows({ data, month, items, employeeForItem, self, today, ar }),
+    [data, month, items, employeeForItem, self, ar, today],
+  );
   return (
     <MinistryLawPanel
       ar={ar}

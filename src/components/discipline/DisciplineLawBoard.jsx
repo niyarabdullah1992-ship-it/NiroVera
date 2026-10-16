@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { deriveDisciplineLawBoard } from "@/lib/disciplineBoard";
+import { disciplineLawRows } from "@/lib/disciplineBoard";
+import useHashScroll from "@/hooks/useHashScroll";
 import { citeRule } from "@/lib/laborRules";
 import { mono, quietAction, SectionHead, slab, sourceBadge } from "@/components/schedules/scheduleChrome";
 import MinistrySourceCards, { Counter, MinistryRow, RegsSourceLine } from "@/components/schedules/MinistrySourceCards";
@@ -20,18 +21,12 @@ const KINDS = [
   { key: "right", ar: "حقوق العامل", en: "The worker's rights", scopeAr: "التظلّم خلال 30 يوماً، والبتّ خلال 15، ثم المحاكم العمالية.", scopeEn: "Grievance within 30 days, a ruling within 15, then the labour courts." },
 ];
 
-function statusOf(row) {
-  if (row.blocked) return "blocked";
-  if (row.live) return "waiting";
-  return "void";
-}
-
 export default function DisciplineLawBoard({ cases, employees, ar, today, own = false }) {
   const [kind, setKind] = useState("all");
   const [view, setView] = useState("all");
   const [reading, setReading] = useState("");
-  const board = deriveDisciplineLawBoard({ cases, employees, ar, today, filter: "all" });
-  const rows = board.rows.filter((row) => String(row.art || "").trim() && row.art !== "—");
+  const rows = disciplineLawRows({ cases, employees, ar, today });
+  useHashScroll("nv-ministry-discipline");
 
   const tally = (list) => ({
     blocked: list.filter((r) => r.blocked).length,
@@ -68,7 +63,7 @@ export default function DisciplineLawBoard({ cases, employees, ar, today, own = 
   const hiddenN = rows.filter((r) => (kind === "all" || r.kind === kind) && !applies(r)).length;
 
   return (
-    <section data-discipline-law="1" style={{ ...slab, display: "flex", flexDirection: "column" }}>
+    <section id="nv-ministry-discipline" data-discipline-law="1" style={{ ...slab, display: "flex", flexDirection: "column", scrollMarginTop: 88 }}>
       <SectionHead
         title={own ? (ar ? "أنظمة الوزارة — ما يخص ملفي في الجزاءات" : "Ministry rules — sanctions on my file") : (ar ? "أنظمة الوزارة — ما يخص الجزاءات" : "Ministry rules — sanctions")}
         note={ar
@@ -108,7 +103,7 @@ export default function DisciplineLawBoard({ cases, employees, ar, today, own = 
                         rowKey={row.id}
                         source="labour"
                         badge={ar ? `م ${row.art}` : `Art. ${row.art}`}
-                        status={statusOf(row)}
+                        status={row.status}
                         pill={row.tag}
                         title={row.head}
                         note={row.applied}

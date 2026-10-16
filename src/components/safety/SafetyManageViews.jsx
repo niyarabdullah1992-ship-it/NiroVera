@@ -1,8 +1,10 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+import useHashScroll from "@/hooks/useHashScroll";
+import { safetyMinistryRows } from "@/lib/safetyMinistryRows";
 import RightHint from "@/components/shared/RightHint";
 import { injuryHint } from "@/lib/rightHints.disc";
 import { StatusFlag } from "@/components/shared/StatusFlag";
-import { isHeatBanDate } from "@/lib/contractLawDerivations";
 import { SAFETY_REPORT_CONTROLS, deriveOpenRiskMap, safetyReportSlaLine } from "@/lib/safetyReportCard";
 import { PERMIT_TYPES } from "@/lib/safetyStandards";
 import { deriveTrainingRegister } from "@/lib/employerDuties";
@@ -580,29 +582,20 @@ export function SafetyInjuryTable({ ar, rows }) {
   );
 }
 
-export function SafetyMinistryPanel({ ar, criticalOpen, controlLabel, controlTone, injuryOpen, firstAid = null, remoteCount = 0, siteUnknown = 0, stationCount = 0 }) {
+/** «مرجعية الوزارة» — rows from lib/safetyMinistryRows; the «الامتثال الوزاري» index counts the same ones. */
+export function SafetyMinistryPanel({ ar, facts, onDate }) {
   const L = (a, e) => (ar ? a : e);
-  const inSeason = isHeatBanDate(new Date());
-  // Art. 142 · Regs Art. 29 — derived from each station's recorded cabinet check (none / short / stale / met).
-  const aidCell = !firstAid || !stationCount
-    ? ["—", ""]
-    : firstAid.short
-      ? [L(`${firstAid.short} فرع ناقص`, `${firstAid.short} branch(es) short`), "bad"]
-      : firstAid.none
-        ? [L(`${firstAid.none} فرع لم يُفحص`, `${firstAid.none} never checked`), "warn"]
-        : firstAid.stale
-          ? [L(`${firstAid.stale} فحص قديم`, `${firstAid.stale} stale`), "warn"]
-          : [L("مستوفٍ", "Met"), "ok"];
-  const rows = [
-    ["م 121·122", L("الحماية من الأخطار", "Protection from hazards"), criticalOpen ? L("مخالفة", "Breach") : L("مستوفٍ", "Met"), criticalOpen ? "bad" : "ok"],
-    ["م 142 · اللائحة م29", L("خزانة الإسعافات: الأصناف والكميات، صلاحيتها، الهلال الأحمر، وإعلان مكانها واسم المسؤول عنها", "First-aid cabinet: items and quantities, fitness, red crescent, posted place and keeper"), aidCell[0], aidCell[1]],
-    ["اللائحة م30", L("البعيد عن العمران: أكثر من 50 كم بطريق معبّد أو 25 كم بغير معبّد، أو تجمع بلا مرافق — تترتب عليه المادتان 146 و147", "Remote: over 50 km by paved road or 25 km unpaved, or a cluster without services — Arts. 146 and 147 follow"), siteUnknown ? L(`${siteUnknown} فرع بلا مسافة`, `${siteUnknown} without a distance`) : remoteCount ? L(`${remoteCount} فرع بعيد`, `${remoteCount} remote`) : (stationCount ? L("لا فرع بعيد", "None remote") : "—"), siteUnknown ? "warn" : remoteCount ? "warn" : (stationCount ? "ok" : "")],
-    ["م 141 · اللائحة م28", L("مهلة إبلاغ الإصابة", "Injury reporting deadline"), injuryOpen ? L("مفتوح — يُبلَّغ فوراً", "Open — report at once") : "—", injuryOpen ? "bad" : ""],
-    ["ISO 45001 §8.1.2", L("ضابط لكل خطر", "A control for every hazard"), controlLabel || "—", controlTone || ""],
-    ["قرار 3337", L("لا عمل مكشوف 12:00–15:00 من 15 يونيو إلى 15 سبتمبر", "No exposed work 12:00–15:00 from 15 June to 15 September"), inSeason ? L("الموسم قائم", "Season is open") : L("بلا أثر", "No effect"), inSeason ? "warn" : ""],
-  ];
+  const { hash } = useLocation();
+  const foldRef = useRef(null);
+  // Opened from the «الامتثال الوزاري» index (…#nv-ministry-safety): unfold, then scroll.
+  useEffect(() => {
+    if (hash === "#nv-ministry-safety" && foldRef.current) foldRef.current.open = true;
+  }, [hash]);
+  useHashScroll("nv-ministry-safety");
+  const criticalOpen = !!facts?.criticalOpen;
+  const rows = safetyMinistryRows(facts || {}, { ar, onDate }).map((row) => [row.badge, row.title, row.pill, row.tone]);
   return (
-    <details style={{ ...shell, padding: 0 }}>
+    <details ref={foldRef} id="nv-ministry-safety" style={{ ...shell, padding: 0, scrollMarginTop: 88 }}>
       <summary style={{ padding: "12px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>
         {L("مرجعية الوزارة", "Ministry reference")}
         {criticalOpen ? <StatusFlag tone="bad" ar={ar} flag={L("خطر حرج مفتوح", "Critical hazard open")} style={{ marginInlineStart: 8, verticalAlign: "middle" }} /> : null}

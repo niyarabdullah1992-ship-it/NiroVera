@@ -9,6 +9,11 @@
  */
 import { explainRule, ruleValue } from "./laborRules.js";
 import { checkArticle93Gate, lineIssues, lineOvertimeHours } from "./payrollDerivations.js";
+import { isWeeklyRestDay } from "./laborHoursPolicy.js";
+import { isOfficialHoliday, laborCalendarOf } from "./ummAlQuraCalendar.js";
+import { companyPayday, wageOverdue } from "./payrollLaw.js";
+import { stationWithSite } from "./siteRemoteness.js";
+import { preventedDaysInMonth } from "./modelRequests.js";
 import {
   eidOverlapRegsNote,
   forcedLabourRegsNote,
@@ -171,4 +176,24 @@ export function payrollMinistryRows({ lines = [], self = false, pay = null, over
   rows.push({ key: "labour-84", source: "labour", badge: ar ? "م 84–85" : "Arts. 84–85", title: ar ? "مكافأة نهاية الخدمة — الأساس" : "End-of-service award — the basics", note: eos, status: "void", pill: info(ar) });
   rows.push({ key: "model-1", source: "model", badge: ar ? "النموذج الموحد م1–2" : "Model Arts. 1–2", title: ar ? "الأجر الأساسي والأجر الفعلي" : "Basic wage and actual wage", note: wageDefinitionsModelNote(ar), status: "void", pill: info(ar) });
   return rows;
+}
+
+/**
+ * The panel's rows from the page's own inputs — payday and overdue from payrollLaw exactly as
+ * «مواعيد الأجر وحمايته» reads them (manage only), the site and prevented days per line. Shared by
+ * PayrollMinistryPanel and the «الامتثال الوزاري» index.
+ */
+export function payrollPanelRows({ data, month, items = [], employeeForItem = null, self = false, today, ar = true } = {}) {
+  const calendar = laborCalendarOf(data);
+  const isOff = (day) => isWeeklyRestDay(day, data) || isOfficialHoliday(day, calendar);
+  const pay = self ? null : companyPayday(data?.settings, month, isOff);
+  const overdue = self ? null : wageOverdue({ settings: data?.settings, month, items, today, isOff, employeeOf: employeeForItem });
+  const personOf = (line) => (typeof employeeForItem === "function" ? employeeForItem(line) : null)
+    || (data?.employees || []).find((row) => String(row.id) === String(line?.employeeId)) || null;
+  const siteOf = (line) => {
+    const person = personOf(line);
+    return person ? stationWithSite(data, person.stationId) : null;
+  };
+  const preventedOf = (line) => preventedDaysInMonth(personOf(line), month).size;
+  return payrollMinistryRows({ lines: items, self, pay, overdue, ar, onDate: today, siteOf, preventedOf });
 }

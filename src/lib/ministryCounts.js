@@ -45,3 +45,17 @@ export function ministryCountsTone(counts = {}) {
   if (counts.met) return "ok";
   return "mute";
 }
+
+/**
+ * جدول الدوام (management) — the week's counters exactly as «أنظمة الوزارة والتنبيهات» heads them
+ * (useComplianceSummary): publish blocks and violations, alerts, satisfied checks.
+ */
+export function scheduleMinistryCounts(summary) {
+  if (!summary) return { block: 0, alert: 0, met: 0, info: 0 };
+  return {
+    block: (Number(summary.blockCount) || 0) + (Number(summary.violationCount) || 0),
+    alert: Number(summary.warnCount) || 0,
+    met: Number(summary.settledCount) || 0,
+    info: 0,
+  };
+}

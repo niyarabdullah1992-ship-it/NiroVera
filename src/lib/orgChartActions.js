@@ -133,15 +133,16 @@ export function orgAdminHref(actionId, card) {
 }
 
 /**
- * The change-request seed an /app/org?pane=changes&op=…&seat=…(&to=…) or
- * ?op=reparentUnit&unit=…&to=… link asks for, or null.
+ * The change-request seed an /app/org?pane=changes&op=…&seat=…(&to=…),
+ * ?op=reparentUnit&unit=…&to=… or ?op=closeUnit&unit=… link asks for, or null.
  */
 export function changeSeedFromParams(params) {
   const op = str(params?.get?.("op"));
   const to = str(params?.get?.("to"));
-  if (op === "reparentUnit") {
+  if (op === "reparentUnit" || op === "closeUnit") {
     const stationId = str(params?.get?.("unit"));
-    return stationId ? { type: op, stationId, ...(to ? { toParentId: to } : {}) } : null;
+    if (!stationId) return null;
+    return op === "reparentUnit" ? { type: op, stationId, ...(to ? { toParentId: to } : {}) } : { type: op, stationId };
   }
   const seatId = str(params?.get?.("seat"));
   if (!seatId || !["moveSeat", "freezeSeat", "setDotted"].includes(op)) return null;
@@ -153,7 +154,7 @@ export function changeSeedFromParams(params) {
 /** /app/org link that opens «التغييرات» with one step pre-filled (never applies anything). */
 export function changeRequestHref(op) {
   const q = new URLSearchParams({ view: "admin", pane: "changes", op: op.type });
-  if (op.type === "reparentUnit") {
+  if (op.type === "reparentUnit" || op.type === "closeUnit") {
     q.set("unit", op.stationId);
     if (op.toParentId) q.set("to", op.toParentId);
   } else {

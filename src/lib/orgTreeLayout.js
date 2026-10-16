@@ -197,7 +197,8 @@ export function gridCols(n, cap = TREE_GEOMETRY.maxCols) {
  * @param {object} tree from buildOrgFocusTree / buildBranchTree
  * @param {Set<string>} expanded opened cards
  * @param {object} opts geometry; focusKey; childLimit — cards per grid before «+n»
- *   (showAll — cards whose whole team the viewer asked for)
+ *   (showAll — cards whose whole team the viewer asked for); addSlot(key) — true where the
+ *   management tree offers «+ إضافة بطاقة هنا» (`${key}::add`, a cell with `add: true`)
  * @returns {{ cards: Array<{ key, x, y, depth, parentKey, expanded, kids, inGrid?, more?, less? }>,
  *   lines: Array<{ id, x, y, w, h }>, width: number, height: number, index: Map<string, object> }}
  *   x/y are the card's top inline-start corner; lines are 0-width (vertical) or 0-height (horizontal).
@@ -215,6 +216,7 @@ export function layoutOrgTree(tree, expanded = new Set(), {
   stack = false,
   childLimit = Infinity,
   showAll = new Set(),
+  addSlot = null,
 } = {}) {
   const onPath = new Set(focusKey && tree?.nodes?.has(focusKey) ? pathTo(tree, focusKey) : []);
   const seen = new Set();
@@ -241,11 +243,16 @@ export function layoutOrgTree(tree, expanded = new Set(), {
     const open = expanded.has(key) && kids.length > 0;
     const self = card(key, depth, parentKey, { expanded: open, kids: kids.length });
     const pathKid = onPath.has(key) && key !== focusKey ? kids.find((k) => onPath.has(k)) : "";
-    if (!open && !pathKid) return { w: cardW, h: cardH, cards: [self], lines: [], px: 0 };
+    // «+ إضافة بطاقة هنا» (management tree): the last cell of an opened team, or alone under a focused leaf
+    const plus = typeof addSlot === "function" && addSlot(key) && (open || (key === focusKey && !kids.length));
+    if (!open && !pathKid && !plus) return { w: cardW, h: cardH, cards: [self], lines: [], px: 0 };
 
-    const asColumn = open ? kids.filter((k) => onPath.has(k) || (expanded.has(k) && hasKids(k))) : [pathKid];
+    const asColumn = open ? kids.filter((k) => onPath.has(k) || (expanded.has(k) && hasKids(k))) : (pathKid ? [pathKid] : []);
     const inGrid = open ? kids.filter((k) => !asColumn.includes(k)) : [];
     const groups = [];
+    if (!inGrid.length && plus) {
+      groups.push({ w: cardW, h: cardH, cards: [card(`${key}::add`, depth + 1, key, { inGrid: true, add: true })], lines: [], px: 0, kind: "grid", dropAt: cardW / 2 });
+    }
     if (inGrid.length) {
       const limit = showAll.has(key) ? Infinity : Math.max(1, childLimit);
       const shown = inGrid.slice(0, limit);
@@ -257,6 +264,13 @@ export function layoutOrgTree(tree, expanded = new Set(), {
         const c = Math.max(1, Math.round((g.w + gap) / (cardW + gap)));
         const i = g.cards.length;
         const cell = card(extra.key, depth + 1, key, { inGrid: true, ...extra, x: (i % c) * (cardW + gap), y: Math.floor(i / c) * (cardH + gap) });
+        g.cards.push(cell);
+        g.h = Math.max(g.h, cell.y + cardH);
+      }
+      if (plus) {
+        const c = Math.max(1, Math.round((g.w + gap) / (cardW + gap)));
+        const i = g.cards.length;
+        const cell = card(`${key}::add`, depth + 1, key, { inGrid: true, add: true, x: (i % c) * (cardW + gap), y: Math.floor(i / c) * (cardH + gap) });
         g.cards.push(cell);
         g.h = Math.max(g.h, cell.y + cardH);
       }

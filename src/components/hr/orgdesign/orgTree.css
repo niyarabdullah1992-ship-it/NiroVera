@@ -292,6 +292,68 @@
 .nv-ot-sheet__cancel { font: inherit; font-size: 13px; height: 36px; padding: 0 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--nv-line); background: var(--nv-card); color: var(--nv-ink); }
 .nv-ot-sheet__go:focus-visible, .nv-ot-sheet__cancel:focus-visible { outline: 2px solid var(--nv-navy); outline-offset: 2px; }
 
+/* ── «+ إضافة بطاقة هنا» and the flash after a change ── */
+.nv-ot-more[data-add="1"] {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  color: var(--nv-accent-deep, var(--nv-accent)); border-color: color-mix(in oklab, var(--nv-accent) 45%, var(--nv-line));
+  background: color-mix(in oklab, var(--nv-accent-soft) 45%, transparent);
+}
+.nv-ot-more[data-add="1"]:hover { background: var(--nv-accent-soft); color: var(--nv-accent-deep, var(--nv-accent)); }
+.nv-ot-more__plus { font-size: 20px; line-height: 1; font-weight: 500; }
+.nv-ot-more:focus-visible { outline: 2px solid var(--nv-navy); outline-offset: 2px; }
+.nv-ot-card[data-flash="1"] { border-color: var(--nv-accent); box-shadow: 0 0 0 4px var(--nv-accent-soft); }
+.nv-ot[data-motion="1"] .nv-ot-card[data-flash="1"] { animation: nv-ot-flash 1.6s ease-out both; }
+@keyframes nv-ot-flash {
+  0% { box-shadow: 0 0 0 0 var(--nv-accent); }
+  25% { box-shadow: 0 0 0 7px var(--nv-accent-soft); }
+  100% { box-shadow: 0 0 0 4px var(--nv-accent-soft); }
+}
+
+/* ── the management action panel (side drawer) ── */
+.nv-oap { display: flex; flex-direction: column; gap: 14px; padding: 14px 18px 22px; }
+.nv-oap-group { display: flex; flex-direction: column; gap: 4px; }
+.nv-oap-group__head {
+  margin: 0 0 2px; font-size: 11.5px; font-weight: 700; color: var(--nv-muted);
+  display: flex; align-items: center; gap: 8px;
+}
+.nv-oap-group__head::after { content: ""; flex: 1; height: 1px; background: var(--nv-line2, var(--nv-line)); }
+.nv-oap-item { display: flex; flex-direction: column; gap: 8px; }
+.nv-oap-item[data-open="1"] { padding: 4px 0 10px; }
+.nv-oap-action {
+  font: inherit; text-align: start; display: flex; flex-direction: column; gap: 2px; width: 100%;
+  padding: 9px 12px; border-radius: 8px; border: 1px solid var(--nv-line); background: var(--nv-card);
+  color: var(--nv-ink); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.nv-oap-action:hover { background: var(--nv-hover); }
+.nv-oap-action:focus-visible { outline: 2px solid var(--nv-navy); outline-offset: 1px; }
+.nv-oap-action[aria-expanded="true"] { border-color: var(--nv-navy); }
+.nv-oap-action[data-destructive="1"] { color: var(--nv-bad-ink); }
+.nv-oap-action[aria-disabled="true"] { color: var(--nv-muted); cursor: not-allowed; background: var(--nv-soft); }
+.nv-oap-why { font-size: 11.5px; font-weight: 500; color: var(--nv-muted); line-height: 1.6; }
+.nv-oap-form { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 8px; background: var(--nv-soft); border: 1px solid var(--nv-line); }
+.nv-oap-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+.nv-oap-check { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--nv-ink); }
+.nv-oap-check input { accent-color: var(--nv-navy); }
+.nv-oap-pick { display: flex; flex-direction: column; max-height: 260px; overflow-y: auto; border: 1px solid var(--nv-line); border-radius: 8px; background: var(--nv-card); padding: 4px; }
+.nv-oap-pick button {
+  font: inherit; text-align: start; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  padding: 7px 10px; border: none; border-radius: 6px; background: none; cursor: pointer; color: var(--nv-ink); font-size: 13px;
+}
+.nv-oap-pick button:hover { background: var(--nv-hover); }
+.nv-oap-pick button:focus-visible { outline: 2px solid var(--nv-navy); outline-offset: -2px; }
+.nv-oap-pick button[aria-selected="true"] { background: var(--nv-accent-soft); color: var(--nv-accent-deep, var(--nv-accent)); font-weight: 700; }
+.nv-oap-pick button[aria-disabled="true"] { color: var(--nv-muted); cursor: not-allowed; }
+.nv-oap-pick button[data-level="hq"] .nv-oap-pick__name, .nv-oap-pick button[data-level="region"] .nv-oap-pick__name { font-weight: 700; }
+.nv-oap-pick__why { font-size: 11px; color: var(--nv-muted); white-space: nowrap; }
+.nv-oap-confirm { display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 8px; border: 1px solid color-mix(in oklab, var(--nv-bad-ink) 30%, var(--nv-line)); background: var(--nv-bad-soft); }
+.nv-oap-confirm__text { margin: 0; font-size: 13px; line-height: 1.75; color: var(--nv-ink); }
+.nv-oap-danger {
+  font: inherit; font-size: 13px; font-weight: 700; height: 34px; padding: 0 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--nv-bad-ink); background: var(--nv-bad-ink); color: var(--nv-btn-ink, #fff);
+}
+.nv-oap-danger[disabled] { opacity: .45; cursor: not-allowed; }
+.nv-oap-danger:focus-visible { outline: 2px solid var(--nv-navy); outline-offset: 2px; }
+
 /* ── edge arrows (SAP): pan the canvas sideways ── */
 .nv-ot-arrow {
   position: absolute; top: 55%; transform: translateY(-50%); z-index: 4;
@@ -412,6 +474,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .nv-ot-card, .nv-ot-more, .nv-ot-line, .nv-ot-count__chev { transition: none !important; animation: none !important; }
+  .nv-ot-card[data-flash="1"] { animation: none !important; }
 }
 
 /* ── print / PDF: the chart only, scaled to the page ── */

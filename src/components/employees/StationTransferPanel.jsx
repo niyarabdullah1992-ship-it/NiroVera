@@ -22,13 +22,18 @@ export default function StationTransferPanel({
   ar = true,
   onDone,
   startOpen = false,
+  initialToStationId = "",
 }) {
   const workplaces = workplaceStations(stations);
   const fromStation = workplaces.find((s) => String(s.id) === String(employee?.stationId))
     || stations.find((s) => String(s.id) === String(employee?.stationId));
   const destinations = workplaces.filter((s) => String(s.id) !== String(employee?.stationId));
   const reasons = ACTION_REASONS.transfer || [];
-  const [toStationId, setToStationId] = useState(destinations[0]?.id || "");
+  // a caller may pre-pick the destination (the org chart's branch picker); else the first workplace
+  const [toStationId, setToStationId] = useState(
+    (initialToStationId && destinations.some((d) => String(d.id) === String(initialToStationId)) ? initialToStationId : "")
+    || destinations[0]?.id || "",
+  );
   const [reasonCode, setReasonCode] = useState(reasons[0]?.id || "operational_need");
   const [effectiveDate, setEffectiveDate] = useState(todayKey());
   const [note, setNote] = useState("");

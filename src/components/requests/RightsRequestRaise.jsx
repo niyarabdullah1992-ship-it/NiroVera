@@ -72,8 +72,9 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
   const isHoliday = (iso) => isOfficialHoliday(iso, calendar);
   const gender = profileGender(employee?.profile);
   const remaining = remainingLeaveDays(employee?.profile, employee?.leaveRequests, "annual");
-  const kinds = RIGHTS_REQUESTS.filter((k) => k.key !== "contract_copy");
-  const meta = kinds.find((k) => k.key === kind) || kinds[0];
+  // Avoiding night work is raised from «طلبات العمل الليلي» — not offered twice in this picker.
+  const kinds = RIGHTS_REQUESTS.filter((k) => k.key !== "contract_copy" && k.key !== NIGHT_AVOID_TYPE);
+  const meta = RIGHTS_REQUESTS.find((k) => k.key === kind) || kinds[0];
 
   const gate = kind === LEAVE_CARRY_TYPE
     ? checkLeaveCarryGate({ days, remaining, reason })
@@ -139,6 +140,7 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
   return (
     <div data-rights-raise="1">
       <div style={block}>
+        {kind === NIGHT_AVOID_TYPE ? null : (<>
         <span style={{ fontSize: 12, fontWeight: 600 }}>{ar ? "نوع الطلب" : "Request"}</span>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,180px),1fr))", gap: 6 }}>
           {kinds.map((k) => (
@@ -152,6 +154,7 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
             <span style={{ fontSize: 10.5, color: MUTED }}>{ar ? "سرية · خلال 5 أيام عمل · النموذج الموحد م55" : "Confidential · within 5 working days · model Art. 55"}</span>
           </button>
         </div>
+        </>)}
         {kind === ABUSE_KIND ? null : meta.article === "regs71"
           ? <span style={{ fontSize: 11, fontWeight: 700, color: "#0B3D27" }}>{ar ? "اللائحة التنفيذية لنظام العمل (القرار 115921 لعام 1446هـ) — المادة 71، التظلم" : "Labour Law Implementing Regulations (decision 115921, 1446H) — Art. 71, grievance"}</span>
           : meta.article === "18632"

@@ -136,7 +136,7 @@ import StatutoryItem from "@/components/labor/StatutoryItem";
 import WrittenConsentInbox from "@/components/requests/WrittenConsentInbox";
 import WrittenConsentRaise from "@/components/requests/WrittenConsentRaise";
 import RightsRequestRaise from "@/components/requests/RightsRequestRaise";
-import { employerNoticeOf, jobSearchHoursInWeek } from "@/lib/rightsRequests";
+import { employerNoticeOf, jobSearchHoursInWeek, NIGHT_AVOID_TYPE } from "@/lib/rightsRequests";
 import { otAssignmentLine, otOffer, otOfferLines, sar as sarText, hoursAr } from "@/lib/otOffer";
 import { compBalance, compDays } from "@/lib/compLeave";
 import RequestArchiveBoard from "@/components/requests/RequestArchiveBoard";
@@ -187,7 +187,7 @@ const MINE_TILES = [
   { id: "money", ar: "سلفة أو بدل", en: "Advance or allowance", hintAr: "م 92 · القسط لا يزيد على 10% من الأجر", hintEn: "Art. 92 · an instalment stays within 10% of the wage", letter: "ف" },
   { id: "custody", ar: "عهدة", en: "Custody", hintAr: "تسليم أو إرجاع", hintEn: "Hand over or return", letter: "ع" },
   { id: "resignation", ar: "تقديم استقالة", en: "Resignation", hintAr: "م 79 مكرر · لا تُرفض", hintEn: "Art. 79 bis · not refused", letter: "س" },
-  { id: "rights", ar: "حقوق نظامية أخرى", en: "Other legal rights", hintAr: "م 64 · 81 · 91 · 110 · قرار 18632 — الوثائق، ترك العمل، خصم الإتلاف، تأجيل الإجازة، تجنب الليل", hintEn: "Arts. 64 · 81 · 91 · 110 · decision 18632", letter: "ح" },
+  { id: "rights", ar: "حقوق نظامية أخرى", en: "Other legal rights", hintAr: "م 64 · 81 · 91 · 110 — الوثائق، ترك العمل، خصم الإتلاف، تأجيل الإجازة", hintEn: "Arts. 64 · 81 · 91 · 110", letter: "ح" },
   { id: "other", ar: "طلب آخر", en: "Other request", hintAr: "يُوصف في السبب", hintEn: "Described in the reason", letter: "آ" },
 ];
 
@@ -662,6 +662,8 @@ export default function RequestsWorkspace({
   const isMoney = kind === "money";
   const isStudyConsent = kind === "study_consent";
   const isNightFitness = kind === "night_fitness";
+  // Avoiding night work for health is raised from the night-work group, through the rights form.
+  const isNightAvoid = kind === "rights" && rightsKind === NIGHT_AVOID_TYPE;
   const nightRightMeta = isNightFitness ? nightWorkRightById(nightRight) : null;
   const isNightFitnessRaise = isNightFitness && nightRight === "medical";
   const isPunchKind = kind === "manual" || kind === "outfix";
@@ -814,6 +816,8 @@ export default function RequestsWorkspace({
           : (isNightFitnessRaise
             ? `Night fitness · ${fitnessPermanent ? "open" : "between dates"}`
             : (nightRightMeta?.en || "Night-work requests")))
+      : isNightAvoid
+        ? (ar ? "تجنب العمل الليلي لسبب صحي" : "Avoid night work for health")
       : isOther
         ? (otherTitle.trim() || (ar ? "طلب آخر" : "Other request"))
         : (ar ? REQUEST_KINDS.find((row) => row.id === kind)?.ar : REQUEST_KINDS.find((row) => row.id === kind)?.en);
@@ -834,7 +838,7 @@ export default function RequestsWorkspace({
     if (tile.id === "duty") return dutyKindsHere.length > 0;
     return allowedKinds.some((row) => row.id === tile.id);
   });
-  const tileOn = (tile) => (tile.id === "leave" ? (isLeave || isTopup) : tile.id === "duty" ? (isDutyKind && !isNightSideKind) : tile.id === "night_fitness" ? (kind === "night_fitness" || isNightSideKind) : kind === tile.id);
+  const tileOn = (tile) => (tile.id === "leave" ? (isLeave || isTopup) : tile.id === "duty" ? (isDutyKind && !isNightSideKind) : tile.id === "night_fitness" ? (kind === "night_fitness" || isNightSideKind || isNightAvoid) : tile.id === "rights" ? (kind === "rights" && !isNightAvoid) : kind === tile.id);
   const pickTile = (tile) => {
     if (tile.id === "leave") {
       setKind("leave");
@@ -2228,7 +2232,7 @@ export default function RequestsWorkspace({
               })() : null}
             </div>
           ) : null}
-          {selfOnly && (isNightFitness || isNightSideKind) ? (
+          {selfOnly && (isNightFitness || isNightSideKind || isNightAvoid) ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 12, borderTop: "1px solid var(--nv-line)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "طلبات العمل الليلي" : "Night-work requests"}</strong>
@@ -2254,6 +2258,14 @@ export default function RequestsWorkspace({
                     onClick={() => { setKind("night_fitness"); setNightRight(row.id); }}
                   />
                 ))}
+                <KindFrameCard
+                  key={NIGHT_AVOID_TYPE}
+                  on={kind === "rights" && rightsKind === NIGHT_AVOID_TYPE}
+                  letter={ar ? "ص" : "H"}
+                  title={ar ? "تجنب العمل الليلي لسبب صحي" : "Avoid night work for health"}
+                  hint={ar ? "بشهادة طبية · نقل لعمل نهاري مماثل أو 6 ساعات بالأجر نفسه (ثالثاً ج)" : "With a medical certificate · similar day work or 6 h, same pay (third, c)"}
+                  onClick={() => { setKind("rights"); setRightsKind(NIGHT_AVOID_TYPE); }}
+                />
                 {allowedKinds.some((row) => row.id === "family_duties") ? (
                   <KindFrameCard
                     key="family_duties"

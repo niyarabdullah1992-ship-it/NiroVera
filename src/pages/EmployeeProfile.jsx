@@ -23,8 +23,6 @@ import LoginAccessCard from "@/components/employees/LoginAccessCard";
 import AccountSettingsCard from "@/components/employees/AccountSettingsCard";
 import DeleteEmployeeAccountCard from "@/components/employees/DeleteEmployeeAccountCard";
 import OffboardingTab from "@/components/employees/OffboardingTab";
-import EmployeeFileLeaveBoard from "@/components/employees/EmployeeFileLeaveBoard";
-import LeaveTab from "@/components/employees/LeaveTab";
 import OffboardingCustodyBoard from "@/components/employees/OffboardingCustodyBoard";
 import EmpAlertsStrip from "@/components/employees/EmpAlertsStrip";
 import AssignmentTab from "@/components/employees/AssignmentTab";
@@ -56,7 +54,6 @@ const TABS = [
   { key: "identity", ar: "الهوية والتوظيف", en: "Identity and employment" },
   { key: "contract", ar: "العقد والأجر", en: "Contract and wage" },
   { key: "duty", ar: "الدوام", en: "Duty" },
-  { key: "leave", ar: "الإجازات", en: "Leave" },
   { key: "compliance", ar: "الالتزام والمنصات", en: "Compliance and platforms" },
   { key: "growth", ar: "التدرّج والجزاءات", en: "Progression and sanctions" },
   { key: "docs", ar: "العهد", en: "Custody" },
@@ -69,7 +66,8 @@ const LEGACY_TAB = {
   hours: "duty",
   schedule: "duty",
   certificates: "identity",
-  // The payslip lives in قسيمتي — the file does not repeat it.
+  // Leave lives in طلباتي and the payslip in قسيمتي — the file does not repeat them.
+  leave: "summary",
   payslip: "contract",
   assignment: "growth",
 };
@@ -481,9 +479,9 @@ export default function EmployeeProfile() {
           <EmployeeFileDutyBoard employee={employee} data={data} currentUser={currentUser} lang={lang} />
         )}
 
-        {tab === "leave" && (
+        {tab === "compliance" && (
           <>
-            <EmployeeFileLeaveBoard view={view} ar={ar} />
+            <EmployerDutiesCard employee={employee} companyId={company.id} ar={ar} canManage={canManage && !isSelf} by={currentUser.name || ""} />
             {(employee.leaveRequests || []).some((row) => String(row.type || "").toLowerCase() === "work_injury" && (row.status || "") === "approved") ? (
               <section data-file-injuries="1" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
                 <span style={{ fontSize: 15, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "إصابات العمل — المواد 132 إلى 139" : "Work injuries — Arts. 132 to 139"}</span>
@@ -499,19 +497,6 @@ export default function EmployeeProfile() {
                   ))}
               </section>
             ) : null}
-            <LeaveTab
-              employee={employee}
-              companyId={company.id}
-              currentUser={currentUser}
-              isSelf={isSelf}
-              canApprove={canApproveLeave}
-            />
-          </>
-        )}
-
-        {tab === "compliance" && (
-          <>
-            <EmployerDutiesCard employee={employee} companyId={company.id} ar={ar} canManage={canManage && !isSelf} by={currentUser.name || ""} />
 
             {!profileCompletionStats(employee).done && (
               <ProfileCompletionCard

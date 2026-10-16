@@ -78,11 +78,16 @@ assert.equal(classifyFileLogLine("تعديل بيانات الملف"), "", "gen
   assert.match(by("training-t1").text, /24 ساعة/);
   assert.equal(by("move-0").proof.id, "log");
   assert.match(by("move-0").text, /من الرس 1 إلى الرس 2/);
-  assert.equal(by("sanction-c1").proof.id, "sealed");
-  assert.equal(by("sanction-c1").actor, "مدير الموارد");
-  assert.equal(by("grievance-c1").proof.id, "signed");
-  assert.ok(!by("sanction-c2"), "an unsigned case is not on the story");
-  assert.ok(!all.some((e) => e.id.endsWith("c3")), "another worker's case is not here");
+  // His own story carries no sanction or grievance — those live in «الجزاءات» only.
+  assert.ok(!all.some((e) => e.kind === "sanction"), "no sanction on the worker's own story");
+  // The HR / manager view keeps them: only what was signed, with the grievance.
+  const hrAll = buildServiceStory({ employee: emp, cases, assets, regulation, roleLabel: "فني صيانة", today: TODAY }).years.flatMap((y) => y.events);
+  const hrBy = (id) => hrAll.find((e) => e.id === id);
+  assert.equal(hrBy("sanction-c1").proof.id, "sealed");
+  assert.equal(hrBy("sanction-c1").actor, "مدير الموارد");
+  assert.equal(hrBy("grievance-c1").proof.id, "signed");
+  assert.ok(!hrBy("sanction-c2"), "an unsigned case is not on the story");
+  assert.ok(!hrAll.some((e) => e.id.endsWith("c3")), "another worker's case is not here");
   assert.equal(by("custody-in-a1").proof.id, "ack");
   assert.equal(by("custody-out-a1").date, "2026-06-01");
   // file log: wage kept, injuries/leave/generic edits dropped

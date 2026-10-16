@@ -12,6 +12,7 @@ import {
 import { POWERCARE_MARK_URL } from '../../shared/brand.ts';
 import { companyMetaCreatePayload, creatorEmployeeRecord } from '../../shared/companyBootstrap.ts';
 import { mergeAbuseCasesWrite, mergeEmployerDutyRoster, mergeWorkRegulationWrite } from '../../shared/syncLaw.ts';
+import { enforceEmployeeFileWrite } from '../../shared/employeeFileGate.ts';
 
 // System emails (OTP codes, welcome messages) go out through the app's connected
 // Gmail account, because the built-in email service refuses recipients who are
@@ -879,7 +880,8 @@ Deno.serve(async (req) => {
       if (privilege === 'self') {
         // Anti-privilege-escalation: a regular employee may not add/remove
         // employees, change anyone's role/permissions/HR position, or touch
-        // another employee's profile (salary etc.). Own record edits are allowed.
+        // another employee's profile (salary etc.). Own requests and acts pass; own file facts are
+        // HR's and are held by the file gate below.
         const PROTECTED = ['role', 'canManageTeam', 'managedStations', 'hrLevelId', 'hrStationId', 'hrClusterId', 'points'];
         const curByKey = new Map(current.map((r) => [r.employeeId, r]));
         const same = (rec, cur, k) => JSON.stringify(rec[k] ?? null) === JSON.stringify(cur[k] ?? null);
@@ -896,8 +898,26 @@ Deno.serve(async (req) => {
           }
         }
       }
-      await diffSync(base44.asServiceRole.entities.Employee, current, incoming, 'employeeId');
+      // The employee file is filled by HR only: a non-HR writer keeps the stored file facts, and the
+      // push names what was held (EMPLOYEE_FILE_HR_ONLY). Requests, consents and signatures pass.
+      const fileWriter = {
+        admin: Boolean(auth.admin || auth.role === 'owner'),
+        role: context.actor?.role,
+        employeeId: auth.userId,
+        permissions: context.permissions,
+        scope: context.scope,
+      };
+      const refused = [];
+      const gated = incoming.map((record) => {
+        const previous = currentByEmployeeId.get(record.employeeId);
+        if (!previous) return record;
+        const result = enforceEmployeeFileWrite(fileWriter, previous, record);
+        if (result.refused) refused.push(result.refused);
+        return result.record;
+      });
+      await diffSync(base44.asServiceRole.entities.Employee, current, gated, 'employeeId');
       await bumpSignal(base44, companyId);
+      if (refused.length) return Response.json({ ok: true, error: 'EMPLOYEE_FILE_HR_ONLY', refused });
       return Response.json({ ok: true });
     }
 

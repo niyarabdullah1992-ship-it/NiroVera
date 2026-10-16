@@ -79,6 +79,8 @@ const docKindLabel = (id, ar) => {
  * Item: { id, group, title, type, date, at, by, proof: { id, label, hash, ref }, open, verifyHref, downloadUrl, print }
  *   open = { to } (in-app route) or { href } (file) — or null.
  * Missing (manager view only): { id, group, title, note, hint } — a paper the law expects that is not archived.
+ * Sanction decisions and grievance rulings: HR / manager view only (`includeSanctions`, default = not selfView).
+ * On «أرشيف ملفي» the worker finds them in «الجزاءات» (/app/discipline?tab=mine), not here.
  */
 export function buildFileArchive({
   employee,
@@ -88,6 +90,8 @@ export function buildFileArchive({
   signatureRequests = [],
   signedDocuments = [],
   managerView = false,
+  selfView = false,
+  includeSanctions = !selfView,
   ar = true,
   today,
   profileHref = "",
@@ -161,7 +165,8 @@ export function buildFileArchive({
   }
 
   // ── Decisions: a sanction is a document once signed; the grievance ruling follows it (Arts. 71–72).
-  (cases || []).filter((item) => String(item.employeeId) === String(employee.id)).forEach((item, i) => {
+  // HR / manager view only — the worker reads his own in «الجزاءات».
+  (includeSanctions ? (cases || []) : []).filter((item) => String(item.employeeId) === String(employee.id)).forEach((item, i) => {
     const face = faceOf(item.status).id;
     if (!["signed", "objected", "closed"].includes(face) || !dateOnly(item.signedAt)) return;
     const label = penaltyLabel(item, ar);

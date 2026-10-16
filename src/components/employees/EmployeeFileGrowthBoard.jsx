@@ -1,10 +1,12 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { StatusFlag } from "@/components/shared/StatusFlag";
+import SanctionsElsewhereLink from "@/components/employees/SanctionsElsewhereLink";
 
 const paper = { background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden", display: "flex", flexDirection: "column" };
 
-export default function EmployeeFileGrowthBoard({ view, ar }) {
+/** «التدرّج والجزاءات» for HR / managers; on the worker's own file only «التدرّج» and one pointer to «الجزاءات». */
+export default function EmployeeFileGrowthBoard({ view, ar, self = false }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,330px),1fr))", gap: 16, alignItems: "stretch" }}>
       <section className="nv-doc" style={paper}>
@@ -24,8 +26,10 @@ export default function EmployeeFileGrowthBoard({ view, ar }) {
             <span style={{ fontSize: 12, fontWeight: 500, color: "var(--nv-ink3)" }}>{ar ? `أجراها ${row.by}` : `By ${row.by}`}</span>
           </div>
         ))}
+        {self ? <div style={{ padding: "12px 20px" }}><SanctionsElsewhereLink ar={ar} /></div> : null}
       </section>
 
+      {self ? null : (
       <section className="nv-doc" style={paper}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
@@ -75,6 +79,7 @@ export default function EmployeeFileGrowthBoard({ view, ar }) {
         ))}
         <div style={{ padding: "14px 20px", fontSize: 12, fontWeight: 500, color: "var(--nv-ink2)", lineHeight: 1.85 }}>{view.penaltyNote}</div>
       </section>
+      )}
     </div>
   );
 }

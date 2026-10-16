@@ -714,7 +714,8 @@ export function buildEmployeeFileView({
     { k: ar ? "العهد بحوزته" : "Custody in hand", v: ar ? countAr(inHand.length, "عهدة واحدة", "عهدتان", "عهد", "عهدة", "لا عهدة") : `${inHand.length} in hand`, note: ar ? "تُستعاد في إخلاء الطرف" : "Returned at clearance" },
   ];
 
-  const mineCases = (cases || []).filter((item) => String(item.employeeId) === String(employee?.id));
+  // On his own file the worker sees no sanction: no to-do, no penalty rows, no count — they live in «الجزاءات».
+  const mineCases = isSelf ? [] : (cases || []).filter((item) => String(item.employeeId) === String(employee?.id));
   const openCases = mineCases.filter((item) => !["ruling", "closed"].includes(item.status));
   const todos = [];
   if (!inKind.housingProvided && !(wage.housing > 0) && !(Number(profile.allowances) > 0)) {

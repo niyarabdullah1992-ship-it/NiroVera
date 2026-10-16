@@ -11,7 +11,7 @@ import {
 import { useAuth } from "@/lib/PowerCareAuth";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import { nightMedicalReportOf } from "@/lib/decision18632";
-import { canCreateTasks, hasHRPermission } from "@/lib/permissions";
+import { canEditEmployeeFile, EMPLOYEE_FILE_HR_ONLY_LINE } from "@/lib/permissions";
 import { patchEmployeeFile, updateEmployeeProfile } from "@/lib/store";
 import { ART108_CATEGORIES, art108CategoryOf, hoursBasisOf, isJuvenile } from "@/lib/laborHoursPolicy.js";
 import { fileOffDows, weeklyRestDayCountOf } from "@/lib/leaveEidOverlap.js";
@@ -37,10 +37,8 @@ export default function HoursOnFile({ employee, data, lang = "ar", embedded = fa
   const ar = lang === "ar";
   const { currentUser, data: authData, company, refresh } = useAuth();
   const isSelf = isViewerOwnFile(employee, currentUser);
-  const canManage = !!(currentUser && (
-    canCreateTasks(currentUser)
-    || hasHRPermission(currentUser, authData || data, "manage_leave")
-  ));
+  // Duty kept on the file is a file fact: HR (and the account administrator) set it; others read.
+  const canManage = canEditEmployeeFile(currentUser, employee, authData || data);
   const stationId = employeeWorkStationId(employee);
   const stationName = stationDisplayName(findStationById(data?.stations || [], stationId));
   const schedule = useMemo(
@@ -197,7 +195,9 @@ export default function HoursOnFile({ employee, data, lang = "ar", embedded = fa
             ) : null}
           </div>
         );
-      })() : null}
+      })() : (
+        <span data-file-hr-only="1" style={{ fontSize: 11.5, color: SW.muted }}>{ar ? EMPLOYEE_FILE_HR_ONLY_LINE.ar : EMPLOYEE_FILE_HR_ONLY_LINE.en}</span>
+      )}
 
       {isJuvenile(employee, new Date().toISOString().slice(0, 10)) ? (
         <div data-juvenile-docs="1" style={{ borderTop: "1px solid var(--nv-line2)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -212,6 +212,7 @@ export default function HoursOnFile({ employee, data, lang = "ar", embedded = fa
                 : (ar ? "الوثائق محفوظة وأُبلغ مكتب العمل." : "Documents on file and the labour office notified.");
             })()}
           </span>
+          {canManage ? <>
           {JUVENILE_DOCS.map((doc) => (
             <label key={doc.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--nv-ink2)", cursor: canManage ? "pointer" : "default" }}>
               <input
@@ -257,6 +258,7 @@ export default function HoursOnFile({ employee, data, lang = "ar", embedded = fa
               />
             </label>
           ))}
+          </> : null}
         </div>
       ) : null}
 

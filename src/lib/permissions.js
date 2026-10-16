@@ -1,5 +1,8 @@
 import { expandStationScope, scopedStationIdsForUser, isHrUnit, isWorkplaceStation } from "@/lib/stationTree";
 
+// The employee file is filled by HR only (owner and director as account administrators) — see employeeFileRights.
+export { canEditEmployeeFile, canEditEmployeeFileWage, employeeFileEditGate, EMPLOYEE_FILE_HR_ONLY_LINE, EMPLOYEE_FILE_CORRECTION_HREF } from "@/lib/employeeFileRights";
+
 // Role-based permission helpers for PowerCare.
 // Roles: director | ops_manager | pgm | station_manager | safety_officer | financial_officer | inventory_keeper | employee
 const employeeStationId = (employee, data) => employee?.stationId || data?.stations?.[0]?.id || null;

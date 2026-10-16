@@ -267,10 +267,14 @@ function Readiness({ readiness, ar, self, onOpenTab }) {
 /* ─────────────────────────── 4 · compliance and linked records ─────────────────────────── */
 
 function LinkedRecords({ view, ar, self, onOpenTab }) {
-  const live = (view.penalties || []).filter((row) => row.tone === "warn").length;
+  const live = self ? 0 : (view.penalties || []).filter((row) => row.tone === "warn").length;
   const soon = (view.docs || []).some((row) => row.days != null && row.days <= EXPIRY_WARN_DAYS);
+  // On his own file the worker reads no sanction line — «الجزاءات» holds them.
+  const growthLink = self
+    ? { label: ar ? "التدرّج" : "Progression", what: ar ? "التعيين والنقل والتكليف بتواريخها" : "Hire, transfers and assignments, dated", tab: "growth" }
+    : { label: ar ? "التدرّج والجزاءات" : "Progression and sanctions", what: live ? (ar ? `${live === 1 ? "جزاء ساري" : `${live} جزاءات سارية`}` : `${live} live`) : (ar ? "لا جزاء ساري" : "None live"), tab: "growth" };
   const links = [
-    { label: ar ? "التدرّج والجزاءات" : "Progression and sanctions", what: live ? (ar ? `${live === 1 ? "جزاء ساري" : `${live} جزاءات سارية`}` : `${live} live`) : (ar ? "لا جزاء ساري" : "None live"), tab: "growth" },
+    growthLink,
     { label: ar ? (self ? "طلباتي" : "الطلبات") : "Requests", what: view.hasPendingLeave ? view.pendingPointer : (ar ? "الإجازات والأرصدة والإصابات تُتابَع هناك" : "Leave, balances and injuries live there"), href: view.pendingHref || "/app/requests" },
     { label: ar ? (self ? "قسيمتي" : "المسير") : "Payslip", what: ar ? "الأجر وبنوده يُقرأ هناك لا هنا" : "Pay is read there, not here", href: self ? "/app/payroll?view=self&tab=payslip" : "/app/payroll" },
     { label: ar ? "التوقيعات" : "Signatures", what: ar ? "المستندات المختومة وصفحة التحقق" : "Sealed documents and verification", href: "/app/signing" },
@@ -314,11 +318,12 @@ export default function EmployeeFileSummary({
   cases = [],
   assets = [],
   regulation = null,
+  canEditFile = false,
 }) {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
   const card = useMemo(() => buildMyFileCard({ employee, roleLabel, stationName, ar, today }), [employee, roleLabel, stationName, ar, today]);
-  const story = useMemo(() => buildServiceStory({ employee, cases, assets, regulation, roleLabel, selfView: isSelf, ar, today }), [employee, cases, assets, regulation, roleLabel, isSelf, ar, today]);
-  const readiness = useMemo(() => buildFileReadiness({ employee, regulation, roleLabel, view: isSelf ? "employee" : "manager", ar, today }), [employee, regulation, roleLabel, isSelf, ar, today]);
+  const story = useMemo(() => buildServiceStory({ employee, cases, assets, regulation, roleLabel, selfView: isSelf, includeSanctions: !isSelf, ar, today }), [employee, cases, assets, regulation, roleLabel, isSelf, ar, today]);
+  const readiness = useMemo(() => buildFileReadiness({ employee, regulation, roleLabel, view: isSelf ? "employee" : "manager", canEditFile, ar, today }), [employee, regulation, roleLabel, isSelf, canEditFile, ar, today]);
 
   return (
     <div data-myfile="" style={{ display: "flex", flexDirection: "column", gap: 22 }}>

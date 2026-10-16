@@ -7,9 +7,11 @@ import {
   hasHRPermission,
   canViewEmployeeProfile,
   isCompanyOwner,
-  canAdjustPayroll,
   canManageEmployeeHR,
-  canManageEmployeeContract,
+  canEditEmployeeFile,
+  canEditEmployeeFileWage,
+  EMPLOYEE_FILE_HR_ONLY_LINE,
+  EMPLOYEE_FILE_CORRECTION_HREF,
 } from "@/lib/permissions";
 import { getRoleLabel } from "@/lib/roles";
 import { Lock } from "lucide-react";
@@ -75,12 +77,14 @@ const LEGACY_TAB = {
   audit: "archive",
 };
 
-function ApplyLaborOnFile({ companyId, employeeId }) {
+// Art. 55 and the leave floors rewrite file facts, so they run from an HR (file-editor) session only;
+// the night-consent cycle opens a request, not a file fact, and runs for every viewer.
+function ApplyLaborOnFile({ companyId, employeeId, canEditFile }) {
   useEffect(() => {
     if (!companyId || !employeeId) return;
-    applyDueLaborRules(companyId, employeeId);
+    if (canEditFile) applyDueLaborRules(companyId, employeeId);
     openDueNightRotateCycles(companyId, undefined, employeeId);
-  }, [companyId, employeeId]);
+  }, [companyId, employeeId, canEditFile]);
   return null;
 }
 
@@ -141,11 +145,12 @@ export default function EmployeeProfile() {
 
   const canManageHRProfile = canManageEmployeeHR(currentUser, employee, data);
   const canManage = canManageEmployees(currentUser) || currentUser.role === "director" || currentUser.role === "ops_manager" || canManageHRProfile;
-  const canEditSalary = canAdjustPayroll(currentUser, data);
+  // The whole file is filled by HR only (owner and director as account administrators): managers and
+  // the employee read it; the employee changes a fact through «طلب تعديل بيان».
+  const canEditFile = canEditEmployeeFile(currentUser, employee, data);
+  const canEditSalary = canEditEmployeeFileWage(currentUser, employee, data);
   const canApproveLeave = canManage || hasHRPermission(currentUser, data, "manage_leave");
-  const canApproveCerts = canManage || hasHRPermission(currentUser, data, "manage_leave");
-  const canEditContract = canManageEmployeeContract(currentUser, employee, data);
-  const canEditFile = Boolean(canManage);
+  const canEditContract = canEditFile;
   const stationName = (data.stations || []).find((s) => s.id === employee.stationId)?.name;
   const fallbackPosition = employee.customTitle || getRoleLabel(company, employee.role, t);
   const roleLabel = employee.profile?.position || fallbackPosition;
@@ -265,11 +270,9 @@ export default function EmployeeProfile() {
     syncEmployeeSalaryToPayroll(company.id, employee.id);
   };
 
-  const roleNote = isSelf && !canManage
-    ? (ar ? "تقرأ ملفك. التعديل للموارد البشرية والإدارة." : "You read your file. HR and management edit it.")
-    : canEditFile
-      ? (ar ? "تُحرّر هذا الملف باسمك. كل حفظ يُكتب باسمك ووقته." : "You edit this file in your name. Every save is written with your name and time.")
-      : (ar ? "عرض فقط — لا تعديل على هذا الملف من دورك." : "View only — your role cannot edit this file.");
+  const roleNote = canEditFile
+    ? (ar ? "تُحرّر هذا الملف باسمك. كل حفظ يُكتب باسمك ووقته." : "You edit this file in your name. Every save is written with your name and time.")
+    : (ar ? EMPLOYEE_FILE_HR_ONLY_LINE.ar : EMPLOYEE_FILE_HR_ONLY_LINE.en);
 
   const legal = ar
     ? "شارة المادة تظهر فقط إن كان المصدر نظام العمل السعودي. التأمينات وحماية الأجور والضمان الصحي ومنصة قوى جهات وأنظمة تشغيل لا مواد، فتُشرح نصّاً بلا شارة. هذه الصفحة أداة تشغيل لا فتوى قانونية — عند الخلاف يُرجع إلى النص الرسمي وإلى الموارد البشرية."
@@ -294,7 +297,7 @@ export default function EmployeeProfile() {
 
   return (
       <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {company?.id && employee?.id ? <ApplyLaborOnFile companyId={company.id} employeeId={employee.id} /> : null}
+        {company?.id && employee?.id ? <ApplyLaborOnFile companyId={company.id} employeeId={employee.id} canEditFile={canEditFile} /> : null}
 
         {!isSelf ? (
           <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr" />
@@ -303,7 +306,7 @@ export default function EmployeeProfile() {
         <ProfileHero
           employee={employee}
           companyId={company.id}
-          canEdit={isSelf || canManage}
+          canEdit={canEditFile}
           roleLabel={roleLabel}
           stationName={stationName}
           currentUser={currentUser}
@@ -381,7 +384,11 @@ export default function EmployeeProfile() {
                   cursor: "pointer",
                 }}
               >
-                {item.key === "summary" && isSelf ? (ar ? "ملفي" : "My file") : item.key === "archive" && isSelf ? (ar ? "أرشيف ملفي" : "My file archive") : (ar ? item.ar : item.en)}
+                {item.key === "summary" && isSelf ? (ar ? "ملفي" : "My file")
+                  : item.key === "archive" && isSelf ? (ar ? "أرشيف ملفي" : "My file archive")
+                    // Sanctions are not on his own file — the tab is «التدرّج» only.
+                    : item.key === "growth" && isSelf ? (ar ? "التدرّج" : "Progression")
+                      : (ar ? item.ar : item.en)}
               </button>
             );
           })}
@@ -402,6 +409,7 @@ export default function EmployeeProfile() {
             cases={data.disciplinaryCases || []}
             assets={data.assets || []}
             regulation={regulationOf(data)}
+            canEditFile={canEditFile}
           />
         )}
 
@@ -418,7 +426,7 @@ export default function EmployeeProfile() {
                 <span style={{ fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.7 }}>
                   {ar ? "يُرفع إلى الموارد البشرية ويُعتمد قبل أن يظهر في ملفك، ويُكتب باسم من اعتمده." : "It goes to HR and is approved before it appears on your file, under the name of whoever approves it."}
                 </span>
-                <Link to="/app/requests" style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", height: 36, padding: "0 14px", borderRadius: 8, background: "#3C7D50", color: "#F4F7F5", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
+                <Link to={EMPLOYEE_FILE_CORRECTION_HREF} style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", height: 36, padding: "0 14px", borderRadius: 8, background: "#3C7D50", color: "#F4F7F5", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
                   {ar ? "اطلب تعديل بيان" : "Request a correction"}
                 </Link>
               </section>
@@ -426,8 +434,8 @@ export default function EmployeeProfile() {
             <CertificatesTab
               employee={employee}
               companyId={company.id}
-              canEdit={isSelf || canManage}
-              canApprove={canApproveCerts}
+              canEdit={canEditFile}
+              canApprove={canEditFile}
               currentUser={currentUser}
             />
           </>
@@ -486,7 +494,7 @@ export default function EmployeeProfile() {
               onDraft={setDraftField}
               canEdit={canEditFile}
             />
-            {canManage && !isSelf ? <OffboardingTab employee={employee} companyId={company.id} currentUser={currentUser} canManage /> : null}
+            {canEditFile && !isSelf ? <OffboardingTab employee={employee} companyId={company.id} currentUser={currentUser} canManage /> : null}
           </div>
         )}
 
@@ -498,13 +506,14 @@ export default function EmployeeProfile() {
 
         {tab === "compliance" && (
           <>
-            <EmployerDutiesCard employee={employee} companyId={company.id} ar={ar} canManage={canManage && !isSelf} by={currentUser.name || ""} />
+            <EmployerDutiesCard employee={employee} companyId={company.id} ar={ar} canManage={canEditFile && !isSelf} by={currentUser.name || ""} />
 
             {!profileCompletionStats(employee).done && (
               <ProfileCompletionCard
                 employee={employee}
                 isSelf={isSelf}
                 ar={ar}
+                canComplete={canEditFile}
                 onContinue={() => {
                   setTab("identity");
                   if (canEditFile) startEdit();
@@ -542,7 +551,7 @@ export default function EmployeeProfile() {
 
         {tab === "growth" && (
           <>
-            <EmployeeFileGrowthBoard view={view} ar={ar} />
+            <EmployeeFileGrowthBoard view={view} ar={ar} self={isSelf} />
             <EmployeeFileVoiceBoard
               employee={employee}
               publicReports={data.publicReports || []}
@@ -558,7 +567,7 @@ export default function EmployeeProfile() {
               employee={employee}
               companyId={company.id}
               lang={lang}
-              canManage={canManage && !isSelf}
+              canManage={canEditFile && !isSelf}
               stations={data.stations || []}
               currentUser={currentUser}
             />
@@ -577,7 +586,7 @@ export default function EmployeeProfile() {
 
         {tab === "docs" && (
           /* «عهدتي» — only the custody list; documents and certificates sit in الهوية, duties in الالتزام. */
-          <OffboardingCustodyBoard employee={employee} canManage={canManage && !isSelf} lang={lang} custodyOnly />
+          <OffboardingCustodyBoard employee={employee} canManage={canEditFile && !isSelf} lang={lang} custodyOnly />
         )}
 
         {tab === "archive" && (

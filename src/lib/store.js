@@ -961,7 +961,9 @@ async function syncEmployeesToEntity(companyId, employees) {
   if (lastSyncedEmployeesJSON[companyId] === json) return;
   lastSyncedEmployeesJSON[companyId] = json;
   try {
-    await invokeDirectory({ action: "syncEmployees", companyId, employees: employees || [] });
+    const res = await invokeDirectory({ action: "syncEmployees", companyId, employees: employees || [] });
+    // The server holds file facts a non-HR session tried to change (EMPLOYEE_FILE_HR_ONLY) and names them.
+    if (res?.data?.refused?.length) console.warn("NiroVera employee file:", res.data.error, res.data.refused);
     markSynced(companyId);
   } catch {
     // failed cloud write — clear the dedupe marker and let the retry loop re-push it

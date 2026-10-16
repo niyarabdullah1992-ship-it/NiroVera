@@ -50,9 +50,12 @@ function expiryState(iso, today, warn = EXPIRY_WARN_DAYS) {
 
 /**
  * @param view "employee" (own file) | "manager" (someone else's file)
+ * @param canEditFile the viewer fills the file (HR / account administrator). A manager who only reads
+ *        sees HR's items as «على الموارد البشرية» with no «افتح في الملف»; the worker's own items always
+ *        point to «طلب تعديل بيان», never to an edit form.
  * @returns {{ items, open, done, total, filled, ownerWord }}
  */
-export function buildFileReadiness({ employee, regulation = null, roleLabel = "", view = "employee", ar = true, today } = {}) {
+export function buildFileReadiness({ employee, regulation = null, roleLabel = "", view = "employee", canEditFile = true, ar = true, today } = {}) {
   if (!employee) return { items: [], open: [], done: [], total: 0, filled: 0 };
   const manager = view === "manager";
   const day = dateOnly(today) || new Date().toISOString().slice(0, 10);
@@ -232,11 +235,11 @@ export function buildFileReadiness({ employee, regulation = null, roleLabel = ""
 
   // Owner words and the employee-side correction path.
   for (const item of items) {
-    item.ownerLabel = ownerWord(item.owner, manager, ar);
+    item.ownerLabel = manager && !canEditFile && item.owner === "hr" ? ownerWord("hr", false, ar) : ownerWord(item.owner, manager, ar);
     if (!item.ok && item.owner === "self" && !manager && !item.action) {
       item.action = { to: CORRECTION_HREF, label: ar ? "اطلب تعديل بيان" : "Ask for a correction" };
     }
-    if (!item.ok && item.owner === "hr" && manager && item.tab) {
+    if (!item.ok && item.owner === "hr" && manager && canEditFile && item.tab) {
       item.action = { tab: item.tab, label: ar ? "افتح في الملف" : "Open on the file" };
     }
   }

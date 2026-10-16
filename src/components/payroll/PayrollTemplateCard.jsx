@@ -3,6 +3,8 @@ import { Download, FileUp, Loader2, Check, X, AlertTriangle } from "lucide-react
 import { downloadPayrollTemplate } from "@/lib/payrollTemplate";
 import { extractSalaryRows, matchRowsToEmployees, applySalaryImport } from "@/lib/salaryImport";
 import { ACCENT, MUTED, NAVY, DANGER, ui, SURFACE } from "@/lib/platformStyles";
+import { useAuth } from "@/lib/PowerCareAuth";
+import { canEditEmployeeFileWage } from "@/lib/permissions";
 
 const matchRow = {
   display: "grid",
@@ -19,6 +21,7 @@ export default function PayrollTemplateCard({ company, data, employees, month, a
   const [matches, setMatches] = useState(null);
   const [error, setError] = useState("");
   const [applied, setApplied] = useState(false);
+  const { currentUser } = useAuth();
 
   const handleFile = async (file) => {
     if (!file) return;
@@ -40,7 +43,8 @@ export default function PayrollTemplateCard({ company, data, employees, month, a
   };
 
   const apply = () => {
-    applySalaryImport(company.id, month, matches);
+    // The file's wage is HR's: the import writes it only for files this person may edit.
+    applySalaryImport(company.id, month, matches, { canWriteFile: (emp) => canEditEmployeeFileWage(currentUser, emp, data) });
     setApplied(true);
     setTimeout(() => setMatches(null), 2000);
   };

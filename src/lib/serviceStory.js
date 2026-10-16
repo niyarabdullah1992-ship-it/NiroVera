@@ -9,6 +9,8 @@
  *   log    — «من السجل»: written on the file log by the person named, nothing more
  *
  * Not here on purpose: leave, balances and injuries (طلباتي), pay slips (قسيمتي), generic field edits.
+ * Sanctions and grievances: only on the HR / manager view (`includeSanctions`, default = not selfView).
+ * The worker reads his sanctions in «الجزاءات» (/app/discipline?tab=mine) and nowhere on his own file.
  */
 import { CONTRACT_TYPE_OPTIONS, optionLabel } from "./employeeProfileFields.js";
 import { faceOf, penaltyLabel } from "./disciplineBoard.js";
@@ -37,6 +39,8 @@ const LOG_SKIP = /إجاز|اجاز|إصاب|اصاب|قسيم|leave|injur|paysl
 // Word-start only: «تبديل وردية» is not an allowance.
 const LOG_WAGE = /(^|[\s«(—-])(ال)?(أجر|راتب|بدل)|wage|salary|allowance/i;
 const LOG_MOVE = /نقل|انتقال|الفرع|المحطة|المسم[ىّ]|ترقي|تكليف|transfer|station|promot|title|acting/i;
+/** A file-log line about a sanction or its grievance — kept off the worker's own story. */
+export const SANCTION_LOG = /جزاء|جزاءات|تأديب|تظل[ّ]?م|مخالفة|إنذار|انذار|sanction|disciplin|grievance|penalt/i;
 const LOG_EXIT = /إنهاء العقد|انتهاء العقد|استقال|ترك العمل|resign|terminat|end of contract/i;
 
 export function classifyFileLogLine(text) {
@@ -64,6 +68,7 @@ export function buildServiceStory({
   regulation = null,
   roleLabel = "",
   selfView = false,
+  includeSanctions = !selfView,
   ar = true,
   today,
 } = {}) {
@@ -128,8 +133,8 @@ export function buildServiceStory({
     push(`cert-${cert.id || i}`, cert.issueDate || cert.approvedAt || cert.createdAt, ar ? `شهادة «${cert.name || "مهنية"}»` : `Certificate «${cert.name || "professional"}»`, cert.approvedBy || cert.by, "training", cert.fileHash ? proof("sealed", ar, cert.fileHash) : (cert.approvedAt ? proof("signed", ar) : proof("log", ar)));
   });
 
-  // Sanctions: only what was signed; the objection and its outcome follow it.
-  (cases || []).filter((item) => String(item.employeeId) === String(employee.id)).forEach((item, i) => {
+  // Sanctions: only what was signed; the objection and its outcome follow it. HR / manager view only.
+  (includeSanctions ? (cases || []) : []).filter((item) => String(item.employeeId) === String(employee.id)).forEach((item, i) => {
     const face = faceOf(item.status).id;
     if (!["signed", "objected", "closed"].includes(face) || !dateOnly(item.signedAt)) return;
     const label = penaltyLabel(item, ar);
@@ -158,6 +163,7 @@ export function buildServiceStory({
 
   // File-log lines: wage changes, moves and exits written by the person who made them.
   (employee.fileLog || []).forEach((row, i) => {
+    if (!includeSanctions && SANCTION_LOG.test(String(row.text || ""))) return;
     const kind = classifyFileLogLine(row.text);
     if (!kind) return;
     push(`log-${i}`, row.at, String(row.text).trim(), row.by, kind, proof("log", ar));

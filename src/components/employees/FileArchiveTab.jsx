@@ -5,6 +5,7 @@ import { ARCHIVE_GROUPS, buildFileArchive, filterFileArchive } from "@/lib/fileA
 import { contractSheet } from "@/lib/contractDocument";
 import { printSheet } from "@/lib/printSheet";
 import { regulationOf } from "@/lib/workRegulation";
+import SanctionsElsewhereLink from "@/components/employees/SanctionsElsewhereLink";
 
 const MUTED = "var(--nv-ink3)";
 const INK = "var(--nv-ink)";
@@ -70,6 +71,7 @@ export default function FileArchiveTab({ employee, data, isSelf, managerView, ar
     signatureRequests: data?.signatureRequests || [],
     signedDocuments: data?.signedDocuments || [],
     managerView: Boolean(managerView) && !isSelf,
+    selfView: Boolean(isSelf),
     ar,
     profileHref: employee?.id ? `/app/employees/${employee.id}` : "",
   }), [employee, data, managerView, isSelf, ar]);
@@ -97,10 +99,15 @@ export default function FileArchiveTab({ employee, data, isSelf, managerView, ar
             {archive.count ? <span style={{ fontSize: 12, fontWeight: 600, color: INK, marginInlineStart: 8 }}>{archive.count}</span> : null}
           </div>
           <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.75, marginTop: 3 }}>
-            {ar
-              ? "كل وثيقة على الملف: العقد والقرارات والشهادات والنسخ والإيصالات والإقرارات — بمصدرها وإثباتها."
-              : "Every document on the file — contract, decisions, letters, copies, receipts and acknowledgements — with its source and proof."}
+            {isSelf
+              ? (ar
+                ? "كل وثيقة على ملفك: العقد والشهادات والنسخ والإيصالات والإقرارات — بمصدرها وإثباتها."
+                : "Every document on your file — contract, letters, copies, receipts and acknowledgements — with its source and proof.")
+              : (ar
+                ? "كل وثيقة على الملف: العقد والقرارات والشهادات والنسخ والإيصالات والإقرارات — بمصدرها وإثباتها."
+                : "Every document on the file — contract, decisions, letters, copies, receipts and acknowledgements — with its source and proof.")}
           </div>
+          {isSelf ? <div style={{ marginTop: 6 }}><SanctionsElsewhereLink ar={ar} /></div> : null}
         </div>
         {archive.groups.length ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>

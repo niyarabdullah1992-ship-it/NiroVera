@@ -348,7 +348,13 @@ export default function MinistryPersonalPanel({
     const covered = new Set(rows.map((row) => row.id));
     const coveredTitles = new Set(rows.map((row) => (typeof row.title === "string" ? row.title : "")));
     const board = buildLawGatesBoard({ gates, company, onDate, ar });
+    // The 18632 employer duties are the branch's, not this person's — kept apart as information.
+    const obligations = [];
     for (const item of flattenBoard(board, gates, ar)) {
+      if (item.obligationKey) {
+        obligations.push({ key: `ob-${item.obligationKey}`, status: item.status === "coming" ? "waiting" : (item.status || "void"), title: item.title, clause: item.clause || "", voidLabel: item.pillLabel });
+        continue;
+      }
       if ((item.checkId && covered.has(item.checkId)) || coveredTitles.has(item.title)) continue;
       const status = item.status === "coming" ? "waiting" : (item.status || "void");
       add({
@@ -363,7 +369,7 @@ export default function MinistryPersonalPanel({
     }
 
     rows.sort((a, b) => (RANK[a.status] ?? 9) - (RANK[b.status] ?? 9));
-    return { rows, nightWorker, performs, inSeason, win, hours, cap, restCount: restDays.length };
+    return { rows, obligations, nightWorker, performs, inSeason, win, hours, cap, restCount: restDays.length };
   }, [gates, empId, own, ar, onDate, days, dayRows, schedule, weekStart, employee, laborCalendar, alertsLabel, company]);
 
   const countsFor = (src) => {
@@ -501,6 +507,30 @@ export default function MinistryPersonalPanel({
           </div>
         ))}
       </div>
+      {(source === "all" || source === "18632") && (model.obligations || []).length ? (
+        <div data-night-obligations-info="1" style={{ display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "9px 18px", background: "var(--nv-soft, #F6F8FA)", borderBottom: "1px solid var(--nv-line2, #EEF2F7)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
+            <span style={ministryBadgeStyle("18632", ar)}>{ministryBadgeText("18632", ar)}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)", lineHeight: 1.5, flex: "1 1 180px", minWidth: 0 }}>
+              {ar ? "التزامات المنشأة للعمل الليلي — للعلم" : "Employer duties for night work — for your information"}
+            </span>
+            <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "تُثبتها الإدارة" : "Proven by management"}</span>
+          </div>
+          {model.obligations.map((row) => (
+            <MinistryRow
+              key={row.key}
+              rowKey={row.key}
+              source="18632"
+              status={row.status === "blocked" ? "alert" : row.status}
+              pill={row.status === "blocked" || row.status === "alert"
+                ? (ar ? "لم تُثبته المنشأة بعد" : "Not yet proven by the employer")
+                : pillFor(row.status, ar, row.voidLabel)}
+              title={row.clause ? `${row.title} — ${row.clause}` : row.title}
+              ar={ar}
+            />
+          ))}
+        </div>
+      ) : null}
       <div style={{ padding: "10px 18px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderBottom: "1px solid var(--nv-line2, #EEF2F7)" }}>
         <button
           type="button"

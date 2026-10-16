@@ -8,7 +8,6 @@ import {
   publishWeek,
   removeShiftType,
   setEmployeeDayShift,
-  setScheduleNightCompensation,
   decideNightRemedy,
   withdrawNightRemedy,
   submitOtherRequest,
@@ -91,7 +90,6 @@ import PlatformDateField from "@/components/shared/PlatformDateField";
 import { statusBannerQuiet } from "@/lib/platformStyles";
 import { publishedWeekMinistryFacts } from "@/lib/rosterMinistrySurface";
 import LawGateAlertRow from "@/components/shared/LawGateAlertRow";
-import LawGateStatusPill, { LawGateArticleBadge } from "@/components/shared/LawGateStatusPill";
 import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
 import { WEEK_HINT_ADMIN_AR, WEEK_HINT_EMP_AR } from "@/lib/packageMinistryCatalog";
 import ScheduleCompliancePanel, { useComplianceSummary } from "@/components/schedules/ScheduleCompliancePanel";
@@ -119,8 +117,6 @@ import {
 
 const clockMono = { ...mono, fontVariantNumeric: "tabular-nums" };
 /** Chip geometry shared with the compliance panel — 24px, control radius. */
-const pillSkin = { height: 24, boxSizing: "border-box", padding: "0 9px", borderRadius: DS_CONTROL_RADIUS, fontSize: 11, fontWeight: 600, lineHeight: 1 };
-const badgeSkin = { height: 24, minWidth: 34, borderRadius: DS_CONTROL_RADIUS };
 
 
 /** «11 – 17» — en dash, digits isolated; the RTL row puts the start day on the right. */
@@ -151,27 +147,6 @@ function publishActionBtn({ published, locked }) {
 }
 
 /** Quiet toggle row — LawGateAlertRow slab: card fill, control radius 10, status only on 999 chip. */
-function nightSettingRowStyle() {
-  return {
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    width: "100%",
-    boxSizing: "border-box",
-    margin: 0,
-    padding: "9px 11px",
-    border: "1px solid var(--nv-line, #E2E8F0)",
-    borderRadius: DS_CONTROL_RADIUS,
-    background: "var(--nv-card, #fff)",
-    fontFamily: "inherit",
-    fontSize: 11.5,
-    lineHeight: 1.8,
-    color: "var(--nv-ink2, #334155)",
-    cursor: "pointer",
-    textAlign: "inherit",
-  };
-}
 
 /** Literary duty window with LTR mono clocks — follows header 12/24. */
 function ShiftHoursLabel({ shift, lang, format }) {
@@ -929,31 +904,9 @@ export default function ShiftWeekBoard({
           </span>
           <p style={{ margin: 0, fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
             {ar
-              ? "للإدارة اختيار تقليص ساعة أو ساعتين أو ثلاث من وردية الموظف، أو بدل أجر أو نقل بمبلغ يُصرف مع الراتب، أو تغيير العمل الليلي. التقليص والبدل يُسحبان للبدء من جديد. زر الجدول أدناه يسجّل سياسة الفرع فقط. بعد ثلاثة أشهر يبقى التدوير أو موافقة الموظف الخطية."
-              : "Management chooses a cut of one, two, or three hours from this person's shift, a pay or transport allowance that pays with salary, or a change of night work. A reduction or allowance can be withdrawn to start over. The roster button below only records the station policy. After three months, rotation or the worker's written consent still applies."}
+              ? "للإدارة اختيار تقليص ساعة أو ساعتين أو ثلاث من وردية الموظف، أو بدل أجر أو نقل بمبلغ يُصرف مع الراتب، أو تغيير العمل الليلي. التقليص والبدل يُسحبان للبدء من جديد. يُسجَّل التعويض لكل موظف من «طلباتي ← طلبات العمل الليلي». بعد ثلاثة أشهر يبقى التدوير أو موافقة الموظف الخطية."
+              : "Management chooses a cut of one, two, or three hours from this person's shift, a pay or transport allowance that pays with salary, or a change of night work. A reduction or allowance can be withdrawn to start over. Compensation is recorded per person from My requests → Night-work requests. After three months, rotation or the worker's written consent still applies."}
           </p>
-          <button
-            type="button"
-            dir={ar ? "rtl" : "ltr"}
-            onClick={() => {
-              setScheduleNightCompensation(companyId, stationId, !schedule?.nightCompensation);
-              refresh?.();
-            }}
-            style={nightSettingRowStyle()}
-          >
-            <LawGateStatusPill
-              status={schedule?.nightCompensation ? "settled" : "void"}
-              label={schedule?.nightCompensation ? (ar ? "مسجّل" : "On file") : (ar ? "بلا أثر" : "No effect")}
-              ar={ar}
-              style={pillSkin}
-            />
-            <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, lineHeight: 1.7, color: "var(--nv-ink2, #334155)", textAlign: ar ? "right" : "left" }}>
-              {schedule?.nightCompensation
-                ? (ar ? "تعويض ليلي مسجّل — اضغط للإلغاء" : "Night compensation on file — click to clear")
-                : (ar ? "سجّل تعويضاً ليلياً لهذا الجدول" : "Record night compensation on this roster")}
-            </span>
-            <LawGateArticleBadge article="18632" style={badgeSkin} />
-          </button>
           {withdrawableNightRemedyEmployees(roster).map((emp) => {
             const remedy = activeNightRemedy(emp);
             const remedySummary = remedy?.kind === "reduce"

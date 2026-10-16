@@ -28,6 +28,14 @@ import {
   treeCounts,
 } from "@/lib/orgTreeLayout";
 import { cardHealthIndex, orgAdminHref, orgCardActions } from "@/lib/orgChartActions";
+import {
+  branchPeopleKey,
+  buildBranchTree,
+  defaultBranchExpanded,
+  expandAllBranches,
+  isBranchKey,
+  orgBranchActions,
+} from "@/lib/orgBranches";
 import { buildWorkforceSeatChart } from "@/lib/workforceSeatChart";
 import { todayKey } from "@/lib/orgDesign";
 import OrgEmployeePreview from "@/components/hr/OrgEmployeePreview";
@@ -36,6 +44,7 @@ import { initialsOf } from "./orgDesignUi";
 import "./orgTree.css";
 
 const OPTIONS_KEY = "nv-org-tree-options";
+const VIEW_KEY = "nv-org-view";
 const ZOOM_KEY = "nv-org-tree-zoom";
 const CHILD_LIMIT = 24;
 const EXPAND_LIMIT = 600;
@@ -78,6 +87,9 @@ const Icon = {
   dots: (<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="6" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="18" cy="12" r="1.6" /></svg>),
   person: svg(<><circle cx="12" cy="8.5" r="3.5" /><path d="M5 19.5c1.3-3.2 3.9-4.8 7-4.8s5.7 1.6 7 4.8" /></>, 20, 1.7),
   chev: svg(<path d="M7 10l5 5 5-5" />, 14, 2),
+  building: svg(<><path d="M4 20V6.5L12 3l8 3.5V20" /><path d="M9 20v-4h6v4M8.5 9h1M14.5 9h1M8.5 12.5h1M14.5 12.5h1M3 20h18" /></>, 20, 1.6),
+  region: svg(<><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" /><circle cx="12" cy="10" r="2.4" /></>, 20, 1.6),
+  group: svg(<><circle cx="9" cy="9" r="3" /><path d="M3.5 19c.9-2.8 3-4.3 5.5-4.3s4.6 1.5 5.5 4.3" /><circle cx="17" cy="8.5" r="2.3" /><path d="M16 13.2c2.2.1 3.8 1.5 4.5 3.8" /></>, 20, 1.6),
 };
 
 /* ── one card ─────────────────────────────────────────────────── */
@@ -171,6 +183,93 @@ function TreeCard({ card, place, ar, options, w, h, isFocus, highlighted, flag, 
           </button>
         ) : null}
       </span>
+    </article>
+  );
+}
+
+/* ── one branch (or a branch's «أشخاص الفرع») in the «الفروع» view ── */
+function BranchCard({ node, place, ar, w, h, isFocus, highlighted, hasMenu, menuOpen, onSelect, onToggle, onOpen, onMenu }) {
+  const people = node.kind === "people";
+  const kids = node.childKeys?.length || 0;
+  const level = people ? "people" : node.level;
+  const manager = people ? "" : (node.managerVacant
+    ? (ar ? "المدير: شاغر" : "Manager: vacant")
+    : node.managerName ? `${ar ? "المدير" : "Manager"}: ${node.managerName}` : "");
+  const figures = people
+    ? <span dir="ltr" className="nv-ot-count__n">{Number(node.peopleCount || kids)}</span>
+    : node.counted
+      ? <span dir="ltr" className="nv-ot-count__n">{`${Number(node.headcount)} / ${Number(node.seats)}`}</span>
+      : <span dir="ltr" className="nv-ot-count__n">{kids}</span>;
+  const label = [
+    node.name,
+    node.title,
+    manager,
+    node.counted ? (ar ? `${node.headcount} موظف، ${node.seats} منصب${node.vacantSeats ? `، ${node.vacantSeats} شاغر` : ""}` : `${node.headcount} people, ${node.seats} seats${node.vacantSeats ? `, ${node.vacantSeats} vacant` : ""}`) : "",
+    node.isMe ? (ar ? "أنت هنا" : "you are here") : "",
+    node.flag ? (ar ? node.flag.ar : node.flag.en) : "",
+  ].filter(Boolean).join("، ");
+  const toggleLabel = people
+    ? (ar ? `${place.expanded ? "طيّ" : "افتح"} ${node.name}` : `${place.expanded ? "Fold" : "Open"} ${node.name}`)
+    : (ar ? `${place.expanded ? "طيّ" : "افتح"} ${node.name} — فروعه وأشخاصه` : `${place.expanded ? "Fold" : "Open"} ${node.name} — its branches and people`);
+  return (
+    <article
+      className="nv-ot-card nv-ot-branch"
+      data-k={node.key}
+      data-level={level}
+      data-focus={isFocus ? "1" : "0"}
+      data-me={node.isMe ? "1" : "0"}
+      data-open={place.expanded ? "1" : "0"}
+      style={{ left: place.left, top: place.y, width: w, height: h }}
+    >
+      <button type="button" className="nv-ot-card__hit" data-key={node.key} aria-current={isFocus ? "true" : undefined} aria-label={label} onClick={() => onSelect(node.key)} />
+      <span className="nv-ot-avatar nv-ot-avatar--branch" aria-hidden>
+        {people ? Icon.group : node.level === "region" ? Icon.region : Icon.building}
+      </span>
+      <span className="nv-ot-card__text">
+        <span className="nv-ot-card__name" aria-hidden>
+          <span className="nv-ot-card__nm">{highlighted ? <mark>{node.name}</mark> : node.name}</span>
+          {node.isMe ? <span className="nv-ot-me">{ar ? "أنت هنا" : "You are here"}</span> : null}
+        </span>
+        {node.title ? <span className="nv-ot-card__title" aria-hidden>{node.title}</span> : null}
+        {manager ? <span className="nv-ot-card__meta" data-vacant={node.managerVacant ? "1" : "0"} aria-hidden>{manager}</span> : null}
+        <span className="nv-ot-card__foot">
+          {kids ? (
+            <button
+              type="button"
+              className="nv-ot-count"
+              aria-expanded={place.expanded}
+              aria-label={toggleLabel}
+              title={people ? (ar ? "عدد الأشخاص — اضغط لفتحهم أو طيّهم" : "People — click to open or fold") : node.counted ? (ar ? "الموظفون / المناصب — اضغط لفتح الفروع والأشخاص" : "People / seats — click to open branches and people") : (ar ? "اضغط لفتح ما تحته" : "Click to open")}
+              onClick={() => onToggle(node.key)}
+            >
+              {figures}
+              <span className="nv-ot-count__chev" aria-hidden>{Icon.chev}</span>
+            </button>
+          ) : node.counted ? <span className="nv-ot-count nv-ot-count--still">{figures}</span> : null}
+          {node.counted && node.vacantSeats && !node.flag ? (
+            <span className="nv-ot-branch__vac" aria-hidden><span dir="ltr" className="nv-ot-count__n">{Number(node.vacantSeats)}</span> {ar ? "شاغر" : "vacant"}</span>
+          ) : null}
+          {node.flag ? <span className="nv-ot-flag" data-tone={node.flag.kind === "MANAGER_VACANT" ? "bad" : "warn"} aria-hidden>{ar ? node.flag.ar : node.flag.en}</span> : null}
+        </span>
+      </span>
+      {hasMenu && !people ? (
+        <span className="nv-ot-card__acts">
+          <button type="button" className="nv-ot-card__open" onClick={() => onOpen(node)} aria-label={ar ? `الفرع ${node.name}` : `${node.name} branch`} title={ar ? "الفرع والوحدة" : "Branch / unit"}>
+            {Icon.card}
+          </button>
+          <button
+            type="button"
+            className="nv-ot-card__open"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={ar ? `إجراءات ${node.name}` : `Actions for ${node.name}`}
+            title={ar ? "إجراءات" : "Actions"}
+            onClick={(event) => onMenu(node, event.currentTarget)}
+          >
+            {Icon.dots}
+          </button>
+        </span>
+      ) : null}
     </article>
   );
 }
@@ -381,15 +480,30 @@ export default function OrgTreeChart({
 }) {
   const embedded = variant === "embedded";
   const day = todayKey();
-  const tree = useMemo(
+  const hrScope = scope === "all" && canWrite;
+  const peopleTree = useMemo(
     () => buildOrgFocusTree(data, { viewerId: user?.id || "", scope, ar, day }),
     [data, user?.id, scope, ar, day],
   );
-  const counts = useMemo(() => treeCounts(tree), [tree]);
+  // «الفروع»: HQ → region → branch from the stations (employees: their own chain only)
+  const branchTree = useMemo(
+    () => buildBranchTree(data, { viewerId: user?.id || "", scope, ar, day, health: hrScope }),
+    [data, user?.id, scope, ar, day, hrScope],
+  );
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const navigate = useNavigate();
   const urlFocus = embedded ? "" : (searchParams.get("focus") || "");
+
+  /* «الأشخاص» | «الفروع» — kept for the session; ?view=branches on the full screen */
+  const [view, setViewState] = useState(() => {
+    const fromUrl = embedded ? "" : searchParams.get("view");
+    if (fromUrl === "branches" || fromUrl === "people") return fromUrl;
+    return readStore(VIEW_KEY, true) === "branches" ? "branches" : "people";
+  });
+  const branches = view === "branches";
+  const tree = branches ? branchTree : peopleTree;
+  const counts = useMemo(() => treeCounts(tree), [tree]);
 
   const narrow = useMedia("(max-width: 760px)");
   const reduceMotion = useMedia("(prefers-reduced-motion: reduce)");
@@ -415,15 +529,30 @@ export default function OrgTreeChart({
 
   /* opened cards — a Set per viewer, kept for the session (back from a drawer or a pane keeps it) */
   const storeKey = `nv-org-expanded:${companyId || ""}:${user?.id || ""}:${scope}`;
-  const [expanded, setExpanded] = useState(() => {
-    const stored = readExpanded(readStore(storeKey, true), tree);
-    const base = stored || defaultExpanded(tree, tree.viewerKey || tree.roots[0] || "");
-    const want = resolveFocusKey(tree, urlFocus);
-    return urlFocus && want ? revealPath(base, tree, want) : base;
+  const storeKeyB = `${storeKey}:branches`;
+  const [expandedP, setExpandedP] = useState(() => {
+    const stored = readExpanded(readStore(storeKey, true), peopleTree);
+    const base = stored || defaultExpanded(peopleTree, peopleTree.viewerKey || peopleTree.roots[0] || "");
+    const want = resolveFocusKey(peopleTree, urlFocus);
+    return urlFocus && want ? revealPath(base, peopleTree, want) : base;
   });
-  useEffect(() => { writeStore(storeKey, JSON.stringify([...expanded]), true); }, [storeKey, expanded]);
+  // branches: first time this session → HQ and every region open, people folded, then fit
+  const branchFresh = useRef(!readStore(storeKeyB, true));
+  const [expandedB, setExpandedB] = useState(() => readExpanded(readStore(storeKeyB, true), branchTree) || defaultBranchExpanded(branchTree));
+  useEffect(() => { writeStore(storeKey, JSON.stringify([...expandedP]), true); }, [storeKey, expandedP]);
+  useEffect(() => { writeStore(storeKeyB, JSON.stringify([...expandedB]), true); }, [storeKeyB, expandedB]);
+  const expanded = branches ? expandedB : expandedP;
+  const setExpanded = branches ? setExpandedB : setExpandedP;
   const [showAll, setShowAll] = useState(() => new Set());
-  const [selected, setSelected] = useState(() => resolveFocusKey(tree, urlFocus));
+  const [selectedP, setSelectedP] = useState(() => resolveFocusKey(peopleTree, urlFocus));
+  const [selectedB, setSelectedB] = useState(() => branchTree.viewerKey || branchTree.roots[0] || "");
+  const selected = branches ? selectedB : selectedP;
+  const setSelected = branches ? setSelectedB : setSelectedP;
+  const pendingFit = useRef(null);
+  if (pendingFit.current === null) {
+    pendingFit.current = branches && branchFresh.current;
+    if (pendingFit.current) branchFresh.current = false;
+  }
   const [capNote, setCapNote] = useState(false);
   const [details, setDetails] = useState(null);
   const [menu, setMenu] = useState(null);
@@ -438,12 +567,13 @@ export default function OrgTreeChart({
   const sizerRef = useRef(null);
   const settingsBtn = useRef(null);
   const downloadBtn = useRef(null);
-  const pendingScroll = useRef({ key: resolveFocusKey(tree, urlFocus), mode: "center", smooth: false });
+  const pendingScroll = useRef({ key: branches ? selectedB : resolveFocusKey(peopleTree, urlFocus), mode: "center", smooth: false });
   const moveDomFocus = useRef(false);
 
   const compact = options.density === "compact";
   const cardW = compact ? TREE_GEOMETRY.compactCardW : TREE_GEOMETRY.cardW;
-  const cardH = cardHeight(options, compact);
+  // a branch card carries one more line (its manager); the branches view keeps one card height
+  const cardH = cardHeight(options, compact) + (branches ? (compact ? 16 : 20) : 0);
   const indent = narrow ? 28 : 40;
   /* columns per team row: as many as the canvas holds at 100% (2…6), one on a phone */
   const [canvasW, setCanvasW] = useState(() => (typeof window !== "undefined" ? window.innerWidth - (embedded ? 320 : 72) : 1200));
@@ -472,8 +602,8 @@ export default function OrgTreeChart({
   const physX = useCallback((x, w = 0) => (rtl ? W - x - w : x), [rtl, W]);
 
   const health = useMemo(
-    () => (scope === "all" && canWrite ? cardHealthIndex(tree, data, { day }) : new Map()),
-    [scope, canWrite, tree, data, day],
+    () => (hrScope ? cardHealthIndex(tree, data, { day }) : new Map()),
+    [hrScope, tree, data, day],
   );
 
   /* ── scrolling to a card by its layout place (cards glide, so the DOM may lag) ── */
@@ -518,30 +648,80 @@ export default function OrgTreeChart({
     });
     pendingScroll.current = { key, mode: scroll, smooth: true };
     moveDomFocus.current = domFocus;
-    if (!embedded) {
+    if (!embedded && !branches) {
       const params = new URLSearchParams(searchParams);
       if (key === tree.viewerKey) params.delete("focus");
       else params.set("focus", key);
       setSearchParams(params, { replace: true, state: location.state });
     }
-  }, [tree, embedded, searchParams, setSearchParams, location.state]);
+  }, [tree, branches, setSelected, setExpanded, embedded, searchParams, setSearchParams, location.state]);
 
   const toggle = useCallback((key) => {
     setExpanded((cur) => {
       const opening = !cur.has(key);
       if (opening) pendingScroll.current = { key, mode: "team", smooth: true };
-      return toggleExpanded(cur, key);
+      const next = toggleExpanded(cur, key);
+      // a branch's count opens its sub-branches and its people together
+      if (opening && isBranchKey(key)) {
+        const people = branchPeopleKey(key.slice(2));
+        if (tree.nodes.has(people)) next.add(people);
+      }
+      return next;
     });
-  }, []);
+  }, [setExpanded, tree]);
+
+  const setView = useCallback((next) => {
+    if (next === view) return;
+    setViewState(next);
+    writeStore(VIEW_KEY, next, true);
+    setMenu(null);
+    setHighlight("");
+    setCapNote(false);
+    const key = next === "branches" ? selectedB : selectedP;
+    pendingScroll.current = key ? { key, mode: "center", smooth: false } : null;
+    if (next === "branches" && branchFresh.current) { branchFresh.current = false; pendingFit.current = true; }
+    if (!embedded) {
+      const params = new URLSearchParams(searchParams);
+      if (next === "branches") { params.set("view", "branches"); params.delete("focus"); } else params.delete("view");
+      setSearchParams(params, { replace: true, state: location.state });
+    }
+  }, [view, selectedB, selectedP, embedded, searchParams, setSearchParams, location.state]);
+
+  /* the people view, focused on one person (a branch's manager, a parent's reveal) */
+  const focusPerson = useCallback((wanted, { open = false } = {}) => {
+    const key = resolveFocusKey(peopleTree, wanted);
+    if (!key) return;
+    setViewState("people");
+    writeStore(VIEW_KEY, "people", true);
+    setExpandedP((cur) => {
+      const next = revealPath(cur, peopleTree, key);
+      if (open && peopleTree.nodes.get(key)?.childKeys.length) next.add(key);
+      return next;
+    });
+    setSelectedP(key);
+    setHighlight(key);
+    pendingScroll.current = { key, mode: "center", smooth: true };
+    if (!embedded) {
+      const params = new URLSearchParams(searchParams);
+      params.delete("view");
+      if (key === peopleTree.viewerKey) params.delete("focus"); else params.set("focus", key);
+      setSearchParams(params, { replace: true, state: location.state });
+    }
+  }, [peopleTree, embedded, searchParams, setSearchParams, location.state]);
 
   /* a parent asks to show a card (branch search, «وحدة الموارد البشرية») */
   useEffect(() => {
-    if (!reveal?.key) return;
-    const key = resolveFocusKey(tree, reveal.key);
-    if (key) select(key, { fromSearch: true, scroll: "center" });
+    if (reveal?.key) focusPerson(reveal.key);
   }, [reveal?.nonce]);
 
   const expandAll = () => {
+    if (branches) {
+      setExpanded(expandAllBranches(tree));
+      setShowAll(new Set());
+      setCapNote(false);
+      pendingFit.current = true;
+      return;
+    }
     const res = expandAllKeys(tree, EXPAND_LIMIT);
     setExpanded(res.expanded);
     setShowAll(new Set());
@@ -556,7 +736,7 @@ export default function OrgTreeChart({
   };
   const backToMe = () => {
     const me = tree.viewerKey || tree.roots[0] || "";
-    setExpanded(defaultExpanded(tree, me));
+    setExpanded(branches ? defaultBranchExpanded(tree) : defaultExpanded(tree, me));
     setShowAll(new Set());
     setCapNote(false);
     select(me, { scroll: "center" });
@@ -611,6 +791,10 @@ export default function OrgTreeChart({
     const f = selected ? chartCard(tree, counts, selected) : null;
     if (!f) return;
     const who = f.vacant ? (ar ? "منصب شاغر" : "Open seat") : f.name;
+    if (f.kind === "branch" || f.kind === "people") {
+      setAnnounce(`${f.name}${f.title ? `${ar ? "، " : ", "}${f.title}` : ""}.`);
+      return;
+    }
     setAnnounce(ar
       ? `${who}${f.title ? `، ${f.title}` : ""}. ${f.direct} تحت إدارته مباشرة من ${f.total}.`
       : `${who}${f.title ? `, ${f.title}` : ""}. ${f.direct} direct of ${f.total}.`);
@@ -625,6 +809,14 @@ export default function OrgTreeChart({
     setZoom(Math.min(1, availW / W, Math.max(availH, 200) / H));
     requestAnimationFrame(() => scroller.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   };
+  // the branches view opens fitted: the whole company on one screen
+  useLayoutEffect(() => {
+    if (!pendingFit.current || !layout.cards.length) return;
+    pendingFit.current = false;
+    if (narrow) return; // a phone reads one column at 100%; shrinking it would not fit, only blur
+    pendingScroll.current = null;
+    fit();
+  });
 
   /* wheel: a mouse wheel notch or a pinch (ctrl) zooms around the pointer; a trackpad scroll pans */
   useEffect(() => {
@@ -839,12 +1031,16 @@ export default function OrgTreeChart({
 
   /* the «⋯» menu */
   const closeMenu = useCallback(() => setMenu(null), []);
-  const menuActions = menu ? orgCardActions(menu.card, { data, user, canWrite: hrDrawer && canWrite, health: health.get(menu.card.key) }) : [];
-  const runAction = (id) => {
-    const card = menu?.card;
+  const menuActions = !menu ? [] : menu.card.kind === "branch"
+    ? orgBranchActions(menu.card, { data, canWrite: hrDrawer && canWrite })
+    : orgCardActions(menu.card, { data, user, canWrite: hrDrawer && canWrite, health: health.get(menu.card.key) });
+  const runAction = (id, target = null) => {
+    const card = target || menu?.card;
     setMenu(null);
     if (!card) return;
     if (id === "file") { setDetails(card); return; }
+    if (id === "people") { focusPerson(card.managerKey, { open: true }); return; }
+    if (id === "hireManager") { onHire?.({ stationId: card.stationId || "", seatId: card.managerSeatId || "" }); return; }
     if (id === "hire") { onHire?.({ stationId: card.stationId || "", seatId: card.seatId || "" }); return; }
     if (onAction?.(id, card)) return;
     const href = orgAdminHref(id, card);
@@ -853,7 +1049,8 @@ export default function OrgTreeChart({
 
   const openFull = () => {
     const params = new URLSearchParams();
-    if (selected && selected !== tree.viewerKey) params.set("focus", selected);
+    if (branches) params.set("view", "branches");
+    else if (selected && selected !== tree.viewerKey) params.set("focus", selected);
     navigate(`/app/org/chart${params.toString() ? `?${params}` : ""}`, { state: { from: `${location.pathname}${location.search}` } });
   };
 
@@ -874,12 +1071,17 @@ export default function OrgTreeChart({
           <b>{ar ? "المخطط التنظيمي" : "Org chart"}</b>
         </span>
       )}
+      <div className="nv-ot-switch" role="radiogroup" aria-label={ar ? "طريقة العرض" : "View"}>
+        {[["people", ar ? "الأشخاص" : "People"], ["branches", ar ? "الفروع" : "Branches"]].map(([value, label]) => (
+          <button key={value} type="button" role="radio" aria-checked={view === value} onClick={() => setView(value)}>{label}</button>
+        ))}
+      </div>
       <TreeSearch ar={ar} tree={tree} onPick={(key) => select(key, { fromSearch: true, scroll: "center" })} />
       <div className="nv-ot-tools nv-ot-tools--text" role="group" aria-label={ar ? "الفروع" : "Branches"}>
         <button type="button" className="nv-ot-tool nv-ot-tool--label" onClick={expandAll}>{ar ? "توسيع الكل" : "Expand all"}</button>
         <button type="button" className="nv-ot-tool nv-ot-tool--label" onClick={collapseAll}>{ar ? "طيّ الكل" : "Collapse all"}</button>
         {tree.viewerKey ? (
-          <button type="button" className="nv-ot-tool nv-ot-tool--label" onClick={backToMe}>{ar ? "إعادة للتركيز عليّ" : "Back to me"}</button>
+          <button type="button" className="nv-ot-tool nv-ot-tool--label" onClick={backToMe}>{branches ? (ar ? "فرعي" : "My branch") : (ar ? "إعادة للتركيز عليّ" : "Back to me")}</button>
         ) : null}
       </div>
       <span className="nv-ot-bar__fill" />
@@ -949,7 +1151,7 @@ export default function OrgTreeChart({
   );
 
   /* a viewer with no seat on the chart: say where they belong, calmly */
-  if (!layout.cards.length) {
+  if (!layout.cards.length && !branches) {
     const place = user?.id ? unseatedPlace(data, user.id) : null;
     return (
       <div className="nv-ot" data-variant={variant}>
@@ -1009,6 +1211,13 @@ export default function OrgTreeChart({
         aria-label={ar ? "المخطط التنظيمي" : "Org chart"}
         role="region"
       >
+        {branches && !layout.cards.length ? (
+          <p className="nv-ot-none">
+            {scope === "all"
+              ? (ar ? "لا فروع بعد — أضف فرعاً من «الفروع والدليل»." : "No branches yet — add one from Branches & directory.")
+              : (ar ? "لم يُربط ملفك بفرع بعد." : "Your file is not linked to a branch yet.")}
+          </p>
+        ) : null}
         <div ref={sizerRef} className="nv-ot-sizer">
           <div
             ref={stageRef}
@@ -1044,6 +1253,27 @@ export default function OrgTreeChart({
                     w={cardW}
                     h={cardH}
                     onClick={() => setShowAll((cur) => toggleExpanded(cur, place.parentKey))}
+                  />
+                );
+              }
+              const node = tree.nodes.get(place.key);
+              if (node.kind === "branch" || node.kind === "people") {
+                return (
+                  <BranchCard
+                    key={place.key}
+                    node={node}
+                    place={at}
+                    ar={ar}
+                    w={cardW}
+                    h={cardH}
+                    isFocus={place.key === selected}
+                    highlighted={highlight === place.key}
+                    hasMenu={hasMenu}
+                    menuOpen={menu?.card.key === place.key}
+                    onSelect={(key) => select(key, { scroll: "nearest" })}
+                    onToggle={toggle}
+                    onOpen={(n) => runAction("branch", n)}
+                    onMenu={(c, anchor) => setMenu((cur) => (cur?.card.key === c.key ? null : { card: c, anchor }))}
                   />
                 );
               }

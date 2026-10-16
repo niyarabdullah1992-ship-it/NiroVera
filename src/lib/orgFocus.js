@@ -179,11 +179,15 @@ export function focusCard(tree, key) {
   return { ...node, reports, people: node.childKeys.filter((k) => !tree.nodes.get(k)?.vacant).length };
 }
 
-/** People before open seats; then by name/title so the order is stable. */
+/**
+ * People before open seats; then by name/title so the order is stable. A node may carry an
+ * `order` rank (the branches view: regions, then branches, then the branch's people) — it wins.
+ */
 export function orderKeys(tree, keys) {
   return [...keys].sort((a, b) => {
     const x = tree.nodes.get(a);
     const y = tree.nodes.get(b);
+    if ((x.order || 0) !== (y.order || 0)) return (x.order || 0) - (y.order || 0);
     if (x.vacant !== y.vacant) return x.vacant ? 1 : -1;
     return (x.name || x.title).localeCompare(y.name || y.title, "ar");
   });

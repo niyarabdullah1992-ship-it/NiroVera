@@ -3484,7 +3484,7 @@ export default function RequestsWorkspace({
                   <>
                     <div data-balance="annual" style={row}>
                       {head(ar ? "السنوية" : "Annual", "109", annual.statutory ? (
-                        <span style={sub}><span style={num}>{annual.leftover}</span> {ar ? `متبقٍّ من ${annual.statutory} يوماً` : `left of ${annual.statutory} days`}</span>
+                        <span style={sub}><span style={num}>{annual.leftover}</span> {ar ? `متبقٍّ من ${annual.statutory} يوماً` : `left of ${annual.statutory} days`}{annual.carryLeft > 0 ? (ar ? <> · و<span style={num}>{annual.carryLeft}</span> مرحّلة</> : <> · <span style={num}>{annual.carryLeft}</span> carried</>) : null}</span>
                       ) : <span style={sub}>—</span>)}
                       <span className="nv-req-bar" style={{ background: "rgba(255,255,255,.18)" }}><span style={{ width: `${annualPct}%`, background: "#C8A45A" }} /></span>
                     </div>

@@ -201,6 +201,26 @@ export function buildCompanyObligations(ctx = {}) {
     }
   }
 
+  // ── leave opening balance (Arts. 109/111) ──────────────────────────────
+  // A file hired over a year ago with no annual leave on record and no opening balance counts every
+  // past year as untaken. HR confirms the real balance once, so the worker's right is shown truly.
+  for (const emp of employees) {
+    const hire = dateOnly(emp?.profile?.hireDate);
+    if (!hire || addDays(hire, 365) > today) continue;
+    if (emp?.profile?.leaveOpeningBalance?.asOf) continue;
+    if ((emp.leaveRequests || []).some((r) => String(r?.type || "").toLowerCase() === "annual" && r?.status === "approved")) continue;
+    duties.push({
+      id: `opening-${emp.id}`,
+      kind: "leave_opening",
+      what: ar ? "سجّل الرصيد الافتتاحي لإجازاته السنوية" : "Record his annual-leave opening balance",
+      who: emp.name || "",
+      due: today,
+      consequence: ar ? "بدونه تُحسب كل السنوات الماضية غير مأخوذة — رصيداً الآن وأجراً عند الخروج." : "Without it every past year counts as untaken — balance now, pay at exit.",
+      law: art("111", ar),
+      action: { label: ar ? "افتح الملف" : "Open the file", to: `/app/employees/${encodeURIComponent(emp.id)}` },
+    });
+  }
+
   // ── probation end dates ────────────────────────────────────────────────
   for (const emp of employees) {
     const pr = deriveProbationProgress({ employee: emp, today });

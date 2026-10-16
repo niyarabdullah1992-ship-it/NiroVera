@@ -124,7 +124,9 @@ export function buildMyRights(ctx = {}) {
       text: ar ? "رصيد إجازتك السنوية بأجر كامل" : "Annual leave left on full pay",
       figure: String(split.remaining), unit: ar ? "يوماً" : "days",
       note: split.carryLeft > 0
-        ? (ar ? `منها ${split.carryLeft} مرحّلة من سنة سابقة — لا تسقط، وتُصرف أجرتها عند انتهاء الخدمة` : `${split.carryLeft} carried — never lost; paid at exit`)
+        ? ((reqs.some((r) => String(r?.type || "").toLowerCase() === "annual" && r?.status === "approved") || p?.leaveOpeningBalance?.asOf)
+          ? (ar ? `منها ${split.carryLeft} مرحّلة من سنة سابقة — لا تسقط، وتُصرف أجرتها عند انتهاء الخدمة` : `${split.carryLeft} carried — never lost; paid at exit`)
+          : (ar ? `منها ${split.carryLeft} من سنوات لا سجل إجازات لها في المنصة — تؤكدها الموارد البشرية برصيد افتتاحي، ولا تسقط` : `${split.carryLeft} from years with no leave record here — HR confirms them; never lost`))
         : (ar ? "ما لا تأخذه تُصرف أجرته عند انتهاء الخدمة" : "Untaken days are paid at exit"),
       law: art(split.carryLeft > 0 ? "111" : "109", ar),
     });

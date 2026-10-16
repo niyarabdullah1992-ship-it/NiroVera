@@ -3973,7 +3973,11 @@ html.dark .nv7-section-head {
 .nv-ob-act:hover { text-decoration: underline; text-underline-offset: 3px; }
 .nv-rights-fig { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: end; }
 .nv-rights-fig b {
-  font: 500 15px/1.3 var(--font-mono), "IBM Plex Mono", monospace;
+  /* Arabic dates and amounts read in the body face — a mono face spaces Arabic month names apart. */
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 14.5px;
+  line-height: 1.3;
   color: var(--nv-ink);
   white-space: nowrap;
   unicode-bidi: isolate;

@@ -1,8 +1,9 @@
 /**
  * The org chart layout — one tree for /app/org/chart and the people tree in «الفروع والدليل».
  *
- * The viewer opens any number of cards; each opened card lays its direct reports out under it in
- * neat rows joined by a trunk and a bus line (SAP-style), and opening one never closes another.
+ * SAP SuccessFactors-style: the manager chain to the focus as a vertical stack, every other team
+ * as a dense grid block under one drop; the viewer opens any number of cards, and opening one
+ * never closes another.
  *
  * Counts on every card are derived from the same tree the viewer receives (an employee's pruned
  * tree counts only what they may see): direct = filled seats directly under the card,
@@ -94,19 +95,22 @@ export function pathTo(tree, key) {
 
 /* ───────────────────── many branches open at once ─────────────────────
  * The chart keeps a Set of opened cards. Opening one never closes another: every opened card
- * shows its direct reports under it as neat rows (up to maxCols per row), and the rows reflow so
- * no two subtrees overlap. Geometry is logical (x from the inline start), so RTL and LTR share it.
+ * shows its team under it (see layoutOrgTree), and the blocks reflow so no two overlap.
+ * Geometry is logical (x from the inline start), so RTL and LTR share it.
  */
 
-/** Opened by default: the chain from the top down to `key`, and `key` itself when it leads people. */
+/**
+ * Opened by default (SAP): `key`'s manager — so `key` stands among its peers — and `key` itself
+ * when it leads people. The chain above reads as a vertical stack through the focus path.
+ */
 export function defaultExpanded(tree, key) {
   const out = new Set();
   if (!key || !tree?.nodes?.has(key)) {
     (tree?.roots || []).forEach((root) => { if (tree.nodes.get(root)?.childKeys.length) out.add(root); });
     return out;
   }
-  const path = pathTo(tree, key);
-  path.slice(0, -1).forEach((k) => out.add(k));
+  const parent = tree.nodes.get(key).parentKey;
+  if (parent && tree.nodes.has(parent)) out.add(parent);
   if (tree.nodes.get(key).childKeys.length) out.add(key);
   return out;
 }
@@ -162,7 +166,7 @@ export function readExpanded(raw, tree) {
 }
 
 /** Layout spacing at 100% zoom (px). */
-export const EXPAND_GEOMETRY = Object.freeze({ cardH: 92, compactCardH: 70, rowGap: 32, indent: 40 });
+export const EXPAND_GEOMETRY = Object.freeze({ cardH: 100, compactCardH: 74, rowGap: 40, indent: 40 });
 
 /** Card height for the chosen card options (fixed so the layout is exact). */
 export function cardHeight(options = {}, compact = false) {
@@ -172,14 +176,30 @@ export function cardHeight(options = {}, compact = false) {
   return h;
 }
 
+/** Grid columns for a block of n cards: about √n, 2…cap (one card → one column). */
+export function gridCols(n, cap = TREE_GEOMETRY.maxCols) {
+  const max = Math.max(1, Math.floor(cap) || 1);
+  if (n <= 1 || max === 1) return 1;
+  return Math.max(2, Math.min(max, Math.ceil(Math.sqrt(n))));
+}
+
 /**
- * Lay out every visible card.
- * @param {object} tree from buildOrgFocusTree
+ * SAP-style layout of every visible card.
+ *
+ * Under an opened card, its reports split in two: those that are themselves opened, or on the
+ * path to the focus, stand as their own columns (their teams below them); all the others are
+ * packed into ONE grid block of equal cards (≈√n columns; the focus's own team: `focusCols`),
+ * reached by a single drop from the bus — no line per card. A card on the focus path that is
+ * not opened shows only the next card of the path, so the manager chain reads as a straight
+ * vertical stack. The parent is centred over its groups; the root sits centred at the top.
+ * `stack` (phones): the groups go one under another, each joined to a trunk on the start side.
+ *
+ * @param {object} tree from buildOrgFocusTree / buildBranchTree
  * @param {Set<string>} expanded opened cards
- * @param {object} opts geometry; childLimit — reports shown per opened card before «+n»
+ * @param {object} opts geometry; focusKey; childLimit — cards per grid before «+n»
  *   (showAll — cards whose whole team the viewer asked for)
- * @returns {{ cards: Array<{ key, x, y, depth, parentKey, expanded, kids }>, lines: Array<{ x, y, w, h }>,
- *   width: number, height: number, index: Map<string, object> }}
+ * @returns {{ cards: Array<{ key, x, y, depth, parentKey, expanded, kids, inGrid?, more?, less? }>,
+ *   lines: Array<{ id, x, y, w, h }>, width: number, height: number, index: Map<string, object> }}
  *   x/y are the card's top inline-start corner; lines are 0-width (vertical) or 0-height (horizontal).
  */
 export function layoutOrgTree(tree, expanded = new Set(), {
@@ -187,88 +207,125 @@ export function layoutOrgTree(tree, expanded = new Set(), {
   cardH = EXPAND_GEOMETRY.cardH,
   gap = TREE_GEOMETRY.gap,
   rowGap = EXPAND_GEOMETRY.rowGap,
+  groupGap = 40,
   indent = EXPAND_GEOMETRY.indent,
   maxCols = TREE_GEOMETRY.maxCols,
+  focusCols = 4,
+  focusKey = "",
+  stack = false,
   childLimit = Infinity,
   showAll = new Set(),
 } = {}) {
-  const rowMax = gridWidth(Math.max(1, maxCols), { cardW, gap });
-  const trunkX = Math.round(indent / 2);
+  const onPath = new Set(focusKey && tree?.nodes?.has(focusKey) ? pathTo(tree, focusKey) : []);
   const seen = new Set();
+  const hasKids = (k) => (tree.nodes.get(k)?.childKeys || []).some((c) => tree.nodes.has(c));
+  const card = (key, depth, parentKey, extra = {}) => ({ key, x: 0, y: 0, depth, parentKey, expanded: false, kids: 0, ...extra });
 
-  /** Pack boxes into rows: in order, a box that no longer fits starts the next row. */
-  const pack = (boxes, x0, y0) => {
-    const rows = [];
-    let row = [];
-    let used = 0;
-    boxes.forEach((box) => {
-      const need = row.length ? used + gap + box.w : box.w;
-      if (row.length && need > rowMax) { rows.push(row); row = []; used = 0; }
-      used = row.length ? used + gap + box.w : box.w;
-      row.push(box);
+  /** A grid block of cards (and «+n» / «طيّ») at 0,0. */
+  const gridBlock = (keys, depth, parentKey, cols) => {
+    const cells = keys.map((k) => {
+      seen.add(k);
+      return card(k, depth, parentKey, { inGrid: true, kids: (tree.nodes.get(k)?.childKeys || []).length });
     });
-    if (row.length) rows.push(row);
-    let y = y0;
-    let width = 0;
-    const placed = rows.map((items) => {
-      let x = x0;
-      const top = y;
-      let h = 0;
-      items.forEach((box) => { box.dx = x; box.dy = top; x += box.w + gap; h = Math.max(h, box.h); });
-      width = Math.max(width, x - gap - x0);
-      y = top + h + rowGap;
-      return { items, top, h };
-    });
-    return { rows: placed, width, bottom: y - rowGap };
+    const c = Math.max(1, Math.min(cols, cells.length));
+    const rows = Math.ceil(cells.length / c);
+    cells.forEach((cell, i) => { cell.x = (i % c) * (cardW + gap); cell.y = Math.floor(i / c) * (cardH + gap); });
+    return { w: c * cardW + (c - 1) * gap, h: rows * cardH + (rows - 1) * gap, cards: cells, lines: [], px: null };
   };
 
-  const pseudo = (key, extra, depth, parentKey) => ({
-    w: cardW, h: cardH, cards: [{ key, x: 0, y: 0, depth, parentKey, expanded: false, kids: 0, ...extra }], lines: [],
-  });
-
-  /** One subtree in its own coordinates (card at 0,0). */
+  /** One subtree in its own coordinates. `px` is the x of its own card inside the box. */
   const box = (key, depth, parentKey) => {
     seen.add(key);
     const node = tree.nodes.get(key);
     const kids = orderKeys(tree, node.childKeys.filter((k) => tree.nodes.has(k) && !seen.has(k)));
     const open = expanded.has(key) && kids.length > 0;
-    const self = { key, x: 0, y: 0, depth, parentKey, expanded: open, kids: kids.length };
-    if (!open) return { w: cardW, h: cardH, cards: [self], lines: [] };
-    const limit = showAll.has(key) ? Infinity : Math.max(1, childLimit);
-    const subs = kids.slice(0, limit).map((k) => box(k, depth + 1, key));
-    const hidden = kids.length - subs.length;
-    // a long team folds into «+n»; once shown in full it ends with «طيّ» (both are buttons, not people)
-    if (hidden > 0) subs.push(pseudo(`${key}::more`, { more: hidden }, depth + 1, key));
-    else if (Number.isFinite(childLimit) && kids.length > childLimit) subs.push(pseudo(`${key}::less`, { less: true }, depth + 1, key));
-    const { rows, width, bottom } = pack(subs, indent, cardH + rowGap);
+    const self = card(key, depth, parentKey, { expanded: open, kids: kids.length });
+    const pathKid = onPath.has(key) && key !== focusKey ? kids.find((k) => onPath.has(k)) : "";
+    if (!open && !pathKid) return { w: cardW, h: cardH, cards: [self], lines: [], px: 0 };
+
+    const asColumn = open ? kids.filter((k) => onPath.has(k) || (expanded.has(k) && hasKids(k))) : [pathKid];
+    const inGrid = open ? kids.filter((k) => !asColumn.includes(k)) : [];
+    const groups = [];
+    if (inGrid.length) {
+      const limit = showAll.has(key) ? Infinity : Math.max(1, childLimit);
+      const shown = inGrid.slice(0, limit);
+      const g = gridBlock(shown, depth + 1, key, key === focusKey ? Math.min(focusCols, maxCols) : gridCols(shown.length, maxCols));
+      const hidden = inGrid.length - shown.length;
+      const extra = hidden > 0 ? { key: `${key}::more`, more: hidden } : (Number.isFinite(childLimit) && inGrid.length > childLimit ? { key: `${key}::less`, less: true } : null);
+      if (extra) {
+        // the fold card takes the next cell of the block
+        const c = Math.max(1, Math.round((g.w + gap) / (cardW + gap)));
+        const i = g.cards.length;
+        const cell = card(extra.key, depth + 1, key, { inGrid: true, ...extra, x: (i % c) * (cardW + gap), y: Math.floor(i / c) * (cardH + gap) });
+        g.cards.push(cell);
+        g.h = Math.max(g.h, cell.y + cardH);
+      }
+      groups.push({ ...g, kind: "grid", dropAt: g.w / 2 });
+    }
+    asColumn.forEach((k) => { const sub = box(k, depth + 1, key); groups.push({ ...sub, kind: "column", dropAt: sub.px + cardW / 2 }); });
+
     const cards = [self];
     const lines = [];
-    let lastBus = cardH;
-    rows.forEach(({ items, top }, r) => {
-      const bus = top - rowGap / 2;
-      const lastMid = items[items.length - 1].dx + cardW / 2;
-      lines.push({ id: `${key}:bus${r}`, x: trunkX, y: bus, w: lastMid - trunkX, h: 0 });
-      items.forEach((sub) => {
-        lines.push({ id: `${sub.cards[0].key}:tick`, x: sub.dx + cardW / 2, y: bus, w: 0, h: top - bus });
-        sub.cards.forEach((c) => cards.push({ ...c, x: c.x + sub.dx, y: c.y + sub.dy }));
-        sub.lines.forEach((l) => lines.push({ ...l, x: l.x + sub.dx, y: l.y + sub.dy }));
+    const top = cardH + rowGap;
+    const place = (g, gx, gy) => {
+      g.cards.forEach((c) => cards.push({ ...c, x: c.x + gx, y: c.y + gy }));
+      g.lines.forEach((l) => lines.push({ ...l, x: l.x + gx, y: l.y + gy }));
+    };
+
+    if (stack) {
+      // phones: groups one under another, a trunk on the start side, a tick into each group
+      const trunkX = Math.round(indent / 2);
+      let y = top;
+      let width = cardW;
+      let lastTick = cardH;
+      groups.forEach((g, i) => {
+        place(g, indent, y);
+        const tickY = y + cardH / 2;
+        lines.push({ id: `${key}:tick${i}`, x: trunkX, y: tickY, w: indent - trunkX, h: 0 });
+        lastTick = tickY;
+        width = Math.max(width, indent + g.w);
+        y += g.h + rowGap;
       });
-      lastBus = bus;
+      lines.unshift({ id: `${key}:trunk`, x: trunkX, y: cardH, w: 0, h: lastTick - cardH });
+      return { w: width, h: y - rowGap, cards, lines, px: 0 };
+    }
+
+    // side by side under one bus; the parent centred over the groups' drops
+    let x = 0;
+    groups.forEach((g) => { g.gx = x; x += g.w + groupGap; });
+    const drops = groups.map((g) => g.gx + g.dropAt);
+    let pc = (Math.min(...drops) + Math.max(...drops)) / 2;
+    let shift = 0;
+    if (pc - cardW / 2 < 0) { shift = cardW / 2 - pc; pc += shift; }
+    const busY = cardH + rowGap / 2;
+    let bottom = cardH;
+    groups.forEach((g, i) => {
+      place(g, g.gx + shift, top);
+      lines.push({ id: `${key}:drop${i}`, x: drops[i] + shift, y: busY, w: 0, h: top - busY });
+      bottom = Math.max(bottom, top + g.h);
     });
-    lines.unshift({ id: `${key}:trunk`, x: trunkX, y: cardH, w: 0, h: lastBus - cardH });
-    return { w: Math.max(cardW, indent + width), h: bottom, cards, lines };
+    const lo = Math.min(pc, ...drops.map((d) => d + shift));
+    const hi = Math.max(pc, ...drops.map((d) => d + shift));
+    lines.unshift({ id: `${key}:stem`, x: pc, y: cardH, w: 0, h: busY - cardH });
+    if (hi - lo >= 1) lines.push({ id: `${key}:bus`, x: lo, y: busY, w: hi - lo, h: 0 });
+    self.x = pc - cardW / 2;
+    const width = Math.max(self.x + cardW, x - groupGap + shift);
+    return { w: width, h: bottom, cards, lines, px: self.x };
   };
 
   const roots = orderKeys(tree, (tree?.roots || []).filter((k) => tree.nodes.has(k)));
-  const tops = roots.map((k) => box(k, 0, ""));
-  const { width, bottom } = tops.length ? pack(tops, 0, 0) : { width: 0, bottom: 0 };
   const cards = [];
   const lines = [];
-  tops.forEach((top) => {
-    top.cards.forEach((c) => cards.push({ ...c, x: c.x + top.dx, y: c.y + top.dy }));
-    top.lines.forEach((l) => lines.push({ ...l, x: l.x + top.dx, y: l.y + top.dy }));
+  let x = 0;
+  let height = 0;
+  roots.forEach((k) => {
+    const b = box(k, 0, "");
+    b.cards.forEach((c) => cards.push({ ...c, x: c.x + x }));
+    b.lines.forEach((l) => lines.push({ ...l, x: l.x + x }));
+    x += b.w + groupGap;
+    height = Math.max(height, b.h);
   });
-  return { cards, lines, width, height: Math.max(0, bottom), index: new Map(cards.map((c) => [c.key, c])) };
+  return { cards, lines, width: Math.max(0, x - groupGap), height, index: new Map(cards.map((c) => [c.key, c])) };
 }
 
 /** A card with its counts, ready for the screen. */

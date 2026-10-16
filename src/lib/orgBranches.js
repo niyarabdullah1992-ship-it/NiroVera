@@ -16,7 +16,7 @@
  */
 
 import { buildOrgFocusTree } from "./orgFocus.js";
-import { activePeople, deriveOrgHealth, seatState, todayKey } from "./orgDesign.js";
+import { activePeople, canEditOrgDesign, deriveOrgHealth, seatState, todayKey } from "./orgDesign.js";
 import {
   companyRootStation,
   isCompanyRootStation,
@@ -331,13 +331,23 @@ export function expandAllBranches(tree) {
 }
 
 /** The action menu of a branch card (owner/HR), routed like the person actions. */
-export function orgBranchActions(node, { canWrite = false, data = null } = {}) {
+export function orgBranchActions(node, { canWrite = false, data = null, user = null } = {}) {
   if (!node || node.kind !== "branch" || !canWrite) return [];
   const station = (data?.stations || []).find((s) => str(s.id) === str(node.stationId));
   const out = [];
   const add = (id, ar, en, group, extra = {}) => out.push({ id, ar, en, group, blocked: null, ...extra });
   if (station && !isHrUnit(station)) add("branch", "الفرع والوحدة", "Branch / unit", "open");
   if (node.managerKey) add("people", "عرض أشخاص الفرع", "Show the branch's people", "open");
+  const editBlock = user && data && !canEditOrgDesign(user, data)
+    ? { ar: "التعديل على المناصب للمالك والموارد البشرية.", en: "Seat changes are made by the owner and HR." }
+    : null;
+  if (station && !isCompanyRootStation(station) && !isHrUnit(station)) add("moveUnder", "نقل تحت…", "Move under…", "decide", { blocked: editBlock });
+  if (station && !isHrUnit(station)) {
+    add("addSeat", "إضافة منصب في الفرع", "Add a seat here", "seat", {
+      stationId: str(station.id),
+      blocked: isManagerUnit(station) ? { ar: "المدير ليس مكان توظيف. حوّله إلى فرع ثم وظّف عليه.", en: "A manager is not a hire workplace. Convert it to a branch, then hire there." } : null,
+    });
+  }
   if (node.managerVacant && node.level !== "hq") {
     add("hireManager", node.level === "region" ? "تعيين مدير المنطقة" : "تعيين مدير الفرع", "Hire the manager", "seat", {
       blocked: station && isManagerUnit(station)

@@ -22,12 +22,20 @@ import {
   pathTo,
   readExpanded,
   readTreeOptions,
-  revealPath,
   stepZoom,
   toggleExpanded,
   treeCounts,
 } from "@/lib/orgTreeLayout";
-import { cardHealthIndex, orgAdminHref, orgCardActions } from "@/lib/orgChartActions";
+import {
+  EDIT_BLOCK,
+  cardHealthIndex,
+  changeRequestHref,
+  orgAdminHref,
+  orgCardActions,
+  pendingChangeIndex,
+  planMove,
+} from "@/lib/orgChartActions";
+import { canEditOrgDesign } from "@/lib/orgDesign";
 import {
   branchPeopleKey,
   buildBranchTree,
@@ -45,8 +53,9 @@ import "./orgTree.css";
 
 const OPTIONS_KEY = "nv-org-tree-options";
 const VIEW_KEY = "nv-org-view";
+const MODE_KEY = "nv-org-mode";
 const ZOOM_KEY = "nv-org-tree-zoom";
-const CHILD_LIMIT = 24;
+const CHILD_LIMIT = 36;
 const EXPAND_LIMIT = 600;
 
 function readStore(key, session = false) {
@@ -87,13 +96,15 @@ const Icon = {
   dots: (<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="6" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="18" cy="12" r="1.6" /></svg>),
   person: svg(<><circle cx="12" cy="8.5" r="3.5" /><path d="M5 19.5c1.3-3.2 3.9-4.8 7-4.8s5.7 1.6 7 4.8" /></>, 20, 1.7),
   chev: svg(<path d="M7 10l5 5 5-5" />, 14, 2),
+  chevL: (<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M15 5L8 12l7 7z" /></svg>),
+  chevR: (<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M9 5l7 7-7 7z" /></svg>),
   building: svg(<><path d="M4 20V6.5L12 3l8 3.5V20" /><path d="M9 20v-4h6v4M8.5 9h1M14.5 9h1M8.5 12.5h1M14.5 12.5h1M3 20h18" /></>, 20, 1.6),
   region: svg(<><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" /><circle cx="12" cy="10" r="2.4" /></>, 20, 1.6),
   group: svg(<><circle cx="9" cy="9" r="3" /><path d="M3.5 19c.9-2.8 3-4.3 5.5-4.3s4.6 1.5 5.5 4.3" /><circle cx="17" cy="8.5" r="2.3" /><path d="M16 13.2c2.2.1 3.8 1.5 4.5 3.8" /></>, 20, 1.6),
 };
 
 /* ── one card ─────────────────────────────────────────────────── */
-function TreeCard({ card, place, ar, options, w, h, isFocus, highlighted, flag, hasMenu, menuOpen, onSelect, onToggle, onDetails, onMenu }) {
+function TreeCard({ card, place, ar, options, w, h, isFocus, highlighted, flag, assigned = 0, pending = false, controls = null, drop = "", hasMenu, menuOpen, onSelect, onToggle, onDetails, onMenu }) {
   const name = card.vacant ? (ar ? "شاغر" : "Vacant") : (card.name || "—");
   const kids = card.childKeys?.length || 0;
   const counts = countLine(card, ar);
@@ -108,7 +119,9 @@ function TreeCard({ card, place, ar, options, w, h, isFocus, highlighted, flag, 
     card.title,
     options.unit ? card.unit : "",
     card.isMe ? (ar ? "أنت" : "you") : "",
+    assigned ? (ar ? `${assigned} تكليف` : `${assigned} acting`) : "",
     flag ? (ar ? flag.ar : flag.en) : "",
+    pending ? (ar ? "طلب تغيير قيد الاعتماد" : "change awaiting approval") : "",
   ].filter(Boolean).join("، ");
   const toggleLabel = ar
     ? `${place.expanded ? "طيّ" : "افتح"} فريق ${name}${counts ? ` — ${card.direct} مباشر من ${card.total}` : ""}`
@@ -118,11 +131,14 @@ function TreeCard({ card, place, ar, options, w, h, isFocus, highlighted, flag, 
       className="nv-ot-card"
       data-k={card.key}
       data-focus={isFocus ? "1" : "0"}
+      data-hit={highlighted ? "1" : "0"}
+      data-drop={drop || undefined}
       data-vacant={card.vacant ? "1" : "0"}
       data-me={card.isMe ? "1" : "0"}
       data-open={place.expanded ? "1" : "0"}
       style={{ left: place.left, top: place.y, width: w, height: h }}
     >
+      {controls}
       <button
         type="button"
         className="nv-ot-card__hit"
@@ -136,7 +152,7 @@ function TreeCard({ card, place, ar, options, w, h, isFocus, highlighted, flag, 
       </span>
       <span className="nv-ot-card__text">
         <span className="nv-ot-card__name" aria-hidden>
-          <span className="nv-ot-card__nm">{highlighted ? <mark>{name}</mark> : name}</span>
+          <span className="nv-ot-card__nm">{name}</span>
           {card.isMe ? <span className="nv-ot-me">{ar ? "أنت" : "You"}</span> : null}
         </span>
         {card.title ? <span className="nv-ot-card__title" aria-hidden>{card.title}</span> : null}
@@ -156,7 +172,11 @@ function TreeCard({ card, place, ar, options, w, h, isFocus, highlighted, flag, 
               <span className="nv-ot-count__chev" aria-hidden>{Icon.chev}</span>
             </button>
           ) : null}
+          {assigned ? (
+            <span className="nv-ot-assign" aria-hidden>· <span dir="ltr" className="nv-ot-count__n">{Number(assigned)}</span> {ar ? "تكليف" : "acting"}</span>
+          ) : null}
           {flag ? <span className="nv-ot-flag" data-tone={flag.kind === "ACTING_OVER_LIMIT" ? "bad" : "warn"} aria-hidden>{ar ? flag.ar : flag.en}</span> : null}
+          {pending && !flag ? <span className="nv-ot-flag" data-tone="mute" aria-hidden>{ar ? "طلب تغيير قيد الاعتماد" : "Change awaiting approval"}</span> : null}
         </span>
       </span>
       <span className="nv-ot-card__acts">
@@ -188,7 +208,7 @@ function TreeCard({ card, place, ar, options, w, h, isFocus, highlighted, flag, 
 }
 
 /* ── one branch (or a branch's «أشخاص الفرع») in the «الفروع» view ── */
-function BranchCard({ node, place, ar, w, h, isFocus, highlighted, hasMenu, menuOpen, onSelect, onToggle, onOpen, onMenu }) {
+function BranchCard({ node, place, ar, w, h, isFocus, highlighted, pending = false, controls = null, drop = "", hasMenu, menuOpen, onSelect, onToggle, onOpen, onMenu }) {
   const people = node.kind === "people";
   const kids = node.childKeys?.length || 0;
   const level = people ? "people" : node.level;
@@ -217,17 +237,20 @@ function BranchCard({ node, place, ar, w, h, isFocus, highlighted, hasMenu, menu
       data-k={node.key}
       data-level={level}
       data-focus={isFocus ? "1" : "0"}
+      data-hit={highlighted ? "1" : "0"}
+      data-drop={drop || undefined}
       data-me={node.isMe ? "1" : "0"}
       data-open={place.expanded ? "1" : "0"}
       style={{ left: place.left, top: place.y, width: w, height: h }}
     >
+      {controls}
       <button type="button" className="nv-ot-card__hit" data-key={node.key} aria-current={isFocus ? "true" : undefined} aria-label={label} onClick={() => onSelect(node.key)} />
       <span className="nv-ot-avatar nv-ot-avatar--branch" aria-hidden>
         {people ? Icon.group : node.level === "region" ? Icon.region : Icon.building}
       </span>
       <span className="nv-ot-card__text">
         <span className="nv-ot-card__name" aria-hidden>
-          <span className="nv-ot-card__nm">{highlighted ? <mark>{node.name}</mark> : node.name}</span>
+          <span className="nv-ot-card__nm">{node.name}</span>
           {node.isMe ? <span className="nv-ot-me">{ar ? "أنت هنا" : "You are here"}</span> : null}
         </span>
         {node.title ? <span className="nv-ot-card__title" aria-hidden>{node.title}</span> : null}
@@ -250,6 +273,7 @@ function BranchCard({ node, place, ar, w, h, isFocus, highlighted, hasMenu, menu
             <span className="nv-ot-branch__vac" aria-hidden><span dir="ltr" className="nv-ot-count__n">{Number(node.vacantSeats)}</span> {ar ? "شاغر" : "vacant"}</span>
           ) : null}
           {node.flag ? <span className="nv-ot-flag" data-tone={node.flag.kind === "MANAGER_VACANT" ? "bad" : "warn"} aria-hidden>{ar ? node.flag.ar : node.flag.en}</span> : null}
+          {pending && !node.flag ? <span className="nv-ot-flag" data-tone="mute" aria-hidden>{ar ? "طلب تغيير قيد الاعتماد" : "Change awaiting approval"}</span> : null}
         </span>
       </span>
       {hasMenu && !people ? (
@@ -271,6 +295,121 @@ function BranchCard({ node, place, ar, w, h, isFocus, highlighted, hasMenu, menu
         </span>
       ) : null}
     </article>
+  );
+}
+
+/* ── management mode: the inline controls on a card (hover / keyboard focus) ── */
+function CardControls({ ar, items, onRun }) {
+  if (!items?.length) return null;
+  return (
+    <span className="nv-ot-ctl" role="group" aria-label={ar ? "تحكم الإدارة" : "Manage"}>
+      {items.map((it) => (
+        <button
+          key={it.id}
+          type="button"
+          className="nv-ot-ctl__btn"
+          aria-disabled={it.blocked ? "true" : undefined}
+          title={it.blocked ? (ar ? it.blocked.ar : it.blocked.en) : (ar ? it.hint?.ar : it.hint?.en) || undefined}
+          onClick={(event) => { event.stopPropagation(); if (!it.blocked) onRun(it); }}
+        >
+          {ar ? it.ar : it.en}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * «نقل تحت…» — the confirmation sheet for «تغيير». It never edits: it shows the change step the
+ * existing request would carry (and whether the existing gate allows it), then opens «التغييرات»
+ * pre-filled, where the Art. 58 question and the approval path follow.
+ */
+function MoveSheet({ ar, source, target, candidates, plan, onPick, onConfirm, onClose }) {
+  const ref = useRef(null);
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } };
+    document.addEventListener("keydown", onKey, true);
+    requestAnimationFrame(() => ref.current?.querySelector("input, button.nv-ot-sheet__go:not([disabled])")?.focus());
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  const needle = query.trim();
+  const hits = needle ? searchFocusTree({ nodes: candidates }, needle, 8).filter((c) => c.key !== source.key) : [];
+  const who = (c) => (c.vacant ? (ar ? "منصب شاغر" : "Open seat") : c.name) + (c.title ? ` — ${c.title}` : "");
+  return createPortal(
+    <div className="nv-ot-sheet__back" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div ref={ref} className="nv-ot-sheet" role="dialog" aria-modal="true" aria-label={ar ? "نقل تحت" : "Move under"} dir={ar ? "rtl" : "ltr"}>
+        <p className="nv-ot-sheet__kicker">{ar ? "تغيير التبعية — يُرسل طلباً للاعتماد" : "Change reporting — sends a request for approval"}</p>
+        <h2 className="nv-ot-sheet__title">{ar ? "نقل تحت…" : "Move under…"}</h2>
+        <dl className="nv-ot-sheet__rows">
+          <div><dt>{ar ? "البطاقة" : "Card"}</dt><dd>{who(source)}</dd></div>
+          <div>
+            <dt>{ar ? "تحت" : "Under"}</dt>
+            <dd>
+              {target ? (
+                <span className="nv-ot-sheet__target">
+                  {who(target)}
+                  <button type="button" className="nv-ot-sheet__link" onClick={() => onPick(null)}>{ar ? "تغيير" : "Change"}</button>
+                </span>
+              ) : (
+                <span className="nv-ot-sheet__pick">
+                  <input
+                    className="nv-ot-search__input nv-search-field"
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={ar ? "ابحث عن المدير أو الفرع الجديد" : "Search the new manager or branch"}
+                    aria-label={ar ? "ابحث عن الوجهة" : "Search the target"}
+                  />
+                  {hits.length ? (
+                    <span className="nv-ot-sheet__hits" role="listbox">
+                      {hits.map((c) => (
+                        <button key={c.key} type="button" role="option" aria-selected="false" onClick={() => onPick(c.key)}>
+                          <b>{c.vacant ? (ar ? "شاغر" : "Vacant") : c.name}</b>
+                          <span>{c.title}</span>
+                        </button>
+                      ))}
+                    </span>
+                  ) : null}
+                </span>
+              )}
+            </dd>
+          </div>
+        </dl>
+        {target && plan ? (
+          plan.ok ? (
+            <div className="nv-ot-sheet__plan">
+              <p>
+                {plan.op.type === "reparentUnit"
+                  ? (ar ? `سيُطلب: «${source.name}» تتبع «${plan.unitName}».` : `Requested: “${source.name}” under “${plan.unitName}”.`)
+                  : (ar ? `سيُطلب: نقل منصب «${source.title || source.name}» إلى «${plan.unitName}».` : `Requested: move the “${source.title || source.name}” seat to “${plan.unitName}”.`)}
+              </p>
+              {plan.note ? <p className="nv-ot-sheet__note">{ar ? plan.note.ar : plan.note.en}</p> : null}
+              {plan.managerChanges.length ? (
+                <ul className="nv-ot-sheet__impact">
+                  {plan.managerChanges.slice(0, 4).map((m) => (
+                    <li key={m.employeeId}>{ar ? `${m.name}: مديره من ${m.fromName || "—"} إلى ${m.toName || "—"}` : `${m.name}: manager ${m.fromName || "—"} → ${m.toName || "—"}`}</li>
+                  ))}
+                  {plan.managerChanges.length > 4 ? <li>{ar ? `و${plan.managerChanges.length - 4} آخرون` : `and ${plan.managerChanges.length - 4} more`}</li> : null}
+                </ul>
+              ) : null}
+              <p className="nv-ot-sheet__note">
+                {ar
+                  ? `لا يتغير شيء الآن: يُفتح طلب في «التغييرات» بهذه الخطوة${plan.art58 ? "، ويُسأل فيه عن محل الإقامة (المادة 58)" : ""}، ثم يُرسل للاعتماد ويُنشر في تاريخ سريانه.`
+                  : `Nothing changes now: a request opens in Changes with this step${plan.art58 ? ", asking the residence question (Art. 58)" : ""}, then goes for approval and publishes on its effective date.`}
+              </p>
+            </div>
+          ) : (
+            <p className="nv-ot-sheet__blocked" role="alert">{ar ? plan.reason.ar : plan.reason.en}</p>
+          )
+        ) : null}
+        <div className="nv-ot-sheet__actions">
+          <button type="button" className="nv-ot-sheet__go" disabled={!plan?.ok} onClick={onConfirm}>{ar ? "افتح طلب التغيير" : "Open the change request"}</button>
+          <button type="button" className="nv-ot-sheet__cancel" onClick={onClose}>{ar ? "إلغاء" : "Cancel"}</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -435,7 +574,7 @@ function CardMenu({ ar, card, anchor, actions, onPick, onClose }) {
                 role="menuitem"
                 className="nv-ot-pop__item"
                 aria-disabled={a.blocked ? "true" : undefined}
-                onClick={() => { if (!a.blocked) onPick(a.id); }}
+                onClick={() => { if (!a.blocked) onPick(a.id, null, a); }}
               >
                 <span className="nv-ot-cardmenu__label">
                   {ar ? a.ar : a.en}
@@ -502,6 +641,11 @@ export default function OrgTreeChart({
     return readStore(VIEW_KEY, true) === "branches" ? "branches" : "people";
   });
   const branches = view === "branches";
+  /* «شجرة الموظف» (read-only, everyone) | «شجرة الإدارة» (owner/HR: controls, drag, ⋯) */
+  const [mode, setModeState] = useState(() => (hrScope && readStore(MODE_KEY, true) === "manage" ? "manage" : "view"));
+  const manage = hrScope && mode === "manage";
+  const setMode = (next) => { setModeState(next); writeStore(MODE_KEY, next, true); setMenu(null); };
+  const canEditSeats = Boolean(user && data && canEditOrgDesign(user, data));
   const tree = branches ? branchTree : peopleTree;
   const counts = useMemo(() => treeCounts(tree), [tree]);
 
@@ -534,7 +678,8 @@ export default function OrgTreeChart({
     const stored = readExpanded(readStore(storeKey, true), peopleTree);
     const base = stored || defaultExpanded(peopleTree, peopleTree.viewerKey || peopleTree.roots[0] || "");
     const want = resolveFocusKey(peopleTree, urlFocus);
-    return urlFocus && want ? revealPath(base, peopleTree, want) : base;
+    if (urlFocus && want && peopleTree.nodes.get(want)?.childKeys.length) base.add(want);
+    return base;
   });
   // branches: first time this session → HQ and every region open, people folded, then fit
   const branchFresh = useRef(!readStore(storeKeyB, true));
@@ -575,27 +720,16 @@ export default function OrgTreeChart({
   // a branch card carries one more line (its manager); the branches view keeps one card height
   const cardH = cardHeight(options, compact) + (branches ? (compact ? 16 : 20) : 0);
   const indent = narrow ? 28 : 40;
-  /* columns per team row: as many as the canvas holds at 100% (2…6), one on a phone */
-  const [canvasW, setCanvasW] = useState(() => (typeof window !== "undefined" ? window.innerWidth - (embedded ? 320 : 72) : 1200));
-  useLayoutEffect(() => {
-    const el = scrollerRef.current;
-    if (!el) return undefined;
-    const measure = () => {
-      const cs = getComputedStyle(el);
-      setCanvasW(el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const maxCols = narrow ? 1 : Math.max(2, Math.min(6, Math.floor((canvasW - indent + TREE_GEOMETRY.gap) / (cardW + TREE_GEOMETRY.gap))));
+  // SAP blocks: ≈√n columns (2…4), the focus's own team in four; one column on a phone
+  const maxCols = narrow ? 1 : TREE_GEOMETRY.maxCols;
   const rtl = Boolean(ar);
 
   const layout = useMemo(
-    () => layoutOrgTree(tree, expanded, { cardW, cardH, gap: TREE_GEOMETRY.gap, rowGap: compact ? 26 : 32, indent, maxCols, childLimit: CHILD_LIMIT, showAll }),
-    [tree, expanded, cardW, cardH, compact, indent, maxCols, showAll],
+    () => layoutOrgTree(tree, expanded, {
+      cardW, cardH, gap: TREE_GEOMETRY.gap, rowGap: compact ? 32 : 40, groupGap: 40, indent, maxCols,
+      focusKey: selected, stack: narrow, childLimit: CHILD_LIMIT, showAll,
+    }),
+    [tree, expanded, cardW, cardH, compact, indent, maxCols, selected, narrow, showAll],
   );
   const W = layout.width;
   const H = layout.height;
@@ -642,10 +776,8 @@ export default function OrgTreeChart({
     if (!key || !tree.nodes.has(key)) return;
     setSelected(key);
     setHighlight(fromSearch ? key : "");
-    setExpanded((cur) => {
-      const path = pathTo(tree, key).slice(0, -1);
-      return path.every((k) => cur.has(k)) ? cur : revealPath(cur, tree, key);
-    });
+    // SAP: the chain to the focus stands as a vertical stack; the focus shows its own team
+    if (tree.nodes.get(key).childKeys.length) setExpanded((cur) => (cur.has(key) ? cur : new Set([...cur, key])));
     pendingScroll.current = { key, mode: scroll, smooth: true };
     moveDomFocus.current = domFocus;
     if (!embedded && !branches) {
@@ -688,14 +820,14 @@ export default function OrgTreeChart({
   }, [view, selectedB, selectedP, embedded, searchParams, setSearchParams, location.state]);
 
   /* the people view, focused on one person (a branch's manager, a parent's reveal) */
-  const focusPerson = useCallback((wanted, { open = false } = {}) => {
+  const focusPerson = useCallback((wanted) => {
     const key = resolveFocusKey(peopleTree, wanted);
     if (!key) return;
     setViewState("people");
     writeStore(VIEW_KEY, "people", true);
     setExpandedP((cur) => {
-      const next = revealPath(cur, peopleTree, key);
-      if (open && peopleTree.nodes.get(key)?.childKeys.length) next.add(key);
+      const next = new Set(cur);
+      if (peopleTree.nodes.get(key)?.childKeys.length) next.add(key);
       return next;
     });
     setSelectedP(key);
@@ -1029,17 +1161,169 @@ export default function OrgTreeChart({
     ? (data?.employees || []).find((row) => String(row.id) === String(details.employeeId)) || null
     : null;
 
-  /* the «⋯» menu */
+  /* the «⋯» menu (management tree only) */
   const closeMenu = useCallback(() => setMenu(null), []);
   const menuActions = !menu ? [] : menu.card.kind === "branch"
-    ? orgBranchActions(menu.card, { data, canWrite: hrDrawer && canWrite })
-    : orgCardActions(menu.card, { data, user, canWrite: hrDrawer && canWrite, health: health.get(menu.card.key) });
-  const runAction = (id, target = null) => {
+    ? orgBranchActions(menu.card, { data, user, canWrite: manage })
+    : orgCardActions(menu.card, { data, user, canWrite: manage, health: health.get(menu.card.key) });
+
+  /* «تغيير»: drag a card onto another (or «نقل تحت…»), then a sheet says what will be requested */
+  const [sheet, setSheet] = useState(null); // { source, targetKey }
+  const cardOf = useCallback((key) => {
+    const node = tree.nodes.get(key);
+    if (!node || node.kind === "people") return null;
+    return { ...node, kind: node.kind === "branch" ? "branch" : "person" };
+  }, [tree]);
+  const isUnder = useCallback((a, b) => {
+    let cursor = tree.nodes.get(a)?.parentKey || "";
+    const seen = new Set();
+    while (cursor && !seen.has(cursor)) {
+      if (cursor === b) return true;
+      seen.add(cursor);
+      cursor = tree.nodes.get(cursor)?.parentKey || "";
+    }
+    return false;
+  }, [tree]);
+  const plan = useMemo(() => {
+    if (!sheet?.targetKey) return null;
+    return planMove(sheet.source, cardOf(sheet.targetKey), { data, user, isUnder, today: day });
+  }, [sheet, cardOf, data, user, isUnder, day]);
+  const moveCandidates = useMemo(() => {
+    const out = new Map();
+    tree.nodes.forEach((node, key) => { if (node.kind !== "people") out.set(key, node); });
+    return out;
+  }, [tree]);
+  const openMove = (card, targetKey = "") => setSheet({ source: cardOf(card.key) || card, targetKey });
+  const confirmMove = () => {
+    if (!plan?.ok) return;
+    setSheet(null);
+    navigate(changeRequestHref(plan.op), { state: { from: `${location.pathname}${location.search}` } });
+  };
+
+  const cardDrag = useRef(null);
+  const [dragView, setDragView] = useState(null); // { key, x, y, over, ok }
+  const dragPlans = useRef(new Map());
+  const onCardPointerDown = (event) => {
+    if (!manage || event.button !== 0 || event.pointerType === "touch") return;
+    const el = event.target.closest(".nv-ot-card[data-k]");
+    if (!el || (event.target.closest("button") && !event.target.classList.contains("nv-ot-card__hit"))) return;
+    const source = cardOf(el.dataset.k);
+    if (!source || (source.kind === "branch" && source.level === "hq")) return;
+    cardDrag.current = { source, x0: event.clientX, y0: event.clientY, active: false, over: "" };
+    dragPlans.current = new Map();
+    const move = (e) => {
+      const d = cardDrag.current;
+      if (!d) return;
+      if (!d.active && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 6) return;
+      d.active = true;
+      const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest?.(".nv-ot-card[data-k]");
+      const over = hit && hit.dataset.k !== d.source.key ? hit.dataset.k : "";
+      d.over = over;
+      let ok = false;
+      if (over) {
+        if (!dragPlans.current.has(over)) dragPlans.current.set(over, planMove(d.source, cardOf(over), { data, user, isUnder, today: day }));
+        ok = Boolean(dragPlans.current.get(over)?.ok);
+      }
+      setDragView({ key: d.source.key, name: d.source.name || d.source.title, x: e.clientX, y: e.clientY, over, ok });
+      // nudge the canvas near its edges
+      const sc = scrollerRef.current?.getBoundingClientRect();
+      if (sc) {
+        const edge = 48;
+        const dx = e.clientX < sc.left + edge ? -16 : e.clientX > sc.right - edge ? 16 : 0;
+        const dy = e.clientY < sc.top + edge ? -16 : e.clientY > sc.bottom - edge ? 16 : 0;
+        if (dx || dy) scrollerRef.current.scrollBy(dx, dy);
+      }
+    };
+    const end = (e) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("keydown", esc, true);
+      const d = cardDrag.current;
+      cardDrag.current = null;
+      setDragView(null);
+      if (!d?.active) return;
+      // a drag is not a click
+      const swallow = (c) => { c.stopPropagation(); c.preventDefault(); };
+      window.addEventListener("click", swallow, { capture: true, once: true });
+      window.setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 0);
+      if (e?.type === "pointerup" && d.over) setSheet({ source: d.source, targetKey: d.over });
+    };
+    const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); cardDrag.current = { ...cardDrag.current, over: "" }; end(null); } };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("keydown", esc, true);
+  };
+
+  /* inline controls (management tree): تغيير · تكليف · تعديل · تعيين — existing flows only */
+  const noSeat = { ar: "لا منصب لهذه البطاقة في الهيكل.", en: "This card has no seat on the chart." };
+  const seatBlock = canEditSeats ? null : EDIT_BLOCK;
+  const controlsFor = (node) => {
+    if (!manage || !node || node.kind === "people") return null;
+    if (node.kind === "branch") {
+      const items = [];
+      if (node.level !== "hq") items.push({ id: "moveUnder", ar: "تغيير", en: "Change", blocked: seatBlock, hint: { ar: "اسحب البطاقة إلى فرع آخر، أو اختر الوجهة", en: "Drag onto another branch, or pick the target" } });
+      items.push({ id: "branch", ar: "تعديل", en: "Edit", blocked: null, hint: { ar: "الفرع والوحدة", en: "Branch / unit" } });
+      if (node.managerVacant && node.level !== "hq") {
+        const acts = orgBranchActions(node, { data, user, canWrite: true });
+        const hire = acts.find((a) => a.id === "hireManager");
+        if (hire) items.push({ id: "hireManager", ar: "تعيين", en: "Hire", blocked: hire.blocked, hint: { ar: hire.ar, en: hire.en } });
+      }
+      return items;
+    }
+    const items = [
+      { id: "moveUnder", ar: "تغيير", en: "Change", blocked: node.seatId ? seatBlock : noSeat, hint: { ar: "اسحب البطاقة إلى مديرها الجديد، أو اختره", en: "Drag onto the new manager, or pick them" } },
+      { id: "acting", ar: "تكليف", en: "Acting", blocked: node.seatId ? seatBlock : noSeat, hint: { ar: "التكليف والنائب في بطاقة المنصب", en: "Acting cover and deputy on the seat card" } },
+      { id: "seat", ar: "تعديل", en: "Edit", blocked: node.seatId ? null : noSeat, hint: { ar: "بطاقة المنصب: المسمى، الحالة، الخط المنقّط", en: "Seat card: title, state, dotted line" } },
+    ];
+    if (node.vacant && node.state === "vacant") items.push({ id: "hire", ar: "تعيين", en: "Hire", blocked: null, hint: { ar: "تعيين على المنصب", en: "Hire into this seat" } });
+    return items;
+  };
+  const pending = useMemo(() => (manage ? pendingChangeIndex(data) : { seats: new Set(), stations: new Set() }), [manage, data]);
+  const isPending = (node) => (node.kind === "branch" ? pending.stations.has(String(node.stationId)) : Boolean(node.seatId) && pending.seats.has(String(node.seatId)));
+  /* «· n تكليف»: acting roles held now, plus a dotted line (HR only) */
+  const assignedOf = useMemo(() => {
+    const out = new Map();
+    if (!hrScope) return out;
+    (data?.employees || []).forEach((e) => {
+      const n = (e.actingAssignments || []).filter((a) => !a.endedAt && (!a.until || String(a.until).slice(0, 10) >= day)).length;
+      if (n) out.set(String(e.id), n);
+    });
+    return out;
+  }, [hrScope, data, day]);
+  const assignedFor = (node) => (hrScope ? (assignedOf.get(String(node.employeeId || "")) || 0) + (node.dottedToKey ? 1 : 0) : 0);
+
+  /* edge arrows: pan the canvas sideways when there is more to see */
+  const [edges, setEdges] = useState({ left: false, right: false });
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const max = el.scrollWidth - el.clientWidth;
+      if (max <= 2) { setEdges((e) => (e.left || e.right ? { left: false, right: false } : e)); return; }
+      const rtlScroll = getComputedStyle(el).direction === "rtl";
+      const fromLeft = rtlScroll ? max + el.scrollLeft : el.scrollLeft;
+      const next = { left: fromLeft > 2, right: fromLeft < max - 2 };
+      setEdges((e) => (e.left === next.left && e.right === next.right ? e : next));
+    };
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    const late = window.setTimeout(measure, 450);
+    return () => { el.removeEventListener("scroll", measure); window.removeEventListener("resize", measure); window.clearTimeout(late); };
+  }, [W, zoom, view]);
+  const panBy = (dir) => {
+    const el = scrollerRef.current;
+    if (el) el.scrollBy({ left: dir * el.clientWidth * 0.6, behavior: reduceMotion ? "auto" : "smooth" });
+  };
+
+  const runAction = (id, target = null, action = null) => {
     const card = target || menu?.card;
     setMenu(null);
     if (!card) return;
+    if (id === "moveUnder") { openMove(card); return; }
+    if (id === "addSeat") { onHire?.({ stationId: action?.stationId || card.stationId || "" }); return; }
     if (id === "file") { setDetails(card); return; }
-    if (id === "people") { focusPerson(card.managerKey, { open: true }); return; }
+    if (id === "people") { focusPerson(card.managerKey); return; }
     if (id === "hireManager") { onHire?.({ stationId: card.stationId || "", seatId: card.managerSeatId || "" }); return; }
     if (id === "hire") { onHire?.({ stationId: card.stationId || "", seatId: card.seatId || "" }); return; }
     if (onAction?.(id, card)) return;
@@ -1071,6 +1355,13 @@ export default function OrgTreeChart({
           <b>{ar ? "المخطط التنظيمي" : "Org chart"}</b>
         </span>
       )}
+      {hrScope ? (
+        <div className="nv-ot-switch" role="radiogroup" aria-label={ar ? "نوع الشجرة" : "Tree"}>
+          {[["view", ar ? "شجرة الموظف" : "Employee tree"], ["manage", ar ? "شجرة الإدارة" : "Management tree"]].map(([value, label]) => (
+            <button key={value} type="button" role="radio" aria-checked={mode === value} onClick={() => setMode(value)}>{label}</button>
+          ))}
+        </div>
+      ) : null}
       <div className="nv-ot-switch" role="radiogroup" aria-label={ar ? "طريقة العرض" : "View"}>
         {[["people", ar ? "الأشخاص" : "People"], ["branches", ar ? "الفروع" : "Branches"]].map(([value, label]) => (
           <button key={value} type="button" role="radio" aria-checked={view === value} onClick={() => setView(value)}>{label}</button>
@@ -1170,13 +1461,28 @@ export default function OrgTreeChart({
   }
 
   const crumbs = selected && tree.nodes.has(selected) ? pathTo(tree, selected) : [];
-  const hasMenu = hrDrawer && canWrite;
+  const hasMenu = manage;
+  const dropOf = (key) => {
+    if (!dragView) return "";
+    if (dragView.key === key) return "source";
+    return dragView.over === key ? (dragView.ok ? "ok" : "bad") : "";
+  };
   const printScale = W ? Math.min(1, 1040 / W) : 1;
   const miniScale = showMini ? Math.min(160 / W, 132 / H) : 0;
 
   return (
-    <div className="nv-ot" data-variant={variant} data-density={options.density} data-narrow={narrow ? "1" : "0"} data-motion={reduceMotion ? "0" : "1"}>
+    <div className="nv-ot" data-variant={variant} data-mode={manage ? "manage" : "view"} data-density={options.density} data-narrow={narrow ? "1" : "0"} data-motion={reduceMotion ? "0" : "1"} data-dragging={dragView ? "1" : undefined}>
       {topBar}
+      {manage ? (
+        <p className="nv-ot-band" role="note">
+          <b>{ar ? "وضع الإدارة" : "Management mode"}</b>
+          <span>
+            {ar
+              ? "اسحب بطاقة إلى مديرها الجديد أو استخدم «تغيير» — كل تغيير يُفتح طلباً في «التغييرات» للاعتماد، لا تعديل مباشر."
+              : "Drag a card onto its new manager or use Change — every change opens a request in Changes for approval; nothing is edited directly."}
+          </span>
+        </p>
+      ) : null}
       {crumbs.length > 1 || capNote ? (
         <nav className="nv-ot-crumbs" aria-label={ar ? "مسار البطاقة المحددة" : "Path to the selected card"}>
           <ol>
@@ -1222,6 +1528,7 @@ export default function OrgTreeChart({
           <div
             ref={stageRef}
             className="nv-ot-stage"
+            onPointerDown={onCardPointerDown}
             role="tree"
             aria-label={ar ? "شجرة الهيكل" : "Structure tree"}
             style={{
@@ -1268,6 +1575,9 @@ export default function OrgTreeChart({
                     h={cardH}
                     isFocus={place.key === selected}
                     highlighted={highlight === place.key}
+                    pending={manage && isPending(node)}
+                    controls={manage ? <CardControls ar={ar} items={controlsFor(node)} onRun={(it) => runAction(it.id, node)} /> : null}
+                    drop={dropOf(place.key)}
                     hasMenu={hasMenu}
                     menuOpen={menu?.card.key === place.key}
                     onSelect={(key) => select(key, { scroll: "nearest" })}
@@ -1290,6 +1600,10 @@ export default function OrgTreeChart({
                   isFocus={place.key === selected}
                   highlighted={highlight === place.key}
                   flag={health.get(place.key)?.flag || null}
+                  assigned={assignedFor(card)}
+                  pending={manage && isPending(card)}
+                  controls={manage ? <CardControls ar={ar} items={controlsFor(card)} onRun={(it) => runAction(it.id, card)} /> : null}
+                  drop={dropOf(place.key)}
                   hasMenu={hasMenu}
                   menuOpen={menu?.card.key === place.key}
                   onSelect={(key) => select(key, { scroll: "nearest" })}
@@ -1303,6 +1617,47 @@ export default function OrgTreeChart({
         </div>
       </div>
 
+      {edges.left ? (
+        <button type="button" className="nv-ot-arrow" data-side="left" onClick={() => panBy(-1)} aria-label={ar ? "تحريك المخطط يساراً" : "Pan left"}>{Icon.chevL}</button>
+      ) : null}
+      {edges.right ? (
+        <button type="button" className="nv-ot-arrow" data-side="right" onClick={() => panBy(1)} aria-label={ar ? "تحريك المخطط يميناً" : "Pan right"}>{Icon.chevR}</button>
+      ) : null}
+      {dragView ? createPortal(
+        <div
+          className="nv-ot-ghost"
+          data-ok={dragView.over ? (dragView.ok ? "1" : "0") : undefined}
+          // beside the pointer, flipped near the viewport's edges so it never leaves the screen
+          style={{
+            left: dragView.x + 300 > window.innerWidth ? Math.max(8, dragView.x - 294) : dragView.x + 14,
+            top: dragView.y + 90 > window.innerHeight ? dragView.y - 76 : dragView.y + 14,
+          }}
+          aria-hidden
+          dir={ar ? "rtl" : "ltr"}
+        >
+          <b>{dragView.name}</b>
+          <span>
+            {dragView.over
+              ? (dragView.ok
+                ? (ar ? `تحت ${tree.nodes.get(dragView.over)?.name || tree.nodes.get(dragView.over)?.title || ""} — أفلت لمراجعة الطلب` : `Under ${tree.nodes.get(dragView.over)?.name || ""} — drop to review the request`)
+                : (ar ? "لا يُنقل هنا — أفلت لمعرفة السبب" : "Can't move here — drop to see why"))
+              : (ar ? "اسحب إلى المدير أو الفرع الجديد" : "Drag onto the new manager or branch")}
+          </span>
+        </div>,
+        document.body,
+      ) : null}
+      {sheet ? (
+        <MoveSheet
+          ar={ar}
+          source={sheet.source}
+          target={sheet.targetKey ? tree.nodes.get(sheet.targetKey) || null : null}
+          candidates={moveCandidates}
+          plan={plan}
+          onPick={(key) => setSheet((cur) => ({ ...cur, targetKey: key || "" }))}
+          onConfirm={confirmMove}
+          onClose={() => setSheet(null)}
+        />
+      ) : null}
       {showMini && frame ? (
         <div className="nv-ot-mini" aria-hidden>
           <svg width={Math.round(W * miniScale)} height={Math.round(H * miniScale)} viewBox={`0 0 ${W} ${H}`} onClick={miniGo}>
@@ -1343,7 +1698,7 @@ export default function OrgTreeChart({
           vacantNode={employee ? null : chartNode}
           data={data}
           companyId={companyId}
-          canWrite={canWrite}
+          canWrite={canWrite && manage}
           companyName={data?.settings?.companyName || ""}
           ar={ar}
           onHire={onHire}

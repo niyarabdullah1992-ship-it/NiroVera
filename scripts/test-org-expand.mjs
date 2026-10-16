@@ -11,12 +11,13 @@ import {
   cardHeight,
   defaultExpanded,
   expandAllKeys,
+  gridCols,
   layoutOrgTree,
   readExpanded,
   revealPath,
   toggleExpanded,
 } from "../src/lib/orgTreeLayout.js";
-import { changeSeedFromParams, orgAdminHref, orgCardActions } from "../src/lib/orgChartActions.js";
+import { changeRequestHref, changeSeedFromParams, orgAdminHref, orgCardActions, pendingChangeIndex, planMove } from "../src/lib/orgChartActions.js";
 
 const DAY = "2026-10-16";
 
@@ -98,20 +99,27 @@ assert.ok(tree.nodes.get(MB).childKeys.every((k) => shown.has(k)), "B's team is 
 assert.equal(layout.cards.length, 1 + 3 + 6 + 6, "top, managers, A's 6, B's 5 + open seat");
 assertClean(layout, "two siblings");
 
-/* children sit under their parent, indented, in rows of at most maxCols */
+/* SAP: a team that is not on the focus path is ONE grid block of ≈√n columns under one drop */
 const at = layout.index;
 tree.nodes.get(MA).childKeys.forEach((k) => {
   assert.ok(at.get(k).y > at.get(MA).y, "a report is below its manager");
-  assert.ok(at.get(k).x >= at.get(MA).x + geo.indent, "and indented past the trunk");
   assert.equal(at.get(k).parentKey, MA);
+  assert.equal(at.get(k).inGrid, true, "packed in the block");
 });
 const rowsOf = (parent) => {
   const ys = new Map();
   layout.cards.filter((c) => c.parentKey === parent).forEach((c) => ys.set(c.y, (ys.get(c.y) || 0) + 1));
   return [...ys.values()];
 };
-assert.ok(rowsOf(MA).every((n) => n <= geo.maxCols), "rows hold at most four cards");
-assert.deepEqual(rowsOf(MA), [4, 2], "six reports → a row of four and a row of two");
+assert.equal(gridCols(6), 3);
+assert.equal(gridCols(1), 1);
+assert.equal(gridCols(30), 4, "clamped to four");
+assert.equal(gridCols(3), 2);
+assert.deepEqual(rowsOf(MA), [3, 3], "six reports → a 3 × 2 block");
+assert.equal(layout.lines.filter((l) => l.id.startsWith(`${MA}:drop`)).length, 1, "one drop into the block, no line per card");
+/* the root sits centred over its groups */
+const drops = layout.lines.filter((l) => l.id.startsWith(`${O}:drop`)).map((l) => l.x);
+assert.ok(Math.abs(at.get(O).x + geo.cardW / 2 - (Math.min(...drops) + Math.max(...drops)) / 2) < 0.5, "root centred over its children");
 
 /* open a third level too; then close A — B and the deeper key stay remembered */
 open = toggleExpanded(open, A0);
@@ -126,8 +134,8 @@ assert.ok(lc.cards.some((c) => c.parentKey === MB), "B's team still shows");
 assertClean(lc, "A closed");
 
 /* the connector lines: one trunk per open card, a bus per row, a tick per child */
-const trunks = layout.lines.filter((l) => l.id.endsWith(":trunk"));
-assert.equal(trunks.length, [...open].filter((k) => tree.nodes.get(k).childKeys.length).length);
+const stems = layout.lines.filter((l) => l.id.endsWith(":stem"));
+assert.equal(stems.length, layout.cards.filter((c) => c.expanded).length, "one stem under every opened card");
 assert.equal(new Set(layout.lines.map((l) => l.id)).size, layout.lines.length, "line ids are unique (they animate by id)");
 
 /* «توسيع الكل» opens everything that fits; a small limit stops at a whole level */
@@ -158,11 +166,26 @@ assert.equal(unfolded.cards.filter((c) => c.parentKey === MA && !c.less).length,
 /* the stored set reads back safely */
 assert.equal(readExpanded("{bad", tree), null);
 assert.deepEqual([...readExpanded(JSON.stringify([MA, "gone", 4, A0]), tree)], [MA, A0]);
-assert.equal(cardHeight({}), 92);
-assert.equal(cardHeight({ unit: true, seatCode: true }, true), 70 + 36);
+assert.equal(cardHeight({}), 100);
+assert.equal(cardHeight({ unit: true, seatCode: true }, true), 74 + 36);
 
-/* RTL/LTR share one geometry: x is from the inline start; one column on a phone */
-const phone = layoutOrgTree(tree, open, { ...geo, maxCols: 1, indent: 28 });
+/* the focus path: a vertical chain of single cards, the focus's own team as a 4-column block */
+const chain = layoutOrgTree(tree, new Set([deep]), { ...geo, focusKey: deep });
+const chainKeys = [O, MA, A0, deep];
+assert.deepEqual(chain.cards.map((c) => c.key).sort(), [...chainKeys].sort(), "only the chain when nothing else is open");
+const mid = (k) => chain.index.get(k).x + geo.cardW / 2;
+assert.ok(chainKeys.every((k) => Math.abs(mid(k) - mid(O)) < 0.5), "a straight vertical stack");
+assert.ok(!chain.lines.some((l) => l.id.endsWith(":bus")), "no bus on a straight chain");
+const focusTeam = layoutOrgTree(tree, new Set([O, A0]), { ...geo, focusKey: A0 });
+assertClean(focusTeam, "focus team");
+const a0 = tree.nodes.get(A0).childKeys;
+assert.deepEqual([...new Set(a0.map((k) => focusTeam.index.get(k).y))].length, 1, "four reports of the focus → one row of four");
+assert.ok(focusTeam.index.get(MA).inGrid !== true && focusTeam.index.get(MB).inGrid === true, "the path card stands out of its peers' block");
+assert.ok(!focusTeam.cards.some((c) => c.parentKey === MA && c.key !== A0), "a chain card not opened shows only the path");
+
+/* RTL/LTR share one geometry: x is from the inline start; one column, stacked groups on a phone */
+const phone = layoutOrgTree(tree, open, { ...geo, maxCols: 1, indent: 28, stack: true });
+assertClean(phone, "phone");
 assert.ok(phone.cards.filter((c) => c.parentKey === MA).every((c, _, list) => c.x === list[0].x), "one column");
 assert.ok(phone.width <= 28 * 3 + TREE_GEOMETRY.cardW, "narrow enough for a phone at three levels");
 
@@ -170,7 +193,7 @@ assert.ok(phone.width <= 28 * 3 + TREE_GEOMETRY.cardW, "narrow enough for a phon
 const owner = data.employees[0];
 const card = { ...tree.nodes.get(MA) };
 const ids = orgCardActions(card, { data, user: owner, canWrite: true }).map((a) => a.id);
-assert.deepEqual(ids, ["file", "seat", "move", "dotted", "branch", "authority", "health"]);
+assert.deepEqual(ids, ["file", "seat", "moveUnder", "move", "dotted", "branch", "addSeat", "authority", "health"]);
 const vac = [...tree.nodes.values()].find((n) => n.vacant);
 const vacIds = orgCardActions(vac, { data, user: owner, canWrite: true }).map((a) => a.id);
 assert.ok(vacIds.includes("hire") && vacIds.includes("acting") && vacIds.includes("freeze") && !vacIds.includes("file"));
@@ -184,5 +207,29 @@ assert.equal(orgAdminHref("acting", vac), `/app/org?view=admin&pane=seats&seat=$
 assert.equal(orgAdminHref("file", card), "", "the chart opens the file itself");
 assert.deepEqual(changeSeedFromParams(new URLSearchParams("op=freezeSeat&seat=s_vac")), { type: "freezeSeat", seatId: "s_vac", frozen: true });
 assert.equal(changeSeedFromParams(new URLSearchParams("op=dropTables&seat=s_vac")), null, "only known change types");
+
+/* «تغيير»: moving a card under another only plans the existing change step, through the gate */
+const card2 = (k) => ({ ...tree.nodes.get(k), kind: "person" });
+const isUnder = (a, b) => { let c = tree.nodes.get(a)?.parentKey; while (c) { if (c === b) return true; c = tree.nodes.get(c)?.parentKey; } return false; };
+const a1 = [...tree.nodes.values()].find((n) => n.employeeId === "a1").key;
+const plan = planMove(card2(a1), card2(MB), { data, user: owner, isUnder, today: DAY });
+assert.equal(plan.ok, true, plan.reason?.ar);
+assert.deepEqual(plan.op, { type: "moveSeat", seatId: "s_a1", toStationId: "b" }, "under B = into the unit B leads");
+assert.ok(plan.art58, "a filled seat's move goes through the Art. 58 question in the request");
+assert.ok(plan.managerChanges.some((m) => m.employeeId === "a1"), "the sheet says who changes manager");
+assert.equal(changeRequestHref(plan.op), "/app/org?view=admin&pane=changes&op=moveSeat&seat=s_a1&to=b");
+assert.deepEqual(changeSeedFromParams(new URLSearchParams("op=moveSeat&seat=s_a1&to=b")), { type: "moveSeat", seatId: "s_a1", toStationId: "b" });
+assert.deepEqual(changeSeedFromParams(new URLSearchParams("op=reparentUnit&unit=ax&to=b")), { type: "reparentUnit", stationId: "ax", toParentId: "b" });
+assert.equal(planMove(card2(MA), card2(A0), { data, user: owner, isUnder, today: DAY }).ok, false, "never under one's own report");
+assert.match(planMove(card2(MA), card2(A0), { data, user: owner, isUnder, today: DAY }).reason.ar, /حلقة/);
+const same = planMove(card2(a1), card2(MA), { data, user: owner, isUnder, today: DAY });
+assert.equal(same.ok, false, "already there");
+assert.ok(same.reason.ar, "named by the existing gate");
+assert.equal(planMove(card2(a1), card2(MB), { data, user: { id: "x", role: "ops_manager" }, isUnder, today: DAY }).ok, false, "no seat-edit right → blocked with the reason");
+
+/* pending changes mark their cards */
+const withChange = { ...data, orgDesign: { changes: [{ id: "c1", status: "pending", ops: [{ type: "moveSeat", seatId: "s_a1", toStationId: "b" }] }] } };
+assert.ok(pendingChangeIndex(withChange).seats.has("s_a1"));
+assert.equal(pendingChangeIndex(data).seats.size, 0);
 
 console.log("PASS test-org-expand");

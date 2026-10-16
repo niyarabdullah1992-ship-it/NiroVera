@@ -8,8 +8,8 @@
  * hire drawer. A blocked action stays listed with the reason it is blocked.
  */
 
-import { canEditOrgDesign, deriveOrgHealth, orgDesignOf } from "./orgDesign.js";
-import { isHrUnit } from "./stationTree.js";
+import { canEditOrgDesign, checkOrgChangeGate, deriveChangeImpact, deriveOrgHealth, orgDesignOf, todayKey } from "./orgDesign.js";
+import { isHrUnit, isManagerUnit } from "./stationTree.js";
 
 const str = (value) => String(value ?? "").trim();
 
@@ -52,7 +52,20 @@ export function seatAuthorityCount(data, seatId) {
   return orgDesignOf(data).doa.filter((row) => str(row.approverSeatId) === id || str(row.escalateToSeatId) === id).length;
 }
 
-const EDIT_BLOCK = {
+/** The unit a person leads (a new seat there reports to them), or null. */
+export function ledStation(data, card) {
+  const id = str(card?.employeeId);
+  if (!id || card?.vacant) return null;
+  const led = (data?.stations || []).filter((s) => !s.closedAt && str(s.managerId) === id);
+  return led.find((s) => str(s.id) === str(card.stationId)) || led[0] || null;
+}
+
+export const HIRE_BLOCK = {
+  ar: "المدير ليس مكان توظيف. حوّله إلى فرع ثم وظّف عليه.",
+  en: "A manager is not a hire workplace. Convert it to a branch, then hire there.",
+};
+
+export const EDIT_BLOCK = {
   ar: "التعديل على المناصب للمالك والموارد البشرية.",
   en: "Seat changes are made by the owner and HR.",
 };
@@ -79,11 +92,14 @@ export function orgCardActions(card, { data, user, canWrite = false, health = nu
     add("freeze", "تجميد المنصب بقرار", "Freeze by decision", "decide", { blocked });
   }
   if (card.seatId) {
+    add("moveUnder", "نقل تحت…", "Move under…", "decide", { blocked });
     add("move", "نقل المنصب أو تغيير التبعية بقرار", "Move / change reporting by decision", "decide", { blocked });
     add("dotted", "خط منقّط بقرار", "Dotted line by decision", "decide", { blocked });
   }
   const station = (data?.stations || []).find((s) => str(s.id) === str(card.stationId));
   if (station && !station.closedAt && !isHrUnit(station)) add("branch", "الفرع والوحدة", "Branch / unit", "open");
+  const led = ledStation(data, card);
+  if (led) add("addSeat", "إضافة منصب تحته", "Add a seat under", "seat", { stationId: str(led.id), blocked: isManagerUnit(led) ? HIRE_BLOCK : null });
   if (card.seatId) add("authority", "الصلاحيات", "Authority", "look", { count: seatAuthorityCount(data, card.seatId) });
   add("health", "صحة الهيكل", "Structure health", "look", { count: Number(health?.findings || 0) });
   return out;
@@ -116,10 +132,91 @@ export function orgAdminHref(actionId, card) {
   }
 }
 
-/** The change-request seed an /app/org?pane=changes&op=…&seat=… link asks for, or null. */
+/**
+ * The change-request seed an /app/org?pane=changes&op=…&seat=…(&to=…) or
+ * ?op=reparentUnit&unit=…&to=… link asks for, or null.
+ */
 export function changeSeedFromParams(params) {
   const op = str(params?.get?.("op"));
+  const to = str(params?.get?.("to"));
+  if (op === "reparentUnit") {
+    const stationId = str(params?.get?.("unit"));
+    return stationId ? { type: op, stationId, ...(to ? { toParentId: to } : {}) } : null;
+  }
   const seatId = str(params?.get?.("seat"));
   if (!seatId || !["moveSeat", "freezeSeat", "setDotted"].includes(op)) return null;
-  return op === "freezeSeat" ? { type: op, seatId, frozen: true } : { type: op, seatId };
+  if (op === "freezeSeat") return { type: op, seatId, frozen: true };
+  if (op === "moveSeat" && to) return { type: op, seatId, toStationId: to };
+  return { type: op, seatId };
+}
+
+/** /app/org link that opens «التغييرات» with one step pre-filled (never applies anything). */
+export function changeRequestHref(op) {
+  const q = new URLSearchParams({ view: "admin", pane: "changes", op: op.type });
+  if (op.type === "reparentUnit") {
+    q.set("unit", op.stationId);
+    if (op.toParentId) q.set("to", op.toParentId);
+  } else {
+    q.set("seat", op.seatId);
+    if (op.toStationId) q.set("to", op.toStationId);
+  }
+  return `/app/org?${q.toString()}`;
+}
+
+/** Seats and units named in a change still awaiting approval or its effective date. */
+export function pendingChangeIndex(data) {
+  const seats = new Set();
+  const stations = new Set();
+  orgDesignOf(data).changes
+    .filter((c) => c.status === "pending" || c.status === "approved")
+    .forEach((c) => (c.ops || []).forEach((op) => {
+      if (op.seatId) seats.add(str(op.seatId));
+      if (op.toSeatId) seats.add(str(op.toSeatId));
+      if (op.stationId) stations.add(str(op.stationId));
+    }));
+  return { seats, stations };
+}
+
+const blockedMove = (ar, en) => ({ ok: false, op: null, reason: { ar, en }, managerChanges: [] });
+
+/**
+ * «تغيير»: what moving `source` under `target` would request — the change step, whether the
+ * existing gate lets it through (the Art. 58 residence question is answered in the request form),
+ * and who changes manager. Nothing is applied: the step only pre-fills «التغييرات».
+ * @param {object} source a person or branch card
+ * @param {object} target a person or branch card
+ * @param {{ data, user, isUnder?: (a: string, b: string) => boolean, today?: string }} ctx
+ *   isUnder(a, b) — true when card `a` sits anywhere under card `b` on the chart
+ */
+export function planMove(source, target, { data, user, isUnder = () => false, today = todayKey() } = {}) {
+  if (!source || !target) return blockedMove("اختر البطاقة الوجهة.", "Pick the target card.");
+  if (!user || !data || !canEditOrgDesign(user, data)) return blockedMove(EDIT_BLOCK.ar, EDIT_BLOCK.en);
+  if (source.key === target.key) return blockedMove("لا يُنقل منصب تحت نفسه.", "A card cannot move under itself.");
+  if (isUnder(target.key, source.key)) return blockedMove("لا يُنقل تحت أحد من يتبعونه — حلقة تبعية.", "Not under someone who reports to it — circular reporting.");
+  const stations = data?.stations || [];
+  const byId = (id) => stations.find((s) => str(s.id) === str(id)) || null;
+  // the unit the target leads (a person) or is (a branch)
+  const targetUnit = target.kind === "branch" ? byId(target.stationId) : ledStation(data, target);
+  let op;
+  let note = null;
+  if (source.kind === "branch") {
+    if (!targetUnit) return blockedMove("الوجهة لا تقود وحدة — اختر فرعاً أو مديره.", "The target leads no unit — pick a branch or its manager.");
+    op = { type: "reparentUnit", stationId: str(source.stationId), toParentId: str(targetUnit.id) };
+  } else {
+    if (!source.seatId) return blockedMove("لا منصب لهذه البطاقة في الهيكل — اربطها بمنصب أولاً.", "This card has no seat — link it to a seat first.");
+    let unit = targetUnit;
+    if (!unit) {
+      unit = byId(target.stationId);
+      if (unit) note = { ar: `«${target.name || target.title}» لا يقود وحدة؛ سيتبع المنصب مدير «${unit.name}».`, en: `${target.name || target.title} leads no unit; the seat will report to ${unit.name}'s manager.` };
+    }
+    if (!unit) return blockedMove("وحدة الوجهة غير معروفة.", "The target's unit is unknown.");
+    op = { type: "moveSeat", seatId: str(source.seatId), toStationId: str(unit.id) };
+  }
+  const draft = { title: "—", reason: "—", effectiveDate: today, ops: [{ ...op, residence: "same" }] };
+  const gate = checkOrgChangeGate(data, draft, { today });
+  if (!gate.ok) return { ok: false, op, reason: { ar: gate.reason, en: gate.reasonEn || gate.reason }, managerChanges: [] };
+  let managerChanges = [];
+  try { managerChanges = deriveChangeImpact(data, draft, { day: today }).managerChanges; } catch { managerChanges = []; }
+  const unitName = (op.type === "reparentUnit" ? byId(op.toParentId) : byId(op.toStationId))?.name || "";
+  return { ok: true, op, unitName, note, managerChanges, art58: op.type === "moveSeat" };
 }

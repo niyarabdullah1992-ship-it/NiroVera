@@ -149,7 +149,8 @@ assert.equal(site.viewerKey, branchKey("dmm"), "a site worker's branch is the br
 /* the branch menu: existing actions only, with the named block */
 const owner = data.employees[0];
 const ids = orgBranchActions(B("jed"), { canWrite: true, data, user: owner }).map((a) => a.id);
-assert.deepEqual(ids, ["branch", "people", "health", "authority"]);
+assert.deepEqual(ids, ["branch", "people", "moveUnder", "addSeat", "health", "authority"]);
+assert.ok(!orgBranchActions(B("hq"), { canWrite: true, data, user: owner }).some((a) => a.id === "moveUnder"), "HQ never moves");
 const east = orgBranchActions(B("east"), { canWrite: true, data, user: owner });
 const hire = east.find((a) => a.id === "hireManager");
 assert.ok(hire && hire.blocked && /ليس مكان توظيف/.test(hire.blocked.ar), "a region is not a hire workplace — said so");

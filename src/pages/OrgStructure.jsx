@@ -115,9 +115,9 @@ export default function OrgStructure() {
   const branchParam = chartMode === "full" ? (searchParams.get("branch") || "") : "";
   useEffect(() => {
     if (searchParams.get("hire")) return;
-    const seat = searchParams.get("seat") || "";
+    const seat = searchParams.get("seat") || searchParams.get("unit") || "";
     if (!seat || (pane !== "seats" && pane !== "changes")) return;
-    if (pane === "seats") setSeatFocus(seat);
+    if (pane === "seats") setSeatFocus(searchParams.get("seat") || "");
     else {
       const seed = changeSeedFromParams(searchParams);
       if (seed) setChangeSeed(seed);
@@ -125,6 +125,8 @@ export default function OrgStructure() {
     const params = new URLSearchParams(searchParams);
     params.delete("seat");
     params.delete("op");
+    params.delete("to");
+    params.delete("unit");
     setSearchParams(params, { replace: true });
   }, [pane, searchParams, setSearchParams]);
   const clearBranchParam = useCallback(() => {

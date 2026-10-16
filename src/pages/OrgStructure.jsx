@@ -7,25 +7,24 @@ import { isManagerUnit } from "@/lib/stationTree";
 import { toast } from "@/components/ui/use-toast";
 import { syncWorkplaceManagers } from "@/lib/peopleTree";
 import { orgChainHealth } from "@/lib/orgChain";
-import OrgWorkforceHero from "@/components/hr/OrgWorkforceHero";
+import OrgWorkforceHero, { OrgBranchTools } from "@/components/hr/OrgWorkforceHero";
 import OrgWorkforceAdminPanels from "@/components/hr/OrgWorkforceAdminPanels";
 import OrgTemplateBoard, { OrgChartUpkeep } from "@/components/hr/OrgTemplateBoard";
 import OrgFormerFilesBoard from "@/components/hr/OrgFormerFilesBoard";
 import HireSeatDrawer from "@/components/hr/HireSeatDrawer";
 import PageErrorBoundary from "@/components/PageErrorBoundary";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
+import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
+import { chipButton } from "@/components/schedules/scheduleChrome";
 import { MUTED } from "@/lib/platformStyles";
 import { useRailSide } from "@/lib/railSide";
 import { formerEmployeeCount } from "@/lib/formerEmployees";
 import { canEditOrgDesign, deriveOrgHealth, orgDesignOf, deriveSeatRegister } from "@/lib/orgDesign";
 import { notifyActingReminders, publishDueOrgChanges } from "@/lib/orgDesignStore";
-import OrgDesignTabs from "@/components/hr/orgdesign/OrgDesignTabs";
 import OrgSeatRegister from "@/components/hr/orgdesign/OrgSeatRegister";
 import OrgHealthBoard from "@/components/hr/orgdesign/OrgHealthBoard";
 import OrgDoaBoard from "@/components/hr/orgdesign/OrgDoaBoard";
 import OrgChangesBoard from "@/components/hr/orgdesign/OrgChangesBoard";
 import OrgChartEntry from "@/components/hr/orgdesign/OrgChartEntry";
-import { SectionHead } from "@/components/hr/orgdesign/orgDesignUi";
 
 const PANES = ["chart", "seats", "health", "authority", "changes"];
 
@@ -43,12 +42,12 @@ export default function OrgStructure() {
   const [hire, setHire] = useState(null);
   const [addBranchSignal, setAddBranchSignal] = useState(0);
   const [query, setQuery] = useState("");
-  const [trunkSignal, setTrunkSignal] = useState(0);
-  const [fullSignal, setFullSignal] = useState(0);
-  const [printSignal, setPrintSignal] = useState(0);
+  const [trunkSignal] = useState(0);
+  const [fullSignal] = useState(0);
+  const [printSignal] = useState(0);
   const [hrSignal, setHrSignal] = useState(0);
   const [pickHit, setPickHit] = useState(null);
-  const [fullActive, setFullActive] = useState(false);
+  const [, setFullActive] = useState(false);
   const [searchHits, setSearchHits] = useState([]);
   const [openEsc, setOpenEsc] = useState(false);
   const [openPerm, setOpenPerm] = useState(false);
@@ -118,6 +117,8 @@ export default function OrgStructure() {
     setSearchParams(params);
   }, [searchParams, setSearchParams]);
   const [changeSeed, setChangeSeed] = useState(null);
+  const [seatFocus, setSeatFocus] = useState("");
+  const clearSeatFocus = useCallback(() => setSeatFocus(""), []);
   const setPane = useCallback((next) => {
     const params = new URLSearchParams(searchParams);
     if (next === "chart") params.delete("pane");
@@ -273,29 +274,39 @@ export default function OrgStructure() {
     syncWorkplaceManagers(company.id);
   }, [company?.id, canWrite]);
 
+  const paneTabs = [
+    { value: "chart", label: ar ? "المخطط" : "Chart" },
+    { value: "seats", label: ar ? "المناصب" : "Seats", count: paneCounts.seats },
+    { value: "health", label: ar ? "صحة الهيكل" : "Health", count: paneCounts.health },
+    { value: "authority", label: ar ? "الصلاحيات" : "Authority" },
+    { value: "changes", label: ar ? "التغييرات" : "Changes", count: paneCounts.changes },
+  ];
+
   return (
     <>
-      <PlatformStampShell
+      <OpsFrame
         ar={ar}
-        bare
-        maxWidth={1400}
-        flushBody
+        lane={isAdminView ? "manage" : "mine"}
+        section={ar ? "القوى العاملة" : "Workforce"}
+        title={isAdminView ? (ar ? "الهيكل التنظيمي" : "Org structure") : (ar ? "مكاني في الهيكل" : "My place in the structure")}
+        hint={isAdminView
+          ? (ar
+            ? "الوظيفة ثابتة والشخص يتغيّر — منها تُشتق التبعية والصلاحيات ومسار الاعتماد والتصعيد. الملفات والعقود في الموارد البشرية."
+            : "The seat stays and the person changes — reporting, authority and the approval path derive from it. Files and contracts stay with HR.")
+          : (ar
+            ? "للاطلاع فقط — سلسلة إدارتك وزملاؤك وفريقك. التغيير في الهيكل عبر الموارد البشرية."
+            : "Read-only — your management chain, peers and team. Structural changes go through HR.")}
+        meta={isAdminView && data && currentUser && company
+          ? <HeroSwitch options={paneTabs} value={pane} onChange={setPane} label={ar ? "أقسام الهيكل" : "Structure panes"} />
+          : null}
       >
         {!data || !currentUser || !company ? (
           <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "جارٍ تحميل الهيكل…" : "Loading org structure…"}</p>
         ) : (
-          <div className="nv-org-page">
+          <div className="nv-org-page" data-org-pane={isAdminView ? pane : "mine"}>
             {!isAdminView ? (
               <PageErrorBoundary resetKey="mine">
-                <section className="nv-od" aria-label={ar ? "مكاني في الهيكل" : "My place in the structure"}>
-                  <SectionHead
-                    title={ar ? "مكاني في الهيكل" : "My place in the structure"}
-                    hint={ar
-                      ? "للاطلاع فقط — ترى سلسلة إدارتك وزملاءك وفريقك. التغيير في الهيكل عبر الموارد البشرية."
-                      : "Read-only — your management chain, peers and team. Structural changes go through HR."}
-                  />
-                  <OrgChartEntry ar={ar} data={data} user={currentUser} scope="mine" />
-                </section>
+                <OrgChartEntry ar={ar} data={data} user={currentUser} scope="mine" />
               </PageErrorBoundary>
             ) : (
               <>
@@ -303,33 +314,6 @@ export default function OrgStructure() {
                   ar={ar}
                   data={data}
                   health={health}
-                  canWrite={canWrite}
-                  isAdminView={isAdminView}
-                  showTools={pane === "chart"}
-                  showSearch={chartMode === "full"}
-                  query={query}
-                  onQueryChange={setQuery}
-                  searchHits={searchHits}
-                  onPickHit={(hit) => {
-                    setPickHit(hit);
-                    setQuery("");
-                    setSearchHits([]);
-                  }}
-                  renderHit={(hit) => (
-                    <>
-                      {hit.name || hit.label}
-                      <span style={{ color: MUTED }}>
-                        {" · "}
-                        {hit.managerName || hit.job || hit.branch || ""}
-                      </span>
-                    </>
-                  )}
-                  onTrunk={() => setTrunkSignal((n) => n + 1)}
-                  onFocusHr={chartMode === "full" ? () => setHrSignal((n) => n + 1) : undefined}
-                  onToggleFull={() => setFullSignal((n) => n + 1)}
-                  fullActive={fullActive}
-                  onAddBranch={chartMode === "full" ? () => setAddBranchSignal((n) => n + 1) : undefined}
-                  onPrint={() => setPrintSignal((n) => n + 1)}
                   onGoEsc={goEsc}
                   onGoPerm={goPerm}
                   onGoGrades={() => {
@@ -337,34 +321,18 @@ export default function OrgStructure() {
                     setPane("authority");
                     scrollPanel(gradesRef);
                   }}
-                  onToggleByGrade={chartMode === "full" ? () => setByGrade((value) => !value) : undefined}
-                  byGrade={byGrade}
                   onGoLog={goLog}
                   onGoFormer={goFormer}
                   formerCount={formerCount}
                 />
 
-                <OrgDesignTabs
-                  ar={ar}
-                  label={ar ? "أقسام الهيكل" : "Structure panes"}
-                  value={pane}
-                  onChange={setPane}
-                  tabs={[
-                    { value: "chart", label: ar ? "المخطط" : "Chart" },
-                    { value: "seats", label: ar ? "المناصب" : "Seats", count: paneCounts.seats },
-                    { value: "health", label: ar ? "صحة الهيكل" : "Health", count: paneCounts.health },
-                    { value: "authority", label: ar ? "الصلاحيات" : "Authority" },
-                    { value: "changes", label: ar ? "التغييرات" : "Changes", count: paneCounts.changes },
-                  ]}
-                />
-
-                <div role="tabpanel" id={`nv-od-pane-${pane}`} aria-labelledby={`nv-od-tab-${pane}`} style={{ minWidth: 0 }}>
+                <div role="tabpanel" aria-label={paneTabs.find((t) => t.value === pane)?.label} style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 16 }}>
                   <PageErrorBoundary resetKey={`${view}:${pane}`}>
                     {pane === "chart" ? (
                       <>
-                        <div className="nv-od-filters" role="group" aria-label={ar ? "طريقة العرض" : "Chart mode"} style={{ marginBottom: 12 }}>
-                          <button type="button" className="nv-od-chip" aria-pressed={chartMode === "focus"} onClick={() => setChartMode("focus")}>{ar ? "المخطط" : "Chart"}</button>
-                          <button type="button" className="nv-od-chip" aria-pressed={chartMode === "full"} onClick={() => setChartMode("full")}>{ar ? "الفروع والدليل" : "Branches & directory"}</button>
+                        <div role="group" aria-label={ar ? "طريقة العرض" : "Chart mode"} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          <button type="button" aria-pressed={chartMode === "focus"} onClick={() => setChartMode("focus")} style={chipButton(chartMode === "focus", { height: 30, padding: "0 12px", fontSize: 12 })}>{ar ? "المخطط" : "Chart"}</button>
+                          <button type="button" aria-pressed={chartMode === "full"} onClick={() => setChartMode("full")} style={chipButton(chartMode === "full", { height: 30, padding: "0 12px", fontSize: 12 })}>{ar ? "الفروع والدليل" : "Branches & directory"}</button>
                         </div>
                         {chartMode === "focus" ? (
                           <>
@@ -372,25 +340,51 @@ export default function OrgStructure() {
                             <OrgChartEntry ar={ar} data={data} user={currentUser} scope="all" />
                           </>
                         ) : (
-                          <OrgTemplateBoard
-                            lang={lang}
-                            onHire={openHire}
-                            addBranchSignal={addBranchSignal}
-                            embedded
-                            query={query}
-                            onQueryChange={setQuery}
-                            pickHit={pickHit}
-                            onPickHitConsumed={() => setPickHit(null)}
-                            trunkSignal={trunkSignal}
-                            fullSignal={fullSignal}
-                            printSignal={printSignal}
-                            hrSignal={hrSignal}
-                            onFullChange={setFullActive}
-                            onSearchHits={handleSearchHits}
-                            byGrade={byGrade}
-                            focusId={focusParam}
-                            onClearFocus={clearFocus}
-                          />
+                          <>
+                            <OrgBranchTools
+                              ar={ar}
+                              query={query}
+                              onQueryChange={setQuery}
+                              searchHits={searchHits}
+                              onPickHit={(hit) => {
+                                setPickHit(hit);
+                                setQuery("");
+                                setSearchHits([]);
+                              }}
+                              renderHit={(hit) => (
+                                <>
+                                  {hit.name || hit.label}
+                                  <span style={{ color: MUTED }}>
+                                    {" · "}
+                                    {hit.managerName || hit.job || hit.branch || ""}
+                                  </span>
+                                </>
+                              )}
+                              onFocusHr={() => setHrSignal((n) => n + 1)}
+                              onToggleByGrade={() => setByGrade((value) => !value)}
+                              byGrade={byGrade}
+                              onAddBranch={canWrite ? () => setAddBranchSignal((n) => n + 1) : undefined}
+                            />
+                            <OrgTemplateBoard
+                              lang={lang}
+                              onHire={openHire}
+                              addBranchSignal={addBranchSignal}
+                              embedded
+                              query={query}
+                              onQueryChange={setQuery}
+                              pickHit={pickHit}
+                              onPickHitConsumed={() => setPickHit(null)}
+                              trunkSignal={trunkSignal}
+                              fullSignal={fullSignal}
+                              printSignal={printSignal}
+                              hrSignal={hrSignal}
+                              onFullChange={setFullActive}
+                              onSearchHits={handleSearchHits}
+                              byGrade={byGrade}
+                              focusId={focusParam}
+                              onClearFocus={clearFocus}
+                            />
+                          </>
                         )}
                         <OrgFormerFilesBoard data={data} ar={ar} boardRef={formerRef} />
                       </>
@@ -402,6 +396,8 @@ export default function OrgStructure() {
                         actor={currentUser}
                         companyId={company.id}
                         canEdit={canEditDesign}
+                        focusSeat={seatFocus}
+                        onFocusConsumed={clearSeatFocus}
                         onOpenChanges={(seed) => {
                           setChangeSeed(seed);
                           setPane("changes");
@@ -409,10 +405,20 @@ export default function OrgStructure() {
                       />
                     ) : null}
                     {pane === "health" ? (
-                      <OrgHealthBoard ar={ar} data={data} actor={currentUser} companyId={company.id} canEdit={canEditDesign} />
+                      <OrgHealthBoard
+                        ar={ar}
+                        data={data}
+                        actor={currentUser}
+                        companyId={company.id}
+                        canEdit={canEditDesign}
+                        onOpenSeat={(seatId) => {
+                          setSeatFocus(seatId);
+                          setPane("seats");
+                        }}
+                      />
                     ) : null}
                     {pane === "authority" ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                         <OrgDoaBoard ar={ar} data={data} actor={currentUser} companyId={company.id} canEdit={canEditDesign} />
                         <OrgWorkforceAdminPanels
                           ar={ar}
@@ -453,7 +459,7 @@ export default function OrgStructure() {
             )}
           </div>
         )}
-      </PlatformStampShell>
+      </OpsFrame>
       {data && company ? (
         <HireSeatDrawer
           open={Boolean(hire)}

@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { buildOrgFocusTree, deriveFocusNeighborhood } from "@/lib/orgFocus";
 import { treeCounts, countLine } from "@/lib/orgTreeLayout";
 import { todayKey } from "@/lib/orgDesign";
-import { initialsOf } from "./orgDesignUi";
+import { Slab, btnPrimary, initialsOf } from "./orgDesignUi";
 import "./orgTree.css";
 
 /**
@@ -23,36 +23,40 @@ export default function OrgChartEntry({ ar, data, user, scope = "mine" }) {
   const to = scope === "mine" ? "/app/org/chart?scope=mine" : "/app/org/chart";
 
   return (
-    <div className="nv-ot-entry">
-      <div className="nv-ot-entry__text">
-        <h3>{ar ? "المخطط الكامل" : "Full org chart"}</h3>
-        <p>
-          {ar
-            ? "صفحة كاملة للهيكل: تفتح على بطاقتك، فوقك سلسلة الإدارة حتى رأس الهيكل، وبجانب كل مستوى زملاؤه، وتحتك فريقك. انقر أي بطاقة لتنتقل إليها، وابحث عن أي شخص."
-            : "The whole structure on one page: opens on your card, the chain above you, each level's peers beside it, your team below. Click any card to move to it, or search for anyone."}
-        </p>
-        <Link to={to} state={{ from }} className="nv-od-btn nv-od-btn--primary nv-ot-entry__go">
+    <Slab
+      label={ar ? "المخطط الكامل" : "Full org chart"}
+      title={ar ? "المخطط الكامل" : "Full org chart"}
+      note={ar
+        ? "صفحة كاملة للهيكل: تفتح على بطاقتك، فوقك سلسلة الإدارة حتى رأس الهيكل، وبجانب كل مستوى زملاؤه، وتحتك فريقك. انقر أي بطاقة لتنتقل إليها، وابحث عن أي شخص."
+        : "The whole structure on one page: opens on your card, the chain above you, each level's peers beside it, your team below. Click any card to move to it, or search for anyone."}
+      trailing={(
+        <Link to={to} state={{ from }} className="nv-ot-entry__go" style={{ ...btnPrimary(), textDecoration: "none" }}>
           {ar ? "افتح المخطط" : "Open the chart"}
         </Link>
-      </div>
+      )}
+    >
       {shown.length ? (
-        <ol className="nv-ot-entry__chain" aria-label={ar ? "سلسلتي في الهيكل" : "My chain"}>
-          {shown.map((card, index) => (card ? (
-            <li key={card.key} data-me={card.isMe ? "1" : "0"}>
-              <Link to={card.isMe ? to : `${to}${to.includes("?") ? "&" : "?"}focus=${encodeURIComponent(card.key)}`} state={{ from }}>
-                <span className="nv-ot-entry__av" aria-hidden>{card.vacant ? "—" : initialsOf(card.name)}</span>
-                <span className="nv-ot-entry__who">
-                  <b>{card.vacant ? (ar ? "شاغر" : "Vacant") : card.name}</b>
-                  <span>{card.title}</span>
-                </span>
-                {countLine(counts.get(card.key), ar) ? <span className="nv-ot-entry__n" dir="ltr">{countLine(counts.get(card.key), ar)}</span> : null}
-              </Link>
-            </li>
-          ) : (
-            <li key={`fold-${index}`} className="nv-ot-entry__fold" aria-hidden>⋮</li>
-          )))}
-        </ol>
+        <div className="nv-ot-entry">
+          <span className="nv-ot-entry__label">{ar ? "سلسلتي من رأس الهيكل" : "My chain from the top"}</span>
+          <ol className="nv-ot-entry__chain" aria-label={ar ? "سلسلتي في الهيكل" : "My chain"}>
+            {shown.map((card, index) => (card ? (
+              <li key={card.key} data-me={card.isMe ? "1" : "0"}>
+                <Link to={card.isMe ? to : `${to}${to.includes("?") ? "&" : "?"}focus=${encodeURIComponent(card.key)}`} state={{ from }}>
+                  <span className="nv-ot-entry__av" aria-hidden>{card.vacant ? "—" : initialsOf(card.name)}</span>
+                  <span className="nv-ot-entry__who">
+                    <b>{card.vacant ? (ar ? "شاغر" : "Vacant") : card.name}</b>
+                    <span>{card.title}</span>
+                  </span>
+                  {card.isMe ? <span className="nv-ot-entry__me">{ar ? "أنت" : "You"}</span> : null}
+                  {countLine(counts.get(card.key), ar) ? <span className="nv-ot-entry__n" dir="ltr" title={ar ? "مباشرون / الفريق كله" : "Direct / whole team"}>{countLine(counts.get(card.key), ar)}</span> : null}
+                </Link>
+              </li>
+            ) : (
+              <li key={`fold-${index}`} className="nv-ot-entry__fold" aria-hidden>⋮</li>
+            )))}
+          </ol>
+        </div>
       ) : null}
-    </div>
+    </Slab>
   );
 }

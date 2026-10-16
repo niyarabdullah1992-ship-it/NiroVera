@@ -17,7 +17,9 @@ import {
 } from "@/lib/orgDesign";
 import { saveOrgChangeDraft, transitionOrgChange } from "@/lib/orgDesignStore";
 import { printReport } from "@/lib/printReport";
-import { EmptyInvite, GateLine, SectionHead, StateChip, ToneChip, fmtDay, levelLabel, seatOptionLabel } from "./orgDesignUi";
+import RightHint from "@/components/shared/RightHint";
+import { mono } from "@/components/schedules/scheduleChrome";
+import { EmptyInvite, GateLine, Note, Slab, SlabBody, StateChip, SubHead, ToneChip, btnGhost, btnPrimary, btnQuiet, fmtDay, levelLabel, seatOptionLabel } from "./orgDesignUi";
 
 const RESIDENCE = [
   ["same", "لا يغيّر محل الإقامة", "Residence unchanged"],
@@ -135,87 +137,95 @@ export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, s
   const canApprove = (c) => canEditOrgDesign(actor, data) && (String(c.createdById || "") !== String(actor?.id || "") || isOrgOwner(actor, data));
 
   return (
-    <section className="nv-od" aria-label={ar ? "التغييرات التنظيمية" : "Org changes"}>
-      <SectionHead
+    <div className="nv-od">
+      <Slab
+        label={ar ? "التغييرات التنظيمية" : "Org changes"}
         title={ar ? "التغييرات التنظيمية" : "Org changes"}
-        hint={ar
+        note={ar
           ? "التغيير البنيوي يُكتب أولاً: ماذا يتغير، لماذا، ومتى يسري. ترى أثره قبل اعتماده — من يتغير مديره ومن يتغير معتمِد طلباته — ثم يعتمده مسؤول آخر، ويُنشر في تاريخه قراراً موقّعاً في سجل التدقيق."
           : "A structural change is written first: what, why, and from when. See its impact before approval — who changes manager, whose approvals move — another HR member approves, and it publishes on its date as a signed decision."}
+        trailing={canEdit && !draft ? <button type="button" style={btnPrimary()} onClick={() => { setDraft({ id: "", title: "", reason: "", effectiveDate: today, ops: [blankOp()] }); setGate(null); }}>{ar ? "＋ تغيير تنظيمي" : "+ Org change"}</button> : null}
       >
-        {canEdit && !draft ? <button type="button" className="nv-od-btn nv-od-btn--primary" onClick={() => { setDraft({ id: "", title: "", reason: "", effectiveDate: today, ops: [blankOp()] }); setGate(null); }}>{ar ? "＋ تغيير تنظيمي" : "+ Org change"}</button> : null}
-      </SectionHead>
+        {draft ? (
+          <SlabBody style={{ gap: 14, borderBottom: "1px solid var(--nv-line2, var(--nv-line))" }}>
+            <SubHead>{draft.id ? (ar ? "تعديل التغيير" : "Edit the change") : (ar ? "تغيير جديد" : "New change")}</SubHead>
+            <div className="nv-od-form">
+              <label className="nv-od-field">{ar ? "العنوان" : "Title"}
+                <input className="nv-od-input" value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} />
+              </label>
+              <label className="nv-od-field">{ar ? "يسري من" : "Effective from"}
+                <input className="nv-od-input" type="date" value={draft.effectiveDate} onChange={(e) => setDraft((d) => ({ ...d, effectiveDate: e.target.value }))} />
+              </label>
+              <label className="nv-od-field nv-od-field--wide">{ar ? "السبب (يظهر في القرار)" : "Reason (shown on the decision)"}
+                <textarea className="nv-od-input" rows={2} value={draft.reason} onChange={(e) => setDraft((d) => ({ ...d, reason: e.target.value }))} />
+              </label>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {draft.ops.map((op, i) => (
+                <StepEditor key={i} ar={ar} op={op} index={i} seats={seats} stations={stations} onChange={(patch) => setOp(i, patch)} onRemove={draft.ops.length > 1 ? () => setDraft((d) => ({ ...d, ops: d.ops.filter((_, j) => j !== i) })) : null} newUnits={draft.ops.filter((o, j) => j < i && o.type === "createUnit")} />
+              ))}
+              <div style={{ paddingTop: 12 }}><button type="button" style={btnGhost()} onClick={() => setDraft((d) => ({ ...d, ops: [...d.ops, blankOp()] }))}>{ar ? "＋ خطوة" : "+ Step"}</button></div>
+            </div>
+            {liveGate && !liveGate.ok ? <GateLine gate={liveGate} ar={ar} /> : null}
+            {impact ? <ImpactBlock ar={ar} impact={impact} /> : null}
+            <GateLine gate={gate} ar={ar} />
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button type="button" style={btnPrimary(!liveGate?.ok)} disabled={!liveGate?.ok} onClick={() => saveDraft(true)}>{ar ? "أرسل للاعتماد" : "Submit for approval"}</button>
+              <button type="button" style={btnGhost()} onClick={() => saveDraft(false)}>{ar ? "احفظ مسودة" : "Save draft"}</button>
+              <button type="button" style={btnQuiet()} onClick={() => { setDraft(null); setGate(null); }}>{ar ? "إلغاء" : "Cancel"}</button>
+            </div>
+          </SlabBody>
+        ) : null}
 
-      {draft ? (
-        <div className="nv-od-paper" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div className="nv-od-form">
-            <label className="nv-od-field">{ar ? "العنوان" : "Title"}
-              <input className="nv-od-input" value={draft.title} onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))} />
-            </label>
-            <label className="nv-od-field">{ar ? "يسري من" : "Effective from"}
-              <input className="nv-od-input" type="date" value={draft.effectiveDate} onChange={(e) => setDraft((d) => ({ ...d, effectiveDate: e.target.value }))} />
-            </label>
-            <label className="nv-od-field nv-od-field--wide">{ar ? "السبب (يظهر في القرار)" : "Reason (shown on the decision)"}
-              <textarea className="nv-od-input" rows={2} value={draft.reason} onChange={(e) => setDraft((d) => ({ ...d, reason: e.target.value }))} />
-            </label>
-          </div>
-          <div className="nv-od-steps">
-            {draft.ops.map((op, i) => (
-              <StepEditor key={i} ar={ar} op={op} index={i} seats={seats} stations={stations} onChange={(patch) => setOp(i, patch)} onRemove={draft.ops.length > 1 ? () => setDraft((d) => ({ ...d, ops: d.ops.filter((_, j) => j !== i) })) : null} newUnits={draft.ops.filter((o, j) => j < i && o.type === "createUnit")} />
+        {!design.changes.length && !draft ? (
+          <EmptyInvite text={ar ? "لا تغييرات بعد. حين تنقل منصباً أو تنشئ وحدة أو تغيّر تبعيتها، اكتبها هنا بتاريخ سريان — ليبقى كل تغيير قراراً له أثر وتاريخ." : "No changes yet. When you move a seat, create a unit or change its parent, write it here with an effective date."} />
+        ) : null}
+
+        {groups.filter((g) => g.rows.length).map((g) => (
+          <div key={g.status} style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "9px 18px", background: "var(--nv-soft)", borderBottom: "1px solid var(--nv-line2, var(--nv-line))", display: "flex", alignItems: "baseline", gap: 8 }}>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? CHANGE_STATUS_LABELS[g.status].ar : CHANGE_STATUS_LABELS[g.status].en}</span>
+              <span dir="ltr" style={{ ...mono, fontSize: 11.5, color: "var(--nv-muted)" }}>{g.rows.length}</span>
+            </div>
+            {g.rows.map((c) => (
+              <ChangeCard
+                key={c.id}
+                ar={ar}
+                change={c}
+                data={data}
+                ctx={ctx}
+                today={today}
+                canEdit={canEdit}
+                canApprove={canApprove(c)}
+                note={notes[c.id] || ""}
+                onNote={(v) => setNotes((n) => ({ ...n, [c.id]: v }))}
+                gate={rowGate[c.id]}
+                onAct={(next) => act(c, next)}
+                onEdit={() => setDraft({ id: c.id, title: c.title, reason: c.reason, effectiveDate: c.effectiveDate, ops: (c.ops || []).map((op) => ({ ...op })) })}
+                onPrint={() => printDecision(c)}
+              />
             ))}
-            <div><button type="button" className="nv-od-btn" onClick={() => setDraft((d) => ({ ...d, ops: [...d.ops, blankOp()] }))}>{ar ? "＋ خطوة" : "+ Step"}</button></div>
           </div>
-          {liveGate && !liveGate.ok ? <GateLine gate={liveGate} ar={ar} /> : null}
-          {impact ? <ImpactBlock ar={ar} impact={impact} /> : null}
-          <GateLine gate={gate} ar={ar} />
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="nv-od-btn nv-od-btn--primary" disabled={!liveGate?.ok} onClick={() => saveDraft(true)}>{ar ? "أرسل للاعتماد" : "Submit for approval"}</button>
-            <button type="button" className="nv-od-btn" onClick={() => saveDraft(false)}>{ar ? "احفظ مسودة" : "Save draft"}</button>
-            <button type="button" className="nv-od-btn nv-od-btn--quiet" onClick={() => { setDraft(null); setGate(null); }}>{ar ? "إلغاء" : "Cancel"}</button>
-          </div>
-        </div>
-      ) : null}
+        ))}
+      </Slab>
 
-      {!design.changes.length && !draft ? (
-        <EmptyInvite text={ar ? "لا تغييرات بعد. حين تنقل منصباً أو تنشئ وحدة أو تغيّر تبعيتها، اكتبها هنا بتاريخ سريان — ليبقى كل تغيير قراراً له أثر وتاريخ." : "No changes yet. When you move a seat, create a unit or change its parent, write it here with an effective date."} />
-      ) : null}
-
-      {groups.filter((g) => g.rows.length).map((g) => (
-        <div key={g.status} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <p className="nv-od-sub">{ar ? CHANGE_STATUS_LABELS[g.status].ar : CHANGE_STATUS_LABELS[g.status].en} <span className="nv-od-num nv-od-muted">{g.rows.length}</span></p>
-          {g.rows.map((c) => (
-            <ChangeCard
-              key={c.id}
-              ar={ar}
-              change={c}
-              data={data}
-              ctx={ctx}
-              today={today}
-              canEdit={canEdit}
-              canApprove={canApprove(c)}
-              note={notes[c.id] || ""}
-              onNote={(v) => setNotes((n) => ({ ...n, [c.id]: v }))}
-              gate={rowGate[c.id]}
-              onAct={(next) => act(c, next)}
-              onEdit={() => setDraft({ id: c.id, title: c.title, reason: c.reason, effectiveDate: c.effectiveDate, ops: (c.ops || []).map((op) => ({ ...op })) })}
-              onPrint={() => printDecision(c)}
-            />
-          ))}
-        </div>
-      ))}
-
-      <div className="nv-od-paper" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <SectionHead
-          title={ar ? "الهيكل في تاريخ" : "The structure on a date"}
-          hint={ar
-            ? "تاريخ ماضٍ: تُعاد القرارات المنشورة بعده. تاريخ قادم: تُطبَّق التغييرات المعتمدة حتى ذلك اليوم — معاينة الخطة قبل سريانها."
-            : "A past day undoes decisions published after it. A future day applies approved changes up to that day — a preview of the plan."}
-        >
-          <input className="nv-od-input" type="date" value={asOf} onChange={(e) => setAsOf(e.target.value || today)} aria-label={ar ? "التاريخ" : "Date"} />
-          <button type="button" className="nv-od-btn" onClick={printAsOf}>{ar ? "طباعة / PDF" : "Print / PDF"}</button>
-        </SectionHead>
-        <UnitTree ar={ar} nodes={tree} />
-      </div>
-    </section>
+      <Slab
+        title={ar ? "الهيكل في تاريخ" : "The structure on a date"}
+        note={ar
+          ? "تاريخ ماضٍ: تُعاد القرارات المنشورة بعده. تاريخ قادم: تُطبَّق التغييرات المعتمدة حتى ذلك اليوم — معاينة الخطة قبل سريانها."
+          : "A past day undoes decisions published after it. A future day applies approved changes up to that day — a preview of the plan."}
+        trailing={(
+          <>
+            <input className="nv-od-input" type="date" value={asOf} onChange={(e) => setAsOf(e.target.value || today)} aria-label={ar ? "التاريخ" : "Date"} style={{ height: 32 }} />
+            <button type="button" style={btnGhost()} onClick={printAsOf}>{ar ? "طباعة / PDF" : "Print / PDF"}</button>
+          </>
+        )}
+      >
+        <SlabBody>
+          <UnitTree ar={ar} nodes={tree} />
+        </SlabBody>
+      </Slab>
+    </div>
   );
 }
 
@@ -240,14 +250,14 @@ function StepEditor({ ar, op, index, seats, stations, onChange, onRemove, newUni
     </label>
   );
   return (
-    <div className="nv-od-step">
-      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "12px 0", borderTop: index ? "1px solid var(--nv-line2, var(--nv-line))" : "none" }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap" }}>
         <label className="nv-od-field" style={{ flex: "1 1 220px" }}>{ar ? `الخطوة ${index + 1}` : `Step ${index + 1}`}
           <select className="nv-od-select" value={op.type} onChange={(e) => onChange({ type: e.target.value })}>
             {CHANGE_OPS.map((t) => <option key={t} value={t}>{ar ? CHANGE_OP_LABELS[t].ar : CHANGE_OP_LABELS[t].en}</option>)}
           </select>
         </label>
-        {onRemove ? <button type="button" className="nv-od-btn nv-od-btn--quiet" onClick={onRemove}>{ar ? "حذف الخطوة" : "Remove step"}</button> : null}
+        {onRemove ? <button type="button" style={btnQuiet({ padding: "8px 0" })} onClick={onRemove}>{ar ? "حذف الخطوة" : "Remove step"}</button> : null}
       </div>
       <div className="nv-od-form">
         {op.type === "moveSeat" ? (
@@ -312,24 +322,41 @@ function StepEditor({ ar, op, index, seats, stations, onChange, onRemove, newUni
   );
 }
 
+function art58Hint(m, ar) {
+  return {
+    view: "manager",
+    right: ar ? m.ar : m.en,
+    ifNot: m.residence === "change"
+      ? (ar ? "لا يُنشر القرار حتى تُرفق موافقته الكتابية — المنصة توقف النشر." : "The decision does not publish until the written consent is attached — the platform holds it.")
+      : m.residence === "necessity"
+        ? (ar ? "ما زاد على 30 يوماً في السنة يحتاج موافقته الكتابية." : "Anything beyond 30 days a year needs the worker's written consent.")
+        : (ar ? "إن تبيّن أن النقل يغيّر محل الإقامة فهو بموافقته الكتابية فقط." : "If the move turns out to change residence, it needs written consent."),
+    law: { article: "58", label: ar ? "المادة 58" : "Art. 58" },
+  };
+}
+
 function ImpactBlock({ ar, impact }) {
   const none = !impact.managerChanges.length && !impact.approvalChanges.length && !impact.budget.length && !impact.ministry.length;
   return (
-    <div style={{ borderTop: "1px solid var(--nv-line)", paddingTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-      <p className="nv-od-sub">{ar ? "أثر التغيير" : "Impact"}</p>
-      {none ? <p className="nv-od-note">{ar ? "لا يتغير مدير أحد ولا مسار اعتماده." : "Nobody changes manager or approval path."}</p> : null}
-      <ul className="nv-od-list">
+    <div style={{ borderTop: "1px solid var(--nv-line2, var(--nv-line))", paddingTop: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+      <SubHead>{ar ? "أثر التغيير" : "Impact"}</SubHead>
+      {none ? <Note>{ar ? "لا يتغير مدير أحد ولا مسار اعتماده." : "Nobody changes manager or approval path."}</Note> : null}
+      <ul className="nv-od-list nv-od-list--inset">
         {impact.managerChanges.map((c) => (
           <li key={`m-${c.employeeId}`}><span className="nv-od-dot" aria-hidden /><span>{ar ? `${c.name}: مديره ${c.fromName || "—"} ← ${c.toName || "—"}` : `${c.name}: manager ${c.fromName || "—"} → ${c.toName || "—"}`}</span></li>
         ))}
         {impact.approvalChanges.map((c) => (
-          <li key={`a-${c.kind}-${c.employeeId}`}><span className="nv-od-dot" data-tone="warn" aria-hidden /><span>{ar ? `${c.name} — ${DOA_KIND_LABELS[c.kind]?.ar}: ${c.fromName || "مدير الوحدة"} ← ${c.toName || "مدير الوحدة"}` : `${c.name} — ${DOA_KIND_LABELS[c.kind]?.en}: ${c.fromName || "unit manager"} → ${c.toName || "unit manager"}`}</span></li>
+          <li key={`a-${c.kind}-${c.employeeId}`}><span className="nv-od-dot" aria-hidden /><span>{ar ? `${c.name} — ${DOA_KIND_LABELS[c.kind]?.ar}: ${c.fromName || "مدير الوحدة"} ← ${c.toName || "مدير الوحدة"}` : `${c.name} — ${DOA_KIND_LABELS[c.kind]?.en}: ${c.fromName || "unit manager"} → ${c.toName || "unit manager"}`}</span></li>
         ))}
         {impact.budget.map((b) => (
-          <li key={`b-${b.stationId}`}><span className="nv-od-dot" data-tone={b.over ? "bad" : undefined} aria-hidden /><span>{ar ? `${b.name}: ${b.before} ← ${b.after}${b.budget != null ? ` من ميزانية ${b.budget}` : ""}` : `${b.name}: ${b.before} → ${b.after}${b.budget != null ? ` of ${b.budget}` : ""}`}</span>{b.over ? <ToneChip tone="bad">{ar ? "فوق الميزانية" : "Over budget"}</ToneChip> : null}</li>
+          <li key={`b-${b.stationId}`}><span className="nv-od-dot" aria-hidden /><span style={{ flex: "1 1 200px" }}>{ar ? `${b.name}: ${b.before} ← ${b.after}${b.budget != null ? ` من ميزانية ${b.budget}` : ""}` : `${b.name}: ${b.before} → ${b.after}${b.budget != null ? ` of ${b.budget}` : ""}`}</span>{b.over ? <ToneChip tone="bad">{ar ? "فوق الميزانية" : "Over budget"}</ToneChip> : null}</li>
         ))}
         {impact.ministry.map((m) => (
-          <li key={`l-${m.employeeId}`}><span className="nv-od-dot" data-tone="warn" aria-hidden /><span>{ar ? m.ar : m.en}</span></li>
+          <li key={`l-${m.employeeId}`} data-ministry-row="org-58">
+            <span className="nv-od-dot" aria-hidden />
+            <span style={{ flex: "1 1 220px", minWidth: 0 }}>{ar ? m.ar : m.en}</span>
+            <RightHint hint={art58Hint(m, ar)} ar={ar} />
+          </li>
         ))}
       </ul>
     </div>
@@ -343,30 +370,34 @@ function ChangeCard({ ar, change: c, data, ctx, today, canEdit, canApprove, note
   const due = status === "approved" && String(c.effectiveDate || "") <= today;
   const fullCtx = { ...ctx, newUnitId: (c.ops || []).find((o) => o.type === "createUnit")?.unitId, newUnitName: (c.ops || []).find((o) => o.type === "createUnit")?.name };
   return (
-    <div className="nv-od-paper" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} style={{ all: "unset", cursor: "pointer", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-        <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <b style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{c.title}</b>
-          <span className="nv-od-muted" style={{ fontSize: 12 }}>
-            {ar ? `يسري ${fmtDay(c.effectiveDate, ar)} · أعدّه ${c.createdBy || "—"}` : `Effective ${fmtDay(c.effectiveDate, ar)} · by ${c.createdBy || "—"}`}
-            {c.approvedBy ? (ar ? ` · اعتمده ${c.approvedBy}` : ` · approved by ${c.approvedBy}`) : ""}
+    <div data-change-status={status} style={{ display: "flex", flexDirection: "column", borderBottom: "1px solid var(--nv-line2, var(--nv-line))" }}>
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} style={{ fontFamily: "inherit", textAlign: "start", background: "none", border: "none", cursor: "pointer", padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", color: "inherit" }}>
+        <span style={{ display: "flex", gap: 10, alignItems: "flex-start", minWidth: 0, flex: "1 1 260px" }}>
+          <span aria-hidden style={{ fontSize: 11, color: "var(--nv-muted)", marginTop: 4, display: "inline-block", transform: open ? "rotate(90deg)" : (ar ? "scaleX(-1)" : "none") }}>▸</span>
+          <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+            <b style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{c.title}</b>
+            <span style={{ fontSize: 12, color: "var(--nv-muted)" }}>
+              {ar ? `يسري ${fmtDay(c.effectiveDate, ar)} · أعدّه ${c.createdBy || "—"}` : `Effective ${fmtDay(c.effectiveDate, ar)} · by ${c.createdBy || "—"}`}
+              {c.approvedBy ? (ar ? ` · اعتمده ${c.approvedBy}` : ` · approved by ${c.approvedBy}`) : ""}
+            </span>
           </span>
         </span>
         {status === "published" && c.decision?.seal ? <span className="nv-od-code" dir="ltr">{c.decision.seal}</span> : null}
+        {c.publishBlocked ? <ToneChip tone="bad">{ar ? "النشر موقوف" : "Publish held"}</ToneChip> : null}
       </button>
       {open ? (
-        <>
-          {c.reason ? <p className="nv-od-note">{c.reason}</p> : null}
-          <ol style={{ margin: 0, paddingInlineStart: 20, fontSize: 12.5, lineHeight: 1.9 }}>
+        <div style={{ padding: "0 18px 14px", paddingInlineStart: 39, display: "flex", flexDirection: "column", gap: 10 }}>
+          {c.reason ? <Note>{c.reason}</Note> : null}
+          <ol style={{ margin: 0, paddingInlineStart: 20, fontSize: 12.5, lineHeight: 1.9, color: "var(--nv-ink)" }}>
             {(c.ops || []).map((op, i) => <li key={i}>{opLine(op, fullCtx, ar)}</li>)}
           </ol>
           {impact ? <ImpactBlock ar={ar} impact={impact} /> : null}
           {c.publishBlocked ? <GateLine gate={{ ok: false, ...c.publishBlocked }} ar={ar} /> : null}
-          {status === "rejected" && c.rejectReason ? <p className="nv-od-note">{ar ? `سبب الرفض: ${c.rejectReason}` : `Rejected: ${c.rejectReason}`}</p> : null}
+          {status === "rejected" && c.rejectReason ? <Note>{ar ? `سبب الرفض: ${c.rejectReason}` : `Rejected: ${c.rejectReason}`}</Note> : null}
           {status === "published" ? (
-            <div className="nv-od-kv" style={{ flexWrap: "wrap" }}>
-              <span>{ar ? "بصمة القرار" : "Decision hash"}</span>
-              <span className="nv-od-code" dir="ltr">{c.decision?.hash || "—"}</span>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12.5 }}>
+              <span style={{ color: "var(--nv-muted)" }}>{ar ? "بصمة القرار" : "Decision hash"}</span>
+              <span className="nv-od-code" dir="ltr" style={{ overflowWrap: "anywhere", whiteSpace: "normal" }}>{c.decision?.hash || "—"}</span>
             </div>
           ) : null}
           <GateLine gate={gate} ar={ar} />
@@ -374,36 +405,36 @@ function ChangeCard({ ar, change: c, data, ctx, today, canEdit, canApprove, note
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
               {status === "draft" || status === "rejected" ? (
                 <>
-                  <button type="button" className="nv-od-btn" onClick={onEdit}>{ar ? "تعديل" : "Edit"}</button>
-                  {status === "draft" ? <button type="button" className="nv-od-btn nv-od-btn--primary" onClick={() => onAct("pending")}>{ar ? "أرسل للاعتماد" : "Submit"}</button> : <button type="button" className="nv-od-btn" onClick={() => onAct("draft")}>{ar ? "أعده مسودة" : "Back to draft"}</button>}
+                  <button type="button" style={btnGhost()} onClick={onEdit}>{ar ? "تعديل" : "Edit"}</button>
+                  {status === "draft" ? <button type="button" style={btnPrimary()} onClick={() => onAct("pending")}>{ar ? "أرسل للاعتماد" : "Submit"}</button> : <button type="button" style={btnGhost()} onClick={() => onAct("draft")}>{ar ? "أعده مسودة" : "Back to draft"}</button>}
                 </>
               ) : null}
               {status === "pending" ? (
                 canApprove ? (
                   <>
-                    <button type="button" className="nv-od-btn nv-od-btn--primary" onClick={() => onAct("approved")}>{ar ? "اعتمد" : "Approve"}</button>
-                    <input className="nv-od-input" style={{ flex: "1 1 200px" }} value={note} onChange={(e) => onNote(e.target.value)} placeholder={ar ? "سبب الرفض (مطلوب للرفض)" : "Rejection reason (required)"} aria-label={ar ? "سبب الرفض" : "Rejection reason"} />
-                    <button type="button" className="nv-od-btn" onClick={() => onAct("rejected")}>{ar ? "ارفض" : "Reject"}</button>
+                    <button type="button" style={btnPrimary()} onClick={() => onAct("approved")}>{ar ? "اعتمد" : "Approve"}</button>
+                    <input className="nv-od-input" style={{ flex: "1 1 200px", height: 32 }} value={note} onChange={(e) => onNote(e.target.value)} placeholder={ar ? "سبب الرفض (مطلوب للرفض)" : "Rejection reason (required)"} aria-label={ar ? "سبب الرفض" : "Rejection reason"} />
+                    <button type="button" style={btnGhost()} onClick={() => onAct("rejected")}>{ar ? "ارفض" : "Reject"}</button>
                   </>
-                ) : <p className="nv-od-note">{ar ? "فصل المهام: يعتمده مسؤول آخر أو المالك." : "Segregation of duties: another HR member or the owner approves."}</p>
+                ) : <Note>{ar ? "فصل المهام: يعتمده مسؤول آخر أو المالك." : "Segregation of duties: another HR member or the owner approves."}</Note>
               ) : null}
               {status === "approved" ? (
                 due
-                  ? <button type="button" className="nv-od-btn nv-od-btn--primary" onClick={() => onAct("published")}>{ar ? "انشر الآن" : "Publish now"}</button>
-                  : <p className="nv-od-note">{ar ? `يُنشر تلقائياً في ${fmtDay(c.effectiveDate, ar)}.` : `Publishes itself on ${fmtDay(c.effectiveDate, ar)}.`}</p>
+                  ? <button type="button" style={btnPrimary()} onClick={() => onAct("published")}>{ar ? "انشر الآن" : "Publish now"}</button>
+                  : <Note>{ar ? `يُنشر تلقائياً في ${fmtDay(c.effectiveDate, ar)}.` : `Publishes itself on ${fmtDay(c.effectiveDate, ar)}.`}</Note>
               ) : null}
-              {["draft", "pending", "approved"].includes(status) ? <button type="button" className="nv-od-btn nv-od-btn--quiet" onClick={() => onAct("cancelled")}>{ar ? "إلغاء التغيير" : "Cancel change"}</button> : null}
-              {status === "published" ? <button type="button" className="nv-od-btn" onClick={onPrint}>{ar ? "طباعة القرار" : "Print decision"}</button> : null}
+              {["draft", "pending", "approved"].includes(status) ? <button type="button" style={btnQuiet()} onClick={() => onAct("cancelled")}>{ar ? "إلغاء التغيير" : "Cancel change"}</button> : null}
+              {status === "published" ? <button type="button" style={btnGhost()} onClick={onPrint}>{ar ? "طباعة القرار" : "Print decision"}</button> : null}
             </div>
           ) : null}
-        </>
+        </div>
       ) : null}
     </div>
   );
 }
 
 function UnitTree({ ar, nodes }) {
-  if (!nodes.length) return <p className="nv-od-note">{ar ? "لا وحدات في هذا التاريخ." : "No units on this date."}</p>;
+  if (!nodes.length) return <Note>{ar ? "لا وحدات في هذا التاريخ." : "No units on this date."}</Note>;
   return (
     <ul className="nv-od-tree">
       {nodes.map((n) => (

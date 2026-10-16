@@ -11,7 +11,7 @@ import {
 } from "@/lib/orgDesign";
 import { removeDoaRow, upsertDoaRow } from "@/lib/orgDesignStore";
 import { branchRequestManagers } from "@/lib/dutyScope";
-import { EmptyInvite, GateLine, SectionHead, seatOptionLabel } from "./orgDesignUi";
+import { EmptyInvite, GateLine, Note, Slab, SlabBody, SubHead, btnGhost, btnPrimary, btnQuiet, seatOptionLabel } from "./orgDesignUi";
 
 const VIA = {
   holder: { ar: "شاغل المنصب", en: "holder" },
@@ -71,25 +71,24 @@ export default function OrgDoaBoard({ ar, data, actor, companyId, canEdit }) {
   }, [data, sim.employeeId, simResult, people]);
 
   return (
-    <section className="nv-od" aria-label={ar ? "مصفوفة الصلاحيات" : "Delegation of authority"}>
-      <SectionHead
+    <div className="nv-od">
+      <Slab
+        label={ar ? "مصفوفة الصلاحيات" : "Delegation of authority"}
         title={ar ? "مصفوفة تفويض الصلاحيات" : "Delegation of authority"}
-        hint={ar
+        note={ar
           ? "أي منصب يقرر أي طلب، حتى أي حد، وإلى أين يُصعَّد. الصلاحية للمنصب لا للشخص: يقرر شاغله، وإن شغر فالمكلَّف، ثم النائب. نوع بلا سطر يبقى على مسار مدير الوحدة الحالي. الشكاوى وصوت الموظف لا تدخل هذه المصفوفة أبداً."
           : "Which seat decides which request, up to what limit, and where it escalates. Authority follows the seat: its holder, else the acting cover, else the deputy. A type with no row keeps the unit-manager path. Complaints and employee voice never enter this matrix."}
+        trailing={canEdit && !form ? <button type="button" style={btnPrimary()} onClick={() => { setForm({ ...blank }); setGate(null); }}>{ar ? "＋ سطر صلاحية" : "+ Authority row"}</button> : null}
       >
-        {canEdit && !form ? <button type="button" className="nv-od-btn nv-od-btn--primary" onClick={() => { setForm({ ...blank }); setGate(null); }}>{ar ? "＋ سطر صلاحية" : "+ Authority row"}</button> : null}
-      </SectionHead>
-
       {!rows.length && !form ? (
         <EmptyInvite
           text={ar ? "لا أسطر بعد — كل الطلبات تمشي على مدير الوحدة في الهيكل. أضف سطراً حين تريد أن يعتمد منصبٌ محدد نوعاً من القرارات حتى حدٍّ معيّن." : "No rows yet — every request follows the unit manager. Add a row when a specific seat should decide a type up to a limit."}
-          action={canEdit ? <button type="button" className="nv-od-btn" onClick={() => setForm({ ...blank })}>{ar ? "أضف أول سطر" : "Add the first row"}</button> : null}
+          action={canEdit ? <button type="button" style={btnGhost()} onClick={() => setForm({ ...blank })}>{ar ? "أضف أول سطر" : "Add the first row"}</button> : null}
         />
       ) : null}
 
       {rows.length ? (
-        <div className="nv-od-paper nv-od-paper--flush">
+        <div>
           <table className="nv-od-table">
             <thead>
               <tr>
@@ -114,9 +113,9 @@ export default function OrgDoaBoard({ ar, data, actor, companyId, canEdit }) {
                   <td data-label={ar ? "يُصعَّد إلى" : "Escalates to"}>{r.escalateToSeatId ? seatFace(r.escalateToSeatId) : <span className="nv-od-muted">{ar ? "المسار الحالي" : "Default path"}</span>}</td>
                   {canEdit ? (
                     <td>
-                      <span style={{ display: "inline-flex", gap: 4 }}>
-                        <button type="button" className="nv-od-btn nv-od-btn--quiet" onClick={() => { setForm({ ...blank, ...r, unitId: r.unitId || "", limit: r.limit ?? "", escalateToSeatId: r.escalateToSeatId || "", note: r.note || "" }); setGate(null); }}>{ar ? "تعديل" : "Edit"}</button>
-                        <button type="button" className="nv-od-btn nv-od-btn--quiet" onClick={() => setGate(removeDoaRow(companyId, actor, r.id))}>{ar ? "حذف" : "Remove"}</button>
+                      <span style={{ display: "inline-flex", gap: 12 }}>
+                        <button type="button" style={btnQuiet()} onClick={() => { setForm({ ...blank, ...r, unitId: r.unitId || "", limit: r.limit ?? "", escalateToSeatId: r.escalateToSeatId || "", note: r.note || "" }); setGate(null); }}>{ar ? "تعديل" : "Edit"}</button>
+                        <button type="button" style={btnQuiet({ color: "var(--nv-bad-ink)" })} onClick={() => setGate(removeDoaRow(companyId, actor, r.id))}>{ar ? "حذف" : "Remove"}</button>
                       </span>
                     </td>
                   ) : null}
@@ -128,8 +127,8 @@ export default function OrgDoaBoard({ ar, data, actor, companyId, canEdit }) {
       ) : null}
 
       {form ? (
-        <div className="nv-od-paper" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <p className="nv-od-sub">{form.id ? (ar ? "تعديل سطر" : "Edit row") : (ar ? "سطر جديد" : "New row")}</p>
+        <SlabBody style={{ borderTop: rows.length ? "1px solid var(--nv-line2, var(--nv-line))" : "none" }}>
+          <SubHead>{form.id ? (ar ? "تعديل سطر" : "Edit row") : (ar ? "سطر جديد" : "New row")}</SubHead>
           <div className="nv-od-form">
             <label className="nv-od-field">{ar ? "نوع القرار" : "Decision type"}
               <select className="nv-od-select" value={form.kind} onChange={(e) => setForm((f) => ({ ...f, kind: e.target.value }))}>
@@ -164,16 +163,19 @@ export default function OrgDoaBoard({ ar, data, actor, companyId, canEdit }) {
             </label>
           </div>
           <GateLine gate={gate} ar={ar} />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button type="button" className="nv-od-btn nv-od-btn--primary" onClick={save}>{ar ? "حفظ السطر" : "Save row"}</button>
-            <button type="button" className="nv-od-btn" onClick={() => { setForm(null); setGate(null); }}>{ar ? "إلغاء" : "Cancel"}</button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" style={btnPrimary()} onClick={save}>{ar ? "حفظ السطر" : "Save row"}</button>
+            <button type="button" style={btnGhost()} onClick={() => { setForm(null); setGate(null); }}>{ar ? "إلغاء" : "Cancel"}</button>
           </div>
-        </div>
-      ) : <GateLine gate={gate} ar={ar} />}
+        </SlabBody>
+      ) : (gate && !gate.ok ? <div style={{ padding: "10px 18px" }}><GateLine gate={gate} ar={ar} /></div> : null)}
+      </Slab>
 
-      <div className="nv-od-paper" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <p className="nv-od-sub">{ar ? "جرّب المسار" : "Try the path"}</p>
-        <p className="nv-od-note">{ar ? "اختر موظفاً ونوع قرار — ترى من يقرر اليوم ولماذا، قبل أن يصل أي طلب." : "Pick a person and a decision type — see who decides today and why, before any request arrives."}</p>
+      <Slab
+        body
+        title={ar ? "جرّب المسار" : "Try the path"}
+        note={ar ? "اختر موظفاً ونوع قرار — ترى من يقرر اليوم ولماذا، قبل أن يصل أي طلب." : "Pick a person and a decision type — see who decides today and why, before any request arrives."}
+      >
         <div className="nv-od-form">
           <label className="nv-od-field">{ar ? "الموظف" : "Person"}
             <select className="nv-od-select" value={sim.employeeId} onChange={(e) => setSim((s) => ({ ...s, employeeId: e.target.value }))}>
@@ -203,13 +205,13 @@ export default function OrgDoaBoard({ ar, data, actor, companyId, canEdit }) {
               </React.Fragment>
             ))}
             {simResult.source === "doa" ? (
-              <strong style={{ color: "var(--nv-ok-ink)" }}>{ar ? `يقرر: ${simResult.approvers[0].name}` : `Decides: ${simResult.approvers[0].name}`}</strong>
+              <strong style={{ color: "var(--nv-ink)" }}>{ar ? `يقرر: ${simResult.approvers[0].name}` : `Decides: ${simResult.approvers[0].name}`}</strong>
             ) : (
               <span>{ar ? `المسار الحالي — مدير الوحدة: ${simDefault.join("، ") || "رأس المنشأة"}` : `Default path — unit manager: ${simDefault.join(", ") || "company head"}`}</span>
             )}
           </div>
-        ) : null}
-      </div>
-    </section>
+        ) : <Note>{ar ? "المسار يظهر هنا حين تختار الموظف." : "The path shows here once you pick a person."}</Note>}
+      </Slab>
+    </div>
   );
 }

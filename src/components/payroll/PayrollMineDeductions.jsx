@@ -7,6 +7,7 @@ import { registrationForPayroll } from "@/lib/facts";
 import { deductionLines } from "@/lib/payrollDeductions";
 import DeductionDisputeForm from "@/components/payroll/DeductionDisputeForm";
 import { BORDER, CARD, MUTED, NAVY, ui } from "@/lib/platformStyles";
+import NvIcon from "@/components/shared/NvIcon";
 
 function sarBefore(n, minus) {
   const abs = Math.abs(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -138,7 +139,7 @@ export default function PayrollMineDeductions({ ar, item, employee, onDispute, o
   const disputable = rows.filter((row) => row.canDispute);
   const allOn = disputable.length > 0 && disputable.every((row) => picked.has(row.id));
   const selected = rows.filter((row) => picked.has(row.id) && row.canDispute);
-  // «⚖ حقك» per line — computed from this month's line (cap, wage, notice dates).
+  // «حقك» per line — computed from this month's line (cap, wage, notice dates).
   const hintCtx = item ? { view: "employee", ar, name: employee?.name || "", employeeId: item.employeeId, wage: contractWage(item), total: Number(item.deductions) || 0, cap: article93MaxDeduction(item) } : null;
   const hintOf = (row) => {
     if (!hintCtx) return null;
@@ -158,7 +159,7 @@ export default function PayrollMineDeductions({ ar, item, employee, onDispute, o
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
-        {ar ? "لكل بند سببه وسنده، و«⚖ حقك» بجانبه — ولك الاعتراض عليه باسمك." : "Each line names its reason and instrument, with «⚖» beside it — you may object in your name."}
+        {ar ? <>لكل بند سببه وسنده، و«<span style={{ color: "var(--nv-ok-ink)" }}><NvIcon name="scale" size={12} /></span> حقك» بجانبه — ولك الاعتراض عليه باسمك.</> : <>Each line names its reason and instrument, with «<span style={{ color: "var(--nv-ok-ink)" }}><NvIcon name="scale" size={12} /></span>» beside it — you may object in your name.</>}
       </p>
 
       {!item || rows.length === 0 ? (

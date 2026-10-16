@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 import { Plus } from "lucide-react";
 import { CHECKLIST_GROUPS, checklistCompliance } from "@/lib/safetyStandards";
+import NvIcon from "@/components/shared/NvIcon";
 
 function ChecklistRow({ id, label, result, canEdit, onSet, L }) {
-  return <div className="rounded-lg border border-border p-2.5 space-y-2"><p className="text-xs font-medium">{label}</p><div className="flex gap-1.5">{[["yes", `✓ ${L("نعم", "Yes")}`, "text-emerald-700"], ["no", `✕ ${L("لا", "No")}`, "text-red-700"], ["note", `⚠ ${L("ملاحظة", "Note")}`, "text-amber-700"]].map(([value, icon, tone]) => <button key={value} disabled={!canEdit} onClick={() => onSet(id, { ...result, status: value })} className={`rounded-md border px-2 py-1 text-xs ${result?.status === value ? `bg-muted ${tone} border-accent` : "border-border"}`}>{icon}</button>)}</div><input disabled={!canEdit} value={result?.comment || ""} onChange={(e) => onSet(id, { ...result, comment: e.target.value })} placeholder={L("تعليق اختياري", "Optional comment")} className="w-full rounded-md border border-input px-2 py-1 text-[11px]" /></div>;
+  return <div className="rounded-lg border border-border p-2.5 space-y-2"><p className="text-xs font-medium">{label}</p><div className="flex gap-1.5">{[["yes", <><NvIcon name="check" size={12} strokeWidth={2} /> {L("نعم", "Yes")}</>, "text-emerald-700"], ["no", <><NvIcon name="cross" size={12} strokeWidth={2} /> {L("لا", "No")}</>, "text-red-700"], ["note", <><NvIcon name="warning" size={12} /> {L("ملاحظة", "Note")}</>, "text-amber-700"]].map(([value, icon, tone]) => <button key={value} disabled={!canEdit} onClick={() => onSet(id, { ...result, status: value })} className={`rounded-md border px-2 py-1 text-xs ${result?.status === value ? `bg-muted ${tone} border-accent` : "border-border"}`}>{icon}</button>)}</div><input disabled={!canEdit} value={result?.comment || ""} onChange={(e) => onSet(id, { ...result, comment: e.target.value })} placeholder={L("تعليق اختياري", "Optional comment")} className="w-full rounded-md border border-input px-2 py-1 text-[11px]" /></div>;
 }
 
 export default function SafetyChecklistTab({ results = {}, canEdit, lang, onChange }) {

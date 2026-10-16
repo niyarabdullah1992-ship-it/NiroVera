@@ -119,6 +119,7 @@ import {
   SUPPORTING_FILE_ACCEPT,
   SUPPORTING_FILE_MAX_BYTES,
 } from "@/lib/requestWorkspace";
+import NvIcon from "@/components/shared/NvIcon";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { annualAdvanceCap, annualCarryAlerts, iddahSpanFromEvent, maternityFollowOnSpan, therapyLeaveEligibility, unpaidSuspensionPlan } from "@/lib/leaveTypes";
 import { citeLeaveType, isRamadanHoursSubject, religionOnFile } from "@/lib/laborRules";
@@ -473,7 +474,7 @@ export default function RequestsWorkspace({
   const [kind, setKind] = useState(initialKind);
   // «طلب موافقة خطية» is a tile beside the others, not a second form with its own picker.
   const [consentPicked, setConsentPicked] = useState(false);
-  // «⚖ حقك» opens a rights request with its kind preselected (grievance, objection…).
+  // «حقك» opens a rights request with its kind preselected (grievance, objection…).
   const [rightsKind, setRightsKind] = useState(initialRightsKind || "");
   const [refTab, setRefTab] = useState("law");
   // A deep link (?kind=permission …) while already on طلباتي switches the form too.
@@ -2073,7 +2074,7 @@ export default function RequestsWorkspace({
     if (hit) pickPending(hit);
   }, [mode]);
 
-  // The one action a «⚖ حقك / التزامك» hint offers, run in place.
+  // The one action a «حقك / التزامك» hint offers, run in place.
   const runHintAction = (row, action) => {
     if (!action) return;
     if (action.kind === "rights" && [GRIEVANCE_TYPE, DAMAGE_OBJECTION_TYPE, ABUSE_COMPLAINT_KIND].includes(action.rightsKind)) {
@@ -2643,7 +2644,7 @@ export default function RequestsWorkspace({
                     cursor: docMeta.salary ? "pointer" : "default",
                   }}
                 >
-                  {docMeta.salary ? (showSalary ? (ar ? "✓ يظهر الراتب — أخفِه" : "✓ Salary shown — hide it") : (ar ? "الراتب مخفي — أظهره" : "Salary hidden — show it")) : (ar ? "هذا النوع بلا راتب" : "This type has no salary")}
+                  {docMeta.salary ? (showSalary ? <><NvIcon name="check" size={12} /> {ar ? "يظهر الراتب — أخفِه" : "Salary shown — hide it"}</> : (ar ? "الراتب مخفي — أظهره" : "Salary hidden — show it")) : (ar ? "هذا النوع بلا راتب" : "This type has no salary")}
                 </button>
               </div>
             </div>
@@ -2707,7 +2708,7 @@ export default function RequestsWorkspace({
               </div>
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={ar ? "سبب التكليف — إلزامي" : "Assignment reason — required"} style={fieldStyle()} />
               <button type="button" onClick={() => { setOt106((v) => !v); if (ot106) { setOtGround(""); setOt106Ack(false); } }} style={chip(ot106)}>
-                {ot106 ? (ar ? "✓ تكليف إجباري — المادة 106" : "✓ Mandatory — Article 106") : (ar ? "وسم تكليف إجباري (المادة 106)" : "Mark as mandatory (Article 106)")}
+                {ot106 ? <><NvIcon name="check" size={12} /> {ar ? "تكليف إجباري — المادة 106" : "Mandatory — Article 106"}</> : (ar ? "وسم تكليف إجباري (المادة 106)" : "Mark as mandatory (Article 106)")}
               </button>
               {ot106 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 11px", border: "1px solid var(--nv-warn-line)", background: "var(--nv-warn-soft)" }}>
@@ -3322,7 +3323,7 @@ export default function RequestsWorkspace({
                   border: selfOnly ? "none" : `1px solid ${g.ok ? "var(--nv-ok-line)" : g.warn ? "var(--nv-warn-line)" : "var(--nv-bad-line)"}`,
                   background: g.ok ? "var(--nv-ok-soft, #E6F2EA)" : "var(--nv-warn-soft, #FBF3E1)",
                 }}>
-                  {g.ok ? "✓" : "!"}
+                  {g.ok ? <NvIcon name="check" size={selfOnly ? 12 : 10} strokeWidth={2} inline={false} /> : "!"}
                 </span>
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
                   {g.text}{!g.ok && g.warn ? (ar ? " (تنبيه لا يمنع الإرسال — القرار للمدير)" : " (a warning, not a block — the manager decides)") : ""}
@@ -3603,25 +3604,33 @@ export default function RequestsWorkspace({
               const ackOn = !!nightAck[key];
               const stateLabel = nightStage === "active"
                 ? (ar ? "سارية — حتى يختار الموظف" : "In force — until the worker chooses")
-                : nightStage === "agreed_month" ? (ar ? "✓ موافقة محفوظة — يحق السحب" : "Consent on file — may withdraw")
-                  : nightStage === "reduced_hours" ? (ar ? "✓ قُلّصت الساعات" : "Hours reduced")
-                  : nightStage === "refused" ? (ar ? "✕ رُفض — دُوِّرت الفترة" : "Refused — rotated")
-                    : nightStage === "withdrawn" ? (ar ? "✕ سُحبت الموافقة" : "Consent withdrawn")
+                : nightStage === "agreed_month" ? (ar ? "موافقة محفوظة — يحق السحب" : "Consent on file — may withdraw")
+                  : nightStage === "reduced_hours" ? (ar ? "قُلّصت الساعات" : "Hours reduced")
+                  : nightStage === "refused" ? (ar ? "رُفض — دُوِّرت الفترة" : "Refused — rotated")
+                    : nightStage === "withdrawn" ? (ar ? "سُحبت الموافقة" : "Consent withdrawn")
                     : nightStage === "lapsed" ? (ar ? "انتهت بتغيير الدوام" : "Lapsed — roster changed")
-                      : st === "pending_employee" ? (ar ? "⏳ بانتظار اختيار الموظف" : "Awaiting the worker")
-                        : st === "pending_manager" ? (ar ? "⏳ بانتظار قرار المسؤول" : "Awaiting the manager")
+                      : st === "pending_employee" ? (ar ? "بانتظار اختيار الموظف" : "Awaiting the worker")
+                        : st === "pending_manager" ? (ar ? "بانتظار قرار المسؤول" : "Awaiting the manager")
                       : st === "not_needed" ? (row.holidayNotNeeded || (ar ? "لا حاجة — العيد يُطبَّق تلقائياً" : "Not needed — Eid applies automatically"))
-                      : st === "pending" ? (ar ? "⏳ بانتظار قرار" : "Awaiting a decision")
+                      : st === "pending" ? (ar ? "بانتظار قرار" : "Awaiting a decision")
                         : st === "revise" ? (ar ? "↩ يحتاج تعديلاً" : "Needs a change")
-                          : st === "rejected" ? (ar ? "✕ مرفوض" : "Rejected")
-                            : st === "refused_by_employee" ? (ar ? "✕ رفضه الموظف" : "Refused by the worker")
-                            : st === "withdrawn" ? (ar ? "✕ مسحوب" : "Withdrawn")
-                              : (row.recordedBy ? (ar ? `✓ سجّلها ${row.recordedBy}` : `Recorded by ${row.recordedBy}`) : (ar ? "✓ معتمد" : "Approved"));
+                          : st === "rejected" ? (ar ? "مرفوض" : "Rejected")
+                            : st === "refused_by_employee" ? (ar ? "رفضه الموظف" : "Refused by the worker")
+                            : st === "withdrawn" ? (ar ? "مسحوب" : "Withdrawn")
+                              : (row.recordedBy ? (ar ? `سجّلها ${row.recordedBy}` : `Recorded by ${row.recordedBy}`) : (ar ? "معتمد" : "Approved"));
+              // The mark beside the words — same branches as stateLabel, drawn as a platform glyph.
+              const stateIcon = nightStage === "agreed_month" || nightStage === "reduced_hours" ? "check"
+                : nightStage === "refused" || nightStage === "withdrawn" ? "cross"
+                  : nightStage === "active" || nightStage === "lapsed" ? null
+                    : st === "pending_employee" || st === "pending_manager" || st === "pending" ? "pending"
+                      : st === "not_needed" || st === "revise" ? null
+                        : st === "rejected" || st === "refused_by_employee" || st === "withdrawn" ? "cross"
+                          : "check";
               const rangeText = row.family === "leave"
                 ? `${formatArDate(row.startDate, lang)}${row.endDate ? ` → ${formatArDate(row.endDate, lang)}` : ""}`
                 : (row.date ? formatArDate(row.date, lang) : (row.startDate ? formatArDate(row.startDate, lang) : "—"));
               const dotColor = st === "withdrawn" ? "var(--nv-mute-fill, #C7CCD6)" : skin.edge;
-              // One «⚖ حقك» (ملفي) / «⚖ التزامك» (إدارة) per card — the right or duty for THIS record.
+              // One «حقك» (ملفي) / «التزامك» (إدارة) per card — the right or duty for THIS record.
               const citeNode = (
                 <RightHint
                   hint={rightHintFor(row, { view: mode === "manage" ? "manager" : "employee", today, ar, isHoliday: hintIsHoliday, data })}
@@ -3631,7 +3640,7 @@ export default function RequestsWorkspace({
                 />
               );
               const statusPill = (
-                <span style={{ display: "inline-flex", alignItems: "center", minHeight: 22, padding: "2px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, color: skin.color, background: skin.bg, border: `1px solid ${skin.border}` }}>{stateLabel}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, minHeight: 22, padding: "2px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, color: skin.color, background: skin.bg, border: `1px solid ${skin.border}` }}>{stateIcon ? <NvIcon name={stateIcon} size={12} inline={false} /> : null}{stateLabel}</span>
               );
               const cardTitle = mode === "manage"
                 ? row.title

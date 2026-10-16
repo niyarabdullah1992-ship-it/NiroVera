@@ -26,6 +26,7 @@ import { Collapsible } from "@/components/schedules/scheduleChrome";
 import { ManageDutySideAuto } from "@/components/schedules/ManageDutySide";
 import { fileDutyHref, openLinkStyle, revealNode, rosterPersonHref } from "@/components/schedules/dutyLinks";
 import { ACCENT, BORDER, CARD, DANGER, MUTED, NAVY, emptyState, field, SURFACE } from "@/lib/platformStyles";
+import NvIcon from "@/components/shared/NvIcon";
 
 const miniBtn = (variant = "ghost") => ({
   height: 24,
@@ -434,7 +435,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
         <div style={{ ...emptyState, margin: 16 }}>{t("noAttendanceRecords")}</div>
       ) : queue.length === 0 ? (
         <div data-queue-empty style={{ padding: "22px 18px", display: "flex", alignItems: "center", gap: 12 }}>
-          <span aria-hidden style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--nv-ok-soft)", border: "1px solid var(--nv-ok-line)", color: "var(--nv-ok-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}>✓</span>
+          <span aria-hidden style={{ width: 34, height: 34, borderRadius: "50%", background: "var(--nv-ok-soft)", border: "1px solid var(--nv-ok-line)", color: "var(--nv-ok-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, flexShrink: 0 }}><NvIcon name="check" size={16} strokeWidth={2} inline={false} /></span>
           <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ok-ink)" }}>{lang === "ar" ? "الطابور صفر" : "Queue at zero"}</span>
             <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>{lang === "ar" ? "كل يوم أُغلق تلقائياً أو بقرار موقّع." : "Every day closed automatically or by a signed decision."}</span>

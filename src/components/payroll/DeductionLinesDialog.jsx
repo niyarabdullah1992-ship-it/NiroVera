@@ -15,7 +15,7 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
   const lines = deductionLines(item);
   const total = deductionsTotal(item);
   const a90 = checkArticle90Gate({ ...item, deductions: total });
-  // «⚖ التزامك» (HR) / «⚖ حقك» (the worker's own view) — one per line, from that line's figures.
+  // «التزامك» (HR) / «حقك» (the worker's own view) — one per line, from that line's figures.
   const hintCtx = { view: canEdit ? "manager" : "employee", ar, name: employeeName, employeeId: item.employeeId, wage: contractWage(item), total, cap: article90MaxDeduction(item) };
   const plainSource = (source) => String(sourceLabel(source, ar) || "").replace(/\s—\s(?:المادة|Art\.).*$/, "");
 

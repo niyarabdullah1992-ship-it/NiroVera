@@ -45,6 +45,7 @@ import {
   weekStartDate,
 } from "@/lib/shiftWeek";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import NvIcon, { SearchWrap } from "@/components/shared/NvIcon";
 
 const MONO = {
   fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
@@ -870,12 +871,14 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
             <span>{ar ? "1 · المسمّى الوظيفي" : "1 · Job title"}</span>
             <span style={{ fontWeight: 500, color: "var(--nv-muted)" }}>{ar ? "من الدليل أو جديد" : "Catalog or new"}</span>
           </div>
-          <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder={ar ? "⌕ ابحث في الدليل أو اكتب مسمّى جديداً" : "⌕ Search the catalog or type a new title"}
-            style={FIELD_INPUT}
-          />
+          <SearchWrap>
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={ar ? "ابحث في الدليل أو اكتب مسمّى جديداً" : "Search the catalog or type a new title"}
+              style={{ ...FIELD_INPUT, width: "100%", paddingInlineStart: 30 }}
+            />
+          </SearchWrap>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))", gap: 4, maxHeight: 112, overflow: "auto", padding: 2 }}>
             {chips.length ? chips.map((item) => (
               <button key={item} type="button" onClick={() => setTitle(item)} style={{ ...titleChipStyle(title === item), justifyContent: "center" }}>
@@ -1219,7 +1222,7 @@ function VacantPositionDrawer({ node, data, ar, canWrite, companyId, onHire, onC
             <strong style={{ fontSize: 14, color: "var(--nv-ink)" }}>{node?.title || "—"}</strong>
             <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>{ar ? "بانتظار التوظيف" : "Waiting to be filled"}</span>
           </div>
-          <button type="button" onClick={onClose} aria-label={ar ? "إغلاق" : "Close"} style={{ width: 28, height: 28, border: "1px solid var(--nv-line, #D5DCD8)", borderRadius: 8, background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+          <button type="button" onClick={onClose} aria-label={ar ? "إغلاق" : "Close"} style={{ width: 28, height: 28, border: "1px solid var(--nv-line, #D5DCD8)", borderRadius: 8, background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", fontFamily: "inherit" }}><NvIcon name="cross" size={13} /></button>
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ background: "var(--nv-soft, #F5F7F6)", border: "1px solid var(--nv-line, #E4E9E6)", borderRadius: 10, padding: "12px 14px", display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: "9px 14px", fontSize: 12.5, alignItems: "center" }}>
@@ -1519,7 +1522,7 @@ export default function OrgEmployeePreview({
               flex: "none",
               }}
             >
-            ✕
+            <NvIcon name="cross" size={13} />
             </button>
         </div>
 

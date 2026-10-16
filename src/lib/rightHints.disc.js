@@ -1,5 +1,5 @@
 /**
- * «⚖ حقك / التزامك» for the discipline, employee-file, voice and safety surfaces.
+ * «حقك / التزامك» for the discipline, employee-file, voice and safety surfaces.
  *
  * Same shape as src/lib/rightHints.js: { view, word, right, ifNot, action, law, due } — three lines
  * computed for THIS item (dates, days, amounts from the record). Employee views read «حقك», HR and

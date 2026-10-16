@@ -5,6 +5,7 @@ import { buildMyFileCard } from "@/lib/myFileCard";
 import { buildServiceStory } from "@/lib/serviceStory";
 import { buildFileReadiness } from "@/lib/fileReadiness";
 import RightHint from "@/components/shared/RightHint";
+import NvIcon from "@/components/shared/NvIcon";
 
 /*
  * «ملفي — سيرة عملي الموثّقة». Three things, in this order:
@@ -252,7 +253,7 @@ function Readiness({ readiness, ar, self, onOpenTab }) {
           <ul style={{ listStyle: "none", margin: 0, padding: "0 20px 12px" }}>
             {done.map((item) => (
               <li key={item.id} style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "5px 0", fontSize: 12.5 }}>
-                <span aria-hidden style={{ color: "var(--nv-ok-ink)", fontWeight: 700 }}>✓</span>
+                <NvIcon name="check" tone="ok" size={13} strokeWidth={2} />
                 <span style={{ color: "var(--nv-ink)" }}>{item.label}</span>
                 <span style={{ color: "var(--nv-ink3)", fontSize: 11.5, minWidth: 0, overflowWrap: "anywhere" }}>{item.note}</span>
               </li>

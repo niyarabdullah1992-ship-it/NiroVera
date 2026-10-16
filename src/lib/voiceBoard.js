@@ -511,7 +511,7 @@ export function deriveVoiceBoard({
     chain: chain.map((tier, idx) => ({
       num: `0${idx + 1}`,
       name: ar ? tier.labelAr : tier.labelEn,
-      mark: idx === 0 ? "✓" : "",
+      mark: idx === 0 ? "check" : "",
       bg: idx === 0 ? "var(--nv-ok-ink)" : "var(--nv-card)",
       border: idx === 0 ? "var(--nv-ok-ink)" : "var(--nv-box)",
       color: idx === 0 ? "var(--nv-ink)" : "var(--nv-ink2)",

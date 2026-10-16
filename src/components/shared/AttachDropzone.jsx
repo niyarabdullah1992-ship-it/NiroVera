@@ -1,9 +1,10 @@
 import React, { forwardRef, useRef, useState } from "react";
+import NvIcon from "@/components/shared/NvIcon";
 
 /**
  * The one attachment control in طلباتي: a calm dropzone row (dashed hairline, radius 8, paperclip),
  * «أرفق ملفاً» with «اختياري» or «مطلوب», the accepted types and size limit in muted text, and
- * drag-and-drop. Once a file is attached it becomes a row: name, size in mono, and a remove ✕.
+ * drag-and-drop. Once a file is attached it becomes a row: name, size in mono, and a remove cross.
  * The native input stays off-screen; `onPick(file | null)` receives the picked File.
  */
 function formatSize(bytes, ar) {
@@ -73,7 +74,7 @@ const AttachDropzone = forwardRef(function AttachDropzone({
             title={ar ? "أزل المرفق" : "Remove attachment"}
             onClick={() => (onClear ? onClear() : onPick?.(null))}
           >
-            ✕
+            <NvIcon name="cross" size={13} />
           </button>
         </div>
       ) : (

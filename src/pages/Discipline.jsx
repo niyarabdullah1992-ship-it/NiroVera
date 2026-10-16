@@ -274,7 +274,7 @@ export default function Discipline() {
     setDamageOpen(true);
     setTimeout(() => document.querySelector("[data-damage-objection-raise]")?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
   };
-  // ?raise=damage_objection[&line=…] — from «⚖ حقك» on payroll or the home rights list.
+  // ?raise=damage_objection[&line=…] — from «حقك» on payroll or the home rights list.
   const lineAsked = searchParams.get("line") || "";
   const damageAskHandled = useRef("");
   useEffect(() => {

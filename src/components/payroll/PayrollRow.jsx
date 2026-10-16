@@ -52,7 +52,7 @@ export default function PayrollRow({ item, employee, ar, payday = null, onChange
   const a90 = checkArticle90Gate(item);
   const a90Max = article90MaxDeduction(item);
   const cellStyle = { padding: "12px 8px", textAlign: "center", borderBottom: `1px solid ${BORDER}` };
-  // «⚖ التزامك» — one per payroll line: the deduction cap when it is breached, otherwise the wage due date / WPS.
+  // «التزامك» — one per payroll line: the deduction cap when it is breached, otherwise the wage due date / WPS.
   const hintCtx = { view: "manager", ar, name: employee?.name || item.employeeName || "", employeeId: item.employeeId };
   const hint = a90.ok
     ? payHintFor("wage", { ...hintCtx, amount: netOf(item), payday, paid: Boolean(item.paid), paidAt: item.paidAt })

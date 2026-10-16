@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import AttachFileButton from "@/components/shared/AttachFileButton";
 import { ABUSE_VOICE_CHANNEL, VOICE_CHANNELS, VOICE_TOPICS, voiceRouteLine } from "@/lib/voiceBoard";
+import NvIcon from "@/components/shared/NvIcon";
 
 const TOPIC_ICON = {
   wage: Banknote,
@@ -227,11 +228,11 @@ export default function VoiceRaiseCard({
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <button type="button" onClick={onWit} style={toggleStyle(wit)}>
-            {wit ? (ar ? "✓ لديّ شهود أو مستند" : "✓ I have witnesses or a document") : (ar ? "لديّ شهود أو مستند" : "I have witnesses or a document")}
+            {wit ? <><NvIcon name="check" size={12} strokeWidth={2} /> {ar ? "لديّ شهود أو مستند" : "I have witnesses or a document"}</> : (ar ? "لديّ شهود أو مستند" : "I have witnesses or a document")}
           </button>
           {channel !== "anonymous" ? (
             <button type="button" onClick={onAck} style={toggleStyle(ack)}>
-              {ack ? (ar ? "✓ أقرّ بصحة ما كتبت" : "✓ I confirm what I wrote is true") : (ar ? "أقرّ بصحة ما كتبت" : "I confirm what I wrote is true")}
+              {ack ? <><NvIcon name="check" size={12} strokeWidth={2} /> {ar ? "أقرّ بصحة ما كتبت" : "I confirm what I wrote is true"}</> : (ar ? "أقرّ بصحة ما كتبت" : "I confirm what I wrote is true")}
             </button>
           ) : null}
         </div>
@@ -249,7 +250,7 @@ export default function VoiceRaiseCard({
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 6, background: "var(--nv-soft)", border: "1px solid var(--nv-line)", borderRadius: 10, padding: "12px 14px" }}>
           {checks.map((row) => (
             <span key={row.text} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: row.ok ? "var(--nv-ok-ink)" : "var(--nv-muted)" }}>
-              <span style={{ width: 18, height: 18, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700, flex: "none", background: row.ok ? "var(--nv-ok-soft)" : "var(--nv-mute-soft)", color: row.ok ? "var(--nv-ok-ink)" : "var(--nv-muted)" }}>{row.ok ? "✓" : "·"}</span>
+              <span style={{ width: 18, height: 18, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700, flex: "none", background: row.ok ? "var(--nv-ok-soft)" : "var(--nv-mute-soft)", color: row.ok ? "var(--nv-ok-ink)" : "var(--nv-muted)" }}>{row.ok ? <NvIcon name="check" size={11} strokeWidth={2.25} inline={false} /> : "·"}</span>
               {row.text}
             </span>
           ))}

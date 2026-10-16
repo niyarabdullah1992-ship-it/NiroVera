@@ -9,6 +9,7 @@ import {
   listedPenaltyKind,
   listedPenaltyLabel,
 } from "@/lib/disciplineDerivations";
+import NvIcon, { NvMark } from "@/components/shared/NvIcon";
 
 const ACTION = "#3C7D50";
 const GOLD = "#C8A45A";
@@ -37,12 +38,12 @@ function personLabel(person, stations) {
 
 function gateTone(state) {
   if (state === "fail") {
-    return { color: "var(--nv-bad-ink)", bg: "transparent", border: "var(--nv-bad-line)", mark: "✕" };
+    return { color: "var(--nv-bad-ink)", bg: "transparent", border: "var(--nv-bad-line)", mark: "cross" };
   }
   if (state === "warn") {
     return { color: "var(--nv-warn-ink)", bg: "transparent", border: "var(--nv-warn-line)", mark: "!" };
   }
-  return { color: "var(--nv-ok-ink)", bg: "transparent", border: "var(--nv-ok-line)", mark: "✓" };
+  return { color: "var(--nv-ok-ink)", bg: "transparent", border: "var(--nv-ok-line)", mark: "check" };
 }
 
 function MarkBox({ on, label, onToggle }) {
@@ -84,7 +85,7 @@ function MarkBox({ on, label, onToggle }) {
           border: on ? `1px solid ${ACTION}` : "1.5px solid var(--nv-muted)",
         }}
       >
-        {on ? "✓" : ""}
+        {on ? <NvIcon name="check" size={12} strokeWidth={2.25} inline={false} /> : ""}
       </span>
       <span>{label}</span>
     </button>
@@ -346,7 +347,7 @@ export default function DisciplineRaiseForm({
                 style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}
               >
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, flex: "none", color: tone.color, background: "transparent", border: `1px solid ${tone.border}`, whiteSpace: "nowrap" }}>
-                  {tone.mark} {chip.label}
+                  <NvMark mark={tone.mark} size={12} /> {chip.label}
                 </span>
                 <span style={{ fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.7, flex: 1, minWidth: 0 }}>{chip.text || "—"}</span>
               </div>

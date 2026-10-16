@@ -1,5 +1,5 @@
 /**
- * «⚖ حقك / التزامك» — attendance, duty and roster builders (area: att).
+ * «حقك / التزامك» — attendance, duty and roster builders (area: att).
  *
  * Same shape as src/lib/rightHints.js: { view, word, right, ifNot, action, law, due }.
  * Every builder reads THIS item (minutes late, days absent, hours, dates) and answers:

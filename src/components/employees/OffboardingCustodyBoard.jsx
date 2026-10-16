@@ -291,7 +291,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
     }
     toast({ description: ar ? "سُجّل صرف التصفية النهائية — أُغلقت مهلة المادة 88." : "Final settlement recorded as paid — the Art. 88 window is closed." });
   };
-  // «⚖ التزامك» (HR) / «⚖ حقك» (the leaving worker) — one hint per figure, from this exit's numbers.
+  // «التزامك» (HR) / «حقك» (the leaving worker) — one hint per figure, from this exit's numbers.
   const hintCtx = { view: canManage ? "manager" : "employee", ar, name: employee?.name || "", employeeId: employee?.id };
   const completed = caseRow?.status === "completed";
   const outstanding = caseRow?.outstandingCount || 0;

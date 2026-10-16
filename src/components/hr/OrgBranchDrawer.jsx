@@ -25,6 +25,7 @@ import {
   stationParentId,
   stationSubtreeIds,
 } from "@/lib/stationTree";
+import NvIcon from "@/components/shared/NvIcon";
 
 const FIELD = {
   height: 34,
@@ -441,7 +442,7 @@ export function OrgBranchDrawer({
 
       {fixedHr ? (
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: "var(--nv-accent-soft)", border: "1px solid var(--nv-line)", fontSize: 11.5, color: "var(--nv-ink)", lineHeight: 1.8 }}>
-          <span style={{ fontSize: 14, lineHeight: 1.4 }}>🔒</span>
+          <span style={{ display: "inline-flex", paddingTop: 4, color: "var(--nv-muted)" }}><NvIcon name="lock" size={14} inline={false} /></span>
           <span>
             <strong>{ar ? "وحدة الموارد البشرية" : "HR unit"}</strong>
             {ar
@@ -456,7 +457,7 @@ export function OrgBranchDrawer({
         </div>
       ) : (
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: "var(--nv-hover)", border: "1px solid var(--nv-ok-line)", fontSize: 11.5, color: "var(--nv-ink)", lineHeight: 1.8 }}>
-          <span style={{ fontSize: 14, lineHeight: 1.4 }}>🔒</span>
+          <span style={{ display: "inline-flex", paddingTop: 4, color: "var(--nv-muted)" }}><NvIcon name="lock" size={14} inline={false} /></span>
           <span>
             <strong>{ar ? "فرع المقر الرئيسي" : "Head office"}</strong>
             {ar

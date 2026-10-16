@@ -9,6 +9,7 @@ import { BORDER, CARD, CONTROL_RADIUS, MUTED } from "@/lib/platformStyles";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import AttachFileButton from "@/components/shared/AttachFileButton";
 import { toast } from "@/components/ui/use-toast";
+import NvIcon from "@/components/shared/NvIcon";
 
 const field = { fontFamily: "inherit", fontSize: 12.5, padding: "10px 12px", border: `1px solid ${BORDER}`, background: CARD, color: "var(--nv-ink)", outline: "none", width: "100%", boxSizing: "border-box", borderRadius: CONTROL_RADIUS };
 const label = { fontSize: 11.5, color: MUTED };
@@ -118,7 +119,7 @@ export default function GrievanceRaise({ employee, companyId, ar = true, refresh
           {file ? <span style={{ fontSize: 11.5 }} dir="ltr">{file.name}</span> : null}
         </div>
         <span data-grievance-gate={gate.ok ? "ok" : gate.error} style={{ fontSize: 11.5, fontWeight: 600, color: gate.ok ? "#2F6B43" : "var(--nv-warn-ink, #8A5A12)", lineHeight: 1.7 }}>
-          {gate.ok ? (ar ? "✓ جاهز للإرسال" : "✓ Ready to send") : (ar ? gate.reason : gate.reasonEn)}
+          {gate.ok ? <><NvIcon name="check" size={12} strokeWidth={2} /> {ar ? "جاهز للإرسال" : "Ready to send"}</> : (ar ? gate.reason : gate.reasonEn)}
         </span>
         <button type="button" data-grievance-send="" disabled={!gate.ok || busy} onClick={send} style={{ fontFamily: "inherit", fontSize: 13, fontWeight: 700, height: 42, border: "none", borderRadius: 8, background: gate.ok ? "#0B3D27" : "var(--nv-line)", color: gate.ok ? "#fff" : MUTED, cursor: gate.ok ? "pointer" : "default" }}>
           {ar ? "أرسل التظلّم" : "Send the grievance"}

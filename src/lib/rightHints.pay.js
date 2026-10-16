@@ -1,5 +1,5 @@
 /**
- * «⚖ حقك / التزامك» for payroll and قسيمتي — one hint per payslip line, deduction line, payroll item,
+ * «حقك / التزامك» for payroll and قسيمتي — one hint per payslip line, deduction line, payroll item,
  * end-of-service figure and custody set-off. Same three-line shape as src/lib/rightHints.js:
  *   right  — the right (employee) or duty (manager) for THIS item, with its amounts and dates.
  *   ifNot  — what to do if it is not applied (employee) / the consequence of delay (manager).

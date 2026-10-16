@@ -125,7 +125,7 @@ function proofDetail(key, state, ar) {
     }).join(ar ? "، " : ", ");
   }
   if (key === "nightEmergencyTransferReady") {
-    return [proof.method, proof.party, proof.contact ? `☎ ${proof.contact}` : "", proof.file?.name].filter(Boolean).join(" · ");
+    return [proof.method, proof.party, proof.contact ? `${ar ? "هاتف" : "Tel."} ${proof.contact}` : "", proof.file?.name].filter(Boolean).join(" · ");
   }
   if (key === "nightFoodAccessReady") {
     const method = NIGHT_FOOD_METHODS.find((row) => row.id === proof.method);

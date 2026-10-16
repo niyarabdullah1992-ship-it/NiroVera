@@ -33,6 +33,7 @@ import {
   setTitleGradeRank,
 } from "@/lib/jobGrades";
 import { addListPosition, companyLists, listPositions, removeListPosition } from "@/lib/permissionTemplates";
+import NvIcon from "@/components/shared/NvIcon";
 
 /** HTML permList — seven gates, each bound to a live department id. */
 const PERM_ROWS = [
@@ -505,7 +506,7 @@ function GradeLadderArticle({ ar, data, companyId, canWrite, open, onToggle }) {
                             </label>
                             <div style={{ display: "flex", gap: 4, alignSelf: "end", paddingBottom: 2 }}>
                               <button type="button" title={ar ? "أعلى" : "Up"} disabled={!canWrite || index === 0} onClick={() => moveTitleGrade(companyId, grade.id, -1)} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", cursor: index ? "pointer" : "default", color: index ? "var(--nv-ink2)" : "var(--nv-line)", fontFamily: "inherit" }}>▲</button>
-                              <button type="button" title={ar ? "حذف المرتبة" : "Delete rank"} aria-label={ar ? "حذف المرتبة" : "Delete rank"} disabled={!canWrite || grades.length <= 1 || seats > 0} onClick={() => setPendingDelete({ id: grade.id, name: grade.title || grade.gradeNumber, title: item.label })} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: grades.length > 1 && !seats ? "var(--nv-bad-ink)" : "var(--nv-line)", cursor: grades.length > 1 && !seats ? "pointer" : "default", fontFamily: "inherit" }}>✕</button>
+                              <button type="button" title={ar ? "حذف المرتبة" : "Delete rank"} aria-label={ar ? "حذف المرتبة" : "Delete rank"} disabled={!canWrite || grades.length <= 1 || seats > 0} onClick={() => setPendingDelete({ id: grade.id, name: grade.title || grade.gradeNumber, title: item.label })} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: grades.length > 1 && !seats ? "var(--nv-bad-ink)" : "var(--nv-line)", cursor: grades.length > 1 && !seats ? "pointer" : "default", fontFamily: "inherit" }}><NvIcon name="cross" size={13} /></button>
                             </div>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(132px, 1fr))", gap: 8 }}>

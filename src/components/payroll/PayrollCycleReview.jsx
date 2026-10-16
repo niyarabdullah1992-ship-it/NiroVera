@@ -83,7 +83,7 @@ export default function PayrollCycleReview({
     const fx = leaveEffects({ employee: e, month, line, monthlyWage: (Number(line.base) || 0) + (Number(line.allowances) || 0), ar });
     return { line, name: e?.name || line.employeeName || "", rows: fx.rows };
   }).filter((x) => x.rows.length);
-  // «⚖ التزامك» per leave / injury effect, from that person's line.
+  // «التزامك» per leave / injury effect, from that person's line.
   const effectHint = (x, r) => {
     const c = { view: "manager", ar, name: x.name, employeeId: x.line.employeeId, days: r.days, amount: Math.abs(Number(r.amount) || 0) };
     if (r.id === "sick") return payHintFor("sick", c);

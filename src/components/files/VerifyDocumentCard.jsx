@@ -18,6 +18,7 @@ import {
   verifyKindOf,
   verifyOutcomeCopy,
 } from "@/lib/verifyDocument";
+import { NvMark } from "@/components/shared/NvIcon";
 
 /** Latin token that does not flip the surrounding Arabic row. */
 function Ltr({ children, style, ar }) {
@@ -284,12 +285,12 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
       {copy ? (
         <div style={{ borderTop: "1px solid var(--nv-line)", padding: embed ? "16px 0 0" : "20px 24px", display: "flex", flexDirection: "column", gap: 16, textAlign: "start" }}>
           <div style={{ border: `1px solid ${copy.border || "var(--nv-line, #dfe3ea)"}`, background: copy.bg, borderRadius: 14, boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)", padding: "18px 20px", display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 16, alignItems: "start" }}>
-            <span style={{ width: 44, height: 44, borderRadius: 10, background: copy.color, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700 }}>{copy.mark}</span>
+            <span style={{ width: 44, height: 44, borderRadius: 10, background: copy.color, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700 }}><NvMark mark={copy.mark} size={22} /></span>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0, textAlign: "start" }}>
               <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
                 <span style={{ fontSize: 17, fontWeight: 700, color: copy.color }}>{copy.title}</span>
                 <span data-verify-state={kind} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, lineHeight: 1.5, padding: "2px 8px", borderRadius: 999, color: copy.color, background: "var(--nv-card, #fff)", border: `1px solid ${copy.color}`, whiteSpace: "nowrap" }}>
-                  <span aria-hidden>{copy.mark}</span>{fileStateLabel(kind, ar)}
+                  <span aria-hidden style={{ display: "inline-flex" }}><NvMark mark={copy.mark} size={11} /></span>{fileStateLabel(kind, ar)}
                 </span>
               </span>
               <span style={{ fontSize: 13, lineHeight: 1.9, color: "var(--nv-ink2)" }}>{copy.desc}</span>

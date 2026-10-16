@@ -122,7 +122,7 @@ export function PayslipEstimateCard({ employee, ar = true, monthLabel = "", stat
     ...slip.ledger.rows.map((r) => ({ id: `al-${r.id}`, name: r.name, amount: r.amount, why: r.why })),
     ...ot.rows.map((r) => ({ id: r.id, name: r.label, amount: r.amount, info: r.info, valueText: r.valueText, hours: r.hours, why: r.source })),
   ];
-  // «⚖ حقك» per line where the law protects it: the wage (due date / WPS), overtime (107), GOSI share.
+  // «حقك» per line where the law protects it: the wage (due date / WPS), overtime (107), GOSI share.
   const hintCtx = { view, ar, name: employee?.name || "", employeeId: employee?.id, net: slip.net, base: slip.ledger.base, allowances: Math.max(0, slip.ledger.cash - slip.ledger.base) };
   return (
     <section data-payslip-estimate="1" style={{ ...slab, overflow: "hidden", display: "flex", flexDirection: "column" }}>

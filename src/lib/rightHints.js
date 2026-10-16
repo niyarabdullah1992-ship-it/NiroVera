@@ -1,5 +1,5 @@
 /**
- * «⚖ حقك» / «⚖ التزامك» — one plain hint per request card, built from the record itself.
+ * «حقك» / «التزامك» — one plain hint per request card, built from the record itself.
  *
  * Each builder answers three lines for THIS item:
  *   right  — «حقك:» (employee) or «التزامك:» (manager) — one sentence with the record's dates/amounts.

@@ -6,6 +6,7 @@ import { BORDER, MUTED, NAVY, SURFACE } from "@/lib/platformStyles";
 import { DS_CONTROL_RADIUS, DS_RADIUS } from "@/lib/designSystem";
 import { cardAwaitsNightConsent, nightConsentWaitCopy } from "@/lib/shiftWeek";
 import LawGateStatusPill, { LawGateArticleBadge } from "@/components/shared/LawGateStatusPill";
+import NvIcon from "@/components/shared/NvIcon";
 
 export const DUTY_ALERT_DUE = "var(--nv-bad-fill)";
 export const DUTY_ALERT_BLOCK = "var(--nv-bad-ink)";
@@ -326,10 +327,10 @@ export default function DutyStripAlertCard({
               {allowOpen ? (
                 <>
                   <button type="button" onClick={() => setAllowKind("pay")} style={dutyAlertActionStyle()}>
-                    {ar ? (allowKind === "pay" ? "أجر ✓" : "أجر") : (allowKind === "pay" ? "Pay ✓" : "Pay")}
+                    {ar ? "أجر" : "Pay"}{allowKind === "pay" ? <> <NvIcon name="check" size={12} /></> : null}
                   </button>
                   <button type="button" onClick={() => setAllowKind("transport")} style={dutyAlertActionStyle()}>
-                    {ar ? (allowKind === "transport" ? "نقل ✓" : "نقل") : (allowKind === "transport" ? "Transport ✓" : "Transport")}
+                    {ar ? "نقل" : "Transport"}{allowKind === "transport" ? <> <NvIcon name="check" size={12} /></> : null}
                   </button>
                   {allowKind ? (
                     <>

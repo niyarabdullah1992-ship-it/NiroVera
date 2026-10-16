@@ -8,6 +8,7 @@ import { identityFrame } from "@/components/shared/IdentityCard";
 import { openHireDrawer } from "@/lib/orgHire";
 import { searchGroupLabel } from "@/lib/suiteNav";
 import { employeeMoneyHref, useRailSide } from "@/lib/railSide";
+import { Kbd } from "@/components/shared/NvIcon";
 
 function groupLabel(category, ar) {
   return searchGroupLabel(category, ar ? "ar" : "en");
@@ -201,7 +202,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
           <CornerDownLeft style={{ width: 11, height: 11 }} />
           {typed
             ? (ar ? "Enter للانتقال" : "Enter to open")
-            : (ar ? "⌘K · أضف موظف أو ابحث" : "⌘K · add an employee or search")}
+            : <><Kbd>⌘K</Kbd> · {ar ? "أضف موظف أو ابحث" : "add an employee or search"}</>}
         </div>
       </div>
     </div>

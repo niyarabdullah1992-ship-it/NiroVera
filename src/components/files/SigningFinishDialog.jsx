@@ -2,6 +2,7 @@ import React from "react";
 import { Loader2 } from "lucide-react";
 import { BORDER, BRAND, CARD, INK, MUTED, SURFACE } from "@/lib/platformStyles";
 import { signGhostBtn as ghostBtn, signMono as mono, signPrimaryBtn as primaryBtn } from "./signingUi";
+import NvIcon from "@/components/shared/NvIcon";
 
 export default function SigningFinishDialog({
   ar,
@@ -140,9 +141,9 @@ export default function SigningFinishDialog({
                 {receipt.kind === "group"
                   ? (ar ? "أُرسل الملف — الطلب في الحالة" : "File sent — request is on Status")
                   : receipt.registry === "company"
-                    ? (ar ? "✓ مسجّل في سجل الشركة" : "✓ Registered in the company registry")
+                    ? <><NvIcon name="check" size={15} strokeWidth={2} /> {ar ? "مسجّل في سجل الشركة" : "Registered in the company registry"}</>
                     : receipt.registry === "local"
-                      ? (ar ? "✓ مختوم · مسجّل على هذا الجهاز" : "✓ Sealed · registered on this device")
+                      ? <><NvIcon name="check" size={15} strokeWidth={2} /> {ar ? "مختوم · مسجّل على هذا الجهاز" : "Sealed · registered on this device"}</>
                       : (ar ? "مختوم · غير مسجّل" : "Sealed · not registered")}
               </span>
               <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.7 }}>

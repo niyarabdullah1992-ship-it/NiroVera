@@ -10,6 +10,7 @@ import {
   safetyReportCode,
   safetyReportLevel,
 } from "@/lib/safetyReportCard";
+import NvIcon from "@/components/shared/NvIcon";
 
 const MONO = "var(--font-mono, 'IBM Plex Mono', monospace)";
 const INPUT = {
@@ -223,7 +224,7 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <button type="button" onClick={() => photoRef.current?.click()} style={toggleStyle(Boolean(form.photoName))}>
-              {form.photoName ? L("✓ صورة مرفقة", "✓ Photo attached") : L("＋ أرفق صورة", "＋ Attach a photo")}
+              {form.photoName ? <><NvIcon name="check" size={12} strokeWidth={2} /> {L("صورة مرفقة", "Photo attached")}</> : L("＋ أرفق صورة", "＋ Attach a photo")}
             </button>
             <input
               ref={photoRef}
@@ -233,10 +234,10 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
               onChange={(event) => patch({ photoName: event.target.files?.[0]?.name || "" })}
             />
             <button type="button" onClick={() => patch({ injured: !form.injured })} style={toggleStyle(form.injured)}>
-              {form.injured ? L("✓ نعم، هناك إصابة", "✓ Yes, someone was hurt") : L("هل أُصيب أحد؟", "Was anyone hurt?")}
+              {form.injured ? <><NvIcon name="check" size={12} strokeWidth={2} /> {L("نعم، هناك إصابة", "Yes, someone was hurt")}</> : L("هل أُصيب أحد؟", "Was anyone hurt?")}
             </button>
             <button type="button" onClick={() => patch({ anonymous: !form.anonymous })} style={toggleStyle(form.anonymous)}>
-              {form.anonymous ? L("✓ بلا اسم", "✓ Anonymous") : L("أرسله بلا اسم", "Send it without a name")}
+              {form.anonymous ? <><NvIcon name="check" size={12} strokeWidth={2} /> {L("بلا اسم", "Anonymous")}</> : L("أرسله بلا اسم", "Send it without a name")}
             </button>
           </div>
 
@@ -320,7 +321,7 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
 
               {critical ? (
                 <button type="button" onClick={() => patch({ stopped: !form.stopped })} style={toggleStyle(form.stopped)}>
-                  {form.stopped ? L("✓ أوقفت العمل وأبعدت الأشخاص", "✓ I stopped the work and moved people away") : L("أؤكّد إيقاف العمل في الموقع", "I confirm the work is stopped on site")}
+                  {form.stopped ? <><NvIcon name="check" size={12} strokeWidth={2} /> {L("أوقفت العمل وأبعدت الأشخاص", "I stopped the work and moved people away")}</> : L("أؤكّد إيقاف العمل في الموقع", "I confirm the work is stopped on site")}
                 </button>
               ) : null}
 
@@ -369,7 +370,7 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 6, background: "var(--nv-soft)", border: "1px solid var(--nv-line)", borderRadius: 10, padding: "12px 14px" }}>
             {checks.map((row) => (
               <span key={row[1]} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: row[0] ? "var(--nv-ok-ink)" : "var(--nv-ink3)" }}>
-                <span style={{ width: 18, height: 18, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700, flex: "none", background: row[0] ? "var(--nv-ok-soft)" : "var(--nv-hover)" }}>{row[0] ? "✓" : "·"}</span>
+                <span style={{ width: 18, height: 18, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700, flex: "none", background: row[0] ? "var(--nv-ok-soft)" : "var(--nv-hover)" }}>{row[0] ? <NvIcon name="check" size={11} strokeWidth={2.25} inline={false} /> : "·"}</span>
                 {row[1]}
               </span>
             ))}

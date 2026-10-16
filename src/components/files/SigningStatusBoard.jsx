@@ -15,6 +15,7 @@ import { SIGN_LINE, SIGN_MUTED, SIGN_NAVY, SIGN_SURFACE, SIGN_WHITE } from "@/co
 import { canDownloadFinal, createGateMessage, refusalKindLabel, retractAlert, retractDaysLabel, refusalNote, refusalsOf, settledState, stateLabel } from "@/lib/multiSignDerivations";
 import { formatUiNumber } from "@/lib/dateFormat";
 import { signGhostBtn, signKicker, signMono as mono, signPrimaryBtn, signProofGrid, signStateChip } from "./signingUi";
+import NvIcon from "@/components/shared/NvIcon";
 
 export { refusalNote, refusalsOf, settledState, stateLabel };
 
@@ -186,7 +187,7 @@ function PartyRow({ signer, index, ar, link, onCopyLink, copiedKey, canReopen, o
   const signed = signer.status === "signed";
   const refused = signer.status === "rejected";
   const skipped = signer.status === "skipped";
-  const mark = signed ? "✓" : refused || skipped ? "×" : String(index + 1);
+  const mark = signed ? <NvIcon name="check" size={12} strokeWidth={2.25} inline={false} /> : refused || skipped ? <NvIcon name="cross" size={11} strokeWidth={2.25} inline={false} /> : String(index + 1);
   const copied = copiedKey === signer.email;
   const actions = Boolean(link || canReopen);
 
@@ -578,7 +579,7 @@ function EnvelopePath({
       external: false,
       detail: auditStamp(request.createdAt, ar),
       state: ar ? "أُرسل" : "Sent",
-      mark: "✓",
+      mark: <NvIcon name="check" size={12} strokeWidth={2.25} inline={false} />,
       dot: "sent",
     },
     ...(request.signers || []).map((signer, index) => {
@@ -600,7 +601,7 @@ function EnvelopePath({
               ? (ar ? "لم يوقّع — استمر الملف" : "Did not sign — file continued")
               : (ar ? "لم يُكمل بعد" : "Not finished yet"),
         state: signedRow ? (ar ? "وقّع" : "Signed") : refused ? (ar ? "رفض" : "Refused") : signer.status === "skipped" ? (ar ? "دون توقيع" : "Unsigned") : (ar ? "بانتظار" : "Waiting"),
-        mark: signedRow ? "✓" : String(index + 1),
+        mark: signedRow ? <NvIcon name="check" size={12} strokeWidth={2.25} inline={false} /> : String(index + 1),
         dot: signedRow ? "sent" : refused ? "bad" : "wait",
         signer,
         canReopen: request.isCreator && refused && state !== "deleted",

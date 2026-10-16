@@ -5,6 +5,7 @@ import { isMarkField } from "@/lib/signPdf";
 import { consentFileKind } from "@/lib/documentReadGate";
 import { RETRACT_DAY_OPTIONS, retractDaysLabel } from "@/lib/multiSignDerivations";
 import { verificationUrlFor } from "@/lib/verificationBadge";
+import NvIcon from "@/components/shared/NvIcon";
 
 const NAVY = "var(--nv-navy)";
 const GREEN = "var(--nv-btn-fill)";
@@ -233,7 +234,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
 
   const banner = rejected ? (
     <section style={{ background: "var(--nv-bad-soft)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: 18, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-      <span style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--nv-bad-fill)", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>✕</span>
+      <span style={{ width: 44, height: 44, borderRadius: "50%", background: "var(--nv-bad-fill)", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}><NvIcon name="cross" size={22} strokeWidth={2} inline={false} /></span>
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <strong style={{ fontSize: 14, color: "var(--nv-bad-ink)" }}>{ar ? "رفضت التوقيع" : "You declined to sign"}</strong>
         <span style={{ fontSize: 11.5, color: "#4B5567" }}>
@@ -247,7 +248,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
   ) : success ? (
     <section style={{ background: "#F2FAF6", border: "1px solid var(--nv-line)", borderRadius: 14, padding: 18, display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ width: 44, height: 44, borderRadius: "50%", background: GREEN, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>✓</span>
+        <span style={{ width: 44, height: 44, borderRadius: "50%", background: GREEN, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}><NvIcon name="check" size={22} strokeWidth={2} inline={false} /></span>
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           <strong style={{ fontSize: 14, color: GREEN }}>{ar ? "اكتمل توقيعك" : "Your signature is complete"}</strong>
           <span style={{ fontSize: 11.5, color: "#4B5567" }}>
@@ -442,8 +443,8 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
           <div style={sheet(380)}>
             <strong style={{ fontSize: 14 }}>{ynField.label || (ar ? "صح / خطأ" : "Yes or no")}</strong>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <button type="button" onClick={() => { setTextValue(ynField.id, "✓ صح"); setYnField(null); }} style={{ height: 44, borderRadius: 6, border: "1px solid var(--nv-line)", background: "#F2FAF6", color: GREEN, fontWeight: 700, cursor: "pointer" }}>✓ {ar ? "صح" : "Yes"}</button>
-              <button type="button" onClick={() => { setTextValue(ynField.id, "✗ خطأ"); setYnField(null); }} style={{ height: 44, borderRadius: 6, border: "1px solid var(--nv-line)", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)", fontWeight: 700, cursor: "pointer" }}>✗ {ar ? "خطأ" : "No"}</button>
+              <button type="button" onClick={() => { setTextValue(ynField.id, "✓ صح"); setYnField(null); }} style={{ height: 44, borderRadius: 6, border: "1px solid var(--nv-line)", background: "#F2FAF6", color: GREEN, fontWeight: 700, cursor: "pointer" }}><NvIcon name="check" size={14} strokeWidth={2} /> {ar ? "صح" : "Yes"}</button>
+              <button type="button" onClick={() => { setTextValue(ynField.id, "✗ خطأ"); setYnField(null); }} style={{ height: 44, borderRadius: 6, border: "1px solid var(--nv-line)", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)", fontWeight: 700, cursor: "pointer" }}><NvIcon name="cross" size={14} strokeWidth={2} /> {ar ? "خطأ" : "No"}</button>
             </div>
             <button type="button" onClick={() => setYnField(null)} style={{ alignSelf: "center", background: "none", border: "none", color: "var(--nv-muted)", cursor: "pointer" }}>{ar ? "إلغاء" : "Cancel"}</button>
           </div>

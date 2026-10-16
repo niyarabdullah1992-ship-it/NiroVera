@@ -11,12 +11,13 @@ import { contractAllowanceSplit, employeeWageSplit } from "@/lib/employeeFileVie
 import { payrollSaudiFlag } from "@/lib/payrollWageSync";
 import { citeRule } from "@/lib/laborRules";
 import { MUTED, NAVY, field, ui, CARD, BORDER } from "@/lib/platformStyles";
+import NvIcon, { NvMark } from "@/components/shared/NvIcon";
 
 const TONE = {
-  ok: { labelAr: "✓ مستقر", labelEn: "✓ Steady", color: "#2F6B43", background: "#E6F2EA" },
-  warn: { labelAr: "! تنبيه", labelEn: "! Alert", color: "#8A5A12", background: "#FBF3E1" },
-  bad: { labelAr: "× مخالفة", labelEn: "× Breach", color: "#9B2335", background: "#F8E8EB" },
-  na: { labelAr: "— بلا أثر", labelEn: "— No effect", color: "#555C66", background: "#F2F5F3" },
+  ok: { mark: "check", labelAr: "مستقر", labelEn: "Steady", color: "#2F6B43", background: "#E6F2EA" },
+  warn: { mark: "warning", labelAr: "تنبيه", labelEn: "Alert", color: "#8A5A12", background: "#FBF3E1" },
+  bad: { mark: "cross", labelAr: "مخالفة", labelEn: "Breach", color: "#9B2335", background: "#F8E8EB" },
+  na: { mark: "—", labelAr: "بلا أثر", labelEn: "No effect", color: "#555C66", background: "#F2F5F3" },
 };
 
 function sarDigits(n) {
@@ -427,7 +428,7 @@ function PayslipMinistryStrip({ ar, item, employee, parts }) {
               }) : null}
             </button>
             <span style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flexShrink: 0, minWidth: 108 }}>
-              <span style={{ display: "inline-flex", alignItems: "center", minHeight: 26, padding: "0 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, color: tone.color, background: tone.background }}>{ar ? tone.labelAr : tone.labelEn}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minHeight: 26, padding: "0 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, color: tone.color, background: tone.background }}><NvMark mark={tone.mark} size={12} />{ar ? tone.labelAr : tone.labelEn}</span>
               <span style={{ fontSize: 11.5, color: MUTED, textAlign: "center", lineHeight: 1.4 }}>{ar ? row.effectAr : row.effectEn}</span>
             </span>
           </div>
@@ -435,9 +436,9 @@ function PayslipMinistryStrip({ ar, item, employee, parts }) {
       }) : null}
       {open ? (
         <div style={{ padding: "10px 16px", borderTop: `1px solid ${BORDER}`, display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
-          <span><span style={{ color: "#2F6B43", fontWeight: 700 }}>{ar ? "✓ مستقر" : "✓ Steady"}</span>{ar ? ": القاعدة مستوفاة" : ": the rule is met"}</span>
-          <span><span style={{ color: "#8A5A12", fontWeight: 700 }}>{ar ? "! تنبيه" : "! Alert"}</span>{ar ? ": يحتاج متابعة قبل أن يصير مخالفة" : ": needs a look before it becomes a breach"}</span>
-          <span><span style={{ color: "#9B2335", fontWeight: 700 }}>{ar ? "× مخالفة" : "× Breach"}</span>{ar ? ": يتطلب إجراء الآن" : ": needs an action now"}</span>
+          <span><span style={{ color: "#2F6B43", fontWeight: 700 }}><NvIcon name="check" size={12} strokeWidth={2} /> {ar ? "مستقر" : "Steady"}</span>{ar ? ": القاعدة مستوفاة" : ": the rule is met"}</span>
+          <span><span style={{ color: "#8A5A12", fontWeight: 700 }}><NvIcon name="warning" size={12} /> {ar ? "تنبيه" : "Alert"}</span>{ar ? ": يحتاج متابعة قبل أن يصير مخالفة" : ": needs a look before it becomes a breach"}</span>
+          <span><span style={{ color: "#9B2335", fontWeight: 700 }}><NvIcon name="cross" size={12} strokeWidth={2} /> {ar ? "مخالفة" : "Breach"}</span>{ar ? ": يتطلب إجراء الآن" : ": needs an action now"}</span>
           <span><span style={{ color: "#555C66", fontWeight: 700 }}>{ar ? "— بلا أثر" : "— No effect"}</span>{ar ? ": لا ينطبق على سجل القسم حالياً" : ": does not apply to this section’s record now"}</span>
         </div>
       ) : null}
@@ -484,7 +485,7 @@ export default function PayrollSlipBoard({
   const gross = parts.base + parts.allowances + parts.bonus + (Number(parts.overtimePay) || 0) + (Number(parts.refunds) || 0);
   const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0) + (Number(parts.unpaidLeaveCut) || 0) + (Number(parts.detentionCut) || 0);
   const rows = slipRows(live, employee, parts, ar, month);
-  // «⚖ حقك» on قسيمتي, «⚖ التزامك» on the HR payslip board — one hint per row, from this line's figures.
+  // «حقك» on قسيمتي, «التزامك» on the HR payslip board — one hint per row, from this line's figures.
   const hintCtx = {
     view: personal ? "employee" : "manager",
     ar,
@@ -537,7 +538,7 @@ export default function PayrollSlipBoard({
         ]}
       />
       <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
-        {ar ? "قسيمتك من الحضور المقفل — كل بند بمصدره، و«⚖ حقك» بجانب ما يحميه النظام." : "Built from locked attendance — every line names its source, with «⚖» beside what the law protects."}
+        {ar ? <>قسيمتك من الحضور المقفل — كل بند بمصدره، و«<span style={{ color: "var(--nv-ok-ink)" }}><NvIcon name="scale" size={12} /></span> حقك» بجانب ما يحميه النظام.</> : <>Built from locked attendance — every line names its source, with «<span style={{ color: "var(--nv-ok-ink)" }}><NvIcon name="scale" size={12} /></span>» beside what the law protects.</>}
       </p>
       <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: CARD, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: `1px solid ${BORDER}` }}>

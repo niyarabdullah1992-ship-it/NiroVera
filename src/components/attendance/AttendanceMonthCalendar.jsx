@@ -40,6 +40,7 @@ import {
   visibleOpsTasks,
   weekdaysOf,
 } from "@/lib/operationalCalendar";
+import NvIcon from "@/components/shared/NvIcon";
 
 function SearchIcon() {
   return (
@@ -1217,7 +1218,7 @@ function DayPanel({
                 <div key={tag} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
                   <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: OC.muted }}>{tag}</span>
                   <span style={{ fontSize: 12, color: OC.mid, minWidth: 0 }}>{ar ? labelAr : labelEn}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: bad ? OC.abs : OC.greenText }}>{bad ? "✕" : "✓"}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: bad ? OC.abs : OC.greenText }}>{bad ? <NvIcon name="cross" size={12} strokeWidth={2} inline={false} /> : <NvIcon name="check" size={12} strokeWidth={2} inline={false} />}</span>
                 </div>
               );
             })}

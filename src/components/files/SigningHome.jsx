@@ -15,6 +15,7 @@ import {
 } from "@/components/files/SigningSectionFrame";
 import { formatUiNumber } from "@/lib/dateFormat";
 import { pageKicker } from "@/lib/moduleMeta";
+import { SearchWrap } from "@/components/shared/NvIcon";
 
 const MAX_SIZE = 25 * 1024 * 1024;
 const isPdf = (file) => file?.type === "application/pdf" || file?.name?.toLowerCase().endsWith(".pdf");
@@ -507,18 +508,20 @@ export default function SigningHome({
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {view !== "archive" ? (
-          <input
-            className="nv-sign-query"
-            value={q}
-            onChange={(event) => {
-              setQ(event.target.value);
-              if (view === "archive") return;
-              setView("home");
-              setFolder("all");
-            }}
-            placeholder={ar ? "⌕ ابحث في الاتفاقيات والأطراف" : "Search agreements and parties"}
-            style={{ height: 34, flex: 1, minWidth: 220, maxWidth: 420, padding: "0 12px", borderRadius: 10, border: `1px solid ${SIGN_LINE}`, background: SIGN_WHITE, fontSize: 12, outline: "none", color: SIGN_INK, fontFamily: "inherit" }}
-          />
+          <SearchWrap style={{ flex: 1, minWidth: 220, maxWidth: 420 }}>
+            <input
+              className="nv-sign-query"
+              value={q}
+              onChange={(event) => {
+                setQ(event.target.value);
+                if (view === "archive") return;
+                setView("home");
+                setFolder("all");
+              }}
+              placeholder={ar ? "ابحث في الاتفاقيات والأطراف" : "Search agreements and parties"}
+              style={{ height: 34, width: "100%", boxSizing: "border-box", padding: "0 12px", paddingInlineStart: 30, borderRadius: 10, border: `1px solid ${SIGN_LINE}`, background: SIGN_WHITE, fontSize: 12, outline: "none", color: SIGN_INK, fontFamily: "inherit" }}
+            />
+          </SearchWrap>
           ) : null}
           <span style={{ flex: 1 }} />
           <div className="nv-sign-actions" style={{ display: "flex", alignItems: "center", gap: 16, flex: "none", flexShrink: 0 }}>

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { SearchWrap } from "@/components/shared/NvIcon";
 
 const NAVY = "var(--nv-navy)";
 const LINE = "var(--nv-line)";
@@ -201,7 +202,7 @@ export default function SigningStudioFrame({
           {addOpen ? (
             <div style={{ position: "absolute", top: 36, insetInlineStart: 0, zIndex: 30, width: "min(340px, 90vw)", boxSizing: "border-box", background: "var(--nv-card)", border: `1px solid ${LINE}`, borderRadius: 6, boxShadow: "0 14px 36px rgba(20,33,61,.18)", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={{ fontSize: 10.5, letterSpacing: ".08em", color: NAVY, fontWeight: 700 }}>{ar ? "من المنشأة — اختر واحداً أو أكثر" : "From the company"}</span>
-              <input value={peopleQuery} onChange={(event) => onPeopleQuery?.(event.target.value)} placeholder={ar ? "⌕ ابحث بالاسم أو الصفة أو الرقم الوظيفي" : "Search name, title, or number"} style={{ height: 32, padding: "0 10px", borderRadius: 4, border: `1px solid ${LINE}`, fontSize: 12, color: INK, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit" }} />
+              <SearchWrap><input value={peopleQuery} onChange={(event) => onPeopleQuery?.(event.target.value)} placeholder={ar ? "ابحث بالاسم أو الصفة أو الرقم الوظيفي" : "Search name, title, or number"} style={{ height: 32, padding: "0 10px", paddingInlineStart: 30, borderRadius: 4, border: `1px solid ${LINE}`, fontSize: 12, color: INK, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit" }} /></SearchWrap>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 196, overflowY: "auto" }}>
                 {shownPeople.length ? shownPeople.map((person) => (
                   <button key={person.id || person.email} type="button" onClick={() => onAddPerson?.(person)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", border: 0, background: "transparent", cursor: "pointer", textAlign: "start", fontFamily: "inherit", color: INK }}>

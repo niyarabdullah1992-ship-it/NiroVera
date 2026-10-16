@@ -66,7 +66,7 @@ function flagChip(tone) {
 /**
  * «شهري» on the operational calendar — what the old «سجلي» held that the calendar did not:
  * my attendance days against the schedule, my absences, my lateness (minutes and days), leave and
- * manual approvals for the month in view, the ⚖ rights on absence (Art. 80) and lateness (Annex 1),
+ * manual approvals for the month in view, the rights on absence (Art. 80) and lateness (Annex 1),
  * and, for the picked day, my own punches with «اطلب تصحيح». One calm line; chips only for problems.
  */
 export default function MyMonthLine({ me, company, data, year, month, selectedDay = 0, monthName = "", mine, ar = true }) {

@@ -31,6 +31,7 @@ import { parsePunchClock, riyadhNowClock } from "@/lib/attendancePunch";
 import { dutyTone } from "@/components/schedules/dutyStatus";
 import RightHint from "@/components/shared/RightHint";
 import { attRightHint } from "@/lib/rightHints.att.js";
+import NvIcon from "@/components/shared/NvIcon";
 
 const STATUS_PILL = {
   present: { bg: "var(--nv-accent-soft)", fg: "#15803D", bd: "#BBF7D0", ar: "حاضر", en: "Present" },
@@ -413,7 +414,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       ? (ar ? "حضر" : "In")
       : !done
         ? (ar ? "انصرف" : "Out")
-        : (ar ? "اكتمل اليوم ✓" : "Day complete ✓");
+        : <><NvIcon name="check" size={14} /> {ar ? "اكتمل اليوم" : "Day complete"}</>;
   const orbSub = !inn
     ? (ar ? `تبدأ ورديتك ${startClock}` : `Shift starts ${startClock}`)
     : !done
@@ -590,7 +591,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                   border: `1px solid ${chip.ok ? "var(--nv-ok-line)" : chip.wait ? "var(--nv-line)" : "var(--nv-bad-line)"}`,
                 }}
               >
-                <span aria-hidden>{chip.ok ? "✓" : chip.wait ? "—" : "✕"}</span>
+                <span aria-hidden style={{ display: "inline-flex" }}>{chip.ok ? <NvIcon name="check" size={12} strokeWidth={2} inline={false} /> : chip.wait ? "—" : <NvIcon name="cross" size={12} strokeWidth={2} inline={false} />}</span>
                 {chip.t}
               </span>
             ))}
@@ -646,7 +647,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                             border: `${step.state === "wait" ? "1.5px dashed" : "2px solid"} ${tone.bd}`,
                           }}
                         >
-                          {step.state === "done" || step.state === "late" ? "✓" : step.state === "now" ? <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--nv-ok-fill, #3C7D50)" }} /> : ""}
+                          {step.state === "done" || step.state === "late" ? <NvIcon name="check" size={12} strokeWidth={2.25} inline={false} /> : step.state === "now" ? <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--nv-ok-fill, #3C7D50)" }} /> : ""}
                         </span>
                       )}
                     </span>

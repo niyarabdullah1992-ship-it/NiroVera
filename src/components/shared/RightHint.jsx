@@ -13,9 +13,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import NvIcon from "@/components/shared/NvIcon";
 
 /**
- * «⚖ حقك» / «⚖ التزامك» — one small inline trigger per item. Click opens a small popover (a bottom
+ * «حقك» / «التزامك» with the scale glyph — one small inline trigger per item. Click opens a small popover (a bottom
  * sheet on narrow screens) with exactly three lines: the right/duty for THIS item, what to do if it is
  * not applied (one action), and the statute link that opens the official text.
  * The hint object comes from src/lib/rightHints.js (or any builder with the same shape).
@@ -25,13 +26,9 @@ const GREEN = "var(--nv-ok-ink)";
 const INK = "var(--nv-ink)";
 const MUTED = "var(--nv-muted)";
 
-export function ScaleGlyph({ size = 12 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden focusable="false" style={{ flex: "none" }}>
-      <path d="M8 2v11M4.5 13.5h7M3 4.5h10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      <path d="M3 4.5 1.4 8.4a1.9 1.9 0 0 0 3.2 0L3 4.5Zm10 0-1.6 3.9a1.9 1.9 0 0 0 3.2 0L13 4.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
-    </svg>
-  );
+/** The rights mark — the master glyph of the platform icon family (NvIcon «scale»). */
+export function ScaleGlyph({ size = 13 }) {
+  return <NvIcon name="scale" size={size} inline={false} />;
 }
 
 /** The official-text reader for an article / decision / regulation article. */

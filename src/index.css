@@ -1991,6 +1991,7 @@ button.nv-statutory-item {
   box-shadow: none !important;
   color: var(--nv-ink) !important;
 }
+.powercare-shell main input.nv-sign-query { padding-inline-start: 30px !important; }
 .nv-sign-frame button.nv-sign-nav,
 .nv-sign-frame button.nv-sign-kpi {
   border-radius: 0 !important;
@@ -3767,7 +3768,7 @@ html.dark .nv7-section-head {
   .nv-figrow .nv-fig:nth-child(even) { padding-inline-start: 12px; }
 }
 
-/* ── «⚖ حقك / التزامك» and the rights lists ── */
+/* ── «حقك / التزامك» and the rights lists ── */
 .nv-right-hint:focus-visible { outline: 2px solid var(--nv-ok-ink); outline-offset: 2px; border-radius: 4px; }
 .nv-right-hint:hover span { text-decoration: underline; text-underline-offset: 3px; }
 .nv-rights {

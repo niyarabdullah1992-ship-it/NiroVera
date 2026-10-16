@@ -654,7 +654,7 @@ export default function Complaints() {
                   </div>
                 </div>
                 {board.mine.some((card) => !card.settled) ? null : (hrOnlyPicked
-                  ? <VoiceChainBoard chain={[{ num: "01", name: ar ? "الموارد البشرية" : "Human Resources", mark: "✓", bg: "var(--nv-ok-ink)", border: "var(--nv-ok-ink)", color: "var(--nv-ink)", weight: 700 }]} note={ar ? "يصل إلى الموارد البشرية وحدها، بلا تصعيد ولا مرور بمديرك أو مدير الفرع." : "It reaches HR alone — no ladder, never via your manager or the branch manager."} ar={ar} />
+                  ? <VoiceChainBoard chain={[{ num: "01", name: ar ? "الموارد البشرية" : "Human Resources", mark: "check", bg: "var(--nv-ok-ink)", border: "var(--nv-ok-ink)", color: "var(--nv-ink)", weight: 700 }]} note={ar ? "يصل إلى الموارد البشرية وحدها، بلا تصعيد ولا مرور بمديرك أو مدير الفرع." : "It reaches HR alone — no ladder, never via your manager or the branch manager."} ar={ar} />
                   : <VoiceChainBoard chain={board.chain} note={board.chainNote} ar={ar} />)}
                 <p style={{ margin: 0, fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
                   {ar

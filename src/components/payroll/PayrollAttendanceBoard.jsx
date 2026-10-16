@@ -99,7 +99,7 @@ export default function PayrollAttendanceBoard({
             line.cut ? `− ${money(line.cut)}` : "",
             line.notDue ? (ar ? `غير مستحق ${money(line.notDue)}` : `not due ${money(line.notDue)}`) : "",
           ].filter(Boolean).join(" · ") || (ar ? "لا أثر" : "No effect");
-          // «⚖ التزامك» — unpaid leave is wage not due (116); overtime is the 107 formula.
+          // «التزامك» — unpaid leave is wage not due (116); overtime is the 107 formula.
           const hintCtx = { view: "manager", ar, name: line.employee?.name || line.item.employeeName || "", employeeId: line.item.employeeId };
           const hint = line.notDue
             ? payHintFor("unpaidLeave", { ...hintCtx, days: line.att.unpaidLeave || line.item.unpaidLeaveDays, amount: line.notDue })

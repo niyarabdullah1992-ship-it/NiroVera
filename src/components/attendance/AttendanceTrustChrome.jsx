@@ -2,12 +2,13 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { BAD, BORDER, CARD, MUTED, NAVY, NAVY_FILL, OK, WARN } from "@/lib/platformStyles";
 import { dutyChip } from "@/components/schedules/dutyStatus";
+import { NvMark } from "@/components/shared/NvIcon";
 
 const STATE_PILL = { ok: OK, bad: BAD, wait: WARN, leave: WARN };
 
 const RING_TONE = {
-  ok: { mark: "✓", color: "var(--nv-ok-ink)", bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)", weight: 400 },
-  bad: { mark: "✕", color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)", weight: 700 },
+  ok: { mark: "check", color: "var(--nv-ok-ink)", bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)", weight: 400 },
+  bad: { mark: "cross", color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)", weight: 700 },
   wait: { mark: "—", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", weight: 600 },
   leave: { mark: "◌", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", weight: 700 },
 };
@@ -66,7 +67,7 @@ export function AttendanceRingChips({ rings, brokeAt }) {
           <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10 }}>{item.tag}</span>
           {item.title}
           {" "}
-          {item.mark}
+          <NvMark mark={item.mark} size={11} />
         </span>
       ))}
       {brokeAt ? <span style={{ fontSize: 11, color: MUTED, paddingInlineStart: 4 }}>{brokeAt}</span> : null}
@@ -172,8 +173,8 @@ export function AttendanceProofChain({ ar, scheduled, punched, geofence, registe
   const met = rings.filter((item) => item.state === "ok").length;
   const broken = rings.some((item) => item.state === "bad");
   const MARK = {
-    ok: { bg: "var(--nv-ok-fill, #3C7D50)", fg: "#fff", bd: "var(--nv-ok-fill, #3C7D50)", t: "✓" },
-    bad: { bg: "var(--nv-bad-soft)", fg: "var(--nv-bad-ink)", bd: "var(--nv-bad-line)", t: "✕" },
+    ok: { bg: "var(--nv-ok-fill, #3C7D50)", fg: "#fff", bd: "var(--nv-ok-fill, #3C7D50)", t: "check" },
+    bad: { bg: "var(--nv-bad-soft)", fg: "var(--nv-bad-ink)", bd: "var(--nv-bad-line)", t: "cross" },
     wait: { bg: "var(--nv-card)", fg: "var(--nv-muted)", bd: "var(--nv-line)", t: "" },
     leave: compact
       ? { bg: "var(--nv-shift-leave)", fg: "var(--nv-shift-holiday-ink)", bd: "var(--nv-shift-leave-line)", t: "◌" }
@@ -256,7 +257,7 @@ export function AttendanceProofChain({ ar, scheduled, punched, geofence, registe
                     border: `1.5px ${item.state === "wait" ? "dashed" : "solid"} ${mark.bd}`,
                   }}
                 >
-                  {mark.t}
+                  <NvMark mark={mark.t} size={12} strokeWidth={2.25} />
                 </span>
                 <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)" }}>{text.title || item.title}</span>

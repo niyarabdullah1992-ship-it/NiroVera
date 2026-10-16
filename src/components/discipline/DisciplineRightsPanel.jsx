@@ -8,7 +8,7 @@ import { disciplineRuleHint } from "@/lib/rightHints.disc";
 /**
  * «حقوقي في هذا المسار» in the frame of «أنظمة الوزارة» (الحضور والدوام، طلباتي، صوت الموظف):
  * source cards, group bands, and one row per right with its article badge, whether the platform
- * enforces it, and the «⚖ حقك» hint. Articles come from the rule catalog, never typed here.
+ * enforces it, and the «حقك» hint. Articles come from the rule catalog, never typed here.
  */
 function Num({ children }) {
   return <span dir="ltr" style={mono}>{children}</span>;

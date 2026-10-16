@@ -1,4 +1,5 @@
 import React from "react";
+import NvIcon from "@/components/shared/NvIcon";
 
 /**
  * A second-level choice under a request type (leave type, duty request, night-work right, document
@@ -24,7 +25,7 @@ export default function SubTypeOption({ on = false, title, sub, badge, onClick, 
       data-sub={dataKey || undefined}
       onClick={onClick}
     >
-      <span className="nv-req-sub-check" aria-hidden="true">{on ? "✓" : ""}</span>
+      <span className="nv-req-sub-check" aria-hidden="true">{on ? <NvIcon name="check" size={10} strokeWidth={2.5} inline={false} /> : ""}</span>
       <span className="nv-req-sub-copy">
         <span className="nv-req-sub-title">
           <span>{title}</span>

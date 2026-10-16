@@ -30,6 +30,7 @@ import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption"
 import { checkRequestFilesGate, requestAttachmentRule } from "@/lib/otherRequestDerivations";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { toast } from "@/components/ui/use-toast";
+import NvIcon from "@/components/shared/NvIcon";
 
 /**
  * «حقوق نظامية أخرى» — worker requests the Labour Law and decision 18632 provide for: carrying annual
@@ -53,7 +54,7 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
   const today = todayRiyadh();
   const opensHere = (k) => k !== GRIEVANCE_TYPE && k !== DAMAGE_OBJECTION_TYPE && RIGHTS_REQUESTS.some((row) => row.key === k);
   const [kind, setKind] = useState(() => (opensHere(initialKind) ? initialKind : LEAVE_CARRY_TYPE));
-  // «⚖ حقك» on a card (or ?kind=rights&right=…) opens this form on the right kind.
+  // «حقك» on a card (or ?kind=rights&right=…) opens this form on the right kind.
   useEffect(() => {
     if (opensHere(initialKind)) setKind(initialKind);
   }, [initialKind]);
@@ -244,7 +245,7 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
         ) : null}
 
         <span data-rights-gate={gate.ok ? "ok" : gate.error} style={{ fontSize: 11.5, fontWeight: 600, color: gate.ok ? "#2F6B43" : "var(--nv-warn-ink, #8A5A12)", lineHeight: 1.7 }}>
-          {gate.ok ? (ar ? "✓ جاهز للإرسال" : "✓ Ready to send") : (ar ? gate.reason : gate.reasonEn)}
+          {gate.ok ? <><NvIcon name="check" size={12} strokeWidth={2} /> {ar ? "جاهز للإرسال" : "Ready to send"}</> : (ar ? gate.reason : gate.reasonEn)}
         </span>
         <button type="button" data-rights-send="1" disabled={!gate.ok || busy} onClick={send} style={{ fontFamily: "inherit", fontSize: 13, fontWeight: 700, height: 42, border: "none", borderRadius: 8, background: gate.ok ? "#0B3D27" : "var(--nv-line)", color: gate.ok ? "#fff" : MUTED, cursor: gate.ok ? "pointer" : "default" }}>
           {kind === ART81_EXIT_TYPE ? (ar ? "سجّل ترك العمل وأبلغ الإدارة" : "Record leaving and tell management") : (ar ? "أرسل الطلب" : "Send the request")}

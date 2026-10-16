@@ -29,7 +29,7 @@ export const DAMAGE_OBJECTION_ROUTE = "/app/discipline?tab=mine&raise=damage_obj
 /** Harassment / abuse is raised in «صوت الموظف» and reaches HR only. */
 export const ABUSE_ROUTE = "/app/complaints?tab=mine&channel=abuse";
 
-/** Where a «⚖ حقك» rights action opens: the grievance, damage objection and abuse flows left طلباتي. */
+/** Where a «حقك» rights action opens: the grievance, damage objection and abuse flows left طلباتي. */
 export function rightsRouteFor(kind) {
   const k = String(kind || "");
   if (k === GRIEVANCE_TYPE) return GRIEVANCE_ROUTE;

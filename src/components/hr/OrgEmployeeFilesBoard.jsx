@@ -11,6 +11,7 @@ import { isCompanyRootStation, isHrUnit } from "@/lib/stationTree";
 import { kpiActionStyle, meterStyles } from "@/lib/statusFlag";
 import { chip, chipButton, mono } from "@/components/schedules/scheduleChrome";
 import { btnGhost, btnPrimary, btnQuiet } from "@/components/hr/orgdesign/orgDesignUi";
+import NvIcon from "@/components/shared/NvIcon";
 
 const DASH = "—";
 const SEARCH_AR = "يبحث في كل الفروع بالاسم أو الوظيفة أو الرقم الوظيفي أو اسم الفرع";
@@ -115,7 +116,7 @@ function CheckBox({ on, onClick, label }) {
         border: on ? "1px solid var(--nv-navy)" : "1.5px solid var(--nv-mute-fill, var(--nv-line))",
       }}
     >
-      {on ? "✓" : ""}
+      {on ? <NvIcon name="check" size={12} strokeWidth={2.25} /> : ""}
     </button>
   );
 }

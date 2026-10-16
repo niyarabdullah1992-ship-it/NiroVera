@@ -5,6 +5,7 @@ import GoogleTiles from "@/components/maps/GoogleTiles";
 import LocationSearchBox from "@/components/maps/LocationSearchBox";
 import { X, MapPin, LocateFixed, Loader2, Check } from "lucide-react";
 import "leaflet/dist/leaflet.css";
+import NvIcon from "@/components/shared/NvIcon";
 
 const markerIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -140,7 +141,7 @@ export default function StationLocationEditor({ t, station, onSave, onCancel, in
           }}
         />
         {areaHint && !pos && (
-          <p className="mt-1 text-[11px] text-accent font-body" dir="auto">📍 {areaHint} — {t("tapMapToSet")}</p>
+          <p className="mt-1 text-[11px] text-accent font-body" dir="auto"><NvIcon name="location" size={12} /> {areaHint} — {t("tapMapToSet")}</p>
         )}
       </div>
 

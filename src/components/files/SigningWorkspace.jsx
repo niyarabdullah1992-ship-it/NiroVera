@@ -36,6 +36,7 @@ import SigningFinishDialog from "@/components/files/SigningFinishDialog";
 import SigningStudioFrame from "@/components/files/SigningStudioFrame";
 import { envelopeCode, signGhostBtn, signMono as mono, signPrimaryBtn, signingDocTitle } from "@/components/files/signingUi";
 import { BORDER, CARD, INK, MUTED, SURFACE } from "@/lib/platformStyles";
+import SignMarkGlyph from "@/components/files/SignMarkGlyph";
 const SIGNER_COLORS = ["#1d9a5b", "#14213d", "#6b7280", "#8a6516"];
 
 const TOOLS = [
@@ -855,7 +856,7 @@ export default function SigningWorkspace({
             <div style={{ display: "flex", gap: 6, padding: "6px 0 0" }}>
               {MARK_GLYPHS.map((glyph) => (
                 <button key={glyph} type="button" aria-pressed={mark === glyph} onClick={() => chooseMark(glyph)} style={{ fontFamily: "inherit", height: 28, minWidth: 28, borderRadius: 8, border: `1px solid ${mark === glyph ? "var(--nv-navy)" : BORDER}`, background: mark === glyph ? "var(--nv-navy)" : "var(--nv-card)", color: mark === glyph ? "#fff" : INK, cursor: "pointer" }}>
-                  {glyph}
+                  <SignMarkGlyph glyph={glyph} size={14} />
                 </button>
               ))}
             </div>

@@ -303,10 +303,14 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
 
   const matches = (src) => source === "all" || src === source;
   const visiblePeople = people.filter((row) => matches(row.source));
-  const visibleRows = openRows.filter((item) => matches(item.source));
-  const visibleSettled = settledRows.filter((item) => matches(item.source));
+  // The five 18632 employer obligations stay in view as one band — met or not — so management always
+  // sees what the branch has proven; they are not folded under «عرض المستوفى».
+  const obligationRows = matches("18632") ? [...openRows, ...settledRows].filter((item) => item.obligationKey) : [];
+  const visibleRows = openRows.filter((item) => matches(item.source) && !item.obligationKey);
+  const visibleSettled = settledRows.filter((item) => matches(item.source) && !item.obligationKey);
   const visibleNotes = source === "all" || source === "labour" ? stationNotes : [];
   const nothingOpen = !visiblePeople.length && !visibleRows.length && !visibleNotes.length;
+  const obligationsOpen = obligationRows.filter((item) => item.status === "blocked" || item.status === "alert").length;
   const hasNightConsent = (grouped.cards || []).some((row) => row.gateId === "night_rotate");
 
   const lede = ar ? PLATFORM_JUDGE_LEDE_AR : PLATFORM_JUDGE_LEDE_EN;
@@ -338,7 +342,7 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
         <MinistrySourceTabs active={source} onPick={setSource} ar={ar} chipButton={chipButton} />
       </div>
 
-      {nothingOpen ? (
+      {nothingOpen && !obligationsOpen ? (
         <div style={{ padding: "16px 18px", fontSize: 12.5, color: "var(--nv-muted)", lineHeight: 1.75 }}>
           {source === "all"
             ? (ar ? "لا مانع ولا تنبيه على هذا الأسبوع. الفحوص المستوفاة في الأسفل." : "No block and no alert on this week. Satisfied checks sit below.")
@@ -404,6 +408,23 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
           ) : null}
         </div>
       )}
+
+      {obligationRows.length ? (
+        <div data-night-obligations="1" style={{ display: "flex", flexDirection: "column", borderTop: "1px solid var(--nv-line2, #EEF2F7)" }}>
+          <div style={{ padding: "9px 18px", background: "var(--nv-soft, #F6F8FA)", borderBottom: "1px solid var(--nv-line2, #EEF2F7)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={sourceBadge()}>18632</span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)", flex: "1 1 180px", minWidth: 0 }}>
+              {ar ? "التزامات المنشأة للعمل الليلي" : "Employer duties for night work"}
+            </span>
+            <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>
+              {ar
+                ? (obligationsOpen ? `${obligationsOpen} ناقص من ${obligationRows.length}` : `${obligationRows.length} من ${obligationRows.length} بلا نقص`)
+                : (obligationsOpen ? `${obligationsOpen} missing of ${obligationRows.length}` : `${obligationRows.length} of ${obligationRows.length} with no gap`)}
+            </span>
+          </div>
+          {obligationRows.map((item) => <CheckRow key={item.key} item={item} ar={ar} prove={prove} />)}
+        </div>
+      ) : null}
 
       <div style={{ padding: "10px 18px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <button

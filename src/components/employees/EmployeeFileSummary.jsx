@@ -1,5 +1,4 @@
 import React from "react";
-import FigureRow from "@/components/shared/FigureRow";
 import { Link } from "react-router-dom";
 import { EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 
@@ -23,37 +22,7 @@ function expiringDocs(view) {
 }
 
 export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
-  const leave = factOf(view, ar ? "رصيد الإجازة السنوية" : "Annual leave");
-  const service = factOf(view, ar ? "مدة الخدمة" : "Service");
   const livePenalties = (view.penalties || []).filter((row) => /نافذ|ساري|اعتراض|force|object/i.test(`${row.state || ""}`));
-  const soon = expiringDocs(view);
-  const kpis = [
-    {
-      label: ar ? "رصيد الإجازة السنوية" : "Annual leave",
-      value: leave?.v || "—",
-      note: leave?.note || "",
-      bar: "#3C7D50",
-    },
-    {
-      label: ar ? "مدة الخدمة" : "Service",
-      value: service?.v || "—",
-      note: service?.note || "—",
-      bar: "#C8A45A",
-    },
-    {
-      label: ar ? "جزاءات سارية" : "Live sanctions",
-      value: String(livePenalties.length),
-      note: livePenalties.length ? (livePenalties[0].state || "—") : (ar ? "لا ساري" : "None live"),
-      bar: livePenalties.length ? "#9B2335" : "#3C7D50",
-      flag: livePenalties.length ? (ar ? "ساري" : "Live") : "",
-    },
-    {
-      label: ar ? "وثائق تنتهي قريباً" : "Documents ending soon",
-      value: String(soon.length),
-      note: soon.length ? (ar ? "خلال 30 يوماً" : "Within 30 days") : (ar ? "لا تجديد معلّق" : "No renewal due"),
-      bar: soon.length ? "#C8A45A" : "#3C7D50",
-    },
-  ];
   const rows = view.compliance || [];
   const met = rows.filter((row) => row.ok && !row.warn).length;
   const scored = rows.filter((row) => row.ok || row.warn || row.state).length || rows.length;
@@ -99,18 +68,7 @@ export default function EmployeeFileSummary({ view, ar, onOpenTab }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <FigureRow
-        ar={ar}
-        figures={kpis.map((item, i) => ({
-          key: `file-kpi-${i}`,
-          label: item.label,
-          value: item.value,
-          hint: item.note,
-          tone: item.flag ? "bad" : undefined,
-          flag: item.flag || "",
-        }))}
-      />
-
+      {/* No figure row here: leave lives in طلباتي, sanctions and documents have their own lines below. */}
       <section style={paper}>
         <header style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 180 }}>

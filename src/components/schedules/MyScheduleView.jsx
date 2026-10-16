@@ -22,7 +22,6 @@ import { calendarDateKey } from "@/lib/attendanceCalendar";
 import { WEEK_HINT_EMP_AR } from "@/lib/packageMinistryCatalog";
 import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
 import StatutoryItem from "@/components/labor/StatutoryItem";
-import PlatformDateField from "@/components/shared/PlatformDateField";
 import AttendanceSectionFrame from "@/components/attendance/AttendanceSectionFrame";
 import ScheduleHowItWorks from "@/components/schedules/ScheduleHowItWorks";
 import { chip, Collapsible, mono, quietAction, SectionHead, slab } from "@/components/schedules/scheduleChrome";
@@ -71,11 +70,6 @@ export default function MyScheduleView({
   data,
   nightGlow,
   history,
-  reqOpen,
-  setReqOpen,
-  reqForm,
-  setReqForm,
-  submitShiftRequest,
   manageLink,
   focusDay = "",
 }) {
@@ -247,39 +241,7 @@ export default function MyScheduleView({
                 <span style={{ fontSize: 11.5, color: SW.muted, lineHeight: 1.7, flex: "1 1 260px" }}>
                   {ar ? WEEK_HINT_EMP_AR : "This is your published roster. Ask for a shift change or leave from My Requests. Leave days stay locked."}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setReqOpen((v) => !v)}
-                  style={{ fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, height: 34, padding: "0 16px", border: "none", borderRadius: DS_CONTROL_RADIUS, background: reqOpen ? "var(--nv-navy)" : "var(--nv-accent)", color: "var(--nv-btn-ink, #fff)", cursor: "pointer", whiteSpace: "nowrap" }}
-                >
-                  {reqOpen ? (ar ? "إغلاق الطلب" : "Close request") : (ar ? "اطلب تغيير وردية" : "Request a shift change")}
-                </button>
-                <Link to="/app/requests" style={quietAction({ color: "var(--nv-muted)", fontSize: 12 })}>
-                  {ar ? "طلباتي" : "My requests"}
-                </Link>
               </div>
-              {reqOpen && (
-                <div data-shift-request="1" style={{ margin: "0 18px 16px", padding: 14, background: SW.wash, border: `1px solid ${SW.line}`, borderRadius: DS_CONTROL_RADIUS, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,180px),1fr))", gap: 10 }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 11, color: SW.muted }}>{ar ? "اليوم" : "Day"}</span>
-                    <PlatformDateField ar={ar} value={reqForm.date} onChange={(next) => setReqForm((f) => ({ ...f, date: next }))} />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ fontSize: 11, color: SW.muted }}>{ar ? "الوردية المطلوبة" : "Requested shift"}</span>
-                    <select value={reqForm.shiftTypeId} onChange={(e) => setReqForm((f) => ({ ...f, shiftTypeId: e.target.value }))} style={{ fontFamily: "inherit", fontSize: 12, padding: 8, border: `1px solid ${SW.line}`, borderRadius: DS_CONTROL_RADIUS, background: SW.card, color: SW.ink, textAlign: "start" }}>
-                      <option value="">{ar ? "راحة" : "Rest"}</option>
-                      {types.map((shift) => <option key={shift.id} value={shift.id}>{shift.label} · {shiftHoursLine(shift, lang, timeFormat)}</option>)}
-                    </select>
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "1 / -1" }}>
-                    <span style={{ fontSize: 11, color: SW.muted }}>{ar ? "السبب" : "Reason"}</span>
-                    <input value={reqForm.reason} onChange={(e) => setReqForm((f) => ({ ...f, reason: e.target.value }))} placeholder={ar ? "لماذا هذا التغيير؟" : "Why this change?"} style={{ fontFamily: "inherit", fontSize: 12, padding: 8, border: `1px solid ${SW.line}`, borderRadius: DS_CONTROL_RADIUS, background: SW.card, color: SW.ink, textAlign: "start" }} />
-                  </label>
-                  <button type="button" onClick={submitShiftRequest} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, padding: "9px 14px", border: "none", borderRadius: DS_CONTROL_RADIUS, background: "var(--nv-ok-fill)", color: "var(--nv-btn-ink)", cursor: "pointer", justifySelf: "start" }}>
-                    {ar ? "أرسل للاعتماد" : "Submit for approval"}
-                  </button>
-                </div>
-              )}
             </section>
 
             {/* 2 · The whole branch week — read only, folded; management stays in the manage lane */}
@@ -417,7 +379,7 @@ export default function MyScheduleView({
                 </span>
               )}
               <div style={{ padding: "10px 18px", marginTop: 6, borderTop: "1px solid rgba(255,255,255,.1)", fontSize: 10.5, color: "#A9CDB8" }}>
-                {ar ? "من الجدول المنشور. التغيير يُطلب من «اطلب تغيير وردية»." : "From the published roster. Ask for a change with «Request a shift change»."}
+                {ar ? "من الجدول المنشور. تغيير الوردية يُطلب من «طلباتي ← طلبات الدوام»." : "From the published roster. Ask for a shift change in My requests → Duty requests."}
               </div>
             </section>
 

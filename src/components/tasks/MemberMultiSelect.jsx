@@ -60,12 +60,11 @@ function rowStyle(on) {
 }
 
 const chip = {
-  display: "inline-flex",
+  display: "flex",
   alignItems: "center",
   gap: 6,
-  flex: "none",
-  maxWidth: "100%",
-  height: 30,
+  minWidth: 0,
+  height: 32,
   margin: 0,
   paddingInlineStart: 4,
   paddingInlineEnd: 4,
@@ -182,12 +181,12 @@ export default function MemberMultiSelect({ members, selected, onChange, lang, e
       {!open && picked.length > 0 && (
         <div
           data-member-chip-row
-          style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, width: "100%" }}
+          style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,120px),1fr))", gap: 6, width: "100%" }}
         >
           {picked.map((m) => (
             <span key={m.id} data-member-chip style={chip}>
               <span aria-hidden style={chipAvatar}>{initialsOf(m.name)}</span>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{m.name}</span>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{m.name}</span>
               <button type="button" onClick={() => toggle(m.id)} aria-label={ar ? `إزالة ${m.name}` : `Remove ${m.name}`} style={chipRemove}>
                 <X style={{ width: 12, height: 12 }} />
               </button>

@@ -47,10 +47,11 @@ function rowStyle(on) {
 }
 
 const chip = {
-  display: "inline-flex",
+  display: "flex",
   alignItems: "center",
   gap: 4,
-  height: 30,
+  minWidth: 0,
+  height: 32,
   paddingInlineStart: 12,
   paddingInlineEnd: 4,
   borderRadius: PILL_RADIUS,
@@ -122,10 +123,10 @@ export default function OpsStationMultiSelect({ stations = [], value = [], onCha
       </button>
 
       {!open && selected.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,120px),1fr))", gap: 6, width: "100%" }}>
           {selected.slice(0, 6).map((s) => (
             <span key={s.id} style={chip}>
-              {s.name}
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
               <button type="button" onClick={() => toggle(s.id)} aria-label={ar ? `إزالة ${s.name}` : `Remove ${s.name}`} style={{ width: 22, height: 22, display: "grid", placeItems: "center", margin: 0, padding: 0, border: "none", borderRadius: "50%", background: "transparent", color: MUTED, cursor: "pointer" }}>
                 <X style={{ width: 12, height: 12 }} />
               </button>

@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import Nv7SectionHead from "@/components/shared/Nv7SectionHead";
-import { StatusFlag } from "@/components/shared/StatusFlag";
+import FigureRow from "@/components/shared/FigureRow";
 import {
   ORG_MONO,
   orgChip,
@@ -39,6 +39,7 @@ export default function OrgWorkforceHero({
   onGoLog,
   onGoFormer,
   formerCount = 0,
+  showTools = true,
 }) {
   const logCount = useMemo(() => orgStructureEvents(data).length, [data]);
 
@@ -74,7 +75,7 @@ export default function OrgWorkforceHero({
         kicker={ar ? "05 · القوى العاملة" : "05 · Workforce"}
         title={ar ? "الهيكل التنظيمي" : "Org structure"}
         hint={ar
-          ? "الوظيفة ثابتة، والشخص يتغيّر. الرقم على البطاقة «مباشرون / إجمالي» يفتح الأغصان، والاسم يجعلها طرف السلسلة. الملفات والعقود في الموارد البشرية."
+          ? "الوظيفة ثابتة، والشخص يتغيّر. منه تُشتق التبعية والصلاحيات ومسار الاعتماد والتصعيد. الملفات والعقود في الموارد البشرية."
           : "The seat stays and the person changes. The card count opens the branches; the name ends the chain."}
       />
 
@@ -101,17 +102,11 @@ export default function OrgWorkforceHero({
         </div>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
-            {stats.map((stat) => (
-              <div key={stat.id} style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 2 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-                  <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-muted)" }}>{stat.label}</span>
-                  <StatusFlag tone={stat.tone} flag={stat.flag} label={stat.label} ar={ar} />
-                </span>
-                <strong dir="ltr" style={{ ...ORG_MONO, fontSize: 18, fontWeight: 700, color: "var(--nv-ink)" }}>{stat.value}</strong>
-              </div>
-            ))}
-          </div>
+          <FigureRow
+            ar={ar}
+            figures={stats.map((stat) => ({ key: stat.id, label: stat.label, value: stat.value, tone: stat.tone === "warn" ? "warn" : undefined, flag: stat.flag }))}
+          />
+          {showTools ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <input
               value={query}
@@ -153,6 +148,7 @@ export default function OrgWorkforceHero({
               <button type="button" onClick={onAddBranch} style={orgPrimaryBtn()}>{ar ? "＋ إضافة فرع" : "+ Add branch"}</button>
             ) : null}
           </div>
+          ) : null}
         </>
       )}
     </div>

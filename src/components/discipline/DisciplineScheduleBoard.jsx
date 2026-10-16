@@ -123,7 +123,7 @@ function RegulationTable({ regulation, ar }) {
 }
 
 /**
- * Law Arts. 12–13 · Regs Art. 2(3) · model Art. 72: the approved regulation is announced in a visible
+ * Law Arts. 12–13 · model Art. 72: the approved regulation is announced in a visible
  * place, binds the workers from the day after, and each worker confirms reading it.
  */
 function RegulationAnnouncement({ ar, today, regulation, canEdit, employees = [], meId = "", onAnnounce, onAck }) {
@@ -156,8 +156,8 @@ function RegulationAnnouncement({ ar, today, regulation, canEdit, employees = []
       </div>
       <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
         {ar
-          ? "تُعلَن اللائحة وكل تعديل عليها في مكان ظاهر أو بوسيلة تكفل علم العمال بها (المادة 13 · اللائحة م2/3)، وتسري على العمال من اليوم التالي لإعلانها (النموذج الموحد م72)، ويُطلع العامل عليها عند التعاقد (النموذج م3/3)."
-          : "The regulation and every amendment are announced visibly (Art. 13 · Regs Art. 2(3)); they bind the workers from the next day (model Art. 72)."}
+          ? "تُعلَن اللائحة وكل تعديل عليها في مكان ظاهر أو بوسيلة تكفل علم العمال بها (المادة 13/3)، وتسري على العمال من اليوم التالي لإعلانها (النموذج الموحد م72)، ويُطلع العامل عليها عند التعاقد (النموذج الموحد م3/3)."
+          : "The regulation and every amendment are announced visibly (Art. 13(3)); they bind the workers from the next day (model Art. 72)."}
       </span>
       {canEdit && standing.id !== "draft" ? (
         <div data-regulation-acks="" style={{ display: "flex", flexDirection: "column", gap: 6 }}>

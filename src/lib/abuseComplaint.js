@@ -107,7 +107,7 @@ export function checkFileAbuseGate({ role = "victim", incidentAt, filedAt, kind,
       { route: "government" },
     );
   }
-  if (!ABUSE_KINDS.some((k) => k.id === kind)) return fail("ABUSE_KIND", "اختر نوع الإيذاء (النموذج م54).", "Pick the kind of abuse (model Art. 54).");
+  if (!ABUSE_KINDS.some((k) => k.id === kind)) return fail("ABUSE_KIND", "اختر نوع الإيذاء (النموذج الموحد م54).", "Pick the kind of abuse (model Art. 54).");
   const incident = dateOnly(incidentAt);
   if (!incident) return fail("ABUSE_INCIDENT_DATE", "اكتب تاريخ وقوع الواقعة.", "Enter the date of the incident.");
   if (incident > today) return fail("ABUSE_INCIDENT_FUTURE", "تاريخ الواقعة لا يكون بعد اليوم.", "The incident date cannot be after today.");
@@ -119,7 +119,7 @@ export function checkFileAbuseGate({ role = "victim", incidentAt, filedAt, kind,
     if (today > lastDay) {
       return fail(
         "ABUSE_FILING_LATE",
-        `مضت خمسة أيام عمل على الواقعة (آخرها ${lastDay}) — مهلة الشكوى للمنشأة انتهت (النموذج م55/1)، ويبقى حقك في الالتجاء إلى الجهة الحكومية المختصة. ${ABUSE_GOV_PATH_AR}`,
+        `مضت خمسة أيام عمل على الواقعة (آخرها ${lastDay}) — مهلة الشكوى للمنشأة انتهت (النموذج الموحد م55/1)، ويبقى حقك في الالتجاء إلى الجهة الحكومية المختصة. ${ABUSE_GOV_PATH_AR}`,
         `Five working days have passed since the incident (last day ${lastDay}) — the internal complaint window closed (model Art. 55(1)); your right to go to the government body stays. ${ABUSE_GOV_PATH_EN}`,
         { route: "government", lastDay },
       );
@@ -153,7 +153,7 @@ export function planAbuseCase({ id, role = "victim", reporter, accused = {}, kin
     separation: null,
     outcome: null,
     referral: null,
-    log: [{ at, text: role === "witness" ? "قُدِّم بلاغ شاهد (النموذج م55/1)." : "قُدِّمت الشكوى (النموذج م55/1)." }],
+    log: [{ at, text: role === "witness" ? "قُدِّم بلاغ شاهد (النموذج الموحد م55/1)." : "قُدِّمت الشكوى (النموذج الموحد م55/1)." }],
   };
 }
 
@@ -168,11 +168,11 @@ export const ABUSE_STEPS = [
 /** Model Art. 55(2): a committee by decision of the competent official — not the parties to the case. */
 export function checkAbuseCommitteeGate(row, { members = [], decisionRef = "" } = {}) {
   const ids = (members || []).map((m) => String(m?.id || m)).filter(Boolean);
-  if (!ids.length) return fail("ABUSE_COMMITTEE_EMPTY", "سمِّ عضواً واحداً على الأقل في لجنة التحقيق (النموذج م55/2).", "Name at least one committee member (model Art. 55(2)).");
+  if (!ids.length) return fail("ABUSE_COMMITTEE_EMPTY", "سمِّ عضواً واحداً على الأقل في لجنة التحقيق (النموذج الموحد م55/2).", "Name at least one committee member (model Art. 55(2)).");
   if (ids.includes(String(row?.accusedId || "")) || ids.includes(String(row?.reporterId || ""))) {
     return fail("ABUSE_COMMITTEE_PARTY", "لا يكون الشاكي أو المشكو في حقه عضواً في لجنة التحقيق.", "Neither party may sit on the committee.");
   }
-  if (!String(decisionRef || "").trim()) return fail("ABUSE_COMMITTEE_DECISION", "اكتب رقم قرار تشكيل اللجنة من المسؤول المختص (النموذج م55/2).", "Enter the decision forming the committee (model Art. 55(2)).");
+  if (!String(decisionRef || "").trim()) return fail("ABUSE_COMMITTEE_DECISION", "اكتب رقم قرار تشكيل اللجنة من المسؤول المختص (النموذج الموحد م55/2).", "Enter the decision forming the committee (model Art. 55(2)).");
   return { ok: true };
 }
 
@@ -180,23 +180,23 @@ export function checkAbuseCommitteeGate(row, { members = [], decisionRef = "" } 
 export function checkAbuseHearingGate({ who = "", role = "", statement = "", signedByParty = false, signedByCommittee = false } = {}) {
   if (!String(who).trim() || !["complainant", "accused", "witness"].includes(role)) return fail("ABUSE_HEARING_WHO", "حدّد من سُمعت أقواله وصفته.", "Name who was heard and in what capacity.");
   if (String(statement || "").trim().length < 5) return fail("ABUSE_HEARING_TEXT", "دوّن الأقوال في المحضر.", "Record the statement in the minutes.");
-  if (!signedByParty || !signedByCommittee) return fail("ABUSE_HEARING_SIGNED", "المحضر يوقعه صاحب الأقوال، ويوقعه أعضاء اللجنة في نهاية كل صفحة (النموذج م56/1).", "The minutes are signed by the speaker and by the committee on each page (model Art. 56(1)).");
+  if (!signedByParty || !signedByCommittee) return fail("ABUSE_HEARING_SIGNED", "المحضر يوقعه صاحب الأقوال، ويوقعه أعضاء اللجنة في نهاية كل صفحة (النموذج الموحد م56/1).", "The minutes are signed by the speaker and by the committee on each page (model Art. 56(1)).");
   return { ok: true };
 }
 
 /** Closing with the committee's recommendation (model Art. 56(4–6)). */
 export function checkAbuseOutcomeGate(row, { outcome, recommendation = "", criminal = false, referredAt = "" } = {}) {
-  if (!row?.committee) return fail("ABUSE_NO_COMMITTEE", "لا توصية قبل تشكيل لجنة التحقيق (النموذج م55/2).", "No recommendation before the committee is formed.");
+  if (!row?.committee) return fail("ABUSE_NO_COMMITTEE", "لا توصية قبل تشكيل لجنة التحقيق (النموذج الموحد م55/2).", "No recommendation before the committee is formed.");
   const heard = row.hearings || [];
   if (!heard.some((h) => h.role === "complainant") || !heard.some((h) => h.role === "accused")) {
-    return fail("ABUSE_PARTIES_UNHEARD", "تستمع اللجنة لجميع الأطراف قبل التوصية — الشاكي والمشكو في حقه (النموذج م56/1).", "The committee hears all parties before recommending (model Art. 56(1)).");
+    return fail("ABUSE_PARTIES_UNHEARD", "تستمع اللجنة لجميع الأطراف قبل التوصية — الشاكي والمشكو في حقه (النموذج الموحد م56/1).", "The committee hears all parties before recommending (model Art. 56(1)).");
   }
   if (!ABUSE_OUTCOMES.some((o) => o.id === outcome)) return fail("ABUSE_OUTCOME", "اختر نتيجة التحقيق.", "Pick the outcome.");
   if ((outcome === "proven" || outcome === "malicious") && String(recommendation || "").trim().length < 5) {
     return fail("ABUSE_RECOMMENDATION", "اكتب الجزاء التأديبي الموصى به وبند لائحة تنظيم العمل.", "Write the recommended penalty and its regulation clause.");
   }
   if (criminal && !dateOnly(referredAt)) {
-    return fail("ABUSE_CRIMINAL_REFERRAL", "الاعتداء الذي يشكل جريمة جنائية تُرفع شكواه للمدير العام لإبلاغ الجهات الحكومية المختصة — سجّل تاريخ الإحالة (النموذج م56/5).", "A criminal act is referred to the general manager to inform the authorities — record the referral date (model Art. 56(5)).");
+    return fail("ABUSE_CRIMINAL_REFERRAL", "الاعتداء الذي يشكل جريمة جنائية تُرفع شكواه للمدير العام لإبلاغ الجهات الحكومية المختصة — سجّل تاريخ الإحالة (النموذج الموحد م56/5).", "A criminal act is referred to the general manager to inform the authorities — record the referral date (model Art. 56(5)).");
   }
   return { ok: true };
 }
@@ -233,8 +233,8 @@ export function planAbuseNotices({ cases = [], today, calendar, restWeekdays, au
           key,
           to: "/app/complaints",
           text: c.over
-            ? (ar ? `انقضت مهلة التحقيق في شكوى إيذاء (خمسة أيام عمل من تلقيها — النموذج م55/2). أكمل التحقيق ودوّن التوصية.` : `The five-working-day inquiry window on an abuse complaint has passed (model Art. 55(2)).`)
-            : (ar ? `شكوى إيذاء: يبقى ${c.left} يوم عمل لانتهاء مهلة التحقيق (حتى ${c.due}) — النموذج م55/2.` : `Abuse complaint: ${c.left} working day(s) left to investigate (until ${c.due}).`),
+            ? (ar ? `انقضت مهلة التحقيق في شكوى إيذاء (خمسة أيام عمل من تلقيها — النموذج الموحد م55/2). أكمل التحقيق ودوّن التوصية.` : `The five-working-day inquiry window on an abuse complaint has passed (model Art. 55(2)).`)
+            : (ar ? `شكوى إيذاء: يبقى ${c.left} يوم عمل لانتهاء مهلة التحقيق (حتى ${c.due}) — النموذج الموحد م55/2.` : `Abuse complaint: ${c.left} working day(s) left to investigate (until ${c.due}).`),
         });
       }
     }
@@ -254,7 +254,7 @@ export function abuseRetaliationFlags(row, disciplinaryCases = []) {
     .map((c) => ({
       caseId: c.id,
       at: dateOnly(c.createdAt),
-      reason: "فُتح ملف جزاء على صاحب الشكوى بعد تقديمها — راجِع أنه غير متصل بها؛ لا يضار العامل من شكواه (النموذج م71/1).",
+      reason: "فُتح ملف جزاء على صاحب الشكوى بعد تقديمها — راجِع أنه غير متصل بها؛ لا يضار العامل من شكواه (النموذج الموحد م71/1).",
       reasonEn: "A sanction file was opened on the complainant after filing — confirm it is unrelated; no one is harmed for complaining.",
     }));
 }

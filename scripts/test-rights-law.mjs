@@ -82,7 +82,7 @@ ok("annual (Art. 109): advance pay before the start date; manager due = start", 
   assert.equal(rightHintFor({ ...row, status: "approved" }, { view: "manager", today, employee: emp() }).due, "");
 });
 
-ok("a refused request opens a grievance window dated from the refusal (Regs Art. 71)", () => {
+ok("a refused request opens a grievance window dated from the refusal (Model regulation Art. 71)", () => {
   const row = { id: "a2", family: "leave", type: "annual", status: "rejected", reviewedAt: "2026-10-10T08:00:00Z", startDate: "2026-11-01" };
   const h = rightHintFor(row, { today, employee: emp() });
   assert.match(h.ifNot, /حتى 9 نوفمبر/);

@@ -24,8 +24,8 @@ export const LEAVE_TYPES = [
   { key: "emergency", defaultTotal: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
   { key: "comp", defaultTotal: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
   { key: "job_search", defaultTotal: null, article: "78", employerNoticeOnly: true, ar: "يوم بحث عن عمل", en: "Job-search day" },
-  // Regs Art. 42: paid leave on each kidney-dialysis day, on a report from the treating provider.
-  { key: "dialysis", defaultTotal: null, article: null, requiresFile: true, ar: "غسيل كلوي (اللائحة م42)", en: "Kidney dialysis (Regs Art. 42)" },
+  // Model regulation Art. 42: paid leave on each kidney-dialysis day, on a report from the treating provider.
+  { key: "dialysis", defaultTotal: null, article: null, requiresFile: true, ar: "غسيل كلوي (النموذج الموحد م42)", en: "Kidney dialysis (Model regulation Art. 42)" },
   // Regs Annex 2 (accommodations), §6 temporary disability / chronic or temporary illness: days absent for
   // physical or occupational therapy, chemotherapy or radiotherapy are paid leave — on the treating report.
   { key: "therapy", defaultTotal: null, article: null, requiresFile: true, disabilityAccommodation: true, ar: "جلسة علاج (اللائحة، الملحق 2)", en: "Therapy session (Regs Annex 2)" },
@@ -388,7 +388,7 @@ export function accruedAnnualDaysAtExit(hireDate, entitlement, exitDate) {
   return floor * (worked / yearLen);
 }
 
-/** Article 117 + Regs Art. 41: the sick year starts on the first sick leave and runs
+/** Article 117 + Model regulation Art. 41: the sick year starts on the first sick leave and runs
  *  365 days; the next sick year starts on the first sick leave taken after that
  *  window ends (not on the anniversary of the very first one). */
 export function sickStatutoryYearWindow(requests, onDate) {
@@ -718,7 +718,7 @@ export function annualCarryAlerts(profile, requests, onDate, company, employee) 
   return out;
 }
 
-/** Model Regs Art. 33: the part of this year's annual leave earned so far — the cap for an advance. */
+/** Model regulation Art. 33: the part of this year's annual leave earned so far — the cap for an advance. */
 export function annualAdvanceCap(profile, requests, onDate, company, employee) {
   const day = dateOnly(onDate) || todayRiyadh();
   const buckets = annualBalanceBuckets(profile, requests, day, company, employee);

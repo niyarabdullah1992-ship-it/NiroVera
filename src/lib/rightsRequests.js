@@ -22,7 +22,7 @@ export const GRIEVANCE_TYPE = "grievance";
 /** The workplace-abuse complaint is a confidential HR case raised in «صوت الموظف», not a rights request. */
 export const ABUSE_COMPLAINT_KIND = "abuse_complaint";
 
-/** Regs Art. 71 grievance is raised from «الجزاءات», beside the sanction it may concern. */
+/** Model regulation Art. 71 grievance is raised from «الجزاءات», beside the sanction it may concern. */
 export const GRIEVANCE_ROUTE = "/app/discipline?tab=mine&raise=grievance";
 /** Art. 91 damage-deduction objection is raised from «الجزاءات», beside the damage line it contests. */
 export const DAMAGE_OBJECTION_ROUTE = "/app/discipline?tab=mine&raise=damage_objection";
@@ -59,7 +59,7 @@ export const RIGHTS_REQUESTS = [
   { key: DAMAGE_OBJECTION_TYPE, article: "91", ar: "اعتراض على خصم إتلاف", en: "Object to a damage deduction", hintAr: "م 91 · خلال 15 يوم عمل من إبلاغك", hintEn: "Art. 91 · within 15 working days" },
   { key: NIGHT_AVOID_TYPE, article: "18632", ar: "تجنب العمل الليلي لسبب صحي", en: "Avoid night work for health", hintAr: "قرار 18632 · ثالثاً ج — نقل لعمل نهاري أو 6 ساعات", hintEn: "Decision 18632 · move to day work or 6 hours" },
   { key: DOCUMENTS_RETURN_TYPE, article: "64", ar: "استرداد وثائقي المودعة", en: "Return my deposited documents", hintAr: "م 64 · تُعاد عند انتهاء العقد — لا تُرفض", hintEn: "Art. 64 · returned at contract end" },
-  { key: GRIEVANCE_TYPE, article: "regs71", ar: "تظلم من قرار أو إجراء أو جزاء", en: "Grieve a decision, action or penalty", hintAr: "اللائحة م71 · خلال 30 يوماً — والرد خلال 15", hintEn: "Regs Art. 71 · within 30 days; answer in 15" },
+  { key: GRIEVANCE_TYPE, article: "model71", ar: "تظلم من قرار أو إجراء أو جزاء", en: "Grieve a decision, action or penalty", hintAr: "النموذج الموحد م71 · خلال 30 يوماً — والرد خلال 15", hintEn: "Model regulation Art. 71 · within 30 days; answer in 15" },
   { key: ART81_EXIT_TYPE, article: "81", ar: "ترك العمل دون إشعار", en: "Leave work without notice", hintAr: "م 81 · ست حالات مع حفظ حقوقك", hintEn: "Art. 81 · six cases, rights kept" },
 ];
 
@@ -235,7 +235,7 @@ export function checkDocumentsReturnGate({ reason } = {}) {
 }
 
 /**
- * Implementing Regulations Art. 71 — grievance. The worker may grieve any decision, action or penalty
+ * Model regulation Art. 71 — grievance. The worker may grieve any decision, action or penalty
  * taken against him, in writing, within 30 days (official holidays not counted) of being told; he is
  * not harmed for it; he is told the result within 15 days (holidays not counted). If refused or not
  * decided in writing within 15 days, he may go to the labour court within 30 days (holidays not
@@ -277,11 +277,11 @@ export function checkGrievanceGate({ notifiedOn, grievanceKind, reason, today, i
   if (!GRIEVANCE_KINDS.some((k) => k.key === grievanceKind)) {
     return { ok: false, error: "GRIEVANCE_KIND_REQUIRED", reason: "اختر ما تتظلم منه: قرار، أو إجراء، أو جزاء.", reasonEn: "Pick what you grieve: a decision, an action or a penalty." };
   }
-  if (!told) return { ok: false, error: "NOTIFIED_REQUIRED", reason: "حدد تاريخ إبلاغك بما تتظلم منه — منه تبدأ مهلة الثلاثين يوماً (اللائحة م71).", reasonEn: "Set the date you were told — the 30-day window starts there (Regs Art. 71)." };
+  if (!told) return { ok: false, error: "NOTIFIED_REQUIRED", reason: "حدد تاريخ إبلاغك بما تتظلم منه — منه تبدأ مهلة الثلاثين يوماً (النموذج الموحد م71).", reasonEn: "Set the date you were told — the 30-day window starts there (Model regulation Art. 71)." };
   if (told > day) return { ok: false, error: "NOTIFIED_FUTURE", reason: "تاريخ الإبلاغ في المستقبل.", reasonEn: "The notice date is in the future." };
   const last = grievanceFileDeadline(told, isHoliday);
   if (day > last) {
-    return { ok: false, error: "GRIEVANCE_LATE", reason: `مضت ثلاثون يوماً — عدا العطل الرسمية — على إبلاغك (آخر يوم ${last}) — فات ميعاد التظلم لدى المنشأة (اللائحة م71).`, reasonEn: `Thirty days, official holidays aside, have passed (last day ${last}) — the window to grieve to the company has closed (Regs Art. 71).`, last };
+    return { ok: false, error: "GRIEVANCE_LATE", reason: `مضت ثلاثون يوماً — عدا العطل الرسمية — على إبلاغك (آخر يوم ${last}) — فات ميعاد التظلم لدى المنشأة (النموذج الموحد م71).`, reasonEn: `Thirty days, official holidays aside, have passed (last day ${last}) — the window to grieve to the company has closed (Model regulation Art. 71).`, last };
   }
   if (String(reason || "").trim().length < 15) {
     return { ok: false, error: "REASON_REQUIRED", reason: "اكتب تظلمك: ما الذي اتُّخذ في حقك، ولماذا تراه غير صحيح.", reasonEn: "Write your grievance: what was taken against you and why you think it is wrong." };

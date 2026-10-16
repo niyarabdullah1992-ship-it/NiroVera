@@ -58,7 +58,7 @@ ok("wage: due date, WPS, Art. 94 for delay; payday moved to the previous working
   assert.equal(m.due, "2026-10-27");
   assert.equal(m.action.to, "/app/payroll?tab=wps");
   const shifted = payHintFor("wage", { today, amount: 7000, payday: { due: "2026-10-29", scheduled: "2026-10-30", shifted: true } });
-  assert.match(shifted.law.label, /اللائحة النموذجية م17/);
+  assert.match(shifted.law.label, /النموذج الموحد م17/);
   const late = payHintFor("wage", { today: "2026-11-02", view: "manager", amount: 7000, payday: { due: "2026-10-29" } });
   assert.match(late.ifNot, /مضى الموعد/);
   const paid = payHintFor("wage", { today, view: "manager", amount: 7000, paid: true, paidAt: "2026-10-27", payday: { due: "2026-10-27" } });
@@ -70,7 +70,7 @@ ok("WPS file window from the rule row (model Art. 15)", () => {
   const { m } = lanes("wps", { heads: 12, deadline: "2026-11-30" });
   assert.match(m.right, new RegExp(`${ruleValue("payroll.wps.fileWindowDays", today)} يوماً`));
   assert.match(m.right, /12 عاملاً/);
-  assert.equal(m.law.label, "اللائحة النموذجية م15");
+  assert.equal(m.law.label, "النموذج الموحد م15");
   assert.equal(m.due, "2026-11-30");
 });
 

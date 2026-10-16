@@ -34,7 +34,7 @@ import { toast } from "@/components/ui/use-toast";
  * leave (110), avoiding night work on a medical certificate (18632 ثالثاً ج), the return of deposited
  * documents (64), and leaving without notice (81).
  * The contract copy (51) sits with the documents; the job-search day (78) with the leaves.
- * The grievance (regs 71) and the damage-deduction objection (91) are raised in «الجزاءات»
+ * The grievance (model Art. 71) and the damage-deduction objection (91) are raised in «الجزاءات»
  * (components/discipline/GrievanceRaise, DamageObjectionRaise), and the harassment / abuse complaint
  * in «صوت الموظف» — it reaches HR only, never the manager.
  */

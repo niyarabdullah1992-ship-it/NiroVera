@@ -14,7 +14,7 @@ const field = { fontFamily: "inherit", fontSize: 12.5, padding: "10px 12px", bor
 const label = { fontSize: 11.5, color: MUTED };
 
 /**
- * «تظلّم من قرار أو إجراء أو جزاء» (Implementing Regs Art. 71) — raised in «الجزاءات». The same gate
+ * «تظلّم من قرار أو إجراء أو جزاء» (Model regulation Art. 71) — raised in «الجزاءات». The same gate
  * (checkGrievanceGate) and the same stored other-request (type "grievance") as before, so the review
  * inbox, serviceStory, fileArchive and the 15-day reply clock read it unchanged. `prefill` comes from a
  * sanction line: { grievanceKind: "penalty", notifiedOn, reason, sanctionRef }.

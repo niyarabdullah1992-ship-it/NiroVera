@@ -449,7 +449,7 @@ export function buildFileArchive({
     push("acks", {
       id: "regulation-ack",
       title: ar ? `الإقرار بالاطلاع على لائحة تنظيم العمل${current ? "" : " (نسخة سابقة)"}` : `Work regulation acknowledged${current ? "" : " (earlier version)"}`,
-      type: ar ? "إقرار — اللائحة النموذجية م 3" : "Acknowledgement — model Art. 3",
+      type: ar ? "إقرار — النموذج الموحد م3" : "Acknowledgement — model Art. 3",
       date: regAck.at,
       by: regAck.name || me,
       proof: proofOf("ack", ar),

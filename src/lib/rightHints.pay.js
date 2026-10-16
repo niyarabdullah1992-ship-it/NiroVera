@@ -55,7 +55,7 @@ function addDays(iso, n) {
 }
 
 const art = (a, ar) => ({ article: String(a), label: ar ? `المادة ${a}` : `Art. ${a}` });
-const model = (n, ar) => ({ regs: `model-${n}`, label: ar ? `اللائحة النموذجية م${n}` : `Model regulation Art. ${n}` });
+const model = (n, ar) => ({ regs: `model-${n}`, label: ar ? `النموذج الموحد م${n}` : `Model regulation Art. ${n}` });
 const gosiLaw = (ar) => ({ product: true, label: ar ? "نظام التأمينات" : "GOSI law" });
 
 const rightsTo = (kind) => rightsRouteFor(kind);

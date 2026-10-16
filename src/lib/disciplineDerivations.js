@@ -912,7 +912,7 @@ export function checkDisciplineDeliveryGate({ method, at, ref = "", employee = n
   const cite = citeRule("discipline.appeal.internalDays", day);
   const row = DISCIPLINE_DELIVERY_METHODS.find((m) => m.id === method);
   if (!row) {
-    return { ok: false, error: "DISCIPLINE_DELIVERY_METHOD", reason: "اختر طريقة إبلاغ القرار: يداً بيد، أو بريد مسجّل، أو بريد إلكتروني ثابت في الملف (المادة 72 · النموذج م68).", reasonEn: "Pick how the decision was delivered: in hand, registered mail, or e-mail on file (Art. 72 · model Art. 68).", cite };
+    return { ok: false, error: "DISCIPLINE_DELIVERY_METHOD", reason: "اختر طريقة إبلاغ القرار: يداً بيد، أو بريد مسجّل، أو بريد إلكتروني ثابت في الملف (المادة 72 · النموذج الموحد م68).", reasonEn: "Pick how the decision was delivered: in hand, registered mail, or e-mail on file (Art. 72 · model Art. 68).", cite };
   }
   const when = dateOnly(at);
   if (!when || when > day || (dateOnly(signedAt) && when < dateOnly(signedAt))) {
@@ -923,10 +923,10 @@ export function checkDisciplineDeliveryGate({ method, at, ref = "", employee = n
     return { ok: false, error: "DISCIPLINE_DELIVERY_REF", reason: "اكتب رقم الإرسال المسجّل.", reasonEn: "Enter the registered-mail tracking number.", cite };
   }
   if (method === "registered_mail" && !String(profile.address || profile.nationalAddress || employee?.address || "").trim()) {
-    return { ok: false, error: "DISCIPLINE_DELIVERY_ADDRESS", reason: "لا عنوان مختار ثابت في ملف العامل — سجّله في ملفه أولاً (النموذج م68).", reasonEn: "No chosen address on the worker's file (model Art. 68).", cite };
+    return { ok: false, error: "DISCIPLINE_DELIVERY_ADDRESS", reason: "لا عنوان مختار ثابت في ملف العامل — سجّله في ملفه أولاً (النموذج الموحد م68).", reasonEn: "No chosen address on the worker's file (model Art. 68).", cite };
   }
   if (method === "email" && !String(profile.personalEmail || employee?.email || "").trim()) {
-    return { ok: false, error: "DISCIPLINE_DELIVERY_EMAIL", reason: "لا بريد إلكتروني شخصي ثابت في عقد العامل أو ملفه (النموذج م68).", reasonEn: "No personal e-mail on the worker's contract or file (model Art. 68).", cite };
+    return { ok: false, error: "DISCIPLINE_DELIVERY_EMAIL", reason: "لا بريد إلكتروني شخصي ثابت في عقد العامل أو ملفه (النموذج الموحد م68).", reasonEn: "No personal e-mail on the worker's contract or file (model Art. 68).", cite };
   }
   return { ok: true, cite, method: row };
 }

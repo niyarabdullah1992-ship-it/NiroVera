@@ -5,7 +5,7 @@
  *                مستحق له بسبب العمل من المبالغ المستحقة للعامل.
  *   المادة 89  — الحد الأدنى للأجور بقرار من مجلس الوزراء فقط.
  *   المادة 90  — الأجر بالعملة الرسمية؛ اليومية والأسبوعي والقطعة والساعة: مرة كل أسبوع على الأقل.
- *                اللائحة النموذجية م15/م17 — يوم الدفع، وإن وافق راحةً أو عطلة رسمية فيوم العمل السابق.
+ *                النموذج الموحد م15/م17 — يوم الدفع، وإن وافق راحةً أو عطلة رسمية فيوم العمل السابق.
  *   المادة 91  — حسم التلف: أجر خمسة أيام في الشهر، وتظلم خلال خمسة عشر يوم عمل من الإبلاغ.
  *   المادة 92  — صندوق الادخار، مشروع المساكن، دين بحكم قضائي (ربع الأجر، النفقة أولاً).
  *   المادة 96  — القطعة والعمولات: متوسط أجر السنة الأخيرة.
@@ -178,7 +178,7 @@ export function wageOverdue({ settings, month, items = [], today, isOff, employe
     unpaid: unpaid.length,
     error: overdue ? "WAGE_OVERDUE" : undefined,
     reason: overdue
-      ? `تأخر صرف الأجر — يوم الدفع ${payday.due}${payday.shifted ? ` (قُدّم من ${payday.scheduled} لأنه راحة أو عطلة رسمية — اللائحة م17)` : ""} مضى و${unpaid.length} بنداً لم يُصرف. المادة 90؛ والتأخير بلا مسوغ يُعرّض لغرامة المادة 94.`
+      ? `تأخر صرف الأجر — يوم الدفع ${payday.due}${payday.shifted ? ` (قُدّم من ${payday.scheduled} لأنه راحة أو عطلة رسمية — النموذج الموحد م17)` : ""} مضى و${unpaid.length} بنداً لم يُصرف. المادة 90؛ والتأخير بلا مسوغ يُعرّض لغرامة المادة 94.`
       : undefined,
     reasonEn: overdue
       ? `Wage overdue — payday ${payday.due}${payday.shifted ? ` (moved from ${payday.scheduled}, a rest day or holiday — model regulation Art. 17)` : ""} has passed with ${unpaid.length} line(s) unpaid. Article 90; an unjustified delay exposes the employer to the Article 94 fine.`

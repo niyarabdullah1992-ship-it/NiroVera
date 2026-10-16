@@ -83,7 +83,7 @@ import { absorbAssignmentIntoActualOt, planOtDecision, stampActualOvertime, stam
 import { compLeaveDaysInYear as compLeaveDaysInYearForCap, otHoursInYear as otHoursInYearForCap } from "./overtimeAssignment.js";
 import { isOfficialHoliday, laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePlatformOwnerBoard } from "./ummAlQuraCalendar";
 
-/** Regs Art. 71 clocks skip the company's official holidays. */
+/** Model regulation Art. 71 clocks skip the company's official holidays. */
 function officialHolidayTest(data) {
   const cal = laborCalendarOf(data);
   return (iso) => isOfficialHoliday(iso, cal);
@@ -1775,7 +1775,7 @@ export function openDueReligionNotices(companyId) {
   return { ok: true, notified };
 }
 
-/** Regs Art. 71 — a grievance not decided in writing within 15 days opens the labour-court window. Idempotent per key. */
+/** Model regulation Art. 71 — a grievance not decided in writing within 15 days opens the labour-court window. Idempotent per key. */
 export function openDueGrievanceNotices(companyId, now = new Date()) {
   const data = getCompanyData(companyId);
   if (!data) return { ok: true, notified: 0 };
@@ -1791,14 +1791,14 @@ export function openDueGrievanceNotices(companyId, now = new Date()) {
       const own = `grievance-overdue:${row.id}:self`;
       if (!seen.has(own)) {
         seen.add(own);
-        addNotification(companyId, emp.id, `مضت خمسة عشر يوماً على تظلمك دون بت كتابي — لك الاعتراض أمام المحكمة العمالية حتى ${regulationDate(st.courtBy)} (ثلاثون يوماً عدا العطل الرسمية، اللائحة م71).`, { key: own, to: "/app/requests" });
+        addNotification(companyId, emp.id, `مضت خمسة عشر يوماً على تظلمك دون بت كتابي — لك الاعتراض أمام المحكمة العمالية حتى ${regulationDate(st.courtBy)} (ثلاثون يوماً عدا العطل الرسمية، النموذج الموحد م71).`, { key: own, to: "/app/requests" });
         notified += 1;
       }
       for (const m of nightDueAdminAudience(data, emp).filter((u) => u?.id && String(u.id) !== String(emp.id))) {
         const key = `grievance-overdue:${row.id}:${m.id}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        addNotification(companyId, m.id, `تظلم ${emp.name || "موظف"} تجاوز خمسة عشر يوماً دون بت كتابي (كان الموعد ${regulationDate(st.replyBy)}) — صار له الاعتراض أمام المحكمة العمالية (اللائحة م71). بُتّ فيه الآن.`, { key, to: "/app/requests" });
+        addNotification(companyId, m.id, `تظلم ${emp.name || "موظف"} تجاوز خمسة عشر يوماً دون بت كتابي (كان الموعد ${regulationDate(st.replyBy)}) — صار له الاعتراض أمام المحكمة العمالية (النموذج الموحد م71). بُتّ فيه الآن.`, { key, to: "/app/requests" });
         notified += 1;
       }
     }
@@ -2678,7 +2678,7 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
       pushEmployeeFileLog(emp, approveStamp.log);
     }
     emp.leaveRequests.unshift(createdRequest);
-    // Recorded straight as approved: the same file effects as an approval (Arts. 114, 116; Model Regs Art. 33).
+    // Recorded straight as approved: the same file effects as an approval (Arts. 114, 116; Model regulation Art. 33).
     if (approved) applyApprovedLeaveEffectsOnDraft(emp, createdRequest);
   });
   // Route to the assigned HR manager for this employee's station, if any.
@@ -2821,10 +2821,10 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
   for (const p of sickPauses) {
     const lang = noticeLang(extras);
     const text = lang === "ar"
-      ? `توقفت إجازتك السنوية بسبب الإجازة المرضية (${p.pausedDays} ${p.pausedDays === 1 ? "يوم" : "أيام"}) وتُستأنف المدة المتبقية من ${regulationDate(p.resume.startDate)} حتى ${regulationDate(p.resume.endDate)} (اللائحة م41).`
-      : `Your annual leave is paused for the sick leave (${p.pausedDays} days); the rest resumes ${p.resume.startDate}–${p.resume.endDate} (Regs Art. 41).`;
+      ? `توقفت إجازتك السنوية بسبب الإجازة المرضية (${p.pausedDays} ${p.pausedDays === 1 ? "يوم" : "أيام"}) وتُستأنف المدة المتبقية من ${regulationDate(p.resume.startDate)} حتى ${regulationDate(p.resume.endDate)} (النموذج الموحد م41).`
+      : `Your annual leave is paused for the sick leave (${p.pausedDays} days); the rest resumes ${p.resume.startDate}–${p.resume.endDate} (Model regulation Art. 41).`;
     addNotification(companyId, employeeId, text, { to: "/app/requests" });
-    notifyRequestManagers(companyId, employeeId, `${empName}: أُوقفت إجازته السنوية لوقوع إجازة مرضية خلالها، وتُستأنف من ${regulationDate(p.resume.startDate)} حتى ${regulationDate(p.resume.endDate)} — عدّل الجدول (اللائحة م41).`);
+    notifyRequestManagers(companyId, employeeId, `${empName}: أُوقفت إجازته السنوية لوقوع إجازة مرضية خلالها، وتُستأنف من ${regulationDate(p.resume.startDate)} حتى ${regulationDate(p.resume.endDate)} — عدّل الجدول (النموذج الموحد م41).`);
   }
   if (status === "approved" || status === "rejected" || status === "revise" || status === "withdrawn") {
     const fresh = getCompanyData(companyId);
@@ -2868,7 +2868,7 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
 /**
  * Effects of an approved leave on the file (draft). Art. 116 + Regs Art. 25: unpaid days beyond twenty in
  * the work year suspend the contract — stored on the request; a fixed-term contract is extended by them
- * unless agreed otherwise. Art. 114: Hajj performed is stamped. Model Regs Art. 33: advance consent kept.
+ * unless agreed otherwise. Art. 114: Hajj performed is stamped. Model regulation Art. 33: advance consent kept.
  */
 function applyApprovedLeaveEffectsOnDraft(employee, leaveReq, extras = {}) {
   const type = String(leaveReq.type || "").toLowerCase();
@@ -3044,7 +3044,7 @@ export function openDueAnnualCarryNotices(companyId, onDate) {
   return { ok: true, opened: due.map((r) => ({ employeeId: r.emp.id, kind: r.alert.kind })) };
 }
 
-/** Regs Art. 40(5): the birth ends a pregnant widow's iddah; what is left of it is not used after birth. */
+/** Model regulation Art. 40(5): the birth ends a pregnant widow's iddah; what is left of it is not used after birth. */
 export function recordIddahBirth(companyId, employeeId, requestId, birthDate, extras = {}) {
   const data = getCompanyData(companyId);
   const emp = (data?.employees || []).find((e) => e.id === employeeId);
@@ -3062,14 +3062,14 @@ export function recordIddahBirth(companyId, employeeId, requestId, birthDate, ex
     r.days = gate.days;
     if (r.activeEndDate) r.activeEndDate = gate.endDate;
   });
-  addNotification(companyId, employeeId, `سُجّل الوضع في ${regulationDate(gate.birthDate)} — انتهت العدة به ولا يُستفاد من باقيها بعد الوضع (اللائحة م40/5). تبدأ إجازة الوضع من تاريخ الولادة.`, { to: "/app/requests" });
-  notifyRequestManagers(companyId, employeeId, `${emp?.name || "موظفة"}: انتهت العدة بالوضع في ${regulationDate(gate.birthDate)} — اعتمد إجازة الوضع من تاريخ الولادة (المادة 151، اللائحة م40/5).`);
+  addNotification(companyId, employeeId, `سُجّل الوضع في ${regulationDate(gate.birthDate)} — انتهت العدة به ولا يُستفاد من باقيها بعد الوضع (النموذج الموحد م40/5). تبدأ إجازة الوضع من تاريخ الولادة.`, { to: "/app/requests" });
+  notifyRequestManagers(companyId, employeeId, `${emp?.name || "موظفة"}: انتهت العدة بالوضع في ${regulationDate(gate.birthDate)} — اعتمد إجازة الوضع من تاريخ الولادة (المادة 151، النموذج الموحد م40/5).`);
   audit(companyId, "iddah_ended_at_birth", `Iddah for ${emp?.name || employeeId} ended at birth on ${gate.birthDate} by ${extras.actor || ""}.`);
   invokeWorkforce({ action: "recordIddahBirth", companyId, employeeId, requestId, birthDate: gate.birthDate });
   return { ok: true, ...gate };
 }
 
-/** Regs Art. 41 on the draft: approved annual leave overlapping this approved sick leave is paused and resumes after it. */
+/** Model regulation Art. 41 on the draft: approved annual leave overlapping this approved sick leave is paused and resumes after it. */
 function pauseAnnualForSickOnDraft(employee, sickReq) {
   const out = [];
   const rows = employee.leaveRequests || [];
@@ -3098,7 +3098,7 @@ function pauseAnnualForSickOnDraft(employee, sickReq) {
           resumedFrom: annual.id,
           pausedBySick: undefined,
           auditTrail: [],
-          reason: `استئناف الإجازة السنوية بعد المرضية (اللائحة م41)`,
+          reason: `استئناف الإجازة السنوية بعد المرضية (النموذج الموحد م41)`,
         });
       }
     } else {
@@ -3540,7 +3540,7 @@ export function submitOtherRequest(companyId, employeeId, {
   }
   if (raised && type === GRIEVANCE_TYPE) {
     const kindAr = GRIEVANCE_KINDS.find((k) => k.key === raised.grievanceKind)?.ar || "";
-    notifyRequestManagers(companyId, filed?.id || employeeId, `تظلم من ${filed?.name || "موظف"} على ${kindAr} أُبلغ به في ${regulationDate(raised.notifiedOn)} — أبلغه بنتيجة البت كتابةً حتى ${regulationDate(raised.grievanceReplyBy)} (خمسة عشر يوماً عدا العطل الرسمية). لا يُضار العامل من تظلمه (اللائحة م71).`);
+    notifyRequestManagers(companyId, filed?.id || employeeId, `تظلم من ${filed?.name || "موظف"} على ${kindAr} أُبلغ به في ${regulationDate(raised.notifiedOn)} — أبلغه بنتيجة البت كتابةً حتى ${regulationDate(raised.grievanceReplyBy)} (خمسة عشر يوماً عدا العطل الرسمية). لا يُضار العامل من تظلمه (النموذج الموحد م71).`);
   }
   if (raised && type === ART81_EXIT_TYPE) {
     // Art. 81: the worker leaves today, keeping all his rights. The file carries the exit at once.
@@ -4399,8 +4399,8 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
     const row = (fresh?.otherRequests || []).find((r) => r.id === requestId) || pending;
     const st = grievanceState(row, undefined, officialHolidayTest(getCompanyData(companyId)));
     addNotification(companyId, employeeId, status === "approved"
-      ? "قُبل تظلمك — النتيجة مكتوبة في طلباتي (اللائحة م71)."
-      : `رُفض تظلمك${String(note || "").trim() ? ` — ${String(note).trim()}` : ""}. لك الاعتراض أمام المحكمة العمالية خلال ثلاثين يوماً عدا العطل الرسمية (حتى ${regulationDate(st?.courtBy)}) (اللائحة م71).`, { to: "/app/requests" });
+      ? "قُبل تظلمك — النتيجة مكتوبة في طلباتي (النموذج الموحد م71)."
+      : `رُفض تظلمك${String(note || "").trim() ? ` — ${String(note).trim()}` : ""}. لك الاعتراض أمام المحكمة العمالية خلال ثلاثين يوماً عدا العطل الرسمية (حتى ${regulationDate(st?.courtBy)}) (النموذج الموحد م71).`, { to: "/app/requests" });
   }
   if (pending?.type === NIGHT_AVOID_TYPE && status === "approved") {
     addNotification(companyId, employeeId, `اعتُمدت شهادتك بتجنب العمل الليلي${pending.avoidUntil ? ` حتى ${regulationDate(pending.avoidUntil)}` : ""} — لا تُسند للعمل الليلي، وتُنقل إلى عمل مماثل في الساعات المعتادة؛ وإن تعذر تُقلَّص ساعاتك إلى ست مع حفظ أجرك ومزاياك (القرار 18632).`, { to: "/app/requests" });

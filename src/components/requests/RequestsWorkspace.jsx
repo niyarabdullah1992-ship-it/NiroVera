@@ -302,7 +302,7 @@ function requestDecisionEffect(row, ar) {
   if (row?.type === "damage_objection") return ar ? "قبول يرد المبلغ · وإلا المحكمة العمالية · م 91" : "Accept refunds · else labour court · Art. 91";
   if (row?.type === "grievance") {
     const by = row.grievanceReplyBy ? regulationDate(row.grievanceReplyBy) : "";
-    return ar ? `بُتّ كتابةً${by ? ` حتى ${by}` : " خلال 15 يوماً"} · اللائحة م71` : `Decide in writing${row.grievanceReplyBy ? ` by ${row.grievanceReplyBy}` : " within 15 days"} · Regs Art. 71`;
+    return ar ? `بُتّ كتابةً${by ? ` حتى ${by}` : " خلال 15 يوماً"} · النموذج الموحد م71` : `Decide in writing${row.grievanceReplyBy ? ` by ${row.grievanceReplyBy}` : " within 15 days"} · Model regulation Art. 71`;
   }
   if (row?.type === "night_avoid") return ar ? "عمل نهاري مماثل أو 6 ساعات بالأجر نفسه · 18632" : "Similar day work or 6 h, same pay · 18632";
   if (row?.type === "documents_return") return ar ? "تُعاد ولا تُرفض · م 64" : "Returned, not refused · Art. 64";
@@ -3063,14 +3063,14 @@ export default function RequestsWorkspace({
                     ))}
                     <button type="button" data-advance-leave="1" onClick={() => setAdvanceLeave((v) => !v)} style={chip(advanceLeave)}>
                       {advanceLeave
-                        ? (ar ? `مقدمة بنسبة ما قضيته من السنة — المتاح ${cap.cap} يوماً، وتلزم موافقة المنشأة (اللائحة النموذجية م33)` : `Advance pro-rata to time worked — ${cap.cap} days available; the company must consent (Model Regs Art. 33)`)
-                        : (ar ? "طلب جزء من إجازة هذه السنة مقدماً (اللائحة النموذجية م33)" : "Ask for part of this year's leave in advance (Model Regs Art. 33)")}
+                        ? (ar ? `مقدمة بنسبة ما قضيته من السنة — المتاح ${cap.cap} يوماً، وتلزم موافقة المنشأة (النموذج الموحد م33)` : `Advance pro-rata to time worked — ${cap.cap} days available; the company must consent (Model regulation Art. 33)`)
+                        : (ar ? "طلب جزء من إجازة هذه السنة مقدماً (النموذج الموحد م33)" : "Ask for part of this year's leave in advance (Model regulation Art. 33)")}
                     </button>
                     {sickBefore ? (
                       <button type="button" data-join-sick="1" onClick={() => setJoinAnnualToSick((v) => !v)} style={chip(joinAnnualToSick)}>
                         {joinAnnualToSick
                           ? (ar ? "موصولة بالإجازة المرضية السابقة (المادة 82)" : "Joined to the preceding sick leave (Article 82)")
-                          : (ar ? "صِل إجازتك السنوية بالمرضية التي تنتهي قبلها (المادة 82، اللائحة م41)" : "Join this annual leave to the sick leave ending the day before (Article 82, Regs Art. 41)")}
+                          : (ar ? "صِل إجازتك السنوية بالمرضية التي تنتهي قبلها (المادة 82، النموذج الموحد م41)" : "Join this annual leave to the sick leave ending the day before (Article 82, Model regulation Art. 41)")}
                       </button>
                     ) : null}
                   </div>
@@ -4038,7 +4038,7 @@ export default function RequestsWorkspace({
                       {row.unpaidComplementDays ? <span style={{ color: WARN }}>{ar ? `تأخر الوضع: ${row.unpaidComplementDays} يوماً مكملة للأسابيع الستة بلا أجر (${regulationDate(row.unpaidComplementFrom)} – ${regulationDate(row.unpaidComplementTo)}) — المادة 151.` : `Late birth: ${row.unpaidComplementDays} unpaid complement days (${row.unpaidComplementFrom} – ${row.unpaidComplementTo}) — Article 151.`}</span> : null}
                       {row.recoverPay ? <span style={{ color: BAD }}>{ar ? `ثبت العمل لدى صاحب عمل آخر أثناء الإجازة — أجرها قابل للاسترداد (المادة 118): ${row.recoverReason || ""}` : `Proven work for another employer during leave — its pay is recoverable (Article 118): ${row.recoverReason || ""}`}</span> : null}
                       {row.joinAnnualToSick ? <span style={{ color: MUTED }}>{ar ? "موصولة بالإجازة المرضية السابقة بطلب العامل (المادة 82)." : "Joined to the preceding sick leave at the worker's request (Article 82)."}</span> : null}
-                      {row.advanceLeave ? <span style={{ color: MUTED }}>{ar ? `جزء مقدم من إجازة السنة بنسبة ما قضاه العامل منها${row.advanceConsent ? " — بموافقة المنشأة" : " — يحتاج موافقة المنشأة"} (اللائحة النموذجية م33).` : `An advance of this year's leave pro-rata to time worked${row.advanceConsent ? " — company consented" : " — needs company consent"} (Model Regs Art. 33).`}</span> : null}
+                      {row.advanceLeave ? <span style={{ color: MUTED }}>{ar ? `جزء مقدم من إجازة السنة بنسبة ما قضاه العامل منها${row.advanceConsent ? " — بموافقة المنشأة" : " — يحتاج موافقة المنشأة"} (النموذج الموحد م33).` : `An advance of this year's leave pro-rata to time worked${row.advanceConsent ? " — company consented" : " — needs company consent"} (Model regulation Art. 33).`}</span> : null}
                     </div>
                   ) : null}
                   {row.family === "leave" && mode === "manage" && rowCanDecide && isPendingDecideStatus(st) && (row.advanceLeave || (row.type === "unpaid" && (unpaidSuspensionPlan(row.employee?.leaveRequests, row.employee?.profile?.hireDate, row).byRequest[row.id]?.days || 0) > 0)) ? (() => {
@@ -4052,7 +4052,7 @@ export default function RequestsWorkspace({
                     );
                     return (
                       <div data-leave-decide-flags="1" style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px", border: "1px solid var(--nv-line3)", background: SURFACE }}>
-                        {row.advanceLeave ? box("advanceConsent", ar ? "توافق المنشأة على منح هذا الجزء مقدماً (اللائحة النموذجية م33)." : "The company consents to grant this part in advance (Model Regs Art. 33).") : null}
+                        {row.advanceLeave ? box("advanceConsent", ar ? "توافق المنشأة على منح هذا الجزء مقدماً (النموذج الموحد م33)." : "The company consents to grant this part in advance (Model regulation Art. 33).") : null}
                         {row.type === "unpaid" ? box("agreedOtherwise", ar ? "اتفق الطرفان على ألا يُوقف العقد في هذه الإجازة (المادة 116)." : "The parties agreed the contract is not suspended during this leave (Article 116).") : null}
                         {row.type === "unpaid" && !flags.agreedOtherwise ? box("extensionAgreedOtherwise", ar ? "اتفق الطرفان على عدم تمديد العقد المحدد المدة بمدة التوقف (اللائحة م25/2)." : "The parties agreed not to extend the fixed-term contract by the suspension (Regs Art. 25(2)).") : null}
                       </div>
@@ -4120,7 +4120,7 @@ export default function RequestsWorkspace({
                     if (row.iddahEndedAtBirth) {
                       return (
                         <span data-iddah-birth="done" style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.8 }}>
-                          {ar ? `انتهت العدة بالوضع في ${regulationDate(row.iddahBirthDate)} — لا يُستفاد من باقيها بعد الوضع (اللائحة م40/5).` : `Iddah ended at birth on ${row.iddahBirthDate} (Regs Art. 40(5)).`}
+                          {ar ? `انتهت العدة بالوضع في ${regulationDate(row.iddahBirthDate)} — لا يُستفاد من باقيها بعد الوضع (النموذج الموحد م40/5).` : `Iddah ended at birth on ${row.iddahBirthDate} (Model regulation Art. 40(5)).`}
                         </span>
                       );
                     }
@@ -4129,7 +4129,7 @@ export default function RequestsWorkspace({
                     return (
                       <div data-iddah-birth="open" style={{ border: "1px solid var(--nv-line3)", background: SURFACE, padding: "10px 11px", display: "flex", flexDirection: "column", gap: 7 }}>
                         <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8 }}>
-                          {ar ? "إن كانت حاملاً ووضعت قبل نهاية العدة فإنها تنتهي بالوضع، ولا يُستفاد من باقيها بعده، وتبدأ إجازة الوضع (اللائحة م40/5)." : "If pregnant and the birth comes before the iddah ends, it ends at birth and maternity leave starts (Regs Art. 40(5))."}
+                          {ar ? "إن كانت حاملاً ووضعت قبل نهاية العدة فإنها تنتهي بالوضع، ولا يُستفاد من باقيها بعده، وتبدأ إجازة الوضع (النموذج الموحد م40/5)." : "If pregnant and the birth comes before the iddah ends, it ends at birth and maternity leave starts (Model regulation Art. 40(5))."}
                         </span>
                         <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
                           <label style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 180 }}>

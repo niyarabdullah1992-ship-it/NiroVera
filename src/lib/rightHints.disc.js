@@ -48,7 +48,7 @@ function hd(iso, today, ar = true) {
 /* ── law references ─────────────────────────────────────────────────────── */
 const art = (a, ar) => ({ article: String(a), label: ar ? `المادة ${a}` : `Art. ${a}` });
 const regs = (n, ar) => ({ regs: String(n), label: ar ? `اللائحة م${n}` : `Regs Art. ${n}` });
-const model = (n, ar) => ({ regs: `model-${n}`, label: ar ? `النموذج م${n}` : `Model reg. Art. ${n}` });
+const model = (n, ar) => ({ regs: `model-${n}`, label: ar ? `النموذج الموحد م${n}` : `Model regulation Art. ${n}` });
 const product = (ar) => ({ product: true, label: ar ? "قرار تشغيلي" : "Operational" });
 
 /** The law reference a LABOR_RULES row names (labour article, or an operational rule). */
@@ -373,8 +373,8 @@ export function fileAlertHint(alert, employee, ctx = {}) {
     right: [plain, value && !plain.includes(value) ? (ar ? `في ملفك: ${value}.` : `On your file: ${value}.`) : ""].filter(Boolean).join(" ") || value,
     rightManager: [plain, value ? (ar ? `في ملف ${nameOf(c, employee)}: ${value}.` : `On ${nameOf(c, employee)}'s file: ${value}.`) : ""].filter(Boolean).join(" "),
     worker: leave
-      ? { ifNot: ar ? "إن رُفضت إجازتك أو أُجّلت دون سند: تظلّم كتابةً خلال 30 يوماً (اللائحة م71)." : "If your leave is refused without ground: grieve within 30 days.", action: ACT.grievance(ar) }
-      : { ifNot: ar ? "إن لم يُصحَّح ما يمسّ حقك: تظلّم كتابةً خلال 30 يوماً (النموذج م71)." : "If it is not corrected: grieve in writing within 30 days.", action: ACT.grievance(ar) },
+      ? { ifNot: ar ? "إن رُفضت إجازتك أو أُجّلت دون سند: تظلّم كتابةً خلال 30 يوماً (النموذج الموحد م71)." : "If your leave is refused without ground: grieve within 30 days.", action: ACT.grievance(ar) }
+      : { ifNot: ar ? "إن لم يُصحَّح ما يمسّ حقك: تظلّم كتابةً خلال 30 يوماً (النموذج الموحد م71)." : "If it is not corrected: grieve in writing within 30 days.", action: ACT.grievance(ar) },
     manager: {
       ifNot: ar ? "وإلا بقي الملف مخالفاً عند التفتيش وصار للموظف حق التظلم." : "Otherwise the file stays non-compliant at inspection and the worker may grieve.",
       action: ACT.open(ar, alert.href || ctx.to || "", ar ? "افتح البند" : "Open the item"),
@@ -499,10 +499,10 @@ export function abuseCaseHint(row, ctx = {}) {
   return pack(c, {
     law: model("55", ar),
     right: closed
-      ? (ar ? "انتهى التحقيق بتوصية مكتوبة، ولا تُضار من شكواك، ولك اللجوء للجهات الحكومية المختصة (النموذج م56/7)." : "The inquiry ended with a written recommendation; you are not harmed for complaining and may go to the authorities.")
+      ? (ar ? "انتهى التحقيق بتوصية مكتوبة، ولا تُضار من شكواك، ولك اللجوء للجهات الحكومية المختصة (النموذج الموحد م56/7)." : "The inquiry ended with a written recommendation; you are not harmed for complaining and may go to the authorities.")
       : (ar ? `تُحقَّق شكواك بسرية بلجنة ليس فيها أحد الطرفين خلال ${ABUSE_WORKING_DAYS} أيام عمل${due ? ` — حتى ${hd(due, today, ar)}` : ""}، ولا تُضار منها.` : `Your complaint is investigated confidentially by a committee without the parties within ${ABUSE_WORKING_DAYS} working days${due ? ` — by ${hd(due, today, ar)}` : ""}; you are not harmed for it.`),
     rightManager: closed
-      ? (ar ? "أبقِ الشكوى سرية، ولا يُفتح على صاحبها ملف متصل بها (النموذج م71/1)." : "Keep it confidential; open no related file on the complainant.")
+      ? (ar ? "أبقِ الشكوى سرية، ولا يُفتح على صاحبها ملف متصل بها (النموذج الموحد م56/1)." : "Keep it confidential; open no related file on the complainant.")
       : (ar ? `شكّل لجنة بقرار وأنهِ التحقيق السري خلال ${ABUSE_WORKING_DAYS} أيام عمل من تلقيها${due ? ` — حتى ${hd(due, today, ar)}` : ""}.` : `Form a committee by decision and finish the confidential inquiry within ${ABUSE_WORKING_DAYS} working days${due ? ` — by ${hd(due, today, ar)}` : ""}.`),
     worker: {
       ifNot: ar ? "إن لم يُحقَّق فيها أو ضُررت بسببها: لك إبلاغ وزارة الموارد البشرية مباشرةً، ولا يمنعك الجزاء الداخلي." : "If not investigated, or you are harmed for it: report to the Ministry directly.",

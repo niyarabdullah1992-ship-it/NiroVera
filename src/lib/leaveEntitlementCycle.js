@@ -82,7 +82,7 @@ export const LEAVE_APPROVAL_BLESSING = {
     ar: "يسّر الله أمرك. اعتُمدت إجازتك الاضطرارية. بارك الله وقتك.",
     en: "May the matter be eased. Your emergency leave is approved.",
   },
-  dialysis: { ar: "شفاك الله وعافاك — اعتُمد يوم غسيلك الكلوي بأجر كامل (اللائحة م42).", en: "Get well soon — your dialysis day is approved on full pay (Regs Art. 42)." },
+  dialysis: { ar: "شفاك الله وعافاك — اعتُمد يوم غسيلك الكلوي بأجر كامل (النموذج الموحد م42).", en: "Get well soon — your dialysis day is approved on full pay (Model regulation Art. 42)." },
   therapy: { ar: "شفاك الله وعافاك — اعتُمد يوم جلستك العلاجية بأجر كامل (اللائحة، الملحق 2).", en: "Get well soon — your therapy day is approved on full pay (Regs Annex 2)." },
   job_search: { ar: "وفّقك الله — سُجّل يوم بحثك عن عمل بأجره (المادة 78). بارك الله في سعيك.", en: "Good luck — your paid job-search day is recorded (Art. 78)." },
   comp: { ar: "تهانينا — اعتُمدت إجازتك التعويضية عن ساعاتك الإضافية. بارك الله لك فيها.", en: "Congratulations — your compensatory leave for overtime is approved." },

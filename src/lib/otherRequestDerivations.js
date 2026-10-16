@@ -85,7 +85,7 @@ export const OTHER_REQUEST_TYPES = [
   { key: ART81_EXIT_TYPE, ar: "ترك العمل دون إشعار (المادة 81)", en: "Leaving without notice (Art. 81)" },
   { key: NIGHT_AVOID_TYPE, ar: "تجنب العمل الليلي لسبب صحي", en: "Avoid night work for health" },
   { key: DOCUMENTS_RETURN_TYPE, ar: "استرداد الوثائق المودعة", en: "Return of deposited documents" },
-  { key: GRIEVANCE_TYPE, ar: "تظلم (اللائحة م71)", en: "Grievance (Regs Art. 71)" },
+  { key: GRIEVANCE_TYPE, ar: "تظلم (النموذج الموحد م71)", en: "Grievance (Model regulation Art. 71)" },
   { key: LEAVE_TOPUP_TYPE, ar: "رفع رصيد إجازة", en: "Leave balance top-up" },
   { key: "document", ar: "مستند / أخرى", en: "Document / other" },
   { key: "other_request", ar: "طلب آخر", en: "Other request" },

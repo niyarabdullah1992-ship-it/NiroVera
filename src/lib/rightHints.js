@@ -78,7 +78,7 @@ const ACT = {
   decide: (ar) => ({ kind: "decide", label: ar ? "افتح القرار" : "Open the decision" }),
 };
 
-/** The grievance window a refusal opens (Regs Art. 71: 30 days, holidays not counted). */
+/** The grievance window a refusal opens (Model regulation Art. 71: 30 days, holidays not counted). */
 function grievanceBy(row, c) {
   const told = dateOnly(row?.reviewedAt) || dateOnly(row?.decidedAt);
   return told ? daysAfterExcludingHolidays(told, 30, c.isHoliday) : "";
@@ -90,8 +90,8 @@ function workerRemedy(row, c) {
   const by = String(row?.status) === "rejected" ? grievanceBy(row, c) : "";
   return {
     ifNot: ar
-      ? (by ? `إن رُفض دون سند: تظلّم كتابةً حتى ${hintDate(by, c.today, ar)} (اللائحة م71).` : "إن رُفض دون سند: لك التظلم كتابةً خلال 30 يوماً من إبلاغك (اللائحة م71).")
-      : (by ? `If refused without ground: grieve in writing by ${hintDate(by, c.today, ar)} (Regs Art. 71).` : "If refused without ground: grieve in writing within 30 days (Regs Art. 71)."),
+      ? (by ? `إن رُفض دون سند: تظلّم كتابةً حتى ${hintDate(by, c.today, ar)} (النموذج الموحد م71).` : "إن رُفض دون سند: لك التظلم كتابةً خلال 30 يوماً من إبلاغك (النموذج الموحد م71).")
+      : (by ? `If refused without ground: grieve in writing by ${hintDate(by, c.today, ar)} (Model regulation Art. 71).` : "If refused without ground: grieve in writing within 30 days (Model regulation Art. 71)."),
     action: ACT.grievance(ar),
   };
 }
@@ -276,7 +276,7 @@ const LEAVE = {
   },
   dialysis(row, c) {
     const { ar } = c;
-    return pack(row, c, { law: regs("42", ar), right: ar ? "أيام الغسيل الكلوي بتقرير طبي حق لك وفق اللائحة م42 — لا تُخصم من رصيدك السنوي." : "Dialysis days on a medical report are yours under Regs Art. 42 — not from annual leave.", due: row.startDate });
+    return pack(row, c, { law: regs("42", ar), right: ar ? "أيام الغسيل الكلوي بتقرير طبي حق لك وفق النموذج الموحد م42 — لا تُخصم من رصيدك السنوي." : "Dialysis days on a medical report are yours under Model regulation Art. 42 — not from annual leave.", due: row.startDate });
   },
   therapy(row, c) {
     const { ar } = c;

@@ -54,7 +54,7 @@ export function disciplineSheet(card, ar = true, { company = "" } = {}) {
     kind === "notice"
       ? { label: ar ? "الجزاء المقترح" : "Proposed sanction", value: penaltyLabel(item, ar) }
       : { label: ar ? "الجزاء" : "Sanction", value: effectivePenalty(item, ar) },
-    kind !== "notice" ? { label: ar ? "المقدار (النموذج م68)" : "Amount (model Art. 68)", value: cutPhrase(item, card.wage, ar) } : null,
+    kind !== "notice" ? { label: ar ? "المقدار (النموذج الموحد م68)" : "Amount (model Art. 68)", value: cutPhrase(item, card.wage, ar) } : null,
     kind !== "notice" ? { label: ar ? "الجزاء عند التكرار" : "On repeat", value: disciplineRepeatLine(item, ar), wide: true } : null,
     resolvePenaltyKind(item) === "dismiss" && art80Ground(item.dismissGround)
       ? { label: ar ? "حالة الفسخ (المادة 80)" : "Dismissal case (Art. 80)", value: `${ar ? "الفقرة" : "Para"} ${art80Ground(item.dismissGround).para}: ${ar ? art80Ground(item.dismissGround).ar : art80Ground(item.dismissGround).en}`, wide: true }
@@ -125,7 +125,7 @@ export function disciplineSheet(card, ar = true, { company = "" } = {}) {
       const done = DISCIPLINE_DELIVERY_METHODS.find((m) => m.id === item.notifyMethod);
       blocks.push({
         type: "table",
-        heading: ar ? "إثبات الإبلاغ بالقرار (المادة 72 · النموذج م68)" : "Proof of notice (Art. 72 · model Art. 68)",
+        heading: ar ? "إثبات الإبلاغ بالقرار (المادة 72 · النموذج الموحد م68)" : "Proof of notice (Art. 72 · model Art. 68)",
         cols: [ar ? "الطريقة" : "Method", ar ? "التاريخ" : "Date", ar ? "المرجع / التوقيع" : "Reference / signature"],
         rows: done
           ? [[`☑ ${ar ? done.ar : done.en}`, fmtDisciplineDate(item.notifyDeliveredAt, ar), item.notifyRef || ""]]

@@ -360,7 +360,7 @@ export function regulationEffectiveFrom(regulation) {
 /**
  * Where the regulation stands for the workers today:
  *   model     — no own regulation recorded (the model is guidance)
- *   draft     — recorded but not announced (Law Art. 13(3) / Regs Art. 2(3): announce it in a visible place)
+ *   draft     — recorded but not announced (Law Art. 13(3): announce it in a visible place)
  *   announced — announced; in force from the day after (model Art. 72)
  *   inForce   — in force
  */

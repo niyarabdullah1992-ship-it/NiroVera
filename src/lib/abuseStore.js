@@ -41,7 +41,7 @@ export function fileAbuseCase(companyId, input = {}) {
   logAudit(companyId, "hr_confidential_filed", `Confidential HR file recorded (${row.id}).`);
   // Only HR / the administration hear of it — never the accused, never a line manager (model Art. 56(1)).
   for (const e of voiceHrReceivers(data, { exclude: [row.accusedId, row.reporterId], item: { reporterId: row.reporterId } })) {
-    addNotification(companyId, e.id, "وصلت شكوى إيذاء سرية — شكّل لجنة التحقيق خلال خمسة أيام عمل (النموذج م55/2).", { key: `abuse:${row.id}:filed`, to: "/app/complaints?tab=manage" });
+    addNotification(companyId, e.id, "وصلت شكوى إيذاء سرية — شكّل لجنة التحقيق خلال خمسة أيام عمل (النموذج الموحد م55/2).", { key: `abuse:${row.id}:filed`, to: "/app/complaints?tab=manage" });
   }
   return { ok: true, id: row.id, lastDay: gate.lastDay };
 }
@@ -68,7 +68,7 @@ export function recordAbuseHearing(companyId, id, hearing = {}, by = "") {
 }
 
 export function recordAbuseSeparation(companyId, id, { measure = "", by = "" } = {}) {
-  if (String(measure).trim().length < 5) return { ok: false, error: "ABUSE_SEPARATION_TEXT", reason: "اكتب إجراء التفريق بين الطرفين (نقل مؤقت، تغيير وردية…) — النموذج م56/3.", reasonEn: "Describe how the parties are separated (model Art. 56(3))." };
+  if (String(measure).trim().length < 5) return { ok: false, error: "ABUSE_SEPARATION_TEXT", reason: "اكتب إجراء التفريق بين الطرفين (نقل مؤقت، تغيير وردية…) — النموذج الموحد م56/3.", reasonEn: "Describe how the parties are separated (model Art. 56(3))." };
   return patchCase(companyId, id, (r) => {
     r.separation = { measure: String(measure).trim(), at: now(), by };
     r.log = [...(r.log || []), { at: now(), text: `فُرّق بين الطرفين أثناء التحقيق: ${String(measure).trim()} (م56/3).`, by }];

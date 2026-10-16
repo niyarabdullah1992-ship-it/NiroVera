@@ -37,7 +37,7 @@ export const LEAVE_TYPES = [
   { key: "emergency", total: ruleValue("leave.emergency.days"), article: citeLeaveType("emergency")?.article || null, ar: "اضطرارية", en: "Emergency" },
   { key: "comp", total: null, article: "107", ar: "تعويضية (بدل إضافي)", en: "Compensatory (for overtime)" },
   { key: "job_search", total: null, article: "78", ar: "يوم بحث عن عمل", en: "Job-search day" },
-  { key: "dialysis", total: null, article: null, ar: "غسيل كلوي (اللائحة م42)", en: "Kidney dialysis (Regs Art. 42)", requiresFile: true },
+  { key: "dialysis", total: null, article: null, ar: "غسيل كلوي (النموذج الموحد م42)", en: "Kidney dialysis (Model regulation Art. 42)", requiresFile: true },
   { key: "therapy", total: null, article: null, ar: "جلسة علاج (اللائحة، الملحق 2)", en: "Therapy session (Regs Annex 2)", requiresFile: true },
   { key: "unpaid", total: null, article: citeLeaveType("unpaid")?.article || null, ar: "بدون راتب", en: "Unpaid" },
 ];
@@ -572,8 +572,8 @@ export function hajjSeasonApprovedCount(employees, adhaFrom, exceptId) {
 
 /**
  * Two leaves may not cover the same day (approved or pending). The designed exceptions stay open:
- * sick inside annual (Regs Art. 26/41 pause), Eid and official holidays (their own gate), and
- * iddah ↔ maternity (Regs Art. 40(5): the birth ends the iddah).
+ * sick inside annual (Regs Art. 26 · Model regulation Art. 41 pause), Eid and official holidays (their own gate), and
+ * iddah ↔ maternity (Model regulation Art. 40(5): the birth ends the iddah).
  */
 export function checkLeaveOverlapGate(request, extras = {}) {
   const type = String(request?.type || "").trim().toLowerCase();
@@ -622,8 +622,8 @@ export function checkAnnualAdvanceGate(request, extras = {}, days = 0) {
     return {
       ok: false,
       error: "ANNUAL_ADVANCE_CAP",
-      reason: `موقوف — الإجازة المقدمة بنسبة ما قضيته من السنة: المكتسب حتى ${start} ${cap.earned} يوماً، استُخدم منها ${cap.used}، فالمتاح مقدماً ${cap.cap} (اللائحة النموذجية م33).`,
-      reasonEn: `Blocked — an advance is in proportion to the time worked this year: ${cap.earned} days earned by ${start}, ${cap.used} used, so ${cap.cap} may be taken in advance (Model Regs Art. 33).`,
+      reason: `موقوف — الإجازة المقدمة بنسبة ما قضيته من السنة: المكتسب حتى ${start} ${cap.earned} يوماً، استُخدم منها ${cap.used}، فالمتاح مقدماً ${cap.cap} (النموذج الموحد م33).`,
+      reasonEn: `Blocked — an advance is in proportion to the time worked this year: ${cap.earned} days earned by ${start}, ${cap.used} used, so ${cap.cap} may be taken in advance (Model regulation Art. 33).`,
       cite,
       cap: cap.cap,
     };
@@ -632,15 +632,15 @@ export function checkAnnualAdvanceGate(request, extras = {}, days = 0) {
     return {
       ok: false,
       error: "ANNUAL_ADVANCE_CONSENT",
-      reason: "موقوف — أخذ جزء من الإجازة السنوية مقدماً يحتاج موافقة المنشأة صراحة (اللائحة النموذجية م33).",
-      reasonEn: "Blocked — taking part of the annual leave in advance needs the company's explicit consent (Model Regs Art. 33).",
+      reason: "موقوف — أخذ جزء من الإجازة السنوية مقدماً يحتاج موافقة المنشأة صراحة (النموذج الموحد م33).",
+      reasonEn: "Blocked — taking part of the annual leave in advance needs the company's explicit consent (Model regulation Art. 33).",
       cite,
     };
   }
   return { ok: true, advance: { fromCurrent, cap: cap.cap, earned: cap.earned } };
 }
 
-/** The approved sick leave that ends the day before `start` — for joining annual leave to it (Art. 82, Regs Art. 41). */
+/** The approved sick leave that ends the day before `start` — for joining annual leave to it (Art. 82, Model regulation Art. 41). */
 export function sickLeaveEndingBefore(requests, start) {
   const day = String(start || "").slice(0, 10);
   if (!day) return null;
@@ -648,7 +648,7 @@ export function sickLeaveEndingBefore(requests, start) {
   return (requests || []).find((r) => String(r?.type || "").toLowerCase() === "sick" && r.status === "approved" && leaveCoverRange(r).end === prev) || null;
 }
 
-/** Art. 82 (last sentence) + Regs Art. 41: «وللعامل الحق في أن يطلب وصل إجازته السنوية بالمرضية». */
+/** Art. 82 (last sentence) + Model regulation Art. 41: «وللعامل الحق في أن يطلب وصل إجازته السنوية بالمرضية». */
 export function checkJoinAnnualToSickGate(request, extras = {}) {
   if (request?.joinAnnualToSick !== true) return { ok: true };
   if (String(request?.type || "").toLowerCase() !== "annual") {
@@ -659,8 +659,8 @@ export function checkJoinAnnualToSickGate(request, extras = {}) {
     return {
       ok: false,
       error: "JOIN_SICK_NOT_ADJACENT",
-      reason: "موقوف — وصل الإجازة السنوية بالمرضية يبدأ في اليوم التالي لنهاية إجازة مرضية معتمدة (المادة 82، اللائحة م41).",
-      reasonEn: "Blocked — annual leave joined to sick leave starts the day after an approved sick leave ends (Article 82, Regs Art. 41).",
+      reason: "موقوف — وصل الإجازة السنوية بالمرضية يبدأ في اليوم التالي لنهاية إجازة مرضية معتمدة (المادة 82، النموذج الموحد م41).",
+      reasonEn: "Blocked — annual leave joined to sick leave starts the day after an approved sick leave ends (Article 82, Model regulation Art. 41).",
     };
   }
   return { ok: true, joinedSickId: sick.id || null };
@@ -955,13 +955,13 @@ function checkStatutoryLeaveGates(request, extras, days, onDate, cite) {
     }
     const bornOn = String(request.iddahBirthDate || "").slice(0, 10);
     if (/^\d{4}-\d{2}-\d{2}$/.test(bornOn) && bornOn >= event && bornOn <= latestPaid && isRamadanHoursSubject({ profile: extras.profile })) {
-      // Regs Art. 40(5): a birth before the 130 days ends the iddah — nothing of it is used after birth.
+      // Model regulation Art. 40(5): a birth before the 130 days ends the iddah — nothing of it is used after birth.
       if (end && end >= bornOn) {
         return {
           ok: false,
           error: "IDDAH_AFTER_BIRTH",
-          reason: `موقوف — العدة تنتهي بالوضع (${bornOn}) ولا يُستفاد من باقيها بعده (اللائحة م40/5).`,
-          reasonEn: `Blocked — iddah ends at birth (${bornOn}); none of it is used after (Regs Art. 40(5)).`,
+          reason: `موقوف — العدة تنتهي بالوضع (${bornOn}) ولا يُستفاد من باقيها بعده (النموذج الموحد م40/5).`,
+          reasonEn: `Blocked — iddah ends at birth (${bornOn}); none of it is used after (Model regulation Art. 40(5)).`,
           cite: iCite,
         };
       }
@@ -1207,11 +1207,11 @@ export function checkSubmitLeaveGate(request, extras = {}) {
   const selfRaise = checkLeaveSelfRaiseGate(request, extras);
   if (!selfRaise.ok) return selfRaise;
   if (String(request?.type || "").toLowerCase() === "dialysis") {
-    // Regs Art. 42: the paid day is the day of the dialysis session itself — one request per session day.
+    // Model regulation Art. 42: the paid day is the day of the dialysis session itself — one request per session day.
     const a = String(request?.startDate || "").slice(0, 10);
     const b = String(request?.endDate || "").slice(0, 10) || a;
     if (a && b && a !== b) {
-      return { ok: false, error: "DIALYSIS_ONE_DAY", reason: "موقوف — إجازة الغسيل الكلوي عن يوم الجلسة نفسه؛ ارفع طلباً لكل يوم غسيل مع تقرير الجهة المعالجة (اللائحة م42).", reasonEn: "Blocked — dialysis leave is for the session day itself; raise one request per dialysis day with the provider's report (Regs Art. 42)." };
+      return { ok: false, error: "DIALYSIS_ONE_DAY", reason: "موقوف — إجازة الغسيل الكلوي عن يوم الجلسة نفسه؛ ارفع طلباً لكل يوم غسيل مع تقرير الجهة المعالجة (النموذج الموحد م42).", reasonEn: "Blocked — dialysis leave is for the session day itself; raise one request per dialysis day with the provider's report (Model regulation Art. 42)." };
     }
   }
   if (String(request?.type || "").toLowerCase() === "job_search") {
@@ -1617,7 +1617,7 @@ export function checkCheckInLeaveGate(requests, dayKey) {
 }
 
 /**
- * Regs Art. 41: «إذا وقعت أيام الإجازة المرضية أثناء الإجازة السنوية، فتوقف أيام الإجازة السنوية إلى حين
+ * Model regulation Art. 41: «إذا وقعت أيام الإجازة المرضية أثناء الإجازة السنوية، فتوقف أيام الإجازة السنوية إلى حين
  * انتهاء الإجازة المرضية ثم تستأنف المدة المتبقية بعد ذلك». Given an approved annual leave and a sick
  * leave that overlaps it, the annual days from the overlap on resume the day after the sick leave ends.
  * Returns null when they do not overlap. `keep` is the part of the annual leave before the sick leave
@@ -1647,7 +1647,7 @@ export function planAnnualPauseForSick(annual, sick) {
 }
 
 /**
- * Regs Art. 40(5): a pregnant Muslim widow's iddah ends at birth — «ولا يجوز لها الاستفادة من باقي إجازة
+ * Model regulation Art. 40(5): a pregnant Muslim widow's iddah ends at birth — «ولا يجوز لها الاستفادة من باقي إجازة
  * العدة الممنوحة لها بعد وضع هذا الحمل». Recording the birth on an approved iddah ends it the day before
  * the birth (maternity leave covers the birth day on).
  */

@@ -959,7 +959,7 @@ export default function Discipline() {
                     if (action.kind === "rights" && action.rightsKind === GRIEVANCE_TYPE) openGrievance(card);
                   }}
                 />
-                {/* A signed sanction: its own objection is the grievance (Art. 72) when open; otherwise regs 71. */}
+                {/* A signed sanction: its own objection is the grievance (Art. 72) when open; otherwise model Art. 71. */}
                 {["signed", "closed"].includes(card.face.id) ? (
                   <button
                     type="button"

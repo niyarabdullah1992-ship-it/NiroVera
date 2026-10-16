@@ -1,4 +1,4 @@
-// Leave-law gaps (Arts. 75, 79 bis, 82, 109–111, 114, 116, 118, 151; Regs Art. 25, Annex 2; Model Regs Art. 33).
+// Leave-law gaps (Arts. 75, 79 bis, 82, 109–111, 114, 116, 118, 151; Regs Art. 25, Annex 2; Model regulation Art. 33).
 import assert from "node:assert/strict";
 import {
   annualAdvanceCap,
@@ -202,9 +202,9 @@ const approvedAnnual = (id, startDate, endDate) => ({ id, type: "annual", status
 {
   const live = [{ id: "a", type: "annual", status: "approved", startDate: "2026-11-01", endDate: "2026-11-10" }];
   assert.equal(checkLeaveOverlapGate({ id: "b", type: "emergency", startDate: "2026-11-05", endDate: "2026-11-06" }, { requests: live }).error, "LEAVE_OVERLAP");
-  assert.equal(checkLeaveOverlapGate({ id: "b", type: "sick", startDate: "2026-11-05", endDate: "2026-11-06" }, { requests: live }).ok, true, "sick inside annual is the Regs Art. 41 pause");
+  assert.equal(checkLeaveOverlapGate({ id: "b", type: "sick", startDate: "2026-11-05", endDate: "2026-11-06" }, { requests: live }).ok, true, "sick inside annual is the Model regulation Art. 41 pause");
   assert.equal(checkLeaveOverlapGate({ id: "b", type: "annual", startDate: "2026-11-11", endDate: "2026-11-12" }, { requests: live }).ok, true);
-  assert.equal(checkLeaveOverlapGate({ id: "b", type: "maternity", startDate: "2026-11-05", endDate: "2026-12-30" }, { requests: [{ ...live[0], type: "iddah" }] }).ok, true, "iddah ↔ maternity (Regs Art. 40(5))");
+  assert.equal(checkLeaveOverlapGate({ id: "b", type: "maternity", startDate: "2026-11-05", endDate: "2026-12-30" }, { requests: [{ ...live[0], type: "iddah" }] }).ok, true, "iddah ↔ maternity (Model regulation Art. 40(5))");
   assert.equal(checkLeaveOverlapGate({ id: "b", type: "emergency", startDate: "2026-11-05", endDate: "2026-11-06" }, { requests: [{ ...live[0], status: "rejected" }] }).ok, true);
   assert.equal(checkLeaveOverlapGate({ id: "b", type: "emergency", startDate: "2026-11-05", endDate: "2026-11-06" }, { requests: [{ ...live[0], status: "pending" }] }).error, "LEAVE_OVERLAP");
   const submit = checkSubmitLeaveGate(
@@ -247,7 +247,7 @@ const approvedAnnual = (id, startDate, endDate) => ({ id, type: "annual", status
   assert.equal(ts.checkApproveLeaveGate({ ...base, startDate: "2026-06-01", endDate: "2026-06-10" }, { profile, requests: [] }).error, "HAJJ_EID_ADHA");
 }
 
-// ── 9. Model Regs Art. 33 — advance proportional to time worked, with consent ──
+// ── 9. Model regulation Art. 33 — advance proportional to time worked, with consent ──
 {
   const profile = { hireDate: "2026-01-01" };
   const cap = annualAdvanceCap(profile, [], "2026-04-01");
@@ -261,7 +261,7 @@ const approvedAnnual = (id, startDate, endDate) => ({ id, type: "annual", status
   assert.equal(ts.checkAnnualAdvanceGate(req, { profile, requests: [] }, 10).error, "ANNUAL_ADVANCE_CAP");
 }
 
-// ── 10. Art. 82 + Regs Art. 41 — join annual to sick ──
+// ── 10. Art. 82 + Model regulation Art. 41 — join annual to sick ──
 {
   const sick = { id: "s1", type: "sick", status: "approved", startDate: "2026-11-01", endDate: "2026-11-05" };
   assert.equal(checkJoinAnnualToSickGate({ type: "annual", joinAnnualToSick: true, startDate: "2026-11-06" }, { requests: [sick] }).joinedSickId, "s1");

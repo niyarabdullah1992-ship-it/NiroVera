@@ -60,7 +60,7 @@ const nameOf = (c) => c.emp?.name || (c.ar ? "الموظف" : "the worker");
 function pack(c, { right, rightManager, law, worker, manager, due, managerTo }) {
   const isManager = c.view === "manager";
   const workerTail = worker || {
-    ifNot: c.ar ? "إن لم يُطبَّق: تظلّم كتابةً خلال 30 يوماً من علمك (اللائحة م71)، ثم المحكمة العمالية." : "If not applied: grieve in writing within 30 days (Regs Art. 71), then the labour court.",
+    ifNot: c.ar ? "إن لم يُطبَّق: تظلّم كتابةً خلال 30 يوماً من علمك (النموذج الموحد م71)، ثم المحكمة العمالية." : "If not applied: grieve in writing within 30 days (Model regulation Art. 71), then the labour court.",
     action: ACT.grievance(c.ar),
   };
   const managerTail = {
@@ -160,7 +160,7 @@ export const ATT_HINT_BUILDERS = {
         ? `${nameOf(c)}: ${late} — ${ord}: ${step}${tail}، بعد تحقيق كتابي وسماع أقواله (المادة 71)، وخلال ${charge} يوماً من علمك (المادة 69).`
         : `${nameOf(c)}: ${late} — ${ord}: ${step}${tail}, after a written inquiry (Art. 71), within ${charge} days of learning of it (Art. 69).`,
       worker: {
-        ifNot: ar ? "إن حُسم أكثر من الجدول أو قبل الإنذار: تظلّم كتابةً خلال 30 يوماً (اللائحة م71)." : "If deducted beyond the table or before a warning: grieve within 30 days (Regs Art. 71).",
+        ifNot: ar ? "إن حُسم أكثر من الجدول أو قبل الإنذار: تظلّم كتابةً خلال 30 يوماً (النموذج الموحد م71)." : "If deducted beyond the table or before a warning: grieve within 30 days (Model regulation Art. 71).",
         action: ACT.grievance(ar),
       },
       manager: ar ? `بعد ${charge} يوماً لا يجوز توقيع الجزاء (المادة 69).` : `After ${charge} days the penalty may no longer be imposed (Art. 69).`,
@@ -222,7 +222,7 @@ export const ATT_HINT_BUILDERS = {
           ? `${hh} لـ${nameOf(c)} تتجاوز سقف ${cap} ساعة — اطلب موافقته هو قبل الإسناد.`
           : `${hh} for ${nameOf(c)} pass the ${cap}-hour cap — ask the worker himself first.`,
         worker: {
-          ifNot: ar ? "إن أُسندت دون موافقتك: لك رفضها والتظلم (اللائحة م71)." : "If assigned without consent: refuse and grieve (Regs Art. 71).",
+          ifNot: ar ? "إن أُسندت دون موافقتك: لك رفضها والتظلم (النموذج الموحد م71)." : "If assigned without consent: refuse and grieve (Model regulation Art. 71).",
           action: ACT.grievance(ar),
         },
         manager: ar ? "إسنادها دون موافقته مخالفة للائحة م22." : "Assigning them without consent breaches Regs Art. 22.",

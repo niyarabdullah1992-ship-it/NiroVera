@@ -202,7 +202,7 @@ ok("service certificate — Art. 64, free, dated from the exit", () => {
 ok("abuse complaint — model reg. 55: confidential inquiry in 5 working days", () => {
   const row = { id: "a1", status: "filed", filedAt: "2026-10-11", reporterId: "e1" };
   const m = abuseCaseHint(row, { view: "manager", today });
-  assert.equal(m.law.label, "النموذج م55");
+  assert.equal(m.law.label, "النموذج الموحد م55");
   assert.ok(m.due > "2026-10-11");
   assert.match(m.right, /5 أيام عمل/);
   const e = abuseCaseHint(row, { view: "employee", today });

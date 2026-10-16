@@ -19,7 +19,7 @@ import {
   usedLeaveDays,
 } from "./leaveTypes.js";
 import { officialHolidayList } from "./ummAlQuraCalendar.js";
-import { approvedLeaveWithdrawWindow, computeLeaveDays, examSatState, hasExamSatProof, isRealSupportingFile, LEAVE_TYPES } from "./leaveDerivations.js";
+import { approvedLeaveWithdrawWindow, computeLeaveDays, examSatState, HOLIDAY_REQUEST_NOT_NEEDED, hasExamSatProof, holidayNotNeededLabel, isRealSupportingFile, LEAVE_TYPES, voidLegacyHolidayRequest } from "./leaveDerivations.js";
 import { nightRotateStage } from "./nightRotateCycle.js";
 import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_LABEL_AR, NIGHT_FITNESS_LABEL_EN, NIGHT_FITNESS_PERMANENT_AR, NIGHT_FITNESS_TYPE, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkRefuseRequestReasonGate, checkSubmitStudyConsentGate, collectRequestAuditLogs, collectRequestRefuseLogs, DISCRETIONARY_GRANT_CAP as OTHER_DISCRETIONARY_GRANT_CAP, hasRequestRefuseAudit, isManagerDecideOtherRequest, LEAVE_CREDIT_POOLS, nightFitnessState, otherRequestTypeLabel, reconstructRequestAudit, requestAuditEventType, requestAuditFileLog, resolveStudyConsentFields, STUDY_CONSENT_FILE_REQUIRED_AR, STUDY_CONSENT_FILE_REQUIRED_EN, STUDY_CONSENT_LABEL_AR, STUDY_CONSENT_LABEL_EN, STUDY_CONSENT_TYPE, studyConsentState } from "./otherRequestDerivations.js";
 import { nightMedicalReportOf } from "./decision18632.js";
@@ -450,7 +450,7 @@ const LAW_ROWS = [
   { art: "110", kind: "leave", ruleId: "leave.annual.carry.cite", implAr: "الرصيد غير المستخدم من سنة الاستحقاق السابقة يظهر بند ترحيل مستقل، ويُستهلك أولاً. تسجيل المدير بعد تسعين يوماً من نهاية تلك السنة يحتاج موافقة كتابية.", implEn: "Unused days from the previous entitlement year appear as a separate carry line and are used first. A manager recording leave more than ninety days after that year needs written consent." },
   { art: "118", kind: "leave", ruleId: "leave.noOtherEmployer.cite", implAr: "إرسال أي طلب إجازة يتطلب إقراراً بعدم العمل لدى صاحب عمل آخر.", implEn: "Sending any leave request requires an acknowledgement of no other employer." },
   { art: "111", kind: "leave", ruleId: "eos.unusedLeave.cite", implAr: "يُحسب في مخالصة نهاية الخدمة من الرصيد المتبقي.", implEn: "Unused days are paid in the end-of-service settlement." },
-  { art: "112", kind: "leave", ruleId: "leave.eid.cite", implAr: "أيام العطل تُقفل في جدول الدوام: الوطني والتأسيس من التاريخ المرمّز، والفطر بعد إعلان 29 أو 30، والأضحى من يوم عرفة.", implEn: "Official holidays lock the rota: National and Founding from the encoded dates, Fitr after the 29/30 announcement, Adha from Arafah." },
+  { art: "112", kind: "leave", ruleId: "leave.eid.cite", implAr: "العطل الرسمية لا تُطلب: تُقفل في جدول الدوام تلقائياً للجميع بأجر كامل — الوطني والتأسيس من التاريخ المرمّز، والفطر بعد إعلان 29 أو 30، والأضحى من يوم عرفة. في طلباتي تظهر للاطلاع فقط، والعمل فيها إضافي (م107/3).", implEn: "Official holidays are not requested: they lock the rota automatically for everyone at full pay — National and Founding from the encoded dates, Fitr after the 29/30 announcement, Adha from Arafah. طلباتي shows them as information only; working one is overtime (Art. 107(3))." },
   { art: "113", kind: "leave", ruleId: "leave.marriage.days", implAr: "الطلب لا يُرسل قبل تاريخ الواقعة والمستند إن لزم.", implEn: "The request is not sent before the event date and any required document." },
   { art: "114", kind: "leave", ruleId: "leave.hajj.days", implAr: "يُوسم الطلب مرة واحدة ويُغلق النوع بعد استخدامه.", implEn: "The type is marked once-in-service and closes after use." },
   { art: "115", kind: "leave", ruleId: "leave.exam.cite", implAr: "التفريق بين امتحان أول ومعاد يغيّر أثر الأجر. المهلة 15 يوماً قبل الموعد إشعار من العامل إلى صاحب العمل. إن وصل جدول المواعيد بعد المهلة: ارفع الورقة وسجّل تاريخ صدورها وقدّم في يومها أو اليوم التالي. إثبات المواعيد مع الطلب؛ إثبات الأداء ورقة ثانية على البطاقة بعد بدء أيام الامتحان. صاحب العمل لا يرفض طلباً استوفى المادة؛ رفض الانتساب يغيّر مسار الأجر فقط.", implEn: "A first sitting versus a repeat changes the wage effect. Notice is 15 days before the date — employee notice to the employer. If the timetable paper arrives late: attach it, record its issue date, and apply that day or the next. The timetable goes with the request; sitting proof is a second paper on the card after the exam days begin. The employer cannot refuse a request that meets the article; refusing enrolment only changes the pay track." },
@@ -615,7 +615,8 @@ export function leaveKindMeta(key, onDate) {
 export function leaveKindsFor(profile, ar = true, requests, employee) {
   const leftover = leftoverGrantDays(profile, requests);
   const comp = employee ? compBalance(employee) : null;
-  return leaveTypesForProfile(profile || {}).map((row) => {
+  // Art. 112 official holidays are not a request kind — they apply from the calendar (officialHolidayInfoRows).
+  return leaveTypesForProfile(profile || {}).filter((row) => !row.automatic).map((row) => {
     const meta = leaveKindMeta(row.key);
     const cite = meta.article
       ? statutoryArticleLabel(meta.article, ar)
@@ -628,8 +629,6 @@ export function leaveKindsFor(profile, ar = true, requests, employee) {
         ? (leftover
           ? (ar ? `${leftover} أيام تقديرية متبقية` : `${leftover} discretionary days left`)
           : (ar ? "لا رصيد تقديري بعد" : "No discretionary days left"))
-      : row.key === "eid"
-        ? (ar ? "ثابتة في المنصة · الوطني 1 · التأسيس 1 مقفلان في الجدول بلا طلب · الفطر 4 · الأضحى 4 بطلب" : "Fixed in the platform · National 1 · Founding 1 locked on the roster · Fitr 4 · Adha 4 by request")
       : row.key === "iddah"
         ? (isRamadanHoursSubject({ profile })
           ? (ar ? "130 يوماً بأجر — تمديد بلا أجر للحامل حتى الوضع" : "130 paid days — unpaid extension if pregnant until birth")
@@ -689,6 +688,39 @@ export function annualRemainingWithGrants(profile, requests, onDate, company, em
 
 export function officialHolidays(onDate = todayRiyadh(), calendar) {
   return officialHolidayList(onDate, calendar);
+}
+
+/** The fixed notice over the official-holidays information block in طلباتي. */
+export const OFFICIAL_HOLIDAYS_NOTICE_AR = "هذه العطل ثابتة في المنصة وتُطبَّق تلقائياً — لا تُطلب (المادة 112).";
+export const OFFICIAL_HOLIDAYS_NOTICE_EN = "These holidays are fixed in the platform and apply automatically — they are not requested (Art. 112).";
+
+/**
+ * Art. 112 — information rows for طلباتي (no request, no form): each holiday, its days, its next dates
+ * or «يُعلن موعده» while Eid al-Fitr waits for the 29/30 announcement, and «تُطبَّق تلقائياً في الجدول».
+ * The roster, attendance and payroll read the same calendar (officialHolidayOn), so nothing is raised here.
+ */
+export function officialHolidayInfoRows(onDate = todayRiyadh(), calendar, lang = "ar") {
+  const ar = lang === "ar";
+  return officialHolidayList(onDate, calendar).map((x) => {
+    const announced = !!x.from && (x.id !== "fitr" || !!x.locked || !!x.ownerRuled);
+    const days = Number(x.days) || 0;
+    return {
+      id: x.id,
+      name: ar ? x.ar : x.en,
+      note: ar ? x.noteAr : x.noteEn,
+      ruleId: x.ruleId,
+      days,
+      daysLabel: ar ? countAr(days, "يوم واحد", "يومان", "أيام", "يوماً") : `${days} ${days === 1 ? "day" : "days"}`,
+      from: announced ? x.from : "",
+      to: announced ? x.to : "",
+      announced,
+      dateText: announced
+        ? (x.from === x.to ? formatArDate(x.from, lang) : `${formatArDate(x.from, lang)} → ${formatArDate(x.to, lang)}`)
+        : (ar ? "يُعلن موعده" : "Date to be announced"),
+      status: ar ? "تُطبَّق تلقائياً في الجدول" : "Applied on the roster automatically",
+      automatic: true,
+    };
+  });
 }
 
 /**
@@ -830,10 +862,12 @@ export function pendingWorkspaceDecideCount(employees = []) {
 
 export function flattenWorkspaceRows(employees = [], lang = "ar") {
   const ar = lang === "ar";
-  const leave = (employees || []).flatMap((employee) => (employee.leaveRequests || []).map((request) => ({
+  // A pending legacy Art. 112 request needs no decision — the calendar applies the holiday («لا حاجة»).
+  const leave = (employees || []).flatMap((employee) => (employee.leaveRequests || []).map((raw) => voidLegacyHolidayRequest(raw)).map((request) => ({
     ...request,
     employee,
     family: "leave",
+    holidayNotNeeded: request.status === HOLIDAY_REQUEST_NOT_NEEDED ? holidayNotNeededLabel(request, ar) : "",
     title: ar
       ? `إجازة ${leaveKindMeta(request.type, request.startDate)?.ar || ""}`
       : `${leaveKindMeta(request.type, request.startDate)?.en || ""} leave`,
@@ -895,7 +929,7 @@ export function remainingAnnualLabel(profile, requests, lang = "ar") {
 
 export { remainingLeaveDays, computeLeaveDays };
 
-const SETTLED = new Set(["approved", "rejected", "withdrawn", "yes", "no", "refused_by_employee", "lapsed"]);
+const SETTLED = new Set(["approved", "rejected", "withdrawn", "yes", "no", "refused_by_employee", "lapsed", HOLIDAY_REQUEST_NOT_NEEDED]);
 const ENDED_NIGHT = new Set(["withdrawn", "refused", "lapsed", "reduced_hours"]);
 
 export function isSettledRequest(row) {
@@ -922,7 +956,7 @@ export function isEndedInboxRequest(row) {
     return ENDED_NIGHT.has(nightRotateStage(row));
   }
   const status = row.status || "pending";
-  if (status === "lapsed" || status === "withdrawn" || status === "rejected" || status === "refused_by_employee" || status === "yes" || status === "no") {
+  if (status === "lapsed" || status === "withdrawn" || status === "rejected" || status === "refused_by_employee" || status === "yes" || status === "no" || status === HOLIDAY_REQUEST_NOT_NEEDED) {
     return true;
   }
   if (status !== "approved") return false;

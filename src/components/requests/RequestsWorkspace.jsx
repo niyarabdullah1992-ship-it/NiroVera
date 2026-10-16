@@ -85,6 +85,9 @@ import {
   leaveKindMeta,
   leaveKindsFor,
   officialHolidays,
+  officialHolidayInfoRows,
+  OFFICIAL_HOLIDAYS_NOTICE_AR,
+  OFFICIAL_HOLIDAYS_NOTICE_EN,
   rangeDates,
   remainingAnnualLabel,
   requestStatuteCite,
@@ -116,7 +119,7 @@ import {
   SUPPORTING_FILE_ACCEPT,
   SUPPORTING_FILE_MAX_BYTES,
 } from "@/lib/requestWorkspace";
-import { isRosterLockedCivicHoliday, laborCalendarOf, officialHolidayKindLabel, officialHolidayLeaveLabel } from "@/lib/ummAlQuraCalendar";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { annualAdvanceCap, annualCarryAlerts, iddahSpanFromEvent, maternityFollowOnSpan, therapyLeaveEligibility, unpaidSuspensionPlan } from "@/lib/leaveTypes";
 import { isRamadanHoursSubject, religionOnFile } from "@/lib/laborRules";
 import { profileGender } from "@/lib/employeeProfileFields";
@@ -476,6 +479,7 @@ const slab = {
 };
 
 function stateSkin(status) {
+  if (status === "not_needed") return { color: MUTED, bg: "var(--nv-mute-soft, var(--nv-soft))", border: "var(--nv-line3, var(--nv-soft))", edge: "var(--nv-mute-fill, #C7CCD6)" };
   if (status === "approved") return { color: OK, bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)", edge: "var(--nv-ok-fill)" };
   if (status === "rejected" || status === "withdrawn" || status === "violation" || status === "refused_by_employee") return { color: BAD, bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)", edge: "var(--nv-bad-fill)" };
   if (status === "revise") return { color: WARN, bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", edge: "var(--nv-warn-fill)" };
@@ -523,6 +527,11 @@ export default function RequestsWorkspace({
     }
   }, [initialKind]);
   const [leave, setLeave] = useState("annual");
+  const openOfficialHolidaysInfo = () => {
+    setKind("leave");
+    setLeave((prev) => (prev === "eid" ? "annual" : prev));
+    setTimeout(() => document.getElementById("nv-official-holidays")?.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
+  };
   // ?kind=doc&doc=exp (service certificate, Art. 64) or doc=contract (Art. 51) preselects the document.
   const [doc2, setDoc2] = useState(() => (DOC_KINDS.some((row) => row.id === initialDocKind) ? initialDocKind : "salary"));
   const [from, setFrom] = useState(() => (initialKind === "leave" ? "" : today));
@@ -1016,7 +1025,7 @@ export default function RequestsWorkspace({
     : [
       { ok: isPunchKind ? /^\d{4}-\d{2}-\d{2}$/.test(String(from || "").slice(0, 10)) : (counted > 0 || !isLeave), text: isLeave
         ? (counted > 0
-          ? `${ar ? countAr(counted, "يوم واحد محسوب", "يومان محسوبان", "أيام محسوبة", "يوماً محسوباً") : `${counted} counted days`} — ${formatArDate(from, lang)} → ${formatArDate(to, lang)}${leave === "eid" || leave === "iddah" ? (ar ? " · بأجر كامل ولا تُخصم من السنوية" : " · full pay, not taken from annual") : leaveSpanIncludesOfficialHolidays(leave) && holidayHit.length ? (ar ? " · العيد داخل المدة (المادة 114)" : " · Eid is inside the span (Art. 114)") : ""}`
+          ? `${ar ? countAr(counted, "يوم واحد محسوب", "يومان محسوبان", "أيام محسوبة", "يوماً محسوباً") : `${counted} counted days`} — ${formatArDate(from, lang)} → ${formatArDate(to, lang)}${leave === "iddah" ? (ar ? " · بأجر كامل ولا تُخصم من السنوية" : " · full pay, not taken from annual") : leaveSpanIncludesOfficialHolidays(leave) && holidayHit.length ? (ar ? " · العيد داخل المدة (المادة 114)" : " · Eid is inside the span (Art. 114)") : ""}`
           : (ar ? "حدّد تاريخين صحيحين." : "Set a valid date range."))
         : (from ? (ar ? `اليوم: ${formatArDate(from, lang)}` : `Day: ${formatArDate(from, lang)}`) : (ar ? "حدد التاريخ." : "Set the date.")) },
       { ok: !needsDoc || hasDoc, text: !needsDoc
@@ -2000,6 +2009,13 @@ export default function RequestsWorkspace({
     if (row.employee?.id) openRegister(row.employee.id);
   };
 
+  // ?leave=eid (or ?leave=holidays) — old links to «طلب العيد»: the holidays are information, not a request.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const want = new URLSearchParams(window.location.search || "").get("leave");
+    if (want === "eid" || want === "holidays") openOfficialHolidaysInfo();
+  }, []);
+
   // Deep link from the dashboard's «التزاماتي» list: ?focus=<family>-<id> opens that request's decision.
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2027,6 +2043,11 @@ export default function RequestsWorkspace({
     if (action.kind === "raise") {
       setConsentPicked(false);
       setKind(action.requestKind || "leave");
+      // Art. 112 holidays are not raised — the action opens their information block instead.
+      if (action.leaveType === "eid") {
+        openOfficialHolidaysInfo();
+        return;
+      }
       if (action.leaveType) setLeave(action.leaveType);
       setTimeout(() => document.querySelector(".nv-req-raise")?.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
       return;
@@ -2953,13 +2974,6 @@ export default function RequestsWorkspace({
                         : `${remainingAnnualLabel(subject?.profile, subject?.leaveRequests, lang)} — the count follows from and to.`}
                     </span>
                   ) : null}
-                  {leave === "eid" ? (
-                    <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
-                      {ar
-                        ? "إجازة اليوم الوطني وإجازة يوم التأسيس مقفلتان في الجدول بلا طلب (المادة 112). هذا النوع لطلب عيد الفطر أو الأضحى على أيامهما."
-                        : "National Day and Founding Day leave lock on the roster with no request (Article 112). This type is for requesting Eid al-Fitr or Eid al-Adha on their dates."}
-                    </span>
-                  ) : null}
                 </>
               ) : null}
               <div style={{ display: "grid", gridTemplateColumns: isLeave ? "repeat(auto-fit, minmax(min(100%, 148px), 1fr))" : (isPunchKind ? "minmax(0,1fr) 120px" : "minmax(0,1fr)"), gap: isLeave ? 6 : 9, width: "100%" }}>
@@ -3696,6 +3710,7 @@ export default function RequestsWorkspace({
                     : nightStage === "lapsed" ? (ar ? "انتهت بتغيير الدوام" : "Lapsed — roster changed")
                       : st === "pending_employee" ? (ar ? "⏳ بانتظار اختيار الموظف" : "Awaiting the worker")
                         : st === "pending_manager" ? (ar ? "⏳ بانتظار قرار المسؤول" : "Awaiting the manager")
+                      : st === "not_needed" ? (row.holidayNotNeeded || (ar ? "لا حاجة — العيد يُطبَّق تلقائياً" : "Not needed — Eid applies automatically"))
                       : st === "pending" ? (ar ? "⏳ بانتظار قرار" : "Awaiting a decision")
                         : st === "revise" ? (ar ? "↩ يحتاج تعديلاً" : "Needs a change")
                           : st === "rejected" ? (ar ? "✕ مرفوض" : "Rejected")
@@ -4422,9 +4437,10 @@ export default function RequestsWorkspace({
         />
       ) : null}
 
-      {mode !== "manage" && isLeave && leave === "eid" ? (
+      {isLeave ? (
       <div className="nv-req-lower" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
-        <section style={slab}>
+        {/* Art. 112 — information only: no form, no submit. The calendar applies these on the roster. */}
+        <section id="nv-official-holidays" data-official-holidays-info="1" style={slab}>
           <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line3)", display: "flex", flexDirection: "column", gap: 2 }}>
             <span style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
               <span className="nv-req-title" style={{ fontSize: 14 }}>{ar ? "العطل الرسمية" : "Official holidays"}</span>
@@ -4432,81 +4448,44 @@ export default function RequestsWorkspace({
             </span>
             <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
               {ar
-                ? "بأجر كامل ولا تُخصم من السنوية. الوطني والتأسيس مقفلان في الجدول بلا طلب؛ العيد يُطلب على أيامه بعد ثبوتها."
-                : "Full pay, not taken from annual. National Day and Founding Day leave lock on the roster with no request; request Eid on its dates once fixed."}
+                ? "بأجر كامل للجميع ولا تُخصم من السنوية. تُقفل في جدول الدوام تلقائياً من تقويم المنصة — إن وقعت في راحتك الأسبوعية عُوِّضت، وفي السنوية مُدِّدت (اللائحة 24)، والعمل فيها إضافي (م107/3)."
+                : "Full pay for everyone, not taken from annual. They lock on the roster automatically from the platform calendar — on your weekly rest they are compensated, inside annual leave it is extended (Regs Art. 24), and working one is overtime (Art. 107(3))."}
             </span>
             <span data-holidays-fixed="1" style={{ marginTop: 6, alignSelf: "flex-start", fontSize: 11, fontWeight: 700, lineHeight: 1.6, padding: "3px 10px", borderRadius: 999, background: "var(--nv-warn-soft)", color: "var(--nv-warn-ink)" }}>
-              {ar
-                ? "تنبيه: هذه العطل ثابتة في المنصة — أيامها ومواعيدها لا يغيّرها الطلب (المادة 112)."
-                : "Note: these holidays are fixed in the platform — a request does not change their days or dates (Art. 112)."}
+              {ar ? `تنبيه: ${OFFICIAL_HOLIDAYS_NOTICE_AR}` : `Note: ${OFFICIAL_HOLIDAYS_NOTICE_EN}`}
             </span>
           </div>
-          {holidays.map((x) => {
-            const hit = x.from && dates.some((d) => d >= x.from && d <= x.to);
-            const past = x.to && x.to < today;
-            const civicLocked = isRosterLockedCivicHoliday(x.id);
-            const canAsk = !civicLocked && !!x.from && !!x.to && mode !== "manage";
-            const leaveName = ar ? (x.ar || officialHolidayLeaveLabel(x.id, true, laborCalendar)) : (x.en || officialHolidayLeaveLabel(x.id, false, laborCalendar));
-            const status = civicLocked
-              ? (past
-                ? (ar ? "مضت — كانت مقفلة بلا طلب" : "Past — was locked with no request")
-                : (ar ? "مقفلة بلا طلب" : "Locked with no request"))
-              : leave === "eid" && hit
-                ? (ar ? `طلب ${officialHolidayKindLabel(x.id, true, laborCalendar)} على هذا الموعد` : `${officialHolidayKindLabel(x.id, false, laborCalendar)} request on this date`)
-                : hit && leave === "annual"
-                  ? (ar ? "داخل السنوية — تُمدَّد ولا تُخصم (اللائحة 24)" : "Inside annual — extended, not charged (regs Art. 24)")
-                  : past
-                    ? (ar ? "مضت" : "Past")
-                    : canAsk
-                      ? (ar ? "اضغط لطلب العيد" : "Tap to request Eid")
-                      : !x.from
-                        ? (ar ? "بانتظار ثبوت الموعد" : "Waiting for fixed dates")
-                        : (ar ? "اطّلاع — المادة 112" : "Info — Art. 112");
-            const rowStyle = {
-              padding: "11px 18px",
-              border: "none",
-              borderBottom: "1px solid var(--nv-line3, var(--nv-soft))",
-              display: "grid",
-              gridTemplateColumns: "minmax(0,1fr) auto",
-              gap: 10,
-              alignItems: "center",
-              background: civicLocked ? "var(--nv-mute-soft, var(--nv-soft))" : (hit ? "var(--nv-ok-soft)" : CARD),
-              width: "100%",
-              textAlign: "inherit",
-              font: "inherit",
-            };
-            const body = (
-              <>
+          {officialHolidayInfoRows(today, laborCalendar, lang).map((x) => {
+            const inside = x.from && dates.some((d) => d >= x.from && d <= x.to);
+            const status = inside && leave === "annual"
+              ? (ar ? "داخل السنوية — تُمدَّد ولا تُخصم (اللائحة 24)" : "Inside annual — extended, not charged (regs Art. 24)")
+              : x.status;
+            return (
+              <div
+                key={x.id}
+                data-holiday-info={x.id}
+                style={{
+                  padding: "11px 18px",
+                  borderBottom: "1px solid var(--nv-line3, var(--nv-soft))",
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0,1fr) auto",
+                  gap: 10,
+                  alignItems: "center",
+                  background: inside ? "var(--nv-ok-soft)" : CARD,
+                }}
+              >
                 <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
-                  <strong style={{ fontSize: 12 }}>{leaveName}</strong>
-                  <span style={{ fontSize: 10.5, color: MUTED }}>{ar ? x.noteAr : x.noteEn}</span>
+                  <strong style={{ fontSize: 12 }}>{x.name} <span style={{ fontWeight: 500, color: MUTED }}>· {x.daysLabel}</span></strong>
+                  <span style={{ fontSize: 10.5, color: MUTED }}>{x.note}</span>
                 </span>
                 <span style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-end" }}>
-                  <span dir="ltr" style={{ font: "500 11px 'IBM Plex Mono', monospace", unicodeBidi: "isolate" }}>{x.from ? (x.from === x.to ? formatArDate(x.from, lang) : `${formatArDate(x.from, lang)} → ${formatArDate(x.to, lang)}`) : (ar ? `${x.days} أيام` : `${x.days} days`)}</span>
-                  <span style={{ fontSize: 10, color: canAsk ? OK : MUTED, fontWeight: 600 }}>{status}</span>
+                  {x.announced ? (
+                    <span dir="ltr" style={{ font: "500 11px 'IBM Plex Mono', monospace", unicodeBidi: "isolate" }}>{x.dateText}</span>
+                  ) : (
+                    <span style={{ fontSize: 11, fontWeight: 600 }}>{x.dateText}</span>
+                  )}
+                  <span style={{ fontSize: 10, color: MUTED, fontWeight: 600 }}>{status}</span>
                 </span>
-              </>
-            );
-            if (canAsk) {
-              return (
-                <button
-                  key={x.id}
-                  type="button"
-                  onClick={() => {
-                    setKind("leave");
-                    setLeave("eid");
-                    setFrom(x.from);
-                    setTo(x.to);
-                  }}
-                  style={{ ...rowStyle, cursor: "pointer" }}
-                >
-                  {body}
-                </button>
-              );
-            }
-            return (
-              <div key={x.id} style={rowStyle}>
-                {body}
               </div>
             );
           })}

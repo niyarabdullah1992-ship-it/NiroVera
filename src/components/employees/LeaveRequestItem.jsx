@@ -5,7 +5,7 @@ import { Clock, CheckCircle2, XCircle } from "lucide-react";
 import { CommentAttachments } from "@/components/tasks/CommentFiles";
 import { formatDate } from "@/lib/dateFormat";
 import { LEAVE_TYPES, leaveTypeLabel } from "@/lib/leaveTypes";
-import { checkApproveLeaveGate, checkExamSittingSettleGate, checkRejectLeaveGate } from "@/lib/leaveDerivations";
+import { checkApproveLeaveGate, checkExamSittingSettleGate, checkRejectLeaveGate, HOLIDAY_REQUEST_NOT_NEEDED, holidayNotNeededLabel } from "@/lib/leaveDerivations";
 import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { requestReplyCopy, requestReplyHref } from "@/lib/requestWorkspace";
@@ -14,6 +14,8 @@ const STATUS_STYLE = {
   pending: { tone: "bg-amber-100 text-amber-700", icon: Clock },
   approved: { tone: "bg-emerald-100 text-emerald-700", icon: CheckCircle2 },
   rejected: { tone: "bg-destructive/15 text-destructive", icon: XCircle },
+  // Legacy Art. 112 request — the holiday applies from the calendar; no decision is needed.
+  [HOLIDAY_REQUEST_NOT_NEEDED]: { tone: "bg-muted text-muted-foreground", icon: CheckCircle2 },
 };
 
 export default function LeaveRequestItem({ request, canApprove, profile, requests }) {
@@ -33,7 +35,7 @@ export default function LeaveRequestItem({ request, canApprove, profile, request
           {leaveTypeLabel(request.type, ar, undefined, request.startDate)} · {formatDate(request.startDate, lang, { day: "numeric", month: "long", year: "numeric" })} → {formatDate(request.endDate, lang, { day: "numeric", month: "long", year: "numeric" })} ({request.days || 1} {t("days")})
         </p>
         <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-body ${tone}`}>
-          <StatusIcon className="w-3 h-3" /> {t(request.status)}
+          <StatusIcon className="w-3 h-3" /> {request.status === HOLIDAY_REQUEST_NOT_NEEDED ? holidayNotNeededLabel(request, ar) : t(request.status)}
         </span>
       </div>
       <LaborArticleCite leaveType={request.type} profile={profile} ar={ar} showText showOfficial />

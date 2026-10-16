@@ -414,15 +414,15 @@ assert.ok(catalogEnt.some((ent) => String(ent).includes("23 سبتمبر")), cat
 assert.ok(catalogEnt.some((ent) => String(ent).includes("22 فبراير")), catalogEnt.join(" | "));
 assert.ok(!catalogNames.includes("أعياد وعطل رسمية"));
 
+function catalogConds0() {
+  return catalog.flatMap((group) => group.rows.map((row) => row.cond));
+}
 const kinds = leaveKindsFor(muslimMale, true, []);
-const nationalKind = kinds.find((row) => row.key === "eid");
-assert.equal(nationalKind?.ar, "اليوم الوطني · يوم التأسيس · العيد");
-assert.match(nationalKind?.cap || "", /الوطني 1/);
-assert.match(nationalKind?.cap || "", /التأسيس 1/);
-assert.match(nationalKind?.cap || "", /مقفلان في الجدول/);
-assert.match(nationalKind?.cap || "", /بطلب/);
+// Art. 112: no official-holiday kind in the request picker — the holidays apply from the calendar.
+assert.ok(!kinds.some((row) => row.key === "eid"), "official holidays are not a طلباتي leave kind");
+assert.ok(catalogConds0().every((c) => !/بطلب/.test(String(c)) || !/عيد/.test(String(c))), "no Eid «by request» left in the catalog");
 
-const catalogConds = catalog.flatMap((group) => group.rows.map((row) => row.cond));
+const catalogConds = catalogConds0();
 assert.ok(catalogConds.some((c) => /إجازة اليوم الوطني/.test(String(c)) && /بلا طلب/.test(String(c))), catalogConds.join(" | "));
 assert.ok(catalogConds.some((c) => /إجازة يوم التأسيس/.test(String(c)) && /بلا طلب/.test(String(c))), catalogConds.join(" | "));
 

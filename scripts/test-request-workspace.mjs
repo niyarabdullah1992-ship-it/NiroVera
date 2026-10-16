@@ -46,6 +46,8 @@ import {
   leaveKindMeta,
   leaveKindsFor,
   officialHolidays,
+  officialHolidayInfoRows,
+  OFFICIAL_HOLIDAYS_NOTICE_AR,
   REQUEST_KINDS,
   composeRequestKinds,
   isManageRaiseKind,
@@ -519,9 +521,8 @@ assert.equal(kinds.find((row) => row.key === "annual")?.article, "109");
 assert.match(kinds.find((row) => row.key === "annual")?.cite || "", /المادة 109/);
 assert.equal(kinds.find((row) => row.key === "sick")?.article, "117");
 assert.match(kinds.find((row) => row.key === "sick")?.cite || "", /المادة 117/);
-assert.equal(kinds.find((row) => row.key === "eid")?.article, "112");
-assert.match(kinds.find((row) => row.key === "eid")?.cap || "", /مقفلان في الجدول/);
-assert.match(kinds.find((row) => row.key === "eid")?.cap || "", /بطلب/);
+// Art. 112: official holidays are not a request kind — they show as information only.
+assert.ok(!kinds.some((row) => row.key === "eid"), "no official-holiday kind in the picker");
 assert.equal(leaveKindMeta("eid", "2026-09-23").ar, "اليوم الوطني");
 assert.equal(leaveKindMeta("eid", "2026-02-22").ar, "يوم التأسيس");
 assert.equal(flattenWorkspaceRows([{
@@ -529,6 +530,24 @@ assert.equal(flattenWorkspaceRows([{
   name: "ن",
   leaveRequests: [{ type: "eid", status: "pending", startDate: "2026-09-23", endDate: "2026-09-23", days: 1 }],
 }], "ar")[0]?.title, "إجازة اليوم الوطني");
+{
+  // A legacy pending Eid request is void: «لا حاجة — العيد يُطبَّق تلقائياً», out of every pending queue.
+  const [legacy] = flattenWorkspaceRows([{
+    id: "e1",
+    name: "ن",
+    leaveRequests: [{ id: "old-eid", type: "eid", status: "pending", startDate: "2026-05-26", endDate: "2026-05-29", days: 4 }],
+  }], "ar");
+  assert.equal(legacy.status, "not_needed");
+  assert.equal(legacy.voidReason, "HOLIDAY_AUTOMATIC");
+  assert.equal(legacy.holidayNotNeeded, "لا حاجة — العيد يُطبَّق تلقائياً");
+  assert.equal(isPendingDecideStatus(legacy.status), false);
+  assert.equal(isEndedInboxRequest(legacy), true);
+  const [approvedLegacy] = flattenWorkspaceRows([{
+    id: "e1",
+    leaveRequests: [{ id: "old-eid-ok", type: "eid", status: "approved", startDate: "2026-05-26", endDate: "2026-05-29", days: 4 }],
+  }], "ar");
+  assert.equal(approvedLegacy.status, "approved", "approved legacy requests stay as history");
+}
 assert.equal(flattenWorkspaceRows([{
   id: "e1",
   name: "ن",
@@ -1169,11 +1188,33 @@ assert.match(workspaceSrc, /<RequestsMinistryPanel/, "one ministry panel in the 
 assert.match(workspaceSrc, /<RaiseFold manage=/, "إدارة raise folds under the decision list");
 assert.match(workspaceSrc, /mode !== "manage"/, "إدارة hides إشعاراتي and leftover slabs");
 assert.match(workspaceSrc, /StatutoryItem article=\{row\.article\}/, "leave kinds keep المادة chips");
-assert.match(workspaceSrc, /isRosterLockedCivicHoliday/, "civic holidays are not raised from the official-holiday strip");
-assert.match(workspaceSrc, /مقفلة بلا طلب/, "National Day and Founding Day read as roster-locked");
-assert.match(workspaceSrc, /مقفلان في الجدول بلا طلب/, "طلباتي stipulates National and Founding lock on the roster with no request");
 assert.doesNotMatch(workspaceSrc, /اضغط لطلبها/, "civic holidays are not «tap to request»");
-assert.match(workspaceSrc, /اضغط لطلب العيد/, "Eid remains requestable from the strip");
+assert.doesNotMatch(workspaceSrc, /اضغط لطلب العيد/, "Eid is not requested — it applies from the calendar");
+assert.doesNotMatch(workspaceSrc, /setLeave\("eid"\)/, "nothing selects the official-holiday kind");
+assert.doesNotMatch(workspaceSrc, /leave === "eid" \? \(/, "no Eid form or hint");
+assert.match(workspaceSrc, /data-official-holidays-info="1"/, "the holidays live as a read-only information block");
+assert.match(workspaceSrc, /officialHolidayInfoRows\(today, laborCalendar, lang\)/, "the block reads the platform calendar");
+assert.match(workspaceSrc, /OFFICIAL_HOLIDAYS_NOTICE_AR/, "fixed notice over the block");
+assert.match(workspaceSrc, /get\("leave"\)/, "?leave=eid opens the information block");
+assert.equal(OFFICIAL_HOLIDAYS_NOTICE_AR, "هذه العطل ثابتة في المنصة وتُطبَّق تلقائياً — لا تُطلب (المادة 112).");
+{
+  const info = officialHolidayInfoRows("2026-10-16", {}, "ar");
+  assert.deepEqual(info.map((row) => row.id), ["national", "founding", "fitr", "adha"]);
+  assert.ok(info.every((row) => row.status === "تُطبَّق تلقائياً في الجدول" && row.automatic));
+  assert.deepEqual(info.map((row) => row.days), [1, 1, 4, 4]);
+  const fitr = info.find((row) => row.id === "fitr");
+  assert.equal(fitr.announced, false, "Fitr 1448 waits for the 29/30 announcement");
+  assert.equal(fitr.dateText, "يُعلن موعده");
+  const adha = info.find((row) => row.id === "adha");
+  assert.equal(adha.from, "2027-05-16");
+  assert.equal(adha.to, "2027-05-19");
+  // Once 29 is announced (Umm al-Qura via the calendar), the dates appear: 2027-02-08 + 29 → Eid 2027-03-09.
+  const ruled = officialHolidayInfoRows("2026-10-16", { 2027: { ramadanLength: 29 } }, "ar").find((row) => row.id === "fitr");
+  assert.equal(ruled.announced, true);
+  assert.equal(ruled.from, "2027-03-09");
+  assert.equal(ruled.to, "2027-03-12");
+}
+assert.match(lawArticleCards("leave", "", "ar").find((row) => row.art === "112")?.impl || "", /لا تُطلب/, "ministry row 112: holidays are not requested");
 assert.match(workspaceSrc, /decisionId="18632"/, "night consent keeps قرار 18632");
 assert.match(consentInboxSrc, /nightWrittenConsentGlow/, "open night consent paints the inbox 18632 due glow");
 assert.equal(nightWrittenConsentGlow([{

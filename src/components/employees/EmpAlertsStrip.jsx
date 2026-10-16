@@ -5,7 +5,6 @@ import { checkContractTermGate, collectEmployeeValidityDocs, EXPIRY_WARN_DAYS } 
 import { deriveProbationProgress, deriveArt55Conversion } from "@/lib/contractLawDerivations";
 import RightHint from "@/components/shared/RightHint";
 import { fileAlertHint } from "@/lib/rightHints.disc";
-import { annualEntitlementDue } from "@/lib/leaveEntitlementCycle";
 import { employeeFileVoice } from "@/lib/employeeFileView";
 
 function daysTo(iso) {
@@ -96,19 +95,7 @@ export default function EmpAlertsStrip({ employee, currentUser, lang = "ar" }) {
         ruleId: "contract.probation.maxDays",
       });
     }
-    const leaveDue = annualEntitlementDue(employee);
-    if (leaveDue.due || leaveDue.reason === "notified") {
-      rows.push({
-        label: ar ? "الإجازة السنوية المستحقة" : "Annual leave entitlement",
-        value: leaveDue.kind === "year_end" || String(leaveDue.noticeKey || "").endsWith("year_end")
-          ? (ar ? `${leaveDue.remaining} يوماً متبقية قبل نهاية سنة الاستحقاق` : `${leaveDue.remaining} days left before the entitlement year ends`)
-          : (ar ? `سنة الاستحقاق بدأت — رصيد ${leaveDue.remaining} يوماً` : `Entitlement year started — ${leaveDue.remaining} days`),
-        chipText: ar ? "مستحقة" : "Due",
-        chipStyle: WARN,
-        href: "/app/requests",
-        ruleId: "leave.annual.days",
-      });
-    }
+    // The annual-leave balance is read in طلباتي — the file alerts do not repeat it.
     const art55 = deriveArt55Conversion(employee);
     if (art55.converts && term.warning !== "ART55_CONVERTED") {
       rows.push({

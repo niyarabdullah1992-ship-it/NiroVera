@@ -110,8 +110,8 @@ export default function ScheduleHowItWorks({ ar = true, sections = ["judgment", 
         <Group title={ar ? "التزامات المنشأة" : "Workplace duties"}>
           <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.75 }}>
             {ar
-              ? "التزامات المنشأة لليل: إسعافات أولية · نقل طارئ · وصول لطعام — أعلام إعدادات لا وحدة عيادة. تُسجَّل من «إعدادات الجدول ← إعداد الليل»."
-              : "Night workplace duties: first aid · emergency transfer · food access — settings flags, not a clinic module. Recorded under Roster settings → Night settings."}
+              ? "بنود القرار 18632 في «أنظمة الوزارة»: إسعافات أولية · نقل طارئ · وصول لطعام تمنع النشر إن نقصت مع عمل ليلي، والتكافؤ (أ) والدليل (و) تنبيه. كل بند يُثبت بزر «أثبت» مع من وكيف ومتى."
+              : "Decision 18632 rows under Ministry systems: first aid · emergency transfer · food access block publishing when missing with night work; parity (a) and the guide (f) are alerts. Each row is proven with «Prove» — who, how and when."}
           </span>
           {NIGHT_FACILITY_FLAGS.map((flag) => <Line key={flag.key} label={ar ? flag.ar : flag.en} value="" badge="18632" />)}
         </Group>

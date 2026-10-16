@@ -14,6 +14,7 @@ import { lawGatePillLabel } from "@/lib/lawGateStatus";
 import { PLATFORM_JUDGE_LEDE_AR, PLATFORM_JUDGE_LEDE_EN } from "@/lib/platformJudgment";
 import DutyStripAlertCard from "@/components/employees/DutyStripAlertCard";
 import { NightWorkDefinition } from "@/components/shared/NightWorkRightsTable";
+import NightObligationProof from "@/components/schedules/NightObligationProof";
 import {
   chip,
   chipButton,
@@ -70,7 +71,8 @@ export function flattenBoard(board, gates, ar) {
     });
   }
   for (const row of board.night?.rows || []) {
-    const title = checkTitle(gates, row.checkId || row.id)
+    /* The five employer obligations carry their own title — never the shared gate title. */
+    const title = (row.obligationKey && row.title) || checkTitle(gates, row.checkId || row.id)
       || row.title
       || (ar ? NIGHT_ROW_TITLE_AR[row.id] : NIGHT_ROW_TITLE_EN[row.id])
       || row.summary;
@@ -85,6 +87,7 @@ export function flattenBoard(board, gates, ar) {
       who: row.who || "",
       detail: row.detail || "",
       checkId: row.checkId || "",
+      ...(row.obligationKey ? { obligationKey: row.obligationKey, clause: row.clause || "", sub: row.sub || "", reason: row.reason || "" } : {}),
     });
   }
   for (const row of board.labour?.rows || []) {
@@ -115,24 +118,56 @@ function cardSource(card) {
 
 const sourceLabel = ministrySourceLabel;
 
-function CheckRow({ item, ar, compact = false }) {
+function CheckRow({ item, ar, compact = false, prove }) {
+  const [open, setOpen] = useState(false);
   const pill = item.pillLabel || lawGatePillLabel(item.status, { ar });
-  const whoLine = !compact && (item.who || item.detail)
-    ? [item.who, item.detail].filter(Boolean).join(" · ")
-    : "";
+  const whoLine = item.obligationKey
+    ? item.sub || ""
+    : !compact && (item.who || item.detail)
+      ? [item.who, item.detail].filter(Boolean).join(" · ")
+      : "";
+  /* «أثبت» — managers / HR only, on an obligation that is not met (void rows stay for reference);
+     a flag ticked before proofs existed can take its details. */
+  const legacyFlag = item.reason === "flag" && item.status === "settled";
+  const canProve = !!(item.obligationKey && prove?.canProve && (item.status === "blocked" || item.status === "alert" || legacyFlag));
   return (
-    <MinistryRow
-      rowKey={item.key}
-      source={item.source}
-      badge={item.article}
-      status={item.status}
-      pill={pill}
-      title={item.title}
-      note={item.summary}
-      sub={whoLine}
-      compact={compact}
-      ar={ar}
-    />
+    <>
+      <MinistryRow
+        rowKey={item.key}
+        source={item.source}
+        badge={item.article}
+        clause={item.clause}
+        status={item.status}
+        pill={pill}
+        title={item.title}
+        note={item.summary}
+        sub={whoLine}
+        compact={compact}
+        ar={ar}
+        action={canProve && !open ? (
+          <button type="button" data-night-prove={item.obligationKey} onClick={() => setOpen(true)} style={quietAction()}>
+            {legacyFlag ? (ar ? "أضف الإثبات" : "Add proof") : (ar ? "أثبت" : "Prove")}
+          </button>
+        ) : null}
+      />
+      {canProve && open ? (
+        <div style={{ padding: "0 18px 12px", borderBottom: "1px solid var(--nv-line2, #EEF2F7)", minWidth: 0 }}>
+          <NightObligationProof
+            obligationKey={item.obligationKey}
+            ar={ar}
+            companyId={prove.companyId}
+            stationId={prove.stationId}
+            employees={prove.employees}
+            actor={prove.actor}
+            onCancel={() => setOpen(false)}
+            onSaved={() => {
+              setOpen(false);
+              prove.onSaved?.();
+            }}
+          />
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -172,7 +207,10 @@ export function useComplianceSummary({ gates, company, onDate, weekStart, employ
   const settledRows = rows.filter((item) => !OPEN_STATUS.has(item.status));
   const people = (grouped.people || []).map((person) => ({ person, source: cardSource(person) }));
 
-  const blockCount = (gates?.blockers || []).length;
+  /* The night-facilities gate is one blocker, listed as one row per missing obligation — count the rows. */
+  const obligationBlocks = openRows.filter((item) => item.obligationKey && item.status === "blocked").length;
+  const blockCount = (gates?.blockers || []).filter((row) => row?.id !== "night_facilities" || !obligationBlocks).length
+    + (obligationBlocks ? obligationBlocks - 1 : 0);
   const warnCount = people.filter((row) => row.person.level !== "block").length
     + openRows.filter((item) => item.status !== "blocked" && item.status !== "violation").length
     + stationNotes.filter((note) => note.level !== "block").length;
@@ -249,6 +287,8 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
   summary: summaryProp,
   /** The page side column already shows the three source counters — keep only the filter chips here. */
   hideSourceCards = false,
+  /** 18632 obligation proofs — { canProve, companyId, stationId, employees, actor, onSaved }; managers / HR only. */
+  prove = null,
 }, ref) {
   const [sourceLocal, setSourceLocal] = useState("all");
   const source = sourceProp || sourceLocal;
@@ -354,7 +394,7 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
               ) : null}
             </DutyStripAlertCard>
           ))}
-          {visibleRows.map((item) => <CheckRow key={item.key} item={item} ar={ar} />)}
+          {visibleRows.map((item) => <CheckRow key={item.key} item={item} ar={ar} prove={prove} />)}
           {hasNightConsent && (source === "all" || source === "18632") ? (
             <div style={{ padding: "8px 18px", borderBottom: "1px solid var(--nv-line2, #EEF2F7)" }}>
               <Link to="/app/requests/manage" style={quietAction({ color: "var(--nv-muted)" })}>
@@ -383,7 +423,7 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
 
       {showSettled ? (
         <div data-compliance-settled="1" style={{ borderTop: "1px solid var(--nv-line2, #EEF2F7)", display: "flex", flexDirection: "column" }}>
-          {visibleSettled.map((item) => <CheckRow key={item.key} item={item} ar={ar} compact />)}
+          {visibleSettled.map((item) => <CheckRow key={item.key} item={item} ar={ar} compact prove={prove} />)}
           {source === "all" || source === "18632" ? (
             <div style={{ padding: "12px 18px", display: "flex", flexDirection: "column", gap: 8, borderBottom: "1px solid var(--nv-line2, #EEF2F7)" }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-ink2)" }}>{board.night?.title}</span>

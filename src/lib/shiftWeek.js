@@ -13,8 +13,8 @@ import {
   isNightWorker,
   isNightWorkerXorExempt,
   nightConsiderationNote,
+  NIGHT_FACILITY_FLAGS,
   nightFacilityBags,
-  nightFacilityGaps,
   nightMinutesInWindow as nightMinutesInDecisionWindow,
   performsNightWork,
 } from "./decision18632.js";
@@ -37,7 +37,8 @@ import {
   isWeeklyRestDay,
 } from "./laborHoursPolicy.js";
 import { checkJuvenileHoursGate } from "./laborProtectionGates.js";
-import { fridaySwapGaps, juvenileDocGaps, nightEmployerDutyGaps } from "./ministryExtras.js";
+import { fridaySwapGaps, juvenileDocGaps, NIGHT_EMPLOYER_DUTIES } from "./ministryExtras.js";
+import { nightObligationGaps, nightObligationRows } from "./nightObligations.js";
 import { approvedLeaveOnDay, isNursingSubject, isOnApprovedLeave, leaveTypeLabel } from "./leaveTypes.js";
 import { isEidHoliday } from "./leaveEidOverlap.js";
 import { isOfficialHoliday, officialHolidayLeaveLabel, officialHolidayOn } from "./ummAlQuraCalendar.js";
@@ -2621,12 +2622,17 @@ export function checkWeekPublishGates({
       }
     }
   }
+  /* 18632 employer obligations — the same flags the gate always read; a proof that stopped holding
+     (every named first-aider's certificate expired · parity not renewed within the year) reads as missing. */
+  const obligationBags = nightFacilityBags({ schedule, station, settings, company });
+  const obligationCtx = { bags: obligationBags, employees, today };
   const facilityGaps = performersThisWeek.length
-    ? nightFacilityGaps(nightFacilityBags({ schedule, station, settings, company }))
+    ? nightObligationGaps(NIGHT_FACILITY_FLAGS, obligationCtx)
     : [];
   const nightDutyGaps = performersThisWeek.length
-    ? nightEmployerDutyGaps(nightFacilityBags({ schedule, station, settings, company }))
+    ? nightObligationGaps(NIGHT_EMPLOYER_DUTIES, obligationCtx)
     : [];
+  const nightObligations = nightObligationRows({ ...obligationCtx, nightWork: performersThisWeek.length > 0, ar });
   const fridayGaps = fridaySwapGaps(company, employees);
 
   /* Labour Law provisions read from the same roster — warnings, not publish blocks. */
@@ -2925,11 +2931,14 @@ export function checkWeekPublishGates({
       block: true,
       error: facilityGaps.length ? "NIGHT_FACILITY_GAP" : null,
       ...articleChip("hours.night.restHours", onDate, "القرار 18632"),
-      title: ar ? "التزامات المنشأة لليل: إسعاف وطعام" : "Night workplace duties: first aid and food",
+      /* The disabled publish control reads the blocker title — name what is missing, not the group. */
+      title: facilityGaps.length
+        ? (ar ? `ناقص لليل: ${facilityGaps.map((row) => row.ar).join("، ")}` : `Missing for night work: ${facilityGaps.map((row) => row.en).join(", ")}`)
+        : (ar ? "التزامات المنشأة لليل: إسعاف ونقل وطعام" : "Night workplace duties: first aid, transfer and food"),
       note: facilityGaps.length
         ? (ar
-          ? `ناقص قبل النشر: ${facilityGaps.map((row) => row.ar).join("، ")}. أعلام إعدادات — ليست وحدة عيادة.`
-          : `Unset before publish: ${facilityGaps.map((row) => row.en).join(", ")}. Settings flags — not a clinic module.`)
+          ? `ناقص قبل النشر: ${facilityGaps.map((row) => row.ar).join("، ")}. أثبته من «أنظمة الوزارة» ← القرار 18632.`
+          : `Missing before publish: ${facilityGaps.map((row) => row.en).join(", ")}. Prove it under Ministry systems → decision 18632.`)
         : performersThisWeek.length
           ? (ar ? "إسعاف أولي ونقل طارئ ووصول لطعام ليلي مسجّلة على الفرع أو الشركة." : "Night first aid, emergency transfer, and food access are recorded on the station or company.")
           : (ar ? "لا عمل ليلي يستدعي أعلام المنشأة هذا الأسبوع." : "No night work that needs workplace flags this week."),
@@ -2953,8 +2962,8 @@ export function checkWeekPublishGates({
       title: ar ? "متطلبات المنشأة للعمل الليلي: تكافؤ التدريب ودليل الإجراءات" : "Employer night-work requirements: training parity and a procedures guide",
       note: nightDutyGaps.length
         ? (ar
-          ? `غير مسجّل: ${nightDutyGaps.map((row) => `${row.ar} (${row.clause})`).join("، ")}. سجّله في «إعداد الليل» على جدول الدوام.`
-          : `Not on file: ${nightDutyGaps.map((row) => row.en).join(", ")}. Record it under Night settings on the roster.`)
+          ? `غير مثبت: ${nightDutyGaps.map((row) => `${row.ar} (${row.clause})`).join("، ")}. أثبته من «أنظمة الوزارة» ← القرار 18632.`
+          : `Not proven: ${nightDutyGaps.map((row) => row.en).join(", ")}. Prove it under Ministry systems → decision 18632.`)
         : performersThisWeek.length
           ? (ar ? "التكافؤ في التأهيل والتدريب والترقية مسجّل، ودليل إجراءات العمل الليلي منشور للعاملين." : "Training and promotion parity is on file and the night procedures guide is published.")
           : (ar ? "لا عمل ليلي هذا الأسبوع." : "No night work this week."),
@@ -3452,6 +3461,7 @@ export function checkWeekPublishGates({
     nightNoRemedy,
     nightPerformerNoComp,
     facilityGaps,
+    nightObligations,
     rotate,
     rotateBlocking,
     leaveDays,

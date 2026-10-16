@@ -11,7 +11,6 @@ import {
   setScheduleNightCompensation,
   decideNightRemedy,
   withdrawNightRemedy,
-  setNightFacilityFlag,
   submitOtherRequest,
   openDueNightRotateCycles,
   setSunExposure,
@@ -82,8 +81,6 @@ import { toast } from "@/components/ui/use-toast";
 import StatutoryItem from "@/components/labor/StatutoryItem";
 import { canEditOwnerBoard } from "@/lib/ownerBoard";
 import LaborCalendarCard from "@/components/hr/LaborCalendarCard";
-import { NIGHT_FACILITY_FLAGS } from "@/lib/decision18632";
-import { NIGHT_EMPLOYER_DUTIES } from "@/lib/ministryExtras";
 import { rosterNightRowMark, statutoryGlowState } from "@/lib/statutoryItem";
 import { isRamadanDay, ruleValue } from "@/lib/laborRules";
 import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
@@ -1000,47 +997,6 @@ export default function ShiftWeekBoard({
           />
         </div>
       ) : null}
-      {canEdit ? (
-        <div style={{ padding: "10px 18px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink, #14284B)" }}>
-            {ar ? "التزامات المنشأة لليل" : "Night workplace duties"}
-          </span>
-          <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-            {ar
-              ? "الثلاثة الأولى تمنع النشر إن نقصت مع وجود عمل ليلي · التكافؤ والدليل تنبيه."
-              : "The first three block publishing when missing with night work · parity and the guide are alerts."}
-          </span>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {[...NIGHT_FACILITY_FLAGS, ...NIGHT_EMPLOYER_DUTIES].map((flag) => {
-              const on = !!(schedule?.[flag.key] || data?.nightFacilities?.[flag.key]);
-              return (
-                <button
-                  key={flag.key}
-                  type="button"
-                  dir={ar ? "rtl" : "ltr"}
-                  onClick={() => {
-                    setNightFacilityFlag(companyId, { stationId, key: flag.key, on: !schedule?.[flag.key] });
-                    refresh?.();
-                  }}
-                  style={nightSettingRowStyle()}
-                >
-                  <LawGateStatusPill
-                    status={on ? "settled" : "void"}
-                    label={on ? (ar ? "مسجّل" : "On file") : (ar ? "بلا أثر" : "No effect")}
-                    ar={ar}
-                    style={pillSkin}
-                  />
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, lineHeight: 1.7, color: "var(--nv-ink2, #334155)", textAlign: ar ? "right" : "left" }}>
-                    {ar ? flag.ar : flag.en}
-                    {flag.clause ? <span style={{ color: "var(--nv-muted)" }}>{ar ? ` — متطلبات (${flag.clause})` : ""}</span> : null}
-                  </span>
-                  <LawGateArticleBadge article="18632" style={badgeSkin} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
     </>
   );
 
@@ -1747,6 +1703,7 @@ export default function ShiftWeekBoard({
               onFocusPerson={focusPerson}
               summary={complianceSummary}
               hideSourceCards
+              prove={canEdit ? { canProve: true, companyId, stationId, employees, actor: currentUser, onSaved: () => refresh?.() } : null}
             />
           ) : null}
 
@@ -1980,7 +1937,7 @@ export default function ShiftWeekBoard({
               <Collapsible
                 dataAttr="night"
                 title={ar ? "إعداد الليل" : "Night settings"}
-                note={ar ? "تعويض ليلي · التزامات المنشأة لليل" : "Night compensation · night workplace duties"}
+                note={ar ? "تعويض ليلي لهذا الجدول" : "Night compensation on this roster"}
                 trailing={<span style={sourceBadge()}>18632</span>}
               >
                 <div data-night-settings="1">{nightSettings}</div>

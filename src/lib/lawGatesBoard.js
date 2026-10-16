@@ -138,7 +138,6 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
   const compensate = checkById(gates, "night_compensate");
   const performer = checkById(gates, "night_performer_comp");
   const medical = checkById(gates, "night_medical");
-  const facilities = checkById(gates, "night_facilities");
   const payEq = checkById(gates, "night_pay_equality");
   const consider = checkById(gates, "night_consideration");
   const workerHours = ruleValue("hours.night.workerHours", onDate) || 3;
@@ -150,6 +149,8 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
   const nights = Array.isArray(gates?.nightsThisWeek) ? gates.nightsThisWeek.length : 0;
   const performers = Array.isArray(gates?.performersThisWeek) ? gates.performersThisWeek : [];
   const sample = performers[0]?.name || "";
+  /* The five employer obligations — one rule row each, derived in shiftWeek (nightObligationRows). */
+  const obligationRows = Array.isArray(gates?.nightObligations) ? gates.nightObligations : [];
 
   const restPill = pillFromCheck(rest, ar);
   const pregPill = pillFromCheck(preg, ar);
@@ -157,7 +158,6 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
   const compensatePill = pillFromCheck(compensate, ar);
   const performerPill = pillFromCheck(performer, ar);
   const medicalPill = pillFromCheck(medical, ar);
-  const facilitiesPill = pillFromCheck(facilities, ar);
   const payPill = pillFromCheck(payEq, ar);
 
   const pillByGate = {
@@ -254,20 +254,7 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
           : `${workerHours}+ hours between ${start}:00 and ${end}:00 = night worker · any minute performs night work`,
       },
       ...rightRows,
-      {
-        id: "night_facilities",
-        article: "18632",
-        decision: "18632",
-        status: facilities ? facilitiesPill.status : "void",
-        who: facilitiesPill.who,
-        pillLabel: !facilities
-          ? (ar ? "بلا أثر" : "No effect")
-          : undefined,
-        summary: ar
-          ? "التزامات المنشأة لليل: إسعافات أولية · نقل طارئ · وصول لطعام — أعلام إعدادات لا وحدة عيادة"
-          : "Night workplace duties: first aid · emergency transfer · food access — settings flags, not a clinic module",
-        checkId: "night_facilities",
-      },
+      ...obligationRows,
       {
         id: "night_pay_equality",
         article: "18632",
@@ -279,22 +266,6 @@ export function buildNightGatePanel({ gates, onDate, ar = true } = {}) {
           : "No pay discrimination because of night work (decision a–b) — operational file note, not a payroll audit",
         checkId: "night_pay_equality",
       },
-      (() => {
-        const duties = checkById(gates, "night_employer_duties");
-        const open = duties && !duties.ok && !notApplicable(duties);
-        return {
-          id: "night_employer_duties",
-          article: "18632",
-          decision: "18632",
-          status: !duties || notApplicable(duties) ? "void" : open ? statusFromWeekCheck(duties) : "settled",
-          who: "",
-          pillLabel: !duties || notApplicable(duties) ? (ar ? "بلا أثر" : "No effect") : undefined,
-          summary: ar
-            ? "متطلبات المنشأة (أ، و): تكافؤ العامل الليلي في التأهيل والتدريب والترقية · دليل إجراءات العمل الليلي منشور للعاملين"
-            : "Employer requirements (a, f): night workers equal in qualification, training and promotion · a published night-work procedures guide",
-          checkId: "night_employer_duties",
-        };
-      })(),
       {
         id: "night_consideration",
         article: "18632",

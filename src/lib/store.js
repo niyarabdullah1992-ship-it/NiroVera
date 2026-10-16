@@ -4880,7 +4880,37 @@ export function setNightFacilityFlag(companyId, { stationId, key, on, scope = "s
     }
     const entry = getOrCreateSchedule(d, stationId);
     entry[key] = !!on;
+    if (!on && entry.nightDutyProof?.[key]) {
+      const { [key]: _drop, ...rest } = entry.nightDutyProof;
+      entry.nightDutyProof = rest;
+    }
     markWeekDirty(entry, new Date());
+  });
+}
+
+/**
+ * 18632 employer obligation — proven, not ticked. Sets the same flag the publish gate reads
+ * (station roster by default, company.nightFacilities with scope "company") and keeps the proof
+ * beside it in `nightDutyProof[key]` with who/when. The procedures guide (و) is also published
+ * to the company files so workers can open it.
+ */
+export function proveNightObligation(companyId, { stationId, key, proof = {}, by, byName, scope = "schedule", at } = {}) {
+  const allowed = new Set(["nightFirstAidReady", "nightEmergencyTransferReady", "nightFoodAccessReady", "nightTrainingParity", "nightGuidePublished"]);
+  if (!allowed.has(key)) return;
+  const stamp = at || new Date().toISOString();
+  updateCompany(companyId, (d) => {
+    const record = { ...proof, by: by || null, byName: byName || "", at: stamp };
+    if (key === "nightGuidePublished" && proof?.file?.url) {
+      d.files = d.files || [];
+      const fileId = uid("file");
+      d.files.push({ id: fileId, type: "file", name: proof.file.name || "دليل إجراءات العمل الليلي", parentId: null, url: proof.file.url, mimeType: proof.file.mimeType || "", uploadedBy: by || null, stationId: stationId || null, createdAt: stamp, nightGuide: true });
+      record.companyFileId = fileId;
+    }
+    const target = scope === "company"
+      ? (d.nightFacilities = { ...(d.nightFacilities || {}) })
+      : getOrCreateSchedule(d, stationId);
+    target[key] = true;
+    target.nightDutyProof = { ...(target.nightDutyProof || {}), [key]: record };
   });
 }
 

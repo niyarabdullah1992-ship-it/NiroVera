@@ -153,7 +153,7 @@ export function MinistrySourceTabs({ active = "all", onPick, ar = true, chipButt
 }
 
 /** One law row — source badge · plain title + note · status chip. Same geometry on every surface. */
-export function MinistryRow({ source, badge, status, pill, title, note, sub, compact = false, ar = true, rowKey }) {
+export function MinistryRow({ source, badge, status, pill, title, note, sub, compact = false, ar = true, rowKey, clause, action }) {
   const tone = statusTone(status);
   return (
     <div
@@ -173,11 +173,15 @@ export function MinistryRow({ source, badge, status, pill, title, note, sub, com
       <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
         <span style={{ fontSize: compact ? 12 : 12.5, fontWeight: compact ? 500 : 600, color: compact ? "var(--nv-ink2)" : "var(--nv-ink)", lineHeight: 1.55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: compact ? "nowrap" : "normal" }}>
           {title}
+          {clause ? <span style={{ fontWeight: 500, color: "var(--nv-muted)" }}>{` — ${clause}`}</span> : null}
         </span>
         {!compact && note ? <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>{note}</span> : null}
         {sub ? <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.5 }}>{sub}</span> : null}
       </span>
-      <span style={chip(tone, { fontWeight: 600 })} title={typeof pill === "string" ? pill : undefined}>{pill}</span>
+      <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4, minWidth: 0, maxWidth: "100%" }}>
+        <span style={chip(tone, { fontWeight: 600 })} title={typeof pill === "string" ? pill : undefined}>{pill}</span>
+        {action || null}
+      </span>
     </div>
   );
 }

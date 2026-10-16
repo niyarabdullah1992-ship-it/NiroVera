@@ -8,6 +8,7 @@ import {
 } from "@/lib/orgTemplateView";
 import { toast } from "@/components/ui/use-toast";
 import { seedDemoOrgTree } from "@/lib/demoOrgTree";
+import { isLocalPreviewActive } from "@/lib/localPreview";
 import { ensureCompanyRootStation } from "@/lib/orgHire";
 import { syncWorkplaceManagers } from "@/lib/peopleTree";
 import { publishOrgStructure, structurePublishIssues } from "@/lib/jobGrades";
@@ -66,6 +67,8 @@ export function OrgChartUpkeep({ lang = "ar" }) {
 
   useEffect(() => {
     if (!company?.id || !canWrite || demoSeeded.current || !data) return;
+    // Demo people belong to the local preview only — a real company's tree is never filled with them.
+    if (!isLocalPreviewActive()) return;
     const already = (data?.employees || []).some((employee) =>
       String(employee.email || "").toLowerCase().endsWith("@demo.nirovera.local")
     );

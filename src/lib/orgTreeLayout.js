@@ -147,11 +147,10 @@ export function deriveTreeView(tree, focusKey, {
   };
 }
 
-/** «٤٤ / ٥٥٩٧» — direct / total, digits in the reader's script. */
+/** «44 / 5597» — direct / total. Figures read as the platform's: Latin digits (mono, dir=ltr) in either language. */
 export function countLine({ direct = 0, total = 0 } = {}, ar = true) {
   if (!direct && !total) return "";
-  const fmt = (n) => (ar ? Number(n).toLocaleString("ar-SA") : String(n));
-  return `${fmt(direct)} / ${fmt(total)}`;
+  return `${Number(direct)} / ${Number(total)}`;
 }
 
 /** Zoom steps the toolbar walks through (fractions of 1). */

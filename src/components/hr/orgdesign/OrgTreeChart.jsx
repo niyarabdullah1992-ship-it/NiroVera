@@ -85,7 +85,7 @@ const Icon = {
 function TreeCard({ card, ar, options, isFocus, highlighted, onFocus, onDetails, cardRef }) {
   const name = card.vacant ? (ar ? "شاغر" : "Vacant") : (card.name || "—");
   const counts = options.counts ? countLine(card, ar) : "";
-  const matrix = options.counts && card.matrix ? `${ar ? Number(card.matrix).toLocaleString("ar-SA") : card.matrix} ${ar ? "مصفوفة" : "Matrix"}` : "";
+  const matrix = options.counts && card.matrix ? `${card.matrix} ${ar ? "مصفوفة" : "Matrix"}` : "";
   const label = [
     name,
     card.title,
@@ -536,7 +536,7 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
     ? (data?.employees || []).find((row) => String(row.id) === String(details.employeeId)) || null
     : null;
 
-  const zoomPct = `${ar ? Math.round(zoom * 100).toLocaleString("ar-SA") : Math.round(zoom * 100)}${ar ? "٪" : "%"}`;
+  const zoomPct = `${Math.round(zoom * 100)}%`;
   const back = onBack ? (
     <button type="button" className="nv-ot-back" onClick={onBack}>
       <span className="nv-ot-back__icon" aria-hidden>{Icon.back}</span>
@@ -547,6 +547,10 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
   const topBar = (
     <header className="nv-ot-bar">
       {back}
+      <span className="nv-ot-title">
+        <span className="nv-ot-title__kicker">{ar ? "القوى العاملة" : "Workforce"}</span>
+        <b>{ar ? "المخطط التنظيمي" : "Org chart"}</b>
+      </span>
       <TreeSearch ar={ar} tree={tree} onPick={(key) => setFocus(key, { fromSearch: true })} />
       {tree.viewerKey && focusKey !== tree.viewerKey ? (
         <button type="button" className="nv-ot-tool nv-ot-tool--text" onClick={() => setFocus(tree.viewerKey)}>
@@ -556,7 +560,7 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
       <span className="nv-ot-bar__fill" />
       <div className="nv-ot-tools" role="toolbar" aria-label={ar ? "أدوات المخطط" : "Chart tools"}>
         <button type="button" className="nv-ot-tool" onClick={() => setZoom((z) => stepZoom(z, -1))} aria-label={ar ? "تصغير" : "Zoom out"} title={ar ? "تصغير" : "Zoom out"}>{Icon.minus}</button>
-        <button type="button" className="nv-ot-tool nv-ot-tool--pct" onClick={() => setZoom(1)} aria-label={ar ? `التكبير ${zoomPct} — اضغط للعودة إلى ١٠٠٪` : `Zoom ${zoomPct} — reset to 100%`} title={ar ? "١٠٠٪" : "100%"}>{zoomPct}</button>
+        <button type="button" className="nv-ot-tool nv-ot-tool--pct" onClick={() => setZoom(1)} aria-label={ar ? `التكبير ${zoomPct} — اضغط للعودة إلى 100%` : `Zoom ${zoomPct} — reset to 100%`} title="100%">{zoomPct}</button>
         <button type="button" className="nv-ot-tool" onClick={() => setZoom((z) => stepZoom(z, 1))} aria-label={ar ? "تكبير" : "Zoom in"} title={ar ? "تكبير" : "Zoom in"}>{Icon.plus}</button>
         <span className="nv-ot-tools__sep" aria-hidden />
         <div className="nv-ot-anchor">
@@ -690,7 +694,7 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
               const open = openLevels.has(level.key);
               const total = level.siblings.length + level.hidden;
               const sibLabel = ar
-                ? `${open ? "إخفاء" : "عرض"} ${Number(total).toLocaleString("ar-SA")} في المستوى نفسه`
+                ? `${open ? "إخفاء" : "عرض"} ${Number(total)} في المستوى نفسه`
                 : `${open ? "Hide" : "Show"} ${total} at this level`;
               return (
                 <section
@@ -712,7 +716,7 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
                         <button type="button" className="nv-ot-more" onClick={() => toggleLevel(level.key)} aria-expanded={open}>
                           {open
                             ? (ar ? "طيّ" : "Fold")
-                            : (ar ? `+ ${Number(level.hidden).toLocaleString("ar-SA")} آخرون` : `+ ${level.hidden} more`)}
+                            : (ar ? `+ ${Number(level.hidden)} آخرون` : `+ ${level.hidden} more`)}
                         </button>
                       ) : null}
                     </div>
@@ -764,7 +768,7 @@ export default function OrgTreeChart({ ar, data, user, companyId, scope = "mine"
       <p className="nv-ot-keys" aria-hidden>
         {ar ? "↑ المدير · ↓ أول من تحته · ← → المستوى نفسه · + − تكبير · اسحب للتحريك" : "↑ manager · ↓ first report · ← → same level · + − zoom · drag to pan"}
       </p>
-      <p className="nv-of-sr" aria-live="polite">{announce}</p>
+      <p className="nv-ot-sr" aria-live="polite">{announce}</p>
 
       {details && !hrDrawer ? (
         <OrgCardDrawer

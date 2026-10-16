@@ -124,7 +124,7 @@ assert.equal(columnsFor(44, 2), 2);
 assert.equal(gridWidth(4), 4 * TREE_GEOMETRY.cardW + 3 * TREE_GEOMETRY.gap);
 assert.equal(countLine({ direct: 44, total: 5597 }, false), "44 / 5597");
 assert.equal(countLine({ direct: 0, total: 0 }, true), "");
-assert.equal(countLine({ direct: 4, total: 5 }, true), "٤ / ٥");
+assert.equal(countLine({ direct: 4, total: 5 }, true), "4 / 5");
 
 /* zoom & options */
 assert.equal(stepZoom(1, 1), 1.1);

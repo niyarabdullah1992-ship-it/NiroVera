@@ -1064,7 +1064,13 @@ export function getSession() {
   return read(SESSION_KEY, null);
 }
 export function setSession(session) {
+  const prev = getSession();
   write(SESSION_KEY, session);
+  // A new sign-in (or another person) starts on their own branch — a branch picked by hand
+  // before belongs to the previous sign-in. A refresh of the same session keeps the choice.
+  if (session && (!prev || String(prev.userId) !== String(session.userId) || String(prev.companyId) !== String(session.companyId))) {
+    clearStationScope();
+  }
 }
 export function clearSession() {
   const session = getSession();
@@ -1173,6 +1179,7 @@ function finishOwnerLogin(result) {
   }
   const ownerId = result.ownerId || getCompanyData(company.id)?.ownerId;
   setSession({ companyId: company.id, userId: ownerId || ensureOwnerUser(company.id, company) });
+  clearStationScope(); // every sign-in opens on the person's own branch
   return company;
 }
 
@@ -1225,6 +1232,7 @@ function finishEmployeeLogin(result) {
     localStorage.setItem(companyKey(companyId), JSON.stringify(local));
   }
   setSession({ companyId, userId: employeeId });
+  clearStationScope(); // every sign-in opens on the person's own branch
   return company;
 }
 

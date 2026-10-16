@@ -710,7 +710,6 @@ export function buildEmployeeFileView({
     { k: ar ? "العقد" : "Contract", v: contractType || "—", note: ar ? `${citeRule(fixed ? "contract.fixed.cite" : "contract.indefinite.cite")?.labelAr || "المادة 75"} · ${qiwa ? "مسجَّل في قوى" : "قوى"}` : `${fixed ? "Art. 50" : "Art. 75"} · Qiwa` },
     { k: ar ? "الأجر الشهري" : "Monthly wage", v: wage.total > 0 ? moneySar(wage.total, ar) : "—", note: ar ? `أساسي ${moneySar(wage.base, ar)} + بدلات` : `Base ${moneySar(wage.base, ar)} + allowances` },
     { k: ar ? "مدة الخدمة" : "Service", v: serviceLabel(hireIso, ar, day), note: hireIso ? (ar ? `منذ ${niceFileDate(hireIso, ar)}` : `Since ${niceFileDate(hireIso, ar)}`) : (ar ? "لا تاريخ تعيين" : "No hire date") },
-    { k: ar ? "رصيد الإجازة السنوية" : "Annual leave", v: annualLeft == null ? "—" : (ar ? countAr(annualLeft, "يوم متبقٍ", "يومان متبقيان", "أيام متبقية", "يوماً متبقياً") : `${annualLeft} left`), note: ar ? `من ${statutory} — المادة 109` : `of ${statutory} — Art. 109` },
     { k: ar ? "مكافأة نهاية الخدمة" : "End-of-service", v: wage.total > 0 && hireIso ? moneySar(eosNow, ar) : "—", note: ar ? "تقدير على الأجر الأخير — المادة 84" : "Estimate on last wage — Art. 84" },
     { k: ar ? "العهد بحوزته" : "Custody in hand", v: ar ? countAr(inHand.length, "عهدة واحدة", "عهدتان", "عهد", "عهدة", "لا عهدة") : `${inHand.length} in hand`, note: ar ? "تُستعاد في إخلاء الطرف" : "Returned at clearance" },
   ];

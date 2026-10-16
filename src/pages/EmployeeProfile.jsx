@@ -27,7 +27,6 @@ import RequestsMinistryPanel from "@/components/requests/RequestsMinistryPanel";
 import OffboardingCustodyBoard from "@/components/employees/OffboardingCustodyBoard";
 import EmpAlertsStrip from "@/components/employees/EmpAlertsStrip";
 import AssignmentTab from "@/components/employees/AssignmentTab";
-import WorkInjuryPanel from "@/components/requests/WorkInjuryPanel";
 import { AllowanceLedgerCard, SiteConditionsCard } from "@/components/payroll/PayslipLedger";
 import EmployeeFileDutyBoard from "@/components/employees/EmployeeFileDutyBoard";
 import EmployeeFileSummary from "@/components/employees/EmployeeFileSummary";
@@ -488,21 +487,6 @@ export default function EmployeeProfile() {
         {tab === "compliance" && (
           <>
             <EmployerDutiesCard employee={employee} companyId={company.id} ar={ar} canManage={canManage && !isSelf} by={currentUser.name || ""} />
-            {(employee.leaveRequests || []).some((row) => String(row.type || "").toLowerCase() === "work_injury" && (row.status || "") === "approved") ? (
-              <section data-file-injuries="1" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
-                <span style={{ fontSize: 15, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "إصابات العمل — المواد 132 إلى 139" : "Work injuries — Arts. 132 to 139"}</span>
-                {(employee.leaveRequests || [])
-                  .filter((row) => String(row.type || "").toLowerCase() === "work_injury" && (row.status || "") === "approved")
-                  .map((row) => (
-                    <div key={row.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)" }}>
-                        {ar ? `إصابة ${String(row.eventDate || row.startDate || "").slice(0, 10)} · علاج ${String(row.startDate || "").slice(0, 10)} → ${String(row.endDate || "").slice(0, 10)}` : `Injury ${String(row.eventDate || row.startDate || "").slice(0, 10)}`}
-                      </span>
-                      <WorkInjuryPanel row={row} employee={employee} data={data} companyId={company.id} ar={ar} canDecide={!!canApproveLeave} by={currentUser?.name || ""} />
-                    </div>
-                  ))}
-              </section>
-            ) : null}
 
             {!profileCompletionStats(employee).done && (
               <ProfileCompletionCard

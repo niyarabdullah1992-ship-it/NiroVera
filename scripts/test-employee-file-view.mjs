@@ -129,13 +129,14 @@ const view = buildEmployeeFileView({
   today: "2026-09-12",
 });
 
-assert.equal(view.facts.length, 6);
+// The annual balance lives in طلباتي — the file summary does not repeat it.
+assert.equal(view.facts.length, 5);
 assert.equal(view.facts[0].k, "العقد");
 assert.equal(view.facts[1].k, "الأجر الشهري");
 assert.equal(view.facts[2].k, "مدة الخدمة");
-assert.equal(view.facts[3].k, "رصيد الإجازة السنوية");
-assert.equal(view.facts[4].k, "مكافأة نهاية الخدمة");
-assert.equal(view.facts[5].k, "العهد بحوزته");
+assert.ok(!view.facts.some((f) => f.k === "رصيد الإجازة السنوية"));
+assert.equal(view.facts[3].k, "مكافأة نهاية الخدمة");
+assert.equal(view.facts[4].k, "العهد بحوزته");
 assert.match(view.facts[1].v, /13,500/);
 assert.match(view.facts[2].v, /سنوات|سنة|سنتان/);
 assert.ok(view.eosNow > 0);

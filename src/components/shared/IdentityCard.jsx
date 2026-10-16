@@ -55,7 +55,7 @@ function CardHeader({ Icon, kicker, title, subtitle, meta, nested, hasBody, tone
               <div style={{ fontSize: 14, fontWeight: 600, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                 {title}
               </div>
-              <StatusFlag tone={tone} flag={flag} ar={ar} />
+              <StatusFlag tone={tone} flag={flag} ar={ar} label={typeof title === "string" ? title : ""} />
             </div>
           ) : <StatusFlag tone={tone} flag={flag} ar={ar} />}
           {subtitle ? (

@@ -315,7 +315,7 @@ export default function RecordSmartArchive({
               <span style={{ fontSize: 11, color: DK.faint }}>{ar ? "سجل" : "records"}</span>
             </span>
             <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-              <strong style={{ ...MONO, fontSize: 26, fontWeight: 700, lineHeight: 1, color: "#F3E3BC" }}>{thisMonth}</strong>
+              <strong style={{ ...MONO, fontSize: 26, fontWeight: 700, lineHeight: 1, color: "#fff" }}>{thisMonth}</strong>
               <span style={{ fontSize: 11, color: DK.faint }}>{ar ? "هذا الشهر" : "this month"}</span>
             </span>
           </span>

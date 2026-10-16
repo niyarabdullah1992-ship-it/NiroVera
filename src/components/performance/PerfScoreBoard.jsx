@@ -464,7 +464,7 @@ export default function PerfScoreBoard({
             <div key={tile.label} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "12px 16px", borderInlineStart: index ? `1px solid ${PERF_SOFT}` : "none" }}>
               <span style={{ fontSize: 12, color: PERF_MUTED }}>{tile.label}</span>
               <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                <strong dir="ltr" style={{ ...mono, fontSize: 24, fontWeight: 700, color: tile.color, lineHeight: 1.15 }}>{tile.value}</strong>
+                <strong dir="ltr" style={{ ...mono, fontSize: 24, fontWeight: 700, color: PERF_INK, lineHeight: 1.15 }}>{tile.value}</strong>
                 {tile.unit ? <span style={{ fontSize: 11, color: PERF_MUTED }}>{tile.unit}</span> : null}
               </span>
               <span style={{ fontSize: 11, color: PERF_BODY }}>{tile.sub}</span>

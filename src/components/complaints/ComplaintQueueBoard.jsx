@@ -217,7 +217,7 @@ export default function ComplaintQueueBoard({ lang = "ar", stationScope = "all",
             <div key={s.label} style={{ padding: "12px 16px", minWidth: 0 }}>
               <div style={{ fontSize: "11px", color: MUTED, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.label}</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "6px", flexWrap: "wrap" }}>
-                <span dir="ltr" style={{ ...num(s.danger ? "#DC2626" : s.accent ? ACCENT : NAVY) }}>
+                <span dir="ltr" style={{ ...num("var(--nv-ink)") }}>
                   {s.value}
                 </span>
                 <span style={{ fontSize: "11px", color: MUTED }}>{s.suffix}</span>

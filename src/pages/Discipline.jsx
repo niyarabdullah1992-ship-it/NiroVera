@@ -33,6 +33,7 @@ import DisciplineMineCard from "@/components/discipline/DisciplineMineCard";
 import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
 import OpsSideSlab, { OpsListHead } from "@/components/tasks/OpsSideSlab";
 import { DutyNumber, DutyTile } from "@/components/schedules/DutyTiles";
+import { KpiAction } from "@/components/shared/StatusFlag";
 import { DisciplineHero } from "@/components/discipline/DisciplineCaseCard";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { generateDisciplineDeduction, liftDisciplineDeduction } from "@/lib/deductionGenerators";
@@ -302,11 +303,13 @@ export default function Discipline() {
     </DutyTile>
   ) : null);
   const manageTiles = adminVoice ? [
-    <DutyTile key="due" dataKey="disc-due" tone={overCount ? "bad" : waiting.length ? "warn" : "ok"} ar={ar} flag={overCount ? (ar ? "تجاوز مهلة نظامية" : "Past a statutory window") : (ar ? "بانتظار قرارك" : "Your decision")} label={ar ? "بانتظار قرارك" : "Waiting on you"} note={overCount ? (ar ? `${overCount} تجاوز مهلة نظامية` : `${overCount} past a statutory window`) : (ar ? "كلها ضمن المهل النظامية (69 · 72)" : "All within the statutory windows (69 · 72)")}>
+    <DutyTile key="due" dataKey="disc-due" tone={overCount ? "bad" : "mute"} ar={ar} flag={ar ? "تجاوز مهلة نظامية" : "Past a statutory window"} label={ar ? "بانتظار قرارك" : "Waiting on you"} note={overCount ? (ar ? `${overCount} تجاوز مهلة نظامية` : `${overCount} past a statutory window`) : (ar ? "كلها ضمن المهل النظامية (69 · 72)" : "All within the statutory windows (69 · 72)")}>
       <DutyNumber value={String(waiting.length)} unit={ar ? "ملف" : "files"} />
+      {waiting.length ? <KpiAction ar={ar} onClick={() => document.querySelector('[data-ops-side="disc-side"]')?.scrollIntoView({ behavior: "smooth", block: "start" })} /> : null}
     </DutyTile>,
-    statTile(board.stats[1], "disc-open", files.length ? "warn" : "mute", ar ? "ملفات مفتوحة" : "Open files"),
-    statTile(board.stats[3], "disc-cut", String(board.stats[3]?.val || "0").startsWith("0") ? "mute" : "bad", ar ? "حسم نافذ" : "Cut in force"),
+    // Open files and a cut in force are states, not problems — no chip (KPI law).
+    statTile(board.stats[1], "disc-open", "mute", ""),
+    statTile(board.stats[3], "disc-cut", "mute", ""),
   ].filter(Boolean) : null;
   const manageSide = adminVoice ? (
     <OpsSideSlab

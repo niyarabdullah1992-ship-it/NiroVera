@@ -915,7 +915,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{item.label}</span>
                   <span style={{ fontSize: 11, color: OC.muted, lineHeight: 1.7 }}>{item.note}</span>
                 </span>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 17, color: item.color }}>{item.value}</span>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 17, color: OC.ink }}>{item.value}</span>
               </div>
             ))}
             <div style={{ padding: "13px 18px" }}><span style={{ fontSize: 11, color: OC.mid, lineHeight: 1.85 }}>{monthInsight}</span></div>
@@ -1091,7 +1091,7 @@ function DayPanel({
                   {group.items.map((item) => (
                     <button key={item.label} type="button" onClick={item.select} style={{ fontFamily: "inherit", textAlign: "start", border: `1px solid ${item.border}`, background: item.bg, cursor: item.cursor, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 3 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, fontWeight: item.weight, color: OC.mid }}><span style={{ width: 8, height: 8, background: item.color }} />{item.label}</span>
-                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 20, color: item.color, textAlign: "right" }}>{item.value}</span>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 20, color: OC.ink, textAlign: "right" }}>{item.value}</span>
                       {item.sub ? <span style={{ fontSize: 9, color: OC.muted, lineHeight: 1.6 }}>{item.sub}</span> : null}
                     </button>
                   ))}
@@ -1102,7 +1102,7 @@ function DayPanel({
                     <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: item.weight, color: OC.ink }}><span style={{ width: 9, height: 9, background: item.color }} />{item.label}</span>
                     {item.sub ? <span style={{ fontSize: 9, color: OC.muted, lineHeight: 1.6 }}>{item.sub}</span> : null}
                   </span>
-                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, color: item.color }}>{item.value}</span>
+                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, color: OC.ink }}>{item.value}</span>
                 </button>
               ))}
             </div>

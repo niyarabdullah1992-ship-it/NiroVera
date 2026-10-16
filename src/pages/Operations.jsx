@@ -79,6 +79,7 @@ import { branchEscalationCardLine } from "@/lib/orgDerivations";
 import { escalationLiveStations } from "@/lib/stationTree";
 import { matchesStationScope } from "@/hooks/useStationScope";
 import { DutyTile, DutyNumber } from "@/components/schedules/DutyTiles";
+import { KpiAction } from "@/components/shared/StatusFlag";
 import { formatUiNumber as formatNum } from "@/lib/dateFormat";
 import { useRailSide } from "@/lib/railSide";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
@@ -2117,14 +2118,22 @@ export default function Operations() {
       key="await"
       dataKey="ops-awaiting"
       ar={ar}
-      flag={employeeFace ? (ar ? "بانتظار الاعتماد" : "Awaiting approval") : (ar ? "بانتظار اعتمادك" : "Your approval")}
-      tone={cc.awaiting ? "warn" : "mute"}
+      tone="mute"
       label={employeeFace ? (ar ? "عند المشرف" : "With the supervisor") : (ar ? "تنتظر اعتمادك" : "Awaiting your approval")}
       note={employeeFace
         ? (ar ? "أنجزتها وتنتظر الاعتماد لتُحتسب نقاطها" : "Done, waiting for approval to count")
         : (ar ? "أنجزها الموظف — الاعتماد يمنح النقاط" : "Done by the employee — approval awards points")}
     >
       <DutyNumber value={formatNum(cc.awaiting)} unit={ar ? "أمر" : "orders"} />
+      {/* A queue is an action, not a problem — green line, no chip (KPI law). */}
+      {cc.awaiting ? (
+        <KpiAction
+          ar={ar}
+          text={employeeFace ? "تابع الاعتماد" : "افتح القرار"}
+          textEn={employeeFace ? "Track approval" : "Open the decision"}
+          onClick={() => setFilter("awaiting")}
+        />
+      ) : null}
     </DutyTile>,
   ];
   const opsHowTo = ar

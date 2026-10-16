@@ -42,7 +42,7 @@ export default function OpsTaskSection({ title, hint, count, aside, tone, flag, 
               <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 700, color: titleColor }}>
                 {stateId ? null : <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", borderRadius: 2, flexShrink: 0 }} />}
                 {title}
-                <StatusFlag tone={tone} flag={flag} ar={ar} />
+                <StatusFlag tone={tone} flag={flag} ar={ar} label={typeof title === "string" ? title : ""} />
               </div>
             ) : null}
             {hint ? (

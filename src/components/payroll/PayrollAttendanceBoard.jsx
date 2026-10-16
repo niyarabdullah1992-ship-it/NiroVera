@@ -91,10 +91,10 @@ export default function PayrollAttendanceBoard({
           : (ar ? "راجع التقويم التشغيلي — لا اعتماد يغيّر رقمًا غير مقروء." : "Open the operational calendar — approval cannot invent unread figures.")}
       </div>
 
-      <KpiStrip stats={[
+      <KpiStrip ar={ar} stats={[
         { label: ar ? "أيام حضور" : "Present days", value: tot.p, tone: "ok" },
         { label: ar ? "ساعات إضافية" : "Overtime hours", value: tot.o },
-        { label: ar ? "أيام غياب" : "Absent days", value: tot.a, tone: tot.a ? "danger" : "ok" },
+        { label: ar ? "أيام غياب" : "Absent days", value: tot.a, tone: tot.a ? "danger" : null, flag: tot.a ? (ar ? "يُخصم من الأجر" : "Deducted from pay") : "" },
         { label: ar ? "إجازة بلا أجر" : "Unpaid leave", value: tot.u, tone: tot.u ? "warn" : "ok" },
       ]} />
 

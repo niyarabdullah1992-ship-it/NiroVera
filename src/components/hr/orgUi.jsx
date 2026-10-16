@@ -478,10 +478,8 @@ export function orgGhostBtn() {
   };
 }
 
-export function OrgStatInline({ label, value, tone }) {
-  const color = tone === "warn" ? "var(--nv-warn-ink)"
-    : tone === "ok" ? "var(--nv-ok-ink)"
-      : "var(--nv-ink)";
+export function OrgStatInline({ label, value, tone: _tone }) {
+  const color = "var(--nv-ink)"; // KPI law: numbers stay ink; status belongs in a chip.
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
       <div style={{ fontSize: 10, color: "var(--nv-muted)" }}>{label}</div>

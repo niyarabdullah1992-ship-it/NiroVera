@@ -499,7 +499,7 @@ export default function SigningHome({
                   }}
                 >
                   <span style={{ fontSize: 10, color: SIGN_MUTED, whiteSpace: "nowrap" }}>{item.label}</span>
-                  <span dir="ltr" style={{ ...mono, fontSize: 18, fontWeight: 500, color: TONE[item.id].ink }}>{formatUiNumber(item.value, ar)}</span>
+                  <span dir="ltr" style={{ ...mono, fontSize: 18, fontWeight: 500, color: "var(--nv-ink)" }}>{formatUiNumber(item.value, ar)}</span>
                 </button>
               );
             })}

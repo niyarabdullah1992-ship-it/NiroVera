@@ -90,7 +90,7 @@ function HeadStat({ to, label, value, hot = false }) {
       }}
     >
       <span style={{ fontSize: 11.5, color: "#C5DBCD" }}>{label}</span>
-      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, fontWeight: 600, color: hot ? "#F3E6C4" : "#fff", unicodeBidi: "isolate" }}>{value}</span>
+      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, fontWeight: 600, color: "#fff", unicodeBidi: "isolate" }}>{value}</span>
     </Link>
   );
 }

@@ -36,7 +36,7 @@ export function DutyTile({ tone = "mute", label, children, note, dataKey, flag, 
     >
       <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
         <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.4 }}>{label}</span>
-        <StatusFlag tone={tone} flag={flag} ar={ar} />
+        <StatusFlag tone={tone} flag={flag} ar={ar} label={typeof label === "string" ? label : ""} />
       </span>
       {children}
       {note ? <span style={{ fontSize: 11, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.6 }}>{note}</span> : null}

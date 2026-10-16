@@ -82,7 +82,7 @@ export default function PayrollArchiveBoard({
             ...(open ? [{ v: open, l: ar ? "لم يُغلق" : "still open" }] : []),
           ].map((f) => (
             <span key={f.l} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-              <strong style={{ ...MONO, fontSize: 26, fontWeight: 700, lineHeight: 1, color: f.gold ? "#F3E3BC" : "#fff" }}>{f.v}</strong>
+              <strong style={{ ...MONO, fontSize: 26, fontWeight: 700, lineHeight: 1, color: "#fff" }}>{f.v}</strong>
               <span style={{ fontSize: 11, color: DK.faint }}>{f.l}</span>
             </span>
           ))}

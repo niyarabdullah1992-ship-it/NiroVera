@@ -240,8 +240,9 @@ function Stat({ label, children }) {
   );
 }
 
-function num(value, tone) {
-  return <strong dir="ltr" style={{ ...mono, fontSize: 14, color: value && tone ? dutyTone(tone).ink : "var(--nv-ink)" }}>{value}</strong>;
+// KPI law: counts stay ink; the tone argument is kept for callers but no longer colours the figure.
+function num(value, _tone) {
+  return <strong dir="ltr" style={{ ...mono, fontSize: 14, color: "var(--nv-ink)" }}>{value}</strong>;
 }
 
 /**

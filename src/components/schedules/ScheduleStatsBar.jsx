@@ -1,6 +1,6 @@
 import React from "react";
 import { useI18n } from "@/lib/i18n";
-import { MUTED, NAVY, num, SURFACE } from "@/lib/platformStyles";
+import { MUTED, num, SURFACE } from "@/lib/platformStyles";
 
 function minutesBetween(start, end) {
   const [sh, sm] = start.split(":").map(Number);
@@ -87,7 +87,7 @@ export default function ScheduleStatsBar({ employees, shiftTypes, assignments, m
           <span
             dir="ltr"
             style={{
-              ...num(s.warn ? "#B45309" : NAVY),
+              ...num("var(--nv-ink)"),
               fontSize: 13,
               lineHeight: 1,
               flexShrink: 0,

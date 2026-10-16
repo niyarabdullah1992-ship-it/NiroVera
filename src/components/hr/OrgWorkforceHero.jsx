@@ -106,7 +106,7 @@ export default function OrgWorkforceHero({
               <div key={stat.id} style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 2 }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
                   <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-muted)" }}>{stat.label}</span>
-                  <StatusFlag tone={stat.tone} flag={stat.flag} ar={ar} />
+                  <StatusFlag tone={stat.tone} flag={stat.flag} label={stat.label} ar={ar} />
                 </span>
                 <strong dir="ltr" style={{ ...ORG_MONO, fontSize: 18, fontWeight: 700, color: "var(--nv-ink)" }}>{stat.value}</strong>
               </div>

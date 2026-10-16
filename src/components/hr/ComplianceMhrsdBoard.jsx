@@ -452,7 +452,7 @@ export default function ComplianceMhrsdBoard() {
                 fontSize: "30px",
                 fontWeight: 600,
                 lineHeight: 1,
-                color: "var(--nv-ok-fill)",
+                color: "var(--nv-ink)",
               }}
             >
               {rate}%
@@ -496,7 +496,7 @@ export default function ComplianceMhrsdBoard() {
           </div>
           {n?.mismatch > 0 ? (
             <div>
-              <div dir="ltr" style={{ ...FIGURE, fontSize: 20, color: "var(--nv-bad-ink)" }}>
+              <div dir="ltr" style={{ ...FIGURE, fontSize: 20, color: "var(--nv-ink)" }}>
                 {n.mismatch}
               </div>
               <div style={{ fontSize: "11px", color: "var(--nv-ink3)", marginTop: "3px" }}>{ar ? "تعارض جنسية/هوية" : "Nationality / ID mismatch"}</div>
@@ -702,7 +702,7 @@ export default function ComplianceMhrsdBoard() {
                       fontFamily: "'IBM Plex Sans',sans-serif",
                       fontSize: "18px",
                       fontWeight: 600,
-                      color: signal,
+                      color: "var(--nv-ink)",
                       flexShrink: 0,
                     }}
                   >

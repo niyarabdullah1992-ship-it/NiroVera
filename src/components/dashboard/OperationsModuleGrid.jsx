@@ -1,5 +1,6 @@
 import React from "react";
-import { StatusFlag } from "@/components/shared/StatusFlag";
+import { KpiAction, StatusFlag } from "@/components/shared/StatusFlag";
+import { KPI_INK } from "@/lib/statusFlag";
 import { Link } from "react-router-dom";
 import { canAccessPath } from "@/lib/navVisibility";
 import { formatUiNumber } from "@/lib/dateFormat";
@@ -42,6 +43,18 @@ function toneOf(key, waiting) {
   if (key === "tasks" || key === "signing" || key === "signing-mine" || key === "review" || key === "escalation") return "urgent";
   return "watch";
 }
+
+/** Proof-cycle steps that are a real problem when non-zero (chip); the rest are queues (green action line). */
+const CYCLE_PROBLEM_FLAG = {
+  attendance: { ar: "لم يسجّلوا بعد", en: "Not checked in" },
+  escalation: { ar: "حصة وقت محترقة", en: "Time quota burned" },
+};
+const CYCLE_ACTION = {
+  tasks: { ar: "افتح المهام", en: "Open tasks" },
+  review: { ar: "افتح القرار", en: "Open the decision" },
+  signing: { ar: "افتح التوقيع", en: "Open signing" },
+  "work-proof": { ar: "افتح الإثبات", en: "Open the proof" },
+};
 
 function tabBtn(on) {
   return {
@@ -241,7 +254,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
             fontFamily: MONO,
             fontSize: 18,
             fontWeight: 500,
-            color: urgent ? BAD : "var(--nv-ink)",
+            color: KPI_INK,
             flexShrink: 0,
             lineHeight: 1.1,
           }}
@@ -272,7 +285,6 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
         </div>
         <div className="nv-dash-cycle">
           {cycle.map((item) => {
-            const urgent = item.tone === "urgent";
             return (
               <Link
                 key={item.step}
@@ -292,12 +304,17 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
                 <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: MUTED }}>{item.step}</span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
                   <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{item.title}</span>
-                  <StatusFlag tone={item.tone} ar={ar} flag={item.flag} />
+                  {CYCLE_PROBLEM_FLAG[item.key] ? (
+                    <StatusFlag tone={item.tone} ar={ar} label={item.title} flag={ar ? CYCLE_PROBLEM_FLAG[item.key].ar : CYCLE_PROBLEM_FLAG[item.key].en} />
+                  ) : null}
                 </span>
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 26, fontWeight: 500, color: urgent ? BAD : "var(--nv-ink)", lineHeight: 1.05, unicodeBidi: "isolate" }}>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 26, fontWeight: 500, color: KPI_INK, lineHeight: 1.05, unicodeBidi: "isolate" }}>
                   {item.value}
                 </span>
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{item.note}</span>
+                {item.tone && CYCLE_ACTION[item.key] ? (
+                  <KpiAction asText ar={ar} text={CYCLE_ACTION[item.key].ar} textEn={CYCLE_ACTION[item.key].en} />
+                ) : null}
               </Link>
             );
           })}

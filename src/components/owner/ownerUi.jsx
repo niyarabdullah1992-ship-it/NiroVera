@@ -142,9 +142,9 @@ export function OwnerStatTile({ label, value, note, state = "mute", warn, flag, 
     <div style={{ ...ownerPaper(tone), padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
       <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
         <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{label}</span>
-        <StatusFlag tone={tone} flag={flag} ar={ar} />
+        <StatusFlag tone={tone} flag={flag} label={label} ar={ar} />
       </span>
-      <span dir="ltr" style={{ ...OWNER_MONO, fontSize: 26, fontWeight: 500, color: warn ? "var(--nv-warn-ink)" : "var(--nv-ink)", lineHeight: 1.1 }}>
+      <span dir="ltr" style={{ ...OWNER_MONO, fontSize: 26, fontWeight: 500, color: "var(--nv-ink)", lineHeight: 1.1 }}>
         {value}
       </span>
       {note ? <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.65 }}>{note}</span> : null}

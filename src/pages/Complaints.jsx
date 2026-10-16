@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { StatusFlag } from "@/components/shared/StatusFlag";
+import { KpiAction, StatusFlag } from "@/components/shared/StatusFlag";
 import { Link, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -590,17 +590,18 @@ export default function Complaints() {
                 <div key={stat.lbl} className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
                     <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{stat.lbl}</span>
-                    <StatusFlag tone={stat.tone} flag={stat.flag} ar={ar} />
+                    <StatusFlag tone={stat.tone} flag={stat.flag} label={stat.lbl} ar={ar} />
                   </span>
                   <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-                    <span dir="ltr" style={{ fontSize: 26, fontWeight: 700, color: stat.accent, lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{stat.val}</span>
-                    {stat.unit ? <span style={{ fontSize: 12, fontWeight: 600, color: stat.accent }}>{stat.unit}</span> : null}
+                    <span dir="ltr" style={{ fontSize: 26, fontWeight: 700, color: "var(--nv-ink)", lineHeight: 1.05, fontVariantNumeric: "tabular-nums" }}>{stat.val}</span>
+                    {stat.unit ? <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-muted)" }}>{stat.unit}</span> : null}
                   </span>
                   <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>{stat.note}</span>
+                  {stat.action ? <KpiAction ar={ar} onClick={() => document.querySelector("[data-voice-queue]")?.scrollIntoView({ behavior: "smooth", block: "start" })} /> : null}
                 </div>
               ))}
             </div>
-            <div className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+            <div className="nv-paper" data-voice-queue="1" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
               {queueFilters.map(([id, label, n]) => {
                 const on = queueFilter === id;
                 return (

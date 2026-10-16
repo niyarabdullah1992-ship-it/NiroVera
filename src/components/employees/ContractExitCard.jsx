@@ -12,6 +12,8 @@ import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { MUTED, NAVY, NAVY_FILL, field, WARN } from "@/lib/platformStyles";
+import { RETURN_TICKET_EXCEPTIONS, checkReturnTicketExceptionGate, deriveReturnTicket } from "@/lib/returnTicket";
+import { repatriationModelNote } from "@/lib/implementingRegsNotes";
 
 export default function ContractExitCard({ employee, companyId, ar, canManage }) {
   const profile = employee?.profile || {};
@@ -24,6 +26,21 @@ export default function ContractExitCard({ employee, companyId, ar, canManage })
   const [postponeNote, setPostponeNote] = useState(exit.postponeNote || "");
   const [evidenceName, setEvidenceName] = useState(exit.evidenceName || "");
   const [error, setError] = useState("");
+  const [ticketException, setTicketException] = useState("");
+  const [ticketNote, setTicketNote] = useState("");
+  const [ticketError, setTicketError] = useState("");
+  const ticket = deriveReturnTicket(employee);
+  const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+  // Model Art. 11 — the non-Saudi worker's return ticket at the end of service, or the Art. 11(4) exception.
+  const recordTicket = (patch) => {
+    updateEmployeeProfile(companyId, employee.id, { contractExit: { ...exit, returnTicket: { ...patch, recordedAt: todayIso } } });
+    setTicketError("");
+  };
+  const recordException = () => {
+    const gate = checkReturnTicketExceptionGate({ exception: ticketException, note: ticketNote, exitReason: exit.reason });
+    if (!gate.ok) { setTicketError(ar ? gate.reason : gate.reasonEn); return; }
+    recordTicket({ exception: ticketException, note: ticketNote.trim() });
+  };
 
   const term = checkContractTermGate(employee);
   const notice = deriveNotice({
@@ -170,6 +187,45 @@ export default function ContractExitCard({ employee, companyId, ar, canManage })
           {ar ? "حفظ سبب الإنهاء" : "Save end reason"}
         </button>
       ) : null}
+      {ticket.state === "na" ? null : (
+        <div data-return-ticket={ticket.state} style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 12, borderTop: "1px solid var(--nv-line2)" }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: NAVY }}>
+            {ar ? "تذكرة العودة عند انتهاء الخدمة — النموذج الموحد م11" : "Return ticket at the end of service — model Art. 11"}
+          </span>
+          <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.8 }}>{repatriationModelNote(ar)}</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: ticket.state === "owed" ? "var(--nv-warn-ink)" : ticket.state === "provided" || ticket.state === "excepted" ? "var(--nv-ok-ink)" : MUTED }}>
+            {ticket.state === "provided"
+              ? (ar ? `أُمِّنت التذكرة ${ticket.ticket.providedAt}` : `Ticket provided ${ticket.ticket.providedAt}`)
+              : ticket.state === "excepted"
+                ? (ar ? `لا تتحملها المنشأة: ${RETURN_TICKET_EXCEPTIONS.find((x) => x.key === ticket.ticket.exception)?.ar || ""} — ${ticket.ticket.note || ""}` : `Not borne: ${RETURN_TICKET_EXCEPTIONS.find((x) => x.key === ticket.ticket.exception)?.en || ""}`)
+                : ticket.state === "owed"
+                  ? (ar ? "على المنشأة — يُسجَّل قبل إغلاق ملف إنهاء الخدمة." : "Owed — record it before the exit file closes.")
+                  : ticket.state === "unknown"
+                    ? (ar ? "الجنسية غير محسومة في الملف — تُقرأ منها." : "Nationality not settled on the file.")
+                    : (ar ? "تُستحق عند انتهاء الخدمة إن كان العامل غير سعودي." : "Due at the end of service for a non-Saudi worker.")}
+          </span>
+          {canManage && ticket.state === "owed" ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button type="button" onClick={() => recordTicket({ providedAt: todayIso })} style={{ ...field, width: "auto", alignSelf: "flex-start", background: NAVY_FILL, color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }}>
+                {ar ? "سجّل تأمين تذكرة العودة" : "Record the return ticket"}
+              </button>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,200px),1fr))", gap: 8 }}>
+                <select value={ticketException} onChange={(e) => setTicketException(e.target.value)} style={field}>
+                  <option value="">{ar ? "أو حالة استثناء (م11/4)" : "Or an exception (11(4))"}</option>
+                  {RETURN_TICKET_EXCEPTIONS.map((row) => <option key={row.key} value={row.key}>{ar ? row.ar : row.en}</option>)}
+                </select>
+                <input value={ticketNote} onChange={(e) => setTicketNote(e.target.value)} placeholder={ar ? "سند الاستثناء" : "Basis"} style={field} />
+              </div>
+              {ticketException ? (
+                <button type="button" onClick={recordException} style={{ ...field, width: "auto", alignSelf: "flex-start", cursor: "pointer", fontWeight: 600 }}>
+                  {ar ? "سجّل الاستثناء" : "Record the exception"}
+                </button>
+              ) : null}
+              {ticketError ? <span role="alert" style={{ fontSize: 12, color: "var(--nv-bad-ink)" }}>{ticketError}</span> : null}
+            </div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

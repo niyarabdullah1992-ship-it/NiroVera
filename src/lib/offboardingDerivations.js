@@ -7,6 +7,7 @@ import { citeRule, ruleValue } from "./laborRules.js";
 import { accruedAnnualDaysAtExit, unusedAnnualDaysAtExit } from "./leaveTypes.js";
 import { checkExitCloseoutGate, eosWageBase } from "./laborProtectionGates.js";
 import { suspendedDaysFromUnpaidLeave } from "./contractSuspension.js";
+import { checkReturnTicketGate } from "./returnTicket.js";
 
 export const ANNUAL_ENTITLEMENT_DAYS = 21;
 export const MS_PER_YEAR = 31557600000;
@@ -520,5 +521,8 @@ export function checkCompleteOffboardingGate(caseRow, extras = {}) {
     documentsReturned: extras.documentsReturned ?? exit.documentsReturned,
   });
   if (!closeout.ok) return closeout;
+  // Model Art. 11(3) · Art. 40(1): a non-Saudi's return ticket (or its Art. 11(4) exception) before the file closes.
+  const ticket = checkReturnTicketGate(extras.employee || caseRow, exit);
+  if (!ticket.ok) return ticket;
   return { ok: true };
 }

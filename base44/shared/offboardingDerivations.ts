@@ -6,6 +6,7 @@ import { checkResignationGate, checkTerminationGate } from "./contractLawDerivat
 import { citeRule, ruleValue } from "./laborRules.ts";
 import { accruedAnnualDaysAtExit, unusedAnnualDaysAtExit } from "./leaveDerivations.ts";
 import { suspendedDaysFromUnpaidLeave } from "./contractSuspension.ts";
+import { checkReturnTicketGate } from "./returnTicket.ts";
 
 export const ANNUAL_ENTITLEMENT_DAYS = 21;
 /** Milliseconds in a mean Gregorian year (365.25d) — matches design svcYears. */
@@ -630,5 +631,8 @@ export function checkCompleteOffboardingGate(
     });
     if (!resg.ok) return resg;
   }
+  // Model Art. 11(3) · Art. 40(1): a non-Saudi's return ticket (or its Art. 11(4) exception) before the file closes.
+  const ticket = checkReturnTicketGate(extras.employee || caseRow, exit);
+  if (!ticket.ok) return ticket as any;
   return { ok: true as const };
 }

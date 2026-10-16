@@ -223,7 +223,7 @@ Deno.serve(async (req) => {
       });
       const emp = employees[0];
       const profile = emp?.profile && typeof emp.profile === "object" ? emp.profile as Record<string, unknown> : {};
-      const gate = checkCompleteOffboardingGate(row, { contractExit: profile.contractExit as OffboardingCaseLike["contractExit"] });
+      const gate = checkCompleteOffboardingGate(row, { contractExit: profile.contractExit as OffboardingCaseLike["contractExit"], employee: emp as any });
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 400 });
       }

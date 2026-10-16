@@ -1,5 +1,6 @@
 import { companyRootStation, employeeInStationScope, extraCoverageStationIds, scopedStationIdsForUser, userManagesStation } from "./stationTree.js";
 import { isViewerOwnFile, viewerActorIds } from "./employeeFileView.js";
+import { doaSubjectsFor } from "./orgDesign.js";
 
 /** Owner and company/branch directors see every workplace. */
 export function seesAllDutyStations(user, data) {
@@ -246,6 +247,9 @@ export function requestInboxEmployees(user, data) {
   }
   const head = companyHeadPerson(data);
   if (head && requestInboxMaySee(user, head, data)) extra.push(head);
+  // Delegation of authority: people whose leave the matrix routes to this viewer's seat.
+  // No DoA row → none added; the workplace chain above stays the default.
+  extra.push(...doaSubjectsFor(data, user?.id, "leave").filter((person) => requestInboxMaySee(user, person, data)));
   if (!extra.length) return base;
   const seen = new Set(base.map((row) => String(row.id)));
   return extra.reduce((list, person) => {

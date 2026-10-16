@@ -51,6 +51,7 @@ import {
 } from "./leaveEntitlementCycle";
 import { calendarDateKey, dayAssignmentMap } from "./attendanceCalendar";
 import { applyWorkplaceManagerRule } from "./peopleTreeGraph";
+import { doaApproverIds } from "./orgDesign";
 import { isWorkplaceStation } from "./stationTree";
 import { appendOrgStructureEvent } from "./orgStructureLog";
 import { annualCarryAlerts, anniversaryYearWindow, leaveCoverRange, leaveTypeLabel, remainingLeaveDays, statutoryLeaveFloor, unpaidSuspensionPlan } from "./leaveTypes";
@@ -92,7 +93,7 @@ function officialHolidayTest(data) {
 import { dashboardSubscription, platformOwnerGate, persistHolidayRulings, persistRamadanRuling, persistSubscriptionPlans } from "./ownerBoard";
 import { addLaborDays, ruleValue } from "./laborRules";
 import { art55FilePatch, laborFilePatch } from "./contractLawDerivations";
-import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, migratePreviewVoiceBranchManager, migratePreviewSigningNotices, migratePreviewEmployeeGenders, migratePreviewOwnerGosiIdentity, migratePreviewGosiEstablishment, migratePreviewFieldTasks, seedPreviewOwnerNightStreak, seedPreviewAttendanceHistory, seedPreviewProofCycle, seedPreviewWrittenConsent, seedPreviewDiscipline, seedPreviewVoice, seedPreviewPerformance } from "./previewMigrations";
+import { migratePreviewRotaClock, migratePreviewWeekRota, migratePreviewOwnerMorningRota, migratePreviewCompanyHeadWorkplace, migratePreviewVoiceBranchManager, migratePreviewSigningNotices, migratePreviewEmployeeGenders, migratePreviewOwnerGosiIdentity, migratePreviewGosiEstablishment, migratePreviewFieldTasks, seedPreviewOwnerNightStreak, seedPreviewAttendanceHistory, seedPreviewProofCycle, seedPreviewWrittenConsent, seedPreviewDiscipline, seedPreviewVoice, seedPreviewPerformance, seedPreviewOrgDesign } from "./previewMigrations";
 import { readCompanyEstablishment } from "./facts/company.js";
 import { canonicalizePlatformFacts } from "./facts/migrate.js";
 import { assignEmployeeNumber, ensureEmployeeNumbers } from "./employeeNumber";
@@ -668,6 +669,7 @@ export function getCompanyData(id) {
     if (seedPreviewVoice(data)) persist = true;
     if (seedPreviewPerformance(data)) persist = true;
     if (migratePreviewFieldTasks(data)) persist = true;
+    if (seedPreviewOrgDesign(data)) persist = true;
   }
   (data.employees || []).forEach((emp) => {
     const { patch } = art55FilePatch(emp);
@@ -885,7 +887,7 @@ export const BLOB_CATEGORIES = [
   "tasks", "reports", "anonymousReports", "publicReports", "safety", "plans",
   "schedules", "hrLevels", "jobGrades", "hrClusters", "files", "notifications", "templates", "targets",
   "personalPlaces", "personalAttendance", "plannerItems", "journalEntries", "payrollRuns", "smartPositions",
-  "complaintEscalationChain", "branchEscalationChains", "branchEscalationSla", "orgTree", "orgSeats", "workProofs", "visitorProofs", "disciplinaryCases",
+  "complaintEscalationChain", "branchEscalationChains", "branchEscalationSla", "orgTree", "orgSeats", "orgDesign", "workProofs", "visitorProofs", "disciplinaryCases",
   "arbitrationOutcomes",
   "hcmFoundation", "hcmPerformance", "attendancePolicy", "attendanceEmergency", "hseCredits", "abuseCases",
   "workRegulation", "trainingPlan", "employerDuties",
@@ -1516,7 +1518,7 @@ function flushOtPendingNotices(companyId) {
     const text = row.holiday || entry.holiday
       ? `عمل في العطلة لـ${emp?.name || "موظف"} يوم ${regulationDate(row.dayKey)} (${hours} ساعة) — ينتظر قرارك: أجر الساعة + 50% أو إجازة تعويضية بموافقته (المادة 107/3). من «حضور الفريق».`
       : `ساعات إضافية لـ${emp?.name || "موظف"} يوم ${regulationDate(row.dayKey)} (${hours} ساعة) — تنتظر قرارك: أجر الساعة + 50% أو إجازة تعويضية بموافقته (المادة 107). من «حضور الفريق».`;
-    notifyRequestManagers(companyId, row.employeeId, text, { key: `ot_pending:${row.employeeId}:${row.dayKey}`, to: "/app/attendance?tab=team" });
+    notifyRequestManagers(companyId, row.employeeId, text, { key: `ot_pending:${row.employeeId}:${row.dayKey}`, to: "/app/attendance?tab=team", doa: { kind: "overtime", amount: hours } });
   }
 }
 function isOtDecisionOpenEntry(entry) {
@@ -1531,6 +1533,14 @@ function notifyRequestManagers(companyId, employeeId, text, extra) {
   const list = [...requestNoticeAudience(data, emp)];
   const hr = getStationHRManager(data, employeeId);
   if (hr) list.push(hr);
+  // Delegation of authority: the seat the matrix routes this decision to hears of it too.
+  // No DoA row for the kind → nothing added; the manager chain above stays the default.
+  if (extra?.doa?.kind) {
+    for (const id of doaApproverIds(data, emp, extra.doa.kind, extra.doa.amount ?? null)) {
+      const person = (data?.employees || []).find((row) => String(row.id) === String(id));
+      if (person) list.push(person);
+    }
+  }
   for (const manager of list) {
     if (!manager?.id || seen.has(String(manager.id)) || String(manager.id) === String(employeeId)) continue;
     seen.add(String(manager.id));
@@ -2695,6 +2705,7 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
       companyId,
       filedId,
       requestManagerNotice(data, emp, lang === "ar" ? `إجازة ${label}` : `${label} leave`, lang),
+      { doa: { kind: "leave", amount: Number(createdRequest?.days) || null } },
     );
   }
   if (createdRequest && String(type || "").toLowerCase() === "job_search") {

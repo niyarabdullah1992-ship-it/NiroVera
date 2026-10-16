@@ -38,6 +38,7 @@ import { checkGroundedRefusalGate } from "../../shared/statutoryRefusal.ts";
 import { MODEL_REQUEST_TYPES, checkModelRequestSubmit } from "../../shared/modelRequests.ts";
 import { checkTakeCompLeaveGate } from "../../shared/compLeaveBalance.ts";
 import { checkOtDayWeekGate } from "../../shared/otLimits.ts";
+import { isDoaApprover, toOrgData } from "../../shared/orgDesignDerivations.ts";
 import {
   ART81_EXIT_TYPE,
   DAMAGE_OBJECTION_TYPE,
@@ -421,14 +422,39 @@ Deno.serve(async (req) => {
     }
 
     if (action === "approveLeave" || action === "rejectLeave") {
-      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
       const employeeId = String(body.employeeId || "").trim();
       const requestId = String(body.requestId || "").trim();
+      if (!isManager && (!employeeId || !requestId)) return Response.json({ error: "Forbidden" }, { status: 403 });
       if (!employeeId || !requestId) return Response.json({ error: "Missing employeeId or requestId" }, { status: 400 });
       const emp = await findEmployee(employeeId);
+      if (!isManager && !emp) return Response.json({ error: "Forbidden" }, { status: 403 });
       if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
       const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
       const idx = leaveRequests.findIndex((r: any) => r.id === requestId);
+      if (!isManager) {
+        // Delegation of authority: the seat the matrix routes this leave to may decide it.
+        const [employees, stations, seatsBlob, designBlob] = await Promise.all([
+          loadEmployees(),
+          base44.asServiceRole.entities.Station.filter({ companyId: auth.companyId }),
+          loadBlob("orgSeats"),
+          loadBlob("orgDesign"),
+        ]);
+        const orgData = toOrgData({
+          employees,
+          stations: stations || [],
+          orgSeats: Array.isArray(seatsBlob?.payload) ? seatsBlob.payload : [],
+          orgDesign: designBlob?.payload && !Array.isArray(designBlob.payload) ? designBlob.payload : {},
+        });
+        const days = idx >= 0 ? Number(leaveRequests[idx]?.days) || null : null;
+        if (!isDoaApprover(orgData, String(auth.userId || ""), "leave", String(emp.employeeId || emp.id || employeeId), days)) {
+          return Response.json({
+            error: "Forbidden",
+            code: "DOA_NOT_APPROVER",
+            reason: "لست صاحب القرار في هذه الإجازة — لا يوجّهها الهيكل ولا مصفوفة الصلاحيات إليك.",
+            reasonEn: "You are not the decision maker for this leave — neither the structure nor the authority matrix routes it to you.",
+          }, { status: 403 });
+        }
+      }
       if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
       const req = { ...leaveRequests[idx] };
 

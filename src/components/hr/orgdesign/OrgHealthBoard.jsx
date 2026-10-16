@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from "react";
-import FigureRow from "@/components/shared/FigureRow";
 import { deriveHeadcountPlan, deriveOrgHealth, deriveSpanLayers, orgDesignOf, todayKey } from "@/lib/orgDesign";
 import { saveOrgDesignSettings, setUnitBudget } from "@/lib/orgDesignStore";
-import { GateLine, SectionHead, ToneChip, levelLabel } from "./orgDesignUi";
+import { GateLine, SectionHead, SummaryLine, ToneChip, levelLabel } from "./orgDesignUi";
 
 const VERDICT = {
   wide: { tone: "warn", ar: "نطاق واسع", en: "Too wide" },
@@ -47,16 +46,25 @@ export default function OrgHealthBoard({ ar, data, actor, companyId, canEdit }) 
           ? "قائمة واحدة مشتقة من الهيكل الحي: ما يخالف قاعدة أولاً، ثم ما يحتاج قراراً، ثم ما يحسن معرفته. لا رقم مخزّن هنا."
           : "One list derived from the live structure: breaches first, then decisions, then notes. Nothing here is stored."}
       />
-      <FigureRow
-        ar={ar}
-        figures={[
-          { key: "bad", label: ar ? "مخالفات" : "Breaches", value: health.bad, tone: health.bad ? "bad" : undefined },
-          { key: "warn", label: ar ? "تحتاج قراراً" : "Need a decision", value: health.warn, tone: health.warn ? "warn" : undefined },
-          { key: "vac", label: ar ? "مناصب شاغرة" : "Vacant seats", value: vacancies },
-          { key: "layers", label: ar ? "الطبقات" : "Layers", value: span.layers, suffix: `/ ${settings.maxLayers}`, tone: span.tooDeep ? "warn" : undefined },
-          { key: "span", label: ar ? "وسيط نطاق الإشراف" : "Median span", value: span.medianSpan },
-          { key: "saudi", label: ar ? "نسبة السعودة" : "Saudization", value: saudiPct == null ? "—" : `${saudiPct}%`, hint: ar ? "للاطلاع — من الجنسية" : "For information — from nationality" },
-        ]}
+      <SummaryLine
+        label={ar ? "ملخص صحة الهيكل" : "Health summary"}
+        parts={ar
+          ? [
+            { key: "bad", value: health.bad, label: "مخالفة" },
+            { key: "warn", value: health.warn, label: "تحتاج قراراً" },
+            { key: "vac", value: vacancies, label: "منصب شاغر" },
+            { key: "layers", value: `${span.layers}/${settings.maxLayers}`, label: "طبقات" },
+            { key: "span", before: "وسيط نطاق الإشراف", value: span.medianSpan },
+            { key: "saudi", before: "السعودة", value: saudiPct == null ? "—" : `${saudiPct}%`, label: "(للاطلاع)" },
+          ]
+          : [
+            { key: "bad", value: health.bad, label: "breaches" },
+            { key: "warn", value: health.warn, label: "need a decision" },
+            { key: "vac", value: vacancies, label: "vacant seats" },
+            { key: "layers", value: `${span.layers}/${settings.maxLayers}`, label: "layers" },
+            { key: "span", before: "median span", value: span.medianSpan },
+            { key: "saudi", before: "Saudization", value: saudiPct == null ? "—" : `${saudiPct}%`, label: "(info)" },
+          ]}
       />
 
       <div className="nv-od-filters" role="group" aria-label={ar ? "تصفية" : "Filter"}>

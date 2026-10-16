@@ -148,6 +148,12 @@ textarea.nv-od-input { height: auto; padding: 8px 10px; line-height: 1.7; resize
 .nv-od-path { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; }
 .nv-od-path span[data-why] { color: var(--nv-muted); }
 
+/* one calm summary line instead of a stat row */
+.nv-od-summary { display: flex; flex-wrap: wrap; row-gap: 0; margin: 0; font-size: 13px; line-height: 1.9; color: var(--nv-muted); }
+.nv-od-summary b { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--nv-ink); }
+.nv-od-summary > span { white-space: nowrap; }
+.nv-od-summary > span + span::before { content: "·"; padding-inline: 6px; color: var(--nv-muted); }
+
 @media print {
   .nv-od-tabs, .nv-od-filters, .nv-od-btn, .nv-od-noprint { display: none !important; }
 }

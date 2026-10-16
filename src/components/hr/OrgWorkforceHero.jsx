@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import Nv7SectionHead from "@/components/shared/Nv7SectionHead";
-import FigureRow from "@/components/shared/FigureRow";
+import { SummaryLine } from "@/components/hr/orgdesign/orgDesignUi";
 import {
   ORG_MONO,
   orgChip,
@@ -40,32 +40,27 @@ export default function OrgWorkforceHero({
   onGoFormer,
   formerCount = 0,
   showTools = true,
+  showSearch = true,
 }) {
   const logCount = useMemo(() => orgStructureEvents(data).length, [data]);
 
-  const stats = [
-    { id: "branches", label: ar ? "الفروع" : "Branches", value: health?.branches ?? 0 },
-    { id: "seats", label: ar ? "وظائف معتمدة" : "Approved seats", value: health?.seats ?? 0 },
-    {
-      id: "vacant",
-      label: ar ? "شاغرة" : "Vacant",
-      value: health?.vacantSeats ?? health?.vacant ?? 0,
-      tone: (health?.vacantSeats ?? health?.vacant ?? 0) > 0 ? "warn" : undefined,
-      flag: ar ? "وظائف تنتظر التعيين" : "Seats to fill",
-    },
-    {
-      id: "acting",
-      label: ar ? "تكليفات سارية" : "Acting now",
-      value: health?.acting ?? 0,
-      tone: (health?.acting ?? 0) > 0 ? "ok" : undefined,
-    },
-    {
-      id: "former",
-      label: ar ? "ملفات منتهية" : "Former files",
-      value: formerCount,
-      tone: formerCount > 0 ? "ok" : undefined,
-    },
-  ];
+  const vacant = health?.vacantSeats ?? health?.vacant ?? 0;
+  // One calm line, numbers in ink — no stat row (owner preference).
+  const summary = ar
+    ? [
+      { key: "branches", value: health?.branches ?? 0, label: "فروع" },
+      { key: "seats", value: health?.seats ?? 0, label: "وظيفة معتمدة" },
+      { key: "vacant", before: "منها", value: vacant, label: "شاغرة" },
+      { key: "acting", value: health?.acting ?? 0, label: "تكليف ساري" },
+      { key: "former", value: formerCount, label: "ملف منتهٍ" },
+    ]
+    : [
+      { key: "branches", value: health?.branches ?? 0, label: "branches" },
+      { key: "seats", value: health?.seats ?? 0, label: "approved seats" },
+      { key: "vacant", value: vacant, label: "vacant" },
+      { key: "acting", value: health?.acting ?? 0, label: "acting now" },
+      { key: "former", value: formerCount, label: "former files" },
+    ];
 
   const hasHits = Boolean(query.trim() && searchHits?.length);
 
@@ -102,12 +97,10 @@ export default function OrgWorkforceHero({
         </div>
       ) : (
         <>
-          <FigureRow
-            ar={ar}
-            figures={stats.map((stat) => ({ key: stat.id, label: stat.label, value: stat.value, tone: stat.tone === "warn" ? "warn" : undefined, flag: stat.flag }))}
-          />
+          <SummaryLine parts={summary} label={ar ? "ملخص الهيكل" : "Structure summary"} />
           {showTools ? (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {showSearch ? (
             <input
               value={query}
               onChange={(event) => onQueryChange?.(event.target.value)}
@@ -116,7 +109,8 @@ export default function OrgWorkforceHero({
               aria-label={ar ? "بحث" : "Search"}
               style={{ flex: "1 1 220px", maxWidth: 340, height: 32, borderRadius: 8 }}
             />
-            {hasHits ? searchHits.map((hit) => (
+            ) : null}
+            {showSearch && hasHits ? searchHits.map((hit) => (
               <button
                 key={hit.id || hit.stationId || hit.name}
                 type="button"

@@ -54,6 +54,22 @@ export function SectionHead({ title, hint, children }) {
   );
 }
 
+/**
+ * One calm summary line instead of a stat row: numbers in ink, joined into a single sentence.
+ * parts: [{ key, value, label }] — the label reads after the number («٤ شاغرة»).
+ */
+export function SummaryLine({ parts = [], label }) {
+  const shown = parts.filter((p) => p && p.value !== undefined && p.value !== null && p.value !== "");
+  if (!shown.length) return null;
+  return (
+    <p className="nv-od-summary" aria-label={label}>
+      {shown.map((p) => (
+        <span key={p.key}>{p.before ? `${p.before} ` : ""}<b>{p.value}</b>{p.label ? ` ${p.label}` : ""}</span>
+      ))}
+    </p>
+  );
+}
+
 /** Empty state that invites the next action. */
 export function EmptyInvite({ text, action }) {
   return (

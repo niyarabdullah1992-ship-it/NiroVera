@@ -4437,8 +4437,8 @@ export default function RequestsWorkspace({
             </span>
             <span data-holidays-fixed="1" style={{ marginTop: 6, alignSelf: "flex-start", fontSize: 11, fontWeight: 700, lineHeight: 1.6, padding: "3px 10px", borderRadius: 999, background: "var(--nv-warn-soft)", color: "var(--nv-warn-ink)" }}>
               {ar
-                ? "تنبيه: هذه العطل ثابتة في المنصة — عدد أيامها من المادة 112، ومواعيدها من تقويم المنصة (أم القرى) كما تعتمدها إدارة المنصة؛ لا يغيّرها الطلب."
-                : "Note: these holidays are fixed in the platform — their days come from Art. 112 and their dates from the platform calendar (Umm al-Qura) as the platform sets them; a request does not change them."}
+                ? "تنبيه: هذه العطل ثابتة في المنصة — أيامها ومواعيدها لا يغيّرها الطلب (المادة 112)."
+                : "Note: these holidays are fixed in the platform — a request does not change their days or dates (Art. 112)."}
             </span>
           </div>
           {holidays.map((x) => {

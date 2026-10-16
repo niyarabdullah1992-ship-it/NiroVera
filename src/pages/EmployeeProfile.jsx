@@ -23,12 +23,11 @@ import LoginAccessCard from "@/components/employees/LoginAccessCard";
 import AccountSettingsCard from "@/components/employees/AccountSettingsCard";
 import DeleteEmployeeAccountCard from "@/components/employees/DeleteEmployeeAccountCard";
 import OffboardingTab from "@/components/employees/OffboardingTab";
-import RequestsMinistryPanel from "@/components/requests/RequestsMinistryPanel";
+import HoursOnFile from "@/components/employees/HoursOnFile";
 import OffboardingCustodyBoard from "@/components/employees/OffboardingCustodyBoard";
 import EmpAlertsStrip from "@/components/employees/EmpAlertsStrip";
 import AssignmentTab from "@/components/employees/AssignmentTab";
 import { AllowanceLedgerCard, SiteConditionsCard } from "@/components/payroll/PayslipLedger";
-import EmployeeFileDutyBoard from "@/components/employees/EmployeeFileDutyBoard";
 import EmployeeFileSummary from "@/components/employees/EmployeeFileSummary";
 import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employees/EmployeeFileFieldCard";
 import EmployerDutiesCard from "@/components/employees/EmployerDutiesCard";
@@ -53,7 +52,7 @@ const TABS = [
   { key: "summary", ar: "ملخّص الملف", en: "File summary" },
   { key: "identity", ar: "الهوية والتوظيف", en: "Identity and employment" },
   { key: "contract", ar: "العقد والأجر", en: "Contract and wage" },
-  { key: "duty", ar: "الدوام وأنظمة الوزارة", en: "Duty and ministry rules" },
+  { key: "duty", ar: "ما يُحفظ على الملف", en: "Kept on the file" },
   { key: "compliance", ar: "الالتزام والمنصات", en: "Compliance and platforms" },
   { key: "growth", ar: "التدرّج والجزاءات", en: "Progression and sanctions" },
   { key: "docs", ar: "العهد", en: "Custody" },
@@ -474,14 +473,9 @@ export default function EmployeeProfile() {
         )}
 
         {tab === "duty" && (
-          /* The file keeps the duty days and hours, the absence/lateness record (Art. 80) and what the
-             Ministry rules saved on it. */
-          <>
-            <EmployeeFileDutyBoard employee={employee} data={data} currentUser={currentUser} lang={lang} />
-            {/* What the file keeps under the Ministry rules — night-work duties, pregnancy notice, exposed-work
-                reports, nursing hour, contract changes — feeds the roster and attendance. */}
-            <RequestsMinistryPanel ar={ar} lang={lang} subject={employee} own={isSelf} dutyHref={null} fileMode />
-          </>
+          /* Only what is kept on the file: weekly rest, hours basis and the Art. 108 category — read by
+             the roster and attendance. The week, its rule checks and the absence record live in الحضور. */
+          <HoursOnFile employee={employee} data={data} lang={lang} />
         )}
 
         {tab === "compliance" && (

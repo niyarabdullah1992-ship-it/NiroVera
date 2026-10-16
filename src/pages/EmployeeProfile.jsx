@@ -468,6 +468,7 @@ export default function EmployeeProfile() {
             <PayslipEstimateCard
               employee={employee}
               ar={ar}
+              view={isSelf ? "employee" : "manager"}
               stationName={stationName}
               monthLabel={new Date().toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", { month: "long", year: "numeric" })}
             />

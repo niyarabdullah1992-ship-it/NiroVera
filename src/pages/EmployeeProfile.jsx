@@ -33,6 +33,7 @@ import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employ
 import EmployerDutiesCard from "@/components/employees/EmployerDutiesCard";
 import { contractHint, fileAlertHint } from "@/lib/rightHints.disc";
 import ContractTab from "@/components/employees/ContractTab";
+import FileArchiveTab from "@/components/employees/FileArchiveTab";
 import { checkHiringAgeGate } from "@/lib/employerDuties";
 import EmployeeFileGrowthBoard from "@/components/employees/EmployeeFileGrowthBoard";
 import EmployeeFileVoiceBoard from "@/components/employees/EmployeeFileVoiceBoard";
@@ -57,7 +58,7 @@ const TABS = [
   { key: "compliance", ar: "الالتزام والمنصات", en: "Compliance and platforms" },
   { key: "growth", ar: "التدرّج والجزاءات", en: "Progression and sanctions" },
   { key: "docs", ar: "العهد", en: "Custody" },
-  { key: "audit", ar: "سجل الملف", en: "File log" },
+  { key: "archive", ar: "أرشيف الملف", en: "File archive" },
 ];
 
 const LEGACY_TAB = {
@@ -70,6 +71,8 @@ const LEGACY_TAB = {
   leave: "summary",
   payslip: "contract",
   assignment: "growth",
+  // The file log tab became the documents archive; the change trail stays on employee.fileLog.
+  audit: "archive",
 };
 
 function ApplyLaborOnFile({ companyId, employeeId }) {
@@ -265,7 +268,7 @@ export default function EmployeeProfile() {
   const roleNote = isSelf && !canManage
     ? (ar ? "تقرأ ملفك. التعديل للموارد البشرية والإدارة." : "You read your file. HR and management edit it.")
     : canEditFile
-      ? (ar ? "تُحرّر هذا الملف باسمك. كل حفظ يُسجَّل في سجل الملف." : "You edit this file in your name. Every save is written on the file log.")
+      ? (ar ? "تُحرّر هذا الملف باسمك. كل حفظ يُكتب باسمك ووقته." : "You edit this file in your name. Every save is written with your name and time.")
       : (ar ? "عرض فقط — لا تعديل على هذا الملف من دورك." : "View only — your role cannot edit this file.");
 
   const legal = ar
@@ -378,7 +381,7 @@ export default function EmployeeProfile() {
                   cursor: "pointer",
                 }}
               >
-                {item.key === "summary" && isSelf ? (ar ? "ملفي" : "My file") : (ar ? item.ar : item.en)}
+                {item.key === "summary" && isSelf ? (ar ? "ملفي" : "My file") : item.key === "archive" && isSelf ? (ar ? "أرشيف ملفي" : "My file archive") : (ar ? item.ar : item.en)}
               </button>
             );
           })}
@@ -413,7 +416,7 @@ export default function EmployeeProfile() {
               <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
                 <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{ar ? "طلب تعديل بيان" : "Ask to correct a field"}</strong>
                 <span style={{ fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.7 }}>
-                  {ar ? "يُرفع إلى الموارد البشرية ويُعتمد قبل أن يظهر في ملفك، ويُكتب في سجل الملف." : "It goes to HR and is approved before it appears on your file, and the save is written on the file log."}
+                  {ar ? "يُرفع إلى الموارد البشرية ويُعتمد قبل أن يظهر في ملفك، ويُكتب باسم من اعتمده." : "It goes to HR and is approved before it appears on your file, under the name of whoever approves it."}
                 </span>
                 <Link to="/app/requests" style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", height: 36, padding: "0 14px", borderRadius: 8, background: "#3C7D50", color: "#F4F7F5", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
                   {ar ? "اطلب تعديل بيان" : "Request a correction"}
@@ -575,27 +578,8 @@ export default function EmployeeProfile() {
           <OffboardingCustodyBoard employee={employee} canManage={canManage && !isSelf} lang={lang} custodyOnly />
         )}
 
-        {tab === "audit" && (
-          <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden" }}>
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line)" }}>
-              <div style={{ fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "سجل الملف" : "File log"}</div>
-              <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.75, marginTop: 3 }}>
-                {ar ? "كل تغيير ظاهر باسم من أجراه ووقته. لا تعديل صامت." : "Every visible change names who made it and when. No silent edit."}
-              </div>
-            </div>
-            {view.audit.length === 0 ? (
-              <div style={{ padding: "16px 20px", fontSize: 12, color: MUTED }}>{ar ? "لا حركة مثبتة بعد." : "No written movement yet."}</div>
-            ) : view.audit.map((row) => (
-              <div key={`${row.text}-${row.at}`} style={{ padding: "12px 20px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "start" }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: row.dot || "var(--nv-btn-fill)", marginTop: 6 }} />
-                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                  <span style={{ fontSize: 12, color: "var(--nv-ink)", lineHeight: 1.8 }}>{row.text}</span>
-                  <span style={{ fontSize: 10, color: MUTED }}>{row.by}</span>
-                </span>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}>{row.at}</span>
-              </div>
-            ))}
-          </section>
+        {tab === "archive" && (
+          <FileArchiveTab employee={employee} data={data} isSelf={isSelf} managerView={canManage && !isSelf} ar={ar} />
         )}
 
         {(isSelf || (canManage && !isSelf) || showFileRetentionNote) && tab === "identity" && (

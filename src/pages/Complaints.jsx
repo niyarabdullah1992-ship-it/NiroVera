@@ -247,7 +247,6 @@ export default function Complaints() {
   let activeFace = ["mine", "manage"].includes(tab) && (canManage || tab !== "manage") ? tab : "mine";
   if (railSide === "employee") activeFace = "mine";
   else if (railSide === "manage" && canManage) activeFace = "manage";
-  const adminVoice = canManage && railSide !== "employee";
   const tabs = railLaneTabs(canManage
     ? [
       { key: "mine", num: "01", ar: "ملفي", en: "My file" },
@@ -525,10 +524,9 @@ export default function Complaints() {
       hint={ar
         ? "قل ما يحسّن العمل أو ما يضرّك، وتابع قراره حتى يُكتب. القناة تحدّد الهوية والمهلة والتصعيد."
         : "Say what would improve work or what harms you, and follow it to a written ruling. The channel sets identity, window and escalation."}
-      viewNote={adminVoice
-        ? (ar ? "إدارة — تراجع وتعتمد أو تُعيد بملاحظة. ما تجاوز مهلته يُرفع لمن بعدك تلقائياً، ولا يُغلق بلا قرار مكتوب." : "Management — you adopt or return with a note. What misses its window is raised to whoever follows you. Nothing closes without a written ruling.")
-        : (ar ? "موظف — ترفع صوتك في القناة التي تختارها وتتابع قرارها. لا ترى أصوات غيرك، ولا تُعرف هويّتك في القناة المجهولة." : "Employee — you raise a voice on the channel you choose and follow its ruling. You do not see others' voices, and the anonymous channel does not name you.")}
-      tabs={tabs.map((item) => ({ value: item.key, label: ar ? item.ar : item.en, count: item.count }))}
+      // The rail already picks the lane (الموظف / الإدارة) and carries the open count, so a
+      // single-lane tab plus its note only repeated it — shown only when more than one lane remains.
+      tabs={tabs.length > 1 ? tabs.map((item) => ({ value: item.key, label: ar ? item.ar : item.en, count: item.count })) : []}
       tool={activeFace}
       onTool={setTab}
       meta={activeFace !== "manage" ? null : (

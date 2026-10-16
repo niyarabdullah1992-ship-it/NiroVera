@@ -13,6 +13,9 @@ import {
   weekStartDate,
 } from "@/lib/shiftWeek";
 import { BORDER, CARD, MUTED } from "@/lib/platformStyles";
+import { ruleValue } from "@/lib/laborRules";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
 
 const DAY_AR = ["أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
 const DAY_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -65,7 +68,7 @@ export default function AttendancePunchWeek({ employee, company, data, lang = "a
   ), [rows]);
 
   const weekHours = employee?.id ? employeeWeekHours(schedule, employee.id, weekStart, employee, calendar) : 0;
-  const cap = 48;
+  const cap = ruleValue("hours.week.ordinaryMaxHours", toRiyadhDateKey());
   const cells = days.map((day) => {
     const leave = employee ? leaveOnDayView(employee, day.key, ar, calendar) : null;
     const shift = leave || !employee?.id ? null : employeeShiftOnDay(schedule, employee.id, day.key);
@@ -167,7 +170,7 @@ export default function AttendancePunchWeek({ employee, company, data, lang = "a
             {label}
           </span>
         ))}
-        <span style={{ whiteSpace: "nowrap", marginInlineStart: "auto" }}>{ar ? "الحدّ 48 ساعة · المادة 98" : "Cap 48 h · Art. 98"}</span>
+        <span style={{ whiteSpace: "nowrap", marginInlineStart: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>{ar ? `الحدّ ${cap} ساعة` : `Cap ${cap} h`}<RightHint ar={ar} hint={attRightHint("hours", { weekHours }, { view: "employee", ar, employee })} /></span>
       </div>
     </section>
   );

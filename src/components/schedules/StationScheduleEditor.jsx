@@ -13,6 +13,8 @@ import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { ruleValue } from "@/lib/laborRules";
 import { toast } from "@/components/ui/use-toast";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
 import PolicyDeviationAlert from "@/components/shared/PolicyDeviationAlert";
 
 const DAY_SHORT = {
@@ -253,7 +255,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                         const gate = checkConsecutiveWorkGate({ start: st.start, end: st.end, restMinutes: st.restMinutes });
                         return (
                           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, width: "100%" }}>
-                            <LaborArticleCite ruleId="hours.rest.maxConsecutiveHours" ar={ar} />
+                            <RightHint ar={ar} hint={attRightHint("rest", { breakMinutes: st.restMinutes }, { view: "manager", ar })} />
                             <select
                               className="nv-shift-field"
                               value={st.restMinutes == null ? ruleValue("hours.rest.duringShiftMinutes") : st.restMinutes}
@@ -304,7 +306,7 @@ export default function StationScheduleEditor({ companyId, stationId, canManage 
                         <span className="nv-shift-field nv-shift-field--time" style={{ display: "inline-block" }}>{formatShiftHm(st.end, timeFormat, lang)}</span>
                       </span>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
-                        <LaborArticleCite ruleId="hours.rest.maxConsecutiveHours" ar={ar} />
+                        <RightHint ar={ar} hint={attRightHint("rest", { breakMinutes: st.restMinutes }, { view: "manager", ar })} />
                         {st.restMinutes === 0
                           ? (ar ? "بلا راحة" : "No rest")
                           : (ar ? `راحة ${st.restMinutes ?? 30} د` : `${st.restMinutes ?? 30}m rest`)}

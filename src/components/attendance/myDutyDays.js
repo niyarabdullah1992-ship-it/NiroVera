@@ -64,7 +64,7 @@ export function myDutyDay({ employee, data, row, key, todayKey, calendar, ar = t
   const lateMinutes = Math.max(0, rawLate - excuse.minutes);
   const excusedNote = excuse.minutes && rawLate
     ? (excuse.reason === "nursing"
-      ? (ar ? "ساعة الرضاعة أول الدوام — من ساعات العمل الفعلية (المادة 154)." : "Nursing hour at shift start — counted as work (Art. 154).")
+      ? (ar ? "ساعة الرضاعة أول الدوام — من ساعات العمل الفعلية." : "Nursing hour at shift start — counted as work.")
       : (ar ? "استئذان معتمد — لا يُحتسب تأخيراً." : "Approved permission — not counted as lateness."))
     : "";
   const manual = !!(row?.manual_override || row?.location_status === "manual" || row?.override_by);
@@ -73,7 +73,7 @@ export function myDutyDay({ employee, data, row, key, todayKey, calendar, ar = t
   if (off && !inAt) {
     status = off.kind === "official" ? "holiday" : "leave";
     note = off.kind === "official"
-      ? (ar ? `${off.labelAr} — خارج حساب الحضور (المادة 112)` : `${off.labelEn} — outside attendance (Article 112)`)
+      ? (ar ? `${off.labelAr} — عطلة بأجر كامل، خارج حساب الحضور` : `${off.labelEn} — a paid holiday, outside attendance`)
       : (ar ? "إجازة معتمدة — خارج حساب الحضور." : "Approved leave — outside attendance.");
   } else if (key > todayKey) {
     status = shift || scheduled ? "upcoming" : (rosterLive || published ? "rest" : "unscheduled");
@@ -104,7 +104,7 @@ export function myDutyDay({ employee, data, row, key, todayKey, calendar, ar = t
       note = scheduled ? (ar ? "مجدول ولم يسجّل." : "Scheduled and did not punch.") : note;
     }
   }
-  return { key, status, note, shift, inAt, outAt, lateMinutes, manual, row: row || null, off: off || null };
+  return { key, status, note, shift, inAt, outAt, lateMinutes, manual, row: row || null, off: off || null, excuse: excuse.minutes ? excuse.reason : "" };
 }
 
 export function isoDay(date) {

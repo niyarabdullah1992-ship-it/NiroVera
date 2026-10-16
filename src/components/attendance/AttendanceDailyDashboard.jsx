@@ -16,7 +16,10 @@ import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
 import { AttendanceRingChips, brokeAtLabel, buildAttendanceRings } from "@/components/attendance/AttendanceTrustChrome";
 import { formatUiNumber } from "@/lib/dateFormat";
-import { DutyBoard, DutyNumber, DutyTile, DutyTiles } from "@/components/schedules/DutyTiles";
+import { DutyBoard } from "@/components/schedules/DutyTiles";
+import FigureRow from "@/components/shared/FigureRow";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
 import { dutyChip, dutyLabel } from "@/components/schedules/dutyStatus";
 import { Collapsible } from "@/components/schedules/scheduleChrome";
 import { ManageDutySideAuto } from "@/components/schedules/ManageDutySide";
@@ -259,13 +262,6 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   }).length;
   const absentClosed = Math.max(0, todayAtt.absent - notYet);
   const ar = lang === "ar";
-  const split = [
-    { key: "present", value: todayAtt.present, color: "var(--nv-ok-fill)", label: ar ? "في الوقت" : "On time" },
-    { key: "late", value: todayAtt.late, color: "var(--nv-warn-fill)", label: ar ? "متأخر" : "Late" },
-    { key: "absent", value: absentClosed, color: "var(--nv-bad-fill, #9B2335)", label: ar ? "غاب" : "Absent" },
-    { key: "notyet", value: notYet, color: "var(--nv-mute-fill, #C5CEC9)", label: ar ? "لم يُسجَّل" : "Not yet" },
-  ];
-  const splitTotal = split.reduce((sum, item) => sum + item.value, 0);
   /** Team rows speak the employee lane's words and colours (dutyStatus). */
   const TEAM_STATUS = { present: "present", late: "late", absent: "absent", on_leave: "leave", not_scheduled: "unscheduled" };
   const panel = { background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", minWidth: 0 };
@@ -307,40 +303,29 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     : (lang === "ar" ? "الطابور صفر — كل يوم أُغلق تلقائياً أو بقرار موقّع." : "Queue at zero — every day closed automatically or by a signed decision.");
 
   const tiles = (
-    <DutyTiles>
-      <DutyTile
-        dataKey="team-today"
-        ar={ar}
-        flag={ar ? "لم يكتمل الحضور" : "Not all in yet"}
-        tone={!todayAtt.scheduled ? "mute" : todayAtt.presentLike >= todayAtt.scheduled ? "ok" : "warn"}
-        label={ar ? "الفريق اليوم" : "The team today"}
-        note={ar
-          ? `في الوقت ${formatUiNumber(todayAtt.present)} · متأخر ${formatUiNumber(todayAtt.late)} · لم يُسجَّل ${formatUiNumber(notYet)}`
-          : `On time ${formatUiNumber(todayAtt.present)} · late ${formatUiNumber(todayAtt.late)} · not yet ${formatUiNumber(notYet)}`}
-      >
-        <DutyNumber
-          value={formatUiNumber(todayAtt.presentLike)}
-          unit={<>{ar ? "سجّلوا من" : "logged of"} <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{formatUiNumber(todayAtt.scheduled)}</span> {ar ? "مجدولين" : "scheduled"}</>}
-        />
-        <span aria-hidden style={{ height: 6, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden", display: "flex", gap: splitTotal ? 2 : 0 }}>
-          {splitTotal ? split.filter((item) => item.value > 0).map((item) => (
-            <span key={item.key} style={{ flex: item.value, background: item.color }} />
-          )) : null}
-        </span>
-      </DutyTile>
-      <DutyTile
-        dataKey="absent"
-        ar={ar}
-        flag={ar ? "غياب دون إجازة" : "Absent, no leave"}
-        tone={absentClosed ? "bad" : "mute"}
-        label={ar ? "غاب" : "Absent"}
-        note={ar
-          ? `بلا تسجيل ولا إجازة بعد نافذة الوردية · إجازة ${formatUiNumber(todayAtt.onLeave)}`
-          : `No punch and no leave after the window · leave ${formatUiNumber(todayAtt.onLeave)}`}
-      >
-        <DutyNumber value={formatUiNumber(absentClosed)} unit={ar ? "موظف" : "people"} />
-      </DutyTile>
-    </DutyTiles>
+    <FigureRow
+      ar={ar}
+      figures={[
+        {
+          key: "team-today",
+          label: ar ? "الفريق اليوم" : "The team today",
+          value: formatUiNumber(todayAtt.presentLike),
+          suffix: ar ? `من ${formatUiNumber(todayAtt.scheduled)} مجدولين` : `of ${formatUiNumber(todayAtt.scheduled)} scheduled`,
+          ...(todayAtt.scheduled && todayAtt.presentLike < todayAtt.scheduled ? { tone: "warn", flag: ar ? "لم يكتمل الحضور" : "Not all in yet" } : {}),
+          hint: ar
+            ? `في الوقت ${formatUiNumber(todayAtt.present)} · متأخر ${formatUiNumber(todayAtt.late)} · لم يُسجَّل ${formatUiNumber(notYet)}`
+            : `On time ${formatUiNumber(todayAtt.present)} · late ${formatUiNumber(todayAtt.late)} · not yet ${formatUiNumber(notYet)}`,
+        },
+        {
+          key: "absent",
+          label: ar ? "غاب" : "Absent",
+          value: formatUiNumber(absentClosed),
+          suffix: ar ? "موظف" : "people",
+          ...(absentClosed ? { tone: "bad", flag: ar ? "غياب دون إجازة" : "Absent, no leave" } : {}),
+          hint: ar ? `إجازة ${formatUiNumber(todayAtt.onLeave)}` : `On leave ${formatUiNumber(todayAtt.onLeave)}`,
+        },
+      ]}
+    />
   );
 
   const teamList = !loading && employees.length > 0 ? (
@@ -475,6 +460,9 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 </span>
                 <AttendanceRingChips rings={rings} />
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.75 }}>{reason}</span>
+                {status === "late" && Number(r?.late_minutes) > 0 && !asked ? (
+                  <RightHint ar={ar} style={{ alignSelf: "flex-start" }} hint={attRightHint("lateness", { date: String(r.check_in_at || "").slice(0, 10), minutes: Number(r.late_minutes) }, { view: "manager", ar, employee: e })} />
+                ) : null}
                 <span data-queue-links="1" style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
                   <Link to={fileDutyHref(e.id)} style={openLinkStyle()}>{lang === "ar" ? "ملف الدوام ›" : "Duty file ›"}</Link>
                   <Link to={rosterPersonHref(e.id)} style={openLinkStyle()}>{lang === "ar" ? "في جدول الدوام ›" : "On the roster ›"}</Link>

@@ -8,7 +8,10 @@ import { formatShiftHm } from "@/lib/shiftDerivations";
 import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
 import { ManualPunchRequestBox } from "@/components/attendance/CheckInOutCard";
 import { isoDay, monthTotals, myDutyDay, rowsByDateKey, useMyAttendanceRange } from "@/components/attendance/myDutyDays";
-import { DutyBoard, DutyNumber, DutyTile, DutyTiles } from "@/components/schedules/DutyTiles";
+import { DutyBoard } from "@/components/schedules/DutyTiles";
+import FigureRow from "@/components/shared/FigureRow";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
 import DutySide, { dutyHeatCopy } from "@/components/schedules/DutySide";
 import useMyDutyWeek from "@/components/schedules/myDutyWeek";
 import { Collapsible, mono, quietAction, SectionHead, slab } from "@/components/schedules/scheduleChrome";
@@ -150,32 +153,33 @@ export default function MyRecordPage({ me, currentUser, company, data, lang = "a
         onMode={changeYearMode}
         anchor={career.anchor}
       />
-      <DutyTiles>
-        <DutyTile
-          dataKey="attended"
-          ar={ar}
-          flag={ar ? "أقل من المجدول" : "Below schedule"}
-          tone={yearTotals ? (yearTotals.scheduled && yearTotals.attended < yearTotals.scheduled ? "warn" : "ok") : (totals.scheduled && totals.attended < totals.scheduled ? "warn" : "ok")}
-          label={ar ? `أيام الحضور — ${yearWord || monthWord}` : `Days attended — ${yearWord || monthWord}`}
-          note={ar
-            ? <>من <span dir="ltr" style={mono}>{yearTotals ? yearTotals.scheduled : totals.scheduled}</span> {dayWordAr(yearTotals ? yearTotals.scheduled : totals.scheduled, true)} حتى اليوم · {monthWord}: <span dir="ltr" style={mono}>{totals.attended}</span> · إجازة معتمدة: <span dir="ltr" style={mono}>{(yearTotals || totals).leave + (yearTotals ? yearTotals.holiday : 0)}</span> {"(خارج حساب الحضور)"}</>
-            : <>of <span style={mono}>{yearTotals ? yearTotals.scheduled : totals.scheduled}</span> scheduled days so far · {monthWord}: <span style={mono}>{totals.attended}</span></>}
-        >
-          <DutyNumber value={yearTotals ? yearTotals.attended : totals.attended} unit={ar ? dayWordAr(yearTotals ? yearTotals.attended : totals.attended) : "days"} />
-        </DutyTile>
-        <DutyTile
-          dataKey="late"
-          ar={ar}
-          flag={ar ? "تأخير مسجّل" : "Lateness on file"}
-          tone={(yearTotals || totals).lateMinutes ? "warn" : "ok"}
-          label={ar ? `التأخير — ${yearWord || monthWord}` : `Lateness — ${yearWord || monthWord}`}
-          note={(yearTotals || totals).lateDays
-            ? (ar ? <>في <span dir="ltr" style={mono}>{(yearTotals || totals).lateDays}</span> {dayWordAr((yearTotals || totals).lateDays)} — من بداية الوردية المنشورة · {monthWord}: <span dir="ltr" style={mono}>{totals.lateMinutes}</span> د</> : `on ${(yearTotals || totals).lateDays} days · ${monthWord}: ${totals.lateMinutes} min`)
-            : (ar ? <>لا تأخير مسجّل — تُحسب من جديد كل سنة</> : "No lateness on file — restarts every year")}
-        >
-          <DutyNumber value={(yearTotals || totals).lateMinutes} unit={ar ? "دقيقة" : "min"} />
-        </DutyTile>
-      </DutyTiles>
+      <FigureRow
+        ar={ar}
+        figures={[
+          {
+            key: "attended",
+            label: ar ? `أيام الحضور — ${yearWord || monthWord}` : `Days attended — ${yearWord || monthWord}`,
+            value: yearTotals ? yearTotals.attended : totals.attended,
+            suffix: ar ? dayWordAr(yearTotals ? yearTotals.attended : totals.attended) : "days",
+            tone: (yearTotals ? (yearTotals.scheduled && yearTotals.attended < yearTotals.scheduled) : (totals.scheduled && totals.attended < totals.scheduled)) ? "warn" : null,
+            flag: ar ? "أقل من المجدول" : "Below schedule",
+            hint: ar
+              ? `من ${yearTotals ? yearTotals.scheduled : totals.scheduled} مجدولة · ${monthWord}: ${totals.attended} · إجازة: ${(yearTotals || totals).leave + (yearTotals ? yearTotals.holiday : 0)}`
+              : `of ${yearTotals ? yearTotals.scheduled : totals.scheduled} scheduled · ${monthWord}: ${totals.attended}`,
+          },
+          {
+            key: "late",
+            label: ar ? `التأخير — ${yearWord || monthWord}` : `Lateness — ${yearWord || monthWord}`,
+            value: (yearTotals || totals).lateMinutes,
+            suffix: ar ? "دقيقة" : "min",
+            tone: (yearTotals || totals).lateMinutes ? "warn" : null,
+            flag: ar ? "تأخير مسجّل" : "Lateness on file",
+            hint: (yearTotals || totals).lateDays
+              ? (ar ? `في ${(yearTotals || totals).lateDays} ${dayWordAr((yearTotals || totals).lateDays)} · ${monthWord}: ${totals.lateMinutes} د` : `on ${(yearTotals || totals).lateDays} days · ${monthWord}: ${totals.lateMinutes} min`)
+              : (ar ? "لا تأخير مسجّل" : "No lateness on file"),
+          },
+        ]}
+      />
 
       <DutyBoard
         main={(
@@ -288,6 +292,11 @@ export default function MyRecordPage({ me, currentUser, company, data, lang = "a
                     ))}
                   </div>
                   {selected.note ? <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>{ar ? "ملاحظة: " : "Note: "}{selected.note}</span> : null}
+                  {selected.lateMinutes > 0 && selected.inAt ? (
+                    <RightHint ar={ar} style={{ alignSelf: "flex-start" }} hint={attRightHint("lateness", { date: selected.key, minutes: selected.lateMinutes }, { view: "employee", ar, today: todayKey, employee: person })} />
+                  ) : selected.excuse === "nursing" ? (
+                    <RightHint ar={ar} style={{ alignSelf: "flex-start" }} hint={attRightHint("nursing", { birthDate: (person?.otherRequests || []).find((r) => r?.type === "nursing_hour" && r.childBirthDate)?.childBirthDate || person?.profile?.childBirthDate || "" }, { view: "employee", ar, today: todayKey, employee: person })} />
+                  ) : null}
                   <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                     {canFix(selected) ? (
                       <button

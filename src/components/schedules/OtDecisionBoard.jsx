@@ -6,6 +6,8 @@ import { HOLIDAY_WORK_LABEL_AR, HOLIDAY_WORK_LABEL_EN, weekDateKeys, weekNamedOv
 import { formatRuleFigure, ruleValue } from "@/lib/laborRules.js";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import LawGateAlertRow from "@/components/shared/LawGateAlertRow";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
 import { toast } from "@/components/ui/use-toast";
 import { SW } from "@/lib/shiftWeek";
 import { viewerEmployeeId } from "@/lib/employeeFileView";
@@ -186,7 +188,20 @@ export default function OtDecisionBoard({
             const saved = item.decision;
             return (
               <div key={key} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 0", borderTop: `1px solid ${SW.hair}` }}>
-                <span style={{ fontSize: 12, fontWeight: 600 }}>{item.dateKey} · {item.overtimeHours} {ar ? "ساعة" : "h"}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{item.dateKey} · {item.overtimeHours} {ar ? "ساعة" : "h"}</span>
+                  <RightHint
+                    ar={ar}
+                    onDate={item.dateKey}
+                    hint={attRightHint(item.kind === "holiday" ? "holidayWork" : "overtime", {
+                      date: item.dateKey,
+                      hours: item.overtimeHours,
+                      worked: !!item.proven || !item.status.planned,
+                      yearHours: row.ytd,
+                      consented: !!saved,
+                    }, { view: mine ? "employee" : "manager", today: asOf, ar, employee: row.employee })}
+                  />
+                </span>
                 <span style={{ fontSize: 11, color: SW.mid, lineHeight: 1.7 }}>{item.label}</span>
                 {item.status.planned && !saved ? (
                   <span data-ot-planned="1" style={{ fontSize: 11, color: SW.ink, lineHeight: 1.7 }}>
@@ -195,26 +210,25 @@ export default function OtDecisionBoard({
                     </span>
                     {item.status.payable
                       ? (ar ? "لا حضور يثبته — يُصرف إن عُمل، أو يُغلق «لم يُعمل»." : "No punches prove it — paid if it was worked, or closed as «not worked».")
-                      : (ar ? "من الجدول المنشور — لا يُصرف قبل أن يُعمل ويثبته الحضور والانصراف (المادة 107)." : "From the published roster — not payable until worked and proven by the punches (Art. 107).")}
+                      : (ar ? "من الجدول المنشور — لا يُصرف قبل أن يُعمل ويثبته الحضور والانصراف." : "From the published roster — not payable until worked and proven by the punches.")}
                   </span>
                 ) : null}
                 {item.proven ? (
                   <span data-ot-proven="1" style={{ fontSize: 11, color: SW.ink, lineHeight: 1.7 }}>
-                    {ar ? "مثبتة بالحضور والانصراف — تُصرف أو تُعوَّض بإجازة، ولا تُرفض (المادة 107)." : "Proven by the punches — paid or taken as compensatory leave, never rejected (Art. 107)."}
+                    {ar ? "مثبتة بالحضور والانصراف — تُصرف أو تُعوَّض بإجازة، ولا تُرفض." : "Proven by the punches — paid or taken as compensatory leave, never rejected."}
                   </span>
                 ) : null}
                 {item.open?.decision === "pending_worker_cap_consent" ? (
                   mine ? (
                     <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 11 }}>
-                      <span style={{ color: SW.gold }}>{ar ? `يُطلب موافقتك على تجاوز سقف ${formatRuleFigure(cap, "hours", ar)} في السنة (اللائحة م22).` : `Your consent to pass the annual ${formatRuleFigure(cap, "hours", false)} cap is requested (Regs Art. 22).`}</span>
+                      <span style={{ color: SW.gold }}>{ar ? `يُطلب موافقتك على تجاوز سقف ${formatRuleFigure(cap, "hours", ar)} في السنة.` : `Your consent to pass the annual ${formatRuleFigure(cap, "hours", false)} cap is requested.`}</span>
                       <button type="button" data-ot-cap-accept="1" onClick={() => answerCap(item.dateKey, true)} style={{ fontFamily: "inherit", fontSize: 11, fontWeight: 600, padding: "5px 10px", border: "1px solid var(--nv-btn-fill)", background: "var(--nv-btn-fill)", color: "var(--nv-btn-ink)", cursor: "pointer", borderRadius: 10 }}>{ar ? "أوافق" : "I consent"}</button>
                       <button type="button" onClick={() => answerCap(item.dateKey, false)} style={{ fontFamily: "inherit", fontSize: 11, padding: "5px 10px", border: `1px solid ${SW.line}`, background: SW.card, color: SW.ink, cursor: "pointer", borderRadius: 10 }}>{ar ? "لا أوافق" : "I decline"}</button>
                     </span>
                   ) : (
-                    <span style={{ fontSize: 11, color: SW.gold }}>{ar ? "بانتظار موافقة العامل على تجاوز السقف السنوي (اللائحة م22)." : "Awaiting the worker's consent to pass the annual cap (Regs Art. 22)."}</span>
+                    <span style={{ fontSize: 11, color: SW.gold }}>{ar ? "بانتظار موافقة العامل على تجاوز السقف السنوي." : "Awaiting the worker's consent to pass the annual cap."}</span>
                   )
                 ) : null}
-                {item.ruleId && item.ruleId !== "hours.ot.premium" ? <LaborArticleCite ruleId={item.ruleId} ar={ar} /> : null}
                 {saved ? (
                   <span style={{ fontSize: 11, color: SW.green }}>
                     {saved.decision === "comp_leave"
@@ -244,8 +258,8 @@ export default function OtDecisionBoard({
                     {row.ytd + item.overtimeHours > cap && item.open?.decision !== "pending_worker_cap_consent" ? (
                       <span style={{ fontSize: 11, color: SW.mid }}>
                         {ar
-                          ? `يتجاوز سقف السنة ${formatRuleFigure(cap, "hours", ar)} — يُطلب من العامل نفسه الموافقة (اللائحة م22).`
-                          : `Passes the annual ${formatRuleFigure(cap, "hours", false)} cap — the worker himself is asked to consent (Regs Art. 22).`}
+                          ? `يتجاوز سقف السنة ${formatRuleFigure(cap, "hours", ar)} — يُطلب من العامل نفسه الموافقة.`
+                          : `Passes the annual ${formatRuleFigure(cap, "hours", false)} cap — the worker himself is asked to consent.`}
                       </span>
                     ) : null}
                     <label style={{ fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6 }}>

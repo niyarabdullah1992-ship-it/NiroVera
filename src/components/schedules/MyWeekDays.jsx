@@ -19,6 +19,8 @@ import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
 import { chip, mono } from "@/components/schedules/scheduleChrome";
 import { DUTY_LEAVE_STYLE as LEAVE_STYLE, DUTY_REST_STYLE as REST_STYLE, dutyChip, dutyLabel } from "@/components/schedules/dutyStatus";
 import { revealNode } from "@/components/schedules/dutyLinks";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
 
 const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 const MONTHS_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -210,12 +212,15 @@ export default function MyWeekDays({
                 {sunMark ? (
                   <span
                     data-sun-day={sunMark}
-                    title={ar ? "حظر العمل المكشوف (3337) — 12:00 إلى 15:00" : "Open-sun ban (3337) — 12:00 to 15:00"}
+                    title={ar ? "حظر العمل المكشوف — 12:00 إلى 15:00" : "Open-sun ban — 12:00 to 15:00"}
                     style={dutyChip(sunMark === SUN_FIELD ? "exposed" : sunMark === "unset" ? "alert" : "ok", { height: 20, fontSize: 10, padding: "0 6px", gap: 3, alignSelf: "flex-start" })}
                   >
                     <Sun aria-hidden style={{ width: 11, height: 11, flex: "none" }} strokeWidth={2.4} />
                     {sunMark === SUN_FIELD ? dutyLabel("exposed", ar) : sunMark === "unset" ? (ar ? "لم يُحدَّد بعد" : "Not set yet") : (ar ? "مظلّل" : "Shaded")}
                   </span>
+                ) : null}
+                {sunMark === SUN_FIELD ? (
+                  <RightHint ar={ar} style={{ alignSelf: "flex-start" }} hint={attRightHint("heat", { date: day.key, exposed: true }, { view: "employee", ar })} />
                 ) : null}
                 {alertLabel && tone ? (
                   <span data-day-alert="1" title={alertTitle} style={{ display: "inline-flex", alignItems: "center", alignSelf: "flex-start", height: 20, padding: "0 7px", borderRadius: 6, fontSize: 10, fontWeight: 700, color: tone.ink, background: tone.soft, border: `1px solid ${tone.line}`, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

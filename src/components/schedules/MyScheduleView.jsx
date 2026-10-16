@@ -28,6 +28,8 @@ import { DutyBoard, DutyHeadline, DutyTile, DutyTiles } from "@/components/sched
 import DutySide, { dutyHeatCopy } from "@/components/schedules/DutySide";
 import { findNextShift, inLabel } from "@/components/schedules/myDutyWeek";
 import { dutyEdge } from "@/components/schedules/dutyStatus";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
 
 const WEEK_LIMIT = 48;
 
@@ -188,6 +190,7 @@ export default function MyScheduleView({
             <section data-my-week="1" style={{ ...slab, display: "flex", flexDirection: "column" }}>
               <SectionHead
                 title={ar ? `أيامي — ${relative}` : `My days — ${relative}`}
+                trailing={<RightHint ar={ar} hint={attRightHint("roster", { weekStart: selectedKey, published, publishedAt: published ? (pub?.snap?.at || "") : "", changedAfterPublish: pub?.kind === "edited" }, { view: "employee", ar })} />}
                 note={published
                   ? (ar ? "من الجدول المنشور. الإجازة والعطل الرسمية مقفلة." : "From the published roster. Leave and official holidays are locked.")
                   : (ar ? "هذا الأسبوع لم يُنشر بعد — قد يتغيّر، و«حضر» يبقى مغلقاً حتى النشر." : "This week is not published yet — it may change, and check-in stays closed until it is.")}

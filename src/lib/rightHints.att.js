@@ -388,8 +388,8 @@ export const ATT_HINT_BUILDERS = {
         ? `${exposed ? `${nameOf(c)} في عمل مكشوف${when ? ` ${when}` : ""} — ` : ""}أوقف العمل المكشوف من ${w.startLabel} إلى ${w.endLabel} ${season} أو انقله لمكان مظلّل.`
         : `${exposed ? `${nameOf(c)} on exposed work${when ? ` ${when}` : ""} — ` : ""}stop open-sun work ${w.startLabel}–${w.endLabel} ${season} or move to shade.`,
       worker: {
-        ifNot: ar ? "إن شُغّلت تحت الشمس في هذه الساعات: بلّغ عن العمل المكشوف أو تظلّم؛ وللوزارة تفتيش المنشأة." : "If made to work in the sun in these hours: report it or grieve; the ministry inspects.",
-        action: ACT.grievance(ar),
+        ifNot: ar ? "إن كُلّفت بعمل مكشوف في هذه الساعات: لك أن ترفض وتبلّغ من «طلبات الدوام»." : "If assigned exposed work in these hours: you may refuse and report it from Duty requests.",
+        action: { kind: "duty", to: "/app/requests?kind=heat_report", label: ar ? "بلّغ عن عمل مكشوف" : "Report exposed work" },
       },
       manager: ar ? "وإلا عُدّ مخالفة للقرار 3337 تُرصد في تفتيش الوزارة." : "Otherwise it breaches Decision 3337 and shows on a ministry inspection.",
     });
@@ -460,16 +460,17 @@ export const ATT_HINT_BUILDERS = {
     const { ar, today } = c;
     const wk = day(item.weekStart, today, ar);
     const pub = day(item.publishedAt, today, ar);
+    const isPub = !!(pub || item.published);
     return pack(c, {
       law: art("17", ar),
       right: ar
-        ? `جدول أسبوع ${wk}${pub ? ` منشور منذ ${pub}` : " لم يُنشر بعد"} — تُعلن مواعيد العمل والراحة ويوم الراحة والنوبات في مكان ظاهر قبل العمل بها.`
-        : `Week of ${wk}${pub ? ` published ${pub}` : " not yet published"} — hours, breaks, the rest day and shifts are posted visibly before they apply.`,
+        ? `جدول أسبوع ${wk}${pub ? ` منشور منذ ${pub}` : isPub ? " منشور" : " لم يُنشر بعد"} — تُعلن مواعيد العمل والراحة ويوم الراحة والنوبات في مكان ظاهر قبل العمل بها.`
+        : `Week of ${wk}${pub ? ` published ${pub}` : isPub ? " published" : " not yet published"} — hours, breaks, the rest day and shifts are posted visibly before they apply.`,
       rightManager: ar
         ? `انشر جدول أسبوع ${wk} قبل بدايته${item.changedAfterPublish ? "، وأعد نشره بعد التعديل" : ""} — إعلان المواعيد والراحة والنوبات واجب.`
         : `Publish the week of ${wk} before it starts${item.changedAfterPublish ? ", and republish after the change" : ""} — posting hours, rest and shifts is required.`,
       manager: ar ? "وإلا خالفت المادة 17، ولم يعرف العامل مواعيده قبل العمل بها." : "Otherwise Art. 17 is breached and the worker learns his hours too late.",
-      due: item.publishedAt ? "" : item.weekStart,
+      due: isPub ? "" : item.weekStart,
     });
   },
 };

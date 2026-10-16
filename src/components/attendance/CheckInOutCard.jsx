@@ -283,7 +283,6 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       ? "awaiting_out"
       : "done";
 
-  const clockLabel = toWesternDigits(formatTime(new Date(tick).toISOString(), format, "en-GB"));
   const locationFailed = /OUTSIDE_STATION|GPS_REQUIRED|STATION_LOCATION|location|موقع|النطاق/i.test(error || "");
   const forgotten = isForgottenCheckout(shift, attendance, tick);
   const inTime = attendance?.check_in_at ? toWesternDigits(formatTime(attendance.check_in_at, format, "en-GB")) : "—";
@@ -515,9 +514,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           <span style={{ fontSize: 12, color: "var(--nv-ink3, var(--nv-muted))" }}>{siteLine}</span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-          <span style={{ whiteSpace: "nowrap" }}>
-            <span dir="ltr" aria-label={ar ? "الساعة الآن" : "Time now"} style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700, fontSize: 32, lineHeight: 1, fontVariantNumeric: "tabular-nums", color: "var(--nv-ok-ink, #2F6B43)" }}>{clockLabel}</span>
-          </span>
+          {/* No clock here: the time is already in the page header. */}
           <span
             data-punch-state
             style={{

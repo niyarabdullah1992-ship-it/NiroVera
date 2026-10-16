@@ -1,25 +1,34 @@
 /**
- * Workforce / org chrome — Design System v2.
- * Composition from workforce.dc HTML; tokens stay --nv-* (not cream/terracotta).
- * Document 14 · controls 10 · chips 999 · status on top 3px edge.
- * Tree card is 272px wide and grows in height: name, job title, meta, footer.
+ * Workforce / org chrome — the platform's chrome, not a second one.
+ * Cards = slab geometry (--nv-card, 1px --nv-line, radius 12, DS_SHADOW); chips = scheduleChrome chip;
+ * figures in IBM Plex Mono (Latin digits); one green accent for "me"/selection; tokens only (dark mode flips).
+ * Tree card is 250px wide and grows in height: band, name, job title, meta, footer.
  */
 
 import React from "react";
-import { DS_CONTROL_RADIUS, DS_PILL_RADIUS, DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
+import { chip, chipButton, mono } from "@/components/schedules/scheduleChrome";
+import { DS_RADIUS, DS_SHADOW } from "@/lib/designSystem";
 
-export const ORG_MONO = { fontFamily: "'IBM Plex Mono', monospace" };
+export const ORG_MONO = mono;
 
 /** HTML workforce tree column / card width. */
 export const ORG_NODE_W = 250;
-export const ORG_NODE_H = 76;
-export const ORG_NODE_H_ACTING = 96;
-export const ORG_NODE_SHADOW = "0 1px 2px var(--nv-shadow2), 0 8px 20px var(--nv-shadow)";
-/** Package connector: 2px sage, not a hairline. */
-export const ORG_TREE_LINE = "#B9C7BF";
+/** Tree connector — the platform's mute fill (flips at night). */
+export const ORG_TREE_LINE = "var(--nv-mute-fill, var(--nv-line))";
 
-/** HTML GC — one color per ladder step, repeating after the seventh. */
-export const ORG_GRADE_COLORS = ["#555C66", "#3C7D50", "#2F6B43", "#0F5535", "#0B3D27", "#C8A45A", "#8A5A12"];
+/**
+ * «لوّن حسب الدرجة» — one green ramp, light to the deep structure green, repeating after the
+ * seventh step. Used as a small swatch only; grade codes themselves are mute mono chips.
+ */
+export const ORG_GRADE_COLORS = [
+  "var(--nv-mute-fill)",
+  "color-mix(in oklab, var(--nv-accent) 35%, var(--nv-card))",
+  "color-mix(in oklab, var(--nv-accent) 55%, var(--nv-card))",
+  "color-mix(in oklab, var(--nv-accent) 78%, var(--nv-card))",
+  "var(--nv-accent)",
+  "color-mix(in oklab, var(--nv-accent) 55%, var(--nv-navy))",
+  "var(--nv-navy)",
+];
 
 export function orgGradeColor(index) {
   const step = Number(index);
@@ -27,22 +36,18 @@ export function orgGradeColor(index) {
   return ORG_GRADE_COLORS[step % ORG_GRADE_COLORS.length];
 }
 
-const TONE_DOT = {
-  ok: "#0B3D27",
-  acting: "#C8A45A",
-  warn: "#9B2335",
-  block: "#9B2335",
-  vacant: "#8A5A12",
-};
+/** A grade code (م3 · G4 …) — a quiet mute chip with the code in mono. */
+export function gradeBadge(extra = {}) {
+  return chip("mute", { ...mono, fontSize: 10.5, height: 20, padding: "0 6px", direction: "ltr", unicodeBidi: "isolate", justifyContent: "center", minWidth: 28, ...extra });
+}
 
-/** Vacant seat meaning. Gold fill stays #FBF3E1 day and night. Dashed edge matches the package. */
-const VACANT_BG = "#FBF3E1";
-const VACANT_INK = "#8A5A12";
-const VACANT_LINE = "#EAD6A8";
-const VACANT_DASH = "#D9C08A";
-const VACANT_MARK = "#B7791F";
-const INITIALS_BG = "#E6F0EA";
-const INITIALS_INK = "#0B3D27";
+const TONE_DOT = {
+  ok: "var(--nv-ok-fill)",
+  acting: "var(--nv-mute-fill)",
+  warn: "var(--nv-bad-ink)",
+  block: "var(--nv-bad-ink)",
+  vacant: "var(--nv-mute-fill)",
+};
 
 export function OrgLockMark({ size = 18, icon = 11, title = "وحدة ثابتة" }) {
   return (
@@ -55,10 +60,10 @@ export function OrgLockMark({ size = 18, icon = 11, title = "وحدة ثابتة
         justifyContent: "center",
         width: size,
         height: size,
-        borderRadius: size > 20 ? 7 : 5,
-        background: "#0B3D27",
-        border: "1px solid #0B3D27",
-        color: "#fff",
+        borderRadius: size > 20 ? 8 : 5,
+        background: "var(--nv-soft)",
+        border: "1px solid var(--nv-line)",
+        color: "var(--nv-ink2)",
         flex: "none",
       }}
     >
@@ -83,9 +88,10 @@ function facePlace(value) {
 }
 
 /**
- * One org-tree seat.
- * Band · initials · name · title · NV/date · reserved gold coord line.
- * Occupied stays white (night #1C2922). Vacant stays gold.
+ * One org-tree seat — slab geometry.
+ * Band (unit / kind) · initials · name · title · employee line · coordination line.
+ * Vacant = dashed line, transparent fill, muted ink; "me" = the green accent ring; a compliance
+ * alert tints only the band (bad soft) — never the whole card.
  */
 export function OrgWorkforceNodeCard({
   name,
@@ -153,16 +159,9 @@ export function OrgWorkforceNodeCard({
   const coord = String(coordinate || "").trim()
     || (hrLine ? `خط متقطع · ${hrLine} · تنسيق الجدول` : "")
     || (servesText ? `يخدم: ${servesText}` : "");
-  const bandBg = empty || acting
-    ? VACANT_BG
-    : resolvedTone === "warn" || resolvedTone === "block"
-      ? "var(--nv-bad-soft, #FBEBED)"
-      : "var(--nv-org-band, #EEF4F0)";
-  const bandInk = empty || acting
-    ? VACANT_INK
-    : resolvedTone === "warn" || resolvedTone === "block"
-      ? "var(--nv-bad-ink, #9B2335)"
-      : "var(--nv-org-band-ink, #0B3D27)";
+  const alert = resolvedTone === "warn" || resolvedTone === "block";
+  const bandBg = alert ? "var(--nv-bad-soft)" : (empty ? "transparent" : "var(--nv-soft)");
+  const bandInk = alert ? "var(--nv-bad-ink)" : "var(--nv-ink2)";
   const showGrade = !dense && Boolean(grade) && !/\bOP\d/i.test(grade) && !/preview/i.test(grade);
 
   return (
@@ -177,31 +176,31 @@ export function OrgWorkforceNodeCard({
         width: ORG_NODE_W,
         maxWidth: "100%",
         boxSizing: "border-box",
-        background: empty ? VACANT_BG : "var(--nv-card, #fff)",
+        background: empty ? "transparent" : "var(--nv-card)",
         border: empty
-          ? `1px dashed ${VACANT_DASH}`
-          : `1px solid ${selected ? "#0B3D27" : "var(--nv-org-card-line, #DCE3DF)"}`,
-        borderRadius: 6,
+          ? "1px dashed var(--nv-mute-fill, var(--nv-line))"
+          : `1px solid ${isMe ? "var(--nv-accent)" : selected ? "var(--nv-navy)" : "var(--nv-line)"}`,
+        borderRadius: DS_RADIUS,
         overflow: "hidden",
         boxShadow: isMe
-          ? "0 0 0 3px #C8A45A, 0 1px 2px rgba(12,20,16,.05), 0 8px 20px rgba(12,20,16,.07)"
+          ? `0 0 0 3px var(--nv-accent-soft), ${DS_SHADOW}`
           : selected
-            ? "0 0 0 2px #0B3D27, 0 1px 2px rgba(12,20,16,.05), 0 8px 20px rgba(12,20,16,.07)"
-            : "0 1px 2px rgba(12,20,16,.05), 0 8px 20px rgba(12,20,16,.07)",
+            ? `0 0 0 2px var(--nv-navy), ${DS_SHADOW}`
+            : (empty ? "none" : DS_SHADOW),
         cursor: "pointer",
         textAlign: "start",
         transition: "transform .15s, box-shadow .15s",
         ...style,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, padding: "6px 12px", minHeight: 30, boxSizing: "border-box", background: bandBg }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, padding: "6px 12px", minHeight: 30, boxSizing: "border-box", background: bandBg, borderBottom: "1px solid var(--nv-line2, var(--nv-line))" }}>
         {!empty && byGrade && gradeColor ? <span aria-hidden data-grade-swatch="1" style={{ width: 8, height: 8, borderRadius: 2, flex: "none", background: gradeColor }} /> : null}
-        <span title={unitTip || gradeTip || actingText || undefined} style={{ flex: "1 1 auto", minWidth: 0, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: bandInk }}>
+        <span title={unitTip || gradeTip || actingText || undefined} style={{ flex: "1 1 auto", minWidth: 0, fontSize: 10.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: bandInk }}>
           {face}
         </span>
         {locked ? <OrgLockMark /> : null}
         {showGrade ? (
-          <span title={gradeTip || undefined} style={{ font: "600 10px 'IBM Plex Mono', monospace", padding: "0 6px", borderRadius: 999, background: empty ? "#fff" : "var(--nv-card, #fff)", color: "var(--nv-ink3, #555C66)", border: "1px solid var(--nv-org-card-line, #DCE3DF)", whiteSpace: "nowrap", flex: "none" }}>{grade}</span>
+          <span title={gradeTip || undefined} style={gradeBadge({ height: 18, fontSize: 10, flex: "none" })}>{grade}</span>
         ) : null}
       </div>
       <div style={{ display: "flex", gap: 11, alignItems: "center", padding: "12px 12px 6px" }}>
@@ -229,15 +228,15 @@ export function OrgWorkforceNodeCard({
             overflow: "visible",
             fontFamily: "inherit",
             ...(empty
-              ? { border: `1.5px dashed ${VACANT_DASH}`, color: VACANT_MARK, background: "#fff" }
-              : { border: "none", background: INITIALS_BG, color: INITIALS_INK }),
+              ? { border: "1.5px dashed var(--nv-mute-fill, var(--nv-line))", color: "var(--nv-muted)", background: "transparent" }
+              : { border: "1px solid var(--nv-line)", background: isMe ? "var(--nv-accent-soft)" : "var(--nv-soft)", color: "var(--nv-ink2)" }),
           }}
         >
           {avatarUrl && !empty
             ? <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} />
             : (empty ? "＋" : initials)}
           {!empty ? (
-            <span aria-hidden style={{ position: "absolute", bottom: -1, insetInlineEnd: -1, width: 11, height: 11, borderRadius: "50%", border: "2px solid var(--nv-card, #fff)", background: dot }} />
+            <span aria-hidden style={{ position: "absolute", bottom: -1, insetInlineEnd: -1, width: 11, height: 11, borderRadius: "50%", border: "2px solid var(--nv-card)", background: dot }} />
           ) : null}
         </button>
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1, gap: 2 }}>
@@ -250,7 +249,7 @@ export function OrgWorkforceNodeCard({
             }}
             style={{
               cursor: onNameClick ? "pointer" : "inherit",
-              color: empty ? VACANT_INK : "var(--nv-ink, #111418)",
+              color: empty ? "var(--nv-muted)" : "var(--nv-ink)",
               fontSize: 13.5,
               lineHeight: 1.35,
               fontWeight: 700,
@@ -261,7 +260,7 @@ export function OrgWorkforceNodeCard({
           >
             {strong}
           </strong>
-          <span title={sub} style={{ fontSize: 11.5, color: "var(--nv-ink3, #555C66)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <span title={sub} style={{ fontSize: 11.5, color: "var(--nv-ink2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {sub}
           </span>
         </div>
@@ -271,13 +270,13 @@ export function OrgWorkforceNodeCard({
           dir={isMe ? undefined : "ltr"}
           title={hireTip || undefined}
           style={{
-            ...ORG_MONO,
+            ...(isMe || empty ? {} : ORG_MONO),
             minWidth: 0,
             direction: isMe ? undefined : "ltr",
             unicodeBidi: "isolate",
             fontSize: 10.5,
-            fontWeight: isMe ? 700 : 500,
-            color: empty || isMe ? VACANT_INK : "var(--nv-ink3, #555C66)",
+            fontWeight: isMe ? 600 : 500,
+            color: isMe ? "var(--nv-ok-ink)" : "var(--nv-muted)",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -300,16 +299,17 @@ export function OrgWorkforceNodeCard({
               gap: 4,
               height: 22,
               padding: "0 8px",
-              borderRadius: 999,
-              font: "600 11px 'IBM Plex Mono', monospace",
+              borderRadius: 8,
+              ...ORG_MONO,
+              fontSize: 11,
+              fontWeight: 600,
               direction: "ltr",
               cursor: onCountClick ? "pointer" : "default",
               whiteSpace: "nowrap",
-              fontFamily: "inherit",
               flex: "none",
               ...(countOpen
-                ? { background: "#0B3D27", color: "#fff", border: "1px solid #0B3D27" }
-                : { background: "var(--nv-org-band, #EEF4F0)", color: "var(--nv-org-band-ink, #0B3D27)", border: "1px solid #CFE0D6" }),
+                ? { background: "var(--nv-navy)", color: "var(--nv-btn-ink, #fff)", border: "1px solid var(--nv-navy)" }
+                : { background: "var(--nv-card)", color: "var(--nv-ink)", border: "1px solid var(--nv-line)" }),
             }}
           >
             {count} {countOpen ? "▴" : "▾"}
@@ -317,7 +317,7 @@ export function OrgWorkforceNodeCard({
         ) : null}
       </div>
       {dense ? null : (
-        <div title={coord || undefined} style={{ margin: "0 12px 10px", paddingTop: 6, borderTop: "1px dashed #EAD6A8", fontSize: 10.5, lineHeight: 1.6, color: VACANT_INK, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minHeight: 18 }}>
+        <div title={coord || undefined} style={{ margin: "0 12px 10px", paddingTop: 6, borderTop: "1px solid var(--nv-line2, var(--nv-line))", fontSize: 10.5, lineHeight: 1.6, color: "var(--nv-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minHeight: 18 }}>
           {coord || "\u00a0"}
         </div>
       )}
@@ -325,7 +325,7 @@ export function OrgWorkforceNodeCard({
   );
 }
 
-/** Column wrapper matching HTML colStyle (272px + side margin). */
+/** Column wrapper matching HTML colStyle (250px + side margin). */
 export function OrgWorkforceCol({ children, style, nodeId }) {
   return (
     <div
@@ -347,164 +347,24 @@ export function OrgWorkforceCol({ children, style, nodeId }) {
 export const orgStack = {
   display: "flex",
   flexDirection: "column",
-  gap: 14,
+  gap: 16,
 };
 
-/** Calm paper — no coloured edge; `state` is kept for callers (status shows as a chip, see StatusFlag). */
-export function orgPaper(state = "mute") { // eslint-disable-line no-unused-vars
-  return {
-    background: "var(--nv-card)",
-    border: "1px solid var(--nv-line)",
-    borderRadius: DS_RADIUS,
-    boxShadow: DS_SHADOW,
-    boxSizing: "border-box",
-  };
-}
-
-/** HTML workforce paper — no status edge; quiet document card. */
-export function orgPaperFlat() {
-  return {
-    background: "var(--nv-card)",
-    border: "1px solid var(--nv-line)",
-    borderRadius: DS_RADIUS,
-    boxShadow: DS_SHADOW,
-    boxSizing: "border-box",
-  };
-}
-
-export function orgInset() {
-  return {
-    background: "var(--nv-inset, var(--nv-soft))",
-    border: "1px solid var(--nv-line)",
-    borderRadius: DS_CONTROL_RADIUS,
-    padding: "10px 12px",
-    boxSizing: "border-box",
-  };
-}
-
-/** Hero nav chips stay quiet (HTML escNavStyle). Full-tree uses ok green. */
-export function orgChip(on = false) {
-  return {
-    fontFamily: "inherit",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    height: 28,
-    padding: "0 11px",
-    borderRadius: DS_PILL_RADIUS,
-    border: `1px solid ${on ? "var(--nv-navy)" : "var(--nv-line)"}`,
-    background: on ? "var(--nv-navy)" : "var(--nv-card)",
-    color: on ? "var(--nv-btn-ink, #fff)" : "var(--nv-ink2)",
-    fontSize: 11.5,
-    fontWeight: 600,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  };
-}
-
+/** Quiet chip-shaped control (platform chipButton, off). */
 export function orgNavChip() {
-  return {
-    ...orgChip(false),
-    background: "var(--nv-card)",
-    color: "var(--nv-ink2)",
-    border: "1px solid var(--nv-line)",
-  };
+  return chipButton(false, { height: 28, padding: "0 11px", fontSize: 11.5 });
 }
 
-export function orgChipOk(on = false) {
-  return {
-    ...orgChip(on),
-    border: `1px solid ${on ? "var(--nv-ok-ink)" : "var(--nv-line)"}`,
-    background: on ? "var(--nv-ok-ink)" : "var(--nv-card)",
-    color: on ? "#fff" : "var(--nv-ink2)",
-  };
-}
-
-/** Filter chips under the event log — quieter than nav pills. */
+/** Filter chip (platform chipButton; on = navy). */
 export function orgKindChip(on = false) {
-  return {
-    fontFamily: "inherit",
-    display: "inline-flex",
-    alignItems: "center",
-    height: 24,
-    padding: "0 9px",
-    borderRadius: DS_PILL_RADIUS,
-    fontSize: 10.5,
-    fontWeight: 600,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    border: `1px solid ${on ? "var(--nv-box, #C3CBD8)" : "var(--nv-line)"}`,
-    background: on ? "var(--nv-soft)" : "transparent",
-    color: on ? "var(--nv-ink)" : "var(--nv-muted)",
-  };
+  return chipButton(on, { fontSize: 11 });
 }
 
-export function orgPrimaryBtn() {
-  return {
-    fontFamily: "inherit",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    height: 28,
-    padding: "0 11px",
-    borderRadius: 8,
-    border: "1px solid var(--nv-navy)",
-    background: "var(--nv-navy)",
-    color: "#fff",
-    fontSize: 11.5,
-    fontWeight: 600,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  };
-}
-
-export function orgGhostBtn() {
-  return {
-    fontFamily: "inherit",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    height: 28,
-    padding: "0 11px",
-    borderRadius: 8,
-    border: "1px solid var(--nv-line)",
-    background: "var(--nv-card)",
-    color: "var(--nv-ink)",
-    fontSize: 11.5,
-    fontWeight: 600,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  };
-}
-
-export function OrgStatInline({ label, value, tone: _tone }) {
-  const color = "var(--nv-ink)"; // KPI law: numbers stay ink; status belongs in a chip.
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-      <div style={{ fontSize: 10, color: "var(--nv-muted)" }}>{label}</div>
-      <span dir="ltr" style={{ ...ORG_MONO, fontSize: 18, fontWeight: 500, color, unicodeBidi: "isolate" }}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-export function OrgLegendDot({ color, label, bar = false }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--nv-muted)" }}>
-      <span
-        aria-hidden
-        style={bar
-          ? { width: 20, height: 8, borderRadius: 4, background: color, flex: "none" }
-          : { width: 8, height: 8, borderRadius: "50%", background: color, flex: "none" }}
-      />
-      {label}
-    </span>
-  );
-}
-
+/**
+ * One fold row inside a slab — chevron · 13/700 title · muted note on the start side, a mono
+ * meta on the end side; the body opens below with the slab's 18px gutter. Same rhythm as the
+ * schedule's Collapsible, kept controlled so the summary links can open a fold from afar.
+ */
 export function OrgCollapsibleArticle({
   title,
   meta,
@@ -515,37 +375,23 @@ export function OrgCollapsibleArticle({
   articleStyle,
 }) {
   return (
-    <article style={{ ...orgPaperFlat(), padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10, ...articleStyle }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <article style={{ borderBottom: "1px solid var(--nv-line2, var(--nv-line))", minWidth: 0, ...articleStyle }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", flexWrap: "wrap", minWidth: 0 }}>
         <button
           type="button"
           onClick={onToggle}
-          style={{
-            all: "unset",
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            cursor: "pointer",
-            fontFamily: "inherit",
-            color: "var(--nv-ink)",
-          }}
+          aria-expanded={Boolean(open)}
+          style={{ all: "unset", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontFamily: "inherit", color: "var(--nv-ink)", flex: "1 1 220px", minWidth: 0 }}
         >
-          <span aria-hidden style={{ fontSize: 12, color: "var(--nv-muted)", transform: open ? "none" : "rotate(-90deg)", transition: "transform .15s ease" }}>▾</span>
-          <strong style={{ fontSize: 13, fontWeight: 700 }}>{title}</strong>
+          <span className="nv-org-fold-chevron" data-open={open ? "1" : "0"} aria-hidden style={{ fontSize: 11, color: "var(--nv-muted)", flex: "none" }}>▸</span>
+          <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+            <strong style={{ fontSize: 13, fontWeight: 700 }}>{title}</strong>
+            {meta != null ? <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.55 }}>{meta}</span> : null}
+          </span>
         </button>
-        <span style={{ flex: 1 }} />
-        {extra}
-        {meta != null ? (
-          <button
-            type="button"
-            onClick={onToggle}
-            style={{ all: "unset", cursor: "pointer", fontSize: 11, color: "var(--nv-muted)", fontFamily: "inherit" }}
-          >
-            {meta}
-          </button>
-        ) : null}
+        {extra ? <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>{extra}</span> : null}
       </div>
-      {open ? children : null}
+      {open ? <div style={{ padding: "0 18px 16px", display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>{children}</div> : null}
     </article>
   );
 }

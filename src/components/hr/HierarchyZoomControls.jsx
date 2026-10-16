@@ -7,9 +7,9 @@ const strip = {
   alignItems: "center",
   height: 34,
   padding: "0 4px",
-  borderRadius: 999,
+  borderRadius: 8,
   border: "1px solid var(--nv-line)",
-  background: "color-mix(in oklab, var(--nv-ink) 3%, #fff)",
+  background: "var(--nv-card)",
 };
 
 const iconBtn = {
@@ -17,7 +17,7 @@ const iconBtn = {
   height: 28,
   padding: 0,
   border: "none",
-  borderRadius: 999,
+  borderRadius: 6,
   background: "transparent",
   color: NAVY,
   display: "inline-flex",
@@ -31,7 +31,7 @@ const divider = {
   width: 1,
   height: 16,
   margin: "0 3px",
-  background: "#E4E9F0",
+  background: "var(--nv-line)",
   flexShrink: 0,
 };
 
@@ -75,16 +75,16 @@ export default function HierarchyZoomControls({
   const pct = Math.round(zoom * 100);
 
   if (htmlStrip) {
-    const cell = { ...htmlBtn, width: 32, height: 32, border: "none", borderRadius: 0 };
+    const cell = { ...htmlBtn, width: 32, height: 30, border: "none", borderRadius: 0 };
     return (
       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }} role="toolbar" aria-label={ar ? "عرض الشجرة" : "Tree view"}>
         <span style={{ display: "inline-flex", alignItems: "center", border: "1px solid var(--nv-line)", borderRadius: 8, overflow: "hidden", background: "var(--nv-card)" }}>
           <button type="button" onClick={() => onZoom(-0.1)} style={cell} title={ar ? "تصغير" : "Zoom out"} aria-label={ar ? "تصغير" : "Zoom out"}>−</button>
-          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", direction: "ltr", unicodeBidi: "isolate", fontSize: 11.5, minWidth: 46, textAlign: "center", borderInline: "1px solid var(--nv-line)", lineHeight: "32px" }}>{pct}%</span>
+          <span dir="ltr" style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", direction: "ltr", unicodeBidi: "isolate", fontSize: 11.5, minWidth: 46, textAlign: "center", borderInline: "1px solid var(--nv-line)", lineHeight: "30px", color: "var(--nv-ink)" }}>{pct}%</span>
           <button type="button" onClick={() => onZoom(0.1)} style={cell} title={ar ? "تكبير" : "Zoom in"} aria-label={ar ? "تكبير" : "Zoom in"}>+</button>
         </span>
         {typeof onFit === "function" ? (
-          <button type="button" onClick={onFit} style={{ ...htmlTxtBtn, height: 32, borderRadius: 8, border: "1px solid var(--nv-line)", color: "var(--nv-ink)" }}>
+          <button type="button" onClick={onFit} style={{ ...htmlTxtBtn, height: 32, fontSize: 12, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-line)", color: "var(--nv-ink)" }}>
             {ar ? "ملاءمة" : "Fit"}
           </button>
         ) : null}
@@ -125,8 +125,7 @@ export default function HierarchyZoomControls({
           fontSize: 11,
           fontWeight: 600,
           color: MUTED,
-          fontFamily: "'IBM Plex Sans', sans-serif",
-          letterSpacing: "-0.02em",
+          fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)",
         }}
       >
         {pct}%

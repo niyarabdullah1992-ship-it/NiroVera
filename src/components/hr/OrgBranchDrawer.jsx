@@ -129,7 +129,7 @@ function DrawerShell({ ar, title, sub, chain, onClose, children }) {
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) onClose?.();
         }}
-        style={{ position: "absolute", inset: 0, background: "rgba(11,61,39,.32)" }}
+        style={{ position: "absolute", inset: 0, background: "color-mix(in oklab, var(--nv-navy) 26%, transparent)" }}
       />
       <aside
         role="dialog"
@@ -142,7 +142,7 @@ function DrawerShell({ ar, title, sub, chain, onClose, children }) {
           height: "100%",
           background: "var(--nv-card)",
           borderInlineEnd: "1px solid var(--nv-line)",
-          boxShadow: "0 0 40px rgba(6,61,38,.16)",
+          boxShadow: "0 18px 44px var(--nv-shadow)",
           display: "flex",
           flexDirection: "column",
           overflow: "auto",
@@ -440,7 +440,7 @@ export function OrgBranchDrawer({
       ) : null}
 
       {fixedHr ? (
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: "var(--nv-accent-soft)", border: "1px solid #C5DBCD", fontSize: 11.5, color: "var(--nv-ink)", lineHeight: 1.8 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: "var(--nv-accent-soft)", border: "1px solid var(--nv-line)", fontSize: 11.5, color: "var(--nv-ink)", lineHeight: 1.8 }}>
           <span style={{ fontSize: 14, lineHeight: 1.4 }}>🔒</span>
           <span>
             <strong>{ar ? "وحدة الموارد البشرية" : "HR unit"}</strong>

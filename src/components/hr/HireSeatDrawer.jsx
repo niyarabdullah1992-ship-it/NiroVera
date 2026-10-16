@@ -698,7 +698,7 @@ export default function HireSeatDrawer({
         zIndex: 480,
         display: "flex",
         justifyContent: "flex-start",
-        background: "rgba(11,61,39,.32)",
+        background: "color-mix(in oklab, var(--nv-navy) 26%, transparent)",
       }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose?.();
@@ -712,7 +712,7 @@ export default function HireSeatDrawer({
           height: "100%",
           background: "var(--nv-card, #fff)",
           borderInlineEnd: "1px solid var(--nv-line)",
-          boxShadow: "0 0 40px rgba(6,61,38,.16)",
+          boxShadow: "0 18px 44px var(--nv-shadow)",
           display: "flex",
           flexDirection: "column",
         }}
@@ -1056,7 +1056,7 @@ export default function HireSeatDrawer({
                         height: "100%",
                         width: `${completion.pct}%`,
                         borderRadius: 999,
-                        background: completion.done ? "#3C7D50" : completion.pct >= 50 ? "#C8A45A" : "#9B2335",
+                        background: completion.done ? "var(--nv-btn-fill)" : completion.pct >= 50 ? "var(--nv-warn-fill)" : "var(--nv-bad-ink)",
                       }}
                       />
                     </div>

@@ -19,6 +19,7 @@ import { OrgAddBranchDrawer, OrgBranchDrawer } from "@/components/hr/OrgBranchDr
 import useOrgTreeViewport from "@/hooks/useOrgTreeViewport";
 import { printReport } from "@/lib/printReport";
 import { orgBtnGhost, orgBtnPrimary, orgTreeStageStyle } from "@/lib/orgWorkspaceStyles";
+import { chipButton } from "@/components/schedules/scheduleChrome";
 import { OrgFooterStrip, OrgNotice, OrgPanel, OrgSearchBox, OrgToolbar, OrgTreeCanvas } from "@/components/hr/OrgWorkspace";
 import OrgWorkforceChart from "@/components/hr/OrgWorkforceChart";
 import OrgSeatDirectory from "@/components/hr/OrgSeatDirectory";
@@ -34,22 +35,8 @@ import {
   printOrgPyramidRows,
 } from "@/lib/orgStructureLog";
 
-const stageBtn = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: 32,
-  padding: "0 12px",
-  borderRadius: 8,
-  border: "1px solid #C5CEC9",
-  background: "var(--nv-card, #fff)",
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: "pointer",
-  color: "var(--nv-ink, #111418)",
-  whiteSpace: "nowrap",
-  fontFamily: "inherit",
-};
+const stageBtn = orgBtnGhost;
+const segBtn = (on) => chipButton(on, { height: 32, padding: "0 12px", fontSize: 12 });
 
 /**
  * Chart upkeep that runs wherever the chart opens (focus or whole tree): the company root unit,
@@ -425,14 +412,14 @@ export default function OrgTemplateBoard({
                 ].map(([id, label]) => {
                   const on = chartView === id;
                   return (
-                    <button key={id} type="button" onClick={() => setChartView(id)} style={{ ...stageBtn, ...(on ? { background: "#3C7D50", color: "#fff", borderColor: "#3C7D50" } : {}) }}>{label}</button>
+                    <button key={id} type="button" aria-pressed={on} onClick={() => setChartView(id)} style={segBtn(on)}>{label}</button>
                   );
                 })}
               </div>
               {chartView === "files" ? null : (
               <div style={{ display: "inline-flex", gap: 6 }}>
-                <button type="button" onClick={() => setDense(false)} style={{ ...stageBtn, ...(dense ? {} : { background: "#3C7D50", color: "#fff", borderColor: "#3C7D50" }) }}>{ar ? "مفصّلة" : "Full"}</button>
-                <button type="button" onClick={() => setDense(true)} style={{ ...stageBtn, ...(dense ? { background: "#3C7D50", color: "#fff", borderColor: "#3C7D50" } : {}) }}>{ar ? "مختصرة" : "Compact"}</button>
+                <button type="button" aria-pressed={!dense} onClick={() => setDense(false)} style={segBtn(!dense)}>{ar ? "مفصّلة" : "Full"}</button>
+                <button type="button" aria-pressed={dense} onClick={() => setDense(true)} style={segBtn(dense)}>{ar ? "مختصرة" : "Compact"}</button>
               </div>
               )}
               {chartView === "files" ? null : (
@@ -649,10 +636,10 @@ export default function OrgTemplateBoard({
             )}
           </OrgTreeCanvas>
           <div className="nv-org-legend">
-            <span><i style={{ background: "#0B3D27" }} />{ar ? "مشغول" : "Occupied"}</span>
-            <span><i style={{ background: "transparent", border: "1.5px dashed #B7791F" }} />{ar ? "شاغر" : "Vacant"}</span>
-            <span><i style={{ background: "#C8A45A" }} />{ar ? "مكلَّف" : "Acting"}</span>
-            <span><i style={{ background: "#9B2335" }} />{ar ? "تنبيه نظامي" : "Compliance alert"}</span>
+            <span><i style={{ background: "var(--nv-ok-fill)" }} />{ar ? "مشغول" : "Occupied"}</span>
+            <span><i style={{ background: "transparent", border: "1.5px dashed var(--nv-mute-fill)" }} />{ar ? "شاغر" : "Vacant"}</span>
+            <span><i style={{ background: "var(--nv-mute-fill)" }} />{ar ? "مكلَّف" : "Acting"}</span>
+            <span><i style={{ background: "var(--nv-bad-ink)" }} />{ar ? "تنبيه نظامي" : "Compliance alert"}</span>
             <span className="nv-org-legend__note">{ar ? "انقر البطاقة للتفاصيل · الرقم يفتح الأغصان" : "Click a card for details · the count opens branches"}</span>
           </div>
           </>

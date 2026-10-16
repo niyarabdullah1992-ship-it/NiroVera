@@ -1,7 +1,7 @@
 // «⚖ حقك / التزامك», «حقوقي», «التزاماتي وحقوقي» — pure builders.
 import assert from "node:assert/strict";
 import { RIGHT_HINT_BUILDERS, hintDate, rightHintFor } from "../src/lib/rightHints.js";
-import { buildMyRights, nextPayday, payrollItemsOf } from "../src/lib/myRights.js";
+import { buildMyRights, myDamageLines, nextPayday, payrollItemsOf } from "../src/lib/myRights.js";
 import { buildCompanyObligations, staffAr } from "../src/lib/companyObligations.js";
 import { LEAVE_TYPES } from "../src/lib/leaveTypes.js";
 import { REQUEST_KINDS, DOC_KINDS } from "../src/lib/requestWorkspace.js";
@@ -194,6 +194,11 @@ ok("myRights: open time-limited rights come first (grievance, damage window, job
   const lines = buildMyRights({ employee: e, data, today });
   assert.deepEqual(lines.slice(0, 3).map((l) => l.id), ["damage-dl1", "grievance-reply-g", "job-search"]);
   assert.equal(lines[0].action.rightsKind, "damage_objection");
+  assert.equal(lines[0].action.to, "/app/discipline?tab=mine&raise=damage_objection&line=dl1", "opens «الجزاءات» prefilled from the line");
+  const dl = myDamageLines(data, "e1", [{ id: "o", type: "damage_objection", deductionLineId: "dl1" }]);
+  assert.equal(dl.length, 1);
+  assert.equal(dl[0].objection?.id, "o", "the objection is matched to its line");
+  assert.equal(myDamageLines(data, "e1", [])[0].objection, null);
   // Once objected, the window line goes.
   const e2 = { ...e, otherRequests: [...e.otherRequests, { id: "o", type: "damage_objection", deductionLineId: "dl1" }] };
   assert.ok(!buildMyRights({ employee: e2, data, today }).some((l) => l.id === "damage-dl1"));

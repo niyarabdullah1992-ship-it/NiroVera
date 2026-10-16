@@ -24,13 +24,16 @@ export const ABUSE_COMPLAINT_KIND = "abuse_complaint";
 
 /** Regs Art. 71 grievance is raised from «الجزاءات», beside the sanction it may concern. */
 export const GRIEVANCE_ROUTE = "/app/discipline?tab=mine&raise=grievance";
+/** Art. 91 damage-deduction objection is raised from «الجزاءات», beside the damage line it contests. */
+export const DAMAGE_OBJECTION_ROUTE = "/app/discipline?tab=mine&raise=damage_objection";
 /** Harassment / abuse is raised in «صوت الموظف» and reaches HR only. */
 export const ABUSE_ROUTE = "/app/complaints?tab=mine&channel=abuse";
 
-/** Where a «⚖ حقك» rights action opens: the grievance and abuse flows left طلباتي. */
+/** Where a «⚖ حقك» rights action opens: the grievance, damage objection and abuse flows left طلباتي. */
 export function rightsRouteFor(kind) {
   const k = String(kind || "");
   if (k === GRIEVANCE_TYPE) return GRIEVANCE_ROUTE;
+  if (k === DAMAGE_OBJECTION_TYPE) return DAMAGE_OBJECTION_ROUTE;
   if (k === ABUSE_COMPLAINT_KIND) return ABUSE_ROUTE;
   return `/app/requests?kind=rights&right=${encodeURIComponent(k)}`;
 }

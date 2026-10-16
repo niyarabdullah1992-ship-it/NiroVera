@@ -4382,7 +4382,7 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
   if (pending?.type === DAMAGE_OBJECTION_TYPE && (status === "approved" || status === "rejected")) {
     addNotification(companyId, employeeId, status === "approved"
       ? `قُبل اعتراضك على خصم الإتلاف (${pending.amount} ر.س) — يُرد إليك ما اقتُطع في المسير.`
-      : `لم يُقبل اعتراضك على خصم الإتلاف — لك التظلم أمام المحكمة العمالية خلال خمسة عشر يوم عمل من إبلاغك (حتى ${regulationDate(pending.objectionLastDay)})، وإن حكمت لك يُرد المبلغ خلال سبعة أيام (المادة 91).`, { to: "/app/requests" });
+      : `لم يُقبل اعتراضك على خصم الإتلاف — لك التظلم أمام المحكمة العمالية خلال خمسة عشر يوم عمل من إبلاغك (حتى ${regulationDate(pending.objectionLastDay)})، وإن حكمت لك يُرد المبلغ خلال سبعة أيام (المادة 91).`, { to: "/app/discipline?tab=mine" });
   }
   if (pending?.type === GRIEVANCE_TYPE && (status === "approved" || status === "rejected")) {
     const fresh = (getCompanyData(companyId)?.employees || []).find((row) => row.id === employeeId);

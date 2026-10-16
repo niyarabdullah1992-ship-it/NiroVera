@@ -219,19 +219,26 @@ t("server twin: a manager's blob never carries an HR-only row; his snapshot cann
   }
 });
 
-t("routes: grievance → «الجزاءات», harassment → «صوت الموظف»; neither in the rights picker", () => {
+t("routes: grievance and damage objection → «الجزاءات», harassment → «صوت الموظف»; neither in the rights picker", () => {
   assert.equal(rightsRouteFor("grievance"), GRIEVANCE_ROUTE);
   assert.equal(GRIEVANCE_ROUTE, "/app/discipline?tab=mine&raise=grievance");
   assert.equal(rightsRouteFor("abuse_complaint"), ABUSE_ROUTE);
+  assert.equal(rightsRouteFor("damage_objection"), "/app/discipline?tab=mine&raise=damage_objection", "the Art. 91 objection → «الجزاءات»");
   assert.equal(rightsRouteFor("leave_carry"), "/app/requests?kind=rights&right=leave_carry");
   const raise = readFileSync(new URL("../src/components/requests/RightsRequestRaise.jsx", import.meta.url), "utf8");
   assert.ok(!raise.includes("AbuseCaseRaise"), "the abuse form left طلباتي");
-  assert.ok(raise.includes("RIGHTS_ELSEWHERE = [\"contract_copy\", NIGHT_AVOID_TYPE, GRIEVANCE_TYPE]"));
+  assert.ok(raise.includes("RIGHTS_ELSEWHERE = [\"contract_copy\", NIGHT_AVOID_TYPE, GRIEVANCE_TYPE, DAMAGE_OBJECTION_TYPE]"));
+  assert.ok(!raise.includes("checkDamageObjectionGate"), "the damage objection form left طلباتي");
   const voice = readFileSync(new URL("../src/pages/Complaints.jsx", import.meta.url), "utf8");
   assert.ok(voice.includes("<AbuseCaseRaise") && voice.includes("<AbuseCasesBoard"), "raised and handled in «صوت الموظف»");
   assert.ok(voice.includes("voiceHrReceivers(data, { exclude: [currentUser?.id]"), "HR-only notices go to HR receivers, not the manager");
   const disc = readFileSync(new URL("../src/pages/Discipline.jsx", import.meta.url), "utf8");
   assert.ok(disc.includes("<GrievanceRaise"), "raised in «الجزاءات»");
+  assert.ok(disc.includes("<DamageObjectionRaise"), "the Art. 91 objection is raised in «الجزاءات»");
+  const dmg = readFileSync(new URL("../src/components/discipline/DamageObjectionRaise.jsx", import.meta.url), "utf8");
+  assert.ok(dmg.includes("checkDamageObjectionGate({ notifiedOn, amount, reason, today })") && dmg.includes("type: DAMAGE_OBJECTION_TYPE"), "same gate, same stored request");
+  const req = readFileSync(new URL("../src/pages/Requests.jsx", import.meta.url), "utf8");
+  assert.ok(req.includes("[GRIEVANCE_TYPE, DAMAGE_OBJECTION_TYPE, ABUSE_COMPLAINT_KIND].includes(askedRight)"), "old ?right=damage_objection links redirect");
 });
 
 console.log(`voice privacy: ${n} passed`);

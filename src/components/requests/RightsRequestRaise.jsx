@@ -5,6 +5,7 @@ import {
   ABUSE_ROUTE,
   ART81_CASES,
   ART81_EXIT_TYPE,
+  DAMAGE_OBJECTION_ROUTE,
   DAMAGE_OBJECTION_TYPE,
   DOCUMENTS_RETURN_TYPE,
   NIGHT_AVOID_KINDS,
@@ -16,14 +17,11 @@ import {
   LEAVE_CARRY_TYPE,
   RIGHTS_REQUESTS,
   checkArt81Gate,
-  checkDamageObjectionGate,
   checkLeaveCarryGate,
-  damageObjectionDeadline,
 } from "@/lib/rightsRequests";
 import { remainingLeaveDays } from "@/lib/leaveTypes";
 import { profileGender } from "@/lib/employeeProfileFields";
 import { todayRiyadh } from "@/lib/requestWorkspace";
-import { regulationDate } from "@/lib/workRegulation";
 import { hashConsentFile, readConsentFile } from "@/lib/writtenConsent";
 import { BORDER, CARD, CONTROL_RADIUS, MUTED, NAVY } from "@/lib/platformStyles";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -33,16 +31,17 @@ import { toast } from "@/components/ui/use-toast";
 
 /**
  * «حقوق نظامية أخرى» — worker requests the Labour Law and decision 18632 provide for: carrying annual
- * leave (110), objecting to a damage deduction (91), avoiding night work on a medical certificate
- * (18632 ثالثاً ج), the return of deposited documents (64), and leaving without notice (81).
+ * leave (110), avoiding night work on a medical certificate (18632 ثالثاً ج), the return of deposited
+ * documents (64), and leaving without notice (81).
  * The contract copy (51) sits with the documents; the job-search day (78) with the leaves.
- * The grievance (regs 71) is raised in «الجزاءات» (components/discipline/GrievanceRaise), and the
- * harassment / abuse complaint in «صوت الموظف» — it reaches HR only, never the manager.
+ * The grievance (regs 71) and the damage-deduction objection (91) are raised in «الجزاءات»
+ * (components/discipline/GrievanceRaise, DamageObjectionRaise), and the harassment / abuse complaint
+ * in «صوت الموظف» — it reaches HR only, never the manager.
  */
 
 // Raised elsewhere: the contract copy (documents), night-work avoidance («طلبات العمل الليلي»), and the
-// grievance («الجزاءات»).
-const RIGHTS_ELSEWHERE = ["contract_copy", NIGHT_AVOID_TYPE, GRIEVANCE_TYPE];
+// grievance and damage-deduction objection («الجزاءات»).
+const RIGHTS_ELSEWHERE = ["contract_copy", NIGHT_AVOID_TYPE, GRIEVANCE_TYPE, DAMAGE_OBJECTION_TYPE];
 
 const field = { fontFamily: "inherit", fontSize: 12.5, padding: "10px 12px", border: `1px solid ${BORDER}`, background: CARD, color: "var(--nv-ink)", outline: "none", width: "100%", boxSizing: "border-box", borderRadius: CONTROL_RADIUS };
 const block = { padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 };
@@ -51,7 +50,7 @@ const pick = (on) => ({ fontFamily: "inherit", textAlign: "start", display: "fle
 
 export default function RightsRequestRaise({ employee, companyId, ar = true, refresh, onSent, initialKind = "" }) {
   const today = todayRiyadh();
-  const opensHere = (k) => k !== GRIEVANCE_TYPE && RIGHTS_REQUESTS.some((row) => row.key === k);
+  const opensHere = (k) => k !== GRIEVANCE_TYPE && k !== DAMAGE_OBJECTION_TYPE && RIGHTS_REQUESTS.some((row) => row.key === k);
   const [kind, setKind] = useState(() => (opensHere(initialKind) ? initialKind : LEAVE_CARRY_TYPE));
   // «⚖ حقك» on a card (or ?kind=rights&right=…) opens this form on the right kind.
   useEffect(() => {
@@ -59,8 +58,6 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
   }, [initialKind]);
   const [reason, setReason] = useState("");
   const [days, setDays] = useState("");
-  const [notifiedOn, setNotifiedOn] = useState("");
-  const [amount, setAmount] = useState("");
   const [caseKey, setCaseKey] = useState("");
   const [ack, setAck] = useState(false);
   const [file, setFile] = useState(null);
@@ -77,13 +74,11 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
 
   const gate = kind === LEAVE_CARRY_TYPE
     ? checkLeaveCarryGate({ days, remaining, reason })
-    : kind === DAMAGE_OBJECTION_TYPE
-      ? checkDamageObjectionGate({ notifiedOn, amount, reason, today })
-      : kind === NIGHT_AVOID_TYPE
-        ? checkNightAvoidGate({ kind: avoidKind, from: avoidFrom, until: avoidUntil, file, gender })
-        : kind === DOCUMENTS_RETURN_TYPE
-          ? checkDocumentsReturnGate({ reason })
-          : checkArt81Gate({ caseKey, reason, ack });
+    : kind === NIGHT_AVOID_TYPE
+      ? checkNightAvoidGate({ kind: avoidKind, from: avoidFrom, until: avoidUntil, file, gender })
+      : kind === DOCUMENTS_RETURN_TYPE
+        ? checkDocumentsReturnGate({ reason })
+        : checkArt81Gate({ caseKey, reason, ack });
 
   const pickFile = async (picked) => {
     if (!picked) return;
@@ -105,8 +100,6 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
         reason: reason.trim() || (kind === NIGHT_AVOID_TYPE ? (NIGHT_AVOID_KINDS.find((k) => k.key === avoidKind)?.ar || "") : ""),
         days: kind === LEAVE_CARRY_TYPE ? days : undefined,
         remaining,
-        notifiedOn: kind === DAMAGE_OBJECTION_TYPE ? notifiedOn : undefined,
-        amount: kind === DAMAGE_OBJECTION_TYPE ? Number(amount) : undefined,
         art81Case: kind === ART81_EXIT_TYPE ? caseKey : undefined,
         nightAvoidKind: kind === NIGHT_AVOID_TYPE ? avoidKind : undefined,
         from: kind === NIGHT_AVOID_TYPE ? avoidFrom : undefined,
@@ -125,7 +118,7 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
         ? (ar ? "سُجّل تركك العمل وفق المادة 81 — وصل البلاغ للإدارة، وحقوقك النظامية محفوظة." : "Your Art. 81 exit is on file — management is told; your rights are kept.")
         : (ar ? "أُرسل الطلب — بانتظار رد الإدارة." : "Sent — awaiting management.") });
       setAvoidKind(""); setAvoidFrom(""); setAvoidUntil("");
-      setReason(""); setDays(""); setNotifiedOn(""); setAmount(""); setCaseKey(""); setAck(false); setFile(null);
+      setReason(""); setDays(""); setCaseKey(""); setAck(false); setFile(null);
       refresh?.();
       onSent?.();
     } finally {
@@ -164,31 +157,6 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
               <span style={label}>{ar ? "عدد الأيام المؤجلة" : "Days to carry"}</span>
               <input type="number" min={1} max={remaining} value={days} onChange={(e) => setDays(e.target.value)} style={field} />
             </label>
-          </>
-        ) : null}
-
-        {kind === DAMAGE_OBJECTION_TYPE ? (
-          <>
-            <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
-              {ar
-                ? "لصاحب العمل أن يقتطع ما يلزم لإصلاح ما أتلفته بخطئك، بما لا يزيد على أجر خمسة أيام في الشهر. ولك أن تتظلم مما نُسب إليك أو من تقدير المبلغ خلال خمسة عشر يوم عمل من إبلاغك، وإلا سقط حقك (المادة 91). الاعتراض هنا يصل الإدارة أولاً؛ والتظلم الرسمي أمام المحكمة العمالية."
-                : "The employer may deduct up to five days' wage a month for damage you caused. You may object within fifteen working days of being told (Art. 91). This reaches management first; the formal forum is the labour court."}
-            </span>
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: 9 }}>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span style={label}>{ar ? "تاريخ إبلاغك بالخصم" : "Date you were told"}</span>
-                <PlatformDateField ar={ar} value={notifiedOn} onChange={setNotifiedOn} />
-              </label>
-              <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <span style={label}>{ar ? "المبلغ المخصوم (ر.س)" : "Amount deducted (SAR)"}</span>
-                <input type="number" min={0} value={amount} onChange={(e) => setAmount(e.target.value)} style={field} />
-              </label>
-            </div>
-            {notifiedOn ? (
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: gate.error === "OBJECTION_LATE" ? "var(--nv-bad-ink)" : "#2F6B43" }}>
-                {ar ? `آخر يوم للتظلم: ${regulationDate(damageObjectionDeadline(notifiedOn))}` : `Last day to object: ${damageObjectionDeadline(notifiedOn)}`}
-              </span>
-            ) : null}
           </>
         ) : null}
 
@@ -245,7 +213,7 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
         ) : null}
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={label}>{kind === ART81_EXIT_TYPE ? (ar ? "ما الذي حدث؟ بالتواريخ" : "What happened? With dates") : kind === DAMAGE_OBJECTION_TYPE ? (ar ? "سبب اعتراضك" : "Why you object") : kind === NIGHT_AVOID_TYPE ? (ar ? "ملاحظة — اختيارية" : "Note — optional") : kind === DOCUMENTS_RETURN_TYPE ? (ar ? "الوثائق المودعة" : "Deposited documents") : (ar ? "سبب التأجيل" : "Why")}</span>
+          <span style={label}>{kind === ART81_EXIT_TYPE ? (ar ? "ما الذي حدث؟ بالتواريخ" : "What happened? With dates") : kind === NIGHT_AVOID_TYPE ? (ar ? "ملاحظة — اختيارية" : "Note — optional") : kind === DOCUMENTS_RETURN_TYPE ? (ar ? "الوثائق المودعة" : "Deposited documents") : (ar ? "سبب التأجيل" : "Why")}</span>
           <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} style={{ ...field, resize: "vertical" }} />
         </label>
 
@@ -273,8 +241,8 @@ export default function RightsRequestRaise({ employee, companyId, ar = true, ref
       <div style={{ ...block, borderBottom: "none", gap: 4 }}>
         <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.8 }}>
           {ar
-            ? <>التظلّم من قرار أو إجراء أو جزاء يُرفع من <Link to={GRIEVANCE_ROUTE} style={{ color: "inherit" }}>الجزاءات</Link>، وشكوى الإيذاء أو التحرش من <Link to={ABUSE_ROUTE} style={{ color: "inherit" }}>صوت الموظف</Link> — تصل إلى الموارد البشرية فقط.</>
-            : <>A grievance is raised from <Link to={GRIEVANCE_ROUTE} style={{ color: "inherit" }}>Sanctions</Link>; a harassment complaint from <Link to={ABUSE_ROUTE} style={{ color: "inherit" }}>Employee voice</Link> — it reaches HR only.</>}
+            ? <>التظلّم من قرار أو إجراء أو جزاء، والاعتراض على <Link to={DAMAGE_OBJECTION_ROUTE} style={{ color: "inherit" }}>خصم الإتلاف</Link> (م 91)، يُرفعان من <Link to={GRIEVANCE_ROUTE} style={{ color: "inherit" }}>الجزاءات</Link>، وشكوى الإيذاء أو التحرش من <Link to={ABUSE_ROUTE} style={{ color: "inherit" }}>صوت الموظف</Link> — تصل إلى الموارد البشرية فقط.</>
+            : <>A grievance and a <Link to={DAMAGE_OBJECTION_ROUTE} style={{ color: "inherit" }}>damage-deduction objection</Link> (Art. 91) are raised from <Link to={GRIEVANCE_ROUTE} style={{ color: "inherit" }}>Sanctions</Link>; a harassment complaint from <Link to={ABUSE_ROUTE} style={{ color: "inherit" }}>Employee voice</Link> — it reaches HR only.</>}
         </span>
       </div>
     </div>

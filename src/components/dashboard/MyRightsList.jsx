@@ -10,7 +10,7 @@ import { HintAction, ScaleGlyph, StatuteLink } from "@/components/shared/RightHi
 function routeOf(action) {
   if (!action) return null;
   if (action.href) return action;
-  if (action.kind === "rights") return { ...action, to: rightsRouteFor(action.rightsKind) };
+  if (action.kind === "rights") return { ...action, to: action.to || rightsRouteFor(action.rightsKind) };
   if (action.kind === "raise") return { ...action, to: "/app/requests" };
   return action.to ? action : null;
 }

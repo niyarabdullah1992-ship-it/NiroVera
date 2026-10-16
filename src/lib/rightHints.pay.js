@@ -3,7 +3,7 @@
  * end-of-service figure and custody set-off. Same three-line shape as src/lib/rightHints.js:
  *   right  — the right (employee) or duty (manager) for THIS item, with its amounts and dates.
  *   ifNot  — what to do if it is not applied (employee) / the consequence of delay (manager).
- *   action — one ready flow: a rights request (`to: /app/requests?kind=rights&right=…`), the
+ *   action — one ready flow: a rights request (`to: rightsRouteFor(kind)`), the
  *            payroll tab or employee file, or the labour court.
  *   law    — the article whose official text the hint opens.
  *   due    — manager only: the legal date to act by, when the law sets one.
@@ -441,7 +441,10 @@ const B = {
         ifNot: ar
           ? (when ? (open ? `اعترض على نسبته أو تقديره حتى ${when} (${window} يوم عمل من إبلاغك).` : `مضت مهلة الاعتراض (${when}) — يبقى لك التظلم أمام المحكمة العمالية.`) : `اعترض خلال ${window} يوم عمل من إبلاغك بالتقدير.`)
           : (when ? (open ? `Object to the fault or the valuation by ${when} (${window} working days from notice).` : `The objection window closed (${when}) — the labour court remains.`) : `Object within ${window} working days of the notice.`),
-        action: open || !when ? ACT.objection(ar) : ACT.court(ar),
+        // From a payroll line: «الجزاءات» opens the objection prefilled from that very line.
+        action: open || !when
+          ? { ...ACT.objection(ar), ...(c.lineId ? { to: `${rightsTo(DAMAGE_OBJECTION_TYPE)}&line=${encodeURIComponent(c.lineId)}` } : {}) }
+          : ACT.court(ar),
       },
       manager: {
         right: ar
@@ -723,7 +726,7 @@ export function deductionLineHint(line = {}, ctx = {}) {
   const k = String(line.kind || line.source || line.type || "").toLowerCase();
   const base = { ...ctx, amount: line.amount };
   if (k.includes("damage") || line.damageNoticeOn) {
-    return payHintFor("damage", { ...base, noticeOn: line.damageNoticeOn, objectionLastDay: line.objectionLastDay });
+    return payHintFor("damage", { ...base, noticeOn: line.damageNoticeOn, objectionLastDay: line.objectionLastDay, lineId: line.id });
   }
   if (k.includes("advance") || k.includes("loan")) return payHintFor("loan", base);
   if (k.includes("custody")) return payHintFor("custody", { ...base, debt: line.amount });

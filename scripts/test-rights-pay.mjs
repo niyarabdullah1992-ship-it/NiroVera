@@ -96,6 +96,9 @@ ok("damage: 5 days' wage cap and the 15-working-day objection window from the no
   assert.match(e.right, /1,500 ر\.س/); // 9000 / 30 × 5
   assert.match(e.ifNot, /15 يوم عمل/);
   assert.equal(e.action.rightsKind, "damage_objection");
+  assert.equal(e.action.to, "/app/discipline?tab=mine&raise=damage_objection", "the objection is raised from «الجزاءات»");
+  const fromLine = payHintFor("damage", { today: "2026-10-13", amount: 800, wage: 9000, noticeOn: "2026-10-12", lineId: "dl9" });
+  assert.equal(fromLine.action.to, "/app/discipline?tab=mine&raise=damage_objection&line=dl9", "a payroll line opens it prefilled");
   assert.equal(m.due, last);
   assert.match(m.ifNot, /7 أيام/);
   const closed = payHintFor("damage", { today: "2027-01-01", amount: 800, wage: 9000, noticeOn: "2026-10-12" });

@@ -16,7 +16,7 @@ import { employeeWageSplit } from "./employeeFileView.js";
 import { compBalance } from "./compLeave.js";
 import { hoursAr, otOffer, sar } from "./otOffer.js";
 import { isOvertimeAssignment, otCompensationOf } from "./overtimeAssignment.js";
-import { DAMAGE_OBJECTION_TYPE, GRIEVANCE_TYPE, employerNoticeOf, grievanceState } from "./rightsRequests.js";
+import { DAMAGE_OBJECTION_ROUTE, DAMAGE_OBJECTION_TYPE, GRIEVANCE_TYPE, employerNoticeOf, grievanceState } from "./rightsRequests.js";
 import { hintDate } from "./rightHints.js";
 
 const dateOnly = (v) => {
@@ -44,6 +44,25 @@ export function nextPayday(settings, today, isOff = () => false) {
 export function payrollItemsOf(data) {
   const runs = (data?.payrollRuns || []).flatMap((run) => (run?.items || []).map((item) => ({ month: run.month, ...item })));
   return [...runs, ...(Array.isArray(data?.payroll) ? data.payroll : [])];
+}
+
+/**
+ * Art. 91 — the employee's damage-deduction lines on payroll, newest notice first, each with the
+ * objection already raised on it (matched by its case or line, never by amount).
+ */
+export function myDamageLines(data, employeeId, objections = []) {
+  const own = (objections || []).filter((r) => r?.type === DAMAGE_OBJECTION_TYPE);
+  const out = [];
+  for (const item of payrollItemsOf(data)) {
+    if (String(item?.employeeId) !== String(employeeId)) continue;
+    for (const line of item.deductionLines || []) {
+      if (line?.source !== "damage") continue;
+      const caseId = String(line.damageCaseId || "");
+      const objection = own.find((o) => String(o.deductionLineId || "") === String(line.id || "") || (caseId && String(o.damageCaseId || "") === caseId)) || null;
+      out.push({ line, month: item.month || "", objection });
+    }
+  }
+  return out.sort((a, b) => String(b.line.damageNoticeOn || "").localeCompare(String(a.line.damageNoticeOn || "")));
 }
 
 const art = (article, ar) => ({ article: String(article), label: ar ? `المادة ${article}` : `Art. ${article}` });
@@ -100,7 +119,7 @@ export function buildMyRights(ctx = {}) {
         text: ar ? `لك الاعتراض على خصم إتلاف ${sar(Number(line.amount) || 0, ar)} حتى` : `You may object to a ${sar(Number(line.amount) || 0, ar)} damage deduction by`,
         figure: d(last), unit: "", due: last,
         law: art("91", ar),
-        action: { kind: "rights", rightsKind: DAMAGE_OBJECTION_TYPE, label: ar ? "اعترض" : "Object" },
+        action: { kind: "rights", rightsKind: DAMAGE_OBJECTION_TYPE, to: `${DAMAGE_OBJECTION_ROUTE}&line=${encodeURIComponent(line.id || "")}`, label: ar ? "اعترض" : "Object" },
       });
     }
   }

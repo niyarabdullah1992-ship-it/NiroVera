@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -31,7 +31,9 @@ import DisciplineCaseCard from "@/components/discipline/DisciplineCaseCard";
 import DisciplineLawBoard from "@/components/discipline/DisciplineLawBoard";
 import DisciplineMineCard from "@/components/discipline/DisciplineMineCard";
 import GrievanceRaise from "@/components/discipline/GrievanceRaise";
-import { GRIEVANCE_KINDS, GRIEVANCE_TYPE, grievanceState } from "@/lib/rightsRequests";
+import DamageObjectionRaise from "@/components/discipline/DamageObjectionRaise";
+import { DAMAGE_OBJECTION_TYPE, GRIEVANCE_KINDS, GRIEVANCE_TYPE, damageObjectionDeadline, grievanceState } from "@/lib/rightsRequests";
+import { myDamageLines } from "@/lib/myRights";
 import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
 import OpsSideSlab, { OpsListHead } from "@/components/tasks/OpsSideSlab";
 import { DisciplineHero } from "@/components/discipline/DisciplineCaseCard";
@@ -224,6 +226,9 @@ export default function Discipline() {
     // The grievance is the worker's own act — it opens on the employee side.
     setRailSide("employee");
   }, [raiseAsked]);
+  // «اعتراض على خصم إتلاف» (Art. 91) lives here too: from a damage line (prefilled) or a general entry.
+  const [damageOpen, setDamageOpen] = useState(() => searchParams.get("raise") === DAMAGE_OBJECTION_TYPE);
+  const [damagePrefill, setDamagePrefill] = useState(null);
   const [caseSel, setCaseSel] = useState("");
   const [clauseId, setClauseId] = useState("");
   const regulation = useMemo(() => regulationOf(data), [data]);
@@ -282,6 +287,42 @@ export default function Discipline() {
   const meRow = employees.find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
   const myGrievances = (meRow?.otherRequests || []).filter((row) => row?.type === GRIEVANCE_TYPE)
     .slice().sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
+  const myObjections = (meRow?.otherRequests || []).filter((row) => row?.type === DAMAGE_OBJECTION_TYPE)
+    .slice().sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
+  // Damage lines on my payroll that I may still object to (window open, no objection on them yet).
+  const myDamageOpen = useMemo(
+    () => myDamageLines(data, meRow?.id, meRow?.otherRequests || [])
+      .filter(({ line, objection }) => !objection && (line.objectionLastDay || damageObjectionDeadline(line.damageNoticeOn)) >= board.today),
+    [data, meRow, board.today],
+  );
+  const openDamage = (row) => {
+    const line = row?.line;
+    setDamagePrefill(line ? {
+      notifiedOn: String(line.damageNoticeOn || "").slice(0, 10),
+      amount: Number(line.originalAmount ?? line.amount) || "",
+      damageCaseId: line.damageCaseId || "",
+      deductionLineId: line.id || "",
+      lineRef: [line.reason, row.month].filter(Boolean).join(" · "),
+      at: Date.now(),
+    } : null);
+    setDamageOpen(true);
+    setTimeout(() => document.querySelector("[data-damage-objection-raise]")?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+  };
+  // ?raise=damage_objection[&line=…] — from «⚖ حقك» on payroll or the home rights list.
+  const lineAsked = searchParams.get("line") || "";
+  const damageAskHandled = useRef("");
+  useEffect(() => {
+    if (raiseAsked !== DAMAGE_OBJECTION_TYPE) return;
+    const key = `${raiseAsked}:${lineAsked}`;
+    if (damageAskHandled.current === key) return;
+    setRailSide("employee");
+    const hit = lineAsked ? myDamageOpen.find(({ line }) => String(line.id) === lineAsked) : null;
+    // The line may arrive with the payroll data; wait for it before settling on the general form.
+    if (lineAsked && !hit && !data?.payrollRuns) { setDamageOpen(true); return; }
+    damageAskHandled.current = key;
+    if (hit) openDamage(hit);
+    else setDamageOpen(true);
+  }, [raiseAsked, lineAsked, myDamageOpen, data?.payrollRuns]);
   const openGrievance = (card) => {
     const item = card?.item;
     const told = String(item?.notifyDeliveredAt || item?.signedAt || item?.decidedAt || "").slice(0, 10);
@@ -974,6 +1015,60 @@ export default function Discipline() {
             </section>
             {grievanceOpen ? (
               <GrievanceRaise key={grievancePrefill?.at || "general"} employee={meRow} companyId={company?.id} ar={ar} refresh={refresh} prefill={grievancePrefill} onSent={() => { setGrievanceOpen(false); setGrievancePrefill(null); }} />
+            ) : null}
+
+            <section data-damage-objection-mine="" style={PACK_CARD}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 13 }}>{ar ? "اعتراضاتي على خصم الإتلاف" : "My damage-deduction objections"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({myObjections.length})</span></strong>
+                <button
+                  type="button"
+                  data-damage-objection-general=""
+                  onClick={() => { setDamagePrefill(null); setDamageOpen((v) => !v || Boolean(damagePrefill)); }}
+                  style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", marginInlineStart: "auto" }}
+                >
+                  {ar ? "اعتراض على خصم إتلاف" : "Object to a damage deduction"}
+                </button>
+              </div>
+              <div style={{ padding: "7px 14px", fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.7, borderBottom: "1px solid var(--nv-line2)" }}>
+                {ar ? "م 91 · خلال 15 يوم عمل من إبلاغك بالخصم وتقديره، وإلا سقط الحق. إن قُبل رُدّ المبلغ في المسير." : "Art. 91 · within 15 working days of being told, or the right lapses. If accepted the amount is refunded on payroll."}
+              </div>
+              {myDamageOpen.map((row) => {
+                const last = row.line.objectionLastDay || damageObjectionDeadline(row.line.damageNoticeOn);
+                return (
+                  <div key={`dl-${row.line.id}`} data-damage-line={row.line.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
+                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                      {ar ? `خصم إتلاف ${Number(row.line.amount) || 0} ر.س` : `Damage deduction SAR ${Number(row.line.amount) || 0}`}
+                      {row.line.reason ? ` · ${String(row.line.reason).slice(0, 50)}` : ""}
+                      <span style={{ color: "var(--nv-ink2)" }}>{ar ? ` · الاعتراض حتى ${regulationDate(last)}` : ` · object by ${last}`}</span>
+                    </span>
+                    <button
+                      type="button"
+                      data-damage-line-object={row.line.id}
+                      onClick={() => openDamage(row)}
+                      style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer" }}
+                    >
+                      {ar ? "اعترض" : "Object"}
+                    </button>
+                  </div>
+                );
+              })}
+              {myObjections.length === 0 && myDamageOpen.length === 0 ? (
+                <div style={{ padding: "9px 14px", fontSize: 12, color: "var(--nv-muted)" }}>{ar ? "لا خصم إتلاف مفتوح ولا اعتراض مرفوع." : "No open damage deduction and no objection filed."}</div>
+              ) : myObjections.map((row) => {
+                const last = row.objectionLastDay || damageObjectionDeadline(row.notifiedOn);
+                const stage = row.status === "approved" ? (ar ? "قُبل — يُرد المبلغ" : "Accepted — refunded")
+                  : row.status === "rejected" ? (ar ? `لم يُقبل — المحكمة العمالية حتى ${regulationDate(last)}` : `Refused — labour court by ${last}`)
+                    : (ar ? "بانتظار رد الإدارة" : "Awaiting management");
+                return (
+                  <div key={row.id} data-damage-objection-row={row.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
+                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{ar ? `${Number(row.amount) || 0} ر.س` : `SAR ${Number(row.amount) || 0}`} · {String(row.reason || "").slice(0, 60)}</span>
+                    <span style={{ fontWeight: 700, color: row.status === "approved" ? "var(--nv-ok-ink)" : "var(--nv-ink2)" }}>{stage}</span>
+                  </div>
+                );
+              })}
+            </section>
+            {damageOpen ? (
+              <DamageObjectionRaise key={damagePrefill?.at || "general"} employee={meRow} companyId={company?.id} ar={ar} refresh={refresh} prefill={damagePrefill} onSent={() => { setDamageOpen(false); setDamagePrefill(null); }} />
             ) : null}
 
             <section style={PACK_CARD}>

@@ -5,6 +5,7 @@ import { articleOfficialText, BOE_LABOUR_LAW_URL } from "@/lib/laborArticleTexts
 import { HRSD_IMPLEMENTING_REGS_URL } from "@/lib/laborRules";
 import { decision18632Gist } from "@/lib/decision18632";
 import { HEAT_BAN_DECISION_PDF, heatBanDecisionGist } from "@/lib/heatBanDecision";
+import { MODEL_SOURCE_AR, MODEL_SOURCE_EN, MODEL_SOURCE_URL, modelArticlesBody } from "@/lib/modelArticleTexts";
 import {
   Dialog,
   DialogContent,
@@ -36,22 +37,28 @@ export function ScaleGlyph({ size = 12 }) {
 /** The official-text reader for an article / decision / regulation article. */
 export function StatuteDialog({ law, open, onOpenChange, ar = true, onDate }) {
   if (!law) return null;
-  const official = law.article ? articleOfficialText(law.article, onDate) : null;
+  // Annex 1 (the unified model regulation) — its own registry, never the Labour Law's.
+  const model = law.model ? modelArticlesBody(law.model, ar) : "";
+  const official = !model && law.article ? articleOfficialText(law.article, onDate) : null;
   const statute = official ? (ar ? official.ar : official.en) : "";
   const decision = law.decisionId === "18632"
     ? decision18632Gist(ar)
     : law.decisionId === "3337" ? heatBanDecisionGist(ar, onDate) : "";
-  const body = statute || decision;
-  const sourceHref = law.decisionId === "3337"
-    ? HEAT_BAN_DECISION_PDF
-    : law.regs ? HRSD_IMPLEMENTING_REGS_URL : (official?.sourceUrl || BOE_LABOUR_LAW_URL);
+  const body = model || statute || decision;
+  const sourceHref = model
+    ? MODEL_SOURCE_URL
+    : law.decisionId === "3337"
+      ? HEAT_BAN_DECISION_PDF
+      : law.regs ? HRSD_IMPLEMENTING_REGS_URL : (official?.sourceUrl || BOE_LABOUR_LAW_URL);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir={ar ? "rtl" : "ltr"} className="font-body max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader className={ar ? "pr-8 text-right sm:text-right" : "pr-8 text-left"}>
           <DialogTitle className="font-heading" style={{ color: INK }}>{law.label}</DialogTitle>
           <DialogDescription>
-            {law.regs
+            {model
+              ? (ar ? `النص من ${MODEL_SOURCE_AR}.` : `Text from ${MODEL_SOURCE_EN}.`)
+              : law.regs
               ? (ar ? "مادة من اللائحة التنفيذية لنظام العمل — النص في ملف الوزارة الرسمي." : "An article of the Implementing Regulations — the text is in the ministry's official file.")
               : law.decisionId
                 ? (ar ? "نص القرار الوزاري كما تقرؤه المنصة." : "The ministerial decision as the platform reads it.")
@@ -66,8 +73,8 @@ export function StatuteDialog({ law, open, onOpenChange, ar = true, onDate }) {
           </p>
         )}
         <a href={sourceHref} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600, color: GREEN, textDecoration: "underline", textUnderlineOffset: 3, alignSelf: "flex-start" }}>
-          {law.regs
-            ? (ar ? "اللائحة التنفيذية (PDF)" : "Implementing regulations (PDF)")
+          {model || law.regs
+            ? (ar ? "اللائحة التنفيذية وملحقاتها (PDF)" : "Implementing regulations and annexes (PDF)")
             : law.decisionId === "3337"
               ? (ar ? "صورة القرار الموقّعة (PDF)" : "Signed decision (PDF)")
               : (ar ? "النص في هيئة الخبراء" : "BOE official text")}

@@ -1,6 +1,10 @@
 import React, { useMemo, useState } from "react";
-import { Check, Info, Shield } from "lucide-react";
-import { checkArticle93Gate, gosiLine, lineComponents } from "@/lib/payrollDerivations";
+import { Check, Shield } from "lucide-react";
+import { article93MaxDeduction, checkArticle93Gate, gosiLine, lineComponents } from "@/lib/payrollDerivations";
+import { companyPayday } from "@/lib/payrollLaw";
+import { slipRowHint } from "@/lib/rightHints.pay";
+import RightHint from "@/components/shared/RightHint";
+import FigureRow from "@/components/shared/FigureRow";
 import { otMonthBreakdown } from "@/lib/otOffer";
 import { registrationForPayroll } from "@/lib/facts";
 import { contractAllowanceSplit, employeeWageSplit } from "@/lib/employeeFileView";
@@ -17,10 +21,6 @@ const TONE = {
 
 function sarDigits(n) {
   return Math.abs(Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-}
-
-function sarAfter(n) {
-  return `${sarDigits(n)} SAR`;
 }
 
 function sarBefore(n, minus) {
@@ -41,17 +41,6 @@ function depositHint(item, ar) {
   }
   if (item?.paid) return ar ? "صُرف عبر مدد" : "Paid via Mudad";
   return ar ? "يُودع في موعده عبر مدد" : "Deposited on time via Mudad";
-}
-
-/** KPI law: the figure is always ink — no green/red money numbers. */
-function StatTile({ label, value, hint }) {
-  return (
-    <div style={{ flex: "1 1 180px", minWidth: 0, padding: "14px 16px 12px", borderRadius: 12, border: `1px solid ${BORDER}`, background: CARD }}>
-      <div style={{ fontSize: 12, color: MUTED }}>{label}</div>
-      <div dir="ltr" style={{ marginTop: 8, fontFamily: "'IBM Plex Mono', monospace", fontSize: 22, fontWeight: 700, color: "var(--nv-ink)", textAlign: "end", lineHeight: 1.15 }}>{value}</div>
-      <div style={{ marginTop: 6, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>{hint}</div>
-    </div>
-  );
 }
 
 function RoundCheck({ on, onClick, label }) {
@@ -107,12 +96,12 @@ export function slipRows(item, employee, parts, ar, month) {
   }];
   // Art. 2 named lines of the actual wage — each on its own row with its basis.
   function pushExtras() {
-    if (wage.hazard > 0) rows.push({ id: "hazard", label: ar ? "بدل طبيعة عمل أو خطر" : "Effort or hazard allowance", amount: wage.hazard, source: ar ? "عقد العمل · المادة 2" : "Contract · Art. 2" });
-    if (wage.living > 0) rows.push({ id: "living", label: ar ? "بدل غلاء معيشة أو عائلي" : "Cost-of-living or family allowance", amount: wage.living, source: ar ? "عقد العمل · المادة 2" : "Contract · Art. 2" });
-    if (wage.remote > 0) rows.push({ id: "remote", label: ar ? "بدل منطقة نائية" : "Remote-area allowance", amount: wage.remote, source: ar ? "عقد العمل · المادتان 2 و146" : "Contract · Arts. 2, 146" });
-    if (wage.medical > 0) rows.push({ id: "medical", label: ar ? "بدل بُعد الخدمات الطبية" : "Distance-from-care allowance", amount: wage.medical, source: ar ? "عقد العمل · المادتان 144 و146/3" : "Contract · Arts. 144, 146/3" });
-    if (wage.meals > 0) rows.push({ id: "meals", label: ar ? "بدل إعاشة" : "Meals allowance", amount: wage.meals, source: ar ? "عقد العمل · المادة 147" : "Contract · Art. 147" });
-    if (wage.commission > 0) rows.push({ id: "commission", label: ar ? "العمولة" : "Commission", amount: wage.commission, source: ar ? "مبيعات الشهر · المادة 2" : "The month's sales · Art. 2" });
+    if (wage.hazard > 0) rows.push({ id: "hazard", label: ar ? "بدل طبيعة عمل أو خطر" : "Effort or hazard allowance", amount: wage.hazard, source: ar ? "عقد العمل" : "Contract" });
+    if (wage.living > 0) rows.push({ id: "living", label: ar ? "بدل غلاء معيشة أو عائلي" : "Cost-of-living or family allowance", amount: wage.living, source: ar ? "عقد العمل" : "Contract" });
+    if (wage.remote > 0) rows.push({ id: "remote", label: ar ? "بدل منطقة نائية" : "Remote-area allowance", amount: wage.remote, source: ar ? "عقد العمل · موقع نائٍ" : "Contract · remote site" });
+    if (wage.medical > 0) rows.push({ id: "medical", label: ar ? "بدل بُعد الخدمات الطبية" : "Distance-from-care allowance", amount: wage.medical, source: ar ? "عقد العمل · بُعد الخدمات الطبية" : "Contract · distance from care" });
+    if (wage.meals > 0) rows.push({ id: "meals", label: ar ? "بدل إعاشة" : "Meals allowance", amount: wage.meals, source: ar ? "عقد العمل" : "Contract" });
+    if (wage.commission > 0) rows.push({ id: "commission", label: ar ? "العمولة" : "Commission", amount: wage.commission, source: ar ? "مبيعات الشهر" : "The month's sales" });
   }
   const housingInKind = profile.housingMode === "provided";
   const profileSum = (wage.housing || 0) + (wage.transport || 0) + (wage.other || 0) + (wage.night || 0);
@@ -125,7 +114,7 @@ export function slipRows(item, employee, parts, ar, month) {
       label: ar ? "بدل السكن" : "Housing",
       amount: wage.housing || 0,
       source: housingInKind && !(wage.housing > 0)
-        ? (ar ? "سكن مؤمَّن من المنشأة · المادة 61" : "Housing provided · Art. 61")
+        ? (ar ? "سكن مؤمَّن من المنشأة" : "Housing provided")
         : quarter
           ? (ar ? "عقد العمل · 25% من الأساسي" : "Contract · 25% of base")
           : (ar ? "عقد العمل" : "Employment contract"),
@@ -211,7 +200,7 @@ export function slipRows(item, employee, parts, ar, month) {
       label: ar ? `إجازة بلا أجر — ${Number(item?.unpaidLeaveDays) || 0} يوماً` : `Unpaid leave — ${Number(item?.unpaidLeaveDays) || 0} days`,
       amount: Number(parts.unpaidLeaveCut) || 0,
       minus: true,
-      source: ar ? "المادة 116 · أجر غير مستحق لا حسماً" : "Art. 116 · wage not due, not a deduction",
+      source: ar ? "أجر غير مستحق لا حسماً" : "Wage not due, not a deduction",
     });
   }
   // Art. 97 — detained in a work-related case: half the wage up to 180 days.
@@ -221,7 +210,7 @@ export function slipRows(item, employee, parts, ar, month) {
       label: ar ? `توقيف في قضية تتصل بالعمل — ${Number(item?.detentionDays) || 0} يوماً` : `Work-related detention — ${Number(item?.detentionDays) || 0} days`,
       amount: Number(parts.detentionCut) || 0,
       minus: true,
-      source: ar ? "المادة 97 · 50٪ حتى 180 يوماً، يُرد إن بُرّئ" : "Art. 97 · 50% up to 180 days, refunded on acquittal",
+      source: ar ? "نصف الأجر مدة التوقيف" : "Half the wage while detained",
     });
   }
   if ((Number(parts.refunds) || 0) > 0) {
@@ -229,7 +218,7 @@ export function slipRows(item, employee, parts, ar, month) {
       id: "refunds",
       label: ar ? "مردود للعامل" : "Refund to the worker",
       amount: Number(parts.refunds) || 0,
-      source: ar ? "المادة 97 بالبراءة · المادة 91 بقبول الاعتراض" : "Art. 97 acquittal · Art. 91 accepted objection",
+      source: ar ? "براءة أو اعتراض مقبول" : "Acquittal or accepted objection",
     });
   }
   const injuryDays = Number(item?.injuryDays) || 0;
@@ -241,7 +230,7 @@ export function slipRows(item, employee, parts, ar, month) {
           label: ar ? `إصابة عمل — ${item.injuryReducedDays} يوماً بـ75٪ بعد اليوم 60` : `Work injury — ${item.injuryReducedDays} days at 75% after day 60`,
           amount: Number(item.injuryReduction) || 0,
           minus: true,
-          source: ar ? "المادة 137 · بنص النظام لا حسماً" : "Art. 137 · set by law, not a deduction",
+          source: ar ? "بنص النظام لا حسماً" : "Set by law, not a deduction",
         });
       }
       if ((Number(item?.injuryUnpaid) || 0) > 0) {
@@ -250,11 +239,11 @@ export function slipRows(item, employee, parts, ar, month) {
           label: ar ? `إصابة عمل — ${item.injuryExcludedDays} يوماً بلا معونة` : `Work injury — ${item.injuryExcludedDays} days without compensation`,
           amount: Number(item.injuryUnpaid) || 0,
           minus: true,
-          source: ar ? "المادة 139 · بقرار مكتوب" : "Art. 139 · written decision",
+          source: ar ? "بقرار مكتوب" : "Written decision",
         });
       }
       if (!(Number(item?.injuryReduction) || 0) && !(Number(item?.injuryUnpaid) || 0)) {
-        rows.push({ id: "injuryFull", label: ar ? `إصابة عمل — ${injuryDays} يوماً بأجر كامل` : `Work injury — ${injuryDays} days on full pay`, amount: 0, source: ar ? "المادة 137 · أول 60 يوماً" : "Art. 137 · first 60 days" });
+        rows.push({ id: "injuryFull", label: ar ? `إصابة عمل — ${injuryDays} يوماً بأجر كامل` : `Work injury — ${injuryDays} days on full pay`, amount: 0, source: ar ? "أول 60 يوماً" : "First 60 days" });
       }
     } else if ((Number(item?.injuryWageStop) || 0) > 0) {
       rows.push({
@@ -281,7 +270,7 @@ export function slipRows(item, employee, parts, ar, month) {
       label: ar ? `إجازة مرضية — ${item.sickQuarterDays} يوماً بثلاثة أرباع الأجر` : `Sick leave — ${item.sickQuarterDays} days at three-quarters`,
       amount: Number(item.sickReduction) || 0,
       minus: true,
-      source: ar ? "المادة 117 · بعد أول 30 يوماً في السنة" : "Art. 117 · after the first 30 days in the year",
+      source: ar ? "بعد أول 30 يوماً في السنة" : "After the first 30 days in the year",
     });
   }
   if ((Number(item?.sickUnpaid) || 0) > 0) {
@@ -290,7 +279,7 @@ export function slipRows(item, employee, parts, ar, month) {
       label: ar ? `إجازة مرضية — ${item.sickUnpaidDays} يوماً بلا أجر` : `Sick leave — ${item.sickUnpaidDays} days unpaid`,
       amount: Number(item.sickUnpaid) || 0,
       minus: true,
-      source: ar ? "المادة 117 · بعد 90 يوماً في السنة" : "Art. 117 · after 90 days in the year",
+      source: ar ? "بعد 90 يوماً في السنة" : "After 90 days in the year",
     });
   }
   if ((Number(parts.deductions) || 0) > 0) {
@@ -299,7 +288,7 @@ export function slipRows(item, employee, parts, ar, month) {
       label: ar ? "خصومات بسند" : "Documented deductions",
       amount: parts.deductions,
       minus: true,
-      source: ar ? "المادة 92 · بسند مكتوب" : "Art. 92 · written instrument",
+      source: ar ? "بسند مكتوب" : "Written instrument",
     });
   }
   return rows;
@@ -475,6 +464,8 @@ export default function PayrollSlipBoard({
   ar,
   onExport,
   personal = false,
+  data,
+  today,
 }) {
   const [empId, setEmpId] = useState(items[0]?.employeeId || "");
   const [picked, setPicked] = useState(() => new Set());
@@ -493,6 +484,20 @@ export default function PayrollSlipBoard({
   const gross = parts.base + parts.allowances + parts.bonus + (Number(parts.overtimePay) || 0) + (Number(parts.refunds) || 0);
   const withheld = (Number(parts.deductions) || 0) + (Number(parts.gosiEmployee) || 0) + (Number(parts.injuryCut) || 0) + (Number(parts.sickCut) || 0) + (Number(parts.unpaidLeaveCut) || 0) + (Number(parts.detentionCut) || 0);
   const rows = slipRows(live, employee, parts, ar, month);
+  // «⚖ حقك» on قسيمتي, «⚖ التزامك» on the HR payslip board — one hint per row, from this line's figures.
+  const hintCtx = {
+    view: personal ? "employee" : "manager",
+    ar,
+    today,
+    item: live,
+    name: employee?.name || item.employeeName || "",
+    employeeId: item.employeeId,
+    net: Math.max(0, parts.net),
+    payday: companyPayday(data?.settings, month || item.month),
+    base: parts.base,
+    allowances: parts.allowances,
+    cap: article93MaxDeduction(live),
+  };
   const allOn = rows.length > 0 && rows.every((row) => picked.has(row.id));
   const toggle = (id) => {
     setPicked((current) => {
@@ -523,33 +528,17 @@ export default function PayrollSlipBoard({
           </select>
         </label>
       ) : null}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "stretch" }}>
-        <StatTile
-          label={ar ? `صافي ${String(monthLabel || "").replace(/\s+\d{4}$/, "")}` : `Net · ${monthLabel}`}
-          value={sarAfter(Math.max(0, parts.net))}
-          hint={depositHint(item, ar)}
-        />
-        <StatTile
-          label={ar ? "الإجمالي" : "Gross"}
-          value={sarAfter(gross)}
-          hint={ar ? "أساسي + بدلات + إضافي" : "Base + allowances + overtime"}
-        />
-        <StatTile
-          label={ar ? "الخصومات" : "Deductions"}
-          value={sarAfter(withheld)}
-          hint={parts.gosiEmployee
-            ? (ar ? "التأمينات · بمصدرها" : "GOSI · with its source")
-            : (ar ? "بسند مكتوب" : "With a written instrument")}
-        />
-      </div>
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "12px 14px", borderRadius: 12, border: `1px solid ${BORDER}`, background: CARD }}>
-        <p style={{ margin: 0, flex: 1, fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.75 }}>
-          {ar
-            ? "قسيمتك تُبنى من الحضور المقفل. كل بند يحمل مصدره. الأجر يُدفع في موعده (المادة 90) عبر نظام حماية الأجور."
-            : "The slip is built from locked attendance. Every line names its source. The wage is paid on time (Art. 90) through wage protection."}
-        </p>
-        <Info size={16} color={MUTED} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden />
-      </div>
+      <FigureRow
+        ar={ar}
+        figures={[
+          { key: "net", label: ar ? `صافي ${String(monthLabel || "").replace(/\s+\d{4}$/, "")}` : `Net · ${monthLabel}`, value: sarDigits(Math.max(0, parts.net)), suffix: ar ? "ر.س" : "SAR", hint: depositHint(item, ar) },
+          { key: "gross", label: ar ? "الإجمالي" : "Gross", value: sarDigits(gross), suffix: ar ? "ر.س" : "SAR", hint: ar ? "أساسي + بدلات + إضافي" : "Base + allowances + overtime" },
+          { key: "withheld", label: ar ? "الخصومات" : "Deductions", value: sarDigits(withheld), suffix: ar ? "ر.س" : "SAR", hint: parts.gosiEmployee ? (ar ? "التأمينات · بمصدرها" : "GOSI · with its source") : (ar ? "بسند مكتوب" : "With a written instrument") },
+        ]}
+      />
+      <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
+        {ar ? "قسيمتك من الحضور المقفل — كل بند بمصدره، و«⚖ حقك» بجانب ما يحميه النظام." : "Built from locked attendance — every line names its source, with «⚖» beside what the law protects."}
+      </p>
       <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, background: CARD, overflow: "hidden" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: `1px solid ${BORDER}` }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>
@@ -581,7 +570,12 @@ export default function PayrollSlipBoard({
                     </td>
                     <td style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 13, fontWeight: 700, color: NAVY }}>{row.label}</td>
                     <td dir="ltr" style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 13, fontFamily: "'IBM Plex Mono', monospace", color: NAVY, textAlign: "end" }}>{row.info ? <span style={{ fontFamily: "'IBM Plex Sans Arabic', sans-serif", color: "#2F6B43", fontWeight: 700 }}>{row.valueText}</span> : row.blocked ? "—" : sarBefore(row.amount, row.minus)}</td>
-                    <td style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 12.5, color: MUTED }}>{row.source}</td>
+                    <td style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 12.5, color: MUTED }}>
+                      <span style={{ display: "inline-flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 10, rowGap: 2 }}>
+                        <span>{row.source}</span>
+                        <RightHint ar={ar} hint={slipRowHint(row, hintCtx)} />
+                      </span>
+                    </td>
                   </tr>
                 );
               })}

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
-import { Check, Info } from "lucide-react";
-import { gosiLine, lineComponents } from "@/lib/payrollDerivations";
+import { Check } from "lucide-react";
+import { article93MaxDeduction, contractWage, gosiLine, lineComponents } from "@/lib/payrollDerivations";
+import { deductionLineHint, payHintFor } from "@/lib/rightHints.pay";
+import RightHint from "@/components/shared/RightHint";
 import { registrationForPayroll } from "@/lib/facts";
 import { deductionLines } from "@/lib/payrollDeductions";
 import DeductionDisputeForm from "@/components/payroll/DeductionDisputeForm";
@@ -47,8 +49,8 @@ function faceOf(line, ar) {
       title: ar ? "قسط سلفة" : "Advance installment",
       sub: ref,
       reason: held
-        ? (ar ? "معلّقة حتى البتّ في التظلّم · المادة 92" : "Held until the objection is decided · Art. 92")
-        : (String(line.reason || "").trim() || (ar ? "طلب سلفة معتمد · المادة 92" : "Approved advance · Art. 92")),
+        ? (ar ? "معلّقة حتى البتّ في التظلّم" : "Held until the objection is decided")
+        : (String(line.reason || "").trim() || (ar ? "طلب سلفة معتمد" : "Approved advance")),
     };
   }
   if (line.source === "discipline") {
@@ -56,7 +58,7 @@ function faceOf(line, ar) {
       title: ar ? "جزاء" : "Sanction",
       sub: ref,
       reason: held
-        ? (ar ? "معلّقة حتى البتّ في التظلّم · المادة 72" : "Held until the objection is decided · Art. 72")
+        ? (ar ? "معلّقة حتى البتّ في التظلّم" : "Held until the objection is decided")
         : (String(line.reason || "").trim() || (ar ? "لائحة الجزاءات" : "Penalty list")),
     };
   }
@@ -70,7 +72,7 @@ function faceOf(line, ar) {
   return {
     title: ar ? "خصم بسند" : "Documented deduction",
     sub: ref,
-    reason: String(line.reason || "").trim() || (ar ? "سند مكتوب · المادة 92" : "Written instrument · Art. 92"),
+    reason: String(line.reason || "").trim() || (ar ? "سند مكتوب" : "Written instrument"),
   };
 }
 
@@ -122,6 +124,7 @@ export function mineDeductionRows(item, ar, employee) {
       sub: face.sub,
       amount: Number(line.amount) || 0,
       reason: face.reason,
+      line,
       status,
       canDispute: !item.paid && (!line.disputeStatus || line.disputeStatus === "none"),
     });
@@ -135,6 +138,13 @@ export default function PayrollMineDeductions({ ar, item, employee, onDispute, o
   const disputable = rows.filter((row) => row.canDispute);
   const allOn = disputable.length > 0 && disputable.every((row) => picked.has(row.id));
   const selected = rows.filter((row) => picked.has(row.id) && row.canDispute);
+  // «⚖ حقك» per line — computed from this month's line (cap, wage, notice dates).
+  const hintCtx = item ? { view: "employee", ar, name: employee?.name || "", employeeId: item.employeeId, wage: contractWage(item), total: Number(item.deductions) || 0, cap: article93MaxDeduction(item) } : null;
+  const hintOf = (row) => {
+    if (!hintCtx) return null;
+    if (row.id === "gosi") return row.blocked ? null : payHintFor("gosi", { ...hintCtx, amount: row.amount });
+    return deductionLineHint(row.line || {}, hintCtx);
+  };
 
   const toggle = (id) => {
     setPicked((current) => {
@@ -147,14 +157,9 @@ export default function PayrollMineDeductions({ ar, item, employee, onDispute, o
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "12px 14px", borderRadius: 12, border: `1px solid ${BORDER}`, background: CARD }}>
-        <p style={{ margin: 0, flex: 1, fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.75 }}>
-          {ar
-            ? "لا يُخصم من أجرك إلا بسند مكتوب (المادة 92)، ولا يتجاوز مجموع الخصم نصف الأجر (المادة 93). لكل بند سببه، ولك الاعتراض عليه باسمك."
-            : "Nothing is deducted without a written instrument (Art. 92), and the total may not pass half the wage (Art. 93). Each line names its reason, and you may object in your name."}
-        </p>
-        <Info size={16} color={MUTED} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden />
-      </div>
+      <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
+        {ar ? "لكل بند سببه وسنده، و«⚖ حقك» بجانبه — ولك الاعتراض عليه باسمك." : "Each line names its reason and instrument, with «⚖» beside it — you may object in your name."}
+      </p>
 
       {!item || rows.length === 0 ? (
         <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.8 }}>
@@ -203,7 +208,12 @@ export default function PayrollMineDeductions({ ar, item, employee, onDispute, o
                         {row.sub ? <div style={{ marginTop: 2, fontSize: 11.5, color: MUTED }}>{row.sub}</div> : null}
                       </td>
                       <td dir="ltr" style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 13, fontFamily: "'IBM Plex Mono', monospace", color: NAVY, textAlign: "end" }}>{row.amountText || sarBefore(row.amount)}</td>
-                      <td style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 12.5, color: MUTED }}>{row.reason}</td>
+                      <td style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 12.5, color: MUTED }}>
+                        <span style={{ display: "inline-flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 10, rowGap: 2 }}>
+                          <span>{row.reason}</span>
+                          <RightHint ar={ar} hint={hintOf(row)} />
+                        </span>
+                      </td>
                       <td style={{ padding: "12px 14px", borderTop: `1px solid ${BORDER}`, fontSize: 12.5, fontWeight: 650, color: row.status.ink, whiteSpace: "nowrap" }}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                           {row.status.label}

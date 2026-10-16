@@ -6,8 +6,10 @@ import { siteConditions } from "@/lib/allowanceKinds";
 import { leaveEffects } from "@/lib/payrollLeaveEffects";
 import { allowanceMatrix, employerCost, monthVariance, payrollStages, wpsPrecheck } from "@/lib/payrollReview";
 import { serviceYearsFromHire } from "@/lib/leaveTypes";
-import { chip, SectionHead, slab, sourceBadge } from "@/components/schedules/scheduleChrome";
+import { chip, SectionHead, slab } from "@/components/schedules/scheduleChrome";
 import { payEquityReview, PAY_EQUITY_THRESHOLD } from "@/lib/employerDuties";
+import { payHintFor } from "@/lib/rightHints.pay";
+import RightHint from "@/components/shared/RightHint";
 
 /**
  * مسير الأجور as one cycle: the stages in order at the top (each ready, to do, waiting), then what
@@ -81,6 +83,21 @@ export default function PayrollCycleReview({
     const fx = leaveEffects({ employee: e, month, line, monthlyWage: (Number(line.base) || 0) + (Number(line.allowances) || 0), ar });
     return { line, name: e?.name || line.employeeName || "", rows: fx.rows };
   }).filter((x) => x.rows.length);
+  // «⚖ التزامك» per leave / injury effect, from that person's line.
+  const effectHint = (x, r) => {
+    const c = { view: "manager", ar, name: x.name, employeeId: x.line.employeeId, days: r.days, amount: Math.abs(Number(r.amount) || 0) };
+    if (r.id === "sick") return payHintFor("sick", c);
+    if (r.id === "annual") return payHintFor("annualAdvance", { ...c, startDate: r.startDate });
+    if (r.id === "unpaid") return payHintFor("unpaidLeave", c);
+    if (r.id === "injury") {
+      const l = x.line;
+      const mode = l.injuryCovered === false
+        ? (Number(l.injuryUnpaid) > 0 ? "excluded" : Number(l.injuryReduction) > 0 ? "reduced" : "full")
+        : "gosi";
+      return payHintFor("injury", { ...c, mode });
+    }
+    return null;
+  };
 
   const siteOpen = new Map();
   for (const line of items) {
@@ -228,7 +245,7 @@ export default function PayrollCycleReview({
       <Fold
         id="cycle-leave"
         title={ar ? "أثر الإجازات والإصابات على المسير" : "What leave and injury do to the run"}
-        note={ar ? "تدخل تلقائياً: المرضية بشرائحها (117)، والسنوية بأجرها المقدّم (109)، وإصابات العمل (137–139). بلا أجر تُحسم من بنود الخصم." : "Applied automatically: sick bands (117), annual leave paid in advance (109), work injuries (137–139). Unpaid leave goes through the deduction lines."}
+        note={ar ? "تدخل تلقائياً: المرضية بشرائحها، والسنوية بأجرها المقدّم، وإصابات العمل، والإجازة بلا أجر أجراً غير مستحق." : "Applied automatically: sick bands, annual leave paid in advance, work injuries, and unpaid leave as wage not due."}
         trailing={<span style={chip(effects.length ? "warn" : "mute")}>{ar ? `${effects.length} موظفاً` : `${effects.length} people`}</span>}
         defaultOpen={effects.length > 0}
       >
@@ -241,9 +258,9 @@ export default function PayrollCycleReview({
                 <strong style={{ fontSize: 12.5, color: "var(--nv-ink)" }}>{x.name}</strong>
                 {x.rows.map((r) => (
                   <span key={r.id} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
-                    <span style={sourceBadge({ direction: "rtl" })}>{/^\d/.test(r.cite) ? (ar ? `م ${r.cite}` : `Art. ${r.cite}`) : r.cite}</span>
+                    <RightHint ar={ar} hint={effectHint(x, r)} />
                     <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.6 }}><strong style={{ color: "var(--nv-ink)" }}>{r.title}</strong>{r.detail ? ` — ${r.detail}` : ""}</span>
-                    <span style={{ ...MONO, fontSize: 12.5, fontWeight: 700, color: r.amount < 0 ? "var(--nv-bad-ink)" : "var(--nv-muted)" }}>{r.amount ? `−${moneySar(Math.abs(r.amount), ar)}` : "—"}</span>
+                    <span style={{ ...MONO, fontSize: 12.5, fontWeight: 700, color: r.amount < 0 ? "var(--nv-ink)" : "var(--nv-muted)" }}>{r.amount ? `−${moneySar(Math.abs(r.amount), ar)}` : "—"}</span>
                   </span>
                 ))}
               </li>

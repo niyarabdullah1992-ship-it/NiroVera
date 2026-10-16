@@ -111,7 +111,7 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
   const sick = sickMonth({ employee, month, monthlyWage, calendar });
   if (sick.days) {
     rows.push({
-      id: "sick", cite: "117",
+      id: "sick", cite: "117", days: sick.days,
       title: ar ? `إجازة مرضية · ${sick.days} يوماً` : `Sick leave · ${sick.days} days`,
       detail: ar
         ? [sick.fullDays ? `${sick.fullDays} بأجر كامل` : "", sick.quarterDays ? `${sick.quarterDays} بثلاثة أرباع` : "", sick.unpaidDays + sick.beyondDays ? `${sick.unpaidDays + sick.beyondDays} بلا أجر` : ""].filter(Boolean).join(" · ")
@@ -124,7 +124,7 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
   const annual = daysOfType(employee, month, "annual");
   if (annual.days) {
     rows.push({
-      id: "annual", cite: "109",
+      id: "annual", cite: "109", days: annual.days, startDate: annual.starts[0] || "",
       title: ar ? `إجازة سنوية · ${annual.days} يوماً` : `Annual leave · ${annual.days} days`,
       detail: annual.starts.length
         ? (ar ? `تبدأ ${annual.starts.join("، ")} — أجرها يُدفع مقدّماً قبل بدئها` : `Starts ${annual.starts.join(", ")} — its pay goes out before it starts`)
@@ -137,7 +137,7 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
   if (unpaid.days) {
     const cut = Number(line.unpaidLeaveCut) || 0;
     rows.push({
-      id: "unpaid", cite: "116",
+      id: "unpaid", cite: "116", days: unpaid.days,
       title: ar ? `إجازة بلا أجر · ${unpaid.days} يوماً` : `Unpaid leave · ${unpaid.days} days`,
       detail: ar ? "أجر غير مستحق عن أيامها — ليس حسماً من المادة 92 ولا يدخل في سقف نصف الأجر (المادة 93)" : "Wage not due for its days — not an Art. 92 deduction and outside the Art. 93 half-wage cap",
       amount: -cut,
@@ -147,7 +147,7 @@ export function leaveEffects({ employee, month, line = {}, monthlyWage = 0, cale
   const injuryCut = (Number(line.injuryReduction) || 0) + (Number(line.injuryUnpaid) || 0) + (Number(line.injuryWageStop) || 0);
   if (Number(line.injuryDays) > 0) {
     rows.push({
-      id: "injury", cite: "137–139",
+      id: "injury", cite: "137–139", days: Number(line.injuryDays) || 0,
       title: ar ? `إصابة عمل · ${line.injuryDays} يوماً` : `Work injury · ${line.injuryDays} days`,
       detail: injuryCut > 0 ? (ar ? "بنص النظام — ليست حسماً من المادة 92" : "Set by law — not an Art. 92 deduction") : (ar ? "بأجر كامل" : "Full pay"),
       amount: -injuryCut,

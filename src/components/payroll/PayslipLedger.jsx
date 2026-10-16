@@ -10,6 +10,8 @@ import { otMonthBreakdown } from "@/lib/otOffer";
 import { parseOtHours } from "@/lib/overtimeAssignment";
 import { chip, mono, SectionHead, slab, sourceBadge } from "@/components/schedules/scheduleChrome";
 import { FileRow } from "@/components/employees/EmployeeFileFieldCard";
+import RightHint from "@/components/shared/RightHint";
+import { payHintFor, slipRowHint } from "@/lib/rightHints.pay";
 
 /**
  * قسيمتي on the employee file and on the payslip page: the month as the file sets it (base, every
@@ -111,15 +113,17 @@ export function estimateOvertime(employee, month, base, allowances, ar = true) {
   return { rows, pay };
 }
 
-export function PayslipEstimateCard({ employee, ar = true, monthLabel = "", stationName = "", note = null, month = "" }) {
+export function PayslipEstimateCard({ employee, ar = true, monthLabel = "", stationName = "", note = null, month = "", view = "employee" }) {
   const base0 = payslipFromFile(employee, ar);
   const ot = estimateOvertime(employee, month || new Date().toISOString().slice(0, 7), base0.ledger.base, Math.max(0, base0.ledger.cash - base0.ledger.base), ar);
   const slip = ot.pay ? { ...base0, gross: base0.gross + ot.pay, net: base0.net + ot.pay } : base0;
   const lines = [
-    { id: "base", name: ar ? "الأجر الأساسي" : "Base wage", amount: slip.ledger.base, cite: ar ? "م 2" : "Art. 2" },
-    ...slip.ledger.rows.map((r) => ({ id: r.id, name: r.name, amount: r.amount, cite: r.cite, why: r.why })),
-    ...ot.rows.map((r) => ({ id: r.id, name: r.label, amount: r.amount, info: r.info, valueText: r.valueText, cite: ar ? "م 107" : "Art. 107", why: r.source })),
+    { id: "base", name: ar ? "الأجر الأساسي" : "Base wage", amount: slip.ledger.base },
+    ...slip.ledger.rows.map((r) => ({ id: `al-${r.id}`, name: r.name, amount: r.amount, why: r.why })),
+    ...ot.rows.map((r) => ({ id: r.id, name: r.label, amount: r.amount, info: r.info, valueText: r.valueText, hours: r.hours, why: r.source })),
   ];
+  // «⚖ حقك» per line where the law protects it: the wage (due date / WPS), overtime (107), GOSI share.
+  const hintCtx = { view, ar, name: employee?.name || "", employeeId: employee?.id, net: slip.net, base: slip.ledger.base, allowances: Math.max(0, slip.ledger.cash - slip.ledger.base) };
   return (
     <section data-payslip-estimate="1" style={{ ...slab, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <header style={{ background: DK.bg, color: "#fff", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -165,7 +169,7 @@ export function PayslipEstimateCard({ employee, ar = true, monthLabel = "", stat
             <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{line.name}</strong>
-                <span style={sourceBadge({ direction: "rtl" })}>{line.cite}</span>
+                <RightHint ar={ar} hint={slipRowHint({ id: line.id, amount: line.amount, hours: line.hours }, hintCtx)} />
               </span>
               {line.why ? <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.6 }}>{line.why}</span> : null}
             </span>
@@ -176,16 +180,19 @@ export function PayslipEstimateCard({ employee, ar = true, monthLabel = "", stat
         ))}
         <li data-payslip-line="gosi" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, padding: "10px 18px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", alignItems: "center", background: "var(--nv-soft)" }}>
           <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-            <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "خصم التأمينات — المعاشات وساند" : "GOSI — annuities and SANED"}</strong>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "خصم التأمينات — المعاشات وساند" : "GOSI — annuities and SANED"}</strong>
+              {slip.gosiEmployee ? <RightHint ar={ar} hint={payHintFor("gosi", { ...hintCtx, amount: slip.gosiEmployee })} /> : null}
+            </span>
             <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.6 }}>{gosiNote(slip, ar)}</span>
           </span>
-          <span style={{ ...MONO, fontSize: 13.5, fontWeight: 700, color: "var(--nv-bad-ink)" }}>{slip.gosiEmployee ? `- ${moneySar(slip.gosiEmployee, ar)}` : moneySar(0, ar)}</span>
+          <span style={{ ...MONO, fontSize: 13.5, fontWeight: 700, color: "var(--nv-ink)" }}>{slip.gosiEmployee ? `- ${moneySar(slip.gosiEmployee, ar)}` : moneySar(0, ar)}</span>
         </li>
       </ol>
       <p style={{ margin: 0, padding: "10px 18px 12px", fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.8 }}>
         {note || (ar
-          ? "تقدير من بنود الأجر على الملف. القسيمة النهائية تصدر من المسير بعد إقفال الحضور (الإضافي والخصومات بسند)، ويُدفع الأجر في موعده عبر حماية الأجور (المادة 90)."
-          : "An estimate from the wage lines on file. The final slip comes from the run once attendance locks (overtime, documented deductions), paid on time through wage protection (Art. 90).")}
+          ? "تقدير من ملفك — القسيمة النهائية من المسير بعد إقفال الحضور."
+          : "An estimate from your file — the final slip comes from the run once attendance locks.")}
       </p>
     </section>
   );
@@ -315,7 +322,7 @@ export function SiteConditionsCard({ employee, station = {}, ar = true, editing 
         <ol style={{ listStyle: "none", margin: 0, padding: "10px 18px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
           {site.duties.map((d) => (
             <li key={d.id} data-site-duty={d.id} data-met={d.met ? "1" : "0"} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "9px 12px", borderRadius: 10, border: `1px solid ${d.met ? "var(--nv-ok-line)" : "var(--nv-warn-line)"}`, background: d.met ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)" }}>
-              <span style={sourceBadge({ direction: "rtl" })}>{d.cite === "18632" ? (ar ? "القرار 18632" : "Dec. 18632") : (ar ? `م ${d.cite}` : `Art. ${d.cite}`)}</span>
+              <RightHint ar={ar} hint={payHintFor("siteDuty", { view: canEdit ? "manager" : "employee", ar, duty: d, employeeId: employee?.id, name: employee?.name || "" })} />
               <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)", lineHeight: 1.6 }}>{ar ? d.ar : d.en}</span>
               <span style={{ fontSize: 11.5, fontWeight: 700, color: d.met ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)", whiteSpace: "nowrap" }}>
                 {d.met ? (ar ? `مغطّى · ${d.howAr}` : `Covered · ${d.howEn}`) : (ar ? "يحتاج تغطية — خدمة أو بدل" : "Needs cover — a service or an allowance")}

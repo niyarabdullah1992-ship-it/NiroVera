@@ -3,8 +3,9 @@ import { Trash2, AlertTriangle, X } from "lucide-react";
 import DeductionLineForm from "@/components/payroll/DeductionLineForm";
 import DeductionDisputeForm from "@/components/payroll/DeductionDisputeForm";
 import { deductionLines, deductionsTotal, sourceLabel } from "@/lib/payrollDeductions";
-import { article90MaxDeduction, checkArticle90Gate } from "@/lib/payrollDerivations";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import { article90MaxDeduction, checkArticle90Gate, contractWage } from "@/lib/payrollDerivations";
+import { deductionLineHint, payHintFor } from "@/lib/rightHints.pay";
+import RightHint from "@/components/shared/RightHint";
 import { formatDate } from "@/lib/dateFormat";
 import { MUTED, NAVY, BORDER, SURFACE, DANGER, dialogOverlay, dialogCard, ui, CARD } from "@/lib/platformStyles";
 
@@ -14,6 +15,9 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
   const lines = deductionLines(item);
   const total = deductionsTotal(item);
   const a90 = checkArticle90Gate({ ...item, deductions: total });
+  // «⚖ التزامك» (HR) / «⚖ حقك» (the worker's own view) — one per line, from that line's figures.
+  const hintCtx = { view: canEdit ? "manager" : "employee", ar, name: employeeName, employeeId: item.employeeId, wage: contractWage(item), total, cap: article90MaxDeduction(item) };
+  const plainSource = (source) => String(sourceLabel(source, ar) || "").replace(/\s—\s(?:المادة|Art\.).*$/, "");
 
   return (
     <div
@@ -48,7 +52,8 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
                 <div style={{ minWidth: 0 }}>
                   <p style={{ margin: 0, fontSize: "13px", fontWeight: 600, color: NAVY }}>
                     <span dir="ltr">{Number(line.amount).toLocaleString()} {item.currency}</span>
-                    <span style={{ marginInlineStart: "8px", fontSize: "11px", fontWeight: 500, color: MUTED }}>{sourceLabel(line.source, ar)}</span>
+                    <span style={{ marginInlineStart: "8px", fontSize: "11px", fontWeight: 500, color: MUTED }}>{plainSource(line.source)}</span>
+                    <RightHint ar={ar} hint={deductionLineHint(line, hintCtx)} style={{ marginInlineStart: 8 }} />
                   </p>
                   {line.reason && <p style={{ margin: "6px 0 0", fontSize: "12px", color: MUTED }}>{line.reason}</p>}
                   {line.sourceRefId && <p style={{ margin: "2px 0 0", fontSize: "11px", color: MUTED }} dir="ltr">ref: {line.sourceRefId}</p>}
@@ -74,8 +79,8 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
                   {line.source === "damage" && line.objectionLastDay && (
                     <p style={{ margin: "6px 0 0", fontSize: "11px", color: MUTED }}>
                       {ar
-                        ? `أُبلغ في ${line.damageNoticeOn} — مهلة التظلم حتى ${line.objectionLastDay} (المادة 91)${line.refundedAt ? " · رُدّ المبلغ بقبول الاعتراض" : ""}`
-                        : `Told on ${line.damageNoticeOn} — objection open until ${line.objectionLastDay} (Art. 91)${line.refundedAt ? " · refunded on an accepted objection" : ""}`}
+                        ? `أُبلغ في ${line.damageNoticeOn} — مهلة التظلم حتى ${line.objectionLastDay}${line.refundedAt ? " · رُدّ المبلغ بقبول الاعتراض" : ""}`
+                        : `Told on ${line.damageNoticeOn} — objection open until ${line.objectionLastDay}${line.refundedAt ? " · refunded on an accepted objection" : ""}`}
                     </p>
                   )}
                   {line.disputeStatus === "rejected" && (
@@ -123,7 +128,7 @@ export default function DeductionLinesDialog({ open, onOpenChange, item, employe
             {ar
               ? `سقف الخصم ${article90MaxDeduction(item).toLocaleString()} ${item.currency}`
               : `Deduction cap ${article90MaxDeduction(item).toLocaleString()} ${item.currency}`}
-            <LaborArticleCite ruleId="payroll.deduction.capRatio" ar={ar} showText />
+            <RightHint ar={ar} hint={payHintFor("deduction", { ...hintCtx, over: !a90.ok })} />
             {!a90.ok && (ar ? " — تجاوز الحد." : " — over cap.")}
           </span>
         </p>

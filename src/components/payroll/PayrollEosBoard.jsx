@@ -2,7 +2,9 @@ import React, { useMemo } from "react";
 import { deriveEos } from "@/lib/offboardingDerivations";
 import { averageActualWage, isAverageWageBasis } from "@/lib/payrollLaw";
 import { MUTED, NAVY, tableShell, SURFACE } from "@/lib/platformStyles";
-import KpiStrip from "@/components/shared/KpiStrip";
+import FigureRow from "@/components/shared/FigureRow";
+import RightHint from "@/components/shared/RightHint";
+import { payHintFor } from "@/lib/rightHints.pay";
 
 function money(n) {
   return Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -51,10 +53,10 @@ export default function PayrollEosBoard({ items = [], employeeForItem, ar, payro
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <KpiStrip stats={[
-        { label: ar ? "الالتزام القائم" : "Standing liability", value: money(tot), suffix: "SAR" },
-        { label: ar ? "متوسط الخدمة" : "Average service", value: avg, suffix: ar ? "سنة" : "yrs" },
-        { label: ar ? "فوق خمس سنوات" : "Over five years", value: overFive, tone: "ok" },
+      <FigureRow ar={ar} figures={[
+        { key: "liability", label: ar ? "الالتزام القائم" : "Standing liability", value: money(tot), suffix: ar ? "ر.س" : "SAR" },
+        { key: "avg", label: ar ? "متوسط الخدمة" : "Average service", value: avg, suffix: ar ? "سنة" : "yrs" },
+        { key: "over5", label: ar ? "فوق خمس سنوات" : "Over five years", value: overFive },
       ]} />
       <div style={tableShell}>
         <div style={{
@@ -88,14 +90,15 @@ export default function PayrollEosBoard({ items = [], employeeForItem, ar, payro
             <span>
               <span style={{ display: "block", fontWeight: 600 }}>{row.employee?.name || row.item.employeeName}</span>
               <span style={{ fontSize: 10, color: MUTED }}>{row.hire ? `${ar ? "تعيينه" : "Hired"} ${row.hire}` : (ar ? "بلا تاريخ تعيين" : "No hire date")}</span>
-              {row.eos?.suspendedDays ? <span style={{ display: "block", fontSize: 10, color: MUTED }}>{ar ? `${row.eos.suspendedDays} يوماً موقوفة (بلا أجر فوق 20 — م116)` : `${row.eos.suspendedDays} suspended days (unpaid over 20 — Art. 116)`}</span> : null}
-              {row.eos?.averageBasis ? <span style={{ display: "block", fontSize: 10, color: MUTED }}>{ar ? "متوسط أجر السنة الأخيرة — م96" : "Last year's average wage — Art. 96"}</span> : null}
+              {row.eos?.suspendedDays ? <span style={{ display: "block", fontSize: 10, color: MUTED }}>{ar ? `${row.eos.suspendedDays} يوماً موقوفة (بلا أجر فوق 20)` : `${row.eos.suspendedDays} suspended days (unpaid over 20)`}</span> : null}
+              {row.eos ? <RightHint ar={ar} hint={payHintFor("eos", { view: "manager", ar, eos: row.eos, name: row.employee?.name || row.item.employeeName || "", employeeId: row.item.employeeId })} /> : null}
+              {row.eos?.averageBasis ? <span style={{ display: "block", fontSize: 10, color: MUTED }}>{ar ? "متوسط أجر السنة الأخيرة" : "Last year's average wage"}</span> : null}
             </span>
             <span style={{ color: MUTED }}>{Math.round(row.years * 10) / 10} {ar ? "سنة" : "yrs"}</span>
             <span dir="ltr">{money(row.wage)}</span>
             <span dir="ltr">{money(row.first)}</span>
             <span dir="ltr" style={{ color: row.rest ? NAVY : "#c7ccd6" }}>{money(row.rest)}</span>
-            <span dir="ltr" style={{ fontWeight: 600, color: "var(--nv-ok-ink)" }}>{money(row.amt)}</span>
+            <span dir="ltr" style={{ fontWeight: 600, color: NAVY }}>{money(row.amt)}</span>
           </div>
         ))}
       </div>

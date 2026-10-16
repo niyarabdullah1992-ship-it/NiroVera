@@ -5,6 +5,9 @@ import { slipRows } from "@/components/payroll/PayrollSlipBoard";
 import { lineComponents } from "@/lib/payrollDerivations";
 import { moneySar } from "@/lib/employeeFileView";
 import { printSheet } from "@/lib/printSheet";
+import { slipRowHint } from "@/lib/rightHints.pay";
+import { article93MaxDeduction } from "@/lib/payrollDerivations";
+import RightHint from "@/components/shared/RightHint";
 
 /**
  * أرشيف قسيمتي — the person's own line from every month's run, newest first, in the shared archive:
@@ -110,6 +113,7 @@ export default function MyPayslipArchive({ employee, employeeIds = [], runs = []
       printRecord={(it) => sheetFor(it)}
       renderOpen={(it) => {
         const rows = slipRows(it.line, employee, it.parts, ar, it.month);
+        const hintCtx = { view: "employee", ar, item: it.line, name: employee?.name || "", employeeId: it.line.employeeId, net: Math.max(0, it.net), base: it.parts.base, allowances: it.parts.allowances, cap: article93MaxDeduction(it.line) };
         return (
           <div data-payslip-month={it.month} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <ol style={{ listStyle: "none", margin: 0, padding: 0, border: "1px solid var(--nv-line)", borderRadius: 10, overflow: "hidden" }}>
@@ -117,9 +121,12 @@ export default function MyPayslipArchive({ employee, employeeIds = [], runs = []
                 <li key={r.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, padding: "9px 12px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", alignItems: "center" }}>
                   <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                     <strong style={{ fontSize: 12.5, color: "var(--nv-ink)" }}>{r.label}</strong>
-                    {r.source ? <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>{r.source}</span> : null}
+                    <span style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 10 }}>
+                      {r.source ? <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>{r.source}</span> : null}
+                      <RightHint ar={ar} hint={slipRowHint(r, hintCtx)} />
+                    </span>
                   </span>
-                  <span style={{ ...MONO, ...(r.info ? { fontFamily: "inherit", whiteSpace: "nowrap" } : null), fontSize: 12.5, fontWeight: 700, color: r.info ? "var(--nv-ok-ink, #2F6B43)" : r.minus ? "var(--nv-bad-ink)" : "var(--nv-ink)" }}>{r.info ? r.valueText : r.blocked ? "—" : `${r.minus ? "- " : ""}${moneySar(r.amount, ar)}`}</span>
+                  <span style={{ ...MONO, ...(r.info ? { fontFamily: "inherit", whiteSpace: "nowrap" } : null), fontSize: 12.5, fontWeight: 700, color: r.info ? "var(--nv-ok-ink, #2F6B43)" : "var(--nv-ink)" }}>{r.info ? r.valueText : r.blocked ? "—" : `${r.minus ? "- " : ""}${moneySar(r.amount, ar)}`}</span>
                 </li>
               ))}
               <li style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, padding: "10px 12px", background: "var(--nv-ok-soft)", alignItems: "center" }}>

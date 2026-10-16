@@ -18,6 +18,7 @@ import {
 } from "@/lib/payroll";
 import { facePayrollItem } from "@/lib/payrollWageSync";
 import { slipRows } from "@/components/payroll/PayrollSlipBoard";
+import { companyPayday } from "@/lib/payrollLaw";
 import { printReport } from "@/lib/printReport";
 import PayrollTableRows from "@/components/payroll/PayrollTableRows";
 import OwnerPayrollToggle from "@/components/payroll/OwnerPayrollToggle";
@@ -58,7 +59,6 @@ import useStationScope from "@/hooks/useStationScope";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { pageKicker } from "@/lib/moduleMeta";
 import { article90MaxDeduction, lineComponents } from "@/lib/payrollDerivations";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { BORDER, MUTED, WARN, ui, SURFACE, tableShell } from "@/lib/platformStyles";
 import { brandReportColor } from "@/lib/pdfTheme";
 import FinanceViewSwitch from "@/components/shared/FinanceViewSwitch";
@@ -522,8 +522,8 @@ export default function Payroll() {
                 month={month}
                 stationName={station.name || ""}
                 note={ar
-                  ? "لا بند لك في مسير هذا الشهر بعد — هذا تقدير من بنود الأجر في ملفك. يصدر البند حين يُجهَّز المسير ويُقفل الحضور، ويُدفع عبر حماية الأجور (المادة 90)."
-                  : "No line for you in this month's run yet — this is an estimate from the wage lines on your file. The line comes when the run is prepared and attendance locks, paid through wage protection (Art. 90)."}
+                  ? "لا بند لك في مسير هذا الشهر بعد — تقدير من ملفك حتى يُجهَّز المسير ويُقفل الحضور."
+                  : "No line for you in this month's run yet — an estimate from your file until the run is prepared and attendance locks."}
               />
             ) : (
               <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "لا ملف موظف مرتبط بحسابك بعد." : "No employee file is linked to your account yet."}</p>
@@ -554,11 +554,6 @@ export default function Payroll() {
 
       {(tab === "lines" || tab === "deduct") && view === MANAGE && (
         <div style={{ ...tableShell, overflowX: "auto" }}>
-            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", margin: "0 0 10px" }}>
-              <LaborArticleCite ruleId="payroll.deduction.capRatio" ar={ar} showText />
-              <LaborArticleCite ruleId="payroll.wage.payment.cite" ar={ar} showText />
-              <LaborArticleCite ruleId="hours.ot.premium" ar={ar} showText />
-            </div>
             {visible.length === 0 ? (
               <p style={{ margin: "24px 18px", textAlign: "center", fontSize: 13, color: MUTED }}>
                 {ar ? "لا موظفين في هذا النطاق — وسّع نطاق الهيدر أو حدّث من الملفات." : "No employees in this scope — widen header scope or refresh from profiles."}
@@ -579,6 +574,7 @@ export default function Payroll() {
                     getStationId={itemStationId}
                     employeeForItem={employeeForItem}
                     ar={ar}
+                    payday={companyPayday(data?.settings, month)}
                     onChange={(itemId, field, value) => refused(updatePayrollItem(company.id, month, itemId, { [field]: value }))}
                     onTogglePaid={(item, paid) => {
                       if (paid && payrollItemIssues(item).length) {

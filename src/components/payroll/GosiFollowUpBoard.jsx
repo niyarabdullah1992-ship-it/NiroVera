@@ -5,6 +5,8 @@ import { contributoryWage, employeeWageSplit } from "@/lib/employeeFileView";
 import { payrollSaudiFlag } from "@/lib/payrollWageSync";
 import { gosiHazardCoverage } from "@/lib/workInjury";
 import { recordGosiAction, setInjuryGosiStatus } from "@/lib/store";
+import { payHintFor } from "@/lib/rightHints.pay";
+import RightHint from "@/components/shared/RightHint";
 
 const iso = (x) => `⁦${x}⁩`;
 
@@ -49,7 +51,7 @@ export default function GosiFollowUpBoard({ data, companyId, ar = true, by = "",
       ? `آخر يوم ${iso(t.from)} · سبب الاستبعاد: ${t.reason ? t.reason.ar : "لا يقابله سبب في الدليل — اختره في تأميناتي أعمال"}`
       : `Last day ${t.from} · reason: ${t.reason ? t.reason.en : "no matching line — pick it in GOSI"}`;
     if (t.kind === "injury") return ar ? `إصابة ${iso(t.from)} — الإبلاغ خلال عشرة أيام` : `Injury ${t.from} — report within ten days`;
-    if (t.kind === "injury_office") return ar ? `إصابة ${iso(t.from)} — المنشأة غير خاضعة لفرع الأخطار المهنية: يُبلَّغ مكتب العمل خلال أسبوع من العلم بها، وهو يقرر كونها إصابة عمل ويحدد التعويض (اللائحة م28)` : `Injury ${t.from} — outside GOSI hazards: report to the labour office within a week (Regs Art. 28)`;
+    if (t.kind === "injury_office") return ar ? `إصابة ${iso(t.from)} — المنشأة غير خاضعة لفرع الأخطار المهنية: يُبلَّغ مكتب العمل خلال أسبوع من العلم بها، وهو يقرر كونها إصابة عمل ويحدد التعويض` : `Injury ${t.from} — outside GOSI hazards: report to the labour office within a week`;
     if (t.kind === "wage") return ar ? `الأجر الخاضع تغيّر من ${money(t.previous)} إلى ${money(t.wage)} — يُبلَّغ فوراً` : `Contributory wage changed ${money(t.previous)} → ${money(t.wage)} — report at once`;
     if (t.kind === "payment") return ar ? `اشتراكات شهر ${iso(t.month)} — تُسدَّد خلال 15 يوماً بعده` : `Contributions for ${t.month} — paid within 15 days after it`;
     return "";
@@ -94,7 +96,10 @@ export default function GosiFollowUpBoard({ data, companyId, ar = true, by = "",
             <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{t.kind === "payment" ? (ar ? "المنشأة" : "Establishment") : t.name}</strong>
             <span style={{ marginInlineStart: "auto" }}>{dueChip(t)}</span>
           </div>
-          <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>{detail(t)}</span>
+          <span style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
+            <span>{detail(t)}</span>
+            <RightHint ar={ar} hint={payHintFor("gosiTask", { view: "manager", ar, today, task: t, what: detail(t), name: t.name || "", employeeId: t.employeeId })} />
+          </span>
           {t.done ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 11.5, color: "var(--nv-muted)" }}>
               {t.ref ? <span>{ar ? "المرجع:" : "Reference:"} <span dir="ltr">{t.ref}</span></span> : null}
@@ -109,7 +114,7 @@ export default function GosiFollowUpBoard({ data, companyId, ar = true, by = "",
                   >
                     <option value="pending">{ar ? "بانتظار القرار" : "Pending"}</option>
                     <option value="approved">{ar ? "معتمدة" : "Approved"}</option>
-                    <option value="rejected">{ar ? "مرفوضة — تتحول إلى مرضية (المادة 117)" : "Rejected — becomes sick leave (Art. 117)"}</option>
+                    <option value="rejected">{ar ? "مرفوضة — تتحول إلى مرضية" : "Rejected — becomes sick leave"}</option>
                   </select>
                 </label>
               ) : null}

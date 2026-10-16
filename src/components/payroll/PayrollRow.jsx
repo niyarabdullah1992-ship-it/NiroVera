@@ -5,6 +5,8 @@ import { netOf } from "@/lib/payroll";
 import { checkArticle90Gate, article90MaxDeduction } from "@/lib/payrollDerivations";
 import { normalizeLocalizedNumber } from "@/lib/localizedNumber";
 import { BAD, OK, CARD } from "@/lib/platformStyles";
+import RightHint from "@/components/shared/RightHint";
+import { payHintFor } from "@/lib/rightHints.pay";
 
 const NAVY = "var(--nv-ink)";
 const MUTED = "var(--nv-muted)";
@@ -15,7 +17,7 @@ const GREEN = "var(--nv-accent)";
 // way in the table, the totals, and the exported WPS file.
 const money = (value) => Number(value || 0).toLocaleString("en-US");
 
-export default function PayrollRow({ item, employee, ar, onChange, onTogglePaid, onPayslip, onDeductions }) {
+export default function PayrollRow({ item, employee, ar, payday = null, onChange, onTogglePaid, onPayslip, onDeductions }) {
   const num = (v) => Number(v) || 0;
   const baseMissing = !item.isOwner && num(item.base) <= 0;
   const cell = (field, editable = true) => {
@@ -50,6 +52,11 @@ export default function PayrollRow({ item, employee, ar, onChange, onTogglePaid,
   const a90 = checkArticle90Gate(item);
   const a90Max = article90MaxDeduction(item);
   const cellStyle = { padding: "12px 8px", textAlign: "center", borderBottom: `1px solid ${BORDER}` };
+  // «⚖ التزامك» — one per payroll line: the deduction cap when it is breached, otherwise the wage due date / WPS.
+  const hintCtx = { view: "manager", ar, name: employee?.name || item.employeeName || "", employeeId: item.employeeId };
+  const hint = a90.ok
+    ? payHintFor("wage", { ...hintCtx, amount: netOf(item), payday, paid: Boolean(item.paid), paidAt: item.paidAt })
+    : payHintFor("deduction", { ...hintCtx, total: num(item.deductions), cap: a90Max, over: true });
   return (
     <tr style={{ opacity: item.paid ? 0.72 : 1 }}>
       <td data-label={ar ? "الموظف" : "Employee"} style={{ ...cellStyle, textAlign: "start" }}>
@@ -107,8 +114,11 @@ export default function PayrollRow({ item, employee, ar, onChange, onTogglePaid,
         </span>
       </td>
       <td data-label={ar ? "الصافي" : "Net"} style={cellStyle}>
-        <span dir="ltr" style={{ fontSize: "12.5px", fontWeight: 600, color: NAVY }}>
-          {money(netOf(item))} {item.currency}
+        <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <span dir="ltr" style={{ fontSize: "12.5px", fontWeight: 600, color: NAVY }}>
+            {money(netOf(item))} {item.currency}
+          </span>
+          <RightHint ar={ar} hint={hint} />
         </span>
       </td>
       <td data-label={ar ? "الحالة" : "Status"} style={cellStyle}>

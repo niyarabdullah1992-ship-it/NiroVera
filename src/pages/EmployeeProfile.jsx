@@ -53,7 +53,7 @@ const TABS = [
   { key: "summary", ar: "ملخّص الملف", en: "File summary" },
   { key: "identity", ar: "الهوية والتوظيف", en: "Identity and employment" },
   { key: "contract", ar: "العقد والأجر", en: "Contract and wage" },
-  { key: "duty", ar: "الدوام", en: "Duty" },
+  { key: "duty", ar: "الدوام وأنظمة الوزارة", en: "Duty and ministry rules" },
   { key: "compliance", ar: "الالتزام والمنصات", en: "Compliance and platforms" },
   { key: "growth", ar: "التدرّج والجزاءات", en: "Progression and sanctions" },
   { key: "docs", ar: "العهد", en: "Custody" },

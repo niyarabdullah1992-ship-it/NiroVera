@@ -15,6 +15,7 @@ import {
   checkManagerRatingGate,
   deriveCycleProgress,
   deriveEmployeeAssignment,
+  deriveEmployeeTaskFacts,
   deriveObjectiveBoard,
   deriveOrgUnitRollup,
   derivePositionBoard,
@@ -26,7 +27,7 @@ import {
   type PositionLike,
 } from "../../shared/hcmDerivations.ts";
 import { countPersonalHseDuty, deriveFairHseRates } from "../../shared/perfDerivations.ts";
-import { checkDecidePerfGrievanceGate, checkPerfGrievanceGate, checkReportElementsGate, perfLevelOf, perfReportsFor } from "../../shared/perfReport.ts";
+import { checkDecidePerfGrievanceGate, checkPerfGrievanceGate, checkReportEvidenceGate, perfLevelOf, perfReportsFor, reportPrefill } from "../../shared/perfReport.ts";
 
 const FOUNDATION_CATEGORY = "hcmFoundation";
 const PERFORMANCE_CATEGORY = "hcmPerformance";
@@ -730,9 +731,23 @@ Deno.serve(async (req) => {
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, band: gate.band || null }, { status: 422 });
       }
-      // Model Arts. 18–19: the report rates competence, conduct and attendance on the five levels.
-      const report = checkReportElementsGate(body.elements);
-      if (!report.ok) return Response.json({ error: report.error, reason: report.reason, reasonEn: report.reasonEn }, { status: 422 });
+      // Model Arts. 18–19: the three elements on the five levels, pre-filled from evidence. Competence is
+      // re-derived here from the task store (approved tasks' quality levels in the cycle period); the
+      // duty totals and the conduct counts come from the client's shared derivations and are re-mapped.
+      const person = (await loadEmployees()).find((e: any) => String(e.employeeId || e.id) === String(body.employeeId)) || null;
+      const facts = deriveEmployeeTaskFacts({
+        tasks: (await loadTasks()).filter((t: any) => t && (!t.companyId || t.companyId === auth.companyId)),
+        employeeId: String(body.employeeId),
+        stationId: person?.stationId || null,
+        period: { from: cycle!.from, to: cycle!.to },
+      });
+      const prefill = reportPrefill({
+        quality: facts.quality,
+        attendance: body.evidence?.attendance?.basis || null,
+        conduct: body.evidence?.conduct?.basis || null,
+      });
+      const report = checkReportEvidenceGate({ elements: body.elements, prefill, reasons: body.elementReasons || {}, rating: gate.rating });
+      if (!report.ok) return Response.json({ error: report.error, reason: report.reason, reasonEn: report.reasonEn, element: report.element || null }, { status: 422 });
       const record = {
         id: uid("rate"),
         cycleId: cycle!.id,
@@ -741,6 +756,8 @@ Deno.serve(async (req) => {
         rating: gate.rating,
         level: perfLevelOf(gate.rating)?.level ?? null,
         elements: report.elements,
+        evidence: report.evidence,
+        elementReasons: report.elementReasons,
         justification: gate.justification,
         ratedBy: auth.userId,
         ratedByName: auth.name,

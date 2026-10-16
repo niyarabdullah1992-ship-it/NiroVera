@@ -63,6 +63,137 @@ export function checkReportElementsGate(elements = {}) {
   return { ok: true, elements: Object.fromEntries(PERF_ELEMENTS.map((row) => [row.key, Number(elements[row.key])])) };
 }
 
+/* ─────────── the report's elements from evidence (م18) — one scale from task to report ─────────── */
+
+/**
+ * المواظبة ← the duty record of the period (lib/dutyDay: absence = a past published shift with no
+ * punch, no approved leave, not a holiday; lateness from the published shift start, approved
+ * استئذان aside). Each level holds both ceilings — the worse of the two decides:
+ *   5 ممتاز          no absence      · late on ≤ 2% of scheduled days
+ *   4 فوق المتوسط    absence ≤ 1%    · late ≤ 5%
+ *   3 متوسط          absence ≤ 3%    · late ≤ 10%
+ *   2 دون المتوسط    absence ≤ 6%    · late ≤ 20%
+ *   1 ضعيف           beyond those
+ * A company mapping, documented here and shown with the figures; the manager may change the level
+ * with a written reason.
+ */
+export const ATTENDANCE_LEVEL_MAP = [
+  { level: 5, absentPctMax: 0, latePctMax: 2 },
+  { level: 4, absentPctMax: 1, latePctMax: 5 },
+  { level: 3, absentPctMax: 3, latePctMax: 10 },
+  { level: 2, absentPctMax: 6, latePctMax: 20 },
+  { level: 1, absentPctMax: 100, latePctMax: 100 },
+];
+
+const pct1 = (part, whole) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
+
+/** { scheduled, attended, absent, lateDays } of the period → { level, absentPct, latePct, adherencePct } or null. */
+export function attendanceLevelOf(totals = {}) {
+  const scheduled = Math.max(0, Number(totals?.scheduled) || 0);
+  if (!scheduled) return null;
+  const absent = Math.max(0, Number(totals.absent) || 0);
+  const lateDays = Math.max(0, Number(totals.lateDays) || 0);
+  const attended = Math.max(0, Number(totals.attended) || 0);
+  const absentPct = pct1(absent, scheduled);
+  const latePct = pct1(lateDays, scheduled);
+  const row = ATTENDANCE_LEVEL_MAP.find((r) => absentPct <= r.absentPctMax && latePct <= r.latePctMax) || ATTENDANCE_LEVEL_MAP[ATTENDANCE_LEVEL_MAP.length - 1];
+  return { level: row.level, scheduled, attended, absent, lateDays, absentPct, latePct, adherencePct: pct1(attended, scheduled) };
+}
+
+/**
+ * The report pre-filled from the period's evidence:
+ *   competence ← the mean task quality level (taskQualitySummary) rounded · basis n tasks
+ *   attendance ← attendanceLevelOf(duty totals)
+ *   conduct    ← no level: the manager's judgment; signed sanctions and proven complaints shown beside it
+ */
+export function reportPrefill({ quality, attendance, conduct } = {}) {
+  const n = Math.max(0, Number(quality?.n) || 0);
+  const avg = n ? Number(quality.avg) : null;
+  const att = attendanceLevelOf(attendance || {});
+  return {
+    competence: { level: n && Number.isFinite(avg) ? Math.min(5, Math.max(1, Math.round(avg))) : null, basis: { n, avg, legacy: Math.max(0, Number(quality?.legacy) || 0) } },
+    attendance: { level: att ? att.level : null, basis: att || { scheduled: 0 } },
+    conduct: { level: null, basis: { sanctions: Math.max(0, Number(conduct?.sanctions) || 0), complaints: Math.max(0, Number(conduct?.complaints) || 0) } },
+  };
+}
+
+export const REPORT_CHANGE_REASON_MIN = 10;
+export const REPORT_GAP_REASON_MIN = 15;
+
+/**
+ * The manager confirms or changes each pre-filled element — a change carries its reason; and when the
+ * overall level (from the 0–100 rating) sits two levels or more from the elements' mean, he justifies it.
+ */
+export function checkReportEvidenceGate({ elements = {}, prefill, reasons = {}, rating } = {}) {
+  const base = checkReportElementsGate(elements);
+  if (!base.ok) return base;
+  const changed = {};
+  for (const el of PERF_ELEMENTS) {
+    const from = prefill?.[el.key]?.level ?? null;
+    if (from == null || from === base.elements[el.key]) continue;
+    const why = String(reasons?.[el.key] || "").trim();
+    if (why.length < REPORT_CHANGE_REASON_MIN) {
+      const a = perfLevelByNumber(from);
+      const b = perfLevelByNumber(base.elements[el.key]);
+      return fail("REPORT_ELEMENT_REASON_REQUIRED",
+        `غيّرتَ «${el.ar}» عن المستوى المشتق من الأدلة (${a?.ar} ← ${b?.ar}) — اكتب السبب (النموذج الموحد م18).`,
+        `You changed «${el.en}» from the evidence level (${a?.en} → ${b?.en}) — write why (model Art. 18).`,
+        { element: el.key });
+    }
+    changed[el.key] = { from, to: base.elements[el.key], reason: why };
+  }
+  const values = PERF_ELEMENTS.map((el) => base.elements[el.key]);
+  const elementAvg = Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10;
+  const overall = perfLevelOf(rating);
+  const gap = overall ? Math.abs(overall.level - elementAvg) : 0;
+  const overallWhy = String(reasons?.overall || "").trim();
+  if (overall && gap >= 2 && overallWhy.length < REPORT_GAP_REASON_MIN) {
+    return fail("REPORT_OVERALL_GAP_REASON",
+      `التقدير العام «${overall.ar}» يبعد ${gap} مستوى عن متوسط العناصر (${elementAvg}) — اكتب ما يبرّر الفرق (النموذج الموحد م19).`,
+      `The overall «${overall.en}» is ${gap} levels from the elements' mean (${elementAvg}) — justify the gap (model Art. 19).`,
+      { gap, elementAvg });
+  }
+  return {
+    ok: true,
+    elements: base.elements,
+    elementAvg,
+    overallLevel: overall?.level ?? null,
+    evidence: prefill || null,
+    elementReasons: { ...changed, ...(gap >= 2 ? { overall: { gap, elementAvg, reason: overallWhy } } : {}) },
+  };
+}
+
+/** The copy's source line per element: «من 34 مهمة معتمدة بمتوسط 4.2» … and the manager's change. */
+export function reportElementSource(report, key, ar = true) {
+  const ev = report?.evidence?.[key] || null;
+  const given = Number(report?.elements?.[key]) || null;
+  const change = report?.elementReasons?.[key] || null;
+  let line = "";
+  if (key === "competence") {
+    const n = Number(ev?.basis?.n) || 0;
+    line = n
+      ? (ar ? `من ${n === 1 ? "مهمة معتمدة واحدة" : n === 2 ? "مهمتين معتمدتين" : n <= 10 ? `${n} مهام معتمدة` : `${n} مهمة معتمدة`} بمتوسط ${ev.basis.avg}` : `From ${n} approved task${n === 1 ? "" : "s"}, mean ${ev.basis.avg}`)
+      : (ar ? "لا مهام بمستوى جودة في الفترة — تقدير المدير" : "No task with a quality level in the period — the manager's judgment");
+  } else if (key === "attendance") {
+    const b = ev?.basis || {};
+    line = Number(b.scheduled)
+      ? (ar ? `من ${b.scheduled} يوم دوام مجدول: حضر ${b.attended}، غياب ${b.absent}، تأخر ${b.lateDays}` : `From ${b.scheduled} scheduled days: attended ${b.attended}, absent ${b.absent}, late ${b.lateDays}`)
+      : (ar ? "لا دوام مجدول مسجّل في الفترة — تقدير المدير" : "No scheduled duty recorded in the period — the manager's judgment");
+  } else if (key === "conduct") {
+    const b = ev?.basis || {};
+    line = ar
+      ? `تقدير المدير · للعلم: جزاءات موقّعة ${Number(b.sanctions) || 0}، شكاوى ثبتت ${Number(b.complaints) || 0}`
+      : `The manager's judgment · for reference: signed sanctions ${Number(b.sanctions) || 0}, proven complaints ${Number(b.complaints) || 0}`;
+  }
+  if (!ev) line = ar ? "تقرير قبل ربط العناصر بالأدلة" : "A report from before elements were tied to evidence";
+  if (change && given) {
+    const a = perfLevelByNumber(change.from);
+    const b = perfLevelByNumber(change.to);
+    line += ar ? ` · عدّله المدير من «${a?.ar}» إلى «${b?.ar}»: ${change.reason}` : ` · changed by the manager from ${a?.en} to ${b?.en}: ${change.reason}`;
+  }
+  return line;
+}
+
 /**
  * The worker's copies: one per closed (approved) cycle in which he was rated.
  * → [{ cycleId, period, from, to, rating, level, elements, ratedByName, approvedAt, grievance, grievanceBy }]
@@ -84,6 +215,8 @@ export function perfReportsFor({ cycles = [], ratings = [], employeeId, isHolida
       rating: rating.rating,
       level: perfLevelOf(rating.rating),
       elements: rating.elements || null,
+      evidence: rating.evidence || null,
+      elementReasons: rating.elementReasons || null,
       justification: rating.justification || null,
       ratedByName: rating.ratedByName || "",
       approvedAt,
@@ -162,13 +295,15 @@ export const PERF_MINISTRY_CARDS = (ar = true) => [
 ];
 
 /** «أنظمة الوزارة — ما يخص أدائي» — read from the worker's approved reports. */
-export function perfMinistryRows({ reports = [], hireDate, lastIncrementAt, today, ar = true, notes = {} } = {}) {
+export function perfMinistryRows({ reports = [], hireDate, lastIncrementAt, today, ar = true, notes = {}, quality = null, objections = [] } = {}) {
   const day = dateOnly(today) || new Date().toISOString().slice(0, 10);
   const last = reports[0] || null;
   const yearAgo = new Date(Date.parse(`${day}T00:00:00Z`) - 365 * 86400000).toISOString().slice(0, 10);
   const recent = last && last.approvedAt >= yearAgo;
   const open = reports.find((r) => r.grievance && !r.grievance.decision) || null;
   const adv = advancementReading({ reports, hireDate, lastIncrementAt, today: day });
+  const changed = last?.elementReasons ? PERF_ELEMENTS.filter((el) => last.elementReasons[el.key]).length : 0;
+  const openObjections = (objections || []).filter((o) => o && !o.decision);
   const rows = [
     {
       key: "model-18",
@@ -181,6 +316,41 @@ export function perfMinistryRows({ reports = [], hireDate, lastIncrementAt, toda
         : last
           ? { status: "waiting", pill: ar ? `آخر تقرير ${last.approvedAt}` : `Last report ${last.approvedAt}` }
           : { status: "void", pill: ar ? "لا تقرير معتمد بعد" : "No approved report yet" }),
+    },
+    {
+      key: "model-18-evidence",
+      source: "model",
+      badge: ar ? "النموذج الموحد م18" : "Model Art. 18",
+      title: ar ? "عناصر التقرير من الأدلة: الكفاءة من مستويات مهامك، والمواظبة من سجل دوامك، والسلوك تقدير مديرك" : "Elements from evidence: competence from your task levels, attendance from your duty record, conduct by your manager",
+      ...(!last
+        ? { status: "void", pill: info(ar) }
+        : !last.evidence
+          ? { status: "void", pill: ar ? "تقرير قبل ربط العناصر بالأدلة" : "Report predates evidence-based elements" }
+          : {
+            status: "settled",
+            pill: changed
+              ? (ar ? `من الأدلة · عدّل المدير ${changed === 1 ? "عنصراً واحداً" : `${changed} عناصر`} بسبب مكتوب` : `From evidence · ${changed} changed with a written reason`)
+              : (ar ? "من الأدلة كما اشتُقّت" : "From evidence as derived"),
+            sub: PERF_ELEMENTS.map((el) => `${ar ? el.ar : el.en}: ${reportElementSource(last, el.key, ar)}`).join(" — "),
+          }),
+    },
+    {
+      key: "model-19-tasks",
+      source: "model",
+      badge: ar ? "النموذج الموحد م19" : "Model Art. 19",
+      title: ar ? "مستوى جودة كل مهمة معتمدة على المقياس نفسه من خمسة مستويات" : "Each approved task rated on the same five-level scale",
+      ...(quality?.n
+        ? { status: "settled", pill: ar ? `متوسط ${quality.avg} من ${quality.n} ${quality.n <= 10 && quality.n >= 3 ? "مهام" : "مهمة"}` : `Mean ${quality.avg} over ${quality.n} tasks` }
+        : { status: "void", pill: ar ? "لا مهام بمستوى بعد" : "No task level yet" }),
+    },
+    {
+      key: "model-71-task",
+      source: "model",
+      badge: ar ? "سياسة المنصة · مبدأ م71" : "Platform policy · Art. 71 principle",
+      title: ar ? "الاعتراض على مستوى مهمة خلال خمسة أيام عمل من اعتماده — يبتّ فيه رئيس المعتمِد أو الموارد البشرية كتابةً" : "Object to a task's level within five working days — the approver's superior or HR decides in writing",
+      ...(openObjections.length
+        ? { status: "waiting", pill: ar ? `${openObjections.length} اعتراض بانتظار البتّ` : `${openObjections.length} objection(s) awaiting a decision` }
+        : { status: "void", pill: info(ar) }),
     },
     {
       key: "model-20",

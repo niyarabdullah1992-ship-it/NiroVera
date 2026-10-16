@@ -19,6 +19,7 @@ import {
   checkManagerRatingGate,
   deriveCycleProgress,
   deriveEmployeeAssignment,
+  deriveEmployeeTaskFacts,
   deriveObjectiveBoard,
   deriveOrgUnitRollup,
   derivePositionBoard,
@@ -26,7 +27,7 @@ import {
 } from "@/lib/hcmDerivations";
 import { countPersonalHseDuty, deriveFairHseRates } from "@/lib/perfDerivations";
 import { HCM_DENY, hcmActor, hcmDenied } from "@/lib/hcmRights";
-import { checkDecidePerfGrievanceGate, checkPerfGrievanceGate, checkReportElementsGate, perfLevelOf, perfReportsFor } from "@/lib/perfReport";
+import { checkDecidePerfGrievanceGate, checkPerfGrievanceGate, checkReportEvidenceGate, perfLevelOf, perfReportsFor, reportPrefill } from "@/lib/perfReport";
 
 const READ_ACTIONS = new Set(["list", "assignment", "objectiveBoard", "myPerfReports"]);
 /** The worker files his own grievance on his own report (model Arts. 20 · 71) — not a senior write. */
@@ -521,8 +522,20 @@ export function localHcmCall(payload = {}) {
         employeeId: payload.employeeId,
       });
       if (!gate.ok) fail(gate.reason, gate);
-      // Model Arts. 18–19: the report rates competence, conduct and attendance on the five levels.
-      const report = checkReportElementsGate(payload.elements);
+      // Model Arts. 18–19: the elements pre-filled from evidence — the server's derivation, offline.
+      const person = (data.employees || []).find((e) => String(e.employeeId || e.id) === String(payload.employeeId)) || null;
+      const facts = deriveEmployeeTaskFacts({
+        tasks: data.tasks || [],
+        employeeId: String(payload.employeeId),
+        stationId: person?.stationId || null,
+        period: { from: cycle.from, to: cycle.to },
+      });
+      const prefill = reportPrefill({
+        quality: facts.quality,
+        attendance: payload.evidence?.attendance?.basis || null,
+        conduct: payload.evidence?.conduct?.basis || null,
+      });
+      const report = checkReportEvidenceGate({ elements: payload.elements, prefill, reasons: payload.elementReasons || {}, rating: gate.rating });
       if (!report.ok) fail(report.reason, report);
       record = {
         id: uid("rate"),
@@ -532,6 +545,8 @@ export function localHcmCall(payload = {}) {
         rating: gate.rating,
         level: perfLevelOf(gate.rating)?.level ?? null,
         elements: report.elements,
+        evidence: report.evidence,
+        elementReasons: report.elementReasons,
         justification: gate.justification,
         ratedBy: auth.userId,
         ratedByName: auth.name,

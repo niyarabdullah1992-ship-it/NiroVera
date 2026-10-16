@@ -1,18 +1,52 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { CALIBRATION_BAND, CYCLE_FLOW, CYCLE_STATUS_LABELS, RATING_JUSTIFICATION_MIN, todayKey } from "@/lib/hcmDerivations";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { ACCENT, MUTED, NAVY, cardShell, ui, field, SURFACE } from "@/lib/platformStyles";
-import { PERF_ELEMENTS, PERF_LEVELS, checkReportElementsGate, perfLevelOf } from "@/lib/perfReport";
+import { ATTENDANCE_LEVEL_MAP, PERF_ELEMENTS, PERF_LEVELS, checkReportEvidenceGate, perfLevelByNumber, perfLevelOf, reportElementSource } from "@/lib/perfReport";
+import { annualReportPrefill } from "@/lib/perfEvidence";
+import { modelLaw } from "@/lib/modelArticleTexts";
+import { useMyAttendanceRange } from "@/components/attendance/myDutyDays";
+import { hydrateEmployeesLeave } from "@/lib/leaveDerivations";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
+import { StatuteLink } from "@/components/shared/RightHint";
 
 const labelText = { display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" };
 
+const ATT_MAP_AR = ATTENDANCE_LEVEL_MAP.slice(0, 4).map((row) => `${perfLevelByNumber(row.level)?.ar}: ${row.absentPctMax ? `غياب حتى ${row.absentPctMax}%` : "بلا غياب"} وتأخر حتى ${row.latePctMax}% من أيام الدوام`).join(" · ");
+const ATT_MAP_EN = ATTENDANCE_LEVEL_MAP.slice(0, 4).map((row) => `${perfLevelByNumber(row.level)?.en}: absent ≤ ${row.absentPctMax}% & late ≤ ${row.latePctMax}%`).join(" · ");
+
+/** The annual report's evidence for one person in the cycle period (النموذج الموحد م18). */
+function useReportPrefill({ employeeId, cycle, data, company }) {
+  const todayK = toRiyadhDateKey();
+  const person = useMemo(() => {
+    const raw = (data?.employees || []).find((e) => String(e.id) === String(employeeId) || String(e.employeeId) === String(employeeId)) || null;
+    return raw ? hydrateEmployeesLeave([raw], data)[0] || raw : null;
+  }, [data, employeeId]);
+  const from = cycle?.from || "";
+  const to = cycle?.to ? (cycle.to > todayK ? todayK : cycle.to) : "";
+  const { rows, loading } = useMyAttendanceRange({ employee: person, company, data, startDate: from, endDate: to });
+  const calendar = useMemo(() => laborCalendarOf(data), [data]);
+  const prefill = useMemo(
+    () => (person && from && to ? annualReportPrefill({ employee: person, data, rows, from, to, todayKey: todayK, calendar }) : null),
+    [person, data, rows, from, to, todayK, calendar],
+  );
+  return { prefill, loading: Boolean(person) && loading };
+}
+
 /** Review cycle — a cycle consumes proven evidence; a manager may only calibrate it. */
-export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], progress, board = [], band = CALIBRATION_BAND, busy, onRun, grievances = [] }) {
+export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], progress, board = [], band = CALIBRATION_BAND, busy, onRun, grievances = [], data, company }) {
   const [newCycle, setNewCycle] = useState({ period: "", from: todayKey(), to: todayKey() });
-  const [rating, setRating] = useState({ employeeId: "", value: "", justification: "", elements: {} });
+  const [rating, setRating] = useState({ employeeId: "", value: "", justification: "", elements: {}, reasons: {} });
   const [decide, setDecide] = useState({ ratingId: "", decision: "", note: "", newRating: "" });
-  const elementsGate = checkReportElementsGate(rating.elements);
+  const { prefill, loading: evidenceLoading } = useReportPrefill({ employeeId: rating.employeeId, cycle, data, company });
+  // The elements start from evidence; the manager's choice (rating.elements) overrides one at a time.
+  const effective = Object.fromEntries(PERF_ELEMENTS.map((el) => [el.key, rating.elements[el.key] ?? prefill?.[el.key]?.level ?? ""]));
+  const elementsGate = checkReportEvidenceGate({ elements: effective, prefill, reasons: rating.reasons, rating: rating.value === "" ? null : Number(rating.value) });
   const ratedLevel = rating.value === "" ? null : perfLevelOf(rating.value);
+  const elementValues = PERF_ELEMENTS.map((el) => Number(effective[el.key])).filter((n) => n >= 1);
+  const elementAvg = elementValues.length === PERF_ELEMENTS.length ? Math.round((elementValues.reduce((a, b) => a + b, 0) / elementValues.length) * 10) / 10 : null;
+  const gapNeedsReason = ratedLevel && elementAvg != null && Math.abs(ratedLevel.level - elementAvg) >= 2;
   const nameOf = (id) => board.find((r) => String(r.employeeId) === String(id))?.name || id;
 
   const status = cycle ? String(cycle.status) : null;
@@ -119,7 +153,7 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
                 onChange={(e) => {
                   const employeeId = e.target.value;
                   const row = board.find((r) => r.employeeId === employeeId);
-                  setRating({ employeeId, value: row ? String(row.score) : "", justification: "", elements: {} });
+                  setRating({ employeeId, value: row ? String(row.score) : "", justification: "", elements: {}, reasons: {} });
                 }}
               >
                 <option value="">{ar ? "اختر موظفًا" : "Select an employee"}</option>
@@ -141,21 +175,54 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
               </span>
               <input style={field} value={rating.justification} onChange={(e) => setRating((f) => ({ ...f, justification: e.target.value }))} />
             </label>
-            {PERF_ELEMENTS.map((el) => (
-              <label key={el.key}>
-                <span style={labelText}>{ar ? el.ar : el.en}</span>
-                <select style={field} value={rating.elements[el.key] || ""} onChange={(e) => setRating((f) => ({ ...f, elements: { ...f.elements, [el.key]: e.target.value } }))}>
-                  <option value="">{ar ? "المستوى" : "Level"}</option>
-                  {PERF_LEVELS.map((lv) => <option key={lv.level} value={lv.level}>{ar ? `${lv.level} — ${lv.ar}` : `${lv.level} — ${lv.en}`}</option>)}
-                </select>
-              </label>
-            ))}
           </div>
+          {rating.employeeId ? (
+            <div data-report-prefill="1" style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: "12px", fontWeight: 600, color: NAVY }}>{ar ? "عناصر التقرير — مملوءة من الأدلة، أكّدها أو غيّرها بسبب" : "Report elements — filled from evidence; confirm or change with a reason"}</span>
+                {evidenceLoading ? <span style={{ fontSize: 11, color: MUTED }}>{ar ? "يُحمَّل سجل الدوام…" : "Loading the duty record…"}</span> : null}
+              </div>
+              {PERF_ELEMENTS.map((el) => {
+                const from = prefill?.[el.key]?.level ?? null;
+                const value = effective[el.key];
+                const changed = from != null && value !== "" && Number(value) !== from;
+                return (
+                  <div key={el.key} data-report-element-form={el.key} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,200px),1fr))", gap: 8, alignItems: "start", paddingTop: 8, borderTop: "1px dashed var(--nv-line)" }}>
+                    <label>
+                      <span style={labelText}>{ar ? el.ar : el.en}</span>
+                      <select style={field} value={value} onChange={(e) => setRating((f) => ({ ...f, elements: { ...f.elements, [el.key]: e.target.value === "" ? undefined : Number(e.target.value) } }))}>
+                        <option value="">{ar ? "المستوى" : "Level"}</option>
+                        {PERF_LEVELS.map((lv) => <option key={lv.level} value={lv.level}>{ar ? `${lv.level} — ${lv.ar}` : `${lv.level} — ${lv.en}`}</option>)}
+                      </select>
+                    </label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
+                      <span>{prefill ? reportElementSource({ evidence: prefill, elements: effective }, el.key, ar) : "—"}{from != null ? (ar ? ` → ${perfLevelByNumber(from)?.ar}` : ` → ${perfLevelByNumber(from)?.en}`) : ""}</span>
+                      {el.key === "attendance" ? <span>{ar ? `المطابقة: ${ATT_MAP_AR} · وإلا ضعيف (الأسوأ من الاثنين يحكم).` : `Mapping: ${ATT_MAP_EN} · else weak (the worse decides).`}</span> : null}
+                      {changed ? (
+                        <input style={field} placeholder={ar ? "سبب التغيير عن المستوى المشتق" : "Why you change the derived level"} value={rating.reasons[el.key] || ""} onChange={(e) => setRating((f) => ({ ...f, reasons: { ...f.reasons, [el.key]: e.target.value } }))} />
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+              {gapNeedsReason ? (
+                <label>
+                  <span style={labelText}>{ar ? `التقدير العام «${ratedLevel.ar}» يبعد عن متوسط العناصر (${elementAvg}) مستويين أو أكثر — المبرر` : `Overall «${ratedLevel.en}» is 2+ levels from the elements' mean (${elementAvg}) — justification`}</span>
+                  <input style={field} value={rating.reasons.overall || ""} onChange={(e) => setRating((f) => ({ ...f, reasons: { ...f.reasons, overall: e.target.value } }))} />
+                </label>
+              ) : null}
+            </div>
+          ) : null}
           <div style={{ marginTop: "8px", fontSize: "11px", color: MUTED, lineHeight: 1.7 }}>
             {ar
-              ? `التقدير العام: ${ratedLevel ? ratedLevel.ar : "—"} (مقياس من خمسة مستويات — النموذج الموحد م19). يعدّه الرئيس المباشر، ويُعتمد بإقفال الدورة، فتصل صورته للموظف في «أدائي» وله التظلم منه خلال 30 يوماً (م20 · م71).`
-              : `Overall: ${ratedLevel ? ratedLevel.en : "—"} (five-level scale, model Art. 19). Approved when the cycle closes; the worker then sees his copy in My performance and may grieve within 30 days (Arts. 20 · 71).`}
-            {!elementsGate.ok && rating.employeeId ? <span style={{ display: "block", color: "var(--nv-warn-ink)" }}>{ar ? elementsGate.reason : elementsGate.reasonEn}</span> : null}
+              ? `التقدير العام: ${ratedLevel ? ratedLevel.ar : "—"}${elementAvg != null ? ` · متوسط العناصر ${elementAvg}` : ""} (مقياس من خمسة مستويات — النموذج الموحد م19). يعدّه الرئيس المباشر، ويُعتمد بإقفال الدورة، فتصل صورته للموظف في «أدائي» مع مصدر كل عنصر، وله التظلم منه خلال 30 يوماً (م20 · م71).`
+              : `Overall: ${ratedLevel ? ratedLevel.en : "—"}${elementAvg != null ? ` · elements' mean ${elementAvg}` : ""} (five-level scale, model Art. 19). Approved when the cycle closes; the worker then sees his copy with each element's source and may grieve within 30 days (Arts. 20 · 71).`}
+            {!elementsGate.ok && rating.employeeId ? <span data-report-gate={elementsGate.error} style={{ display: "block", color: "var(--nv-warn-ink)" }}>{ar ? elementsGate.reason : elementsGate.reasonEn}</span> : null}
+            <span style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+              <StatuteLink ar={ar} law={modelLaw(["18", "19"], ar)} />
+              <StatuteLink ar={ar} law={modelLaw(["20", "71"], ar)} />
+              <StatuteLink ar={ar} law={modelLaw(["21", "22", "23"], ar)} />
+            </span>
           </div>
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "12px" }}>
             <button
@@ -171,6 +238,9 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
                   rating: Number(rating.value),
                   justification: rating.justification,
                   elements: elementsGate.elements,
+                  // The server re-derives competence from its task store; duty and conduct counts travel here.
+                  evidence: prefill,
+                  elementReasons: rating.reasons,
                 },
                 ar ? "سُجِّل التقييم" : "Rating recorded",
               )}

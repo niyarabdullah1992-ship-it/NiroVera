@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { hcmCall } from "@/lib/hcmApi";
-import { PERF_ELEMENTS, PERF_MINISTRY_CARDS, checkPerfGrievanceGate, perfGrievanceState, perfLevelByNumber, perfMinistryRows } from "@/lib/perfReport";
+import { PERF_ELEMENTS, PERF_MINISTRY_CARDS, checkPerfGrievanceGate, perfGrievanceState, perfLevelByNumber, perfMinistryRows, reportElementSource } from "@/lib/perfReport";
+import { modelLaw } from "@/lib/modelArticleTexts";
+import { StatuteLink } from "@/components/shared/RightHint";
 import { incrementsModelNote, performanceReportModelNote } from "@/lib/implementingRegsNotes";
 import MinistryLawPanel from "@/components/schedules/MinistryLawPanel";
 import { field, MUTED, ui } from "@/lib/platformStyles";
@@ -15,7 +17,7 @@ const todayIso = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh
  * five-level rating and the three elements), and the worker's grievance on it within 30 days; HR
  * decides in writing within 15. Below it, «أنظمة الوزارة — ما يخص أدائي» with Arts. 18–23.
  */
-export default function PerfReportCopy({ ar, employee, companyId }) {
+export default function PerfReportCopy({ ar, employee, companyId, quality = null, objections = [] }) {
   const today = todayIso();
   const [reports, setReports] = useState(null);
   const [open, setOpen] = useState("");
@@ -38,7 +40,9 @@ export default function PerfReportCopy({ ar, employee, companyId }) {
     today,
     ar,
     notes: { report: performanceReportModelNote(ar), advancement: incrementsModelNote(ar) },
-  }), [reports, employee, today, ar]);
+    quality,
+    objections,
+  }), [reports, employee, today, ar, quality, objections]);
 
   const send = async (report) => {
     const gate = checkPerfGrievanceGate({ report, reason, today });
@@ -61,7 +65,12 @@ export default function PerfReportCopy({ ar, employee, companyId }) {
         <header style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 3 }}>
           <strong style={{ fontSize: 14 }}>{ar ? "نسخة تقرير الأداء" : "My performance report"}</strong>
           <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
-            {ar ? "يعدّه مديرك المباشر ويُعتمد بإقفال دورة التقييم، فتصلك صورته هنا. لك التظلم منه كتابةً خلال 30 يوماً عدا العطل الرسمية، ولا تُضار من تظلمك." : "Prepared by your manager and approved when the cycle closes; your copy arrives here. You may grieve it in writing within 30 days."}
+            {ar ? "يعدّه مديرك المباشر ويُعتمد بإقفال دورة التقييم، فتصلك صورته هنا. عناصره من أدلتك: الكفاءة من مستويات جودة مهامك، والمواظبة من سجل دوامك، والسلوك تقدير مديرك. لك التظلم منه كتابةً خلال 30 يوماً عدا العطل الرسمية، ولا تُضار من تظلمك." : "Prepared by your manager and approved when the cycle closes; your copy arrives here. Its elements come from your evidence: competence from your task levels, attendance from your duty record, conduct by your manager. You may grieve it in writing within 30 days."}
+          </span>
+          <span style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <StatuteLink ar={ar} law={modelLaw(["18", "19", "20"], ar)} />
+            <StatuteLink ar={ar} law={modelLaw(["21", "22", "23"], ar)} />
+            <StatuteLink ar={ar} law={modelLaw(["71"], ar)} />
           </span>
         </header>
         {reports == null ? (
@@ -80,9 +89,20 @@ export default function PerfReportCopy({ ar, employee, companyId }) {
                 <span style={{ fontSize: 11, color: MUTED, marginInlineStart: "auto" }}>{ar ? `اعتُمد ${r.approvedAt} · أعدّه ${r.ratedByName || "—"}` : `Approved ${r.approvedAt} · by ${r.ratedByName || "—"}`}</span>
               </div>
               {r.elements ? (
-                <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
-                  {PERF_ELEMENTS.map((el) => `${ar ? el.ar : el.en}: ${(ar ? perfLevelByNumber(r.elements[el.key])?.ar : perfLevelByNumber(r.elements[el.key])?.en) || "—"}`).join(" · ")}
-                </span>
+                <div data-report-elements="1" style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  {PERF_ELEMENTS.map((el) => (
+                    <div key={el.key} data-report-element={el.key} style={{ display: "flex", flexDirection: "column", gap: 0, fontSize: 11.5, lineHeight: 1.7 }}>
+                      <span style={{ color: "var(--nv-ink2)" }}>
+                        {`${ar ? el.ar : el.en}: `}
+                        <strong style={{ color: "var(--nv-ink)" }}>{(ar ? perfLevelByNumber(r.elements[el.key])?.ar : perfLevelByNumber(r.elements[el.key])?.en) || "—"}</strong>
+                      </span>
+                      <span style={{ color: MUTED }}>{reportElementSource(r, el.key, ar)}</span>
+                    </div>
+                  ))}
+                  {r.elementReasons?.overall ? (
+                    <span style={{ fontSize: 11.5, color: MUTED }}>{ar ? `التقدير العام يبعد ${r.elementReasons.overall.gap} مستوى عن متوسط العناصر (${r.elementReasons.overall.elementAvg}): ${r.elementReasons.overall.reason}` : `Overall is ${r.elementReasons.overall.gap} levels from the elements' mean: ${r.elementReasons.overall.reason}`}</span>
+                  ) : null}
+                </div>
               ) : null}
               {r.justification ? <span style={{ fontSize: 11.5, color: MUTED }}>{r.justification}</span> : null}
               {state ? (

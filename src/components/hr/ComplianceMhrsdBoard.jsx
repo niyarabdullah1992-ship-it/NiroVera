@@ -16,6 +16,8 @@ import { deriveExpiringDocs, deriveNitaqat, nitaqatBandLabel, EXPIRY_WARN_DAYS }
 import { formatDate } from "@/lib/dateFormat";
 import { printReport } from "@/lib/printReport";
 import { deriveInspectionPack } from "@/lib/inspectionPackDerivations";
+import { COMPLIANCE_MINISTRY_CARDS, complianceMinistryRows } from "@/lib/complianceMinistryRows";
+import MinistryLawPanel from "@/components/schedules/MinistryLawPanel";
 import StatutoryItem from "@/components/labor/StatutoryItem";
 import { BOE_LABOUR_LAW_URL, HRSD_IMPLEMENTING_REGS_URL, HRSD_LABOUR_LAW_EDITION, HRSD_LABOUR_LAW_PDF } from "@/lib/laborRules";
 
@@ -594,6 +596,15 @@ export default function ComplianceMhrsdBoard() {
           ))}
         </div>
       </section>
+
+      {/* «أنظمة الوزارة» — Regs Arts. 4 bis, 5, 6, 15–16 with their derived status; Qiwa-side articles for reference. */}
+      <MinistryLawPanel
+        ar={ar}
+        dataKey="compliance"
+        title={ar ? "أنظمة الوزارة — السجلات والتدريب" : "Ministry rules — registers and training"}
+        cards={COMPLIANCE_MINISTRY_CARDS(ar)}
+        rows={complianceMinistryRows(register || {}, { ar })}
+      />
 
       {/* Per-station readiness — the same derivation the quick-switch palette shows */}
       {readinessRows.length > 0 && (

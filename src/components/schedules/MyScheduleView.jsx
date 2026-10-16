@@ -4,12 +4,18 @@ import { Sun, Users } from "lucide-react";
 import {
   employeeShiftOnDay,
   employeeWeekHours,
+  findStationById,
   leaveOnDayView,
+  stationDisplayName,
   SW,
+  weekDays,
   weekdayLabel,
+  weekPublishState,
   weekRelativeLabel,
+  weekRosterEmployees,
   weekStartDate,
 } from "@/lib/shiftWeek";
+import useStationScope from "@/hooks/useStationScope";
 import { formatShiftHm, shiftHoursLine } from "@/lib/shiftDerivations";
 import { statusBannerQuiet } from "@/lib/platformStyles";
 import { calendarDateKey } from "@/lib/attendanceCalendar";
@@ -73,6 +79,35 @@ export default function MyScheduleView({
   manageLink,
   focusDay = "",
 }) {
+  // «جدول الفرع — للاطلاع» follows the branch picked in the header, like الإدارة — for someone who
+  // manages that branch. My own week above stays on my work branch.
+  const headerScope = useStationScope();
+  const branchView = useMemo(() => {
+    const scoped = headerScope && headerScope !== "all" ? String(headerScope) : "";
+    if (!scoped || String(scoped) === String(station?.id || "")) return null;
+    const managesIt = Boolean(
+      currentUser && (
+        currentUser.platformOwner
+        || String(data?.ownerId || "") === String(currentUser.id)
+        || ["director", "ops_manager"].includes(currentUser.role)
+        || (currentUser.managedStations || []).map(String).includes(scoped)
+      ),
+    );
+    if (!managesIt) return null;
+    const other = findStationById(data?.stations || [], scoped);
+    if (!other) return null;
+    const sch = (data?.schedules || []).find((row) => String(row.stationId) === scoped) || { stationId: scoped, shiftTypes: [], assignments: {} };
+    const keys = weekDays(weekStart).map((day) => day.key);
+    const state = weekPublishState(sch, weekStart);
+    return {
+      schedule: sch,
+      types: sch.shiftTypes || [],
+      roster: weekRosterEmployees(sch, data?.employees || [], scoped, keys, { homeOnly: false }),
+      published: state.kind === "published" || state.kind === "implicit",
+      stationName: stationDisplayName(other),
+    };
+  }, [headerScope, station, currentUser, data, weekStart]);
+
   const now = new Date();
   const todayKey = calendarDateKey(now);
   const published = pub?.kind === "published" || pub?.kind === "implicit";
@@ -249,14 +284,14 @@ export default function MyScheduleView({
 
             {/* 2 · The whole branch week — read only, folded; management stays in the manage lane */}
             <BranchRosterReadOnly
-              roster={roster}
-              schedule={schedule}
-              types={types}
+              roster={branchView ? branchView.roster : roster}
+              schedule={branchView ? branchView.schedule : schedule}
+              types={branchView ? branchView.types : types}
               weekStart={weekStart}
               laborCalendar={laborCalendar}
               currentUser={currentUser}
-              published={published}
-              stationName={stationName}
+              published={branchView ? branchView.published : published}
+              stationName={branchView ? branchView.stationName : stationName}
               ar={ar}
               lang={lang}
               timeFormat={timeFormat}

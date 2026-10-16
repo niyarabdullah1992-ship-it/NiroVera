@@ -397,6 +397,8 @@ export default function Dashboard() {
       leaveCount={teamEmployees.filter((e) => isOnLeaveToday(e)).length}
       absentCount={absentCount}
       daysClear={todayIncidents > 0 ? 0 : null}
+      scopeEmployees={teamEmployees}
+      data={data}
     />,
     buildModuleMetrics(data, {
       tasks: tasks.length,

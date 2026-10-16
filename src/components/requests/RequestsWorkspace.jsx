@@ -129,6 +129,9 @@ import { leaveApprovalCardNote } from "@/lib/leaveEntitlementCycle";
 import { BORDER, CARD, CONTROL_RADIUS, MUTED, NAVY, PAPER_SHADOW, PILL_RADIUS, RADIUS, SURFACE } from "@/lib/platformStyles";
 import { REQUESTS_LAW_FOOT_AR, REQUESTS_LAW_FOOT_EN, REQUESTS_LAW_LEDE_AR, REQUESTS_LAW_LEDE_EN } from "@/lib/platformJudgment";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import RightHint from "@/components/shared/RightHint";
+import { rightHintFor } from "@/lib/rightHints";
+import { isOfficialHoliday } from "@/lib/ummAlQuraCalendar";
 import StatutoryItem from "@/components/labor/StatutoryItem";
 import WrittenConsentInbox from "@/components/requests/WrittenConsentInbox";
 import WrittenConsentRaise from "@/components/requests/WrittenConsentRaise";
@@ -487,6 +490,7 @@ export default function RequestsWorkspace({
   initialKind = "leave",
   initialFilter = "",
   focusStationId = "",
+  initialRightsKind = "",
 }) {
   const ar = lang === "ar";
   const { company, currentUser, refresh, data } = useAuth();
@@ -502,6 +506,8 @@ export default function RequestsWorkspace({
   const [kind, setKind] = useState(initialKind);
   // «طلب موافقة خطية» is a tile beside the others, not a second form with its own picker.
   const [consentPicked, setConsentPicked] = useState(false);
+  // «⚖ حقك» opens a rights request with its kind preselected (grievance, objection…).
+  const [rightsKind, setRightsKind] = useState(initialRightsKind || "");
   const [refTab, setRefTab] = useState("law");
   // A deep link (?kind=permission …) while already on طلباتي switches the form too.
   useEffect(() => {
@@ -1984,6 +1990,41 @@ export default function RequestsWorkspace({
     if (row.employee?.id) openRegister(row.employee.id);
   };
 
+  // Deep link from the dashboard's «التزاماتي» list: ?focus=<family>-<id> opens that request's decision.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const want = new URLSearchParams(window.location.search || "").get("focus");
+    if (!want) return;
+    const hit = rows.find((row) => `${row.family}-${row.id}` === want);
+    if (hit) pickPending(hit);
+  }, [mode]);
+
+  // The one action a «⚖ حقك / التزامك» hint offers, run in place.
+  const runHintAction = (row, action) => {
+    if (!action) return;
+    if (action.kind === "rights") {
+      setConsentPicked(false);
+      setKind("rights");
+      setRightsKind(action.rightsKind || "");
+      setTimeout(() => document.querySelector(".nv-req-raise")?.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
+      return;
+    }
+    if (action.kind === "raise") {
+      setConsentPicked(false);
+      setKind(action.requestKind || "leave");
+      if (action.leaveType) setLeave(action.leaveType);
+      setTimeout(() => document.querySelector(".nv-req-raise")?.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
+      return;
+    }
+    if (action.kind === "decide" && row) {
+      const key = `${row.family}-${row.id}`;
+      setFocusKey(key);
+      setTimeout(() => document.querySelector(`#nv-req-${CSS.escape(key)} .nv-req-acts`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 0);
+    }
+  };
+  const hintCalendar = laborCalendarOf(data);
+  const hintIsHoliday = (iso) => isOfficialHoliday(iso, hintCalendar);
+
   const filters = useMemo(() => {
     const archiveCount = mode === "manage"
       ? manageArchiveRows(employees, lang, { stations, stationId: focusStationId || "all" }).rows.length
@@ -2333,7 +2374,7 @@ export default function RequestsWorkspace({
           {mode === "manage" && consentPicked ? (
             <WrittenConsentRaise employees={employees} employeeId={employeeId} ar={ar} refresh={refresh} />
           ) : kind === "rights" && mode !== "manage" ? (
-            <RightsRequestRaise employee={subject} companyId={company?.id} ar={ar} refresh={refresh} />
+            <RightsRequestRaise employee={subject} companyId={company?.id} ar={ar} refresh={refresh} initialKind={rightsKind} />
           ) : (<>
           {isStudyConsent && (
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -3640,17 +3681,13 @@ export default function RequestsWorkspace({
                 ? `${formatArDate(row.startDate, lang)}${row.endDate ? ` → ${formatArDate(row.endDate, lang)}` : ""}`
                 : (row.date ? formatArDate(row.date, lang) : (row.startDate ? formatArDate(row.startDate, lang) : "—"));
               const dotColor = st === "withdrawn" ? "var(--nv-mute-fill, #C7CCD6)" : skin.edge;
+              // One «⚖ حقك» (ملفي) / «⚖ التزامك» (إدارة) per card — the right or duty for THIS record.
               const citeNode = (
-                <LaborArticleCite
-                  article={row.article || ({ nursing_hour: "154", resignation: "79 مكرر" })[row.type] || undefined}
-                  leaveType={row.family === "leave" ? row.type : undefined}
-                  decisionId={["night_consent", NIGHT_FITNESS_TYPE, "pregnancy_notice", "family_duties"].includes(row.type) ? "18632" : (row.type === "heat_report" ? "3337" : undefined)}
-                  productOnly={!row.article && !["night_consent", NIGHT_FITNESS_TYPE, "pregnancy_notice", "family_duties", "heat_report", "nursing_hour", "resignation"].includes(row.type)}
+                <RightHint
+                  hint={rightHintFor(row, { view: mode === "manage" ? "manager" : "employee", today, ar, isHoliday: hintIsHoliday, data })}
                   ar={ar}
-                  showOfficial
-                  entitlement={row.family === "leave" || row.type === "night_consent" || row.type === NIGHT_FITNESS_TYPE}
-                  tone={isArticle106Assignment(row) ? "warn" : undefined}
-                  glow={requestGlow(row)}
+                  onDate={row.startDate || row.date || today}
+                  onAction={(action) => runHintAction(row, action)}
                 />
               );
               const statusPill = (
@@ -3816,7 +3853,6 @@ export default function RequestsWorkspace({
                   {nightCycle && nightStage === "agreed_month" && (
                     <div style={{ border: "1px solid var(--nv-line3)", background: SURFACE, padding: "10px 11px", display: "flex", flexDirection: "column", gap: 7 }}>
                       <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.8, display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <StatutoryItem decisionId="18632" ar={ar} entitlement glow={requestGlow(row)} compact />
                         {ar ? "موافقة خطية محفوظة. يحق لك سحبها في أي وقت وفق القرار 18632 — لا تجديد شهري واجب." : "Written consent is on file. You may withdraw it at any time under decision 18632 — monthly renewal is not a legal duty."}
                       </span>
                       {ownNightAct ? (

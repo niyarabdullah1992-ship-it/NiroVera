@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { getCompanyData, submitOtherRequest } from "@/lib/store";
 import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import {
@@ -48,9 +48,13 @@ const block = { padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)",
 const label = { fontSize: 11.5, color: MUTED };
 const pick = (on) => ({ fontFamily: "inherit", textAlign: "start", display: "flex", flexDirection: "column", gap: 3, padding: "10px 12px", borderRadius: 8, cursor: "pointer", background: on ? "#EAF3EE" : "var(--nv-card)", border: on ? "1.5px solid #3C7D50" : "1px solid var(--nv-line)" });
 
-export default function RightsRequestRaise({ employee, companyId, ar = true, refresh, onSent }) {
+export default function RightsRequestRaise({ employee, companyId, ar = true, refresh, onSent, initialKind = "" }) {
   const today = todayRiyadh();
-  const [kind, setKind] = useState(LEAVE_CARRY_TYPE);
+  const [kind, setKind] = useState(() => (RIGHTS_REQUESTS.some((k) => k.key === initialKind) ? initialKind : LEAVE_CARRY_TYPE));
+  // «⚖ حقك» on a card (or ?kind=rights&right=…) opens this form on the right kind.
+  useEffect(() => {
+    if (RIGHTS_REQUESTS.some((k) => k.key === initialKind)) setKind(initialKind);
+  }, [initialKind]);
   const [reason, setReason] = useState("");
   const [days, setDays] = useState("");
   const [notifiedOn, setNotifiedOn] = useState("");

@@ -112,7 +112,7 @@ export default function Requests() {
   const askedKind = new URLSearchParams(location.search || "").get("kind") || "";
   const initialKind = path.endsWith("/other")
     ? "other"
-    : (["permission", "shift_change", "nursing_hour", "pregnancy_notice", "heat_report", "family_duties", "manual", "outfix", "resignation"].includes(askedKind)
+    : (["permission", "shift_change", "nursing_hour", "pregnancy_notice", "heat_report", "family_duties", "manual", "outfix", "resignation", "rights"].includes(askedKind)
       ? askedKind
       : (manageLane ? "leave_credit" : "leave"));
   const lane = manageLane ? "manage" : "mine";
@@ -224,6 +224,7 @@ export default function Requests() {
         initialKind={initialKind}
         initialFilter={initialFilter}
         focusStationId={manageLane && canManage ? inboxFocusStationId : ""}
+        initialRightsKind={new URLSearchParams(location.search || "").get("right") || ""}
       />
     </SuiteWorkspaceFrame>
   );

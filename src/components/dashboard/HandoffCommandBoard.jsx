@@ -5,8 +5,10 @@ import {
 } from "@/lib/platformStyles";
 import { LEAVE_STYLE } from "@/lib/shiftWeek";
 import { setStationScope } from "@/lib/stationScopeStore";
-import { KpiAction, KpiMeter, StatusFlag } from "@/components/shared/StatusFlag";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import { KPI_INK, READINESS_FLOOR, scoreFlag } from "@/lib/statusFlag";
+import FigureRow from "@/components/shared/FigureRow";
+import CompanyObligationsList from "@/components/dashboard/CompanyObligationsList";
 import useStationScope from "@/hooks/useStationScope";
 
 const MONO = "'IBM Plex Mono', monospace";
@@ -82,6 +84,8 @@ export default function HandoffCommandBoard({
   leaveCount = 0,
   absentCount = 0,
   daysClear = null,
+  scopeEmployees = [],
+  data = null,
 }) {
   const ar = lang === "ar";
   const scope = useStationScope();
@@ -160,6 +164,8 @@ export default function HandoffCommandBoard({
       value: pendingDecisions,
       hint: ar ? `${pendingLeave} إجازة بانتظار القرار` : `${pendingLeave} leave awaiting a decision`,
       action: pendingDecisions > 0,
+      actionText: "افتح القرار",
+      actionTextEn: "Open the decision",
     },
     {
       key: "readiness",
@@ -187,45 +193,11 @@ export default function HandoffCommandBoard({
         <div style={{ display: "flex", justifyContent: "flex-end" }}>{toolbar}</div>
       ) : null}
 
-      <div className="nv-disc-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-        {kpis.map((kpi) => {
-          const body = (
-            <>
-              <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-                <span style={{ fontSize: 12, color: MUTED }}>{kpi.label}</span>
-                <StatusFlag tone={kpi.tone} flag={kpi.flag} label={kpi.label} ar={ar} />
-              </span>
-              <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 30, fontWeight: 500, color: KPI_INK, lineHeight: 1.05 }}>
-                  {kpi.value}
-                </span>
-                {kpi.suffix ? <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>{kpi.suffix}</span> : null}
-              </span>
-              {kpi.meter ? <KpiMeter value={kpi.value} max={kpi.meter} label={kpi.label} /> : null}
-              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{kpi.hint}</span>
-              {kpi.action ? <KpiAction to={kpi.to} asText ar={ar} /> : null}
-            </>
-          );
-          const face = {
-            background: CARD,
-            border: `1px solid ${LINE}`,
-            borderRadius: 14,
-            boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
-            padding: "14px 16px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            minWidth: 0,
-            textDecoration: "none",
-            color: "inherit",
-          };
-          return kpi.to ? (
-            <Link key={kpi.key} to={kpi.to} style={face}>{body}</Link>
-          ) : (
-            <div key={kpi.key} style={face}>{body}</div>
-          );
-        })}
-      </div>
+      {/* «سطر لا بطاقة» — the four figures as one inline row, no boxes. */}
+      <FigureRow ar={ar} figures={kpis} />
+
+      {/* «التزاماتي وحقوقي» — legal dates across the people in scope, nearest first. */}
+      <CompanyObligationsList employees={scopeEmployees} data={data} ar={ar} />
 
       <div className="nv-handoff-top nv-emp-summary">
         <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>

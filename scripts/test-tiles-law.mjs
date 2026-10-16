@@ -105,8 +105,12 @@ assert.equal(kpiActionText(true, "افتح المهام"), "افتح المها�
 assert.equal(kpiActionStyle.color, KPI_ACTION_INK);
 const handoff = readFileSync(join(root, "components/dashboard/HandoffCommandBoard.jsx"), "utf8");
 assert.doesNotMatch(handoff, /KPI_FLAG|kpiAccent/);
-assert.match(handoff, /<KpiAction to=\{kpi\.to\} asText/);
-assert.match(handoff, /<KpiMeter value=\{kpi\.value\}/);
+// The KPI figures moved into one inline row («سطر لا بطاقة») — FigureRow carries the action line and the meter.
+const figRow = readFileSync(join(root, "components/shared/FigureRow.jsx"), "utf8");
+assert.match(handoff, /<FigureRow ar=\{ar\} figures=\{kpis\}/);
+assert.match(handoff, /meter: 100/);
+assert.match(figRow, /<KpiAction asText/);
+assert.match(figRow, /<KpiMeter value=/);
 assert.match(handoff, /scoreFlag\(score, \{ floor: READINESS_FLOOR/);
 assert.match(handoff, /حضور منخفض/);
 assert.doesNotMatch(handoff, /flag: ar \? "بانتظار قرارك"|ar: "بانتظار قرارك"/);
@@ -129,6 +133,7 @@ const TILE_FILES = [
   "components/payroll/PayrollSlipBoard.jsx",
   "components/payroll/PayrollWpsBoard.jsx",
   "components/shared/KpiStrip.jsx",
+  "components/shared/FigureRow.jsx",
   "components/owner/ownerUi.jsx",
   "components/owner/SubscriptionRevenueSummary.jsx",
   "components/performance/PerfScoreBoard.jsx",

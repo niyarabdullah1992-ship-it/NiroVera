@@ -3882,3 +3882,157 @@ html.dark .nv7-section-head {
 /* مسير الأجور — cycle stages wrap on narrow screens */
 @media (max-width: 900px){ .nv-cycle-stages{grid-template-columns:repeat(4,minmax(0,1fr)) !important} }
 @media (max-width: 560px){ .nv-cycle-stages{grid-template-columns:repeat(2,minmax(0,1fr)) !important} }
+
+/* ── «سطر لا بطاقة»: inline figure row (طلباتي header pattern on white) ── */
+.nv-figrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  row-gap: 12px;
+  padding: 2px 0;
+  min-width: 0;
+}
+.nv-figrow .nv-fig {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-inline-end: 20px;
+  margin-inline-end: 20px;
+  border-inline-end: 1px solid var(--nv-line);
+  text-decoration: none;
+  color: inherit;
+}
+.nv-figrow .nv-fig:last-child { border-inline-end: none; margin-inline-end: 0; padding-inline-end: 0; }
+.nv-fig-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--nv-muted);
+}
+.nv-fig-num { display: inline-flex; align-items: baseline; gap: 4px; }
+.nv-fig-num b {
+  font: 500 22px/1.15 var(--font-mono), "IBM Plex Mono", monospace;
+  color: var(--nv-ink);
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+}
+.nv-fig-num small { font-size: 11px; font-weight: 600; color: var(--nv-muted); }
+.nv-fig-note { font-size: 10.5px; color: var(--nv-muted); line-height: 1.6; max-width: 22ch; }
+.nv-fig [role="meter"] { width: 72px; margin-top: 2px; }
+@media (max-width: 560px) {
+  .nv-figrow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 0; }
+  .nv-figrow .nv-fig { margin-inline-end: 0; padding-inline: 0 12px; border-inline-end: none; }
+  .nv-figrow .nv-fig:nth-child(odd) { border-inline-end: 1px solid var(--nv-line); }
+  .nv-figrow .nv-fig:nth-child(even) { padding-inline-start: 12px; }
+}
+
+/* ── «⚖ حقك / التزامك» and the rights lists ── */
+.nv-right-hint:focus-visible { outline: 2px solid var(--nv-ok-ink); outline-offset: 2px; border-radius: 4px; }
+.nv-right-hint:hover span { text-decoration: underline; text-underline-offset: 3px; }
+.nv-rights {
+  background: var(--nv-card);
+  border: 1px solid var(--nv-line);
+  border-radius: 12px;
+  padding: 12px 18px 6px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.nv-rights-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding-bottom: 8px; }
+.nv-rights-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-heading);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--nv-ink);
+}
+.nv-rights-title svg { color: var(--nv-ok-ink); }
+.nv-rights-lede { font-size: 11.5px; color: var(--nv-muted); }
+.nv-rights-sub { font-size: 11px; font-weight: 700; color: var(--nv-muted); padding: 10px 0 2px; }
+.nv-rights-list { list-style: none; margin: 0; padding: 0; }
+.nv-rights-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 9px 0;
+  border-top: 1px solid var(--nv-line2, var(--nv-line));
+}
+.nv-rights-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; color: var(--nv-ink); line-height: 1.6; }
+.nv-rights-text strong { font-weight: 600; }
+.nv-rights-text small { font-size: 11px; color: var(--nv-muted); line-height: 1.6; }
+.nv-ob-who { color: var(--nv-muted); font-size: 12px; }
+.nv-rights-meta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 1px; }
+.nv-ob-act { font-size: 12px; font-weight: 600; color: var(--nv-ok-ink); text-decoration: none; white-space: nowrap; }
+.nv-ob-act:hover { text-decoration: underline; text-underline-offset: 3px; }
+.nv-rights-fig { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: end; }
+.nv-rights-fig b {
+  font: 500 15px/1.3 var(--font-mono), "IBM Plex Mono", monospace;
+  color: var(--nv-ink);
+  white-space: nowrap;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+}
+.nv-rights-fig small { font-size: 10.5px; color: var(--nv-muted); }
+.nv-rights-more {
+  font-family: inherit;
+  align-self: flex-start;
+  margin: 2px 0 6px;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nv-ok-ink);
+  cursor: pointer;
+}
+@media (max-width: 560px) {
+  .nv-rights { padding: 10px 14px 4px; }
+  .nv-rights-fig b { font-size: 13.5px; white-space: normal; }
+}
+
+/* ── سلسلة الإثبات: one compact strip ── */
+.nv-proofstrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 0;
+  min-height: 56px;
+  padding: 8px 16px;
+  background: var(--nv-card);
+  border: 1px solid var(--nv-line);
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+.nv-proofstrip-title { font-size: 12px; font-weight: 700; color: var(--nv-ink); margin-inline-end: 14px; }
+.nv-proofstep {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 2px;
+  text-decoration: none;
+  color: var(--nv-ink);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.nv-proofstep b {
+  font: 500 15px/1 var(--font-mono), "IBM Plex Mono", monospace;
+  direction: ltr;
+  unicode-bidi: isolate;
+  color: var(--nv-ink);
+}
+.nv-proofstep .nv-proof-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--nv-line3, var(--nv-line)); display: inline-block; }
+.nv-proofstep .nv-proof-open { font-size: 11px; font-weight: 600; color: var(--nv-ok-ink); }
+.nv-proofstep:hover .nv-proof-name { text-decoration: underline; text-underline-offset: 3px; }
+.nv-proof-arrow { color: var(--nv-muted); font-size: 12px; padding: 0 8px; }
+@media (max-width: 560px) {
+  .nv-proofstrip { padding: 8px 12px; }
+  .nv-proofstrip-title { flex-basis: 100%; margin: 0 0 2px; }
+  .nv-proof-arrow { padding: 0 5px; }
+}

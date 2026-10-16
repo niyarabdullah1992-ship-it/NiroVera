@@ -32,6 +32,7 @@ import MyPayslipArchive from "@/components/payroll/MyPayslipArchive";
 import RequestsMinistryPanel from "@/components/requests/RequestsMinistryPanel";
 import EmployeeFileDutyBoard from "@/components/employees/EmployeeFileDutyBoard";
 import EmployeeFileSummary from "@/components/employees/EmployeeFileSummary";
+import MyRightsList from "@/components/dashboard/MyRightsList";
 import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employees/EmployeeFileFieldCard";
 import EmployeeFileLeaveBoard from "@/components/employees/EmployeeFileLeaveBoard";
 import EmployeeFileDocsBoard from "@/components/employees/EmployeeFileDocsBoard";
@@ -388,6 +389,15 @@ export default function EmployeeProfile() {
 
         <EmpAlertsStrip employee={employee} currentUser={currentUser} lang={lang} />
 
+        {tab === "summary" ? (
+          <MyRightsList
+            employee={employee}
+            data={data}
+            ar={ar}
+            title={isSelf ? (ar ? "حقوقي" : "My rights") : (ar ? "حقوقه" : "His rights")}
+            lede={isSelf ? undefined : (ar ? "من ملفه — ما تلتزم به الشركة له، كل سطر برقمه ومادته." : "From his file — what the company owes him, each line with its article.")}
+          />
+        ) : null}
         {tab === "summary" && <EmployeeFileSummary view={view} ar={ar} onOpenTab={openTab} />}
 
         {tab === "identity" && (

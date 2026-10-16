@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { KpiAction, StatusFlag } from "@/components/shared/StatusFlag";
-import { KPI_INK } from "@/lib/statusFlag";
+import FigureRow from "@/components/shared/FigureRow";
+import MyRightsList from "@/components/dashboard/MyRightsList";
+import { requestSelfEmployee } from "@/lib/employeeFileView";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { base44 } from "@/api/base44Client";
@@ -24,6 +25,7 @@ export default function EmployeeDashboard({ user, company, data }) {
   const ar = lang === "ar";
   const effectiveStationId = user.stationId || data?.stations?.[0]?.id || null;
   const station = data?.stations?.find((s) => s.id === effectiveStationId) || null;
+  const selfEmployee = requestSelfEmployee(user, data?.employees || []);
   const [tasks, setTasks] = useState([]);
   const [counts, setCounts] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -100,7 +102,7 @@ export default function EmployeeDashboard({ user, company, data }) {
 
   const kpis = [
     { key: "open", label: ar ? "مهام مفتوحة" : "Open tasks", value: open.length, hint: ar ? "للتنفيذ" : "To execute", to: "/app/tasks" },
-    { key: "await", label: ar ? "بانتظار الاعتماد" : "Awaiting approval", value: awaiting.length, hint: ar ? "بعد الإثبات" : "After proof", to: "/app/tasks", action: awaiting.length > 0, actionAr: "تابع الاعتماد", actionEn: "Track approval" },
+    { key: "await", label: ar ? "بانتظار الاعتماد" : "Awaiting approval", value: awaiting.length, hint: ar ? "بعد الإثبات" : "After proof", to: "/app/tasks", action: awaiting.length > 0, actionText: "تابع الاعتماد", actionTextEn: "Track approval" },
     { key: "late", label: ar ? "متأخرة" : "Overdue", value: overdue.length, hint: ar ? "تحتاج متابعة" : "Need follow-up", to: "/app/tasks", tone: overdue.length ? "bad" : null, flag: ar ? "تجاوز الموعد" : "Past due" },
     { key: "points", label: ar ? "نقاطي" : "My points", value: points, hint: ar ? "تُمنح عند الاعتماد فقط" : "Awarded on approval only", to: "/app/performance?view=self" },
   ];
@@ -108,6 +110,8 @@ export default function EmployeeDashboard({ user, company, data }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <EmployeeTour user={user} company={company} />
+      {/* «حقوقي» — my rights in plain lines, each computed from my own file. */}
+      <MyRightsList employee={selfEmployee} data={data} ar={ar} />
       <QuickCheckInCard currentUser={user} company={company} />
 
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -123,34 +127,8 @@ export default function EmployeeDashboard({ user, company, data }) {
         <PresenceStatusPicker user={user} />
       </div>
 
-      <div className="nv-disc-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-        {kpis.map((k) => (
-          <Link
-            key={k.key}
-            to={k.to}
-            className="nv-doc"
-            style={{
-              background: CARD,
-              border: `1px solid ${LINE}`,
-              padding: "14px 16px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 4,
-              minWidth: 0,
-              textDecoration: "none",
-              color: "inherit",
-            }}
-          >
-            <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
-              <span style={{ fontSize: 12, color: MUTED }}>{k.label}</span>
-              <StatusFlag tone={k.tone} flag={k.flag} label={k.label} ar={ar} />
-            </span>
-            <span dir="ltr" style={{ fontFamily: MONO, fontSize: 30, fontWeight: 500, color: KPI_INK, lineHeight: 1.05 }}>{k.value}</span>
-            <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{k.hint}</span>
-            {k.action ? <KpiAction asText ar={ar} text={k.actionAr} textEn={k.actionEn} /> : null}
-          </Link>
-        ))}
-      </div>
+      {/* «سطر لا بطاقة» — my figures as one inline row, no boxes. */}
+      <FigureRow ar={ar} figures={kpis} />
 
       <div className="nv-emp-summary" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,1fr)", gap: 16, alignItems: "stretch" }}>
         <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>

@@ -4,6 +4,7 @@ import { approvedOvertimeHoursForMonth } from "./attendanceDerivations.js";
 import { DAYS_PER_MONTH } from "./payrollDerivations.js";
 import { computeLeaveDays } from "./leaveDerivations.js";
 import { readPersonalAttendance } from "./facts/attendance.js";
+import { preventedDaysInMonth } from "./modelRequests.js";
 
 function rowDate(row) {
   return String(row?.date || row?.attendanceDate || row?.day || "").slice(0, 10);
@@ -48,20 +49,24 @@ export function derivePayrollMonthAttendance(employeeId, month, data = {}) {
   const rows = readPersonalAttendance(data).filter((row) =>
     rowEmployeeId(row) === id && rowDate(row).startsWith(prefix),
   );
+  const employee = (data.employees || []).find((entry) => String(entry.id) === id);
+  // Model Art. 46: a day the establishment kept a present, ready worker from working is paid — not absence.
+  const preventedSet = preventedDaysInMonth(employee, month);
   let present = 0;
   let late = 0;
   let absent = 0;
+  let prevented = 0;
   for (const row of rows) {
     const status = String(row.status || "").toLowerCase();
     if (status === "absent") {
-      absent += 1;
+      if (preventedSet.has(rowDate(row))) prevented += 1;
+      else absent += 1;
       continue;
     }
     if (status === "late" || Number(row.lateMinutes) > 0) late += 1;
     if (hasCheckIn(row) || status === "present" || status === "late") present += 1;
   }
 
-  const employee = (data.employees || []).find((entry) => String(entry.id) === id);
   let unpaidLeave = 0;
   for (const req of employee?.leaveRequests || []) {
     if (String(req.type || "").toLowerCase() !== "unpaid") continue;
@@ -73,19 +78,20 @@ export function derivePayrollMonthAttendance(employeeId, month, data = {}) {
   const otHours = approvedOvertimeHoursForMonth(data.otDecisions, id, month);
   const holidayHours = Number(data.holidayHoursByEmployee?.[id]) || 0;
   const eidHours = Number(data.eidHoursByEmployee?.[id]) || 0;
-  const recorded = present + absent + unpaidLeave;
+  const recorded = present + prevented + absent + unpaidLeave;
   const shift = recorded > 0 ? Math.max(recorded, DAYS_PER_MONTH) : DAYS_PER_MONTH;
   return {
     present,
     late,
     absent,
+    prevented,
     unpaidLeave,
     otHours,
     holidayHours,
     eidHours,
     shift,
     recordedDays: rows.length,
-    attGap: recorded > 0 && present + absent + unpaidLeave < shift,
+    attGap: recorded > 0 && present + prevented + absent + unpaidLeave < shift,
     source: rows.length ? "calendar" : "empty",
   };
 }

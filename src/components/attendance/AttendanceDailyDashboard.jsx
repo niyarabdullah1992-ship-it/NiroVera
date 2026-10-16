@@ -10,7 +10,8 @@ import { isServiceOutage } from "@/lib/serviceErrors";
 import { hmToMinutes, todaysShiftEnded } from "@/lib/attendanceDerivations";
 import { isExcusedEarlyCheckout } from "@/lib/dutyRequests";
 import { listLocalTodayAttendance, mergeAttendanceRows } from "@/lib/localAttendanceFallback";
-import { recordManualAttendance } from "@/lib/store";
+import { recordManualAttendance, submitOtherRequest } from "@/lib/store";
+import { PREVENTED_TYPE, checkEmployerPreventedGate } from "@/lib/modelRequests";
 import { isLocalPreviewActive } from "@/lib/localPreview";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
@@ -95,6 +96,11 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   const [mapRow, setMapRow] = useState(null);
   const [manualLoadingId, setManualLoadingId] = useState(null);
   const [checkoutEmployeeId, setCheckoutEmployeeId] = useState(null);
+  // Model Art. 46 — «منعته المنشأة»: the manager names the company-side cause; the day stays paid.
+  const [preventId, setPreventId] = useState(null);
+  const [preventReason, setPreventReason] = useState("");
+  const [preventError, setPreventError] = useState("");
+  const [preventedNow, setPreventedNow] = useState({});
   const [checkoutReason, setCheckoutReason] = useState("");
   const [checkoutError, setCheckoutError] = useState("");
   const [searchParams] = useSearchParams();
@@ -217,6 +223,30 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     } finally {
       setManualLoadingId(null);
     }
+  };
+
+  const preventedToday = (employee) => {
+    const day = toRiyadhDateKey();
+    return !!preventedNow[employee.id] || (employee.otherRequests || []).some((row) => row?.type === PREVENTED_TYPE && row.status === "approved" && String(row.date || "").slice(0, 10) === day);
+  };
+  const recordPrevented = (employee) => {
+    const day = toRiyadhDateKey();
+    const gate = checkEmployerPreventedGate({ employee, actorId: currentUser?.id, date: day, reason: preventReason, today: day });
+    if (!gate.ok) { setPreventError(lang === "ar" ? gate.reason : gate.reasonEn); return; }
+    const res = submitOtherRequest(company.id, employee.id, {
+      type: PREVENTED_TYPE,
+      date: day,
+      reason: preventReason.trim(),
+      status: "approved",
+      recordedBy: currentUser?.name || "",
+      requestedBy: currentUser?.name || "",
+      requestedById: currentUser?.id,
+    });
+    if (!res?.ok) { setPreventError(lang === "ar" ? res?.reason : res?.reasonEn); return; }
+    setPreventedNow((prev) => ({ ...prev, [employee.id]: true }));
+    setPreventId(null);
+    setPreventReason("");
+    setPreventError("");
   };
 
   const toggleExcuse = async (r) => {
@@ -477,6 +507,32 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 ) : null}
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {status === "absent" && preventedToday(e) ? (
+                  <span data-prevented="1" style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ink)", background: "var(--nv-soft)", border: `1px solid ${BORDER}`, padding: "6px 11px", whiteSpace: "nowrap" }}>
+                    {lang === "ar" ? "منعته المنشأة — أجره مستحق (النموذج الموحد م46)" : "Kept from work by the company — paid (Model Art. 46)"}
+                  </span>
+                ) : isManager && status === "absent" && String(e.id) !== String(currentUser?.id) ? (
+                  preventId === e.id ? (
+                    <div style={{ minWidth: 200, padding: 8, border: `1px solid ${BORDER}`, background: SURFACE }}>
+                      <input
+                        value={preventReason}
+                        onChange={(ev) => { setPreventReason(ev.target.value); setPreventError(""); }}
+                        placeholder={lang === "ar" ? "السبب الراجع إلى المنشأة (تعطل، إغلاق، لا عمل…)" : "Company-side cause (outage, closure, no work…)"}
+                        style={{ ...field, height: 30, fontSize: 11, marginBottom: 6 }}
+                        autoFocus
+                      />
+                      {preventError && <p style={{ fontSize: 10, color: DANGER, margin: "0 0 6px" }}>{preventError}</p>}
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button type="button" onClick={() => recordPrevented(e)} style={miniBtn("primary")}>{lang === "ar" ? "سجّل" : "Record"}</button>
+                        <button type="button" onClick={() => { setPreventId(null); setPreventReason(""); setPreventError(""); }} style={miniBtn()}>{lang === "ar" ? "إلغاء" : "Cancel"}</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button type="button" data-prevent-btn="1" onClick={() => { setPreventId(e.id); setPreventReason(""); setPreventError(""); }} style={miniBtn()} title={lang === "ar" ? "حاضر مستعد ومنعه سبب راجع إلى المنشأة — يُستحق أجره ولا يُحتسب غياباً" : "Ready but kept from work by the company — paid, not absence"}>
+                      {lang === "ar" ? "منعته المنشأة" : "Prevented by us"}
+                    </button>
+                  )
+                ) : null}
                 {isManager && isPastCheckoutMissing(r, e) && (
                   checkoutEmployeeId === e.id ? (
                     <div style={{ minWidth: 180, padding: 8, border: `1px solid ${BORDER}`, background: SURFACE }}>

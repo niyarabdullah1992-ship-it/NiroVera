@@ -4,6 +4,7 @@ import { hoursPolicyOf } from "./laborHoursPolicy.js";
 import { religionOnFile } from "./laborRules.js";
 import { isFixedContractType, profileGender } from "./employeeProfileFields.js";
 import { checkJobSearchHoursGate, ART81_CASES, ART81_EXIT_TYPE, DAMAGE_OBJECTION_TYPE, DOCUMENTS_RETURN_TYPE, GRIEVANCE_KINDS, GRIEVANCE_TYPE, LEAVE_CARRY_TYPE, NIGHT_AVOID_TYPE, damageObjectionDeadline, grievanceReplyBy, grievanceState } from "./rightsRequests.js";
+import { MISSION_TYPE, MODEL_REQUEST_TYPES, PREVENTED_TYPE, RELOCATION_TYPE, checkModelRequestSubmit } from "./modelRequests.js";
 import { daysAr, planLeaveCutForAttendance } from "./leaveCut.js";
 import { checkPostponeResignationGate, checkWithdrawResignationGate, dueResignations, EXIT_ROUTE_NOTICE75, resignationFacts, resignationRouteFor, RESIGNATION_TYPE } from "./exitRequests.js";
 import { checkGroundedRefusalGate, refusalGroundsFor, refusalWorkerLine } from "./statutoryRefusal.js";
@@ -3255,7 +3256,7 @@ export function submitOtherRequest(companyId, employeeId, {
   days, paper, requestedBy, requestedById, program, institution, issuedFile,
   examDate, until, permanent, from, to, timeTo, placement, dueDate, lastDay, amount, moneyKind, nursingSplit, childBirthDate, compLeave,
   notifiedOn, art81Case, ack, remaining, nightAvoidKind, gender, jobSearch, grievanceKind,
-  damageCaseId, deductionLineId,
+  damageCaseId, deductionLineId, details,
 }) {
   if (type === "permission" && jobSearch === true) {
     // Art. 78: up to eight job-search hours a week during the employer's notice — told, not asked.
@@ -3280,6 +3281,29 @@ export function submitOtherRequest(companyId, employeeId, {
     const span = m(time) != null && m(timeTo) != null ? (m(timeTo) - m(time)) / 60 : 0;
     const comp = checkTakeCompLeaveGate({ employee: subject, hours: span, on: date });
     if (!comp.ok) return comp;
+  }
+  // Model Arts. 9/12 (relocation), 24 (mission) and 46 (prevented day): the gate names its reason; the
+  // stored details are the gate's own normalised figures, never the raw form.
+  let modelDetails;
+  if (MODEL_REQUEST_TYPES.includes(type)) {
+    const subjectEmp = (getCompanyData(companyId)?.employees || []).find((row) => String(row.id) === String(employeeId));
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+    const modelGate = checkModelRequestSubmit({ type, details, date, reason }, subjectEmp, { actorId: requestedById, today });
+    if (!modelGate.ok) return modelGate;
+    if (type === RELOCATION_TYPE) modelDetails = { transferId: modelGate.transferId, basis: modelGate.basis, effectiveDate: modelGate.effectiveDate, lines: modelGate.lines, total: modelGate.total };
+    if (type === MISSION_TYPE) {
+      modelDetails = {
+        destination: String(details?.destination || "").trim(),
+        from: modelGate.from, to: modelGate.to, days: modelGate.days,
+        dailyRate: Number(details?.dailyRate) || 0,
+        transportProvided: details?.transportProvided !== false,
+        transportConsent: details?.transportProvided === false ? details?.transportConsent === true : undefined,
+        lodgingProvided: details?.lodgingProvided !== false,
+        lodgingPerDay: details?.lodgingProvided === false ? Number(details?.lodgingPerDay) || 0 : 0,
+        allowance: modelGate.allowance, lodging: modelGate.lodging, transport: modelGate.transport, total: modelGate.total,
+      };
+    }
+    if (type === PREVENTED_TYPE) modelDetails = { date: modelGate.date };
   }
   const file = Array.isArray(files) ? files[0] : files || null;
   if (type === "advance" && !(Number(amount) > 0)) {
@@ -3406,6 +3430,7 @@ export function submitOtherRequest(companyId, employeeId, {
       avoidFrom: type === NIGHT_AVOID_TYPE ? String(from || "").slice(0, 10) : undefined,
       avoidUntil: type === NIGHT_AVOID_TYPE ? (String(until || "").slice(0, 10) || undefined) : undefined,
       moneyKind: type === "advance" ? (moneyKind === "allowance" ? "allowance" : "advance") : undefined,
+      details: modelDetails,
       date: type === "resignation" ? resignToday : (date || undefined),
       hours: hours || undefined,
       time: time || undefined,

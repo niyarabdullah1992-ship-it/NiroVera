@@ -56,6 +56,7 @@ export type PunchLike = {
   onLeave?: boolean;
   restDay?: boolean;
   excusedAbsence?: boolean;
+  preventedByEmployer?: boolean;
   geoVerdict?: string | null;
   overtimeApproved?: boolean | null;
   settlement?: {
@@ -149,7 +150,8 @@ export function deriveDayStatus(
   const inM = parseHm(punch.checkIn);
   const outM = parseHm(punch.checkOut);
   if (inM == null) {
-    const excused = !!punch.excusedAbsence || !!punch.settlement;
+    // Model Art. 46: kept from work by the establishment — paid, never an unexcused absence.
+    const excused = !!punch.excusedAbsence || !!punch.settlement || !!punch.preventedByEmployer;
     return {
       status: ATT_STATUS.absent as AttStatusId,
       checkIn: null as string | null,
@@ -460,7 +462,7 @@ export function deriveAttStats(rows: RosterRow[], geofenceOn: boolean) {
       r.geo === GEO_VERDICT.accepted_outside,
   ).length;
   const workMinutes = list.reduce((s, r) => s + r.ordinaryMinutes + r.overtimeMinutes, 0);
-  const absent = list.filter((r) => r.status === ATT_STATUS.absent && !r.excusedAbsence && !r.settlement).length;
+  const absent = list.filter((r) => r.status === ATT_STATUS.absent && !r.excusedAbsence && !r.settlement && !r.preventedByEmployer).length;
 
   return {
     rate,

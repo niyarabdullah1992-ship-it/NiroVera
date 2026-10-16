@@ -136,6 +136,7 @@ import StatutoryItem from "@/components/labor/StatutoryItem";
 import WrittenConsentInbox from "@/components/requests/WrittenConsentInbox";
 import WrittenConsentRaise from "@/components/requests/WrittenConsentRaise";
 import RightsRequestRaise from "@/components/requests/RightsRequestRaise";
+import ModelRequestRaise from "@/components/requests/ModelRequestRaise";
 import { ABUSE_COMPLAINT_KIND, DAMAGE_OBJECTION_TYPE, employerNoticeOf, GRIEVANCE_TYPE, jobSearchHoursInWeek, NIGHT_AVOID_TYPE, rightsRouteFor } from "@/lib/rightsRequests";
 import { otAssignmentLine, otOffer, otOfferLines, sar as sarText, hoursAr } from "@/lib/otOffer";
 import { compBalance, compDays } from "@/lib/compLeave";
@@ -173,6 +174,7 @@ const MANAGE_KIND_HINTS = {
   permission: { ar: "تسجيل استئذان", en: "Record a permission", hintAr: "يُقيَّد معتمداً — لا يُحتسب تأخيراً", hintEn: "Recorded approved — not lateness" },
   nursing_hour: { ar: "تسجيل ساعة الرضاعة", en: "Record a nursing hour", hintAr: "م 154 · للعاملة المرضع", hintEn: "Art. 154 · nursing worker" },
   pregnancy_notice: { ar: "تسجيل إبلاغ حمل", en: "Record a pregnancy notice", hintAr: "قرار 18632 · من تقرير ورقي", hintEn: "Decision 18632 · from a paper report" },
+  mission: { ar: "تكليف بانتداب", en: "Mission assignment", hintAr: "النموذج الموحد م24 · النقل والسكن والبدل اليومي", hintEn: "Model Art. 24 · transport, lodging, daily allowance" },
   other: { ar: "طلب آخر", en: "Other request", hintAr: "يُوصف في السبب", hintEn: "Described in the reason" },
 };
 
@@ -186,6 +188,7 @@ const MINE_TILES = [
   { id: "doc", ar: "وثيقة أو شهادة", en: "Document or letter", hintAr: "تعريف · شهادة خدمة م 64 · نسخة العقد م 51", hintEn: "Letter · service certificate (64) · contract copy (51)", letter: "و" },
   { id: "money", ar: "سلفة أو بدل", en: "Advance or allowance", hintAr: "م 92 · القسط لا يزيد على 10% من الأجر", hintEn: "Art. 92 · an instalment stays within 10% of the wage", letter: "ف" },
   { id: "custody", ar: "عهدة", en: "Custody", hintAr: "تسليم أو إرجاع", hintEn: "Hand over or return", letter: "ع" },
+  { id: "relocation", ar: "نفقات النقل مع تغيير السكن", en: "Relocation expenses", hintAr: "النموذج الموحد م9 · 12 — عن نقل غيّر محل إقامتك", hintEn: "Model Arts. 9 · 12 — for a move that changed your residence", letter: "ن" },
   { id: "resignation", ar: "تقديم استقالة", en: "Resignation", hintAr: "م 79 مكرر · لا تُرفض", hintEn: "Art. 79 bis · not refused", letter: "س" },
   { id: "rights", ar: "حقوق نظامية أخرى", en: "Other legal rights", hintAr: "م 64 · 81 · 110 — الوثائق، ترك العمل، تأجيل الإجازة. التظلّم والاعتراض على خصم الإتلاف في «الجزاءات»، وشكوى التحرش في «صوت الموظف»", hintEn: "Arts. 64 · 81 · 110. Grievances and damage-deduction objections sit in Sanctions; harassment in Employee voice", letter: "ح" },
   { id: "other", ar: "طلب آخر", en: "Other request", hintAr: "يُوصف في السبب", hintEn: "Described in the reason", letter: "آ" },
@@ -2395,6 +2398,8 @@ export default function RequestsWorkspace({
             <WrittenConsentRaise employees={employees} employeeId={employeeId} ar={ar} refresh={refresh} />
           ) : kind === "rights" && mode !== "manage" ? (
             <RightsRequestRaise employee={subject} companyId={company?.id} ar={ar} refresh={refresh} initialKind={rightsKind} />
+          ) : (kind === "relocation" && mode !== "manage") || (kind === "mission" && mode === "manage") ? (
+            subject ? <ModelRequestRaise key={`${kind}-${subject.id}`} kind={kind} employee={subject} companyId={company?.id} actor={currentUser} ar={ar} refresh={refresh} defaultDailyRate={data?.settings?.missionDailyRate || ""} /> : null
           ) : (<>
           {isStudyConsent && (
             <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 10 }}>

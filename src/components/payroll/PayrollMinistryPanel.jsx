@@ -4,6 +4,8 @@ import { isWeeklyRestDay } from "@/lib/laborHoursPolicy";
 import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { companyPayday, wageOverdue } from "@/lib/payrollLaw";
 import { PAYROLL_MINISTRY_CARDS, payrollMinistryRows } from "@/lib/payrollMinistryRows";
+import { stationWithSite } from "@/lib/siteRemoteness";
+import { preventedDaysInMonth } from "@/lib/modelRequests";
 
 const todayIso = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
 
@@ -19,7 +21,14 @@ export default function PayrollMinistryPanel({ ar = true, data, month, items = [
     const isOff = (day) => isWeeklyRestDay(day, data) || isOfficialHoliday(day, calendar);
     const pay = self ? null : companyPayday(data?.settings, month, isOff);
     const overdue = self ? null : wageOverdue({ settings: data?.settings, month, items, today, isOff, employeeOf: employeeForItem });
-    return payrollMinistryRows({ lines: items, self, pay, overdue, ar, onDate: today });
+    const personOf = (line) => (typeof employeeForItem === "function" ? employeeForItem(line) : null)
+      || (data?.employees || []).find((row) => String(row.id) === String(line?.employeeId)) || null;
+    const siteOf = (line) => {
+      const person = personOf(line);
+      return person ? stationWithSite(data, person.stationId) : null;
+    };
+    const preventedOf = (line) => preventedDaysInMonth(personOf(line), month).size;
+    return payrollMinistryRows({ lines: items, self, pay, overdue, ar, onDate: today, siteOf, preventedOf });
   }, [data, calendar, month, items, employeeForItem, self, ar, today]);
   return (
     <MinistryLawPanel

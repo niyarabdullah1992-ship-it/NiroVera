@@ -35,6 +35,7 @@ import {
   requestRefuseFileLog,
 } from "../../shared/otherRequestDerivations.ts";
 import { checkGroundedRefusalGate } from "../../shared/statutoryRefusal.ts";
+import { MODEL_REQUEST_TYPES, checkModelRequestSubmit } from "../../shared/modelRequests.ts";
 import { checkTakeCompLeaveGate } from "../../shared/compLeaveBalance.ts";
 import { checkOtDayWeekGate } from "../../shared/otLimits.ts";
 import {
@@ -383,6 +384,14 @@ Deno.serve(async (req) => {
       }
       const rights = checkRightsSubmit(request, emp);
       if (!rights.ok) return Response.json({ ...rights }, { status: 422 });
+      // Model Arts. 9/12, 24, 46 — the same gate as the page; a mission or a prevented day is a manager's act.
+      if (MODEL_REQUEST_TYPES.includes(request.type)) {
+        if (request.type !== "relocation_expenses" && !isManager) {
+          return Response.json({ error: "MODEL_REQUEST_MANAGER_ONLY", reason: "الانتداب وتسجيل منع المنشأة قرار إداري.", reasonEn: "A mission or a prevented day is a manager's decision." }, { status: 403 });
+        }
+        const model = checkModelRequestSubmit(request, emp, { actorId: auth.userId, today: riyadhToday() });
+        if (!model.ok) return Response.json({ ...model }, { status: 422 });
+      }
       if (request.type === DAMAGE_OBJECTION_TYPE) request.objectionLastDay = damageObjectionDeadline(request.notifiedOn);
       if (request.type === GRIEVANCE_TYPE) request.grievanceReplyBy = grievanceReplyBy(riyadhToday(), (iso: string) => isOfficialHolidayDay(iso));
       const prior = Array.isArray(emp.otherRequests) ? emp.otherRequests : [];

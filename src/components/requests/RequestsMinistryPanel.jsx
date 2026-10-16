@@ -7,6 +7,8 @@ import { nursingSplitLabel, nursingSplitOf } from "@/lib/dutyRequests";
 import {
   annualLeaveRegsNote,
   disabilityDefinitionsRegsNote,
+  missionModelNote,
+  relocationModelNote,
   sickLeaveRegsNote,
   treatmentDaysRegsNote,
   unpaidLeaveRegsNote,
@@ -174,6 +176,28 @@ export default function RequestsMinistryPanel({ ar = true, lang = "ar", subject,
       status: statusOf(["dialysis"], requests),
       live: liveKind === "leave:dialysis",
     });
+    // Model Arts. 9/12 and 24 — relocation expenses (the worker claims) and missions (the manager decides);
+    // both are repaid with the wage. Leave and duty rows above; the pay effect reads in قسيمتي.
+    if (!fileMode) {
+      list.push({
+        key: "model-12",
+        source: "labour",
+        badge: ar ? "النموذج الموحد م9·12" : "Model Arts. 9·12",
+        title: ar ? "نفقات النقل مع تغيير السكن" : "Relocation expenses",
+        note: relocationModelNote(ar),
+        status: statusOf(["relocation_expenses"], requests),
+        live: liveKind === "relocation",
+      });
+      list.push({
+        key: "model-24",
+        source: "labour",
+        badge: ar ? "النموذج الموحد م24" : "Model Art. 24",
+        title: ar ? "الانتداب وبدله" : "Missions and their allowance",
+        note: missionModelNote(ar),
+        status: statusOf(["mission"], requests),
+        live: liveKind === "mission",
+      });
+    }
     const injuryOnFile = injuryLeaves(subject).length > 0;
     if (!fileMode || injuryOnFile) list.push({
       key: "labour-gosi",
@@ -270,7 +294,7 @@ export default function RequestsMinistryPanel({ ar = true, lang = "ar", subject,
       title: fileMode ? (rows.some((row) => row.key === "labour-154") ? (ar ? "نظام العمل — العقد والرضاعة" : "Labour Law — contract and nursing") : (ar ? "نظام العمل — العقد" : "Labour Law — contract")) : (ar ? "نظام العمل — الإجازات والعقد" : "Labour Law — leave and contract"),
       scope: fileMode
         ? (ar ? `${rows.some((row) => row.key === "labour-154") ? "ساعة الرضاعة، " : ""}الاستقالة والإشعار، تغيير شروط العقد. الإجازات في طلباتي.` : "Resignation and notice, contract changes. Leave is in My requests.")
-        : (ar ? "الإجازات بأنواعها، ساعة الرضاعة، الاستقالة والإشعار، تغيير شروط العقد." : "All leave types, the nursing hour, resignation and notice, contract changes."),
+        : (ar ? "الإجازات بأنواعها، ساعة الرضاعة، الاستقالة والإشعار، تغيير شروط العقد، نفقات النقل والانتداب (النموذج الموحد م12، 24)." : "All leave types, the nursing hour, resignation and notice, contract changes, relocation and missions (model Arts. 12, 24)."),
     },
   ].filter((card) => !fileMode || rows.some((row) => row.source === card.key)).map((card) => {
     const list = rows.filter((row) => row.source === card.key);

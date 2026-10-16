@@ -12,7 +12,8 @@ import { hoursPolicyOf } from "./laborHoursPolicy.js";
 import { ruleValue } from "./laborRules.js";
 import { statusFromWeekCheck } from "./lawGateStatus.js";
 import { NIGHT_WORK_RIGHTS } from "./nightWorkRights.js";
-import { eidOverlapRegsNote, juvenileNightRegsNote, overtimeRegsNote, regsDecisionLine } from "./implementingRegsNotes.js";
+import { eidOverlapRegsNote, juvenileNightRegsNote, overtimeRegsNote, preventedWageModelNote, regsDecisionLine } from "./implementingRegsNotes.js";
+import { preventedDaysInMonth } from "./modelRequests.js";
 
 function checkById(gates, id) {
   return (gates?.checks || []).find((row) => row?.id === id) || null;
@@ -564,6 +565,23 @@ export function buildLabourLawGatePanel({ gates, company, onDate, ar = true } = 
       checkId: "juvenile_docs",
     },
   ];
+
+  // Model Art. 46 — a day the establishment kept a present, ready worker from working stays paid. Read
+  // from the manager's «منعته المنشأة» records in the month of the week shown; never absence on payroll.
+  const month = String(onDate || "").slice(0, 7);
+  const prevented = month
+    ? (company?.employees || []).reduce((sum, employee) => sum + preventedDaysInMonth(employee, month).size, 0)
+    : 0;
+  rows.push({
+    article: ar ? "النموذج الموحد م46" : "Model Art. 46",
+    summary: ar
+      ? `منعته المنشأة وهو حاضر مستعد — يُستحق أجره ولا يُحتسب غياباً · ${preventedWageModelNote(ar)}`
+      : `Kept from work by the company while ready — paid, not absence · ${preventedWageModelNote(ar)}`,
+    ...(prevented
+      ? { status: "settled", who: "", pillLabel: ar ? `${prevented} يوماً هذا الشهر` : `${prevented} day(s) this month` }
+      : { status: "void", who: "", pillLabel: ar ? "للعلم" : "For reference" }),
+    checkId: "",
+  });
 
   const count = rows.length;
   return {

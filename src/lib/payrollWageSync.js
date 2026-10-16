@@ -10,6 +10,7 @@ import { gosiLine } from "./payrollDerivations.js";
 import { detentionMonth, detentionRefund, holidayOvertimeHours, unpaidLeaveMonth } from "./payrollLaw.js";
 import { isOfficialHoliday, laborCalendarOf } from "./ummAlQuraCalendar.js";
 import { readPersonalAttendance } from "./facts/attendance.js";
+import { expenseRefundsForMonth } from "./modelRequests.js";
 
 /** True / false when identity is settled. Null when it is unknown or mismatched — nothing is withheld. */
 export function payrollSaudiFlag(employee) {
@@ -141,6 +142,12 @@ export function derivePayrollWagePatch(item, employee, { otDecisions, month, com
         isHoliday: (day) => isOfficialHoliday(day, calendar),
       });
       return { holidayOvertimeHours: hol.hours, holidayOvertimeFlagged: hol.fromDecisions };
+    })(),
+    // Model Arts. 9/12 and 24: approved relocation and mission claims, reimbursed with this month's wage.
+    ...(() => {
+      if (!employee || !month) return {};
+      const claims = expenseRefundsForMonth(employee, month);
+      return { expenseRefunds: claims.amount, expenseRefundRefs: claims.refs };
     })(),
     // Art. 2 named lines, shown apart on the payslip.
     remoteAreaAllowance: wage ? wage.remote || 0 : Number(item.remoteAreaAllowance) || 0,

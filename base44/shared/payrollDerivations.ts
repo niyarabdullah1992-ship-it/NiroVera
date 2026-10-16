@@ -104,9 +104,13 @@ export function lineOvertimePay(line) {
   return overtimePay(Number(line?.base) || 0, lineOvertimeHours(line), Number(line?.allowances) || 0);
 }
 
-/** Refunds owed back on this line: an Art. 97 acquittal (`refunds`) and accepted Art. 91 objections (`damageRefunds`). */
+/**
+ * Refunds owed back on this line: an Art. 97 acquittal (`refunds`), accepted Art. 91 objections
+ * (`damageRefunds`), and approved expense claims — relocation (model Arts. 9/12) and mission (model
+ * Art. 24) — paid back with the wage (`expenseRefunds`). None of them is wage; none counts in Art. 93.
+ */
 export function lineRefunds(line) {
-  return Math.max(0, Number(line?.refunds) || 0) + Math.max(0, Number(line?.damageRefunds) || 0);
+  return Math.max(0, Number(line?.refunds) || 0) + Math.max(0, Number(line?.damageRefunds) || 0) + Math.max(0, Number(line?.expenseRefunds) || 0);
 }
 
 export function lineGross(line) {

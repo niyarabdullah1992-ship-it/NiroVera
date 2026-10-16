@@ -11,7 +11,12 @@ import { explainRule, ruleValue } from "./laborRules.js";
 import { checkArticle93Gate, lineIssues, lineOvertimeHours } from "./payrollDerivations.js";
 import {
   eidOverlapRegsNote,
+  forcedLabourRegsNote,
+  missionModelNote,
   overtimeRegsNote,
+  preventedWageModelNote,
+  relocationModelNote,
+  remotePlacesRegsNote,
   sickLeaveRegsNote,
   unpaidLeaveRegsNote,
   wageDefinitionsModelNote,
@@ -29,14 +34,14 @@ export const PAYROLL_MINISTRY_CARDS = (ar = true) => [
   {
     key: "regs",
     badge: ar ? "اللائحة" : "Regs",
-    title: ar ? "اللائحة التنفيذية — أثر الإجازات والإضافي على الأجر" : "Implementing Regulations — leave and overtime on pay",
-    scope: ar ? "العيد مع الراحة والإجازات (م24)، وقف العقد (م25)، المرض أثناء السنوية (م26)، سقف الإضافي والإجازة التعويضية (م22)." : "Eid with rest and leave (24), suspension (25), sickness in annual leave (26), the overtime cap and comp leave (22).",
+    title: ar ? "اللائحة التنفيذية — ما يمس الأجر" : "Implementing Regulations — what touches pay",
+    scope: ar ? "العيد مع الراحة والإجازات (م24)، وقف العقد (م25)، المرض أثناء السنوية (م26)، سقف الإضافي والإجازة التعويضية (م22)، السخرة والسكن والنقل (م21)، البعيد عن العمران (م30)." : "Eid with rest and leave (24), suspension (25), sickness in annual leave (26), the overtime cap and comp leave (22), forced labour, housing and transport (21), remote places (30).",
   },
   {
     key: "model",
     badge: ar ? "النموذج الموحد" : "Model reg.",
-    title: ar ? "النموذج الموحد — تعريف الأجر" : "Model regulation — what the wage is",
-    scope: ar ? "الأجر الأساسي والفعلي (م1)، والتقويم (م2)." : "Basic and actual wage (Art. 1), the calendar (2).",
+    title: ar ? "النموذج الموحد — الأجر وما يُسترد معه" : "Model regulation — the wage and what is repaid with it",
+    scope: ar ? "الأجر الأساسي والفعلي (م1–2)، نفقات النقل مع تغيير السكن (م9، 12)، الانتداب (م24)، أجر من منعته المنشأة (م46)." : "Basic and actual wage (1–2), relocation (9, 12), missions (24), pay when the company prevents work (46).",
   },
 ];
 
@@ -44,7 +49,7 @@ export const PAYROLL_MINISTRY_CARDS = (ar = true) => [
  * lines — the run lines in view (manage: the scope; self: the person's own line, or none).
  * pay / overdue — companyPayday() / wageOverdue() results, computed by the caller (manage only).
  */
-export function payrollMinistryRows({ lines = [], self = false, pay = null, overdue = null, ar = true, onDate } = {}) {
+export function payrollMinistryRows({ lines = [], self = false, pay = null, overdue = null, ar = true, onDate, siteOf = null, preventedOf = null } = {}) {
   const rows = [];
   const list = (lines || []).filter(Boolean);
 
@@ -95,6 +100,71 @@ export function payrollMinistryRows({ lines = [], self = false, pay = null, over
   rows.push({ key: "regs-24", source: "regs", badge: ar ? "اللائحة م24" : "Regs Art. 24", title: ar ? "العيد مع الراحة الأسبوعية أو السنوية أو المرضية" : "Eid with weekly rest, annual or sick leave", note: eidOverlapRegsNote(ar), status: "settled", pill: applied(ar) });
   rows.push({ key: "regs-25", source: "regs", badge: ar ? "اللائحة م25" : "Regs Art. 25", title: ar ? "الإجازة بلا أجر فوق عشرين يوماً توقف العقد" : "Unpaid leave beyond twenty days suspends the contract", note: unpaidLeaveRegsNote(ar), status: "settled", pill: applied(ar) });
   rows.push({ key: "regs-26", source: "regs", badge: ar ? "اللائحة م26" : "Regs Art. 26", title: ar ? "المرض أثناء الإجازة السنوية" : "Sickness during annual leave", note: sickLeaveRegsNote(ar), status: "settled", pill: applied(ar) });
+
+  // Regs Art. 21 — Art. 61(5–6) housing and transport (or their cash) bind the private and non-profit
+  // sectors: read whether the run carries the named allowances; in-kind provision is not visible here.
+  const housed = list.filter((line) => Number(line.housingAllowance) > 0).length;
+  const carried = list.filter((line) => Number(line.transportAllowance) > 0).length;
+  const neither = list.filter((line) => !(Number(line.housingAllowance) > 0) || !(Number(line.transportAllowance) > 0)).length;
+  rows.push({
+    key: "regs-21",
+    source: "regs",
+    badge: ar ? "اللائحة م21" : "Regs Art. 21",
+    title: ar ? "لا سخرة · السكن والنقل أو بدلهما للقطاع الخاص وغير الربحي (المادة 61/5–6)" : "No forced labour · housing and transport or their cash (Art. 61(5–6))",
+    note: forcedLabourRegsNote(ar),
+    sub: list.length ? (ar ? `بدل سكن في ${housed} · بدل نقل في ${carried} من ${list.length}` : `Housing allowance on ${housed} · transport on ${carried} of ${list.length}`) : undefined,
+    ...(!list.length
+      ? { status: "void", pill: info(ar) }
+      : neither
+        ? { status: "waiting", pill: self ? (ar ? "يُوفَّر عيناً أو بدلاً" : "In kind or cash") : (ar ? `${neither} بلا بدل ظاهر — عيناً أو بدلاً` : `${neither} without a cash line`) }
+        : { status: "settled", pill: ar ? "البدلان في المسير" : "Both on the run" }),
+  });
+
+  // Regs Art. 30 — remote places, derived from each branch's recorded distance and road (Safety → Inspection).
+  if (typeof siteOf === "function") {
+    const sites = list.map((line) => siteOf(line)).filter(Boolean);
+    const remote = sites.filter((site) => site.remoteness?.remote).length;
+    const unknown = sites.filter((site) => !site.remoteness?.known).length;
+    rows.push({
+      key: "regs-30",
+      source: "regs",
+      badge: ar ? "اللائحة م30" : "Regs Art. 30",
+      title: ar ? "البعيد عن العمران: 50 كم بطريق معبّد أو 25 كم بغيره، أو تجمع بلا مرافق" : "Remote: 50 km paved or 25 km unpaved, or a cluster without services",
+      note: remotePlacesRegsNote(ar),
+      ...(remote
+        ? { status: "waiting", pill: self ? (ar ? "موقعك بعيد — 146 و147" : "Your site is remote") : (ar ? `${remote} في موقع بعيد` : `${remote} at a remote site`) }
+        : unknown
+          ? { status: "void", pill: ar ? (self ? "المسافة غير مسجّلة" : `${unknown} بلا مسافة مسجّلة`) : "Distance not recorded" }
+          : sites.length ? { status: "settled", pill: ar ? "لا موقع بعيد" : "None remote" } : { status: "void", pill: info(ar) }),
+    });
+  }
+
+  // Model Arts. 9/12 and 24 — approved relocation and mission claims reimbursed with the wage (outside Art. 93).
+  const claims = list.filter((line) => Number(line.expenseRefunds) > 0);
+  const claimSum = Math.round(claims.reduce((sum, line) => sum + Number(line.expenseRefunds), 0) * 100) / 100;
+  rows.push({
+    key: "model-12-24",
+    source: "model",
+    badge: ar ? "النموذج الموحد م9·12·24" : "Model Arts. 9·12·24",
+    title: ar ? "نفقات النقل مع تغيير السكن ونفقات الانتداب — تُسترد مع الأجر" : "Relocation and mission expenses — repaid with the wage",
+    note: `${relocationModelNote(ar)} ${missionModelNote(ar)}`,
+    ...(claims.length
+      ? { status: "settled", pill: ar ? `${claimSum.toLocaleString("en-US")} ر.س مستردة${self ? "" : ` · ${claims.length} بنداً`}` : `${claimSum} SAR repaid` }
+      : { status: "void", pill: ar ? "لا مطالبة هذا الشهر" : "No claim this month" }),
+  });
+
+  // Model Art. 46 — a day the company kept a ready worker from working stays paid.
+  const preventedDays = typeof preventedOf === "function" ? list.reduce((sum, line) => sum + (Number(preventedOf(line)) || 0), 0) : 0;
+  rows.push({
+    key: "model-46",
+    source: "model",
+    badge: ar ? "النموذج الموحد م46" : "Model Art. 46",
+    title: ar ? "منعته المنشأة وهو حاضر مستعد — يُستحق أجره" : "Kept from work by the company while ready — paid",
+    note: preventedWageModelNote(ar),
+    ...(preventedDays
+      ? { status: "settled", pill: ar ? `${preventedDays} يوماً مدفوعاً لا غياب` : `${preventedDays} day(s) paid, not absence` }
+      : { status: "void", pill: ar ? "لا يوم مسجّلاً" : "None recorded" }),
+  });
 
   const eos = [explainRule("eos.gratuity.cite", onDate), explainRule("eos.resignation.cite", onDate)]
     .filter(Boolean).map((row) => (ar ? row.hintAr : row.hintEn)).filter(Boolean).join(" ");

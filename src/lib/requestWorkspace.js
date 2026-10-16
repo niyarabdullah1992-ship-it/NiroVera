@@ -99,6 +99,10 @@ export const REQUEST_KINDS = [
   { id: "doc", ar: "وثيقة أو شهادة", en: "Document or letter" },
   { id: "money", ar: "سلفة أو بدل", en: "Advance or allowance", type: "advance" },
   { id: "custody", ar: "عهدة", en: "Custody", type: "custody" },
+  /** Model Arts. 9 / 12 — the worker claims the expenses of a transfer that changed his residence. */
+  { id: "relocation", ar: "نفقات النقل مع تغيير السكن", en: "Relocation expenses", type: "relocation_expenses", employeeOnly: true },
+  /** Model Art. 24 — a mission decision is the manager's (destination, dates, allowance), paid with the wage. */
+  { id: "mission", ar: "تكليف بانتداب", en: "Mission assignment", type: "mission", manageOnly: true, manageFiled: true },
   /** Arts. 75 / 79 bis — the worker's own written resignation; management decides or lets 30 days pass. */
   { id: "resignation", ar: "تقديم استقالة", en: "Resignation", type: "resignation" },
   /** Arts. 51 · 81 · 91 · 110 — rights the law gives the worker (rightsRequests.js). Filed from ملفي only. */
@@ -115,14 +119,14 @@ export const REQUEST_KINDS = [
 export function composeRequestKinds(lane = "mine") {
   if (lane === "manage") {
     // إدارة may also record a granted permission, a nursing hour, or a pregnancy notice handed in on paper.
-    return REQUEST_KINDS.filter((row) => row.id === "ot_assign" || row.id === "leave_credit" || row.manageDuty || row.id === "leave" || row.id === "other");
+    return REQUEST_KINDS.filter((row) => row.id === "ot_assign" || row.id === "leave_credit" || row.manageDuty || row.id === "leave" || row.id === "mission" || row.id === "other");
   }
   return REQUEST_KINDS.filter((row) => !row.manageOnly);
 }
 
 /** True when إدارة may compose this kind as a manager-side raise (not ملفي masquerade). */
 export function isManageRaiseKind(kindId) {
-  return kindId === "ot_assign" || kindId === "leave_credit" || kindId === "other" || kindId === "leave"
+  return kindId === "ot_assign" || kindId === "leave_credit" || kindId === "other" || kindId === "leave" || kindId === "mission"
     || REQUEST_KINDS.some((row) => row.id === kindId && row.manageDuty);
 }
 

@@ -4480,7 +4480,7 @@ export default function RequestsWorkspace({
                 </span>
                 <span style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-end" }}>
                   {x.announced ? (
-                    <span dir="ltr" style={{ font: "500 11px 'IBM Plex Mono', monospace", unicodeBidi: "isolate" }}>{x.dateText}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--nv-ink)", unicodeBidi: "isolate" }}>{x.dateText}</span>
                   ) : (
                     <span style={{ fontSize: 11, fontWeight: 600 }}>{x.dateText}</span>
                   )}

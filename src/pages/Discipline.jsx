@@ -52,7 +52,10 @@ import { deadlineText, disciplineDeadlines } from "@/lib/disciplineDeadlines";
 import { ruleValue } from "@/lib/laborRules";
 import { saveDisciplineOnServer } from "@/lib/disciplineServer";
 import { regulationVersionEntry } from "@/lib/syncLaw";
+import { checkUniformSanctionGate, planUniformAck, uniformOf } from "@/lib/uniformPolicy";
+import { DISCIPLINE_MODEL_CARDS, disciplineModelRows } from "@/lib/disciplineModelRows";
 import { sanctionRecordState } from "@/lib/penaltiesRecord";
+import MinistryLawPanel from "@/components/schedules/MinistryLawPanel";
 
 const MANAGE_TAB_ORDER = ["manage", "raise", "calc", "schedule", "law", "archive"];
 const EMPLOYEE_TAB_ORDER = ["mine", "schedule", "law", "archive"];
@@ -460,12 +463,18 @@ export default function Discipline() {
       toast({ description: ar ? raiseGate.reason : raiseGate.reasonEn, variant: "destructive" });
       return;
     }
+    // Model Art. 53(1)(e): a uniform breach only after the rules were announced and this worker acknowledged them.
+    const uniformGate = checkUniformSanctionGate({ uniform: uniformOf(data), employeeId, clauseId, clause: clauseStep?.clause });
+    if (!uniformGate.ok) {
+      toast({ description: ar ? uniformGate.reason : uniformGate.reasonEn, variant: "destructive" });
+      return;
+    }
     const stationId = resolveDisciplineWorkStationId(person);
     const now = new Date().toISOString();
     const newId = uid();
     const serverCheck = (rows) => {
       const row = rows.find((r) => r.id === newId);
-      saveDisciplineOnServer(company?.id, "raise", row, regulation).then((r) => {
+      saveDisciplineOnServer(company?.id, "raise", row, { ...regulation, uniform: uniformOf(data) }).then((r) => {
         if (r.error) toast({ description: ar ? r.reason : r.reasonEn, variant: "destructive" });
       });
       return rows;
@@ -728,6 +737,36 @@ export default function Discipline() {
                 row.workRegulation = { ...(row.workRegulation || {}), acks: { ...((row.workRegulation || {}).acks || {}), [plan.employeeId]: plan.ack } };
               });
             }}
+            uniform={uniformOf(data)}
+            onSaveUniform={(next) => {
+              if (!company?.id) return;
+              const at = new Date().toISOString();
+              updateCompany(company.id, (row) => {
+                row.workRegulation = { ...(row.workRegulation || {}), uniform: { ...next, version: at, savedAt: at, savedBy: currentUser?.name || "", announcedAt: "", announcedBy: "", acks: {} } };
+              });
+              toast({ description: ar ? "حُفظت اشتراطات الزي — أعلنها ليُقرّ بها العمال (النموذج الموحد م53)." : "Uniform rules saved — announce them for acknowledgement (model Art. 53)." });
+            }}
+            onAnnounceUniform={() => {
+              if (!company?.id) return;
+              updateCompany(company.id, (row) => {
+                const u = row.workRegulation?.uniform;
+                if (!u) return;
+                row.workRegulation = { ...row.workRegulation, uniform: { ...u, announcedAt: board.today, announcedBy: currentUser?.name || "" } };
+              });
+              toast({ description: ar ? "أُعلنت اشتراطات الزي — بانتظار إقرار العمال." : "Uniform rules announced — awaiting acknowledgements." });
+            }}
+            onAckUniform={() => {
+              const plan = planUniformAck(uniformOf(data), currentUser);
+              if (!plan.ok || !company?.id) {
+                toast({ description: ar ? plan.reason : plan.reasonEn, variant: "destructive" });
+                return;
+              }
+              updateCompany(company.id, (row) => {
+                const u = row.workRegulation?.uniform;
+                if (!u) return;
+                row.workRegulation = { ...row.workRegulation, uniform: { ...u, acks: { ...(u.acks || {}), [plan.employeeId]: plan.ack } } };
+              });
+            }}
             onSave={(next) => {
               if (!company?.id) return;
               updateCompany(company.id, (row) => {
@@ -735,7 +774,8 @@ export default function Discipline() {
                 // The superseded version stays on record (the server keeps the same history).
                 const prev = row.workRegulation;
                 const versions = [...(Array.isArray(prev?.versions) ? prev.versions : []), ...(prev?.clauses?.length ? [regulationVersionEntry(prev)] : [])];
-                row.workRegulation = { ...next, savedBy: currentUser?.name || "", savedAt: new Date().toISOString(), version: new Date().toISOString(), announcedAt: "", acks: {}, versions };
+                // The uniform rules (model Art. 53) keep their own version and acknowledgements.
+                row.workRegulation = { ...next, savedBy: currentUser?.name || "", savedAt: new Date().toISOString(), version: new Date().toISOString(), announcedAt: "", acks: {}, versions, ...(prev?.uniform ? { uniform: prev.uniform } : {}) };
               });
               toast({ description: ar ? "حُفظت لائحة تنظيم العمل المعتمدة — كل جزاء جديد يسمّي بنده منها." : "The approved regulation is saved — every new sanction names its clause." });
             }}
@@ -936,7 +976,16 @@ export default function Discipline() {
         ) : null}
 
         {activeFace === "law" ? (
-          <DisciplineLawBoard cases={adminVoice ? visibleCases : mine} employees={employees} ar={ar} today={board.today} own={!adminVoice} />
+          <>
+            <DisciplineLawBoard cases={adminVoice ? visibleCases : mine} employees={employees} ar={ar} today={board.today} own={!adminVoice} />
+            <MinistryLawPanel
+              ar={ar}
+              dataKey="discipline-model"
+              title={ar ? "أنظمة الوزارة — النموذج الموحد في الجزاءات" : "Ministry rules — the model regulation on sanctions"}
+              cards={DISCIPLINE_MODEL_CARDS(ar)}
+              rows={disciplineModelRows({ uniform: uniformOf(data), employees, manage: adminVoice, ar })}
+            />
+          </>
         ) : null}
 
         {activeFace === "mine" ? (

@@ -27,6 +27,7 @@ import {
   checkSignDisciplineGate,
 } from "../../shared/disciplineDerivations.ts";
 import { DISCIPLINE_WORKER_STAGES, pickDisciplineRegulation, planDisciplineStageWrite } from "../../shared/syncLaw.ts";
+import { checkUniformSanctionGate } from "../../shared/uniformPolicy.ts";
 
 const COMPLIANCE_CATEGORY = "employeeCompliance";
 const DISCIPLINE_CATEGORY = "disciplinaryCases";
@@ -415,6 +416,11 @@ Deno.serve(async (req) => {
           workConnected: next.workConnected,
           cases: others,
         });
+        // Model Art. 53(1)(e): a uniform breach only for a worker who acknowledged the announced rules.
+        if (gate.ok) {
+          const stored = Array.isArray(regBlob?.payload) ? regBlob.payload[0] : regBlob?.payload;
+          gate = checkUniformSanctionGate({ uniform: stored?.uniform || body.regulation?.uniform || null, employeeId: next.employeeId, row: next });
+        }
       } else if (stage === "sign") {
         gate = checkSignDisciplineGate(next, { today, cases: others, regulation });
       } else if (stage === "hearing" || stage === "appeal") {

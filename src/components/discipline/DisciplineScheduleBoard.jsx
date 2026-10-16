@@ -15,6 +15,7 @@ import {
   regulationStepLabel,
 } from "@/lib/workRegulation";
 import { SectionHead, slab } from "@/components/schedules/scheduleChrome";
+import { UNIFORM_CRITERIA, checkSaveUniformGate, uniformAckOf, uniformAckStatus, uniformStanding } from "@/lib/uniformPolicy";
 
 const DANGER = "#9B2335";
 const GOLD = "#A57F2C";
@@ -175,7 +176,78 @@ function RegulationAnnouncement({ ar, today, regulation, canEdit, employees = []
   );
 }
 
-export default function DisciplineScheduleBoard({ ar, today, regulation = MODEL_REGULATION, canEdit = false, onSave, employees = [], meId = "", onAnnounce, onAck }) {
+/**
+ * Model Art. 53(1): the staff uniform rules — written with the three criteria and their penalties,
+ * announced separately, acknowledged by each worker. HR edits and announces; the worker acknowledges.
+ * A uniform breach cannot be raised against a worker who has not acknowledged the version in force.
+ */
+function UniformPolicyCard({ ar, uniform, canEdit, employees = [], meId = "", onSave, onAnnounce, onAck }) {
+  const standing = uniformStanding(uniform);
+  const ack = uniformAckStatus(uniform, employees);
+  const mine = meId ? uniformAckOf(uniform, meId) : null;
+  const [draft, setDraft] = useState(null);
+  const [err, setErr] = useState("");
+  if (standing.id === "none" && !canEdit) return null;
+  const pill = (tone, text) => (
+    <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "2px 10px", border: `1px solid var(--nv-${tone}-line)`, color: `var(--nv-${tone}-ink)` }}>{text}</span>
+  );
+  const start = () => setDraft({ rules: uniform?.rules || "", sanctions: uniform?.sanctions || "", criteria: { ...(uniform?.criteria || {}) } });
+  const save = () => {
+    const gate = checkSaveUniformGate(draft);
+    if (!gate.ok) { setErr(ar ? gate.reason : gate.reasonEn); return; }
+    onSave?.({ rules: draft.rules.trim(), sanctions: draft.sanctions.trim(), criteria: draft.criteria });
+    setDraft(null);
+    setErr("");
+  };
+  return (
+    <section data-uniform-policy={standing.id} style={{ ...slab, display: "flex", flexDirection: "column", gap: 10, padding: "14px 18px" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <strong style={{ fontSize: 14 }}>{ar ? "اشتراطات زي العاملين — النموذج الموحد م53" : "Staff uniform rules — model Art. 53"}</strong>
+        {standing.id === "none" ? pill("warn", ar ? "لم توضع" : "Not set") : null}
+        {standing.id === "draft" ? pill("warn", ar ? "لم تُعلَن" : "Not announced") : null}
+        {standing.id === "announced" ? pill("ok", ar ? `معلنة منذ ${standing.announcedAt}` : `Announced ${standing.announcedAt}`) : null}
+        <span style={{ flex: 1 }} />
+        {canEdit && !draft ? <button type="button" onClick={start} style={btn(false)}>{standing.id === "none" ? (ar ? "ضع الاشتراطات" : "Set the rules") : (ar ? "عدّل — إصدار جديد" : "Edit — new version")}</button> : null}
+        {canEdit && standing.id === "draft" && !draft ? <button type="button" data-uniform-announce="" onClick={() => onAnnounce?.()} style={btn(true)}>{ar ? "أعلنها على حدة للعمال" : "Announce to the workers"}</button> : null}
+        {!canEdit && standing.id === "announced" && meId && !mine ? <button type="button" data-uniform-ack="" onClick={() => onAck?.()} style={btn(true)}>{ar ? "اطّلعت على اشتراطات الزي وأقرّ بالعلم بها" : "I have read the uniform rules"}</button> : null}
+        {!canEdit && mine ? pill("ok", ar ? `أقررتَ ${String(mine.at).slice(0, 10)}` : `Acknowledged ${String(mine.at).slice(0, 10)}`) : null}
+      </div>
+      {draft ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <textarea rows={4} value={draft.rules} onChange={(e) => setDraft((d) => ({ ...d, rules: e.target.value }))} placeholder={ar ? "اشتراطات الزي للعاملين نساءً ورجالاً" : "Uniform rules for women and men"} style={{ ...input, height: "auto", padding: "8px 10px", resize: "vertical" }} />
+          {UNIFORM_CRITERIA.map((c) => (
+            <label key={c.key} style={{ fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>
+              <input type="checkbox" checked={draft.criteria[c.key] === true} onChange={(e) => setDraft((d) => ({ ...d, criteria: { ...d.criteria, [c.key]: e.target.checked } }))} />
+              {`(${c.para}) ${ar ? c.ar : c.en}`}
+            </label>
+          ))}
+          <input value={draft.sanctions} onChange={(e) => setDraft((d) => ({ ...d, sanctions: e.target.value }))} placeholder={ar ? "(د) العقوبات المترتبة على المخالفة — من بنود لائحة تنظيم العمل" : "(d) Penalties for breach — from the regulation's clauses"} style={input} />
+          {err ? <span role="alert" style={{ fontSize: 12, color: "var(--nv-bad-ink)" }}>{err}</span> : null}
+          <span style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={save} style={btn(true)}>{ar ? "حفظ — يحتاج إعلاناً وإقراراً جديدين" : "Save — needs a fresh announcement"}</button>
+            <button type="button" onClick={() => { setDraft(null); setErr(""); }} style={btn(false)}>{ar ? "إلغاء" : "Cancel"}</button>
+          </span>
+        </div>
+      ) : standing.id !== "none" ? (
+        <>
+          <span style={{ fontSize: 12.5, color: "var(--nv-ink)", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>{uniform.rules}</span>
+          <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>{ar ? `العقوبات: ${uniform.sanctions}` : `Penalties: ${uniform.sanctions}`}</span>
+        </>
+      ) : null}
+      <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
+        {ar ? "تُعلَن على حدة في مكان ظاهر أو بوسيلة تكفل علم العاملين، ويُقرّون بالعلم بها (م53/1/هـ). لا يُرفع جزاء مخالفة زي على من لم يُقرّ بالإصدار الساري." : "Announced separately and acknowledged by each worker (53(1)(e)). No uniform penalty for a worker who has not acknowledged the version in force."}
+      </span>
+      {canEdit && standing.id === "announced" ? (
+        <span data-uniform-acks="" style={{ fontSize: 12, color: ack.pending.length ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)", lineHeight: 1.8 }}>
+          {ar ? `أقرّ ${ack.acked.length} من ${ack.total}` : `${ack.acked.length} of ${ack.total} acknowledged`}
+          {ack.pending.length ? (ar ? ` · لم يُقرّ: ${ack.pending.map((e) => e.name || e.id).join(" · ")}` : ` · not yet: ${ack.pending.map((e) => e.name || e.id).join(" · ")}`) : ""}
+        </span>
+      ) : null}
+    </section>
+  );
+}
+
+export default function DisciplineScheduleBoard({ ar, today, regulation = MODEL_REGULATION, canEdit = false, onSave, employees = [], meId = "", onAnnounce, onAck, uniform = null, onSaveUniform, onAnnounceUniform, onAckUniform }) {
   const art = citeRule("discipline.penalties.cite", today)?.article || "—";
   const cap = ruleValue("discipline.fine.maxDays", today);
   const own = regulation?.source === "own";
@@ -211,6 +283,7 @@ export default function DisciplineScheduleBoard({ ar, today, regulation = MODEL_
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <RegulationAnnouncement ar={ar} today={today} regulation={regulation} canEdit={canEdit} employees={employees} meId={meId} onAnnounce={onAnnounce} onAck={onAck} />
+      <UniformPolicyCard ar={ar} uniform={uniform} canEdit={canEdit} employees={employees} meId={meId} onSave={onSaveUniform} onAnnounce={onAnnounceUniform} onAck={onAckUniform} />
       <section data-discipline-schedule="" data-regulation-source={regulation?.source || "model"} style={{ ...slab, display: "flex", flexDirection: "column" }}>
         <SectionHead
           title={own ? (ar ? "لائحة تنظيم العمل المعتمدة" : "Approved work-organization regulation") : (ar ? "النموذج الاسترشادي — لم تُسجَّل لائحة المنشأة" : "Model schedule — the establishment's regulation is not recorded")}

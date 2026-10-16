@@ -1,3 +1,4 @@
+import { mergeUniformWrite } from "./uniformPolicy.ts";
 /**
  * Server-side merge rules for company data that reaches Base44 through the generic blob sync but must
  * not be trusted as a whole snapshot from the page:
@@ -94,6 +95,11 @@ export function mergeWorkRegulationWrite(existingRaw: any, incomingRaw: any, { s
     && str(mine.version || "").slice(0, 19) === regulationVersionOf(next)) {
     next = { ...next, acks: { ...curAcks, [id]: { at: now, version: regulationVersionOf(next), name: str(actorName || mine.name), stampedBy: "server" } } };
   }
+  // Model Art. 53(1): the uniform rules ride on the same record with the same announce / acknowledge rule.
+  if (existing.uniform || incoming.uniform) {
+    const uniform = mergeUniformWrite(existing.uniform, incoming.uniform, { senior, actorId, actorName, now });
+    next = uniform ? { ...next, uniform } : (() => { const { uniform: _u, ...rest } = next; return rest; })();
+  }
   return { payload: next, changed: JSON.stringify(next) !== JSON.stringify(existing) };
 }
 
@@ -102,7 +108,12 @@ export function redactRegulationAcks(payload: any, userId: unknown) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {};
   const acks = payload.acks && typeof payload.acks === "object" ? payload.acks : {};
   const id = str(userId);
-  return { ...payload, acks: id && acks[id] ? { [id]: acks[id] } : {} };
+  const out: any = { ...payload, acks: id && acks[id] ? { [id]: acks[id] } : {} };
+  if (payload.uniform && typeof payload.uniform === "object") {
+    const uacks = payload.uniform.acks && typeof payload.uniform.acks === "object" ? payload.uniform.acks : {};
+    out.uniform = { ...payload.uniform, acks: id && uacks[id] ? { [id]: uacks[id] } : {} };
+  }
+  return out;
 }
 
 /* ----------------------------- abuse cases ----------------------------- */

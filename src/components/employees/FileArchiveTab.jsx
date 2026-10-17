@@ -80,9 +80,11 @@ export default function FileArchiveTab({ employee, data, isSelf, managerView, ar
   const present = ARCHIVE_GROUPS.filter((g) => archive.groups.some((row) => row.id === g.id));
 
   return (
-    <section data-file-archive="1" className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden" }}>
-      {/* «أرشيف ملفي» filters as in طلباتي: a title, then الكل and each document type with its count. */}
+    <div data-file-archive="1" className="nv-list-stack">
+      {/* «أرشيف ملفي» filters as in طلباتي: a title, then الكل and each document type with its count —
+          its own card; the documents sit below in a separate card. */}
       <StatusFilterPills
+        card
         dataKey="file-archive"
         title={isSelf ? (ar ? "أرشيف ملفي" : "My file archive") : (ar ? "أرشيف الملف" : "File archive")}
         value={group}
@@ -113,8 +115,9 @@ export default function FileArchiveTab({ employee, data, isSelf, managerView, ar
           {isSelf ? <div style={{ marginTop: 6 }}><SanctionsElsewhereLink ar={ar} /></div> : null}
         </div>
       </StatusFilterPills>
+      <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, overflow: "hidden" }}>
       {groups.length === 0 ? (
-        <div style={{ padding: "14px 20px", borderTop: "1px solid var(--nv-line)", fontSize: 12, color: MUTED }}>
+        <div style={{ padding: "14px 20px", fontSize: 12, color: MUTED }}>
           {archive.empty ? archive.emptyLine : (ar ? "لا وثيقة تطابق البحث." : "No document matches.")}
         </div>
       ) : groups.map((g) => (
@@ -129,6 +132,7 @@ export default function FileArchiveTab({ employee, data, isSelf, managerView, ar
           </ul>
         </div>
       ))}
-    </section>
+      </section>
+    </div>
   );
 }

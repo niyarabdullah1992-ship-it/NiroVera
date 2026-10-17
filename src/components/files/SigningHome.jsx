@@ -382,6 +382,7 @@ export default function SigningHome({
   ];
   const listPills = (
     <StatusFilterPills
+      card
       dataKey="signing-mine"
       title={ar ? "توقيعاتي" : "My signatures"}
       value={view === "archive" ? "archive" : folder}
@@ -603,8 +604,9 @@ export default function SigningHome({
       </section>
 
       {view === "home" ? (
+        <div className="nv-list-stack" data-signing-list="1">
+        {listPills}
         <section style={{ ...PAPER, overflow: "hidden" }}>
-          {listPills}
           <div style={{ overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 580 }}>
               <thead>
@@ -693,6 +695,7 @@ export default function SigningHome({
             </div>
           ) : null}
         </section>
+        </div>
       ) : null}
 
       {view === "archive" ? (
@@ -702,7 +705,7 @@ export default function SigningHome({
           </section>
         ) : (
           <>
-          <section style={{ ...PAPER, overflow: "hidden" }}>{listPills}</section>
+          {listPills}
           <RecordSmartArchive
             lang={ar ? "ar" : "en"}
             dir={ar ? "rtl" : "ltr"}

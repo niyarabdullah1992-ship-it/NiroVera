@@ -17,7 +17,6 @@ import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import OpsFrame from "@/components/tasks/OpsFrame";
 import OpsSideSlab from "@/components/tasks/OpsSideSlab";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
-import { slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import OpsMoreMenu from "@/components/tasks/OpsMoreMenu";
 import { DetailHero, HeroFigure, HeroPill } from "@/components/tasks/detail/DetailKit";
 import { cleanedPeople } from "@/lib/workProofCrew";
@@ -495,8 +494,9 @@ export default function VisitorProof() {
         </ComposerModalShell>
       )}
 
-      <section data-ops-list-head="1" style={{ ...chromeSlab, overflow: "hidden" }}>
+      <div data-ops-list-head="1">
         <StatusFilterPills
+          card
           dataKey="visitor-passes"
           title={ar ? "تصاريح الزوار" : "Visitor passes"}
           note={focusStation ? (ar ? `معروض: ${stationName(focusStation)}` : `Showing: ${stationName(focusStation)}`) : null}
@@ -534,7 +534,7 @@ export default function VisitorProof() {
             placeholder={ar ? "بحث في إثباتات الزائر…" : "Search visitor proofs…"}
           />
         ) : null}
-      </section>
+      </div>
 
       {filter === "left" ? (
         <RecordSmartArchive

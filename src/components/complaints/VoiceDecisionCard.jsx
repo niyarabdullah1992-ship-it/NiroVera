@@ -35,7 +35,7 @@ const btn = (kind, off) => ({
  * «بطاقة القرار» — the manager's side of the employee's «بطاقة صوت الموظف»: the same green head and
  * numbered steps. 1 the voice · 2 the chain and the window · 3 the written ruling.
  */
-export default function VoiceDecisionCard({ card, ar, note, onNote, noteReady, ownVoice, onAdopt, onReturn, onEscalate }) {
+export default function VoiceDecisionCard({ card, ar, note, onNote, noteReady, ownVoice, onAdopt, onReturn, onEscalate, embedded = false }) {
   if (!card) {
     return (
       <article style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, padding: 24, fontSize: 12.5, color: "var(--nv-muted)", boxShadow: "var(--nv-paper)" }}>
@@ -44,9 +44,10 @@ export default function VoiceDecisionCard({ card, ar, note, onNote, noteReady, o
     );
   }
   const anon = card.item.channel === "anonymous";
+  // embedded: inside a folded list card — the card's own row already names the voice, so no green head or frame.
   return (
-    <article data-voice-decision={card.item.id} style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden", boxShadow: "var(--nv-paper)", minWidth: 0 }}>
-      <header style={{ background: "linear-gradient(135deg, #0B3D27, #0F5535)", color: "#fff", padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+    <article data-voice-decision={card.item.id} style={embedded ? { minWidth: 0 } : { background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden", boxShadow: "var(--nv-paper)", minWidth: 0 }}>
+      {embedded ? null : <header style={{ background: "linear-gradient(135deg, #0B3D27, #0F5535)", color: "#fff", padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
         <span aria-hidden style={{ width: 44, height: 44, borderRadius: 10, background: "#C8A45A", color: "#0B3D27", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 11l3 3 8-8" />
@@ -58,8 +59,8 @@ export default function VoiceDecisionCard({ card, ar, note, onNote, noteReady, o
           <span style={{ fontSize: 12, color: "#C5DBCD" }}>{card.title}</span>
         </div>
         <span dir="ltr" style={{ fontWeight: 600, fontSize: 12, background: "rgba(255,255,255,.12)", border: "1px solid rgba(255,255,255,.2)", borderRadius: 6, padding: "3px 10px" }}>{voicePublicId(card.item)}</span>
-      </header>
-      <div style={{ padding: "18px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
+      </header>}
+      <div style={{ padding: embedded ? 0 : "18px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
         {stepHead("1", ar ? "الصوت — ما رُفع ومن رفعه" : "The voice — what was raised and by whom")}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.8 }}>{card.meta}</span>

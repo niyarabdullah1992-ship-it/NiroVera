@@ -3,6 +3,8 @@ import RightHint from "@/components/shared/RightHint";
 import { injuryHint } from "@/lib/rightHints.disc";
 import { SAFETY_REPORT_CONTROLS, deriveOpenRiskMap, safetyReportSlaHours, safetyReportSlaLine } from "@/lib/safetyReportCard";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { ListStack } from "@/components/shared/TwoPaneWorkspace";
+import CollapsibleItemCard, { useCollapsibleItems } from "@/components/shared/CollapsibleItemCard";
 import { PERMIT_TYPES } from "@/lib/safetyStandards";
 import { deriveTrainingRegister } from "@/lib/employerDuties";
 import TrainingMedicalPanel from "@/components/safety/TrainingMedicalPanel";
@@ -312,83 +314,14 @@ export function SafetyRiskRegister({ ar, rows: openRows, allRows, canAct, onPatc
     fileRef.current?.click();
   };
   const rowKey = (row) => row.item.id || `${row.stationId}-${row.item.at}`;
-  const [picked, setPicked] = useState("");
-  const selected = rows.find((row) => rowKey(row) === picked) || rows[0] || null;
-  const card = selected?.item?.card || {};
-  const score = Number(card.score) || 0;
-  const crit = score >= 15 || card.levelKey === "critical";
-
-  return (
-    <div data-hse="admin-register" style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" }}>
-    <section style={{ ...shell, flex: "1 1 260px", minWidth: 0 }}>
-      <StatusFilterPills
-        dataKey="safety-register"
-        title={L("بلاغات السلامة", "Safety reports")}
-        value={face}
-        onChange={(next) => { setFace(next); setPicked(""); }}
-        size="sm"
-        hideZero
-        items={[
-          { id: "all", label: L("الكل", "All"), n: faces.all.length },
-          { id: "open", label: L("مفتوحة", "Open"), n: faces.open.length },
-          { id: "critical", label: L("حرجة", "Critical"), n: faces.critical.length },
-          { id: "elapsed", label: L("انتهت مهلتها", "SLA elapsed"), n: faces.elapsed.length },
-          { id: "closed", label: L("مُغلقة", "Closed"), n: faces.closed.length },
-        ]}
-      />
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={(event) => {
-          const name = event.target.files?.[0]?.name || "";
-          const row = pendingClose;
-          event.target.value = "";
-          setPendingClose(null);
-          if (row && name) onPatch(row.stationId, row.item.id, { afterPhotoName: name });
-        }}
-      />
-      <div style={{ maxHeight: 640, overflow: "auto" }}>
-        {rows.length ? rows.map((row) => {
-          const rowCard = row.item.card || {};
-          const on = selected && rowKey(row) === rowKey(selected);
-          const tone = levelTone(rowCard.levelTone || "");
-          return (
-            <button
-              key={rowKey(row)}
-              type="button"
-              onClick={() => setPicked(rowKey(row))}
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "11px 14px",
-                border: "none",
-                borderBottom: "1px solid var(--nv-line2)",
-                background: on ? "var(--nv-soft)" : "transparent",
-                boxShadow: on ? "inset -3px 0 0 var(--nv-ink)" : "none",
-                cursor: "pointer",
-                textAlign: "start",
-                fontFamily: "inherit",
-                color: "inherit",
-              }}
-            >
-              <span style={{ width: 32, height: 32, borderRadius: 8, flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", font: `700 12px ${MONO}`, ...tone }}>{rowCard.score || "—"}</span>
-              <span style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column" }}>
-                <strong style={{ fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dash(row.item.description || rowCard.what)}</strong>
-                <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{dash(rowCard.code)} · {dash(rowCard.categoryAr && ar ? rowCard.categoryAr : rowCard.categoryEn)}</span>
-              </span>
-              <span style={{ ...tone, height: 22, display: "inline-flex", alignItems: "center", padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none" }}>{row.item.status === "closed" ? L("مُغلق", "Closed") : L("مفتوح", "Open")}</span>
-            </button>
-          );
-        }) : <p style={{ margin: 0, padding: 18, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}
-      </div>
-    </section>
-    <article style={{ ...shell, flex: "999 1 520px", minWidth: 0, borderTop: crit ? "3px solid #9B2335" : undefined }}>
-      {selected ? (
-        <>
+  // Each report folds to one row under the header card; opening it shows the hazard, controls and actions.
+  const fold = useCollapsibleItems(rows.map(rowKey), "");
+  const detailOf = (selected) => {
+    const card = selected?.item?.card || {};
+    const score = Number(card.score) || 0;
+    const crit = score >= 15 || card.levelKey === "critical";
+    return (
+      <div style={{ margin: "-12px -14px -14px", borderTop: crit ? "3px solid #9B2335" : undefined }}>
           <header style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -444,10 +377,67 @@ export function SafetyRiskRegister({ ar, rows: openRows, allRows, canAct, onPatc
               </div>
             ) : <span style={{ color: "var(--nv-ink3)" }}>{selected.item.status === "closed" ? L("أُغلق البلاغ", "Report closed") : "—"}</span>}
           </footer>
-        </>
-      ) : <p style={{ margin: 0, padding: 24, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}
-    </article>
-    </div>
+      </div>
+    );
+  };
+
+  return (
+    <ListStack data-hse="admin-register">
+      <StatusFilterPills
+        card
+        dataKey="safety-register"
+        title={L("بلاغات السلامة", "Safety reports")}
+        value={face}
+        onChange={setFace}
+        size="sm"
+        hideZero
+        items={[
+          { id: "all", label: L("الكل", "All"), n: faces.all.length },
+          { id: "open", label: L("مفتوحة", "Open"), n: faces.open.length },
+          { id: "critical", label: L("حرجة", "Critical"), n: faces.critical.length },
+          { id: "elapsed", label: L("انتهت مهلتها", "SLA elapsed"), n: faces.elapsed.length },
+          { id: "closed", label: L("مُغلقة", "Closed"), n: faces.closed.length },
+        ]}
+      />
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const name = event.target.files?.[0]?.name || "";
+          const row = pendingClose;
+          event.target.value = "";
+          setPendingClose(null);
+          if (row && name) onPatch(row.stationId, row.item.id, { afterPhotoName: name });
+        }}
+      />
+      {rows.length ? rows.map((row) => {
+        const rowCard = row.item.card || {};
+        const tone = levelTone(rowCard.levelTone || "");
+        const key = rowKey(row);
+        return (
+          <CollapsibleItemCard
+            key={key}
+            open={fold.isOpen(key)}
+            onToggle={() => fold.toggle(key)}
+            dot={rowCard.levelTone === "crit" ? "#9B2335" : tone.color}
+            title={dash(row.item.description || rowCard.what)}
+            person={`${dash(rowCard.categoryAr && ar ? rowCard.categoryAr : rowCard.categoryEn)} · ${dash(row.stationName)}`}
+            date={dash(rowCard.code)}
+            status={(
+              <>
+                <span style={{ ...tone, height: 22, minWidth: 28, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 6px", borderRadius: 6, font: `700 11px ${MONO}` }}>{rowCard.score || "—"}</span>
+                <span style={{ ...tone, height: 22, display: "inline-flex", alignItems: "center", padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none" }}>{row.item.status === "closed" ? L("مُغلق", "Closed") : L("مفتوح", "Open")}</span>
+              </>
+            )}
+            ar={ar}
+          >
+            {detailOf(row)}
+          </CollapsibleItemCard>
+        );
+      }) : <p className="nv-cic" style={{ margin: 0, padding: 18, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}
+    </ListStack>
   );
 }
 

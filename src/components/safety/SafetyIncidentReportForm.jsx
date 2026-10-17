@@ -1,5 +1,7 @@
 import React, { useRef, useState } from "react";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import TwoPaneWorkspace, { ListStack } from "@/components/shared/TwoPaneWorkspace";
+import CollapsibleItemCard, { useCollapsibleItems } from "@/components/shared/CollapsibleItemCard";
 import { ArrowUpFromLine, Cog, Flame, FlaskConical, Package, Sun, Truck, Waves, Zap } from "lucide-react";
 import {
   SAFETY_LIKELIHOOD,
@@ -91,6 +93,7 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
   const [cardsFace, setCardsFace] = useState("all");
   const isClosed = (item) => item.status === "closed";
   const shownReports = reports.filter((item) => cardsFace === "all" || (cardsFace === "closed" ? isClosed(item) : !isClosed(item)));
+  const fold = useCollapsibleItems(shownReports.map((item) => String(item.id || item.card?.code)), "");
   const photoRef = useRef(null);
   const L = (a, e) => (ar ? a : e);
   const patch = (next) => setForm((prev) => ({ ...prev, ...next }));
@@ -135,7 +138,9 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
     : (reporter || "—");
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 16, alignItems: "start" }}>
+    <TwoPaneWorkspace
+      dataKey="safety-mine"
+      raise={(
       <article style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(12,20,16,.04), 0 10px 28px rgba(12,20,16,.06)", minWidth: 0 }}>
         <header style={{ background: "linear-gradient(135deg, #0B3D27, #0F5535)", color: "#fff", padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <span style={{ width: 44, height: 44, borderRadius: 10, background: "#C8A45A", color: "#0B3D27", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }} aria-hidden>
@@ -411,10 +416,11 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
           </span>
         </div>
       </article>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-        <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 2px rgba(12,20,16,.04)" }}>
+      )}
+      list={(<>
+        <ListStack data-safety-list="mine">
           <StatusFilterPills
+            card
             dataKey="safety-mine"
             title={L("بطاقاتي", "My cards")}
             value={cardsFace}
@@ -433,19 +439,19 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
             const cat = ar ? (card.categoryAr || "—") : (card.categoryEn || card.categoryAr || "—");
             const lvl = ar ? (card.levelAr || "—") : (card.levelEn || card.levelAr || "—");
             const sla = ar ? (card.slaAr || "—") : (card.slaEn || card.slaAr || "—");
+            const key = String(item.id || card.code);
             return (
-              <div key={item.id || card.code} style={{ padding: "12px 16px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0, gap: 2 }}>
-                    <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{title}</strong>
-                    <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>
-                      <span style={{ fontFamily: MONO, direction: "ltr", unicodeBidi: "isolate" }}>{card.code || "—"}</span>
-                      {" · "}
-                      {cat}
-                    </span>
-                  </div>
-                  <span style={{ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none", ...tone }}>{lvl}</span>
-                </div>
+              <CollapsibleItemCard
+                key={key}
+                open={fold.isOpen(key)}
+                onToggle={() => fold.toggle(key)}
+                dot={step >= 3 ? "#3C7D50" : "#C8A45A"}
+                title={title}
+                person={cat}
+                date={card.code || ""}
+                status={<span style={{ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none", ...tone }}>{lvl}</span>}
+                ar={ar}
+              >
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
                   {SAFETY_REPORT_STEPS.map((label, index) => (
                     <div key={label.ar} style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
@@ -456,12 +462,12 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
                   ))}
                 </div>
                 <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>{sla}</span>
-              </div>
+              </CollapsibleItemCard>
             );
           }) : (
-            <p style={{ margin: 0, padding: "18px 16px", textAlign: "center", fontSize: 14, color: "var(--nv-ink3)" }}>—</p>
+            <p className="nv-cic" style={{ margin: 0, padding: "18px 16px", textAlign: "center", fontSize: 14, color: "var(--nv-ink3)" }}>—</p>
           )}
-        </section>
+        </ListStack>
 
         <section style={{ background: "linear-gradient(160deg, #0B3D27, #0F5535)", color: "#fff", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 6px 18px rgba(6,61,38,.16)" }}>
           <strong style={{ fontSize: 14 }}>{L("المرجعية", "References")}</strong>
@@ -483,7 +489,7 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
             {L("المراجع للاسترشاد؛ النص الرسمي للنظام والمواصفة هو المرجع.", "The references are a guide; the official text of the law and the standard is the source.")}
           </span>
         </section>
-      </div>
-    </div>
+      </>)}
+    />
   );
 }

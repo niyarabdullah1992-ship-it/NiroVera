@@ -70,8 +70,9 @@ export default function HrBranchesBoard({
   const station = focusId ? (data?.stations || []).find((s) => String(s.id) === String(focusId)) : null;
 
   return (
-    <div data-hr-branches="1" style={{ ...slab, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div data-hr-branches="1" className="nv-list-stack">
       <StatusFilterPills
+        card
         title={access?.stationLead ? (ar ? "المحطات التي أديرها" : "Stations I manage") : (ar ? "الفروع والمحطات" : "Branches and stations")}
         items={pills}
         value={filter}
@@ -97,6 +98,7 @@ export default function HrBranchesBoard({
         />
       </StatusFilterPills>
 
+      <section style={{ ...slab, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {groups.length ? groups.map((g) => (
         <div key={g.key} data-hr-city={g.noCity ? "none" : g.city} style={{ display: "flex", flexDirection: "column" }}>
           <div style={{ padding: "9px 18px", background: "var(--nv-soft, #F6F8FA)", borderBottom: "1px solid var(--nv-line2, #EEF2F7)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
@@ -141,6 +143,7 @@ export default function HrBranchesBoard({
               : (ar ? "لا فروع بعد — أضف أول فرع." : "No branches yet — add the first one."))}
         </p>
       )}
+      </section>
 
       {canWrite && station ? (
         <OrgBranchDrawer

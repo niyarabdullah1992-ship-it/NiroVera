@@ -42,7 +42,6 @@ import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import OpsFrame from "@/components/tasks/OpsFrame";
 import OpsSideSlab from "@/components/tasks/OpsSideSlab";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
-import { slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import OpsMoreMenu from "@/components/tasks/OpsMoreMenu";
 import { PhotoFrame, StageRail, workElapsedLabel, workProofSteps } from "@/components/proof/WorkProofRecordCard";
 import { DutyTile, DutyNumber } from "@/components/schedules/DutyTiles";
@@ -947,8 +946,9 @@ export default function WorkProof() {
       </ComposerModalShell>
       )}
 
-      <section data-ops-list-head="1" style={{ ...chromeSlab, overflow: "hidden" }}>
+      <div data-ops-list-head="1">
         <StatusFilterPills
+          card
           dataKey="work-proofs"
           title={ar ? "إثباتات العمل" : "Work proofs"}
           note={focusStation ? (ar ? `معروض: ${stationName(focusStation)}` : `Showing: ${stationName(focusStation)}`) : null}
@@ -987,7 +987,7 @@ export default function WorkProof() {
             placeholder={ar ? "بحث في الإثباتات…" : "Search proofs…"}
           />
         ) : null}
-      </section>
+      </div>
 
       {boardFilter === "archive" ? (
         <RecordSmartArchive

@@ -1,6 +1,7 @@
 import React from "react";
 import { SectionHead, slab } from "@/components/schedules/scheduleChrome";
 import KindFrameCard from "@/components/requests/KindFrameCard";
+import CollapsibleItemCard from "@/components/shared/CollapsibleItemCard";
 
 const MONO = "var(--font-mono, 'IBM Plex Mono', monospace)";
 
@@ -45,14 +46,34 @@ function openBtn(go, on) {
 }
 
 /**
- * «سطر لا بطاقة»: one line per sanction, grievance or objection — the article, the title and a muted
- * line, the date in mono, a chip only when it needs attention, and «افتح». `children` is what opens
- * under it (the record, the decision, the deadlines) when `open`.
+ * One sanction, grievance or objection — its own card under the list header card, folded to one row:
+ * the article badge, the title, the date in mono, a chip only when it needs attention, a chevron.
+ * `children` (the record, the decision, the deadlines) unfold under it; the muted line opens first.
+ * A row with no `children` is an action line: its button runs `onOpen` (e.g. «اعترض»).
  */
 export function DisciplineRow({ id, badge, title, sub, date, chip, go = true, open = false, selected = false, onOpen, openLabel, closeLabel, ar = true, children, dataKey = "disc-line" }) {
+  if (children) {
+    return (
+      <li data-row-kind={dataKey} data-row-id={id} style={{ listStyle: "none", minWidth: 0 }}>
+        <CollapsibleItemCard
+          data-row-open={id}
+          open={open}
+          onToggle={() => onOpen?.()}
+          focus={selected}
+          title={<span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>{badge ? <ArticleBadge>{badge}</ArticleBadge> : null}<span>{title}</span></span>}
+          date={date}
+          status={chip || null}
+          ar={ar}
+        >
+          {sub ? <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.7, overflowWrap: "anywhere" }}>{sub}</span> : null}
+          {children}
+        </CollapsibleItemCard>
+      </li>
+    );
+  }
   return (
-    <li data-row-kind={dataKey} data-row-id={id} style={{ borderBottom: "1px solid var(--nv-line2, #EEF1EF)", background: selected ? "var(--nv-ok-soft)" : "transparent", boxShadow: selected ? "inset -3px 0 0 var(--nv-ok-fill, #3C7D50)" : "none" }}>
-      <div className="nv-disc-line" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", flexWrap: "wrap" }}>
+    <li data-row-kind={dataKey} data-row-id={id} className="nv-cic" style={{ listStyle: "none", background: selected ? "var(--nv-ok-soft)" : undefined }}>
+      <div className="nv-disc-line" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", flexWrap: "wrap" }}>
         {badge ? <ArticleBadge>{badge}</ArticleBadge> : null}
         <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: "1 1 200px" }}>
           <strong style={{ fontSize: 13, color: "var(--nv-ink)", lineHeight: 1.5, overflowWrap: "anywhere" }}>{title}</strong>
@@ -68,24 +89,19 @@ export function DisciplineRow({ id, badge, title, sub, date, chip, go = true, op
           ) : null}
         </span>
       </div>
-      {open && children ? (
-        <div data-row-detail={id} style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
-          {children}
-        </div>
-      ) : null}
     </li>
   );
 }
 
-/** The list body under a pill row: plain lines in one slab, or one empty sentence. */
+/** The items under a list header card: each row its own card with a gap, or one empty sentence. */
 export function DisciplineRowList({ children, empty, dataKey }) {
   const rows = React.Children.toArray(children).filter(Boolean);
   return (
-    <section data-disc-list={dataKey || ""} style={{ ...slab, overflow: "hidden" }}>
+    <section data-disc-list={dataKey || ""} style={{ minWidth: 0 }}>
       {rows.length ? (
-        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>{rows}</ul>
+        <ul className="nv-list-stack" style={{ listStyle: "none", margin: 0, padding: 0 }}>{rows}</ul>
       ) : (
-        <p style={{ margin: 0, padding: "14px 16px", fontSize: 12.5, color: "var(--nv-muted)", lineHeight: 1.8 }}>{empty}</p>
+        <p className="nv-cic" style={{ margin: 0, padding: "14px 16px", fontSize: 12.5, color: "var(--nv-muted)", lineHeight: 1.8 }}>{empty}</p>
       )}
     </section>
   );

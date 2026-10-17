@@ -37,7 +37,6 @@ import { StepHead } from "@/components/discipline/DisciplineFormKit";
 import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
-import { slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import { DAMAGE_OBJECTION_TYPE, GRIEVANCE_KINDS, GRIEVANCE_TYPE, damageObjectionDeadline, grievanceState } from "@/lib/rightsRequests";
 import { myDamageLines } from "@/lib/myRights";
 import RightHint from "@/components/shared/RightHint";
@@ -56,6 +55,8 @@ import { regulationVersionEntry } from "@/lib/syncLaw";
 import { checkUniformSanctionGate, planUniformAck, uniformOf } from "@/lib/uniformPolicy";
 import { sanctionRecordState } from "@/lib/penaltiesRecord";
 import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
+import TwoPaneWorkspace, { ListStack } from "@/components/shared/TwoPaneWorkspace";
+import { useCollapsibleItems } from "@/components/shared/CollapsibleItemCard";
 
 /*
  * «الجزاءات» — one page per lane, built like طلباتي and صوت الموظف:
@@ -118,7 +119,6 @@ export default function Discipline() {
   const raiseAsked = searchParams.get("raise");
   // الموظف — the list pill, the line opened in place, and the «طلب جديد» tile with its sub-choice.
   const [mineFace, setMineFace] = useState(() => (requestedTab === "archive" ? "archive" : "all"));
-  const [openRow, setOpenRow] = useState("");
   const [newKind, setNewKind] = useState(() => (raiseAsked === DAMAGE_OBJECTION_TYPE ? "damage" : requestedTab === "schedule" ? "schedule" : "grievance"));
   const [grievancePick, setGrievancePick] = useState("other");
   const [grievancePrefill, setGrievancePrefill] = useState(null);
@@ -548,7 +548,15 @@ export default function Discipline() {
     archive: (mineCards.length - mineAllLive.length) + settledRights.length,
   };
   const showMine = (bucket) => mineFace === "all" || mineFace === bucket;
-  const toggleRow = (key) => setOpenRow((cur) => (cur === key ? "" : key));
+  // «جزاءاتي» items fold to one row; the open set survives a pill change, a list of one opens by itself.
+  const rightsKey = (row) => `${row.type === GRIEVANCE_TYPE ? "grievance" : "damage"}:${row.id}`;
+  const mineVisibleKeys = mineFace === "archive" ? settledRights.map(rightsKey) : [
+    ...mineAllLive.filter((card) => showMine(sanctionBucket(card))).map((card) => `case:${card.item.id}`),
+    ...(showMine("reply") ? myDamageOpen.map((row) => `line:${row.line.id}`) : []),
+    ...(showMine("grieved") ? openGrievances.map((row) => `grievance:${row.id}`) : []),
+    ...(showMine("grieved") ? openObjections.map((row) => `damage:${row.id}`) : []),
+  ];
+  const mineFold = useCollapsibleItems(mineVisibleKeys, "");
   const grievanceStageText = (row) => {
     const st = grievanceStage(row);
     return st.stage === "accepted" ? (ar ? "قُبل" : "Accepted")
@@ -585,8 +593,8 @@ export default function Discipline() {
         sub={[card.mineState, foldedOf(card) ? (ar ? "سابقة — لا يُشدَّد بها (م61)" : "Earlier — no longer aggravates (Art. 61)") : ""].filter(Boolean).join(" · ")}
         date={dayOf(card.item.signedAt || card.item.notifiedAt || card.item.createdAt)}
         chip={chip}
-        open={openRow === key}
-        onOpen={() => toggleRow(key)}
+        open={mineFold.isOpen(key)}
+        onOpen={() => mineFold.toggle(key)}
       >
         <DisciplineHero card={card} ar={ar} mine companyName={company?.name || ""} />
         <div data-disc-mine-hint="" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12, color: "var(--nv-ink2)" }}>
@@ -630,8 +638,8 @@ export default function Discipline() {
         date={dayOf(row.date || row.createdAt)}
         chip={grievance && st?.stage === "overdue" ? <AttentionChip tone="bad">{ar ? "فاتت مهلة البتّ" : "Ruling overdue"}</AttentionChip> : null}
         go={false}
-        open={openRow === key}
-        onOpen={() => toggleRow(key)}
+        open={mineFold.isOpen(key)}
+        onOpen={() => mineFold.toggle(key)}
       >
         <p style={{ margin: 0, fontSize: 12.5, color: "var(--nv-ink)", lineHeight: 1.9, overflowWrap: "anywhere" }}>{row.reason || "—"}</p>
         <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
@@ -780,16 +788,12 @@ export default function Discipline() {
     ...pendingRights.map((row) => ({ key: `${row.type === GRIEVANCE_TYPE ? "grievance" : "damage"}:${row.id}`, kind: row.type === GRIEVANCE_TYPE ? "grievance" : "damage", bucket: row.type === GRIEVANCE_TYPE ? "grievances" : "objections", row })),
   ];
   const queueShown = queueEntries.filter((e) => queueFace === "all" || e.bucket === queueFace);
-  const picked = queueShown.find((e) => e.key === pickedId) || queueShown[0] || null;
+  // The list is the decision surface: each entry folds; opening it shows its case or ruling in place.
+  // A file just opened (pickedId) unfolds by itself.
+  const queueFold = useCollapsibleItems(queueFace === "archive" ? decidedRights.map(rightsKey) : queueShown.map((e) => e.key), pickedId);
   const queueCount = (bucket) => queueEntries.filter((e) => e.bucket === bucket).length;
   const archivedCases = visibleCases.length - liveCases.length;
-  const pickEntry = (key) => {
-    setPickedId(key);
-    if (window.matchMedia?.("(max-width: 900px)").matches) scrollTo("[data-disc-decision]");
-  };
-
-  const queueLine = (entry) => {
-    const on = picked?.key === entry.key;
+  const queueLine = (entry, { readOnly = false } = {}) => {
     if (entry.kind === "case") {
       const card = entry.card;
       const c = clockOf(card.item.id);
@@ -806,10 +810,22 @@ export default function Discipline() {
           date={dayOf(card.item.notifiedAt || card.item.createdAt)}
           chip={c ? <AttentionChip tone={c === "over" ? "bad" : "warn"}>{`${dl?.label || (ar ? "مهلة" : "Window")} ${c === "over" ? (ar ? "— تجاوزت" : "— passed") : (ar ? "— تقترب" : "— closing")}`}</AttentionChip> : null}
           go={Boolean(card.actions?.length)}
-          selected={on}
-          open={false}
-          onOpen={() => pickEntry(entry.key)}
-        />
+          open={queueFold.isOpen(entry.key)}
+          onOpen={() => queueFold.toggle(entry.key)}
+        >
+          <div data-disc-decision="" style={{ minWidth: 0 }}>
+            <DisciplineCaseCard
+              card={card}
+              ar={ar}
+              onAction={onAction}
+              onUploadSigned={onUploadSigned}
+              onDelivery={recordDelivery}
+              today={board.today}
+              companyName={company?.name || ""}
+              isHoliday={hintIsHoliday}
+            />
+          </div>
+        </DisciplineRow>
       );
     }
     const row = entry.row;
@@ -826,10 +842,13 @@ export default function Discipline() {
         sub={grievance ? `${grievanceKindLabel(row)} · ${String(row.reason || "").slice(0, 60)}` : `${Number(row.amount) || 0} ${ar ? "ر.س" : "SAR"} · ${String(row.reason || "").slice(0, 60)}`}
         date={dayOf(row.date || row.createdAt)}
         chip={st?.stage === "overdue" ? <AttentionChip tone="bad">{ar ? "فاتت مهلة البتّ" : "Ruling overdue"}</AttentionChip> : null}
-        selected={on}
-        open={false}
-        onOpen={() => pickEntry(entry.key)}
-      />
+        open={queueFold.isOpen(entry.key)}
+        onOpen={() => queueFold.toggle(entry.key)}
+      >
+        <div data-disc-decision="" style={{ minWidth: 0 }}>
+          <DisciplineRightsDecision key={row.id} row={row} ar={ar} companyId={company?.id} actor={currentUser} today={board.today} isHoliday={hintIsHoliday} canDecide={readOnly ? false : adminVoice} refresh={refresh} />
+        </div>
+      </DisciplineRow>
     );
   };
 
@@ -839,8 +858,6 @@ export default function Discipline() {
     { id: "schedule", letter: ar ? "ل" : "L", title: ar ? "لائحة الجزاءات" : "The penalty list", hint: ar ? "البنود والإعلان والإقرار — م66–67" : "Clauses, announcing, acknowledging — Arts. 66–67" },
     { id: "fund", letter: ar ? "غ" : "F", title: ar ? "صندوق الغرامات" : "Fine fund", hint: ar ? "القيد والصرف — م73" : "Register and disposal — Art. 73" },
   ];
-
-  const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 16, alignItems: "start" };
 
   return (
     <SuiteWorkspaceFrame
@@ -858,43 +875,9 @@ export default function Discipline() {
       <div data-discipline-face={adminVoice ? "manage" : "mine"} style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink)", fontSize: 13 }}>
 
         {!adminVoice ? (
-          <>
-            <section style={{ ...chromeSlab, overflow: "hidden" }}>
-              <StatusFilterPills
-                dataKey="disc-mine"
-                title={ar ? "جزاءاتي" : "My sanctions"}
-                value={mineFace}
-                onChange={(next) => { setMineFace(next); setOpenRow(""); }}
-                items={[
-                  { id: "all", label: ar ? "الكل" : "All", n: mineCount.all },
-                  { id: "force", label: ar ? "سارية" : "In force", n: mineCount.force },
-                  { id: "reply", label: ar ? "بانتظار ردّي" : "Awaiting me", n: mineCount.reply },
-                  { id: "grieved", label: ar ? "متظلَّم منها" : "Grieved", n: mineCount.grieved },
-                  { id: "archive", label: ar ? "الأرشيف" : "Archive", n: mineCount.archive },
-                ]}
-              />
-            </section>
-            <div data-discipline-mine="" style={grid}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-                {mineFace === "archive" ? (
-                  <>
-                    <DisciplineArchiveBoard cases={mine} employees={employees} stations={stations} ar={ar} today={board.today} scope="mine" selfOnly userId={currentUser?.id} />
-                    {settledRights.length ? (
-                      <DisciplineRowList dataKey="mine-rights-archive">
-                        {settledRights.map((row) => rightsLine(row, row.type === GRIEVANCE_TYPE ? "grievance" : "damage"))}
-                      </DisciplineRowList>
-                    ) : null}
-                  </>
-                ) : (
-                  <DisciplineRowList dataKey="mine" empty={ar ? "لا شيء هنا — لا جزاء ولا تظلّم في هذا الترشيح." : "Nothing here — no sanction or grievance in this filter."}>
-                    {mineAllLive.filter((card) => showMine(sanctionBucket(card))).map(sanctionLine)}
-                    {showMine("reply") ? myDamageOpen.map(damageLine) : null}
-                    {showMine("grieved") ? openGrievances.map((row) => rightsLine(row, "grievance")) : null}
-                    {showMine("grieved") ? openObjections.map((row) => rightsLine(row, "damage")) : null}
-                  </DisciplineRowList>
-                )}
-              </div>
-
+          <TwoPaneWorkspace
+            dataKey="discipline-mine"
+            raise={(
               <DisciplineNewFrame
                 dataKey="mine"
                 title={ar ? "طلب جديد" : "New request"}
@@ -975,130 +958,141 @@ export default function Discipline() {
                 ) : null}
                 {newKind === "schedule" ? scheduleBoard : null}
               </DisciplineNewFrame>
-            </div>
-          </>
-        ) : (
-          <>
-            <section style={{ ...chromeSlab, overflow: "hidden" }}>
-              <StatusFilterPills
-                dataKey="disc-manage"
-                title={ar ? "قائمة الجزاءات" : "Sanctions list"}
-                note={scopeLabel ? (ar ? `النطاق: ${scopeLabel}` : `Scope: ${scopeLabel}`) : (ar ? "ما تقترب مهلته أولاً" : "Closest window first")}
-                value={queueFace}
-                onChange={(next) => { setQueueFace(next); setPickedId(""); }}
-                items={[
-                  { id: "all", label: ar ? "الكل" : "All", n: queueEntries.length },
-                  { id: "investigation", label: ar ? "قيد التحقيق" : "Under investigation", n: queueCount("investigation") },
-                  { id: "decision", label: ar ? "بانتظار القرار" : "Awaiting decision", n: queueCount("decision") },
-                  { id: "grievances", label: ar ? "تظلّمات" : "Grievances", n: queueCount("grievances") },
-                  { id: "objections", label: ar ? "اعتراضات الإتلاف" : "Damage objections", n: queueCount("objections") },
-                  { id: "archive", label: ar ? "الأرشيف" : "Archive", n: archivedCases + decidedRights.length },
-                ]}
-              />
-            </section>
-
-            {queueFace === "archive" ? (
-              <>
-                <DisciplineArchiveBoard cases={visibleCases} employees={employees} stations={stations} ar={ar} today={board.today} scope="manage" selfOnly={false} userId={currentUser?.id} />
-                {decidedRights.length ? (
-                  <div style={grid}>
-                    <DisciplineRowList dataKey="manage-rights-archive">
-                      {decidedRights.map((row) => queueLine({ key: `${row.type === GRIEVANCE_TYPE ? "grievance" : "damage"}:${row.id}`, kind: row.type === GRIEVANCE_TYPE ? "grievance" : "damage", row }))}
-                    </DisciplineRowList>
-                    {(() => {
-                      const hit = decidedRights.find((row) => `${row.type === GRIEVANCE_TYPE ? "grievance" : "damage"}:${row.id}` === pickedId) || decidedRights[0];
-                      return <DisciplineRightsDecision key={hit.id} row={hit} ar={ar} companyId={company?.id} actor={currentUser} today={board.today} isHoliday={hintIsHoliday} canDecide={false} refresh={refresh} />;
-                    })()}
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <div data-disc-manage-grid="1" style={grid}>
-                <div data-disc-decision="" style={{ minWidth: 0 }}>
-                  {!picked ? (
-                    <section style={{ ...chromeSlab, padding: 18, fontSize: 12.5, color: "var(--nv-muted)" }}>
-                      {ar ? "لا شيء ينتظر قرارك في هذا الترشيح." : "Nothing waits on you in this filter."}
-                    </section>
-                  ) : picked.kind === "case" ? (
-                    <DisciplineCaseCard
-                      card={picked.card}
-                      ar={ar}
-                      onAction={onAction}
-                      onUploadSigned={onUploadSigned}
-                      onDelivery={recordDelivery}
-                      today={board.today}
-                      companyName={company?.name || ""}
-                      isHoliday={hintIsHoliday}
-                    />
-                  ) : (
-                    <DisciplineRightsDecision key={picked.row.id} row={picked.row} ar={ar} companyId={company?.id} actor={currentUser} today={board.today} isHoliday={hintIsHoliday} canDecide={adminVoice} refresh={refresh} />
-                  )}
-                </div>
-                <DisciplineRowList dataKey="manage" empty={ar ? "لا شيء معلّق — لا ملف ولا تظلّم في هذا الترشيح." : "Nothing pending in this filter."}>
-                  {queueShown.map(queueLine)}
-                </DisciplineRowList>
-              </div>
             )}
-
-            <DisciplineNewFrame
-              dataKey="manage"
-              title={ar ? "إجراء جديد" : "New action"}
-              note={ar ? "لا جزاء إلا من قائمة المادة 66 وبند اللائحة، وبعد إبلاغ كتابي وسماع دفاع (م71)." : "No penalty outside the Article 66 list and a regulation clause, and only after notice and a hearing (Art. 71)."}
-              tiles={manageTiles}
-              value={actionKind}
-              onPick={setActionKind}
-            >
-              {actionKind === "raise" ? (
-                <DisciplineRaiseForm
-                  ar={ar}
-                  employees={raiseTargets}
-                  stations={stations}
-                  cases={cases}
-                  actor={currentUser}
-                  today={board.today}
-                  employeeId={employeeId}
-                  onEmployee={setEmployeeId}
-                  penaltyKind={penaltyKind}
-                  onPenaltyKind={(next) => {
-                    setPenaltyKind(next);
-                    const spec = listedPenaltyKind(next);
-                    setPenaltyDays(spec?.days.find((n) => n > 0) || spec?.days[0] || 0);
-                  }}
-                  cutDays={cutDays}
-                  onCutDays={setPenaltyDays}
-                  discoveredAt={discoveredAt}
-                  onDiscovered={setDiscoveredAt}
-                  note={note}
-                  onNote={setNote}
-                  offSite={offSite}
-                  onOffSite={setOffSite}
-                  workConnected={workConnected}
-                  onWorkConnected={setWorkConnected}
-                  dismissGround={dismissGround}
-                  art80={art80}
-                  onArt80={setArt80}
-                  onDismissGround={setDismissGround}
-                  onSubmit={openCase}
-                  regulation={regulation}
-                  clauseId={clauseId}
-                  clauseStep={clauseStep}
-                  onClause={(next) => {
-                    setClauseId(next || "");
-                    const clause = regulation.clauses.find((c) => c.id === next);
-                    // The clause names the offence; the date makes it this incident (one penalty per act — Art. 70).
-                    if (clause && !String(note || "").trim()) setNote(`${ar ? clause.ar || clause.en : clause.en || clause.ar} — ${ar ? "يوم" : "on"} ${regulationDate(discoveredAt, ar)}`);
-                  }}
+            list={(
+              <ListStack data-discipline-mine="">
+                <StatusFilterPills
+                  card
+                  dataKey="disc-mine"
+                  title={ar ? "جزاءاتي" : "My sanctions"}
+                  value={mineFace}
+                  onChange={setMineFace}
+                  items={[
+                    { id: "all", label: ar ? "الكل" : "All", n: mineCount.all },
+                    { id: "force", label: ar ? "سارية" : "In force", n: mineCount.force },
+                    { id: "reply", label: ar ? "بانتظار ردّي" : "Awaiting me", n: mineCount.reply },
+                    { id: "grieved", label: ar ? "متظلَّم منها" : "Grieved", n: mineCount.grieved },
+                    { id: "archive", label: ar ? "الأرشيف" : "Archive", n: mineCount.archive },
+                  ]}
                 />
-              ) : null}
-              {actionKind === "calc" ? (
-                <DisciplineCutCalculator ar={ar} employees={raiseTargets} stations={stations} cases={visibleCases} today={board.today} />
-              ) : null}
-              {actionKind === "schedule" ? scheduleBoard : null}
-              {actionKind === "fund" ? (
-                <DisciplineFineFund ledger={ledger} ar={ar} today={board.today} onDispose={disposeFines} />
-              ) : null}
-            </DisciplineNewFrame>
-          </>
+                {mineFace === "archive" ? (
+                  <>
+                    <DisciplineArchiveBoard cases={mine} employees={employees} stations={stations} ar={ar} today={board.today} scope="mine" selfOnly userId={currentUser?.id} />
+                    {settledRights.length ? (
+                      <DisciplineRowList dataKey="mine-rights-archive">
+                        {settledRights.map((row) => rightsLine(row, row.type === GRIEVANCE_TYPE ? "grievance" : "damage"))}
+                      </DisciplineRowList>
+                    ) : null}
+                  </>
+                ) : (
+                  <DisciplineRowList dataKey="mine" empty={ar ? "لا شيء هنا — لا جزاء ولا تظلّم في هذا الترشيح." : "Nothing here — no sanction or grievance in this filter."}>
+                    {mineAllLive.filter((card) => showMine(sanctionBucket(card))).map(sanctionLine)}
+                    {showMine("reply") ? myDamageOpen.map(damageLine) : null}
+                    {showMine("grieved") ? openGrievances.map((row) => rightsLine(row, "grievance")) : null}
+                    {showMine("grieved") ? openObjections.map((row) => rightsLine(row, "damage")) : null}
+                  </DisciplineRowList>
+                )}
+              </ListStack>
+            )}
+          />
+        ) : (
+          <TwoPaneWorkspace
+            dataKey="discipline-manage"
+            raise={(
+              <DisciplineNewFrame
+                dataKey="manage"
+                title={ar ? "إجراء جديد" : "New action"}
+                note={ar ? "لا جزاء إلا من قائمة المادة 66 وبند اللائحة، وبعد إبلاغ كتابي وسماع دفاع (م71)." : "No penalty outside the Article 66 list and a regulation clause, and only after notice and a hearing (Art. 71)."}
+                tiles={manageTiles}
+                value={actionKind}
+                onPick={setActionKind}
+              >
+                {actionKind === "raise" ? (
+                  <DisciplineRaiseForm
+                    ar={ar}
+                    employees={raiseTargets}
+                    stations={stations}
+                    cases={cases}
+                    actor={currentUser}
+                    today={board.today}
+                    employeeId={employeeId}
+                    onEmployee={setEmployeeId}
+                    penaltyKind={penaltyKind}
+                    onPenaltyKind={(next) => {
+                      setPenaltyKind(next);
+                      const spec = listedPenaltyKind(next);
+                      setPenaltyDays(spec?.days.find((n) => n > 0) || spec?.days[0] || 0);
+                    }}
+                    cutDays={cutDays}
+                    onCutDays={setPenaltyDays}
+                    discoveredAt={discoveredAt}
+                    onDiscovered={setDiscoveredAt}
+                    note={note}
+                    onNote={setNote}
+                    offSite={offSite}
+                    onOffSite={setOffSite}
+                    workConnected={workConnected}
+                    onWorkConnected={setWorkConnected}
+                    dismissGround={dismissGround}
+                    art80={art80}
+                    onArt80={setArt80}
+                    onDismissGround={setDismissGround}
+                    onSubmit={openCase}
+                    regulation={regulation}
+                    clauseId={clauseId}
+                    clauseStep={clauseStep}
+                    onClause={(next) => {
+                      setClauseId(next || "");
+                      const clause = regulation.clauses.find((c) => c.id === next);
+                      // The clause names the offence; the date makes it this incident (one penalty per act — Art. 70).
+                      if (clause && !String(note || "").trim()) setNote(`${ar ? clause.ar || clause.en : clause.en || clause.ar} — ${ar ? "يوم" : "on"} ${regulationDate(discoveredAt, ar)}`);
+                    }}
+                  />
+                ) : null}
+                {actionKind === "calc" ? (
+                  <DisciplineCutCalculator ar={ar} employees={raiseTargets} stations={stations} cases={visibleCases} today={board.today} />
+                ) : null}
+                {actionKind === "schedule" ? scheduleBoard : null}
+                {actionKind === "fund" ? (
+                  <DisciplineFineFund ledger={ledger} ar={ar} today={board.today} onDispose={disposeFines} />
+                ) : null}
+              </DisciplineNewFrame>
+            )}
+            list={(
+              <ListStack data-disc-manage-grid="1">
+                <StatusFilterPills
+                  card
+                  dataKey="disc-manage"
+                  title={ar ? "قائمة الجزاءات" : "Sanctions list"}
+                  note={scopeLabel ? (ar ? `النطاق: ${scopeLabel}` : `Scope: ${scopeLabel}`) : (ar ? "ما تقترب مهلته أولاً" : "Closest window first")}
+                  value={queueFace}
+                  onChange={(next) => { setQueueFace(next); setPickedId(""); }}
+                  items={[
+                    { id: "all", label: ar ? "الكل" : "All", n: queueEntries.length },
+                    { id: "investigation", label: ar ? "قيد التحقيق" : "Under investigation", n: queueCount("investigation") },
+                    { id: "decision", label: ar ? "بانتظار القرار" : "Awaiting decision", n: queueCount("decision") },
+                    { id: "grievances", label: ar ? "تظلّمات" : "Grievances", n: queueCount("grievances") },
+                    { id: "objections", label: ar ? "اعتراضات الإتلاف" : "Damage objections", n: queueCount("objections") },
+                    { id: "archive", label: ar ? "الأرشيف" : "Archive", n: archivedCases + decidedRights.length },
+                  ]}
+                />
+                {queueFace === "archive" ? (
+                  <>
+                    <DisciplineArchiveBoard cases={visibleCases} employees={employees} stations={stations} ar={ar} today={board.today} scope="manage" selfOnly={false} userId={currentUser?.id} />
+                    {decidedRights.length ? (
+                      <DisciplineRowList dataKey="manage-rights-archive">
+                        {decidedRights.map((row) => queueLine({ key: rightsKey(row), kind: row.type === GRIEVANCE_TYPE ? "grievance" : "damage", row }, { readOnly: true }))}
+                      </DisciplineRowList>
+                    ) : null}
+                  </>
+                ) : (
+                  <DisciplineRowList dataKey="manage" empty={ar ? "لا شيء معلّق — لا ملف ولا تظلّم في هذا الترشيح." : "Nothing pending in this filter."}>
+                    {queueShown.map((entry) => queueLine(entry))}
+                  </DisciplineRowList>
+                )}
+              </ListStack>
+            )}
+          />
         )}
 
         <MinistrySectionPanel

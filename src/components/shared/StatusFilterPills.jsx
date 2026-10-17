@@ -11,6 +11,8 @@ import React from "react";
  *   size      — "md" (default, 30px) or "sm" (26px) for pills inside a denser board.
  *   hideZero  — hides pills whose count is 0, except «الكل», «الأرشيف» and the active pill.
  *   bare      — the pills row alone, without the header chrome (for a slot inside another head).
+ *   card      — the header as its own card (slab, radius, border). The items sit below it as
+ *               separate cards in a ListStack — never glued inside the header slab.
  */
 export function statusPillStyle(on, size = "md") {
   const sm = size === "sm";
@@ -46,6 +48,7 @@ export default function StatusFilterPills({
   size = "md",
   hideZero = false,
   bare = false,
+  card = false,
 }) {
   const shown = hideZero
     ? items.filter((item) => KEEP_IDS.has(item.id) || item.id === value || Number(item.n) > 0)
@@ -67,7 +70,7 @@ export default function StatusFilterPills({
   );
   if (bare) return pills;
   return (
-    <header className="nv-req-inbox-head is-mine" data-status-pills={dataKey || undefined}>
+    <header className={`nv-req-inbox-head is-mine${card ? " is-card" : ""}`} data-status-pills={dataKey || undefined}>
       {title || trailing ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           {title ? (

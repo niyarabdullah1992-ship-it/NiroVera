@@ -1,4 +1,5 @@
 import React from "react";
+import CollapsibleItemCard, { useCollapsibleItems } from "@/components/shared/CollapsibleItemCard";
 import EscalationLadder from "@/components/shared/EscalationLadder";
 import { voiceLadderSteps, voiceLadderWindow } from "@/components/complaints/voiceLadder";
 import VoiceAuditTrail from "@/components/complaints/VoiceAuditTrail";
@@ -31,31 +32,41 @@ export function voiceBarOf(card) {
   return { width: `${pct}%`, background };
 }
 
-export default function VoiceMineBoard({ cards = [], chain = [], ar, onEscalate }) {
+function pillNode(pill) {
+  return <span style={{ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none", color: pill.color, background: pill.background }}>{pill.text}</span>;
+}
+
+/**
+ * «أصواتي» items — each voice its own folded card under the «أصواتي» header card:
+ * dot · title · public id · status; open for the ladder, the reply, the escalation and the trail.
+ */
+export default function VoiceMineBoard({ cards = [], chain = [], ar, onEscalate, focusId = "" }) {
+  const { isOpen, toggle } = useCollapsibleItems(cards.map((card) => card.item.id), focusId);
+  if (cards.length === 0) {
+    return (
+      <div className="nv-cic" style={{ padding: 16, fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.8 }}>
+        {ar ? "لا شيء بعد. ابدأ بقناة واحدة — والاقتراح باسمك، والشكوى بهويّة ظاهرة، والبلاغ المجهول يُتابَع برقمه لا باسمك." : "Nothing yet. Start with one channel. A suggestion is in your name, a complaint is named, and an anonymous report is followed by its number."}
+      </div>
+    );
+  }
   return (
-    <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, overflow: "hidden", boxShadow: "var(--nv-paper)" }}>
-      <header style={{ padding: "14px 16px", borderBottom: "1px solid var(--nv-line)" }}>
-        <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{ar ? "ما أرسلتُه" : "What I sent"}</strong>
-      </header>
-      {cards.length === 0 ? (
-        <div style={{ padding: "16px", fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.8 }}>
-          {ar ? "لا شيء بعد. ابدأ بقناة واحدة — والاقتراح باسمك، والشكوى بهويّة ظاهرة، والبلاغ المجهول يُتابَع برقمه لا باسمك." : "Nothing yet. Start with one channel. A suggestion is in your name, a complaint is named, and an anonymous report is followed by its number."}
-        </div>
-      ) : cards.map((card) => {
+    <div className="nv-list-stack" data-voice-mine-list="1">
+      {cards.map((card) => {
         const pill = voicePillOf(card, ar);
+        const id = String(card.item.id);
         return (
-          <article key={card.item.id} style={{ padding: "12px 16px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-              <div style={{ display: "flex", flexDirection: "column", minWidth: 0, gap: 2 }}>
-                <strong style={{ fontSize: 13, color: "var(--nv-ink)", lineHeight: 1.5 }}>{card.title || "—"}</strong>
-                <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>
-                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", unicodeBidi: "isolate" }}>{voicePublicId(card.item)}</span>
-                  {" · "}
-                  {card.channel || "—"}
-                </span>
-              </div>
-              <span style={{ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none", color: pill.color, background: pill.background }}>{pill.text}</span>
-            </div>
+          <CollapsibleItemCard
+            key={id}
+            id={`nv-voice-${id}`}
+            open={isOpen(id)}
+            onToggle={() => toggle(id)}
+            dot={pill.color}
+            title={card.title || "—"}
+            person={card.channel || null}
+            date={voicePublicId(card.item)}
+            status={pillNode(pill)}
+            ar={ar}
+          >
             <EscalationLadder ar={ar} steps={voiceLadderSteps(card, ar)} window={voiceLadderWindow(card, ar)} dataKey="voice-mine" />
             {card.reply ? (
               <span style={{ fontSize: 11, color: card.outcome === "adopt" ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)", background: card.outcome === "adopt" ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)", border: "1px solid var(--nv-line)", borderRadius: 10, padding: "9px 11px", lineHeight: 1.8 }}>{card.reply}</span>
@@ -67,9 +78,9 @@ export default function VoiceMineBoard({ cards = [], chain = [], ar, onEscalate 
             ) : null}
             <VoiceAuditTrail events={card.audit} ar={ar} />
             <VoiceRelatedLinks links={card.related} ar={ar} />
-          </article>
+          </CollapsibleItemCard>
         );
       })}
-    </section>
+    </div>
   );
 }

@@ -39,11 +39,11 @@ import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import VoiceMineBoard from "@/components/complaints/VoiceMineBoard";
 import VoiceQueueList from "@/components/complaints/VoiceQueueList";
 import VoiceDecisionCard from "@/components/complaints/VoiceDecisionCard";
+import TwoPaneWorkspace, { ListStack } from "@/components/shared/TwoPaneWorkspace";
 import VoiceRaiseCard from "@/components/complaints/VoiceRaiseCard";
 import VoiceRelatedLinks from "@/components/complaints/VoiceRelatedLinks";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
-import { slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import AbuseCaseRaise from "@/components/complaints/AbuseCaseRaise";
 import AbuseCasesBoard from "@/components/complaints/AbuseCasesBoard";
 import { ABUSE_STEPS, ABUSE_KINDS, abuseStepIndex } from "@/lib/abuseComplaint";
@@ -186,7 +186,7 @@ export default function Complaints() {
   useEffect(() => {
     if (["suggestion", "complaint", "anonymous", "abuse"].includes(asked)) setChannel(asked);
   }, [asked]);
-  const [pickedId, setPickedId] = useState("");
+  const [pickedId] = useState("");
   const [prio, setPrio] = useState("low");
   const [topicId, setTopicId] = useState("wage");
   const [title, setTitle] = useState("");
@@ -543,104 +543,112 @@ export default function Complaints() {
       <div style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink)", fontSize: 13 }}>
 
         {activeFace === "mine" ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <section style={{ ...chromeSlab, overflow: "hidden" }}>
-              <StatusFilterPills
-                dataKey="voice-mine"
-                title={ar ? "أصواتي" : "My voices"}
-                value={mineFace}
-                onChange={setMineFace}
-                items={[
-                  { id: "all", label: ar ? "الكل" : "All", n: mineOwn.length },
-                  { id: "pending", label: ar ? "بانتظار" : "Pending", n: mineOwn.filter((c) => !c.settled).length },
-                  { id: "adopted", label: ar ? "معتمدة" : "Adopted", n: mineOwn.filter((c) => c.settled && c.outcome === "adopt").length },
-                  { id: "returned", label: ar ? "مُعادة" : "Returned", n: mineOwn.filter((c) => c.settled && c.outcome !== "adopt").length },
-                  { id: "archive", label: ar ? "الأرشيف" : "Archive", n: mineSettled.length },
-                ]}
-              />
-            </section>
-
-            {mineFace === "archive" ? (
-              <VoiceArchiveBoard
-                cards={mineSettled}
-                ar={ar}
-                canManage={false}
-                scope="mine"
-              />
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 16, alignItems: "start" }}>
-                  <VoiceRaiseCard
-                    ar={ar}
-                    channel={channel}
-                    onChannel={pickChannel}
-                    topicId={topicId}
-                    onTopic={setTopicId}
-                    title={title}
-                    onTitle={setTitle}
-                    body={body}
-                    onBody={setBody}
-                    when={when}
-                    onWhen={setWhen}
-                    want={want}
-                    onWant={setWant}
-                    wit={wit}
-                    onWit={() => setWit((value) => !value)}
-                    ack={ack}
-                    onAck={() => setAck((value) => !value)}
-                    file={file}
-                    onFile={(next) => pickFile({ target: { files: next ? [next] : [], value: "" } })}
-                    checks={checks}
-                    canSend={canSend}
-                    onSend={send}
-                    submitText={submitText}
-                    slaLine={slaLine}
-                    reporter={reporter}
-                    channelRow={picked}
-                    abuseSlot={channel === "abuse" ? (
-                      <AbuseCaseRaise employee={me} companyId={company?.id} ar={ar} onSent={() => setMineFace("pending")} />
-                    ) : null}
-                    receipt={anonReceipt ? (ar
-                      ? `أُرسل بلا هويّة إلى الموارد البشرية. رقم المتابعة ${anonReceipt} — تتابع قراره في ملفك بهذا الرقم.`
-                      : `Sent with no identity. Follow-up number ${anonReceipt} — watch the archive for that number; there is no personal reply.`) : ""}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* طلباتي distribution: «صوت جديد» inline-start; «أصواتي» header card and its folded items beside it. */}
+            <TwoPaneWorkspace
+              dataKey="voice-mine"
+              raise={(
+                <VoiceRaiseCard
+                  ar={ar}
+                  channel={channel}
+                  onChannel={pickChannel}
+                  topicId={topicId}
+                  onTopic={setTopicId}
+                  title={title}
+                  onTitle={setTitle}
+                  body={body}
+                  onBody={setBody}
+                  when={when}
+                  onWhen={setWhen}
+                  want={want}
+                  onWant={setWant}
+                  wit={wit}
+                  onWit={() => setWit((value) => !value)}
+                  ack={ack}
+                  onAck={() => setAck((value) => !value)}
+                  file={file}
+                  onFile={(next) => pickFile({ target: { files: next ? [next] : [], value: "" } })}
+                  checks={checks}
+                  canSend={canSend}
+                  onSend={send}
+                  submitText={submitText}
+                  slaLine={slaLine}
+                  reporter={reporter}
+                  channelRow={picked}
+                  abuseSlot={channel === "abuse" ? (
+                    <AbuseCaseRaise employee={me} companyId={company?.id} ar={ar} onSent={() => setMineFace("pending")} />
+                  ) : null}
+                  receipt={anonReceipt ? (ar
+                    ? `أُرسل بلا هويّة إلى الموارد البشرية. رقم المتابعة ${anonReceipt} — تتابع قراره في ملفك بهذا الرقم.`
+                    : `Sent with no identity. Follow-up number ${anonReceipt} — watch the archive for that number; there is no personal reply.`) : ""}
+                />
+              )}
+              list={(
+                <ListStack data-voice-list="mine">
+                  <StatusFilterPills
+                    card
+                    dataKey="voice-mine"
+                    title={ar ? "أصواتي" : "My voices"}
+                    value={mineFace}
+                    onChange={setMineFace}
+                    items={[
+                      { id: "all", label: ar ? "الكل" : "All", n: mineOwn.length },
+                      { id: "pending", label: ar ? "بانتظار" : "Pending", n: mineOwn.filter((c) => !c.settled).length },
+                      { id: "adopted", label: ar ? "معتمدة" : "Adopted", n: mineOwn.filter((c) => c.settled && c.outcome === "adopt").length },
+                      { id: "returned", label: ar ? "مُعادة" : "Returned", n: mineOwn.filter((c) => c.settled && c.outcome !== "adopt").length },
+                      { id: "archive", label: ar ? "الأرشيف" : "Archive", n: mineSettled.length },
+                    ]}
                   />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-                    {/* Settled voices live in «الأرشيف» only; each open card already carries its chain. */}
-                    <VoiceMineBoard cards={mineShown} chain={chain} ar={ar} onEscalate={(card) => escalate(card, true)} />
-                    {myAbuse.length ? (
-                      <section data-abuse-mine="" className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 10 }}>
-                        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--nv-line)", fontSize: 13, fontWeight: 700 }}>
-                          {ar ? `شكاوى التحرش أو الإيذاء · ${myAbuse.length}` : `Harassment or abuse complaints · ${myAbuse.length}`}
-                        </div>
-                        {myAbuse.map((row) => {
-                          const kind = ABUSE_KINDS.find((k) => k.id === row.kind);
-                          const step = ABUSE_STEPS[abuseStepIndex(row)] || ABUSE_STEPS[0];
-                          return (
-                            <div key={row.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
-                              <span style={{ minWidth: 0 }}>{ar ? kind?.ar : kind?.en} · {fmtDay(row.filedAt)}</span>
-                              <span style={{ fontWeight: 700, color: "var(--nv-ok-ink)" }}>{ar ? step.ar : step.en}</span>
-                            </div>
-                          );
-                        })}
-                        <div style={{ padding: "8px 14px", fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "تصل إلى الموارد البشرية فقط — لا يراها مديرك." : "HR only — your manager does not see it."}</div>
-                      </section>
-                    ) : null}
-                    {sitAbuse.length ? (
-                      <AbuseCasesBoard data={data} companyId={company?.id} ar={ar} by={currentUser?.name || ""} cases={sitAbuse} committeeMemberId={String(currentUser?.id || "")} canRun={false} />
-                    ) : null}
-                    {/* The channel promises are on the channel tiles; only the two shared guarantees stay. */}
-                    <VoiceGuaranteeList rows={board.promises.slice(-2)} ar={ar} />
-                  </div>
-                </div>
-                {board.mine.some((card) => !card.settled) ? null : (hrOnlyPicked
-                  ? <VoiceChainBoard chain={[{ num: "01", name: ar ? "الموارد البشرية" : "Human Resources", mark: "check", bg: "var(--nv-ok-ink)", border: "var(--nv-ok-ink)", color: "var(--nv-ink)", weight: 700 }]} note={ar ? "يصل إلى الموارد البشرية وحدها، بلا تصعيد ولا مرور بمديرك أو مدير الفرع." : "It reaches HR alone — no ladder, never via your manager or the branch manager."} ar={ar} />
-                  : <VoiceChainBoard chain={board.chain} note={board.chainNote} ar={ar} />)}
-                <p style={{ margin: 0, fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-                  {ar
-                    ? <>التظلّم من قرار أو إجراء أو جزاء مسار آخر: <Link to="/app/discipline?tab=mine&raise=grievance" style={{ color: "inherit" }}>الجزاءات</Link>.</>
-                    : <>A grievance on a decision, action or sanction is a different path: <Link to="/app/discipline?tab=mine&raise=grievance" style={{ color: "inherit" }}>Sanctions</Link>.</>}
-                </p>
-              </div>
+                  {mineFace === "archive" ? (
+                    <VoiceArchiveBoard
+                      cards={mineSettled}
+                      ar={ar}
+                      canManage={false}
+                      scope="mine"
+                    />
+                  ) : (
+                    <>
+                      {/* Settled voices live in «الأرشيف» only; each open card already carries its chain. */}
+                      <VoiceMineBoard cards={mineShown} chain={chain} ar={ar} onEscalate={(card) => escalate(card, true)} />
+                      {myAbuse.length ? (
+                        <section data-abuse-mine="" className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 10 }}>
+                          <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--nv-line)", fontSize: 13, fontWeight: 700 }}>
+                            {ar ? `شكاوى التحرش أو الإيذاء · ${myAbuse.length}` : `Harassment or abuse complaints · ${myAbuse.length}`}
+                          </div>
+                          {myAbuse.map((row) => {
+                            const kind = ABUSE_KINDS.find((k) => k.id === row.kind);
+                            const step = ABUSE_STEPS[abuseStepIndex(row)] || ABUSE_STEPS[0];
+                            return (
+                              <div key={row.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
+                                <span style={{ minWidth: 0 }}>{ar ? kind?.ar : kind?.en} · {fmtDay(row.filedAt)}</span>
+                                <span style={{ fontWeight: 700, color: "var(--nv-ok-ink)" }}>{ar ? step.ar : step.en}</span>
+                              </div>
+                            );
+                          })}
+                          <div style={{ padding: "8px 14px", fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "تصل إلى الموارد البشرية فقط — لا يراها مديرك." : "HR only — your manager does not see it."}</div>
+                        </section>
+                      ) : null}
+                      {sitAbuse.length ? (
+                        <AbuseCasesBoard data={data} companyId={company?.id} ar={ar} by={currentUser?.name || ""} cases={sitAbuse} committeeMemberId={String(currentUser?.id || "")} canRun={false} />
+                      ) : null}
+                      {/* The channel promises are on the channel tiles; only the two shared guarantees stay. */}
+                      <VoiceGuaranteeList rows={board.promises.slice(-2)} ar={ar} />
+                    </>
+                  )}
+                </ListStack>
+              )}
+            />
+            {mineFace === "archive" ? null : (
+              <>
+              {board.mine.some((card) => !card.settled) ? null : (hrOnlyPicked
+                ? <VoiceChainBoard chain={[{ num: "01", name: ar ? "الموارد البشرية" : "Human Resources", mark: "check", bg: "var(--nv-ok-ink)", border: "var(--nv-ok-ink)", color: "var(--nv-ink)", weight: 700 }]} note={ar ? "يصل إلى الموارد البشرية وحدها، بلا تصعيد ولا مرور بمديرك أو مدير الفرع." : "It reaches HR alone — no ladder, never via your manager or the branch manager."} ar={ar} />
+                : <VoiceChainBoard chain={board.chain} note={board.chainNote} ar={ar} />)}
+              <p style={{ margin: 0, fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
+                {ar
+                  ? <>التظلّم من قرار أو إجراء أو جزاء مسار آخر: <Link to="/app/discipline?tab=mine&raise=grievance" style={{ color: "inherit" }}>الجزاءات</Link>.</>
+                  : <>A grievance on a decision, action or sanction is a different path: <Link to="/app/discipline?tab=mine&raise=grievance" style={{ color: "inherit" }}>Sanctions</Link>.</>}
+              </p>
+              </>
             )}
           </div>
         ) : null}
@@ -662,48 +670,53 @@ export default function Complaints() {
                 flag: stat.flag,
               }))}
             />
-            <section data-voice-queue="1" style={{ ...chromeSlab, overflow: "hidden" }}>
-              <StatusFilterPills
-                dataKey="voice-manage"
-                title={ar ? "قائمة الأصوات" : "Voice list"}
-                note={ar ? "ما يتجاوز مهلته يُرفع تلقائياً للمستوى التالي." : "What misses its window goes up the chain automatically."}
-                value={queueFilter}
-                onChange={setQueueFilter}
-                items={queueFilters.map(([id, label, n]) => ({ id, label, n }))}
-              />
-            </section>
-            {queueFilter === "archive" ? (
-              <VoiceArchiveBoard cards={board.cards} ar={ar} canManage scope="manage" />
-            ) : (() => {
-              const picked = queue.find((card) => String(card.item.id) === String(pickedId)) || queue[0] || null;
-              const note = picked ? String(notes[picked.item.id] || "") : "";
-              const noteReady = note.trim().length > 4;
-              const ownVoice = picked ? !checkSelfReviewGate(picked.item, currentUser?.id).ok : false;
-              return (
-                <div data-voice-manage-grid="1" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 16, alignItems: "start" }}>
-                  <VoiceDecisionCard
-                    card={picked}
-                    ar={ar}
-                    note={note}
-                    onNote={(value) => picked && setNotes((prev) => ({ ...prev, [picked.item.id]: value }))}
-                    noteReady={noteReady}
-                    ownVoice={ownVoice}
-                    onAdopt={() => picked && decide(picked, "adopt")}
-                    onReturn={() => picked && decide(picked, "return")}
-                    onEscalate={() => picked && escalate(picked)}
+            {/* No raise form on this lane: the list takes the full width — header card, then folded voices,
+                each opening on its written ruling in place. */}
+            <TwoPaneWorkspace
+              dataKey="voice-manage"
+              list={(
+                <ListStack data-voice-queue="1">
+                  <StatusFilterPills
+                    card
+                    dataKey="voice-manage"
+                    title={ar ? "قائمة الأصوات" : "Voice list"}
+                    note={ar ? "ما يتجاوز مهلته يُرفع تلقائياً للمستوى التالي." : "What misses its window goes up the chain automatically."}
+                    value={queueFilter}
+                    onChange={setQueueFilter}
+                    items={queueFilters.map(([id, label, n]) => ({ id, label, n }))}
                   />
-                  <VoiceQueueList
-                    cards={queue}
-                    selectedId={picked?.item.id}
-                    onPick={setPickedId}
-                    ar={ar}
-                    emptyText={queueFilter === "over"
-                      ? (ar ? "لا صوت تجاوز مهلته — الطابور في وقته." : "No voice has missed its window — the queue is on time.")
-                      : (ar ? "لا أصوات في هذا الترشيح." : "No voices in this filter.")}
-                  />
-                </div>
-              );
-            })()}
+                  {queueFilter === "archive" ? (
+                    <VoiceArchiveBoard cards={board.cards} ar={ar} canManage scope="manage" />
+                  ) : (
+                    <VoiceQueueList
+                      cards={queue}
+                      focusId={pickedId}
+                      ar={ar}
+                      emptyText={queueFilter === "over"
+                        ? (ar ? "لا صوت تجاوز مهلته — الطابور في وقته." : "No voice has missed its window — the queue is on time.")
+                        : (ar ? "لا أصوات في هذا الترشيح." : "No voices in this filter.")}
+                      renderBody={(card) => {
+                        const note = String(notes[card.item.id] || "");
+                        return (
+                          <VoiceDecisionCard
+                            embedded
+                            card={card}
+                            ar={ar}
+                            note={note}
+                            onNote={(value) => setNotes((prev) => ({ ...prev, [card.item.id]: value }))}
+                            noteReady={note.trim().length > 4}
+                            ownVoice={!checkSelfReviewGate(card.item, currentUser?.id).ok}
+                            onAdopt={() => decide(card, "adopt")}
+                            onReturn={() => decide(card, "return")}
+                            onEscalate={() => escalate(card)}
+                          />
+                        );
+                      }}
+                    />
+                  )}
+                </ListStack>
+              )}
+            />
           </>
         ) : null}
 

@@ -380,8 +380,9 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   );
 
   const teamList = !loading && employees.length > 0 ? (
-    <section className="nv-att-card" data-team-today style={panel}>
+    <div className="nv-list-stack" data-team-today>
       <StatusFilterPills
+        card
         dataKey="att-team"
         title={ar ? "الفريق اليوم — بالاسم" : "The team today — by name"}
         note={ar
@@ -401,6 +402,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           { id: "unscheduled", label: dutyLabel("unscheduled", ar), n: formatUiNumber(teamCount("unscheduled")) },
         ]}
       />
+      <section className="nv-att-card" style={{ ...panel, borderRadius: 12, overflow: "hidden" }}>
       <div className="nv-att-team-list">
         {teamShown.map((employee) => {
           const row = byEmployee[String(employee.id)];
@@ -442,12 +444,14 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           );
         })}
       </div>
-    </section>
+      </section>
+    </div>
   ) : null;
 
   const queuePanel = (
-    <section ref={queueRef} id="nv-team-queue" className="nv-att-card" data-decision-queue style={{ ...panel, scrollMarginTop: 88 }}>
+    <div ref={queueRef} id="nv-team-queue" className="nv-list-stack" data-decision-queue style={{ scrollMarginTop: 88 }}>
       <StatusFilterPills
+        card
         dataKey="att-queue"
         title={lang === "ar" ? "بصمات اليوم بلا حكم" : "Today's punches without a verdict"}
         value={queueFace}
@@ -470,7 +474,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
         <span style={headNote}>{queueSub}</span>
       </StatusFilterPills>
 
-      <div>
+      <section className="nv-att-card" style={{ ...panel, borderRadius: 12, overflow: "hidden" }}>
       {loading ? (
         <div style={{ padding: "24px 20px", textAlign: "center", fontSize: 12, color: MUTED }}>…</div>
       ) : employees.length === 0 ? (
@@ -632,8 +636,8 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.85 }}>{queueInsight}</span>
         </div>
       ) : null}
-      </div>
-    </section>
+      </section>
+    </div>
   );
 
   const audit = rows

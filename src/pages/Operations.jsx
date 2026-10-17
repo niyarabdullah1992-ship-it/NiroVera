@@ -75,7 +75,6 @@ import OpsModeConfirmModal from "@/components/tasks/OpsModeConfirmModal";
 import OpsTaskDetail from "@/components/tasks/OpsTaskDetail";
 import OpsTasksTable, { OpsTaskCards } from "@/components/tasks/OpsTasksTable";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
-import { slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
 import OpsSideSlab from "@/components/tasks/OpsSideSlab";
 import OpsMoreMenu from "@/components/tasks/OpsMoreMenu";
@@ -2269,8 +2268,9 @@ export default function Operations() {
       )}
     >
       <div className="space-y-3.5">
-      <section data-ops-list-head="1" style={{ ...chromeSlab, overflow: "hidden" }}>
+      <div data-ops-list-head="1">
         <StatusFilterPills
+          card
           dataKey={employeeFace ? "ops-mine" : "ops-manage"}
           title={employeeFace ? (ar ? "مهامي" : "My tasks") : (ar ? "أوامر العمل" : "Work orders")}
           note={focusStation || focusOwner
@@ -2309,7 +2309,7 @@ export default function Operations() {
             </span>
           )}
         />
-      </section>
+      </div>
 
       {!checkedIn && (
       <div style={warnBanner}>

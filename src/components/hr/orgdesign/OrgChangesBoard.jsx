@@ -19,7 +19,7 @@ import {
 import { saveOrgChangeDraft, transitionOrgChange } from "@/lib/orgDesignStore";
 import { printReport } from "@/lib/printReport";
 import RightHint from "@/components/shared/RightHint";
-import { mono } from "@/components/schedules/scheduleChrome";
+import { mono, slab } from "@/components/schedules/scheduleChrome";
 import { EmptyInvite, GateLine, Note, Slab, SlabBody, StateChip, SubHead, ToneChip, btnGhost, btnPrimary, btnQuiet, fmtDay, levelLabel, seatOptionLabel } from "./orgDesignUi";
 
 const RESIDENCE = [
@@ -191,47 +191,52 @@ export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, s
           <EmptyInvite text={ar ? "لا تغييرات بعد. حين تنقل منصباً أو تنشئ وحدة أو تغيّر تبعيتها، اكتبها هنا بتاريخ سريان — ليبقى كل تغيير قراراً له أثر وتاريخ." : "No changes yet. When you move a seat, create a unit or change its parent, write it here with an effective date."} />
         ) : null}
 
-        {/* «طلبات التغيير» filter as in طلباتي: الكل, what waits on approval, then the settled states. */}
-        {design.changes.length ? (
-          <StatusFilterPills
-            dataKey="org-changes"
-            title={ar ? "طلبات التغيير" : "Change requests"}
-            value={changesFace}
-            onChange={setChangesFace}
-            items={[
-              { id: "all", label: ar ? "الكل" : "All", n: groups.reduce((n, g) => n + g.rows.length, 0) },
-              ...groups.map((g) => ({ id: g.status, label: ar ? CHANGE_FACE_LABELS[g.status].ar : CHANGE_FACE_LABELS[g.status].en, n: g.rows.length })),
-            ]}
-          />
-        ) : null}
-
-        {groups.filter((g) => g.rows.length && (changesFace === "all" || g.status === changesFace)).map((g) => (
-          <div key={g.status} style={{ display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "9px 18px", background: "var(--nv-soft)", borderBottom: "1px solid var(--nv-line2, var(--nv-line))", display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? CHANGE_STATUS_LABELS[g.status].ar : CHANGE_STATUS_LABELS[g.status].en}</span>
-              <span dir="ltr" style={{ ...mono, fontSize: 11.5, color: "var(--nv-muted)" }}>{g.rows.length}</span>
-            </div>
-            {g.rows.map((c) => (
-              <ChangeCard
-                key={c.id}
-                ar={ar}
-                change={c}
-                data={data}
-                ctx={ctx}
-                today={today}
-                canEdit={canEdit}
-                canApprove={canApprove(c)}
-                note={notes[c.id] || ""}
-                onNote={(v) => setNotes((n) => ({ ...n, [c.id]: v }))}
-                gate={rowGate[c.id]}
-                onAct={(next) => act(c, next)}
-                onEdit={() => setDraft({ id: c.id, title: c.title, reason: c.reason, effectiveDate: c.effectiveDate, ops: (c.ops || []).map((op) => ({ ...op })) })}
-                onPrint={() => printDecision(c)}
-              />
-            ))}
-          </div>
-        ))}
       </Slab>
+
+      {/* «طلبات التغيير» filter as in طلباتي: الكل, what waits on approval, then the settled states. */}
+      {design.changes.length ? (
+      <div className="nv-list-stack" data-org-changes-list="1">
+        <StatusFilterPills
+          card
+          dataKey="org-changes"
+          title={ar ? "طلبات التغيير" : "Change requests"}
+          value={changesFace}
+          onChange={setChangesFace}
+          items={[
+            { id: "all", label: ar ? "الكل" : "All", n: groups.reduce((n, g) => n + g.rows.length, 0) },
+            ...groups.map((g) => ({ id: g.status, label: ar ? CHANGE_FACE_LABELS[g.status].ar : CHANGE_FACE_LABELS[g.status].en, n: g.rows.length })),
+          ]}
+        />
+
+      {groups.filter((g) => g.rows.length && (changesFace === "all" || g.status === changesFace)).map((g) => (
+        <section key={g.status} style={{ ...slab, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "9px 18px", background: "var(--nv-soft)", borderBottom: "1px solid var(--nv-line2, var(--nv-line))", display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? CHANGE_STATUS_LABELS[g.status].ar : CHANGE_STATUS_LABELS[g.status].en}</span>
+            <span dir="ltr" style={{ ...mono, fontSize: 11.5, color: "var(--nv-muted)" }}>{g.rows.length}</span>
+          </div>
+          {g.rows.map((c) => (
+            <ChangeCard
+              key={c.id}
+              ar={ar}
+              change={c}
+              data={data}
+              ctx={ctx}
+              today={today}
+              canEdit={canEdit}
+              canApprove={canApprove(c)}
+              note={notes[c.id] || ""}
+              onNote={(v) => setNotes((n) => ({ ...n, [c.id]: v }))}
+              gate={rowGate[c.id]}
+              onAct={(next) => act(c, next)}
+              onEdit={() => setDraft({ id: c.id, title: c.title, reason: c.reason, effectiveDate: c.effectiveDate, ops: (c.ops || []).map((op) => ({ ...op })) })}
+              onPrint={() => printDecision(c)}
+            />
+          ))}
+        </section>
+      ))}
+      </div>
+      ) : null}
+
 
       <Slab
         title={ar ? "الهيكل في تاريخ" : "The structure on a date"}

@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { articleOfficialText, BOE_LABOUR_LAW_URL } from "@/lib/laborArticleTexts";
 import { HRSD_IMPLEMENTING_REGS_URL } from "@/lib/laborRules";
 import { decision18632Gist } from "@/lib/decision18632";
-import { HEAT_BAN_DECISION_PDF, heatBanDecisionGist } from "@/lib/heatBanDecision";
+import { heatBanDecisionGist } from "@/lib/heatBanDecision";
 import { MODEL_SOURCE_AR, MODEL_SOURCE_EN, MODEL_SOURCE_URL, modelArticlesBody } from "@/lib/modelArticleTexts";
 import {
   Dialog,
@@ -48,8 +48,8 @@ export function StatuteDialog({ law, open, onOpenChange, ar = true, onDate }) {
   const body = model || statute || decision;
   const sourceHref = isModel
     ? MODEL_SOURCE_URL
-    : law.decisionId === "3337"
-      ? HEAT_BAN_DECISION_PDF
+    : law.decisionId
+      ? ""
       : law.regs ? HRSD_IMPLEMENTING_REGS_URL : (official?.sourceUrl || BOE_LABOUR_LAW_URL);
   const kind = isModel
     ? (ar ? "النموذج الموحد" : "Unified model")
@@ -67,9 +67,7 @@ export function StatuteDialog({ law, open, onOpenChange, ar = true, onDate }) {
         : (ar ? "كما هو منشور في هيئة الخبراء." : "As published by the Bureau of Experts.");
   const sourceLabel = isModel || law.regs
     ? (ar ? "اللائحة التنفيذية وملحقاتها (PDF)" : "Implementing regulations and annexes (PDF)")
-    : law.decisionId === "3337"
-      ? (ar ? "صورة القرار الموقّعة (PDF)" : "Signed decision (PDF)")
-      : (ar ? "النص في هيئة الخبراء" : "BOE official text");
+    : (ar ? "النص في هيئة الخبراء" : "BOE official text");
   const blocks = statuteBlocks(body);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -104,13 +102,13 @@ export function StatuteDialog({ law, open, onOpenChange, ar = true, onDate }) {
             </p>
           )}
         </div>
-        <div style={{ padding: "12px 22px 16px", borderTop: "1px solid var(--nv-line2, #EEF2F7)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+        {sourceHref ? <div style={{ padding: "12px 22px 16px", borderTop: "1px solid var(--nv-line2, #EEF2F7)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontSize: 11.5, color: MUTED }}>{ar ? "المصدر الرسمي" : "Official source"}</span>
           <a href={sourceHref} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card, #fff)", fontSize: 12, fontWeight: 600, color: GREEN, textDecoration: "none" }}>
             {sourceLabel}
             <span aria-hidden>{ar ? "↖" : "↗"}</span>
           </a>
-        </div>
+        </div> : null}
       </DialogContent>
     </Dialog>
   );

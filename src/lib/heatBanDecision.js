@@ -9,9 +9,6 @@
 
 import { heatBanWindow } from "./contractLawDerivations.js";
 
-/** The signed scan, shipped with the app so the decision is readable, not just quoted. */
-export const HEAT_BAN_DECISION_PDF = "/heat-ban-decision-3337.pdf";
-
 export const HEAT_BAN_DECISION = {
   id: "3337",
   hijriDate: "1435-07-15",

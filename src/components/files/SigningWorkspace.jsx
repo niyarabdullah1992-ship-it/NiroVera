@@ -26,6 +26,7 @@ import { sha256HexOfBuffer } from "@/lib/fileHash";
 import { registerLocalSignedDoc } from "@/lib/localSignedDocs";
 import { invokeLocalMultiSign, shouldUseLocalMultiSign } from "@/lib/localMultiSignFallback";
 import { createGateMessage, MAX_PARALLEL_SIGNERS } from "@/lib/multiSignDerivations";
+import { orderedFields } from "@/lib/signingEnvelopes";
 import { isServiceOutage, refusalError } from "@/lib/serviceErrors";
 import { generateVerificationId, loadBadgeQr, verificationUrlFor } from "@/lib/verificationBadge";
 import { OFFICIAL_STAMP_THEME } from "@/lib/signatureStampThemes";
@@ -37,7 +38,8 @@ import SigningStudioFrame from "@/components/files/SigningStudioFrame";
 import { envelopeCode, signGhostBtn, signMono as mono, signPrimaryBtn, signingDocTitle } from "@/components/files/signingUi";
 import { BORDER, CARD, INK, MUTED, SURFACE } from "@/lib/platformStyles";
 import SignMarkGlyph from "@/components/files/SignMarkGlyph";
-const SIGNER_COLORS = ["#1d9a5b", "#14213d", "#6b7280", "#8a6516"];
+// Muted per-recipient tints — never the green accent, which marks the selected field only.
+const SIGNER_COLORS = ["#3B5A86", "#8A6A2E", "#6E5A8C", "#2F7480", "#7A5148", "#5F6B7A"];
 
 const TOOLS = [
   { id: "sig", type: "signature", glyph: "SIG", ar: "التوقيع", chipAr: "توقيع", en: "Signature", scale: 100 },
@@ -121,6 +123,7 @@ export default function SigningWorkspace({
   signatureRawUrl,
   signatureVariant,
   stampConfig,
+  initialTemplateId = "",
   ar,
   onOpenStudio,
   onClose,
@@ -149,7 +152,8 @@ export default function SigningWorkspace({
   const [intent, setIntent] = useState(false);
   const [leaveAsk, setLeaveAsk] = useState(false);
   const [finishAsk, setFinishAsk] = useState(false);
-  const [studioStep, setStudioStep] = useState(1);
+  // 2 المستلمون · 3 الحقول · 4 المراجعة والإرسال — step 1 (the upload) happened on the home.
+  const [studioStep, setStudioStep] = useState(2);
   const [rail, setRail] = useState("");
   const [orderMode, setOrderMode] = useState("parallel");
   const [peopleQuery, setPeopleQuery] = useState("");
@@ -372,6 +376,15 @@ export default function SigningWorkspace({
       : `Applied "${template.name}" — ${placed.length} field${placed.length > 1 ? "s" : ""}.`);
   };
 
+  // A template picked on the home («قالب الحقول») lands once the pages are known.
+  const templateApplied = useRef(false);
+  useEffect(() => {
+    if (templateApplied.current || !initialTemplateId || !pageCount) return;
+    const found = templates.find((item) => item.id === initialTemplateId);
+    templateApplied.current = true;
+    if (found) applyTemplate(found);
+  }, [initialTemplateId, pageCount, templates]);
+
   const dropTemplate = (id) => {
     deleteFieldTemplate(companyId, id);
     setTemplates(listFieldTemplates(companyId));
@@ -425,6 +438,22 @@ export default function SigningWorkspace({
     });
     setSignerIndex(signers.length);
     setEditingSigner(signers.length);
+  };
+
+  // Sequential order: move a recipient up or down. You (row 1, the seal owner) stay first; the
+  // fields follow their recipient.
+  const moveSigner = (index, dir) => {
+    const target = index + dir;
+    if (index < 1 || target < 1 || target >= signers.length) return;
+    setSigners((current) => {
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+    setFields((current) => current.map((field) => (
+      field.signer === index ? { ...field, signer: target } : field.signer === target ? { ...field, signer: index } : field
+    )));
+    setSignerIndex(target);
   };
 
   const patchSigner = (index, patch) => setSigners((current) => current.map((signer, position) => (position === index ? { ...signer, ...patch } : signer)));
@@ -751,7 +780,7 @@ export default function SigningWorkspace({
   };
 
   useEffect(() => {
-    if (studioStep !== 1 || !focusAdd) return;
+    if (studioStep !== 2 || !focusAdd) return;
     addRef.current?.scrollIntoView({ block: "start" });
     setFocusAdd(false);
   }, [studioStep, focusAdd]);
@@ -767,11 +796,11 @@ export default function SigningWorkspace({
   const pageLabel = pageCount
     ? (ar ? countAr(pageCount, ["صفحة واحدة", "صفحتان", "صفحات", "صفحة"]) : `${pageCount} page${pageCount > 1 ? "s" : ""}`)
     : "";
-  const nextLabel = studioStep === 1
-    ? (ar ? "التالي: التوقيع" : "Next: signing")
-    : studioStep === 2
-      ? (ar ? "التالي: حقول" : "Next: fields")
-      : (group ? (ar ? "إرسال للتوقيع" : "Send for signature") : (ar ? "إنهاء التوقيع" : "Finish signing"));
+  const nextLabel = studioStep === 2
+    ? (ar ? "التالي: الحقول" : "Next: fields")
+    : studioStep === 3
+      ? (ar ? "التالي: المراجعة" : "Next: review")
+      : (group ? (ar ? "أرسل" : "Send") : (ar ? "إنهاء التوقيع" : "Finish signing"));
   const takenEmails = new Set(signers.map((signer) => signer.email.trim().toLowerCase()).filter(Boolean));
   const takenIds = new Set(signers.map((signer) => signer.employeeId).filter(Boolean).map(String));
   const availablePeople = roster.filter((person) => {
@@ -783,15 +812,18 @@ export default function SigningWorkspace({
   const shownPeople = availablePeople.filter((person) => !peopleNeedle || `${person.name} ${person.title} ${person.code} ${person.email}`.toLowerCase().includes(peopleNeedle));
 
   const goHeaderNext = () => {
-    if (studioStep === 1) {
-      setStudioStep(2);
-      return;
-    }
-    if (studioStep === 2) {
-      setStudioStep(3);
+    if (studioStep < 4) {
+      setStudioStep(studioStep + 1);
       return;
     }
     requestFinish();
+  };
+  const goStep = (id) => {
+    if (id <= 1) {
+      requestLeave();
+      return;
+    }
+    setStudioStep(id);
   };
 
   const toolButton = (item) => {
@@ -819,10 +851,10 @@ export default function SigningWorkspace({
           justifyContent: "flex-start",
           gap: 6,
           padding: "0 8px",
-          border: on ? "1px solid var(--nv-navy)" : `1px solid ${BORDER}`,
-          borderRadius: 10,
-          background: on ? "var(--nv-navy)" : "var(--nv-card)",
-          color: on ? "#fff" : MUTED,
+          border: on ? "1px solid #3C7D50" : `1px solid ${BORDER}`,
+          borderRadius: 8,
+          background: on ? "var(--nv-ok-soft, #E6F2EA)" : "var(--nv-card)",
+          color: on ? INK : MUTED,
           fontSize: 12,
           fontWeight: 600,
           lineHeight: 1.2,
@@ -830,7 +862,7 @@ export default function SigningWorkspace({
           textAlign: "start",
         }}
       >
-        <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none", color: on ? "#fff" : "var(--nv-ink)" }}>{toolIcon(item.id)}</span>
+        <span style={{ width: 16, height: 16, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none", color: on ? "#3C7D50" : "var(--nv-ink)" }}>{toolIcon(item.id)}</span>
         <span style={{ minWidth: 0, whiteSpace: "nowrap" }}>{ar ? item.ar : item.en}</span>
       </button>
     );
@@ -842,7 +874,7 @@ export default function SigningWorkspace({
         <strong style={{ fontSize: 15 }}>{ar ? "الحقول" : "Fields"}</strong>
         <p style={{ margin: "6px 0 0", fontSize: 11.5, color: MUTED, lineHeight: 1.65 }}>
           {ar
-            ? "توقيع، تاريخ، نص، وغيرها توضع باسم الموقّع المختار أعلاه وبأونه."
+            ? "توقيع، تاريخ، نص، وغيرها توضع باسم المستلم المختار أعلاه وبلونه."
             : "Signature, date, text and the rest land under the signer selected above, in their color."}
         </p>
       </div>
@@ -910,17 +942,40 @@ export default function SigningWorkspace({
         </div>
       ) : null}
 
-      <section style={{ padding: "8px 16px 16px", borderTop: `1px solid ${BORDER}` }}>
-        <strong style={{ fontSize: 15 }}>{ar ? "الموقّعون" : "Signers"}</strong>
-        <p style={{ margin: "6px 0 8px", fontSize: 11.5, color: MUTED, lineHeight: 1.6 }}>
-          {ar ? "لكل موقّع لون يُعرف به حقوله" : "Each signer has a color that marks their fields"}
+      <section style={{ padding: "10px 16px 16px", borderTop: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+          <strong style={{ fontSize: 13 }}>{ar ? "على الصفحات" : "On the pages"}</strong>
+          <span dir="ltr" style={{ ...mono, fontSize: 12, color: MUTED }}>{fields.length}</span>
+        </div>
+        {fields.length ? orderedFields(fields).map((field) => {
+          const owner = signers[field.signer];
+          const on = activeFieldId === field.id;
+          return (
+            <button key={field.id} type="button" onClick={() => { setActiveFieldId(field.id); setActivePage(field.page); document.querySelector(`[data-signing-page="${field.page}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }} style={{ textAlign: "start", fontFamily: "inherit", border: `1px solid ${on ? "#3C7D50" : BORDER}`, background: "var(--nv-card)", borderRadius: 8, padding: "7px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: owner?.color || MUTED, flex: "none" }} />
+              <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{field.label}</span>
+              <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap" }}>{owner?.name || "—"}</span>
+              <span dir="ltr" style={{ ...mono, fontSize: 11, color: MUTED }}>p{field.page}</span>
+            </button>
+          );
+        }) : <span style={{ fontSize: 12, color: MUTED }}>{ar ? "لا حقول بعد — اسحب «التوقيع» إلى موضعه." : "No fields yet — drag a signature to its spot."}</span>}
+      </section>
+    </>
+  );
+
+  const recipientsPanel = (
+    <>
+      <section style={{ padding: "16px 16px 12px" }}>
+        <strong style={{ fontSize: 15 }}>{ar ? "المستلمون" : "Recipients"}</strong>
+        <p style={{ margin: "6px 0 8px", fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+          {ar ? "لكل مستلم لون تُعرف به حقوله." : "Each recipient has a tint that marks their fields."}
         </p>
         <div style={{ display: "flex", background: "var(--nv-page)", borderRadius: 10, padding: 3, marginBottom: 10 }}>
-          <button type="button" onClick={() => setOrderMode("parallel")} style={{ flex: 1, height: 32, border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: orderMode === "parallel" ? "var(--nv-navy)" : "transparent", color: orderMode === "parallel" ? "#fff" : MUTED }}>
+          <button type="button" onClick={() => setOrderMode("parallel")} style={{ flex: 1, height: 32, border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: orderMode === "parallel" ? "var(--nv-card)" : "transparent", color: orderMode === "parallel" ? INK : MUTED, boxShadow: orderMode === "parallel" ? "0 0 0 1px #3C7D50" : "none" }}>
             {ar ? "بالتوازي" : "Parallel"}
           </button>
-          <button type="button" onClick={() => setOrderMode("sequential")} style={{ flex: 1, height: 32, border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: orderMode === "sequential" ? "var(--nv-navy)" : "transparent", color: orderMode === "sequential" ? "#fff" : MUTED }}>
-            {ar ? "بالتسلسل" : "Sequential"}
+          <button type="button" onClick={() => setOrderMode("sequential")} style={{ flex: 1, height: 32, border: "none", borderRadius: 8, fontFamily: "inherit", fontSize: 12.5, fontWeight: 700, cursor: "pointer", background: orderMode === "sequential" ? "var(--nv-card)" : "transparent", color: orderMode === "sequential" ? INK : MUTED, boxShadow: orderMode === "sequential" ? "0 0 0 1px #3C7D50" : "none" }}>
+            {ar ? "بالترتيب" : "In order"}
           </button>
         </div>
         {signers.map((signer, index) => {
@@ -928,9 +983,9 @@ export default function SigningWorkspace({
           const known = signer.name.trim() && emailValid(signer.email);
           const editing = signer.external && (editingSigner === index || !known);
           return (
-            <div key={signer.key} onClick={() => setSignerIndex(index)} style={{ border: `1px solid ${on ? "var(--nv-line)" : "var(--nv-line)"}`, borderRadius: 12, padding: "10px 10px 6px", marginBottom: 8, background: "var(--nv-card)", cursor: "pointer" }}>
+            <div key={signer.key} onClick={() => setSignerIndex(index)} style={{ border: `1px solid ${on ? signer.color : "var(--nv-line)"}`, borderRadius: 8, padding: "10px 10px 6px", marginBottom: 8, background: "var(--nv-card)", cursor: "pointer" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--nv-page)", fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{index + 1}</span>
+                <span dir="ltr" style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--nv-page)", fontSize: 11, fontWeight: 700, fontFamily: mono.fontFamily, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>{index + 1}</span>
                 <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 13 }}>
                     <span style={{ width: 8, height: 8, borderRadius: "50%", background: signer.color, flex: "none" }} />
@@ -940,7 +995,13 @@ export default function SigningWorkspace({
                     {index === 0 && !signer.external ? (ar ? "أنت · صاحب الختم" : "You · seal owner") : signer.email}
                   </span>
                 </span>
-                <span style={{ fontSize: 11, fontWeight: 600, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "3px 8px", flex: "none" }}>{ar ? "يوقّع" : "Signs"}</span>
+                {orderMode === "sequential" && index > 0 ? (
+                  <span style={{ display: "inline-flex", gap: 2, flex: "none" }}>
+                    <button type="button" aria-label={ar ? "قدّمه في الترتيب" : "Move up"} disabled={index < 2} onClick={(event) => { event.stopPropagation(); moveSigner(index, -1); }} style={{ ...chipBtn, padding: "2px 7px", opacity: index < 2 ? 0.4 : 1 }}>↑</button>
+                    <button type="button" aria-label={ar ? "أخّره في الترتيب" : "Move down"} disabled={index >= signers.length - 1} onClick={(event) => { event.stopPropagation(); moveSigner(index, 1); }} style={{ ...chipBtn, padding: "2px 7px", opacity: index >= signers.length - 1 ? 0.4 : 1 }}>↓</button>
+                  </span>
+                ) : null}
+                <span style={{ fontSize: 11, fontWeight: 600, color: MUTED, flex: "none" }}>{ar ? "يوقّع" : "Signs"}</span>
                 {signer.external ? (
                   <button type="button" aria-label={ar ? "حذف الموقّع" : "Remove signer"} onClick={(event) => { event.stopPropagation(); removeSigner(index); }} style={{ border: "none", background: "none", color: MUTED, cursor: "pointer", fontSize: 16, lineHeight: 1 }}>×</button>
                 ) : (
@@ -1018,56 +1079,63 @@ export default function SigningWorkspace({
     </>
   );
 
+  const expiresOn = new Date(Date.now() + 30 * 86400000).toLocaleDateString("en-GB");
+  const reviewRow = { display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: `1px solid ${BORDER}`, fontSize: 12.5, minWidth: 0 };
   const signStep = (
-    <section style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-      <strong style={{ fontSize: 15 }}>{ar ? "التوقيع" : "Signing"}</strong>
-      <span style={{ color: "var(--nv-ok-ink)", fontWeight: 700, fontSize: 12.5 }}>{ar ? "توقيع آمن · بصمة التراث" : "Secure Sign · heritage fingerprint"}</span>
-      <p style={{ margin: 0, fontSize: 12.5, color: MUTED, lineHeight: 1.7 }}>
-        {ar
-          ? "يُدمج الختم في ملف PDF، وتُحسب بصمة SHA-256، ويُسجَّل رقم التحقق في سجل الشركة. ليست شهادة حكومية مؤهلة."
-          : "The seal is merged into the PDF, a SHA-256 fingerprint is computed, and the verification id is written to the company registry."}
-      </p>
-      <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: 10, display: "flex", gap: 10, alignItems: "center" }}>
-        {sealPreview || signatureUrl ? <img src={sealPreview || signatureUrl} alt="" style={{ width: 64, height: 44, objectFit: "contain" }} /> : <span style={{ width: 64, height: 44, border: `1px dashed ${BORDER}`, borderRadius: 8 }} />}
+    <section data-studio-review="1" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+      <strong style={{ fontSize: 15 }}>{ar ? "المراجعة والإرسال" : "Review and send"}</strong>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: MUTED, paddingBottom: 4 }}>
+          <span>{ar ? "المستلمون" : "Recipients"}</span>
+          <span>{group ? (orderMode === "sequential" ? (ar ? "بالترتيب" : "In order") : (ar ? "بالتوازي" : "In parallel")) : (ar ? "توقيعك وحدك" : "Only you sign")}</span>
+        </div>
+        {signers.map((signer, index) => {
+          const n = fields.filter((field) => field.signer === index).length;
+          const hasSig = fields.some((field) => field.signer === index && field.type === "signature");
+          return (
+            <div key={signer.key} style={reviewRow}>
+              <span dir="ltr" style={{ ...mono, fontSize: 11, color: MUTED, width: 14, textAlign: "center" }}>{index + 1}</span>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: signer.color, flex: "none" }} />
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>{signer.name || (ar ? "بلا اسم" : "Unnamed")}</span>
+              {hasSig ? null : <span style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-warn-ink)", background: "var(--nv-warn-soft)", border: "1px solid var(--nv-warn-line)", borderRadius: 8, padding: "1px 7px" }}>{ar ? "بلا حقل توقيع" : "No signature field"}</span>}
+              <span dir="ltr" style={{ ...mono, fontSize: 12 }}>{n}</span>
+              <span style={{ fontSize: 11.5, color: MUTED }}>{ar ? "حقول" : "fields"}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ ...reviewRow, borderBottom: `1px solid ${BORDER}` }}>
+        <span style={{ flex: 1, color: MUTED }}>{ar ? "ختمك" : "Your seal"}</span>
+        {sealPreview || signatureUrl ? <img src={sealPreview || signatureUrl} alt="" style={{ width: 56, height: 34, objectFit: "contain" }} /> : null}
         <span dir="ltr" style={{ ...mono, fontSize: 11 }}>{docVerificationId}</span>
       </div>
+      {group ? (
+        <div style={{ ...reviewRow, borderTop: "none", paddingTop: 0 }}>
+          <span style={{ flex: 1, color: MUTED }}>{ar ? "صلاحية الروابط" : "Links valid until"}</span>
+          <span dir="ltr" style={{ ...mono, fontSize: 12 }}>{expiresOn}</span>
+        </div>
+      ) : null}
+      {!signatureUrl && onOpenStudio ? (
+        <button type="button" onClick={onOpenStudio} style={{ ...chipBtn, alignSelf: "flex-start", fontSize: 12, padding: "6px 12px" }}>{ar ? "صمّم ختمك" : "Design your seal"}</button>
+      ) : null}
       {!group ? (
         <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12.5, lineHeight: 1.65 }}>
-          <input type="checkbox" checked={intent} onChange={(event) => setIntent(event.target.checked)} style={{ marginTop: 3 }} />
+          <input type="checkbox" checked={intent} onChange={(event) => setIntent(event.target.checked)} style={{ marginTop: 3, accentColor: "#3C7D50" }} />
           {ar
-            ? "أقرّ بأنني راجعت المستند، وأن وضع هذا الختم يعبّر عن نيّتي في التوقيع."
-            : "I confirm I reviewed the document and that this seal expresses my intent to sign."}
+            ? "أوافق على استخدام التوقيع الإلكتروني، وأقرّ بأنني راجعت المستند وأن ختمي يعبّر عن نيّتي في التوقيع."
+            : "I agree to use an electronic signature; I reviewed the document and this seal expresses my intent to sign."}
         </label>
       ) : (
         <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.65 }}>
           {orderMode === "sequential"
-            ? (ar ? "يُحفظ الترتيب على المظروف. أي طرف معلّق يستطيع التوقيع من رابطه." : "The order is stored on the envelope. Any pending party can still sign from their link.")
-            : (ar ? "بالتوازي: كل طرف يوقّع من رابطه دون انتظار الباقين." : "Parallel: each party signs from their link without waiting.")}
+            ? (ar ? "يُحفظ الترتيب على المظروف ويظهر لكل طرف؛ ويستطيع أي طرف معلّق التوقيع من رابطه." : "The order is stored and shown; any pending party can still sign from their link.")
+            : (ar ? "يوقّع كل طرف من رابطه دون انتظار الباقين، وتذكّرهم من «توقيعاتي»." : "Each party signs from their link without waiting; remind them from the desk.")}
         </p>
       )}
       {placeBlock ? <p style={{ margin: 0, fontSize: 12, color: "var(--nv-bad-ink)" }}>{placeBlock}</p> : null}
-      <button type="button" onClick={requestFinish} disabled={busy} style={{ height: 36, border: "none", borderRadius: 8, background: "var(--nv-navy)", color: "#fff", fontWeight: 700, fontFamily: "inherit", cursor: "pointer" }}>
-        {group ? (ar ? "إرسال للتوقيع" : "Send for signature") : (ar ? "إنهاء وتوقيع" : "Finish and sign")}
+      <button type="button" onClick={requestFinish} disabled={busy} style={{ height: 38, border: "none", borderRadius: 8, background: "#3C7D50", color: "#fff", fontWeight: 700, fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>
+        {group ? (ar ? "أرسل" : "Send") : (ar ? "إنهاء التوقيع" : "Finish signing")}
       </button>
-    </section>
-  );
-
-  const fieldsStep = (
-    <section style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-      <strong style={{ fontSize: 15 }}>{ar ? "حقول" : "Fields"}</strong>
-      <p style={{ margin: 0, fontSize: 12, color: MUTED }}>{ar ? `${fields.length} حقول على الصفحات` : `${fields.length} fields on the pages`}</p>
-      {fields.length ? fields.map((field) => {
-        const owner = signers[field.signer];
-        return (
-          <button key={field.id} type="button" onClick={() => { setActiveFieldId(field.id); setActivePage(field.page); }} style={{ textAlign: "start", fontFamily: "inherit", border: `1px solid ${BORDER}`, background: "var(--nv-card)", borderRadius: 10, padding: "8px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: owner?.color || "var(--nv-ok-ink)", flex: "none" }} />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span style={{ display: "block", fontWeight: 700, fontSize: 12.5 }}>{field.label}</span>
-              <span style={{ display: "block", fontSize: 11, color: MUTED }}>{owner?.name} · {ar ? `صفحة ${field.page}` : `Page ${field.page}`}</span>
-            </span>
-          </button>
-        );
-      }) : <p style={{ margin: 0, fontSize: 12, color: MUTED }}>{ar ? "لم تُوضع حقول بعد. ارجع إلى الخطوة الأولى." : "No fields yet. Go back to the first step."}</p>}
     </section>
   );
 
@@ -1082,14 +1150,14 @@ export default function SigningWorkspace({
         fieldCount={fields.length}
         nextLabel={nextLabel}
         onBack={requestLeave}
-        onStep={setStudioStep}
+        onStep={goStep}
         onNext={goHeaderNext}
         onAutoPlace={suggestSpots}
         autoPlaceBusy={!pdf || detecting}
         signers={signers}
         signerIndex={signerIndex}
         onPickSigner={setSignerIndex}
-        onAddSigners={() => { setStudioStep(1); setFocusAdd(true); }}
+        onAddSigners={() => { setStudioStep(2); setFocusAdd(true); }}
         people={shownPeople}
         peopleQuery={peopleQuery}
         onPeopleQuery={setPeopleQuery}
@@ -1131,7 +1199,7 @@ export default function SigningWorkspace({
             />
           </div>
         ) : null}
-        panel={studioStep === 2 ? signStep : studioStep === 3 ? fieldsStep : fieldsPanel}
+        panel={studioStep === 2 ? recipientsPanel : studioStep === 3 ? fieldsPanel : signStep}
       >
         {rail === "summary" ? (
           <aside style={{ position: "absolute", top: 12, insetInlineEnd: 12, zIndex: 4, width: 240, background: "var(--nv-card)", border: `1px solid ${BORDER}`, borderRadius: 12, padding: 12, boxShadow: "0 8px 24px rgba(20,33,61,.08)" }}>

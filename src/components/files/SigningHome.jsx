@@ -1,22 +1,34 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { base44 } from "@/api/base44Client";
 import { imageBlobToPdf } from "@/lib/signPdf";
-import SigningStatusBoard, { settledState, stateLabel } from "@/components/files/SigningStatusBoard";
-import { canDownloadFinal, isArchivedSigningEnvelope, isOpenSigningState } from "@/lib/multiSignDerivations";
+import SigningStatusBoard, { RecipientAvatar, settledState } from "@/components/files/SigningStatusBoard";
 import VerifyWorkspace from "@/components/files/VerifyWorkspace";
-import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import StatusFilterPills from "@/components/shared/StatusFilterPills";
-import { signMono as mono } from "./signingUi";
-import {
-  SIGN_BODY,
-  SIGN_INK,
-  SIGN_LINE,
-  SIGN_MUTED,
-  SIGN_WHITE,
-} from "@/components/files/SigningSectionFrame";
-import { formatUiNumber } from "@/lib/dateFormat";
-import { pageKicker } from "@/lib/moduleMeta";
+import TwoPaneWorkspace, { ListStack } from "@/components/shared/TwoPaneWorkspace";
+import CollapsibleItemCard, { useCollapsibleItems } from "@/components/shared/CollapsibleItemCard";
+import AttachDropzone from "@/components/shared/AttachDropzone";
+import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
+import SectionBackLink from "@/components/shared/SectionBackLink";
 import { SearchWrap } from "@/components/shared/NvIcon";
+import { chip, mono, SectionHead, slab } from "@/components/schedules/scheduleChrome";
+import { formatUiNumber } from "@/lib/dateFormat";
+import { getCompanyToken } from "@/lib/store";
+import { invokeLocalMultiSign, shouldUseLocalMultiSign } from "@/lib/localMultiSignFallback";
+import { isServiceOutage } from "@/lib/serviceErrors";
+import { listFieldTemplates } from "@/lib/signingFieldTools";
+import { isArchivedSigningEnvelope } from "@/lib/multiSignDerivations";
+import {
+  envelopeBucket,
+  envelopeMatches,
+  envelopePillCounts,
+  envelopeRecipients,
+  isOverdueEnvelope,
+  lastActivityAt,
+  remindableSigners,
+  senderAnalytics,
+} from "@/lib/signingEnvelopes";
+import { toast } from "@/components/ui/use-toast";
 
 const MAX_SIZE = 25 * 1024 * 1024;
 const isPdf = (file) => file?.type === "application/pdf" || file?.name?.toLowerCase().endsWith(".pdf");
@@ -24,183 +36,62 @@ const isPng = (file) => file?.type === "image/png" || file?.name?.toLowerCase().
 const isJpeg = (file) => file?.type === "image/jpeg" || /\.jpe?g$/i.test(file?.name || "");
 const isImage = (file) => isPng(file) || isJpeg(file);
 
-const PAPER = {
-  background: SIGN_WHITE,
-  border: `1px solid ${SIGN_LINE}`,
-  borderRadius: 14,
-  boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
-  boxSizing: "border-box",
+/** Bucket → the row dot. Status colour is meaning: amber needs a hand, green closed, red refused. */
+const DOT = {
+  action: "#C8A45A",
+  waiting: "var(--nv-line, #D5DCD8)",
+  done: "#3C7D50",
+  declined: "#B4443C",
 };
 
-const TONE = {
-  action: { ink: "var(--nv-warn-ink)", soft: "var(--nv-warn-soft)", line: "var(--nv-warn-line)", fill: "var(--nv-warn-fill)" },
-  waiting: { ink: "var(--nv-ink)", soft: "var(--nv-g1)", line: "var(--nv-box)", fill: "var(--nv-navy)" },
-  done: { ink: "var(--nv-ok-ink)", soft: "var(--nv-ok-soft)", line: "var(--nv-ok-line)", fill: "var(--nv-ok-fill)" },
-  declined: { ink: "var(--nv-bad-ink)", soft: "var(--nv-bad-soft)", line: "var(--nv-bad-line)", fill: "var(--nv-bad-fill)" },
-  draft: { ink: "var(--nv-mute-ink)", soft: "var(--nv-mute-soft)", line: "var(--nv-mute-line)", fill: "var(--nv-mute-fill)" },
-};
-
-function deskBucket(request) {
-  const { state, cooling } = settledState(request);
-  if (state === "deleted" || state === "rejected") return "declined";
-  if (state === "completed" || state === "completed_with_refusal") return "done";
-  if (state === "pending" && request.myStatus === "pending" && !cooling) return "action";
-  return "waiting";
-}
-
-function storedFingerprint(request) {
-  const finalHash = String(request?.finalHash || "").trim();
-  if (finalHash) return finalHash;
-  const events = Array.isArray(request?.auditTrail) ? request.auditTrail : [];
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const hash = String(events[index]?.documentHash || "").trim();
-    if (hash) return hash;
-  }
-  return "";
-}
-
-function shortFingerprint(value) {
-  const clean = String(value || "").replace(/\s/g, "");
-  if (!clean) return "";
-  if (clean.length <= 18) return clean;
-  return `${clean.slice(0, 8)}…${clean.slice(-4)}`;
-}
-
-function closeStamp(request) {
-  const { state } = settledState(request);
-  if (state === "deleted") return request.deletedAt || request.lastActivityAt || "";
-  return request.releasedAt || request.lastActivityAt || request.completedAt || "";
-}
-
-function partyLine(request, currentUser, ar) {
-  const mine = String(currentUser?.email || "").toLowerCase();
-  const parties = (request.signers || [])
-    .filter((signer) => String(signer.email || "").toLowerCase() !== mine)
-    .map((signer) => signer.name)
-    .filter(Boolean);
-  const names = parties.length ? parties : (request.signers || []).map((signer) => signer.name).filter(Boolean);
-  return names.join(ar ? "، " : ", ") || "—";
-}
-
-function deskLabel(request, ar) {
-  const derived = settledState(request);
-  const bucket = deskBucket(request);
-  if (bucket === "action") return ar ? "يحتاج توقيعك" : "Needs your signature";
-  if (derived.state === "deleted") return ar ? "مُلغى" : "Voided";
-  if (derived.state === "pending") return ar ? "بانتظار الآخرين" : "Waiting on others";
-  if (derived.cooling) return stateLabel(derived.state, ar, true);
-  return stateLabel(derived.state, ar, false, derived);
-}
-
-function pillStyle(bucket) {
-  const tone = TONE[bucket] || TONE.draft;
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    height: 22,
-    padding: "0 9px",
-    borderRadius: 999,
-    fontSize: 10.5,
-    fontWeight: 700,
-    whiteSpace: "nowrap",
-    color: tone.ink,
-    background: tone.soft,
-    border: `1px solid ${tone.line}`,
-  };
-}
-
-function stamp(value, ar) {
+function stamp(value) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", {
-    timeZone: "Asia/Riyadh",
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // Mono Latin digits in Riyadh time, 24h — no ص/م marks to break the direction.
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Riyadh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date).replace(",", "");
 }
 
-function weekStart(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const day = (date.getDay() + 6) % 7;
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() - day);
-  return date.toISOString().slice(0, 10);
+function docTitle(name = "") {
+  return String(name || "").replace(/\.(pdf|png|jpe?g)$/i, "").trim() || name;
 }
 
-function recentWeeks() {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  now.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  const keys = [];
-  for (let index = 11; index >= 0; index -= 1) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - index * 7);
-    keys.push(date.toISOString().slice(0, 10));
-  }
-  return keys;
+/** A row inside a slab: label and muted note on one side, the value or control on the other. */
+function Line({ label, note, children, dataKey }) {
+  return (
+    <div data-sign-line={dataKey || undefined} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 18px", borderTop: "1px solid var(--nv-line2, #EEF2F7)", minWidth: 0, flexWrap: "wrap" }}>
+      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: "1 1 160px" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--nv-ink)" }}>{label}</span>
+        {note ? <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.6 }}>{note}</span> : null}
+      </span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>{children}</span>
+    </div>
+  );
 }
 
-async function downloadFinalCopy(request) {
-  if (!request?.docUrl) return;
-  try {
-    const blob = await fetch(request.docUrl).then((response) => response.blob());
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    const anchor = link;
-    anchor.href = url;
-    anchor.download = request.fileName || "document.pdf";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  } catch {
-    window.open(request.docUrl, "_blank");
-  }
-}
-
-const HEADS = {
-  home: {
-    ar: ["الاتفاقيات", "كل ما أرسلته أو وصلك للتوقيع، مرتّباً حسب ما يحتاج تصرّفك."],
-    en: ["Agreements", "Everything you sent or received to sign, ordered by what needs you."],
-  },
-  track: {
-    ar: ["تتبّع المظروف", "مسار كل طرف ووقت كل حدث. البصمة تُثبَّت بعد إغلاق المهلة وتمرير المنشئ."],
-    en: ["Track envelope", "Each party and each event. The fingerprint registers after cooling closes and the creator releases."],
-  },
-  templates: {
-    ar: ["مكتبة القوالب", "لا كتالوج قوالب محفوظ. التحضير يبدأ برفع المستند إلى الورشة."],
-    en: ["Template library", "There is no saved template catalog. Preparation starts by uploading a document into the workshop."],
-  },
-  reports: {
-    ar: ["التقارير", "أرقام مشتقّة من مظاريف الشركة الظاهرة لك. لا أرقام تجريبية."],
-    en: ["Reports", "Figures derived from the company envelopes you can see. No sample numbers."],
-  },
-  settings: {
-    ar: ["الإعدادات", "ختمك وبصمة SHA-256 وسجل الشركة. التحقق العام يبقى على الرابط العام."],
-    en: ["Settings", "Your seal, the SHA-256 fingerprint, and the company registry. Public verify stays on the public link."],
-  },
-  verify: {
-    ar: ["التحقق من المستند", "تُحسب بصمة الملف على جهازك وتُطابق سجل الشركة. الملف لا يُرفع إلى الخادم."],
-    en: ["Verify a document", "The file fingerprint is computed on your device and matched to the company registry. The file is never uploaded."],
-  },
-  archive: {
-    ar: ["الأرشيف", "المكتمل والمرفوض والمُلغى يغادر الاتفاقيات ويبقى هنا بتاريخ الإغلاق والبصمة إن وُجدت."],
-    en: ["Archive", "Completed, refused, and voided envelopes leave Agreements and stay here with the close date and any stored fingerprint."],
-  },
+const lineBtn = {
+  fontFamily: "inherit",
+  height: 30,
+  padding: "0 12px",
+  borderRadius: 8,
+  border: "1px solid var(--nv-line)",
+  background: "var(--nv-card)",
+  color: "var(--nv-ink)",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  whiteSpace: "nowrap",
 };
 
 export default function SigningHome({
   ar,
-  lang,
+  lane = "employee",
   currentUser,
   companyId,
-  companyName = "",
   employees = [],
-  stations = [],
   requests,
   loading,
   initialFilter = "all",
@@ -216,53 +107,40 @@ export default function SigningHome({
   focusRequestId = "",
   sentLinks = [],
 }) {
-  const inputRef = useRef(null);
+  const manage = lane === "manage";
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
-  const [folder, setFolder] = useState(() => (initialFilter === "mine" ? "action" : "all"));
-  const [archiveFolder, setArchiveFolder] = useState("all");
-  const [view, setView] = useState(() => (
-    initialFilter === "verify" ? "verify"
-      : initialFilter === "status" ? "track"
-        : initialFilter === "archive" ? "archive"
-          : "home"
+  const [pill, setPill] = useState(() => (
+    initialFilter === "mine" ? "action" : initialFilter === "archive" ? "archive" : "all"
   ));
-  const [selectedId, setSelectedId] = useState(focusRequestId || "");
+  const [view, setView] = useState(() => (initialFilter === "verify" ? "verify" : "home"));
+  const [focusId, setFocusId] = useState(focusRequestId || "");
+  const [templateId, setTemplateId] = useState("");
+  const [remindingAll, setRemindingAll] = useState(false);
+  const templates = useMemo(() => listFieldTemplates(companyId), [companyId]);
 
   useEffect(() => {
     if (!activeFilter) return;
-    if (activeFilter === "mine") { setView("home"); setFolder("action"); }
+    if (activeFilter === "mine") { setView("home"); setPill("action"); }
     else if (activeFilter === "verify") setView("verify");
-    else if (activeFilter === "status") setView("track");
-    else if (activeFilter === "archive") { setView("archive"); setArchiveFolder("all"); }
-    else if (activeFilter === "all") { setView("home"); setFolder("all"); }
+    else if (activeFilter === "archive") { setView("home"); setPill("archive"); }
+    else { setView("home"); setPill("all"); }
   }, [activeFilter]);
 
   useEffect(() => {
     if (!focusRequestId) return;
-    setSelectedId(focusRequestId);
-    setView("track");
+    setFocusId(focusRequestId);
+    setView("home");
+    setPill("all");
   }, [focusRequestId]);
 
-  const rows = useMemo(() => requests || [], [requests]);
-  const monthKey = new Date().toISOString().slice(0, 7);
-  const counts = useMemo(() => {
-    const tally = { action: 0, waiting: 0, done: 0, doneMonth: 0, declined: 0, refused: 0 };
-    rows.forEach((row) => {
-      const bucket = deskBucket(row);
-      if (bucket === "action") tally.action += 1;
-      else if (bucket === "waiting") tally.waiting += 1;
-      else if (bucket === "done") {
-        tally.done += 1;
-        if (String(row.lastActivityAt || row.createdAt || "").slice(0, 7) === monthKey) tally.doneMonth += 1;
-      } else if (bucket === "declined") {
-        tally.declined += 1;
-        if (settledState(row).state === "rejected") tally.refused += 1;
-      }
-    });
-    return tally;
-  }, [monthKey, rows]);
+  // The employee lane is the person's own desk: what they sign and what they sent.
+  // The management lane is every envelope this account can see.
+  const rows = useMemo(() => {
+    const all = requests || [];
+    return manage ? all : all.filter((row) => row.myStatus || row.isCreator);
+  }, [manage, requests]);
 
   const knownEmails = useMemo(() => {
     const set = new Set();
@@ -277,34 +155,25 @@ export default function SigningHome({
 
   const activeRows = useMemo(() => rows.filter((row) => !isArchivedSigningEnvelope(row)), [rows]);
   const archiveRows = useMemo(() => rows.filter((row) => isArchivedSigningEnvelope(row)), [rows]);
-  const query = q.trim();
+  const pillCounts = useMemo(() => envelopePillCounts(rows), [rows]);
+  const count = (id) => pillCounts[id] || 0;
+  const query = q.trim().toLowerCase();
   const matchesQuery = (row) => {
     if (!query) return true;
-    const blob = [
+    return [
       row.fileName,
       row.verificationId,
       row.finalHash,
       row.creatorName,
       ...(row.signers || []).map((signer) => `${signer.name || ""} ${signer.email || ""}`),
-    ].join(" ");
-    return blob.includes(query);
+    ].join(" ").toLowerCase().includes(query);
   };
-  const listed = activeRows.filter((row) => {
-    if (folder === "draft") return false;
-    if (folder !== "all" && deskBucket(row) !== folder) return false;
-    return matchesQuery(row);
-  });
-  const archivedListed = archiveRows.filter((row) => {
-    const bucket = deskBucket(row);
-    if (archiveFolder === "done" && bucket !== "done") return false;
-    if (archiveFolder === "declined" && bucket !== "declined") return false;
-    return true;
-  });
+  const listed = (pill === "all" ? activeRows.filter(matchesQuery) : rows.filter((row) => envelopeMatches(row, pill) && matchesQuery(row)))
+    .sort((left, right) => (Date.parse(lastActivityAt(right) || "") || 0) - (Date.parse(lastActivityAt(left) || "") || 0));
+  const fold = useCollapsibleItems(listed.map((row) => row.id), focusId);
 
-  const selected = rows.find((row) => row.id === selectedId) || null;
-  const head = HEADS[view] || HEADS.home;
-  const title = ar ? head.ar[0] : head.en[0];
-  const lede = ar ? head.ar[1] : head.en[1];
+  const stats = useMemo(() => senderAnalytics(rows.filter((row) => row.isCreator || manage)), [manage, rows]);
+  const overdueMine = stats.overdue.filter((row) => remindableSigners(row).length);
 
   const accept = async (file) => {
     if (!file) return;
@@ -315,614 +184,300 @@ export default function SigningHome({
     }
     if (!isPdf(file) && !isImage(file)) {
       setError(ar
-        ? "ورشة التوقيع تفتح PDF أو صورة PNG/JPEG. ملفات Word وExcel تُصدَّر إلى PDF ثم تُرفع هنا."
-        : "The workspace opens PDF or a PNG/JPEG image. Export Word or Excel to PDF, then upload that.");
+        ? "يُفتح PDF أو صورة PNG/JPEG. صدّر ملفات Word وExcel إلى PDF ثم ارفعها."
+        : "Upload a PDF or a PNG/JPEG image. Export Word or Excel to PDF first.");
       return;
     }
     setPreparing(true);
     try {
       if (isPdf(file)) {
-        onOpenDocument({ file, sourceUrl: URL.createObjectURL(file) });
+        onOpenDocument({ file, sourceUrl: URL.createObjectURL(file), templateId });
       } else {
         const { bytes } = await imageBlobToPdf(file, false);
         const pdfFile = new File([bytes], file.name.replace(/\.(png|jpe?g)$/i, ".pdf"), { type: "application/pdf" });
-        onOpenDocument({ file: pdfFile, sourceUrl: URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })) });
+        onOpenDocument({ file: pdfFile, sourceUrl: URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })), templateId });
       }
     } catch {
       setError(ar
-        ? "تعذّر تغليف الصورة في PDF. جرّب PNG أو JPEG، أو صدّر المستند إلى PDF ثم ارفعه."
-        : "Couldn't wrap that image into a PDF. Try PNG or JPEG, or export the document to PDF and upload that.");
+        ? "تعذّر تغليف الصورة في PDF. جرّب PNG أو JPEG، أو صدّر المستند إلى PDF."
+        : "Couldn't wrap that image into a PDF. Try PNG or JPEG, or export to PDF.");
     } finally {
       setPreparing(false);
-      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
-  const openRow = (request) => {
-    if (deskBucket(request) === "action" && request.myToken) {
+  const openDocument = (request) => {
+    if (envelopeBucket(request) === "action" && request.myToken) {
       onOpenRequest(request);
       return;
     }
-    setSelectedId(request.id);
-    setView("track");
+    if (request.docUrl) window.open(request.docUrl, "_blank", "noopener");
   };
 
-  const goNav = (id) => {
-    if (id === "prepare") {
-      inputRef.current?.click();
-      return;
+  // «ذكّر الكل»: one reminder to each pending party of every overdue envelope you sent.
+  const remindOverdue = async () => {
+    if (remindingAll || !overdueMine.length) return;
+    setRemindingAll(true);
+    const actor = { id: currentUser?.id, userId: currentUser?.id, email: currentUser?.email || "", name: currentUser?.name || "", companyId };
+    let sent = 0;
+    let total = 0;
+    for (const request of overdueMine) {
+      for (const signer of remindableSigners(request)) {
+        total += 1;
+        const payload = {
+          action: "remind",
+          companyId,
+          sessionToken: getCompanyToken(companyId),
+          userId: currentUser?.id,
+          requestId: request.id,
+          signerEmail: signer.email,
+          lang: ar ? "ar" : "en",
+        };
+        try {
+          if (shouldUseLocalMultiSign()) invokeLocalMultiSign(payload, { actor });
+          else {
+            try {
+              await base44.functions.invoke("multiSign", payload);
+            } catch (err) {
+              if (!isServiceOutage(err)) throw err;
+              invokeLocalMultiSign(payload, { actor });
+            }
+          }
+          sent += 1;
+        } catch { /* counted below */ }
+      }
     }
-    if (id === "archive") {
-      setArchiveFolder("all");
-      setView("archive");
-      return;
-    }
-    if (id === "track" && !selectedId) {
-      const open = rows.find((row) => !isArchivedSigningEnvelope(row)) || rows[0];
-      if (open) setSelectedId(open.id);
-    }
-    setView(id);
+    setRemindingAll(false);
+    toast({
+      description: ar ? `أُرسل ${formatUiNumber(sent)} من ${formatUiNumber(total)} تذكيرات.` : `${sent} of ${total} reminders sent.`,
+      variant: sent ? undefined : "destructive",
+    });
+    onReload?.();
   };
 
-  const kpis = [
-    { id: "action", label: ar ? "يحتاج توقيعك" : "Needs you", value: counts.action },
-    { id: "waiting", label: ar ? "بانتظار الآخرين" : "Waiting on others", value: counts.waiting },
-    { id: "done", label: ar ? "مكتمل هذا الشهر" : "Completed this month", value: counts.doneMonth },
-    { id: "declined", label: ar ? "مرفوض" : "Refused", value: counts.refused },
-  ];
-
-  // «توقيعاتي» filters as in طلباتي: الكل, what needs your signature, what waits on others,
-  // drafts, then الأرشيف (completed, refused, voided) last.
+  // «توقيعاتي» / «المظاريف» pills: الكل is the open desk, الأرشيف what closed.
   const folders = [
     ["all", ar ? "الكل" : "All", activeRows.length],
-    ["action", ar ? "يحتاج توقيعك" : "Needs you", counts.action],
-    ["waiting", ar ? "بانتظار الآخرين" : "Waiting on others", counts.waiting],
-    ["draft", ar ? "المسودات" : "Drafts", 0],
+    ["action", ar ? "يحتاج توقيعك" : "Needs you", count("action")],
+    ["waiting", ar ? "بانتظار الآخرين" : "Waiting on others", count("waiting")],
+    ["done", ar ? "مكتمل" : "Completed", count("done")],
+    ["draft", ar ? "مسودات" : "Drafts", 0],
+    ["declined", ar ? "ملغى/مرفوض" : "Voided/declined", count("declined")],
     ["archive", ar ? "الأرشيف" : "Archive", archiveRows.length],
   ];
-  const listPills = (
-    <StatusFilterPills
-      card
-      dataKey="signing-mine"
-      title={ar ? "توقيعاتي" : "My signatures"}
-      value={view === "archive" ? "archive" : folder}
-      onChange={(id) => {
-        if (id === "archive") {
-          setArchiveFolder("all");
-          setView("archive");
-          return;
-        }
-        setFolder(id);
-        setView("home");
-      }}
-      items={folders.map(([id, label, n]) => ({ id, label, n: formatUiNumber(n, ar) }))}
-    />
-  );
 
-  const nav = [
-    ["home", ar ? "الاتفاقيات" : "Agreements", counts.action],
-    ["prepare", ar ? "تحضير وإرسال" : "Prepare & send", 0],
-    ["track", ar ? "تتبّع المظروف" : "Track envelope", 0],
-    ["archive", ar ? "الأرشيف" : "Archive", 0],
-    ["templates", ar ? "القوالب" : "Templates", 0],
-    ["reports", ar ? "التقارير" : "Reports", 0],
-    ["settings", ar ? "الإعدادات" : "Settings", 0],
-  ];
-
-  const actionTab = (on) => ({
-    fontFamily: "inherit",
-    boxSizing: "border-box",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: 36,
-    padding: "0 14px",
-    flex: "none",
-    flexShrink: 0,
-    whiteSpace: "nowrap",
-    overflow: "visible",
-    textOverflow: "clip",
-    fontSize: 13,
-    fontWeight: on ? 700 : 600,
-    lineHeight: 1.4,
-    color: on ? "#fff" : "var(--nv-ink)",
-    background: on ? "var(--nv-btn-fill)" : "var(--nv-card)",
-    border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`,
-    borderRadius: 8,
-    cursor: "pointer",
-  });
-  const greenBtn = {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    height: 34,
-    padding: "0 14px",
-    borderRadius: 10,
-    background: "var(--nv-btn-fill)",
-    color: "#fff",
-    border: "none",
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: preparing ? "wait" : "pointer",
-    whiteSpace: "nowrap",
-    fontFamily: "inherit",
-  };
-  const navyBtn = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: 34,
-    padding: "0 14px",
-    borderRadius: 10,
-    background: "var(--nv-navy)",
-    color: "#fff",
-    border: "none",
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: "pointer",
-    fontFamily: "inherit",
-  };
-  const ghostBtn = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: 30,
-    padding: "0 12px",
-    borderRadius: 9,
-    background: SIGN_WHITE,
-    color: SIGN_INK,
-    border: `1px solid ${SIGN_LINE}`,
-    fontSize: 11.5,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontFamily: "inherit",
-    whiteSpace: "nowrap",
-  };
-
-  return (
-    <div className="nv-sign-home" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <section style={{ ...PAPER, padding: "16px 20px 0", display: "flex", flexDirection: "column", gap: 12 }}>
-        <span style={{ fontSize: 10, letterSpacing: ".14em", color: SIGN_MUTED, fontWeight: 600 }}>{pageKicker("/app/signing", lang)}</span>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ maxWidth: 560, display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-            <h2 style={{ margin: 0, font: "700 16px var(--font-heading), sans-serif", letterSpacing: "-0.01em" }}>{title}</h2>
-            <p style={{ margin: 0, fontSize: 11, color: SIGN_MUTED, textWrap: "pretty" }}>{lede}</p>
-          </div>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
-            {kpis.map((item) => {
-              const settledKpi = item.id === "done" || item.id === "declined";
-              const on = settledKpi
-                ? view === "archive" && archiveFolder === item.id
-                : view === "home" && folder === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className="nv-sign-kpi"
-                  onClick={() => {
-                    if (settledKpi) {
-                      setArchiveFolder(item.id);
-                      setView("archive");
-                      return;
-                    }
-                    setFolder(item.id);
-                    setView("home");
-                  }}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    cursor: "pointer",
-                    paddingInlineEnd: 14,
-                    border: "none",
-                    borderInlineEnd: "1px solid var(--nv-line3)",
-                    background: "transparent",
-                    fontFamily: "inherit",
-                    textAlign: "start",
-                    boxShadow: on ? `inset 0 -2px 0 ${TONE[item.id].fill}` : "none",
-                  }}
-                >
-                  <span style={{ fontSize: 10, color: SIGN_MUTED, whiteSpace: "nowrap" }}>{item.label}</span>
-                  <span dir="ltr" style={{ ...mono, fontSize: 18, fontWeight: 500, color: "var(--nv-ink)" }}>{formatUiNumber(item.value, ar)}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          {view !== "archive" ? (
-          <SearchWrap style={{ flex: 1, minWidth: 220, maxWidth: 420 }}>
-            <input
-              className="nv-sign-query"
-              value={q}
-              onChange={(event) => {
-                setQ(event.target.value);
-                if (view === "archive") return;
-                setView("home");
-                setFolder("all");
-              }}
-              placeholder={ar ? "ابحث في الاتفاقيات والأطراف" : "Search agreements and parties"}
-              style={{ height: 34, width: "100%", boxSizing: "border-box", padding: "0 12px", paddingInlineStart: 30, borderRadius: 10, border: `1px solid ${SIGN_LINE}`, background: SIGN_WHITE, fontSize: 12, outline: "none", color: SIGN_INK, fontFamily: "inherit" }}
-            />
-          </SearchWrap>
-          ) : null}
-          <span style={{ flex: 1 }} />
-          <div className="nv-sign-actions" style={{ display: "flex", alignItems: "center", gap: 16, flex: "none", flexShrink: 0 }}>
-            <button type="button" className="nv-sign-action" onClick={onOpenStudio} style={actionTab(false)}>{ar ? "الختم" : "Seal"}</button>
-            <button type="button" className="nv-sign-action" aria-current={view === "verify" ? "page" : undefined} onClick={() => setView("verify")} style={actionTab(view === "verify")}>{ar ? "التحقق من المستند" : "Verify a document"}</button>
-          </div>
-          <button type="button" onClick={() => inputRef.current?.click()} disabled={preparing} style={greenBtn}>
-            {preparing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "＋"}
-            {ar ? "مستند جديد للتوقيع" : "New document to sign"}
-          </button>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="application/pdf,.pdf,image/png,.png,image/jpeg,.jpg,.jpeg"
-            onChange={(event) => accept(event.target.files?.[0])}
-            style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
-          />
-        </div>
-        {error ? <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.6 }}>{error}</span> : null}
-        <nav style={{ display: "flex", gap: 2, overflowX: "auto", scrollbarWidth: "none", margin: "0 -20px", padding: "0 14px", borderTop: "1px solid var(--nv-line3)" }}>
-          {nav.map(([id, label, badge]) => {
-            const on = view === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                className="nv-sign-nav"
-                onClick={() => goNav(id)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  height: 42,
-                  padding: "0 12px",
-                  fontSize: 12,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  flex: "none",
-                  border: "none",
-                  borderBottom: `2px solid ${on ? "var(--nv-navy)" : "transparent"}`,
-                  background: "transparent",
-                  color: on ? "var(--nv-ink)" : SIGN_BODY,
-                  fontWeight: on ? 700 : 400,
-                  fontFamily: "inherit",
-                  borderRadius: 0,
-                }}
-              >
-                {label}
-                {badge > 0 ? (
-                  <span dir="ltr" style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 6px", borderRadius: 999, font: "600 10px 'IBM Plex Mono', monospace", background: "var(--nv-warn-fill)", color: "#fff" }}>
-                    {formatUiNumber(badge, ar)}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </nav>
-      </section>
-
-      {view === "home" ? (
-        <div className="nv-list-stack" data-signing-list="1">
-        {listPills}
-        <section style={{ ...PAPER, overflow: "hidden" }}>
-          <div style={{ overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 580 }}>
-              <thead>
-                <tr>
-                  {(ar ? ["المستند", "الحالة والتقدّم", "الأطراف", ""] : ["Document", "Status and progress", "Parties", ""]).map((label) => (
-                    <th key={label || "act"} style={{ textAlign: "start", fontSize: 10.5, color: SIGN_MUTED, fontWeight: 600, padding: "8px 14px", background: "var(--nv-hover)", borderBottom: `1px solid var(--nv-line3)`, whiteSpace: "nowrap" }}>{label}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {requests === null || loading ? (
-                  <tr>
-                    <td colSpan={4} style={{ padding: 24, fontSize: 12, color: SIGN_MUTED }}>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Loader2 className="h-4 w-4 animate-spin" />{ar ? "جارٍ تحميل المستندات…" : "Loading documents…"}</span>
-                    </td>
-                  </tr>
-                ) : listed.map((request) => {
-                  const bucket = deskBucket(request);
-                  const { signed, total } = settledState(request);
-                  const pct = total ? Math.round((signed / total) * 100) : 0;
-                  const partyText = partyLine(request, currentUser, ar);
-                  const downloadReady = canDownloadFinal(request);
-                  const actLabel = bucket === "action" ? (ar ? "وقّع" : "Sign") : downloadReady ? (ar ? "تنزيل" : "Download") : (ar ? "تتبّع" : "Track");
-                  const actStyle = bucket === "action"
-                    ? { ...ghostBtn, background: "var(--nv-warn-fill)", color: "#fff", borderColor: "var(--nv-warn-fill)" }
-                    : ghostBtn;
-                  return (
-                    <tr
-                      key={request.id}
-                      onClick={() => openRow(request)}
-                      style={{ cursor: "pointer", background: bucket === "action" ? "var(--nv-warn-soft)" : SIGN_WHITE }}
-                    >
-                      <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line3)" }}>
-                        <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
-                          <span style={{ width: 32, height: 38, borderRadius: 5, flex: "none", display: "inline-flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 5, boxSizing: "border-box", font: "700 8px 'IBM Plex Mono', monospace", color: "#fff", background: TONE[bucket].fill }}>PDF</span>
-                          <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                            <strong style={{ fontSize: 12.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 340 }}>{request.fileName}</strong>
-                            <span dir="ltr" style={{ ...mono, fontSize: 10, color: SIGN_MUTED, textAlign: "end" }}>{request.verificationId || "—"}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line3)" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 5, alignItems: "flex-start" }}>
-                          <span style={pillStyle(bucket)}>{deskLabel(request, ar)}</span>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <div style={{ width: 56, height: 5, borderRadius: 999, background: "var(--nv-soft)", overflow: "hidden" }}>
-                              <div style={{ height: "100%", width: `${pct}%`, background: TONE[bucket].fill }} />
-                            </div>
-                            <span dir="ltr" style={{ ...mono, fontSize: 10.5, fontWeight: 600 }}>{formatUiNumber(`${signed}/${total}`, ar)}</span>
-                            <span dir="ltr" style={{ ...mono, fontSize: 10, color: SIGN_MUTED }}>{stamp(request.lastActivityAt || request.createdAt, ar)}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line3)", fontSize: 11.5, color: SIGN_BODY }}>{partyText}</td>
-                      <td style={{ padding: "11px 14px", borderBottom: "1px solid var(--nv-line3)", position: "sticky", insetInlineEnd: 0, background: "inherit" }}>
-                        <button
-                          type="button"
-                          style={actStyle}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (downloadReady && bucket !== "action") {
-                              downloadFinalCopy(request);
-                              return;
-                            }
-                            openRow(request);
-                          }}
-                        >
-                          {actLabel}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {requests !== null && !loading && listed.length === 0 ? (
-            <div style={{ padding: 24, textAlign: "center", fontSize: 12, color: SIGN_MUTED, lineHeight: 1.8 }}>
-              {folder === "draft"
-                ? (ar ? "لا مسودات محفوظة. «مستند جديد» يفتح الورشة مباشرة." : "No saved drafts. New document opens the workshop directly.")
-                : query
-                  ? (ar ? `لا اتفاقية تطابق «${query}».` : `No agreement matches “${query}”.`)
-                  : folder === "all"
-                    ? (ar ? "لا اتفاقيات قيد التوقيع. ما اكتمل أو رُفض أو أُلغي تجده في الأرشيف." : "No agreement is in signing. Completed, refused, and voided envelopes are in the archive.")
-                    : (ar ? "لا اتفاقيات في هذا المجلد." : "No agreements in this folder.")}
-            </div>
-          ) : null}
-        </section>
-        </div>
-      ) : null}
-
-      {view === "archive" ? (
-        requests === null || loading ? (
-          <section style={{ ...PAPER, padding: 24, fontSize: 12, color: SIGN_MUTED }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Loader2 className="h-4 w-4 animate-spin" />{ar ? "جارٍ تحميل الأرشيف…" : "Loading the archive…"}</span>
-          </section>
-        ) : (
-          <>
-          {listPills}
-          <RecordSmartArchive
-            lang={ar ? "ar" : "en"}
-            dir={ar ? "rtl" : "ltr"}
-            kicker={ar ? "التوقيع والاتفاقيات" : "Signing"}
-            title={ar ? "أرشيف الاتفاقيات" : "Agreements archive"}
-            subtitle={ar ? "المكتمل والمرفوض والمُلغى، بتاريخ إغلاقه وبصمته." : "Completed, refused, and voided — with closing date and fingerprint."}
-            exportName={ar ? "أرشيف-الاتفاقيات" : "signing-archive"}
-            query={q}
-            onQueryChange={setQ}
-            searchPlaceholder={ar ? "ابحث باسم المستند أو طرف أو رقم التحقق…" : "Search by document, party, or verification ID…"}
-            emptyLabel={ar ? "لا مظاريف في الأرشيف. المكتمل والمرفوض والمُلغى ينتقل إلى هنا بعد إغلاقه." : "Nothing is in the archive. Completed, refused, and voided envelopes move here once they close."}
-            items={archivedListed.map((request) => {
-              const finger = storedFingerprint(request);
-              return {
-                id: request.id,
-                title: request.fileName,
-                text: [partyLine(request, currentUser, ar), request.verificationId, finger ? shortFingerprint(finger) : ""].filter(Boolean).join(" · "),
-                date: closeStamp(request),
-                badge: deskLabel(request, ar),
-                search: [request.creatorName, finger, ...(request.signers || []).map((x) => `${x.name || ""} ${x.email || ""}`)].join(" "),
-                request,
-              };
-            })}
-            renderOpen={(it) => {
-              const request = it.request;
-              const downloadReady = canDownloadFinal(request);
-              return (
-                <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button type="button" style={ghostBtn} onClick={() => openRow(request)}>{ar ? "فتح المظروف" : "Open envelope"}</button>
-                  {downloadReady ? <button type="button" style={ghostBtn} onClick={() => downloadFinalCopy(request)}>{ar ? "تنزيل النسخة الموقّعة" : "Download signed copy"}</button> : null}
-                </span>
-              );
-            }}
-          />
-          </>
-        )
-      ) : null}
-
-      {view === "track" ? (
-        <SigningStatusBoard
-          requests={requests === null ? null : (selected ? [selected] : rows.filter((row) => isOpenSigningState(settledState(row).state)).slice(0, 1))}
-          loading={loading}
-          currentUser={currentUser}
-          companyId={companyId}
-          ar={ar}
-          onReload={onReload}
-          focusRequestId={selected?.id || ""}
-          sentLinks={sentLinks}
-          variant="path"
-          knownEmails={knownEmails}
-        />
-      ) : null}
-
-      {view === "verify" ? <VerifyWorkspace ar={ar} companyId={companyId} /> : null}
-
-      {view === "templates" ? (
-        <section style={{ ...PAPER, padding: "18px 20px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <strong style={{ font: "700 14px var(--font-heading), sans-serif" }}>{ar ? "لا قوالب محفوظة" : "No saved templates"}</strong>
-          <p style={{ margin: 0, fontSize: 12, color: SIGN_BODY, lineHeight: 1.8, maxWidth: 640 }}>
-            {ar
-              ? "المكتبة في المرجع واجهة فقط. هنا ترفع المستند إلى ورشة التحضير، ثم تضع الختم أو ترسله للأطراف."
-              : "The reference library is layout only. Here you upload the document into the workshop, then seal it or send it to the parties."}
-          </p>
-          <button type="button" onClick={() => inputRef.current?.click()} style={{ ...navyBtn, alignSelf: "flex-start" }}>{ar ? "مستند جديد للتوقيع" : "New document to sign"}</button>
-        </section>
-      ) : null}
-
-      {view === "reports" ? (
-        <ReportsBoard ar={ar} rows={rows} stations={stations} onOpen={(request) => { setSelectedId(request.id); setView("track"); }} />
-      ) : null}
-
-      {view === "settings" ? (
-        <section className="nv-sign-reports" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16, alignItems: "start" }}>
-          <div style={{ ...PAPER, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-            <strong style={{ font: "700 13.5px var(--font-heading), sans-serif" }}>{ar ? "الختم" : "Seal"}</strong>
-            <span style={{ fontSize: 12, color: SIGN_INK }}>{companyName ? `${companyName} · ${ar ? "التوقيع" : "Signing"}` : (ar ? "نيروفيرا · التوقيع" : "NiroVera · Signing")}</span>
-            <div style={{ border: `1px solid ${SIGN_LINE}`, borderRadius: 10, background: SIGN_WHITE, minHeight: 72, padding: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {sealPreview
-                ? <img src={sealPreview} alt={ar ? "ختمك" : "Your seal"} style={{ maxWidth: "100%", maxHeight: 72, objectFit: "contain" }} />
-                : <span style={{ fontSize: 12, color: SIGN_MUTED }}>{ar ? "لم يُنشأ الختم بعد." : "No seal yet."}</span>}
-            </div>
-            {sealId ? <span dir="ltr" style={{ ...mono, fontSize: 10, color: "var(--nv-ok-fill)", textAlign: "end" }}>{sealId}</span> : null}
-            <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" onClick={onOpenStudio} style={{ ...ghostBtn, flex: 1 }}>{sealReady ? (ar ? "تغيير الختم" : "Change seal") : (ar ? "صمّم ختمك" : "Design your seal")}</button>
-              {sealReady ? <button type="button" onClick={onRemoveSeal} style={ghostBtn}>{ar ? "حذف" : "Remove"}</button> : null}
-            </div>
-          </div>
-          <div style={{ ...PAPER, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-            <strong style={{ font: "700 13.5px var(--font-heading), sans-serif" }}>{ar ? "الأمان والاحتفاظ" : "Security and retention"}</strong>
-            <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: "6px 14px", fontSize: 11.5 }}>
-              <span style={{ color: SIGN_MUTED }}>{ar ? "البصمة" : "Fingerprint"}</span>
-              <span dir="ltr" style={{ ...mono, textAlign: "end" }}>SHA-256</span>
-              <span style={{ color: SIGN_MUTED }}>{ar ? "التحقق" : "Verify"}</span>
-              <span>{ar ? "على جهازك، مقابل سجل الشركة" : "On your device, against the company registry"}</span>
-              <span style={{ color: SIGN_MUTED }}>{ar ? "مهلة التراجع" : "Retract window"}</span>
-              <span>{ar ? "تُغلق قبل تثبيت البصمة ورقم التحقق" : "Closes before the fingerprint and verification id register"}</span>
-              <span style={{ color: SIGN_MUTED }}>{ar ? "العزل" : "Isolation"}</span>
-              <span>{ar ? "مظاريف هذه الشركة فقط" : "This company's envelopes only"}</span>
-            </div>
-            <span style={{ fontSize: 10.5, color: "var(--nv-warn-ink)", background: "var(--nv-warn-soft)", border: "1px solid var(--nv-warn-line)", padding: "8px 10px", borderRadius: 9, lineHeight: 1.7 }}>
-              {ar
-                ? "ليست شهادة حكومية مؤهلة. رابط الطرف شخصي، والحذف يبقى في الأرشيف مع السبب."
-                : "Not a qualified government certificate. A party link is personal, and deletion stays in the archive with its reason."}
-            </span>
-          </div>
-        </section>
-      ) : null}
-    </div>
-  );
-}
-
-function ReportsBoard({ ar, rows, stations, onOpen }) {
-  const weeks = recentWeeks();
-  const sent = weeks.map((key) => rows.filter((row) => weekStart(row.createdAt) === key).length);
-  const done = weeks.map((key) => rows.filter((row) => deskBucket(row) === "done" && weekStart(row.lastActivityAt || row.createdAt) === key).length);
-  const max = Math.max(1, ...sent, ...done);
-  const monthKey = new Date().toISOString().slice(0, 7);
-  const monthCount = rows.filter((row) => String(row.createdAt || "").slice(0, 7) === monthKey).length;
-  const doneCount = rows.filter((row) => deskBucket(row) === "done").length;
-  const rate = rows.length ? Math.round((doneCount / rows.length) * 100) : 0;
-  const durations = rows.filter((row) => deskBucket(row) === "done").map((row) => {
-    const start = Date.parse(row.createdAt || "");
-    const end = Date.parse(row.lastActivityAt || row.createdAt || "");
-    if (!start || !end || end < start) return null;
-    return (end - start) / 86400000;
-  }).filter((value) => value !== null);
-  const average = durations.length ? (durations.reduce((sum, value) => sum + value, 0) / durations.length) : null;
-  const refused = rows.filter((row) => settledState(row).state === "rejected").length;
-  const stuck = rows.filter((row) => {
-    if (!isOpenSigningState(settledState(row).state)) return false;
-    const at = Date.parse(row.lastActivityAt || row.createdAt || "");
-    return at && (Date.now() - at) >= 3 * 86400000;
-  });
-  const byStation = new Map();
-  rows.filter((row) => deskBucket(row) === "done").forEach((row) => {
-    const station = (stations || []).find((item) => item.id === row.stationId);
-    const name = station?.name || station?.nameAr || (ar ? "غير مربوط بفرع" : "No branch");
-    const start = Date.parse(row.createdAt || "");
-    const end = Date.parse(row.lastActivityAt || row.createdAt || "");
-    const days = start && end && end >= start ? (end - start) / 86400000 : null;
-    const current = byStation.get(name) || { name, total: 0, n: 0 };
-    if (days !== null) {
-      current.total += days;
-      current.n += 1;
-    }
-    byStation.set(name, current);
-  });
-  const depts = [...byStation.values()].map((row) => ({ ...row, avg: row.n ? row.total / row.n : 0 })).sort((left, right) => right.avg - left.avg).slice(0, 5);
-  const deptMax = Math.max(1, ...depts.map((row) => row.avg));
-  const kpis = [
-    { label: ar ? "مظاريف هذا الشهر" : "Envelopes this month", value: formatUiNumber(monthCount, ar), note: ar ? "من تاريخ الإنشاء" : "By created date" },
-    { label: ar ? "نسبة الإكمال" : "Completion", value: formatUiNumber(`${rate}%`, ar), note: ar ? "المكتمل من الظاهر لك" : "Completed among what you can see" },
-    { label: ar ? "متوسط وقت الإكمال" : "Average completion", value: average === null ? "—" : formatUiNumber(`${average.toFixed(1)} ${ar ? "يوم" : "d"}`, ar), note: ar ? "من الإنشاء حتى آخر نشاط" : "From creation to last activity" },
-    { label: ar ? "مرفوض" : "Refused", value: formatUiNumber(refused, ar), note: ar ? "رفضه الجميع" : "Refused by every party" },
-  ];
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-        {kpis.map((item) => (
-          <div key={item.label} style={{ ...PAPER, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 2 }}>
-            <span style={{ fontSize: 11, color: SIGN_MUTED }}>{item.label}</span>
-            <strong dir="ltr" style={{ ...mono, fontSize: 24, fontWeight: 600, textAlign: "end" }}>{item.value}</strong>
-            <span style={{ fontSize: 11, color: SIGN_BODY }}>{item.note}</span>
-          </div>
-        ))}
-      </section>
-      <div className="nv-sign-reports" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
-        <section style={{ ...PAPER, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <strong style={{ font: "700 13.5px var(--font-heading), sans-serif" }}>{ar ? "مظاريف مُرسلة — 12 أسبوعاً" : "Sent envelopes — 12 weeks"}</strong>
-            <span style={{ fontSize: 11, color: SIGN_MUTED }}>{ar ? "المكتمل بالأخضر" : "Completed in green"}</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: 6, alignItems: "end", height: 150 }}>
-            {weeks.map((key, index) => (
-              <div key={key} title={`${sent[index]} / ${done[index]}`} style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%", gap: 2 }}>
-                <span style={{ borderRadius: "4px 4px 0 0", height: `${Math.round(((sent[index] - Math.min(sent[index], done[index])) / max) * 100)}%`, background: "var(--nv-box)", minHeight: sent[index] ? 2 : 0 }} />
-                <span style={{ borderRadius: "0 0 2px 2px", height: `${Math.round((Math.min(sent[index], done[index]) / max) * 100)}%`, background: "var(--nv-ok-fill)", minHeight: done[index] ? 2 : 0 }} />
-              </div>
-            ))}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: 6, font: "500 9.5px 'IBM Plex Mono', monospace", color: SIGN_MUTED, textAlign: "center" }}>
-            {weeks.map((key) => <span key={key} dir="ltr">{key.slice(5)}</span>)}
-          </div>
-        </section>
-        <section style={{ ...PAPER, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
-          <strong style={{ font: "700 13.5px var(--font-heading), sans-serif" }}>{ar ? "متوسط وقت الإكمال حسب الفرع" : "Average completion by branch"}</strong>
-          {depts.length === 0 ? <span style={{ fontSize: 12, color: SIGN_MUTED }}>{ar ? "لا مكتمل بعد ليُحسب المتوسط." : "Nothing completed yet, so there is no average."}</span> : depts.map((row) => (
-            <div key={row.name} style={{ display: "grid", gridTemplateColumns: "110px minmax(0, 1fr) 54px", gap: 10, alignItems: "center", fontSize: 11.5 }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
-              <div style={{ height: 8, borderRadius: 999, background: "var(--nv-soft)", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${Math.round((row.avg / deptMax) * 100)}%`, background: row.avg > 3 ? "var(--nv-bad-fill)" : "var(--nv-ok-fill)" }} />
-              </div>
-              <span dir="ltr" style={{ ...mono, textAlign: "end" }}>{formatUiNumber(row.avg.toFixed(1), ar)}</span>
-            </div>
-          ))}
-        </section>
+  if (view === "verify") {
+    return (
+      <div className="nv-sign-home" data-signing-view="verify" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <SectionBackLink ar={ar} label={manage ? (ar ? "التوقيع الرقمي" : "Digital signing") : (ar ? "توقيعاتي" : "My signatures")} onClick={() => setView("home")} />
+        <VerifyWorkspace ar={ar} companyId={companyId} />
       </div>
-      <section style={{ ...PAPER, overflow: "hidden" }}>
-        <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--nv-line3)" }}>
-          <strong style={{ font: "700 13.5px var(--font-heading), sans-serif" }}>{ar ? "متعثّرة — لم تكتمل بعد 3 أيام" : "Stuck — still open after 3 days"}</strong>
+    );
+  }
+
+  const raise = (
+    <section data-signing-new="1" style={{ ...slab, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <SectionHead
+        title={ar ? "مستند جديد" : "New document"}
+        note={ar ? "ارفعه، ثم المستلمون فالحقول فالمراجعة والإرسال." : "Upload it, then recipients, fields, review and send."}
+      />
+      <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <AttachDropzone
+          ar={ar}
+          required
+          showNeed={false}
+          busy={preparing}
+          error={error}
+          accept="application/pdf,.pdf,image/png,.png,image/jpeg,.jpg,.jpeg"
+          label={ar ? "اسحب المستند هنا أو اختره" : "Drop the document here or choose it"}
+          typesLabel={ar ? "PDF أو صورة PNG/JPEG · حتى 25 ميجابايت" : "PDF or PNG/JPEG · up to 25 MB"}
+          onPick={accept}
+        />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, paddingTop: 12, borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
+          <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "قالب الحقول" : "Field template"}</strong>
+          <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "اختياري · يُطبَّق عند فتح المستند" : "Optional · applied when the document opens"}</span>
         </div>
-        {stuck.length === 0 ? (
-          <div style={{ padding: "16px 18px", fontSize: 12, color: SIGN_MUTED }}>{ar ? "لا مظروف مفتوح تجاوز 3 أيام." : "No open envelope is past 3 days."}</div>
-        ) : stuck.map((row) => {
-          const days = Math.floor((Date.now() - Date.parse(row.lastActivityAt || row.createdAt)) / 86400000);
-          const who = (row.signers || []).find((signer) => signer.status === "pending")?.name || row.creatorName || "—";
-          return (
-            <div key={row.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(120px, 180px) 90px auto", gap: 12, alignItems: "center", padding: "10px 18px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12 }}>
-              <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.fileName}</strong>
-              <span style={{ color: SIGN_BODY, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{who}</span>
-              <span dir="ltr" style={{ ...mono, color: "var(--nv-bad-ink)", textAlign: "end" }}>{formatUiNumber(days, ar)} {ar ? "يوم" : "d"}</span>
-              <button type="button" onClick={() => onOpen(row)} style={{ display: "inline-flex", alignItems: "center", height: 28, padding: "0 10px", borderRadius: 8, border: `1px solid ${SIGN_LINE}`, background: SIGN_WHITE, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{ar ? "تتبّع" : "Track"}</button>
-            </div>
-          );
-        })}
-      </section>
+        {templates.length ? (
+          <SubTypeGrid label={ar ? "قالب الحقول" : "Field template"}>
+            <SubTypeOption dataKey="none" on={!templateId} title={ar ? "بلا قالب" : "No template"} sub={ar ? "تضع الحقول بنفسك" : "Place the fields yourself"} onClick={() => setTemplateId("")} />
+            {templates.map((template) => (
+              <SubTypeOption
+                key={template.id}
+                dataKey={template.id}
+                on={templateId === template.id}
+                title={template.name}
+                sub={(
+                  <span>
+                    <span dir="ltr" style={mono}>{formatUiNumber((template.fields || []).length)}</span>
+                    {ar ? " حقول · " : " fields · "}
+                    <span dir="ltr" style={mono}>{formatUiNumber(template.signerCount || 1)}</span>
+                    {ar ? " موقّعين" : " signers"}
+                  </span>
+                )}
+                onClick={() => setTemplateId(template.id)}
+              />
+            ))}
+          </SubTypeGrid>
+        ) : (
+          <span style={{ fontSize: 12, color: "var(--nv-muted)", lineHeight: 1.7 }}>
+            {ar ? "لا قوالب محفوظة. احفظ ترتيب الحقول كقالب من خطوة «الحقول»." : "No saved templates. Save a field layout as a template in the Fields step."}
+          </span>
+        )}
+      </div>
+      <Line
+        dataKey="seal"
+        label={ar ? "ختمك" : "Your seal"}
+        note={sealReady ? null : (ar ? "يلزم لتوقيعك أنت؛ المستلمون يعتمدون توقيعهم عند التوقيع." : "Needed for your own signature; recipients adopt theirs when they sign.")}
+      >
+        {sealPreview ? <img src={sealPreview} alt={ar ? "ختمك" : "Your seal"} style={{ height: 34, maxWidth: 96, objectFit: "contain", border: "1px solid var(--nv-line)", borderRadius: 8, background: "#fff", padding: 2 }} /> : null}
+        {sealId ? <span dir="ltr" style={{ ...mono, fontSize: 11, color: "var(--nv-muted)" }}>{sealId}</span> : null}
+        <button type="button" onClick={onOpenStudio} style={lineBtn}>{sealReady ? (ar ? "غيّر الختم" : "Change seal") : (ar ? "صمّم ختمك" : "Design your seal")}</button>
+        {sealReady && manage ? <button type="button" onClick={onRemoveSeal} style={{ ...lineBtn, color: "var(--nv-bad-ink)" }}>{ar ? "احذف" : "Remove"}</button> : null}
+      </Line>
+      <Line dataKey="verify" label={ar ? "تحقق من مستند" : "Verify a document"} note={ar ? "تُحسب البصمة على جهازك وتُطابق سجل الشركة." : "The fingerprint is computed on your device and matched to the registry."}>
+        <button type="button" onClick={() => setView("verify")} style={lineBtn}>{ar ? "افتح التحقق" : "Open verify"}</button>
+      </Line>
+    </section>
+  );
+
+  const summary = manage ? (
+    <section data-signing-analytics="1" style={{ ...slab, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <SectionHead
+        title={ar ? "أداء الإرسال" : "Sending"}
+        trailing={overdueMine.length ? (
+          <button type="button" onClick={remindOverdue} disabled={remindingAll} style={lineBtn}>
+            {remindingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {ar ? "ذكّر الكل" : "Remind all"}
+          </button>
+        ) : null}
+      />
+      <Line dataKey="avg" label={ar ? "متوسط زمن التوقيع" : "Average time to sign"} note={stats.avgDays === null ? (ar ? "لا مظروف أجاب فيه الجميع بعد." : "No envelope answered by everyone yet.") : null}>
+        <span dir="ltr" style={{ ...mono, fontSize: 13, color: "var(--nv-ink)" }}>{stats.avgDays === null ? "—" : formatUiNumber(stats.avgDays.toFixed(1))}</span>
+        {stats.avgDays === null ? null : <span style={{ fontSize: 12, color: "var(--nv-muted)" }}>{ar ? "يوم" : "days"}</span>}
+      </Line>
+      <Line dataKey="overdue" label={ar ? "متأخرة" : "Overdue"} note={ar ? "مفتوحة بلا نشاط 3 أيام، أو رابطها ينتهي خلال يوم." : "Open with no activity for 3 days, or the link expires within a day."}>
+        {stats.overdue.length ? <span style={chip("warn")}>{ar ? "تحتاج تذكيراً" : "Needs a reminder"}</span> : null}
+        <span dir="ltr" style={{ ...mono, fontSize: 13, color: "var(--nv-ink)" }}>{formatUiNumber(stats.overdue.length)}</span>
+      </Line>
+      {stats.overdue.slice(0, 3).map((row) => (
+        <button
+          key={row.id}
+          type="button"
+          onClick={() => {
+            setPill("all");
+            setFocusId(row.id);
+            if (!fold.isOpen(row.id)) fold.toggle(row.id);
+            window.setTimeout(() => document.querySelector(`[data-envelope="${row.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+          }}
+          style={{ fontFamily: "inherit", display: "flex", alignItems: "center", gap: 10, padding: "8px 18px 8px", paddingInlineStart: 30, border: "none", borderTop: "1px solid var(--nv-line2, #EEF2F7)", background: "transparent", cursor: "pointer", textAlign: "start", minWidth: 0 }}
+        >
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--nv-ink2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{docTitle(row.fileName)}</span>
+          <span dir="ltr" style={{ ...mono, fontSize: 11.5, color: "var(--nv-ink)" }}>{stamp(lastActivityAt(row), ar)}</span>
+        </button>
+      ))}
+      <Line dataKey="month" label={ar ? "اكتمل هذا الشهر" : "Completed this month"}>
+        <span dir="ltr" style={{ ...mono, fontSize: 13, color: "var(--nv-ink)" }}>{formatUiNumber(stats.doneMonth)}</span>
+      </Line>
+      <Line dataKey="refused" label={ar ? "رفضه الجميع" : "Refused by everyone"}>
+        <span dir="ltr" style={{ ...mono, fontSize: 13, color: "var(--nv-ink)" }}>{formatUiNumber(stats.refused)}</span>
+      </Line>
+    </section>
+  ) : null;
+
+  const emptyText = pill === "draft"
+    ? (ar ? "لا مسودات محفوظة. «مستند جديد» يفتح التحضير مباشرة." : "No saved drafts. New document opens preparation directly.")
+    : query
+      ? (ar ? `لا مظروف يطابق «${q.trim()}».` : `No envelope matches “${q.trim()}”.`)
+      : pill === "archive"
+        ? (ar ? "لا مظاريف في الأرشيف. المكتمل والمرفوض والمُلغى ينتقل إلى هنا بعد إغلاقه." : "Nothing is in the archive. Completed, refused, and voided envelopes move here once they close.")
+        : pill === "all"
+          ? (ar ? "لا مظاريف قيد التوقيع. ما أُغلق تجده في الأرشيف." : "No envelope is in signing. What closed is in the archive.")
+          : (ar ? "لا مظاريف تحت هذا الفلتر." : "No envelopes under this filter.");
+
+  const list = (
+    <ListStack data-signing-list="1">
+      <StatusFilterPills
+        card
+        dataKey={manage ? "signing-manage" : "signing-mine"}
+        title={manage ? (ar ? "المظاريف" : "Envelopes") : (ar ? "توقيعاتي" : "My signatures")}
+        value={pill}
+        onChange={(id) => { setPill(id); setFocusId(""); }}
+        items={folders.map(([id, label, n]) => ({ id, label, n: formatUiNumber(n) }))}
+      >
+        <SearchWrap style={{ width: "100%" }}>
+          <input
+            className="nv-sign-query"
+            value={q}
+            onChange={(event) => setQ(event.target.value)}
+            placeholder={ar ? "ابحث باسم المستند أو طرف أو رقم التحقق" : "Search by document, party, or verification id"}
+            style={{ height: 34, width: "100%", boxSizing: "border-box", padding: "0 12px", paddingInlineStart: 30, borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", fontSize: 12, outline: "none", color: "var(--nv-ink)", fontFamily: "inherit" }}
+          />
+        </SearchWrap>
+      </StatusFilterPills>
+      {requests === null || (loading && !rows.length) ? (
+        <section style={{ ...slab, padding: 18, fontSize: 12.5, color: "var(--nv-muted)" }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Loader2 className="h-4 w-4 animate-spin" />{ar ? "جارٍ تحميل المظاريف…" : "Loading envelopes…"}</span>
+        </section>
+      ) : listed.length === 0 ? (
+        <section style={{ ...slab, padding: 18, fontSize: 12.5, color: "var(--nv-muted)", lineHeight: 1.8 }}>{emptyText}</section>
+      ) : listed.map((request) => {
+        const bucket = envelopeBucket(request);
+        const { state } = settledState(request);
+        const people = envelopeRecipients(request);
+        const shown = people.slice(0, 5);
+        const needsRelease = request.isCreator && state === "awaiting_release";
+        const overdue = request.isCreator && isOverdueEnvelope(request);
+        const statusChip = bucket === "action"
+          ? <span style={chip("warn")}>{ar ? "يحتاج توقيعك" : "Needs your signature"}</span>
+          : needsRelease
+            ? <span style={chip("warn")}>{ar ? "بانتظار تمريرك" : "Awaiting your release"}</span>
+            : overdue
+              ? <span style={chip("warn")}>{ar ? "متأخر" : "Overdue"}</span>
+              : null;
+        const sender = request.isCreator ? (ar ? "أرسلته أنت" : "Sent by you") : (ar ? `من ${request.creatorName || "—"}` : `From ${request.creatorName || "—"}`);
+        return (
+          <CollapsibleItemCard
+            key={request.id}
+            data-envelope={request.id}
+            data-envelope-bucket={bucket}
+            open={fold.isOpen(request.id)}
+            onToggle={() => fold.toggle(request.id)}
+            focus={focusId === request.id}
+            dot={DOT[bucket]}
+            title={docTitle(request.fileName)}
+            person={sender}
+            date={stamp(lastActivityAt(request), ar)}
+            hint={(
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} aria-label={ar ? "المستلمون" : "Recipients"}>
+                {shown.map((row) => <RecipientAvatar key={`${row.email}-${row.index}`} initials={row.initials} state={row.state} title={row.name} />)}
+                {people.length > shown.length ? <span dir="ltr" style={{ ...mono, fontSize: 11, color: "var(--nv-muted)", marginInlineStart: 2 }}>+{people.length - shown.length}</span> : null}
+              </span>
+            )}
+            status={statusChip}
+            ar={ar}
+          >
+            <SigningStatusBoard
+              variant="card"
+              requests={[request]}
+              loading={loading}
+              currentUser={currentUser}
+              companyId={companyId}
+              ar={ar}
+              onReload={onReload}
+              focusRequestId={request.id}
+              sentLinks={focusId === request.id ? sentLinks : []}
+              knownEmails={knownEmails}
+              onOpen={openDocument}
+            />
+          </CollapsibleItemCard>
+        );
+      })}
+    </ListStack>
+  );
+
+  return (
+    <div className="nv-sign-home" data-signing-lane={lane} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <TwoPaneWorkspace dataKey="signing" raise={raise} summary={summary} list={list} />
     </div>
   );
 }

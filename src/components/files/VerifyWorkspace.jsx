@@ -1,9 +1,7 @@
 import React from "react";
 import VerifyDocumentCard from "@/components/files/VerifyDocumentCard";
 import VerifyGuide from "@/components/files/VerifyGuide";
-import { BORDER, CARD, INK, MUTED } from "@/lib/platformStyles";
-
-const LINE = "var(--nv-line)";
+import { SectionHead, slab } from "@/components/schedules/scheduleChrome";
 
 /**
  * Shared verify board — public /verify and the signing-home Verify tab.
@@ -22,22 +20,12 @@ export default function VerifyWorkspace({ ar, companyId, initialId = "" }) {
           box-shadow:none!important;
         }
       `}</style>
-      <section style={{ background: CARD, border: "none", borderInlineEnd: `1px solid ${BORDER}`, borderRadius: 0, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-        <div style={{ padding: "20px 24px", borderBottom: `1px solid ${LINE}`, display: "flex", flexDirection: "column", gap: 5, textAlign: "start" }}>
-          <span dir="ltr" style={{ fontSize: 11, letterSpacing: "0.2em", color: MUTED, unicodeBidi: "isolate", textAlign: ar ? "right" : "left" }}>DOCUMENT VERIFICATION</span>
-          <span style={{ fontSize: 23, fontWeight: 600, color: INK }}>{ar ? "تحقق من مستند موقّع" : "Verify a signed document"}</span>
-          <span style={{ fontSize: 13, color: MUTED, lineHeight: 1.8 }}>
-            {ar
-              ? "تُحسب بصمة الملف على جهازك وتُطابق مع سجل الشركة. الملف لا يُرفع إلى الخادم."
-              : "The file fingerprint is computed on your device and matched to the company registry. The file is never uploaded."}
-          </span>
-        </div>
+      <section data-verify-main="1" style={{ ...slab, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+        <SectionHead
+          title={ar ? "تحقق من مستند موقّع" : "Verify a signed document"}
+          note={ar ? "تُحسب بصمة الملف على جهازك وتُطابق سجل الشركة — الملف لا يُرفع." : "The fingerprint is computed on your device and matched to the company registry — the file is never uploaded."}
+        />
         <VerifyDocumentCard ar={ar} companyId={companyId} initialId={initialId} />
-        <div style={{ borderTop: `1px solid ${LINE}`, padding: "14px 24px", fontSize: 12, color: MUTED, lineHeight: 1.8, textAlign: "start" }}>
-          {ar
-            ? "ارفع أي نسخة مختومة: تُحسب بصمتها هنا على جهازك وتُطابق مع سجل الشركة — لا يُرفع الملف."
-            : "Use any sealed copy: its fingerprint is computed here on your device and matched to the company registry — the file is never uploaded."}
-        </div>
       </section>
       <VerifyGuide ar={ar} />
     </div>

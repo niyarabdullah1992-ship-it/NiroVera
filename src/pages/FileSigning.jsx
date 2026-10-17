@@ -15,6 +15,7 @@ import { updateEmployeeProfile } from "@/lib/store";
 import { MUTED, pageCol } from "@/lib/platformStyles";
 import { ensureSignatureFonts } from "@/lib/typedSignatureImage";
 import { deskSigningRows, isConsentSignToken } from "@/lib/writtenConsent";
+import { useRailSide } from "@/lib/railSide";
 
 // Old ?tab= bookmarks open the matching surface. Archive is the الأرشيف tab.
 const TAB_FILTERS = { inbox: "status", status: "status", archive: "archive", verify: "verify", mine: "mine", individual: "all", group: "all" };
@@ -24,6 +25,7 @@ export default function FileSigning() {
   const { company, data, currentUser } = useAuth();
   const ar = lang === "ar";
   const [searchParams, setSearchParams] = useSearchParams();
+  const railSide = useRailSide();
   const [requests, setRequests] = useState(null);
   const [loading, setLoading] = useState(false);
   const [workspace, setWorkspace] = useState(null);
@@ -87,6 +89,11 @@ export default function FileSigning() {
   }, [requests]);
 
   const canCreate = currentUser && data ? canCreateSignatureRequests(currentUser, data) : false;
+  // «التوقيع الرقمي» (manage) is every envelope this account sees, with the sender rows;
+  // «توقيعاتي» is the person's own desk. The rail side wins over a stale ?lane.
+  const lane = canCreate && (railSide === "manage" || (railSide !== "employee" && searchParams.get("lane") === "manage"))
+    ? "manage"
+    : "employee";
 
   // An old ?tab= bookmark now picks the matching chip instead of a tab, then the
   // parameter is dropped so the URL settles on the single surface.
@@ -192,6 +199,7 @@ export default function FileSigning() {
         signatureRawUrl={workspace.signature?.signatureRawUrl || seal.signatureRawUrl}
         signatureVariant={workspace.signature?.signatureVariant || seal.signatureVariant}
         stampConfig={workspace.signature?.stampConfig || seal.stampConfig}
+        initialTemplateId={workspace.templateId || ""}
         ar={ar}
         onOpenStudio={() => setStudioOpen(true)}
         onClose={closeWorkspace}
@@ -210,13 +218,14 @@ export default function FileSigning() {
 
   return (
     <div
-      className="nv-sign-frame nv-sign-desk"
+      className="nv-sign-desk2"
       dir={ar ? "rtl" : "ltr"}
-      style={{ width: "min(1320px, 100%)", margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}
+      style={{ width: "min(1320px, 100%)", margin: "0 auto", display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}
     >
       <SigningHome
         ar={ar}
         lang={lang}
+        lane={lane}
         currentUser={currentUser}
         companyId={company.id}
         companyName={company.name || ""}
@@ -234,9 +243,10 @@ export default function FileSigning() {
         sealReady={sealReady}
         onOpenStudio={() => setStudioOpen(true)}
         onRemoveSeal={removeSeal}
-        onOpenDocument={({ file, sourceUrl }) => setWorkspace({
+        onOpenDocument={({ file, sourceUrl, templateId }) => setWorkspace({
           file,
           sourceUrl,
+          templateId: templateId || "",
           signature: {
             signatureUrl: seal.signatureUrl,
             signatureRawUrl: seal.signatureRawUrl,

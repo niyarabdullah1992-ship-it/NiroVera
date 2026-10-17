@@ -2315,6 +2315,22 @@ button.nv-statutory-item {
     border-top: 1px solid #e6e9ef;
   }
 }
+/* Send stepper: on narrow screens only the current step keeps its label. */
+@media (max-width: 960px) {
+  .nv-studio-steps li:not(.is-on) .nv-studio-step-label { display: none; }
+  .nv-studio-top .nv-studio-steps { order: 5; width: 100%; justify-content: center; }
+}
+.nv-recipient-studio [data-recipient-field]:focus-visible { outline: 2px solid #3C7D50; outline-offset: 2px; }
+/* The recipient's page fits the phone: the canvas follows the page box, fields stay in %. */
+.nv-recipient-studio [data-sgpage] { max-width: 100%; overflow: hidden; }
+.nv-recipient-studio [data-sgpage] canvas { width: 100% !important; height: auto !important; display: block; }
+@media (max-width: 960px) {
+  .nv-sign-workshop .nv-sign-panel { max-height: 40vh !important; }
+  .nv-sign-workshop .nv-sign-rail { overflow-x: auto; flex-wrap: nowrap; gap: 6px !important; padding: 6px !important; }
+  .nv-sign-workshop .nv-sign-rail > div { flex-direction: row !important; flex: none; }
+  .nv-sign-workshop .nv-sign-rail > div > * { width: auto !important; flex: none; height: 34px !important; }
+}
+[data-field-signer]:focus-visible { outline: 2px solid #3C7D50 !important; outline-offset: 2px; }
 .nv-sign-frame .nv-signing-stage .nv-upload-zone:not(.nv-upload-zone--compact) {
   border-radius: var(--nv-radius) !important;
 }

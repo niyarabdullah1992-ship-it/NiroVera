@@ -33,7 +33,7 @@ const AttachFileButton = forwardRef(function AttachFileButton({
         hint={hint}
         required={Boolean(required)}
         showNeed={required !== undefined}
-        typesLabel={typesLabel === undefined ? (/pdf/i.test(accept || "") ? undefined : null) : typesLabel}
+        typesLabel={typesLabel === undefined ? (!accept || /pdf/i.test(accept) ? undefined : null) : typesLabel}
         onPick={onPick}
       />
     );

@@ -322,6 +322,7 @@ assert.ok(collectRequestFiles(archivePeople).every((row) => !row.signHref));
   assert.equal(names("archive"), "night.pdf,refused.pdf");
   assert.equal(names("pending"), "night.pdf,open.pdf", "a live night consent stays in بانتظار with its form");
   assert.equal(names("rejected"), "refused.pdf");
+  assert.equal(names("all"), "night.pdf,open.pdf", "a settled request's files leave «الكل» for «الأرشيف»");
   const night = files.find((row) => row.name === "night.pdf");
   assert.equal(night.kindAr, "نموذج من الإدارة");
   assert.equal(night.refTag, "رقم الطلب");

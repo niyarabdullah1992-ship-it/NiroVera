@@ -1453,7 +1453,8 @@ export function requestFileInFilter(row, filter = "all") {
   if (filter === "approved") return st === "approved" || st === "yes";
   if (filter === "rejected") return st === "rejected" || st === "no" || st === "refused_by_employee";
   if (filter === "pending") return !settled || !!row?.live;
-  return true;
+  // «الكل» is the live view: once a request settles, its files move with it to «الأرشيف».
+  return !settled || !!row?.live;
 }
 
 export function requestArchiveStatusLabel(status, ar = true) {

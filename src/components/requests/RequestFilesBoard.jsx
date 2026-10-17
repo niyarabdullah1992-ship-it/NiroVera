@@ -27,7 +27,9 @@ const SCOPE_TITLE = {
 /** Files follow طلباتي's filter: «بانتظار» shows open requests' files, «الأرشيف» the settled ones. */
 export default function RequestFilesBoard({ employees, ar, filter: scope = "all" }) {
   const [filter, setFilter] = useState("all");
-  const all = collectRequestFiles(employees, ar ? "ar" : "en").filter((row) => requestFileInFilter(row, scope));
+  const every = collectRequestFiles(employees, ar ? "ar" : "en");
+  const all = every.filter((row) => requestFileInFilter(row, scope));
+  const archivedN = every.filter((row) => requestFileInFilter(row, "archive") && !requestFileInFilter(row, "all")).length;
   const rows = all.filter((row) => filter === "all" || row.side === filter);
   const attached = all.filter((row) => row.side === "in").length;
   const issued = all.filter((row) => row.side === "out").length;
@@ -54,7 +56,9 @@ export default function RequestFilesBoard({ employees, ar, filter: scope = "all"
       </div>
       {rows.length === 0 ? (
         <div style={{ padding: "18px 20px", fontSize: 11, color: MUTED, lineHeight: 1.9 }}>
-          {all.length === 0
+          {all.length === 0 && archivedN > 0
+            ? (ar ? `لا ملفات لطلبات جارية. ملفات الطلبات المنتهية (${archivedN}) انتقلت إلى «الأرشيف».` : `No files on open requests. Files of settled requests (${archivedN}) moved to Archive.`)
+            : all.length === 0
             ? (ar ? "لا ملفات بعد. ما ترفعه مع طلب وما يصدر لك من وثائق يظهر هنا ببصمته أو برقم تحققه — لا مجلّد مرفوعات عام." : "No files yet. What you attach and what the company issues appear here by fingerprint or verify id — not a general uploads folder.")
             : (ar ? "لا ملف في هذا الترشيح." : "Nothing in this filter.")}
         </div>

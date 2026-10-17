@@ -2447,7 +2447,9 @@ export function sunExposureCellState(schedule, employeeId, dayKey, { shift, toda
   // Asked only in season (Decision 3337): out of season the ban does not run, so the cell never stops
   // the manager with «مكشوف أم مظلّل؟».
   const asks = touches && inSeason;
-  const resolved = asks ? sunExposureMark(schedule, employeeId, key, onShift) : { mark: null, source: null };
+  // The mark is read whenever the shift meets the window — the roster shows the choice all year; only the
+  // season makes it required (asks).
+  const resolved = touches ? sunExposureMark(schedule, employeeId, key, onShift) : { mark: null, source: null };
   return {
     asks,
     live: asks && isLiveHeatBanDay(key, today),

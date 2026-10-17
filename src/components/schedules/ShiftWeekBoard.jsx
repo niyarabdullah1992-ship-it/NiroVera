@@ -1451,6 +1451,9 @@ export default function ShiftWeekBoard({
                         : `${employee.name} — ${day.key} — ${shift ? `${shift.label} ${shiftHoursLine(shift, lang, timeFormat)}` : restLabel}`;
                       const sun = !leave && shift ? sunExposureCellState(schedule, employee.id, day.key, { shift }) : null;
                       const sunAsk = !!sun?.asks;
+                      // «مكشوف / مظلّل» lives in the cell itself, all year, for any shift touching 12:00–15:00:
+                      // required in the Decision 3337 season (asks), optional outside it.
+                      const sunShow = !!sun?.touches;
                       return (
                         <div key={`${employee.id}-${day.key}`} style={{ position: "relative", display: "flex", minWidth: 0 }}>
                         <button
@@ -1479,7 +1482,7 @@ export default function ShiftWeekBoard({
                               ? "var(--nv-shift-holiday-ink)"
                               : (cellTone ? cellTone.ink : style.fg),
                             cursor: canEdit && !locked ? "pointer" : locked ? "not-allowed" : "default",
-                            padding: sunAsk ? (canEdit && sunPrompt === `${employee.id}:${day.key}` ? "6px 4px 64px" : "6px 4px 28px") : "6px 4px",
+                            padding: sunShow ? "6px 4px 30px" : "6px 4px",
                             flex: "1 1 auto",
                             minWidth: 0,
                             display: "flex",
@@ -1517,84 +1520,69 @@ export default function ShiftWeekBoard({
                             {ar ? "عطلة · إضافي" : "Holiday · OT"}
                           </span>
                         ) : null}
-                        {sunAsk && canEdit && sunPrompt === `${employee.id}:${day.key}` ? (
-                          <div
-                            role="dialog"
-                            aria-label={ar ? `حظر الشمس — ${employee.name}` : `Sun ban — ${employee.name}`}
-                            data-sun-prompt="1"
-                            // Only its buttons take clicks — a tap on the rest of the card falls through to the cell,
-                            // so cycling the cell never stalls behind the question.
-                            style={{ position: "absolute", insetInline: 2, bottom: 2, zIndex: 3, background: "var(--nv-card, #fff)", border: "1.5px solid var(--nv-warn, #B7791F)", borderRadius: 8, boxShadow: "0 6px 16px rgba(12,20,16,.18)", padding: "4px 5px", display: "flex", flexDirection: "column", gap: 3, textAlign: "start", pointerEvents: "none" }}
-                          >
-                            <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9.5, fontWeight: 700, color: "var(--nv-warn-ink, #7A4E0B)", lineHeight: 1.3 }}>
-                              <Sun aria-hidden style={{ width: 11, height: 11, flex: "none" }} strokeWidth={2.4} />
-                              <span style={{ flex: 1, minWidth: 0 }}>{ar ? "مكشوف أم مظلّل؟" : "Exposed or shaded?"}</span>
-                              <button type="button" onClick={() => setSunPrompt(null)} aria-label={ar ? "لاحقًا" : "Later"} style={{ border: "none", background: "transparent", color: "var(--nv-ink3)", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0, pointerEvents: "auto" }}>×</button>
-                            </span>
-                            <span style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3 }}>
-                              {[SUN_FIELD, SUN_OFFICE].map((opt) => (
-                                <button
-                                  key={opt}
-                                  type="button"
-                                  data-sun-answer={opt}
-                                  autoFocus={opt === (sun.mark || SUN_FIELD)}
-                                  onClick={() => answerSunPrompt(employee, day, opt)}
-                                  style={{
-                                    fontFamily: "inherit",
-                                    height: 22,
-                                    fontSize: 10.5,
-                                    fontWeight: 700,
-                                    borderRadius: 6,
-                                    cursor: "pointer",
-                                    border: sun.mark === opt ? "2px solid var(--nv-ink)" : "1px solid transparent",
-                                    background: opt === SUN_FIELD ? "var(--nv-bad, #B42318)" : "var(--nv-ok, #1F7A4D)",
-                                    color: "#fff",
-                                    minWidth: 0,
-                                    pointerEvents: "auto",
-                                  }}
-                                >
-                                  {opt === SUN_FIELD ? (ar ? "مكشوف" : "Exposed") : (ar ? "مظلّل" : "Shaded")}
-                                </button>
-                              ))}
-                            </span>
-                          </div>
-                        ) : null}
-                        {sunAsk ? (
-                          <button
-                            type="button"
+                        {sunShow ? (
+                          <span
+                            role="radiogroup"
+                            data-sun-toggle="1"
                             data-sun-mark={sun.mark || "unset"}
                             data-sun-source={sun.source || "none"}
-                            data-sun-toggle="1"
-                            disabled={!canEdit}
-                            onClick={(e) => { e.stopPropagation(); setSunPrompt(null); pickSunMark(employee, day, "", sun.mark === SUN_FIELD ? SUN_OFFICE : SUN_FIELD); }}
-                            aria-label={ar ? `حظر الشمس لـ${employee.name}: ${sunMarkLabel(sun.mark)} — اضغط للتبديل` : `Sun ban for ${employee.name}: ${sunMarkLabel(sun.mark)} — click to switch`}
-                            title={ar ? `${employee.name} — ${sunMarkLabel(sun.mark)} · اضغط للتبديل بين «مكشوف» و«مظلّل»` : `${employee.name} — ${sunMarkLabel(sun.mark)} · click to switch exposed / shaded`}
+                            data-sun-required={sunAsk ? "1" : "0"}
+                            aria-label={ar ? `حظر الشمس لـ${employee.name} — ${sunMarkLabel(sun.mark)}` : `Sun ban for ${employee.name} — ${sunMarkLabel(sun.mark)}`}
+                            title={sunAsk
+                              ? (ar ? "موسم القرار 3337: حدّد مكشوف أم مظلّل — المكشوف لا يعمل 12:00–15:00" : "Decision 3337 season: set exposed or shaded — exposed work stops 12:00–15:00")
+                              : (ar ? "خارج موسم القرار 3337 — التحديد اختياري ويُحفظ لموسمه" : "Outside the Decision 3337 season — optional, kept for the season")}
                             style={{
                               position: "absolute",
                               insetInline: 4,
                               bottom: 4,
                               height: 22,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              gap: 4,
-                              fontFamily: "inherit",
-                              fontSize: 10.5,
-                              fontWeight: 700,
-                              borderRadius: 6,
-                              cursor: canEdit ? "pointer" : "default",
-                              border: sun.mark ? "1px solid transparent" : "1px dashed var(--nv-warn, #B7791F)",
-                              background: sun.mark === SUN_FIELD ? "var(--nv-bad, #B42318)" : sun.mark === SUN_OFFICE ? "var(--nv-ok, #1F7A4D)" : "var(--nv-warn-soft, #FBF3E2)",
-                              color: sun.mark ? "#fff" : "var(--nv-warn-ink, #7A4E0B)",
-                              opacity: sun.mark && sun.source !== "cell" ? 0.88 : 1,
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
+                              display: "grid",
+                              gridTemplateColumns: "1fr 1fr",
+                              gap: 2,
+                              padding: 1,
+                              borderRadius: 7,
+                              border: sunAsk && !sun.mark ? "1px dashed var(--nv-warn, #B7791F)" : "1px solid var(--nv-line2, #E3E8E5)",
+                              background: sunAsk && !sun.mark ? "var(--nv-warn-soft, #FBF3E2)" : "var(--nv-card, #fff)",
                             }}
                           >
-                            <Sun aria-hidden style={{ width: 11, height: 11, flex: "none" }} strokeWidth={2.4} />
-                            <span>{sun.mark === SUN_FIELD ? (ar ? "مكشوف" : "Exposed") : sun.mark === SUN_OFFICE ? (ar ? "مظلّل" : "Shaded") : (ar ? "حدّد" : "Set")}</span>
-                            {canEdit ? <span aria-hidden style={{ fontSize: 9, opacity: 0.8 }}>⇄</span> : null}
-                          </button>
+                            {[SUN_FIELD, SUN_OFFICE].map((opt) => {
+                              const on = sun.mark === opt;
+                              return (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={on}
+                                  data-sun-answer={opt}
+                                  disabled={!canEdit}
+                                  onClick={(e) => { e.stopPropagation(); setSunPrompt(null); pickSunMark(employee, day, sun.mark, opt); }}
+                                  style={{
+                                    fontFamily: "inherit",
+                                    fontSize: 9.5,
+                                    fontWeight: 700,
+                                    lineHeight: 1,
+                                    border: "none",
+                                    borderRadius: 5,
+                                    minWidth: 0,
+                                    padding: "0 2px",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: 2,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    cursor: canEdit ? "pointer" : "default",
+                                    background: on ? (opt === SUN_FIELD ? "var(--nv-bad, #B42318)" : "var(--nv-ok, #1F7A4D)") : "transparent",
+                                    color: on ? "#fff" : (sunAsk && !sun.mark ? "var(--nv-warn-ink, #7A4E0B)" : "var(--nv-ink3, #6B7280)"),
+                                    opacity: on && sun.source !== "cell" ? 0.88 : 1,
+                                  }}
+                                >
+                                  {opt === SUN_FIELD ? <Sun aria-hidden style={{ width: 10, height: 10, flex: "none" }} strokeWidth={2.4} /> : null}
+                                  {opt === SUN_FIELD ? (ar ? "مكشوف" : "Exposed") : (ar ? "مظلّل" : "Shaded")}
+                                </button>
+                              );
+                            })}
+                          </span>
                         ) : null}
                         </div>
                       );

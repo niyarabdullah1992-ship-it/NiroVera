@@ -170,7 +170,8 @@ export default function DutySmartSearch({ ar = true, side = "employee", pages = 
         const day = myDutyDay({ employee: person, data, row: rowsBy.get(`${person.id}:${key}`), key, todayKey, calendar, ar });
         if (day.shift && (parsed.statuses.includes("night") || parsed.statuses.includes("exposed"))) {
           day.night = performsNightWork(day.shift, key);
-          day.exposed = sunExposureCellState(schedule, person.id, key, { shift: day.shift }).mark === SUN_FIELD;
+          const sunState = sunExposureCellState(schedule, person.id, key, { shift: day.shift });
+          day.exposed = sunState.asks && sunState.mark === SUN_FIELD; // the ban runs in season only
         }
         return day;
       });

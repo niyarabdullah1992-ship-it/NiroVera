@@ -2116,6 +2116,20 @@ export function checkShiftChangeApplyGate({ schedule, employee, dateKey, shiftTy
       reasonEn: "Someone on approved leave is never assigned a shift.",
     };
   }
+  const pendingAnnual = (employee?.leaveRequests || []).find((row) => (
+    String(row?.type || "").toLowerCase() === "annual"
+    && row?.status === "pending"
+    && String(row.startDate || "").slice(0, 10) <= dateKey
+    && String(row.endDate || "").slice(0, 10) >= dateKey
+  ));
+  if (pendingAnnual) {
+    return {
+      ok: false,
+      error: "LEAVE_DAYS_LOCKED",
+      reason: "طلب إجازة سنوية بانتظار القرار يغطي هذا اليوم — أيام عمله وراحته فيه مثبّتة منذ طلبها، فلا تُعدَّل في الجدول.",
+      reasonEn: "A pending annual-leave request covers this day — its work and rest days were fixed when it was raised, so the roster is not changed here.",
+    };
+  }
   if (shiftTypeId && isOfficialHoliday(dateKey, laborCalendar)) {
     // Art. 107(3): holiday work is possible, but only confirmed by name and paid as overtime.
     const holiday = checkHolidayWorkGate({ employee, dateKey, laborCalendar, confirmed: holidayWorkConfirmed });

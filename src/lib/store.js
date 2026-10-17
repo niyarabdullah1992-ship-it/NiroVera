@@ -87,6 +87,7 @@ import { damageCaseIdFor } from "./payrollLaw.js";
 import { absorbAssignmentIntoActualOt, planOtDecision, restampWeekAfter, stampActualDutyBreaches, stampActualOvertime, stampHolidayWorkOvertime, withdrawHolidayWorkOvertime } from "./otDecisionPlan.js";
 import { planDutyAlertNotices } from "./dutyAlerts.js";
 import { compLeaveDaysInYear as compLeaveDaysInYearForCap, otHoursInYear as otHoursInYearForCap } from "./overtimeAssignment.js";
+import { annualDayBreakdown } from "./leaveEidOverlap.js";
 import { isOfficialHoliday, laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePlatformOwnerBoard } from "./ummAlQuraCalendar";
 
 /** Model regulation Art. 71 clocks skip the company's official holidays. */
@@ -2798,6 +2799,14 @@ export function submitLeaveRequest(companyId, employeeId, { type, startDate, end
       createdRequest.auditTrail = appendRequestAudit(createdRequest, approveStamp.row);
       pushEmployeeFileLog(emp, approveStamp.log);
     }
+    if (leaveKey === "annual" && /^\d{4}-\d{2}-\d{2}$/.test(String(startDate || "").slice(0, 10)) && /^\d{4}-\d{2}-\d{2}$/.test(String(endDate || "").slice(0, 10))) {
+      // His weekly rest inside the leave is fixed when he asks (and kept at approval): the roster can't move
+      // a rest day in or out of the balance afterwards. Official holidays stay out (Arts 109, 112).
+      const frozen = annualDayBreakdown(String(startDate).slice(0, 10), String(endDate).slice(0, 10), laborCalendarOf(d), d, emp);
+      createdRequest.lockedDays = Object.fromEntries(frozen.days.map((day) => [day.key, day.kind]));
+      createdRequest.lockedAt = now;
+      createdRequest.days = frozen.charged;
+    }
     emp.leaveRequests.unshift(createdRequest);
     // Recorded straight as approved: the same file effects as an approval (Arts. 114, 116; Model regulation Art. 33).
     if (approved) applyApprovedLeaveEffectsOnDraft(emp, createdRequest);
@@ -2928,6 +2937,18 @@ export function setLeaveRequestStatus(companyId, employeeId, requestId, status, 
         if (span.start && span.end) {
           leaveReq.activeStartDate = span.start;
           leaveReq.activeEndDate = span.end;
+        }
+        // The weekly rest inside the leave is fixed at approval: each day's kind (work / statutory rest /
+        // company rest / cycle rest / holiday) is frozen on the request, so a later roster change can never
+        // move a rest day in or out of the balance (Art. 109; no manipulation after the decision).
+        const lockFrom = String(leaveReq.startDate || "").slice(0, 10);
+        const lockTo = String(leaveReq.endDate || "").slice(0, 10);
+        const alreadyLocked = leaveReq.lockedDays && Object.keys(leaveReq.lockedDays).length;
+        if (lockFrom && lockTo && !alreadyLocked) {
+          const frozen = annualDayBreakdown(lockFrom, lockTo, laborCalendarOf(d), d, employee);
+          leaveReq.lockedDays = Object.fromEntries(frozen.days.map((day) => [day.key, day.kind]));
+          leaveReq.lockedAt = leaveReq.approvedAt;
+          leaveReq.days = frozen.charged;
         }
       }
       if (String(leaveReq.type || "").toLowerCase() === "sick") {

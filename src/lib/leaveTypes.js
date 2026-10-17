@@ -447,7 +447,13 @@ export function usedLeaveDays(requests, key, onDate, hireDate, calendar, company
       const end = dateOnly(r.endDate) || (start ? addCalendarDays(start, Math.max(1, Number(r.days) || 1) - 1) : "");
       if (start && end && win) {
         const span = overlapRange(start, end, win.start, win.end);
-        return sum + (span ? chargeableAnnualDays(span.start, span.end, calendar, company, employee) : 0);
+        if (!span) return sum;
+        // Approved: the days frozen at approval decide — a later roster change never moves the balance.
+        const locked = r.lockedDays && typeof r.lockedDays === "object" ? r.lockedDays : null;
+        if (locked && Object.keys(locked).length) {
+          return sum + Object.entries(locked).filter(([day, kind]) => day >= span.start && day <= span.end && (kind === "charge" || kind === "dutyOnRest")).length;
+        }
+        return sum + chargeableAnnualDays(span.start, span.end, calendar, company, employee);
       }
       return sum + (Number(r.days) || 0);
     }, 0);

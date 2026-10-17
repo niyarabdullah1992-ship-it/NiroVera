@@ -58,8 +58,8 @@ export default function AnnualLeaveBreakdown({ from, to, calendar, company, empl
       ) : null}
       <p style={{ margin: 0, fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.8 }}>
         {ar
-          ? `${own ? "راحتك" : "راحته"} الأسبوعية وراحة دورة الجدول والعطل الرسمية لا تأكل من الرصيد. إن نُشرت ${own ? "لك" : "له"} وردية يوم راحة فذلك اليوم يوم عمل ويُخصم.`
-          : "Weekly rest, roster-cycle rest and official holidays are not taken from the balance. A shift published on a rest day is a work day and is taken."}
+          ? `${own ? "راحتك" : "راحته"} الأسبوعية وراحة دورة الجدول والعطل الرسمية لا تأكل من الرصيد. إن نُشرت ${own ? "لك" : "له"} وردية يوم راحة فذلك اليوم يوم عمل ويُخصم. تُثبَّت هذه الأيام عند الاعتماد — لا يغيّرها تعديل الجدول بعده.`
+          : "Weekly rest, roster-cycle rest and official holidays are not taken from the balance. A shift published on a rest day is a work day and is taken. These days are fixed at approval — a later roster change does not move them."}
       </p>
     </section>
   );

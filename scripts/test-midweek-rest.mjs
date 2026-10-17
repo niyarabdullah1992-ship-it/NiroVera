@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { annualDayBreakdown, chargeableAnnualWorkDays, isRestDayWork, rosterRestDows } from "../src/lib/leaveEidOverlap.js";
 import { laborCalendarOf } from "../src/lib/ummAlQuraCalendar.js";
+import { usedLeaveDays } from "../src/lib/leaveTypes.js";
 
 const cal = laborCalendarOf({});
 const key = (d) => `2026-10-${String(d).padStart(2, "0")}`;
@@ -34,3 +35,20 @@ const plain = { schedules: [] };
 assert.equal(chargeableAnnualWorkDays("2026-09-20", "2026-09-26", cal, plain, { id: "x", profile: { weeklyRestDayCount: 2 } }), 4, "5-day file: National Day + two rest days not charged");
 assert.equal(chargeableAnnualWorkDays("2026-09-20", "2026-09-26", cal, plain, { id: "x", profile: { weeklyRestDayCount: 1 } }), 5, "6-day file: National Day + the statutory day not charged");
 console.log("PASS official holidays and rest days stay out of annual leave");
+
+// Frozen at approval: once the leave is approved its rest days are locked on the request, so moving the
+// roster afterwards (to a single Saturday rest) cannot change what the leave took from the balance.
+{
+  const frozen = annualDayBreakdown(key(11), key(17), cal, company, emp);
+  const req = { id: "lv1", type: "annual", status: "approved", startDate: key(11), endDate: key(17), days: frozen.charged,
+    lockedDays: Object.fromEntries(frozen.days.map((d) => [d.key, d.kind])) };
+  const moved = [];
+  for (let d = 4; d <= 31; d += 1) { const dow = new Date(2026, 9, d).getDay(); if (dow !== 6) moved.push(key(d)); }
+  const later = { schedules: [{ stationId: "st", shiftTypes: [{ id: "m" }], assignments: Object.fromEntries(moved.map((k) => [k, { m: ["e1"] }])) }] };
+  const usedLocked = usedLeaveDays([req], "annual", key(20), "2020-01-01", cal, later, emp);
+  const { lockedDays, ...unlocked } = req;
+  const usedLive = usedLeaveDays([unlocked], "annual", key(20), "2020-01-01", cal, later, emp);
+  assert.equal(usedLocked, 5, "the approved leave keeps its 5 days after the roster moved");
+  assert.notEqual(usedLive, usedLocked, "without the lock the roster change would have moved the balance");
+}
+console.log("PASS rest days are locked on the leave at approval");

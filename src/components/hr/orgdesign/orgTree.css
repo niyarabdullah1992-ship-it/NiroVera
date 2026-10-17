@@ -121,7 +121,8 @@
   background: var(--nv-page, var(--nv-org-canvas));
 }
 .nv-ot-scroller[data-drag="1"] { cursor: grabbing; user-select: none; }
-.nv-ot-sizer { position: relative; overflow: hidden; }
+/* a tree narrower than the canvas sits in the middle, not hugging the RTL edge */
+.nv-ot-sizer { position: relative; overflow: hidden; margin-inline: auto; }
 .nv-ot-stage { position: relative; transform-origin: top left; }
 [dir="rtl"] .nv-ot-stage { transform-origin: top right; margin-inline-start: 0; }
 

@@ -26,6 +26,7 @@ import StatutoryItem from "@/components/labor/StatutoryItem";
 import AttendanceSectionFrame from "@/components/attendance/AttendanceSectionFrame";
 import ScheduleHowItWorks from "@/components/schedules/ScheduleHowItWorks";
 import { chip, Collapsible, mono, quietAction, SectionHead, slab } from "@/components/schedules/scheduleChrome";
+import MyPlannedOvertime from "@/components/schedules/MyPlannedOvertime";
 import MyWeekDays, { useMyDayRows } from "@/components/schedules/MyWeekDays";
 import DateNav from "@/components/schedules/DateNav";
 import MinistryPersonalPanel from "@/components/schedules/MinistryPersonalPanel";
@@ -244,6 +245,9 @@ export default function MyScheduleView({
                 </span>
               </div>
             </section>
+
+            {/* Overtime the published roster plans for me this week — information; decided in طلباتي once worked. */}
+            <MyPlannedOvertime data={data} me={me} weekStart={weekStart} ar={ar} />
 
             {/* 2 · The whole branch week — read only, folded; management stays in the manage lane */}
             <BranchRosterReadOnly

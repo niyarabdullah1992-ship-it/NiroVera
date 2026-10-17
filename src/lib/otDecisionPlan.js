@@ -401,7 +401,7 @@ export function plannedOtWeeks(d, employees = [], { today } = {}) {
       const byDay = new Map();
       for (const row of named.rows || []) {
         if (!(row.overtimeMinutes > 0)) continue;
-        byDay.set(row.dateKey, { dateKey: row.dateKey, kind: row.kind, overtimeMinutes: (byDay.get(row.dateKey)?.overtimeMinutes || 0) + row.overtimeMinutes });
+        byDay.set(row.dateKey, { dateKey: row.dateKey, kind: row.kind, label: row.label || byDay.get(row.dateKey)?.label || "", overtimeMinutes: (byDay.get(row.dateKey)?.overtimeMinutes || 0) + row.overtimeMinutes });
       }
       const rows = [...byDay.values()].filter((row) => otDayStatus(d?.otDecisions?.[`${employee.id}:${row.dateKey}`], row.dateKey, asOf).planned);
       if (!rows.length) continue;

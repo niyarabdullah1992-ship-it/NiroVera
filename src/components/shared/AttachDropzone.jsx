@@ -33,6 +33,7 @@ const AttachDropzone = forwardRef(function AttachDropzone({
   label,
   hint,
   typesLabel,
+  showNeed = true,
   onPick,
   onClear,
 }, ref) {
@@ -40,7 +41,9 @@ const AttachDropzone = forwardRef(function AttachDropzone({
   const inputRef = ref || localRef;
   const [over, setOver] = useState(false);
   const need = required ? (ar ? "مطلوب" : "Required") : (ar ? "اختياري" : "Optional");
-  const types = typesLabel || (ar ? "PDF أو صورة · حتى 10 ميجابايت" : "PDF or image · up to 10 MB");
+  // typesLabel === null hides the muted types line (callers that do not know their limits).
+  const types = typesLabel === null ? "" : (typesLabel || (ar ? "PDF أو صورة · حتى 25 ميجابايت" : "PDF or image · up to 25 MB"));
+  const hintLine = [hint, types].filter(Boolean).join(" · ");
   const open = () => { if (!disabled && !busy) inputRef.current?.click(); };
 
   return (
@@ -96,9 +99,9 @@ const AttachDropzone = forwardRef(function AttachDropzone({
           <span className="nv-dropzone-copy">
             <span className="nv-dropzone-line">
               <span className="nv-dropzone-label">{busy ? (ar ? "جارٍ قراءة الملف…" : "Reading the file…") : (label || (ar ? "أرفق ملفاً" : "Attach a file"))}</span>
-              <span className="nv-dropzone-need" data-need={required ? "required" : "optional"}>{need}</span>
+              {showNeed ? <span className="nv-dropzone-need" data-need={required ? "required" : "optional"}>{need}</span> : null}
             </span>
-            <span className="nv-dropzone-hint">{hint ? `${hint} · ${types}` : types}</span>
+            {hintLine ? <span className="nv-dropzone-hint">{hintLine}</span> : null}
           </span>
         </button>
       )}

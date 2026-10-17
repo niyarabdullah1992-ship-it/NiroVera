@@ -1196,7 +1196,7 @@ export default function RequestsWorkspace({
       return;
     }
     if (picked.size > SUPPORTING_FILE_MAX_BYTES) {
-      setError(ar ? "يجب ألا يتجاوز حجم الملف 10 ميجابايت." : "The file must not exceed 10 MB.");
+      setError(ar ? "يجب ألا يتجاوز حجم الملف 25 ميجابايت." : "The file must not exceed 25 MB.");
       if (inputRef?.current) inputRef.current.value = "";
       return;
     }
@@ -1969,7 +1969,7 @@ export default function RequestsWorkspace({
       return;
     }
     if (picked.size > SUPPORTING_FILE_MAX_BYTES) {
-      setExamSatError((m) => ({ ...m, [key]: ar ? "يجب ألا يتجاوز حجم الملف 10 ميجابايت." : "The file must not exceed 10 MB." }));
+      setExamSatError((m) => ({ ...m, [key]: ar ? "يجب ألا يتجاوز حجم الملف 25 ميجابايت." : "The file must not exceed 25 MB." }));
       return;
     }
     setExamSatBusy((m) => ({ ...m, [key]: true }));

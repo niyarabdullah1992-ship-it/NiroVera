@@ -1328,9 +1328,9 @@ export function requestReasonRequired(type) {
   return String(type || "") !== RESIGNATION_TYPE;
 }
 
-/** The one attachment control in طلباتي: PDF or image, up to 10 MB each. */
+/** The one attachment control in طلباتي: PDF or image, up to 25 MB each. */
 export const REQUEST_ATTACH_ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
-export const REQUEST_ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+export const REQUEST_ATTACH_MAX_BYTES = 25 * 1024 * 1024;
 export const REQUEST_ATTACH_MAX_FILES = 5;
 const REQUEST_ATTACH_TYPES = ["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"];
 
@@ -1367,7 +1367,7 @@ export function checkRequestFilesGate(files) {
       return { ok: false, error: "FILE_TYPE", reason: "الصيغ المدعومة: PDF، JPG، PNG، WEBP.", reasonEn: "Supported formats: PDF, JPG, PNG, WEBP." };
     }
     if ((Number(file?.size) || 0) > REQUEST_ATTACH_MAX_BYTES) {
-      return { ok: false, error: "FILE_TOO_LARGE", reason: "يجب ألا يتجاوز حجم الملف 10 ميجابايت.", reasonEn: "The file must not exceed 10 MB." };
+      return { ok: false, error: "FILE_TOO_LARGE", reason: "يجب ألا يتجاوز حجم الملف 25 ميجابايت.", reasonEn: "The file must not exceed 25 MB." };
     }
   }
   return { ok: true, files: list };

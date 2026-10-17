@@ -41,7 +41,7 @@ import { hoursAr, otOffer, sar as sarText } from "./otOffer.js";
 import { compBalance } from "./compLeave.js";
 
 export const SUPPORTING_FILE_ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
-export const SUPPORTING_FILE_MAX_BYTES = 10 * 1024 * 1024;
+export const SUPPORTING_FILE_MAX_BYTES = 25 * 1024 * 1024;
 
 export function isAllowedSupportingFile(file) {
   if (!file) return false;

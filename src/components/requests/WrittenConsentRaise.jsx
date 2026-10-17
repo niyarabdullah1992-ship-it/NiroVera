@@ -13,7 +13,7 @@ import {
 import { todayRiyadh } from "@/lib/requestWorkspace";
 import { BORDER, CARD, CONTROL_RADIUS, MUTED } from "@/lib/platformStyles";
 import PlatformDateField from "@/components/shared/PlatformDateField";
-import AttachFileButton from "@/components/shared/AttachFileButton";
+import AttachDropzone from "@/components/shared/AttachDropzone";
 import ConsentFileLink from "@/components/requests/ConsentFileLink";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { toast } from "@/components/ui/use-toast";
@@ -192,16 +192,17 @@ export default function WrittenConsentRaise({ employees = [], employeeId, ar = t
           <textarea data-consent-body="1" value={body} onChange={(e) => setBody(e.target.value)} rows={3} style={{ ...field, resize: "vertical", lineHeight: 1.9 }} />
         </label>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={label}>{ar ? "النموذج الذي سيوقّعه (PDF أو صورة)" : "The form they will sign (PDF or image)"}</span>
-          {file?.name ? (
-            <span data-consent-file="1" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 12px", borderRadius: CONTROL_RADIUS, border: "1px solid var(--nv-ok-line)", background: "var(--nv-ok-soft)" }}>
-              <strong style={{ fontSize: 12.5, color: "var(--nv-ok-ink)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 160px" }}>{file.name}</strong>
-              <ConsentFileLink file={file} ar={ar}>{ar ? "معاينة" : "Preview"}</ConsentFileLink>
-              <button type="button" onClick={() => setFile(null)} style={{ fontFamily: "inherit", fontSize: 11.5, fontWeight: 700, height: 28, padding: "0 10px", borderRadius: 8, border: `1px solid ${BORDER}`, background: CARD, color: "var(--nv-ink2)", cursor: "pointer" }}>{ar ? "أزل" : "Remove"}</button>
-            </span>
-          ) : (
-            <AttachFileButton ar={ar} accept="application/pdf,image/jpeg,image/png,image/webp" busy={fileBusy} label={ar ? "أرفق النموذج" : "Attach the form"} onPick={pickFile} />
-          )}
+          <span style={label}>{ar ? "النموذج الذي سيوقّعه" : "The form they will sign"}</span>
+          <AttachDropzone
+            ar={ar}
+            accept="application/pdf,image/jpeg,image/png,image/webp"
+            required
+            busy={fileBusy}
+            file={file?.name ? file : null}
+            label={ar ? "أرفق النموذج" : "Attach the form"}
+            onPick={(picked) => (picked ? pickFile(picked) : setFile(null))}
+            onClear={() => setFile(null)}
+          />
           {fileError ? <span style={{ fontSize: 11.5, color: "var(--nv-bad-ink)" }}>{fileError}</span> : null}
         </div>
       </div>

@@ -859,7 +859,7 @@ export function requestReasonRequired(type?: string) {
 }
 
 export const REQUEST_ATTACH_ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
-export const REQUEST_ATTACH_MAX_BYTES = 10 * 1024 * 1024;
+export const REQUEST_ATTACH_MAX_BYTES = 25 * 1024 * 1024;
 export const REQUEST_ATTACH_MAX_FILES = 5;
 const REQUEST_ATTACH_TYPES = ["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"];
 export const REQUEST_ATTACH_REQUIRED_TYPES = [STUDY_CONSENT_TYPE, NIGHT_FITNESS_TYPE, NIGHT_AVOID_TYPE, "pregnancy_notice"];
@@ -892,7 +892,7 @@ export function checkRequestFilesGate(files: unknown) {
       return { ok: false as const, error: "FILE_TYPE", reason: "الصيغ المدعومة: PDF، JPG، PNG، WEBP.", reasonEn: "Supported formats: PDF, JPG, PNG, WEBP." };
     }
     if ((Number(file?.size) || 0) > REQUEST_ATTACH_MAX_BYTES) {
-      return { ok: false as const, error: "FILE_TOO_LARGE", reason: "يجب ألا يتجاوز حجم الملف 10 ميجابايت.", reasonEn: "The file must not exceed 10 MB." };
+      return { ok: false as const, error: "FILE_TOO_LARGE", reason: "يجب ألا يتجاوز حجم الملف 25 ميجابايت.", reasonEn: "The file must not exceed 25 MB." };
     }
   }
   return { ok: true as const, files: list };

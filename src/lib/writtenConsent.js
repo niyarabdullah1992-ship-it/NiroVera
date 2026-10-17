@@ -302,11 +302,31 @@ export async function hashConsentFile(file) {
   return `F${file.size}${String(file.name || "").length}`;
 }
 
-export function readConsentFile(file) {
+function readAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("read"));
     reader.onload = () => resolve(String(reader.result || ""));
     reader.readAsDataURL(file);
   });
+}
+
+/**
+ * Where an attached file lives. On the live platform it goes to the hosted file store and the record
+ * keeps only its URL (so a 25 MB scan never sits inside a request row); the local preview — or a store
+ * that is down — keeps it as a data URL so the gate still opens. The hash is taken separately.
+ */
+export async function readConsentFile(file) {
+  if (!file) return "";
+  try {
+    const { isLocalPreviewActive } = await import("./localPreview.js");
+    if (!isLocalPreviewActive()) {
+      const { base44 } = await import("../api/base44Client.js");
+      const result = await base44.integrations.Core.UploadFile({ file });
+      if (result?.file_url) return String(result.file_url);
+    }
+  } catch {
+    // fall through to a data URL
+  }
+  return readAsDataUrl(file);
 }

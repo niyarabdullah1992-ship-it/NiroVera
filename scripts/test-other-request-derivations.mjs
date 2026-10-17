@@ -319,7 +319,7 @@ assert.equal(checkApproveOtherRequestGate({
 assert.equal(checkApproveOtherRequestGate({
   type: "salary_letter",
   status: "pending",
-  issuedFile: { name: "big.pdf", url: "/big.pdf", size: 11 * 1024 * 1024 },
+  issuedFile: { name: "big.pdf", url: "/big.pdf", size: 26 * 1024 * 1024 },
 }).error, "FILE_SIZE");
 
 assert.equal(checkSubmitOtherRequestGate({ type: "manual_punch", reason: "تعذّر الموقع", date: "2026-09-15" }).error, "TIME_REQUIRED");

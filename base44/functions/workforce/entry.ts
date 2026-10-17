@@ -299,7 +299,7 @@ Deno.serve(async (req) => {
         advanceLeave: type === "annual" && body.advanceLeave === true ? true : undefined,
         joinAnnualToSick: type === "annual" && body.joinAnnualToSick === true ? true : undefined,
       } as any;
-      // One attachment rule for every request in طلباتي: PDF or image, at most 10 MB each.
+      // One attachment rule for every request in طلباتي: PDF or image, at most 25 MB each.
       const leaveFiles = checkRequestFilesGate(request.files);
       if (!leaveFiles.ok) return Response.json({ ...leaveFiles }, { status: 422 });
       // Art. 78: the worker sets the job-search day; it is recorded, not asked for approval.

@@ -103,13 +103,13 @@ const pdf = { name: "استقالة.pdf", type: "application/pdf", size: 120000,
 for (const gate of [checkRequestFilesGate, be.checkRequestFilesGate]) {
   assert.equal(gate([pdf]).ok, true);
   assert.equal(gate(undefined).ok, true);
-  assert.equal(gate([{ ...pdf, size: 11 * 1024 * 1024 }]).error, "FILE_TOO_LARGE");
+  assert.equal(gate([{ ...pdf, size: 26 * 1024 * 1024 }]).error, "FILE_TOO_LARGE");
   assert.equal(gate([{ name: "x.exe", type: "application/x-msdownload" }]).error, "FILE_TYPE");
   assert.equal(gate("x").error, "FILES_INVALID");
 }
 // The attachment passes the submit gate for a plain request.
 assert.equal(checkSubmitOtherRequestGate({ type: "advance", reason: "طلب سلفة", files: [pdf] }).ok, true);
-assert.equal(checkSubmitOtherRequestGate({ type: "advance", reason: "طلب سلفة", files: [{ ...pdf, size: 20 * 1024 * 1024 }] }).error, "FILE_TOO_LARGE");
+assert.equal(checkSubmitOtherRequestGate({ type: "advance", reason: "طلب سلفة", files: [{ ...pdf, size: 30 * 1024 * 1024 }] }).error, "FILE_TOO_LARGE");
 
 // 5. A resignation needs no reason (Arts. 75 / 79 bis); the hint is shared with the server twin.
 assert.equal(requestReasonRequired(RESIGNATION_TYPE), false);

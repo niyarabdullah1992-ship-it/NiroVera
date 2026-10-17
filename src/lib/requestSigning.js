@@ -54,7 +54,7 @@ export function isRequestSigningPackage(row) {
   );
 }
 
-export const ISSUED_LETTER_MAX_BYTES = 10 * 1024 * 1024;
+export const ISSUED_LETTER_MAX_BYTES = 25 * 1024 * 1024;
 
 function checkPaperKind(file, emptyError) {
   if (!file?.name && !file?.url) {
@@ -86,8 +86,8 @@ export function checkIssuedLetterFileGate(file) {
     return {
       ok: false,
       error: "FILE_SIZE",
-      reason: "يجب ألا يتجاوز حجم الملف 10 ميجابايت.",
-      reasonEn: "The file must not exceed 10 MB.",
+      reason: "يجب ألا يتجاوز حجم الملف 25 ميجابايت.",
+      reasonEn: "The file must not exceed 25 MB.",
     };
   }
   return { ok: true };

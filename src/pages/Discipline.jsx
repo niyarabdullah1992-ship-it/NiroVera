@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { updateCompany } from "@/lib/store";
@@ -27,26 +27,29 @@ import { pageKicker } from "@/lib/moduleMeta";
 import { sha256HexOfFile } from "@/lib/fileHash";
 import { readConsentFile } from "@/lib/writtenConsent";
 import DisciplineArchiveBoard from "@/components/discipline/DisciplineArchiveBoard";
-import DisciplineCaseCard from "@/components/discipline/DisciplineCaseCard";
-import DisciplineMineCard from "@/components/discipline/DisciplineMineCard";
+import DisciplineCaseCard, { DisciplineHero } from "@/components/discipline/DisciplineCaseCard";
+import DisciplineMineCard, { DisciplineObjectionForm } from "@/components/discipline/DisciplineMineCard";
 import GrievanceRaise from "@/components/discipline/GrievanceRaise";
 import DamageObjectionRaise from "@/components/discipline/DamageObjectionRaise";
+import DisciplineRightsDecision from "@/components/discipline/DisciplineRightsDecision";
+import { AttentionChip, DisciplineNewFrame, DisciplineRow, DisciplineRowList } from "@/components/discipline/DisciplineRows";
+import { StepHead } from "@/components/discipline/DisciplineFormKit";
+import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
+import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import { DAMAGE_OBJECTION_TYPE, GRIEVANCE_KINDS, GRIEVANCE_TYPE, damageObjectionDeadline, grievanceState } from "@/lib/rightsRequests";
 import { myDamageLines } from "@/lib/myRights";
-import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
-import OpsSideSlab, { OpsListHead } from "@/components/tasks/OpsSideSlab";
-import { DisciplineHero } from "@/components/discipline/DisciplineCaseCard";
 import RightHint from "@/components/shared/RightHint";
-import FigureRow from "@/components/shared/FigureRow";
-import { KpiAction } from "@/components/shared/StatusFlag";
 import { disciplineCaseHint } from "@/lib/rightHints.disc";
 import { generateDisciplineDeduction, liftDisciplineDeduction } from "@/lib/deductionGenerators";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { canManageDiscipline, disciplineManageCases, scopeEqualOrWider } from "@/lib/disciplineManageScope";
+import { requestMayDecideOnLane } from "@/lib/dutyScope";
 import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { useRailSide, useSetRailSide } from "@/lib/railSide";
 import { checkPublishRegulationGate, planRegulationAck, regulationDate, regulationNextStep, regulationOf, regulationRef, regulationStepFor } from "@/lib/workRegulation";
-import { deadlineText, disciplineDeadlines } from "@/lib/disciplineDeadlines";
+import { disciplineDeadlines } from "@/lib/disciplineDeadlines";
 import { ruleValue } from "@/lib/laborRules";
 import { saveDisciplineOnServer } from "@/lib/disciplineServer";
 import { regulationVersionEntry } from "@/lib/syncLaw";
@@ -54,72 +57,26 @@ import { checkUniformSanctionGate, planUniformAck, uniformOf } from "@/lib/unifo
 import { sanctionRecordState } from "@/lib/penaltiesRecord";
 import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 
-const MANAGE_TAB_ORDER = ["manage", "raise", "calc", "schedule", "law", "archive"];
-const EMPLOYEE_TAB_ORDER = ["mine", "schedule", "law", "archive"];
-const FACE_TITLE = {
-  mine: { ar: "جزاءاتي وحقّي في الاعتراض", en: "My sanctions and my right to object" },
-  schedule: { ar: "لائحة الجزاءات", en: "The penalty list" },
-  calc: { ar: "حاسبة الحسم", en: "Cut calculator" },
-  manage: { ar: "ملفات الجزاء المفتوحة", en: "Open sanction files" },
-  raise: { ar: "ارفع جزاءً", en: "Raise a sanction" },
-  law: { ar: "أنظمة الوزارة في الجزاءات", en: "Ministry rules on sanctions" },
-  archive: { ar: "أرشيف الجزاءات", en: "Sanctions archive" },
-};
-const TAB_LABEL = {
-  schedule: { ar: "لائحة الجزاءات", en: "Penalty list" },
-  calc: { ar: "حاسبة الحسم", en: "Cut calculator" },
-  manage: { ar: "إدارة", en: "Manage" },
-  raise: { ar: "ارفع جزاءً", en: "Raise a sanction" },
-  law: { ar: "أنظمة الوزارة", en: "Ministry rules" },
-  archive: { ar: "الأرشيف", en: "Archive" },
-  mine: { ar: "ملفي", en: "My file" },
-};
+/*
+ * «الجزاءات» — one page per lane, built like طلباتي and صوت الموظف:
+ *   الموظف: «جزاءاتي» (pill-filtered lines that open in place) · «طلب جديد» (tiles → one form) · ministry panel.
+ *   الإدارة: «قائمة الجزاءات» (pills · queue beside a decision card) · «إجراء جديد» (tiles → one form) · ministry panel.
+ * Old ?tab= links still land: mine/manage pick the lane, raise/calc/schedule pick the tile, archive the pill,
+ * law scrolls to the ministry panel; ?raise=grievance|damage_objection[&line=] opens that form.
+ */
+
+const MANAGE_TILES = new Set(["raise", "calc", "schedule", "fund"]);
 
 function uid() {
   return `dsc_${Date.now().toString(36)}`;
 }
 
-const PACK_CARD = {
-  background: "var(--nv-card)",
-  border: "1px solid var(--nv-line)",
-  borderRadius: 8,
-  overflow: "hidden",
-};
+const dayOf = (iso) => String(iso || "").slice(0, 10);
+const pendingStatus = (row) => ["pending", "pending_manager"].includes(String(row?.status || "pending"));
+const byNewest = (a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || ""));
 
-function packHead(columns) {
-  return {
-    display: "grid",
-    gridTemplateColumns: columns,
-    alignItems: "center",
-    minHeight: 36,
-    background: "var(--nv-hover)",
-    borderBottom: "1px solid var(--nv-line)",
-    fontSize: 11.5,
-    fontWeight: 700,
-    color: "var(--nv-ink2)",
-  };
-}
-
-function statusPill(kind) {
-  const tone = kind === "bad"
-    ? { color: "var(--nv-bad-ink)", border: "var(--nv-bad-line)" }
-    : kind === "warn"
-      ? { color: "var(--nv-warn-ink)", border: "var(--nv-warn-line)" }
-      : { color: "var(--nv-ok-ink)", border: "var(--nv-ok-line)" };
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    height: 24,
-    padding: "0 10px",
-    borderRadius: 999,
-    fontSize: 11.5,
-    fontWeight: 700,
-    color: tone.color,
-    background: "transparent",
-    border: `1px solid ${tone.border}`,
-    justifySelf: "start",
-    whiteSpace: "nowrap",
-  };
+function scrollTo(selector) {
+  setTimeout(() => document.querySelector(selector)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
 }
 
 export default function Discipline() {
@@ -137,26 +94,17 @@ export default function Discipline() {
     ? employees.filter((person) => matchesStationScope(person.stationId || person.station_id, stationScope))
     : employees;
   const raiseTargets = scopedEmployees.filter((person) => !scopeEqualOrWider(person, currentUser, data));
-  // Management never sees its own file, nor one it could not have raised — those live on ملفي
+  // Management never sees its own file, nor one it could not have raised — those live on the employee side
   // and with whoever sits above (the same rule as raising). Shared with the compliance index.
   const visibleCases = canManage
     ? disciplineManageCases(data, currentUser, { inScope: (sid) => matchesStationScope(sid, stationScope) })
     : cases.filter((item) => item.employeeId === currentUser?.id);
   const mine = cases.filter((item) => item.employeeId === currentUser?.id);
   const liveCases = visibleCases.filter((item) => !isDisciplineSettled(item));
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
-  // The side is in the address: lane=manage is الإدارة, anything else is الموظف — the shared tabs
-  // (لائحة الجزاءات · أنظمة الوزارة · الأرشيف) keep the side they were opened from.
+  // The side comes from the rail: الإدارة for a manager on the manage side, الموظف otherwise.
   const adminVoice = canManage && railSide !== "employee";
-  const setTab = (next) => {
-    const params = new URLSearchParams(searchParams);
-    params.set("tab", next);
-    if (adminVoice) params.set("lane", "manage");
-    else params.delete("lane");
-    setSearchParams(params, { replace: true });
-    if (adminVoice) setRailSide("manage");
-  };
   const [employeeId, setEmployeeId] = useState("");
   const [penaltyKind, setPenaltyKind] = useState("fine");
   const [penaltyDays, setPenaltyDays] = useState(1);
@@ -167,20 +115,19 @@ export default function Discipline() {
   const [workConnected, setWorkConnected] = useState("");
   const [note, setNote] = useState("");
   const [appealDraft, setAppealDraft] = useState("");
-  // «تظلّم» (regs Art. 71) lives here: from a sanction line (prefilled) or for a decision/action.
-  const [grievanceOpen, setGrievanceOpen] = useState(() => searchParams.get("raise") === "grievance");
-  const [grievancePrefill, setGrievancePrefill] = useState(null);
   const raiseAsked = searchParams.get("raise");
-  useEffect(() => {
-    if (raiseAsked !== "grievance") return;
-    setGrievanceOpen(true);
-    // The grievance is the worker's own act — it opens on the employee side.
-    setRailSide("employee");
-  }, [raiseAsked]);
-  // «اعتراض على خصم إتلاف» (Art. 91) lives here too: from a damage line (prefilled) or a general entry.
-  const [damageOpen, setDamageOpen] = useState(() => searchParams.get("raise") === DAMAGE_OBJECTION_TYPE);
+  // الموظف — the list pill, the line opened in place, and the «طلب جديد» tile with its sub-choice.
+  const [mineFace, setMineFace] = useState(() => (requestedTab === "archive" ? "archive" : "all"));
+  const [openRow, setOpenRow] = useState("");
+  const [newKind, setNewKind] = useState(() => (raiseAsked === DAMAGE_OBJECTION_TYPE ? "damage" : requestedTab === "schedule" ? "schedule" : "grievance"));
+  const [grievancePick, setGrievancePick] = useState("other");
+  const [grievancePrefill, setGrievancePrefill] = useState(null);
+  const [damagePick, setDamagePick] = useState("other");
   const [damagePrefill, setDamagePrefill] = useState(null);
-  const [caseSel, setCaseSel] = useState("");
+  // الإدارة — the queue pill, the picked item, and the «إجراء جديد» tile.
+  const [queueFace, setQueueFace] = useState(() => (requestedTab === "archive" ? "archive" : "all"));
+  const [pickedId, setPickedId] = useState("");
+  const [actionKind, setActionKind] = useState(() => (MANAGE_TILES.has(requestedTab) ? requestedTab : "raise"));
   const [clauseId, setClauseId] = useState("");
   const regulation = useMemo(() => regulationOf(data), [data]);
   const laborCalendar = laborCalendarOf(data);
@@ -234,12 +181,9 @@ export default function Discipline() {
     [mine, employees, stations, ar, currentUser, board.today],
   );
 
-  const myOpen = mineCards.filter((card) => card.face.id === "signed").length;
   const meRow = employees.find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
-  const myGrievances = (meRow?.otherRequests || []).filter((row) => row?.type === GRIEVANCE_TYPE)
-    .slice().sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
-  const myObjections = (meRow?.otherRequests || []).filter((row) => row?.type === DAMAGE_OBJECTION_TYPE)
-    .slice().sort((a, b) => String(b.date || b.createdAt || "").localeCompare(String(a.date || a.createdAt || "")));
+  const myGrievances = (meRow?.otherRequests || []).filter((row) => row?.type === GRIEVANCE_TYPE).slice().sort(byNewest);
+  const myObjections = (meRow?.otherRequests || []).filter((row) => row?.type === DAMAGE_OBJECTION_TYPE).slice().sort(byNewest);
   // Damage lines on my payroll that I may still object to (window open, no objection on them yet).
   const myDamageOpen = useMemo(
     () => myDamageLines(data, meRow?.id, meRow?.otherRequests || [])
@@ -256,9 +200,19 @@ export default function Discipline() {
       lineRef: [line.reason, row.month].filter(Boolean).join(" · "),
       at: Date.now(),
     } : null);
-    setDamageOpen(true);
-    setTimeout(() => document.querySelector("[data-damage-objection-raise]")?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+    setDamagePick(line ? String(line.id) : "other");
+    setNewKind("damage");
+    scrollTo("[data-disc-new='mine']");
   };
+  // ?raise=grievance — from صوت الموظف and «حقك» hints: the grievance tile, its form open (the worker's own act).
+  useEffect(() => {
+    if (raiseAsked !== "grievance") return;
+    setNewKind("grievance");
+    setGrievancePick("other");
+    setGrievancePrefill(null);
+    setRailSide("employee");
+    scrollTo("[data-disc-new='mine']");
+  }, [raiseAsked]);
   // ?raise=damage_objection[&line=…] — from «حقك» on payroll or the home rights list.
   const lineAsked = searchParams.get("line") || "";
   const damageAskHandled = useRef("");
@@ -267,13 +221,18 @@ export default function Discipline() {
     const key = `${raiseAsked}:${lineAsked}`;
     if (damageAskHandled.current === key) return;
     setRailSide("employee");
+    setNewKind("damage");
     const hit = lineAsked ? myDamageOpen.find(({ line }) => String(line.id) === lineAsked) : null;
     // The line may arrive with the payroll data; wait for it before settling on the general form.
-    if (lineAsked && !hit && !data?.payrollRuns) { setDamageOpen(true); return; }
+    if (lineAsked && !hit && !data?.payrollRuns) return;
     damageAskHandled.current = key;
     if (hit) openDamage(hit);
-    else setDamageOpen(true);
+    else scrollTo("[data-disc-new='mine']");
   }, [raiseAsked, lineAsked, myDamageOpen, data?.payrollRuns]);
+  // ?tab=law — the ministry panel at the foot of either lane.
+  useEffect(() => {
+    if (requestedTab === "law") scrollTo("[data-ministry-section='discipline']");
+  }, [requestedTab]);
   const openGrievance = (card) => {
     const item = card?.item;
     const told = String(item?.notifyDeliveredAt || item?.signedAt || item?.decidedAt || "").slice(0, 10);
@@ -284,25 +243,18 @@ export default function Discipline() {
       sanctionRef: card.mineTitle || "",
       at: Date.now(),
     } : null);
-    setGrievanceOpen(true);
-    setTimeout(() => document.querySelector("[data-grievance-raise]")?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+    setGrievancePick(item ? String(item.id) : "other");
+    setNewKind("grievance");
+    scrollTo("[data-disc-new='mine']");
   };
-  // Signed is archive-settled for the company, but stays on ملفي live so the employee can object.
+  // Signed is archive-settled for the company, but stays live for the employee so he can object.
   // Model Arts. 69 · 61: nothing leaves the record; a signed penalty past the fold date (discipline.record.eraseDays,
-  // never under the 180-day cooloff) only moves under «سوابق» in the worker's own list.
+  // never under the 180-day cooloff) is marked «سابقة» on its line.
   const mineAllLive = mineCards.filter((card) => card.face.id === "signed" || !isDisciplineSettled(card.item));
-  const mineLiveCards = mineAllLive.filter((card) => !sanctionRecordState(card.item, { today: board.today }).foldedForWorker);
-  const mineOlderCards = mineAllLive.filter((card) => sanctionRecordState(card.item, { today: board.today }).foldedForWorker);
+  const foldedOf = (card) => sanctionRecordState(card.item, { today: board.today }).foldedForWorker;
   const kindSpec = listedPenaltyKind(penaltyKind) || DISCIPLINE_PENALTY_KINDS[0];
   const cutDays = kindSpec.days.includes(0) && kindSpec.days.length === 1 ? 0 : Number(penaltyDays) || kindSpec.days[0] || 0;
   const ledger = data?.disciplineFineLedger || [];
-  const tabOrder = adminVoice ? MANAGE_TAB_ORDER : EMPLOYEE_TAB_ORDER;
-  const activeFace = tabOrder.includes(requestedTab) ? requestedTab : (adminVoice ? "manage" : "mine");
-  const tabs = tabOrder.map((key) => ({
-    value: key,
-    label: ar ? TAB_LABEL[key].ar : TAB_LABEL[key].en,
-  }));
-  const selectedCard = files.find((row) => String(row.item.id) === String(caseSel)) || files[0] || null;
   const meterOf = (card, id) => (card.meters || []).find((m) => m.id === id) || {};
   const deadlineOf = (card) => {
     const id = card.face?.id;
@@ -310,62 +262,6 @@ export default function Discipline() {
     if (!m.text || m.text === "—") return null;
     return { text: `${m.text} ${ar ? "يوماً" : "days"}`, label: m.label, over: m.over, art: m.article };
   };
-  const NEXT = {
-    notified: { ar: "سماع الدفاع", en: "Hear the defence" },
-    defence: { ar: "التوقيع أو الحفظ", en: "Sign or close" },
-    objected: { ar: "البتّ في الاعتراض", en: "Rule on the objection" },
-    signed: { ar: "يسري — يُغلق بعد مهلة الاعتراض", en: "In force — closes after the objection window" },
-  };
-  const waiting = files.filter((card) => card.actions?.length);
-  // Arts. 69 & 72 — the windows about to close (≤ 7 days) or already closed, most urgent first.
-  const clocks = adminVoice
-    ? disciplineDeadlines({ cases: liveCases, today: board.today, calendar: laborCalendar }).filter((row) => row.kind !== "grievance" && (row.soon || row.over))
-    : [];
-  const overCount = files.filter((card) => (card.meters || []).some((m) => m.over)).length;
-  // The platform's three tiles: what waits on you first (wider), then open files, then the cut in force.
-  // «سطر لا بطاقة»: what waits on you first, then open files, then the cut in force — one row, no boxes.
-  const figOf = (stat, key) => (stat ? { key, label: stat.lbl, value: stat.val, suffix: stat.unit || "", hint: stat.note || "" } : null);
-  const manageFigures = adminVoice ? [
-    {
-      key: "disc-due",
-      label: ar ? "بانتظار قرارك" : "Waiting on you",
-      value: String(waiting.length),
-      suffix: ar ? "ملف" : "files",
-      tone: overCount ? "bad" : undefined,
-      flag: overCount ? (ar ? "تجاوز مهلة نظامية" : "Past a statutory window") : "",
-      hint: overCount ? (ar ? `${overCount} تجاوز مهلة نظامية` : `${overCount} past a statutory window`) : (ar ? "كلها ضمن المهل النظامية" : "All within the statutory windows"),
-    },
-    // Open files and a cut in force are states, not problems — no chip (KPI law).
-    figOf(board.stats[1], "disc-open"),
-    figOf(board.stats[3], "disc-cut"),
-  ].filter(Boolean) : [];
-  const manageSide = adminVoice ? (
-    <OpsSideSlab
-      ar={ar}
-      dataKey="disc-side"
-      title={ar ? "بانتظار قرارك" : "Waiting on you"}
-      standing={scopeLabel ? (ar ? `النطاق: ${scopeLabel}` : `Scope: ${scopeLabel}`) : (ar ? "كل فروعك" : "All your branches")}
-      note={ar ? "كل ملف بخطوته التالية ومهلتها النظامية. اختر اسماً لفتح ملفه." : "Each file with its next step and statutory window. Pick a name to open the file."}
-      groups={["notified", "defence", "objected", "signed"].map((fid) => ({
-        id: fid,
-        name: ar ? NEXT[fid].ar : NEXT[fid].en,
-        rows: files.filter((card) => card.face?.id === fid).map((card) => {
-          const dl = deadlineOf(card);
-          return {
-            id: String(card.item.id),
-            title: card.employee?.name || "—",
-            count: dl ? dl.text.split(" ")[0] : "",
-            tone: dl?.over ? "bad" : "gold",
-            line: [card.item.note || card.item.reason, dl ? dl.label : ""].filter(Boolean).join(" · "),
-            action: { key: "open", label: ar ? "افتح الملف" : "Open the file", onClick: () => { setCaseSel(String(card.item.id)); document.querySelector("[data-discipline-case]")?.scrollIntoView({ behavior: "smooth", block: "start" }); } },
-          };
-        }),
-      }))}
-      emptyText={ar ? "لا ملف ينتظر قرارك." : "No file waits on you."}
-      selectedId={String(selectedCard?.item.id || "")}
-      onSelect={(id) => id && setCaseSel(id)}
-    />
-  ) : null;
 
   const saveCases = (next, extra) => {
     if (!company?.id) return;
@@ -472,7 +368,8 @@ export default function Discipline() {
     setArt80({});
     setOffSite(false);
     setWorkConnected("");
-    setTab("manage");
+    setQueueFace("all");
+    setPickedId(`case:${newId}`);
   };
 
   const onAction = (item, actionId) => {
@@ -635,469 +532,583 @@ export default function Discipline() {
     patch(item, { status: "notify", appealNote: "", appealedAt: "", appealFile: null }, "withdraw");
   };
 
-  return (
-    <OpsFrame
+  // ——— الموظف: «جزاءاتي» ———
+  const grievanceStage = (row) => grievanceState(row, board.today, hintIsHoliday) || {};
+  const grievanceSettled = (row) => ["accepted", "refused"].includes(grievanceStage(row).stage) || ["approved", "rejected"].includes(String(row.status || ""));
+  const objectionSettled = (row) => ["approved", "rejected"].includes(String(row.status || ""));
+  const sanctionBucket = (card) => (card.face.id === "signed" ? "force" : card.face.id === "notified" ? "reply" : card.face.id === "objected" ? "grieved" : "");
+  const openGrievances = myGrievances.filter((row) => !grievanceSettled(row));
+  const openObjections = myObjections.filter((row) => !objectionSettled(row));
+  const settledRights = [...myGrievances.filter(grievanceSettled), ...myObjections.filter(objectionSettled)].sort(byNewest);
+  const mineCount = {
+    all: mineAllLive.length + openGrievances.length + openObjections.length + myDamageOpen.length,
+    force: mineAllLive.filter((c) => sanctionBucket(c) === "force").length,
+    reply: mineAllLive.filter((c) => sanctionBucket(c) === "reply").length + myDamageOpen.length,
+    grieved: mineAllLive.filter((c) => sanctionBucket(c) === "grieved").length + openGrievances.length + openObjections.length,
+    archive: (mineCards.length - mineAllLive.length) + settledRights.length,
+  };
+  const showMine = (bucket) => mineFace === "all" || mineFace === bucket;
+  const toggleRow = (key) => setOpenRow((cur) => (cur === key ? "" : key));
+  const grievanceStageText = (row) => {
+    const st = grievanceStage(row);
+    return st.stage === "accepted" ? (ar ? "قُبل" : "Accepted")
+      : st.stage === "refused" ? (ar ? `رُفض — المحكمة العمالية حتى ${regulationDate(st.courtBy)}` : `Refused — labour court by ${st.courtBy}`)
+        : st.stage === "overdue" ? (ar ? `لم يُبتّ فيه — المحكمة العمالية حتى ${regulationDate(st.courtBy)}` : `Undecided — labour court by ${st.courtBy}`)
+          : (ar ? `بانتظار البتّ حتى ${regulationDate(st.replyBy)}` : `Awaiting a ruling by ${st.replyBy}`);
+  };
+  const objectionStageText = (row) => {
+    const last = row.objectionLastDay || damageObjectionDeadline(row.notifiedOn);
+    return row.status === "approved" ? (ar ? "قُبل — يُرد المبلغ في المسير" : "Accepted — refunded on payroll")
+      : row.status === "rejected" ? (ar ? `لم يُقبل — المحكمة العمالية حتى ${regulationDate(last)}` : `Refused — labour court by ${last}`)
+        : (ar ? "بانتظار رد الإدارة" : "Awaiting management");
+  };
+  const grievanceKindLabel = (row) => {
+    const k = GRIEVANCE_KINDS.find((g) => g.key === row.grievanceKind);
+    return k ? (ar ? k.ar : k.en) : (ar ? "تظلّم" : "Grievance");
+  };
+
+  const sanctionLine = (card) => {
+    const key = `case:${card.item.id}`;
+    const appeal = meterOf(card, "appeal");
+    const chip = card.face.id === "notified"
+      ? <AttentionChip tone="warn">{ar ? "أُبلغتَ — يُسمع دفاعك" : "Notified — your defence"}</AttentionChip>
+      : card.canObject
+        ? <AttentionChip tone={appeal.over ? "bad" : "warn"}>{ar ? "الاعتراض مفتوح" : "Objection open"}</AttentionChip>
+        : null;
+    return (
+      <DisciplineRow
+        key={key}
+        id={key}
+        ar={ar}
+        badge={card.face.id === "objected" ? (ar ? "م 72" : "Art. 72") : (ar ? "م 66" : "Art. 66")}
+        title={card.mineTitle}
+        sub={[card.mineState, foldedOf(card) ? (ar ? "سابقة — لا يُشدَّد بها (م61)" : "Earlier — no longer aggravates (Art. 61)") : ""].filter(Boolean).join(" · ")}
+        date={dayOf(card.item.signedAt || card.item.notifiedAt || card.item.createdAt)}
+        chip={chip}
+        open={openRow === key}
+        onOpen={() => toggleRow(key)}
+      >
+        <DisciplineHero card={card} ar={ar} mine companyName={company?.name || ""} />
+        <div data-disc-mine-hint="" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12, color: "var(--nv-ink2)" }}>
+          <RightHint
+            ar={ar}
+            onDate={board.today}
+            hint={disciplineCaseHint(card.item, { view: "employee", ar, today: board.today, isHoliday: hintIsHoliday, employee: card.employee })}
+            onAction={(action) => {
+              if (action.kind === "object" || (action.kind === "rights" && action.rightsKind === GRIEVANCE_TYPE)) openGrievance(card);
+            }}
+          />
+          {["signed", "closed"].includes(card.face.id) ? (
+            <button
+              type="button"
+              data-disc-grieve={card.item.id}
+              onClick={() => openGrievance(card)}
+              style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 32, padding: "0 14px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", marginInlineStart: "auto" }}
+            >
+              {card.canObject ? (ar ? "اعترض على هذا الجزاء" : "Object to this sanction") : (ar ? "تظلّم من هذا الجزاء" : "Grieve this sanction")}
+            </button>
+          ) : null}
+        </div>
+        <DisciplineMineCard card={card} ar={ar} onWithdraw={withdrawObject} />
+      </DisciplineRow>
+    );
+  };
+
+  const rightsLine = (row, kind) => {
+    const key = `${kind}:${row.id}`;
+    const grievance = kind === "grievance";
+    const st = grievance ? grievanceStage(row) : null;
+    const files = (row.files || []).filter((f) => f?.name);
+    return (
+      <DisciplineRow
+        key={key}
+        id={key}
+        ar={ar}
+        badge={grievance ? (ar ? "م 71" : "Art. 71") : (ar ? "م 91" : "Art. 91")}
+        title={grievance ? `${grievanceKindLabel(row)} · ${String(row.reason || "").slice(0, 60)}` : `${ar ? "اعتراض على خصم إتلاف" : "Damage objection"} · ${Number(row.amount) || 0} ${ar ? "ر.س" : "SAR"}`}
+        sub={grievance ? grievanceStageText(row) : objectionStageText(row)}
+        date={dayOf(row.date || row.createdAt)}
+        chip={grievance && st?.stage === "overdue" ? <AttentionChip tone="bad">{ar ? "فاتت مهلة البتّ" : "Ruling overdue"}</AttentionChip> : null}
+        go={false}
+        open={openRow === key}
+        onOpen={() => toggleRow(key)}
+      >
+        <p style={{ margin: 0, fontSize: 12.5, color: "var(--nv-ink)", lineHeight: 1.9, overflowWrap: "anywhere" }}>{row.reason || "—"}</p>
+        <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
+          {ar ? "أُبلغتَ في " : "Told on "}<span dir="ltr" style={{ fontFamily: "var(--font-mono, monospace)" }}>{dayOf(row.notifiedOn) || "—"}</span>
+          {row.reviewNote ? (ar ? ` · ردّ الإدارة: ${row.reviewNote}` : ` · Management: ${row.reviewNote}`) : ""}
+          {files.length ? (ar ? ` · المرفق: ${files.map((f) => f.name).join("، ")}` : ` · Attached: ${files.map((f) => f.name).join(", ")}`) : ""}
+        </span>
+      </DisciplineRow>
+    );
+  };
+
+  const damageLine = (row) => {
+    const key = `line:${row.line.id}`;
+    const last = row.line.objectionLastDay || damageObjectionDeadline(row.line.damageNoticeOn);
+    return (
+      <DisciplineRow
+        key={key}
+        id={key}
+        ar={ar}
+        badge={ar ? "م 91" : "Art. 91"}
+        title={`${ar ? "خصم إتلاف" : "Damage deduction"} · ${Number(row.line.amount) || 0} ${ar ? "ر.س" : "SAR"}${row.line.reason ? ` · ${String(row.line.reason).slice(0, 50)}` : ""}`}
+        sub={ar ? `لك الاعتراض حتى ${regulationDate(last)}` : `You may object by ${last}`}
+        date={dayOf(row.line.damageNoticeOn)}
+        chip={<AttentionChip tone="warn">{ar ? "الاعتراض مفتوح" : "Objection open"}</AttentionChip>}
+        openLabel={ar ? "اعترض" : "Object"}
+        onOpen={() => openDamage(row)}
+      />
+    );
+  };
+
+  // «طلب جديد» — the sanctions one may grieve or object to, as sub-choices.
+  const grievable = mineAllLive.filter((card) => ["signed", "closed"].includes(card.face.id));
+  const pickedSanction = grievable.find((card) => String(card.item.id) === String(grievancePick)) || null;
+  const mineTiles = [
+    { id: "grievance", letter: ar ? "ت" : "G", title: ar ? "تظلّم من جزاء أو قرار" : "Grieve a sanction or decision", hint: ar ? "النموذج الموحد م71 · خلال 30 يوماً" : "Model Art. 71 · within 30 days" },
+    { id: "damage", letter: ar ? "خ" : "D", title: ar ? "اعتراض على خصم الإتلاف" : "Object to a damage deduction", hint: ar ? "م91 · خلال 15 يوم عمل" : "Art. 91 · within 15 working days" },
+    { id: "schedule", letter: ar ? "ل" : "L", title: ar ? "لائحة الجزاءات" : "The penalty list", hint: ar ? "اقرأها وأقرّ بها" : "Read and acknowledge it" },
+  ];
+
+  const scheduleBoard = (
+    <DisciplineScheduleBoard
       ar={ar}
-      lane={adminVoice ? "manage" : "mine"}
-      section={ar ? "الجزاءات" : "Sanctions"}
-      title={ar ? FACE_TITLE[activeFace]?.ar || "الجزاءات" : FACE_TITLE[activeFace]?.en || "Sanctions"}
+      today={board.today}
+      regulation={regulation}
+      canEdit={adminVoice}
+      employees={employees}
+      meId={currentUser?.id || ""}
+      onAnnounce={() => {
+        const gate = checkPublishRegulationGate(regulation, { today: board.today, ar });
+        if (!gate.ok || !company?.id) {
+          toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
+          return;
+        }
+        updateCompany(company.id, (row) => {
+          row.workRegulation = { ...(row.workRegulation || {}), announcedAt: board.today, announcedBy: currentUser?.name || "", acks: {} };
+        });
+        toast({ description: ar ? `أُعلنت اللائحة — تسري على العمال من ${regulationDate(gate.effectiveFrom, true)}.` : `Announced — binding from ${gate.effectiveFrom}.` });
+      }}
+      onAck={() => {
+        const plan = planRegulationAck(regulation, currentUser);
+        if (!plan.ok || !company?.id) {
+          toast({ description: ar ? plan.reason : plan.reasonEn, variant: "destructive" });
+          return;
+        }
+        updateCompany(company.id, (row) => {
+          row.workRegulation = { ...(row.workRegulation || {}), acks: { ...((row.workRegulation || {}).acks || {}), [plan.employeeId]: plan.ack } };
+        });
+      }}
+      uniform={uniformOf(data)}
+      onSaveUniform={(next) => {
+        if (!company?.id) return;
+        const at = new Date().toISOString();
+        updateCompany(company.id, (row) => {
+          row.workRegulation = { ...(row.workRegulation || {}), uniform: { ...next, version: at, savedAt: at, savedBy: currentUser?.name || "", announcedAt: "", announcedBy: "", acks: {} } };
+        });
+        toast({ description: ar ? "حُفظت اشتراطات الزي — أعلنها ليُقرّ بها العمال (النموذج الموحد م53)." : "Uniform rules saved — announce them for acknowledgement (model Art. 53)." });
+      }}
+      onAnnounceUniform={() => {
+        if (!company?.id) return;
+        updateCompany(company.id, (row) => {
+          const u = row.workRegulation?.uniform;
+          if (!u) return;
+          row.workRegulation = { ...row.workRegulation, uniform: { ...u, announcedAt: board.today, announcedBy: currentUser?.name || "" } };
+        });
+        toast({ description: ar ? "أُعلنت اشتراطات الزي — بانتظار إقرار العمال." : "Uniform rules announced — awaiting acknowledgements." });
+      }}
+      onAckUniform={() => {
+        const plan = planUniformAck(uniformOf(data), currentUser);
+        if (!plan.ok || !company?.id) {
+          toast({ description: ar ? plan.reason : plan.reasonEn, variant: "destructive" });
+          return;
+        }
+        updateCompany(company.id, (row) => {
+          const u = row.workRegulation?.uniform;
+          if (!u) return;
+          row.workRegulation = { ...row.workRegulation, uniform: { ...u, acks: { ...(u.acks || {}), [plan.employeeId]: plan.ack } } };
+        });
+      }}
+      onSave={(next) => {
+        if (!company?.id) return;
+        updateCompany(company.id, (row) => {
+          // A re-saved regulation is a new version: announce it again (Art. 13) and collect fresh acknowledgements.
+          // The superseded version stays on record (the server keeps the same history).
+          const prev = row.workRegulation;
+          const versions = [...(Array.isArray(prev?.versions) ? prev.versions : []), ...(prev?.clauses?.length ? [regulationVersionEntry(prev)] : [])];
+          // The uniform rules (model Art. 53) keep their own version and acknowledgements.
+          row.workRegulation = { ...next, savedBy: currentUser?.name || "", savedAt: new Date().toISOString(), version: new Date().toISOString(), announcedAt: "", acks: {}, versions, ...(prev?.uniform ? { uniform: prev.uniform } : {}) };
+        });
+        toast({ description: ar ? "حُفظت لائحة تنظيم العمل المعتمدة — كل جزاء جديد يسمّي بنده منها." : "The approved regulation is saved — every new sanction names its clause." });
+      }}
+    />
+  );
+
+  // ——— الإدارة: «قائمة الجزاءات» ———
+  // Arts. 69 & 72 — the windows about to close (≤ 7 days) or already closed: they head the queue.
+  const clocks = adminVoice
+    ? disciplineDeadlines({ cases: liveCases, today: board.today, calendar: laborCalendar }).filter((row) => row.kind !== "grievance" && (row.soon || row.over))
+    : [];
+  const clockOf = (caseId) => {
+    const hits = clocks.filter((row) => String(row.caseId) === String(caseId));
+    if (!hits.length) return null;
+    return hits.some((row) => row.over) ? "over" : "soon";
+  };
+  // Grievances (model Art. 71) and Art. 91 objections from the people this manager may decide for.
+  const rightsRows = useMemo(() => {
+    if (!adminVoice) return [];
+    const out = [];
+    for (const person of scopedEmployees) {
+      if (!requestMayDecideOnLane({ actor: currentUser, subject: person, lane: "manage", data })) continue;
+      for (const row of person.otherRequests || []) {
+        if (row?.type !== GRIEVANCE_TYPE && row?.type !== DAMAGE_OBJECTION_TYPE) continue;
+        out.push({ ...row, family: "other", employee: person });
+      }
+    }
+    return out.sort(byNewest);
+  }, [adminVoice, scopedEmployees, currentUser, data]);
+  const pendingRights = rightsRows.filter(pendingStatus);
+  const decidedRights = rightsRows.filter((row) => !pendingStatus(row));
+  const caseBucket = (card) => (card.face.id === "notified" ? "investigation" : ["defence", "objected"].includes(card.face.id) ? "decision" : "");
+  const urgency = (card) => {
+    const c = clockOf(card.item.id);
+    return (c === "over" ? 0 : c === "soon" ? 1 : 2) * 10 + (card.actions?.length ? 0 : 5);
+  };
+  const queueEntries = [
+    ...files.slice().sort((a, b) => urgency(a) - urgency(b)).map((card) => ({ key: `case:${card.item.id}`, kind: "case", bucket: caseBucket(card), card })),
+    ...pendingRights.map((row) => ({ key: `${row.type === GRIEVANCE_TYPE ? "grievance" : "damage"}:${row.id}`, kind: row.type === GRIEVANCE_TYPE ? "grievance" : "damage", bucket: row.type === GRIEVANCE_TYPE ? "grievances" : "objections", row })),
+  ];
+  const queueShown = queueEntries.filter((e) => queueFace === "all" || e.bucket === queueFace);
+  const picked = queueShown.find((e) => e.key === pickedId) || queueShown[0] || null;
+  const queueCount = (bucket) => queueEntries.filter((e) => e.bucket === bucket).length;
+  const archivedCases = visibleCases.length - liveCases.length;
+  const pickEntry = (key) => {
+    setPickedId(key);
+    if (window.matchMedia?.("(max-width: 900px)").matches) scrollTo("[data-disc-decision]");
+  };
+
+  const queueLine = (entry) => {
+    const on = picked?.key === entry.key;
+    if (entry.kind === "case") {
+      const card = entry.card;
+      const c = clockOf(card.item.id);
+      const dl = deadlineOf(card);
+      return (
+        <DisciplineRow
+          key={entry.key}
+          id={entry.key}
+          ar={ar}
+          dataKey="disc-queue"
+          badge={card.face.id === "objected" ? (ar ? "م 72" : "Art. 72") : (ar ? "م 66" : "Art. 66")}
+          title={`${card.employee?.name || "—"} · ${ar ? card.face.shortAr : card.face.shortEn}`}
+          sub={[card.item.note || card.item.reason, card.penalty, card.station?.name].filter(Boolean).join(" · ")}
+          date={dayOf(card.item.notifiedAt || card.item.createdAt)}
+          chip={c ? <AttentionChip tone={c === "over" ? "bad" : "warn"}>{`${dl?.label || (ar ? "مهلة" : "Window")} ${c === "over" ? (ar ? "— تجاوزت" : "— passed") : (ar ? "— تقترب" : "— closing")}`}</AttentionChip> : null}
+          go={Boolean(card.actions?.length)}
+          selected={on}
+          open={false}
+          onOpen={() => pickEntry(entry.key)}
+        />
+      );
+    }
+    const row = entry.row;
+    const grievance = entry.kind === "grievance";
+    const st = grievance ? grievanceStage(row) : null;
+    return (
+      <DisciplineRow
+        key={entry.key}
+        id={entry.key}
+        ar={ar}
+        dataKey="disc-queue"
+        badge={grievance ? (ar ? "م 71" : "Art. 71") : (ar ? "م 91" : "Art. 91")}
+        title={`${row.employee?.name || "—"} · ${grievance ? (ar ? "تظلّم" : "Grievance") : (ar ? "اعتراض على خصم إتلاف" : "Damage objection")}`}
+        sub={grievance ? `${grievanceKindLabel(row)} · ${String(row.reason || "").slice(0, 60)}` : `${Number(row.amount) || 0} ${ar ? "ر.س" : "SAR"} · ${String(row.reason || "").slice(0, 60)}`}
+        date={dayOf(row.date || row.createdAt)}
+        chip={st?.stage === "overdue" ? <AttentionChip tone="bad">{ar ? "فاتت مهلة البتّ" : "Ruling overdue"}</AttentionChip> : null}
+        selected={on}
+        open={false}
+        onOpen={() => pickEntry(entry.key)}
+      />
+    );
+  };
+
+  const manageTiles = [
+    { id: "raise", letter: ar ? "ج" : "S", title: ar ? "ملف جزاء جديد" : "New sanction file", hint: ar ? "إبلاغ كتابي ثم سماع الدفاع — م71" : "Written notice, then a hearing — Art. 71" },
+    { id: "calc", letter: ar ? "ح" : "C", title: ar ? "حاسبة الحسم" : "Cut calculator", hint: ar ? "سقف الحسم الشهري — م70" : "The monthly cap — Art. 70" },
+    { id: "schedule", letter: ar ? "ل" : "L", title: ar ? "لائحة الجزاءات" : "The penalty list", hint: ar ? "البنود والإعلان والإقرار — م66–67" : "Clauses, announcing, acknowledging — Arts. 66–67" },
+    { id: "fund", letter: ar ? "غ" : "F", title: ar ? "صندوق الغرامات" : "Fine fund", hint: ar ? "القيد والصرف — م73" : "Register and disposal — Art. 73" },
+  ];
+
+  const grid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 16, alignItems: "start" };
+
+  return (
+    <SuiteWorkspaceFrame
+      ar={ar}
+      kicker={pageKicker("/app/discipline", lang)}
+      title={ar ? "الجزاءات" : "Sanctions"}
       hint={adminVoice
         ? (ar
-          ? "ملفات الجزاء في نطاقك: الإبلاغ، وسماع الدفاع، والتوقيع، والبتّ في التظلّم. لا يُوقَّع جزاء إلا من قائمة المادة 66 وبند لائحة تنظيم العمل، وبعد إبلاغ كتابي وسماع دفاع (المادة 71). ملفك أنت ليس هنا — هو في واجهة الموظف."
-          : "Sanction files in your scope: notice, hearing, signing, and ruling on grievances. Your own file is not here — it is on the employee side.")
+          ? "ملفات الجزاء في نطاقك والتظلّمات واعتراضات الإتلاف — كلٌّ بخطوته التالية ومهلته النظامية. ملفك أنت في واجهة الموظف."
+          : "Sanction files in your scope, grievances and damage objections — each with its next step and statutory window. Your own file is on the employee side.")
         : (ar
-          ? "ما على ملفك من جزاءات، ومهلة تظلّمك من كلٍّ منها (المادة 72). التظلّم حقّك وحدك ويُرفع كتابةً."
-          : "The sanctions on your file and your grievance window for each (Art. 72). The grievance is yours alone, in writing.")}
-      meta={<HeroSwitch options={tabs} value={activeFace} onChange={setTab} label={ar ? "صفحات الجزاءات" : "Sanction pages"} />}
-      tiles={null}
-      side={adminVoice && activeFace === "manage" ? manageSide : null}
+          ? "ما على ملفك من جزاءات ومهلة اعتراضك على كلٍّ منها، وتظلّمك واعتراضك على خصم الإتلاف."
+          : "The sanctions on your file and your window on each, your grievances and damage-deduction objections.")}
     >
-      <div data-discipline-face={activeFace} style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink)", fontSize: 13 }}>
+      <div data-discipline-face={adminVoice ? "manage" : "mine"} style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink)", fontSize: 13 }}>
 
-        {activeFace === "schedule" ? (
-          <DisciplineScheduleBoard
-            ar={ar}
-            today={board.today}
-            regulation={regulation}
-            canEdit={adminVoice}
-            employees={employees}
-            meId={currentUser?.id || ""}
-            onAnnounce={() => {
-              const gate = checkPublishRegulationGate(regulation, { today: board.today, ar });
-              if (!gate.ok || !company?.id) {
-                toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
-                return;
-              }
-              updateCompany(company.id, (row) => {
-                row.workRegulation = { ...(row.workRegulation || {}), announcedAt: board.today, announcedBy: currentUser?.name || "", acks: {} };
-              });
-              toast({ description: ar ? `أُعلنت اللائحة — تسري على العمال من ${regulationDate(gate.effectiveFrom, true)}.` : `Announced — binding from ${gate.effectiveFrom}.` });
-            }}
-            onAck={() => {
-              const plan = planRegulationAck(regulation, currentUser);
-              if (!plan.ok || !company?.id) {
-                toast({ description: ar ? plan.reason : plan.reasonEn, variant: "destructive" });
-                return;
-              }
-              updateCompany(company.id, (row) => {
-                row.workRegulation = { ...(row.workRegulation || {}), acks: { ...((row.workRegulation || {}).acks || {}), [plan.employeeId]: plan.ack } };
-              });
-            }}
-            uniform={uniformOf(data)}
-            onSaveUniform={(next) => {
-              if (!company?.id) return;
-              const at = new Date().toISOString();
-              updateCompany(company.id, (row) => {
-                row.workRegulation = { ...(row.workRegulation || {}), uniform: { ...next, version: at, savedAt: at, savedBy: currentUser?.name || "", announcedAt: "", announcedBy: "", acks: {} } };
-              });
-              toast({ description: ar ? "حُفظت اشتراطات الزي — أعلنها ليُقرّ بها العمال (النموذج الموحد م53)." : "Uniform rules saved — announce them for acknowledgement (model Art. 53)." });
-            }}
-            onAnnounceUniform={() => {
-              if (!company?.id) return;
-              updateCompany(company.id, (row) => {
-                const u = row.workRegulation?.uniform;
-                if (!u) return;
-                row.workRegulation = { ...row.workRegulation, uniform: { ...u, announcedAt: board.today, announcedBy: currentUser?.name || "" } };
-              });
-              toast({ description: ar ? "أُعلنت اشتراطات الزي — بانتظار إقرار العمال." : "Uniform rules announced — awaiting acknowledgements." });
-            }}
-            onAckUniform={() => {
-              const plan = planUniformAck(uniformOf(data), currentUser);
-              if (!plan.ok || !company?.id) {
-                toast({ description: ar ? plan.reason : plan.reasonEn, variant: "destructive" });
-                return;
-              }
-              updateCompany(company.id, (row) => {
-                const u = row.workRegulation?.uniform;
-                if (!u) return;
-                row.workRegulation = { ...row.workRegulation, uniform: { ...u, acks: { ...(u.acks || {}), [plan.employeeId]: plan.ack } } };
-              });
-            }}
-            onSave={(next) => {
-              if (!company?.id) return;
-              updateCompany(company.id, (row) => {
-                // A re-saved regulation is a new version: announce it again (Art. 13) and collect fresh acknowledgements.
-                // The superseded version stays on record (the server keeps the same history).
-                const prev = row.workRegulation;
-                const versions = [...(Array.isArray(prev?.versions) ? prev.versions : []), ...(prev?.clauses?.length ? [regulationVersionEntry(prev)] : [])];
-                // The uniform rules (model Art. 53) keep their own version and acknowledgements.
-                row.workRegulation = { ...next, savedBy: currentUser?.name || "", savedAt: new Date().toISOString(), version: new Date().toISOString(), announcedAt: "", acks: {}, versions, ...(prev?.uniform ? { uniform: prev.uniform } : {}) };
-              });
-              toast({ description: ar ? "حُفظت لائحة تنظيم العمل المعتمدة — كل جزاء جديد يسمّي بنده منها." : "The approved regulation is saved — every new sanction names its clause." });
-            }}
-          />
-        ) : null}
-
-        {adminVoice && activeFace === "calc" ? (
-          <DisciplineCutCalculator
-            ar={ar}
-            employees={raiseTargets}
-            stations={stations}
-            cases={visibleCases}
-            today={board.today}
-          />
-        ) : null}
-
-        {adminVoice && activeFace === "raise" ? (
-          <DisciplineRaiseForm
-            ar={ar}
-            employees={raiseTargets}
-            stations={stations}
-            cases={cases}
-            actor={currentUser}
-            today={board.today}
-            employeeId={employeeId}
-            onEmployee={setEmployeeId}
-            penaltyKind={penaltyKind}
-            onPenaltyKind={(next) => {
-              setPenaltyKind(next);
-              const spec = listedPenaltyKind(next);
-              setPenaltyDays(spec?.days.find((n) => n > 0) || spec?.days[0] || 0);
-            }}
-            cutDays={cutDays}
-            onCutDays={setPenaltyDays}
-            discoveredAt={discoveredAt}
-            onDiscovered={setDiscoveredAt}
-            note={note}
-            onNote={setNote}
-            offSite={offSite}
-            onOffSite={setOffSite}
-            workConnected={workConnected}
-            onWorkConnected={setWorkConnected}
-            dismissGround={dismissGround}
-            art80={art80}
-            onArt80={setArt80}
-            onDismissGround={setDismissGround}
-            onSubmit={openCase}
-            regulation={regulation}
-            clauseId={clauseId}
-            clauseStep={clauseStep}
-            onClause={(next) => {
-              setClauseId(next || "");
-              const clause = regulation.clauses.find((c) => c.id === next);
-              // The clause names the offence; the date makes it this incident (one penalty per act — Art. 70).
-              if (clause && !String(note || "").trim()) setNote(`${ar ? clause.ar || clause.en : clause.en || clause.ar} — ${ar ? "يوم" : "on"} ${regulationDate(discoveredAt, ar)}`);
-            }}
-          />
-        ) : null}
-
-        {activeFace === "archive" ? (
-          <DisciplineArchiveBoard
-            cases={adminVoice ? visibleCases : mine}
-            employees={employees}
-            stations={stations}
-            ar={ar}
-            today={board.today}
-            scope={adminVoice ? "manage" : "mine"}
-            selfOnly={!adminVoice}
-            userId={currentUser?.id}
-          />
-        ) : null}
-
-        {adminVoice && activeFace === "manage" ? (
+        {!adminVoice ? (
           <>
-            {manageFigures.length ? <FigureRow ar={ar} figures={manageFigures} /> : null}
-            {waiting.length ? <KpiAction ar={ar} style={{ alignSelf: "flex-start", fontSize: 12 }} onClick={() => document.querySelector('[data-ops-side="disc-side"], [data-disc-rows]')?.scrollIntoView({ behavior: "smooth", block: "start" })} /> : null}
-            <OpsListHead
-              title={ar ? `ملفات الجزاء · ${files.length}` : `Sanction files · ${files.length}`}
-              note={ar ? "كل ملف بمرحلته، والجزاء المقترح أو الموقَّع، ومهلته النظامية، وما استُهلك من سقف الشهر." : "Each file with its stage, the proposed or signed penalty, its statutory window, and the month's cap used."}
-              trailing={(
-                <button type="button" data-disc-raise="1" onClick={() => setTab("raise")} style={{ fontFamily: "inherit", height: 36, padding: "0 16px", borderRadius: 10, border: "none", background: "#0B3D27", color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
-                  {ar ? "ارفع جزاءً" : "Raise a sanction"}
-                </button>
-              )}
-            />
-            {clocks.length ? (
-              <section data-disc-clocks="" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-warn-line)", borderRadius: 12, overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", background: "var(--nv-warn-soft)" }}>
-                  <span aria-hidden style={{ width: 14, height: 2, background: "#C8A45A", borderRadius: 4 }} />
-                  <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{ar ? "مهل نظامية تقترب" : "Statutory windows closing"}</strong>
-                  <span style={{ fontSize: 11.5, color: "var(--nv-ink2)" }}>{ar ? "يُنبَّه المسؤولون قبل 7 أيام ثم يومين، والعامل عند فوات مهلة البتّ" : "Managers are reminded 7 and 2 days ahead; the worker when a ruling lapses"}</span>
-                </div>
-                {clocks.map((row) => {
-                  const card = files.find((c) => String(c.item.id) === String(row.caseId));
-                  return (
-                    <div key={`${row.caseId}-${row.kind}`} data-disc-clock={row.kind} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "10px 14px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)" }}>
-                      <span style={{ fontSize: 12.5, color: row.over ? "var(--nv-bad-ink)" : "var(--nv-ink)", lineHeight: 1.7 }}>{deadlineText(row, card?.employee?.name, ar)}</span>
-                      {card ? (
-                        <button type="button" onClick={() => { setCaseSel(String(row.caseId)); document.querySelector("[data-discipline-case]")?.scrollIntoView({ behavior: "smooth", block: "start" }); }} style={{ fontFamily: "inherit", height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                          {ar ? "افتح الملف" : "Open the file"}
-                        </button>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </section>
-            ) : null}
-            {files.length === 0 ? (
-              <p data-discipline-empty="" style={{ margin: 0, fontSize: 12.5, color: "var(--nv-muted)" }}>
-                {ar ? "لا شيء معلّق — لا ملفات جزاء مفتوحة في نطاقك." : "Nothing pending — no open sanction files in your scope."}
-              </p>
+            <section style={{ ...chromeSlab, overflow: "hidden" }}>
+              <StatusFilterPills
+                dataKey="disc-mine"
+                title={ar ? "جزاءاتي" : "My sanctions"}
+                value={mineFace}
+                onChange={(next) => { setMineFace(next); setOpenRow(""); }}
+                items={[
+                  { id: "all", label: ar ? "الكل" : "All", n: mineCount.all },
+                  { id: "force", label: ar ? "سارية" : "In force", n: mineCount.force },
+                  { id: "reply", label: ar ? "بانتظار ردّي" : "Awaiting me", n: mineCount.reply },
+                  { id: "grieved", label: ar ? "متظلَّم منها" : "Grieved", n: mineCount.grieved },
+                  { id: "archive", label: ar ? "الأرشيف" : "Archive", n: mineCount.archive },
+                ]}
+              />
+            </section>
+            <div data-discipline-mine="" style={grid}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+                {mineFace === "archive" ? (
+                  <>
+                    <DisciplineArchiveBoard cases={mine} employees={employees} stations={stations} ar={ar} today={board.today} scope="mine" selfOnly userId={currentUser?.id} />
+                    {settledRights.length ? (
+                      <DisciplineRowList dataKey="mine-rights-archive">
+                        {settledRights.map((row) => rightsLine(row, row.type === GRIEVANCE_TYPE ? "grievance" : "damage"))}
+                      </DisciplineRowList>
+                    ) : null}
+                  </>
+                ) : (
+                  <DisciplineRowList dataKey="mine" empty={ar ? "لا شيء هنا — لا جزاء ولا تظلّم في هذا الترشيح." : "Nothing here — no sanction or grievance in this filter."}>
+                    {mineAllLive.filter((card) => showMine(sanctionBucket(card))).map(sanctionLine)}
+                    {showMine("reply") ? myDamageOpen.map(damageLine) : null}
+                    {showMine("grieved") ? openGrievances.map((row) => rightsLine(row, "grievance")) : null}
+                    {showMine("grieved") ? openObjections.map((row) => rightsLine(row, "damage")) : null}
+                  </DisciplineRowList>
+                )}
+              </div>
+
+              <DisciplineNewFrame
+                dataKey="mine"
+                title={ar ? "طلب جديد" : "New request"}
+                note={ar ? "التظلّم والاعتراض حقّك وحدك، كتابةً — ولا تُضار منه." : "Grieving and objecting are yours alone, in writing — without harm to you."}
+                tiles={mineTiles}
+                value={newKind}
+                onPick={setNewKind}
+              >
+                {newKind === "grievance" ? (
+                  <>
+                    <StepHead first label={ar ? "من أي جزاء أو قرار؟" : "Which sanction or decision?"} note={ar ? "الجزاء الموقَّع ومهلته مفتوحة يُعترض عليه في ملفه (م72)" : "A signed sanction in its window is objected to in its file (Art. 72)"} />
+                    <SubTypeGrid label={ar ? "من أي جزاء أو قرار؟" : "Which sanction or decision?"}>
+                      {grievable.map((card) => (
+                        <SubTypeOption
+                          key={card.item.id}
+                          dataKey={`sanction-${card.item.id}`}
+                          on={String(grievancePick) === String(card.item.id)}
+                          title={card.mineTitle}
+                          sub={card.canObject ? (ar ? "الاعتراض مفتوح — م72" : "Objection open — Art. 72") : (ar ? "تظلّم — م71" : "Grievance — Art. 71")}
+                          onClick={() => openGrievance(card)}
+                        />
+                      ))}
+                      <SubTypeOption
+                        dataKey="grievance-other"
+                        on={!pickedSanction}
+                        title={ar ? "قرار أو إجراء آخر" : "Another decision or action"}
+                        sub={ar ? "تظلّم — النموذج الموحد م71" : "Grievance — model Art. 71"}
+                        onClick={() => { setGrievancePick("other"); setGrievancePrefill(null); }}
+                      />
+                    </SubTypeGrid>
+                    {pickedSanction?.canObject ? (
+                      <DisciplineObjectionForm key={pickedSanction.item.id} card={pickedSanction} ar={ar} draft={appealDraft} onDraft={setAppealDraft} onObject={fileObject} />
+                    ) : (
+                      <GrievanceRaise
+                        key={pickedSanction ? grievancePrefill?.at || pickedSanction.item.id : "general"}
+                        employee={meRow}
+                        companyId={company?.id}
+                        ar={ar}
+                        refresh={refresh}
+                        prefill={pickedSanction ? grievancePrefill : null}
+                        onSent={() => { setGrievancePick("other"); setGrievancePrefill(null); setMineFace("grieved"); }}
+                      />
+                    )}
+                  </>
+                ) : null}
+                {newKind === "damage" ? (
+                  <>
+                    <StepHead first label={ar ? "أي خصم؟" : "Which deduction?"} note={ar ? "خصوم الإتلاف في مسيرك ومهلتها مفتوحة" : "Damage deductions on your payroll still open"} />
+                    <SubTypeGrid label={ar ? "أي خصم؟" : "Which deduction?"}>
+                      {myDamageOpen.map((row) => (
+                        <SubTypeOption
+                          key={row.line.id}
+                          dataKey={`damage-${row.line.id}`}
+                          on={String(damagePick) === String(row.line.id)}
+                          title={`${Number(row.line.amount) || 0} ${ar ? "ر.س" : "SAR"}${row.line.reason ? ` · ${String(row.line.reason).slice(0, 50)}` : ""}`}
+                          sub={ar ? `الاعتراض حتى ${regulationDate(row.line.objectionLastDay || damageObjectionDeadline(row.line.damageNoticeOn))}` : `Object by ${row.line.objectionLastDay || damageObjectionDeadline(row.line.damageNoticeOn)}`}
+                          onClick={() => openDamage(row)}
+                        />
+                      ))}
+                      <SubTypeOption
+                        dataKey="damage-other"
+                        on={damagePick === "other"}
+                        title={ar ? "خصم آخر" : "Another deduction"}
+                        sub={ar ? "تكتب تاريخ الإبلاغ والمبلغ" : "You enter the notice date and amount"}
+                        onClick={() => { setDamagePick("other"); setDamagePrefill(null); }}
+                      />
+                    </SubTypeGrid>
+                    <DamageObjectionRaise
+                      key={damagePrefill?.at || "general"}
+                      employee={meRow}
+                      companyId={company?.id}
+                      ar={ar}
+                      refresh={refresh}
+                      prefill={damagePick === "other" ? null : damagePrefill}
+                      onSent={() => { setDamagePick("other"); setDamagePrefill(null); setMineFace("grieved"); }}
+                    />
+                  </>
+                ) : null}
+                {newKind === "schedule" ? scheduleBoard : null}
+              </DisciplineNewFrame>
+            </div>
+          </>
+        ) : (
+          <>
+            <section style={{ ...chromeSlab, overflow: "hidden" }}>
+              <StatusFilterPills
+                dataKey="disc-manage"
+                title={ar ? "قائمة الجزاءات" : "Sanctions list"}
+                note={scopeLabel ? (ar ? `النطاق: ${scopeLabel}` : `Scope: ${scopeLabel}`) : (ar ? "ما تقترب مهلته أولاً" : "Closest window first")}
+                value={queueFace}
+                onChange={(next) => { setQueueFace(next); setPickedId(""); }}
+                items={[
+                  { id: "all", label: ar ? "الكل" : "All", n: queueEntries.length },
+                  { id: "investigation", label: ar ? "قيد التحقيق" : "Under investigation", n: queueCount("investigation") },
+                  { id: "decision", label: ar ? "بانتظار القرار" : "Awaiting decision", n: queueCount("decision") },
+                  { id: "grievances", label: ar ? "تظلّمات" : "Grievances", n: queueCount("grievances") },
+                  { id: "objections", label: ar ? "اعتراضات الإتلاف" : "Damage objections", n: queueCount("objections") },
+                  { id: "archive", label: ar ? "الأرشيف" : "Archive", n: archivedCases + decidedRights.length },
+                ]}
+              />
+            </section>
+
+            {queueFace === "archive" ? (
+              <>
+                <DisciplineArchiveBoard cases={visibleCases} employees={employees} stations={stations} ar={ar} today={board.today} scope="manage" selfOnly={false} userId={currentUser?.id} />
+                {decidedRights.length ? (
+                  <div style={grid}>
+                    <DisciplineRowList dataKey="manage-rights-archive">
+                      {decidedRights.map((row) => queueLine({ key: `${row.type === GRIEVANCE_TYPE ? "grievance" : "damage"}:${row.id}`, kind: row.type === GRIEVANCE_TYPE ? "grievance" : "damage", row }))}
+                    </DisciplineRowList>
+                    {(() => {
+                      const hit = decidedRights.find((row) => `${row.type === GRIEVANCE_TYPE ? "grievance" : "damage"}:${row.id}` === pickedId) || decidedRights[0];
+                      return <DisciplineRightsDecision key={hit.id} row={hit} ar={ar} companyId={company?.id} actor={currentUser} today={board.today} isHoliday={hintIsHoliday} canDecide={false} refresh={refresh} />;
+                    })()}
+                  </div>
+                ) : null}
+              </>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <ol data-disc-rows="1" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-                  {files.map((card) => {
-                    const on = String(selectedCard?.item.id) === String(card.item.id);
-                    const dl = deadlineOf(card);
-                    const capM = meterOf(card, "cap");
-                    const stageTone = card.face?.id === "objected" ? "bad" : card.face?.id === "signed" ? "ok" : "warn";
-                    const tone = { ok: ["var(--nv-ok-ink)", "var(--nv-ok-soft)", "var(--nv-ok-line)"], warn: ["var(--nv-warn-ink)", "var(--nv-warn-soft)", "var(--nv-warn-line)"], bad: ["var(--nv-bad-ink)", "var(--nv-bad-soft)", "var(--nv-bad-line)"] }[stageTone];
-                    const chipS = (c) => ({ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, color: c[0], background: c[1], border: `1px solid ${c[2]}`, whiteSpace: "nowrap" });
-                    return (
-                      <li key={card.item.id}>
-                        <button
-                          type="button"
-                          data-disc-row={card.item.id}
-                          aria-pressed={on}
-                          onClick={() => setCaseSel(String(card.item.id))}
-                          className="nv-disc-row"
-                          style={{ fontFamily: "inherit", width: "100%", textAlign: "start", display: "grid", gridTemplateColumns: "40px minmax(0,1fr) auto", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 12, cursor: "pointer", border: `1px solid ${on ? "#0B3D27" : "var(--nv-line)"}`, background: on ? "var(--nv-ok-soft)" : "var(--nv-card)", position: "relative" }}
-                        >
-                          <span aria-hidden style={{ position: "absolute", insetInlineStart: 0, top: 12, bottom: 12, width: 3, borderRadius: 3, background: stageTone === "bad" ? "var(--nv-bad-fill)" : stageTone === "ok" ? "#0F5535" : "#C8A45A" }} />
-                          <span aria-hidden style={{ width: 40, height: 40, borderRadius: 999, background: "linear-gradient(135deg,#0B3D27,#0F5535)", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700 }}>
-                            {String(card.employee?.name || "—").trim().split(/\s+/).slice(0, 2).map((p) => p[0]).join("")}
-                          </span>
-                          <span style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                            <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                              <strong style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{card.employee?.name || "—"}</strong>
-                              <span style={chipS(tone)}>{ar ? card.face.shortAr : card.face.shortEn}</span>
-                              {card.penalty ? <span style={chipS(["var(--nv-bad-ink)", "var(--nv-card)", "var(--nv-bad-line)"])}>{card.penalty}</span> : null}
-                            </span>
-                            <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {card.item.note || card.item.reason || "—"}{card.station?.name ? ` · ${card.station.name}` : ""}
-                            </span>
-                          </span>
-                          <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5 }}>
-                            {dl ? <span style={chipS(dl.over ? ["var(--nv-bad-ink)", "var(--nv-bad-soft)", "var(--nv-bad-line)"] : ["var(--nv-ink2)", "var(--nv-soft)", "var(--nv-line)"])} title={`${dl.label} — ${ar ? "المادة" : "Art."} ${dl.art}`}>{`${dl.label} ${dl.text}`}</span> : null}
-                            {capM.text && capM.text !== "—" ? (
-                              <span title={ar ? "سقف الحسم في الشهر — المادة 70" : "Monthly cap — Art. 70"} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: capM.over ? "var(--nv-bad-ink)" : "var(--nv-muted)" }}>
-                                <span aria-hidden style={{ width: 54, height: 5, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden" }}>
-                                  <span style={{ display: "block", height: "100%", width: `${capM.pct || 0}%`, background: capM.over ? "var(--nv-bad-fill)" : "#0F5535" }} />
-                                </span>
-                                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace" }}>{capM.text}</span>
-                              </span>
-                            ) : null}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ol>
-                <DisciplineCaseCard
-                  card={selectedCard}
-                  ar={ar}
-                  onAction={onAction}
-                  onUploadSigned={onUploadSigned}
-                  onDelivery={recordDelivery}
-                  today={board.today}
-                  companyName={company?.name || ""}
-                  isHoliday={hintIsHoliday}
-                />
+              <div data-disc-manage-grid="1" style={grid}>
+                <div data-disc-decision="" style={{ minWidth: 0 }}>
+                  {!picked ? (
+                    <section style={{ ...chromeSlab, padding: 18, fontSize: 12.5, color: "var(--nv-muted)" }}>
+                      {ar ? "لا شيء ينتظر قرارك في هذا الترشيح." : "Nothing waits on you in this filter."}
+                    </section>
+                  ) : picked.kind === "case" ? (
+                    <DisciplineCaseCard
+                      card={picked.card}
+                      ar={ar}
+                      onAction={onAction}
+                      onUploadSigned={onUploadSigned}
+                      onDelivery={recordDelivery}
+                      today={board.today}
+                      companyName={company?.name || ""}
+                      isHoliday={hintIsHoliday}
+                    />
+                  ) : (
+                    <DisciplineRightsDecision key={picked.row.id} row={picked.row} ar={ar} companyId={company?.id} actor={currentUser} today={board.today} isHoliday={hintIsHoliday} canDecide={adminVoice} refresh={refresh} />
+                  )}
+                </div>
+                <DisciplineRowList dataKey="manage" empty={ar ? "لا شيء معلّق — لا ملف ولا تظلّم في هذا الترشيح." : "Nothing pending in this filter."}>
+                  {queueShown.map(queueLine)}
+                </DisciplineRowList>
               </div>
             )}
 
-            <section data-discipline-gates="" style={PACK_CARD}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)" }}>
-                <strong style={{ fontSize: 13 }}>{ar ? "القيود التي تمنع التوقيع" : "Gates that block signing"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({board.gates.length})</span></strong>
-              </div>
-              <div className="nv-disc-gates" style={{ ...packHead("104px minmax(0,1fr) 150px") }}>
-                <span style={{ paddingInlineStart: 12 }}>{ar ? "المرجع" : "Reference"}</span>
-                <span style={{ paddingInlineStart: 10, borderInlineStart: "1px solid var(--nv-line)" }}>{ar ? "القيود التي تمنع التوقيع" : "Gates that block signing"}</span>
-                <span style={{ paddingInlineStart: 10, borderInlineStart: "1px solid var(--nv-line)" }}>{ar ? "الحالة" : "Status"}</span>
-              </div>
-              {board.gates.map((gate) => (
-                <div key={gate.head} className="nv-disc-gates" style={{ display: "grid", gridTemplateColumns: "104px minmax(0,1fr) 150px", gap: 12, padding: "12px 14px", borderBottom: "1px solid var(--nv-line2)", alignItems: "center" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 8, fontSize: 11, fontWeight: 700, color: "var(--nv-ink)", background: "var(--nv-hover)", border: "1px solid var(--nv-line)", whiteSpace: "nowrap", justifySelf: "start" }}>{gate.tag || "—"}</span>
-                  <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{gate.head}</span>
-                    <span style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>{gate.body}</span>
-                  </span>
-                  <span style={statusPill(gate.kind)}>{gate.state || "—"}</span>
-                </div>
-              ))}
-            </section>
-
-            <DisciplineFineFund ledger={ledger} ar={ar} today={board.today} onDispose={disposeFines} />
-          </>
-        ) : null}
-
-        {activeFace === "law" ? (
-          <>
-            <MinistrySectionPanel
-              sectionKey="discipline"
-              lane={adminVoice ? "manage" : "employee"}
-              ar={ar}
-              today={board.today}
-              inputs={{ cases: adminVoice ? visibleCases : mine, employees, uniform: uniformOf(data) }}
-            />
-          </>
-        ) : null}
-
-        {activeFace === "mine" ? (
-          <div data-discipline-mine="" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <OpsListHead
-              title={ar ? `ما على ملفي · ${mineLiveCards.length}` : `On my file · ${mineLiveCards.length}`}
-              note={ar ? "كل جزاء بمرحلته ومهلة اعتراضك عليه. الاعتراض حقّك وحدك، ويُرفع كتابةً." : "Each sanction with its stage and your objection window. Objecting is yours alone, in writing."}
-            />
-            {mineLiveCards.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 12.5, color: "var(--nv-muted)" }}>
-                {ar ? "لا شيء معلّق — لا جزاء مفتوح على ملفك." : "Nothing pending — no open sanction on your file."}
-              </p>
-            ) : null}
-            {mineLiveCards.map((card) => (
-              <React.Fragment key={`mine-${card.item.id}`}>
-              <DisciplineHero card={card} ar={ar} mine companyName={company?.name || ""} />
-              <div data-disc-mine-hint="" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12, color: "var(--nv-ink2)" }}>
-                <span>{card.mineState}</span>
-                <RightHint
+            <DisciplineNewFrame
+              dataKey="manage"
+              title={ar ? "إجراء جديد" : "New action"}
+              note={ar ? "لا جزاء إلا من قائمة المادة 66 وبند اللائحة، وبعد إبلاغ كتابي وسماع دفاع (م71)." : "No penalty outside the Article 66 list and a regulation clause, and only after notice and a hearing (Art. 71)."}
+              tiles={manageTiles}
+              value={actionKind}
+              onPick={setActionKind}
+            >
+              {actionKind === "raise" ? (
+                <DisciplineRaiseForm
                   ar={ar}
-                  onDate={board.today}
-                  hint={disciplineCaseHint(card.item, { view: "employee", ar, today: board.today, isHoliday: hintIsHoliday, employee: card.employee })}
-                  onAction={(action) => {
-                    if (action.kind === "object") document.querySelector("[data-discipline-objection]")?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    if (action.kind === "rights" && action.rightsKind === GRIEVANCE_TYPE) openGrievance(card);
+                  employees={raiseTargets}
+                  stations={stations}
+                  cases={cases}
+                  actor={currentUser}
+                  today={board.today}
+                  employeeId={employeeId}
+                  onEmployee={setEmployeeId}
+                  penaltyKind={penaltyKind}
+                  onPenaltyKind={(next) => {
+                    setPenaltyKind(next);
+                    const spec = listedPenaltyKind(next);
+                    setPenaltyDays(spec?.days.find((n) => n > 0) || spec?.days[0] || 0);
+                  }}
+                  cutDays={cutDays}
+                  onCutDays={setPenaltyDays}
+                  discoveredAt={discoveredAt}
+                  onDiscovered={setDiscoveredAt}
+                  note={note}
+                  onNote={setNote}
+                  offSite={offSite}
+                  onOffSite={setOffSite}
+                  workConnected={workConnected}
+                  onWorkConnected={setWorkConnected}
+                  dismissGround={dismissGround}
+                  art80={art80}
+                  onArt80={setArt80}
+                  onDismissGround={setDismissGround}
+                  onSubmit={openCase}
+                  regulation={regulation}
+                  clauseId={clauseId}
+                  clauseStep={clauseStep}
+                  onClause={(next) => {
+                    setClauseId(next || "");
+                    const clause = regulation.clauses.find((c) => c.id === next);
+                    // The clause names the offence; the date makes it this incident (one penalty per act — Art. 70).
+                    if (clause && !String(note || "").trim()) setNote(`${ar ? clause.ar || clause.en : clause.en || clause.ar} — ${ar ? "يوم" : "on"} ${regulationDate(discoveredAt, ar)}`);
                   }}
                 />
-                {/* A signed sanction: its own objection is the grievance (Art. 72) when open; otherwise model Art. 71. */}
-                {["signed", "closed"].includes(card.face.id) ? (
-                  <button
-                    type="button"
-                    data-disc-grieve={card.item.id}
-                    onClick={() => (card.canObject
-                      ? document.querySelector("[data-discipline-objection]")?.scrollIntoView({ behavior: "smooth", block: "center" })
-                      : openGrievance(card))}
-                    style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", marginInlineStart: "auto" }}
-                  >
-                    {ar ? "تظلّم" : "Grieve"}
-                  </button>
-                ) : null}
-              </div>
-              <DisciplineMineCard
-                key={`act-${card.item.id}`}
-                card={card}
-                ar={ar}
-                draft={appealDraft}
-                onDraft={setAppealDraft}
-                onObject={fileObject}
-                onWithdraw={withdrawObject}
-              />
-              </React.Fragment>
-            ))}
+              ) : null}
+              {actionKind === "calc" ? (
+                <DisciplineCutCalculator ar={ar} employees={raiseTargets} stations={stations} cases={visibleCases} today={board.today} />
+              ) : null}
+              {actionKind === "schedule" ? scheduleBoard : null}
+              {actionKind === "fund" ? (
+                <DisciplineFineFund ledger={ledger} ar={ar} today={board.today} onDispose={disposeFines} />
+              ) : null}
+            </DisciplineNewFrame>
+          </>
+        )}
 
-            {mineOlderCards.length ? (
-              <details data-discipline-older="" style={PACK_CARD}>
-                <summary style={{ cursor: "pointer", padding: "8px 12px", fontSize: 12.5, fontWeight: 700 }}>
-                  {ar ? `سوابق مضى على توقيعها أكثر من سنة (${mineOlderCards.length})` : `Earlier penalties, signed over a year ago (${mineOlderCards.length})`}
-                </summary>
-                <p style={{ margin: 0, padding: "0 14px 8px", fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-                  {ar ? "لا يُشدَّد بها جزاء جديد بعد 180 يوماً من إبلاغها (النموذج الموحد م61)، وتبقى في صحيفة الجزاءات بملف خدمتك (م69) — لا تُحذف." : "They raise no new penalty after 180 days from notice (model Art. 61) and stay in the penalties record of your service file (Art. 69)."}
-                </p>
-                {mineOlderCards.map((card) => (
-                  <div key={`older-${card.item.id}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "8px 14px", borderTop: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
-                    <span>{card.mineTitle || card.item.penalty || "—"}</span>
-                    <span dir="ltr" style={{ color: "var(--nv-muted)", fontSize: 12 }}>{String(card.item.signedAt || card.item.decidedAt || "").slice(0, 10)}</span>
-                  </div>
-                ))}
-              </details>
-            ) : null}
-
-            <section data-grievance-mine="" style={PACK_CARD}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
-                <strong style={{ fontSize: 13 }}>{ar ? "تظلّماتي" : "My grievances"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({myGrievances.length})</span></strong>
-                <button
-                  type="button"
-                  data-grievance-general=""
-                  onClick={() => { setGrievancePrefill(null); setGrievanceOpen((v) => !v || Boolean(grievancePrefill)); }}
-                  style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", marginInlineStart: "auto" }}
-                >
-                  {ar ? "تظلّم من قرار أو إجراء" : "Grieve a decision or action"}
-                </button>
-              </div>
-              {myGrievances.length === 0 ? (
-                <div style={{ padding: "9px 14px", fontSize: 12, color: "var(--nv-muted)" }}>{ar ? "لا تظلّم مرفوع." : "No grievance filed."}</div>
-              ) : myGrievances.map((row) => {
-                const st = grievanceState(row, board.today, hintIsHoliday) || {};
-                const kindRow = GRIEVANCE_KINDS.find((k) => k.key === row.grievanceKind);
-                const stage = st.stage === "accepted" ? (ar ? "قُبل" : "Accepted")
-                  : st.stage === "refused" ? (ar ? `رُفض — المحكمة حتى ${regulationDate(st.courtBy)}` : `Refused — court by ${st.courtBy}`)
-                    : st.stage === "overdue" ? (ar ? `لم يُبتّ فيه — المحكمة حتى ${regulationDate(st.courtBy)}` : `Undecided — court by ${st.courtBy}`)
-                      : (ar ? `بانتظار البتّ حتى ${regulationDate(st.replyBy)}` : `Awaiting a ruling by ${st.replyBy}`);
-                return (
-                  <div key={row.id} data-grievance-row={row.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
-                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{ar ? kindRow?.ar : kindRow?.en} · {String(row.reason || "").slice(0, 60)}</span>
-                    <span style={{ fontWeight: 700, color: st.stage === "accepted" ? "var(--nv-ok-ink)" : "var(--nv-ink2)" }}>{stage}</span>
-                  </div>
-                );
-              })}
-            </section>
-            {grievanceOpen ? (
-              <GrievanceRaise key={grievancePrefill?.at || "general"} employee={meRow} companyId={company?.id} ar={ar} refresh={refresh} prefill={grievancePrefill} onSent={() => { setGrievanceOpen(false); setGrievancePrefill(null); }} />
-            ) : null}
-
-            <section data-damage-objection-mine="" style={PACK_CARD}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid var(--nv-line)", flexWrap: "wrap" }}>
-                <strong style={{ fontSize: 13 }}>{ar ? "اعتراضاتي على خصم الإتلاف" : "My damage-deduction objections"} <span style={{ fontWeight: 500, color: "var(--nv-ink2)" }}>({myObjections.length})</span></strong>
-                <button
-                  type="button"
-                  data-damage-objection-general=""
-                  onClick={() => { setDamagePrefill(null); setDamageOpen((v) => !v || Boolean(damagePrefill)); }}
-                  style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", marginInlineStart: "auto" }}
-                >
-                  {ar ? "اعتراض على خصم إتلاف" : "Object to a damage deduction"}
-                </button>
-              </div>
-              <div style={{ padding: "7px 14px", fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.7, borderBottom: "1px solid var(--nv-line2)" }}>
-                {ar ? "م 91 · خلال 15 يوم عمل من إبلاغك بالخصم وتقديره، وإلا سقط الحق. إن قُبل رُدّ المبلغ في المسير." : "Art. 91 · within 15 working days of being told, or the right lapses. If accepted the amount is refunded on payroll."}
-              </div>
-              {myDamageOpen.map((row) => {
-                const last = row.line.objectionLastDay || damageObjectionDeadline(row.line.damageNoticeOn);
-                return (
-                  <div key={`dl-${row.line.id}`} data-damage-line={row.line.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
-                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
-                      {ar ? `خصم إتلاف ${Number(row.line.amount) || 0} ر.س` : `Damage deduction SAR ${Number(row.line.amount) || 0}`}
-                      {row.line.reason ? ` · ${String(row.line.reason).slice(0, 50)}` : ""}
-                      <span style={{ color: "var(--nv-ink2)" }}>{ar ? ` · الاعتراض حتى ${regulationDate(last)}` : ` · object by ${last}`}</span>
-                    </span>
-                    <button
-                      type="button"
-                      data-damage-line-object={row.line.id}
-                      onClick={() => openDamage(row)}
-                      style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, height: 30, padding: "0 12px", borderRadius: 999, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer" }}
-                    >
-                      {ar ? "اعترض" : "Object"}
-                    </button>
-                  </div>
-                );
-              })}
-              {myObjections.length === 0 && myDamageOpen.length === 0 ? (
-                <div style={{ padding: "9px 14px", fontSize: 12, color: "var(--nv-muted)" }}>{ar ? "لا خصم إتلاف مفتوح ولا اعتراض مرفوع." : "No open damage deduction and no objection filed."}</div>
-              ) : myObjections.map((row) => {
-                const last = row.objectionLastDay || damageObjectionDeadline(row.notifiedOn);
-                const stage = row.status === "approved" ? (ar ? "قُبل — يُرد المبلغ" : "Accepted — refunded")
-                  : row.status === "rejected" ? (ar ? `لم يُقبل — المحكمة العمالية حتى ${regulationDate(last)}` : `Refused — labour court by ${last}`)
-                    : (ar ? "بانتظار رد الإدارة" : "Awaiting management");
-                return (
-                  <div key={row.id} data-damage-objection-row={row.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "9px 14px", borderBottom: "1px solid var(--nv-line2)", fontSize: 12.5 }}>
-                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{ar ? `${Number(row.amount) || 0} ر.س` : `SAR ${Number(row.amount) || 0}`} · {String(row.reason || "").slice(0, 60)}</span>
-                    <span style={{ fontWeight: 700, color: row.status === "approved" ? "var(--nv-ok-ink)" : "var(--nv-ink2)" }}>{stage}</span>
-                  </div>
-                );
-              })}
-            </section>
-            {damageOpen ? (
-              <DamageObjectionRaise key={damagePrefill?.at || "general"} employee={meRow} companyId={company?.id} ar={ar} refresh={refresh} prefill={damagePrefill} onSent={() => { setDamageOpen(false); setDamagePrefill(null); }} />
-            ) : null}
-
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "11px 16px", fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
-              <span>
-                {ar
-                  ? <>الاعتراض ليس شكوى: الشكوى واقعة تريد أن تُنظر، والاعتراض حقّ مقيّد بملف جزاء وُقّع عليك. ارفع شكواك من <Link to="/app/complaints" style={{ color: "inherit" }}>صوت الموظف</Link>. جزاؤك الظاهر في <Link to={currentUser?.id ? `/app/employees/${currentUser.id}?tab=growth` : "/app/employees"} style={{ color: "inherit" }}>ملفك</Link>، والحسم النافذ في <Link to="/app/payroll" style={{ color: "inherit" }}>المسير</Link>.</>
-                  : <>An objection is not a complaint. Raise a complaint from <Link to="/app/complaints" style={{ color: "inherit" }}>Employee voice</Link>. What is visible sits on <Link to={currentUser?.id ? `/app/employees/${currentUser.id}?tab=growth` : "/app/employees"} style={{ color: "inherit" }}>your file</Link>, and an effective cut on <Link to="/app/payroll" style={{ color: "inherit" }}>payroll</Link>.</>}
-              </span>
-            </div>
-          </div>
-        ) : null}
+        <MinistrySectionPanel
+          sectionKey="discipline"
+          lane={adminVoice ? "manage" : "employee"}
+          ar={ar}
+          today={board.today}
+          inputs={{ cases: adminVoice ? visibleCases : mine, employees, uniform: uniformOf(data) }}
+        />
       </div>
-    </OpsFrame>
+    </SuiteWorkspaceFrame>
   );
 }

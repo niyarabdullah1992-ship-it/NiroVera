@@ -152,6 +152,8 @@ import RequestFilesBoard from "@/components/requests/RequestFilesBoard";
 import RequestInboxSlab from "@/components/requests/RequestInboxSlab";
 import { checkRaiseSignableGate, isLetterSignableType } from "@/lib/requestSigning";
 import RequestDecisionComposer from "@/components/requests/RequestDecisionComposer";
+import KindFrameCard from "@/components/requests/KindFrameCard";
+import { decideOtherRequest } from "@/lib/otherRequestDecision";
 import { regulationDate } from "@/lib/workRegulation";
 import { checkGroundedRefusalGate, refusalGroundsFor, refusalText, SERVICE_CERT_AR, SERVICE_CERT_EN } from "@/lib/statutoryRefusal";
 import { checkServiceCertificateGate } from "@/lib/employerDuties";
@@ -404,18 +406,6 @@ function leadingLetter(label) {
  * annual leave — Art. 109(2) lets the employer set its dates, with at least 30 days' notice.
  */
 const MANAGE_LEAVE_KEYS = ["annual", "emergency", "work_injury"];
-
-function KindFrameCard({ on, letter, title, hint, onClick }) {
-  return (
-    <button type="button" className="nv-req-kind-card" onClick={onClick} aria-pressed={!!on}>
-      <span className="nv-req-kind-mark">{letter}</span>
-      <span className="nv-req-kind-copy">
-        <span className="nv-req-kind-title">{title}</span>
-        <span className="nv-req-kind-hint">{hint}</span>
-      </span>
-    </button>
-  );
-}
 
 function fieldStyle() {
   return {
@@ -1736,32 +1726,19 @@ export default function RequestsWorkspace({
           refreshUnpaidLeaveWage(company.id, row.employee.id);
         }
       } else {
-        if (status === "rejected") {
-          const grounded = checkGroundedRefusalGate({ ...row, family: "other" }, { ground: draftGround[key], verified: !!draftVerified[key], actor: "manager" });
-          const rejectGate = !grounded.ok ? grounded : row.type === STUDY_CONSENT_TYPE
-            ? checkRejectStudyConsentGate(row, noteVal)
-            : row.type === NIGHT_FITNESS_TYPE
-              ? checkRejectNightFitnessGate(row, noteVal)
-              : checkRefuseRequestReasonGate(groundedNote);
-          if (!rejectGate.ok) {
-            toast({ description: ar ? rejectGate.reason : rejectGate.reasonEn, variant: "destructive" });
-            return;
-          }
-        }
-        if (status === "rejected" && row.type !== STUDY_CONSENT_TYPE && row.type !== NIGHT_FITNESS_TYPE) {
-          const named = checkRefuseRequestReasonGate(groundedNote);
-          if (!named.ok) {
-            toast({ description: ar ? named.reason : named.reasonEn, variant: "destructive" });
-            return;
-          }
-        }
-        const result = setOtherRequestStatus(company.id, row.employee.id, row.id, status === "revise" ? "revise" : status, currentUser.name, status === "rejected" ? groundedNote : noteVal, {
+        // The same gates and write as «الجزاءات» uses for a grievance or an Art. 91 objection.
+        const result = decideOtherRequest({
+          companyId: company.id,
+          row,
+          status,
+          note: noteVal,
+          ground: draftGround[key],
+          verified: !!draftVerified[key],
           issuedFile: draftIssued[key],
-          actorId: currentUser.id,
-          rejectGround: draftGround[key],
-          rejectVerified: !!draftVerified[key],
+          actor: currentUser,
+          ar,
         });
-        if (result && result.ok === false) {
+        if (!result.ok) {
           toast({ description: ar ? result.reason : result.reasonEn, variant: "destructive" });
           return;
         }

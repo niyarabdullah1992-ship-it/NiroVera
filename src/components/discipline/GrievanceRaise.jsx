@@ -5,20 +5,18 @@ import { GRIEVANCE_KINDS, GRIEVANCE_TYPE, checkGrievanceGate, grievanceFileDeadl
 import { todayRiyadh } from "@/lib/requestWorkspace";
 import { regulationDate } from "@/lib/workRegulation";
 import { hashConsentFile, readConsentFile } from "@/lib/writtenConsent";
-import { BORDER, CARD, CONTROL_RADIUS, MUTED } from "@/lib/platformStyles";
 import PlatformDateField from "@/components/shared/PlatformDateField";
-import AttachFileButton from "@/components/shared/AttachFileButton";
+import AttachDropzone from "@/components/shared/AttachDropzone";
+import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
+import { Checklist, FieldLabel, LawLine, SendButton, StepHead, textareaStyle } from "@/components/discipline/DisciplineFormKit";
 import { toast } from "@/components/ui/use-toast";
-import NvIcon from "@/components/shared/NvIcon";
-
-const field = { fontFamily: "inherit", fontSize: 12.5, padding: "10px 12px", border: `1px solid ${BORDER}`, background: CARD, color: "var(--nv-ink)", outline: "none", width: "100%", boxSizing: "border-box", borderRadius: CONTROL_RADIUS };
-const label = { fontSize: 11.5, color: MUTED };
 
 /**
  * «تظلّم من قرار أو إجراء أو جزاء» (Model regulation Art. 71) — raised in «الجزاءات». The same gate
  * (checkGrievanceGate) and the same stored other-request (type "grievance") as before, so the review
  * inbox, serviceStory, fileArchive and the 15-day reply clock read it unchanged. `prefill` comes from a
- * sanction line: { grievanceKind: "penalty", notifiedOn, reason, sanctionRef }.
+ * sanction line: { grievanceKind: "penalty", notifiedOn, reason, sanctionRef }. It renders as the body of the
+ * «طلب جديد» frame in الجزاءات (the frame carries the title; the sanction is picked above it).
  */
 export default function GrievanceRaise({ employee, companyId, ar = true, refresh, onSent, prefill = null }) {
   const today = todayRiyadh();
@@ -78,53 +76,58 @@ export default function GrievanceRaise({ employee, companyId, ar = true, refresh
     }
   };
 
+  const told = String(notifiedOn || "").slice(0, 10);
+  const lastDay = told ? grievanceFileDeadline(told, isHoliday) : "";
+  // The checklist reads the same conditions the gate checks; the gate alone decides the send.
+  const checks = [
+    { ok: Boolean(grievanceKind), text: ar ? "ما تتظلّم منه محدّد" : "What you grieve is set" },
+    { ok: Boolean(told) && told <= today, text: ar ? "تاريخ إبلاغك محدّد" : "The notice date is set" },
+    { ok: Boolean(told) && lastDay >= today, text: ar ? "ضمن ثلاثين يوماً من إبلاغك" : "Within thirty days of notice" },
+    { ok: String(reason || "").trim().length >= 15, text: ar ? "التظلّم مكتوب بوقائعه" : "The grievance is written out" },
+  ];
+
   return (
-    <article data-grievance-raise="" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 10, overflow: "hidden", maxWidth: 760, width: "100%" }}>
-      <header style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 4 }}>
-        <strong style={{ fontSize: 15 }}>{ar ? "تظلّم من قرار أو إجراء أو جزاء" : "Grieve a decision, action or penalty"}</strong>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#0B3D27" }}>{ar ? "اللائحة التنفيذية لنظام العمل — المادة 71" : "Implementing Regulations — Art. 71"}</span>
-        {prefill?.sanctionRef ? <span data-grievance-sanction="" style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? `عن الجزاء: ${prefill.sanctionRef}` : `On sanction: ${prefill.sanctionRef}`}</span> : null}
-      </header>
-      <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
-        <span style={{ fontSize: 11.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
-          {ar
-            ? "لك أن تتظلم كتابةً خلال ثلاثين يوماً — عدا العطل الرسمية — من إبلاغك، ولا تُضار من تظلّمك. وتُبلَّغ بالنتيجة خلال خمسة عشر يوماً؛ فإن رُفض أو لم يُبتّ فيه فلك المحكمة العمالية خلال ثلاثين يوماً."
-            : "Grieve in writing within thirty days (holidays aside) of being told, without harm to you. You hear the result within fifteen days; if refused or undecided, the labour court within thirty days."}
-        </span>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {GRIEVANCE_KINDS.map((k) => (
-            <label key={k.key} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, cursor: "pointer" }}>
-              <input type="radio" name="grievanceKind" checked={grievanceKind === k.key} onChange={() => setGrievanceKind(k.key)} style={{ accentColor: "#0B3D27" }} />
-              <span>{ar ? k.ar : k.en}</span>
-            </label>
-          ))}
-        </div>
-        <label style={{ display: "flex", flexDirection: "column", gap: 4, maxWidth: 260 }}>
-          <span style={label}>{ar ? "تاريخ إبلاغك به" : "Date you were told"}</span>
-          <PlatformDateField ar={ar} value={notifiedOn} onChange={setNotifiedOn} />
-        </label>
-        {notifiedOn ? (
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: gate.error === "GRIEVANCE_LATE" ? "var(--nv-bad-ink)" : "#2F6B43" }}>
-            {ar
-              ? `آخر يوم للتظلم: ${regulationDate(grievanceFileDeadline(notifiedOn, isHoliday))} · الرد عليك حتى ${regulationDate(grievanceReplyBy(today, isHoliday))}`
-              : `Last day to grieve: ${grievanceFileDeadline(notifiedOn, isHoliday)} · answer due by ${grievanceReplyBy(today, isHoliday)}`}
-          </span>
-        ) : null}
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={label}>{ar ? "تظلمك: ما الذي اتُّخذ ولماذا تراه غير صحيح" : "Your grievance"}</span>
-          <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} style={{ ...field, resize: "vertical" }} />
-        </label>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <AttachFileButton ar={ar} accept="application/pdf,image/jpeg,image/png,image/webp" busy={fileBusy} label={file ? (ar ? "تغيير المرفق" : "Change attachment") : (ar ? "أرفق ما يثبت — اختياري" : "Attach proof — optional")} onPick={pickFile} />
-          {file ? <span style={{ fontSize: 11.5 }} dir="ltr">{file.name}</span> : null}
-        </div>
-        <span data-grievance-gate={gate.ok ? "ok" : gate.error} style={{ fontSize: 11.5, fontWeight: 600, color: gate.ok ? "#2F6B43" : "var(--nv-warn-ink, #8A5A12)", lineHeight: 1.7 }}>
-          {gate.ok ? <><NvIcon name="check" size={12} strokeWidth={2} /> {ar ? "جاهز للإرسال" : "Ready to send"}</> : (ar ? gate.reason : gate.reasonEn)}
-        </span>
-        <button type="button" data-grievance-send="" disabled={!gate.ok || busy} onClick={send} style={{ fontFamily: "inherit", fontSize: 13, fontWeight: 700, height: 42, border: "none", borderRadius: 8, background: gate.ok ? "#0B3D27" : "var(--nv-line)", color: gate.ok ? "#fff" : MUTED, cursor: gate.ok ? "pointer" : "default" }}>
-          {ar ? "أرسل التظلّم" : "Send the grievance"}
-        </button>
-      </div>
-    </article>
+    <div data-grievance-raise="" style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+      <LawLine cite={ar ? "النموذج الموحد م71" : "Model Art. 71"}>
+        {ar
+          ? "كتابةً خلال 30 يوماً من إبلاغك عدا العطل، ويُرد عليك خلال 15 يوماً. لا تُضار من تظلّمك."
+          : "In writing within 30 days of notice (holidays aside); answered within 15 days. No harm to you for filing."}
+      </LawLine>
+      {prefill?.sanctionRef ? null : (
+        <>
+          <StepHead first label={ar ? "ما تتظلّم منه" : "What you grieve"} />
+          <SubTypeGrid label={ar ? "ما تتظلّم منه" : "What you grieve"}>
+            {GRIEVANCE_KINDS.map((k) => (
+              <SubTypeOption key={k.key} dataKey={`grievance-${k.key}`} on={grievanceKind === k.key} title={ar ? k.ar : k.en} onClick={() => setGrievanceKind(k.key)} />
+            ))}
+          </SubTypeGrid>
+        </>
+      )}
+      <StepHead first={Boolean(prefill?.sanctionRef)} label={ar ? "السبب" : "The reason"} note={lastDay ? (ar ? `آخر يوم ${regulationDate(lastDay)} · الرد حتى ${regulationDate(grievanceReplyBy(today, isHoliday))}` : `Last day ${lastDay} · answer by ${grievanceReplyBy(today, isHoliday)}`) : ""} />
+      <label style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 280 }}>
+        <FieldLabel>{ar ? "تاريخ إبلاغك به" : "Date you were told"}</FieldLabel>
+        <PlatformDateField ar={ar} value={notifiedOn} onChange={setNotifiedOn} />
+      </label>
+      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <FieldLabel>{ar ? "ما الذي اتُّخذ ولماذا تراه غير صحيح" : "What was taken and why it is wrong"}</FieldLabel>
+        <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} style={textareaStyle} />
+      </label>
+      <AttachDropzone
+        ar={ar}
+        accept="application/pdf,image/jpeg,image/png,image/webp"
+        busy={fileBusy}
+        file={file}
+        label={ar ? "أرفق ما يثبت" : "Attach proof"}
+        onPick={(picked) => (picked ? pickFile(picked) : setFile(null))}
+        onClear={() => setFile(null)}
+      />
+      <Checklist items={checks} dataKey="grievance" />
+      <span data-grievance-gate={gate.ok ? "ok" : gate.error} hidden={gate.ok} style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-warn-ink)", lineHeight: 1.7 }}>
+        {gate.ok ? "" : (ar ? gate.reason : gate.reasonEn)}
+      </span>
+      <SendButton ready={gate.ok && !busy} onClick={send} dataAttr={{ "data-grievance-send": "" }}>
+        {ar ? "أرسل التظلّم" : "Send the grievance"}
+      </SendButton>
+    </div>
   );
 }

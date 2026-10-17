@@ -1,21 +1,8 @@
 import React, { useState } from "react";
 import ConsentFileLink from "@/components/requests/ConsentFileLink";
 import DisciplineRelatedLinks from "@/components/discipline/DisciplineRelatedLinks";
-import AttachFileButton from "@/components/shared/AttachFileButton";
-
-const field = {
-  fontFamily: "inherit",
-  fontSize: 14,
-  height: 44,
-  padding: "0 14px",
-  border: "1px solid var(--nv-line)",
-  borderRadius: 10,
-  background: "var(--nv-page)",
-  color: "var(--nv-ink)",
-  outline: "none",
-  width: "100%",
-  boxSizing: "border-box",
-};
+import AttachDropzone from "@/components/shared/AttachDropzone";
+import { Checklist, FieldLabel, LawLine, SendButton, textareaStyle } from "@/components/discipline/DisciplineFormKit";
 
 const noteLine = {
   fontSize: 12.5,
@@ -27,101 +14,56 @@ const noteLine = {
   borderRadius: 8,
 };
 
-export default function DisciplineMineCard({ card, ar, draft, onDraft, onObject, onWithdraw }) {
+/**
+ * «اعتراضي على هذا الجزاء» (Art. 72) — the in-file objection on a signed sanction while its window is open.
+ * It is the body of the grievance tile in «طلب جديد» when the picked sanction can still be objected to;
+ * the send runs the page's appeal gate (checkAdvanceDisciplineGate "appeal") unchanged.
+ */
+export function DisciplineObjectionForm({ card, ar, draft, onDraft, onObject }) {
   const [file, setFile] = useState(null);
   const ready = Boolean(String(draft || "").trim());
+  return (
+    <div data-discipline-objection="" style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+      <LawLine cite={ar ? "نظام العمل م72" : "Labour Law Art. 72"}>
+        {ar ? "يُحال إلى من لم يوقّع الجزاء، ويُبتّ فيه كتابةً خلال 15 يوماً." : "It goes to whoever did not sign, and is decided in writing within 15 days."}
+      </LawLine>
+      <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <FieldLabel>{ar ? "اعتراضك ووقائعه" : "Your objection and its facts"}</FieldLabel>
+        <textarea rows={3} value={draft} onChange={(event) => onDraft?.(event.target.value)} style={textareaStyle} />
+      </label>
+      <AttachDropzone
+        ar={ar}
+        file={file}
+        label={ar ? "أرفق ما يسند الاعتراض" : "Attach a supporting document"}
+        onPick={(picked) => setFile(picked || null)}
+        onClear={() => setFile(null)}
+      />
+      <Checklist
+        dataKey="objection"
+        items={[
+          { ok: true, text: ar ? "الجزاء موقَّع ومهلة الاعتراض مفتوحة" : "Signed, and the window is open" },
+          { ok: ready, text: ar ? "الاعتراض مكتوب" : "The objection is written" },
+        ]}
+      />
+      <SendButton ready={ready} onClick={() => onObject?.(card.item, file)}>
+        {ar ? "أرسل الاعتراض" : "Send the objection"}
+      </SendButton>
+    </div>
+  );
+}
+
+/** What sits under a sanction once it is opened: why objecting is closed, the ruling news, withdraw, related links. */
+export default function DisciplineMineCard({ card, ar, onWithdraw }) {
   const extra = card.objectBlocked || card.hasObjGate || card.hasNews || card.canWithdraw || (card.related || []).length;
-  if (!card.canObject && !extra) return null;
+  if (!extra) return null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {card.objectBlocked ? (
         <span style={{ ...noteLine, color: "var(--nv-bad-ink)", borderColor: "var(--nv-bad-line)" }}>{card.objectBlocked}</span>
       ) : null}
       {card.hasObjGate ? (
         <span style={noteLine}>{card.objGate}</span>
-      ) : null}
-      {card.canObject ? (
-        <article
-          data-discipline-objection=""
-          style={{
-            maxWidth: 760,
-            width: "100%",
-            background: "var(--nv-card)",
-            border: "1px solid var(--nv-line)",
-            borderRadius: 10,
-            overflow: "hidden",
-            boxShadow: "var(--nv-paper)",
-          }}
-        >
-          <header style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-              <strong style={{ fontSize: 17, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "اعتراضي على هذا الجزاء" : "My objection to this sanction"}</strong>
-              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
-                {ar ? "يُحال إلى من لم يوقّع الجزاء، ويُبتّ فيه كتابةً خلال 15 يوماً." : "It goes to whoever did not sign, and is decided in writing within 15 days."}
-              </span>
-            </div>
-            <span style={{
-              display: "inline-flex",
-              alignItems: "center",
-              height: 28,
-              padding: "0 12px",
-              borderRadius: 999,
-              fontSize: 12,
-              fontWeight: 700,
-              flex: "none",
-              color: ready ? "var(--nv-ok-ink)" : "var(--nv-ink2)",
-              background: "transparent",
-              border: `1px solid ${ready ? "var(--nv-ok-line)" : "var(--nv-line)"}`,
-            }}
-            >
-              {ready ? (ar ? "جاهز للإرسال" : "Ready to send") : (ar ? "اكتب اعتراضك أولاً" : "Write the objection first")}
-            </span>
-          </header>
-          <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "نص الاعتراض" : "Objection text"}</span>
-              <input
-                value={draft}
-                onChange={(event) => onDraft?.(event.target.value)}
-                placeholder={ar ? "اكتب اعتراضك ووقائعه" : "Write your objection and its facts"}
-                style={field}
-              />
-            </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "مستند يسند الاعتراض — اختياري" : "A document that supports the objection — optional"}</span>
-              <AttachFileButton
-                ar={ar}
-                label={file ? (ar ? `المختار: ${file.name}` : `Chosen: ${file.name}`) : (ar ? "أرفق المستند" : "Attach the document")}
-                onPick={setFile}
-              />
-              <span style={{ fontSize: 11.5, color: file ? "var(--nv-ok-ink)" : "var(--nv-muted)", lineHeight: 1.7 }}>
-                {file
-                  ? (ar ? `مرفق: ${file.name}` : `Attached: ${file.name}`)
-                  : (ar ? "تُحسب بصمته على جهازك، ويُحال مع اعتراضك كما هو." : "Its hash is taken on your device, and it travels with your objection as it is.")}
-              </span>
-            </label>
-            <button
-              type="button"
-              onClick={() => ready && onObject?.(card.item, file)}
-              style={{
-                fontFamily: "inherit",
-                fontSize: 14,
-                fontWeight: 700,
-                height: 40,
-                padding: "0 18px",
-                border: "none",
-                borderRadius: 8,
-                background: ready ? "#3C7D50" : "var(--nv-line)",
-                color: ready ? "var(--nv-btn-ink)" : "var(--nv-muted)",
-                cursor: ready ? "pointer" : "default",
-                alignSelf: "flex-start",
-              }}
-            >
-              {ready ? (ar ? "أرسل الاعتراض" : "Send the objection") : (ar ? "اكتب اعتراضك أولاً" : "Write the objection first")}
-            </button>
-          </div>
-        </article>
       ) : null}
       {card.hasNews ? (
         <span style={{ ...noteLine, color: "var(--nv-ink)", borderInlineStart: `3px solid ${card.item.rulingNote ? "var(--nv-ok-fill)" : "#C8A45A"}` }}>

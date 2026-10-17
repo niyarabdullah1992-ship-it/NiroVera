@@ -117,7 +117,9 @@ assert.match(handoff, /حضور منخفض/);
 assert.doesNotMatch(handoff, /flag: ar \? "بانتظار قرارك"|ar: "بانتظار قرارك"/);
 const disc = readFileSync(join(root, "pages/Discipline.jsx"), "utf8");
 assert.doesNotMatch(disc, /\(ar \? "بانتظار قرارك" : "Your decision"\)/);
-assert.match(disc, /<KpiAction/);
+// الجزاءات: what waits on you is a pill count heading the queue (as in طلباتي) — no figure row repeating it.
+assert.match(disc, /<StatusFilterPills/);
+assert.doesNotMatch(disc, /<FigureRow/);
 const ops = readFileSync(join(root, "pages/Operations.jsx"), "utf8");
 assert.doesNotMatch(ops, /flag=\{employeeFace \? \(ar \? "بانتظار الاعتماد"/);
 

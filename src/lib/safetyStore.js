@@ -1,4 +1,5 @@
-import { getCompanyData, logAudit, updateCompany } from "@/lib/store";
+import { addNotification, getCompanyData, logAudit, updateCompany } from "@/lib/store";
+import { checkSafetyDecisionGate, safetyReporterNotice } from "@/lib/safetyBranchVisibility";
 import { checkHazardCloseGate } from "@/lib/hseDerivations";
 import { buildSafetyReportCard } from "@/lib/safetyReportCard";
 import { readSafety } from "@/lib/facts";
@@ -194,6 +195,78 @@ export function patchSafetyIncident(companyId, stationId, incidentId, patch, act
     saved = true;
   });
   return saved;
+}
+
+/**
+ * One manager decision on a safety card (the طلباتي الإدارة composer): assign · action · close · escalate.
+ * The gate names its refusal; each decision is written on the card's audit trail and the reporter is told
+ * by the card's number (an anonymous reporter too, by his stored id — his name is never shown).
+ * decision: { action, note, assignee: { id, name }, afterPhotoName, controlId }; actor: { id, name }.
+ */
+export function decideSafetyCard(companyId, stationId, incidentId, decision = {}, actor = {}, lang = "ar") {
+  const data = getCompanyData(companyId);
+  const rec = readSafety(data).find((item) => item.stationId === stationId);
+  const current = (rec?.incidentLog || []).find((item) => item.id === incidentId);
+  const action = decision.action;
+  const gate = checkSafetyDecisionGate({ item: current, action, actor, note: decision.note, assignee: decision.assignee, afterPhotoName: decision.afterPhotoName });
+  if (!gate.ok) return gate;
+  const now = new Date().toISOString();
+  const by = String(actor.name || "");
+  const note = String(decision.note || "").trim().slice(0, 600);
+  let saved = null;
+  updateCompany(companyId, (draft) => {
+    const record = readSafety(draft).find((item) => item.stationId === stationId);
+    const index = (record?.incidentLog || []).findIndex((item) => item.id === incidentId);
+    if (!record || index < 0) return;
+    const next = { ...record.incidentLog[index], card: record.incidentLog[index].card ? { ...record.incidentLog[index].card } : record.incidentLog[index].card };
+    const audit = Array.isArray(next.audit) ? [...next.audit] : [];
+    if (action === "assign") {
+      next.assignedTo = { id: String(decision.assignee.id), name: String(decision.assignee.name || ""), at: now, by };
+      next.step = Math.max(Number(next.step) || 0, 1);
+      audit.push({ type: "assign", at: now, by, note: next.assignedTo.name });
+    }
+    if (action === "action") {
+      next.correctiveAction = { text: note, controlId: String(decision.controlId || ""), at: now, by };
+      next.actionApprovedBy = by;
+      next.actionApprovedAt = now;
+      next.step = Math.max(Number(next.step) || 0, 2);
+      audit.push({ type: "action", at: now, by, note });
+    }
+    if (action === "escalate") {
+      next.escalated = true;
+      next.escalationLevel = gate.nextLevel;
+      next.escalatedAt = now;
+      next.escalatedBy = by;
+      next.step = Math.max(Number(next.step) || 0, 1);
+      audit.push({ type: "escalate", at: now, by, note: note || String(gate.nextLevel) });
+    }
+    if (action === "close") {
+      const photo = String(decision.afterPhotoName || "").trim().slice(0, 180);
+      if (photo) next.afterPhoto = { name: photo, at: now };
+      next.status = "closed";
+      next.closeReason = note;
+      next.closedAt = now;
+      next.step = 3;
+      next.reviewedBy = by;
+      next.reviewedAt = now;
+      audit.push({ type: "close", at: now, by, note });
+    }
+    next.audit = audit;
+    if (next.card) next.card.step = next.step;
+    record.incidentLog[index] = next;
+    record.lastActionBy = by;
+    record.lastActionAt = now;
+    saved = next;
+  });
+  if (!saved) return { ok: false, error: "NOT_SAVED", reason: "تعذّر حفظ القرار.", reasonEn: "The decision was not saved." };
+  const stationName = (data?.stations || []).find((station) => station.id === stationId)?.name || stationId;
+  logAudit(companyId, `safety_card_${action}`, `Safety card ${saved.card?.code || saved.id} at "${stationName}" — ${action}${note ? `: ${note}` : ""}.`);
+  const reporterId = String(current.reporterId || current.card?.reporterId || "");
+  if (reporterId && reporterId !== String(actor.id || "")) {
+    const text = safetyReporterNotice(action, saved, { lang, assigneeName: saved.assignedTo?.name || "", level: saved.escalationLevel || 0 });
+    if (text) addNotification(companyId, reporterId, text, { to: "/app/safety", key: `safety-${saved.id}-${action}-${now}` });
+  }
+  return { ok: true, item: saved };
 }
 
 export function recordSafetyIncident(companyId, stationId, description, actorName = "", detail = null) {

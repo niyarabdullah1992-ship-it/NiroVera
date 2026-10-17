@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { setStationScope } from "@/lib/stationScopeStore";
 import { postponeResignation, recordIddahBirth, recordMaternityBirth, recordLeaveBreach, setHajjAnnualQuota, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
 import { approvedLeaveWithdrawWindow, chargeableLeaveDays, checkApproveLeaveGate, checkExamSittingSettleGate, checkLeaveGenderGate, checkRejectLeaveGate, checkSubmitLeaveGate, examNoticeFilesOf, examSatFileOf, examSatState, hasLeaveAttachment, isRealSupportingFile, leaveNeedsAttachment, leaveNeedsArticle118Ack, leaveSpanIncludesOfficialHolidays, hajjAnnualQuotaOf, sickLeaveEndingBefore } from "@/lib/leaveDerivations";
 import { grantedLeaveBalances, usedLeaveDays } from "@/lib/leaveTypes";
@@ -101,7 +100,6 @@ import {
   flattenWorkspaceRows,
   liveInboxRows,
   managerPendingInbox,
-  managerEmployeeRegister,
   managerPersonEmptyReason,
   firstPendingRegisterPerson,
   mineInboxRows,
@@ -159,7 +157,6 @@ import { checkGroundedRefusalGate, refusalGroundsFor, refusalText, SERVICE_CERT_
 import { checkServiceCertificateGate } from "@/lib/employerDuties";
 import { attendanceOnDate, checkPunchRecordGate, parsePunchClock } from "@/lib/attendancePunch";
 import PendingRequestFinder from "@/components/requests/PendingRequestFinder";
-import ManagerEmployeeRegister from "@/components/requests/ManagerEmployeeRegister";
 import RequestEmployeePicker from "@/components/requests/RequestEmployeePicker";
 import RequestSelfSignBlock from "@/components/requests/RequestSelfSignBlock";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -511,6 +508,7 @@ export default function RequestsWorkspace({
   const [employeeId, setEmployeeId] = useState(() => employees[0]?.id || self?.id || "");
   const [stFilter, setStFilter] = useState(() => initialFilter || (selfOnly ? "all" : "pending"));
   const [fileRecordOpen, setFileRecordOpen] = useState(false);
+  const [listQuery, setListQuery] = useState("");
   const [registerId, setRegisterId] = useState(() => employees[0]?.id || "");
   const [focusKey, setFocusKey] = useState("");
   const [lawFilter, setLawFilter] = useState("leave");
@@ -1314,20 +1312,17 @@ export default function RequestsWorkspace({
     });
   };
 
-  const registerBoard = useMemo(
-    () => managerEmployeeRegister(employees, lang, { stations, companyId: company?.id }),
-    [employees, lang, stations, company?.id],
-  );
-  const selectedRegister = registerBoard.rows.find((row) => String(row.id) === String(registerId || employeeId));
   const mineOwned = mode === "mine"
     ? flattenWorkspaceRows(employees, lang).filter((row) => isOwnMineLaneRow(row, currentUser || self))
     : [];
   const rows = mode === "mine"
     ? mineInboxRows(employees, currentUser || self, lang)
     : liveInboxRows(employees, lang, { lane: mode === "manage" ? "manage" : "mine" });
-  const selectedPersonId = registerId || employeeId;
-  const scopedRows = mode === "manage" && selectedPersonId
-    ? rows.filter((row) => String(row.employee?.id) === String(selectedPersonId))
+  // إدارة: every request in the header scope (نطاقك); a name search narrows it — no separate per-person register.
+  const listNeedle = String(listQuery || "").trim().toLowerCase();
+  const scopedRows = mode === "manage" && listNeedle
+    ? rows.filter((row) => [row.employee?.name, row.employee?.employeeNo, row.employee?.jobTitle]
+      .some((v) => String(v || "").toLowerCase().includes(listNeedle)))
     : rows;
   const mineStatus = mineStatusBucket;
   const mineList = mode === "mine" && (stFilter === "all" || stFilter === "approved" || stFilter === "rejected")
@@ -3338,27 +3333,6 @@ export default function RequestsWorkspace({
         ) : null}
         </RaiseFold>
         ) : null}
-        {mode === "manage" ? (
-          <ManagerEmployeeRegister
-            employees={employees}
-            stations={stations}
-            lang={lang}
-            selectedId={registerId || employeeId}
-            companyId={company?.id}
-            recording={fileRecordOpen}
-            focusStationId={focusStationId}
-            onSelect={(id) => {
-              openRegister(id);
-              setFileRecordOpen(false);
-            }}
-            onRecord={(id) => {
-              openRegister(id);
-              setFileRecordOpen(true);
-            }}
-            onHideRecord={() => setFileRecordOpen(false)}
-            onFocusStation={(id) => setStationScope(id || "all")}
-          />
-        ) : null}
         </>) : null}
         list={(
         <div className="nv-req-inbox" style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
@@ -3521,8 +3495,19 @@ export default function RequestsWorkspace({
                   {mode === "manage" ? (ar ? "قائمة الطلبات" : "Request list") : (ar ? "طلباتي" : "My requests")}
                 </h2>
                 {mode === "manage" ? (
-                  <span className="nv-req-inbox-meta">
-                    {selectedRegister?.name || (focusStationId && focusStationId !== "all" ? stationName(focusStationId) : (ar ? "كل الفروع التي تديرها" : "Every branch you manage"))}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span className="nv-req-inbox-meta">
+                      {focusStationId && focusStationId !== "all" ? stationName(focusStationId) : (ar ? "كل الفروع التي تديرها" : "Every branch you manage")}
+                    </span>
+                    <input
+                      type="search"
+                      data-req-list-search="1"
+                      value={listQuery}
+                      onChange={(event) => setListQuery(event.target.value)}
+                      placeholder={ar ? "ابحث باسم الموظف" : "Search by name"}
+                      aria-label={ar ? "ابحث في الطلبات باسم الموظف" : "Search requests by name"}
+                      style={{ fontFamily: "inherit", height: 32, width: 190, maxWidth: "100%", padding: "0 10px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card, #fff)", color: "var(--nv-ink)", fontSize: 12 }}
+                    />
                   </span>
                 ) : null}
               </div>

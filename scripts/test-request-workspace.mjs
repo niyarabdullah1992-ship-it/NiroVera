@@ -1226,8 +1226,8 @@ assert.equal(statutoryChipStyle("entitlement", { glow: "due" })["--nv-stat-glow"
 assert.match(String(statutoryChipStyle("entitlement", { glow: "due" }).background), /nv-warn/);
 assert.doesNotMatch(String(statutoryChipStyle("entitlement", { glow: "due" }).background), /nv-danger|#DC2626/);
 assert.match(workspaceSrc, /PendingRequestFinder/, "إدارة typeahead finds a pending request");
-assert.match(workspaceSrc, /ManagerEmployeeRegister/, "إدارة shows a due-inbox column");
-assert.match(src("src/components/requests/ManagerEmployeeRegister.jsx"), /بانتظار القرار/, "register heading is the due inbox");
+assert.doesNotMatch(workspaceSrc, /<ManagerEmployeeRegister/, "إدارة has no separate due-inbox card — the request list is the inbox");
+assert.match(workspaceSrc, /data-req-list-search/, "إدارة narrows the list by name instead");
 assert.match(workspaceSrc, /القرار/, "decision pane heading");
 assert.match(workspaceSrc, /managerPersonEmptyReason/, "selected-file empty copy");
 assert.match(workspaceSrc, /openRegister\(row\.employee\.id\)/, "finder still opens that سجل");
@@ -1817,7 +1817,7 @@ assert.match(workspaceSrc, /manageArchiveRows\(employees, lang, \{ stations, sta
 assert.match(workspaceSrc, /mineArchiveRows\(employees, currentUser \|\| self, lang\)/, "ملفي archive count stays self-only");
 assert.match(src("src/pages/Requests.jsx"), /focusStationId=\{manageLane && canManage \? inboxFocusStationId/, "إدارة archive keeps branch scope");
 assert.doesNotMatch(workspaceSrc, /nv-req-branch-alerts/, "إدارة does not repeat the header النطاق as a branch chip row");
-assert.match(workspaceSrc, /setStationScope/, "the employee register can still move النطاق");
+assert.doesNotMatch(workspaceSrc, /setStationScope/, "النطاق moves only from the header scope picker, not from طلباتي");
 assert.equal(firstPendingRegisterPerson([twoStationMgr, noraKhafji, fahdRabigh], "ar", "khf")?.id, "nora", "فرع الخفجي opens the first pending person there");
 assert.equal(firstPendingRegisterPerson([twoStationMgr, noraKhafji, fahdRabigh], "ar", "rbg")?.id, "fahd", "فرع رابغ opens the first pending person there");
 assert.equal(firstPendingRegisterPerson([twoStationMgr], "ar", "khf")?.id, "mgr2", "a branch with no pending still opens someone seated there");

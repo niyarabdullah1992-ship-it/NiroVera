@@ -60,6 +60,7 @@ const OPTIONS_KEY = "nv-org-tree-options";
 const VIEW_KEY = "nv-org-view";
 const MODE_KEY = "nv-org-mode";
 const ZOOM_KEY = "nv-org-tree-zoom";
+const MINI_KEY = "nv-org-tree-minimap";
 const CHILD_LIMIT = 36;
 const EXPAND_LIMIT = 600;
 
@@ -96,6 +97,7 @@ const Icon = {
   fit: svg(<path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" />),
   full: svg(<path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />),
   download: svg(<path d="M12 4v11M7 10l5 5 5-5M5 20h14" />),
+  map: svg(<><rect x="3.5" y="5" width="17" height="14" rx="2" /><rect x="11" y="10" width="6.5" height="6" rx="1" /></>),
   gear: svg(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>, 18, 1.7),
   card: svg(<><rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2" /><path d="M6 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M14.5 10h3.5M14.5 13.5h3.5" /></>, 18, 1.6),
   dots: (<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden><circle cx="6" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="18" cy="12" r="1.6" /></svg>),
@@ -1148,7 +1150,11 @@ export default function OrgTreeChart({
     if (!el) return;
     setOverflows(W * zoom > el.clientWidth - 40 || H * zoom > el.clientHeight - 40);
   }, [W, H, zoom]);
-  const showMini = !narrow && !embedded && overflows && layout.cards.length > 8;
+  // the overview map is off until asked for — a corner thumbnail by default only distracts
+  const [miniOn, setMiniOn] = useState(() => readStore(MINI_KEY) === "1");
+  const toggleMini = () => setMiniOn((on) => { writeStore(MINI_KEY, on ? "0" : "1"); return !on; });
+  const miniAvailable = !narrow && !embedded && overflows && layout.cards.length > 8;
+  const showMini = miniAvailable && miniOn;
   useEffect(() => {
     if (!showMini) return undefined;
     const el = scrollerRef.current;
@@ -1489,6 +1495,9 @@ export default function OrgTreeChart({
         <button type="button" className="nv-ot-tool nv-ot-tool--pct" onClick={() => setZoom(1, centerAnchor())} aria-label={ar ? `التكبير ${zoomPct} — اضغط للعودة إلى 100%` : `Zoom ${zoomPct} — reset to 100%`} title="100%">{zoomPct}</button>
         <button type="button" className="nv-ot-tool" onClick={() => zoomBy(1)} aria-label={ar ? "تكبير" : "Zoom in"} title={ar ? "تكبير" : "Zoom in"}>{Icon.plus}</button>
         <button type="button" className="nv-ot-tool" onClick={fit} aria-label={ar ? "ملاءمة المخطط للشاشة" : "Fit to screen"} title={ar ? "ملاءمة" : "Fit"}>{Icon.fit}</button>
+        {miniAvailable || miniOn ? (
+          <button type="button" className="nv-ot-tool" onClick={toggleMini} aria-pressed={miniOn} data-on={miniOn ? "1" : "0"} aria-label={miniOn ? (ar ? "أخفِ خريطة المخطط" : "Hide the overview map") : (ar ? "أظهر خريطة المخطط" : "Show the overview map")} title={miniOn ? (ar ? "أخفِ الخريطة" : "Hide map") : (ar ? "خريطة المخطط" : "Overview map")}>{Icon.map}</button>
+        ) : null}
         <span className="nv-ot-tools__sep" aria-hidden />
         {embedded ? (
           <button type="button" className="nv-ot-tool" onClick={openFull} aria-label={ar ? "شاشة كاملة" : "Full screen"} title={ar ? "شاشة كاملة" : "Full screen"}>{Icon.full}</button>
@@ -1868,7 +1877,8 @@ export default function OrgTreeChart({
         />
       ) : null}
       {showMini && frame ? (
-        <div className="nv-ot-mini" aria-hidden>
+        <div className="nv-ot-mini">
+          <button type="button" className="nv-ot-mini__close" onClick={toggleMini} aria-label={ar ? "أخفِ الخريطة" : "Hide map"} title={ar ? "أخفِ" : "Hide"}>×</button>
           <svg width={Math.round(W * miniScale)} height={Math.round(H * miniScale)} viewBox={`0 0 ${W} ${H}`} onClick={miniGo}>
             {layout.cards.map((c) => (
               <rect key={c.key} x={physX(c.x, cardW)} y={c.y} width={cardW} height={cardH} rx="14" data-focus={c.key === selected ? "1" : "0"} />

@@ -446,6 +446,13 @@
   line-height: 0;
 }
 .nv-ot-mini svg { display: block; cursor: pointer; }
+.nv-ot-mini__close {
+  position: absolute; top: -9px; inset-inline-start: -9px; width: 20px; height: 20px; padding: 0;
+  border: 1px solid var(--nv-line); border-radius: 999px; background: var(--nv-card); color: var(--nv-muted);
+  font: 600 13px/1 inherit; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.nv-ot-mini__close:hover { color: var(--nv-ink); border-color: var(--nv-ink2, var(--nv-line)); }
+.nv-ot-tool[data-on="1"] { color: var(--nv-accent); background: var(--nv-accent-soft); }
 .nv-ot-mini rect { fill: var(--nv-mute-fill, var(--nv-line)); }
 .nv-ot-mini rect[data-focus="1"] { fill: var(--nv-accent); }
 .nv-ot-mini .nv-ot-mini__frame { fill: var(--nv-accent-soft); fill-opacity: .35; stroke: var(--nv-accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }

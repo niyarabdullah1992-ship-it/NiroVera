@@ -16,10 +16,11 @@ import {
   updateShiftType,
   confirmHolidayWork,
 } from "@/lib/store";
+import ContinuousWork103Setting from "@/components/schedules/ContinuousWork103Setting";
 import { HOLIDAY_WORK_LABEL_AR, HOLIDAY_WORK_LABEL_EN, holidayWorkOn, prayerBreakHint } from "@/lib/shiftWeek";
 import { stationPrayerTimes } from "@/lib/prayerTimes";
 import NvIcon from "@/components/shared/NvIcon";
-import { hoursPolicyOf, isJuvenile as isJuvenileOn } from "@/lib/laborHoursPolicy.js";
+import { hoursPolicyOf, isJuvenile as isJuvenileOn, weekHoursCap } from "@/lib/laborHoursPolicy.js";
 import ShiftBreakMode from "@/components/schedules/ShiftBreakMode";
 import { nextDistinctShift, repairedShiftWindow, STANDARD_SHIFT_WINDOWS, formatShiftHm, shiftHoursLine, shiftWindowKey } from "@/lib/shiftDerivations";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
@@ -333,10 +334,15 @@ export default function ShiftWeekBoard({
 
   const published = pub.kind === "published" || pub.kind === "implicit";
   const blockers = gates.blockers.length;
+  // A published week that now fails a gate is not «before publish» — it is live and breaks a rule.
   const publishBlockerLabel = blockers
-    ? (ar
-      ? `${countAr(blockers, "مانع واحد", "مانعان", "موانع", "مانعاً")} قبل النشر`
-      : `${blockers} blockers before publish`)
+    ? (published
+      ? (ar
+        ? `يخالف الآن: ${countAr(blockers, "مانع واحد", "مانعان", "موانع", "مانعاً")}`
+        : `Now breaks: ${blockers}`)
+      : (ar
+        ? `${countAr(blockers, "مانع واحد", "مانعان", "موانع", "مانعاً")} قبل النشر`
+        : `${blockers} blockers before publish`))
     : "";
   const publishLabel = published && pub.kind === "published"
     ? (ar ? "منشور — الحضور يقرأ منه" : "Published — attendance reads this")
@@ -493,7 +499,7 @@ export default function ShiftWeekBoard({
     const placedShift = placeId ? types.find((row) => row.id === placeId) : null;
     const placedDay = schedule?.sunExposure?.[placeKey];
     const alreadyPicked = !!placedDay && Object.prototype.hasOwnProperty.call(placedDay, String(employee.id)) && !!placedDay[String(employee.id)];
-    setSunPrompt(placedShift && shiftTouchesHeatWindow(placedShift) && !alreadyPicked
+    setSunPrompt(placedShift && shiftTouchesHeatWindow(placedShift) && isHeatBanDate(placeKey) && !alreadyPicked
       ? `${employee.id}:${placeKey}`
       : null);
     const draftKey = `${employee.id}:${placeKey}`;
@@ -811,6 +817,7 @@ export default function ShiftWeekBoard({
   const continuous103 = hoursPolicyOf(data).continuousWork103 === true;
   const shiftTypesEditor = (
     <>
+      <ContinuousWork103Setting ar={ar} data={data} companyId={companyId} canEdit={canEdit} onDate={hintDay} refresh={refresh} />
       {types.map((shift, index) => {
         const style = shiftTypeStyle(shift, index);
         const breakHint = prayerBreakHint({ shift, onDate: hintDay, prayers: hintPrayers, company: data, published });
@@ -1042,8 +1049,8 @@ export default function ShiftWeekBoard({
       <Sun aria-hidden style={{ width: 14, height: 14, flex: "none" }} strokeWidth={2} />
       <span>
         {ar
-          ? `حظر العمل المكشوف (3337) غير ساري هذا الأسبوع. تحديد «مكشوف / مظلّل» يُحفظ في الخانات، وفي الموسم (${heatWin.seasonAr.replace(/^من /u, "")}) يصل عند ${heatWin.startLabel} تنبيه للإدارة وللموظف المكشوف، ومعلومة لجميع الموظفين — دون منع النشر.`
-          : `The open-sun ban (3337) is not in force this week. In season, the roster cell asks exposed or shaded when you place a shift touching ${heatWin.startLabel}–${heatWin.endLabel}.`}
+          ? `حظر العمل المكشوف (3337) غير ساري هذا الأسبوع — لا سؤال ولا منع. في الموسم (${heatWin.seasonAr.replace(/^من /u, "")}) تسأل كل خلية تمسّ ${heatWin.startLabel}–${heatWin.endLabel} «مكشوف أم مظلّل؟»، ولا يُنشر الأسبوع وفيه خلية بلا تحديد، ويصل تنبيه للإدارة وللموظف المكشوف.`
+          : `The open-sun ban (3337) is not in force this week — no question, no block. In season every cell touching ${heatWin.startLabel}–${heatWin.endLabel} asks exposed or shaded, and the week does not publish with a cell left unset.`}
       </span>
     </div>
   ) : null;
@@ -1403,7 +1410,11 @@ export default function ShiftWeekBoard({
                         </Link>
                         {mineRow ? <FileSelfBadge ar={ar} /> : null}
                       </span>
-                      <span style={{ fontSize: 10.5, color: hours > 48 ? "var(--nv-bad-ink)" : SW.muted, textAlign: "start" }}><span style={mono}>{hours}</span> {ar ? "س" : "h"}{hours > 48 ? (ar ? " · تجاوز 48" : " · over 48") : ""}</span>
+                      {(() => {
+                        const cap = weekHoursCap(employee, data, days.map((day) => day.key), laborCalendar).hours;
+                        const over = Number.isFinite(cap) && Number(hours) > cap;
+                        return <span style={{ fontSize: 10.5, color: over ? "var(--nv-bad-ink)" : SW.muted, textAlign: "start" }}><span dir="ltr" style={mono}>{hours}</span> {ar ? "س" : "h"}{over ? (ar ? <> · تجاوز <span dir="ltr" style={mono}>{cap}</span></> : <> · over <span dir="ltr" style={mono}>{cap}</span></>) : ""}</span>;
+                      })()}
                       {sunWeekAction ? (
                         <button
                           type="button"
@@ -1511,12 +1522,14 @@ export default function ShiftWeekBoard({
                             role="dialog"
                             aria-label={ar ? `حظر الشمس — ${employee.name}` : `Sun ban — ${employee.name}`}
                             data-sun-prompt="1"
-                            style={{ position: "absolute", insetInline: 2, bottom: 2, zIndex: 3, background: "var(--nv-card, #fff)", border: "1.5px solid var(--nv-warn, #B7791F)", borderRadius: 8, boxShadow: "0 6px 16px rgba(12,20,16,.18)", padding: "4px 5px", display: "flex", flexDirection: "column", gap: 3, textAlign: "start" }}
+                            // Only its buttons take clicks — a tap on the rest of the card falls through to the cell,
+                            // so cycling the cell never stalls behind the question.
+                            style={{ position: "absolute", insetInline: 2, bottom: 2, zIndex: 3, background: "var(--nv-card, #fff)", border: "1.5px solid var(--nv-warn, #B7791F)", borderRadius: 8, boxShadow: "0 6px 16px rgba(12,20,16,.18)", padding: "4px 5px", display: "flex", flexDirection: "column", gap: 3, textAlign: "start", pointerEvents: "none" }}
                           >
                             <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9.5, fontWeight: 700, color: "var(--nv-warn-ink, #7A4E0B)", lineHeight: 1.3 }}>
                               <Sun aria-hidden style={{ width: 11, height: 11, flex: "none" }} strokeWidth={2.4} />
                               <span style={{ flex: 1, minWidth: 0 }}>{ar ? "مكشوف أم مظلّل؟" : "Exposed or shaded?"}</span>
-                              <button type="button" onClick={() => setSunPrompt(null)} aria-label={ar ? "لاحقًا" : "Later"} style={{ border: "none", background: "transparent", color: "var(--nv-ink3)", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0 }}>×</button>
+                              <button type="button" onClick={() => setSunPrompt(null)} aria-label={ar ? "لاحقًا" : "Later"} style={{ border: "none", background: "transparent", color: "var(--nv-ink3)", cursor: "pointer", fontSize: 12, lineHeight: 1, padding: 0, pointerEvents: "auto" }}>×</button>
                             </span>
                             <span style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 3 }}>
                               {[SUN_FIELD, SUN_OFFICE].map((opt) => (
@@ -1537,6 +1550,7 @@ export default function ShiftWeekBoard({
                                     background: opt === SUN_FIELD ? "var(--nv-bad, #B42318)" : "var(--nv-ok, #1F7A4D)",
                                     color: "#fff",
                                     minWidth: 0,
+                                    pointerEvents: "auto",
                                   }}
                                 >
                                   {opt === SUN_FIELD ? (ar ? "مكشوف" : "Exposed") : (ar ? "مظلّل" : "Shaded")}
@@ -1618,8 +1632,8 @@ export default function ShiftWeekBoard({
             <div style={{ padding: "0 18px 12px", fontSize: 11, color: SW.muted, lineHeight: 1.7 }}>
               {canEdit
                 ? (brush != null
-                  ? (ar ? `اضغط أي خلية لتعيين «${brushLabel}». ${WEEK_HINT_ADMIN_AR}` : `Click a cell to assign “${brushLabel}”. Leave and holiday cells stay locked. The week does not publish over 48 hours or a morning shift straight after a night.`)
-                  : (ar ? WEEK_HINT_ADMIN_AR : "Click a cell to cycle rest, morning, evening, night. Holiday and leave cells stay locked. The week does not publish over 48 hours or a morning shift straight after a night."))
+                  ? (ar ? `اضغط أي خلية لتعيين «${brushLabel}». ${WEEK_HINT_ADMIN_AR}` : `Click a cell to assign “${brushLabel}”. Leave and holiday cells stay locked. The week does not publish over the weekly cap or a morning shift straight after a night.`)
+                  : (ar ? WEEK_HINT_ADMIN_AR : "Click a cell to cycle rest, morning, evening, night. Holiday and leave cells stay locked. The week does not publish over the weekly cap or a morning shift straight after a night."))
                 : (published
                   ? (ar ? WEEK_HINT_EMP_AR : "This is your published roster. Ask for a shift change or leave from My Requests. Leave cells stay locked.")
                   : (ar ? "هذا الأسبوع لم يُنشر بعد — لا وردية منشورة اليوم، و«حضر» يبقى مغلقاً. الإجازة من «طلباتي»." : "This week is not published yet — no published shift today, and check-in stays closed. Leave is requested from My Requests."))}
@@ -1820,11 +1834,15 @@ export default function ShiftWeekBoard({
         <aside className="nv-duty-col nv-duty-side" data-duty-side="1">
           {mode !== "mine" ? (() => {
             // «أسبوع الفرع» — the same dark slab as «رصيد إجازاتي» / «بانتظار القرار»: publish state, the week's
-            // totals, and each person's hours against the 48-hour limit.
-            const limit = 48;
-            const near = limit - 8;
-            const people = roster.map((emp) => ({ id: emp.id, name: emp.name, h: Number(employeeWeekHours(schedule, emp.id, weekStart, emp, laborCalendar)) || 0 }))
-              .sort((x, y) => y.h - x.h);
+            // totals, and each person's hours against their own week cap (catalog: 48, 36 in Ramadan, Art. 108).
+            const dayKeys = days.map((day) => day.key);
+            const people = roster.map((emp) => {
+              const cap = weekHoursCap(emp, data, dayKeys, laborCalendar);
+              return { id: emp.id, name: emp.name, h: Number(employeeWeekHours(schedule, emp.id, weekStart, emp, laborCalendar)) || 0, cap: cap.hours, art: cap.article };
+            }).sort((x, y) => y.h - x.h);
+            const branchCap = weekHoursCap(null, data, dayKeys, laborCalendar);
+            const limit = branchCap.hours;
+            const nearOf = (row) => (Number.isFinite(row.cap) ? row.h >= row.cap - 8 : false);
             const fmt = (n) => (Number.isInteger(n) ? n : n.toFixed(1));
             return (
               <section data-branch-week-card="1" style={{ borderRadius: 12, overflow: "hidden", background: "linear-gradient(160deg, #0B3D27 0%, #0F5535 100%)", color: "#fff" }}>
@@ -1832,7 +1850,9 @@ export default function ShiftWeekBoard({
                   <span style={{ fontSize: 14, fontWeight: 700 }}>{ar ? `أسبوع ${stationName ? rosterBranchPhrase(stationName, ar) : "الفرع"}` : "Branch week"}</span>
                   <span style={{ fontSize: 11.5, color: "#C5DBCD" }}>
                     {pub.kind === "published"
-                      ? (ar ? "منشور — الحضور يقرأ منه" : "Published — attendance reads it")
+                      ? (blockers
+                        ? (ar ? `منشور — يخالف الآن: ${countAr(blockers, "مانع واحد", "مانعان", "موانع", "مانعاً")}` : `Published — now breaks: ${blockers}`)
+                        : (ar ? "منشور — الحضور يقرأ منه" : "Published — attendance reads it"))
                       : pub.kind === "edited"
                         ? (ar ? "تعديل غير منشور" : "Unpublished edit")
                         : pub.kind === "implicit"
@@ -1854,24 +1874,24 @@ export default function ShiftWeekBoard({
                 </div>
                 <div style={{ padding: "12px 18px 4px", display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
                   <strong style={{ fontSize: 13 }}>{ar ? "قريبون من الحد" : "Near the limit"}</strong>
-                  <span style={{ fontSize: 11, color: "#A9CDB8" }}>{ar ? `${near} ساعة فأكثر · الباقي بجانب الاسم في الجدول` : `${near} h or more · the rest beside each name in the grid`}</span>
+                  <span style={{ fontSize: 11, color: "#A9CDB8" }}>{ar ? `على بعد 8 ساعات من حدّه · الباقي بجانب الاسم في الجدول` : `Within 8 h of their cap · the rest beside each name in the grid`}</span>
                 </div>
-                {people.filter((row) => row.h >= near).length === 0 ? (
-                  <span style={{ display: "block", padding: "6px 18px", fontSize: 12, color: "#C5DBCD" }}>{ar ? `لا أحد قريب من حد ${limit} ساعة هذا الأسبوع.` : `Nobody is near the ${limit}-hour limit this week.`}</span>
+                {people.filter(nearOf).length === 0 ? (
+                  <span style={{ display: "block", padding: "6px 18px", fontSize: 12, color: "#C5DBCD" }}>{ar ? "لا أحد قريب من حدّه الأسبوعي هذا الأسبوع." : "Nobody is near their weekly cap this week."}</span>
                 ) : null}
-                {people.filter((row) => row.h >= near).map((row) => (
+                {people.filter(nearOf).map((row) => (
                   <div key={row.id} data-branch-week-person={row.id} style={{ padding: "7px 18px", display: "flex", flexDirection: "column", gap: 5 }}>
                     <span style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
                       <span style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
-                      <span style={{ color: row.h > limit ? "#F3C9C9" : "#C5DBCD", whiteSpace: "nowrap" }}>{fmt(row.h)} {ar ? `من ${limit}` : `of ${limit}`}</span>
+                      <span style={{ color: row.h > row.cap ? "#F3C9C9" : "#C5DBCD", whiteSpace: "nowrap" }}><span dir="ltr" style={mono}>{fmt(row.h)}</span> {ar ? "من" : "of"} <span dir="ltr" style={mono}>{row.cap}</span></span>
                     </span>
                     <span aria-hidden style={{ height: 6, borderRadius: 999, background: "rgba(255,255,255,.18)", overflow: "hidden", display: "block" }}>
-                      <span style={{ display: "block", height: "100%", width: `${Math.min(100, (row.h / limit) * 100)}%`, background: row.h > limit ? "#E07A7A" : "#C8A45A", borderRadius: 999 }} />
+                      <span style={{ display: "block", height: "100%", width: `${Math.min(100, (row.h / row.cap) * 100)}%`, background: row.h > row.cap ? "#E07A7A" : "#C8A45A", borderRadius: 999 }} />
                     </span>
                   </div>
                 ))}
                 <div style={{ padding: "10px 18px", marginTop: 6, borderTop: "1px solid rgba(255,255,255,.1)", fontSize: 10.5, color: "#A9CDB8" }}>
-                  {ar ? `الحد النظامي ${limit} ساعة أسبوعياً (المادة 98). الأرقام من الجدول المعروض.` : `Statutory limit ${limit} h a week (Art. 98). Figures from the roster shown.`}
+                  {ar ? `الحد النظامي ${limit} ساعة أسبوعياً${branchCap.article ? ` (المادة ${branchCap.article})` : ""}. الأرقام من الجدول المعروض.` : `Statutory limit ${limit} h a week${branchCap.article ? ` (Art. ${branchCap.article})` : ""}. Figures from the roster shown.`}
                 </div>
               </section>
             );

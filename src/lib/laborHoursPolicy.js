@@ -202,6 +202,32 @@ export function ordinaryWeekCap(employee, company, onDate, laborCalendar) {
   return ruleValue("hours.week.ordinaryMaxHours", onDate);
 }
 
+/**
+ * The week's ordinary-hours cap for a person, read for the week itself: the cap that holds on most of
+ * its days (a week that is mostly Ramadan reads 36), with the article it comes from — never a literal 48.
+ * @returns {{ hours: number, ruleId: string, article: string }}
+ */
+export function weekHoursCap(employee, company, dayKeys = [], laborCalendar) {
+  const keys = (dayKeys || []).filter(Boolean);
+  const tally = new Map();
+  for (const key of keys.length ? keys : [laborDayKey(new Date())]) {
+    const hours = ordinaryWeekCap(employee, company, key, laborCalendar);
+    const ruleId = isJuvenile(employee, key)
+      ? "hours.juvenile.ordinaryHours"
+      : art108Limits(employee, key, laborCalendar)
+        ? "hours.art108.cite"
+        : (isRamadanDay(key, laborCalendar) && isRamadanHoursSubject(employee))
+          ? "hours.ramadan.weekMaxHours"
+          : "hours.week.ordinaryMaxHours";
+    const slot = tally.get(hours) || { hours, ruleId, key, n: 0 };
+    slot.n += 1;
+    tally.set(hours, slot);
+  }
+  const best = [...tally.values()].sort((a, b) => b.n - a.n || a.hours - b.hours)[0];
+  const cite = citeRule(best.ruleId, best.key);
+  return { hours: best.hours, ruleId: best.ruleId, article: cite?.article || "" };
+}
+
 export function weeklyRestDow(company, onDate) {
   const raw = hoursPolicyOf(company).workPosting?.weeklyRestDow;
   const n = Number(raw);

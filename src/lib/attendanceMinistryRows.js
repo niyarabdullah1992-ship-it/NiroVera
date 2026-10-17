@@ -16,6 +16,7 @@ import { employeeShiftOnDay, weekDateKeys, weekRestDayCount } from "./shiftWeek.
 import { laborCalendarOf } from "./ummAlQuraCalendar.js";
 import { nursingHourOn } from "./dutyRequests.js";
 import { profileGender } from "./employeeProfileFields.js";
+import { formatDate } from "./dateFormat.js";
 
 const T = (ar, a, e) => (ar ? a : e);
 const hours1 = (minutes) => Math.round((Math.max(0, Number(minutes) || 0) / 60) * 10) / 10;
@@ -307,7 +308,7 @@ export function attendanceNursingRow({ employee, day, ar = true } = {}) {
     badge: ar ? `م ${art} · اللائحة م31` : `Art. ${art} · Regs Art. 31`,
     title: nursing
       ? (nursing.until
-        ? T(ar, `ساعة رضاعة حتى \u2066${nursing.until}\u2069`, `Nursing hour until ${nursing.until}`)
+        ? T(ar, `ساعة رضاعة حتى ${formatDate(nursing.until, "ar", { day: "numeric", month: "long", year: "numeric" })}`, `Nursing hour until ${formatDate(nursing.until, "en", { day: "numeric", month: "long", year: "numeric" })}`)
         : T(ar, "ساعة رضاعة على ملفك", "Nursing hour on your file"))
       : T(ar, `ساعة رضاعة ${mins} دقيقة يومياً بعد إجازة الوضع، ${months} شهراً من الوضع`, `A ${mins}-minute nursing hour a day after maternity leave, for ${months} months from birth`),
     note: [lawNote, regsNote].filter(Boolean).join(" "),

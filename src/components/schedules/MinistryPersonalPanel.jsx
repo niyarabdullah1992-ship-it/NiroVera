@@ -14,6 +14,7 @@ import {
 } from "@/lib/shiftWeek";
 import { heatBanWindow, isHeatBanDate } from "@/lib/contractLawDerivations";
 import { ruleValue } from "@/lib/laborRules";
+import { ordinaryDayCap, weekHoursCap } from "@/lib/laborHoursPolicy";
 import { statusFromWeekCheck } from "@/lib/lawGateStatus";
 import { buildLawGatesBoard } from "@/lib/lawGatesBoard";
 import { flattenBoard } from "@/components/schedules/ScheduleCompliancePanel";
@@ -34,7 +35,13 @@ const OPEN = new Set(["blocked", "violation", "waiting", "alert"]);
 const EXTRA_BADGE = { hours_106: "106", ramadan: "98", eid_rest_compensate: "112", juvenile: "162" };
 
 function Num({ children }) {
-  return <span dir="ltr" style={mono}>{children}</span>;
+  // A mono decimal point sits in a full cell and reads «7 . 5»; tighten it so 7.5 reads as one figure.
+  const text = typeof children === "number" || typeof children === "string" ? String(children) : null;
+  if (text && /^\d+\.\d+$/.test(text)) {
+    const [whole, frac] = text.split(".");
+    return <span dir="ltr" style={{ ...mono, unicodeBidi: "isolate", whiteSpace: "nowrap" }}>{whole}<span style={{ margin: "0 -0.28em" }}>.</span>{frac}</span>;
+  }
+  return <span dir="ltr" style={{ ...mono, unicodeBidi: "isolate" }}>{children}</span>;
 }
 
 function checksAr(n) {
@@ -271,7 +278,9 @@ export default function MinistryPersonalPanel({
     }
 
     /* ---------- Labour Law ---------- */
-    const cap = ruleValue("hours.week.ordinaryMaxHours", onDate) || 48;
+    const capInfo = weekHoursCap(employee, company, days.map((day) => day.key), laborCalendar);
+    const cap = Number.isFinite(capInfo.hours) ? capInfo.hours : ruleValue("hours.week.ordinaryMaxHours", onDate);
+    const dayCap = ordinaryDayCap(employee, company, onDate, laborCalendar);
     const hours = empId ? employeeWeekHours(schedule, empId, weekStart, employee, laborCalendar) : 0;
     const shifts = dayRows.filter((row) => row.shift);
     const restDays = dayRows.filter((row) => !row.shift && !row.leave);
@@ -284,7 +293,7 @@ export default function MinistryPersonalPanel({
       title: ar ? <>الساعات <Num>{fmtHours(hours)}</Num> من <Num>{cap}</Num> هذا الأسبوع</> : <><Num>{fmtHours(hours)}</Num> of <Num>{cap}</Num> hours this week</>,
       note: OPEN.has(hoursStatus)
         ? (ar ? "فوق الحد النظامي — الزائد لا يُحفظ، ويُعالج قبل النشر." : "Over the statutory cap — the excess is not kept and is fixed before publish.")
-        : (ar ? "ضمن الحد: 8 ساعات يومياً أو 48 أسبوعياً." : "Within the cap: 8 hours a day or 48 a week."),
+        : (ar ? <>ضمن الحد: <Num>{dayCap}</Num> ساعات يومياً أو <Num>{cap}</Num> أسبوعياً{capInfo.article ? ` (المادة ${capInfo.article})` : ""}.</> : <>Within the cap: <Num>{dayCap}</Num> hours a day or <Num>{cap}</Num> a week{capInfo.article ? ` (Art. ${capInfo.article})` : ""}.</>),
     });
     if (shifts.length) {
       const consec = ruleValue("hours.rest.maxConsecutiveHours", onDate) || 5;

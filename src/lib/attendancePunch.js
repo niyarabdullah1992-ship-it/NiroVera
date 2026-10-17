@@ -188,13 +188,18 @@ export function buildManualAttendanceRow({
   reason,
   stationId,
   now = new Date(),
+  lateness = null,
 }) {
   const day = toRiyadhDateKey(date);
   const clock = parsePunchClock(time) || (kind === "checkout_fix" ? "" : riyadhNowClock(now));
-  const at = clock ? riyadhClockIso(day, clock) : now.toISOString();
+  let at = clock ? riyadhClockIso(day, clock) : now.toISOString();
   const inAt = kind === "checkout_fix"
     ? (existing?.checkInAt || existing?.check_in_at || at)
     : at;
+  // An overnight shift: a checkout clock at or before the check-in is the next morning.
+  if (kind === "checkout_fix" && inAt && new Date(at).getTime() <= new Date(inAt).getTime()) {
+    at = new Date(new Date(at).getTime() + 86400000).toISOString();
+  }
   const outAt = kind === "checkout_fix" ? at : (existing?.checkOutAt || existing?.check_out_at || null);
   return {
     id: existing?.id || `pa_${employee?.id || "emp"}_${day}`,
@@ -204,14 +209,62 @@ export function buildManualAttendanceRow({
     date: day,
     checkInAt: inAt,
     checkOutAt: outAt,
-    status: existing?.status || "present",
-    lateMinutes: existing?.lateMinutes || existing?.late_minutes || 0,
+    status: lateness ? lateness.status : (existing?.status || "present"),
+    lateMinutes: lateness ? lateness.lateMinutes : (existing?.lateMinutes || existing?.late_minutes || 0),
     locationStatus: "manual",
     manualOverride: true,
     overrideBy: by || "",
     excusedNote: String(reason || "").trim(),
+    ...(kind === "checkout_fix" ? { checkoutNote: String(reason || "").trim() } : { checkInNote: String(reason || "").trim() }),
     localPreview: true,
   };
+}
+
+/**
+ * Lateness of a manual check-in at `clock` on a shift starting `shiftStart` — measured from the published
+ * start like a real punch (no grace), less her Art. 154 start minutes. null when there is no shift.
+ */
+export function manualPunchLateness({ clock, shiftStart, nursingStartMinutes = 0 } = {}) {
+  const at = parsePunchClock(clock);
+  const start = parsePunchClock(shiftStart);
+  if (!at || !start) return null;
+  const toM = (hm) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
+  let late = toM(at) - toM(start);
+  if (late < -720) late += 1440; // after midnight on a shift that began the evening before
+  if (late > 720) late -= 1440;
+  const minutes = Math.max(0, late - Math.max(0, Number(nursingStartMinutes) || 0));
+  return minutes > 0 ? { status: "late", lateMinutes: minutes } : { status: "present", lateMinutes: 0 };
+}
+
+/**
+ * The time a manager writes for a punch: required, never after now, and a checkout after the check-in
+ * (an earlier clock on an overnight shift is the next morning). Named reasons.
+ */
+export function checkManualTimeGate({ kind, date, time, checkInAt, now = new Date() } = {}) {
+  const out = kind === "checkout_fix" || kind === "out";
+  const clock = parsePunchClock(time);
+  if (!clock) {
+    return { ok: false, error: "TIME_REQUIRED", reason: out ? "حدد وقت الانصراف." : "حدد وقت الحضور.", reasonEn: out ? "Set the checkout time." : "Set the check-in time." };
+  }
+  let at = new Date(riyadhClockIso(date, clock)).getTime();
+  const inMs = checkInAt ? new Date(checkInAt).getTime() : NaN;
+  if (out && Number.isFinite(inMs) && at <= inMs) at += 86400000;
+  if (at > now.getTime() + 60000) {
+    return { ok: false, error: "TIME_IN_FUTURE", reason: out ? "لا يُسجَّل انصراف بوقت لم يأتِ بعد." : "لا يُسجَّل حضور بوقت لم يأتِ بعد.", reasonEn: out ? "A checkout is not recorded at a time that has not come yet." : "A check-in is not recorded at a time that has not come yet." };
+  }
+  return { ok: true, clock, at: new Date(at).toISOString() };
+}
+
+/** The checkout time the manager's field opens on: the shift end once it has passed, else now (Riyadh clock). */
+export function defaultManualCheckoutClock(shift, now = new Date()) {
+  const nowClock = riyadhNowClock(now);
+  const end = parsePunchClock(shift?.end);
+  const start = parsePunchClock(shift?.start);
+  if (!end) return nowClock;
+  const toM = (hm) => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
+  const overnight = start && toM(end) <= toM(start);
+  if (overnight) return nowClock;
+  return toM(end) <= toM(nowClock) ? end : nowClock;
 }
 
 export function toCloudAttendanceRow(row) {
@@ -230,7 +283,33 @@ export function toCloudAttendanceRow(row) {
     manual_override: row.manualOverride ?? row.manual_override ?? true,
     override_by: row.overrideBy || row.override_by || "",
     excused_note: row.excusedNote || row.excused_note || "",
+    excused: !!row.excused,
+    excused_by_name: row.excusedByName || row.excused_by_name || "",
+    excused_at: row.excusedAt || row.excused_at || null,
+    early_checkout: !!(row.earlyCheckout || row.early_checkout),
     localPreview: !!row.localPreview,
     ...(Array.isArray(row.breaks) ? { breaks: row.breaks } : {}),
   };
 }
+
+/**
+ * Leaving before the published shift end — the server's rule (supabaseAttendance checkOut): minutes
+ * on the Riyadh clock against the end, less her Art. 154 end minutes. An overnight shift ends tomorrow.
+ */
+export function isEarlyCheckoutAt(shift, checkOutAt, nursingEndMinutes = 0) {
+  const end = String(shift?.end || "").match(/^(\d{1,2}):(\d{2})$/);
+  const start = String(shift?.start || "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!end || !checkOutAt) return false;
+  const endM = Number(end[1]) * 60 + Number(end[2]);
+  const startM = start ? Number(start[1]) * 60 + Number(start[2]) : null;
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(checkOutAt));
+  let outM = Number(parts.find((p) => p.type === "hour")?.value || 0) * 60 + Number(parts.find((p) => p.type === "minute")?.value || 0);
+  let endAbs = endM;
+  if (startM != null && endM <= startM) {
+    endAbs += 1440; // overnight: the shift ends the next morning
+    if (outM < startM) outM += 1440;
+  }
+  const excuse = Math.max(0, Number(nursingEndMinutes) || 0);
+  return outM < endAbs - excuse;
+}
+

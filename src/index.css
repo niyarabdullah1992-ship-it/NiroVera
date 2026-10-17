@@ -1005,6 +1005,13 @@ button.nv-hdr-seg[aria-expanded="true"] { background: var(--nv-soft); color: var
   .nv-hdr-break { padding: 0 8px; gap: 5px; font-size: 12px; }
   .nv-hdr-break .nv-hdr-break-sep { display: none; }
 }
+/* A phone keeps the page title readable: the break segment drops its word (icon + figure stay),
+   and when the tools still do not fit they wrap under the title instead of crushing it. */
+@media (max-width: 480px) {
+  .nv-hdr-break .nv-hdr-break-label { display: none; }
+  .nv-hdr-main { flex-wrap: wrap; row-gap: 8px; }
+  .nv-hdr-id { flex: 1 1 150px; }
+}
 
 /* Date · time · 12/24 */
 .nv-clock-pill { gap: 9px; padding-inline: 11px 4px; cursor: default; }

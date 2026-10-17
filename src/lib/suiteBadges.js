@@ -15,6 +15,7 @@ import {
   taskAssigneeIds,
 } from "./opsDerivations.js";
 import { checkApproveWorkProofGate } from "./workProofDerivations.js";
+import { attendanceDecisionQueue, queueFacesOf } from "./attendanceQueue.js";
 import { deriveVoiceBoard, viewerOpenAbuseCount, viewerVoiceQueueItems } from "./voiceBoard.js";
 import { isVoiceHrReceiver } from "./voicePrivacy.js";
 import { deriveDisciplineBoard } from "./disciplineBoard.js";
@@ -159,25 +160,14 @@ export function pendingRequestsBadgeCount(user, data, employees = [], weekStart)
   return mine + admin + dueFresh;
 }
 
-export function needsPunchDecision(employee, attendanceById = {}) {
-  const row = attendanceById[String(employee?.id)];
-  const asked = (employee?.otherRequests || []).some(
-    (item) => (item.type === "manual_punch" || item.type === "checkout_fix") && isManagerDecideOtherRequest(item),
-  );
-  return !!(
-    row?.location_status === "outside"
-    || (row?.check_in_at && !row?.check_out_at && row?.status !== "absent")
-    || row?.early_checkout
-    || asked
-  );
+/** One person needs a punch decision — the same reading as «بصمات اليوم بلا حكم» (lib/attendanceQueue). */
+export function needsPunchDecision(employee, attendanceById = {}, data = null) {
+  return queueFacesOf(employee, attendanceById[String(employee?.id)], data).length > 0;
 }
 
-/** الدوام والحضور — manager punch queue / pending manual punch. */
-export function pendingPunchQueueCount(employees = [], attendanceRows = []) {
-  const byId = Object.fromEntries(
-    (attendanceRows || []).map((row) => [String(row.employee_id ?? row.employeeId), row]),
-  );
-  return (employees || []).filter((employee) => needsPunchDecision(employee, byId)).length;
+/** الدوام والحضور — manager punch queue / pending manual punch; the queue's own count, never a second rule. */
+export function pendingPunchQueueCount(employees = [], attendanceRows = [], data = null) {
+  return attendanceDecisionQueue(employees, attendanceRows, data).length;
 }
 
 function projectSigningForUser(record, user) {
@@ -330,9 +320,11 @@ export function collectSuiteBadges(input = {}) {
   const nightScope = nightDueScopeEmployees(user, data);
   const nightDueDuty = nightDueEmployeeCount(nightScope, data, weekStart);
   const nightDueRequests = nightDueDuty;
+  // «حضور الفريق» shows the punch queue alone (the queue's own count); the section adds the 18632 due.
+  const punchQueue = pendingPunchQueueCount(duty, attendanceRows, data);
   const byApp = {
     requests: asSuiteBadge(pendingRequestsBadgeCount(user, data, employees, weekStart)),
-    attendance: asSuiteBadge(pendingPunchQueueCount(duty, attendanceRows) + nightDueDuty),
+    attendance: asSuiteBadge(punchQueue + nightDueDuty),
     signing: asSuiteBadge(pendingSigningBadgeCount(readSignatureRequests(data).filter((row) => !row.stationId || scoped(row.stationId)), user)),
     tasks: asSuiteBadge(pendingOpsBadgeCount(readTasks(data).filter((row) => scoped(row.stationId)), user, data)),
     "work-proof": asSuiteBadge(pendingWorkProofBadgeCount(readWorkProofs(data).filter((row) => scoped(row.stationId)), user)),
@@ -347,7 +339,7 @@ export function collectSuiteBadges(input = {}) {
     attendance: nightDueDuty > 0 ? "due" : undefined,
   };
 
-  return { byApp, glowByApp };
+  return { byApp, glowByApp, punchQueue: asSuiteBadge(punchQueue) ?? null };
 }
 
 export function suiteAppBadge(app, badges) {

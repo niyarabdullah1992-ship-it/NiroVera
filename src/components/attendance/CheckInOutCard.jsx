@@ -1,5 +1,5 @@
 
-import { checkEarlyCheckInGate, earlyCheckInMinutes } from "@/lib/attendanceDerivations";
+import { checkEarlyCheckInGate, checkLateCheckInGate, checkSelfCheckoutGate, dutyDayOf, earlyCheckInMinutes, earlyLeaveMinutesOf, getShiftOnDate, isOvernightShift } from "@/lib/attendanceDerivations";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
@@ -70,9 +70,11 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const ar = lang === "ar";
   const { format } = useTimeFormat();
   const local = isLocalPreviewActive();
-  const shift = getTodaysShift(data, currentUser);
+  // The duty day: today, or yesterday while its overnight row is still open (after midnight).
+  const dutyNow = dutyDayOf(data, currentUser);
+  const baseShift = dutyNow.shift;
   const defaultStationId = data?.stations?.[0]?.id || null;
-  const scheduledStationId = shift?.stationId || currentUser?.stationId || defaultStationId;
+  const scheduledStationId = baseShift?.stationId || currentUser?.stationId || defaultStationId;
   const [punchStationId, setPunchStationId] = useState(scheduledStationId || "");
   const [reqTime, setReqTime] = useState(() => riyadhNowClock());
   const [reqReason, setReqReason] = useState("");
@@ -82,6 +84,13 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const hasAssignedStation = assignedStationIds.some((id) => data?.stations?.some((station) => station.id === id));
   const [settings, setSettings] = useState(local ? localAttendanceSettings() : null);
   const [attendance, setAttendance] = useState(null);
+  // The cloud answers with the duty-day row; after midnight that may be yesterday's open overnight one.
+  const attDay = String(attendance?.date || "").slice(0, 10);
+  const cloudCarry = !!attDay && attDay !== dutyNow.dateKey && !!attendance?.check_in_at && !attendance?.check_out_at
+    && isOvernightShift(getShiftOnDate(data, currentUser, attDay));
+  const shift = cloudCarry ? getShiftOnDate(data, currentUser, attDay) : baseShift;
+  const dutyDateKey = cloudCarry ? attDay : dutyNow.dateKey;
+  const [confirmOut, setConfirmOut] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [leaveCut, setLeaveCut] = useState(false);
@@ -156,8 +165,10 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   }, [manualAsk]);
 
   const scheduleBlocks = !shift;
-  const offDay = isStatutoryOffDay(currentUser, toRiyadhDateKey(), laborCalendarOf(data));
-  const onLeaveToday = !!offDay;
+  const offDay = isStatutoryOffDay(currentUser, dutyDateKey, laborCalendarOf(data));
+  // An official holiday blocks only when nothing is rostered: rostered holiday work is punched,
+  // and every hour of it is overtime (Art. 107(3)). Approved leave always blocks.
+  const onLeaveToday = !!offDay && (offDay.kind === "approved" || !shift);
   const onApprovedLeave = offDay?.kind === "approved";
   const statusPill = attendance?.status ? STATUS_PILL[attendance.status === "late" && nursingExcusedLate(currentUser, data, attendance, shift) ? "present" : attendance.status] : null;
   const elapsed = useMemo(
@@ -183,6 +194,13 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       const early = checkEarlyCheckInGate(shift, nowD.getHours() * 60 + nowD.getMinutes(), earlyCheckInMinutes(data));
       if (!early.ok) {
         setError(ar ? early.reason : early.reasonEn);
+        return;
+      }
+      // After the shift has ended the self check-in is closed — the day is a manual entry.
+      const lateGate = checkLateCheckInGate(shift, nowD.getHours() * 60 + nowD.getMinutes());
+      if (!lateGate.ok) {
+        setError(ar ? lateGate.reason : lateGate.reasonEn);
+        setManualOpen(true);
         return;
       }
       if (!hasAssignedStation && !localMode) {
@@ -276,6 +294,10 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           /* fall through */
         }
       }
+      // A gate that names its reason (TOO_EARLY, the late check-in gate, …) is shown in its own words.
+      const payload = err?.response?.data || {};
+      const named = ar ? (err?.reason || payload.reason) : (err?.reasonEn || payload.reasonEn);
+      if (named) { setError(named); return; }
       setError(
         code === "ON_APPROVED_LEAVE"
           ? (ar ? "لا يمكنك تسجيل الحضور — لديك إجازة معتمدة لهذا اليوم." : "You cannot check in — you have approved leave for today.")
@@ -329,13 +351,76 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const earlyGate = phase === "awaiting_in" && shift
     ? checkEarlyCheckInGate(shift, tickDate.getHours() * 60 + tickDate.getMinutes(), earlyCheckInMinutes(data))
     : { ok: true };
-  const punchBlocked = loading || (phase === "awaiting_in" && (scheduleBlocks || onLeaveToday || !earlyGate.ok)) || phase === "done";
+  // After the shift (+ the forgotten hour) the self check-in is closed and points to the manual request.
+  const lateInGate = phase === "awaiting_in" && shift
+    ? checkLateCheckInGate(shift, tickDate.getHours() * 60 + tickDate.getMinutes())
+    : { ok: true };
+  // The self checkout: closed while a «تثبيت الانصراف» request waits; early or forgotten asks once.
+  const pendingFixRow = phase === "awaiting_out"
+    ? ((data?.employees || []).find((row) => String(row.id) === String(currentUser?.id))?.otherRequests || [])
+      .find((row) => row?.type === "checkout_fix" && (row.status || "pending") === "pending" && (!row.date || String(row.date).slice(0, 10) === (attDay || dutyDateKey)))
+    : null;
+  const outGate = phase === "awaiting_out"
+    ? checkSelfCheckoutGate({
+      shift,
+      attendance,
+      now: tick,
+      pendingFix: pendingFixRow ? { time: pendingFixRow.time || String(pendingFixRow.reason || "").slice(0, 5) } : null,
+      nursingEndMinutes: nursingToday?.endMinutes || 0,
+    })
+    : { ok: true, confirm: null };
+  const punchBlocked = loading
+    || (phase === "awaiting_in" && (scheduleBlocks || onLeaveToday || !earlyGate.ok || !lateInGate.ok))
+    || (phase === "awaiting_out" && !outGate.ok)
+    || phase === "done";
+  /** Every punch goes through here: a checkout that is early or past the forgotten hour is confirmed once. */
+  const requestPunch = (action) => {
+    if (action === "out") {
+      const gate = checkSelfCheckoutGate({
+        shift,
+        attendance,
+        now: Date.now(),
+        pendingFix: pendingFixRow ? { time: pendingFixRow.time || "" } : null,
+        nursingEndMinutes: nursingToday?.endMinutes || 0,
+      });
+      if (!gate.ok) { setError(ar ? gate.reason : gate.reasonEn); return; }
+      if (gate.confirm && !confirmOut) { setConfirmOut(gate.confirm); return; }
+    }
+    setConfirmOut(null);
+    punch(action);
+  };
+  const confirmBlock = confirmOut && phase === "awaiting_out" ? (
+    <div data-confirm-out={confirmOut.kind} role="alertdialog" aria-live="polite" style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 300, padding: "10px 12px", border: "1px solid var(--nv-warn-line)", background: "var(--nv-warn-soft)", borderRadius: 10, fontSize: 12, lineHeight: 1.7, color: "var(--nv-ink)" }}>
+      <span>
+        {confirmOut.kind === "early"
+          ? (ar
+            ? <>تنصرف قبل نهاية ورديتك بـ <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{confirmOut.minutes}</span> دقيقة — يُسجَّل انصرافاً مبكراً يراه مديرك.</>
+            : <>You are leaving <span style={{ fontWeight: 700 }}>{confirmOut.minutes}</span> min before your shift ends — it is recorded as an early checkout your manager sees.</>)
+          : (ar
+            ? <>مرّت <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 700 }}>{confirmOut.minutes}</span> دقيقة على نهاية ورديتك — انصرافك الآن يُحتسب وقتاً إضافياً بانتظار قرار مديرك. إن كنت نسيت البصمة فاطلب تثبيت الانصراف بوقته الصحيح.</>
+            : <><span style={{ fontWeight: 700 }}>{confirmOut.minutes}</span> min have passed since your shift ended — checking out now counts as overtime pending your manager. If you forgot to punch, ask to fix the checkout at its real time.</>)}
+      </span>
+      <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" data-confirm-out-go onClick={() => { setConfirmOut(null); punch("out"); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 8, border: "none", background: "var(--nv-navy, #0B3D27)", color: "#fff", cursor: "pointer" }}>
+          {ar ? "انصرف الآن" : "Check out now"}
+        </button>
+        {confirmOut.kind === "forgotten" ? (
+          <button type="button" onClick={() => { setConfirmOut(null); setManualOpen(true); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ok-ink)", cursor: "pointer" }}>
+            {ar ? "اطلب تثبيت الانصراف" : "Ask to fix the checkout"}
+          </button>
+        ) : null}
+        <button type="button" onClick={() => setConfirmOut(null)} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink2)", cursor: "pointer" }}>
+          {ar ? "ألغِ" : "Cancel"}
+        </button>
+      </span>
+    </div>
+  ) : null;
 
   const punchButton = (action, label) => (
     <button
       type="button"
-      onClick={() => punch(action)}
-      disabled={loading || (action === "in" && (scheduleBlocks || onLeaveToday))}
+      onClick={() => requestPunch(action)}
+      disabled={loading || (action === "in" && (scheduleBlocks || onLeaveToday || !lateInGate.ok)) || (action === "out" && !outGate.ok)}
       style={{
         ...ui.btnPrimary,
         height: compact ? 34 : 40,
@@ -356,7 +441,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     </button>
   );
 
-  const dutyDay = toRiyadhDateKey(new Date(tick));
+  const dutyDay = dutyDateKey;
   const laborCal = laborCalendarOf(data);
   const dutySchedule = shift ? (data?.schedules || []).find((row) => String(row.stationId) === String(shift.stationId)) : null;
   // The published shift type behind today's assignment: its rest, placed breaks and exposure mark.
@@ -534,6 +619,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           {leaveCut || (onApprovedLeave && phase === "awaiting_in") ? <LeaveCutOffer ar={ar} companyId={company?.id} employee={currentUser} onDone={async () => { setError(""); setLeaveCut(false); await refresh?.(); }} /> : null}
           {phase === "awaiting_in" && punchButton("in", ar ? "حضر" : "Present")}
           {phase === "awaiting_out" && punchButton("out", ar ? "انصرف" : "Out")}
+          {confirmBlock}
+          {phase === "awaiting_out" && !outGate.ok ? <p style={{ margin: 0, fontSize: 11, color: "var(--nv-warn-ink)", flex: "1 1 100%" }}>{ar ? outGate.reason : outGate.reasonEn}</p> : null}
         </div>
       </section>
     );
@@ -554,7 +641,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const siteLine = shade || "";
   const startClock = toWesternDigits(shift?.start || "—");
   const endClock = toWesternDigits(shift?.end || "—");
-  const pvDate = new Date(tick).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", {
+  // The header names the duty day — after midnight an open overnight shift still reads as its start day.
+  const pvDate = new Date(dutyDateKey && dutyDateKey !== toRiyadhDateKey(new Date(tick)) ? `${dutyDateKey}T12:00:00+03:00` : tick).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -563,7 +651,20 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     ? `${shift.label || (ar ? "وردية" : "Shift")} · \u2066${startClock}–${endClock}\u2069`
     : (ar ? "لا وردية منشورة" : "No published shift");
   const band = breakBand(dutyShift, dutyDay);
-  const workedRaw = workedClock(attendance?.check_in_at, attendance?.check_out_at, tick, band, flexOn ? flexDay : null);
+  // While the day is open past the shift end, «المنجز اليوم» stops at the end — the rest is unconfirmed
+  // until the checkout (or its fix) says otherwise.
+  const shiftEndAt = shift?.end && /^\d{4}-\d{2}-\d{2}$/.test(dutyDay)
+    ? (() => { const at = new Date(`${dutyDay}T${shift.end}:00+03:00`).getTime(); return isOvernightShift(shift) ? at + 86400000 : at; })()
+    : null;
+  const openPastEnd = !!attendance?.check_in_at && !attendance?.check_out_at && shiftEndAt != null && tick > shiftEndAt;
+  const workedNow = openPastEnd ? shiftEndAt : tick;
+  // An early punch is presence, not work — «المنجز اليوم» counts from the published start (same as the OT close).
+  const shiftStartAt = shift?.start && /^\d{4}-\d{2}-\d{2}$/.test(dutyDay) ? new Date(`${dutyDay}T${shift.start}:00+03:00`).getTime() : null;
+  const inAt = attendance?.check_in_at ? new Date(attendance.check_in_at).getTime() : null;
+  const workFrom = inAt != null && shiftStartAt != null && inAt < shiftStartAt && shiftStartAt - inAt <= 720 * 60000
+    ? new Date(shiftStartAt).toISOString()
+    : attendance?.check_in_at;
+  const workedRaw = workedClock(workFrom, attendance?.check_out_at, workedNow, band, flexOn ? flexDay : null);
   // Art. 154: the nursing minutes she was away for count as work — the start part from the check-in,
   // the end and middle parts once the day closes. Never overtime (the day's close reads the punches).
   const outClockMin = attendance?.check_out_at ? punchClockMinutes(attendance.check_out_at) : null;
@@ -586,11 +687,15 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const workTargetMin = Math.max(0, (band?.targetMin || 480) - restPlanned);
   const targetLabel = band ? `${Math.floor(workTargetMin / 60)}:${String(workTargetMin % 60).padStart(2, "0")}` : "8:00";
   const presenceMin = attendance?.check_in_at
-    ? Math.max(0, Math.round(((attendance?.check_out_at ? new Date(attendance.check_out_at).getTime() : tick) - new Date(attendance.check_in_at).getTime()) / 60000))
+    ? Math.max(0, Math.round(((attendance?.check_out_at ? new Date(attendance.check_out_at).getTime() : workedNow) - new Date(attendance.check_in_at).getTime()) / 60000))
     : 0;
   const dayPct = Math.min(100, Math.round((presenceMin / (band?.targetMin || 480)) * 100));
   const inn = phase !== "awaiting_in";
   const done = phase === "done";
+  // An early checkout is said as such — never «سُجّل اليوم كاملاً».
+  const earlyLeftMin = done
+    ? earlyLeaveMinutesOf({ shift, checkIn: attendance?.check_in_at, checkOut: attendance?.check_out_at, nursingEndMinutes: nursingToday?.endMinutes || 0 })
+    : 0;
   const statusText = onLeaveToday && !inn
     ? (ar ? "إجازة معتمدة اليوم" : "Approved leave today")
     : !shift && !inn
@@ -600,7 +705,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         : isLate
           ? (ar ? `حضرت متأخراً ${lateMinutes || "—"} دقيقة — يُحسب من الجدول المنشور` : `Late by ${lateMinutes || "—"} min — measured from the published rota`)
           : done
-            ? (ar ? `اكتمل اليوم · ${worked.label}` : `Day complete · ${worked.label}`)
+            ? (earlyLeftMin > 0
+              ? (ar ? `انصرفت مبكراً بـ ${earlyLeftMin} دقيقة · ${worked.label}` : `Left ${earlyLeftMin} min early · ${worked.label}`)
+              : (ar ? `اكتمل اليوم · ${worked.label}` : `Day complete · ${worked.label}`))
             : inNursing
               ? (ar ? "حضرت في الوقت — ضمن ساعة الرضاعة" : "On time — inside your nursing hour")
               : (ar ? "حضرت في الوقت" : "Checked in on time");
@@ -623,10 +730,16 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         ? (ar ? "لا وردية لك اليوم" : "No shift for you today")
         : !earlyGate.ok
           ? (ar ? `يُفتح الحضور ${earlyGate.opensAt} · ورديتك ${startClock}` : `Opens ${earlyGate.opensAt} · shift ${startClock}`)
-          : (ar ? `تبدأ ورديتك ${startClock}` : `Shift starts ${startClock}`))
+          : !lateInGate.ok
+            ? (ar ? `انتهت ورديتك ${endClock} — اطلب تسجيلاً يدوياً` : `Shift ended ${endClock} — request a manual entry`)
+            : (ar ? `تبدأ ورديتك ${startClock}` : `Shift starts ${startClock}`))
     : !done
-      ? (ar ? `تنتهي ورديتك ${endClock}` : `Shift ends ${endClock}`)
-      : (ar ? "سُجّل اليوم كاملاً" : "Today is on file");
+      ? (!outGate.ok
+        ? (ar ? "بانتظار قرار مديرك" : "Awaiting your manager")
+        : (ar ? `تنتهي ورديتك ${endClock}` : `Shift ends ${endClock}`))
+      : earlyLeftMin > 0
+        ? (ar ? `انصراف مبكر · ${earlyLeftMin} د` : `Early checkout · ${earlyLeftMin} min`)
+        : (ar ? "سُجّل اليوم كاملاً" : "Today is on file");
   const orbStyle = done
     ? { background: "var(--nv-ok-soft, #E6F2EA)", color: "var(--nv-ok-ink, #2F6B43)", boxShadow: "0 0 0 10px var(--nv-soft, #F2F5F3)" }
     : !inn
@@ -667,7 +780,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             : { t: ar ? "حاضر" : "In", ...toned("ok") })
           : { t: ar ? "انصرفت" : "Checked out", bg: "var(--nv-ok-fill, #3C7D50)", fg: "#fff", bd: "var(--nv-ok-fill, #3C7D50)" };
   const orbReady = !punchBlocked && (phase === "awaiting_in" || phase === "awaiting_out");
-  const orbClick = () => { if (phase === "awaiting_in") punch("in"); else if (phase === "awaiting_out") punch("out"); };
+  const orbClick = () => { if (phase === "awaiting_in") requestPunch("in"); else if (phase === "awaiting_out") requestPunch("out"); };
   const steps = shift
     ? [
         { key: "start", kind: "plan", label: ar ? "بداية الوردية" : "Shift starts", note: ar ? "من الجدول المنشور" : "From the published rota", value: startClock },
@@ -859,6 +972,13 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             <span style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.85, whiteSpace: "nowrap" }}>{orbSub}</span>
           </button>
           <span style={{ fontSize: 13.5, fontWeight: 700, color: statusColor, textAlign: "center", lineHeight: 1.6 }}>{statusText}</span>
+          {confirmBlock}
+          {phase === "awaiting_out" && !outGate.ok ? (
+            <span data-out-gate={outGate.error} style={{ fontSize: 11.5, color: "var(--nv-warn-ink)", textAlign: "center", lineHeight: 1.7, maxWidth: 300 }}>{ar ? outGate.reason : outGate.reasonEn}</span>
+          ) : null}
+          {phase === "awaiting_in" && shift && !lateInGate.ok ? (
+            <span data-in-gate={lateInGate.error} style={{ fontSize: 11.5, color: "var(--nv-warn-ink)", textAlign: "center", lineHeight: 1.7, maxWidth: 300 }}>{ar ? lateInGate.reason : lateInGate.reasonEn}</span>
+          ) : null}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
             {checks.map((chip) => (
               <span
@@ -1048,7 +1168,10 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 12, borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink2)" }}>{ar ? "المنجز اليوم" : "Worked today"}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink2)" }}>
+                {ar ? "المنجز اليوم" : "Worked today"}
+                {openPastEnd ? <span data-worked-capped style={{ fontWeight: 500, color: "var(--nv-warn-ink)" }}>{ar ? " · بانتظار الانصراف" : " · awaiting checkout"}</span> : null}
+              </span>
               <span style={{ whiteSpace: "nowrap" }}>
                 <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>{inn ? worked.label : "0:00"} / {targetLabel}</span>
               </span>
@@ -1133,6 +1256,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           <ManualPunchRequest
             ar={ar}
             phase={phase}
+            date={attDay || dutyDateKey}
             companyId={company?.id}
             employee={currentUser}
             attendance={attendance}
@@ -1319,7 +1443,9 @@ function BreakPunch({ ar, day, gate, busy, error, onPunch, leftMs = null, button
     ? `${ar ? gate.reason : gate.reasonEn}${gate.error === "BREAK_BELOW_MIN" && gate.endsAtMin != null ? (ar ? ` — تنهيها من ${clockAt(gate.endsAtMin)}` : ` — you can end it from ${clockAt(gate.endsAtMin)}`) : ""}`
     : gate.short
       ? (ar ? `${gate.reason} — إن أنهيتها الآن تُسجَّل راحة قصيرة.` : `${gate.reasonEn} — ending now records a short break.`)
-      : "";
+      : gate.warn
+        ? (ar ? gate.warn : gate.warnEn)
+        : "";
   const remaining = !open && day.punched.length && day.flex.splitEffective && day.remaining > 0 && day.windowState !== "closed"
     ? (ar ? `باقٍ ${minutesAr(day.remaining)} من راحتك` : `${day.remaining} min of your break left`)
     : "";
@@ -1364,7 +1490,7 @@ function BreakPunch({ ar, day, gate, busy, error, onPunch, leftMs = null, button
       </button>
       {running ? <span style={{ fontSize: 11.5, color: "var(--nv-ink2)" }}>{running}</span> : null}
       {remaining ? <span data-break-remaining style={{ fontSize: 11.5, color: "var(--nv-ink2)", fontWeight: 600 }}>{remaining}</span> : null}
-      {reason ? <span id="nv-break-reason" data-break-reason={gate.error || ""} style={{ fontSize: 11, lineHeight: 1.6, color: gate.short ? "var(--nv-warn-ink)" : "var(--nv-muted)" }}>{reason}</span> : null}
+      {reason ? <span id="nv-break-reason" data-break-reason={gate.error || (gate.warn ? "BREAK_LEFTOVER_SHORT" : "")} style={{ fontSize: 11, lineHeight: 1.6, color: gate.short || gate.warn ? "var(--nv-warn-ink)" : "var(--nv-muted)" }}>{reason}</span> : null}
       {error ? <span style={{ fontSize: 11, lineHeight: 1.6, color: "var(--nv-bad-ink)" }}>{error}</span> : null}
     </div>
   );
@@ -1372,8 +1498,8 @@ function BreakPunch({ ar, day, gate, busy, error, onPunch, leftMs = null, button
 
 const MONO = { fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", color: "var(--nv-ink)" };
 
-const REQ_REASONS_AR = ["خارج النطاق", "تعذّر الموقع", "عمل ميداني", "سبب آخر"];
-const REQ_REASONS_EN = ["Outside range", "Location failed", "Field work", "Other"];
+const REQ_REASONS_AR = ["نسيت البصمة", "خارج النطاق", "تعذّر الموقع", "عمل ميداني", "سبب آخر"];
+const REQ_REASONS_EN = ["Forgot to punch", "Outside range", "Location failed", "Field work", "Other"];
 
 export function ManualPunchRequest({
   ar,
@@ -1402,8 +1528,9 @@ export function ManualPunchRequest({
   const decided = (employee?.otherRequests || []).find((row) => row.type === punchType && (row.status === "approved" || row.status === "rejected") && sameDay(row));
   const noteReady = String(reqNote || "").trim().length >= 3;
   const timeReady = !!parsePunchClock(reqTime);
-  const canSend = noteReady && timeReady;
-  const reasonLabel = reqReason || reasons[0];
+  // No reason is preselected — the worker names it (a wrong default would travel to the manager).
+  const reasonLabel = reasons.includes(reqReason) ? reqReason : "";
+  const canSend = noteReady && timeReady && !!reasonLabel;
 
   const send = () => {
     if (!companyId || !employee?.id) return;
@@ -1540,7 +1667,9 @@ export function ManualPunchRequest({
               ? (ar ? "أرسل الطلب للمدير" : "Send to the manager")
               : !timeReady
                 ? (phase === "awaiting_out" ? (ar ? "حدد وقت الانصراف." : "Set the checkout time.") : (ar ? "حدد وقت الحضور." : "Set the check-in time."))
-                : (ar ? "اكتب تفصيل السبب أولاً" : "Write the reason first")}
+                : !reasonLabel
+                  ? (ar ? "اختر السبب" : "Pick the reason")
+                  : (ar ? "اكتب تفصيل السبب أولاً" : "Write the reason first")}
           </button>
         </div>
       )}

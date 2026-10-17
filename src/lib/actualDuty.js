@@ -120,6 +120,19 @@ function clock(mins) {
 }
 
 /**
+ * Where worked time starts for a punch at `inM` (minutes on the Riyadh clock) on `shift`: the published
+ * start when the punch was earlier (up to 12 h before it), else the punch itself. Returned on the same
+ * scale as `inM` (it may pass 1440 when the shift starts at or after midnight). Twin in reportsDerivations.ts.
+ */
+export function earlyPunchStart(inM, shift) {
+  if (inM == null || !shift?.start) return inM;
+  const start = punchClockMinutes(shift.start);
+  if (start == null) return inM;
+  const earlyBy = ((start - inM) % 1440 + 1440) % 1440;
+  return earlyBy > 0 && earlyBy <= 720 ? inM + earlyBy : inM;
+}
+
+/**
  * One day of punches → presence, rest, worked, ordinary and overtime minutes, plus named breaches.
  * - Rest (Art. 102) is deducted: recorded breaks first, else the rostered rest when presence passed five hours.
  * - Overtime (Art. 107): all of it on an official holiday or an unrostered off day (107(3));
@@ -147,7 +160,13 @@ export function deriveActualDuty({
     return { ok: false, open: true, reason: "لا انصراف مسجّل بعد — لا تُحسب ساعات.", reasonEn: "No checkout yet — no hours are computed." };
   }
   const outM = outRaw <= inM ? outRaw + 1440 : outRaw;
+  // An early punch is not work: time starts at the published shift start (the attendance policy —
+  // «البصمة المبكرة لا تُحتسب ساعات عمل»). Early = up to 12 h before the start, so a punch after
+  // midnight on a shift that began the evening before still reads as late, not as early.
+  // Presence (Art. 101 stay cap, consecutive hours) stays the real punch; worked time is read from effIn.
+  const effIn = earlyPunchStart(inM, shift);
   const presence = outM - inM;
+  const workSpan = Math.max(0, outM - effIn);
   const consecMax = ruleValue("hours.rest.maxConsecutiveHours", onDate) || 5;
   // «راحة مرنة ببصمة»: the punched (or assumed) breaks are deducted, never the roster's; Art. 101 reads
   // only the punched ones. Fixed and continuous shifts keep the recorded list, else the roster's rest.
@@ -161,8 +180,8 @@ export function deriveActualDuty({
   const statutoryRest = ruleValue("hours.rest.duringShiftMinutes", onDate) || 30;
   const rest = breakMinutes != null
     ? breakMinutes
-    : (presence > consecMax * 60 ? (rosterRest == null ? statutoryRest : rosterRest) : 0);
-  const worked = Math.max(0, presence - Math.min(rest, presence));
+    : (workSpan > consecMax * 60 ? (rosterRest == null ? statutoryRest : rosterRest) : 0);
+  const worked = Math.max(0, workSpan - Math.min(rest, workSpan));
 
   const holiday = isOfficialHoliday(onDate, laborCalendar);
   const offDay = !shift && isEmployeeOffDay(onDate, company, employee);
@@ -194,7 +213,7 @@ export function deriveActualDuty({
   // minutes she was away inside it count as actual work. Computed on the punches alone, so they
   // never make overtime (overtime above is read on the minutes worked).
   const nursing = shift && !holiday && !offDay ? nursingHourOn(employee, onDate) : null;
-  const credit = nursingCreditOf(nursing, { inMinutes: inM, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes });
+  const credit = nursingCreditOf(nursing, { inMinutes: effIn, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes });
   const ordinary = Math.max(0, worked - overtime) + credit.minutes;
   const lateMinutes = shiftStart == null ? 0 : Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
 
@@ -242,7 +261,7 @@ export function deriveActualDuty({
     ok: true,
     open: false,
     presenceMinutes: presence,
-    restMinutes: Math.min(rest, presence),
+    restMinutes: Math.min(rest, workSpan),
     workedMinutes: worked + credit.minutes,
     presenceWorkedMinutes: worked,
     nursingCreditMinutes: credit.minutes,

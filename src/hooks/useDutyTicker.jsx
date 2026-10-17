@@ -5,6 +5,7 @@ import { getLocalTodayAttendance } from "@/lib/localAttendanceFallback";
 import { isLocalPreviewActive } from "@/lib/localPreview";
 import { dutyContextOf, breakClockOf, nextDutyTickAt, planDutyTick } from "@/lib/dutyTicker";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
+import { previousDateKey } from "@/lib/attendanceDerivations";
 import { toast } from "@/components/ui/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 
@@ -88,7 +89,10 @@ export default function useDutyTicker({ company, currentUser, ar = true, navigat
     const local = companyId && userId ? getLocalTodayAttendance(companyId, userId) : null;
     if (isLocalPreviewActive()) return local;
     const raw = rowRef.current;
-    const cloud = raw && String(raw.date || toRiyadhDateKey()).slice(0, 10) === toRiyadhDateKey() ? raw : null;
+    const today = toRiyadhDateKey();
+    const rawDay = String(raw?.date || today).slice(0, 10);
+    // After midnight the open overnight row of yesterday is still the duty day's row.
+    const cloud = raw && (rawDay === today || (rawDay === previousDateKey(today) && raw.check_in_at && !raw.check_out_at)) ? raw : null;
     return cloud?.check_in_at ? cloud : (local || cloud);
   };
 

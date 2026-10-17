@@ -528,6 +528,7 @@ export default function Layout({ children }) {
               onSearch={() => setSearchOpen(true)}
               hideLang={location.pathname.startsWith("/app/signing")}
               sectionPages={sectionPages}
+              punchQueueBadge={suiteBadges.punchQueue}
               activeNavItem={activeNavItem}
               pathname={location.pathname}
               notifOpen={notifOpen}

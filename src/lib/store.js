@@ -8,7 +8,7 @@ import { MISSION_TYPE, MODEL_REQUEST_TYPES, PREVENTED_TYPE, RELOCATION_TYPE, che
 import { daysAr, planLeaveCutForAttendance } from "./leaveCut.js";
 import { checkPostponeResignationGate, checkWithdrawResignationGate, dueResignations, EXIT_ROUTE_NOTICE75, resignationFacts, resignationRouteFor, RESIGNATION_TYPE } from "./exitRequests.js";
 import { checkGroundedRefusalGate, refusalGroundsFor, refusalWorkerLine } from "./statutoryRefusal.js";
-import { isDutyRequestType, nursingRightUntil } from "./dutyRequests.js";
+import { isDutyRequestType, nursingHourOn, nursingRightUntil } from "./dutyRequests.js";
 import { MANAGER_PERMISSIONS, ASSISTANT_PERMISSIONS, groupLevelsByOrder } from "./hrLevels";
 import { base44 } from "@/api/base44Client";
 import { sendEmailAlert } from "./emailAlerts";
@@ -61,8 +61,11 @@ import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_TYPE, STUDY_CONSENT_TYPE, appendRequest
 import {
   attendanceOnDate,
   buildManualAttendanceRow,
+  checkManualTimeGate,
   checkPunchRecordGate,
   clockFromPunchReason,
+  isEarlyCheckoutAt,
+  manualPunchLateness,
   parsePunchClock,
   toCloudAttendanceRow,
 } from "./attendancePunch";
@@ -78,7 +81,7 @@ import {
   stampOvertimeCreditOnEmployee,
   stampOvertimePayOnDraft,
 } from "./overtimeAssignment";
-import { overtimeYearUsageOutsideAssignments } from "./attendanceDerivations";
+import { earlyLeaveMinutesOf, getShiftOnDate, overtimeYearUsageOutsideAssignments } from "./attendanceDerivations";
 import { employeeRosterOtContext } from "./shiftWeek";
 import { damageCaseIdFor } from "./payrollLaw.js";
 import { absorbAssignmentIntoActualOt, planOtDecision, restampWeekAfter, stampActualDutyBreaches, stampActualOvertime, stampHolidayWorkOvertime, withdrawHolidayWorkOvertime } from "./otDecisionPlan.js";
@@ -1788,6 +1791,18 @@ export function closeAttendanceDay(companyId, employeeId, dayKey, { row: given =
     if (!row || !(row.checkOutAt || row.check_out_at)) return;
     stamped = stampActualOvertime(draft, emp, day, row, { weekRows, weekPriorOrdinaryMinutes });
     if (row === live) stampActualDutyBreaches(draft, emp, day, row);
+    // The early leave, in minutes against the published end (her nursing minutes at the end excused,
+    // Art. 154) — the duty boards and payroll read it from the row.
+    if (row === live) {
+      const earlyLeave = earlyLeaveMinutesOf({
+        shift: getShiftOnDate(draft, emp, day),
+        checkIn: row.checkInAt || row.check_in_at,
+        checkOut: row.checkOutAt || row.check_out_at,
+        nursingEndMinutes: nursingHourOn(emp, day)?.endMinutes || 0,
+      });
+      if (earlyLeave > 0) live.earlyLeaveMinutes = earlyLeave;
+      else delete live.earlyLeaveMinutes;
+    }
     if (stamped?.ok && isOtDecisionOpenEntry(draft.otDecisions?.[`${emp.id}:${day}`])) queueOtPendingNotice(emp.id, day, stamped.holiday);
     restampWeekAfter(draft, emp, day);
   });
@@ -1819,6 +1834,9 @@ export function reviewLateReturn(companyId, employeeId, dayKey, { decision, by, 
     if (last) last.review = { decision, by: by || "", at: new Date().toISOString() };
   });
   audit(companyId, "late_return_review", `${by || "manager"} marked the break of ${employeeId} on ${dayKey} as ${decision}.`);
+  addNotification(companyId, employeeId, decision === "excused"
+    ? `عذرك ${by || "مديرك"} في إطالة راحتك يوم ${dayKey} — لا تُسجَّل عودة متأخرة.`
+    : `سجّل ${by || "مديرك"} عودتك من الراحة يوم ${dayKey} عودةً متأخرة.`, { to: "/app/attendance" });
   return { ok: true };
 }
 
@@ -3695,6 +3713,29 @@ export function submitOtherRequest(companyId, employeeId, {
   return { ok: true, id: createdId };
 }
 
+/** The rostered shift a person holds on `day` (their own station's schedule first). */
+function rosteredShiftOn(data, employee, day) {
+  const own = String(employee?.stationId || "");
+  const list = [...(data?.schedules || [])].sort((a, b) => (String(b.stationId) === own) - (String(a.stationId) === own));
+  for (const schedule of list) {
+    const shift = employeeShiftOnDay(schedule, employee?.id, day);
+    if (shift) return shift;
+  }
+  return null;
+}
+
+/** Lateness of a manual check-in measured from the rostered start (Art. 154 start minutes excused). */
+function manualLatenessFor(data, employee, day, clock) {
+  const shift = rosteredShiftOn(data, employee, day);
+  if (!shift?.start || !clock) return null;
+  const nursing = nursingStartMinutesOf(employee, day);
+  return manualPunchLateness({ clock, shiftStart: shift.start, nursingStartMinutes: nursing });
+}
+
+function nursingStartMinutesOf(employee, day) {
+  try { return nursingHourOn(employee, day)?.startMinutes || 0; } catch { return 0; }
+}
+
 function stampPunchRequestOnDraft(draft, employee, request, reviewerName) {
   const day = request.date || toRiyadhDateKey();
   const clock = parsePunchClock(request.time) || clockFromPunchReason(request.reason);
@@ -3718,6 +3759,7 @@ function stampPunchRequestOnDraft(draft, employee, request, reviewerName) {
     by: reviewerName || request.recordedBy || "",
     reason: request.reason,
     stationId: request.stationId || employee.stationId,
+    lateness: request.type === "checkout_fix" ? null : manualLatenessFor(draft, employee, day, clock),
   });
   const list = Array.isArray(draft.personalAttendance) ? draft.personalAttendance : [];
   const idx = list.findIndex((item) => item.id === row.id || (String(item.employeeId) === String(employee.id) && String(item.date) === day));
@@ -3750,9 +3792,12 @@ export function recordManualAttendance(companyId, { employeeId, kind, date, time
     date: day,
     time: clock,
     reason,
-    requireTime: type === "checkout_fix" ? false : !!clock,
+    // The manager writes the real time — a click time would invent hours (and overtime) nobody worked.
+    requireTime: true,
   });
   if (!gate.ok) return gate;
+  const timeGate = checkManualTimeGate({ kind: type, date: day, time: clock, checkInAt: existing?.checkInAt || existing?.check_in_at });
+  if (!timeGate.ok) return timeGate;
   let saved = null;
   updateCompany(companyId, (draft) => {
     const emp = draft.employees.find((row) => String(row.id) === String(employeeId));
@@ -3766,7 +3811,13 @@ export function recordManualAttendance(companyId, { employeeId, kind, date, time
       by,
       reason,
       stationId: stationId || emp?.stationId,
+      lateness: type === "checkout_fix" ? null : manualLatenessFor(draft, emp || employee, day, clock),
     });
+    if (type === "checkout_fix") {
+      // Leaving before the shift end stays visible as an early checkout, as on a real punch.
+      const shift = rosteredShiftOn(draft, emp || employee, day);
+      row.earlyCheckout = isEarlyCheckoutAt(shift, row.checkOutAt, nursingHourOn(emp || employee, day)?.endMinutes || 0);
+    }
     const list = Array.isArray(draft.personalAttendance) ? draft.personalAttendance : [];
     const idx = list.findIndex((item) => item.id === row.id || (String(item.employeeId) === String(employeeId) && String(item.date) === day));
     if (idx >= 0) list[idx] = { ...list[idx], ...row };
@@ -3779,7 +3830,99 @@ export function recordManualAttendance(companyId, { employeeId, kind, date, time
     if (stamped?.ok && isOtDecisionOpenEntry(draft.otDecisions?.[`${employeeId}:${day}`])) queueOtPendingNotice(employeeId, day, stamped.holiday);
   });
   flushOtPendingNotices(companyId);
-  audit(companyId, type === "checkout_fix" ? "manual_checkout" : "manual_checkin", `${by || "manager"} recorded ${type} for ${employee.name} on ${day}.`);
+  audit(companyId, type === "checkout_fix" ? "manual_checkout" : "manual_checkin", `${by || "manager"} recorded ${type} for ${employee.name} on ${day} at ${clock}.`);
+  const why = String(reason || "").trim();
+  addNotification(companyId, employee.id, type === "checkout_fix"
+    ? `ثبّت ${by || "مديرك"} انصرافك ليوم ${day} الساعة ${clock}${why ? ` — ${why}` : ""}. السجل في بصمتي.`
+    : `اعتمد ${by || "مديرك"} حضورك ليوم ${day} الساعة ${clock}${why ? ` — ${why}` : ""}. السجل في بصمتي.`, { to: "/app/attendance" });
+  return { ok: true, attendance: toCloudAttendanceRow(saved) };
+}
+
+/**
+ * The manager's decision on a «طلب بصمة يدوية» (manual_punch / checkout_fix): approve at the requested
+ * time (the manager may correct it — the change is written on the request) or refuse with a written reason.
+ * Either closes the request (status, reviewer, audit), notifies the worker, and leaves the queue.
+ */
+export function decideManualPunchRequest(companyId, employeeId, requestId, { decision, time, note, by, byId } = {}) {
+  const data = getCompanyData(companyId);
+  const emp = data?.employees.find((row) => String(row.id) === String(employeeId));
+  const req = (emp?.otherRequests || []).find((row) => row.id === requestId);
+  if (!req || (req.type !== "manual_punch" && req.type !== "checkout_fix")) {
+    return { ok: false, error: "REQUEST_NOT_FOUND", reason: "الطلب غير موجود.", reasonEn: "That request was not found." };
+  }
+  if ((req.status || "pending") !== "pending") {
+    return { ok: false, error: "ALREADY_DECIDED", reason: "قُرّر هذا الطلب من قبل.", reasonEn: "This request was already decided." };
+  }
+  if (decision === "rejected") {
+    return setOtherRequestStatus(companyId, employeeId, requestId, "rejected", by, note, { actorId: byId });
+  }
+  if (decision !== "approved") {
+    return { ok: false, error: "DECISION_REQUIRED", reason: "اختر: اعتماد أو رفض.", reasonEn: "Choose: approve or refuse." };
+  }
+  const asked = parsePunchClock(req.time) || clockFromPunchReason(req.reason);
+  const clock = parsePunchClock(time) || asked;
+  const day = req.date || toRiyadhDateKey();
+  const att = attendanceOnDate(data?.personalAttendance, employeeId, day);
+  const timeGate = checkManualTimeGate({ kind: req.type, date: day, time: clock, checkInAt: att?.checkInAt || att?.check_in_at });
+  if (!timeGate.ok) return timeGate;
+  if (clock !== asked) {
+    updateCompany(companyId, (d) => {
+      const e = d.employees.find((row) => String(row.id) === String(employeeId));
+      const r = (e?.otherRequests || []).find((row) => row.id === requestId);
+      if (!r) return;
+      r.requestedTime = asked || "";
+      r.time = clock;
+    });
+  }
+  const changed = clock !== asked ? `عُدّل الوقت من ${asked || "—"} إلى ${clock}` : "";
+  return setOtherRequestStatus(companyId, employeeId, requestId, "approved", by, [changed, String(note || "").trim()].filter(Boolean).join(" — "), { actorId: byId });
+}
+
+/**
+ * Art. 17 — the owner records that the work-hours table, rest periods, weekly rest day and shift times
+ * are posted at the workplace (date + who). Withdrawing clears it. The posting warning reads this.
+ */
+export function recordWorkPosting(companyId, { posted = true, date, by } = {}) {
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) ? String(date) : toRiyadhDateKey();
+  updateCompany(companyId, (d) => {
+    const write = (bag) => {
+      const prior = bag.workPosting || {};
+      bag.workPosting = posted
+        ? { ...prior, posted: true, postedAt: day, postedBy: by || "" }
+        : { ...prior, posted: false, postedAt: "", postedBy: "" };
+    };
+    d.hoursPolicy = d.hoursPolicy || {};
+    write(d.hoursPolicy);
+    // A copy kept under attendanceSettings would shadow the main one — keep both in step.
+    if (d.attendanceSettings?.hoursPolicy?.workPosting) write(d.attendanceSettings.hoursPolicy);
+  });
+  audit(companyId, "work_posting", posted ? `${by || "owner"} recorded the Art. 17 posting on ${day}.` : `${by || "owner"} withdrew the Art. 17 posting.`);
+  return { ok: true, postedAt: posted ? day : "" };
+}
+
+/**
+ * «اعتمد حضوراً» on a late / out-of-range row, recorded locally (the twin of the cloud excuseAttendance):
+ * the record stays, the penalty goes, the decision carries the manager's name and time.
+ */
+export function excuseAttendanceLocal(companyId, employeeId, dayKey, { excused = true, by, byId, note } = {}) {
+  if (byId && String(byId) === String(employeeId)) {
+    return { ok: false, error: "SELF_DECISION", reason: "لا يعتمد الموظف حضوره بنفسه — القرار لمديره.", reasonEn: "A worker does not approve their own attendance." };
+  }
+  const data = getCompanyData(companyId);
+  const row = attendanceOnDate(data?.personalAttendance, employeeId, dayKey);
+  if (!row) return { ok: false, error: "NO_ATTENDANCE", reason: "لا سجل حضور لهذا اليوم.", reasonEn: "No attendance record for this day." };
+  let saved = null;
+  updateCompany(companyId, (d) => {
+    const live = (d.personalAttendance || []).find((item) => String(item.employeeId ?? item.employee_id) === String(employeeId) && String(item.date || item.dateKey || "").slice(0, 10) === dayKey);
+    if (!live) return;
+    live.excused = !!excused;
+    live.excusedByName = excused ? (by || "") : "";
+    live.excusedAt = excused ? new Date().toISOString() : null;
+    if (excused && String(note || "").trim()) live.excusedNote = String(note).trim();
+    saved = live;
+  });
+  audit(companyId, "attendance_excused", `${by || "manager"} ${excused ? "approved" : "un-approved"} the attendance of ${employeeId} on ${dayKey}.`);
+  if (excused) addNotification(companyId, employeeId, `اعتمد ${by || "مديرك"} حضورك ليوم ${dayKey} — لا يُحتسب عليك التأخير.`, { to: "/app/attendance" });
   return { ok: true, attendance: toCloudAttendanceRow(saved) };
 }
 
@@ -4551,6 +4694,14 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
   }
   if (status === "approved" && pending?.type === NIGHT_FITNESS_TYPE) {
     addNotification(companyId, employeeId, "اعتُمد تقرير لياقتك الليلية. الملف المسجّل في طلباتي.");
+  }
+  if (status === "approved" && (pending?.type === "manual_punch" || pending?.type === "checkout_fix")) {
+    const fresh = (getCompanyData(companyId)?.employees || []).find((row) => row.id === employeeId);
+    const row = (fresh?.otherRequests || []).find((r) => r.id === requestId) || pending;
+    const clock = parsePunchClock(row.time) || clockFromPunchReason(row.reason);
+    addNotification(companyId, employeeId, pending.type === "checkout_fix"
+      ? `اعتُمد تصحيح انصرافك ليوم ${row.date || ""} الساعة ${clock || "—"}${row.requestedTime && row.requestedTime !== clock ? ` (طلبت ${row.requestedTime})` : ""}.`
+      : `اعتُمدت بصمتك اليدوية ليوم ${row.date || ""} الساعة ${clock || "—"}${row.requestedTime && row.requestedTime !== clock ? ` (طلبت ${row.requestedTime})` : ""}.`, { to: "/app/attendance" });
   }
   if (status === "approved" && isDutyRequestType(pending?.type)) {
     const copy = {

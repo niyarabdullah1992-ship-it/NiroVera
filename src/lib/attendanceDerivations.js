@@ -59,10 +59,75 @@ export function isForgottenCheckout(shift, attendance, now = Date.now()) {
   return now > endAt.getTime() + 60 * 60 * 1000;
 }
 
-export function getTodaysShift(data, employee) {
+/**
+ * The shift the duty day holds. After midnight an OPEN overnight row from yesterday is still the duty
+ * day (its checkout, breaks and ticker belong to it) until today's own duty begins — see dutyDayOf.
+ */
+export function getTodaysShift(data, employee, now = new Date()) {
+  return dutyDayOf(data, employee, now).shift;
+}
+
+/** An overnight shift ends on the next calendar day (end ≤ start). */
+export function isOvernightShift(shift) {
+  const start = hmToMinutes(shift?.start);
+  const end = hmToMinutes(shift?.end);
+  return start != null && end != null && end <= start;
+}
+
+/** «YYYY-MM-DD» one calendar day earlier. */
+export function previousDateKey(dateKey) {
+  const m = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) - 1));
+  return d.toISOString().slice(0, 10);
+}
+
+/** Minutes past midnight on the Riyadh clock. */
+export function riyadhMinutesOf(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
+  const part = (type) => Number(parts.find((entry) => entry.type === type)?.value);
+  return part("hour") * 60 + part("minute");
+}
+
+const rowOpen = (row) => !!(row?.checkInAt || row?.check_in_at) && !(row?.checkOutAt || row?.check_out_at);
+const rowCheckedIn = (row) => !!(row?.checkInAt || row?.check_in_at);
+
+/**
+ * Pure: is yesterday's overnight duty still the duty day? Yes while its row is open, its shift is
+ * overnight, nothing is checked in today, and today's own check-in window has not opened.
+ * Twin: base44/shared/attendanceDerivations.ts.
+ */
+export function overnightCarryOpen({ yesterdayRow, yesterdayShift, todayRow = null, todayShift = null, nowMin = null, earlyWindowMin = 60 } = {}) {
+  if (!rowOpen(yesterdayRow) || !isOvernightShift(yesterdayShift)) return false;
+  if (rowCheckedIn(todayRow)) return false;
+  if (todayShift?.start && nowMin != null && checkEarlyCheckInGate(todayShift, nowMin, earlyWindowMin).ok) return false;
+  return true;
+}
+
+/** { dateKey, shift, carried } — today, or yesterday while its overnight row is still open. */
+export function dutyDayOf(data, employee, now = new Date(), rows = null) {
+  const today = toRiyadhDateKey(now);
+  const todayShift = getShiftOnDate(data, employee, today);
+  if (!employee?.id) return { dateKey: today, shift: null, carried: false };
+  const list = Array.isArray(rows) ? rows : (data?.personalAttendance || []);
+  const yesterday = previousDateKey(today);
+  const mine = (key) => list.find((row) => String(row?.employeeId ?? row?.employee_id) === String(employee.id) && String(row?.date || row?.dateKey || "").slice(0, 10) === key) || null;
+  const yesterdayRow = mine(yesterday);
+  if (yesterdayRow) {
+    const yesterdayShift = getShiftOnDate(data, employee, yesterday);
+    if (overnightCarryOpen({ yesterdayRow, yesterdayShift, todayRow: mine(today), todayShift, nowMin: riyadhMinutesOf(now), earlyWindowMin: earlyCheckInMinutes(data) })) {
+      return { dateKey: yesterday, shift: yesterdayShift, carried: true };
+    }
+  }
+  return { dateKey: today, shift: todayShift, carried: false };
+}
+
+/** The published shift an employee holds on a given date (own station first, then coverage). */
+export function getShiftOnDate(data, employee, dateKey) {
   if (!employee?.id) return null;
   const stationIds = [employee.stationId || data?.stations?.[0]?.id, ...extraCoverageStationIds(employee, data)].filter(Boolean);
-  const dateKey = toRiyadhDateKey();
   for (const stationId of stationIds) {
     const schedule = (data?.schedules || []).find((s) => s.stationId === stationId);
     for (const st of schedule?.shiftTypes || []) {
@@ -73,6 +138,7 @@ export function getTodaysShift(data, employee) {
           end: st.end,
           label: st.label,
           stationId,
+          dutyDate: dateKey,
           // The break mode travels with the shift so every reader deducts the same rest.
           ...(st.breakMode === "flex" ? { id: st.id, breakMode: "flex", flexBreak: st.flexBreak || {}, restMinutes: st.restMinutes } : {}),
         };
@@ -590,4 +656,67 @@ export function todaysShiftEnded(shift, nowMin, graceMin = 60) {
   if (end == null || nowMin == null) return false;
   if (start != null && end <= start) return false;
   return nowMin > end + graceMin;
+}
+
+/** Minutes after a shift's end the self check-in still opens — the same hour the forgotten checkout waits. */
+export const LATE_CHECKIN_GRACE_MINUTES = 60;
+
+/**
+ * After the shift has ended (+ grace) a self check-in is closed: arriving then is not a duty day,
+ * it is a manual entry the manager decides («نسيت البصمة؟ اطلب تسجيل يدوي»). Twin in shared.
+ */
+export function checkLateCheckInGate(shift, nowMin, graceMin = LATE_CHECKIN_GRACE_MINUTES) {
+  if (!todaysShiftEnded(shift, nowMin, graceMin)) return { ok: true };
+  return {
+    ok: false,
+    error: "SHIFT_ENDED",
+    endsAt: shift.end,
+    reason: `انتهت ورديتك ${shift.end} — لا تُفتح بصمة الحضور بعدها. إن كنت حضرت فاطلب تسجيلاً يدوياً من «نسيت البصمة؟».`,
+    reasonEn: `Your shift ended at ${shift.end} — check-in does not open after it. If you were at work, request a manual entry from «Forgot to punch?».`,
+  };
+}
+
+/** Minutes the checkout falls before the shift end (overnight-aware), less her nursing minutes at the end (Art. 154). */
+export function earlyLeaveMinutesOf({ shift, checkIn, checkOut, nursingEndMinutes = 0 } = {}) {
+  const start = hmToMinutes(shift?.start);
+  const end = hmToMinutes(shift?.end);
+  const inMin = checkIn ? riyadhMinutesOf(checkIn) : null;
+  const outMin = checkOut ? riyadhMinutesOf(checkOut) : null;
+  if (start == null || end == null || inMin == null || outMin == null) return 0;
+  const inDate = toRiyadhDateKey(checkIn);
+  const outDate = toRiyadhDateKey(checkOut);
+  const dayOff = inDate === outDate ? 0 : 1440;
+  // On the check-in's clock: the shift end is today, or tomorrow when it is overnight.
+  const endAbs = end <= start ? end + 1440 : end;
+  const outAbs = outMin + dayOff;
+  return Math.max(0, endAbs - outAbs - Math.max(0, Number(nursingEndMinutes) || 0));
+}
+
+/**
+ * Pure: the self «انصرف» — closed while a «تثبيت الانصراف» request is pending (the manager's decision
+ * is the truth); otherwise a checkout that is early, or late past the forgotten hour, asks for one
+ * confirmation that names its minutes. { ok, confirm: null | { kind, minutes } } or a named refusal.
+ */
+export function checkSelfCheckoutGate({ shift, attendance, now = Date.now(), pendingFix = null, nursingEndMinutes = 0 } = {}) {
+  if (pendingFix) {
+    return {
+      ok: false,
+      error: "CHECKOUT_FIX_PENDING",
+      reason: `طلب تثبيت الانصراف${pendingFix.time ? ` (${pendingFix.time})` : ""} بانتظار مديرك — يُثبت انصرافك من قراره، لا ببصمة ثانية.`,
+      reasonEn: `Your checkout-fix request${pendingFix.time ? ` (${pendingFix.time})` : ""} is with your manager — the checkout is set by that decision, not a second punch.`,
+    };
+  }
+  const checkIn = attendance?.check_in_at || attendance?.checkInAt;
+  if (!checkIn || !shift?.end) return { ok: true, confirm: null };
+  const nowIso = new Date(now).toISOString();
+  const early = earlyLeaveMinutesOf({ shift, checkIn, checkOut: nowIso, nursingEndMinutes });
+  if (early > 0) return { ok: true, confirm: { kind: "early", minutes: early } };
+  if (isForgottenCheckout(shift, attendance, new Date(now).getTime())) {
+    const start = hmToMinutes(shift.start);
+    const end = hmToMinutes(shift.end);
+    const nowMin = riyadhMinutesOf(nowIso) + (toRiyadhDateKey(checkIn) === toRiyadhDateKey(nowIso) ? 0 : 1440);
+    const endAbs = end <= start ? end + 1440 : end;
+    return { ok: true, confirm: { kind: "forgotten", minutes: Math.max(0, nowMin - endAbs) } };
+  }
+  return { ok: true, confirm: null };
 }

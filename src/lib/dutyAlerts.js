@@ -517,9 +517,12 @@ export function dutyNoticeText(alertRow, { ar = true, audience = "employee", nam
         ? `${who} تجاوز بقاؤه في موقع العمل حد المادة 101 اليوم (منذ ${alertRow.at}) — أنهِ دوامه أو وثّق السبب.`
         : `${who} passed the Art. 101 workplace ceiling today (since ${alertRow.at}) — end the duty or record why.`;
     }
+    // The same start the worker's own notice names («بلا راحة منذ …»), then the moment the limit passed.
+    const since = alertRow.meta?.since || alertRow.at;
+    const passed = alertRow.meta?.since && alertRow.at && alertRow.at !== alertRow.meta.since ? alertRow.at : "";
     return ar
-      ? `${who} تجاوز 5 ساعات بلا راحة اليوم (منذ ${alertRow.at}) — المادة 101: امنحه راحته الآن.`
-      : `${who} passed 5 hours without a break today (since ${alertRow.at}) — Art. 101: give the break now.`;
+      ? `${who} يعمل بلا راحة منذ ${since}${passed ? ` — تجاوز 5 ساعات عند ${passed}` : " — تجاوز 5 ساعات"}. المادة 101: امنحه راحته الآن.`
+      : `${who} has worked without a break since ${since}${passed ? ` — passed 5 hours at ${passed}` : " — over 5 hours"}. Art. 101: give the break now.`;
   }
   if (alertRow.id === "break_soon") {
     const left = alertRow.meta?.minutesLeft ?? DUTY_ALERT_LEAD.breakSoon;

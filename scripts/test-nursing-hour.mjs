@@ -219,7 +219,7 @@ const MAN = { id: "e_omar", name: "عمر", stationId: "st", profile: { gender: 
 {
   const mine = buildMinistrySection("attendance", { lane: "employee", today: D, data: {}, employee: END });
   const row = mine.rows.find((r) => r.key === "labour-154");
-  assert.equal(row.title, "ساعة رضاعة حتى \u20662027-05-31\u2069");
+  assert.equal(row.title, "ساعة رضاعة حتى 31 مايو 2027", "the date reads like the rest of the card, not a raw ISO");
   assert.equal(row.level, "met");
   assert.equal(row.pill, "مستوفٍ");
   assert.deepEqual(row.cites.map((c) => `${c.source}:${c.article}`), ["labour:154", "regs:31"], "Art. 154 with Regs Art. 31");

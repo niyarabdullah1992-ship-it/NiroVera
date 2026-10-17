@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
-import { updateCompany } from "@/lib/store";
+import { getCompanyData, updateCompany } from "@/lib/store";
 import { isLocalPreviewActive } from "@/lib/localPreview";
 import { localAttendanceSettings } from "@/lib/localAttendanceFallback";
 import { useI18n } from "@/lib/i18n";
@@ -57,7 +57,8 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
       setDraft(next);
     };
     if (local) {
-      apply(previewSettings(company));
+      const stored = getCompanyData(company.id)?.attendanceSettings || {};
+      apply(previewSettings({ ...company, attendanceSettings: { ...(company?.attendanceSettings || {}), ...stored } }));
       return;
     }
     base44.functions
@@ -75,7 +76,8 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
   }
 
   const locationEnabled = draft.gps_enabled === true;
-  const dirty = JSON.stringify({ gps_enabled: draft.gps_enabled === true }) !== JSON.stringify({ gps_enabled: saved?.gps_enabled === true });
+  const earlyOf = (row) => Number(row?.early_checkin_minutes ?? 60);
+  const dirty = draft.gps_enabled === true !== (saved?.gps_enabled === true) || earlyOf(draft) !== earlyOf(saved);
 
   const persist = (next) => {
     updateCompany(company.id, (d) => {
@@ -85,6 +87,7 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
         gps_required: next.gps_required === true,
         schedule_required: true,
         late_threshold_minutes: 0,
+        early_checkin_minutes: earlyOf(next),
       };
     });
   };
@@ -106,11 +109,14 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
         lateThresholdMinutes: 0,
         gpsEnabled: draft.gps_enabled === true,
         gpsRequired: draft.gps_enabled === true,
+        earlyCheckinMinutes: earlyOf(draft),
       });
       if (draft.gps_enabled !== saved?.gps_enabled) {
         await base44.functions.invoke("supabaseAttendance", { action: "clearAttendanceEmergency", companyId: company.id }).catch(() => {});
       }
-      const next = res?.data?.settings || draft;
+      const next = { ...draft, ...(res?.data?.settings || {}) };
+      // The punch card reads the window from the company policy too — keep it in step with the server.
+      persist(next);
       setDraft(next);
       setSaved(next);
     } catch (err) {
@@ -142,8 +148,8 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
       </div>
 
       {(() => {
-        // When the check-in opens before a published shift. Saved straight to the company policy.
-        const current = Number(company?.attendanceSettings?.early_checkin_minutes ?? data?.attendanceSettings?.early_checkin_minutes ?? 60);
+        // When the check-in opens before a published shift — part of the policy draft, live on «احفظ السياسة».
+        const current = earlyOf(draft);
         return (
           <div data-early-checkin="1" style={row}>
             <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{ar ? "فتح الحضور قبل الوردية" : "Check-in opens before the shift"}</span>
@@ -155,10 +161,8 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
             <select
               value={String(current)}
               disabled={!canEditSettings}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                updateCompany(company.id, (d) => { d.attendanceSettings = { ...(d.attendanceSettings || {}), early_checkin_minutes: n }; });
-              }}
+              data-early-checkin-select="1"
+              onChange={(e) => setDraft({ ...draft, early_checkin_minutes: Number(e.target.value) })}
               style={{ fontFamily: "inherit", fontSize: 12, padding: "8px 10px", border: `1px solid ${BORDER}`, borderRadius: 10, background: CARD, color: "var(--nv-ink)", alignSelf: "flex-start", minWidth: 200 }}
             >
               {[15, 30, 60, 90, 120].map((n) => (

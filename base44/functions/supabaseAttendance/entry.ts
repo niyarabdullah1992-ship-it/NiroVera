@@ -9,6 +9,8 @@ import { validateAttendanceRequest, validationFailed } from "../../shared/proofC
 import { checkAssumedBreakGate, checkFlexBreakPunchGate, resolveFlexDayBreaks } from "../../shared/shiftDerivations.ts";
 import { readDayOvertimeCore, weekKeysOf, weekOrdinaryBeforeCore } from "../../shared/autoOvertime.ts";
 import { nursingEndExcuse, nursingStartExcuse } from "../../shared/nursingHour.ts";
+import { checkEarlyCheckInGate, earlyCheckInMinutesOf } from "../../shared/attendanceDerivations.ts";
+import { checkLateCheckInGate, isOvernightShift, overnightCarryOpen, previousDateKey } from "../../shared/attendanceDerivations.ts";
 
 const BREAK_ACTIONS = ["breakStart", "breakEnd", "reviewLateReturn"];
 const BREAKS_COLUMN_HINT = "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS breaks jsonb DEFAULT '[]'::jsonb;";
@@ -128,8 +130,7 @@ Deno.serve(async (req) => {
       const roster = await loadLeaveRoster(companyId);
       return leaveRequestsForEmployeeId(employeeId, { entity, roster });
     };
-    const getScheduledShift = async (companyId, employeeId) => {
-      const dateKey = toRiyadhDateKey();
+    const getScheduledShift = async (companyId, employeeId, dateKey = toRiyadhDateKey()) => {
       const blobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: "schedules" });
       for (const schedule of (blobs[0]?.payload || [])) {
         for (const shift of (schedule.shiftTypes || [])) {
@@ -144,7 +145,41 @@ Deno.serve(async (req) => {
       const now = Date.now();
       return window ? { ...window, active: new Date(window.startAt).getTime() <= now && now <= new Date(window.endAt).getTime() } : null;
     };
-    const getAttendancePolicy = async (_companyId) => ({ scheduleRequired: true });
+    // The company attendance policy blob: the rota is always required; the early check-in window
+    // (minutes before the published start) is the owner's setting, read by every checkIn.
+    const getAttendancePolicy = async (companyId) => {
+      let earlyCheckinMinutes = earlyCheckInMinutesOf(undefined);
+      try {
+        const blobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: "attendancePolicy" });
+        const row = Array.isArray(blobs?.[0]?.payload) ? blobs[0].payload[0] : null;
+        if (row && row.earlyCheckinMinutes != null) earlyCheckinMinutes = earlyCheckInMinutesOf(row.earlyCheckinMinutes);
+      } catch { /* default window */ }
+      return { scheduleRequired: true, earlyCheckinMinutes };
+    };
+    // The duty day's row: today's, or — after midnight — yesterday's still-open overnight row until
+    // today's own duty begins (the shared overnightCarryOpen rule, the punch card's twin).
+    const dutyRowOf = async (companyId, employeeId) => {
+      const today = toRiyadhDateKey();
+      const rowOn = async (day) => {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(companyId)}&employee_id=eq.${encodeURIComponent(employeeId)}&date=eq.${day}`, { headers });
+        const rows = res.ok ? await res.json() : [];
+        return Array.isArray(rows) ? rows[0] || null : null;
+      };
+      const todayRow = await rowOn(today);
+      if (!todayRow?.check_in_at) {
+        const yesterday = previousDateKey(today);
+        const yesterdayRow = await rowOn(yesterday);
+        if (yesterdayRow?.check_in_at && !yesterdayRow?.check_out_at) {
+          const yesterdayShift = await getScheduledShift(companyId, employeeId, yesterday);
+          const todayShift = await getScheduledShift(companyId, employeeId, today);
+          const earlyWindowMin = (await getAttendancePolicy(companyId)).earlyCheckinMinutes;
+          if (overnightCarryOpen({ yesterdayRow, yesterdayShift, todayRow, todayShift, nowMin: riyadhMinutes(), earlyWindowMin })) {
+            return { date: yesterday, row: yesterdayRow, shift: yesterdayShift, carried: true };
+          }
+        }
+      }
+      return { date: today, row: todayRow, shift: null, carried: false };
+    };
     // Strict date formats — values are interpolated into PostgREST query strings,
     // so anything not matching is rejected (blocks query-parameter injection).
     const isDate = (v) => {
@@ -241,7 +276,7 @@ Deno.serve(async (req) => {
       const emergency = await getEmergencyWindow(companyId);
       const policy = await getAttendancePolicy(companyId);
       const settings = (!res.ok || !Array.isArray(rows) || rows.length === 0) ? defaults : rows[0];
-      return Response.json({ settings: { ...settings, schedule_required: policy.scheduleRequired, emergency_active: !!emergency?.active, emergency_start_at: emergency?.startAt || null, emergency_end_at: emergency?.endAt || null, emergency_by: emergency?.activatedBy || null } });
+      return Response.json({ settings: { ...settings, schedule_required: policy.scheduleRequired, early_checkin_minutes: policy.earlyCheckinMinutes, emergency_active: !!emergency?.active, emergency_start_at: emergency?.startAt || null, emergency_end_at: emergency?.endAt || null, emergency_by: emergency?.activatedBy || null } });
     }
 
     if (action === "setAttendanceEmergency" || action === "clearAttendanceEmergency") {
@@ -268,7 +303,8 @@ Deno.serve(async (req) => {
       if (!companyId) return Response.json({ error: "Missing companyId — record without tenant is rejected" }, { status: 400 });
       const scheduleRequired = true;
       const blobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: "attendancePolicy" });
-      const payload = [{ scheduleRequired }];
+      const prior = Array.isArray(blobs?.[0]?.payload) ? (blobs[0].payload[0] || {}) : {};
+      const payload = [{ ...prior, scheduleRequired }];
       if (blobs[0]) await base44.asServiceRole.entities.CompanyDataBlob.update(blobs[0].id, { payload });
       else await base44.asServiceRole.entities.CompanyDataBlob.create({ companyId, category: "attendancePolicy", payload });
       return Response.json({ ok: true, scheduleRequired });
@@ -276,8 +312,18 @@ Deno.serve(async (req) => {
 
     if (action === "updateSettings") {
       if (!auth?.admin && !["owner", "director", "ops_manager"].includes(auth?.role)) return Response.json({ error: "Forbidden" }, { status: 403 });
-      const { companyId, workStartTime, lateThresholdMinutes, gpsEnabled, gpsRequired } = body;
+      const { companyId, workStartTime, lateThresholdMinutes, gpsEnabled, gpsRequired, earlyCheckinMinutes } = body;
       if (!companyId) return Response.json({ error: "Missing companyId" }, { status: 400 });
+      if (earlyCheckinMinutes != null) {
+        const early = Number(earlyCheckinMinutes);
+        if (!Number.isFinite(early) || early < 0 || early > 240) return Response.json({ error: "Invalid early check-in window" }, { status: 400 });
+        if (companyId !== auth?.companyId && !auth?.admin) return Response.json({ error: "Forbidden" }, { status: 403 });
+        const policyBlobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category: "attendancePolicy" });
+        const prior = Array.isArray(policyBlobs?.[0]?.payload) ? (policyBlobs[0].payload[0] || {}) : {};
+        const payload = [{ ...prior, scheduleRequired: true, earlyCheckinMinutes: Math.round(early) }];
+        if (policyBlobs[0]) await base44.asServiceRole.entities.CompanyDataBlob.update(policyBlobs[0].id, { payload });
+        else await base44.asServiceRole.entities.CompanyDataBlob.create({ companyId, category: "attendancePolicy", payload });
+      }
       if (workStartTime != null && workStartTime !== "" && !isTime(workStartTime)) return Response.json({ error: "Invalid work start time" }, { status: 400 });
       const threshold = Number(lateThresholdMinutes);
       if (!Number.isFinite(threshold) || threshold < 0 || threshold > 240) return Response.json({ error: "Invalid late threshold" }, { status: 400 });
@@ -300,7 +346,8 @@ Deno.serve(async (req) => {
       if (!res.ok) {
         return Response.json({ error: updated?.message || "Failed to save settings — run: CREATE TABLE IF NOT EXISTS attendance_settings (company_id text primary key, work_start_time text default '08:00', late_threshold_minutes integer default 15, gps_enabled boolean default false, gps_required boolean default false);" }, { status: 400 });
       }
-      return Response.json({ settings: Array.isArray(updated) ? updated[0] : updated });
+      const savedPolicy = await getAttendancePolicy(companyId);
+      return Response.json({ settings: { ...(Array.isArray(updated) ? updated[0] : updated), early_checkin_minutes: savedPolicy.earlyCheckinMinutes } });
     }
 
     // One-shot maintenance: turns GPS on for every company that already has a settings row.
@@ -473,6 +520,12 @@ Deno.serve(async (req) => {
       const startMinutes = toMinutes(scheduledShift.start);
       if (startMinutes == null) return Response.json({ error: "NOT_SCHEDULED" }, { status: 400 });
       const nowMinutes = riyadhMinutes();
+      // The same window the punch card shows: before it opens, the check-in is refused and names the hour.
+      const earlyGate = checkEarlyCheckInGate(scheduledShift, nowMinutes, (await getAttendancePolicy(companyId)).earlyCheckinMinutes);
+      if (!earlyGate.ok) return Response.json({ error: earlyGate.error, reason: earlyGate.reason, reasonEn: earlyGate.reasonEn, opensAt: earlyGate.opensAt }, { status: 400 });
+      // After the shift has ended (+ the forgotten hour) a self check-in is closed — a manual entry instead.
+      const lateGate = checkLateCheckInGate(scheduledShift, nowMinutes);
+      if (!lateGate.ok) return Response.json({ error: lateGate.error, reason: lateGate.reason, reasonEn: lateGate.reasonEn, endsAt: lateGate.endsAt }, { status: 400 });
       // Art. 154: arriving inside her nursing minutes at the start is not lateness (shared twin).
       const lateMinutes = Math.max(0, nowMinutes - startMinutes - nursingStartExcuse(empsForLeave[0] || null, date));
       const timelyStatus = lateMinutes > 0 ? "late" : "present";
@@ -555,10 +608,10 @@ Deno.serve(async (req) => {
       const hasCoords = lat != null && lng != null;
       const locationRequired = settings.gps_enabled === true && settings.gps_required === true && !emergency?.active;
       if (locationRequired && !hasCoords) return Response.json({ error: "GPS_REQUIRED" }, { status: 400 });
-      const date = toRiyadhDateKey();
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(auth.companyId)}&employee_id=eq.${encodeURIComponent(employeeId)}&date=eq.${date}`, { headers });
-      const rows = await res.json();
-      const row = Array.isArray(rows) && rows[0];
+      // The duty day's row — after midnight, yesterday's open overnight row (dutyRowOf).
+      const duty = await dutyRowOf(auth.companyId, employeeId);
+      const date = duty.date;
+      const row = duty.row;
       if (!row || !row.check_in_at) return Response.json({ error: "NOT_CHECKED_IN" }, { status: 400 });
       if (row.check_out_at) return Response.json({ error: "ALREADY_CHECKED_OUT", attendance: row }, { status: 400 });
       let checkoutDistance = null;
@@ -572,11 +625,14 @@ Deno.serve(async (req) => {
       const now = new Date();
       const workHours = Math.round(((now.getTime() - new Date(row.check_in_at).getTime()) / 3600000) * 100) / 100;
       const nowMinutes = riyadhMinutes();
-      const scheduledOut = await getScheduledShift(auth.companyId, employeeId);
+      const scheduledOut = duty.shift || await getScheduledShift(auth.companyId, employeeId, date);
       const shiftEndMinutes = toMinutes(scheduledOut?.end || shiftEnd);
       // Art. 154: leaving inside her nursing minutes at the end is not an early checkout (shared twin).
       const outEmployee = (await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId, employeeId }))[0] || null;
-      const earlyCheckout = shiftEndMinutes != null && nowMinutes < shiftEndMinutes - nursingEndExcuse(outEmployee, date);
+      // An overnight shift left before midnight (still its start day) is early by definition.
+      const earlyCheckout = shiftEndMinutes != null && (isOvernightShift(scheduledOut) && !duty.carried
+        ? true
+        : nowMinutes < shiftEndMinutes - nursingEndExcuse(outEmployee, date));
       // «راحة مرنة ببصمة»: an open break ends at the checkout; an unpunched one is stored as assumed —
       // where the card placed it (nearest prayer) when that placement passes the gate, else the window's middle.
       const closedBreaks = scheduledOut?.breakMode === "flex"
@@ -643,11 +699,11 @@ Deno.serve(async (req) => {
       const settings = (Array.isArray(settingsRows) && settingsRows[0]) || { gps_enabled: false, gps_required: false };
       const locationRequired = settings.gps_enabled === true && settings.gps_required === true && !emergency?.active;
       if (locationRequired && (lat == null || lng == null)) return Response.json({ error: "GPS_REQUIRED" }, { status: 400 });
-      const date = toRiyadhDateKey();
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(auth.companyId)}&employee_id=eq.${encodeURIComponent(employeeId)}&date=eq.${date}`, { headers });
-      const rows = await res.json();
-      const row = Array.isArray(rows) ? rows[0] : null;
-      const shift = await getScheduledShift(auth.companyId, employeeId);
+      // The duty day's row — an overnight break after midnight writes onto yesterday's open row.
+      const duty = await dutyRowOf(auth.companyId, employeeId);
+      const date = duty.date;
+      const row = duty.row;
+      const shift = duty.shift || await getScheduledShift(auth.companyId, employeeId, date);
       const nowIso = new Date().toISOString();
       const kind = action === "breakStart" ? "start" : "end";
       const gate = checkFlexBreakPunchGate({ action: kind, shift, breaks: row?.breaks, checkIn: row?.check_in_at, checkOut: row?.check_out_at, now: nowIso, onDate: date });
@@ -729,11 +785,18 @@ Deno.serve(async (req) => {
       }
       const defaultStations = employee.stationId ? [] : await base44.asServiceRole.entities.Station.filter({ companyId: auth.companyId });
       const effectiveStationId = employee.stationId || defaultStations[0]?.stationId || null;
+      // The manager records the time the worker actually arrived (a manual punch request carries it);
+      // never a time after now. Without one, the click time.
+      const inClock = body.time != null && body.time !== "" ? String(body.time) : "";
+      if (inClock && !isTime(inClock)) return Response.json({ error: "TIME_REQUIRED", reason: "حدد وقت الحضور.", reasonEn: "Set the check-in time." }, { status: 400 });
+      const inAt = inClock ? new Date(`${date}T${inClock}:00+03:00`) : new Date();
+      if (inAt.getTime() > Date.now() + 60000) return Response.json({ error: "TIME_IN_FUTURE", reason: "لا يُسجَّل حضور بوقت لم يأتِ بعد.", reasonEn: "A check-in is not recorded at a time that has not come yet." }, { status: 400 });
       const payload = {
         company_id: auth.companyId, employee_id: employeeId, employee_name: employee.name || "",
-        station_id: effectiveStationId, date, check_in_at: new Date().toISOString(), check_out_at: null,
+        station_id: effectiveStationId, date, check_in_at: inAt.toISOString(), check_out_at: null,
         status: "present", late_minutes: 0, excused: false, early_checkout: false,
         in_zone: false, manual_override: true, override_by: auth.role === "owner" && body.managerName ? String(body.managerName).slice(0, 120) : (auth.name || "Manager"), location_status: "manual",
+        ...(String(body.reason || "").trim() ? { excused_note: String(body.reason).trim().slice(0, 500) } : {}),
       };
       const url = existing ? `${SUPABASE_URL}/rest/v1/attendance?id=eq.${encodeURIComponent(existing.id)}` : `${SUPABASE_URL}/rest/v1/attendance`;
       const res = await fetch(url, { method: existing ? "PATCH" : "POST", headers: { ...headers, Prefer: "return=representation" }, body: JSON.stringify(payload) });
@@ -775,7 +838,12 @@ Deno.serve(async (req) => {
       }
       if (!current?.check_in_at) return Response.json({ error: "NOT_CHECKED_IN" }, { status: 400 });
       if (current.check_out_at) return Response.json({ error: "ALREADY_CHECKED_OUT", attendance: current }, { status: 400 });
-      const now = new Date();
+      // The time the worker left — required: a click time would invent overtime nobody worked.
+      const outClock = String(body.time || "");
+      if (!isTime(outClock)) return Response.json({ error: "TIME_REQUIRED", reason: "حدد وقت الانصراف.", reasonEn: "Set the checkout time." }, { status: 400 });
+      let now = new Date(`${date}T${outClock}:00+03:00`);
+      if (now.getTime() <= new Date(current.check_in_at).getTime()) now = new Date(now.getTime() + 86400000); // overnight
+      if (now.getTime() > Date.now() + 60000) return Response.json({ error: "TIME_IN_FUTURE", reason: "لا يُسجَّل انصراف بوقت لم يأتِ بعد.", reasonEn: "A checkout is not recorded at a time that has not come yet." }, { status: 400 });
       const workHours = Math.round(((now.getTime() - new Date(current.check_in_at).getTime()) / 3600000) * 100) / 100;
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?id=eq.${encodeURIComponent(current.id)}`, {
         method: "PATCH",
@@ -820,11 +888,9 @@ Deno.serve(async (req) => {
       const { employeeId } = body;
       if (!employeeId) return Response.json({ error: "Missing employeeId" }, { status: 400 });
       if (!(await employeeInCompany(employeeId))) return Response.json({ error: "Forbidden" }, { status: 403 });
-      const date = toRiyadhDateKey();
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(auth.companyId)}&employee_id=eq.${encodeURIComponent(employeeId)}&date=eq.${date}`, { headers });
-      const rows = await res.json();
-      if (!res.ok) return Response.json({ attendance: null });
-      return Response.json({ attendance: (Array.isArray(rows) && rows[0]) || null });
+      // The duty day's row: after midnight the open overnight row of yesterday (its date says so).
+      const duty = await dutyRowOf(auth.companyId, employeeId);
+      return Response.json({ attendance: duty.row || null, dutyDate: duty.date, carried: duty.carried });
     }
 
     if (action === "listDaily") {

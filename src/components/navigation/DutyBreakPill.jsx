@@ -20,11 +20,15 @@ export default function DutyBreakPill({ clock, ar = true }) {
   if (!clock) return null;
   const left = clock.endAt - now;
   const over = left <= 0;
+  // Past its minutes the pill counts the overrun — the same figure the card shows («تجاوزت مدتها»).
+  const overMin = over ? Math.floor((now - clock.endAt) / 60000) : 0;
   const label = over
-    ? (ar ? "انتهت راحتك" : "Break over")
+    ? (overMin > 0 ? (ar ? "تجاوزت راحتك" : "Break overrun") : (ar ? "انتهت راحتك" : "Break over"))
     : (ar ? "راحتك" : "Break");
   const title = over
-    ? (ar ? `انتهت راحتك عند ${clock.end} — عُد للعمل` : `Your break ended at ${clock.end} — back to work`)
+    ? (overMin > 0
+      ? (ar ? `انتهت راحتك عند ${clock.end} — تجاوزتها ${overMin} دقيقة، عُد للعمل` : `Your break ended at ${clock.end} — ${overMin} min over, back to work`)
+      : (ar ? `انتهت راحتك عند ${clock.end} — عُد للعمل` : `Your break ended at ${clock.end} — back to work`))
     : (ar ? `راحتك ${clock.start}–${clock.end} · باقٍ ${countdownLabel(left)}` : `Break ${clock.start}–${clock.end} · ${countdownLabel(left)} left`);
   return (
     <Link
@@ -39,12 +43,17 @@ export default function DutyBreakPill({ clock, ar = true }) {
       style={{ textDecoration: "none", color: over ? "var(--nv-warn-ink)" : "var(--nv-ink)" }}
     >
       <NvIcon name="clock" size={14} inline={false} />
-      <span>{label}</span>
+      <span className="nv-hdr-break-label">{label}</span>
       {!over ? (
         <>
           <span aria-hidden className="nv-hdr-break-sep" style={{ color: "var(--nv-muted)" }}>· {ar ? "باقٍ" : "left"}</span>
           <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontWeight: 700, color: "var(--nv-ink)" }}>{countdownLabel(left)}</span>
         </>
+      ) : overMin > 0 ? (
+        <span data-break-over={overMin} style={{ whiteSpace: "nowrap" }}>
+          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontWeight: 700 }}>+{overMin}</span>
+          {ar ? " د" : " min"}
+        </span>
       ) : null}
     </Link>
   );

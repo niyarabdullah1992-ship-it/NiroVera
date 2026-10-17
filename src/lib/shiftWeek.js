@@ -2430,8 +2430,9 @@ export function sunExposureCellState(schedule, employeeId, dayKey, { shift, toda
   const onShift = shift === undefined ? employeeShiftOnDay(schedule, employeeId, key) : shift;
   const inSeason = isHeatBanDate(key);
   const touches = !!onShift && shiftTouchesHeatWindow(onShift);
-  // Asked whenever the shift touches the window — year-round; the ban itself only bites in season (`live`).
-  const asks = touches;
+  // Asked only in season (Decision 3337): out of season the ban does not run, so the cell never stops
+  // the manager with «مكشوف أم مظلّل؟».
+  const asks = touches && inSeason;
   const resolved = asks ? sunExposureMark(schedule, employeeId, key, onShift) : { mark: null, source: null };
   return {
     asks,
@@ -4380,11 +4381,15 @@ export function buildHistory({
       month: cursor.getMonth(),
     });
   }
-  const work = all.filter((day) => day.wd !== 5 && day.wd !== 6);
-  const published = work.filter((day) => {
+  // Work days come from the roster itself: any day with an assigned shift, or a published week day.
+  // Weekday names never decide it — a branch that works Friday or Saturday shows those columns.
+  const isPublishedDay = (day) => {
     const state = weekPublishState(schedule, day.date, today);
-    return state.kind === "published" || state.kind === "implicit" || hasAnyAssignment(schedule, day.key);
-  });
+    return state.kind === "published" || state.kind === "implicit";
+  };
+  const published = all.filter((day) => hasAnyAssignment(schedule, day.key) || (isPublishedDay(day) && day.wd !== 5 && day.wd !== 6));
+  // «بلا جدول منشور»: ordinary weekdays of an unpublished week that hold no shift.
+  const unpublished = all.filter((day) => day.wd !== 5 && day.wd !== 6 && !hasAnyAssignment(schedule, day.key) && !isPublishedDay(day));
   const q = String(query || "").trim();
   const roster = weekRosterEmployees(schedule, employees, stationId, published.map((day) => day.key)).filter((employee) => !q || String(employee.name || "").includes(q));
   const types = schedule?.shiftTypes || [];
@@ -4408,7 +4413,7 @@ export function buildHistory({
       const shift = employeeShiftOnDay(schedule, employee.id, day.key);
       if (shift) {
         tally[shift.id] = (tally[shift.id] || 0) + 1;
-        hours += shiftHours(shift);
+        hours += actualShiftHours(shift, day.key, employee); // net of rest (Art. 102), as the week grid
       }
       const style = shiftTypeStyle(shift, types.findIndex((row) => row.id === shift?.id));
       const paint = shift ? style : REST_STYLE;
@@ -4430,7 +4435,7 @@ export function buildHistory({
       employee,
       name: employee.name,
       cells,
-      hours: String(Math.round(hours)),
+      hours: String(Math.round(hours * 10) / 10),
       summary: summary || (ar ? "لا وردية في المدى" : "No shift in range"),
     };
   });
@@ -4457,7 +4462,7 @@ export function buildHistory({
     rows,
     dayRows,
     workDays: published.length,
-    skipped: work.length - published.length,
+    skipped: unpublished.length,
     mode,
     nightMarks: rows.reduce((sum, row) => sum + row.cells.filter((cell) => cell.night).length, 0),
   };

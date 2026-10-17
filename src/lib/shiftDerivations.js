@@ -229,8 +229,8 @@ export function checkShiftBreakModeGate({ shift, onDate, continuous103 = false, 
       ok: false,
       mode: "fixed",
       error: "BREAK_MODE_NEEDS_103",
-      reason: `العمل المتواصل يحتاج قرار الوزير — فعّله من سياسة الساعات (${cite?.labelAr || "المادة 103"}).`,
-      reasonEn: `Continuous work needs the Minister's decision — turn it on in the hours policy (${cite?.labelEn || "Art. 103"}).`,
+      reason: `العمل المتواصل يحتاج قرار الوزير — فعّله من «لدي قرار الوزير للعمل المتواصل» أعلى أنواع الورديات (${cite?.labelAr || "المادة 103"}).`,
+      reasonEn: `Continuous work needs the Minister's decision — turn it on in «We hold the Minister's decision» above the shift types (${cite?.labelEn || "Art. 103"}).`,
       cite,
     };
   }
@@ -436,6 +436,20 @@ export function checkFlexBreakPunchGate(input = {}) {
       const reasonEn = `The statutory minimum break is ${flex.minPart} minutes (${artEn})`;
       if (flex.earlyEnd) return { ...base, ok: true, short: true, minutes, over, reason, reasonEn, error: "BREAK_BELOW_MIN" };
       return { ...fail("BREAK_BELOW_MIN", reason, reasonEn), minutes, endsAtMin: day.open.startMin + flex.minPart };
+    }
+    // Ending a part here may leave a remainder too short to be a lawful part — it then counts as work.
+    const leftover = Math.max(0, day.remaining - minutes);
+    if (flex.splitEffective && leftover > 0 && leftover < flex.minPart) {
+      return {
+        ...base,
+        ok: true,
+        short: false,
+        minutes,
+        over,
+        leftover,
+        warn: `إن أنهيتها الآن سيبقى ${leftover} دقيقة لا تكفي جزءاً (أقل من ${flex.minPart}) — تُحسب عملاً لا راحة.`,
+        warnEn: `Ending now leaves ${leftover} min — under the ${flex.minPart}-minute part, so it counts as work, not rest.`,
+      };
     }
     return { ...base, ok: true, short: false, minutes, over };
   }

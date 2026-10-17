@@ -8,10 +8,10 @@ import { formatTime, useTimeFormat } from "@/hooks/useTimeFormat";
 import { deriveTeamAttendanceToday, getAttendanceStatus, getTodaysShift, isAttendancePolicyError, isScheduledToday } from "@/lib/attendance";
 import { isServiceOutage } from "@/lib/serviceErrors";
 import { todaysShiftEnded } from "@/lib/attendanceDerivations";
-import { isExcusedEarlyCheckout } from "@/lib/dutyRequests";
 import { listLocalTodayAttendance, mergeAttendanceRows } from "@/lib/localAttendanceFallback";
-import { recordManualAttendance, reviewLateReturn, submitOtherRequest } from "@/lib/store";
-import { resolveDayBreaks } from "@/lib/actualDuty";
+import { decideManualPunchRequest, excuseAttendanceLocal, recordManualAttendance, reviewLateReturn, submitOtherRequest } from "@/lib/store";
+import { breakDayOf as queueBreakDayOf, isLateReturnOpen, isPastCheckoutMissing as pastCheckoutMissing, pendingManualPunch, queueFacesOf } from "@/lib/attendanceQueue";
+import { clockFromPunchReason, defaultManualCheckoutClock, parsePunchClock, riyadhNowClock } from "@/lib/attendancePunch";
 import { minutesAr } from "@/lib/dutyAlerts";
 import { citeRule } from "@/lib/laborRules";
 import { PREVENTED_TYPE, checkEmployerPreventedGate } from "@/lib/modelRequests";
@@ -121,6 +121,12 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   const [preventError, setPreventError] = useState("");
   const [preventedNow, setPreventedNow] = useState({});
   const [checkoutReason, setCheckoutReason] = useState("");
+  const [checkoutTime, setCheckoutTime] = useState("");
+  // «اعتمد حضوراً» for someone with no punch: the time they arrived and why — never the click time.
+  const [checkInFor, setCheckInFor] = useState(null); // { id, time, reason }
+  // A pending «طلب بصمة يدوية»: approve at the asked time (editable) or refuse with a written reason.
+  const [punchAsk, setPunchAsk] = useState(null); // { id, mode: "approve" | "reject", time, note }
+  const [rowError, setRowError] = useState({}); // employeeId → message, shown on the row that failed
   const [teamFace, setTeamFace] = useState("all");
   const [queueFace, setQueueFace] = useState("all");
   const [checkoutError, setCheckoutError] = useState("");
@@ -149,58 +155,83 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
 
   const isManager = currentUser?.id === data?.ownerId || ["station_manager", "ops_manager", "director"].includes(currentUser?.role);
 
-  const applyLocalPunch = (employee, kind, reason) => {
+  const applyLocalPunch = (employee, kind, reason, time) => {
     const result = recordManualAttendance(company.id, {
       employeeId: employee.id,
       kind,
       date: toRiyadhDateKey(),
-      reason: reason || (kind === "out" ? "manager checkout" : "manager check-in"),
+      time,
+      reason,
       by: currentUser?.name,
       stationId: employee.stationId,
     });
     if (!result.ok) {
-      setCheckoutError(lang === "ar" ? result.reason : result.reasonEn);
+      setRowError((prev) => ({ ...prev, [employee.id]: lang === "ar" ? result.reason : result.reasonEn }));
       return null;
     }
     return result.attendance;
   };
 
   const manualCheckIn = async (employee) => {
+    const time = parsePunchClock(checkInFor?.time);
+    const reason = String(checkInFor?.reason || "").trim();
+    if (!time) { setRowError((prev) => ({ ...prev, [employee.id]: lang === "ar" ? "حدد وقت الحضور." : "Set the check-in time." })); return; }
+    if (reason.length < 3) { setRowError((prev) => ({ ...prev, [employee.id]: lang === "ar" ? "اكتب سبب التسجيل اليدوي." : "Write why this manual record is needed." })); return; }
     setManualLoadingId(employee.id);
-    setCheckoutError("");
+    setRowError((prev) => ({ ...prev, [employee.id]: "" }));
+    const done = (attendance) => {
+      setRows((prev) => [...prev.filter((row) => String(row.employee_id ?? row.employeeId) !== String(employee.id)), attendance]);
+      setCheckInFor(null);
+      window.dispatchEvent(new CustomEvent("attendance-updated", { detail: attendance }));
+    };
     try {
       if (isLocalPreviewActive()) {
-        const attendance = applyLocalPunch(employee, "in", "اعتمد حضوراً من لوحة اليوم");
-        if (attendance) {
-          setRows((prev) => [...prev.filter((row) => String(row.employee_id ?? row.employeeId) !== String(employee.id)), attendance]);
-          window.dispatchEvent(new CustomEvent("attendance-updated", { detail: attendance }));
-        }
+        const attendance = applyLocalPunch(employee, "in", reason, time);
+        if (attendance) done(attendance);
         return;
       }
-      const res = await base44.functions.invoke("supabaseAttendance", { action: "manualCheckIn", companyId: company.id, employeeId: employee.id, managerName: currentUser.name });
+      const res = await base44.functions.invoke("supabaseAttendance", { action: "manualCheckIn", companyId: company.id, employeeId: employee.id, managerName: currentUser.name, time, reason });
       const attendance = res?.data?.attendance;
-      if (attendance) {
-        setRows((prev) => [...prev.filter((row) => String(row.employee_id ?? row.employeeId) !== String(employee.id)), attendance]);
-        window.dispatchEvent(new CustomEvent("attendance-updated", { detail: attendance }));
-      }
+      if (attendance) done(attendance);
     } catch (error) {
       const code = error?.code || error?.response?.data?.error;
       if (!isAttendancePolicyError(code) && isServiceOutage(error)) {
-        const attendance = applyLocalPunch(employee, "in", "اعتمد حضوراً من لوحة اليوم");
-        if (attendance) {
-          setRows((prev) => [...prev.filter((row) => String(row.employee_id ?? row.employeeId) !== String(employee.id)), attendance]);
-          window.dispatchEvent(new CustomEvent("attendance-updated", { detail: attendance }));
-          return;
-        }
+        const attendance = applyLocalPunch(employee, "in", reason, time);
+        if (attendance) { done(attendance); return; }
       }
-      setCheckoutError(punchPolicyMessage(code, lang === "ar", "in") || error?.response?.data?.error || (lang === "ar" ? "تعذر تسجيل الحضور اليدوي." : "Could not record the manual check-in."));
+      const payload = error?.response?.data || {};
+      setRowError((prev) => ({ ...prev, [employee.id]: punchPolicyMessage(code, lang === "ar", "in") || (lang === "ar" ? payload.reason : payload.reasonEn) || payload.error || (lang === "ar" ? "تعذر تسجيل الحضور اليدوي." : "Could not record the manual check-in.") }));
     } finally {
       setManualLoadingId(null);
     }
   };
 
+  /** Approve / refuse a pending «طلب بصمة يدوية» — closes the request, notifies the worker. */
+  const decidePunchAsk = (employee, asked) => {
+    const decision = punchAsk?.mode === "reject" ? "rejected" : "approved";
+    const res = decideManualPunchRequest(company.id, employee.id, asked.id, {
+      decision,
+      time: punchAsk?.time,
+      note: punchAsk?.note,
+      by: currentUser?.name,
+      byId: currentUser?.id,
+    });
+    if (!res?.ok) {
+      setRowError((prev) => ({ ...prev, [employee.id]: (lang === "ar" ? res?.reason : res?.reasonEn) || res?.error || "" }));
+      return;
+    }
+    setPunchAsk(null);
+    setRowError((prev) => ({ ...prev, [employee.id]: "" }));
+    load();
+  };
+
   const manualCheckOut = async (employee) => {
     const reason = checkoutReason.trim();
+    const time = parsePunchClock(checkoutTime);
+    if (!time) {
+      setCheckoutError(lang === "ar" ? "حدد وقت الانصراف." : "Set the checkout time.");
+      return;
+    }
     if (!reason) {
       setCheckoutError(lang === "ar" ? "سبب الإغلاق مطلوب." : "A reason is required.");
       return;
@@ -209,17 +240,19 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     setManualLoadingId(employee.id);
     try {
       if (isLocalPreviewActive()) {
-        const attendance = applyLocalPunch(employee, "out", reason);
+        const attendance = applyLocalPunch(employee, "out", reason, time);
         if (attendance) {
           setRows((prev) => prev.map((row) => (String(row.employee_id ?? row.employeeId) === String(employee.id) ? attendance : row)));
           setCheckoutEmployeeId(null);
           setCheckoutReason("");
           window.dispatchEvent(new CustomEvent("attendance-updated", { detail: attendance }));
+        } else {
+          setCheckoutError(rowErrorFor(employee.id));
         }
         return;
       }
       const res = await base44.functions.invoke("supabaseAttendance", {
-        action: "manualCheckOut", companyId: company.id, employeeId: employee.id, reason,
+        action: "manualCheckOut", companyId: company.id, employeeId: employee.id, reason, time,
       });
       const attendance = res?.data?.attendance;
       if (attendance) {
@@ -231,7 +264,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     } catch (error) {
       const code = error?.code || error?.response?.data?.error;
       if (!isAttendancePolicyError(code) && isServiceOutage(error)) {
-        const attendance = applyLocalPunch(employee, "out", reason);
+        const attendance = applyLocalPunch(employee, "out", reason, time);
         if (attendance) {
           setRows((prev) => prev.map((row) => (String(row.employee_id ?? row.employeeId) === String(employee.id) ? attendance : row)));
           setCheckoutEmployeeId(null);
@@ -240,7 +273,8 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           return;
         }
       }
-      setCheckoutError(punchPolicyMessage(code, lang === "ar", "out") || error?.response?.data?.error || (lang === "ar" ? "تعذر إغلاق الحضور." : "Could not close attendance."));
+      const payload = error?.response?.data || {};
+      setCheckoutError(punchPolicyMessage(code, lang === "ar", "out") || (lang === "ar" ? payload.reason : payload.reasonEn) || payload.error || (lang === "ar" ? "تعذر إغلاق الحضور." : "Could not close attendance."));
     } finally {
       setManualLoadingId(null);
     }
@@ -271,6 +305,14 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   };
 
   const toggleExcuse = async (r) => {
+    const employeeId = String(r.employee_id ?? r.employeeId);
+    setRowError((prev) => ({ ...prev, [employeeId]: "" }));
+    const local = () => {
+      const res = excuseAttendanceLocal(company.id, employeeId, String(r.date || toRiyadhDateKey()).slice(0, 10), { excused: !r.excused, by: currentUser?.name, byId: currentUser?.id });
+      if (!res.ok) { setRowError((prev) => ({ ...prev, [employeeId]: lang === "ar" ? res.reason : res.reasonEn })); return; }
+      setRows((prev) => prev.map((x) => (String(x.employee_id ?? x.employeeId) === employeeId ? { ...x, ...res.attendance } : x)));
+    };
+    if (isLocalPreviewActive() || r.localPreview) { local(); return; }
     try {
       const res = await base44.functions.invoke("supabaseAttendance", {
         action: "excuseAttendance",
@@ -282,31 +324,19 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
       });
       const updated = res?.data?.attendance;
       if (updated) setRows((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
-    } catch {
-      // best-effort
+    } catch (error) {
+      if (isServiceOutage(error)) { local(); return; }
+      const payload = error?.response?.data || {};
+      setRowError((prev) => ({ ...prev, [employeeId]: (lang === "ar" ? payload.reason : payload.reasonEn) || payload.error || (lang === "ar" ? "تعذّر حفظ الاعتماد." : "Could not save the approval.") }));
     }
   };
 
   const byEmployee = Object.fromEntries(rows.map((r) => [String(r.employee_id ?? r.employeeId), r]));
   // «راحة مرنة ببصمة» per person: the punched or assumed break, and what ran past its minutes.
-  const breakDayOf = (employee) => {
-    const r = byEmployee[String(employee.id)];
-    return resolveDayBreaks({
-      shift: getTodaysShift(data, employee),
-      breaks: r?.breaks,
-      checkIn: r?.check_in_at,
-      checkOut: r?.check_out_at,
-      now: new Date(),
-      onDate: toRiyadhDateKey(),
-      company: data,
-      employee,
-    });
-  };
+  const breakDayOf = (employee) => queueBreakDayOf(employee, byEmployee[String(employee.id)], data);
   /** A closed over-long break with no decision yet — late return, not a legal breach. */
-  const lateReturnOpen = (employee) => {
-    const day = breakDayOf(employee);
-    return !!day.flex && !day.open && day.overMinutes > 0 && !day.punched.some((row) => row.review);
-  };
+  const lateReturnOpen = (employee) => isLateReturnOpen(employee, byEmployee[String(employee.id)], data);
+  const rowErrorFor = (id) => rowError[id] || "";
   const [reviewError, setReviewError] = useState("");
   const decideLateReturn = async (employee, decision) => {
     setReviewError("");
@@ -330,18 +360,12 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   const statusFor = (employee) => getAttendanceStatus(employee, byEmployee[String(employee.id)], data);
   // «بلا انصراف» only once the shift has actually ended (+1 h) — an open record mid-shift is normal.
   const isPastCheckoutMissing = (r, employee) => {
-    if (!(r?.check_in_at && !r?.check_out_at && r?.status !== "absent")) return false;
-    const person = employee || employees.find((e) => String(e.id) === String(r.employee_id ?? r.employeeId));
-    return shiftWindowElapsed(getTodaysShift(data, person));
+    const person = employee || employees.find((e) => String(e.id) === String(r?.employee_id ?? r?.employeeId));
+    return pastCheckoutMissing(person, r, data);
   };
-  const needsDecision = (employee) => {
-    const row = byEmployee[String(employee.id)];
-    const status = statusFor(employee);
-    const askedManual = (employee.otherRequests || []).some((item) => item.type === "manual_punch" && (item.status || "pending") === "pending");
-    // Leaving inside her Art. 154 nursing minutes at the end of the shift is not an early checkout.
-    const earlyOk = row?.early_checkout && isExcusedEarlyCheckout(employee, String(row.date || "").slice(0, 10) || toRiyadhDateKey(), row.check_out_at, getTodaysShift(data, employee)?.end);
-    return row?.location_status === "outside" || isPastCheckoutMissing(row, employee) || (!!row?.early_checkout && !earlyOk) || askedManual || lateReturnOpen(employee);
-  };
+  // One reading (lib/attendanceQueue) for the queue, the team list and the section badge.
+  const facesOf = (employee) => queueFacesOf(employee, byEmployee[String(employee.id)], data);
+  const needsDecision = (employee) => facesOf(employee).length > 0;
   const todayAtt = deriveTeamAttendanceToday(employees, rows, data);
   const queue = employees.filter(needsDecision);
   const attentionCount = queue.length;
@@ -350,7 +374,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     if (status !== "absent") return false;
     return !shiftWindowElapsed(getTodaysShift(data, employee));
   }).length;
-  const absentClosed = Math.max(0, todayAtt.absent - notYet);
+
   const ar = lang === "ar";
   /** Team rows speak the employee lane's words and colours (dutyStatus). */
   const TEAM_STATUS = { present: "present", late: "late", absent: "absent", on_leave: "leave", not_scheduled: "unscheduled" };
@@ -364,16 +388,13 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   const teamShown = teamFace === "all" ? employees : employees.filter((employee) => teamFaceOf(employee) === teamFace);
   const teamCount = (id) => employees.filter((employee) => teamFaceOf(employee) === id).length;
   // «بصمات اليوم بلا حكم» by the link that broke: range, missing checkout, early out, manual ask.
+  // A row with several faces is listed under each matching pill; shown as the pill picked, else its first face.
   const queueFaceOf = (employee) => {
-    const r = byEmployee[String(employee.id)];
-    if ((employee.otherRequests || []).some((item) => item.type === "manual_punch" && (item.status || "pending") === "pending")) return "manual";
-    if (r?.location_status === "outside") return "outside";
-    if (isPastCheckoutMissing(r, employee)) return "missing";
-    if (lateReturnOpen(employee) && !(r?.early_checkout)) return "late_return";
-    return "early";
+    const faces = facesOf(employee);
+    return queueFace !== "all" && faces.includes(queueFace) ? queueFace : (faces[0] || "early");
   };
-  const queueShown = queueFace === "all" ? queue : queue.filter((employee) => queueFaceOf(employee) === queueFace);
-  const queueCount = (id) => queue.filter((employee) => queueFaceOf(employee) === id).length;
+  const queueShown = queueFace === "all" ? queue : queue.filter((employee) => facesOf(employee).includes(queueFace));
+  const queueCount = (id) => queue.filter((employee) => facesOf(employee).includes(id)).length;
   const panel = { background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", minWidth: 0 };
   const headNote = { fontSize: 12, color: MUTED, lineHeight: 1.65 };
   const pill = (tone) => ({
@@ -427,13 +448,52 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
         {
           key: "absent",
           label: ar ? "غاب" : "Absent",
-          value: formatUiNumber(absentClosed),
+          value: formatUiNumber(teamCount("absent")),
           suffix: ar ? "موظف" : "people",
-          ...(absentClosed ? { tone: "bad", flag: ar ? "غياب دون إجازة" : "Absent, no leave" } : {}),
+          ...(teamCount("absent") ? { tone: "bad", flag: ar ? "غياب دون إجازة" : "Absent, no leave" } : {}),
           hint: ar ? `إجازة ${formatUiNumber(todayAtt.onLeave)}` : `On leave ${formatUiNumber(todayAtt.onLeave)}`,
         },
       ]}
     />
+  );
+
+  /** A closed absence: approve the day present (with the real time and a reason) or record that the company kept them (Model Art. 46). */
+  const absentActions = (e) => (
+    <span style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "flex-start" }}>
+      {preventedToday(e) ? (
+        <span data-prevented="1" style={doneTag("mute")}>{ar ? "منعته المنشأة — أجره مستحق (النموذج الموحد م46)" : "Kept from work by the company — paid (Model Art. 46)"}</span>
+      ) : preventId === e.id ? (
+        <div style={{ minWidth: 200, padding: 8, border: `1px solid ${BORDER}`, background: SURFACE }}>
+          <input
+            value={preventReason}
+            onChange={(ev) => { setPreventReason(ev.target.value); setPreventError(""); }}
+            placeholder={ar ? "السبب الراجع إلى المنشأة (تعطل، إغلاق، لا عمل…)" : "Company-side cause (outage, closure, no work…)"}
+            style={{ ...field, height: 30, fontSize: 11, marginBottom: 6 }}
+            autoFocus
+          />
+          {preventError && <p style={{ fontSize: 10, color: DANGER, margin: "0 0 6px" }}>{preventError}</p>}
+          <div style={{ display: "flex", gap: 4 }}>
+            <button type="button" onClick={() => recordPrevented(e)} style={miniBtn("primary")}>{ar ? "سجّل" : "Record"}</button>
+            <button type="button" onClick={() => { setPreventId(null); setPreventReason(""); setPreventError(""); }} style={miniBtn()}>{ar ? "إلغاء" : "Cancel"}</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" data-prevent-btn="1" onClick={() => { setPreventId(e.id); setPreventReason(""); setPreventError(""); }} style={actBtn("ghost")}>
+          {ar ? "منعته المنشأة" : "Prevented by us"}
+        </button>
+      )}
+      {preventedToday(e) ? null : (
+        <CheckInForm
+          ar={ar}
+          state={checkInFor && checkInFor.id === e.id ? checkInFor : null}
+          busy={manualLoadingId === e.id}
+          onOpen={() => setCheckInFor({ id: e.id, time: getTodaysShift(data, e)?.start || riyadhNowClock(), reason: "" })}
+          onChange={(patch) => setCheckInFor((cur) => ({ ...cur, ...patch }))}
+          onCancel={() => setCheckInFor(null)}
+          onConfirm={() => manualCheckIn(e)}
+        />
+      )}
+    </span>
   );
 
   const teamList = !loading && employees.length > 0 ? (
@@ -498,6 +558,12 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                   {ar ? "افتح ›" : "Open ›"}
                 </Link>
               ) : <span />}
+              {isManager && !self && status === "absent" && !notYetRow && !decide ? (
+                <div data-absent-actions="1" style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 6 }}>
+                  {absentActions(employee)}
+                  {rowErrorFor(employee.id) ? <span role="alert" style={{ fontSize: 11.5, color: DANGER, lineHeight: 1.6 }}>{rowErrorFor(employee.id)}</span> : null}
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -575,7 +641,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                     : "present";
           const flag = FLAG[flagKey] || FLAG.present;
           const punchTime = r?.check_in_at ? formatTime(r.check_in_at, format, "en-GB") : "—";
-          const asked = (e.otherRequests || []).find((item) => item.type === "manual_punch" && (item.status || "pending") === "pending");
+          const asked = pendingManualPunch(e);
           const reason = asked
             ? asked.reason
             : r?.location_status === "outside"
@@ -598,7 +664,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           const attention = needsDecision(e);
           // A late return names itself — it is not a broken link nor a legal breach.
           const broke = attention && flagKey !== "late_return" ? brokeAtLabel(lang === "ar", rings) : "";
-          const kind = lateReturn && flagKey === "late_return" ? "late_return" : queueFaceOf(e);
+          const kind = queueFaceOf(e);
           const titleText = kind === "late_return"
             ? (ar ? QUEUE_TITLE.late_return.ar : QUEUE_TITLE.late_return.en)
             : (QUEUE_TITLE[kind] ? (ar ? QUEUE_TITLE[kind].ar : QUEUE_TITLE[kind].en) : (broke || (ar ? flag.ar : flag.en)));
@@ -625,7 +691,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
             <div key={e.id} className="nv-att-decision-row" data-queue-row={kind}>
               <span data-queue-main="1" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
                 <EmployeeIdentityRow employee={e} employeeId={e.id} name={e.name} showId={false} compact />
-                <span dir="ltr" style={{ ...MONO_INK, fontSize: 11.5, color: MUTED }}>{punchTime}</span>
+                {r?.check_in_at ? <span dir="ltr" style={{ ...MONO_INK, fontSize: 11.5, color: MUTED }}>{punchTime}</span> : null}
                 <span style={{ flex: "1 1 auto" }} />
                 <span data-queue-chip={kind} style={{ ...pill(chipTone), height: 22, borderRadius: 999 }}>{chipText}</span>
               </span>
@@ -667,7 +733,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                   <Link to={fileDutyHref(e.id)} style={openLinkStyle()}>{lang === "ar" ? "ملف الدوام ›" : "Duty file ›"}</Link>
                   <Link to={rosterPersonHref(e.id)} style={openLinkStyle()}>{lang === "ar" ? "في جدول الدوام ›" : "On the roster ›"}</Link>
                 </span>
-                {r?.excused ? <span style={{ fontSize: 10, color: MUTED }}>{t("excused")}</span> : null}
+                {rowErrorFor(e.id) ? <span role="alert" data-row-error="1" style={{ fontSize: 11.5, color: DANGER, lineHeight: 1.6 }}>{rowErrorFor(e.id)}</span> : null}
                 {r?.location_status === "outside" ? (
                   <button type="button" onClick={() => setMapRow(r)} style={{ ...miniBtn(), alignSelf: "start" }}>
                     <MapPin style={{ width: 11, height: 11, display: "inline", verticalAlign: "middle", marginInlineEnd: 4 }} />
@@ -712,6 +778,18 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 {isManager && isPastCheckoutMissing(r, e) && (
                   checkoutEmployeeId === e.id ? (
                     <div style={{ minWidth: 180, padding: 8, border: `1px solid ${BORDER}`, background: SURFACE }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED, marginBottom: 6 }}>
+                        {lang === "ar" ? "وقت الانصراف" : "Checkout time"}
+                        <input
+                          type="time"
+                          data-checkout-time="1"
+                          value={checkoutTime}
+                          max={riyadhNowClock()}
+                          onChange={(ev) => { setCheckoutTime(ev.target.value); setCheckoutError(""); }}
+                          style={{ ...field, height: 30, fontSize: 11, width: 110, fontFamily: "'IBM Plex Mono', monospace" }}
+                          dir="ltr"
+                        />
+                      </label>
                       <input
                         value={checkoutReason}
                         onChange={(ev) => { setCheckoutReason(ev.target.value); setCheckoutError(""); }}
@@ -731,27 +809,42 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                       </div>
                     </div>
                   ) : (
-                    <button type="button" onClick={() => { setCheckoutEmployeeId(e.id); setCheckoutReason(""); setCheckoutError(""); }} style={actBtn("navy")}>
+                    <button type="button" onClick={() => { setCheckoutEmployeeId(e.id); setCheckoutReason(""); setCheckoutTime(defaultManualCheckoutClock(getTodaysShift(data, e))); setCheckoutError(""); }} style={actBtn("navy")}>
                       {lang === "ar" ? "ثبّت الانصراف" : "Set checkout"}
                     </button>
                   )
                 )}
-                {(r?.manual_override || r?.location_status === "manual") ? (
+                {kind === "manual" && asked && isManager && String(e.id) !== String(currentUser?.id) ? (
+                  <PunchAskActions
+                    ar={ar}
+                    asked={asked}
+                    state={punchAsk && punchAsk.id === asked.id ? punchAsk : null}
+                    onOpen={(mode) => setPunchAsk({ id: asked.id, mode, time: parsePunchClock(asked.time) || clockFromPunchReason(asked.reason) || "", note: "" })}
+                    onChange={(patch) => setPunchAsk((cur) => ({ ...cur, ...patch }))}
+                    onCancel={() => setPunchAsk(null)}
+                    onConfirm={() => decidePunchAsk(e, asked)}
+                  />
+                ) : (r?.manual_override || r?.location_status === "manual") ? (
                   <span style={doneTag("ok")}>
                     {lang === "ar" ? "اعتُمد حضوراً" : "Approved present"} · {r.override_by || r.excused_by_name || "—"}
                   </span>
-                ) : isManager && !r?.check_in_at && status !== "on_leave" && status !== "not_scheduled" ? (
-                  <button type="button" onClick={() => manualCheckIn(e)} disabled={manualLoadingId === e.id} style={{ ...actBtn("approve"), opacity: manualLoadingId === e.id ? 0.6 : 1 }}>
-                    {manualLoadingId === e.id ? <Loader2 style={{ width: 11, height: 11, display: "inline" }} /> : null}
-                    {lang === "ar" ? "اعتمد حضوراً" : "Approve present"}
-                  </button>
+                ) : isManager && !r?.check_in_at && status !== "on_leave" && status !== "not_scheduled" && String(e.id) !== String(currentUser?.id) ? (
+                  <CheckInForm
+                    ar={ar}
+                    state={checkInFor && checkInFor.id === e.id ? checkInFor : null}
+                    busy={manualLoadingId === e.id}
+                    onOpen={() => setCheckInFor({ id: e.id, time: getTodaysShift(data, e)?.start && getTodaysShift(data, e).start < riyadhNowClock() ? getTodaysShift(data, e).start : riyadhNowClock(), reason: "" })}
+                    onChange={(patch) => setCheckInFor((cur) => ({ ...cur, ...patch }))}
+                    onCancel={() => setCheckInFor(null)}
+                    onConfirm={() => manualCheckIn(e)}
+                  />
                 ) : isManager && (status === "late" || r?.location_status === "outside") && r?.id && !r?.excused ? (
                   <button type="button" onClick={() => toggleExcuse(r)} style={actBtn("approve")}>
                     {lang === "ar" ? "اعتمد حضوراً" : "Approve present"}
                   </button>
                 ) : r?.excused ? (
                   <span style={doneTag("ok")}>
-                    {lang === "ar" ? "اعتُمد حضوراً" : "Approved present"}
+                    {lang === "ar" ? "اعتُمد حضوراً" : "Approved present"}{r.excused_by_name ? ` · ${r.excused_by_name}` : ""}
                   </span>
                 ) : null}
               </div>
@@ -766,16 +859,40 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     </div>
   );
 
-  const audit = rows
-    .filter((row) => row.excused || row.manual_override || row.override_by || row.excused_by_name)
-    .map((row) => ({
-      id: row.id,
-      text: lang === "ar"
-        ? `${row.override_by || row.excused_by_name || currentUser?.name || "المدير"} ${row.excused ? "أعفى" : "اعتمد يدوياً"} ${(employees.find((emp) => String(emp.id) === String(row.employee_id ?? row.employeeId))?.name) || ""}`
-        : `${row.override_by || row.excused_by_name || currentUser?.name || "Manager"} ${row.excused ? "excused" : "manually approved"} ${(employees.find((emp) => String(emp.id) === String(row.employee_id ?? row.employeeId))?.name) || ""}`,
-      time: row.check_in_at ? formatTime(row.check_in_at, format, "en-GB") : "—",
-      dot: row.excused ? "var(--nv-warn-fill)" : "var(--nv-ok-ink)",
-    }));
+  // «سجل التدقيق» — every decision today, in the name of whoever made it: manual check-in / checkout,
+  // approvals of a late or out-of-range punch, late-return reviews, and decided manual-punch requests.
+  const nameOf = (id) => employees.find((emp) => String(emp.id) === String(id))?.name || "";
+  const hm = (iso) => (iso ? formatTime(iso, format, "en-GB") : "—");
+  const today = toRiyadhDateKey();
+  const audit = [];
+  for (const row of rows) {
+    const who = nameOf(row.employee_id ?? row.employeeId);
+    const note = String(row.excused_note || "").trim();
+    if (row.manual_override && row.override_by) {
+      if (row.check_out_at && /manual/.test(String(row.location_status || ""))) {
+        audit.push({ id: `${row.id}-out`, text: ar ? `${row.override_by} سجّل حضور ${who} يدوياً${note ? ` — ${note}` : ""}` : `${row.override_by} recorded ${who}'s attendance by hand${note ? ` — ${note}` : ""}`, time: `${hm(row.check_in_at)}–${hm(row.check_out_at)}`, dot: "var(--nv-ok-ink)" });
+      } else {
+        audit.push({ id: `${row.id}-in`, text: ar ? `${row.override_by} اعتمد حضور ${who}${note ? ` — ${note}` : ""}` : `${row.override_by} approved ${who} present${note ? ` — ${note}` : ""}`, time: hm(row.check_in_at), dot: "var(--nv-ok-ink)" });
+      }
+    }
+    if (row.excused) {
+      const by = row.excused_by_name || (ar ? "المدير" : "Manager");
+      audit.push({ id: `${row.id}-ex`, text: ar ? `${by} اعتمد حضور ${who} رغم التأخر أو النطاق` : `${by} approved ${who} despite lateness or range`, time: hm(row.excused_at || row.check_in_at), dot: "var(--nv-warn-fill)" });
+    }
+    for (const [i, brk] of (Array.isArray(row.breaks) ? row.breaks : []).entries()) {
+      if (!brk?.review) continue;
+      const by = brk.review.by || (ar ? "المدير" : "Manager");
+      audit.push({ id: `${row.id}-brk-${i}`, text: brk.review.decision === "excused" ? (ar ? `${by} عذر ${who} في إطالة الراحة` : `${by} excused ${who}'s long break`) : (ar ? `${by} سجّل عودة ${who} من الراحة متأخرة` : `${by} recorded ${who}'s late return`), time: hm(brk.review.at), dot: "var(--nv-warn-fill)" });
+    }
+  }
+  for (const emp of employees) {
+    for (const req of emp.otherRequests || []) {
+      if (req.type !== "manual_punch" && req.type !== "checkout_fix") continue;
+      if (!["approved", "rejected"].includes(req.status) || String(req.reviewedAt || "").slice(0, 10) !== today) continue;
+      if (req.status === "approved") continue; // the approved one is already the row's manual stamp above
+      audit.push({ id: `req-${req.id}`, text: ar ? `${req.reviewedBy || "المدير"} رفض طلب بصمة ${emp.name}${req.rejectReason ? ` — ${req.rejectReason}` : ""}` : `${req.reviewedBy || "Manager"} refused ${emp.name}'s punch request${req.rejectReason ? ` — ${req.rejectReason}` : ""}`, time: hm(req.reviewedAt), dot: "var(--nv-bad-ink)" });
+    }
+  }
   // Reference, not a task — folded under the work.
   const auditPanel = !loading ? (
     <section className="nv-att-card" data-audit style={{ ...panel, overflow: "hidden" }}>
@@ -869,5 +986,85 @@ export function BreakLine({ ar, day }) {
         </span>
       ) : null}
     </span>
+  );
+}
+
+const formBox = { minWidth: 220, padding: 8, border: `1px solid ${BORDER}`, background: SURFACE, borderRadius: 8, display: "flex", flexDirection: "column", gap: 6 };
+const timeField = { ...field, height: 30, fontSize: 11, width: 110, fontFamily: "'IBM Plex Mono', monospace" };
+
+/** «اعتمد حضوراً» for someone with no punch — the time they arrived (never after now) and why. */
+function CheckInForm({ ar, state, busy, onOpen, onChange, onCancel, onConfirm }) {
+  if (!state) {
+    return (
+      <button type="button" data-checkin-open="1" onClick={onOpen} style={actBtn("approve")}>
+        {ar ? "اعتمد حضوراً" : "Approve present"}
+      </button>
+    );
+  }
+  return (
+    <div data-checkin-form="1" style={formBox}>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
+        {ar ? "وقت الحضور" : "Check-in time"}
+        <input type="time" data-checkin-time="1" value={state.time || ""} max={riyadhNowClock()} onChange={(ev) => onChange({ time: ev.target.value })} style={timeField} dir="ltr" />
+      </label>
+      <input
+        value={state.reason || ""}
+        data-checkin-reason="1"
+        onChange={(ev) => onChange({ reason: ev.target.value })}
+        placeholder={ar ? "السبب (بصمة معطلة، مهمة خارجية…)" : "Reason (device down, field errand…)"}
+        style={{ ...field, height: 30, fontSize: 11 }}
+        autoFocus
+      />
+      <div style={{ display: "flex", gap: 4 }}>
+        <button type="button" data-checkin-save="1" onClick={onConfirm} disabled={busy} style={miniBtn("primary")}>
+          {busy ? <Loader2 style={{ width: 10, height: 10, display: "inline", animation: "spin 1s linear infinite" }} /> : null}
+          {ar ? "اعتمد" : "Approve"}
+        </button>
+        <button type="button" onClick={onCancel} style={miniBtn()}>{ar ? "إلغاء" : "Cancel"}</button>
+      </div>
+    </div>
+  );
+}
+
+/** A pending «طلب بصمة يدوية»: approve at the time asked (editable) or refuse with a written reason. */
+function PunchAskActions({ ar, asked, state, onOpen, onChange, onCancel, onConfirm }) {
+  const askedClock = parsePunchClock(asked?.time) || clockFromPunchReason(asked?.reason) || "";
+  const out = asked?.type === "checkout_fix";
+  if (!state) {
+    return (
+      <span data-punch-ask-actions="1" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <button type="button" data-punch-ask="approve" onClick={() => onOpen("approve")} style={actBtn("approve")}>
+          {ar ? (askedClock ? `اعتمد ${out ? "الانصراف" : "الحضور"} ${askedClock}` : "اعتمد") : (askedClock ? `Approve ${askedClock}` : "Approve")}
+        </button>
+        <button type="button" data-punch-ask="reject" onClick={() => onOpen("reject")} style={actBtn("reject")}>{ar ? "ارفض" : "Refuse"}</button>
+      </span>
+    );
+  }
+  const rejecting = state.mode === "reject";
+  return (
+    <div data-punch-ask-form={state.mode} style={formBox}>
+      {rejecting ? (
+        <input
+          value={state.note || ""}
+          data-punch-ask-note="1"
+          onChange={(ev) => onChange({ note: ev.target.value })}
+          placeholder={ar ? "سبب الرفض — يصل للموظف" : "Why — the worker receives it"}
+          style={{ ...field, height: 30, fontSize: 11 }}
+          autoFocus
+        />
+      ) : (
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: MUTED }}>
+          {out ? (ar ? "وقت الانصراف" : "Checkout time") : (ar ? "وقت الحضور" : "Check-in time")}
+          <input type="time" data-punch-ask-time="1" value={state.time || ""} max={riyadhNowClock()} onChange={(ev) => onChange({ time: ev.target.value })} style={timeField} dir="ltr" />
+          {askedClock && state.time && state.time !== askedClock ? <span style={{ fontSize: 10.5 }}>{ar ? `طلب ${askedClock}` : `asked ${askedClock}`}</span> : null}
+        </label>
+      )}
+      <div style={{ display: "flex", gap: 4 }}>
+        <button type="button" data-punch-ask-save="1" onClick={onConfirm} style={miniBtn(rejecting ? "ghost" : "primary")}>
+          {rejecting ? (ar ? "أرسل الرفض" : "Send refusal") : (ar ? "اعتمد" : "Approve")}
+        </button>
+        <button type="button" onClick={onCancel} style={miniBtn()}>{ar ? "إلغاء" : "Cancel"}</button>
+      </div>
+    </div>
   );
 }

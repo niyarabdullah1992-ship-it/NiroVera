@@ -31,7 +31,7 @@ export function defaultFlexBreak(shift, onDate) {
 
 /**
  * «الراحة» for one shift type in «أنواع الورديات»: راحة ثابتة · راحة مرنة ببصمة · عمل متواصل (المادة 103).
- * Continuous is the hours policy's Art. 103 flag — shown, never stored here. The flex fields are
+ * Continuous is the hours policy's Art. 103 flag (ContinuousWork103Setting above the shift types) — shown, never stored here. The flex fields are
  * validated with named reasons (checkShiftBreakModeGate, the same gate the server twin runs).
  */
 export default function ShiftBreakMode({ ar = true, shift, canEdit = false, continuous103 = false, onDate, onChange }) {
@@ -48,8 +48,8 @@ export default function ShiftBreakMode({ ar = true, shift, canEdit = false, cont
     { id: "continuous", ar: `عمل متواصل (${art103})`, en: "Continuous work (Art. 103)" },
   ];
   const lockedReason = continuous103
-    ? (ar ? `عمل متواصل بقرار الوزير — من سياسة الساعات (${art103}).` : "Continuous work by the Minister's decision — from the hours policy (Art. 103).")
-    : (ar ? `يتطلب قرار الوزير — فعّله من سياسة الساعات (${art103}).` : "Needs the Minister's decision — turn it on in the hours policy (Art. 103).");
+    ? (ar ? `عمل متواصل بقرار الوزير — مفعّل في «لدي قرار الوزير للعمل المتواصل» أعلى أنواع الورديات (${art103}).` : "Continuous work by the Minister's decision — set in «We hold the Minister's decision» above the shift types (Art. 103).")
+    : (ar ? `يتطلب قرار الوزير — فعّله من «لدي قرار الوزير للعمل المتواصل» أعلى أنواع الورديات (${art103}).` : "Needs the Minister's decision — turn it on in «We hold the Minister's decision» above the shift types (Art. 103).");
 
   if (!canEdit) {
     const line = mode === "continuous"

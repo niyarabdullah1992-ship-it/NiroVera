@@ -1,3 +1,4 @@
+import { ruleValue } from "@/lib/laborRules";
 import React, { forwardRef, useMemo, useState } from "react";
 import { openLinkStyle } from "@/components/schedules/dutyLinks";
 import { Link } from "react-router-dom";
@@ -256,8 +257,8 @@ export function useComplianceSummary({ gates, company, onDate, weekStart, employ
         : "Labour Law — hours and rest",
       short: ar ? "الساعات والراحة والعطل" : "Hours, rest and holidays",
       scope: ar
-        ? "48 ساعة أسبوعياً · راحة نصف ساعة كل 5 ساعات · الجمعة · العطل الرسمية · رمضان · الأحداث"
-        : "48h a week · half-hour rest every 5h · Friday · official holidays · Ramadan · juveniles",
+        ? `${ruleValue("hours.week.ordinaryMaxHours")} ساعة أسبوعياً · راحة ${ruleValue("hours.rest.duringShiftMinutes")} دقيقة كل ${ruleValue("hours.rest.maxConsecutiveHours")} ساعات · الراحة الأسبوعية · العطل الرسمية · رمضان · الأحداث`
+        : `${ruleValue("hours.week.ordinaryMaxHours")}h a week · ${ruleValue("hours.rest.duringShiftMinutes")}-min rest every ${ruleValue("hours.rest.maxConsecutiveHours")}h · weekly rest · official holidays · Ramadan · juveniles`,
     },
   ].map((card) => ({ ...card, ...countsFor(card.key) }));
 
@@ -420,9 +421,11 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
               {ar ? "التزامات المنشأة للعمل الليلي" : "Employer duties for night work"}
             </span>
             <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>
-              {ar
-                ? (obligationsOpen ? `${obligationsOpen} ناقص من ${obligationRows.length}` : `${obligationRows.length} من ${obligationRows.length} بلا نقص`)
-                : (obligationsOpen ? `${obligationsOpen} missing of ${obligationRows.length}` : `${obligationRows.length} of ${obligationRows.length} with no gap`)}
+              {obligationRows.every((item) => item.status === "void")
+                ? (ar ? "لا عمل ليلي هذا الأسبوع — لا تسري" : "No night work this week — not in force")
+                : ar
+                  ? (obligationsOpen ? <><span dir="ltr" style={mono}>{obligationsOpen}</span> ناقص من <span dir="ltr" style={mono}>{obligationRows.length}</span></> : <><span dir="ltr" style={mono}>{obligationRows.length}</span> من <span dir="ltr" style={mono}>{obligationRows.length}</span> بلا نقص</>)
+                  : (obligationsOpen ? `${obligationsOpen} missing of ${obligationRows.length}` : `${obligationRows.length} of ${obligationRows.length} with no gap`)}
             </span>
           </div>
           {obligationRows.map((item) => <CheckRow key={item.key} item={item} ar={ar} prove={prove} />)}

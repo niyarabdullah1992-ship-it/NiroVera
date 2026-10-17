@@ -3,9 +3,9 @@
  * Stores rows on company.personalAttendance — same shape the UI already reads.
  */
 import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
-import { attendanceOnDate, checkPunchRecordGate, toCloudAttendanceRow as punchCloudRow } from "@/lib/attendancePunch";
+import { attendanceOnDate, checkPunchRecordGate, isEarlyCheckoutAt, toCloudAttendanceRow as punchCloudRow } from "@/lib/attendancePunch";
 import { updateCompany, getCompanyData, closeAttendanceDay } from "@/lib/store";
-import { getTodaysShift, lateMinutesFromScheduledStart } from "@/lib/attendanceDerivations";
+import { checkLateCheckInGate, dutyDayOf, getShiftOnDate, getTodaysShift, lateMinutesFromScheduledStart, riyadhMinutesOf } from "@/lib/attendanceDerivations";
 import { nursingHourOn } from "@/lib/dutyRequests";
 import { checkFlexBreakPunchGate } from "@/lib/shiftDerivations";
 import { closeDayBreaks } from "@/lib/actualDuty";
@@ -62,7 +62,14 @@ function toCloudAttendanceRow(row) {
     location_status: row.locationStatus || row.location_status || "disabled",
     distance_meters: row.distanceMeters ?? row.distance_meters ?? null,
     excused: !!row.excused,
+    excused_by_name: row.excusedByName || row.excused_by_name || "",
+    excused_note: row.excusedNote || row.excused_note || "",
+    excused_at: row.excusedAt || row.excused_at || null,
     early_checkout: !!row.earlyCheckout || !!row.early_checkout,
+    // Manager decisions travel with the row so «سجل التدقيق» and the queue read them.
+    manual_override: !!(row.manualOverride ?? row.manual_override),
+    override_by: row.overrideBy || row.override_by || "",
+    ...(row.localPreview ? { localPreview: true } : {}),
     ...(Array.isArray(row.breaks) ? { breaks: row.breaks } : {}),
   };
 }
@@ -150,8 +157,15 @@ export function mergeAttendanceRangeRows(cloudRows = [], localRows = []) {
   return Array.from(byKey.values());
 }
 
+/** The duty day's date — today, or yesterday while its overnight row is still open (dutyDayOf). */
+function dutyDateFor(companyId, employeeId) {
+  const data = getCompanyData(companyId);
+  const employee = (data?.employees || []).find((row) => String(row.id) === String(employeeId));
+  return employee ? dutyDayOf(data, employee).dateKey : todayKey();
+}
+
 export function getLocalTodayAttendance(companyId, employeeId) {
-  const date = todayKey();
+  const date = dutyDateFor(companyId, employeeId);
   const row = (getCompanyData(companyId)?.personalAttendance || []).find(
     (r) => String(r.employeeId ?? r.employee_id) === String(employeeId) && (String(r.date) === date || String(r.dateKey) === date),
   );
@@ -182,7 +196,10 @@ export function localCheckIn(companyId, { employeeId, employeeName, stationId })
     requireTime: false,
   });
   if (!already.ok && already.error === "ALREADY_CHECKED_IN") throwGate(already);
-  const shift = employee ? getTodaysShift(data, employee) : null;
+  // Check-in is always today's own shift (never a carried overnight one), and closes after it ends.
+  const shift = employee ? getShiftOnDate(data, employee, date) : null;
+  const lateGate = checkLateCheckInGate(shift, riyadhMinutesOf(new Date()));
+  if (!lateGate.ok) throwGate(lateGate);
   const now = new Date();
   const rawLate = shift?.start
     ? lateMinutesFromScheduledStart(now.getHours() * 60 + now.getMinutes(), shift.start, 0)
@@ -221,7 +238,7 @@ export function localCheckIn(companyId, { employeeId, employeeName, stationId })
 }
 
 export function localCheckOut(companyId, { employeeId }) {
-  const date = todayKey();
+  const date = dutyDateFor(companyId, employeeId);
   const data = getCompanyData(companyId);
   const employee = (data?.employees || []).find((row) => String(row.id) === String(employeeId));
   const existing = attendanceOnDate(data?.personalAttendance, employeeId, date);
@@ -249,6 +266,7 @@ export function localCheckOut(companyId, { employeeId }) {
       ...list[idx],
       checkOutAt,
       status: list[idx].status || "present",
+      earlyCheckout: isEarlyCheckoutAt(shift, checkOutAt, nursingHourOn(employee, date)?.endMinutes || 0),
       ...(Array.isArray(breaks) ? { breaks } : {}),
     };
     d.personalAttendance = list;
@@ -276,7 +294,7 @@ function dayPrayers(data, shift, date) {
  * open one with { end } (a short break, when the shift allows ending early, carries `short: true`).
  */
 export function localBreakPunch(companyId, { employeeId, action }) {
-  const date = todayKey();
+  const date = dutyDateFor(companyId, employeeId);
   const data = getCompanyData(companyId);
   const employee = (data?.employees || []).find((row) => String(row.id) === String(employeeId));
   const existing = attendanceOnDate(data?.personalAttendance, employeeId, date);

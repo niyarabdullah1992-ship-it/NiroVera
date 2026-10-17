@@ -238,6 +238,15 @@ const clockOf = (mins: number) => {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 };
 
+/** Twin of actualDuty.js earlyPunchStart: an early punch counts from the published shift start. */
+export function earlyPunchStart(inM: number | null, shift: any): number | null {
+  if (inM == null || !shift?.start) return inM;
+  const start = punchClockMinutes(shift.start);
+  if (start == null) return inM;
+  const earlyBy = ((start - inM) % 1440 + 1440) % 1440;
+  return earlyBy > 0 && earlyBy <= 720 ? inM + earlyBy : inM;
+}
+
 /**
  * Server twin of src/lib/actualDuty.js deriveActualDuty for the timesheet: rostered shift, rest deducted
  * (Art. 102), overtime per Art. 107 (holiday / unrostered rest day in full; weekly criterion beyond the
@@ -255,7 +264,13 @@ export function deriveActualDutyCore(input: {
     return { ok: false, open: true, reason: "لا انصراف مسجّل بعد — لا تُحسب ساعات.", reasonEn: "No checkout yet — no hours are computed." } as any;
   }
   const outM = outRaw <= inM ? outRaw + 1440 : outRaw;
+  // An early punch is not work: time starts at the published shift start (the attendance policy —
+  // «البصمة المبكرة لا تُحتسب ساعات عمل»). Early = up to 12 h before the start, so a punch after
+  // midnight on a shift that began the evening before still reads as late, not as early.
+  // Presence (Art. 101 stay cap, consecutive hours) stays the real punch; worked time is read from effIn.
+  const effIn = earlyPunchStart(inM, shift);
   const presence = outM - inM;
+  const workSpan = Math.max(0, outM - effIn);
   const consecMax = ruleValue("hours.rest.maxConsecutiveHours", onDate) || 5;
   // Twin of the client: a flex day deducts its punched (or assumed) breaks; Art. 101 reads the punched ones.
   const flexDay = shift?.breakMode === "flex"
@@ -268,8 +283,8 @@ export function deriveActualDutyCore(input: {
     : null;
   const rosterRest = shift ? shiftRestMinutes(shift) : null;
   const statutoryRest = ruleValue("hours.rest.duringShiftMinutes", onDate) || 30;
-  const rest = breakMinutes != null ? breakMinutes : (presence > consecMax * 60 ? (rosterRest == null ? statutoryRest : rosterRest) : 0);
-  const worked = Math.max(0, presence - Math.min(rest, presence));
+  const rest = breakMinutes != null ? breakMinutes : (workSpan > consecMax * 60 ? (rosterRest == null ? statutoryRest : rosterRest) : 0);
+  const worked = Math.max(0, workSpan - Math.min(rest, workSpan));
 
   const holiday = isOfficialHolidayDay(onDate, laborCalendar);
   const offDay = !shift && isEmployeeOffDay(onDate, company, employee);
@@ -290,7 +305,7 @@ export function deriveActualDutyCore(input: {
   const shiftEnd = shiftStart == null || shiftEndRaw == null ? null : (shiftEndRaw <= shiftStart ? shiftEndRaw + 1440 : shiftEndRaw);
   // Twin of the client: Art. 154 nursing minutes — not lateness at the start, credited as work, never overtime.
   const nursing = shift && !holiday && !offDay ? nursingHourOn(employee, onDate) : null;
-  const credit = nursingCreditOf(nursing, { inMinutes: inM, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes });
+  const credit = nursingCreditOf(nursing, { inMinutes: effIn, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes });
   const lateMinutes = shiftStart == null ? 0 : Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
 
   const limits = art108Limits(employee, onDate, laborCalendar);
@@ -335,7 +350,7 @@ export function deriveActualDutyCore(input: {
     ok: true,
     open: false,
     presenceMinutes: presence,
-    restMinutes: Math.min(rest, presence),
+    restMinutes: Math.min(rest, workSpan),
     workedMinutes: worked + credit.minutes,
     presenceWorkedMinutes: worked,
     nursingCreditMinutes: credit.minutes,

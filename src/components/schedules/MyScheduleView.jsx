@@ -37,8 +37,8 @@ import { findNextShift, inLabel } from "@/components/schedules/myDutyWeek";
 import { dutyEdge } from "@/components/schedules/dutyStatus";
 import RightHint from "@/components/shared/RightHint";
 import { attRightHint } from "@/lib/rightHints.att.js";
-
-const WEEK_LIMIT = 48;
+import { weekHoursCap } from "@/lib/laborHoursPolicy";
+import { ruleValue } from "@/lib/laborRules";
 
 /** Week nav inside «أيامي»; tiles and the board use the shared duty layout (index.css). */
 const LAYOUT_CSS = `
@@ -126,6 +126,11 @@ export default function MyScheduleView({
   ) : null;
 
   const hours = meId ? employeeWeekHours(schedule, meId, weekStart, me, laborCalendar) : 0;
+  // The week's cap from the rule catalog for this person and these days: 48 (Art. 98), 36 in Ramadan,
+  // the Art. 108 category or a juvenile's — never a literal.
+  const weekCap = weekHoursCap(me, data, weekDays(weekStart).map((day) => day.key), laborCalendar);
+  const WEEK_LIMIT = Number.isFinite(weekCap.hours) ? weekCap.hours : ruleValue("hours.week.ordinaryMaxHours", weekDays(weekStart)[0]?.key);
+  const capArt = weekCap.article ? (ar ? ` (المادة ${weekCap.article})` : ` (Art. ${weekCap.article})`) : "";
   const workDays = dayRows.filter((row) => row.shift).length;
   const restDays = dayRows.filter((row) => !row.shift && !row.leave).length;
   const leaveDays = dayRows.filter((row) => row.leave).length;
@@ -357,7 +362,7 @@ export default function MyScheduleView({
                 <span style={{ fontSize: 11, color: hours > WEEK_LIMIT ? "#F3C9C9" : "#A9CDB8" }}>
                   {hours > WEEK_LIMIT
                     ? (ar ? `فوق حد ${WEEK_LIMIT} ساعة — الإدارة تعالجه قبل النشر` : `Over the ${WEEK_LIMIT} h limit — management fixes it before publish`)
-                    : (ar ? `الحد النظامي ${WEEK_LIMIT} ساعة أسبوعياً` : `Statutory limit ${WEEK_LIMIT} h a week`)}
+                    : (ar ? `الحد النظامي ${WEEK_LIMIT} ساعة أسبوعياً${capArt}` : `Statutory limit ${WEEK_LIMIT} h a week${capArt}`)}
                 </span>
               </div>
               <div style={{ padding: "12px 18px 4px", display: "flex", alignItems: "center", gap: 8 }}>

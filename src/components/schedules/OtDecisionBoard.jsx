@@ -13,6 +13,10 @@ import { SW } from "@/lib/shiftWeek";
 import { viewerEmployeeId } from "@/lib/employeeFileView";
 import { otDayStatus, PLANNED_OT_LABEL_AR, PLANNED_OT_LABEL_EN } from "@/lib/otDecisionPlan";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
+import { otClock } from "@/lib/autoOvertime";
+
+/** Overtime as hours:minutes (0:07), never a decimal hour (0.12). */
+const hm = (hours) => otClock(Math.round((Number(hours) || 0) * 60));
 
 /**
  * Live Art. 107 overtime decision — hours derived from the published rota
@@ -180,8 +184,8 @@ export default function OtDecisionBoard({
           ) : null}
           <span style={{ fontSize: 11, color: SW.muted }}>
             {ar
-              ? `${row.pack.totalHours} ساعة إضافية هذا الأسبوع${row.pack.plannedHours ? ` (منها ${row.pack.plannedHours} مخطط لم يُعمل بعد)` : ""} · السنوي المعتمد ${row.ytd} / ${cap}`
-              : `${row.pack.totalHours} OT hours this week${row.pack.plannedHours ? ` (${row.pack.plannedHours} planned, not worked yet)` : ""} · approved YTD ${row.ytd} / ${cap}`}
+              ? `إضافي هذا الأسبوع ${hm(row.pack.totalHours)}${row.pack.plannedHours ? ` (منها ${hm(row.pack.plannedHours)} مخطط لم يُعمل بعد)` : ""} · السنوي المعتمد ${row.ytd} / ${cap} ساعة`
+              : `Overtime this week ${hm(row.pack.totalHours)}${row.pack.plannedHours ? ` (${hm(row.pack.plannedHours)} planned, not worked yet)` : ""} · approved YTD ${row.ytd} / ${cap} h`}
           </span>
           {row.decided.map((item) => {
             const key = `${row.employee.id}:${item.dateKey}`;
@@ -189,7 +193,7 @@ export default function OtDecisionBoard({
             return (
               <div key={key} style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 0", borderTop: `1px solid ${SW.hair}` }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>{item.dateKey} · {item.overtimeHours} {ar ? "ساعة" : "h"}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{item.dateKey} · <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{hm(item.overtimeHours)}</span></span>
                   <RightHint
                     ar={ar}
                     onDate={item.dateKey}

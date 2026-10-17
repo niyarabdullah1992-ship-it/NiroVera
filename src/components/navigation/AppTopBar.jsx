@@ -93,6 +93,7 @@ export default function AppTopBar({
   onMarkAllNotifs,
   violationCount = 0,
   dutyClock = null,
+  punchQueueBadge,
 }) {
   const { t, lang, setLang } = useI18n();
   const railSide = useRailSide();
@@ -107,7 +108,8 @@ export default function AppTopBar({
   const { data: authData, currentUser: authUser } = useAuth() || {};
   // الحضور والدوام: one strip per lane — personal pages for الموظف, team pages for الإدارة.
   const duty = isDutyPath(pathname);
-  const dutyBadge = duty ? (sectionPages.find((page) => String(page.to || "").split("?")[0] === "/app/attendance")?.badge ?? null) : null;
+  // «حضور الفريق» carries the punch queue's own count (lib/attendanceQueue) — the number the queue shows.
+  const dutyBadge = duty ? (punchQueueBadge !== undefined ? punchQueueBadge : (sectionPages.find((page) => String(page.to || "").split("?")[0] === "/app/attendance")?.badge ?? null)) : null;
   const dutyPages = duty
     ? dutySectionPages({ side: employee ? "employee" : railSide === "manage" ? "manage" : "employee", ar, canPolicy: canCreateTasks(authUser, authData), badge: employee ? null : dutyBadge })
       // Only surfaces this person may open (same allow-list as the suite strip).

@@ -2589,6 +2589,23 @@ assert.doesNotMatch(
   assert.equal(new Set(labels.map((l) => l.split(" ")[1])).size, 5, "each September workday shows a distinct weekday");
 }
 
+{
+  // Friday/Saturday with a rostered shift are history columns; hours are net of rest (Art. 102).
+  const night = { id: "n", label: "ليلي", start: "23:00", end: "07:00", restMinutes: 30 };
+  const hist = buildHistory({
+    schedule: { shiftTypes: [night], assignments: { "2026-10-16": { n: ["omar"] }, "2026-10-17": { n: ["omar"] } } },
+    employees: [{ id: "omar", name: "عمر", stationId: "st1" }],
+    stationId: "st1",
+    fromKey: "2026-10-15",
+    toKey: "2026-10-17",
+    ar: true,
+    today: new Date(2026, 9, 17),
+  });
+  assert.ok(hist.days.some((day) => day.key === "2026-10-17"), "a rostered Saturday is a history column");
+  assert.ok(hist.days.some((day) => day.key === "2026-10-16"), "a rostered Friday is a history column");
+  assert.equal(hist.rows[0].hours, "15", "two 23:00–07:00 shifts with 30 min rest = 7.5 + 7.5 net");
+}
+
 
 {
   const shortSix = { id: "six", label: "ست ساعات", start: "08:00", end: "14:00", restMinutes: 30 };

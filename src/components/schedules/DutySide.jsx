@@ -8,6 +8,7 @@ import { dutyChip, dutyLabel, dutyTone } from "@/components/schedules/dutyStatus
 import { myRosterDayHref, openLinkStyle } from "@/components/schedules/dutyLinks";
 import RightHint from "@/components/shared/RightHint";
 import { attRightHint } from "@/lib/rightHints.att.js";
+import { ruleValue } from "@/lib/laborRules";
 
 /** تنبيهاتي → the day it is about, on جدولي (week opened, day outlined). */
 export function myAlertLinks(ar = true) {
@@ -70,16 +71,21 @@ export function HeatAwarenessCard({ heatCopy, ar = true }) {
 
 /** Out of season: a short, static note on the duty rights the platform already enforces. */
 export function RightsNoteCard({ ar = true }) {
+  // Figures from the rule catalog, never typed by hand.
+  const dayH = ruleValue("hours.shift.ordinaryHours");
+  const weekH = ruleValue("hours.week.ordinaryMaxHours");
+  const consec = ruleValue("hours.rest.maxConsecutiveHours");
+  const restMin = ruleValue("hours.rest.duringShiftMinutes");
   const items = ar
     ? [
-        ["hours", "الحد النظامي 8 ساعات يومياً و48 ساعة أسبوعياً."],
-        ["rest", "راحة لا تقل عن نصف ساعة بعد 5 ساعات عمل متصلة — لا تُحتسب من ساعات العمل."],
+        ["hours", `الحد النظامي ${dayH} ساعات يومياً و${weekH} ساعة أسبوعياً.`],
+        ["rest", `راحة لا تقل عن ${restMin} دقيقة بعد ${consec} ساعات عمل متصلة — لا تُحتسب من ساعات العمل.`],
         ["weeklyRest", "يوم راحة أسبوعي بأجر كامل."],
         ["", "الإجازة المعتمدة لا تُحتسب غياباً ولا تأخيراً."],
       ]
     : [
-        ["hours", "Statutory limit: 8 hours a day and 48 a week."],
-        ["rest", "At least half an hour of rest after 5 straight hours — not counted as work."],
+        ["hours", `Statutory limit: ${dayH} hours a day and ${weekH} a week.`],
+        ["rest", `At least ${restMin} minutes of rest after ${consec} straight hours — not counted as work.`],
         ["weeklyRest", "One paid weekly rest day."],
         ["", "Approved leave never counts as absence or lateness."],
       ];

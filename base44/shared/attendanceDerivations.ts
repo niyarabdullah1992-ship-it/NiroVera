@@ -484,3 +484,83 @@ export function deriveAttStats(rows: RosterRow[], geofenceOn: boolean) {
     shiftHours: SHIFT_HOURS,
   };
 }
+
+/** Twin of src/lib/attendanceDerivations.js — minutes the check-in opens before a published shift (default 60). */
+export const EARLY_CHECKIN_DEFAULT = 60;
+export function earlyCheckInMinutesOf(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : EARLY_CHECKIN_DEFAULT;
+}
+
+/** Twin of checkEarlyCheckInGate: a check-in before the window opens is refused; the reply says when it opens. */
+export function checkEarlyCheckInGate(shift: { start?: string } | null | undefined, nowMin: number | null, windowMin: number = EARLY_CHECKIN_DEFAULT) {
+  const m = String(shift?.start || "").match(/^(\d{1,2}):(\d{2})$/);
+  const start = m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  if (start == null || nowMin == null) return { ok: true } as const;
+  const until = start - nowMin;
+  if (until <= windowMin) return { ok: true } as const;
+  const open = ((start - windowMin) % 1440 + 1440) % 1440;
+  const hm = `${String(Math.floor(open / 60)).padStart(2, "0")}:${String(open % 60).padStart(2, "0")}`;
+  return {
+    ok: false,
+    error: "TOO_EARLY",
+    opensAt: hm,
+    reason: `يُفتح الحضور قبل ورديتك بـ${windowMin} دقيقة — من الساعة ${hm}.`,
+    reasonEn: `Check-in opens ${windowMin} minutes before your shift — from ${hm}.`,
+  } as const;
+}
+
+const hmMinutesOf = (value: unknown): number | null => {
+  const m = String(value || "").match(/^(\d{1,2}):(\d{2})$/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+/** Twin of isOvernightShift: the end falls on the next calendar day (end ≤ start). */
+export function isOvernightShift(shift: { start?: string; end?: string } | null | undefined): boolean {
+  const start = hmMinutesOf(shift?.start);
+  const end = hmMinutesOf(shift?.end);
+  return start != null && end != null && end <= start;
+}
+
+/** Twin of previousDateKey. */
+export function previousDateKey(dateKey: string): string {
+  const m = String(dateKey || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) - 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * Twin of overnightCarryOpen: after midnight yesterday's overnight duty is still the duty day while its
+ * row is open, nothing is checked in today, and today's own check-in window has not opened.
+ */
+export function overnightCarryOpen(input: {
+  yesterdayRow?: { check_in_at?: string | null; check_out_at?: string | null } | null;
+  yesterdayShift?: { start?: string; end?: string } | null;
+  todayRow?: { check_in_at?: string | null } | null;
+  todayShift?: { start?: string } | null;
+  nowMin?: number | null;
+  earlyWindowMin?: number;
+}): boolean {
+  const { yesterdayRow, yesterdayShift, todayRow = null, todayShift = null, nowMin = null, earlyWindowMin = EARLY_CHECKIN_DEFAULT } = input || {};
+  if (!yesterdayRow?.check_in_at || yesterdayRow?.check_out_at || !isOvernightShift(yesterdayShift)) return false;
+  if (todayRow?.check_in_at) return false;
+  if (todayShift?.start && nowMin != null && checkEarlyCheckInGate(todayShift, nowMin, earlyWindowMin).ok) return false;
+  return true;
+}
+
+/** Twin of checkLateCheckInGate: after the shift has ended (+ grace) a self check-in is closed. */
+export const LATE_CHECKIN_GRACE_MINUTES = 60;
+export function checkLateCheckInGate(shift: { start?: string; end?: string } | null | undefined, nowMin: number | null, graceMin: number = LATE_CHECKIN_GRACE_MINUTES) {
+  const start = hmMinutesOf(shift?.start);
+  const end = hmMinutesOf(shift?.end);
+  if (end == null || nowMin == null) return { ok: true } as const;
+  if (start != null && end <= start) return { ok: true } as const;
+  if (!(nowMin > end + graceMin)) return { ok: true } as const;
+  return {
+    ok: false,
+    error: "SHIFT_ENDED",
+    endsAt: shift?.end,
+    reason: `انتهت ورديتك ${shift?.end} — لا تُفتح بصمة الحضور بعدها. إن كنت حضرت فاطلب تسجيلاً يدوياً من «نسيت البصمة؟».`,
+    reasonEn: `Your shift ended at ${shift?.end} — check-in does not open after it. If you were at work, request a manual entry from «Forgot to punch?».`,
+  } as const;
+}

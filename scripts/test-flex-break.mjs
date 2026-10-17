@@ -253,7 +253,7 @@ const today = getTodaysShift(data, { id: "e1", stationId: "st" });
 assert.equal(today.breakMode, "flex");
 assert.equal(today.flexBreak.minutes, 60);
 const plain = getTodaysShift({ ...data, schedules: [{ ...data.schedules[0], shiftTypes: [{ ...FIXED }] }] }, { id: "e1", stationId: "st" });
-assert.deepEqual(Object.keys(plain).sort(), ["end", "label", "start", "stationId"], "fixed shifts keep their shape");
+assert.deepEqual(Object.keys(plain).sort(), ["dutyDate", "end", "label", "start", "stationId"], "fixed shifts keep their shape (the duty date travels with every shift)");
 console.log("PASS today's shift carries breakMode / flexBreak");
 
 /* ── the server twin agrees ── */

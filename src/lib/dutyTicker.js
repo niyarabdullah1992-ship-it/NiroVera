@@ -11,7 +11,7 @@
  * `existingKeys` (the bell's keys) is never planned again, so two ticks in the same minute — or two
  * tabs — send nothing twice. Figures come from laborRules through deriveDutyAlerts.
  */
-import { getTodaysShift } from "./attendanceDerivations.js";
+import { dutyDayOf } from "./attendanceDerivations.js";
 import { deriveDutyAlerts, dutyShiftKey, planDutyAlertNotices, planNursingExpiryNotices } from "./dutyAlerts.js";
 import { resolveDayBreaks, punchClockMinutes } from "./actualDuty.js";
 import { employeeShiftOnDay, rosterBreakWindows, sunExposureMark, SUN_FIELD } from "./shiftWeek.js";
@@ -36,9 +36,13 @@ const toMs = (now) => (now instanceof Date ? now.getTime() : typeof now === "num
 export function dutyContextOf({ data, user, attendance, now = Date.now(), shift: given } = {}) {
   if (!user?.id) return null;
   const nowMs = toMs(now);
-  const onDate = toRiyadhDateKey(new Date(nowMs));
-  const shift = given || getTodaysShift(data, user);
+  // The duty day: today, or yesterday while its overnight row is open — the given row counts too
+  // (the cloud's, which the local store does not hold).
+  const rows = attendance ? [{ employeeId: user.id, ...attendance }, ...(data?.personalAttendance || [])] : null;
+  const duty = given ? null : dutyDayOf(data, user, new Date(nowMs), rows);
+  const shift = given || duty?.shift;
   if (!shift?.start || !shift?.end) return null;
+  const onDate = String(shift.dutyDate || duty?.dateKey || "").slice(0, 10) || toRiyadhDateKey(new Date(nowMs));
   const schedule = (data?.schedules || []).find((row) => String(row.stationId) === String(shift.stationId)) || null;
   // The published shift type behind today's assignment: its rest, placed breaks and exposure mark.
   const dutyShift = { ...(employeeShiftOnDay(schedule, user.id, onDate) || {}), ...shift };

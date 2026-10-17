@@ -177,7 +177,7 @@ function attendanceAlerts(user, data, allowed, attendanceRows) {
   const people = managedDutyEmployees(user, data);
   for (const stationId of allowed) {
     const at = people.filter((employee) => String(employee.stationId || "") === String(stationId));
-    const punch = pendingPunchQueueCount(at, attendanceRows || []);
+    const punch = pendingPunchQueueCount(at, attendanceRows || [], data);
     const night = nightDueEmployeeCount(at, data);
     bucket(allowed, stationId, punch + night, "plain", acc);
   }

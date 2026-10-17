@@ -1,6 +1,6 @@
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import { checkWorkPostingGate } from "@/lib/laborHoursPolicy.js";
-import { Navigate, useLocation, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { base44 } from "@/api/base44Client";
@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import MyPunchPage from "@/components/attendance/MyPunchPage";
 import AttendanceSectionFrame from "@/components/attendance/AttendanceSectionFrame";
 import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
+import { pendingPunchQueueCount } from "@/lib/suiteBadges";
 import PullToRefresh from "@/components/mobile/PullToRefresh";
 import { queryClientInstance } from "@/lib/query-client";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
@@ -56,6 +57,8 @@ export default function Attendance() {
   const routeTab = tabFromRoute(location.pathname, searchParams.get("tab"));
   const [tab, setTab] = useState(routeTab);
   const [queueCount, setQueueCount] = useState(0);
+  const [dashboardCount, setDashboardCount] = useState(null);
+  const onDashboardCount = React.useCallback((n) => { setDashboardCount(n); setQueueCount(n); }, []);
 
   useEffect(() => {
     setTab(routeTab);
@@ -92,14 +95,11 @@ export default function Attendance() {
 
   useEffect(() => {
     if (!isManager) return;
-    const local = listLocalTodayAttendance(company?.id, data);
-    const byId = Object.fromEntries(local.map((row) => [String(row.employee_id ?? row.employeeId), row]));
-    setQueueCount(employees.filter((employee) => {
-      const row = byId[String(employee.id)];
-      const asked = (employee.otherRequests || []).some((item) => item.type === "manual_punch" && (item.status || "pending") === "pending");
-      return row?.location_status === "outside" || (row?.check_in_at && !row?.check_out_at && row?.status !== "absent") || !!row?.early_checkout || asked;
-    }).length);
-  }, [isManager, company?.id, employees, data]);
+    // The queue's own reading (lib/attendanceQueue) — the dashboard reports the same count once it loads
+    // its merged rows; until then this local reading stands, never a second rule.
+    if (dashboardCount != null) return;
+    setQueueCount(pendingPunchQueueCount(employees, listLocalTodayAttendance(company?.id, data), data));
+  }, [isManager, company?.id, employees, data, dashboardCount]);
 
   useEffect(() => {
     if (!company?.id || !isLocalPreviewActive()) return;
@@ -325,11 +325,11 @@ export default function Attendance() {
             <div data-work-posting-missing="1" role="note" style={{ margin: "0 0 12px", padding: "10px 14px", border: "1px solid var(--nv-warn-line, #E3C27A)", background: "var(--nv-warn-soft, #FBF3E2)", color: "var(--nv-warn-ink, #7A4E0B)", fontSize: 12, lineHeight: 1.75, borderRadius: 10 }}>
               {ar ? checkWorkPostingGate({ company: data }).reason : checkWorkPostingGate({ company: data }).reasonEn}
               {" "}
-              <a href="/app/attendance?tab=policy" style={{ color: "inherit", fontWeight: 600 }}>{ar ? "سجّل الإعلان في «السياسة والمواقع» ›" : "Record it in Policy and sites ›"}</a>
+              <Link to="/app/attendance?lane=manage&tab=policy" style={{ color: "inherit", fontWeight: 600 }}>{ar ? "سجّل الإعلان في «السياسة والمواقع» ›" : "Record it in Policy and sites ›"}</Link>
             </div>
           ) : null}
           {activeTab === "team" && isManager && (
-            <AttendanceDailyDashboard employees={employees} currentUser={currentUser} company={company} data={data} t={t} onQueueCount={setQueueCount} />
+            <AttendanceDailyDashboard employees={employees} currentUser={currentUser} company={company} data={data} t={t} onQueueCount={onDashboardCount} />
           )}
           {/* Art. 107 — pending overtime and holiday-work decisions the punches / published roster opened. */}
           {activeTab === "team" && isManager && (

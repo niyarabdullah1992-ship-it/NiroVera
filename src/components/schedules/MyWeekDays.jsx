@@ -4,6 +4,7 @@ import {
   employeeShiftOnDay,
   leaveOnDayView,
   shiftHours,
+  actualShiftHours,
   shiftTypeStyle,
   sunExposureCellState,
   SUN_FIELD,
@@ -78,7 +79,7 @@ function hoursWord(n, ar) {
 
 /** Short words for a day's alert on the employee's own card (the full text stays in «أنظمة الوزارة»). */
 const ALERT_SHORT = {
-  hours_48: { ar: "فوق 48 ساعة", en: "Over 48 h" },
+  hours_48: { ar: "فوق الحد الأسبوعي", en: "Over the week cap" },
   hours_106: { ar: "فوق الحد", en: "Over the cap" },
   workplace: { ar: "بقاء طويل", en: "Long stay" },
   night_rest: { ar: "راحة ناقصة بعد الليل", en: "Short rest after night" },
@@ -118,7 +119,9 @@ export function useMyDayRows({ employee, schedule, gates, weekStart, laborCalend
     const short = alert && !sunAlert ? (ALERT_SHORT[alert.id] || null) : null;
     const check = alert && !sunAlert ? (gates?.checks || []).find((row) => row.id === alert.id) : null;
     const alertLabel = short ? (ar ? short.ar : short.en) : (check?.title || "");
-    return { day, leave, shift, alert, alertLabel, alertTitle: check?.title || "", tone: weekCellAlertTone(alert), sunField, sunMark };
+    // Net of the shift's rest (Art. 102) — the same figure as the week total and the manager grid.
+    const netHours = shift ? actualShiftHours(shift, day.key, employee) : 0;
+    return { day, leave, shift, netHours, alert, alertLabel, alertTitle: check?.title || "", tone: weekCellAlertTone(alert), sunField, sunMark };
   }), [days, employee, empId, schedule, gates, ar, laborCalendar]);
 }
 
@@ -153,7 +156,7 @@ export default function MyWeekDays({
     <div className="nv-my-days-wrap">
       <style>{DAYS_CSS}</style>
       <div className="nv-my-days">
-        {dayRows.map(({ day, leave, shift, tone, sunMark, alertLabel, alertTitle }) => {
+        {dayRows.map(({ day, leave, shift, netHours, tone, sunMark, alertLabel, alertTitle }) => {
           const today = day.key === todayKey;
           const past = day.key < todayKey;
           const holiday = leave?.source === "official_holiday";
@@ -229,7 +232,7 @@ export default function MyWeekDays({
                 ) : null}
               </div>
               <div className="nv-my-day-foot" style={{ fontSize: 11, color: SW.muted, display: "flex", justifyContent: "space-between", gap: 4 }}>
-                {shift ? <span>{hoursWord(shiftHours(shift), ar)}</span> : <span>&nbsp;</span>}
+                {shift ? <span>{hoursWord(netHours ?? shiftHours(shift), ar)}</span> : <span>&nbsp;</span>}
               </div>
             </div>
           );

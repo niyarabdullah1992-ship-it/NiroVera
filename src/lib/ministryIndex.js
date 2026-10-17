@@ -159,7 +159,7 @@ export function ministryIndexSections({
       title: L("الهيكل", "Organisation"),
       scope: L("لائحة تنظيم العمل والسلم الوظيفي", "The work regulation and the job ladder"),
       counts: three(panel("org", { data: data || {} }).totals),
-      href: "/app/org?view=admin#nv-ministry-org",
+      href: "/app/hr?tab=compliance#nv-ministry-compliance",
     },
   ];
   return sections.map((section) => ({ ...section, tone: section.counts ? ministryCountsTone(section.counts) : "mute" }));

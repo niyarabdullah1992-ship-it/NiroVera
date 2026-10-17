@@ -106,7 +106,8 @@ export function orgCardActions(card, { data, user, canWrite = false, health = nu
 }
 
 /**
- * Where an action opens on /app/org (the admin panes read these parameters once and drop them).
+ * Where an action opens in «الموارد البشرية › الهيكل» (/app/hr?tab=org — the admin panes read these
+ * parameters once and drop them; a branch opens in «الفروع والمحطات»).
  * Returns "" for actions the chart handles itself (file, hire).
  */
 export function orgAdminHref(actionId, card) {
@@ -114,26 +115,26 @@ export function orgAdminHref(actionId, card) {
   switch (actionId) {
     case "seat":
     case "acting":
-      return `/app/org?view=admin&pane=seats&seat=${seat}`;
+      return `/app/hr?tab=org&pane=seats&seat=${seat}`;
     case "move":
-      return `/app/org?view=admin&pane=changes&op=moveSeat&seat=${seat}`;
+      return `/app/hr?tab=org&pane=changes&op=moveSeat&seat=${seat}`;
     case "freeze":
-      return `/app/org?view=admin&pane=changes&op=freezeSeat&seat=${seat}`;
+      return `/app/hr?tab=org&pane=changes&op=freezeSeat&seat=${seat}`;
     case "dotted":
-      return `/app/org?view=admin&pane=changes&op=setDotted&seat=${seat}`;
+      return `/app/hr?tab=org&pane=changes&op=setDotted&seat=${seat}`;
     case "authority":
-      return "/app/org?view=admin&pane=authority";
+      return "/app/hr?tab=org&pane=authority";
     case "health":
-      return "/app/org?view=admin&pane=health";
+      return "/app/hr?tab=org&pane=health";
     case "branch":
-      return `/app/org?view=admin&chart=full&branch=${encodeURIComponent(str(card?.stationId))}`;
+      return `/app/hr?tab=branches&branch=${encodeURIComponent(str(card?.stationId))}`;
     default:
       return "";
   }
 }
 
 /**
- * The change-request seed an /app/org?pane=changes&op=…&seat=…(&to=…),
+ * The change-request seed an /app/hr?tab=org&pane=changes&op=…&seat=…(&to=…),
  * ?op=reparentUnit&unit=…&to=… or ?op=closeUnit&unit=… link asks for, or null.
  */
 export function changeSeedFromParams(params) {
@@ -151,9 +152,9 @@ export function changeSeedFromParams(params) {
   return { type: op, seatId };
 }
 
-/** /app/org link that opens «التغييرات» with one step pre-filled (never applies anything). */
+/** «الهيكل › التغييرات» link with one step pre-filled (never applies anything). */
 export function changeRequestHref(op) {
-  const q = new URLSearchParams({ view: "admin", pane: "changes", op: op.type });
+  const q = new URLSearchParams({ tab: "org", pane: "changes", op: op.type });
   if (op.type === "reparentUnit" || op.type === "closeUnit") {
     q.set("unit", op.stationId);
     if (op.toParentId) q.set("to", op.toParentId);
@@ -161,7 +162,7 @@ export function changeRequestHref(op) {
     q.set("seat", op.seatId);
     if (op.toStationId) q.set("to", op.toStationId);
   }
-  return `/app/org?${q.toString()}`;
+  return `/app/hr?${q.toString()}`;
 }
 
 /** Seats and units named in a change still awaiting approval or its effective date. */

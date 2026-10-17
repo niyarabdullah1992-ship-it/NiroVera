@@ -141,7 +141,7 @@ export default function EmployeeProfile() {
             : "This profile is private — you can only view your own profile. Colleagues' data are available to their managers and HR."}
         </p>
         <div style={{ marginTop: 16 }}>
-          <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr" />
+          <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr?tab=people" />
         </div>
       </div>
     );
@@ -304,7 +304,7 @@ export default function EmployeeProfile() {
         {company?.id && employee?.id ? <ApplyLaborOnFile companyId={company.id} employeeId={employee.id} canEditFile={canEditFile} /> : null}
 
         {!isSelf ? (
-          <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr" />
+          <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr?tab=people" />
         ) : null}
 
         <ProfileHero

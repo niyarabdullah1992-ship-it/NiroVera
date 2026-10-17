@@ -26,7 +26,7 @@ export default function OpsTaskChain({ ar = true, chain = [], level = 0, settled
       ) : null}
     >
       {steps.length === 0 ? (
-        <span style={{ fontSize: 12, color: "var(--nv-muted)" }}>{ar ? "لا سلسلة لهذا الفرع بعد — تُضبط من الهيكل والفروع." : "No chain for this branch yet — set it in the org structure."}</span>
+        <span style={{ fontSize: 12, color: "var(--nv-muted)" }}>{ar ? "لا سلسلة لهذا الفرع بعد — تُضبط من «الموارد البشرية › الهيكل»." : "No chain for this branch yet — set it in the org structure."}</span>
       ) : (
         <div data-task-chain="1">
           <EscalationLadder

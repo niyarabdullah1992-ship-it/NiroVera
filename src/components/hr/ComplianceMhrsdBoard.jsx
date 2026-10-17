@@ -17,13 +17,14 @@ import { formatDate } from "@/lib/dateFormat";
 import { printReport } from "@/lib/printReport";
 import { deriveInspectionPack } from "@/lib/inspectionPackDerivations";
 import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
+import { hrMinistrySection } from "@/lib/hrSection";
 import MinistryComplianceIndex from "@/components/hr/MinistryComplianceIndex";
 import StatutoryItem from "@/components/labor/StatutoryItem";
 import { BOE_LABOUR_LAW_URL, HRSD_IMPLEMENTING_REGS_URL, HRSD_LABOUR_LAW_EDITION, HRSD_LABOUR_LAW_PDF } from "@/lib/laborRules";
 
 const SURFACE_LINKS = [
   { to: "/app/requests/leave", ar: "طلبات الإجازة", en: "Leave Requests" },
-  { to: "/app/hr", ar: "الموارد البشرية", en: "Human Resources" },
+  { to: "/app/hr?tab=people", ar: "الموظفون", en: "People" },
   { to: "/app/safety", ar: "السلامة HSE", en: "Safety HSE" },
   { to: "/app/complaints", ar: "صوت الموظف", en: "Employee Voice" },
   { to: "/app/payroll", ar: "الرواتب", en: "Payroll" },
@@ -45,7 +46,7 @@ const BLOCKER_SHORT = {
 
 /** Where a blocker is actually cleared — named so the row is a route, not a verdict. */
 const CLEARED_AT = {
-  "/app/hr": { ar: "الدليل", en: "Directory" },
+  "/app/hr": { ar: "الموارد البشرية", en: "Human resources" },
   "/app/safety": { ar: "السلامة", en: "Safety" },
   "/app/requests/leave": { ar: "الإجازات", en: "Leave" },
   "/app/tasks": { ar: "المهام", en: "Tasks" },
@@ -151,10 +152,11 @@ function LiveChip({ on, label, ar }) {
 }
 
 /** Platform settings L2234–2268 — Nitaqat + GOSI extras kept with literal chrome. */
-export default function ComplianceMhrsdBoard() {
+export default function ComplianceMhrsdBoard({ ministry = "records" } = {}) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const { company, data: register, currentUser } = useAuth();
+  const hrMinistry = useMemo(() => (ministry === "hr" ? hrMinistrySection(register || {}, { ar: lang === "ar" }) : null), [ministry, register, lang]);
   const scope = useStationScope();
   const [data, setData] = useState(null);
   const [gosiNo, setGosiNo] = useState("");
@@ -599,8 +601,12 @@ export default function ComplianceMhrsdBoard() {
         </div>
       </section>
 
-      {/* «أنظمة الوزارة — ما يخص السجلات والتدريب» — the establishment's registers, training and GOSI registration. */}
-      <MinistrySectionPanel sectionKey="records" lane="manage" ar={ar} inputs={{ data: register || {} }} />
+      {/* «أنظمة الوزارة» — inside «الموارد البشرية» one panel carries the registers (records) and the organisation (org) rules. */}
+      {ministry === "hr" ? (
+        <MinistrySectionPanel section={hrMinistry} ar={ar} />
+      ) : (
+        <MinistrySectionPanel sectionKey="records" lane="manage" ar={ar} inputs={{ data: register || {} }} />
+      )}
 
       {/* Per-station readiness — the same derivation the quick-switch palette shows */}
       {readinessRows.length > 0 && (

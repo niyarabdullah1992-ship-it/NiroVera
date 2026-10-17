@@ -30,7 +30,7 @@ const EMPLOYEE_GROUPS = [
 const MANAGE_GROUPS = [
   { id: "home", ar: "الرئيسية", en: "Home", sections: ["decide"] },
   { id: "daily", ar: "العمل اليومي", en: "Daily work", sections: ["duty", "daily", "hse"] },
-  { id: "staff", ar: "الموظفون", en: "People", sections: ["workforce", "people", "requests", "discipline", "complaints", "performance"] },
+  { id: "staff", ar: "الموظفون", en: "People", sections: ["hr", "requests", "discipline", "complaints", "performance"] },
   { id: "money", ar: "الامتثال والمال", en: "Compliance and pay", sections: ["ministry", "money", "signing"] },
 ];
 
@@ -301,10 +301,12 @@ export function activeSuiteRailKey(sides, category, pathname, search) {
   }
   if (path === "/app/org" || path.startsWith("/app/org/")) {
     if (params.get("view") === "employee" && has("org:employee")) return "org:employee";
-    if (has("people:manage")) return "people:manage";
+    if (has("hr:manage")) return "hr:manage";
+    if (has("org:employee")) return "org:employee";
   }
-  if ((path === "/app/hr" || path.startsWith("/app/hr/")) && params.get("tab") === "compliance" && has("ministry:manage")) {
-    return "ministry:manage";
+  if (path === "/app/hr" || path.startsWith("/app/hr/")) {
+    if (params.get("tab") === "compliance" && has("ministry:manage")) return "ministry:manage";
+    if (has("hr:manage")) return "hr:manage";
   }
   if ((path === "/app/files" || path.startsWith("/app/files/") || path === "/app/assistant") && has("files:manage")) {
     return "files:manage";
@@ -560,40 +562,34 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
     }));
   }
 
+  // «الموارد البشرية» — one item for what were «الهيكل والفروع» (/app/hr) and «المحطات التي أديرها»
+  // (/app/org admin). Same gates as the two it replaced; a station lead (ctx.hrAccess from
+  // navVisibility.hrSectionAccessFor) also reaches it for «الفروع والمحطات» and a read-only «الهيكل».
   const people = byKey.get("people");
-  if (people && canWriteOrg(user, data)) {
-    const base = appPath(people, "org") || String(people.to || "/app/org").split("?")[0];
-    manage.set("people", faceItem({
-      section: "people",
+  const workforce = byKey.get("workforce");
+  const workforceTo = workforce ? (appPath(workforce, "hr") || String(workforce.to || "/app/hr").split("?")[0]) : "";
+  const managesWorkforce = Boolean(workforce && workforceTo && canManageWorkforce(user, data));
+  const writesOrg = Boolean(people && canWriteOrg(user, data));
+  const leadOnly = Boolean(ctx.hrAccess?.stationLead && (ctx.hrAccess.panes || []).length);
+  if (managesWorkforce || writesOrg || leadOnly) {
+    manage.set("hr", faceItem({
+      section: "hr",
       lane: "manage",
-      iconKey: "people",
-      label: ar ? "المحطات التي أديرها" : "Stations I manage",
-      to: withQuery(base, { view: "admin" }),
-      signal: ownedSignal(people, "org", true),
+      iconKey: "workforce",
+      label: ar ? "الموارد البشرية" : "Human resources",
+      to: workforceTo || "/app/hr",
+      signal: managesWorkforce ? ownedSignal(workforce, "hr", true) : ownedSignal(people, "org", Boolean(people)),
     }));
   }
-
-  const workforce = byKey.get("workforce");
-  if (workforce && canManageWorkforce(user, data)) {
-    const to = appPath(workforce, "hr") || String(workforce.to || "/app/hr").split("?")[0];
-    if (to) {
-      manage.set("workforce", faceItem({
-        section: "workforce",
-        lane: "manage",
-        iconKey: "workforce",
-        label: ar ? "الهيكل والفروع" : "Org and branches",
-        to,
-        signal: ownedSignal(workforce, "hr", true),
-      }));
-      manage.set("ministry", faceItem({
-        section: "ministry",
-        lane: "manage",
-        iconKey: "ministry",
-        label: ar ? "الامتثال الوزاري" : "Ministry compliance",
-        to: withQuery(to, { tab: "compliance" }),
-        signal: ownedSignal(workforce, "hr", false),
-      }));
-    }
+  if (managesWorkforce) {
+    manage.set("ministry", faceItem({
+      section: "ministry",
+      lane: "manage",
+      iconKey: "ministry",
+      label: ar ? "الامتثال الوزاري" : "Ministry compliance",
+      to: withQuery(workforceTo, { tab: "compliance" }),
+      signal: ownedSignal(workforce, "hr", false),
+    }));
   }
 
   const money = byKey.get("money");

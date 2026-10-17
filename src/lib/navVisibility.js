@@ -2,6 +2,7 @@
 // used by the sidebar/mobile nav and the dashboards' quick-access shortcuts.
 
 import { SMART_SECTION_ROUTES } from "@/lib/smartPositions";
+import { hrSectionAccess } from "@/lib/hrSection";
 
 const BASE = [
   "/app",
@@ -105,12 +106,28 @@ export function allowedNavFor(user, data, company) {
   return allowed;
 }
 
+/**
+ * «الموارد البشرية» (/app/hr): which panes this person opens. HR (the pre-merge /app/hr route gate)
+ * opens the section; a station lead without it opens only «الفروع والمحطات» (their stations) and a
+ * read-only «الهيكل». Plan gate first.
+ */
+export function hrSectionAccessFor(user, data, company) {
+  return hrSectionAccess(user, data, {
+    routeAllowed: allowedNavFor(user, data, company).has("/app/hr"),
+    planAllowed: canAccessPlanPath("/app/hr", company),
+  });
+}
+
 export function canAccessPath(pathname, user, data, company) {
   if (!canAccessPlanPath(pathname, company)) return false;
   // «مكاني في الهيكل»: every signed-in person opens /app/org; the page itself shows non-HR viewers
   // only their own place (and managers their subtree), and the server enforces the same.
   if (user && (pathname === "/app/org" || pathname.startsWith("/app/org/"))) return true;
   const allowed = allowedNavFor(user, data, company);
+  // «الموارد البشرية»: a station lead reaches their stations here without the HR route gate.
+  if ((pathname === "/app/hr" || pathname.startsWith("/app/hr/")) && !allowed.has("/app/hr")) {
+    return hrSectionAccessFor(user, data, company).panes.length > 0;
+  }
   const smartRoute = Object.values(SMART_SECTION_ROUTES)
     .flatMap((routes) => (Array.isArray(routes) ? routes : routes ? [routes] : []))
     .find((item) => pathname === item || pathname.startsWith(`${item}/`));

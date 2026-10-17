@@ -33,14 +33,15 @@ export default function OrgChart() {
   const scope = canWrite && searchParams.get("scope") !== "mine" ? "all" : "mine";
 
   const onBack = useCallback(() => {
-    navigate(from || (scope === "all" ? "/app/org?view=admin" : "/app/org"));
+    // «رجوع» returns into «الموارد البشرية › الهيكل» (or the employee's own place)
+    navigate(from || (scope === "all" ? "/app/hr?tab=org" : "/app/org?view=employee"));
   }, [navigate, from, scope]);
 
   const onHire = useCallback((detail = {}) => {
-    const params = new URLSearchParams({ view: "admin", hire: "1" });
+    const params = new URLSearchParams({ tab: "org", hire: "1" });
     if (detail.stationId) params.set("station", detail.stationId);
     if (detail.seatId) params.set("seat", detail.seatId);
-    navigate(`/app/org?${params.toString()}`);
+    navigate(`/app/hr?${params.toString()}`);
   }, [navigate]);
 
   if (!session) {

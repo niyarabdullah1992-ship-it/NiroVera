@@ -126,7 +126,7 @@ const close = closeUnitPlan(data, "jed", { today: DAY });
 assert.equal(close.ok, false, "a unit with people or sub-units is not closed");
 assert.ok(close.reason.ar, "named by the existing change gate");
 assert.equal(closeUnitPlan({ ...data, employees: data.employees.filter((e) => e.stationId !== "rbg") }, "rbg", { today: DAY }).ok, true);
-assert.equal(changeRequestHref({ type: "closeUnit", stationId: "rbg" }), "/app/org?view=admin&pane=changes&op=closeUnit&unit=rbg");
+assert.equal(changeRequestHref({ type: "closeUnit", stationId: "rbg" }), "/app/hr?tab=org&pane=changes&op=closeUnit&unit=rbg");
 assert.deepEqual(changeSeedFromParams(new URLSearchParams("op=closeUnit&unit=rbg")), { type: "closeUnit", stationId: "rbg" });
 
 /* freeze */

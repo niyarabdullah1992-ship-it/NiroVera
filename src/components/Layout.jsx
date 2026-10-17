@@ -6,7 +6,7 @@ import { openDueEmployerDutyNotices } from "@/lib/employerDutyNotices";
 import { updateCompany, getCompanyData, getCompanyToken, openDueHeatBanNotices, openDueDisciplineDeadlineNotices, openDueNecessityNotices, openDueCompLeaveNotices, openDueReligionNotices, openDueGrievanceNotices, settleDueResignations } from "@/lib/store";
 import { base44 } from "@/api/base44Client";
 import { toast } from "@/components/ui/use-toast";
-import { allowedNavFor } from "@/lib/navVisibility";
+import { allowedNavFor, hrSectionAccessFor } from "@/lib/navVisibility";
 import { collectSuiteBadges, suiteAppBadge, suiteAppGlow } from "@/lib/suiteBadges";
 import { listLocalTodayAttendance } from "@/lib/localAttendanceFallback";
 import { hydrateEmployeesLeave } from "@/lib/leaveDerivations";
@@ -238,7 +238,7 @@ export default function Layout({ children }) {
     // التصعيد is part of المهام (side list, filter, each order's chain) — not a page of its own.
     : orderedNavItems.filter((item) => item.category === activeCategory && item.to !== "/app/settings" && !String(item.to || "").startsWith("/app/escalation"));
   const railGroups = buildSuiteRailGroups(orderedNavItems, lang, currentUser.role);
-  const railClusters = buildSuiteRailClusters(railGroups, lang, { user: currentUser, data });
+  const railClusters = buildSuiteRailClusters(railGroups, lang, { user: currentUser, data, hrAccess: hrSectionAccessFor(currentUser, data, company) });
   const activeRailKey = activeSuiteRailKey(railClusters, activeCategory, location.pathname, location.search);
   const canOpenSettings = allowedNav.has("/app/settings");
 
@@ -333,8 +333,8 @@ export default function Layout({ children }) {
         : `${(data.employees || []).length} employees · ${(data.stations || []).length} stations`,
     },
     "/app/org": {
-      title: lang === "ar" ? "الهيكل التنظيمي" : "Org Structure",
-      sub: lang === "ar" ? "منه تُشتق الصلاحيات وسلسلة التصعيد" : "Permissions and the escalation chain derive from it",
+      title: lang === "ar" ? "مكاني في الهيكل" : "My place in the structure",
+      sub: lang === "ar" ? "سلسلة إدارتك وزملاؤك وفريقك — للاطلاع" : "Your chain, peers and team — read only",
     },
     "/app/settings": {
       title: lang === "ar" ? "إعدادات الشركة" : "Company Settings",

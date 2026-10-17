@@ -144,7 +144,8 @@ assert.deepEqual(
   [
     { label: "الرئيسية", items: ["لوحة القيادة"] },
     { label: "العمل اليومي", items: ["الحضور والدوام", "المهام والإثبات", "السلامة"] },
-    { label: "الموظفون", items: ["الهيكل والفروع", "المحطات التي أديرها", "الطلبات", "الجزاءات", "صوت الموظف", "الأداء"] },
+    // «الهيكل والفروع» and «المحطات التي أديرها» are one section now: «الموارد البشرية».
+    { label: "الموظفون", items: ["الموارد البشرية", "الطلبات", "الجزاءات", "صوت الموظف", "الأداء"] },
     { label: "الامتثال والمال", items: ["الامتثال الوزاري", "المال والرواتب", "التوقيع الرقمي"] },
   ],
 );
@@ -156,7 +157,9 @@ assert.equal(sideItems(manageSide).find((item) => item.section === "duty").to, "
 assert.equal(sideItems(manageSide).find((item) => item.section === "requests").to, "/app/requests/manage");
 assert.equal(sideItems(manageSide).find((item) => item.section === "discipline").to, "/app/discipline?tab=manage&lane=manage");
 assert.equal(sideItems(manageSide).find((item) => item.section === "complaints").to, "/app/complaints?tab=manage");
-assert.equal(sideItems(manageSide).find((item) => item.section === "people").to, "/app/org?view=admin");
+assert.equal(sideItems(manageSide).find((item) => item.section === "hr").to, "/app/hr");
+assert.equal(sideItems(manageSide).filter((item) => item.label === "الموارد البشرية").length, 1, "one HR item on the rail");
+assert.equal(sideItems(manageSide).some((item) => item.section === "people" || item.section === "workforce"), false);
 assert.equal(sideItems(manageSide).find((item) => item.section === "money").to, "/app/payroll?view=manage");
 assert.equal(sideItems(manageSide).find((item) => item.section === "complaints").badge, 3);
 assert.equal(sideItems(manageSide).find((item) => item.section === "complaints").badgeKind, "warn");
@@ -235,6 +238,17 @@ assert.equal(partialManage.includes("money"), false);
 assert.equal(partialManage.includes("tasks"), false);
 assert.equal(partialManage.includes("workforce"), false);
 assert.equal(partialManage.includes("people"), false);
+assert.equal(partialManage.includes("hr"), false, "no HR item without the HR gates or a station-lead grant");
+// A station lead reaches «الموارد البشرية» (their stations + a read-only structure) through hrAccess.
+const leadRail = buildSuiteRailClusters(
+  catalog.filter((group) => ["decide", "duty", "requests"].includes(group.key)),
+  "ar",
+  { user: stationManager, data: { ownerId: "other" }, hrAccess: { panes: ["org", "branches"], stationLead: true, full: false } },
+);
+const leadHr = sideItems(leadRail.find((side) => side.id === "manage")).find((item) => item.section === "hr");
+assert.equal(leadHr.to, "/app/hr");
+assert.equal(leadHr.label, "الموارد البشرية");
+assert.equal(sideItems(leadRail.find((side) => side.id === "manage")).some((item) => item.section === "ministry"), false);
 const payrollClerk = { id: "p1", role: "employee", hrLevelId: "lvp" };
 const payrollRail = buildSuiteRailClusters(
   catalog.filter((group) => ["decide", "money"].includes(group.key)),
@@ -262,7 +276,7 @@ const reader = buildSuiteRailClusters(
 assert.deepEqual(reader.map((row) => row.id), ["employee"]);
 assert.deepEqual(sideItems(reader[0]).map((item) => item.to), ["/app/org?view=employee"]);
 assert.equal(railFooter({ id: "hr1", role: "employee", hrLevelId: "view1" }, { ownerId: "other", employees: [{ id: "hr1", role: "employee" }] }, "ar", "employee").to, "/app/employees/hr1");
-assert.equal(sideItems(reader[0]).some((item) => item.section === "people" || item.section === "workforce"), false);
+assert.equal(sideItems(reader[0]).some((item) => item.section === "people" || item.section === "workforce" || item.section === "hr"), false);
 
 const grantedPerf = buildSuiteRailClusters(
   [railGroup("performance", { to: "/app/performance" })],
@@ -279,7 +293,10 @@ const viewedPerf = buildSuiteRailClusters(
 assert.equal(viewedPerf.some((side) => side.id === "manage"), false);
 assert.equal(sideItems(viewedPerf[0]).find((item) => item.section === "performance").to, "/app/performance?view=self");
 
-assert.equal(activeSuiteRailKey(managed, "people", "/app/org", ""), "people:manage");
+assert.equal(activeSuiteRailKey(managed, "people", "/app/org", ""), "hr:manage");
+assert.equal(activeSuiteRailKey(managed, "workforce", "/app/hr", "?tab=org&pane=seats"), "hr:manage");
+assert.equal(activeSuiteRailKey(managed, "workforce", "/app/hr", "?tab=compliance"), "ministry:manage");
+assert.equal(activeSuiteRailKey(employeeRail, "people", "/app/org", "?view=employee"), "org:employee");
 assert.equal(activeSuiteRailKey(managed, "people", "/app/org", "?view=employee"), "org:employee");
 assert.equal(activeSuiteRailKey(managed, "performance", "/app/performance", "?view=self"), "performance:employee");
 assert.equal(activeSuiteRailKey(managed, "performance", "/app/performance", "?view=manage"), "performance:manage");

@@ -39,7 +39,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
           label: ar ? "أضف موظف" : "Add employee",
           subtitle: ar ? "من المنصب — خطوتان" : "From the seat — two steps",
           icon: UserPlus,
-          to: "/app/org?hire=1",
+          to: "/app/hr?tab=org&hire=1",
         }]
       : [];
     const hireHit = !text
@@ -77,7 +77,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
         to: `/app/employees/${employee.id}`,
       }));
 
-    const canStations = items.some((item) => item.to === "/app/org");
+    const canStations = items.some((item) => item.to === "/app/hr" || item.to === "/app/org");
     const stations = canStations
       ? visibleStations(currentUser, data)
           .filter((station) => station.name?.toLocaleLowerCase().includes(text))
@@ -87,7 +87,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
             label: station.name,
             subtitle: ar ? "فرع" : "Station",
             icon: Radio,
-            to: "/app/org",
+            to: `/app/hr?tab=branches&branch=${encodeURIComponent(station.id)}`,
           }))
       : [];
 
@@ -103,7 +103,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
   const select = (result) => {
     if (!result) return;
     if (result.action === "hire") {
-      navigate("/app/org?hire=1");
+      navigate("/app/hr?tab=org&hire=1");
       openHireDrawer({});
       onClose();
       return;

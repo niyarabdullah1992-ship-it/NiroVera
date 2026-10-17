@@ -351,7 +351,7 @@ export function notifyActingReminders(companyId, actor, today = todayKey()) {
     const targets = new Set(editors.map((e) => str(e.id)));
     if (row.kind === "ACTING_ENDING" && row.employeeId) targets.add(row.employeeId);
     for (const id of targets) {
-      addNotification(companyId, id, row.ar, { key: row.key, to: "/app/org?view=admin&tab=health" });
+      addNotification(companyId, id, row.ar, { key: row.key, to: "/app/hr?tab=org&pane=health" });
       sent += 1;
     }
   }

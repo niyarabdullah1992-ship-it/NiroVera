@@ -341,6 +341,8 @@ export const attendanceCheckInSchema = tenantRequestSchema.extend({
   accuracy: z.number().finite().optional(),
 });
 
+const clockHmSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
 export const attendanceCheckOutSchema = tenantRequestSchema.extend({
   action: z.literal("checkOut"),
   employeeId: employeeIdSchema,
@@ -348,11 +350,41 @@ export const attendanceCheckOutSchema = tenantRequestSchema.extend({
   lat: z.number().finite().optional(),
   lng: z.number().finite().optional(),
   accuracy: z.number().finite().optional(),
+  // «راحة مرنة ببصمة»: where the card placed an unpunched break (nearest prayer); the server re-checks it.
+  assumedBreak: z.object({ start: clockHmSchema, end: clockHmSchema }).optional(),
+});
+
+/** «بدأت راحتي» / «أنهيت راحتي» — a flex shift's break punch on the same day record. */
+export const attendanceBreakStartSchema = tenantRequestSchema.extend({
+  action: z.literal("breakStart"),
+  employeeId: employeeIdSchema,
+  lat: z.number().finite().optional(),
+  lng: z.number().finite().optional(),
+  accuracy: z.number().finite().optional(),
+});
+
+export const attendanceBreakEndSchema = tenantRequestSchema.extend({
+  action: z.literal("breakEnd"),
+  employeeId: employeeIdSchema,
+  lat: z.number().finite().optional(),
+  lng: z.number().finite().optional(),
+  accuracy: z.number().finite().optional(),
+});
+
+/** The manager's decision on a flex break that ran past its minutes (late return, not a breach). */
+export const attendanceReviewLateReturnSchema = tenantRequestSchema.extend({
+  action: z.literal("reviewLateReturn"),
+  employeeId: employeeIdSchema,
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  decision: z.enum(["excused", "late"]),
 });
 
 export const attendanceActionSchemas = {
   checkIn: attendanceCheckInSchema,
   checkOut: attendanceCheckOutSchema,
+  breakStart: attendanceBreakStartSchema,
+  breakEnd: attendanceBreakEndSchema,
+  reviewLateReturn: attendanceReviewLateReturnSchema,
 } as const;
 
 export function validateAttendanceRequest(body: unknown) {

@@ -6,6 +6,10 @@ import {
   leaveRequestsForEmployeeId,
 } from "../../shared/leaveDerivations.ts";
 import { validateAttendanceRequest, validationFailed } from "../../shared/proofCycleSchemas.ts";
+import { checkAssumedBreakGate, checkFlexBreakPunchGate, resolveFlexDayBreaks } from "../../shared/shiftDerivations.ts";
+
+const BREAK_ACTIONS = ["breakStart", "breakEnd", "reviewLateReturn"];
+const BREAKS_COLUMN_HINT = "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS breaks jsonb DEFAULT '[]'::jsonb;";
 
 const MANAGER_ROLES = ["director", "ops_manager", "pgm", "station_manager"];
 const MANUAL_ATTENDANCE_ROLES = ["owner", "director", "ops_manager", "station_manager"];
@@ -22,7 +26,7 @@ Deno.serve(async (req) => {
     const rawBody = await req.json();
     const action = String(rawBody?.action || "");
     let body = rawBody;
-    if (action === "checkIn" || action === "checkOut") {
+    if (action === "checkIn" || action === "checkOut" || BREAK_ACTIONS.includes(action)) {
       const parsed = validateAttendanceRequest(rawBody);
       if (!parsed.success) return validationFailed(parsed.error);
       body = parsed.data;
@@ -568,17 +572,104 @@ Deno.serve(async (req) => {
       const scheduledOut = await getScheduledShift(auth.companyId, employeeId);
       const shiftEndMinutes = toMinutes(scheduledOut?.end || shiftEnd);
       const earlyCheckout = shiftEndMinutes != null && nowMinutes < shiftEndMinutes;
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?id=eq.${encodeURIComponent(row.id)}`, {
+      // «راحة مرنة ببصمة»: an open break ends at the checkout; an unpunched one is stored as assumed —
+      // where the card placed it (nearest prayer) when that placement passes the gate, else the window's middle.
+      const closedBreaks = scheduledOut?.breakMode === "flex"
+        ? closeFlexBreaks(scheduledOut, row, now.toISOString(), body.assumedBreak)
+        : null;
+      const outPatch: Record<string, unknown> = { check_out_at: now.toISOString(), work_hours: workHours, early_checkout: earlyCheckout, check_out_lat: lat ?? null, check_out_lng: lng ?? null };
+      if (closedBreaks) outPatch.breaks = closedBreaks;
+      let patchRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?id=eq.${encodeURIComponent(row.id)}`, {
         method: "PATCH",
         headers: { ...headers, Prefer: "return=representation" },
-        body: JSON.stringify({ check_out_at: now.toISOString(), work_hours: workHours, early_checkout: earlyCheckout, check_out_lat: lat ?? null, check_out_lng: lng ?? null }),
+        body: JSON.stringify(outPatch),
       });
-      const updated = await patchRes.json();
+      let updated = await patchRes.json();
+      if (!patchRes.ok && closedBreaks && /breaks/i.test(updated?.message || "")) {
+        console.error("checkOut breaks column missing — hint:", BREAKS_COLUMN_HINT);
+        delete outPatch.breaks;
+        patchRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?id=eq.${encodeURIComponent(row.id)}`, { method: "PATCH", headers: { ...headers, Prefer: "return=representation" }, body: JSON.stringify(outPatch) });
+        updated = await patchRes.json();
+      }
       if (!patchRes.ok) {
         console.error("checkOut failed:", updated?.message || updated);
         return Response.json({ error: updated?.message || "Failed to save checkout location" }, { status: 400 });
       }
       return Response.json({ attendance: updated[0], checkoutDistance });
+    }
+
+    // ---- «راحة مرنة ببصمة»: break punches on the same day record ----
+    // The gate is the shared checkFlexBreakPunchGate (the punch card runs the same one). A required
+    // location is asked for as on check-in, and recorded; it is not matched to the station radius —
+    // a lawful rest may be taken off site (prayer, meal).
+
+    if (action === "breakStart" || action === "breakEnd") {
+      const { employeeId, lat, lng, accuracy } = body;
+      if (!employeeId) return Response.json({ error: "Missing employeeId" }, { status: 400 });
+      if (!auth?.admin && employeeId !== auth?.userId) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const emergency = await getEmergencyWindow(auth.companyId);
+      const settingsRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance_settings?company_id=eq.${encodeURIComponent(auth.companyId)}`, { headers });
+      const settingsRows = await settingsRes.json();
+      const settings = (Array.isArray(settingsRows) && settingsRows[0]) || { gps_enabled: false, gps_required: false };
+      const locationRequired = settings.gps_enabled === true && settings.gps_required === true && !emergency?.active;
+      if (locationRequired && (lat == null || lng == null)) return Response.json({ error: "GPS_REQUIRED" }, { status: 400 });
+      const date = toRiyadhDateKey();
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(auth.companyId)}&employee_id=eq.${encodeURIComponent(employeeId)}&date=eq.${date}`, { headers });
+      const rows = await res.json();
+      const row = Array.isArray(rows) ? rows[0] : null;
+      const shift = await getScheduledShift(auth.companyId, employeeId);
+      const nowIso = new Date().toISOString();
+      const kind = action === "breakStart" ? "start" : "end";
+      const gate = checkFlexBreakPunchGate({ action: kind, shift, breaks: row?.breaks, checkIn: row?.check_in_at, checkOut: row?.check_out_at, now: nowIso, onDate: date });
+      if (!gate.ok) return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 400 });
+      const breaks = Array.isArray(row?.breaks) ? row.breaks.map((item: any) => ({ ...item })) : [];
+      const where = lat != null && lng != null ? { lat, lng, accuracy: accuracy ?? null } : {};
+      if (kind === "start") {
+        breaks.push({ start: nowIso, end: null, source: "punch", ...(Object.keys(where).length ? { startAt: where } : {}) });
+      } else {
+        const open = [...breaks].reverse().find((item: any) => item?.source !== "assumed" && item?.start && !item?.end);
+        if (open) {
+          open.end = nowIso;
+          if (gate.short) open.short = true;
+          if (Object.keys(where).length) open.endAt = where;
+        }
+      }
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?id=eq.${encodeURIComponent(row.id)}`, {
+        method: "PATCH",
+        headers: { ...headers, Prefer: "return=representation" },
+        body: JSON.stringify({ breaks }),
+      });
+      const updated = await patchRes.json();
+      if (!patchRes.ok) {
+        console.error(`${action} failed:`, updated?.message || updated, "hint:", BREAKS_COLUMN_HINT);
+        return Response.json({ error: "BREAK_SAVE_FAILED" }, { status: 400 });
+      }
+      return Response.json({ attendance: Array.isArray(updated) ? updated[0] : updated, short: !!gate.short });
+    }
+
+    if (action === "reviewLateReturn") {
+      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const employeeId = String(body.employeeId || "");
+      if (!employeeId || employeeId === auth?.userId) {
+        return Response.json({ error: "SELF_DECISION", reason: "لا يقرّر الموظف في راحته — القرار لمديره.", reasonEn: "A worker does not decide on their own break — their manager does." }, { status: 403 });
+      }
+      if (!(await employeeInCompany(employeeId))) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const date = String(body.date);
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(auth.companyId)}&employee_id=eq.${encodeURIComponent(employeeId)}&date=eq.${date}`, { headers });
+      const rows = await res.json();
+      const row = Array.isArray(rows) ? rows[0] : null;
+      const breaks = Array.isArray(row?.breaks) ? row.breaks.map((item: any) => ({ ...item })) : [];
+      const punched = breaks.filter((item: any) => item?.source !== "assumed" && item?.start);
+      if (!row || !punched.length) return Response.json({ error: "NO_BREAK_PUNCH", reason: "لا راحة مثبتة ببصمة لهذا اليوم.", reasonEn: "No punched break on this day." }, { status: 400 });
+      punched[punched.length - 1].review = { decision: body.decision, by: auth.name || "Manager", at: new Date().toISOString() };
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/attendance?id=eq.${encodeURIComponent(row.id)}`, {
+        method: "PATCH",
+        headers: { ...headers, Prefer: "return=representation" },
+        body: JSON.stringify({ breaks }),
+      });
+      const updated = await patchRes.json();
+      if (!patchRes.ok) return Response.json({ error: "BREAK_SAVE_FAILED" }, { status: 400 });
+      return Response.json({ attendance: Array.isArray(updated) ? updated[0] : updated });
     }
 
     // ---- Authorized manager: record attendance without GPS ----
@@ -849,3 +940,27 @@ Deno.serve(async (req) => {
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
+/**
+ * The break list stored when a flex day closes (twin of actualDuty.closeDayBreaks): an open punched
+ * break ends at the checkout; with none punched, an assumed break («مفترضة — لم تُثبت ببصمة») at the
+ * card's placement when checkAssumedBreakGate passes it, else where resolveFlexDayBreaks places it.
+ */
+function closeFlexBreaks(shift: any, row: any, checkOutIso: string, assumedBreak: any) {
+  const list = Array.isArray(row?.breaks) ? row.breaks.map((item: any) => ({ ...item })) : [];
+  for (const item of list) if (item && item.source !== "assumed" && item.start && !item.end) item.end = checkOutIso;
+  const onDate = String(row?.date || "").slice(0, 10);
+  const day = resolveFlexDayBreaks({ shift, breaks: list, checkIn: row?.check_in_at, checkOut: checkOutIso, onDate });
+  if (!day.flex || !day.assumed || list.some((item: any) => item?.source === "assumed")) return list;
+  const card = assumedBreak ? checkAssumedBreakGate({ shift, breaks: list, start: assumedBreak.start, end: assumedBreak.end, onDate }) : null;
+  const inMs = new Date(row.check_in_at).getTime();
+  const lift = (m: number) => (m + 720 < day.flex.shiftStart ? m + 1440 : m);
+  const inParts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(row.check_in_at));
+  const inM = lift(Number(inParts.find((p) => p.type === "hour")?.value || 0) * 60 + Number(inParts.find((p) => p.type === "minute")?.value || 0));
+  const toMin = (hm: string) => lift(Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5)));
+  const startMin = card?.ok ? toMin(card.start) : day.assumed.startMin;
+  const minutes = day.flex.minutes;
+  const base = inMs - (inMs % 60000);
+  const iso = (m: number) => new Date(base + (m - inM) * 60000).toISOString();
+  list.push({ start: iso(startMin), end: iso(startMin + minutes), source: "assumed" });
+  return list;
+}

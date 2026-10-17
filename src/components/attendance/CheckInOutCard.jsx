@@ -20,6 +20,7 @@ import { isServiceOutage } from "@/lib/serviceErrors";
 import {
   getLocalTodayAttendance,
   localAttendanceSettings,
+  localBreakPunch,
   localCheckIn,
   localCheckOut,
 } from "@/lib/localAttendanceFallback";
@@ -35,7 +36,10 @@ import NvIcon from "@/components/shared/NvIcon";
 import { employeeShiftOnDay, isWeekDayPublished, prayerBreakHint, prayersInShift, rosterBreakWindows, sunExposureMark, SUN_FIELD } from "@/lib/shiftWeek";
 import { stationPrayerTimes } from "@/lib/prayerTimes";
 import { isRamadanDay } from "@/lib/laborRules";
-import { deriveDutyAlerts, dutyShiftKey } from "@/lib/dutyAlerts";
+import { deriveDutyAlerts, dutyShiftKey, minutesAr } from "@/lib/dutyAlerts";
+import { resolveDayBreaks } from "@/lib/actualDuty";
+import { checkFlexBreakPunchGate } from "@/lib/shiftDerivations";
+import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 
 const STATUS_PILL = {
   present: { bg: "var(--nv-accent-soft)", fg: "#15803D", bd: "#BBF7D0", ar: "حاضر", en: "Present" },
@@ -224,6 +228,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             }
           : {
               shiftEnd: shift?.end,
+              ...(assumedAtCheckout() ? { assumedBreak: assumedAtCheckout() } : {}),
             }),
       });
       const att = res?.data?.attendance;
@@ -354,6 +359,72 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     try { openDueDutyAlertNotices(company.id, currentUser.id, { alerts: dutyAlerts.alerts, shiftKey: shiftNoticeKey, ar }); } catch { /* best-effort */ }
   }, [company?.id, currentUser?.id, shiftNoticeKey, noticeIds]);
 
+  // «راحة مرنة ببصمة»: the day read from the break punches — the buttons, the timeline and the bar use it.
+  const continuous103 = hoursPolicyOf(data, dutyEmployee).continuousWork103 === true;
+  const flexDay = resolveDayBreaks({
+    shift: dutyShift,
+    breaks: attendance?.breaks,
+    checkIn: attendance?.check_in_at,
+    checkOut: attendance?.check_out_at,
+    now: new Date(tick),
+    onDate: dutyDay,
+    prayers: prayerDay,
+    company: data,
+    employee: dutyEmployee,
+  });
+  const flexOn = !!flexDay.flex;
+  const breakAction = flexDay.open ? "end" : "start";
+  const breakGate = flexOn && attendance?.check_in_at && !attendance?.check_out_at
+    ? checkFlexBreakPunchGate({ action: breakAction, shift: dutyShift, breaks: attendance?.breaks, checkIn: attendance?.check_in_at, now: new Date(tick), onDate: dutyDay, continuous103 })
+    : null;
+  /** Where the card would place an unpunched break if the day closed now — sent with a cloud checkout. */
+  function assumedAtCheckout() {
+    if (!flexOn) return null;
+    const closing = resolveDayBreaks({ shift: dutyShift, breaks: attendance?.breaks, checkIn: attendance?.check_in_at, checkOut: new Date().toISOString(), onDate: dutyDay, prayers: prayerDay, company: data, employee: dutyEmployee });
+    return closing.assumed && !closing.punched.length ? { start: closing.assumed.start, end: closing.assumed.end } : null;
+  }
+  const [breakBusy, setBreakBusy] = useState(false);
+  const [breakError, setBreakError] = useState("");
+  const breakPunch = async () => {
+    if (!breakGate?.ok) return;
+    setBreakError("");
+    setBreakBusy(true);
+    try {
+      let att = null;
+      if (localMode || isLocalPreviewActive()) {
+        att = localBreakPunch(company.id, { employeeId: currentUser.id, action: breakAction });
+      } else {
+        // The break follows the check-in's location rule — lighter: no station radius, a rest may be off site.
+        let coords = null;
+        if (isLocationRequired(settings)) {
+          coords = await getAccuratePosition();
+          if (!coords) {
+            setBreakError(t("locationDenied"));
+            return;
+          }
+        }
+        const res = await base44.functions.invoke("supabaseAttendance", {
+          action: breakAction === "start" ? "breakStart" : "breakEnd",
+          companyId: company.id,
+          employeeId: currentUser.id,
+          ...(coords ? { lat: coords.lat, lng: coords.lng, accuracy: coords.accuracy } : {}),
+        });
+        att = res?.data?.attendance || null;
+      }
+      if (att) {
+        setAttendance(att);
+        onStatusChange?.(att);
+        window.dispatchEvent(new CustomEvent("attendance-updated", { detail: att }));
+      }
+      setTick(Date.now());
+    } catch (err) {
+      const payload = err?.response?.data || {};
+      setBreakError((ar ? (err?.reason || payload.reason) : (err?.reasonEn || payload.reasonEn)) || err?.code || payload.error || (ar ? "تعذّر تسجيل الراحة." : "Could not record the break."));
+    } finally {
+      setBreakBusy(false);
+    }
+  };
+
   if (compact) {
     return (
       <section
@@ -425,7 +496,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     ? `${shift.label || (ar ? "وردية" : "Shift")} · \u2066${startClock}–${endClock}\u2069`
     : (ar ? "لا وردية منشورة" : "No published shift");
   const band = breakBand(dutyShift, dutyDay);
-  const worked = workedClock(attendance?.check_in_at, attendance?.check_out_at, tick, band);
+  const worked = workedClock(attendance?.check_in_at, attendance?.check_out_at, tick, band, flexOn ? flexDay : null);
   const targetLabel = band?.targetLabel || "8:00";
   const dayPct = Math.min(100, Math.round((worked.minutes / (band?.targetMin || 480)) * 100));
   const inn = phase !== "awaiting_in";
@@ -516,6 +587,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         ...(band?.label
           ? [{ key: "rest", kind: "plan", at: band.start + band.offset, label: ar ? "الراحة" : "Break", note: ar ? "تُخصم من المنجز" : "Excluded from worked time", sub: breakHint ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: band.label, hint: attRightHint("rest", {}, { view: "employee", ar }) }]
           : []),
+        ...(flexOn ? flexSteps(flexDay, { ar, hint: attRightHint("rest", {}, { view: "employee", ar }) }) : []),
         { key: "end", kind: "plan", at: (band?.start ?? 0) + (band?.targetMin ?? 0), label: ar ? "نهاية الوردية" : "Shift ends", note: ar ? "من الجدول المنشور" : "From the published rota", value: endClock },
         {
           key: "out",
@@ -641,6 +713,16 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               </span>
             ))}
           </div>
+          {flexOn && inn && !done ? (
+            <BreakPunch
+              ar={ar}
+              day={flexDay}
+              gate={breakGate}
+              busy={breakBusy}
+              error={breakError}
+              onPunch={breakPunch}
+            />
+          ) : null}
           {forgotten ? (
             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-warn-ink)", textAlign: "center", lineHeight: 1.7 }}>
               {ar ? "انصراف منسي — أُحيل إلى مديرك. السجل يبقى مفتوحاً حتى يضع وقت الانصراف." : "Forgotten checkout — sent to your manager. The register stays open until they set the time."}
@@ -707,7 +789,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                     {!last ? <span aria-hidden style={{ position: "absolute", insetInlineStart: 10, top: 22, bottom: 0, width: 2, background: "var(--nv-line2, #EEF1EF)", borderRadius: 2 }} /> : null}
                     <span aria-hidden style={{ width: 22, height: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1 }}>
                       {step.kind === "plan" ? (
-                        <span style={{ width: 10, height: 10, borderRadius: "50%", boxSizing: "border-box", background: "var(--nv-card)", border: "2px solid var(--nv-mute-fill, #C5CEC9)" }} />
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", boxSizing: "border-box", background: "var(--nv-card)", border: `2px ${step.assumed ? "dashed" : "solid"} var(--nv-mute-fill, #C5CEC9)` }} />
                       ) : (
                         <span
                           className={step.state === "now" ? "nv-punch-step-now" : undefined}
@@ -767,6 +849,24 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             </div>
             <div style={{ height: 8, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden", position: "relative" }}>
               <div style={{ height: "100%", width: `${inn ? dayPct : 0}%`, background: done ? "var(--nv-ok-fill, #3C7D50)" : "var(--nv-warn-fill, #C8A45A)", borderRadius: 999 }} />
+              {flexOn && band?.targetMin ? flexDay.rows.map((row, i) => (
+                <span
+                  key={`brk-bar-${i}`}
+                  data-break-bar={row.source}
+                  title={ar ? `راحة ${row.start}–${row.end || "…"}${row.source === "assumed" ? " · مفترضة" : ""}` : `Break ${row.start}–${row.end || "…"}${row.source === "assumed" ? " · assumed" : ""}`}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    insetInlineStart: `${Math.max(0, Math.min(100, ((row.startMin - band.start) / band.targetMin) * 100))}%`,
+                    width: `${Math.max(0, Math.min(100, ((Math.max(row.startMin, row.endMin ?? row.startMin) - row.startMin) / band.targetMin) * 100))}%`,
+                    background: row.source === "assumed"
+                      ? "repeating-linear-gradient(45deg,var(--nv-mute-fill, #C5CEC9) 0 3px,transparent 3px 6px)"
+                      : "repeating-linear-gradient(45deg,#C8A45A 0 3px,transparent 3px 6px)",
+                    opacity: 0.85,
+                  }}
+                />
+              )) : null}
               {band?.label ? (
                 <span
                   title={ar ? `راحة ${band.label}` : `Break ${band.label}`}
@@ -783,9 +883,15 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               ) : null}
             </div>
             <span style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))" }}>
-              {band?.label
-                ? (ar ? "الجزء المخطّط هو الراحة — لا تُحتسب ساعات عمل." : "The hatched part is the break — not counted as work.")
-                : (ar ? "راحة الوردية تُخصم من المنجز" : "Shift rest is excluded from worked time")}
+              {flexOn
+                ? (flexDay.rows.length
+                  ? (flexDay.assumed
+                    ? (ar ? "الجزء المخطّط راحة مفترضة — لم تُثبت ببصمة، وتُخصم من المنجز (المادة 102)." : "The hatched part is an assumed break — not punched, still excluded (Art. 102).")
+                    : (ar ? "الجزء المخطّط راحتك كما بصمتها — لا تُحتسب ساعات عمل." : "The hatched part is your break as punched — not counted as work."))
+                  : (ar ? "راحتك المرنة تُخصم حين تبصمها — لا تُحتسب ساعات عمل." : "Your flex break is excluded once you punch it."))
+                : band?.label
+                  ? (ar ? "الجزء المخطّط هو الراحة — لا تُحتسب ساعات عمل." : "The hatched part is the break — not counted as work.")
+                  : (ar ? "راحة الوردية تُخصم من المنجز" : "Shift rest is excluded from worked time")}
             </span>
           </div>
         </div>
@@ -901,12 +1007,19 @@ export function breakBand(shift, onDate) {
   };
 }
 
-export function workedClock(checkIn, checkOut, now, band) {
+/**
+ * «المنجز اليوم»: presence minus the rest. A flex day (`flexDay`, resolveDayBreaks) subtracts its
+ * actual break punches — the open one up to now — or the assumed one; otherwise the roster's band.
+ */
+export function workedClock(checkIn, checkOut, now, band, flexDay = null) {
   if (!checkIn) return { label: "0:00", minutes: 0 };
   const start = new Date(checkIn).getTime();
   const end = checkOut ? new Date(checkOut).getTime() : now;
   let minutes = Math.max(0, Math.round((end - start) / 60000));
-  if (band?.rest) {
+  if (flexDay?.flex) {
+    const rest = (flexDay.rows || []).reduce((sum, row) => sum + Math.max(0, (row.endMin ?? row.startMin) - row.startMin), 0);
+    minutes = Math.max(0, minutes - rest);
+  } else if (band?.rest) {
     const inMin = new Date(checkIn).getHours() * 60 + new Date(checkIn).getMinutes();
     const outDate = checkOut ? new Date(checkOut) : new Date(now);
     const outMin = outDate.getHours() * 60 + outDate.getMinutes() + (outDate.getDate() !== new Date(checkIn).getDate() ? 1440 : 0);
@@ -917,6 +1030,106 @@ export function workedClock(checkIn, checkOut, now, band) {
   }
   return { label: `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`, minutes };
 }
+
+/** «مسار اليوم» rows of a flex day: the window as a range, then each punched part or the assumed one. */
+export function flexSteps(day, { ar = true, hint = null } = {}) {
+  const flex = day?.flex;
+  if (!flex) return [];
+  const steps = [{
+    key: "rest-window",
+    kind: "plan",
+    at: flex.fromMin,
+    label: ar ? "نافذة الراحة" : "Break window",
+    note: ar
+      ? `راحة مرنة ${minutesAr(flex.minutes)}${flex.splitEffective ? " · تُقسَّم" : ""} — تبدؤها وتنهيها ببصمة`
+      : `Flex break ${flex.minutes} min${flex.splitEffective ? " · may split" : ""} — you punch its start and end`,
+    value: `${flex.from}–${flex.to}`,
+    hint,
+  }];
+  const parts = day.rows.filter((row) => row.source === "punch");
+  day.rows.forEach((row, i) => {
+    if (row.source === "assumed") {
+      steps.push({
+        key: "brk-assumed",
+        kind: "plan",
+        assumed: true,
+        at: row.startMin,
+        label: ar ? "راحة مفترضة" : "Assumed break",
+        note: ar ? "مفترضة — لم تُثبت ببصمة · تُخصم (المادة 102)" : "Assumed — not proven by a punch · deducted (Art. 102)",
+        value: `${row.start}–${row.end}`,
+      });
+      return;
+    }
+    const n = parts.indexOf(row) + 1;
+    const short = !row.open && row.minutes < flex.minPart;
+    steps.push({
+      key: `brk-${i}`,
+      kind: "punch",
+      at: row.startMin,
+      state: row.open ? (day.overMinutes > 0 ? "late" : "now") : short ? "late" : "done",
+      label: parts.length > 1 ? (ar ? `راحتك · الجزء ${n}` : `Your break · part ${n}`) : (ar ? "راحتك" : "Your break"),
+      note: row.open
+        ? (ar ? `مفتوحة منذ ${row.start} · ${minutesAr(row.minutes)}` : `Open since ${row.start} · ${row.minutes} min`)
+        : (ar ? `ببصمة · ${minutesAr(row.minutes)}${short ? " · قصيرة" : ""}` : `Punched · ${row.minutes} min${short ? " · short" : ""}`),
+      value: row.open ? `${row.start}–…` : `${row.start}–${row.end}`,
+    });
+  });
+  return steps;
+}
+
+/** «بدأت راحتي» / «أنهيت راحتي» — a plain button inside the card; a disabled one names its reason. */
+function BreakPunch({ ar, day, gate, busy, error, onPunch }) {
+  if (!gate) return null;
+  const open = !!day.open;
+  const label = open ? (ar ? "أنهيت راحتي" : "I ended my break") : (ar ? "بدأت راحتي" : "I started my break");
+  const disabled = busy || !gate.ok;
+  const clockAt = (mins) => {
+    const m = ((Math.round(mins) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  };
+  const reason = !gate.ok
+    ? `${ar ? gate.reason : gate.reasonEn}${gate.error === "BREAK_BELOW_MIN" && gate.endsAtMin != null ? (ar ? ` — تنهيها من ${clockAt(gate.endsAtMin)}` : ` — you can end it from ${clockAt(gate.endsAtMin)}`) : ""}`
+    : gate.short
+      ? (ar ? `${gate.reason} — إن أنهيتها الآن تُسجَّل راحة قصيرة.` : `${gate.reasonEn} — ending now records a short break.`)
+      : "";
+  const remaining = !open && day.punched.length && day.flex.splitEffective && day.remaining > 0 && day.windowState !== "closed"
+    ? (ar ? `باقٍ ${minutesAr(day.remaining)} من راحتك` : `${day.remaining} min of your break left`)
+    : "";
+  const running = open
+    ? (ar ? <>في راحتك منذ <span dir="ltr" style={MONO}>{day.open.start}</span> · {minutesAr(day.runningMinutes)}</> : <>On break since <span dir="ltr" style={MONO}>{day.open.start}</span> · {day.runningMinutes} min</>)
+    : null;
+  return (
+    <div data-break-punch={open ? "open" : "closed"} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, maxWidth: 280, textAlign: "center" }}>
+      <button
+        type="button"
+        data-break-action={open ? "end" : "start"}
+        onClick={onPunch}
+        disabled={disabled}
+        aria-describedby={reason ? "nv-break-reason" : undefined}
+        style={{
+          ...ui.btnSecondary,
+          height: 34,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          fontWeight: 600,
+          color: disabled ? "var(--nv-muted)" : "var(--nv-ink)",
+          opacity: disabled ? 0.6 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        {busy ? <Loader2 style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> : <NvIcon name="clock" size={14} inline={false} />}
+        {label}
+      </button>
+      {running ? <span style={{ fontSize: 11.5, color: "var(--nv-ink2)" }}>{running}</span> : null}
+      {remaining ? <span data-break-remaining style={{ fontSize: 11.5, color: "var(--nv-ink2)", fontWeight: 600 }}>{remaining}</span> : null}
+      {reason ? <span id="nv-break-reason" data-break-reason={gate.error || ""} style={{ fontSize: 11, lineHeight: 1.6, color: gate.short ? "var(--nv-warn-ink)" : "var(--nv-muted)" }}>{reason}</span> : null}
+      {error ? <span style={{ fontSize: 11, lineHeight: 1.6, color: "var(--nv-bad-ink)" }}>{error}</span> : null}
+    </div>
+  );
+}
+
+const MONO = { fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", color: "var(--nv-ink)" };
 
 const REQ_REASONS_AR = ["خارج النطاق", "تعذّر الموقع", "عمل ميداني", "سبب آخر"];
 const REQ_REASONS_EN = ["Outside range", "Location failed", "Field work", "Other"];

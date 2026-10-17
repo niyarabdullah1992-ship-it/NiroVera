@@ -66,7 +66,16 @@ export function getTodaysShift(data, employee) {
     const schedule = (data?.schedules || []).find((s) => s.stationId === stationId);
     for (const st of schedule?.shiftTypes || []) {
       const ids = schedule.assignments?.[dateKey]?.[st.id] || [];
-      if (ids.includes(employee.id)) return { start: st.start, end: st.end, label: st.label, stationId };
+      if (ids.includes(employee.id)) {
+        return {
+          start: st.start,
+          end: st.end,
+          label: st.label,
+          stationId,
+          // The break mode travels with the shift so every reader deducts the same rest.
+          ...(st.breakMode === "flex" ? { id: st.id, breakMode: "flex", flexBreak: st.flexBreak || {}, restMinutes: st.restMinutes } : {}),
+        };
+      }
     }
   }
   return null;

@@ -1768,6 +1768,32 @@ export function recordDutyBreaches(companyId, employeeId, dayKey) {
   return added;
 }
 
+/**
+ * «عودة متأخرة من الراحة» — the manager's decision on a flex break that ran past its minutes: excused,
+ * or noted as late return. Not a legal breach (Art. 101 holds); the decision rides on the punched break
+ * (`review`), the same place the cloud `reviewLateReturn` action writes it. Returns { ok } or a named gate.
+ */
+export function reviewLateReturn(companyId, employeeId, dayKey, { decision, by, byId } = {}) {
+  if (decision !== "excused" && decision !== "late") {
+    return { ok: false, error: "LATE_RETURN_DECISION", reason: "اختر: يُعذر أو يُسجَّل تأخراً.", reasonEn: "Choose: excused or recorded as late." };
+  }
+  const data = getCompanyData(companyId);
+  const row = attendanceOnDate(data?.personalAttendance, employeeId, dayKey);
+  const punched = (row?.breaks || []).filter((item) => item?.source !== "assumed" && item?.start);
+  if (!punched.length) return { ok: false, error: "NO_BREAK_PUNCH", reason: "لا راحة مثبتة ببصمة لهذا اليوم.", reasonEn: "No punched break on this day." };
+  if (byId && String(byId) === String(employeeId)) {
+    return { ok: false, error: "SELF_DECISION", reason: "لا يقرّر الموظف في راحته — القرار لمديره.", reasonEn: "A worker does not decide on their own break — their manager does." };
+  }
+  updateCompany(companyId, (draft) => {
+    const live = (draft.personalAttendance || []).find((item) => String(item.employeeId ?? item.employee_id) === String(employeeId) && String(item.date || item.dateKey || "").slice(0, 10) === dayKey);
+    const rows = (live?.breaks || []).filter((item) => item?.source !== "assumed" && item?.start);
+    const last = rows[rows.length - 1];
+    if (last) last.review = { decision, by: by || "", at: new Date().toISOString() };
+  });
+  audit(companyId, "late_return_review", `${by || "manager"} marked the break of ${employeeId} on ${dayKey} as ${decision}.`);
+  return { ok: true };
+}
+
 /** Arts. 69 & 72 — remind managers before the signing/ruling windows close, and the worker of his own. Idempotent per key. */
 export function openDueDisciplineDeadlineNotices(companyId, now = new Date()) {
   const data = getCompanyData(companyId);

@@ -8,6 +8,7 @@ import { toWesternDigits } from "@/lib/dateFormat";
 import { weekStartDate, weekdayLabel } from "@/lib/shiftWeek";
 import { formatShiftHm } from "@/lib/shiftDerivations";
 import CheckInOutCard, { breakBand, workedClock } from "@/components/attendance/CheckInOutCard";
+import { resolveDayBreaks } from "@/lib/actualDuty";
 import { AttendanceProofChain, punchChainFromAttendance } from "@/components/attendance/AttendanceTrustChrome";
 import { DutyBoard, DutyHeadline, DutyNumber, DutyTile, DutyTiles } from "@/components/schedules/DutyTiles";
 import DutySide, { dutyHeatCopy } from "@/components/schedules/DutySide";
@@ -85,7 +86,9 @@ export default function MyPunchPage({ me, currentUser, company, data, t, lang = 
         );
 
   const band = breakBand(shift);
-  const worked = workedClock(inAt, outAt, tick, band);
+  // A flex shift subtracts the break as punched (or assumed) — the same reading as the card.
+  const flexDay = resolveDayBreaks({ shift, breaks: punchAtt?.breaks, checkIn: inAt, checkOut: outAt, now: new Date(tick), onDate: todayKey, company: data, employee: person });
+  const worked = workedClock(inAt, outAt, tick, band, flexDay.flex ? flexDay : null);
   const targetLabel = band?.targetLabel || "8:00";
   const targetMin = band?.targetMin || 480;
   const workedPct = Math.min(100, Math.round((worked.minutes / targetMin) * 100));

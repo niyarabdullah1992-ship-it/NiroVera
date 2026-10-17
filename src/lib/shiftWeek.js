@@ -598,6 +598,8 @@ export function dutyConsecutiveGate(shift, onDate, employee, company) {
     restMinutes: shift?.restMinutes,
     breaks: shift?.breaks,
     breakCount: shift?.breakCount,
+    breakMode: shift?.breakMode,
+    flexBreak: shift?.flexBreak,
     onDate,
     continuous103: policy.continuousWork103 === true,
     maxConsecutiveHours: limits?.consecutiveHours || undefined,
@@ -620,8 +622,11 @@ const hmClock = (hm) => {
  * consecutive-hours limit) sits in the middle of the shift — the same band the punch card draws.
  * Returns [{ from, to, minutes, startMin, endMin, start, end, placed }] — `from`/`to` are offsets
  * from the shift start; `startMin`/`endMin` are minutes after the shift day's midnight (may pass 1440).
+ * A flex shift type returns [] — its break is where the worker punches it.
  */
 export function rosterBreakWindows(shift, onDate) {
+  // «راحة مرنة ببصمة»: the roster places no break — the worker's punches do (flexBreakOf has the window).
+  if (shift?.breakMode === "flex") return [];
   const start = hmClock(shift?.start);
   const end = hmClock(shift?.end);
   if (start == null || end == null) return [];

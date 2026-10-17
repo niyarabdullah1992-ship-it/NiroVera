@@ -10,7 +10,9 @@ import { isServiceOutage } from "@/lib/serviceErrors";
 import { hmToMinutes, todaysShiftEnded } from "@/lib/attendanceDerivations";
 import { isExcusedEarlyCheckout } from "@/lib/dutyRequests";
 import { listLocalTodayAttendance, mergeAttendanceRows } from "@/lib/localAttendanceFallback";
-import { recordManualAttendance, submitOtherRequest } from "@/lib/store";
+import { recordManualAttendance, reviewLateReturn, submitOtherRequest } from "@/lib/store";
+import { resolveDayBreaks } from "@/lib/actualDuty";
+import { minutesAr } from "@/lib/dutyAlerts";
 import { PREVENTED_TYPE, checkEmployerPreventedGate } from "@/lib/modelRequests";
 import { isLocalPreviewActive } from "@/lib/localPreview";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
@@ -50,6 +52,7 @@ const FLAG = {
   outside: { ar: "خارج النطاق", en: "Outside range", color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)" },
   missing: { ar: "بلا انصراف", en: "No checkout", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)" },
   early: { ar: "غادر مبكراً", en: "Left early", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)" },
+  late_return: { ar: "عودة متأخرة من الراحة", en: "Late return from break", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)" },
   present: { ar: "مكتمل", en: "Complete", color: "var(--nv-ok-ink)", bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)" },
   on_leave: { ar: "إجازة", en: "Leave", color: "var(--nv-ink)", bg: "var(--nv-soft)", border: "var(--nv-line)" },
   not_scheduled: { ar: "غير مجدول", en: "Unscheduled", color: "var(--nv-muted)", bg: "var(--nv-soft)", border: "var(--nv-line)" },
@@ -271,6 +274,45 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   };
 
   const byEmployee = Object.fromEntries(rows.map((r) => [String(r.employee_id ?? r.employeeId), r]));
+  // «راحة مرنة ببصمة» per person: the punched or assumed break, and what ran past its minutes.
+  const breakDayOf = (employee) => {
+    const r = byEmployee[String(employee.id)];
+    return resolveDayBreaks({
+      shift: getTodaysShift(data, employee),
+      breaks: r?.breaks,
+      checkIn: r?.check_in_at,
+      checkOut: r?.check_out_at,
+      now: new Date(),
+      onDate: toRiyadhDateKey(),
+      company: data,
+      employee,
+    });
+  };
+  /** A closed over-long break with no decision yet — late return, not a legal breach. */
+  const lateReturnOpen = (employee) => {
+    const day = breakDayOf(employee);
+    return !!day.flex && !day.open && day.overMinutes > 0 && !day.punched.some((row) => row.review);
+  };
+  const [reviewError, setReviewError] = useState("");
+  const decideLateReturn = async (employee, decision) => {
+    setReviewError("");
+    const date = toRiyadhDateKey();
+    const r = byEmployee[String(employee.id)];
+    try {
+      if (isLocalPreviewActive() || r?.localPreview) {
+        const res = reviewLateReturn(company.id, employee.id, date, { decision, by: currentUser?.name, byId: currentUser?.id });
+        if (!res.ok) { setReviewError(lang === "ar" ? res.reason : res.reasonEn); return; }
+        load();
+        return;
+      }
+      const res = await base44.functions.invoke("supabaseAttendance", { action: "reviewLateReturn", companyId: company.id, employeeId: employee.id, date, decision });
+      const updated = res?.data?.attendance;
+      if (updated) setRows((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    } catch (error) {
+      const payload = error?.response?.data || {};
+      setReviewError((lang === "ar" ? payload.reason : payload.reasonEn) || payload.error || (lang === "ar" ? "تعذّر حفظ القرار." : "Could not save the decision."));
+    }
+  };
   const statusFor = (employee) => getAttendanceStatus(employee, byEmployee[String(employee.id)], data);
   // «بلا انصراف» only once the shift has actually ended (+1 h) — an open record mid-shift is normal.
   const isPastCheckoutMissing = (r, employee) => {
@@ -284,7 +326,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     const askedManual = (employee.otherRequests || []).some((item) => item.type === "manual_punch" && (item.status || "pending") === "pending");
     // Leaving inside her Art. 154 nursing minutes at the end of the shift is not an early checkout.
     const earlyOk = row?.early_checkout && isExcusedEarlyCheckout(employee, String(row.date || "").slice(0, 10) || toRiyadhDateKey(), row.check_out_at, getTodaysShift(data, employee)?.end);
-    return row?.location_status === "outside" || isPastCheckoutMissing(row, employee) || (!!row?.early_checkout && !earlyOk) || askedManual;
+    return row?.location_status === "outside" || isPastCheckoutMissing(row, employee) || (!!row?.early_checkout && !earlyOk) || askedManual || lateReturnOpen(employee);
   };
   const todayAtt = deriveTeamAttendanceToday(employees, rows, data);
   const queue = employees.filter(needsDecision);
@@ -313,6 +355,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
     if ((employee.otherRequests || []).some((item) => item.type === "manual_punch" && (item.status || "pending") === "pending")) return "manual";
     if (r?.location_status === "outside") return "outside";
     if (isPastCheckoutMissing(r, employee)) return "missing";
+    if (lateReturnOpen(employee) && !(r?.early_checkout)) return "late_return";
     return "early";
   };
   const queueShown = queueFace === "all" ? queue : queue.filter((employee) => queueFaceOf(employee) === queueFace);
@@ -433,6 +476,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                     <span>· {ar ? "بصم" : "in"} <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{formatTime(row.check_in_at, format, "en-GB")}</span></span>
                   ) : null}
                 </span>
+                <BreakLine ar={ar} day={breakDayOf(employee)} />
               </span>
               <span style={{ ...chipStyle, height: 22, fontSize: 11 }}>{label}</span>
               {href ? (
@@ -469,6 +513,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           { id: "outside", label: ar ? "خارج النطاق" : "Outside range", n: formatUiNumber(queueCount("outside")) },
           { id: "missing", label: ar ? "بلا انصراف" : "No checkout", n: formatUiNumber(queueCount("missing")) },
           { id: "early", label: ar ? "خروج مبكر" : "Early out", n: formatUiNumber(queueCount("early")) },
+          { id: "late_return", label: ar ? "عودة متأخرة" : "Late return", n: formatUiNumber(queueCount("late_return")) },
         ]}
       >
         <span style={headNote}>{queueSub}</span>
@@ -496,15 +541,19 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           const geofence = r?.location_status === "outside" ? "outside" : r?.location_status === "inside" ? "inside" : "none";
           const register = r?.check_out_at ? "closed" : (status === "absent" || status === "not_scheduled" ? "missing" : punched ? "open" : "wait");
           const rings = buildAttendanceRings({ ar: lang === "ar", scheduled, punched, geofence, register, onLeave: status === "on_leave" });
+          const breakDay = breakDayOf(e);
+          const lateReturn = lateReturnOpen(e);
           const flagKey = r?.location_status === "outside"
             ? "outside"
             : r?.early_checkout
               ? "early"
               : isPastCheckoutMissing(r, e)
                 ? "missing"
-                : FLAG[status]
-                  ? status
-                  : "present";
+                : lateReturn
+                  ? "late_return"
+                  : FLAG[status]
+                    ? status
+                    : "present";
           const flag = FLAG[flagKey] || FLAG.present;
           const punchTime = r?.check_in_at ? formatTime(r.check_in_at, format, "en-GB") : "—";
           const asked = (e.otherRequests || []).find((item) => item.type === "manual_punch" && (item.status || "pending") === "pending");
@@ -522,9 +571,14 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                     ? (lang === "ar" ? "حضور بلا انصراف." : "Checked in with no checkout.")
                     : r?.early_checkout
                       ? t("earlyCheckoutLabel")
-                      : (lang === "ar" ? "السلسلة مكتملة." : "The chain is complete.");
+                      : lateReturn
+                        ? (lang === "ar"
+                          ? `أطال راحته ${minutesAr(breakDay.overMinutes)} فوق ${minutesAr(breakDay.flex.minutes)} المسموحة — عودة متأخرة، لا مخالفة نظامية.`
+                          : `The break ran ${breakDay.overMinutes} min past the allowed ${breakDay.flex.minutes} — a late return, not a legal breach.`)
+                        : (lang === "ar" ? "السلسلة مكتملة." : "The chain is complete.");
           const attention = needsDecision(e);
-          const broke = attention ? brokeAtLabel(lang === "ar", rings) : "";
+          // A late return names itself in the warn tone — it is not a broken link nor a legal breach.
+          const broke = attention && flagKey !== "late_return" ? brokeAtLabel(lang === "ar", rings) : "";
           return (
             <div key={e.id} className={`nv-att-decision-row${attention ? " is-attention" : ""}`}>
               <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
@@ -532,11 +586,12 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: MUTED }}>{punchTime}</span>
               </span>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: attention ? "var(--nv-bad-ink)" : flag.color }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: attention && flagKey !== "late_return" ? "var(--nv-bad-ink)" : flag.color }}>
                   {broke || (lang === "ar" ? flag.ar : flag.en)}
                 </span>
                 <AttendanceRingChips rings={rings} />
                 <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.75 }}>{reason}</span>
+                <BreakLine ar={ar} day={breakDay} />
                 {status === "late" && Number(r?.late_minutes) > 0 && !asked ? (
                   <RightHint ar={ar} style={{ alignSelf: "flex-start" }} hint={attRightHint("lateness", { date: String(r.check_in_at || "").slice(0, 10), minutes: Number(r.late_minutes) }, { view: "manager", ar, employee: e })} />
                 ) : null}
@@ -554,6 +609,12 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 ) : null}
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {isManager && lateReturn && String(e.id) !== String(currentUser?.id) ? (
+                  <span data-late-return-actions="1" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <button type="button" onClick={() => decideLateReturn(e, "excused")} style={actBtn("approve")}>{lang === "ar" ? "يُعذر" : "Excuse"}</button>
+                    <button type="button" onClick={() => decideLateReturn(e, "late")} style={actBtn("reject")}>{lang === "ar" ? "تُسجَّل عودة متأخرة" : "Record late return"}</button>
+                  </span>
+                ) : null}
                 {status === "absent" && preventedToday(e) ? (
                   <span data-prevented="1" style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ink)", background: "var(--nv-soft)", border: `1px solid ${BORDER}`, padding: "6px 11px", whiteSpace: "nowrap" }}>
                     {lang === "ar" ? "منعته المنشأة — أجره مستحق (النموذج الموحد م46)" : "Kept from work by the company — paid (Model Art. 46)"}
@@ -681,9 +742,9 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
 
   return (
     <>
-      {checkoutError ? (
+      {checkoutError || reviewError ? (
         <div style={{ border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", padding: "10px 14px", fontSize: 12, color: DANGER, lineHeight: 1.7, borderRadius: 10 }}>
-          {checkoutError}
+          {checkoutError || reviewError}
         </div>
       ) : null}
       {tiles}
@@ -704,5 +765,44 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
         )}
       />
     </>
+  );
+}
+/**
+ * One quiet line per person on a flex shift: «راحة 12:05–13:02 · ببصمة» / «مفترضة». A chip only for a
+ * real problem: a break past its minutes (late return) or one under the statutory minimum (short).
+ */
+export function BreakLine({ ar, day }) {
+  if (!day?.flex) return null;
+  const mono = { fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", color: "var(--nv-ink2)" };
+  const review = day.punched.map((row) => row.review).filter(Boolean).pop() || null;
+  const chipStyle = { display: "inline-flex", alignItems: "center", height: 20, padding: "0 7px", borderRadius: 7, fontSize: 10.5, fontWeight: 600, whiteSpace: "nowrap", background: "var(--nv-warn-soft)", color: "var(--nv-warn-ink)", border: "1px solid var(--nv-warn-line)" };
+  if (!day.rows.length) return null;
+  return (
+    <span data-break-line={day.assumed ? "assumed" : day.open ? "open" : "punch"} style={{ fontSize: 11, color: MUTED, display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+      {day.open && !day.punched.some((row) => !row.open) ? (
+        <span>{ar ? "في الراحة منذ " : "On break since "}<span dir="ltr" style={mono}>{day.open.start}</span></span>
+      ) : (
+        <span>
+          {ar ? "راحة " : "Break "}
+          {day.rows.map((row, i) => (
+            <React.Fragment key={`${row.start}-${i}`}>
+              {i ? " · " : ""}
+              <span dir="ltr" style={mono}>{row.start}–{row.open ? "…" : row.end}</span>
+            </React.Fragment>
+          ))}
+          {" · "}
+          {day.assumed ? (ar ? "مفترضة" : "assumed") : (ar ? "ببصمة" : "punched")}
+        </span>
+      )}
+      {day.overMinutes > 0 && !review ? (
+        <span data-break-chip="late_return" style={chipStyle}>{ar ? `عودة متأخرة ${minutesAr(day.overMinutes)}` : `Late return ${day.overMinutes} min`}</span>
+      ) : null}
+      {day.shortCount > 0 ? <span data-break-chip="short" style={chipStyle}>{ar ? "راحة قصيرة" : "Short break"}</span> : null}
+      {review ? (
+        <span data-break-review={review.decision}>
+          {review.decision === "excused" ? (ar ? `· عُذر — ${review.by || ""}` : `· excused — ${review.by || ""}`) : (ar ? `· سُجّلت عودة متأخرة — ${review.by || ""}` : `· late return recorded — ${review.by || ""}`)}
+        </span>
+      ) : null}
+    </span>
   );
 }

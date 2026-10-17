@@ -6,6 +6,12 @@ import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
 import { attendanceOnDate, checkPunchRecordGate, toCloudAttendanceRow as punchCloudRow } from "@/lib/attendancePunch";
 import { updateCompany, getCompanyData, recordDutyBreaches } from "@/lib/store";
 import { getTodaysShift, lateMinutesFromScheduledStart } from "@/lib/attendanceDerivations";
+import { checkFlexBreakPunchGate } from "@/lib/shiftDerivations";
+import { closeDayBreaks } from "@/lib/actualDuty";
+import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
+import { stationPrayerTimes } from "@/lib/prayerTimes";
+import { isRamadanDay } from "@/lib/laborRules";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 
 function todayKey() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
@@ -56,6 +62,7 @@ function toCloudAttendanceRow(row) {
     distance_meters: row.distanceMeters ?? row.distance_meters ?? null,
     excused: !!row.excused,
     early_checkout: !!row.earlyCheckout || !!row.early_checkout,
+    ...(Array.isArray(row.breaks) ? { breaks: row.breaks } : {}),
   };
 }
 
@@ -222,18 +229,80 @@ export function localCheckOut(companyId, { employeeId }) {
     requireTime: false,
   });
   if (!gate.ok) throwGate(gate);
+  const shift = employee ? getTodaysShift(data, employee) : null;
+  const checkOutAt = nowIso();
   updateCompany(companyId, (d) => {
     const list = Array.isArray(d.personalAttendance) ? d.personalAttendance : [];
     const idx = list.findIndex((r) => String(r.employeeId) === String(employeeId) && String(r.date) === date);
     if (idx < 0) return;
+    const checkInAt = list[idx].checkInAt || list[idx].check_in_at;
+    // «راحة مرنة ببصمة»: an open break ends at the checkout; an unpunched one is written as assumed.
+    const breaks = shift?.breakMode === "flex"
+      ? closeDayBreaks({ shift, breaks: list[idx].breaks, checkIn: checkInAt, checkOut: checkOutAt, onDate: date, prayers: dayPrayers(d, shift, date), company: d, employee })
+      : list[idx].breaks;
     list[idx] = {
       ...list[idx],
-      checkOutAt: nowIso(),
+      checkOutAt,
       status: list[idx].status || "present",
+      ...(Array.isArray(breaks) ? { breaks } : {}),
     };
     d.personalAttendance = list;
   });
   // Art. 101 — the breaches the closed day proves go onto the row, where the duty boards read them.
   try { recordDutyBreaches(companyId, employeeId, date); } catch { /* best-effort; the day is saved */ }
+  return getLocalTodayAttendance(companyId, employeeId);
+}
+
+/** The branch's prayer times on the duty day — where an unpunched flex break is assumed. */
+function dayPrayers(data, shift, date) {
+  const station = (data?.stations || []).find((row) => String(row.id) === String(shift?.stationId));
+  if (!station) return null;
+  try {
+    return stationPrayerTimes(station, date, { ramadan: isRamadanDay(date, laborCalendarOf(data)) });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * «بدأت راحتي» / «أنهيت راحتي» on a flex shift — the local twin of the cloud `breakStart` / `breakEnd`
+ * actions, gated by the same checkFlexBreakPunchGate. Appends { start, source: "punch" } or closes the
+ * open one with { end } (a short break, when the shift allows ending early, carries `short: true`).
+ */
+export function localBreakPunch(companyId, { employeeId, action }) {
+  const date = todayKey();
+  const data = getCompanyData(companyId);
+  const employee = (data?.employees || []).find((row) => String(row.id) === String(employeeId));
+  const existing = attendanceOnDate(data?.personalAttendance, employeeId, date);
+  const shift = employee ? getTodaysShift(data, employee) : null;
+  const now = nowIso();
+  const gate = checkFlexBreakPunchGate({
+    action,
+    shift,
+    breaks: existing?.breaks,
+    checkIn: existing?.checkInAt || existing?.check_in_at,
+    checkOut: existing?.checkOutAt || existing?.check_out_at,
+    now,
+    onDate: date,
+    continuous103: hoursPolicyOf(data, employee).continuousWork103 === true,
+  });
+  if (!gate.ok) throwGate(gate);
+  updateCompany(companyId, (d) => {
+    const list = Array.isArray(d.personalAttendance) ? d.personalAttendance : [];
+    const idx = list.findIndex((r) => String(r.employeeId ?? r.employee_id) === String(employeeId) && String(r.date || r.dateKey) === date);
+    if (idx < 0) return;
+    const breaks = Array.isArray(list[idx].breaks) ? list[idx].breaks.map((row) => ({ ...row })) : [];
+    if (action === "start") {
+      breaks.push({ start: now, end: null, source: "punch" });
+    } else {
+      const open = [...breaks].reverse().find((row) => row.source !== "assumed" && row.start && !row.end);
+      if (open) {
+        open.end = now;
+        if (gate.short) open.short = true;
+      }
+    }
+    list[idx] = { ...list[idx], breaks };
+    d.personalAttendance = list;
+  });
   return getLocalTodayAttendance(companyId, employeeId);
 }

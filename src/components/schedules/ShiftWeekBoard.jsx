@@ -19,7 +19,8 @@ import {
 import { HOLIDAY_WORK_LABEL_AR, HOLIDAY_WORK_LABEL_EN, holidayWorkOn, prayerBreakHint } from "@/lib/shiftWeek";
 import { stationPrayerTimes } from "@/lib/prayerTimes";
 import NvIcon from "@/components/shared/NvIcon";
-import { isJuvenile as isJuvenileOn } from "@/lib/laborHoursPolicy.js";
+import { hoursPolicyOf, isJuvenile as isJuvenileOn } from "@/lib/laborHoursPolicy.js";
+import ShiftBreakMode from "@/components/schedules/ShiftBreakMode";
 import { nextDistinctShift, repairedShiftWindow, STANDARD_SHIFT_WINDOWS, formatShiftHm, shiftHoursLine, shiftWindowKey } from "@/lib/shiftDerivations";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
@@ -807,6 +808,7 @@ export default function ShiftWeekBoard({
     return keys.includes(today) ? today : keys[0];
   })();
   const hintPrayers = station ? stationPrayerTimes(station, hintDay, { ramadan: isRamadanDay(hintDay, laborCalendar) }) : null;
+  const continuous103 = hoursPolicyOf(data).continuousWork103 === true;
   const shiftTypesEditor = (
     <>
       {types.map((shift, index) => {
@@ -824,7 +826,11 @@ export default function ShiftWeekBoard({
               />
               <span style={{ display: "flex", gap: 5, alignItems: "center", whiteSpace: "nowrap" }}>
                 <span style={{ fontSize: 11, color: SW.mid }}><span style={mono}>{shiftHours(shift)}</span> {ar ? "س" : "h"}</span>
-                {canEdit ? (
+                {shift.breakMode === "flex" && !continuous103 ? (
+                  <span style={chip("mute", { fontSize: 10, fontWeight: 500 })}>
+                    {ar ? `راحة مرنة ${shift.flexBreak?.minutes ?? "—"} د` : `flex ${shift.flexBreak?.minutes ?? "—"}m`}
+                  </span>
+                ) : canEdit ? (
                   <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: SW.mid }}>
                     <span>{ar ? "راحة" : "rest"}</span>
                     <input
@@ -882,6 +888,14 @@ export default function ShiftWeekBoard({
                 </label>
               </div>
             )}
+            <ShiftBreakMode
+              ar={ar}
+              shift={shift}
+              canEdit={canEdit}
+              continuous103={continuous103}
+              onDate={hintDay}
+              onChange={(updates) => { updateShiftType(companyId, stationId, shift.id, updates); refresh?.(); }}
+            />
             {breakHint ? (
               <span data-roster-break-hint={shift.id} style={{ fontSize: 10.5, color: SW.mid, lineHeight: 1.7, display: "flex", gap: 5, alignItems: "baseline" }}>
                 <NvIcon name="prayer" size={11} />

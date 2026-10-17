@@ -4,7 +4,7 @@
  */
 
 import { citeRule, ruleValue } from "./laborRules.ts";
-import { checkConsecutiveWorkGate, minutesBetween, shiftRestMinutes } from "./shiftDerivations.ts";
+import { checkConsecutiveWorkGate, minutesBetween, resolveFlexDayBreaks, riyadhClockOf, shiftRestMinutes } from "./shiftDerivations.ts";
 import { isOfficialHolidayDay } from "./leaveDerivations.ts";
 import { actualShiftHours, art108Limits, hoursBasisOf, hoursPolicyOf, isEmployeeOffDay, isTwelveStayDuty, ordinaryDayCap } from "./laborHoursPolicy.ts";
 
@@ -256,7 +256,12 @@ export function deriveActualDutyCore(input: {
   const outM = outRaw <= inM ? outRaw + 1440 : outRaw;
   const presence = outM - inM;
   const consecMax = ruleValue("hours.rest.maxConsecutiveHours", onDate) || 5;
-  const recordedBreaks = Array.isArray(input.breaks) ? input.breaks : null;
+  // Twin of the client: a flex day deducts its punched (or assumed) breaks; Art. 101 reads the punched ones.
+  const flexDay = shift?.breakMode === "flex"
+    ? resolveFlexDayBreaks({ shift, breaks: input.breaks, checkIn, checkOut, onDate, continuous103: hoursPolicyOf(company, employee).continuousWork103 === true })
+    : null;
+  const flexOn = !!flexDay?.flex;
+  const recordedBreaks = flexOn ? flexDay.forDuty : (Array.isArray(input.breaks) ? clockBreaksCore(input.breaks) : null);
   const breakMinutes = recordedBreaks
     ? recordedBreaks.reduce((sum: number, row: any) => sum + (row?.start && row?.end ? minutesBetween(row.start, row.end) : Math.max(0, Number(row?.minutes) || 0)), 0)
     : null;
@@ -305,11 +310,14 @@ export function deriveActualDutyCore(input: {
       cite: citeRule("hours.ot.exceptionDayHours", onDate),
     });
   }
+  const consecBreaks = flexOn ? flexDay.forConsec : recordedBreaks;
   const consec = checkConsecutiveWorkGate({
     start: clockOf(inM),
     end: clockOf(outM),
-    breaks: recordedBreaks || undefined,
-    restMinutes: recordedBreaks ? breakMinutes : (presence > consecMax * 60 ? (rosterRest == null ? undefined : rosterRest) : 0),
+    breaks: consecBreaks || undefined,
+    restMinutes: flexOn
+      ? consecBreaks.reduce((sum: number, row: any) => sum + minutesBetween(row.start, row.end), 0)
+      : (recordedBreaks ? breakMinutes : (presence > consecMax * 60 ? (rosterRest == null ? undefined : rosterRest) : 0)),
     breakCount: shift?.breakCount,
     onDate,
     continuous103: policy.continuousWork103 === true,
@@ -331,7 +339,23 @@ export function deriveActualDutyCore(input: {
     offDay,
     kind,
     flags,
+    breakMode: flexOn ? "flex" : (flexDay?.mode || "fixed"),
+    ...(flexOn ? { breakAssumed: !!flexDay.assumed, lateReturnMinutes: flexDay.overMinutes, shortBreaks: flexDay.shortCount } : {}),
   };
+}
+
+/** Twin of actualDuty.clockBreaks: ISO punch instants → Riyadh "HH:MM"; open breaks drop. */
+function clockBreaksCore(list: any[]): any[] {
+  return (Array.isArray(list) ? list : [])
+    .map((row: any) => {
+      if (!row) return null;
+      if (row.start == null && row.end == null) return Number(row.minutes) > 0 ? { minutes: Number(row.minutes) } : null;
+      const s = riyadhClockOf(row.start);
+      const e = riyadhClockOf(row.end);
+      if (s == null || e == null) return null;
+      return { start: clockOf(s), end: clockOf(e) };
+    })
+    .filter(Boolean);
 }
 
 function rosterWindow(shift: any) {

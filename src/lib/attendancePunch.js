@@ -231,5 +231,6 @@ export function toCloudAttendanceRow(row) {
     override_by: row.overrideBy || row.override_by || "",
     excused_note: row.excusedNote || row.excused_note || "",
     localPreview: !!row.localPreview,
+    ...(Array.isArray(row.breaks) ? { breaks: row.breaks } : {}),
   };
 }

@@ -86,6 +86,7 @@ const employeeIdOf = (e: any) => String(e?.id ?? e?.employeeId ?? "");
 const nameOf = (e: any) => String(e?.name || employeeIdOf(e));
 
 function restMinutesOf(shift: any) {
+  if (shift?.breakMode === "flex" && Number(shift?.flexBreak?.minutes) > 0) return Math.round(Number(shift.flexBreak.minutes));
   if (Array.isArray(shift?.breaks) && shift.breaks.length) {
     return shift.breaks.reduce((sum: number, b: any) => sum + (b?.start && b?.end ? spanMinutes(b.start, b.end) : Math.max(0, Number(b?.minutes) || 0)), 0);
   }

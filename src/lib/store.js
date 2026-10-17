@@ -88,6 +88,7 @@ import { absorbAssignmentIntoActualOt, planOtDecision, restampWeekAfter, stampAc
 import { planDutyAlertNotices } from "./dutyAlerts.js";
 import { compLeaveDaysInYear as compLeaveDaysInYearForCap, otHoursInYear as otHoursInYearForCap } from "./overtimeAssignment.js";
 import { annualDayBreakdown } from "./leaveEidOverlap.js";
+import { employeeFileEditGate } from "./employeeFileRights.js";
 import { isOfficialHoliday, laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePlatformOwnerBoard } from "./ummAlQuraCalendar";
 
 /** Model regulation Art. 71 clocks skip the company's official holidays. */
@@ -1617,7 +1618,13 @@ export function updateEmployeeProfile(companyId, employeeId, profile) {
   });
 }
 
-export function patchEmployeeFile(companyId, employeeId, { profile, phone, name, log } = {}) {
+export function patchEmployeeFile(companyId, employeeId, { profile, phone, name, log, actor } = {}) {
+  // Owner rule: the employee file is edited by whoever manages HR (manage_employees, in scope) or the
+  // account administrator — never by the employee or his managers. Held here, not only in the screen.
+  const live = getCompanyData(companyId);
+  const subject = (live?.employees || []).find((e) => e.id === employeeId);
+  const fileGate = employeeFileEditGate(actor, subject, live);
+  if (!fileGate.ok) return fileGate;
   updateCompany(companyId, (d) => {
     const emp = d.employees.find((e) => e.id === employeeId);
     if (!emp) return;
@@ -1636,6 +1643,7 @@ export function patchEmployeeFile(companyId, employeeId, { profile, phone, name,
     if (name != null && String(name).trim()) emp.name = String(name).trim();
     if (log) emp.fileLog = [log, ...(emp.fileLog || [])].slice(0, 40);
   });
+  return { ok: true };
 }
 
 /** Write due Article 55 conversion and statutory leave floors onto one employee file. */

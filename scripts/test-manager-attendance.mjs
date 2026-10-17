@@ -132,3 +132,18 @@ const SHIFT = { id: "fix", label: "نهاري", start: "07:00", end: "15:00", re
 }
 
 console.log("test-manager-attendance: all passed");
+
+// The employee file is written by HR (or the administrator) only — the store holds the gate, not only the screen.
+{
+  const { readFileSync } = await import("node:fs");
+  const store = readFileSync(new URL("../src/lib/store.js", import.meta.url), "utf8");
+  const body = store.slice(store.indexOf("export function patchEmployeeFile("), store.indexOf("export function applyDueLaborRules("));
+  if (!/employeeFileEditGate\(actor, subject, live\)/.test(body) || !/if \(!fileGate\.ok\) return fileGate;/.test(body)) throw new Error("patchEmployeeFile must refuse without an HR actor");
+  for (const f of ["../src/pages/EmployeeProfile.jsx", "../src/components/employees/HoursOnFile.jsx"]) {
+    const src = readFileSync(new URL(f, import.meta.url), "utf8");
+    const calls = src.split("patchEmployeeFile(").length - 1;
+    const withActor = (src.match(/patchEmployeeFile\(company\.id, employee\.id, \{\s*actor: currentUser/g) || []).length;
+    if (calls !== withActor) throw new Error(`${f}: every patchEmployeeFile call passes the acting user`);
+  }
+  console.log("PASS employee file — HR-only write held in the store");
+}

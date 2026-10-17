@@ -230,6 +230,7 @@ export default function EmployeeProfile() {
       profile.gosiRegisteredAt = gosiRegistrationIso(profile.gosiRegisteredAt);
     }
     patchEmployeeFile(company.id, employee.id, {
+      actor: currentUser,
       profile,
       name,
       phone,
@@ -263,6 +264,7 @@ export default function EmployeeProfile() {
     if (field !== "gosiRegisteredAt" || !canEditFile) return;
     const next = gosiRegistrationIso(iso);
     patchEmployeeFile(company.id, employee.id, {
+      actor: currentUser,
       profile: { gosiRegisteredAt: next },
       log: {
         text: ar ? "تعديل تاريخ التسجيل في التأمينات" : "GOSI registration date updated",

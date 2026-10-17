@@ -109,6 +109,7 @@ export default function HoursOnFile({ employee, data, lang = "ar", embedded = fa
         const save = (next) => {
           if (!company?.id || !employee?.id || (next === fileCount && !fileOffDows(employee).length)) return;
           patchEmployeeFile(company.id, employee.id, {
+            actor: currentUser,
             profile: { weeklyOffDows: [], weeklyRestDayCount: next },
             log: {
               text: ar

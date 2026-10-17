@@ -7,7 +7,6 @@ import { isLocalPreviewActive } from "@/lib/localPreview";
 import { localAttendanceSettings } from "@/lib/localAttendanceFallback";
 import { useI18n } from "@/lib/i18n";
 import { BORDER, CARD, DANGER, MUTED, NAVY } from "@/lib/platformStyles";
-import HoursLawSettings from "@/components/attendance/HoursLawSettings";
 
 function previewSettings(company) {
   return {
@@ -251,12 +250,6 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
         </div>
       </div>
     </section>
-    <HoursLawSettings
-      company={data}
-      employees={data?.employees || []}
-      canEdit={canEditSettings}
-      ar={ar}
-    />
     </div>
   );
 }

@@ -1,25 +1,29 @@
 import React, { useEffect, useState } from "react";
 import { Paperclip, Send } from "lucide-react";
 import VoiceRecorder from "@/components/tasks/VoiceRecorder";
-import { BORDER, BRAND, CARD, MUTED, SURFACE, field } from "@/lib/platformStyles";
+import { BORDER, BRAND, CARD, CONTROL_RADIUS, MUTED, field } from "@/lib/platformStyles";
+import { mono } from "@/components/schedules/scheduleChrome";
 
-const round = { ...field, height: 40, borderRadius: 10, padding: "8px 14px" };
+// Platform bar: one framed row (hairline, radius 8) holding the fields; square ghost tools at radius 8,
+// one green send. Figures in mono ink — no pill circles, no chat-app chrome.
+const round = { ...field, height: 36, borderRadius: CONTROL_RADIUS, padding: "7px 12px", fontSize: 13 };
 const iconBtn = {
-  width: 40,
-  height: 40,
-  borderRadius: 999,
+  width: 36,
+  height: 36,
+  borderRadius: CONTROL_RADIUS,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  border: `1px solid ${BORDER}`,
-  background: SURFACE,
-  color: MUTED,
+  border: "1px solid transparent",
+  background: "transparent",
+  color: "var(--nv-ink2)",
   cursor: "pointer",
   flexShrink: 0,
   padding: 0,
 };
+const num = { ...mono, color: "var(--nv-ink)", fontWeight: 700 };
 
-/** WhatsApp-style footer: compact bar. Short daily quota auto-opens a blocker (reason required). */
+/** Task footer in the platform frame. Short daily quota auto-opens a blocker (reason required). */
 export default function OpsTaskComposer({
   ar,
   busy,
@@ -91,10 +95,13 @@ export default function OpsTaskComposer({
   return (
     <div data-nv-task-composer style={{ flexShrink: 0, padding: embedded ? 0 : "8px 12px 10px", borderTop: embedded ? "none" : `1px solid ${BORDER}`, background: CARD, display: "flex", flexDirection: "column", gap: 8 }}>
       {canLog && expected > 0 ? (
-        <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.45 }}>
-          {ar
-            ? `حصة اليوم ${expected} · سُجّل ${loggedToday} · المتبقي ${remaining}${stopRequired ? " — الرقم أقل من الحصة؛ يُفتح العائق: تمديد أو توزيع تلقائي." : ""}`
-            : `Today ${expected} · logged ${loggedToday} · left ${remaining}${stopRequired ? " — below quota; blocker opens: extend or auto-spread." : ""}`}
+        <div data-nv-task-quota style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
+          <span>{ar ? "حصة اليوم" : "Today"} <span dir="ltr" style={num}>{expected}</span></span>
+          <span>{ar ? "سُجّل" : "Logged"} <span dir="ltr" style={num}>{loggedToday}</span></span>
+          <span>{ar ? "المتبقي" : "Left"} <span dir="ltr" style={num}>{remaining}</span></span>
+          {stopRequired ? (
+            <span style={{ color: "var(--nv-warn-ink)" }}>{ar ? "أقل من الحصة — يُفتح العائق: تمديد أو توزيع تلقائي." : "Below quota — the blocker opens: extend or auto-spread."}</span>
+          ) : null}
         </div>
       ) : null}
 
@@ -109,7 +116,7 @@ export default function OpsTaskComposer({
         />
       ) : null}
 
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+      <div data-nv-task-bar style={{ display: "flex", alignItems: "flex-end", gap: 4, padding: 4, border: `1px solid ${BORDER}`, borderRadius: CONTROL_RADIUS, background: "var(--nv-card, #fff)" }}>
         {canLog ? (
           <input
             data-nv-task-qty
@@ -127,12 +134,12 @@ export default function OpsTaskComposer({
             }}
             style={{
               ...round,
-              width: 72,
-              height: 40,
+              ...mono,
+              width: 64,
               textAlign: "center",
-              padding: "0 8px",
+              padding: "0 6px",
               flexShrink: 0,
-              borderRadius: 12,
+              background: "var(--nv-soft, #F6F8FA)",
               MozAppearance: "textfield",
             }}
           />
@@ -142,7 +149,7 @@ export default function OpsTaskComposer({
           onChange={(e) => setDraft(e.target.value)}
           rows={1}
           placeholder={ar ? "رسالة…" : "Message…"}
-          style={{ ...round, flex: 1, height: "auto", minHeight: 40, maxHeight: 88, resize: "none", lineHeight: 1.45 }}
+          style={{ ...round, flex: 1, height: "auto", minHeight: 36, maxHeight: 88, resize: "none", lineHeight: 1.45, border: "none", background: "transparent", boxShadow: "none" }}
         />
         <label style={{ ...iconBtn, cursor: "pointer" }} title={ar ? "أرفق" : "Attach"}>
           <Paperclip size={16} strokeWidth={1.75} />
@@ -158,9 +165,10 @@ export default function OpsTaskComposer({
               ...iconBtn,
               width: "auto",
               padding: "0 10px",
-              fontSize: 11,
-              fontWeight: 650,
+              fontSize: 11.5,
+              fontWeight: 600,
               fontFamily: "inherit",
+              color: MUTED,
               ...(issue ? { border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)" } : {}),
             }}
           >
@@ -185,8 +193,7 @@ export default function OpsTaskComposer({
           }}
           style={{
             ...iconBtn,
-            border: "none",
-            background: canSubmit ? BRAND : "var(--nv-line)",
+            background: canSubmit ? BRAND : "var(--nv-soft, #F1F4F2)",
             color: canSubmit ? "#fff" : MUTED,
             cursor: canSubmit ? "pointer" : "not-allowed",
           }}
@@ -194,7 +201,13 @@ export default function OpsTaskComposer({
           <Send size={16} strokeWidth={1.75} />
         </button>
       </div>
-      {proofFile ? <div style={{ fontSize: 11, color: MUTED }}>{proofFile.name}</div> : null}
+      {proofFile ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--nv-ink2)" }}>
+          <Paperclip size={13} strokeWidth={1.75} aria-hidden />
+          <span dir="auto" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{proofFile.name}</span>
+          <button type="button" aria-label={ar ? "أزل المرفق" : "Remove attachment"} onClick={() => setProofFile(null)} style={{ border: "none", background: "transparent", color: MUTED, cursor: "pointer", fontFamily: "inherit" }}>{ar ? "أزل" : "Remove"}</button>
+        </div>
+      ) : null}
       {proofVoice ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <audio src={proofVoice.url || ""} controls style={{ height: 28, maxWidth: 180 }} />

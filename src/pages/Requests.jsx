@@ -144,36 +144,8 @@ export default function Requests() {
     ? (ar ? "القرار يُسجَّل باسمك. يُفتح من له طلب فقط؛ الأرشيف داخل الفلتر." : "The ruling is recorded in your name. Only someone with a request opens; the archive sits inside the filter.")
     : null;
 
-  const scopeRows = flattenWorkspaceRows(manageLane ? scopedAdminEmployees : [self], lang);
-  const riyadhYear = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric" }).format(new Date());
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const decidedAt = (row) => new Date(row.approvedAt || row.decidedAt || row.reviewedAt || row.createdAt || 0).getTime();
-  const approvedThisYear = scopeRows.filter((row) => row.status === "approved" && String(row.approvedAt || row.decidedAt || row.reviewedAt || row.createdAt || "").startsWith(riyadhYear)).length;
-  const approvedThisWeek = scopeRows.filter((row) => row.status === "approved" && decidedAt(row) >= weekAgo).length;
-  const refusedCount = scopeRows.filter((row) => row.status === "rejected" || row.status === "no" || row.status === "refused_by_employee").length;
-  const lateCount = scopeRows.filter((row) => {
-    if (row.status !== "pending" || !row.createdAt) return false;
-    return Date.now() - new Date(row.createdAt).getTime() >= 48 * 60 * 60 * 1000;
-  }).length;
-  const pendingShown = manageLane ? adminPending : minePending;
   const linkInk = { color: "#fff", fontWeight: 600 };
 
-  const headStats = manageLane
-    ? [
-      { label: ar ? "بانتظار قرارك" : "Awaiting you", value: pendingShown, note: ar ? "في فروعك" : "In your branches" },
-      { label: ar ? "معتمدة هذا الأسبوع" : "Approved this week", value: approvedThisWeek },
-      { label: ar ? "مرفوضة" : "Refused", value: refusedCount, note: ar ? "بسبب مكتوب" : "With a written reason" },
-      { label: ar ? "متأخرة 48 س" : "Late 48h", value: lateCount, note: ar ? "تصعد تلقائياً" : "Escalates on its own" },
-    ]
-    : [
-      {
-        label: ar ? "بانتظار قرار" : "Awaiting a decision",
-        value: pendingShown,
-        note: pendingShown ? (ar ? "لدى مديرك · تصعد بعد 48 س" : "With your manager · escalates after 48h") : "—",
-      },
-      { label: ar ? "معتمدة هذا العام" : "Approved this year", value: approvedThisYear },
-      { label: ar ? "مرفوضة" : "Refused", value: refusedCount, note: refusedCount ? (ar ? "بسبب مكتوب" : "With a written reason") : "—" },
-    ];
 
   return (
     <SuiteWorkspaceFrame
@@ -199,21 +171,7 @@ export default function Requests() {
         const next = laneTabs.find((item) => item.key === value);
         if (next?.href) navigate(next.href);
       }}
-      meta={(
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          {headStats.map((item, index) => (
-            <React.Fragment key={item.label}>
-              {index > 0 ? <span aria-hidden style={{ width: 1, height: 28, background: "rgba(255,255,255,.28)" }} /> : null}
-              <div style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-start" }}>
-                <span style={{ fontSize: 10.5, color: "#A9CDB8" }}>{item.label}</span>
-                <span dir="ltr" style={{ fontSize: 20, fontWeight: 700, color: "#fff", unicodeBidi: "isolate", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>{item.value}</span>
-                {/* Every stat keeps a note line so the three numbers sit on one baseline. */}
-                <span style={{ fontSize: 10, color: "#C5DBCD", minHeight: 14 }}>{item.note && item.note !== "—" ? item.note : "\u00a0"}</span>
-              </div>
-            </React.Fragment>
-          ))}
-        </div>
-      )}
+      // No figures in the hero: pending/approved/refused already head the queue inside the section.
     >
       {/* Art. 107 / Regs Art. 22 — my overtime awaiting a decision, and the cap-consent request I answer. */}
       {!manageLane && self?.id ? (

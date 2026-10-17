@@ -93,7 +93,14 @@ assert.equal(stationPrayerPlace({ name: "فرع الخفجي" }).cityAr, "الخ
 const freeText = stationPrayerPlace({ countryCode: "SA", city: "حي لا يوجد", cityRegion: "qassim" });
 assert.deepEqual([freeText.via, freeText.cityAr], ["region", "بريدة"], "free text → the region capital");
 assert.equal(stationPrayerPlace({ countryCode: "SA", city: "حي لا يوجد" }), null, "no region → no prayer times");
-assert.equal(stationPrayerTimes({ name: "المكتب الرئيسي" }, "2026-10-17"), null, "no place → no prayer times");
+{
+  // No city and no pin: an approximate Riyadh day, marked — the prayer right never vanishes for an empty field.
+  const approx = stationPrayerTimes({ name: "المكتب الرئيسي" }, "2026-10-17");
+  assert.equal(approx?.place?.via, "default", "no place → approximate Riyadh, marked");
+  // The branch's attendance pin wins over its city.
+  assert.equal(stationPrayerPlace({ city: "الرياض", lat: 28.43, lng: 48.49 }).via, "pin", "the pin is the place");
+  assert.equal(stationPrayerTimes({ countryCode: "ZZ" }, "2026-10-17"), null, "an unknown country stays without times");
+}
 const dubai = stationPrayerPlace({ countryCode: "AE", city: "Dubai" });
 assert.deepEqual([dubai.via, dubai.cityEn, dubai.utcOffset], ["capital", "Abu Dhabi", 4], "another country → its capital, its fixed offset");
 const khafji = stationPrayerTimes({ name: "فرع الخفجي" }, "2026-10-17");

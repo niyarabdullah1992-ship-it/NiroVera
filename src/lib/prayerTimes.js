@@ -160,7 +160,22 @@ export function stationPrayerPlace(station) {
   if (!station) return null;
   const place = stationPlace(station);
   const code = String(place.countryCode || "").toUpperCase();
-  if (!code && !place.city) return null;
+  // The branch's own attendance pin is the most exact place there is — use it whenever it is set.
+  const lat = Number(station.lat ?? station.latitude);
+  const lng = Number(station.lng ?? station.longitude);
+  if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && (lat !== 0 || lng !== 0)) {
+    const cc = code || "SA";
+    const offset = COUNTRY_UTC_OFFSET[cc] ?? COUNTRY_UTC_OFFSET.SA;
+    return { lat, lng, utcOffset: offset, countryCode: cc, cityAr: place.city || "", cityEn: place.cityEn || "", via: "pin" };
+  }
+  if (!code && !place.city) {
+    // No city and no pin yet: Riyadh as an approximate default (the platform is Saudi-first), marked so the
+    // card says so — never hiding the employee's prayer right because a branch field is empty.
+    const riyadh = findSaCity("الرياض");
+    return riyadh && Number.isFinite(riyadh.lat)
+      ? { lat: riyadh.lat, lng: riyadh.lng, utcOffset: COUNTRY_UTC_OFFSET.SA, countryCode: "SA", cityAr: riyadh.ar, cityEn: riyadh.en, via: "default" }
+      : null;
+  }
   if (!code || code === "SA") {
     const sa = findSaCity(place.city);
     if (sa && Number.isFinite(sa.lat)) {

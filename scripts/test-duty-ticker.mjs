@@ -14,7 +14,7 @@ const iso = (hm, s = "00") => `${D}T${hm}:${s}+03:00`;
 const at = (hm, s = "00") => new Date(iso(hm, s)).getTime();
 const USER = { id: "e1", name: "عمر", stationId: "st" };
 const MGR = "m1";
-const data = (extra = {}) => ({ employees: [USER, { id: MGR, name: "المدير" }], stations: [{ id: "st" }], schedules: [], notifications: [], ...extra });
+const data = (extra = {}) => ({ employees: [USER, { id: MGR, name: "المدير" }], stations: [{ id: "st", countryCode: "ZZ" }] /* no prayer place — these cases test the clock without prayers */, schedules: [], notifications: [], ...extra });
 const FLEX = { id: "day", label: "نهاري", start: "07:00", end: "16:00", stationId: "st", breakMode: "flex", flexBreak: { minutes: 60, from: "11:00", to: "15:00", split: true } };
 const FIXED = { id: "morn", label: "صباحي", start: "07:00", end: "16:00", stationId: "st", restMinutes: 30 };
 const NOREST = { id: "long", label: "طويل", start: "07:00", end: "19:00", stationId: "st", restMinutes: 0 };

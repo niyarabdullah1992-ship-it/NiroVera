@@ -449,7 +449,13 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const dutyEmployee = (data?.employees || []).find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
   const dutyStation = (data?.stations || []).find((row) => String(row.id) === String(shift?.stationId || scheduledStationId));
   const ramadanToday = isRamadanDay(dutyDay, laborCal);
-  const prayerDay = dutyStation ? stationPrayerTimes(dutyStation, dutyDay, { ramadan: ramadanToday }) : null;
+  // The prayer right never disappears for a missing branch field: the branch's pin, else its city, else an
+  // approximate Riyadh day that says so (prayerTimes.stationPrayerPlace).
+  const prayerStation = dutyStation
+    || (data?.stations || []).find((row) => String(row.id) === String(dutyEmployee?.stationId || dutyEmployee?.profile?.workStationId))
+    || { id: "_default" };
+  const prayerDay = shift ? stationPrayerTimes(prayerStation, dutyDay, { ramadan: ramadanToday }) : null;
+  const prayerApprox = prayerDay?.place?.via === "default";
   const prayerPoints = dutyShift ? prayersInShift(dutyShift, prayerDay) : [];
   const exposedToday = dutyShift ? sunExposureMark(dutySchedule, currentUser?.id, dutyDay, dutyShift).mark === SUN_FIELD : false;
   const breakHint = dutyShift ? prayerBreakHint({ shift: dutyShift, onDate: dutyDay, prayers: prayerDay, employee: dutyEmployee, company: data, published: isWeekDayPublished(dutySchedule, dutyDay) }) : null;
@@ -838,7 +844,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       label: ar ? p.ar : p.en,
       value: p.clock,
       badge: lawBadge(restCite, notWorkCite),
-      note: ar ? "وقت الصلاة من فترة الراحة والصلاة والطعام — لا يُحسب من ساعات العمل" : "Prayer sits in the rest, prayer and meal period — not counted as work",
+      note: (ar ? "وقت الصلاة من فترة الراحة والصلاة والطعام — لا يُحسب من ساعات العمل" : "Prayer sits in the rest, prayer and meal period — not counted as work")
+        + (prayerApprox ? (ar ? " · الوقت تقريبي بتوقيت الرياض حتى تُحدَّد مدينة الفرع" : " · approximate (Riyadh) until the branch city is set") : ""),
       hint: attRightHint("rest", {}, { view: "employee", ar }),
     }, p.minutes);
   }

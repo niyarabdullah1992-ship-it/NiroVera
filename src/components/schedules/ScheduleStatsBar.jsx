@@ -1,6 +1,6 @@
 import React from "react";
 import { useI18n } from "@/lib/i18n";
-import { MUTED, NAVY, num, SURFACE } from "@/lib/platformStyles";
+import FigureRow from "@/components/shared/FigureRow";
 
 function minutesBetween(start, end) {
   const [sh, sm] = start.split(":").map(Number);
@@ -38,66 +38,20 @@ export default function ScheduleStatsBar({ employees, shiftTypes, assignments, m
   const openCells = Math.max(0, staffable - filledCells);
   const empCount = employees.length;
 
-  const stats = [
+  const figures = [
+    { key: "people", label: ar ? "في الجدول" : "On the schedule", value: empCount, suffix: ar ? "موظف" : "people" },
+    { key: "hours", label: ar ? "ساعات مجدولة هذا الشهر" : "Scheduled hours this month", value: Math.round(scheduledMinutes / 60), suffix: ar ? "ساعة" : "h" },
+    { key: "coverage", label: ar ? "التغطية" : "Coverage", value: `${coverage}%` },
     {
-      value: `${empCount}`,
-      sub: ar
-        ? (empCount === 1 ? "موظف في الجدول" : empCount === 2 ? "موظفان في الجدول" : empCount <= 10 ? "موظفين في الجدول" : "موظفًا في الجدول")
-        : `employee${empCount === 1 ? "" : "s"} on the schedule`,
-    },
-    {
-      value: `${Math.round(scheduledMinutes / 60)}h`,
-      sub: ar ? "ساعات مجدولة هذا الشهر" : "scheduled hours this month",
-    },
-    {
-      value: `${coverage}%`,
-      sub: coverage >= 90 ? (ar ? "تغطية ممتازة" : "Excellent coverage") : (ar ? "نسبة التغطية" : "Coverage rate"),
-    },
-    {
-      value: `${openCells}`,
-      sub: ar
-        ? (openCells === 1 ? "خلية بلا إسناد" : openCells === 2 ? "خليتان بلا إسناد" : "خلايا بلا إسناد")
-        : `cell${openCells === 1 ? "" : "s"} with no assignment`,
+      key: "open",
+      label: ar ? "خلايا بلا إسناد" : "Unassigned cells",
+      value: openCells,
+      ...(openCells ? { tone: "warn", flag: ar ? "نقص" : "Gap" } : {}),
     },
   ];
-
   if (restAssigned) {
-    stats.push({
-      value: `${restAssigned}`,
-      sub: ar ? "إسناد في يوم راحة" : `assignment${restAssigned === 1 ? "" : "s"} on a rest day`,
-      warn: true,
-    });
+    figures.push({ key: "rest", label: ar ? "إسناد في يوم راحة" : "On a rest day", value: restAssigned, tone: "bad", flag: ar ? "راحة أسبوعية" : "Weekly rest" });
   }
 
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-      {stats.map((s) => (
-        <div
-          key={s.sub}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "5px 10px",
-            borderRadius: 8,
-            border: `1px solid ${s.warn ? "var(--nv-line)" : "var(--nv-line)"}`,
-            background: s.warn ? "var(--nv-warn-soft)" : SURFACE,
-          }}
-        >
-          <span
-            dir="ltr"
-            style={{
-              ...num(s.warn ? "#B45309" : NAVY),
-              fontSize: 13,
-              lineHeight: 1,
-              flexShrink: 0,
-            }}
-          >
-            {s.value}
-          </span>
-          <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.3 }}>{s.sub}</span>
-        </div>
-      ))}
-    </div>
-  );
+  return <FigureRow ar={ar} figures={figures} className="nv-schedule-stats" />;
 }

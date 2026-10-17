@@ -213,8 +213,7 @@ export default function StampStudio({ companyId, companyName, currentUser, ar, o
         height: "calc(100dvh - 132px)",
         background: "var(--nv-soft)",
         border: "1px solid var(--nv-line)",
-        borderRadius: 14,
-        boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
+        borderRadius: 8,
         overflow: "hidden",
         fontSize: 13,
         color: "var(--nv-ink)",
@@ -235,7 +234,7 @@ export default function StampStudio({ companyId, companyName, currentUser, ar, o
             {saved ? <Check style={{ width: 13, height: 13 }} /> : null}
             {saved ? (ar ? "محفوظ كختمك" : "Saved as your seal") : (ar ? "تغييرات غير محفوظة" : "Unsaved changes")}
           </span>
-          <button type="button" onClick={save} disabled={saving} style={{ ...signPrimaryBtn, opacity: saving ? 0.5 : 1 }}>
+          <button type="button" onClick={save} disabled={saving} style={{ ...signPrimaryBtn, height: 36, fontSize: 13, borderRadius: 8, background: "#3C7D50", color: "#fff", opacity: saving ? 0.5 : 1 }}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {ar ? "حفظ كختمي" : "Save as my seal"}
           </button>

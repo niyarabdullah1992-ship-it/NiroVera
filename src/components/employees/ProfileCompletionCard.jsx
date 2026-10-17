@@ -8,7 +8,7 @@ export function profileCompletionStats(employee) {
   return computeProfileCompletion(employee);
 }
 
-export default function ProfileCompletionCard({ employee, isSelf, ar, onContinue }) {
+export default function ProfileCompletionCard({ employee, isSelf, ar, onContinue, canComplete = false }) {
   const { missing, filled, fields, pct, done } = useMemo(
     () => profileCompletionStats(employee),
     [employee],
@@ -76,7 +76,7 @@ export default function ProfileCompletionCard({ employee, isSelf, ar, onContinue
               {next.map((f) => (ar ? f.ar : f.en)).join(ar ? " · " : " · ")}
             </div>
           )}
-          {!isSelf && (
+          {!isSelf && canComplete && (
             <button
               type="button"
               onClick={onContinue}
@@ -105,11 +105,11 @@ export default function ProfileCompletionCard({ employee, isSelf, ar, onContinue
           <p style={{ margin: "10px 0 0", fontSize: 11, color: MUTED, lineHeight: 1.65 }}>
             {isSelf
               ? (ar
-                ? "الملف للعرض فقط — تُكمل الإدارة أو الموارد البشرية كل البيانات."
-                : "View only — management or HR completes all of this file.")
+                ? "الملف للعرض فقط — تُكمله الموارد البشرية. لتصحيح بيان اطلب تعديل بيان."
+                : "View only — HR completes this file. To correct a fact, ask for a correction.")
               : (ar
-                ? "كل حقول المعلومات المهنية للإدارة أو الموارد البشرية."
-                : "All professional-info fields are for management or HR.")}
+                ? "التعديل للموارد البشرية."
+                : "Edits are made by HR.")}
           </p>
         </>
       )}

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { getLeaveTotal } from "../src/lib/leaveTypes.js";
 import {
-  LEAVE_TOPUP_MAX_DAYS,
   LEAVE_TOPUP_TYPE,
   OTHER_REQUEST_TYPES,
   STUDY_CONSENT_IRREVOCABLE_AR,
@@ -21,16 +20,13 @@ import {
   checkSubmitStudyConsentGate,
   hasIrrevocableStudyConsent,
   studyConsentState,
-  applyAnnualLeaveTopup,
   archivedOtherCount,
   checkAdminLeaveCreditGate,
   checkLeaveTopupDaysGate,
   checkApproveOtherRequestGate,
   checkSubmitOtherRequestGate,
-  DISCRETIONARY_GRANT_CAP,
   flattenOtherRequests,
   hasPendingLeaveTopup,
-  incrementAnnualLeaveTotal,
   isManagerDecideOtherRequest,
   LEAVE_CREDIT_POOLS,
   otherRequestTypeLabel,
@@ -87,7 +83,7 @@ assert.equal(flattenOtherRequests(people)[0].id, "o3");
 const blocked = checkSubmitOtherRequestGate({ type: "salary_letter", reason: "" });
 assert.equal(blocked.ok, false);
 assert.equal(blocked.error, "REASON_REQUIRED");
-assert.equal(checkSubmitOtherRequestGate({ type: "salary_letter", reason: "تقديم للبنك" }).error, "FILE_REQUIRED");
+assert.equal(checkSubmitOtherRequestGate({ type: "salary_letter", reason: "تقديم للبنك" }).ok, true, "asking for a letter needs no file from the worker");
 assert.equal(checkApproveOtherRequestGate({ type: "salary_letter", status: "pending", reason: "تقديم للبنك" }).error, "FILE_REQUIRED");
 assert.equal(checkApproveOtherRequestGate({
   type: "salary_letter",
@@ -109,14 +105,32 @@ assert.equal(checkSubmitOtherRequestGate({
   type: "employment_letter",
   reason: "تعريف للسفارة",
   file: { name: "letter.pdf", url: "/letter.pdf" },
-}).error, "PAPER_REQUIRED");
+}).ok, true, "a letter request does not need a hand-signed copy");
+assert.equal(checkSubmitOtherRequestGate({ type: "custody", reason: "تسليم لابتوب" }).error, "FILE_REQUIRED", "custody keeps its signed handover");
 assert.equal(checkSubmitOtherRequestGate({
   type: "employment_letter",
   reason: "تعريف للسفارة",
   file: { name: "letter.pdf", url: "/letter.pdf" },
   paper: { name: "letter-signed.pdf", url: "/letter-signed.pdf" },
 }).ok, true);
-assert.equal(checkSubmitOtherRequestGate({ type: "permission", reason: "خروج مبكر", date: "2026-09-14" }).ok, true);
+// استئذان needs its window; the other duty requests carry their ministry fields.
+assert.equal(checkSubmitOtherRequestGate({ type: "permission", reason: "خروج مبكر", date: "2026-09-14" }).error, "TIME_REQUIRED");
+assert.equal(checkSubmitOtherRequestGate({ type: "permission", reason: "خروج مبكر", date: "2026-09-14", time: "12:00", timeTo: "11:00" }).error, "TIME_ORDER");
+assert.equal(checkSubmitOtherRequestGate({ type: "permission", reason: "خروج مبكر", date: "2026-09-14", time: "07:00", timeTo: "08:30" }).ok, true);
+assert.equal(checkSubmitOtherRequestGate({ type: "nursing_hour", reason: "رضاعة", date: "2026-09-14", placement: "start" }).ok, true);
+assert.equal(checkSubmitOtherRequestGate({ type: "nursing_hour", reason: "رضاعة", date: "2026-09-14", placement: "mid" }).error, "PLACEMENT_REQUIRED");
+assert.equal(checkSubmitOtherRequestGate({ type: "pregnancy_notice", reason: "حمل", date: "2026-09-14", dueDate: "2027-03-01" }).error, "FILE_REQUIRED");
+assert.equal(checkSubmitOtherRequestGate({ type: "pregnancy_notice", reason: "حمل", date: "2026-09-14", dueDate: "2027-03-01", file: { name: "r.pdf" } }).ok, true);
+assert.equal(checkSubmitOtherRequestGate({ type: "heat_report", reason: "عمل مكشوف ظهراً", date: "2026-07-14" }).ok, true);
+{
+  const { excusedStartMinutes } = await import("../src/lib/dutyRequests.js");
+  const emp = { otherRequests: [{ type: "permission", status: "approved", date: "2026-09-14", time: "06:30", timeTo: "08:00" }] };
+  assert.equal(excusedStartMinutes(emp, "2026-09-14", "07:00").minutes, 60, "permission covering the start excuses up to its end");
+  assert.equal(excusedStartMinutes(emp, "2026-09-15", "07:00").minutes, 0, "another day is not excused");
+  const mom = { profile: { nursingHour: { placement: "start", from: "2026-09-01", until: "" } } };
+  assert.equal(excusedStartMinutes(mom, "2026-09-14", "07:00").reason, "nursing", "Art. 154 nursing hour at start");
+  assert.equal(excusedStartMinutes({ profile: { nursingHour: { placement: "end", from: "2026-09-01" } } }, "2026-09-14", "07:00").minutes, 0, "an end-of-shift hour does not excuse the start");
+}
 
 const dated = checkSubmitOtherRequestGate({ type: "overtime", reason: "ضغط تشغيل", date: "" });
 assert.equal(dated.ok, false);
@@ -130,38 +144,37 @@ assert.equal(otherRequestTypeLabel(LEAVE_TOPUP_TYPE, true), "رفع رصيد إ�
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي" }).error, "DAYS_INVALID");
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 0 }).error, "DAYS_INVALID");
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 1.5 }).error, "DAYS_INVALID");
-assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: LEAVE_TOPUP_MAX_DAYS + 1 }).error, "DAYS_INVALID");
+// No upper cap on an added balance — only a whole number above zero.
+assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 31 }).ok, true);
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "لا", days: 3 }).error, "REASON_REQUIRED");
 assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 3 }).ok, true);
+// Annual is never raised (Art. 109): the request names the reason.
+assert.equal(checkSubmitOtherRequestGate({ type: LEAVE_TOPUP_TYPE, reason: "ظرف عائلي", days: 3, leaveType: "annual" }).error, "ANNUAL_FIXED");
 assert.equal(checkLeaveTopupDaysGate({ days: 3 }).days, 3);
-assert.equal(DISCRETIONARY_GRANT_CAP, 5);
-assert.ok(LEAVE_CREDIT_POOLS.some((row) => row.key === "annual" && row.ar === "رصيد سنوي"));
-assert.ok(LEAVE_CREDIT_POOLS.some((row) => row.key === "grant" && row.ar === "أيام تقديرية"));
-assert.equal(checkAdminLeaveCreditGate({ pool: "annual", days: 3, reason: "إضافة من الإدارة" }).ok, true);
+assert.ok(LEAVE_CREDIT_POOLS.some((row) => row.key === "annual" && row.fixed === true));
+assert.ok(LEAVE_CREDIT_POOLS.some((row) => row.key === "grant" && row.ar === "رصيد ممنوح"));
+assert.equal(checkAdminLeaveCreditGate({ pool: "annual", days: 3, reason: "إضافة من الإدارة" }).error, "ANNUAL_FIXED");
 assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "إضافة من الإدارة", profile: {} }).ok, true);
 assert.equal(checkAdminLeaveCreditGate({ pool: "grant", days: 2, reason: "إضافة من الإدارة", canCredit: false }).error, "ROLE_REQUIRED");
 
 const hired = { hireDate: "2024-01-15" };
 assert.equal(getLeaveTotal(hired, "annual", "2026-09-13"), 21);
-const raised = applyAnnualLeaveTopup(hired, 3, "2026-09-13");
-assert.equal(raised.ok, true);
-assert.equal(raised.nextTotal, 24);
-assert.equal(raised.profile.leaveTotals.annual, 24);
-assert.equal(getLeaveTotal(raised.profile, "annual", "2026-09-13"), 24);
-const stacked = applyAnnualLeaveTopup({ hireDate: "2024-01-15", leaveTotals: { annual: 25 } }, 3, "2026-09-13");
-assert.equal(stacked.nextTotal, 28);
 
+// An approved top-up becomes a grant on its balance — the annual total stays the statutory one.
 const emp = { profile: { hireDate: "2024-01-15" } };
-const topupReq = { type: LEAVE_TOPUP_TYPE, days: 3, status: "pending" };
-assert.equal(stampLeaveTopupOnEmployee(emp, topupReq).nextTotal, 24);
-assert.equal(emp.profile.leaveTotals.annual, 24);
+const topupReq = { id: "t1", type: LEAVE_TOPUP_TYPE, days: 3, status: "pending", reason: "منحة" };
+assert.equal(stampLeaveTopupOnEmployee(emp, topupReq).days, 3);
+assert.equal(emp.profile.leaveTotals?.annual, undefined);
+assert.equal(emp.profile.discretionaryGrants[0].type, "grant");
+assert.equal(emp.profile.discretionaryGrants[0].days, 3);
 assert.equal(topupReq.balanceApplied, true);
 assert.equal(stampLeaveTopupOnEmployee(emp, topupReq).skipped, true);
-assert.equal(emp.profile.leaveTotals.annual, 24);
+assert.equal(emp.profile.discretionaryGrants.length, 1);
+assert.equal(stampLeaveTopupOnEmployee({ profile: {} }, { type: LEAVE_TOPUP_TYPE, days: 3, leaveType: "annual" }).error, "ANNUAL_FIXED");
 assert.equal(hasPendingLeaveTopup([{ type: LEAVE_TOPUP_TYPE, status: "pending" }]), true);
 assert.equal(hasPendingLeaveTopup([{ type: LEAVE_TOPUP_TYPE, status: "approved" }]), false);
 
-assert.equal(ARTICLE_106_GROUNDS.length, 3);
+assert.equal(ARTICLE_106_GROUNDS.length, 5); // the four cases of Art. 106, paragraph 2 split in two
 assert.equal(otCreditDays(8, "2026-09-13"), 1.5);
 
 const realFile = { name: "incident.pdf", size: 2400, url: "data:application/pdf,ok", hash: "AA11" };
@@ -178,8 +191,12 @@ assert.equal(checkRaiseOtAssignmentGate({
 assert.equal(checkRaiseOtAssignmentGate({
   reason: "خطر حريق", hours: 4, date: "2026-09-13", article106: true, article106Ground: "danger", files: [realFile],
 }).error, "MANAGER_106_ACK_REQUIRED");
+// Art. 106 last paragraph: even in its cases, actual work ≤ 10 h a day — 8 h shift + 4 h is over.
 assert.equal(checkRaiseOtAssignmentGate({
   reason: "خطر حريق", hours: 4, date: "2026-09-13", article106: true, article106Ground: "danger", files: [realFile], manager106Ack: true,
+}).error, "ART106_DAY_CAP");
+assert.equal(checkRaiseOtAssignmentGate({
+  reason: "خطر حريق", hours: 2, date: "2026-09-13", article106: true, article106Ground: "danger", files: [realFile], manager106Ack: true,
 }).ok, true);
 
 const used106 = Array.from({ length: 30 }, (_, i) => ({
@@ -225,8 +242,12 @@ assert.equal(checkEmployeeAcceptOtGate({ compensation: "pay", ack: true }).ok, t
 assert.equal(checkEmployeeAcceptOtGate({ compensation: "credit", ack: true, hours: 8, date: "2026-09-13" }).creditDays, 1.5);
 assert.equal(checkOtAnnualCapGate({ hours: 1, date: "2026-09-13", overtimeHoursYtd: 720 }).error, "OT_ANNUAL_CAP");
 assert.equal(checkOtAnnualCapGate({ hours: 1, date: "2026-09-13", overtimeHoursYtd: 720, annualCapConsent: true }).ok, true);
-assert.equal(checkRaiseOtAssignmentGate({ reason: "ضغط", hours: 8, date: "2026-09-13", overtimeHoursYtd: 720 }).error, "OT_ANNUAL_CAP");
-assert.equal(checkRaiseOtAssignmentGate({ reason: "ضغط", hours: 8, date: "2026-09-13", overtimeHoursYtd: 720, annualCapConsent: true }).ok, true);
+// Regs Art. 22 (updated): the manager's raise no longer carries the consent — it records «consent requested»
+// and the worker's acceptance (checkEmployeeAcceptOtGate with his annualCapConsent) carries it.
+assert.equal(checkRaiseOtAssignmentGate({ reason: "ضغط", hours: 8, date: "2026-09-13", overtimeHoursYtd: 720 }).capConsentRequested, true);
+assert.equal(checkRaiseOtAssignmentGate({ reason: "ضغط", hours: 8, date: "2026-09-13", overtimeHoursYtd: 720, annualCapConsent: true }).capConsentRequested, true, "a manager tick is not the worker's consent");
+assert.equal(checkEmployeeAcceptOtGate({ compensation: "pay", ack: true, hours: 8, date: "2026-09-13", overtimeHoursYtd: 720 }).error, "OT_ANNUAL_CAP");
+assert.equal(checkEmployeeAcceptOtGate({ compensation: "pay", ack: true, hours: 8, date: "2026-09-13", overtimeHoursYtd: 720, annualCapConsent: true }).ok, true);
 assert.equal(checkCompLeaveWindowGate({ compensation: "credit", date: "2026-09-13", enjoyDate: "2027-01-01" }).error, "COMP_LEAVE_WINDOW");
 assert.equal(checkCompLeaveWindowGate({ compensation: "credit", date: "2026-09-13", enjoyDate: "2027-01-01", windowAgreed: true }).ok, true);
 assert.equal(checkCompLeaveYearCapGate({ compensation: "credit", hours: 8, date: "2026-09-13", creditDaysYtd: 30 }).error, "COMP_LEAVE_YEAR_CAP");
@@ -246,11 +267,11 @@ const creditReq = {
   status: "pending_manager",
   employeeAck: true,
 };
-assert.equal(stampOvertimeCreditOnEmployee(creditEmp, creditReq).nextTotal, 22.5);
-assert.equal(creditReq.balanceApplied, true);
+// Regs 22 bis — comp leave is its own balance in hours; the annual total is untouched.
+assert.equal(stampOvertimeCreditOnEmployee(creditEmp, creditReq).hours, 12, "8 overtime hours × 1.5");
+assert.equal(creditReq.compGranted, true);
 assert.equal(stampOvertimeCreditOnEmployee(creditEmp, creditReq).skipped, true);
-assert.equal(creditEmp.profile.leaveTotals.annual, 22.5);
-assert.equal(incrementAnnualLeaveTotal({ hireDate: "2024-01-15" }, 1.5, "2026-09-13").nextTotal, 22.5);
+assert.equal(creditEmp.profile.leaveTotals?.annual, undefined, "annual leave is not touched");
 
 const waiting = [{ otherRequests: [normalAssign] }];
 assert.equal(pendingOtherCount(waiting), 1);
@@ -298,7 +319,7 @@ assert.equal(checkApproveOtherRequestGate({
 assert.equal(checkApproveOtherRequestGate({
   type: "salary_letter",
   status: "pending",
-  issuedFile: { name: "big.pdf", url: "/big.pdf", size: 11 * 1024 * 1024 },
+  issuedFile: { name: "big.pdf", url: "/big.pdf", size: 26 * 1024 * 1024 },
 }).error, "FILE_SIZE");
 
 assert.equal(checkSubmitOtherRequestGate({ type: "manual_punch", reason: "تعذّر الموقع", date: "2026-09-15" }).error, "TIME_REQUIRED");

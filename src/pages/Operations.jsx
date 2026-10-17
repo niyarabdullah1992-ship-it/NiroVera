@@ -60,7 +60,12 @@ import {
   redistributeLocalOpsPace,
   rejectLocalTask,
   escalateLocalOpsByEmployee,
+  localTaskRecipients,
+  objectLocalTaskQuality,
+  decideLocalTaskQuality,
 } from "@/lib/localOpsFallback";
+import { canDecideQualityObjection, taskQualityFor } from "@/lib/taskQuality";
+import OpsQualityPicker from "@/components/tasks/detail/OpsQualityPicker";
 import { isLocalPreviewActive } from "@/lib/localPreview";
 import OpsNewTaskModal from "@/components/tasks/OpsNewTaskModal";
 import OpsReassignModal from "@/components/tasks/OpsReassignModal";
@@ -69,14 +74,21 @@ import OpsDeleteModal from "@/components/tasks/OpsDeleteModal";
 import OpsModeConfirmModal from "@/components/tasks/OpsModeConfirmModal";
 import OpsTaskDetail from "@/components/tasks/OpsTaskDetail";
 import OpsTasksTable, { OpsTaskCards } from "@/components/tasks/OpsTasksTable";
-import OpsToolbarStrip, { OpsControlBar } from "@/components/tasks/OpsToolbarStrip";
-import DailyPaceStrip from "@/components/tasks/DailyPaceStrip";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
-import { pageKicker } from "@/lib/moduleMeta";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
+import OpsSideSlab from "@/components/tasks/OpsSideSlab";
+import OpsMoreMenu from "@/components/tasks/OpsMoreMenu";
+import BranchEscalationChains from "@/components/tasks/BranchEscalationChains";
+import OpsTaskChain from "@/components/tasks/detail/OpsTaskChain";
+import { branchEscalationCardLine } from "@/lib/orgDerivations";
+import { escalationLiveStations } from "@/lib/stationTree";
+import { matchesStationScope } from "@/hooks/useStationScope";
+import { DutyTile, DutyNumber } from "@/components/schedules/DutyTiles";
+import { KpiAction } from "@/components/shared/StatusFlag";
+import { formatUiNumber as formatNum } from "@/lib/dateFormat";
 import { useRailSide } from "@/lib/railSide";
+import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
-import ProofSurfaceNote from "@/components/proof/ProofSurfaceNote";
-import OpsLaneTiles from "@/components/tasks/OpsLaneTiles";
 import {
   INK,
   MUTED,
@@ -174,6 +186,7 @@ export default function Operations() {
   const [showCreate, setShowCreate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [rejectFor, setRejectFor] = useState(null);
+  const [approveFor, setApproveFor] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [endDelegationFor, setEndDelegationFor] = useState(null);
   const [endDelegationReason, setEndDelegationReason] = useState("");
@@ -185,6 +198,16 @@ export default function Operations() {
   const [attendanceGate, setAttendanceGate] = useState(null);
   const [openTaskId, setOpenTaskId] = useState(null);
   const [createdIds, setCreatedIds] = useState([]);
+  const [focusStation, setFocusStation] = useState("");
+  const [focusOwner, setFocusOwner] = useState("");
+  const [sideTask, setSideTask] = useState("");
+  const [density, setDensityState] = useState(() => {
+    try { return localStorage.getItem("nv_ops_density") === "compact" ? "compact" : "full"; } catch { return "full"; }
+  });
+  const setDensity = (v) => {
+    setDensityState(v);
+    try { localStorage.setItem("nv_ops_density", v); } catch { /* per-viewer convenience only */ }
+  };
   const [form, setForm] = useState({
     title: "",
     stationId: "",
@@ -1349,7 +1372,24 @@ export default function Operations() {
     }
   };
 
-  const approve = async (task) => {
+  /** The people who receive the task's points — the server's rule — named for the per-person level. */
+  const qualityAssigneesFor = (task) => localTaskRecipients(task, data).map((id) => ({
+    id,
+    name: (data?.employees || []).find((e) => String(e.id || e.employeeId) === String(id))?.name || id,
+  }));
+
+  const approvedToast = (body, task) => {
+    const pts = body?.awarded?.points ?? task?.pointsAwarded ?? taskPoints(task.priority, task.effortWeight);
+    toast({
+      title: ar ? "اعتُمد الإنجاز" : "Approved",
+      description: ar
+        ? `مُنحت ${pts} نقطة بمستوى الجودة المختار — تظهر في الأداء، ويراها المنفّذ مع سببها`
+        : `Granted ${pts} points at the chosen quality level — visible in Performance, with its reason to the assignee`,
+    });
+  };
+
+  // Approval always carries a quality level (one scale to the annual report). Without one, open the picker.
+  const approve = async (task, quality) => {
     if (!canReview(task)) {
       toast({
         title: ar ? "ليس مستواك" : "Not your level",
@@ -1360,52 +1400,49 @@ export default function Operations() {
       });
       return;
     }
+    if (!quality?.level) { setApproveFor(task); return; }
+    const runLocal = () => approveLocalTask(company.id, task.id, { reviewer: currentUser, data, quality });
     setBusy(true);
     try {
       if (localMode || isLocalPreviewActive()) {
-        const body = approveLocalTask(company.id, task.id, { reviewer: currentUser, data });
+        const body = runLocal();
         if (localRefused(body)) {
           toast({ title: ar ? "رُفض الاعتماد" : "Approve blocked", description: ar ? body.reason : (body.reasonEn || body.reason), variant: "destructive" });
           return;
         }
         setTasks(buildLocalOpsBoard({ tasks: body.tasks, scope, stations: data?.stations || [] }).tasks);
         setCounts(body.counts);
+        setApproveFor(null);
         await refresh?.();
-        toast({
-          title: ar ? "اعتُمد الإنجاز" : "Approved",
-          description: ar
-            ? `مُنحت ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} نقطة — تظهر في الأداء`
-            : `Granted ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} points — visible in Performance`,
-        });
+        approvedToast(body, task);
         return;
       }
-      const res = await ops({ action: "approve", taskId: task.id });
+      const res = await ops({
+        action: "approve",
+        taskId: task.id,
+        qualityLevel: quality.level,
+        qualityReason: quality.reason || "",
+        qualityOverrides: quality.overrides || {},
+        lang,
+      });
       const body = res?.data || res;
       if (body?.error) throw opsRefusal(body);
       if (company?.id) await syncPointsFromCloud(company.id);
       await refresh?.();
-      toast({
-        title: ar ? "اعتُمد الإنجاز" : "Approved",
-        description: ar
-          ? `مُنحت ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} نقطة — تظهر في الأداء`
-          : `Granted ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} points — visible in Performance`,
-      });
+      setApproveFor(null);
+      approvedToast(body, task);
       setCounts(body.counts || null);
       await reload();
     } catch (err) {
       if (company?.id && !isOpsRefusal(err) && (isLocalPreviewActive() || localMode)) {
         try {
-          const body = approveLocalTask(company.id, task.id, { reviewer: currentUser, data });
+          const body = runLocal();
           if (localRefused(body)) throw err;
           setTasks(buildLocalOpsBoard({ tasks: body.tasks, scope, stations: data?.stations || [] }).tasks);
           setCounts(body.counts);
+          setApproveFor(null);
           await refresh?.();
-          toast({
-            title: ar ? "اعتُمد الإنجاز" : "Approved",
-            description: ar
-              ? `مُنحت ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} نقطة — تظهر في الأداء`
-              : `Granted ${body?.awarded?.points ?? taskPoints(task.priority, task.effortWeight)} points — visible in Performance`,
-          });
+          approvedToast(body, task);
           return;
         } catch {
           /* fall through */
@@ -1416,6 +1453,48 @@ export default function Operations() {
       setBusy(false);
     }
   };
+
+  /** One path for the objection and its decision: server first, the same gates offline. */
+  const qualityCall = async ({ payload, local, done }) => {
+    setBusy(true);
+    try {
+      if (localMode || isLocalPreviewActive()) {
+        const body = local();
+        if (localRefused(body)) {
+          toast({ title: ar ? "لم يُسجَّل" : "Not recorded", description: ar ? body.reason : (body.reasonEn || body.reason), variant: "destructive" });
+          return;
+        }
+        setTasks(buildLocalOpsBoard({ tasks: body.tasks, scope, stations: data?.stations || [] }).tasks);
+        setCounts(body.counts);
+        await refresh?.();
+        toast({ title: done });
+        return;
+      }
+      const res = await ops({ ...payload, lang });
+      const body = res?.data || res;
+      if (body?.error) throw opsRefusal(body);
+      if (company?.id && payload.action === "decideQualityObjection") await syncPointsFromCloud(company.id);
+      await refresh?.();
+      toast({ title: done });
+      await reload();
+    } catch (err) {
+      toast({ title: ar ? "لم يُسجَّل" : "Not recorded", description: err.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const objectQuality = (task, reason) => qualityCall({
+    payload: { action: "qualityObjection", taskId: task.id, reason },
+    local: () => objectLocalTaskQuality(company.id, task.id, { employee: currentUser, reason }),
+    done: ar ? "أُرسل اعتراضك — يبتّ فيه رئيس المعتمِد أو الموارد البشرية كتابةً" : "Objection sent — decided in writing by the approver's superior or HR",
+  });
+
+  const decideQuality = (task, decisionInput) => qualityCall({
+    payload: { action: "decideQualityObjection", taskId: task.id, ...decisionInput },
+    local: () => decideLocalTaskQuality(company.id, task.id, { decider: currentUser, data, ...decisionInput }),
+    done: ar ? "سُجّل البتّ في الاعتراض — يُبلَّغ للموظف" : "Decision recorded — sent to the employee",
+  });
 
   const toastRejectOutcome = (taskAfter) => {
     const n = opsRejectionCount(taskAfter || {});
@@ -1815,13 +1894,15 @@ export default function Operations() {
   // Chips must count what this viewer can actually open — company-wide totals
   // would promise an employee rows they are not allowed to see.
   const c = seeAsManager ? counts : deriveOpsCounts(liveTasks);
+  // «مهامي» / «أوامر العمل» filter the same way as طلباتي: الكل first, then what needs action,
+  // then what waits on approval, الأرشيف last. Counts are derived for what this viewer can open.
   const chips = c ? [
-    { id: "all", label: ar ? `الكل · ${c.total}` : `All · ${c.total}` },
-    { id: "overdue", label: ar ? `متأخرة · ${c.overdue}` : `Overdue · ${c.overdue}` },
-    { id: "today", label: ar ? `اليوم · ${c.today}` : `Today · ${c.today}` },
-    { id: "awaiting", label: ar ? `بانتظار الاعتماد · ${c.awaiting}` : `Awaiting · ${c.awaiting}` },
-    { id: "escalated", label: ar ? `صُعّدت · ${c.escalated || 0}` : `Escalated · ${c.escalated || 0}` },
-    { id: "archive", label: ar ? `الأرشيف · ${archivedTasks.length}` : `Archive · ${archivedTasks.length}` },
+    { id: "all", label: ar ? "الكل" : "All", n: c.total },
+    { id: "today", label: ar ? "اليوم" : "Today", n: c.today },
+    { id: "overdue", label: ar ? "متأخرة" : "Overdue", n: c.overdue },
+    { id: "escalated", label: ar ? "صُعّدت" : "Escalated", n: c.escalated || 0 },
+    { id: "awaiting", label: employeeRail ? (ar ? "عند المشرف" : "With supervisor") : (ar ? "بانتظار الاعتماد" : "Awaiting"), n: c.awaiting },
+    { id: "archive", label: ar ? "الأرشيف" : "Archive", n: archivedTasks.length },
   ] : [];
 
   const stationName = (id) => stations.find((s) => s.id === id)?.name || "—";
@@ -1851,6 +1932,15 @@ export default function Operations() {
   };
   const ownerInitials = (name) => String(name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
   const creatorName = (task) => taskCreatorName(task, data?.employees || []);
+  const viewerId = currentUser?.id || currentUser?.employeeId || null;
+  // «مهامي»: each approved task names its quality level and reason — the viewer's own when he is an assignee.
+  const qualityText = (t) => {
+    if (t.deletedAt || !(t.status === "completed" || t.approvedAt)) return "";
+    const q = taskQualityFor(t, viewerId) || taskQualityFor(t, null);
+    if (!q) return ar ? "الجودة: بلا مستوى" : "Quality: no level";
+    const open = (t.qualityObjections || []).some((o) => String(o.employeeId) === String(viewerId) && !o.decision);
+    return `${ar ? "الجودة" : "Quality"}: ${q.level} — ${ar ? q.label.ar : q.label.en}${q.reason ? ` (${q.reason})` : ""}${open ? (ar ? " · اعتراضك بانتظار البتّ" : " · objection pending") : ""}`;
+  };
   const archiveItems = archivedTasks.map((t) => {
     const doneN = Math.max(0, Number(t.completedCount) || 0);
     const targetN = Math.max(1, Number(t.targetCount) || 1);
@@ -1858,6 +1948,7 @@ export default function Operations() {
       id: t.id,
       title: t.title,
       text: [
+        qualityText(t),
         t.ref,
         stationName(t.stationId),
         taskAssignScopeLabel(t, ar),
@@ -1868,6 +1959,8 @@ export default function Operations() {
         t.deleteReason || "",
       ].filter(Boolean).join(" · "),
       date: t.deletedAt || t.completedAt || t.approvedAt || t.dueAt || t.createdAt,
+      person: ownerName(t),
+      branch: stationName(t.stationId),
       badge: t.deletedAt
         ? (ar ? "محذوفة" : "Deleted")
         : (t.status === "completed" || t.approvedAt ? (ar ? "مكتملة" : "Done") : (ar ? "مؤرشفة" : "Archived")),
@@ -1879,125 +1972,344 @@ export default function Operations() {
     completed: { ar: "مكتملة", en: "Done" },
     pending_review: { ar: "مراجعة", en: "Review" },
   };
-  const planGroups = deriveHorizonGroups(visible).map((h) => ({
+  // The side slab narrows the list: a branch, or one person in it.
+  const ownerKey = (task) => String(task.ownerId || task.employee_id || "");
+  const focused = visible.filter((t) => (!focusStation || homeStationOf(t) === String(focusStation))
+    && (!focusOwner || ownerKey(t) === String(focusOwner)));
+  const planGroups = deriveHorizonGroups(focused).map((h) => ({
     ...h,
-    rows: visible.filter((t) => taskPlanHorizon(t) === h.id),
+    rows: focused.filter((t) => taskPlanHorizon(t) === h.id),
   }));
 
+  // One clear button for what the order needs next; everything else in «⋯».
   const renderActions = (task) => {
     const logBlocked = task.mode !== "remote" && checkedIn === false;
+    const awaiting = isAwaitingApproval(task);
+    const open = task.status !== "completed" && !awaiting;
+    const reviewer = !employeeRail && awaiting && canReview(task);
+    const primary = reviewer ? (
+      <>
+        <button type="button" data-primary="approve" disabled={busy} onClick={() => approve(task)} style={{ ...ui.btnMiniBrand, height: 32, padding: "0 14px" }}>
+          {ar ? "اعتمد" : "Approve"}
+        </button>
+        <button type="button" data-primary="reject" disabled={busy} onClick={() => { setRejectFor(task); setRejectReason(""); }} style={{ ...ui.btnMiniQuiet, height: 32 }}>
+          {ar ? "ارفض" : "Reject"}
+        </button>
+      </>
+    ) : open ? (
+      <button
+        type="button"
+        data-primary="log"
+        disabled={busy || logBlocked}
+        title={logBlocked ? (attendanceGate?.reason || (ar ? "موقوف حتى بصمة اليوم" : "Blocked until today's check-in")) : undefined}
+        onClick={() => setOpenTaskId(task.id)}
+        style={{ ...ui.btnMiniBrand, height: 32, padding: "0 14px", opacity: busy || logBlocked ? 0.5 : 1, cursor: busy || logBlocked ? "not-allowed" : "pointer" }}
+      >
+        {ar ? "سجّل إنجاز اليوم" : "Log today"}
+      </button>
+    ) : awaiting ? (
+      <span style={{ fontSize: 11.5, color: "var(--nv-muted)", fontWeight: 600 }}>{ar ? "بانتظار اعتماد المشرف" : "Waiting for the supervisor"}</span>
+    ) : null;
+    const items = [
+      { key: "card", label: ar ? "افتح البطاقة" : "Open the card", onClick: () => setOpenTaskId(task.id) },
+      task.status !== "completed" ? {
+        key: "mode",
+        label: ar ? "طريقة التنفيذ" : "How it is done",
+        hint: taskModeLabel(task.mode, ar ? "ar" : "en"),
+        onClick: () => setModeFor({ task, mode: task.mode || "" }),
+        disabled: busy,
+      } : null,
+      !employeeRail && canReassign(task) ? { key: "delegate", label: ar ? "توكيل منفّذ آخر" : "Delegate", hint: ar ? "داخل الفرع نفسه" : "Within the branch", onClick: () => setReassignFor(task), disabled: busy } : null,
+      !employeeRail && canReassign(task) ? { key: "transfer", label: ar ? "نقل إلى فرع آخر" : "Transfer", onClick: () => setTransferFor(task), disabled: busy } : null,
+      !employeeRail && canDeleteOpsTask(task, currentUser) ? { divider: true } : null,
+      !employeeRail && canDeleteOpsTask(task, currentUser) ? { key: "delete", label: ar ? "حذف الأمر" : "Delete", danger: true, onClick: () => setDeleteFor(task), disabled: busy } : null,
+    ];
     return (
-      <div className="flex flex-col items-start gap-1">
-        <div className="flex flex-wrap gap-1.5">
-          <button type="button" onClick={() => setOpenTaskId(task.id)} style={ui.btnMiniSoft}>
-            {ar ? "بطاقة" : "Card"}
-          </button>
-          {task.status !== "completed" && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setModeFor({ task, mode: task.mode || "" })}
-              style={ui.btnMiniQuiet}
-              title={taskModeLabel(task.mode, ar ? "ar" : "en")}
-            >
-              {taskModeLabel(task.mode, ar ? "ar" : "en")}
-            </button>
-          )}
-          {task.status !== "completed" && !isAwaitingApproval(task) && (
-            <button
-              type="button"
-              disabled={busy || logBlocked}
-              onClick={() => setOpenTaskId(task.id)}
-              style={{ ...ui.btnMini, opacity: busy || logBlocked ? 0.5 : 1, cursor: busy || logBlocked ? "not-allowed" : "pointer" }}
-            >
-              {ar ? "سجّل" : "Log"}
-            </button>
-          )}
-          {!employeeRail && canReassign(task) && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setReassignFor(task)}
-              style={ui.btnMini}
-            >
-              {ar ? "توكيل" : "Delegate"}
-            </button>
-          )}
-          {!employeeRail && canReassign(task) && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setTransferFor(task)}
-              style={ui.btnMiniDanger}
-            >
-              {ar ? "نقل" : "Transfer"}
-            </button>
-          )}
-          {!employeeRail && canDeleteOpsTask(task, currentUser) && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setDeleteFor(task)}
-              style={ui.btnMiniDanger}
-            >
-              {ar ? "حذف" : "Delete"}
-            </button>
-          )}
-          {!employeeRail && isAwaitingApproval(task) && canReview(task) && (
-            <>
-              <button type="button" disabled={busy} onClick={() => approve(task)} style={ui.btnMiniBrand}>
-                {ar ? "اعتمد" : "Approve"}
-              </button>
-              <button type="button" disabled={busy} onClick={() => { setRejectFor(task); setRejectReason(""); }} style={ui.btnMiniDanger}>
-                {ar ? "رفض" : "Reject"}
-              </button>
-            </>
-          )}
-        </div>
-        {logBlocked && task.status !== "completed" && !isAwaitingApproval(task) && (
-          <span className="max-w-[220px] text-[10px] leading-snug" style={{ color: "var(--nv-warn-ink)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        {primary}
+        <OpsMoreMenu ar={ar} items={items} />
+        {logBlocked && open ? (
+          <span style={{ flexBasis: "100%", fontSize: 10.5, lineHeight: 1.5, color: "var(--nv-warn-ink)" }}>
             {attendanceGate?.reason || (ar ? "موقوف حتى بصمة اليوم" : "Blocked until today's check-in")}
           </span>
-        )}
+        ) : null}
       </div>
     );
   };
 
-  const kickerNum = String(pageKicker("/app/tasks", "en")).slice(0, 2) || "01";
   const employeeFace = employeeRail;
-  return (
-    <PlatformStampShell
-      ar={ar}
-      maxWidth={1280}
-      kicker={`${kickerNum} · ${ar ? "التشغيل اليومي" : "Daily operations"}`}
-      title={employeeFace ? (ar ? "مهامي" : "My tasks") : (ar ? "المهام والعمليات" : "Tasks & operations")}
-      hint={ar
-        ? "أمر عمل لموظف الشركة. الحضور يفتح التسجيل، والاعتماد يمنح النقاط."
-        : "A work order for a company employee. Attendance opens logging; approval awards the points."}
-      sections={[
-        { value: "list", label: ar ? "قائمة" : "List" },
-        { value: "plan", label: ar ? "الخطة" : "Plan" },
-      ]}
-      tool={viewMode === "plan" ? "plan" : "list"}
-      onTool={setViewMode}
-    >
-      <OpsLaneTiles ar={ar} current="tasks" />
-      <ProofSurfaceNote ar={ar} current="tasks" />
-      <div className="space-y-3.5">
-
-      <OpsControlBar>
-        <OpsToolbarStrip
+  const sideStationName = (id) => stationName(id) === "—" ? (ar ? "بلا فرع" : "No branch") : stationName(id);
+  const opsSide = (() => {
+    if (employeeFace) {
+      // يومي: my open orders, the one due soonest first, each with what today asks of it.
+      const mine = liveTasks.filter((t) => !isAwaitingApproval(t) && t.status !== "completed")
+        .sort((a, b) => String(a.dueAt || "9").localeCompare(String(b.dueAt || "9")));
+      const rows = mine.map((t) => {
+        const pace = deriveDailyTaskPace(taskPaceInput(t));
+        const done = Math.max(0, Number(t.completedCount) || 0);
+        const target = Math.max(1, Number(t.targetCount) || 1);
+        const late = isOverdue(t);
+        return {
+          id: t.id,
+          title: t.title,
+          count: `${done}/${target}`,
+          tone: late ? "bad" : "soft",
+          line: late
+            ? (ar ? "متأخرة — تجاوزت موعد الاستحقاق" : "Overdue — past its due date")
+            : pace.active
+              ? (ar ? `مطلوب اليوم ${pace.todayExpected} · ${sideStationName(homeStationOf(t))}` : `${pace.todayExpected} due today · ${sideStationName(homeStationOf(t))}`)
+              : sideStationName(homeStationOf(t)),
+          action: [
+            { key: "log", label: ar ? "سجّل إنجاز اليوم" : "Log today's progress", onClick: () => setOpenTaskId(t.id) },
+          ],
+        };
+      });
+      const late = rows.filter((r) => r.tone === "bad").length;
+      const myStation = currentUser?.stationId || "";
+      return (
+        <>
+        <OpsSideSlab
           ar={ar}
-          dir={dir}
-          filter={boardFilter}
-          onFilterChange={setFilter}
-          chips={chips}
-          showCreate={showCreate}
-          onToggleCreate={() => setShowCreate((v) => !v)}
-          canCreate={isOpsManager && !employeeRail}
+          dataKey="ops-mine"
+          title={ar ? "يومي" : "My day"}
+          standing={rows.length ? (ar ? `${rows.length} أمر مفتوح عليك` : `${rows.length} open orders on you`) : null}
+          note={ar ? "الأقرب استحقاقاً أولاً. اختر أمراً لتسجيل إنجاز اليوم." : "Soonest due first. Pick one to log today's progress."}
+          summary={late ? (ar ? `${late} متأخرة` : `${late} overdue`) : null}
+          groups={[{ id: "mine", name: ar ? "أوامري" : "My orders", rows }]}
+          emptyText={ar ? "لا أمر مفتوح عليك الآن." : "No open order on you now."}
+          selectedId={sideTask}
+          onSelect={setSideTask}
         />
-        {boardFilter !== "archive" && boardPace.active > 0 ? <DailyPaceStrip ar={ar} board={boardPace} embedded /> : null}
-      </OpsControlBar>
+        {/* The same ladder صوت الموظف shows — the employee sees who approves and who is next. */}
+        <OpsTaskChain ar={ar} overview chain={branchEscalationCardLine(myStation, data)} branchName={stationName(myStation) === "—" ? "" : stationName(myStation)} />
+        </>
+      );
+    }
+    // بانتظار قرارك: per branch, the people whose orders wait for approval or ran late.
+    const byStation = new Map();
+    const anyWaiting = liveTasks.some((t) => isAwaitingApproval(t) || isOverdue(t) || isEscalated(t));
+    for (const t of liveTasks) {
+      const awaiting = isAwaitingApproval(t);
+      const late = isOverdue(t) || (isEscalated(t) && !awaiting);
+      // With nothing to decide the slab turns into «الفريق اليوم»: everyone with an open order.
+      if (anyWaiting && !awaiting && !late) continue;
+      const sid = homeStationOf(t) || "";
+      const oid = ownerKey(t) || `name:${ownerName(t)}`;
+      if (!byStation.has(sid)) byStation.set(sid, new Map());
+      const people = byStation.get(sid);
+      const row = people.get(oid) || { id: oid, name: ownerName(t), awaiting: [], late: [], overdue: [], open: [], up: [], today: 0 };
+      if (isEscalated(t)) row.up.push(t);
+      if (isOverdue(t)) row.overdue.push(t);
+      if (awaiting) row.awaiting.push(t);
+      if (late) row.late.push(t);
+      if (!awaiting) {
+        row.open.push(t);
+        const pace = deriveDailyTaskPace(taskPaceInput(t));
+        if (pace.active) row.today += pace.todayExpected;
+      }
+      people.set(oid, row);
+    }
+    const groups = [...byStation.entries()].map(([sid, people]) => {
+      const rows = [...people.values()].map((r) => ({
+        id: r.id,
+        awaitingN: r.awaiting.length,
+        title: r.name,
+        count: anyWaiting ? new Set([...r.awaiting, ...r.late, ...r.up]).size : r.open.length,
+        tone: r.overdue.length || r.up.length ? "bad" : anyWaiting ? "gold" : "soft",
+        line: anyWaiting
+          ? [
+            r.awaiting.length ? (ar ? `${r.awaiting.length} بانتظار اعتمادك` : `${r.awaiting.length} awaiting approval`) : "",
+            r.overdue.length ? (ar ? `${r.overdue.length} متأخرة` : `${r.overdue.length} overdue`) : "",
+            r.up.length ? (ar ? `${r.up.length} صُعّدت` : `${r.up.length} escalated`) : "",
+          ].filter(Boolean).join(" · ")
+          : (ar
+            ? `${r.open.length === 1 ? "أمر واحد مفتوح" : `${r.open.length} أوامر مفتوحة`}${r.today ? ` · مطلوب اليوم ${r.today}` : ""}`
+            : `${r.open.length} open${r.today ? ` · ${r.today} due today` : ""}`),
+        action: [
+          r.awaiting[0] ? { key: "approve", label: ar ? "راجع واعتمد" : "Review and approve", onClick: () => setOpenTaskId(r.awaiting[0].id) } : null,
+          r.up[0] ? { key: "escalated", label: ar ? "افتح المصعّدة" : "Open the escalated one", onClick: () => setOpenTaskId(r.up[0].id) } : null,
+          r.overdue[0] && !r.up.includes(r.overdue[0]) ? { key: "late", label: ar ? "افتح المتأخرة" : "Open the overdue one", onClick: () => setOpenTaskId(r.overdue[0].id) } : null,
+          !anyWaiting && r.open[0] ? { key: "open", label: ar ? "افتح أقرب أمر" : "Open the nearest order", onClick: () => setOpenTaskId([...r.open].sort((x, y) => String(x.dueAt || "9").localeCompare(String(y.dueAt || "9")))[0].id) } : null,
+        ],
+      }));
+      const a = rows.filter((r) => r.awaitingN).length;
+      return {
+        id: sid,
+        name: sideStationName(sid),
+        alert: !anyWaiting
+          ? (ar ? `${rows.length === 1 ? "شخص واحد" : `${rows.length} أشخاص`} لهم أوامر مفتوحة` : `${rows.length} people with open orders`)
+          : ar
+            ? `${rows.length === 1 ? "شخص واحد" : `${rows.length} أشخاص`} · ${a ? `${a === 1 ? "واحد عنده" : `${a} عندهم`} ما يُعتمد` : "متأخرات فقط"}`
+            : `${rows.length} people · ${a ? `${a} with work to approve` : "overdue only"}`,
+        rows,
+      };
+    });
+    const people = groups.reduce((n, g) => n + g.rows.length, 0);
+    return (
+      <OpsSideSlab
+        ar={ar}
+        dataKey="ops-manage"
+        title={anyWaiting ? (ar ? "بانتظار قرارك" : "Awaiting your decision") : (ar ? "الفريق اليوم" : "The team today")}
+        standing={focusStation ? (ar ? `معروض: ${sideStationName(focusStation)}` : `Showing: ${sideStationName(focusStation)}`) : (ar ? "كل الفروع" : "All branches")}
+        note={anyWaiting
+          ? (ar ? "ما ينتظر اعتمادك، وما تأخّر، وما صُعّد إليك. الفرع يقصر القائمة عليه، والاسم يعرض أوامره وحده." : "What waits for approval, what ran late, what was escalated to you. A branch narrows the list; a name shows only their orders.")
+          : (ar ? "لا اعتماد معلّق ولا أمر متأخر. هذا من عليه أوامر مفتوحة وما يُطلب منه اليوم." : "Nothing to approve or late. These are the people with open orders and what today asks of them.")}
+        summary={people ? (anyWaiting ? (ar ? `${people} لهم ما ينتظر` : `${people} with something waiting`) : (ar ? `${people} على رأس العمل` : `${people} at work`)) : null}
+        groups={groups}
+        emptyText={ar ? "لا أوامر مفتوحة في فروعك الآن." : "No open orders in your branches now."}
+        focusId={focusStation}
+        onFocus={(id) => { setFocusStation(id); setFocusOwner(""); }}
+        selectedId={focusOwner}
+        onSelect={(id) => setFocusOwner(id && !String(id).startsWith("name:") ? id : "")}
+      />
+    );
+  })();
+  const cc = c || { total: 0, overdue: 0, awaiting: 0, today: 0 };
+  const todayUnits = boardPace.todayExpected || 0;
+  const opsTiles = [
+    <DutyTile
+      key="pace"
+      dataKey="ops-today"
+      tone={boardPace.active ? "ok" : "mute"}
+      label={employeeFace ? (ar ? "إيقاعي اليوم" : "My pace today") : (ar ? "إيقاع الفريق اليوم" : "Team pace today")}
+      note={ar
+        ? `${formatNum(boardPace.active)} أمر نشط · ${formatNum(cc.today)} يُستحق اليوم`
+        : `${boardPace.active} active · ${cc.today} due today`}
+    >
+      <DutyNumber value={formatNum(todayUnits)} unit={ar ? "إدخال مطلوب اليوم" : "entries due today"} />
+    </DutyTile>,
+    <DutyTile
+      key="late"
+      dataKey="ops-overdue"
+      ar={ar}
+      flag={ar ? "تجاوز الموعد" : "Past due"}
+      tone={cc.overdue ? "bad" : "mute"}
+      label={ar ? "متأخرة" : "Overdue"}
+      note={ar ? "تجاوزت موعد استحقاقها ولم تُنجز" : "Past due and not done"}
+    >
+      <DutyNumber value={formatNum(cc.overdue)} unit={ar ? "أمر" : "orders"} />
+    </DutyTile>,
+    <DutyTile
+      key="await"
+      dataKey="ops-awaiting"
+      ar={ar}
+      tone="mute"
+      label={employeeFace ? (ar ? "عند المشرف" : "With the supervisor") : (ar ? "تنتظر اعتمادك" : "Awaiting your approval")}
+      note={employeeFace
+        ? (ar ? "أنجزتها وتنتظر الاعتماد لتُحتسب نقاطها" : "Done, waiting for approval to count")
+        : (ar ? "أنجزها الموظف — الاعتماد يمنح النقاط" : "Done by the employee — approval awards points")}
+    >
+      <DutyNumber value={formatNum(cc.awaiting)} unit={ar ? "أمر" : "orders"} />
+      {/* A queue is an action, not a problem — green line, no chip (KPI law). */}
+      {cc.awaiting ? (
+        <KpiAction
+          ar={ar}
+          text={employeeFace ? "تابع الاعتماد" : "افتح القرار"}
+          textEn={employeeFace ? "Track approval" : "Open the decision"}
+          onClick={() => setFilter("awaiting")}
+        />
+      ) : null}
+    </DutyTile>,
+  ];
+  const opsHowTo = ar
+    ? (employeeFace
+      ? [
+        "سجّل حضورك أولاً — المهمة الميدانية لا تقبل إدخالاً قبل بصمة اليوم.",
+        "«سجّل» على البطاقة يضيف إنجاز اليوم، وشريط الإنجاز يُظهر ما بقي حتى الاستحقاق.",
+        "عند اكتمال العدد تنتقل المهمة إلى المشرف، وتُحتسب نقاطها بعد اعتماده.",
+      ]
+      : [
+        "«مهمة جديدة» تُسند أمر عمل لموظف أو لفريق الفرع، مع العدد المطلوب والاستحقاق.",
+        "«الخطة» تجمع الأوامر حسب الأفق: أسبوع، شهر، ربع، نصف سنة، سنة.",
+        "«توكيل» يغيّر المنفّذ داخل الفرع، و«نقل» يحوّل الأمر إلى فرع آخر.",
+        "التصعيد هنا: «صُعّدت» في الشريط، وما صُعّد إليك في «بانتظار قرارك»، وسلسلة كل أمر داخل بطاقته.",
+      ])
+    : (employeeFace
+      ? [
+        "Check in first — an on-site task takes no entry before today's punch.",
+        "“Log” on a card adds today's progress; the bar shows what is left until due.",
+        "When the count is reached the task goes to the supervisor; points count after approval.",
+      ]
+      : [
+        "“New task” assigns a work order to an employee or the branch team, with count and due date.",
+        "“Plan” groups orders by horizon: week, month, quarter, half-year, year.",
+        "“Delegate” changes the doer in the branch; “Transfer” moves the order to another branch.",
+        "Outside companies go on Work proof; branch guests on Visitor proof.",
+      ]);
+  return (
+    <OpsFrame
+      ar={ar}
+      lane={employeeFace ? "mine" : "manage"}
+      title={employeeFace ? (ar ? "مهامي — اليوم" : "My tasks — today") : (ar ? "أوامر العمل — الفريق" : "Work orders — the team")}
+      hint={employeeFace
+        ? (ar ? "ما المطلوب مني اليوم؟ بصمة الحضور تفتح التسجيل الميداني، واعتماد المشرف يمنح النقاط." : "What is on me today? The check-in opens on-site logging; the supervisor's approval awards the points.")
+        : (ar ? "أمر عمل لموظف الشركة: أسنِده، تابِع إيقاعه اليومي، واعتمد ما أُنجز. الجهة الخارجية في «إثبات العمل»، والضيف في «إثبات زائر»." : "A work order for a company employee: assign it, follow its daily pace, approve what is done. Outside companies go on Work proof, guests on Visitor proof.")}
+      meta={(
+        <HeroSwitch
+          label={ar ? "طريقة العرض" : "View"}
+          value={viewMode === "plan" ? "plan" : "list"}
+          onChange={setViewMode}
+          options={[
+            { value: "list", label: ar ? "قائمة" : "List" },
+            { value: "plan", label: ar ? "الخطة" : "Plan" },
+          ]}
+        />
+      )}
+      tiles={opsTiles}
+      howTo={opsHowTo}
+      side={opsSide}
+      after={employeeFace ? null : (
+        <BranchEscalationChains
+          ar={ar}
+          data={data}
+          stations={escalationLiveStations(data?.stations || []).filter((st) => !headerScope || headerScope === "all" || matchesStationScope(st.id, headerScope))}
+          tasks={liveTasks.filter((t) => isEscalated(t))}
+        />
+      )}
+    >
+      <div className="space-y-3.5">
+      <div data-ops-list-head="1">
+        <StatusFilterPills
+          card
+          dataKey={employeeFace ? "ops-mine" : "ops-manage"}
+          title={employeeFace ? (ar ? "مهامي" : "My tasks") : (ar ? "أوامر العمل" : "Work orders")}
+          note={focusStation || focusOwner
+            ? (ar
+              ? `معروض: ${[focusStation ? sideStationName(focusStation) : "", focusOwner ? ownerName({ ownerId: focusOwner }) : ""].filter(Boolean).join(" · ")}`
+              : `Showing: ${[focusStation ? sideStationName(focusStation) : "", focusOwner ? ownerName({ ownerId: focusOwner }) : ""].filter(Boolean).join(" · ")}`)
+            : null}
+          value={boardFilter}
+          onChange={setFilter}
+          items={chips}
+          hideZero={employeeFace}
+          trailing={(
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              {focusStation || focusOwner ? (
+                <button type="button" data-clear-focus="1" onClick={() => { setFocusStation(""); setFocusOwner(""); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: "none", background: "transparent", color: "var(--nv-ok-ink, #0F5535)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+                  {ar ? "اعرض الكل" : "Show all"}
+                </button>
+              ) : null}
+              {boardFilter !== "archive" ? (
+                <span role="tablist" aria-label={ar ? "كثافة العرض" : "Density"} data-density-switch="1" style={{ display: "inline-flex", gap: 2, padding: 2, borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)" }}>
+                  {[
+                    { v: "full", label: ar ? "بطاقات" : "Cards" },
+                    { v: "compact", label: ar ? "مختصر" : "Compact" },
+                  ].map((o) => (
+                    <button key={o.v} type="button" role="tab" aria-selected={density === o.v} data-density={o.v} onClick={() => setDensity(o.v)} style={{ fontFamily: "inherit", fontSize: 11.5, fontWeight: density === o.v ? 700 : 500, height: 26, padding: "0 10px", borderRadius: 6, border: "none", cursor: "pointer", background: density === o.v ? "#0B3D27" : "transparent", color: density === o.v ? "#fff" : "var(--nv-ink2)" }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </span>
+              ) : null}
+              {isOpsManager && !employeeRail ? (
+                <button type="button" onClick={() => setShowCreate((v) => !v)} style={showCreate ? ui.btnCreateQuiet : ui.btnCreate}>
+                  {showCreate ? (ar ? "إخفاء النموذج" : "Hide form") : (ar ? "مهمة جديدة" : "New task")}
+                </button>
+              ) : null}
+            </span>
+          )}
+        />
+      </div>
 
       {!checkedIn && (
       <div style={warnBanner}>
@@ -2087,6 +2399,8 @@ export default function Operations() {
                   onOpen={(task) => setOpenTaskId(task.id)}
                   createdIds={createdIds}
                   renderActions={renderActions}
+                  compact={density === "compact"}
+                  viewerId={viewerId}
                 />
               )}
             </section>
@@ -2094,7 +2408,7 @@ export default function Operations() {
         </div>
       ) : (
         <OpsTasksTable
-          tasks={visible.map((task) => ({
+          tasks={focused.map((task) => ({
             ...task,
             homeStationId: task.homeStationId || homeStationOf(task),
           }))}
@@ -2107,6 +2421,8 @@ export default function Operations() {
           onOpen={(task) => setOpenTaskId(task.id)}
           createdIds={createdIds}
           renderActions={renderActions}
+          compact={density === "compact"}
+          viewerId={viewerId}
         />
       )}
 
@@ -2130,12 +2446,17 @@ export default function Operations() {
           checkedIn={checkedIn}
           attendanceGate={attendanceGate}
           escalationSteps={buildOpsEscalationSteps(openTask, data, t, lang)}
+          chain={branchEscalationCardLine(openTask.stationId, data)}
           currentLevelLabel={currentOpsLevelLabel(openTask, data, t, lang)}
           t={t}
           lang={lang}
           onClose={() => setOpenTaskId(null)}
           onLog={(opts) => logDone(openTask, opts)}
-          onApprove={() => approve(openTask)}
+          onApprove={(quality) => approve(openTask, quality)}
+          qualityAssignees={qualityAssigneesFor(openTask)}
+          canDecideQuality={canDecideQualityObjection(openTask, currentUser, data)}
+          onObjectQuality={(reason) => objectQuality(openTask, reason)}
+          onDecideQuality={(payload) => decideQuality(openTask, payload)}
           onReject={(reason) => reject(openTask, reason)}
           onEmployeeEscalate={(reason) => employeeEscalate(openTask, reason)}
           canEmployeeEscalate={canEmployeeEscalateOpsTask(openTask, currentUser, data)}
@@ -2247,6 +2568,29 @@ export default function Operations() {
         </div>
       )}
 
+      {approveFor && (
+        <div style={dialogOverlay} onClick={() => setApproveFor(null)}>
+          <div data-approve-dialog="1" style={{ ...dialogCard, maxWidth: 460, width: "calc(100% - 32px)", maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: INK }}>{ar ? "اعتماد الإنجاز" : "Approve the work"}</div>
+            <p style={{ margin: "6px 0 12px", fontSize: 11, lineHeight: 1.7, color: MUTED }}>
+              {`${approveFor.ref || ""} · ${approveFor.title || ""}`}
+            </p>
+            <OpsQualityPicker
+              ar={ar}
+              task={approveFor}
+              assignees={qualityAssigneesFor(approveFor)}
+              busy={busy}
+              onCancel={() => setApproveFor(null)}
+              onConfirm={(quality) => approve(approveFor, quality)}
+            />
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop: 16 }}>
+        <MinistrySectionPanel sectionKey="tasks" lane={employeeRail ? "employee" : "manage"} ar={ar} />
+      </div>
+
       {rejectFor && (
         <div style={dialogOverlay} onClick={() => setRejectFor(null)}>
           <div style={dialogCard} onClick={(e) => e.stopPropagation()}>
@@ -2267,6 +2611,6 @@ export default function Operations() {
         </div>
       )}
       </div>
-    </PlatformStampShell>
+    </OpsFrame>
   );
 }

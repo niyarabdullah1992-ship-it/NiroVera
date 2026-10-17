@@ -30,7 +30,7 @@ export const SUITE_GROUPS = [
   },
   {
     id: "duty",
-    ar: "الدوام والحضور",
+    ar: "الحضور والدوام",
     en: "Time & Attendance",
     num: "03",
     blurbAr: "جدول الورديات يحدد من يجب أن يحضر — ثم تسجيل الحضور والانصراف يغذي المسير.",
@@ -65,8 +65,8 @@ export const SUITE_GROUPS = [
     ar: "صوت الموظف",
     en: "Employee Voice",
     num: "07",
-    blurbAr: "اقتراح وشكوى وبلاغ مجهول بمسار تصعيد.",
-    blurbEn: "Suggestion, complaint, and anonymous report with an escalation path.",
+    blurbAr: "شكوى جهرية بسلم تصعيد، وشكوى سرية واقتراح وشكوى تحرش إلى الموارد البشرية وحدها.",
+    blurbEn: "An open complaint on an escalation ladder; confidential complaints, suggestions and harassment to HR alone.",
   },
   {
     id: "people",
@@ -94,11 +94,11 @@ export const SUITE_GROUPS = [
   },
   {
     id: "money",
-    ar: "المال والأصول",
-    en: "Money & assets",
+    ar: "المال",
+    en: "Money",
     num: "10",
-    blurbAr: "البصمة تغذّي المسير. المصروف والمخزون والأصول والعهد في مسار واحد، ولكل مسار سطحه.",
-    blurbEn: "Attendance feeds payroll. Expenses, stock, and assets & custody each have their own path.",
+    blurbAr: "البصمة تغذّي المسير، والمسير يُقفل قبل ملف مدد.",
+    blurbEn: "Attendance feeds payroll; the run closes before the Mudad file.",
   },
   {
     id: "admin",
@@ -110,7 +110,7 @@ export const SUITE_GROUPS = [
   },
 ];
 
-/** @typedef {{ id: string, path: string, planSection: string | null, group: string, public: boolean, rail?: boolean, aliases?: string[], ar: string, en: string, blurbAr: string, blurbEn: string, icon: string }} SuiteApp */
+/** @typedef {{ id: string, path: string, planSection: string | null, group: string, public: boolean, rail?: boolean, side?: "employee" | "manage", aliases?: string[], ar: string, en: string, blurbAr: string, blurbEn: string, icon: string }} SuiteApp */
 
 /** @type {SuiteApp[]} */
 export const SUITE_APPS = [
@@ -145,6 +145,8 @@ export const SUITE_APPS = [
     group: "duty",
     public: true,
     aliases: ["/app/attendance/calendar"],
+    /** Employee side only — الإدارة plans on جدول الدوام; the calendar seals what already happened. */
+    side: "employee",
     ar: "التقويم التشغيلي",
     en: "Operational calendar",
     blurbAr: "كل يوم يحمل توزيعه: حضر، تأخّر، غاب — واليوم الذي انكسرت فيه حلقة يُعلَّم بحدّ ذهبي.",
@@ -217,10 +219,10 @@ export const SUITE_APPS = [
     planSection: "hr",
     group: "people",
     public: true,
-    ar: "المحطات التي أديرها",
-    en: "Stations I manage",
-    blurbAr: "الوظيفة ثابتة، والشخص يتغيّر — فروع ومقاعد وتصعيد.",
-    blurbEn: "The seat stays, the person changes — stations, seats, escalation.",
+    ar: "مكاني في الهيكل",
+    en: "My place in the structure",
+    blurbAr: "سلسلة إدارتك وزملاؤك وفريقك — الإدارة في «الموارد البشرية».",
+    blurbEn: "Your chain, peers and team — management lives in Human resources.",
     icon: "org",
   },
   {
@@ -231,8 +233,8 @@ export const SUITE_APPS = [
     public: true,
     ar: "الموارد البشرية",
     en: "Human Resources",
-    blurbAr: "ملفات وعقود وامتثال صاحب العمل.",
-    blurbEn: "Files, contracts, employer compliance.",
+    blurbAr: "الملفات والهيكل والفروع والمحطات وامتثال صاحب العمل في قسم واحد.",
+    blurbEn: "Files, structure, branches and stations, employer compliance — one section.",
     icon: "users",
   },
   {
@@ -293,8 +295,8 @@ export const SUITE_APPS = [
     public: true,
     ar: "صوت الموظف",
     en: "Employee Voice",
-    blurbAr: "اقتراح وشكوى وبلاغ مجهول بمسار تصعيد.",
-    blurbEn: "Suggestion, complaint, and anonymous report with an escalation path.",
+    blurbAr: "شكوى جهرية بسلم تصعيد، وشكوى سرية واقتراح وشكوى تحرش إلى الموارد البشرية وحدها.",
+    blurbEn: "An open complaint on an escalation ladder; confidential complaints, suggestions and harassment to HR alone.",
     icon: "megaphone",
   },
   {
@@ -320,42 +322,6 @@ export const SUITE_APPS = [
     blurbAr: "الحضور يُقفل في المسير قبل ملف مدى. مواد 90 و92 و93 و107.",
     blurbEn: "Attendance closes into the run before the Mudad file. Art. 90, 92, 93 and 107.",
     icon: "wallet",
-  },
-  {
-    id: "expenses",
-    path: "/app/expenses",
-    planSection: "expenses",
-    group: "money",
-    public: true,
-    ar: "المصروفات",
-    en: "Expenses",
-    blurbAr: "وعاء تشغيلي · إيصال بوابة · اعتماد متدرّج بالمبلغ.",
-    blurbEn: "Operating vessel · receipt gate · amount-derived approval.",
-    icon: "receipt",
-  },
-  {
-    id: "assets",
-    path: "/app/assets",
-    planSection: "assets",
-    group: "money",
-    public: true,
-    ar: "الأصول / العهد",
-    en: "Assets / Custody",
-    blurbAr: "سجل أصل · حائز واحد · نقل بين الفروع · تسليم بتوقيع الطرفين.",
-    blurbEn: "Asset register · one holder · inter-station transfer · dual-sign handover.",
-    icon: "box",
-  },
-  {
-    id: "inventory",
-    path: "/app/inventory",
-    planSection: "inventory",
-    group: "money",
-    public: true,
-    ar: "المخزون",
-    en: "Inventory",
-    blurbAr: "لا مركزي: رصيد الفرع · شراء · طلب من فرع آخر · صرف للعمل.",
-    blurbEn: "Decentralised: station balance · buy · request from another station · issue to work.",
-    icon: "box",
   },
   {
     id: "files",
@@ -429,6 +395,12 @@ export function suiteAppsByGroup(apps = SUITE_APPS) {
     ...group,
     apps: apps.filter((app) => app.group === group.id),
   })).filter((group) => group.apps.length > 0);
+}
+
+/** Apps that belong to one rail side only (e.g. التقويم التشغيلي is employee-side). */
+export function suiteAppOnSide(app, side) {
+  if (!app?.side) return true;
+  return app.side === side;
 }
 
 export function suiteAppLabel(app, lang = "ar") {

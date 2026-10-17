@@ -2,14 +2,17 @@ import React from "react";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import GreenMenu from "@/components/discipline/GreenMenu";
 import {
+  ART80_GROUNDS,
   DISCIPLINE_PENALTY_KINDS,
+  art80Ground,
   deriveRaiseDisciplineChips,
   listedPenaltyKind,
   listedPenaltyLabel,
 } from "@/lib/disciplineDerivations";
+import NvIcon, { NvMark } from "@/components/shared/NvIcon";
+import { LawLine } from "@/components/discipline/DisciplineFormKit";
 
 const ACTION = "#3C7D50";
-const GOLD = "#C8A45A";
 const WORK_LINK_AR = "متصلة بالعمل أو بصاحب العمل أو بالمدير المسؤول";
 const WORK_LINK_EN = "Connected to the work, the employer, or the responsible manager";
 
@@ -19,8 +22,8 @@ const field = {
   height: 44,
   padding: "0 14px",
   border: "1px solid var(--nv-line)",
-  borderRadius: 10,
-  background: "var(--nv-page)",
+  borderRadius: 8,
+  background: "var(--nv-card)",
   color: "var(--nv-ink)",
   outline: "none",
   width: "100%",
@@ -35,12 +38,12 @@ function personLabel(person, stations) {
 
 function gateTone(state) {
   if (state === "fail") {
-    return { color: "var(--nv-bad-ink)", bg: "transparent", border: "var(--nv-bad-line)", mark: "✕" };
+    return { color: "var(--nv-bad-ink)", bg: "transparent", border: "var(--nv-bad-line)", mark: "cross" };
   }
   if (state === "warn") {
     return { color: "var(--nv-warn-ink)", bg: "transparent", border: "var(--nv-warn-line)", mark: "!" };
   }
-  return { color: "var(--nv-ok-ink)", bg: "transparent", border: "var(--nv-ok-line)", mark: "✓" };
+  return { color: "var(--nv-ok-ink)", bg: "transparent", border: "var(--nv-ok-line)", mark: "check" };
 }
 
 function MarkBox({ on, label, onToggle }) {
@@ -82,7 +85,7 @@ function MarkBox({ on, label, onToggle }) {
           border: on ? `1px solid ${ACTION}` : "1.5px solid var(--nv-muted)",
         }}
       >
-        {on ? "✓" : ""}
+        {on ? <NvIcon name="check" size={12} strokeWidth={2.25} inline={false} /> : ""}
       </span>
       <span>{label}</span>
     </button>
@@ -112,7 +115,13 @@ export default function DisciplineRaiseForm({
   onWorkConnected,
   dismissGround,
   onDismissGround,
+  art80 = {},
+  onArt80,
   onSubmit,
+  regulation = null,
+  clauseId = "",
+  onClause,
+  clauseStep = null,
 }) {
   const person = employees.find((row) => String(row.id) === String(employeeId)) || null;
   const kindSpec = listedPenaltyKind(penaltyKind) || DISCIPLINE_PENALTY_KINDS[0];
@@ -129,6 +138,8 @@ export default function DisciplineRaiseForm({
     workConnected,
     cases,
     ar,
+    regulation,
+    clauseId,
   });
   const hasFacts = Boolean(String(note || "").trim());
   const failing = chips.filter((chip) => chip.state === "fail");
@@ -142,29 +153,21 @@ export default function DisciplineRaiseForm({
   })();
   const people = employees.map((row) => ({ value: row.id, label: personLabel(row, stations) }));
   const kinds = DISCIPLINE_PENALTY_KINDS.map((row) => ({ value: row.id, label: ar ? row.ar : row.en }));
-  const dayChoices = (kindSpec?.days || []).filter((n) => n > 0);
+  const baseDays = (kindSpec?.days || []).filter((n) => n > 0);
+  const dayChoices = penaltyKind === "fine" && Number(cutDays) > 0 && Number(cutDays) < 1 ? [Number(cutDays), ...baseDays] : baseDays;
+  const own = regulation?.source === "own";
+  const clauseOptions = [
+    { value: "", label: ar ? "— لم يُحدَّد —" : "— Not set —" },
+    ...(regulation?.clauses || []).map((c, i) => ({ value: c.id, label: `${i + 1}. ${ar ? c.ar || c.en : c.en || c.ar}` })),
+  ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div
-        data-raise-info=""
-        style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "11px 16px", fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}
-      >
-        <span>
-          {ar
-            ? "يفتح الملف في مرحلة «أُبلغ كتابةً» على محطة عمل الموظف. بوابات المواد 66 و67 و69 و70 و71 تُفحص قبل الفتح، ولا يُفتح ملف تخالفها."
-            : "The file opens at written notice on the employee's work station. Articles 66, 67, 69, 70 and 71 are checked before it opens, and a file that breaks them does not open."}
-        </span>
-      </div>
-      <section
-        data-raise-form=""
-        style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderBottom: `3px solid ${GOLD}`, borderRadius: 10, padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 14 }}
-      >
-        <strong style={{ fontSize: 15, fontWeight: 700, color: "var(--nv-ink)", lineHeight: 1.7 }}>
-          {ar
-            ? "رفع جزاء — يفتح الملف في مرحلة «أُبلغ كتابةً» على محطة عمل الموظف لا نطاق الرأس"
-            : "Raise a sanction — the file opens at written notice on the employee's work station, not the header scope"}
-        </strong>
+    <div data-raise-form="" style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
+      <LawLine cite={ar ? "م 66 · 67 · 69 · 70 · 71" : "Arts. 66 · 67 · 69 · 70 · 71"}>
+        {ar
+          ? "يُفتح الملف في «أُبلغ كتابةً» على محطة عمل الموظف، ولا يُفتح ملف يخالف بوابة من بواباته."
+          : "The file opens at written notice on the employee's work station; a file that breaks a gate does not open."}
+      </LawLine>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,220px),1fr))", gap: "12px 16px" }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
             <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "الموظف" : "Employee"}</span>
@@ -177,6 +180,29 @@ export default function DisciplineRaiseForm({
               onChange={onEmployee}
             />
           </label>
+          {regulation ? (
+            <label data-raise-clause="" style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0, gridColumn: "1 / -1" }}>
+              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>
+                {own
+                  ? (ar ? `بند المخالفة في لائحة تنظيم العمل المعتمدة${regulation.approvalNo ? ` (${regulation.approvalNo})` : ""} — المادة 67` : "Offence clause in the approved regulation — Article 67")
+                  : (ar ? "بند المخالفة — من النموذج الاسترشادي حتى تُسجَّل لائحة المنشأة (المادة 67)" : "Offence clause — from the model until the establishment's regulation is recorded (Article 67)")}
+              </span>
+              <GreenMenu
+                ariaLabel={ar ? "بند المخالفة" : "Offence clause"}
+                menuId="discipline-raise-clause"
+                value={clauseId}
+                options={clauseOptions}
+                onChange={onClause}
+              />
+              {clauseStep ? (
+                <span data-raise-clause-step="" style={{ fontSize: 12, color: "var(--nv-ink2)", lineHeight: 1.7 }}>
+                  {ar
+                    ? <>{clauseStep.timeLabel} لهذا الموظف{clauseStep.lastAt ? ` — السابقة وُقّعت ${clauseStep.lastAtLabel}` : ""}{clauseStep.lapsed && clauseStep.time === 1 ? " — مضى 180 يوماً على السابقة فلا تشديد (المادة 68)" : ""}. اللائحة تنص على: <strong style={{ color: "var(--nv-ink)" }}>{clauseStep.label}</strong>{clauseStep.beyond ? " (آخر درجة في البند)" : ""} — طُبّق على الجزاء أدناه.</>
+                    : <>{clauseStep.timeLabel} for this employee. The regulation says: <strong>{clauseStep.label}</strong> — applied below.</>}
+                </span>
+              ) : null}
+            </label>
+          ) : null}
           <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
             <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "الجزاء من المادة 66" : "Penalty from Article 66"}</span>
             <GreenMenu
@@ -189,7 +215,7 @@ export default function DisciplineRaiseForm({
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
             <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "تاريخ كشف المخالفة — المادة 69" : "Date the offence was discovered — Article 69"}</span>
-            <PlatformDateField ar={ar} value={discoveredAt} onChange={onDiscovered} style={{ height: 44, minHeight: 44, fontSize: 14, background: "var(--nv-page)", borderRadius: 10 }} />
+            <PlatformDateField ar={ar} value={discoveredAt} onChange={onDiscovered} style={{ height: 44, minHeight: 44, fontSize: 14, background: "var(--nv-card)", borderRadius: 8 }} />
           </label>
           {dayChoices.length ? (
             <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
@@ -214,9 +240,69 @@ export default function DisciplineRaiseForm({
             />
           </label>
           {penaltyKind === "dismiss" ? (
+            <div data-raise-art80="" style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0, gridColumn: "1 / -1" }}>
+              <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+                <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "حالة الفسخ من المادة 80 — تُختار من النص لا تُكتب" : "Article 80 case — picked from the text"}</span>
+                <GreenMenu
+                  ariaLabel={ar ? "حالة المادة 80" : "Article 80 case"}
+                  menuId="discipline-raise-art80"
+                  value={art80Ground(dismissGround) ? dismissGround : ""}
+                  options={[{ value: "", label: ar ? "— اختر الحالة —" : "— Pick the case —" }, ...ART80_GROUNDS.map((g) => ({ value: g.id, label: `${g.para}. ${ar ? g.ar : g.en}` }))]}
+                  onChange={onDismissGround}
+                />
+              </label>
+              {art80Ground(dismissGround)?.absence ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,180px),1fr))", gap: 10 }}>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "نوع الغياب" : "Absence type"}</span>
+                    <GreenMenu
+                      ariaLabel={ar ? "نوع الغياب" : "Absence type"}
+                      menuId="discipline-raise-art80-mode"
+                      value={art80.mode === "intermittent" ? "intermittent" : "consecutive"}
+                      options={[
+                        { value: "consecutive", label: ar ? "متصل — أكثر من 15 يوماً، إنذار بعد 10" : "Consecutive — over 15 days, warning after 10" },
+                        { value: "intermittent", label: ar ? "متقطع — أكثر من 30 يوماً، إنذار بعد 20" : "Intermittent — over 30 days, warning after 20" },
+                      ]}
+                      onChange={(v) => onArt80?.({ ...art80, mode: v })}
+                    />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "أيام الغياب حتى اليوم" : "Days absent to date"}</span>
+                    <input type="number" min="0" value={art80.days ?? ""} onChange={(e) => onArt80?.({ ...art80, days: Number(e.target.value) || 0 })} style={field} />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "تاريخ الإنذار الكتابي" : "Written warning date"}</span>
+                    <PlatformDateField ar={ar} value={art80.warnedAt || ""} onChange={(v) => onArt80?.({ ...art80, warnedAt: v })} style={{ height: 44, minHeight: 44, fontSize: 14, background: "var(--nv-card)", borderRadius: 8 }} />
+                  </label>
+                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "أيام الغياب يوم الإنذار" : "Days absent when warned"}</span>
+                    <input type="number" min="0" value={art80.warnedAtDays ?? ""} onChange={(e) => onArt80?.({ ...art80, warnedAtDays: Number(e.target.value) || 0 })} style={field} />
+                  </label>
+                </div>
+              ) : null}
+              {art80Ground(dismissGround)?.warning ? (
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 260 }}>
+                  <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "تاريخ الإنذار الكتابي السابق (المادة 80/2)" : "Prior written warning date (Art. 80(2))"}</span>
+                  <PlatformDateField ar={ar} value={art80.warnedAt || ""} onChange={(v) => onArt80?.({ ...art80, warnedAt: v })} style={{ height: 44, minHeight: 44, fontSize: 14, background: "var(--nv-card)", borderRadius: 8 }} />
+                </label>
+              ) : null}
+              {art80Ground(dismissGround)?.report24h ? (
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, maxWidth: 260 }}>
+                  <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>{ar ? "تاريخ إبلاغ الجهات المختصة (خلال 24 ساعة — المادة 80/4)" : "Date the authorities were told (within 24h — Art. 80(4))"}</span>
+                  <PlatformDateField ar={ar} value={art80.reportedAt || ""} onChange={(v) => onArt80?.({ ...art80, reportedAt: v })} style={{ height: 44, minHeight: 44, fontSize: 14, background: "var(--nv-card)", borderRadius: 8 }} />
+                </label>
+              ) : null}
+              <span style={{ fontSize: 11.5, color: "var(--nv-muted)", lineHeight: 1.7 }}>
+                {ar
+                  ? "المادة 80: لا يُوقَّع الفسخ إلا بقرار مكتوب بعد إتاحة الفرصة للعامل لإبداء أسباب معارضته — يُثبت ذلك في المحضر قبل التوقيع."
+                  : "Article 80: the dismissal is signed only as a written decision after the worker had the chance to object — recorded before signing."}
+              </span>
+            </div>
+          ) : null}
+          {penaltyKind === "dismissal_with_award" ? (
             <label style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0, gridColumn: "1 / -1" }}>
-              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "الحالة المقررة للفصل — المادة 66" : "Prescribed dismissal case — Article 66"}</span>
-              <input value={dismissGround} onChange={(event) => onDismissGround(event.target.value)} placeholder={ar ? "اكتب الحالة المقررة كما في النظام" : "Write the prescribed case as in the Law"} style={field} />
+              <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{ar ? "السبب المشروع للفصل مع المكافأة (النموذج الموحد م58/6)" : "Legitimate reason for dismissal with award (model Art. 58(6))"}</span>
+              <input value={art80Ground(dismissGround) ? "" : dismissGround} onChange={(event) => onDismissGround(event.target.value)} placeholder={ar ? "مثال: تكرار التدخين في الأماكن المحظورة للمرة الرابعة" : "e.g. fourth repeat of smoking in prohibited areas"} style={field} />
             </label>
           ) : null}
           <MarkBox
@@ -236,7 +322,7 @@ export default function DisciplineRaiseForm({
             />
           ) : null}
         </div>
-        <div data-raise-gates="" style={{ display: "flex", flexDirection: "column", gap: 7, background: "var(--nv-page)", border: "1px solid var(--nv-line)", borderRadius: 10, padding: "12px 14px" }}>
+        <div data-raise-gates="" style={{ display: "flex", flexDirection: "column", gap: 7, background: "var(--nv-soft)", border: "1px solid var(--nv-line2, #EEF1EF)", borderRadius: 8, padding: "12px 14px" }}>
           {chips.map((chip) => {
             const tone = gateTone(chip.state);
             return (
@@ -247,7 +333,7 @@ export default function DisciplineRaiseForm({
                 style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}
               >
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 4, height: 24, padding: "0 10px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, flex: "none", color: tone.color, background: "transparent", border: `1px solid ${tone.border}`, whiteSpace: "nowrap" }}>
-                  {tone.mark} {chip.label}
+                  <NvMark mark={tone.mark} size={12} /> {chip.label}
                 </span>
                 <span style={{ fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.7, flex: 1, minWidth: 0 }}>{chip.text || "—"}</span>
               </div>
@@ -261,21 +347,19 @@ export default function DisciplineRaiseForm({
           onClick={() => !blocked && onSubmit?.()}
           style={{
             fontFamily: "inherit",
-            fontSize: 15,
+            fontSize: 13,
             fontWeight: 700,
-            height: 48,
-            padding: "0 26px",
+            height: 40,
+            width: "100%",
             border: "none",
-            borderRadius: 10,
-            background: blocked ? "var(--nv-line)" : ACTION,
-            color: blocked ? "var(--nv-muted)" : "var(--nv-btn-ink)",
+            borderRadius: 8,
+            background: blocked ? "var(--nv-soft, #E4E9E6)" : "var(--nv-ok-fill, #3C7D50)",
+            color: blocked ? "var(--nv-muted)" : "#fff",
             cursor: blocked ? "default" : "pointer",
-            alignSelf: "flex-start",
           }}
         >
           {buttonLabel}
         </button>
-      </section>
     </div>
   );
 }

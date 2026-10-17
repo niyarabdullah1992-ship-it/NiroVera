@@ -45,11 +45,13 @@ assert.deepEqual(descendantStationIds(stations, "east").sort(), ["dmm", "port"])
 assert.deepEqual(stationSubtreeIds(stations, "dmm").sort(), ["dmm", "port"]);
 assert.deepEqual(expandStationScope(stations, ["east"]).sort(), ["dmm", "east", "port"]);
 assert.equal(stationInHeaderScope("east", "east", stations), true);
-assert.equal(stationInHeaderScope("dmm", "east", stations), false);
-assert.equal(stationInHeaderScope("port", "east", stations), false);
+// Updated: header scope on a workplace includes its child workplaces (sites fold into their branch —
+// see headerScopeBranches / isNestedWorkplace); only a manager (region) seat stays exact.
+assert.equal(stationInHeaderScope("dmm", "east", stations), true);
+assert.equal(stationInHeaderScope("port", "east", stations), true);
 assert.equal(stationInHeaderScope("west", "east", stations), false);
 assert.equal(stationInHeaderScope("dmm", "all", stations), true);
-assert.equal(stationInHeaderScope("port", "dmm", stations), false);
+assert.equal(stationInHeaderScope("port", "dmm", stations), true);
 assert.equal(stationInHeaderScope("east", "dmm", stations), false);
 assert.equal(rootStations(stations).map((s) => s.id).sort().join(","), "east,west");
 assert.equal(allowedStationParents(stations, "east").some((s) => s.id === "port"), false);
@@ -110,7 +112,7 @@ assert.equal(shown.extras[0].kind, "extra");
 assert.equal(shown.extras[0].label, "المنطقة الغربية · 1");
 assert.equal(shown.inherited.some((item) => item.id === "khf"), true);
 
-assert.equal(stationInHeaderScope("yan", "west", region.stations), false);
+assert.equal(stationInHeaderScope("yan", "west", region.stations), true); // west has no unitKind → workplace subtree
 assert.equal(stationInHeaderScope("west", "west", region.stations), true);
 assert.equal(stationInHeaderScope("khf", "west", region.stations), false);
 
@@ -156,5 +158,10 @@ const scopeTree = [
 ];
 assert.equal(isNestedWorkplace(scopeTree[4], scopeTree), true);
 assert.deepEqual(headerScopeBranches(scopeTree, scopeTree).map((row) => row.id), ["hq", "khf", "dmm"]);
+// Manager seat stays exact; a branch carries its nested site.
+assert.equal(stationInHeaderScope("khf", "east", scopeTree), false);
+assert.equal(stationInHeaderScope("east", "east", scopeTree), true);
+assert.equal(stationInHeaderScope("port", "dmm", scopeTree), true);
+assert.equal(stationInHeaderScope("khf", "dmm", scopeTree), false);
 
 console.log("station tree ok");

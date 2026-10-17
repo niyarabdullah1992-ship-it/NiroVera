@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useI18n } from "@/lib/i18n";
@@ -11,12 +11,14 @@ import {
   employeeWorkStationId,
   findStationById,
   rosterBranchPhrase,
-  rosterMineScopeCopy,
   stationDisplayName,
 } from "@/lib/shiftWeek";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import { FileSelfBadge } from "@/components/employees/ProfileHero";
 import PlatformDateField from "@/components/shared/PlatformDateField";
+import DateNav from "@/components/schedules/DateNav";
+import { dateFromKey } from "@/components/schedules/dutyLinks";
+import MyMonthLine, { myCellMark, useMyMonthDays } from "@/components/attendance/MyMonthLine";
 import {
   BROKE,
   CHAIN,
@@ -38,6 +40,7 @@ import {
   visibleOpsTasks,
   weekdaysOf,
 } from "@/lib/operationalCalendar";
+import NvIcon from "@/components/shared/NvIcon";
 
 function SearchIcon() {
   return (
@@ -55,7 +58,7 @@ function KickerLine({ kicker }) {
   const parts = String(kicker || "").split("·").map((part) => part.trim()).filter(Boolean);
   return (
     <span style={{ fontSize: 11, letterSpacing: ".14em", color: OC.muted, display: "flex", gap: 7, alignItems: "center" }}>
-      {parts[0] ? <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{parts[0]}</span> : null}
+      {parts[0] ? <span dir={/[\u0600-\u06FF]/.test(parts[0]) ? undefined : "ltr"} style={{ fontFamily: /[\u0600-\u06FF]/.test(parts[0]) ? "inherit" : "'IBM Plex Mono', monospace"}}>{parts[0]}</span> : null}
       {parts[1] ? <span>·</span> : null}
       <span>{parts.slice(1).join(" · ") || (!parts[0] ? kicker : "")}</span>
     </span>
@@ -98,16 +101,27 @@ function fmtArDate(iso, months) {
   return `${Number(parts[2])} ${months[Number(parts[1]) - 1]} ${parts[0]}`;
 }
 
-export default function AttendanceMonthCalendar({ employees = [], currentUser, company, data, kicker, lane, canManage = false }) {
+export default function AttendanceMonthCalendar({ employees = [], currentUser, me = null, company, data, kicker, lane, canManage = false, framed = false }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const months = monthsOf(ar);
   const weekdays = weekdaysOf(ar);
   const now = new Date();
   const todayKey = calendarDateKey(now);
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth());
-  const [selected, setSelected] = useState(now.getDate());
+  // «?day=yyyy-mm-dd» (old «سجلي» links, search hits) opens that month with the day picked.
+  const [searchParams] = useSearchParams();
+  const askedDay = searchParams.get("day") || "";
+  const askedDate = dateFromKey(askedDay);
+  const [year, setYear] = useState(askedDate ? askedDate.getFullYear() : now.getFullYear());
+  const [month, setMonth] = useState(askedDate ? askedDate.getMonth() : now.getMonth());
+  const [selected, setSelected] = useState(askedDate ? askedDate.getDate() : now.getDate());
+  useEffect(() => {
+    const date = dateFromKey(askedDay);
+    if (!date) return;
+    setYear(date.getFullYear());
+    setMonth(date.getMonth());
+    setSelected(date.getDate());
+  }, [askedDay]);
   const forcedView = lane ? "team" : null;
   const [view, setView] = useState(forcedView || "team");
   useEffect(() => {
@@ -129,6 +143,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
   const stationList = data?.stations || [];
   const workStationId = employeeWorkStationId(currentUser);
   const mineLane = lane === "mine";
+  const myself = mineLane ? (me || currentUser) : null;
+  // My own month (what «سجلي» counted): absences, lateness, attendance against the schedule.
+  const mine = useMyMonthDays({ employee: myself, company, data, year, month, ar });
   const workStation = findStationById(stationList, workStationId);
   const workStationName = stationDisplayName(workStation);
   const workBranch = rosterBranchPhrase(workStationName, ar);
@@ -402,6 +419,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
     { label: ar ? "إثبات زائر" : "Visitor proof", color: OC.goldBg, border: OC.goldBd },
     { label: ar ? "بلاغ سلامة" : "HSE", color: OC.absBg, border: OC.absBd },
     { label: ar ? "إجازة معتمدة" : "Approved leave", color: OC.leaveBg, border: OC.leaveBd },
+    ...(myself ? [{ label: ar ? "«أنا:» يومك أنت — غبت أو تأخرت" : "“Me:” your own day — absent or late", color: OC.abs, border: OC.abs }] : []),
   ];
 
   const mkStat = (id, label, value, color) => {
@@ -467,9 +485,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
     <div className="nv-ops-cal" dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: 16, color: OC.ink, fontSize: 13, fontFamily: "'IBM Plex Sans Arabic', sans-serif" }}>
       <section className="nv-ops-cal-head" style={{ ...shell, padding: "18px 22px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-          <KickerLine kicker={kicker} />
-          <h1 style={{ margin: 0, fontFamily: NASKH, fontSize: 24, fontWeight: 600, lineHeight: 1.35 }}>{ar ? "التقويم التشغيلي" : "Operational calendar"}</h1>
-          <span style={{ fontSize: 12, color: OC.mid, lineHeight: 1.85 }}>
+          {framed ? null : <KickerLine kicker={kicker} />}
+          {framed ? null : <h1 style={{ margin: 0, fontFamily: NASKH, fontSize: 24, fontWeight: 600, lineHeight: 1.35 }}>{ar ? "التقويم التشغيلي" : "Operational calendar"}</h1>}
+          {framed ? null : <span style={{ fontSize: 12, color: OC.mid, lineHeight: 1.85 }}>
             {ar ? (
               <>
                 <Link to="/app/shifts" style={LINK}>جدول الدوام</Link>
@@ -493,36 +511,31 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                 .
               </>
             )}
-          </span>
+          </span>}
           {filedBanner ? (
             <span style={{ fontSize: 11, color: OC.leave, background: OC.leaveBg, border: `1px solid ${OC.leaveBd}`, padding: "8px 11px", lineHeight: 1.85 }}>
               {filedBanner}{" "}
               <Link to="/app/requests" style={{ color: OC.leave, fontWeight: 600 }}>{ar ? "طلباتي ←" : "My Requests →"}</Link>
             </span>
           ) : null}
-          <span style={{ fontSize: 13, color: OC.mid, lineHeight: 1.8 }}>
+          <span style={{ fontSize: framed ? 12 : 13, color: OC.mid, lineHeight: 1.8 }}>
             {ar ? "كل يوم يحمل توزيعه: حضر، تأخّر، غاب — واليوم الذي انكسرت فيه حلقة يُعلَّم بحدّ ذهبي." : "Each day carries its split: on time, late, absent — a broken ring is marked in gold."}
           </span>
         </div>
         <div className="nv-ops-cal-head-tools" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", border: `1px solid ${OC.line}` }}>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => goMonth(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1)} style={{ fontFamily: "inherit", padding: "10px 14px", border: "none", background: "var(--nv-card)", color: OC.mid, cursor: "pointer", fontSize: 14 }}>{ar ? "›" : "‹"}</button>
-            <div style={{ width: 220, borderInline: `1px solid ${OC.line}` }}>
-              <PlatformDateField
-                compact
-                ar={ar}
-                allowClear={false}
-                value={isoFromParts(year, month, selected > 0 ? selected : 1)}
-                onChange={(next) => {
-                  const parts = String(next || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
-                  if (!parts) return;
-                  goMonth(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
-                }}
-              />
-            </div>
-            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => goMonth(month === 11 ? year + 1 : year, month === 11 ? 0 : month + 1)} style={{ fontFamily: "inherit", padding: "10px 14px", border: "none", background: "var(--nv-card)", color: OC.mid, cursor: "pointer", fontSize: 14 }}>{ar ? "‹" : "›"}</button>
-          </div>
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { goMonth(now.getFullYear(), now.getMonth(), now.getDate()); setQuery(""); setQuick(""); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "9px 15px", border: `1px solid ${OC.line}`, background: "var(--nv-card)", color: OC.ink, cursor: "pointer", whiteSpace: "nowrap" }}>{ar ? "اليوم" : "Today"}</button>
+          <DateNav
+            mode={selected > 0 ? "day" : "month"}
+            step="month"
+            ar={ar}
+            value={new Date(year, month, selected > 0 ? selected : 1)}
+            onPrev={() => goMonth(month === 0 ? year - 1 : year, month === 0 ? 11 : month - 1)}
+            onNext={() => goMonth(month === 11 ? year + 1 : year, month === 11 ? 0 : month + 1)}
+            onToday={() => { goMonth(now.getFullYear(), now.getMonth(), now.getDate()); setQuery(""); setQuick(""); }}
+            isCurrent={year === now.getFullYear() && month === now.getMonth() && selected === now.getDate()}
+            currentLabel={ar ? "اليوم" : "Today"}
+            max={new Date(now.getFullYear() + 1, now.getMonth(), now.getDate())}
+            onPick={(picked) => goMonth(picked.getFullYear(), picked.getMonth(), selected > 0 ? picked.getDate() : 0)}
+          />
           {!lane ? (
             <div style={{ display: "flex", gap: 3 }}>
               {[["team", ar ? "الفريق" : "Team"], ["me", ar ? "سجلّي" : "Mine"]].map(([id, label]) => (
@@ -533,35 +546,24 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
         </div>
       </section>
 
-      {mineLane && canManage && workStationName && (() => {
-        const mineScope = rosterMineScopeCopy({
-          stationName: workStationName,
-          headerOther: !!(headerScope && headerScope !== "all" && workStationId && String(headerScope) !== String(workStationId)),
-          ar,
-        });
-        return (
-          <div style={{
-            padding: "11px 18px",
-            background: mineScope.emphasize ? "var(--nv-warn-soft)" : "var(--nv-card)",
-            border: `1px solid ${mineScope.emphasize ? "var(--nv-warn-line)" : OC.line}`,
-            fontSize: 12,
-            color: mineScope.emphasize ? "#8a6516" : OC.mid,
-            lineHeight: 1.7,
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 6,
-            alignItems: "baseline",
-          }}>
-            <span>{mineScope.line}</span>
-            <Link to="/app/calendar?lane=manage" style={{ color: "inherit", fontWeight: 700 }}>
-              {mineScope.action}
-            </Link>
-          </div>
-        );
-      })()}
+      {myself ? (
+        <MyMonthLine
+          me={myself}
+          company={company}
+          data={data}
+          year={year}
+          month={month}
+          selectedDay={selected}
+          monthName={`${months[month]} ${year}`}
+          mine={mine}
+          ar={ar}
+        />
+      ) : null}
+
+      {/* No «ملفك يرى فرع … فقط» notice here — the employee file stays on its own branch without saying so. */}
 
       <section style={{ ...shell, padding: "12px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9, border: `1px solid ${OC.line}`, padding: "8px 12px", minWidth: "min(300px,100%)", flex: 1, maxWidth: 420 }}>
+        {framed ? null : <div style={{ display: "flex", alignItems: "center", gap: 9, border: `1px solid ${OC.line}`, padding: "8px 12px", minWidth: "min(300px,100%)", flex: 1, maxWidth: 420 }}>
           <span style={{ width: 15, height: 15, color: OC.muted, flex: "none" }}><SearchIcon /></span>
           <input
             value={query}
@@ -573,7 +575,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
           {(query || quick) ? (
             <button type="button" onClick={() => { setQuery(""); setQuick(""); }} style={{ fontFamily: "inherit", border: "none", background: "none", color: OC.muted, cursor: "pointer", fontSize: 14, padding: 0, flex: "none" }}>×</button>
           ) : null}
-        </div>
+        </div>}
         <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
           {[["", ar ? "الكل" : "All"], ["week", ar ? "آخر أسبوع" : "Last week"], ["abs", ar ? "أيام الغياب" : "Absent days"], ["late", ar ? "أيام التأخير" : "Late days"], ["broken", ar ? "انكسار السلسلة" : "Broken ring"]].map(([id, label]) => (
             <button key={id || "all"} type="button" onClick={() => { setQuick(id); setQuery(""); }} style={chip(quick === id && !query)}>{label}</button>
@@ -630,6 +632,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                   const hit = !filtering || matchCell(cell);
                   const rec = cell.rec;
                   const items = cellItems(rec);
+                  const myMark = myself ? myCellMark(mine.byKey[cell.key], ar) : null;
                   return (
                     <button
                       key={cell.key}
@@ -639,6 +642,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                         fontFamily: "inherit",
                         textAlign: "start",
                         position: "relative",
+                        minWidth: 0,
                         minHeight: 104,
                         padding: "9px 10px",
                         border: "none",
@@ -677,6 +681,13 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                       ) : (
                         <span style={{ fontSize: 11, color: OC.muted }}>{cell.weekend ? (ar ? "عطلة" : "Off") : (cell.future ? (ar ? "مجدول" : "Scheduled") : "")}</span>
                       )}
+                      {myMark ? (
+                        // My own day — its own small line under the branch counters, never mistaken for them.
+                        <span data-my-mark={myMark.kind} title={myMark.text} style={{ display: "flex", alignItems: "center", gap: 4, width: "100%", fontSize: 10, fontWeight: 600, color: myMark.kind === "absent" ? OC.abs : OC.goldText, borderTop: `1px dashed ${OC.soft}`, paddingTop: 4, minWidth: 0 }}>
+                          <span aria-hidden style={{ width: 6, height: 6, borderRadius: 999, flex: "none", background: myMark.kind === "absent" ? OC.abs : OC.gold }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{ar ? "أنا: " : "Me: "}{myMark.text}</span>
+                        </span>
+                      ) : null}
                       {items.length ? (
                         <span style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: "auto" }}>
                           {items.map((item) => (
@@ -945,7 +956,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, c
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{item.label}</span>
                   <span style={{ fontSize: 11, color: OC.muted, lineHeight: 1.7 }}>{item.note}</span>
                 </span>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 17, color: item.color }}>{item.value}</span>
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 17, color: OC.ink }}>{item.value}</span>
               </div>
             ))}
             <div style={{ padding: "13px 18px" }}><span style={{ fontSize: 11, color: OC.mid, lineHeight: 1.85 }}>{monthInsight}</span></div>
@@ -1121,7 +1132,7 @@ function DayPanel({
                   {group.items.map((item) => (
                     <button key={item.label} type="button" onClick={item.select} style={{ fontFamily: "inherit", textAlign: "start", border: `1px solid ${item.border}`, background: item.bg, cursor: item.cursor, padding: "9px 11px", display: "flex", flexDirection: "column", gap: 3 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, fontWeight: item.weight, color: OC.mid }}><span style={{ width: 8, height: 8, background: item.color }} />{item.label}</span>
-                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 20, color: item.color, textAlign: "right" }}>{item.value}</span>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 20, color: OC.ink, textAlign: "right" }}>{item.value}</span>
                       {item.sub ? <span style={{ fontSize: 9, color: OC.muted, lineHeight: 1.6 }}>{item.sub}</span> : null}
                     </button>
                   ))}
@@ -1132,7 +1143,7 @@ function DayPanel({
                     <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: item.weight, color: OC.ink }}><span style={{ width: 9, height: 9, background: item.color }} />{item.label}</span>
                     {item.sub ? <span style={{ fontSize: 9, color: OC.muted, lineHeight: 1.6 }}>{item.sub}</span> : null}
                   </span>
-                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, color: item.color }}>{item.value}</span>
+                  <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 15, color: OC.ink }}>{item.value}</span>
                 </button>
               ))}
             </div>
@@ -1207,7 +1218,7 @@ function DayPanel({
                 <div key={tag} style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 10, alignItems: "center" }}>
                   <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: OC.muted }}>{tag}</span>
                   <span style={{ fontSize: 12, color: OC.mid, minWidth: 0 }}>{ar ? labelAr : labelEn}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: bad ? OC.abs : OC.greenText }}>{bad ? "✕" : "✓"}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: bad ? OC.abs : OC.greenText }}>{bad ? <NvIcon name="cross" size={12} strokeWidth={2} inline={false} /> : <NvIcon name="check" size={12} strokeWidth={2} inline={false} />}</span>
                 </div>
               );
             })}

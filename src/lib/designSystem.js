@@ -1,7 +1,8 @@
 /** Design system law for /app — Design System v2.
  *  Six form rules + two behaviour rules + named surfaces.
  *  Document cards: 12px radius, 1px line, soft paper shadow.
- *  Status lives on the top 3px edge. Controls 10px. Chips 999.
+ *  Cards are calm (no coloured edge); status is a small chip beside the title,
+ *  shown only for warn/bad (see src/lib/statusFlag.js). Controls 10px. Chips 999.
  *  Tokens live in CSS `--nv-*`.
  */
 
@@ -31,12 +32,11 @@ export function dsDegree(stateId, degree = "ink") {
   return `var(--nv-${token}-${key})`;
 }
 
+/** Calm document card. `stateId` is kept for callers; the state shows as a chip, never an edge. */
 export function docFrame(stateId) {
-  const fill = stateId ? dsDegree(stateId, "fill") : "var(--nv-line)";
   return {
     background: "var(--nv-card)",
     border: "1px solid var(--nv-line)",
-    borderTop: `${DS_EDGE_PX}px solid ${fill}`,
     borderRadius: DS_RADIUS,
     boxShadow: DS_SHADOW,
   };
@@ -65,10 +65,10 @@ export const DS_FORM_RULES = [
     num: "01",
     ar: "الوثيقة لا اللوحة",
     en: "Document, not a dashboard",
-    dAr: "حدّ هيكل 1px يبني العمق، وشريط 3px على الحرف الأعلى وحده يحمل الحالة. السطح يُقرأ مستنداً: جداول وحقائق وأرقام مواد.",
-    dEn: "A 1px structure border builds depth. A 3px strip on the top edge alone carries status. The surface reads as a document.",
-    noAr: "لا إطار ملوّن يحيط البطاقة، ولا ظلّ يعوّض عن الحدّ، ولا حدّ أسمك من 3px.",
-    noEn: "No coloured frame around the card, no shadow instead of a border, no edge thicker than 3px.",
+    dAr: "حدّ هيكل 1px يبني العمق، والبطاقة هادئة بلا شريط ملوّن. الحالة كلمة في شارة صغيرة بجوار العنوان، تظهر فقط حين يحتاج الأمر متابعة أو إجراء. السطح يُقرأ مستنداً: جداول وحقائق وأرقام مواد.",
+    dEn: "A 1px structure border builds depth; the card stays calm with no coloured strip. Status is a word in a small chip beside the title, shown only when something needs attention or action. The surface reads as a document.",
+    noAr: "لا شريط ملوّن على حرف البطاقة، ولا إطار ملوّن يحيطها، ولا ظلّ يعوّض عن الحدّ.",
+    noEn: "No coloured strip on a card edge, no coloured frame around it, no shadow instead of a border.",
   },
   {
     id: "pair",
@@ -149,8 +149,8 @@ export const DS_BEHAVE_RULES = [
 
 export const DS_SURFACES = [
   { href: "/app/signing", ar: "التوقيع الرقمي", en: "Digital signing", jobAr: "ختم متعدّد الأطراف ومهلة تراجع", jobEn: "Multi-party seal and retraction window", empAr: "يوقّع ويتراجع", empEn: "Signs and retracts", mgrAr: "يرسل ويتابع", mgrEn: "Sends and follows" },
-  { href: "/app/attendance", ar: "الحضور", en: "Attendance", jobAr: "شخص ومكان ووقت في سلسلة الإثبات", jobEn: "Person, place, and time in the proof cycle", empAr: "بصمتي وكشفي", empEn: "My punch and my sheet", mgrAr: "القرار والسياسة", mgrEn: "Decision and policy" },
-  { href: "/app/calendar", ar: "التقويم التشغيلي", en: "Operations calendar", jobAr: "يثبت ما مضى بحلقاته", jobEn: "Seals what already happened", empAr: "سجلّي", empEn: "My register", mgrAr: "الفريق والتوزيع", mgrEn: "Team and allocation" },
+  { href: "/app/attendance", ar: "الحضور", en: "Attendance", jobAr: "شخص ومكان ووقت في سلسلة الإثبات", jobEn: "Person, place, and time in the proof cycle", empAr: "بصمتي", empEn: "My punch", mgrAr: "القرار والسياسة", mgrEn: "Decision and policy" },
+  { href: "/app/calendar", ar: "التقويم التشغيلي", en: "Operations calendar", jobAr: "يثبت ما مضى بحلقاته", jobEn: "Seals what already happened", empAr: "شهري: غيابي وتأخيري", empEn: "My month: absence and lateness", mgrAr: "الفريق والتوزيع", mgrEn: "Team and allocation" },
   { href: "/app/shifts", ar: "جدول الدوام", en: "Roster", jobAr: "حكم المنصة على الساعات والراحة", jobEn: "Platform judgment on hours and rest", empAr: "جدولك", empEn: "Your roster", mgrAr: "يحكم وينشر", mgrEn: "Judges and publishes" },
   { href: "/app/requests", ar: "طلباتي", en: "My Requests", jobAr: "يطلب ويردّ كتابةً ويؤرشف", jobEn: "Asks, answers in writing, archives", empAr: "يرسل ويردّ", empEn: "Sends and answers", mgrAr: "يقرّر ويمنح", mgrEn: "Decides and grants" },
   { href: "/app/tasks", ar: "التشغيل", en: "Operations", jobAr: "مهمة فإثبات فاعتماد — دون قطع السلسلة", jobEn: "Task, proof, review — the chain stays whole", empAr: "ينفّذ ويثبت", empEn: "Does and proves", mgrAr: "يعتمد أو يرفض بسبب", mgrEn: "Approves or refuses with a reason" },
@@ -158,7 +158,7 @@ export const DS_SURFACES = [
   { href: "/app/org", ar: "القوى العاملة", en: "Workforce", jobAr: "المقعد كائن مستقلّ عن الشخص", jobEn: "The seat is independent of the person", empAr: "بطاقته", empEn: "His card", mgrAr: "يعيّن وينقل", mgrEn: "Appoints and transfers" },
   { href: "/app/complaints", ar: "صوت الموظف", en: "Employee voice", jobAr: "بلاغ وحماية ومسار تحقيق", jobEn: "Report, protection, investigation path", empAr: "يرفع صوته", empEn: "Raises his voice", mgrAr: "يفتح ويغلق", mgrEn: "Opens and closes" },
   { href: "/app/safety", ar: "السلامة", en: "Safety", jobAr: "خطر بصورتين ومستوى معتمد", jobEn: "A hazard in two pictures and an adopted level", empAr: "يبلّغ عن خطر", empEn: "Reports a hazard", mgrAr: "يغلق ويعتمد", mgrEn: "Closes and adopts" },
-  { href: "/app/payroll", ar: "المال والأصول", en: "Money and assets", jobAr: "أوعية منفصلة وقيود تُصدَّر", jobEn: "Separate vessels and posted entries", empAr: "كشفه", empEn: "His slip", mgrAr: "كل الطبقات", mgrEn: "Every layer" },
+  { href: "/app/payroll", ar: "المال", en: "Money", jobAr: "الحضور يغذّي المسير وملف مدد", jobEn: "Attendance feeds the run and the Mudad file", empAr: "كشفه", empEn: "His slip", mgrAr: "كل الطبقات", mgrEn: "Every layer" },
   { href: "/app/assistant", ar: "المساعد", en: "Assistant", jobAr: "يسأل السجل داخل صلاحيتك", jobEn: "Asks the register inside your permission", empAr: "يسأل ما يخصّه", empEn: "Asks what is his", mgrAr: "يسأل نطاقه", mgrEn: "Asks his scope" },
   { href: "/app/work-proof", ar: "التحقّق العام", en: "Public verify", jobAr: "بصمة بلا جلسة للحقول المسموح بها", jobEn: "A hash without a session for allowed fields", empAr: "عامّ", empEn: "Public", mgrAr: "عامّ", mgrEn: "Public" },
 ];

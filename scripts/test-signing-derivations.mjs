@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+// Updated: these derivations live in the backend shared module (base44/shared/*.ts, run via Node type stripping); there is no src/lib copy.
 import {
   sealGroups,
   sealIdFor,
@@ -11,7 +12,7 @@ import {
   checkSignIntentGate,
   checkVerifySealGate,
   checkSendSignedGate,
-} from "../src/lib/signingDerivations.js";
+} from "../base44/shared/signingDerivations.ts";
 
 assert.equal(sealGroups("seed", 2).split("-").length, 2);
 assert.equal(sealIdFor({ docKey: "d1", contentHash: "h" }, { sid: "na" }, null), "");

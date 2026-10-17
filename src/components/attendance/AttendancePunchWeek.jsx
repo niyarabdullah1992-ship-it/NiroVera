@@ -13,6 +13,9 @@ import {
   weekStartDate,
 } from "@/lib/shiftWeek";
 import { BORDER, CARD, MUTED } from "@/lib/platformStyles";
+import { ruleValue } from "@/lib/laborRules";
+import RightHint from "@/components/shared/RightHint";
+import { attRightHint } from "@/lib/rightHints.att.js";
 
 const DAY_AR = ["أحد", "إثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة", "سبت"];
 const DAY_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -65,7 +68,7 @@ export default function AttendancePunchWeek({ employee, company, data, lang = "a
   ), [rows]);
 
   const weekHours = employee?.id ? employeeWeekHours(schedule, employee.id, weekStart, employee, calendar) : 0;
-  const cap = 48;
+  const cap = ruleValue("hours.week.ordinaryMaxHours", toRiyadhDateKey());
   const cells = days.map((day) => {
     const leave = employee ? leaveOnDayView(employee, day.key, ar, calendar) : null;
     const shift = leave || !employee?.id ? null : employeeShiftOnDay(schedule, employee.id, day.key);
@@ -107,10 +110,16 @@ export default function AttendancePunchWeek({ employee, company, data, lang = "a
         gap: 12,
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-        <strong style={{ fontSize: 14, color: "var(--nv-ink)" }}>{ar ? "أسبوعي" : "This week"}</strong>
-        <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, fontSize: 12, color: "var(--nv-ok-ink, #2F6B43)" }}>
-          {weekHours ? weekHours.toFixed(1) : "0.0"} / {cap} {ar ? "س" : "h"}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+          <strong style={{ fontSize: 15, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0 }}>{ar ? "أسبوعي" : "This week"}</strong>
+          <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "ساعات ورديتك المنشورة هذا الأسبوع" : "Your published shift hours this week"}</span>
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4, whiteSpace: "nowrap", color: "var(--nv-ok-ink, #2F6B43)", fontWeight: 600, fontSize: 12 }}>
+          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", color: "var(--nv-muted)" }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: "var(--nv-ok-ink, #2F6B43)" }}>{weekHours ? weekHours.toFixed(1) : "0.0"}</span> / {cap}
+          </span>
+          <span style={{ color: "var(--nv-muted)" }}>{ar ? "ساعة" : "h"}</span>
         </span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 6 }}>
@@ -122,13 +131,13 @@ export default function AttendancePunchWeek({ employee, company, data, lang = "a
               flexDirection: "column",
               alignItems: "center",
               gap: 5,
-              padding: "8px 2px",
-              borderRadius: 9,
+              padding: "9px 2px",
+              borderRadius: 10,
               background: day.today ? "var(--nv-ok-soft, #E6F2EA)" : "transparent",
               border: day.today ? "1px solid var(--nv-ok-line, #C5CEC9)" : "1px solid var(--nv-line2, #EEF1EF)",
             }}
           >
-            <span style={{ fontSize: 10.5, color: MUTED }}>{day.name}</span>
+            <span style={{ fontSize: 10.5, color: day.today ? "var(--nv-ok-ink)" : MUTED, fontWeight: day.today ? 700 : 400 }}>{day.today ? (ar ? "اليوم" : "Today") : day.name}</span>
             <span
               style={{
                 width: 10,
@@ -151,10 +160,17 @@ export default function AttendancePunchWeek({ employee, company, data, lang = "a
         <div style={{ height: "100%", width: `${Math.min(100, Math.round((weekHours / cap) * 100))}%`, background: "var(--nv-ok-fill, #3C7D50)", borderRadius: 999 }} />
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 10.5, color: MUTED }}>
-        <span style={{ color: "var(--nv-ok-ink)" }}>{ar ? "● في الوقت" : "● On time"}</span>
-        <span style={{ color: "var(--nv-warn-ink)" }}>{ar ? "● تأخّر" : "● Late"}</span>
-        <span>{ar ? "● راحة أو إجازة" : "● Rest or leave"}</span>
-        <span style={{ whiteSpace: "nowrap" }}>{ar ? "الحدّ 48 س · المادة 98" : "Cap 48 h · Art. 98"}</span>
+        {[
+          [DOT.ok, ar ? "في الوقت" : "On time"],
+          [DOT.late, ar ? "تأخّر" : "Late"],
+          [DOT.off, ar ? "راحة أو إجازة" : "Rest or leave"],
+        ].map(([color, label]) => (
+          <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
+            {label}
+          </span>
+        ))}
+        <span style={{ whiteSpace: "nowrap", marginInlineStart: "auto", display: "inline-flex", alignItems: "center", gap: 8 }}>{ar ? `الحدّ ${cap} ساعة` : `Cap ${cap} h`}<RightHint ar={ar} hint={attRightHint("hours", { weekHours }, { view: "employee", ar, employee })} /></span>
       </div>
     </section>
   );

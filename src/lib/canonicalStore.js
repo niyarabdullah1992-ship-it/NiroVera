@@ -13,8 +13,6 @@ export const DO_NOT_WRITE = Object.freeze([
   "complaintQueue",
   "attendanceLedger",
   "orgStructure",
-  "expenseBudget",
-  "stockBoard",
   "signingChain",
   "companySettings",
 ]);
@@ -22,7 +20,6 @@ export const DO_NOT_WRITE = Object.freeze([
 /** Typed Base44 entities that must never receive create/update/bulk writes. */
 export const DO_NOT_WRITE_ENTITIES = Object.freeze([
   "WorkProof",
-  "InventoryUnit",
 ]);
 
 /** CompanyDataBlob categories that store an object map, not a row array. */
@@ -31,7 +28,29 @@ export const OBJECT_BLOB_CATEGORIES = Object.freeze([
   "branchEscalationSla",
   "hcmFoundation",
   "hcmPerformance",
+  "workRegulation",
+  "orgDesign",
 ]);
+
+/**
+ * Blob categories the client hydrates but never pushes as-is through the generic syncBlob:
+ *   server-action — written only by a backend action whose gates must run first
+ *                   (disciplinaryCases → compliance/disciplineSave, Arts. 66–72).
+ *   derived       — pushed as a projection of another bag (employerDuties ← employees[]).
+ */
+export const NOT_PUSHED_AS_IS = Object.freeze({
+  disciplinaryCases: "server-action",
+  employerDuties: "derived",
+});
+
+export function isServerActionCategory(category) {
+  return NOT_PUSHED_AS_IS[String(category || "")] === "server-action";
+}
+
+/** The categories the generic background sync may push verbatim. */
+export function pushableBlobCategories(categories) {
+  return (categories || []).filter((c) => !NOT_PUSHED_AS_IS[String(c || "")]);
+}
 
 export const LEGACY_FALLBACK = Object.freeze({
   tasks: ["operationsTasks"],
@@ -40,7 +59,6 @@ export const LEGACY_FALLBACK = Object.freeze({
   anonymousReports: ["complaintQueue"],
   personalAttendance: ["attendanceLedger"],
   orgTree: ["orgStructure"],
-  stationBudgets: ["expenseBudget"],
   companyMeta: ["companySettings"],
 });
 
@@ -75,7 +93,7 @@ export function assertWritableCategory(category) {
 export function assertWritableEntity(entity) {
   const key = String(entity || "");
   if (isDoNotWriteEntity(key)) {
-    const home = key === "WorkProof" ? "workProofs" : key === "InventoryUnit" ? "inventoryItems[].locationBalances" : "the canonical home";
+    const home = key === "WorkProof" ? "workProofs" : "the canonical home";
     throw new Error(`do-not-write: entity "${key}" is retired — persist "${home}" only`);
   }
   return key;
@@ -101,7 +119,7 @@ export function payloadHasRows(payload) {
   if (Array.isArray(payload)) return payload.length > 0;
   if (typeof payload !== "object") return false;
   const bag = payload;
-  for (const key of ["nodes", "reports", "punches", "treeNodes", "branches", "budgets", "items", "docs"]) {
+  for (const key of ["nodes", "reports", "punches", "treeNodes", "branches", "items", "docs"]) {
     if (Array.isArray(bag[key]) && bag[key].length) return true;
   }
   return Object.keys(bag).length > 0;
@@ -131,7 +149,6 @@ export function asRowArray(payload) {
     if (Array.isArray(payload.reports)) return payload.reports;
     if (Array.isArray(payload.punches)) return payload.punches;
     if (Array.isArray(payload.treeNodes)) return payload.treeNodes;
-    if (Array.isArray(payload.budgets)) return payload.budgets;
     if (Array.isArray(payload.items)) return payload.items;
   }
   return [];

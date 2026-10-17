@@ -8,7 +8,6 @@
  *   org.js          stations, orgTree, header scope
  *   attendance.js   punches → overtime → payroll
  *   payroll.js      derived lines (قسيمتي)
- *   money.js        expenses / assets / inventory
  *   requests.js     leave + other (nested on employees)
  *   discipline.js   cases + arbitration
  *   voice.js        anonymous / public complaints
@@ -76,24 +75,6 @@ export {
   readPayrollRuns,
   emptyMoneyDisplay,
 } from "./payroll.js";
-
-export {
-  MONEY_FACTS,
-  readExpenseClaims,
-  readStationBudgets,
-  readAssets,
-  readAssetCustody,
-  readInventoryItems,
-  readStockMovements,
-  readMaterialRequests,
-  locationBalancesOf,
-  totalQtyFromBalances,
-  qtyAtLocation,
-  syncItemQuantityFromBalances,
-  adjustLocationBalance,
-  assetsHeldBy,
-  expenseClaimsBy,
-} from "./money.js";
 
 export {
   REQUEST_FACTS,

@@ -2,6 +2,7 @@
  *  Official PDF is the source of truth. Not a Labour Law article.
  */
 
+import { nightAvoidOn } from "./rightsRequests.js";
 import { addLaborDays, isRamadanDay, laborDayKey, laborDaysBetween, ruleValue } from "./laborRules.js";
 
 function isStoredNightMedicalFile(file) {
@@ -10,7 +11,7 @@ function isStoredNightMedicalFile(file) {
 
 export const DECISION_18632 = {
   id: "18632",
-  hijriFrom: "1441-05-01",
+  hijriFrom: "1441-05-06",
   gregorianFrom: "2020-01-01",
 };
 
@@ -99,23 +100,26 @@ export function isNightWorkerXorExempt({
   if (isRamadanDay(onDate, laborCalendar)) {
     return { exempt: true, reason: "ramadan_night" };
   }
-  // Thresholds need a real year lookback. A two-day draft is not «5 days a year».
+  // Thresholds need a real year lookback. A two-day draft is not «45 days a year».
   if ((datedYearDays ?? 0) < 28) {
     void employee;
     void schedule;
     return { exempt: false, reason: "insufficient_lookback" };
   }
-  const dayCap = ruleValue("hours.night.incidentalYearDays", onDate) || 5;
-  if ((yearDays ?? 0) <= dayCap) {
-    return { exempt: true, reason: "incidental_year_days", yearDays };
+  // رابعاً: the compensation paragraph applies when ANY one trigger is met —
+  // a full month on nights, OR ≥25% of monthly work for two months or more,
+  // OR more than 45 work days in the year. Incidental = none of the three.
+  const dayCap = ruleValue("hours.night.incidentalYearDays", onDate) || 45;
+  if ((yearDays ?? 0) > dayCap) {
+    return { exempt: false, reason: "year_days", yearDays, dayCap };
   }
-  if ((consecutiveMonths ?? 0) <= 1) {
-    return { exempt: true, reason: "incidental_month", consecutiveMonths };
+  if ((consecutiveMonths ?? 0) >= 2) {
+    return { exempt: false, reason: "full_month", consecutiveMonths };
   }
-  if ((shareMonths ?? 0) < 2) {
-    return { exempt: true, reason: "incidental_month_share", shareMonths };
+  if ((shareMonths ?? 0) >= 2) {
+    return { exempt: false, reason: "month_share", shareMonths };
   }
-  return { exempt: false };
+  return { exempt: true, reason: "incidental", yearDays, consecutiveMonths, shareMonths };
 }
 
 export function pregnancyNightBan(employee, onDate) {
@@ -167,6 +171,15 @@ export function checkNightMedicalFitness({ employee, shift, onDate } = {}) {
   if (!isNightWorker(shift, onDate)) return { ok: true, error: null };
   const profile = employee?.profile || {};
   const status = String(profile.nightFitnessStatus || profile.nightMedicalStatus || "").toLowerCase();
+  const avoid = nightAvoidOn(profile, laborDayKey(onDate));
+  if (avoid) {
+    return {
+      ok: false,
+      error: "NIGHT_AVOID_MEDICAL",
+      reason: "شهادة طبية معتمدة بتجنب العمل الليلي — يُنقل لعمل مماثل في الساعات المعتادة، وإن تعذر تُقلَّص ساعاته إلى ست مع حفظ الأجر والمزايا (القرار 18632 ثالثاً ج).",
+      reasonEn: "An approved medical certificate to avoid night work — move to similar ordinary-hours work, or cut to six hours with pay kept (decision 18632).",
+    };
+  }
   if (status === "unfit" || status === "failed" || isYes(profile.nightMedicalUnfit)) {
     return {
       ok: false,
@@ -361,12 +374,12 @@ export function nightConsiderationNote(employee, onDate, ar = true) {
 
 export function decision18632Gist(ar = true) {
   return ar
-    ? "القرار 18632 لسنة 1441هـ (ساري من 2020-01-01 / 1441-05-01): الليل 23:00–06:00. أي عمل داخل النافذة = يؤدي عملاً ليلياً. عامل ليلي = ثلاث ساعات فأكثر في النافذة."
-    : "Decision 18632 of 1441 AH (from 2020-01-01 / 1441-05-01): night is 23:00–06:00. Any work in that window performs night work. A night worker works three hours or more in the window.";
+    ? "القرار 18632 لسنة 1441هـ (ساري من 2020-01-01 / 1441-05-06): الليل 23:00–06:00. أي عمل داخل النافذة = يؤدي عملاً ليلياً. عامل ليلي = ثلاث ساعات فأكثر في النافذة."
+    : "Decision 18632 of 1441 AH (from 2020-01-01 / 1441-05-06): night is 23:00–06:00. Any work in that window performs night work. A night worker works three hours or more in the window.";
 }
 
 export function decision18632RightsNote(ar = true) {
   return ar
-    ? "حقوق العمل الليلي (18632): راحة 12 ساعة بين يومي عمل لمن يؤدي عملاً ليلياً. تعويض بالساعات أو الأجر أو بدل/نقل. للعامل الليلي بدل مناسب أو تخفيض الساعات مع حفظ وزن الساعات العادية والأجر والمزايا — ما لم يكن ليلاً عرضياً (رمضان، أو دون عتبة شهر / 25٪ لشهرين / 5 أيام في السنة). بعد 3 أشهر كعامل ليلي: تدوير لساعات عادية شهراً على الأقل، أو موافقة خطية محفوظة مع حق التراجع في أي وقت. لا تجديد شهري واجب. حق في تقرير طبي قبل الإسناد وسنوياً وعند ظهور مشكلة صحية — للملف فقط وبموافقة. الحامل: حظر ليلي قبل الوضع بـ24 أسبوعاً على الأقل مع عمل مناسب في الساعات المعتادة."
-    : "Night-work rights (18632): 12 hours' rest between work days for anyone who performs night work. Compensation in hours, pay, or similar benefits (allowance / transport). A night worker gets a suitable allowance or reduced hours with ordinary-hour weight, pay and benefits preserved — unless the night work is incidental (Ramadan, or under the month / 25% for two months / 5 days a year thresholds). After 3 months as a night worker: rotate to ordinary hours for at least one month, or keep written consent on file with the right to withdraw at any time. Monthly renewal is not a legal duty. A medical report may be requested before assignment, yearly, and when health problems appear — on the file only, and not shown to others without consent. Pregnancy: night ban for at least 24 weeks before birth, with suitable ordinary-hours work.";
+    ? "حقوق العمل الليلي (18632): راحة 12 ساعة بين يومي عمل لمن يؤدي عملاً ليلياً. تعويض بالساعات أو الأجر أو بدل/نقل. للعامل الليلي بدل مناسب أو تخفيض الساعات مع حفظ وزن الساعات العادية والأجر والمزايا — ما لم يكن ليلاً عرضياً (رمضان، أو دون عتبة شهر كامل / 25٪ لشهرين فأكثر / أكثر من 45 يوم عمل في السنة). بعد 3 أشهر كعامل ليلي: تدوير لساعات عادية شهراً على الأقل، أو موافقة خطية محفوظة مع حق التراجع في أي وقت. لا تجديد شهري واجب. حق في تقرير طبي قبل الإسناد وسنوياً وعند ظهور مشكلة صحية — للملف فقط وبموافقة. الحامل: حظر ليلي قبل الوضع بـ24 أسبوعاً على الأقل مع عمل مناسب في الساعات المعتادة."
+    : "Night-work rights (18632): 12 hours' rest between work days for anyone who performs night work. Compensation in hours, pay, or similar benefits (allowance / transport). A night worker gets a suitable allowance or reduced hours with ordinary-hour weight, pay and benefits preserved — unless the night work is incidental (Ramadan, or under the full-month / 25% for two or more months / more than 45 work days a year thresholds). After 3 months as a night worker: rotate to ordinary hours for at least one month, or keep written consent on file with the right to withdraw at any time. Monthly renewal is not a legal duty. A medical report may be requested before assignment, yearly, and when health problems appear — on the file only, and not shown to others without consent. Pregnancy: night ban for at least 24 weeks before birth, with suitable ordinary-hours work.";
 }

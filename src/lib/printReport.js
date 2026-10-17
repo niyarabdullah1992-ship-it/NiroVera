@@ -1,7 +1,6 @@
 import { PDF_THEME, brandReportColor } from "@/lib/pdfTheme";
 import { POWERCARE_MARK_URL } from "@/lib/brand";
 import { deriveReportAnalytics } from "@/lib/reportAnalytics";
-import { INVENTORY_REPORT_CSS, inventoryThemeClass } from "@/lib/inventoryReportThemes";
 
 // Opens a print-ready, brand-styled report in a new window and triggers the
 // browser's print dialog (user can save as PDF). Full RTL/Arabic support since
@@ -11,7 +10,7 @@ import { INVENTORY_REPORT_CSS, inventoryThemeClass } from "@/lib/inventoryReport
 export function buildReportHtml({ title, companyName, periodLabel, dir = "ltr", stats = [], charts = [], sections = [], logoUrl = "", color = PDF_THEME.navy, theme = "default", autoPrint = false }) {
   const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const accent = brandReportColor(color);
-  const isWide = theme === "inventorySimplified" ? false : theme === "attendanceModern" || sections.some((section) => (section.headers || []).length > 8);
+  const isWide = theme === "attendanceModern" || sections.some((section) => (section.headers || []).length > 8);
   const locale = dir === "rtl" ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB";
   const generatedAt = new Date().toLocaleString(locale);
   const sectionAnalytics = sections.map((section) => deriveReportAnalytics(section.headers, section.rows));
@@ -118,11 +117,10 @@ export function buildReportHtml({ title, companyName, periodLabel, dir = "ltr", 
   .donut { width:95px; height:95px; flex:0 0 auto; padding:17px; border-radius:50%; }.donut>div { width:100%; height:100%; display:grid; place-content:center; text-align:center; border-radius:50%; background:#fff; }.donut strong { font:700 19px Georgia,serif; }.donut span { display:block; color:#657383; font-size:7px; }
   .legend p { display:grid; grid-template-columns:7px 1fr auto; gap:6px; align-items:center; margin:5px 0; font-size:8px; }.legend i { width:6px; height:6px; border-radius:50%; }
   .vertical-chart { display:flex; align-items:end; gap:8px; height:103px; padding-top:5px; border-bottom:1px solid #E2E8F0; background:#fff; }.vertical-item { display:grid; grid-template-rows:12px 72px 15px; flex:1; min-width:0; text-align:center; font-size:6px; }.vertical-item>i { position:relative; display:block; align-self:end; height:72px; }.vertical-item>i b { position:absolute; inset-inline:20%; bottom:0; display:block; background:#0f2548; border-top:4px solid #E2E8F0; }.vertical-item span { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-  ${INVENTORY_REPORT_CSS}
-  @media print { body { padding: 0; } .top-rule { margin-top: 0; } .inventory-powercare { background: #F7F8FA !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @media print { body { padding: 0; } .top-rule { margin-top: 0; } }
 </style>
 </head>
-<body class="${isWide ? "wide" : "standard"} ${theme === "attendanceModern" ? "attendance-modern" : ""} ${inventoryThemeClass(theme)}">
+<body class="${isWide ? "wide" : "standard"} ${theme === "attendanceModern" ? "attendance-modern" : ""}">
   <div class="top-rule"></div>
   ${headHtml}
   ${statsHtml}

@@ -39,6 +39,16 @@ import {
   normalizeTaskMode,
   opsVisitorStamp,
 } from "@/lib/opsDerivations";
+import {
+  applyQualityObjection,
+  applyQualityObjectionDecision,
+  applyTaskQuality,
+  canDecideQualityObjection,
+  checkDecideQualityObjectionGate,
+  checkQualityObjectionGate,
+  checkTaskQualityGate,
+  taskRecipientIds,
+} from "@/lib/taskQuality";
 import { canCreateTasks } from "@/lib/permissions";
 import { getCompanyData, updateCompany } from "@/lib/store";
 import { stationInHeaderScope } from "@/lib/stationTree";
@@ -144,6 +154,10 @@ export function normalizeLocalTask(raw, index = 0) {
     closedAt: raw.closedAt || null,
     updatedAt: raw.updatedAt || null,
     pointsAwarded: Number(raw.pointsAwarded) || 0,
+    approvedBy: raw.approvedBy || null,
+    // The quality level and the employee's objections travel with the task (lib/taskQuality).
+    quality: raw.quality && typeof raw.quality === "object" ? raw.quality : null,
+    qualityObjections: Array.isArray(raw.qualityObjections) ? raw.qualityObjections : [],
     createdAt: raw.createdAt || new Date().toISOString(),
     seriesId: raw.seriesId || null,
     recurrence: raw.recurrence && typeof raw.recurrence === "object" ? raw.recurrence : null,
@@ -393,7 +407,12 @@ export function logLocalCompletion(companyId, taskId, {
   });
 }
 
-export function approveLocalTask(companyId, taskId, { reviewer = null, data = null } = {}) {
+/** Who receives the task's points — lib/taskQuality.taskRecipientIds, the server's rule. */
+export function localTaskRecipients(task, data) {
+  return taskRecipientIds(task, data?.employees || [], (e) => e?.id || e?.employeeId);
+}
+
+export function approveLocalTask(companyId, taskId, { reviewer = null, data = null, quality = {} } = {}) {
   const current = findLocalTask(companyId, taskId);
   if (current && !canReviewOpsTask(current, reviewer, data)) {
     return refuse(
@@ -402,18 +421,71 @@ export function approveLocalTask(companyId, taskId, { reviewer = null, data = nu
       "This level belongs to the next handler in the chain — you cannot approve it.",
     );
   }
+  // The same gate as the server: no approval without a quality level (النموذج الموحد م18–19).
+  const recipientIds = current ? localTaskRecipients(current, data) : [];
+  const gate = checkTaskQualityGate({
+    level: quality?.level,
+    reason: quality?.reason,
+    overrides: quality?.overrides || {},
+    assigneeIds: recipientIds,
+  });
+  if (!gate.ok) return refuse(gate.error, gate.reason, gate.reasonEn);
   let awarded = 0;
   const board = mutateLocalOpsTask(companyId, taskId, (t) => {
-    awarded = taskPoints(t.priority, t.effortWeight);
+    const at = new Date().toISOString();
+    const rated = applyTaskQuality(t, gate, {
+      basePoints: taskPoints(t.priority, t.effortWeight),
+      byId: reviewer?.id || reviewer?.employeeId || null,
+      byName: reviewer?.name || "",
+      at,
+      reviewLevel: t.escalationLevel,
+      recipientIds: recipientIds.length ? recipientIds : localTaskRecipients(t, data),
+    });
+    awarded = rated.pointsAwarded;
     return {
-      ...t,
+      ...rated,
       status: "completed",
-      approvedAt: new Date().toISOString(),
-      pointsAwarded: awarded,
+      approvedAt: at,
+      approvedBy: reviewer?.id || reviewer?.employeeId || null,
       completedCount: Math.max(t.completedCount, t.targetCount),
     };
   });
-  return { ...board, awarded: { points: awarded } };
+  return { ...board, awarded: { points: awarded, level: gate.level } };
+}
+
+/** The employee's objection to his level — the server's gate, offline. */
+export function objectLocalTaskQuality(companyId, taskId, { employee = null, reason = "", today } = {}) {
+  const current = findLocalTask(companyId, taskId);
+  const employeeId = employee?.id || employee?.employeeId || null;
+  const gate = checkQualityObjectionGate({ task: current, employeeId, reason, today });
+  if (!gate.ok) return refuse(gate.error, gate.reason, gate.reasonEn);
+  const board = mutateLocalOpsTask(companyId, taskId, (t) => applyQualityObjection(t, {
+    employeeId,
+    employeeName: employee?.name || "",
+    reason,
+    replyBy: gate.replyBy,
+  }));
+  return { ...board, replyBy: gate.replyBy };
+}
+
+/** The written decision on an objection — the approver's superior or HR, never the approver. */
+export function decideLocalTaskQuality(companyId, taskId, { decider = null, data = null, objectionId, decision, note, newLevel } = {}) {
+  const current = findLocalTask(companyId, taskId);
+  if (!current || !canDecideQualityObjection(current, decider, data)) {
+    return refuse("QUALITY_DECIDER_ONLY", "يبتّ في الاعتراض رئيس المعتمِد في سلسلة التصعيد أو الموارد البشرية.", "The approver's superior in the chain, or HR, decides the objection.");
+  }
+  const gate = checkDecideQualityObjectionGate({ task: current, objectionId, decision, note, newLevel, actorId: decider?.id || decider?.employeeId });
+  if (!gate.ok) return refuse(gate.error, gate.reason, gate.reasonEn);
+  let delta = 0;
+  const board = mutateLocalOpsTask(companyId, taskId, (t) => {
+    const out = applyQualityObjectionDecision(t, {
+      objectionId, decision: gate.decision, note, newLevel: gate.newLevel,
+      byId: decider?.id || decider?.employeeId || null, byName: decider?.name || "",
+    });
+    delta = out.delta;
+    return out.task;
+  });
+  return { ...board, delta };
 }
 
 export function reassignLocalOpsTask(companyId, taskId, {

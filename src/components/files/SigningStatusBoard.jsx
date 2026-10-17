@@ -15,6 +15,10 @@ import { SIGN_LINE, SIGN_MUTED, SIGN_NAVY, SIGN_SURFACE, SIGN_WHITE } from "@/co
 import { canDownloadFinal, createGateMessage, refusalKindLabel, retractAlert, retractDaysLabel, refusalNote, refusalsOf, settledState, stateLabel } from "@/lib/multiSignDerivations";
 import { formatUiNumber } from "@/lib/dateFormat";
 import { signGhostBtn, signKicker, signMono as mono, signPrimaryBtn, signProofGrid, signStateChip } from "./signingUi";
+import NvIcon from "@/components/shared/NvIcon";
+import SigningCertificate from "@/components/files/SigningCertificate";
+import { envelopeRecipients, envelopeTrail, remindableSigners } from "@/lib/signingEnvelopes";
+import { verificationUrlFor } from "@/lib/verificationBadge";
 
 export { refusalNote, refusalsOf, settledState, stateLabel };
 
@@ -186,7 +190,7 @@ function PartyRow({ signer, index, ar, link, onCopyLink, copiedKey, canReopen, o
   const signed = signer.status === "signed";
   const refused = signer.status === "rejected";
   const skipped = signer.status === "skipped";
-  const mark = signed ? "✓" : refused || skipped ? "×" : String(index + 1);
+  const mark = signed ? <NvIcon name="check" size={12} strokeWidth={2.25} inline={false} /> : refused || skipped ? <NvIcon name="cross" size={11} strokeWidth={2.25} inline={false} /> : String(index + 1);
   const copied = copiedKey === signer.email;
   const actions = Boolean(link || canReopen);
 
@@ -497,17 +501,12 @@ function shortHash(hash) {
   return `${clean.slice(0, 4)} ${clean.slice(4, 8)} … ${clean.slice(-4)}`;
 }
 
-function auditStamp(value, ar) {
+function auditStamp(value) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", {
-    timeZone: "Asia/Riyadh",
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // Mono Latin digits in Riyadh time, 24h — no ص/م marks to break the direction.
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Riyadh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date).replace(",", "");
 }
 
 function auditText(event, ar) {
@@ -578,7 +577,7 @@ function EnvelopePath({
       external: false,
       detail: auditStamp(request.createdAt, ar),
       state: ar ? "أُرسل" : "Sent",
-      mark: "✓",
+      mark: <NvIcon name="check" size={12} strokeWidth={2.25} inline={false} />,
       dot: "sent",
     },
     ...(request.signers || []).map((signer, index) => {
@@ -600,7 +599,7 @@ function EnvelopePath({
               ? (ar ? "لم يوقّع — استمر الملف" : "Did not sign — file continued")
               : (ar ? "لم يُكمل بعد" : "Not finished yet"),
         state: signedRow ? (ar ? "وقّع" : "Signed") : refused ? (ar ? "رفض" : "Refused") : signer.status === "skipped" ? (ar ? "دون توقيع" : "Unsigned") : (ar ? "بانتظار" : "Waiting"),
-        mark: signedRow ? "✓" : String(index + 1),
+        mark: signedRow ? <NvIcon name="check" size={12} strokeWidth={2.25} inline={false} /> : String(index + 1),
         dot: signedRow ? "sent" : refused ? "bad" : "wait",
         signer,
         canReopen: request.isCreator && refused && state !== "deleted",
@@ -774,6 +773,250 @@ function EnvelopePath({
   );
 }
 
+const DOT = {
+  signed: "var(--nv-ok-fill, #3C7D50)",
+  declined: "var(--nv-bad-fill, #B4443C)",
+  skipped: "var(--nv-mute-fill, #8A938E)",
+  turn: "var(--nv-warn-fill, #C8A45A)",
+  queued: "var(--nv-line, #D5DCD8)",
+  pending: "var(--nv-line, #D5DCD8)",
+};
+
+function recipientWord(state, ar) {
+  return {
+    signed: ar ? "وقّع" : "Signed",
+    declined: ar ? "رفض" : "Declined",
+    skipped: ar ? "دون توقيع" : "Unsigned",
+    turn: ar ? "دوره الآن" : "Their turn",
+    queued: ar ? "ينتظر دوره" : "Queued",
+    pending: ar ? "لم يُجب" : "No answer",
+  }[state] || state;
+}
+
+/** One person, as a round initial with a status dot — the envelope row's recipient strip. */
+export function RecipientAvatar({ initials, state, title, size = 24 }) {
+  return (
+    <span title={title} style={{ position: "relative", width: size, height: size, borderRadius: "50%", background: "var(--nv-soft, #F2F4F3)", border: "1px solid var(--nv-line)", color: "var(--nv-ink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: Math.round(size * 0.42), fontWeight: 700, flex: "none", boxSizing: "border-box" }}>
+      {initials}
+      <span aria-hidden style={{ position: "absolute", bottom: -1, insetInlineEnd: -1, width: 8, height: 8, borderRadius: "50%", background: DOT[state] || DOT.pending, boxShadow: "0 0 0 2px var(--nv-card, #fff)" }} />
+    </span>
+  );
+}
+
+const lineBtn = {
+  fontFamily: "inherit",
+  height: 30,
+  padding: "0 12px",
+  borderRadius: 8,
+  border: "1px solid var(--nv-line)",
+  background: "var(--nv-card)",
+  color: "var(--nv-ink)",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  whiteSpace: "nowrap",
+  textDecoration: "none",
+};
+const accentBtn = { ...lineBtn, background: "#3C7D50", borderColor: "#3C7D50", color: "#fff" };
+const sectionLabel = { fontSize: 12, fontWeight: 700, color: "var(--nv-ink2)" };
+
+/**
+ * The open envelope inside its folded card: recipients in order with their dots, the audit
+ * trail with mono times, the completion certificate, then the actions — افتح · ذكّر · نزّل ·
+ * رابط التحقق · مرّر · ألغِ. Every action is the board's own handler.
+ */
+function EnvelopeDetail({
+  request,
+  ar,
+  knownEmails,
+  sentLinks,
+  remindingKey,
+  downloadingId,
+  deletingId,
+  continuingId,
+  reopeningKey,
+  copiedKey,
+  onRemind,
+  onRemindAll,
+  onDownload,
+  onRemove,
+  onContinue,
+  onReopen,
+  onCopy,
+  onOpen,
+}) {
+  const derived = settledState(request);
+  const { pending, state, cooling } = derived;
+  const downloadReady = canDownloadFinal(request);
+  const known = knownEmails || new Set();
+  const people = envelopeRecipients(request);
+  const trail = envelopeTrail(request);
+  const remindable = remindableSigners(request);
+  const reminding = remindingKey.startsWith(`${request.id}:`);
+  const linksByEmail = Object.fromEntries((sentLinks || []).map((row) => [String(row.email || "").toLowerCase(), row.url]));
+  const showCertificate = state !== "pending" && state !== "deleted";
+  const verifyUrl = request.finalHash && request.verificationId ? verificationUrlFor(request.verificationId) : "";
+  const mineToSign = request.myStatus === "pending" && request.myToken && state === "pending" && !cooling;
+  const firstLink = (() => {
+    const party = (request.signers || []).find((signer) => signer.status === "pending");
+    if (!party) return "";
+    return linksByEmail[String(party.email || "").toLowerCase()] || (party.signToken ? `${window.location.origin}/sign?token=${party.signToken}` : "");
+  })();
+
+  return (
+    <div data-envelope-detail={request.id} style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, paddingBottom: 4 }}>
+          <span style={sectionLabel}>{ar ? "المستلمون" : "Recipients"}</span>
+          <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>
+            {request.signingMode === "sequential" ? (ar ? "بالترتيب" : "In order") : (ar ? "بالتوازي" : "In parallel")}
+          </span>
+        </div>
+        {people.map((row) => {
+          const email = String(row.email || "").toLowerCase();
+          const external = email ? !known.has(email) : false;
+          const key = `${request.id}:${row.signer.email}`;
+          return (
+            <div key={`${email}-${row.index}`} data-recipient-state={row.state} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid var(--nv-line2)", minWidth: 0, flexWrap: "wrap" }}>
+              <span dir="ltr" style={{ ...mono, fontSize: 11, color: "var(--nv-muted)", width: 14, textAlign: "center", flex: "none" }}>{row.order}</span>
+              <RecipientAvatar initials={row.initials} state={row.state} title={recipientWord(row.state, ar)} size={28} />
+              <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 150px" }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--nv-ink)", overflowWrap: "anywhere" }}>
+                  {row.name}
+                  {external ? <span style={{ fontSize: 11, fontWeight: 500, color: "var(--nv-muted)", marginInlineStart: 6 }}>{ar ? "خارجي" : "External"}</span> : null}
+                </span>
+                <span dir="ltr" style={{ ...mono, fontSize: 11, color: "var(--nv-muted)", textAlign: ar ? "right" : "left", overflowWrap: "anywhere" }}>{row.email}</span>
+              </span>
+              <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1, flex: "none" }}>
+                <span style={{ fontSize: 12, color: row.state === "declined" ? "var(--nv-bad-ink)" : "var(--nv-ink2)" }}>{recipientWord(row.state, ar)}</span>
+                {row.at ? <span dir="ltr" style={{ ...mono, fontSize: 11, color: "var(--nv-ink)" }}>{auditStamp(row.at, ar)}</span> : null}
+              </span>
+              {request.isCreator && state === "pending" && row.signer.status === "pending" ? (
+                <button type="button" onClick={() => onRemind(request, row.signer)} disabled={remindingKey === key} style={{ ...lineBtn, height: 26, padding: "0 10px", fontSize: 11.5 }}>
+                  {remindingKey === key ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                  {ar ? "ذكّر" : "Remind"}
+                </button>
+              ) : null}
+              {request.isCreator && row.signer.status === "rejected" && state !== "deleted" ? (
+                <button type="button" onClick={() => onReopen(request, row.signer)} disabled={reopeningKey === key} style={{ ...lineBtn, height: 26, padding: "0 10px", fontSize: 11.5 }}>
+                  {reopeningKey === key ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw style={{ width: 12, height: 12 }} />}
+                  {ar ? "أعد الفتح" : "Reopen"}
+                </button>
+              ) : null}
+              {row.reason && row.state === "declined" ? (
+                <span style={{ flexBasis: "100%", fontSize: 11.5, color: "var(--nv-ink2)", paddingInlineStart: 52 }}>«{row.reason}»</span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {cooling ? (
+        <span style={{ fontSize: 12, color: "var(--nv-ink2)" }}>
+          {ar ? "مهلة تراجع مفتوحة — البصمة ورقم التحقق يُثبَّتان بعد إغلاقها." : "A retract window is open — the fingerprint registers after it closes."}
+        </span>
+      ) : null}
+
+      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <span style={{ ...sectionLabel, paddingBottom: 4 }}>{ar ? "سجل التدقيق" : "Audit trail"}</span>
+        {(trail.length ? trail : [{ key: "last", at: request.lastActivityAt || request.createdAt, type: "", who: "" }]).map((event) => (
+          <div key={event.key} style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", gap: 12, padding: "6px 0", borderTop: "1px solid var(--nv-line2)", fontSize: 12, alignItems: "baseline" }}>
+            <span dir="ltr" style={{ ...mono, fontSize: 11, color: "var(--nv-ink)", whiteSpace: "nowrap" }}>{auditStamp(event.at, ar)}</span>
+            <span style={{ color: "var(--nv-ink2)", minWidth: 0, overflowWrap: "anywhere" }}>
+              {event.type ? auditText({ type: event.type, actorName: event.who, targetName: event.target, reason: event.reason }, ar) : (ar ? "آخر تحديث على المظروف" : "Latest update on the envelope")}
+              {event.type === "reminder_sent" && event.target ? ` · ${event.target}` : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {showCertificate ? <SigningCertificate request={request} ar={ar} onCopy={onCopy} copied={copiedKey === "verify"} /> : null}
+
+      <div data-envelope-actions="1" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", paddingTop: 2 }}>
+        {mineToSign ? (
+          <Link to={`/app/signing?sign=${encodeURIComponent(request.myToken)}`} style={accentBtn}>
+            <PenLine style={{ width: 13, height: 13 }} />
+            {ar ? "وقّع الآن" : "Sign now"}
+          </Link>
+        ) : (
+          <button type="button" onClick={() => onOpen?.(request)} disabled={!request.docUrl} style={lineBtn}>
+            <ExternalLink style={{ width: 13, height: 13 }} />
+            {ar ? "افتح" : "Open"}
+          </button>
+        )}
+        {remindable.length ? (
+          <button type="button" onClick={() => onRemindAll(request)} disabled={reminding} style={lineBtn}>
+            {reminding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {ar ? "ذكّر" : "Remind"}
+            <span dir="ltr" style={{ ...mono, fontSize: 11, color: "var(--nv-muted)" }}>{remindable.length}</span>
+          </button>
+        ) : null}
+        {request.isCreator && state === "awaiting_release" ? (
+          <ConfirmDeleteDialog
+            title={ar ? "تمرير التوقيع وإنهاء الملف؟" : "Release the file and finish signing?"}
+            description={ar
+              ? "بعد التمرير يمكن تنزيل النسخة النهائية ويُرسل إشعار الاكتمال. الرفض المسجّل يبقى في السجل."
+              : "After release the final copy can be downloaded and a completion notice is sent. Any recorded refusal stays in the audit trail."}
+            confirmLabel={ar ? "مرّر التوقيع" : "Release file"}
+            danger={false}
+            onConfirm={() => onContinue(request)}
+            trigger={(
+              <button type="button" disabled={continuingId === request.id} style={accentBtn}>
+                {continuingId === request.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                {ar ? "مرّر التوقيع" : "Release file"}
+              </button>
+            )}
+          />
+        ) : null}
+        {request.isCreator && state === "pending" && pending > 0 ? (
+          <ConfirmDeleteDialog
+            title={ar ? "متابعة الملف دون من لم يوقّع؟" : "Continue the file without those who have not signed?"}
+            description={ar
+              ? "سيُغلق من لم يُجب. التنزيل وإشعار الاكتمال بعد أن تمرّر التوقيع إذا لم تبقَ مهلة تراجع."
+              : "Unanswered links close. Download and the completion notice follow after you release, once retract windows are shut."}
+            confirmLabel={ar ? "متابعة دون الباقي" : "Continue without the rest"}
+            danger={false}
+            onConfirm={() => onContinue(request)}
+            trigger={(
+              <button type="button" disabled={continuingId === request.id} style={lineBtn}>
+                {continuingId === request.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                {ar ? "تابِع دون الباقي" : "Continue without the rest"}
+              </button>
+            )}
+          />
+        ) : null}
+        {downloadReady ? (
+          <button type="button" onClick={() => onDownload(request)} disabled={downloadingId === request.id} style={lineBtn}>
+            {downloadingId === request.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download style={{ width: 13, height: 13 }} />}
+            {ar ? "نزّل" : "Download"}
+          </button>
+        ) : null}
+        {verifyUrl ? (
+          <button type="button" onClick={() => onCopy("verify", verifyUrl)} style={lineBtn}>
+            {copiedKey === "verify" ? (ar ? "نُسخ رابط التحقق" : "Verify link copied") : (ar ? "رابط التحقق" : "Verify link")}
+          </button>
+        ) : null}
+        {request.isCreator && firstLink ? (
+          <button type="button" onClick={() => onCopy("party", firstLink)} style={lineBtn}>
+            <Copy style={{ width: 13, height: 13 }} />
+            {copiedKey === "party" ? (ar ? "نُسخ" : "Copied") : (ar ? "رابط الطرف" : "Party link")}
+          </button>
+        ) : null}
+        <span style={{ flex: 1 }} />
+        {request.isCreator && state !== "deleted" && state !== "completed" && state !== "completed_with_refusal" ? (
+          <button type="button" disabled={deletingId === request.id} onClick={() => onRemove(request)} style={{ ...lineBtn, color: "var(--nv-bad-ink)", borderColor: "var(--nv-bad-line)" }}>
+            {deletingId === request.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {ar ? "ألغِ المظروف" : "Void"}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function SigningStatusBoard({
   requests,
   loading,
@@ -785,6 +1028,7 @@ export default function SigningStatusBoard({
   sentLinks = [],
   variant = "status",
   knownEmails,
+  onOpen,
 }) {
   const [openId, setOpenId] = useState(focusRequestId || "");
   const [deletingId, setDeletingId] = useState(null);
@@ -922,6 +1166,36 @@ export default function SigningStatusBoard({
     }
   };
 
+  // «ذكّر» on the envelope: one reminder to every pending party, through the same remind call.
+  const remindAll = async (request) => {
+    const targets = remindableSigners(request);
+    if (!targets.length) return;
+    setRemindingKey(`${request.id}:*`);
+    let sent = 0;
+    for (const signer of targets) {
+      try {
+        await call({
+          action: "remind",
+          companyId,
+          sessionToken: getCompanyToken(companyId),
+          userId: currentUser.id,
+          requestId: request.id,
+          signerEmail: signer.email,
+          lang: ar ? "ar" : "en",
+        });
+        sent += 1;
+      } catch { /* the toast below names how many went out */ }
+    }
+    setRemindingKey("");
+    toast({
+      description: sent === targets.length
+        ? (ar ? `أُرسل التذكير إلى ${formatUiNumber(sent, ar)} ${sent === 1 ? "طرف" : "أطراف"}.` : `Reminder sent to ${sent} part${sent === 1 ? "y" : "ies"}.`)
+        : (ar ? `أُرسل ${formatUiNumber(sent, ar)} من ${formatUiNumber(targets.length, ar)} تذكيرات.` : `${sent} of ${targets.length} reminders sent.`),
+      variant: sent ? undefined : "destructive",
+    });
+    onReload?.();
+  };
+
   const download = async (request) => {
     if (!request.docUrl) return;
     setDownloadingId(request.id);
@@ -958,6 +1232,43 @@ export default function SigningStatusBoard({
         <Loader2 className="h-4 w-4 animate-spin" />
         {ar ? "جارٍ تحميل حالة الملفات…" : "Loading file status…"}
       </div>
+    );
+  }
+
+  if (variant === "card") {
+    return (
+      <>
+        {requests.map((request) => (
+          <EnvelopeDetail
+            key={request.id}
+            request={request}
+            ar={ar}
+            knownEmails={knownEmails}
+            sentLinks={sentLinks}
+            remindingKey={remindingKey}
+            downloadingId={downloadingId}
+            deletingId={deletingId}
+            continuingId={continuingId}
+            reopeningKey={reopeningKey}
+            copiedKey={copiedKey}
+            onRemind={remind}
+            onRemindAll={remindAll}
+            onDownload={download}
+            onRemove={setDeleteFor}
+            onContinue={continueWithout}
+            onReopen={reopen}
+            onCopy={copy}
+            onOpen={onOpen}
+          />
+        ))}
+        <DeleteRequestDialog
+          request={deleteFor}
+          ar={ar}
+          busy={Boolean(deleteFor && deletingId === deleteFor.id)}
+          onClose={() => { if (!deletingId) setDeleteFor(null); }}
+          onConfirm={(reason) => remove(deleteFor, reason)}
+        />
+      </>
     );
   }
 

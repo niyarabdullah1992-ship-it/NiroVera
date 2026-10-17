@@ -3,6 +3,7 @@ import { employeeScheduledOn, hasPublishedScheduleOn } from "@/lib/attendanceCal
 import { isStatutoryOffDay } from "@/lib/leaveTypes";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { nursingHourOn } from "@/lib/dutyRequests";
 
 // Thin helpers around the supabaseAttendance backend function, shared by the
 // check-in widget, manager dashboards, and the task-gating check in Operations.
@@ -40,7 +41,13 @@ export function checkedInToday(att) {
 }
 
 export function getAttendanceStatus(employee, attRow, data) {
-  if (checkedInToday(attRow)) return attRow.status === "late" ? "late" : "present";
+  if (checkedInToday(attRow)) {
+    if (attRow.status !== "late") return "present";
+    // Art. 154: a check-in inside her nursing minutes at the start is not lateness (older rows too).
+    const excuse = nursingHourOn(employee, String(attRow.date || toRiyadhDateKey()).slice(0, 10))?.startMinutes || 0;
+    const late = Number(attRow.late_minutes ?? attRow.lateMinutes ?? 0);
+    return excuse && late > 0 && late <= excuse ? "present" : "late";
+  }
   if (isStatutoryOffDay(employee, toRiyadhDateKey(), laborCalendarOf(data))) return "on_leave";
   if (hasPublishedScheduleToday(data) && !isScheduledToday(employee, data)) return "not_scheduled";
   return "absent";

@@ -1,12 +1,14 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { BAD, BORDER, CARD, MUTED, NAVY, NAVY_FILL, OK, WARN } from "@/lib/platformStyles";
+import { dutyChip } from "@/components/schedules/dutyStatus";
+import { NvMark } from "@/components/shared/NvIcon";
 
 const STATE_PILL = { ok: OK, bad: BAD, wait: WARN, leave: WARN };
 
 const RING_TONE = {
-  ok: { mark: "✓", color: "var(--nv-ok-ink)", bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)", weight: 400 },
-  bad: { mark: "✕", color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)", weight: 700 },
+  ok: { mark: "check", color: "var(--nv-ok-ink)", bg: "var(--nv-ok-soft)", border: "var(--nv-ok-line)", weight: 400 },
+  bad: { mark: "cross", color: "var(--nv-bad-ink)", bg: "var(--nv-bad-soft)", border: "var(--nv-bad-line)", weight: 700 },
   wait: { mark: "—", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", weight: 600 },
   leave: { mark: "◌", color: "var(--nv-warn-ink)", bg: "var(--nv-warn-soft)", border: "var(--nv-warn-line)", weight: 700 },
 };
@@ -65,11 +67,36 @@ export function AttendanceRingChips({ rings, brokeAt }) {
           <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10 }}>{item.tag}</span>
           {item.title}
           {" "}
-          {item.mark}
+          <NvMark mark={item.mark} size={11} />
         </span>
       ))}
       {brokeAt ? <span style={{ fontSize: 11, color: MUTED, paddingInlineStart: 4 }}>{brokeAt}</span> : null}
     </div>
+  );
+}
+
+/**
+ * The same four links as a calm inline progress — small dots and labels, muted; a green check only on
+ * a link that is done. A broken link reads in ink with a hollow dot; the row's chip carries the colour.
+ */
+export function AttendanceChainProgress({ rings }) {
+  return (
+    <span data-chain-progress="1" style={{ display: "inline-flex", gap: 12, flexWrap: "wrap", alignItems: "center", fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+      {rings.map((item) => {
+        const done = item.state === "ok";
+        const broken = item.state === "bad";
+        return (
+          <span key={item.tag} data-chain-step={item.tag} data-state={item.state} title={`${item.tag} ${item.title}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: broken ? "var(--nv-ink)" : MUTED, fontWeight: broken ? 600 : 400 }}>
+            {done ? (
+              <span aria-hidden style={{ display: "inline-flex", color: "var(--nv-ok-ink)" }}><NvMark mark="check" size={11} /></span>
+            ) : (
+              <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", boxSizing: "border-box", border: `1.5px solid ${broken ? "var(--nv-ink2)" : "var(--nv-mute-fill, #C5CEC9)"}`, background: "transparent", flex: "none" }} />
+            )}
+            {item.title}
+          </span>
+        );
+      })}
+    </span>
   );
 }
 
@@ -165,80 +192,131 @@ const CHAIN_COPY = {
   },
 };
 
-export function AttendanceProofChain({ ar, scheduled, punched, geofence, register, onLeave = false, onManual }) {
+export function AttendanceProofChain({ ar, scheduled, punched, geofence, register, onLeave = false, onManual, compact = false }) {
   const copy = ar ? CHAIN_COPY.ar : CHAIN_COPY.en;
   const rings = buildAttendanceRings({ ar, scheduled, punched, geofence, register, onLeave });
+  const met = rings.filter((item) => item.state === "ok").length;
+  const broken = rings.some((item) => item.state === "bad");
+  const MARK = {
+    ok: { bg: "var(--nv-ok-fill, #3C7D50)", fg: "#fff", bd: "var(--nv-ok-fill, #3C7D50)", t: "check" },
+    bad: { bg: "var(--nv-bad-soft)", fg: "var(--nv-bad-ink)", bd: "var(--nv-bad-line)", t: "cross" },
+    wait: { bg: "var(--nv-card)", fg: "var(--nv-muted)", bd: "var(--nv-line)", t: "" },
+    leave: compact
+      ? { bg: "var(--nv-shift-leave)", fg: "var(--nv-shift-holiday-ink)", bd: "var(--nv-shift-leave-line)", t: "◌" }
+      : { bg: "var(--nv-warn-soft)", fg: "var(--nv-warn-ink)", bd: "var(--nv-warn-line)", t: "◌" },
+  };
 
   return (
-    <section className="nv-att-card" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 2 }}>
-      <strong style={{ fontSize: 14, color: NAVY, paddingBottom: 6 }}>{ar ? "سلسلة البصمة" : "Punch chain"}</strong>
-      {rings.map((item) => {
-        const text = copy.items[item.tag];
-        const note = text[item.state] || text.wait || text.ok;
-        const met = item.state === "ok";
-        const RowTag = item.tag === "01" ? Link : "div";
-        return (
-          <RowTag
-            key={item.tag}
-            to={item.tag === "01" ? "/app/shifts" : undefined}
-            className="nv-att-chain-row"
-            data-nv-att-line
-            style={{
-              display: "grid",
-              gridTemplateColumns: "30px minmax(0,1fr) auto",
-              gap: 10,
-              alignItems: "center",
-              padding: "8px 0",
-              borderTop: "1px solid var(--nv-line2, #F2F5F3)",
-              textDecoration: "none",
-              color: "inherit",
-              background: "transparent",
-            }}
-          >
-            <span
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: "50%",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontFamily: "'IBM Plex Mono', monospace",
-                fontWeight: 700,
-                fontSize: 10.5,
-                background: met ? "var(--nv-ok-fill, #3C7D50)" : "var(--nv-card)",
-                color: met ? "#fff" : "var(--nv-ink2)",
-                border: met ? "none" : "1.5px dashed var(--nv-line)",
-              }}
-            >
-              {met ? "✓" : item.tag}
-            </span>
-            <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-              <strong style={{ fontSize: 12.5, color: NAVY }}>{item.title}</strong>
-              <span style={{ fontSize: 11, color: MUTED }}>{note}</span>
-            </span>
-            <span style={{ ...(STATE_PILL[item.state] || WARN), borderRadius: 999, whiteSpace: "nowrap" }}>{copy.state[item.state]}</span>
-          </RowTag>
-        );
-      })}
-      <button
-        type="button"
-        onClick={onManual}
-        style={{
-          marginTop: 8,
-          alignSelf: "flex-start",
-          fontFamily: "inherit",
-          fontSize: 12,
-          fontWeight: 600,
-          color: "var(--nv-ok-ink, #2F6B43)",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          padding: 0,
-        }}
-      >
-        {ar ? "نسيت البصمة؟ اطلب تسجيل حضور يدوي ←" : "Missed the punch? Ask for a manual record →"}
-      </button>
+    <section className="nv-att-card" data-proof-chain data-compact={compact ? "1" : undefined} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: compact ? "var(--nv-radius, 12px)" : 14, padding: compact ? "14px 18px" : "16px 18px", display: "flex", flexDirection: "column", gap: compact ? 8 : 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+          <strong style={{ fontSize: 15, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0 }}>{ar ? "سلسلة البصمة" : "Punch chain"}</strong>
+          <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "أربع حلقات تثبت يومك — تلمس أنت البصمة فقط." : "Four links prove your day — you only touch the punch."}</span>
+        </span>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            height: 24,
+            padding: "0 9px",
+            borderRadius: 8,
+            fontSize: 11,
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            background: met === rings.length ? "var(--nv-ok-soft)" : broken ? "var(--nv-bad-soft)" : "var(--nv-soft)",
+            color: met === rings.length ? "var(--nv-ok-ink)" : broken ? "var(--nv-bad-ink)" : "var(--nv-ink2)",
+            border: `1px solid ${met === rings.length ? "var(--nv-ok-line)" : broken ? "var(--nv-bad-line)" : "var(--nv-line)"}`,
+          }}
+        >
+          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{met}/{rings.length}</span>
+          {ar ? "مستوفاة" : "met"}
+        </span>
+      </div>
+      <div style={{ height: 4, borderRadius: 999, background: "var(--nv-line2, #EEF1EF)", overflow: "hidden", display: "flex", gap: 2 }}>
+        {rings.map((item) => (
+          <span key={item.tag} style={{ flex: 1, background: item.state === "ok" ? "var(--nv-ok-fill)" : item.state === "bad" ? "var(--nv-bad-fill, #9B2335)" : item.state === "leave" ? (compact ? "var(--nv-shift-leave-line)" : "var(--nv-warn-fill)") : "transparent" }} />
+        ))}
+      </div>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
+        {rings.map((item) => {
+          const text = copy.items[item.tag];
+          const note = text[item.state] || text.wait || text.ok;
+          const mark = MARK[item.state] || MARK.wait;
+          const RowTag = item.tag === "01" ? Link : "div";
+          return (
+            <li key={item.tag}>
+              <RowTag
+                to={item.tag === "01" ? "/app/shifts" : undefined}
+                className="nv-att-chain-row"
+                data-nv-att-line
+                data-state={item.state}
+                title={compact ? note : undefined}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "22px minmax(0,1fr) auto",
+                  gap: 10,
+                  alignItems: "start",
+                  padding: compact ? "7px 0" : "9px 0",
+                  borderTop: "1px solid var(--nv-line2, #F2F5F3)",
+                  textDecoration: "none",
+                  color: "inherit",
+                  background: "transparent",
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 20,
+                    height: 20,
+                    marginTop: 1,
+                    borderRadius: 6,
+                    boxSizing: "border-box",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 700,
+                    fontSize: 11,
+                    background: mark.bg,
+                    color: mark.fg,
+                    border: `1.5px ${item.state === "wait" ? "dashed" : "solid"} ${mark.bd}`,
+                  }}
+                >
+                  <NvMark mark={mark.t} size={12} strokeWidth={2.25} />
+                </span>
+                <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)" }}>{text.title || item.title}</span>
+                  {compact ? null : <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.6 }}>{note}</span>}
+                </span>
+                {compact ? (
+                  <span style={dutyChip({ ok: "ok", bad: "bad", leave: "leave" }[item.state] || "rest", { height: 22, fontSize: 10.5, alignSelf: "center" })}>{copy.state[item.state]}</span>
+                ) : (
+                  <span style={{ ...(STATE_PILL[item.state] || WARN), borderRadius: 999, whiteSpace: "nowrap", alignSelf: "center" }}>{copy.state[item.state]}</span>
+                )}
+              </RowTag>
+            </li>
+          );
+        })}
+      </ul>
+      {broken && onManual ? (
+        <button
+          type="button"
+          onClick={onManual}
+          style={{
+            alignSelf: "flex-start",
+            fontFamily: "inherit",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--nv-ok-ink, #2F6B43)",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+          }}
+        >
+          {ar ? "انكسرت حلقة؟ اطلب تسجيلاً يدوياً ←" : "A link broke? Ask for a manual record →"}
+        </button>
+      ) : null}
     </section>
   );
 }

@@ -3,6 +3,7 @@
  */
 import { isOnApprovedLeave, type EmployeeLeaveProfile } from "@/lib/leaveTypes";
 import { officialHolidayLeaveLabel, officialHolidayOn } from "@/lib/ummAlQuraCalendar";
+import { isJuvenile } from "@/lib/laborHoursPolicy.js";
 import type { AttendanceRowLike, GateResult } from "@/types/proofCycle";
 
 export function riyadhDateKey(date: Date = new Date()): string {
@@ -44,12 +45,23 @@ export function checkCheckInLeaveGate(
   if (holiday) {
     const arName = officialHolidayLeaveLabel(holiday.id, true, calendar as never);
     const enName = officialHolidayLeaveLabel(holiday.id, false, calendar as never);
+    // Art. 164: a juvenile never works on Eid or official holidays.
+    if (isJuvenile(employee as never, day)) {
+      return {
+        ok: false,
+        error: "JUVENILE_REST_BAN",
+        reason: `${arName} — موقوف: لا تشغيل للحدث في الأعياد والعطلات الرسمية (المادة 164).`,
+        reasonEn: `${enName} — blocked: a juvenile may not work on Eid or official holidays (Article 164).`,
+      };
+    }
+    // Art. 107(3): holiday work is recorded, and every hour of it is overtime.
     return {
-      ok: false,
-      error: "OFFICIAL_HOLIDAY",
-      reason: `${arName} بأجر كامل — لا تسجيل حضور (المادة 112).`,
-      reasonEn: `${enName} is full-pay leave — no punch (Article 112).`,
-    };
+      ok: true,
+      holiday: true,
+      overtimeAll: true,
+      note: `${arName} — عمل في العطلة: ساعاته كلها إضافي (م107/3).`,
+      noteEn: `${enName} — holiday work: every hour is overtime (Art. 107(3)).`,
+    } as GateResult;
   }
   return { ok: true };
 }

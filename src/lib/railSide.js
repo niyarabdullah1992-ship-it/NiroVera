@@ -61,18 +61,12 @@ function isPath(path, base) {
   return path === base || path.startsWith(`${base}/`);
 }
 
-const MONEY = ["/app/payroll", "/app/expenses", "/app/assets", "/app/inventory"];
+const MONEY = ["/app/payroll"];
 
 /** Personal surface for each money module. Payroll opens قسيمتي, not the wage run. */
 const EMPLOYEE_MONEY_HREF = {
   payroll: "/app/payroll?view=self&tab=payslip",
-  expenses: "/app/expenses?view=self",
-  assets: "/app/assets?view=self",
-  inventory: "/app/inventory?view=self",
   "/app/payroll": "/app/payroll?view=self&tab=payslip",
-  "/app/expenses": "/app/expenses?view=self",
-  "/app/assets": "/app/assets?view=self",
-  "/app/inventory": "/app/inventory?view=self",
 };
 
 export function employeeMoneyHref(idOrPath) {
@@ -106,7 +100,7 @@ export function railFaceHref(pathname, search, targetSide) {
     }
     params.set("lane", "manage");
     const tab = params.get("tab");
-    if (!tab || ["punch", "mine", "roster", "report"].includes(tab)) {
+    if (!tab || ["punch", "mine", "record", "roster", "report"].includes(tab)) {
       if (isPath(path, "/app/shifts")) params.set("tab", "schedule");
       else if (!isPath(path, "/app/calendar")) params.set("tab", "team");
     }
@@ -120,6 +114,8 @@ export function railFaceHref(pathname, search, targetSide) {
     const tab = params.get("tab") || "";
     const shared = tab === "law" || tab === "schedule" || tab === "archive";
     params.set("tab", shared ? tab : (targetSide === "manage" ? "manage" : "mine"));
+    if (targetSide === "manage") params.set("lane", "manage");
+    else params.delete("lane");
     return joinPath("/app/discipline", params);
   }
   if (isPath(path, "/app/complaints")) {

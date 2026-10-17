@@ -9,12 +9,15 @@ import {
   findEmployeeByName,
   listBranchHrManagers,
   renameOrgBranch,
+  setStationLocation,
   setOrgBranchParent,
   setOrgUnitKind,
 } from "@/lib/orgHire";
 import { explainWorkplaceManager } from "@/lib/peopleTree";
 import { setStationManager } from "@/lib/store";
 import { deleteStationWithData } from "@/lib/stationData";
+import { DEFAULT_COUNTRY, stationPlace } from "@/lib/geoPlaces";
+import LocationPicker, { placeLine } from "@/components/hr/orgdesign/LocationPicker";
 import {
   allowedStationParents,
   companyRootStation,
@@ -25,6 +28,7 @@ import {
   stationParentId,
   stationSubtreeIds,
 } from "@/lib/stationTree";
+import NvIcon from "@/components/shared/NvIcon";
 
 const FIELD = {
   height: 34,
@@ -129,7 +133,7 @@ function DrawerShell({ ar, title, sub, chain, onClose, children }) {
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) onClose?.();
         }}
-        style={{ position: "absolute", inset: 0, background: "rgba(11,61,39,.32)" }}
+        style={{ position: "absolute", inset: 0, background: "color-mix(in oklab, var(--nv-navy) 26%, transparent)" }}
       />
       <aside
         role="dialog"
@@ -142,13 +146,13 @@ function DrawerShell({ ar, title, sub, chain, onClose, children }) {
           height: "100%",
           background: "var(--nv-card)",
           borderInlineEnd: "1px solid var(--nv-line)",
-          boxShadow: "0 0 40px rgba(6,61,38,.16)",
+          boxShadow: "0 18px 44px var(--nv-shadow)",
           display: "flex",
           flexDirection: "column",
           overflow: "auto",
         }}
       >
-        <div style={{ padding: "16px 18px", borderTop: "3px solid var(--nv-navy)", borderBottom: "1px solid var(--nv-line)", background: "var(--nv-hover)", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--nv-line)", background: "var(--nv-hover)", display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             <strong style={{ font: "700 16px 'Readex Pro', var(--font-heading), sans-serif", color: "var(--nv-ink)" }}>{title}</strong>
             <span style={{ flex: 1 }} />
@@ -219,14 +223,26 @@ export function OrgBranchDrawer({
   const [hrSel, setHrSel] = useState("");
   const [err, setErr] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
+  const known = stationPlace(station);
+  const [place, setPlace] = useState({ countryCode: known.countryCode || DEFAULT_COUNTRY, city: known.city, cityRegion: known.cityRegion });
 
   useEffect(() => {
+    const p = stationPlace(station);
+    setPlace({ countryCode: p.countryCode || DEFAULT_COUNTRY, city: p.city, cityRegion: p.cityRegion });
     setName(station?.name || "");
     setMoveSel("");
     setHrSel("");
     setErr("");
     setConfirmDel(false);
-  }, [stationId, station?.name]);
+  }, [stationId, station?.name, station?.city, station?.countryCode]);
+
+  /* «الموقع»: country and city — the tree regroups by city at once */
+  const saveLocation = () => {
+    const result = setStationLocation(companyId, stationId, place);
+    if (!result.ok) { setErr(ar ? result.reason : (result.reasonEn || result.reason)); return; }
+    setErr("");
+    toast({ description: ar ? `«${station?.name || ""}» في ${result.place.city || "—"}.` : `“${station?.name || ""}” is in ${result.place.city || "—"}.` });
+  };
 
   const people = useMemo(
     () => (data?.employees || []).filter((employee) => employee?.name && employee.role !== "system" && employee.active !== false),
@@ -417,6 +433,19 @@ export function OrgBranchDrawer({
           style={FIELD}
         />
       </label>
+      {canWrite && !fixedHr ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <SectionLabel>{ar ? "الموقع" : "Location"}</SectionLabel>
+          {known.city ? (
+            <div style={NOTE}>
+              {placeLine(known, ar)}
+              {known.derived ? (ar ? " — مقروءة من الاسم، لم تُحفظ بعد" : " — read from the name, not saved yet") : ""}
+            </div>
+          ) : null}
+          <LocationPicker ar={ar} value={place} required={!isManagerUnit(station)} onChange={(next) => { setPlace(next); setErr(""); }} />
+          <button type="button" onClick={saveLocation} style={actionButton("var(--nv-navy)")}>{ar ? "حفظ الموقع" : "Save location"}</button>
+        </div>
+      ) : null}
 
       <label style={LABEL}>
         {isRoot ? (ar ? "مدير المنشأة" : "Company manager") : fixedHr ? (ar ? "مديرة الموارد البشرية" : "HR director") : (ar ? "مدير الفرع" : "Branch manager")}
@@ -440,8 +469,8 @@ export function OrgBranchDrawer({
       ) : null}
 
       {fixedHr ? (
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: "var(--nv-accent-soft)", border: "1px solid #C5DBCD", fontSize: 11.5, color: "var(--nv-ink)", lineHeight: 1.8 }}>
-          <span style={{ fontSize: 14, lineHeight: 1.4 }}>🔒</span>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: "var(--nv-accent-soft)", border: "1px solid var(--nv-line)", fontSize: 11.5, color: "var(--nv-ink)", lineHeight: 1.8 }}>
+          <span style={{ display: "inline-flex", paddingTop: 4, color: "var(--nv-muted)" }}><NvIcon name="lock" size={14} inline={false} /></span>
           <span>
             <strong>{ar ? "وحدة الموارد البشرية" : "HR unit"}</strong>
             {ar
@@ -456,7 +485,7 @@ export function OrgBranchDrawer({
         </div>
       ) : (
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, background: "var(--nv-hover)", border: "1px solid var(--nv-ok-line)", fontSize: 11.5, color: "var(--nv-ink)", lineHeight: 1.8 }}>
-          <span style={{ fontSize: 14, lineHeight: 1.4 }}>🔒</span>
+          <span style={{ display: "inline-flex", paddingTop: 4, color: "var(--nv-muted)" }}><NvIcon name="lock" size={14} inline={false} /></span>
           <span>
             <strong>{ar ? "فرع المقر الرئيسي" : "Head office"}</strong>
             {ar
@@ -597,6 +626,7 @@ export function OrgBranchDrawer({
 export function OrgAddBranchDrawer({
   open,
   initialParentId = "",
+  initialPlace = null,
   data = null,
   company = null,
   companyId = "",
@@ -610,6 +640,7 @@ export function OrgAddBranchDrawer({
   const [name, setName] = useState("");
   const [person, setPerson] = useState("");
   const [kind, setKind] = useState("branch");
+  const [place, setPlace] = useState({ countryCode: DEFAULT_COUNTRY, city: "", cityRegion: "" });
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -618,8 +649,9 @@ export function OrgAddBranchDrawer({
     setName("");
     setPerson("");
     setKind("branch");
+    setPlace({ countryCode: initialPlace?.countryCode || DEFAULT_COUNTRY, city: initialPlace?.city || "", cityRegion: initialPlace?.cityRegion || "" });
     setErr("");
-  }, [open, initialParentId, root?.id]);
+  }, [open, initialParentId, root?.id, initialPlace?.city, initialPlace?.countryCode]);
 
   const parents = useMemo(() => {
     const rows = [];
@@ -647,8 +679,11 @@ export function OrgAddBranchDrawer({
       setErr(ar ? "مدير الفرع يجب أن يكون موظفاً مسجّلاً بالاسم الكامل، أو اترك الحقل فارغاً." : "The manager must be a registered employee, full name — or leave the field empty.");
       return;
     }
-    const result = createOrgBranch(companyId, title, company, data, parentId, kind);
+    // a workplace says where it is; a region / admin unit may leave the city empty
+    const where = kind === "branch" || place.city ? place : null;
+    const result = createOrgBranch(companyId, title, company, data, parentId, kind, where);
     if (!result.ok) {
+      if (result.reason) { setErr(ar ? result.reason : (result.reasonEn || result.reason)); return; }
       setErr(result.error === "LIMIT"
         ? (ar ? "بلغت حد الفروع في الخطة." : "Branch limit reached.")
         : result.error === "PARENT"
@@ -707,7 +742,7 @@ export function OrgAddBranchDrawer({
     <DrawerShell
       ar={ar}
       title={ar ? "إضافة فرع" : "Add branch"}
-      sub={ar ? "اختر الجهة الأعلى ثم الاسم" : "Choose the parent, then the name"}
+      sub={ar ? "الجهة الأعلى، ثم الدولة والمدينة، ثم الاسم" : "Parent, then country and city, then the name"}
       onClose={onClose}
     >
       <SectionLabel>{ar ? "فرع جديد" : "New branch"}</SectionLabel>
@@ -719,6 +754,7 @@ export function OrgAddBranchDrawer({
           ))}
         </select>
       </label>
+      <LocationPicker ar={ar} value={place} required={kind === "branch"} onChange={(next) => { setPlace(next); setErr(""); }} />
       <label style={LABEL}>
         {ar ? "اسم الفرع" : "Branch name"}
         <input

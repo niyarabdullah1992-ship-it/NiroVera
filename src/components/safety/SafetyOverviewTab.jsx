@@ -12,6 +12,7 @@ import { base44 } from "@/api/base44Client";
 import { toast } from "@/components/ui/use-toast";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { MUTED, NAVY, SURFACE, field, ui, CARD } from "@/lib/platformStyles";
+import NvIcon from "@/components/shared/NvIcon";
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -228,7 +229,7 @@ export default function SafetyOverviewTab({
                 padding: "7px 9px",
               }}
             >
-              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)" }}>{label} ✓</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)" }}>{label} <NvIcon name="check" size={12} strokeWidth={2} /></span>
               {!locked && (
                 <button
                   type="button"

@@ -121,7 +121,9 @@ export default function CompanyOwnerBoard() {
         <div style={{ width: "100%", maxWidth: 440 }}>
           <IdentityCard
             icon={ShieldAlert}
-            rail="var(--nv-danger, #DC2626)"
+            tone="bad"
+            ar={ar}
+            flag={ar ? "لا صلاحية" : "No access"}
             title={ar ? "لوحة المالك" : "Owner board"}
             subtitle={ar ? access.reason : access.reasonEn}
           >

@@ -1,11 +1,17 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { matchesStationScope } from "@/hooks/useStationScope";
-import { ACCENT, MUTED, NAVY, OK, NEUTRAL, WARN, bar, ui, tableShell, statCard, CARD, SURFACE } from "@/lib/platformStyles";
+import { ACCENT, MUTED, NAVY, OK, NEUTRAL, WARN, bar, ui, tableShell, CARD, SURFACE } from "@/lib/platformStyles";
 import { ChromeBox } from "@/components/shared/IdentityCard";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
-import { isSaudiForNitaqat } from "@/lib/complianceDerivations";
+import { isSaudiForNitaqat, localDateKey } from "@/lib/complianceDerivations";
+import { hrEmployeeFlags } from "@/lib/hrOverview";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { SummaryLine } from "@/components/hr/orgdesign/orgDesignUi";
+
+/** Directory pills — the same rules as the «نظرة عامة» rows that open them (?filter=). */
+const FILTER_IDS = ["all", "active", "saudi", "expat", "expiring", "contract", "probation", "gosi", "incomplete"];
 
 const tableHead = {
   display: "grid",
@@ -33,13 +39,18 @@ const tableRow = {
 };
 
 /**
- * Platform `hr` — stats strip + onboarding pipeline + employee directory (L895+).
+ * «الموارد البشرية › الموظفون» — one summary line, the onboarding pipeline and the employee
+ * directory with the shared status pills (الكل · نشط · سعودي · وافد · وثيقة تنتهي · عقد · تجربة ·
+ * بلا تأمينات · ملف ناقص). «نظرة عامة» opens a pill by ?filter=.
  */
-export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) {
+export default function HrDirectoryBoard({ lang = "ar", stationScope = "all", initialFilter = "" }) {
   const ar = lang === "ar";
   const { data } = useAuth();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState(FILTER_IDS.includes(initialFilter) ? initialFilter : "all");
+  useEffect(() => {
+    if (FILTER_IDS.includes(initialFilter)) setFilter(initialFilter);
+  }, [initialFilter]);
   const [hoverRow, setHoverRow] = useState(null);
 
   // Scope narrows the register itself, so the Saudization rate and the pipeline
@@ -84,21 +95,45 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
       }));
   }, [hires, employees, ar]);
 
-  const filters = [
-    { key: "all", label: ar ? "الكل" : "All" },
-    { key: "active", label: ar ? "نشط" : "Active" },
-    { key: "saudi", label: ar ? "سعودي" : "Saudi" },
-    { key: "expat", label: ar ? "وافد" : "Expat" },
-  ];
+  const today = localDateKey();
+  const flags = useMemo(() => {
+    const map = new Map();
+    employees.forEach((e) => {
+      if (e.role === "owner" && !e.stationId) return;
+      try {
+        map.set(e.id, hrEmployeeFlags(e, { today, ar }));
+      } catch {
+        map.set(e.id, {});
+      }
+    });
+    return map;
+  }, [employees, today, ar]);
+  const matches = (e, id) => {
+    if (id === "all") return true;
+    if (e.role === "owner" && !e.stationId) return id === "active";
+    const isSaudi = isSaudiForNitaqat(e);
+    if (id === "saudi") return isSaudi;
+    if (id === "expat") return !isSaudi;
+    if (id === "active") return e.status !== "inactive";
+    return Boolean(flags.get(e.id)?.[id]);
+  };
+  const FILTER_LABELS = {
+    all: ar ? "الكل" : "All",
+    active: ar ? "نشط" : "Active",
+    saudi: ar ? "سعودي" : "Saudi",
+    expat: ar ? "وافد" : "Expat",
+    expiring: ar ? "وثيقة تنتهي" : "Doc expiring",
+    contract: ar ? "عقد يحتاج قراراً" : "Contract due",
+    probation: ar ? "تجربة تنتهي" : "Probation ending",
+    gosi: ar ? "بلا تأمينات" : "No GOSI",
+    incomplete: ar ? "ملف ناقص" : "File gaps",
+  };
+  const pills = FILTER_IDS.map((id) => ({ id, label: FILTER_LABELS[id], n: employees.filter((e) => matches(e, id)).length }));
 
   const directory = useMemo(() => {
     const q = query.trim().toLowerCase();
     return employees.filter((e) => {
-      if (e.role === "owner" && !e.stationId) return filter === "all" || filter === "active";
-      const isSaudi = isSaudiForNitaqat(e);
-      if (filter === "saudi" && !isSaudi) return false;
-      if (filter === "expat" && isSaudi) return false;
-      if (filter === "active" && e.status === "inactive") return false;
+      if (!matches(e, filter)) return false;
       if (!q) return true;
       const hay = [e.name, e.position, e.id, stationName(e.stationId), e.profile?.qiwaTitle]
         .filter(Boolean)
@@ -106,7 +141,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [employees, query, filter, stations]);
+  }, [employees, query, filter, stations, flags]);
 
   const leavePct = (e) => {
     const bal = Number(e.profile?.leaveBalance?.annual ?? e.leaveBalance?.annual ?? 12);
@@ -114,54 +149,27 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
     return Math.min(100, Math.round((bal / total) * 100));
   };
 
-  const stats = [
-    { label: ar ? "الموظفون" : "Employees", value: String(employees.length) },
-    { label: ar ? "الفروع" : "Stations", value: String(stations.length) },
-    { label: ar ? "طلبات إجازة معلّقة" : "Pending leave", value: String(pendingLeave) },
-    {
-      label: ar ? "نطاق السعودة" : "Saudization",
-      value: `${saudiPct}%`,
-      suffix: ar ? `${saudiCount} سعودي` : `${saudiCount} Saudi`,
-    },
-    {
-      label: ar ? "قيد التهيئة" : "Onboarding",
-      value: String(recentHires.length),
-    },
-  ];
-
-  const filterBtn = (active) => ({
-    height: "36px",
-    borderRadius: "9px",
-    border: `1px solid ${active ? ACCENT : "var(--nv-line)"}`,
-    background: active ? "var(--nv-accent-soft)" : CARD,
-    color: active ? "var(--nv-ok-ink)" : MUTED,
-    fontSize: "12px",
-    fontWeight: active ? 600 : 500,
-    padding: "0 12px",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    whiteSpace: "nowrap",
-  });
-
   return (
     <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: "16px", maxWidth: "1320px" }}>
-      {/* Stats strip — L897 */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(166px,1fr))", gap: "12px" }}>
-        {stats.map((s) => (
-          <div key={s.label} style={statCard}>
-            <div style={{ fontSize: "11px", color: MUTED }}>{s.label}</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginTop: "8px", flexWrap: "wrap" }}>
-              <span
-                dir="ltr"
-                style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: "20px", fontWeight: 600, lineHeight: 1, color: NAVY }}
-              >
-                {s.value}
-              </span>
-              {s.suffix ? <span style={{ fontSize: "11px", color: MUTED }}>{s.suffix}</span> : null}
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* One summary line — numbers in ink, no stat tiles. */}
+      <SummaryLine
+        label={ar ? "ملخص الموظفين" : "People summary"}
+        parts={ar
+          ? [
+            { key: "people", value: employees.length, label: "موظفاً" },
+            { key: "stations", value: stations.length, label: "فروع" },
+            { key: "leave", value: pendingLeave, label: "طلب إجازة معلّق" },
+            { key: "saudi", value: `${saudiPct}%`, label: `سعودة (${saudiCount} سعودي)` },
+            { key: "onboarding", value: recentHires.length, label: "قيد التهيئة" },
+          ]
+          : [
+            { key: "people", value: employees.length, label: "employees" },
+            { key: "stations", value: stations.length, label: "stations" },
+            { key: "leave", value: pendingLeave, label: "pending leave" },
+            { key: "saudi", value: `${saudiPct}%`, label: `Saudization (${saudiCount} Saudi)` },
+            { key: "onboarding", value: recentHires.length, label: "onboarding" },
+          ]}
+      />
 
       {/* Onboarding — L909 */}
       <ChromeBox>
@@ -255,7 +263,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
             </div>
           </div>
           <Link
-            to="/app/org"
+            to="/app/hr?tab=org"
             style={{
               padding: "7px 13px",
               borderRadius: "9px",
@@ -290,11 +298,7 @@ export default function HrDirectoryBoard({ lang = "ar", stationScope = "all" }) 
               outline: "none",
             }}
           />
-          {filters.map((fl) => (
-            <button key={fl.key} type="button" onClick={() => setFilter(fl.key)} style={filterBtn(filter === fl.key)}>
-              {fl.label}
-            </button>
-          ))}
+          <StatusFilterPills bare items={pills} value={filter} onChange={setFilter} size="sm" hideZero dataKey="hr-directory" />
         </div>
         {directory.length === 0 ? (
           <div style={{ padding: "26px 18px", textAlign: "center", fontSize: "13px", color: MUTED }}>

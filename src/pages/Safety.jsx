@@ -10,8 +10,11 @@ import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { updateSafetyRecord, recordSafetyIncident, closeSafetyHazard, approveSafetyRecord, revokeSafetyApproval, patchSafetyIncident } from "@/lib/safetyStore";
 import { safetyApprovalIssues } from "@/lib/safetyLogic";
 import SafetyIncidentReportForm from "@/components/safety/SafetyIncidentReportForm";
+import StationSiteDutiesCard from "@/components/safety/StationSiteDutiesCard";
+import { safetyMinistryFacts } from "@/lib/safetyMinistryRows";
 import SafetyOverviewTab from "@/components/safety/SafetyOverviewTab";
-import { SafetyComplyBoard, SafetyDashboard, SafetyInjuryTable, SafetyMinistryPanel, SafetyRiskRegister } from "@/components/safety/SafetyManageViews";
+import { SafetyComplyBoard, SafetyDashboard, SafetyInjuryTable, SafetyRiskRegister } from "@/components/safety/SafetyManageViews";
+import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 import { toast } from "@/components/ui/use-toast";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import { MUTED, NEUTRAL } from "@/lib/platformStyles";
@@ -91,6 +94,23 @@ export default function Safety() {
     updateSafetyRecord(company.id, id, { ...updates, ...extra, approvedBy: null, approvedAt: null }, currentUser.name);
   };
 
+  // Regs Arts. 29–30: the site record and the first-aid check sit on the station's safety record,
+  // stamped with who and when — they do not reset the branch-level approval.
+  const stamp = () => ({ recordedBy: currentUser.name || "", recordedAt: new Date().toISOString() });
+  const handleSaveSite = (id, site) => {
+    updateSafetyRecord(company.id, id, { site: { ...site, ...stamp() } }, currentUser.name);
+    toast({ description: ar ? "سُجّل موقع الفرع — يُشتق «بعيد عن العمران» منه (اللائحة م30)." : "Site recorded — remoteness is derived from it (Regs Art. 30)." });
+  };
+  const handleSaveCabinet = (id, cabinet) => {
+    const at = new Date().toISOString();
+    updateSafetyRecord(company.id, id, { firstAidCabinet: { ...cabinet, checkedBy: currentUser.name || "", checkedAt: at } }, currentUser.name);
+    toast({ description: ar ? "حُفظ فحص خزانة الإسعافات (اللائحة م29)." : "First-aid cabinet check saved (Regs Art. 29)." });
+  };
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+  // Reports, hazards, the first-aid check (Regs 29) and the site distance (Regs 30) in scope — the same
+  // facts «مرجعية الوزارة» and the «الامتثال الوزاري» index read (lib/safetyMinistryRows).
+  const ministryFacts = safetyMinistryFacts({ stations, recFor, today: todayKey });
+
   const handleApprove = (id) => {
     const result = approveSafetyRecord(company.id, id, currentUser.name);
     if (result && result.ok === false) {
@@ -125,22 +145,7 @@ export default function Safety() {
     });
   };
 
-  const reportRows = stations.flatMap((station) => {
-    const rec = recFor(station.id);
-    return (rec?.incidentLog || []).map((item) => ({
-      stationId: station.id,
-      stationName: station.name || "—",
-      item,
-    }));
-  });
-  const openReportRows = reportRows.filter((row) => row.item?.status !== "closed");
-  const criticalOpen = openReportRows.some((row) => (row.item.card?.score || 0) >= 15 || row.item.card?.levelKey === "critical");
-  const injuryOpen = openReportRows.some((row) => row.item.card?.injured || row.item.card?.kind === 3);
-  const openHazards = stations.flatMap((station) => (recFor(station.id)?.hazards || []).filter((hazard) => !hazard?.closedAt));
-  const trackedReports = openReportRows.filter((row) => !row.item.card?.positive);
-  const controlGap = trackedReports.some((row) => !row.item.card?.controlId) || openHazards.some((hazard) => !hazard?.controlId);
-  const controlLabel = !trackedReports.length && !openHazards.length ? "—" : controlGap ? (ar ? "ناقص" : "Missing") : (ar ? "مستوفٍ" : "Met");
-  const controlTone = !trackedReports.length && !openHazards.length ? "" : controlGap ? "warn" : "ok";
+  const { reportRows, openReportRows } = ministryFacts;
 
   const handlePatchIncident = (stationId, incidentId, patch) => {
     const saved = patchSafetyIncident(company.id, stationId, incidentId, patch, currentUser.name);
@@ -166,6 +171,7 @@ export default function Safety() {
         date: i.at || i.reviewedAt,
         title: station.name,
         text: [i.description || card.what || "—", ar ? card.categoryAr : card.categoryEn, card.where].filter(Boolean).join(" · "),
+        branch: station.name,
         badge: level || (ar ? "حادث" : "Incident"),
         search: [i.description, card.code, card.where, card.categoryAr, card.categoryEn, i.anonymous ? "بلاغ بلا اسم" : i.by].filter(Boolean).join(" "),
       };
@@ -175,6 +181,7 @@ export default function Safety() {
       date: h.closedAt || h.openedAt,
       title: station.name,
       text: h.description || "",
+      branch: station.name,
       badge: ar ? "خطر أُغلق" : "Hazard closed",
     }));
     return [...incidents, ...hazards];
@@ -314,10 +321,10 @@ export default function Safety() {
       )}
 
       {tab === "dash" && !employeeRail && (
-        <SafetyDashboard ar={ar} stations={stations} recFor={recFor} onOpenRegister={() => setTab("register")} />
+        <SafetyDashboard ar={ar} stations={stations} recFor={recFor} onOpenRegister={() => setTab("register")} data={data} companyId={company?.id} canEdit={!employeeRail} />
       )}
       {tab === "register" && !employeeRail && (
-        <SafetyRiskRegister ar={ar} rows={openReportRows} canAct={canEdit || canApprove} onPatch={handlePatchIncident} />
+        <SafetyRiskRegister ar={ar} rows={openReportRows} allRows={reportRows} canAct={canEdit || canApprove} onPatch={handlePatchIncident} />
       )}
       {tab === "permits" && !employeeRail && (
         <SafetyComplyBoard ar={ar} stations={stations} recFor={recFor} part="permits" />
@@ -325,6 +332,7 @@ export default function Safety() {
       {tab === "inspect" && !employeeRail && (
         <>
           <SafetyComplyBoard ar={ar} stations={stations} recFor={recFor} part="inspect" />
+          <StationSiteDutiesCard ar={ar} stations={stations} recFor={recFor} canEdit={canEdit} today={todayKey} onSaveSite={handleSaveSite} onSaveCabinet={handleSaveCabinet} />
           {levelApproval}
         </>
       )}
@@ -339,9 +347,13 @@ export default function Safety() {
           />
         </>
       )}
-      {!employeeRail ? (
-        <SafetyMinistryPanel ar={ar} criticalOpen={criticalOpen} controlLabel={controlLabel} controlTone={controlTone} injuryOpen={injuryOpen} />
-      ) : null}
+      <MinistrySectionPanel
+        sectionKey="safety"
+        lane={employeeRail ? "employee" : "manage"}
+        ar={ar}
+        today={todayKey}
+        inputs={{ facts: employeeRail ? {} : ministryFacts }}
+      />
       </div>
     </PlatformStampShell>
   );

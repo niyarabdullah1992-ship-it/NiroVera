@@ -30,7 +30,7 @@ import {
   setActualWorkSite,
 } from "@/lib/orgHire";
 import { assignHolderGrade, employeeJobGrade, gradeRank, gradeSalaryRange, gradesForTitle, ladderBands, orderedJobGrades } from "@/lib/jobGrades";
-import { orgGradeColor, OrgLockMark } from "@/components/hr/orgUi";
+import { gradeBadge, OrgLockMark } from "@/components/hr/orgUi";
 import { buildPeopleTree, explainWorkplaceManager, pathToPerson } from "@/lib/peopleTree";
 import { isCompanyRootStation, isHrUnit, isManagerUnit, stationParentId, workplaceStations } from "@/lib/stationTree";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -45,6 +45,7 @@ import {
   weekStartDate,
 } from "@/lib/shiftWeek";
 import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import NvIcon, { SearchWrap } from "@/components/shared/NvIcon";
 
 const MONO = {
   fontFamily: "'IBM Plex Mono', ui-monospace, monospace",
@@ -76,18 +77,9 @@ const NOTE = {
   lineHeight: 1.8,
 };
 
-function gradeChipStyle(color = "var(--nv-ink2)") {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    height: 20,
-    padding: "0 7px",
-    borderRadius: 5,
-    font: "700 10.5px 'Readex Pro', sans-serif",
-    color: "#fff",
-    background: color,
-    flex: "none",
-  };
+/** Grade code — a quiet mute chip in mono (no colour per grade). */
+function gradeChipStyle() {
+  return gradeBadge({ flex: "none" });
 }
 
 function dash(value) {
@@ -493,7 +485,7 @@ function FactValue({ field }) {
         {field.unit ? (
           <span style={{ ...MONO, fontSize: 10.5, color: "var(--nv-ink3)" }}>{`· ${field.unit} ·`}</span>
         ) : null}
-        {field.chip ? <span style={gradeChipStyle(orgGradeColor(field.gradeIndex))}>{field.chip}</span> : null}
+        {field.chip ? <span style={gradeChipStyle()}>{field.chip}</span> : null}
       </span>
     );
   }
@@ -503,7 +495,7 @@ function FactValue({ field }) {
     }
     return (
       <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
-        {field.chip ? <span style={gradeChipStyle(orgGradeColor(field.gradeIndex))}>{field.chip}</span> : null}
+        {field.chip ? <span style={gradeChipStyle()}>{field.chip}</span> : null}
         {field.gradeLabel ? <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{field.gradeLabel}</span> : null}
         {field.range ? <span style={{ ...MONO, fontSize: 11, color: "var(--nv-ink3)" }}>{field.range}</span> : null}
         {field.leave ? <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{field.leave}</span> : null}
@@ -573,7 +565,7 @@ function tabButtonStyle(active) {
     cursor: "pointer",
     fontFamily: "inherit",
     ...(active
-      ? { background: "var(--nv-navy)", color: "#fff", border: "1px solid var(--nv-navy)" }
+      ? { background: "var(--nv-navy)", color: "var(--nv-btn-ink, #fff)", border: "1px solid var(--nv-navy)" }
       : { background: "var(--nv-card)", color: "var(--nv-ink2)", border: "1px solid var(--nv-line)" }),
   };
 }
@@ -624,7 +616,7 @@ function GradeSeatEditor({ employee, data, companyId, ar }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px", border: "1px solid var(--nv-line)", borderRadius: 12, fontSize: 11.5 }}>
         {grades.length ? (
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-            {grades.map((grade, index) => {
+            {grades.map((grade) => {
               const on = current && String(current.id) === String(grade.id);
               return (
                 <button
@@ -643,11 +635,12 @@ function GradeSeatEditor({ employee, data, companyId, ar }) {
                     minWidth: 40,
                     padding: "0 8px",
                     borderRadius: 8,
-                    font: "700 11.5px 'Readex Pro', sans-serif",
+                    fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)",
+                    fontSize: 11.5,
+                    fontWeight: 600,
                     cursor: "pointer",
-                    fontFamily: "inherit",
                     ...(on
-                      ? { color: "#fff", background: orgGradeColor(index), border: "1px solid transparent" }
+                      ? { color: "var(--nv-btn-ink, #fff)", background: "var(--nv-navy)", border: "1px solid var(--nv-navy)" }
                       : { color: "var(--nv-ink2)", background: "var(--nv-card)", border: "1px solid var(--nv-line)" }),
                   }}
                 >
@@ -689,8 +682,8 @@ function managedBy(data, employeeId) {
 }
 
 function accessPill(value) {
-  if (value === "manage") return { background: "var(--nv-ok-ink)", color: "#fff", border: "1px solid var(--nv-ok-ink)" };
-  if (value === "hidden") return { background: "var(--nv-soft)", color: "var(--nv-bad-ink)", border: "1px solid var(--nv-bad-line)" };
+  if (value === "manage") return { background: "var(--nv-navy)", color: "var(--nv-btn-ink, #fff)", border: "1px solid var(--nv-navy)" };
+  if (value === "hidden") return { background: "var(--nv-soft)", color: "var(--nv-muted)", border: "1px dashed var(--nv-mute-fill, var(--nv-line))" };
   return { background: "var(--nv-card)", color: "var(--nv-ink2)", border: "1px solid var(--nv-line)" };
 }
 
@@ -706,14 +699,14 @@ function titleChipStyle(on) {
     alignItems: "center",
     height: 26,
     padding: "0 10px",
-    borderRadius: 899,
+    borderRadius: 8,
     fontSize: 11,
     fontWeight: 600,
     cursor: "pointer",
     fontFamily: "inherit",
     border: on ? "1px solid var(--nv-navy)" : "1px solid var(--nv-line)",
     background: on ? "var(--nv-navy)" : "var(--nv-card)",
-    color: on ? "#fff" : "var(--nv-ink2)",
+    color: on ? "var(--nv-btn-ink, #fff)" : "var(--nv-ink2)",
   };
 }
 
@@ -859,8 +852,8 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
           justifyContent: "center",
           width: "100%",
           height: 34,
-          borderRadius: 10,
-          border: "1px solid #EDC5CB",
+          borderRadius: 8,
+          border: "1px solid var(--nv-bad-line)",
           background: "transparent",
           color: "var(--nv-bad-ink)",
           fontSize: 12,
@@ -876,14 +869,16 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 12, borderBottom: "1px solid var(--nv-line3)" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, fontSize: 11, color: "var(--nv-ink2)", fontWeight: 700 }}>
             <span>{ar ? "1 · المسمّى الوظيفي" : "1 · Job title"}</span>
-            <span style={{ fontWeight: 500, color: "#8E9A93" }}>{ar ? "من الدليل أو جديد" : "Catalog or new"}</span>
+            <span style={{ fontWeight: 500, color: "var(--nv-muted)" }}>{ar ? "من الدليل أو جديد" : "Catalog or new"}</span>
           </div>
-          <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder={ar ? "⌕ ابحث في الدليل أو اكتب مسمّى جديداً" : "⌕ Search the catalog or type a new title"}
-            style={FIELD_INPUT}
-          />
+          <SearchWrap>
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={ar ? "ابحث في الدليل أو اكتب مسمّى جديداً" : "Search the catalog or type a new title"}
+              style={{ ...FIELD_INPUT, width: "100%", paddingInlineStart: 30 }}
+            />
+          </SearchWrap>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))", gap: 4, maxHeight: 112, overflow: "auto", padding: 2 }}>
             {chips.length ? chips.map((item) => (
               <button key={item} type="button" onClick={() => setTitle(item)} style={{ ...titleChipStyle(title === item), justifyContent: "center" }}>
@@ -928,7 +923,7 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
                     border: dim ? "1px dashed var(--nv-line)" : (on ? "1px solid var(--nv-navy)" : "1px solid var(--nv-line3)"),
                   }}
                 >
-                  <span dir="ltr" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 20, minWidth: 28, borderRadius: 4, font: "700 10px 'Readex Pro', sans-serif", color: "#fff", background: orgGradeColor(Math.max(0, (rank || 1) - 1)), unicodeBidi: "isolate" }}>{grade.gradeNumber || "—"}</span>
+                  <span dir="ltr" style={gradeBadge({ height: 20, minWidth: 28 })}>{grade.gradeNumber || "—"}</span>
                   <strong style={{ fontSize: 12, flex: 1 }}>{grade.title || (ar ? "مرتبة" : "Rank")}</strong>
                   {meta ? <span style={{ fontSize: 10.5, color: "var(--nv-ink3)" }}>{meta}</span> : null}
                 </button>
@@ -939,7 +934,7 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 12, borderBottom: "1px solid var(--nv-line3)" }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, fontSize: 11, color: "var(--nv-ink2)", fontWeight: 700 }}>
             <span>{ar ? "2 · الدرجة" : "2 · Grade"}</span>
-            <span style={{ fontWeight: 500, color: "#8E9A93" }}>{chosen?.title || (ar ? "من سلّم الدرجات" : "From the ladder")}</span>
+            <span style={{ fontWeight: 500, color: "var(--nv-muted)" }}>{chosen?.title || (ar ? "من سلّم الدرجات" : "From the ladder")}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--nv-ink3)" }}>
             <span>{ar ? "رقم الدرجة" : "Grade no."}</span>
@@ -956,7 +951,7 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
           </div>
           {bands.length ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 4 }}>
-              {bands.map((band, index) => {
+              {bands.map((band) => {
                 const match = title ? titleGrades.find((grade) => gradeRank(grade) === band.rank) : null;
                 const above = gradeBlocked(band.rank);
                 const off = !title || !match || above;
@@ -977,13 +972,14 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
                       justifyContent: "center",
                       height: 30,
                       boxSizing: "border-box",
-                      borderRadius: 4,
-                      font: "700 11.5px 'Readex Pro', sans-serif",
-                      fontFamily: "inherit",
+                      borderRadius: 8,
+                      fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)",
+                      fontSize: 11.5,
+                      fontWeight: 600,
                       ...(off
-                        ? { cursor: "not-allowed", background: "var(--nv-soft)", color: "#C5CEC9", border: "1px dashed var(--nv-line)" }
+                        ? { cursor: "not-allowed", background: "var(--nv-soft)", color: "var(--nv-muted)", border: "1px dashed var(--nv-line)" }
                         : on
-                          ? { cursor: "pointer", color: "#fff", background: orgGradeColor(index), border: "1px solid transparent" }
+                          ? { cursor: "pointer", color: "var(--nv-btn-ink, #fff)", background: "var(--nv-navy)", border: "1px solid var(--nv-navy)" }
                           : { cursor: "pointer", color: "var(--nv-ink2)", background: "var(--nv-card)", border: "1px solid var(--nv-line)" }),
                     }}
                   >
@@ -1026,10 +1022,10 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
               alignItems: "center",
               justifyContent: "center",
               width: "100%",
-              height: 38,
-              borderRadius: 6,
-              background: "var(--nv-navy, #0B3D27)",
-              color: "#fff",
+              height: 36,
+              borderRadius: 8,
+              background: "var(--nv-btn-fill)",
+              color: "var(--nv-btn-ink, #fff)",
               fontSize: 12.5,
               fontWeight: 600,
               cursor: "pointer",
@@ -1201,7 +1197,7 @@ function VacantPositionDrawer({ node, data, ar, canWrite, companyId, onHire, onC
 
   return createPortal(
     <div className="nv-v7-portal" dir={ar ? "rtl" : "ltr"} style={{ position: "fixed", inset: 0, zIndex: 480, display: "flex", justifyContent: "flex-end", alignItems: "stretch", padding: 12 }}>
-      <div onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }} style={{ position: "absolute", inset: 0, background: "rgba(10,20,15,.28)" }} />
+      <div onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }} style={{ position: "absolute", inset: 0, background: "color-mix(in oklab, var(--nv-navy) 26%, transparent)" }} />
       <aside
         role="dialog"
         aria-modal="true"
@@ -1213,21 +1209,20 @@ function VacantPositionDrawer({ node, data, ar, canWrite, companyId, onHire, onC
           height: "100%",
           background: "var(--nv-card, #fff)",
           border: "1px solid var(--nv-line, #D5DCD8)",
-          borderTop: "3px solid #0B3D27",
           borderRadius: 8,
-          boxShadow: "0 18px 44px rgba(12,20,16,.18)",
+          boxShadow: "0 18px 44px var(--nv-shadow)",
           display: "flex",
           flexDirection: "column",
           overflow: "auto",
         }}
       >
         <div style={{ padding: 14, borderBottom: "1px solid var(--nv-line, #E4E9E6)", display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ width: 44, height: 44, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, color: "#B7791F", border: "1.5px dashed #D9C08A", background: "#fff" }}>＋</span>
+          <span style={{ width: 44, height: 44, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 600, color: "var(--nv-muted)", border: "1.5px dashed var(--nv-mute-fill, var(--nv-line))", background: "transparent" }}>＋</span>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
             <strong style={{ fontSize: 14, color: "var(--nv-ink)" }}>{node?.title || "—"}</strong>
             <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>{ar ? "بانتظار التوظيف" : "Waiting to be filled"}</span>
           </div>
-          <button type="button" onClick={onClose} aria-label={ar ? "إغلاق" : "Close"} style={{ width: 28, height: 28, border: "1px solid var(--nv-line, #D5DCD8)", borderRadius: 8, background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+          <button type="button" onClick={onClose} aria-label={ar ? "إغلاق" : "Close"} style={{ width: 28, height: 28, border: "1px solid var(--nv-line, #D5DCD8)", borderRadius: 8, background: "var(--nv-card)", color: "var(--nv-ink)", cursor: "pointer", fontFamily: "inherit" }}><NvIcon name="cross" size={13} /></button>
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ background: "var(--nv-soft, #F5F7F6)", border: "1px solid var(--nv-line, #E4E9E6)", borderRadius: 10, padding: "12px 14px", display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: "9px 14px", fontSize: 12.5, alignItems: "center" }}>
@@ -1262,7 +1257,7 @@ function VacantPositionDrawer({ node, data, ar, canWrite, companyId, onHire, onC
             <button
               type="button"
               onClick={() => onHire?.({ stationId: node?.stationId || "", seatId: node?.seatId || "" })}
-              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 34, borderRadius: 8, background: "#0B3D27", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid #0B3D27", fontFamily: "inherit" }}
+              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 34, borderRadius: 8, background: "var(--nv-btn-fill)", color: "var(--nv-btn-ink, #fff)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid var(--nv-btn-fill)", fontFamily: "inherit" }}
             >
               {ar ? "توظيف على هذه الوظيفة" : "Hire into this seat"}
             </button>
@@ -1463,7 +1458,7 @@ export default function OrgEmployeePreview({
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose?.();
       }}
-        style={{ position: "absolute", inset: 0, background: "rgba(11,61,39,.32)" }}
+        style={{ position: "absolute", inset: 0, background: "color-mix(in oklab, var(--nv-navy) 26%, transparent)" }}
       />
       <aside
         role="dialog"
@@ -1478,9 +1473,8 @@ export default function OrgEmployeePreview({
           height: "calc(100% - 24px)",
           background: "var(--nv-card, #fff)",
           border: "1px solid var(--nv-line, #D5DCD8)",
-          borderTop: "3px solid #0B3D27",
           borderRadius: 8,
-          boxShadow: "0 18px 44px rgba(12,20,16,.18)",
+          boxShadow: "0 18px 44px var(--nv-shadow)",
           display: "flex",
           flexDirection: "column",
           overflow: "auto",
@@ -1496,7 +1490,7 @@ export default function OrgEmployeePreview({
             alignItems: "center",
           }}
         >
-          <span style={{ width: 44, height: 44, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 700, background: "#E6F0EA", color: "#0B3D27" }}>
+          <span style={{ width: 44, height: 44, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 600, background: "var(--nv-soft)", border: "1px solid var(--nv-line)", color: "var(--nv-ink2)" }}>
             {String(headerName || "—").trim().split(/\s+/).slice(0, 2).map((part) => part.slice(0, 1)).join("") || "—"}
           </span>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -1528,7 +1522,7 @@ export default function OrgEmployeePreview({
               flex: "none",
               }}
             >
-            ✕
+            <NvIcon name="cross" size={13} />
             </button>
         </div>
 
@@ -1598,8 +1592,8 @@ export default function OrgEmployeePreview({
               >
                 {panel.history.length ? panel.history.map((row) => {
                   const dot = row.current
-                    ? (row.acting ? "#0B8A4F" : "#1D2420")
-                    : "#C7CCD6";
+                    ? (row.acting ? "var(--nv-ok-fill)" : "var(--nv-ink)")
+                    : "var(--nv-mute-fill)";
                   const range = `${row.from || "—"} → ${row.to || (row.current ? (ar ? "الآن" : "now") : "—")}`;
                   return (
                     <div key={`${row.name}-${row.type}-${row.from}-${row.to}`} style={{ position: "relative", padding: "4px 0 10px" }}>
@@ -1694,8 +1688,8 @@ export default function OrgEmployeePreview({
                       justifyContent: "center",
                       height: 36,
                       borderRadius: 8,
-                      background: "var(--nv-ok-ink)",
-                      color: "#fff",
+                      background: "var(--nv-btn-fill)",
+                      color: "var(--nv-btn-ink, #fff)",
                       fontSize: 12,
                     fontWeight: 600,
                       cursor: "pointer",
@@ -1739,7 +1733,7 @@ export default function OrgEmployeePreview({
                       height: 36,
                       borderRadius: 8,
                       background: "var(--nv-navy)",
-                      color: "#fff",
+                      color: "var(--nv-btn-ink, #fff)",
                       fontSize: 12,
                       fontWeight: 600,
                       cursor: "pointer",

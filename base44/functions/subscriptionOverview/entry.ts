@@ -125,14 +125,12 @@ Deno.serve(async (req) => {
     if (action === 'platformReport') {
       const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
       const cutoff30 = Date.now() - 30 * 86400000;
-      const [accountRows, employees, blobs, sessions, signatures, inventory, movements, feedback] = await Promise.all([
+      const [accountRows, employees, blobs, sessions, signatures, feedback] = await Promise.all([
         base44.asServiceRole.entities.CompanyAccount.list('-created_date', 500),
         base44.asServiceRole.entities.Employee.list('-created_date', 500),
         base44.asServiceRole.entities.CompanyDataBlob.list('-updated_date', 500),
         base44.asServiceRole.entities.CompanySession.list('-created_date', 500),
         base44.asServiceRole.entities.SignatureRequest.list('-created_date', 500),
-        base44.asServiceRole.entities.InventoryItem.list('-created_date', 500),
-        base44.asServiceRole.entities.StockMovement.list('-created_date', 500),
         base44.asServiceRole.entities.ProductFeedback.list('-created_date', 500),
       ]);
       const valueDate = (item) => new Date(item.completedAt || item.completed_date || item.updatedAt || item.updated_date || item.createdAt || item.created_date || 0).getTime();
@@ -149,8 +147,6 @@ Deno.serve(async (req) => {
           attendanceRate: attendance.length ? Math.round((present / attendance.length) * 100) : 0,
           loginSessions: sessions.filter((item) => item.companyId === account.companyId && new Date(item.created_date || 0).getTime() >= cutoff30).length,
           signedDocuments: signatures.filter((item) => item.companyId === account.companyId && item.status === 'completed').length,
-          inventoryItems: inventory.filter((item) => item.companyId === account.companyId && item.archived !== true).length,
-          stockMovements: movements.filter((item) => item.companyId === account.companyId).length,
           feedbackCount: companyFeedback.length,
           averageRating: companyFeedback.length ? Math.round(companyFeedback.reduce((sum, item) => sum + Number(item.rating || 0), 0) / companyFeedback.length * 10) / 10 : null,
         };

@@ -20,9 +20,11 @@ export const TERMINATION_REASONS = [
   { id: "contract_end", article: "74", ar: "انتهاء المدة", en: "End of term" },
   { id: "resignation", article: "74", ar: "استقالة", en: "Resignation" },
   { id: "force_majeure", article: "74", ar: "قوة قاهرة", en: "Force majeure" },
+  { id: "worker_force_majeure", article: "87", ar: "ترك العامل العمل لقوة قاهرة خارجة عن إرادته — المكافأة كاملة (المادة 87)", en: "Worker left through force majeure beyond his will — full award (Art. 87)" },
   { id: "closure", article: "74", ar: "إغلاق المنشأة / الإفلاس", en: "Closure / insolvency" },
   { id: "retirement", article: "74", ar: "بلوغ سن التقاعد", en: "Retirement age" },
-  { id: "death", article: "74", ar: "وفاة العامل", en: "Worker's death" },
+  { id: "death", article: "79", ar: "وفاة العامل", en: "Worker's death" },
+  { id: "disability", article: "79", ar: "عجز العامل عن أداء عمله — بشهادة طبية (المادة 79)", en: "Unable to work — medical certificate (Art. 79)" },
   { id: "article_80", article: "80", ar: "فصل بلا مكافأة — المادة 80", en: "Dismissal without award — Art. 80" },
   { id: "article_81", article: "81", ar: "ترك العمل مع حفظ الحقوق — المادة 81", en: "Leaving with rights preserved — Art. 81" },
 ];
@@ -95,6 +97,57 @@ export function checkProbationGate(input = {}) {
       reasonEn: "Blocked — probation may not be repeated with the same employer except in another occupation or after a six-month break (Article 54).",
       cite: citeRule("contract.probation.once.cite", input.today),
     };
+  }
+  if (prior) {
+    // Art. 54: a second probation is allowed only «باتفاق طرفي العقد كتابة» — the written agreement on file.
+    const written = isTruthy(row.probationSecondWritten ?? profile.probationSecondWritten ?? input.probationSecondWritten);
+    const file = row.probationSecondFile ?? profile.probationSecondFile ?? input.probationSecondFile;
+    if (!written || !(file && (file.name || file.url || typeof file === "string"))) {
+      return {
+        ok: false,
+        error: "PROBATION_SECOND_WRITTEN",
+        reason: "موقوف — التجربة الثانية لدى صاحب العمل نفسه لا تجوز إلا باتفاق الطرفين كتابةً؛ أرفق الاتفاق المكتوب (المادة 54).",
+        reasonEn: "Blocked — a second probation with the same employer needs the parties' written agreement; attach it (Article 54).",
+        cite: citeRule("contract.probation.once.cite", input.today),
+      };
+    }
+  }
+  // Regs Art. 19(1): probation may be split into several periods only if they are contiguous and stated at signing.
+  const segments = row.probationSegments ?? profile.probationSegments ?? input.probationSegments;
+  if (Array.isArray(segments) && segments.length > 1) {
+    const atSigning = isTruthy(row.probationSegmentsAtSigning ?? profile.probationSegmentsAtSigning ?? input.probationSegmentsAtSigning);
+    if (!atSigning) {
+      return {
+        ok: false,
+        error: "PROBATION_SPLIT_UNSTATED",
+        reason: "موقوف — تقسيم مدة التجربة إلى مدد يُنص عليه بوضوح عند إبرام العقد (اللائحة التنفيذية م19/1).",
+        reasonEn: "Blocked — splitting probation must be stated clearly when the contract is signed (Regs Art. 19(1)).",
+        cite,
+      };
+    }
+    const sorted = [...segments].map((s) => ({ from: String(s?.from || "").slice(0, 10), to: String(s?.to || "").slice(0, 10) })).sort((a, b) => a.from.localeCompare(b.from));
+    let total = 0;
+    for (let i = 0; i < sorted.length; i += 1) {
+      const s = sorted[i];
+      const len = s.from && s.to ? Math.round((Date.parse(`${s.to}T00:00:00Z`) - Date.parse(`${s.from}T00:00:00Z`)) / 86400000) + 1 : 0;
+      if (len < 1) return { ok: false, error: "PROBATION_SPLIT_DATES", reason: "اكتب بداية ونهاية كل مدة من مدد التجربة.", reasonEn: "Enter the start and end of each probation period.", cite };
+      total += len;
+      if (i > 0) {
+        const prevEnd = Date.parse(`${sorted[i - 1].to}T00:00:00Z`);
+        if (Date.parse(`${s.from}T00:00:00Z`) - prevEnd !== 86400000) {
+          return {
+            ok: false,
+            error: "PROBATION_SPLIT_GAP",
+            reason: "موقوف — مدد التجربة المقسّمة تكون متصلة لا فاصل بينها (اللائحة التنفيذية م19/1).",
+            reasonEn: "Blocked — split probation periods must be contiguous (Regs Art. 19(1)).",
+            cite,
+          };
+        }
+      }
+    }
+    if (total > max) {
+      return { ok: false, error: "PROBATION_OVER_MAX", reason: `موقوف — مجموع مدد التجربة لا يتجاوز ${max} يوماً (المادة 53).`, reasonEn: `Blocked — total probation may not exceed ${max} days (Article 53).`, cite, days: total, max };
+    }
   }
   return { ok: true, active: true, days, max, cite };
 }
@@ -332,19 +385,18 @@ export function monthHasHeatBanDay(year, monthIndex) {
   return false;
 }
 
+/** Exact clock overlap with 12:00–15:00 (half-open) — a shift ending 12:04 or starting 14:58 is still inside. */
 export function shiftOverlapsHeatBan(start, end, { outdoor = false, summer = false } = {}) {
   if (!outdoor || !summer) return false;
   const from = ruleValue("hours.heat.startHour") * 60;
   const to = ruleValue("hours.heat.endHour") * 60;
   const [sh, sm] = String(start || "0:0").split(":").map(Number);
   const [eh, em] = String(end || "0:0").split(":").map(Number);
-  let a = sh * 60 + sm;
-  let b = eh * 60 + em;
+  const a = (sh || 0) * 60 + (sm || 0);
+  let b = (eh || 0) * 60 + (em || 0);
   if (b <= a) b += 1440;
-  const wrap = (m) => ((m % 1440) + 1440) % 1440;
-  for (let t = a; t < b; t += 15) {
-    const m = wrap(t);
-    if (m >= from && m < to) return true;
+  for (const day of [0, 1440]) {
+    if (Math.min(b, day + to) > Math.max(a, day + from)) return true;
   }
   return false;
 }
@@ -433,6 +485,46 @@ function serviceYears(start, today) {
 }
 
 /** Article 55 — Saudi fixed-term continuation. Converts the file when the statutory test is met. */
+/**
+ * Regs Art. 1(1) — a temporary or casual contract (work pattern «مؤقت / عرضي») that continues past
+ * `contract.casual.maxDays` (90) becomes a contract under the whole Labour Law, whatever the visa title.
+ * Seasonal work is outside the paragraph (it names «المؤقت أو العرضي» only).
+ * Counted from the contract start (or hire date) to today, or to the exit date when the file has one.
+ *   applies   — the pattern is temporary/casual · converts — the days passed the limit
+ *   approaching — fifteen days or fewer are left · needsStart — no start date on file
+ */
+export function deriveRegs1Conversion(input = {}) {
+  const { row, profile } = profileOf(input);
+  const today = input.today || localDateKey();
+  const limit = ruleValue("contract.casual.maxDays", today);
+  const pattern = String(profile.workPattern || profile.contract?.workPattern || row.workPattern || "").trim().toLowerCase();
+  const base = { ok: true, applies: false, converts: false, approaching: false, limit, cite: citeRule("contract.casual.maxDays", today) };
+  if (pattern !== "temporary") return { ...base, seasonal: pattern === "seasonal" };
+  const start = String(profile.contract?.startDate || profile.hireDate || row.hireDate || "").slice(0, 10);
+  if (!parseDay(start)) return { ...base, applies: true, needsStart: true };
+  const exit = String(profile.contractExit?.effectiveDate || "").slice(0, 10);
+  const through = parseDay(exit) && exit < today ? exit : today;
+  const from = parseDay(start);
+  const to = parseDay(through);
+  const days = to >= from ? Math.round((to.getTime() - from.getTime()) / 86400000) + 1 : 0;
+  const convertsOn = addDays(start, limit);
+  const converts = days > limit;
+  return {
+    ...base,
+    applies: true,
+    days,
+    convertsOn,
+    converts,
+    approaching: !converts && limit - days <= 15,
+    reason: converts
+      ? `استمر العقد المؤقت أو العرضي ${days} يوماً — تجاوز ${limit} يوماً فتحوّل منذ ${convertsOn} إلى عقد يخضع لجميع أحكام نظام العمل (اللائحة م1).`
+      : "",
+    reasonEn: converts
+      ? `The temporary or casual contract ran ${days} days — past ${limit}, so since ${convertsOn} it is a contract under the whole Labour Law (Regs Art. 1).`
+      : "",
+  };
+}
+
 export function deriveArt55Conversion(input = {}) {
   const { row, profile } = profileOf(input);
   const type = String(profile.contractType || row.contractType || profile.contract?.type || "").toLowerCase();

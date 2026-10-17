@@ -1,8 +1,7 @@
 /**
  * Rights for the HR register — org units, jobs, positions, employment actions,
  * review cycles and ratings — stated once for the screen and for the local
- * fallback, exactly as `assetRights` / `expenseRights` / `inventoryRights` /
- * `payrollRights` do for the money surfaces.
+ * fallback, exactly as `payrollRights` does for the wage surface.
  *
  * The role sets and the refusal texts below are the ones the `hcm` cloud function
  * already enforces. They live here so the fallback cannot drift wider than the

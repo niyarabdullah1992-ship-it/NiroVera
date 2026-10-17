@@ -1,6 +1,7 @@
 import React from "react";
-import { docFrame, DS_STATES } from "@/lib/designSystem";
+import { docFrame } from "@/lib/designSystem";
 import { MUTED } from "@/lib/platformStyles";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 
 const TONE_STATE = {
   warn: "waiting",
@@ -8,20 +9,18 @@ const TONE_STATE = {
   bad: "blocked",
 };
 
-/** Uniform section card — DS v2 paper + 3px top status edge (same family as طلباتي). */
-export default function OpsTaskSection({ title, hint, count, aside, tone, children }) {
+/** Uniform section card — calm DS v2 paper; warn/bad shows as a chip beside the title (no coloured edge). */
+export default function OpsTaskSection({ title, hint, count, aside, tone, flag, ar = true, children }) {
   const stateId = TONE_STATE[tone] || null;
   const frame = stateId
     ? docFrame(stateId)
     : {
-        background: "var(--nv-inset, var(--nv-soft))",
+        background: "var(--nv-card)",
         border: "1px solid var(--nv-line)",
-        borderRadius: 14,
-        boxShadow: "none",
+        borderRadius: 12,
+        boxShadow: "var(--nv-paper)",
       };
-  const titleColor = stateId
-    ? `var(--nv-${DS_STATES[stateId].token}-ink)`
-    : "var(--nv-ink)";
+  const titleColor = "var(--nv-ink)";
 
   return (
     <section
@@ -40,10 +39,14 @@ export default function OpsTaskSection({ title, hint, count, aside, tone, childr
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {title ? (
-              <div style={{ fontSize: 12, fontWeight: 650, color: titleColor, letterSpacing: "0.01em" }}>{title}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5, fontWeight: 700, color: titleColor }}>
+                {stateId ? null : <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", borderRadius: 2, flexShrink: 0 }} />}
+                {title}
+                <StatusFlag tone={tone} flag={flag} ar={ar} label={typeof title === "string" ? title : ""} />
+              </div>
             ) : null}
             {hint ? (
-              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 4 }}>{hint}</div>
+              <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.65, marginTop: 4 }}>{hint}</div>
             ) : null}
           </div>
           {count != null && (

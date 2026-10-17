@@ -1,13 +1,15 @@
 import React, { useState } from "react";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
 import MemberMultiSelect from "@/components/tasks/MemberMultiSelect";
-import { ACCENT, CARD, MUTED, NAVY, field } from "@/lib/platformStyles";
-import { taskRecurrenceLabel, isOpsVisitorTask, taskCreatorName, taskAssigneePeople, taskPeopleCountLabel, normalizeTaskMode, deriveTaskHeatBanNotice, TASK_MODES } from "@/lib/opsDerivations";
+import { MUTED } from "@/lib/platformStyles";
+import { deriveDailyTaskPace, taskPaceInput, taskRecurrenceLabel, isOpsVisitorTask, taskCreatorName, taskAssigneePeople, normalizeTaskMode, deriveTaskHeatBanNotice, TASK_MODES } from "@/lib/opsDerivations";
 import OpsDispatchChip from "@/components/tasks/OpsDispatchChip";
 import HeatBanNotice from "@/components/shared/HeatBanNotice";
-
-const FIELD = { ...field, height: 40 };
-const LABEL_SPAN = { fontSize: 12, fontWeight: 600, color: MUTED };
+import OpsMoreMenu from "@/components/tasks/OpsMoreMenu";
+import { printSheet } from "@/lib/printSheet";
+import { taskWorkOrderSheet } from "@/lib/printRecords";
+import { DetailHero, Fact, FactGrid, HeroBar, HeroFigure, HeroPill, HeroSevenDays } from "@/components/tasks/detail/DetailKit";
+import { pointsWord, taskDueChip, taskLastSevenDays, taskPointsLine, taskRhythm } from "@/lib/opsCardFacts";
 
 const PRIORITIES = [
   { id: "high", ar: "عالية", en: "High", ink: "var(--nv-bad-ink)", soft: "var(--nv-bad-soft)", line: "var(--nv-bad-line)", dot: "var(--nv-bad-fill)" },
@@ -22,101 +24,6 @@ const WEIGHTS = [
   { w: 4, ar: "فني/صيانة", en: "Technical / maintenance" },
   { w: 5, ar: "حرج/عميل", en: "Critical / client" },
 ];
-
-const actionBtn = (busy, tone) => ({
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: 36,
-  padding: "0 12px",
-  margin: 0,
-  boxSizing: "border-box",
-  borderRadius: 10,
-  border: tone === "danger" ? "1px solid var(--nv-bad-line)" : "1px solid var(--nv-line)",
-  background: tone === "danger" ? "var(--nv-bad-soft)" : CARD,
-  color: tone === "danger" ? "var(--nv-bad-ink)" : NAVY,
-  fontSize: 12,
-  fontWeight: 600,
-  lineHeight: 1,
-  cursor: busy ? "wait" : "pointer",
-  fontFamily: "inherit",
-});
-
-function ReadField({ label, children }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 160px", minWidth: 0 }}>
-      <span style={LABEL_SPAN}>{label}</span>
-      <div style={{ ...FIELD, display: "flex", alignItems: "center", overflow: "hidden" }}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%" }}>{children}</span>
-      </div>
-    </div>
-  );
-}
-
-function priorityStyle(active, tone) {
-  return {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-    flex: 1,
-    height: 36,
-    borderRadius: 9,
-    fontFamily: "inherit",
-    fontSize: 12,
-    cursor: "default",
-    ...(active
-      ? { border: `1px solid ${tone.line}`, background: tone.soft, color: tone.ink, fontWeight: 600 }
-      : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
-  };
-}
-
-const selectedNavy = {
-  border: "1px solid var(--nv-navy)",
-  background: "var(--nv-navy)",
-  color: "#fff",
-  fontWeight: 600,
-};
-
-function weightStyle(active) {
-  return {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-    flex: 1,
-    minWidth: 0,
-    padding: "7px 4px",
-    borderRadius: 9,
-    fontFamily: "inherit",
-    cursor: "default",
-    ...(active
-      ? selectedNavy
-      : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
-  };
-}
-
-function modeStyle(active, clickable) {
-  return {
-    flex: 1,
-    height: 36,
-    boxSizing: "border-box",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "0 12px",
-    borderRadius: 9,
-    fontFamily: "inherit",
-    fontSize: 12,
-    lineHeight: 1.3,
-    textAlign: "center",
-    cursor: clickable ? "pointer" : "default",
-    ...(active
-      ? selectedNavy
-      : { border: "1px solid var(--nv-line, #E2E8F0)", background: CARD, color: MUTED }),
-  };
-}
 
 /** Assignment, work profile, and schedule — same section language as the create card. */
 export default function OpsTaskHeader({
@@ -136,81 +43,111 @@ export default function OpsTaskHeader({
   const mode = normalizeTaskMode(task.mode);
   const canSwitchMode = canManage && !approved && !awaiting && !!onSetMode;
   const showDelete = canDelete && !approved && !awaiting;
-  const showActions = canReassign || canTransfer || canEndDelegation || canSwitchMode || showDelete;
   const workType = String(task.workTypeText || task.workType || "").trim();
   const assignees = taskAssigneePeople(task, employees);
   const [showPeople, setShowPeople] = useState(false);
   const peopleNames = assignees.map((person) => String(person.name || "").trim()).filter(Boolean).join(ar ? "، " : ", ");
   const branchName = String(task.stationName || "").trim();
   const ownerFace = String(task.ownerName || task.assigneeName || "").trim() || peopleNames || branchName || "—";
-  const peopleFace = assignees.length
-    ? (peopleNames || taskPeopleCountLabel(assignees.length, ar))
-    : (branchName || "—");
   const canEditPeople = canEditAssignees && !approved && !awaiting && typeof onSetMembers === "function";
   const selectedIds = assignees.map((p) => String(p.id));
 
+  const rhythm = taskRhythm(task);
+  const seven = approved ? [] : taskLastSevenDays(task);
+  const dueChip = taskDueChip(task, ar);
+  const pace = deriveDailyTaskPace(taskPaceInput(task));
+  const pts = taskPointsLine(task);
+  const statusPill = approved
+    ? { tone: "ok", text: ar ? "مكتملة" : "Completed" }
+    : awaiting
+      ? { tone: "warn", text: ar ? "بانتظار الاعتماد" : "Awaiting approval" }
+      : { tone: "warn", text: ar ? "قيد التنفيذ" : "In progress", live: true };
+  const rhythmLine = !rhythm.active
+    ? null
+    : rhythm.gap === 0
+      ? { tone: "ok", text: ar ? "على الإيقاع" : "On pace" }
+      : rhythm.gap > 0
+        ? { tone: "ok", text: ar ? `متقدّم بـ${rhythm.gap} عن الإيقاع` : `${rhythm.gap} ahead of pace` }
+        : { tone: Math.abs(rhythm.gap) >= Math.max(2, Math.round(rhythm.target * 0.1)) ? "bad" : "warn", text: ar ? `متأخر عن الإيقاع بـ${Math.abs(rhythm.gap)} — المفروض ${rhythm.expected} حتى اليوم` : `${Math.abs(rhythm.gap)} behind — ${rhythm.expected} expected by today` };
+  const printOrder = () => printSheet(taskWorkOrderSheet({
+    task,
+    ar,
+    doneN,
+    targetN,
+    status: { label: statusPill.text, tone: statusPill.tone },
+    owner: ownerFace,
+    branch: branchName,
+    doers: peopleNames,
+    creator: task.createdByName || taskCreatorName(task),
+    recurrence: recLabel,
+    priority: ar ? (PRIORITIES.find((p) => p.id === pri) || PRIORITIES[1]).ar : (PRIORITIES.find((p) => p.id === pri) || PRIORITIES[1]).en,
+    points: pointsWord(pts.points, ar),
+  }));
+  const menuItems = [
+    { key: "print", label: ar ? "طباعة أمر العمل" : "Print the work order", hint: ar ? "ورقة A4 بالسجل والتوقيعات" : "A4 sheet with log and signatures", onClick: printOrder },
+    canReassign || canTransfer || canEndDelegation ? { divider: true } : null,
+    canReassign ? { key: "delegate", label: ar ? "توكيل منفّذ آخر" : "Delegate", hint: ar ? "داخل الفرع نفسه" : "Within the branch", onClick: () => onOpenReassign?.(), disabled: busy } : null,
+    canTransfer ? { key: "transfer", label: ar ? "نقل إلى فرع آخر" : "Transfer to another branch", onClick: () => onOpenTransfer?.(), disabled: busy } : null,
+    canEndDelegation ? { key: "end-delegation", label: ar ? "إنهاء التوكيل" : "End delegation", onClick: () => onEndDelegation?.(), disabled: busy } : null,
+    showDelete ? { divider: true } : null,
+    showDelete ? { key: "delete", label: ar ? "حذف الأمر" : "Delete the order", danger: true, onClick: () => onOpenDelete?.(), disabled: busy } : null,
+  ];
+  const dmy = (v) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ""));
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : "—";
+  };
+  const remaining = Math.max(0, targetN - doneN);
+  const PRI = PRIORITIES.find((p) => p.id === pri) || PRIORITIES[1];
+  const W = WEIGHTS.find((w) => w.w === weight) || WEIGHTS[2];
+
   return (
     <>
+      <DetailHero
+        kind={ar ? "أمر عمل" : "Work order"}
+        pills={(
+          <>
+            <HeroPill tone={statusPill.tone} live={statusPill.live} data="status">{statusPill.text}</HeroPill>
+            {dueChip ? <HeroPill tone={dueChip.tone === "mute" ? "mute" : dueChip.tone} data="due">{dueChip.text}</HeroPill> : null}
+          </>
+        )}
+        menu={menuItems.some((x) => x && !x.divider) ? <OpsMoreMenu ar={ar} items={menuItems} placement="down" dark /> : null}
+        figure={(
+          <HeroFigure
+            value={`${doneN}/${targetN}`}
+            unit={ar ? `منجز · ${pct}%` : `done · ${pct}%`}
+            line={rhythmLine?.text || (approved ? (ar ? "اعتُمد الإنجاز" : "Completion approved") : awaiting ? (ar ? "اكتمل العدد — بانتظار اعتماد المشرف" : "Count reached — waiting for approval") : "")}
+            lineTone={rhythmLine?.tone}
+          />
+        )}
+        aside={seven.some((d) => d.state !== "off") ? <HeroSevenDays days={seven} ar={ar} /> : null}
+        facts={[
+          !approved && !awaiting && pace.active ? { label: ar ? "المطلوب اليوم" : "Due today", value: pace.todayExpected, mono: true, tone: "gold" } : null,
+          !approved ? { label: ar ? "المتبقي" : "Left", value: remaining, mono: true } : null,
+          !approved && !awaiting && pace.active ? { label: ar ? "الأيام المتبقية" : "Days left", value: pace.daysLeft, mono: true } : null,
+          { label: ar ? "الاستحقاق" : "Due", value: dmy(task.dueAt), mono: true, tone: dueChip?.tone === "bad" ? "bad" : undefined },
+          { label: pts.granted ? (ar ? "النقاط الممنوحة" : "Points earned") : (ar ? "النقاط عند الاعتماد" : "Points on approval"), value: pointsWord(pts.points, ar), tone: "gold" },
+        ]}
+      >
+        <HeroBar pct={pct} markPct={rhythm.active ? rhythm.markPct : 0} markTitle={ar ? `المفروض حتى اليوم ${rhythm.expected}` : `Expected by today ${rhythm.expected}`} tone={rhythmLine?.tone === "bad" ? "bad" : approved ? "ok" : "gold"} />
+      </DetailHero>
+
       <OpsTaskSection title={ar ? "الإسناد" : "Assignment"}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <ReadField label={ar ? "الفرع" : "Station"}>{branchName || task.stationId || "—"}</ReadField>
-          <ReadField label={ar ? "أنشأها" : "Created by"}>
-            {task.createdByName || taskCreatorName(task) || "—"}
-          </ReadField>
-        </div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 160px", minWidth: 0 }}>
-            <span style={LABEL_SPAN}>{ar ? "عدد الأشخاص" : "People"}</span>
+        <FactGrid>
+          <Fact label={ar ? "المسؤول" : "Owner"}>{ownerFace}</Fact>
+          <Fact label={ar ? "الفرع" : "Branch"}>{branchName || task.stationId || "—"}</Fact>
+          {task.createdByName || taskCreatorName(task) ? <Fact label={ar ? "أنشأها" : "Created by"}>{task.createdByName || taskCreatorName(task)}</Fact> : null}
+          {isOpsVisitorTask(task) ? <Fact label={ar ? "الفرع الأم" : "Home branch"}><OpsDispatchChip homeName={task.homeStationName} ar={ar} /></Fact> : null}
+        </FactGrid>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ink2)" }}>{ar ? `المنفّذون · ${assignees.length || 0}` : `Doers · ${assignees.length || 0}`}</span>
             {canEditPeople ? (
-              <div style={{ ...FIELD, display: "flex", alignItems: "center", background: CARD }}>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{peopleFace}</span>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => assignees.length && setShowPeople((open) => !open)}
-                aria-expanded={showPeople}
-                style={{
-                  ...FIELD,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                  cursor: assignees.length ? "pointer" : "default",
-                  fontFamily: "inherit",
-                  textAlign: "start",
-                  background: CARD,
-                }}
-              >
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{peopleFace}</span>
-                {assignees.length ? (
-                  <span style={{ color: MUTED, fontSize: 11, flexShrink: 0 }} aria-hidden>
-                    {showPeople ? "▴" : "▾"}
-                  </span>
-                ) : null}
+              <button type="button" data-edit-people="1" onClick={() => setShowPeople((v) => !v)} style={{ marginInlineStart: "auto", fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: "none", background: "transparent", color: "#0F5535", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+                {showPeople ? (ar ? "تم" : "Done") : (ar ? "عدّل المنفّذين" : "Edit doers")}
               </button>
-            )}
+            ) : null}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 auto", minWidth: 160 }}>
-            <span style={LABEL_SPAN}>{ar ? "المسؤول" : "Owner"}</span>
-            <div style={{ ...FIELD, display: "flex", alignItems: "center", overflow: "hidden" }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: 1 }}>
-                {ownerFace}
-              </span>
-            </div>
-          </div>
-          {isOpsVisitorTask(task) ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 auto", minWidth: 160 }}>
-              <span style={LABEL_SPAN}>{ar ? "الفرع الأم" : "Home station"}</span>
-              <div style={{ ...FIELD, display: "flex", alignItems: "center", overflow: "hidden" }}>
-                <OpsDispatchChip homeName={task.homeStationName} ar={ar} />
-              </div>
-            </div>
-          ) : null}
-        </div>
-        {canEditPeople ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <span style={LABEL_SPAN}>{ar ? "المسند إليهم" : "Assignees"}</span>
+          {canEditPeople && showPeople ? (
             <MemberMultiSelect
               members={stationMembers}
               selected={selectedIds}
@@ -218,79 +155,53 @@ export default function OpsTaskHeader({
               lang={ar ? "ar" : "en"}
               emptyLabel={ar ? "لا يوجد أعضاء في هذا الفرع." : "No members in this station."}
             />
-          </div>
-        ) : showPeople && assignees.length ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {assignees.map((person) => (
-              <div
-                key={person.id}
-                style={{ ...FIELD, display: "flex", alignItems: "center", overflow: "hidden" }}
-              >
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          ) : (
+            <div data-doers="1" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {assignees.length ? assignees.map((person) => (
+                <span key={person.id} style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px 4px 4px", borderRadius: 999, background: "var(--nv-soft)", border: "1px solid var(--nv-line2, #EEF1EF)", fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)" }}>
+                  <span aria-hidden style={{ width: 24, height: 24, borderRadius: 999, background: "var(--nv-ok-soft)", color: "var(--nv-ok-ink)", fontSize: 10.5, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                    {String(person.name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]).join("")}
+                  </span>
                   {person.name}
                 </span>
-              </div>
-            ))}
-          </div>
-        ) : null}
-        {showActions ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            {canReassign && <button type="button" disabled={busy} onClick={() => onOpenReassign?.()} style={actionBtn(busy)}>{ar ? "توكيل" : "Delegate"}</button>}
-            {canTransfer && <button type="button" disabled={busy} onClick={() => onOpenTransfer?.()} style={actionBtn(busy)}>{ar ? "نقل" : "Transfer"}</button>}
-            {canEndDelegation && <button type="button" disabled={busy} onClick={() => onEndDelegation?.()} style={actionBtn(busy)}>{ar ? "إنهاء التوكيل" : "End delegation"}</button>}
-            {showDelete && (
-              <button type="button" disabled={busy} onClick={() => onOpenDelete?.()} style={actionBtn(busy, "danger")}>
-                {ar ? "حذف" : "Delete"}
-              </button>
-            )}
-          </div>
-        ) : null}
+              )) : <span style={{ fontSize: 12, color: MUTED }}>{branchName ? (ar ? `فريق ${branchName}` : `${branchName} team`) : "—"}</span>}
+            </div>
+          )}
+        </div>
       </OpsTaskSection>
 
       <OpsTaskSection title={ar ? "طبيعة العمل" : "Work profile"}>
-        {workType ? (
-          <ReadField label={ar ? "نوع العمل" : "Work type"}>{workType}</ReadField>
-        ) : null}
+        <FactGrid min={140}>
+          <Fact label={ar ? "الأولوية" : "Priority"}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, color: PRI.ink }}>
+              <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: PRI.dot }} />
+              {ar ? PRI.ar : PRI.en}
+            </span>
+          </Fact>
+          <Fact label={ar ? "وزن الجهد" : "Effort"}><span><span dir="ltr">×{W.w}</span> {ar ? W.ar : W.en}</span></Fact>
+          {workType ? <Fact label={ar ? "نوع العمل" : "Work type"}>{workType}</Fact> : null}
+          <Fact label={ar ? "البدء" : "Start"} ltr>{dmy(task.startAt || task.createdAt)}</Fact>
+        </FactGrid>
         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          <span style={LABEL_SPAN}>{ar ? "الأولوية" : "Priority"}</span>
-          <div style={{ display: "flex", gap: 8 }}>
-            {PRIORITIES.map((p) => (
-              <div key={p.id} style={priorityStyle(pri === p.id, p)}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: pri === p.id ? p.dot : "var(--nv-mute-fill, #C7CCD6)", flexShrink: 0 }} />
-                <span>{ar ? p.ar : p.en}</span>
-              </div>
-            ))}
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ink2)" }}>{ar ? "مكان التنفيذ" : "Where the work happens"}</span>
+          <div role="radiogroup" data-mode-switch="1" style={{ display: "flex", gap: 4, padding: 4, borderRadius: 11, background: "var(--nv-soft)", border: "1px solid var(--nv-line2, #EEF1EF)" }}>
+            {TASK_MODES.map((m) => {
+              const on = mode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  disabled={!canSwitchMode || busy}
+                  onClick={() => canSwitchMode && !on && onSetMode(m.id)}
+                  style={{ flex: 1, height: 34, borderRadius: 8, border: "none", fontFamily: "inherit", fontSize: 12.5, fontWeight: on ? 700 : 500, background: on ? "#0B3D27" : "transparent", color: on ? "#fff" : "var(--nv-ink2)", cursor: canSwitchMode && !on ? "pointer" : "default", boxShadow: on ? "0 2px 6px rgba(6,61,38,.2)" : "none" }}
+                >
+                  {ar ? m.ar : m.en}
+                </button>
+              );
+            })}
           </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          <span style={LABEL_SPAN}>{ar ? "وزن الجهد" : "Effort weight"}</span>
-          <div style={{ display: "flex", gap: 6 }}>
-            {WEIGHTS.map((w) => (
-              <div key={w.w} style={weightStyle(weight === w.w)}>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Sans',sans-serif", fontSize: 14, fontWeight: 600 }}>×{w.w}</span>
-                <span style={{ fontSize: 10, lineHeight: 1.2, textAlign: "center" }}>{ar ? w.ar : w.en}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          <span style={LABEL_SPAN}>{ar ? "مكان التنفيذ" : "Where the work happens"}</span>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {TASK_MODES.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                disabled={!canSwitchMode || busy}
-                onClick={() => canSwitchMode && onSetMode(m.id)}
-                style={modeStyle(mode === m.id, canSwitchMode)}
-              >
-                {ar ? m.ar : m.en}
-              </button>
-            ))}
-          </div>
-          {/* The card describes a task, it does not attempt a completion, so the level
-              stays with the task's span — reference off season, red alert in it. The
-              refusal in the banned hours is named by the composer's log gate. */}
           <HeatBanNotice notice={deriveTaskHeatBanNotice({ ...task, mode })} ar={ar} />
         </div>
         {recLabel ? (
@@ -298,27 +209,7 @@ export default function OpsTaskHeader({
         ) : null}
       </OpsTaskSection>
 
-      <OpsTaskSection
-        title={ar ? "الجدول والعدد" : "Schedule & count"}
-        hint={ar ? "التقدّم يُشتق من الإنجاز المسجّل مقابل العدد المستهدف." : "Progress is derived from logged completion versus the target count."}
-      >
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-          <ReadField label={ar ? "البدء" : "Start"}><span dir="ltr">{task.startAt ? String(task.startAt).slice(0, 10) : "—"}</span></ReadField>
-          <ReadField label={ar ? "الاستحقاق" : "Due"}><span dir="ltr">{task.dueAt ? String(task.dueAt).slice(0, 10) : "—"}</span></ReadField>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={LABEL_SPAN}>{ar ? "التقدّم" : "Progress"}</span>
-          <div style={{ ...FIELD, display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ flex: 1, height: 6, borderRadius: 4, background: "var(--nv-line)", overflow: "hidden" }}>
-              <span style={{ display: "block", width: `${pct}%`, height: "100%", background: ACCENT, borderRadius: 4 }} />
-            </span>
-            <span dir="ltr" style={{ fontSize: 12, color: MUTED, fontFamily: "'IBM Plex Sans',sans-serif", flexShrink: 0 }}>
-              {doneN}/{targetN}
-            </span>
-          </div>
-        </div>
-        {paceStrip}
-      </OpsTaskSection>
+
     </>
   );
 }

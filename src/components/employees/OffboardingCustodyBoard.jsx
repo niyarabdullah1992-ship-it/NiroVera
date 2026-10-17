@@ -4,12 +4,20 @@ import { Loader2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
 import {
+  checkAddCustodyGate,
   checkCompleteOffboardingGate,
   checkMarkReturnedGate,
+  custodyDebtOf,
   deriveEos,
   deriveSettlementDeadline,
+  eosEndMs,
 } from "@/lib/offboardingDerivations";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
+import { averageActualWage, deriveFinalSettlement, isAverageWageBasis } from "@/lib/payrollLaw";
+import { recordFinalSettlementPaid } from "@/lib/payrollLawStore";
+import RightHint from "@/components/shared/RightHint";
+import OffboardingLawPanel from "@/components/employees/OffboardingLawPanel";
+import { payHintFor } from "@/lib/rightHints.pay";
+import { compPayout, hoursWord } from "@/lib/compLeave";
 import { toast } from "@/components/ui/use-toast";
 import { BORDER, BRAND, BRAND_DEEP, MUTED, NAVY, OK, WARN, BAD, NEUTRAL, CARD, SURFACE } from "@/lib/platformStyles";
 
@@ -19,7 +27,7 @@ async function offboardingApi(payload) {
 }
 
 const STEP_LABEL = {
-  assets: { ar: "تسليم العهد والأصول", en: "Return assigned assets" },
+  assets: { ar: "تسليم العهد", en: "Return custody" },
   safety: { ar: "إخلاء طرف من السلامة", en: "Safety clearance" },
   settlement: { ar: "تسوية المستحقات المالية", en: "Final settlement" },
   access: { ar: "إلغاء صلاحيات الدخول", en: "Revoke system access" },
@@ -64,6 +72,17 @@ function chipForStep(step, ar, completed) {
   return stepChip(step.state, ar);
 }
 
+const fieldStyle = {
+  padding: "6px 10px",
+  borderRadius: "8px",
+  border: `1px solid ${BORDER}`,
+  background: CARD,
+  color: NAVY,
+  fontSize: "12px",
+  fontFamily: "inherit",
+  minWidth: 0,
+};
+
 const fmt = (n) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 
 const card = {
@@ -87,11 +106,13 @@ const actStyle = {
 };
 
 /** Platform isTabOff — L2811–2872 */
-export default function OffboardingCustodyBoard({ employee, canManage = false, lang = "ar" }) {
+export default function OffboardingCustodyBoard({ employee, canManage = false, lang = "ar", custodyOnly = false }) {
   const ar = lang === "ar";
-  const { company, currentUser } = useAuth();
+  const { company, currentUser, data } = useAuth();
   const [caseRow, setCaseRow] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState({ name: "", serial: "", value: "", handedAt: "", evidenceName: "", evidenceUrl: "" });
+  const [uploading, setUploading] = useState(false);
 
   const applyRemote = (remote) => {
     setCaseRow(remote?.case || null);
@@ -163,6 +184,43 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
     );
   };
 
+  const todayIso = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
+  const attachEvidence = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const up = await base44.integrations.Core.UploadFile({ file });
+      setDraft((prev) => ({ ...prev, evidenceName: file.name, evidenceUrl: up?.file_url || up?.url || "" }));
+    } catch {
+      // The file name alone still names the handover paper; the URL is optional.
+      setDraft((prev) => ({ ...prev, evidenceName: file.name, evidenceUrl: "" }));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const addCustody = async () => {
+    const item = {
+      name: draft.name.trim(),
+      serial: draft.serial.trim() || undefined,
+      value: draft.value === "" ? 0 : Number(draft.value),
+      handedAt: draft.handedAt || undefined,
+      evidenceName: draft.evidenceName || undefined,
+      evidenceUrl: draft.evidenceUrl || undefined,
+    };
+    const gate = checkAddCustodyGate(caseRow, item, todayIso());
+    if (!gate.ok) {
+      toast({ description: ar ? gate.reason : gate.reasonEn, variant: "destructive" });
+      return;
+    }
+    await run({ action: "addCustody", item }, ar ? `سُجّلت العهدة: ${item.name}` : `Custody recorded: ${item.name}`);
+    setDraft({ name: "", serial: "", value: "", handedAt: "", evidenceName: "", evidenceUrl: "" });
+  };
+
   const complete = async () => {
     const gate = checkCompleteOffboardingGate(caseRow, {
       contractExit: employee?.profile?.contractExit,
@@ -186,19 +244,55 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
 
   if (!currentUser) return null;
 
+  // Arts. 84/87/111: service, the Art. 87 windows and accrued leave are measured to the exit
+  // date (effective date, else last day), not to whenever the file happens to be opened.
+  const exitRow = employee?.profile?.contractExit || caseRow?.contractExit || {};
+  const endMs = eosEndMs({ contractExit: exitRow });
+  const endDay = new Date(endMs);
+  const endIso = `${endDay.getFullYear()}-${String(endDay.getMonth() + 1).padStart(2, "0")}-${String(endDay.getDate()).padStart(2, "0")}`;
+  // Art. 96: piece / commission-only wages settle on the last year's average actual wage.
+  const average = isAverageWageBasis(employee) ? averageActualWage(data?.payrollRuns || [], employee?.id, endIso.slice(0, 7)) : null;
   const eos = caseRow
     ? deriveEos({
       ...caseRow,
-      contractExit: employee?.profile?.contractExit || caseRow.contractExit,
+      contractExit: exitRow,
       gender: employee?.profile?.gender,
       profile: employee?.profile,
-    })
+      leaveRequests: employee?.leaveRequests || [],
+      averageWage: average?.average,
+      averageWageBasis: Boolean(average?.months),
+    }, endMs)
     : null;
   const settlement = deriveSettlementDeadline({
-    reason: employee?.profile?.contractExit?.reason || caseRow?.contractExit?.reason || caseRow?.exitReason,
-    lastWorkDate: employee?.profile?.contractExit?.effectiveDate || caseRow?.contractExit?.effectiveDate,
-    contractExit: employee?.profile?.contractExit || caseRow?.contractExit,
+    reason: exitRow.reason || caseRow?.exitReason,
+    lastWorkDate: exitRow.effectiveDate || exitRow.lastDay,
+    contractExit: exitRow,
+    settlementPaidAt: exitRow.settlementPaidAt,
   });
+  const comp = eos ? compPayout(employee, endIso, eos.wage) : { hours: 0, amount: 0 };
+  // Art. 88: the final settlement — partial month, award, leave and comp hours, less work debts set off.
+  const custodyDebt = custodyDebtOf(caseRow?.assets || []);
+  const finalSettlement = eos ? deriveFinalSettlement({
+    employee,
+    eos,
+    payrollRuns: data?.payrollRuns || [],
+    exitDate: exitRow.effectiveDate || exitRow.lastDay || "",
+    monthlyWage: eos.wage,
+    custodyDebt,
+    extras: comp.amount,
+    deadline: settlement,
+  }) : null;
+  const markSettlementPaid = () => {
+    if (!company?.id || !employee?.id || !finalSettlement) return;
+    const res = recordFinalSettlementPaid(company.id, employee.id, { amount: finalSettlement.net });
+    if (res?.error) {
+      toast({ description: ar ? (res.reason || res.error) : (res.reasonEn || res.error), variant: "destructive" });
+      return;
+    }
+    toast({ description: ar ? "سُجّل صرف التصفية النهائية — أُغلقت مهلة المادة 88." : "Final settlement recorded as paid — the Art. 88 window is closed." });
+  };
+  // «التزامك» (HR) / «حقك» (the leaving worker) — one hint per figure, from this exit's numbers.
+  const hintCtx = { view: canManage ? "manager" : "employee", ar, name: employee?.name || "", employeeId: employee?.id };
   const completed = caseRow?.status === "completed";
   const outstanding = caseRow?.outstandingCount || 0;
   const gateOpen = !!caseRow?.gateOpen;
@@ -234,8 +328,8 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
     : outstanding > 0
       ? (ar
         ? `${outstanding} عهدة لم تُستلم — إنهاء الخدمة موقوف`
-        : `${outstanding} assets outstanding — offboarding is blocked`)
-      : (ar ? "كل العهد مُستلمة — يمكن إنهاء الخدمة" : "All assets returned — offboarding can complete");
+        : `${outstanding} custody items outstanding — offboarding is blocked`)
+      : (ar ? "كل العهد مُستلمة — يمكن إنهاء الخدمة" : "All custody returned — offboarding can complete");
 
   const offCompleteStyle = completed
     ? {
@@ -285,11 +379,16 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }} dir={ar ? "rtl" : "ltr"}>
-      <div style={offGateStyle}>{gateText}</div>
+      {custodyOnly ? null : <div style={offGateStyle}>{gateText}</div>}
 
       <div style={card}>
         <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
-          {ar ? "العهد المسجّلة" : "Assigned assets"}
+          {custodyOnly ? (ar ? "عهدتي" : "My custody") : (ar ? "العهد المسجّلة" : "Custody held")}
+        </div>
+        <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.65 }}>
+          {ar
+            ? "أدوات صاحب العمل لدى الموظف — تُعاد عند انتهاء الخدمة، وغير المسلّم يُحسم من التصفية بحدّ."
+            : "Employer tools held by the employee — returned at exit; anything unreturned is set off from the settlement within a cap."}
         </div>
         <div style={{ display: "flex", flexDirection: "column", marginTop: "8px" }}>
           {(caseRow?.assets || []).map((asset) => {
@@ -311,6 +410,19 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                   <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px", fontFamily: "'IBM Plex Mono',monospace" }} dir="ltr">
                     {asset.serial || "—"}
                   </div>
+                  <div style={{ fontSize: "11px", color: MUTED, marginTop: "3px" }}>
+                    {Number(asset.value ?? asset.cost) > 0 ? `${fmt(asset.value ?? asset.cost)} ${ar ? "ر.س" : "SAR"}` : (ar ? "بلا قيمة مسجّلة" : "No value recorded")}
+                    {asset.handedAt ? ` · ${ar ? "سُلّمت" : "Handed"} ${String(asset.handedAt).slice(0, 10)}` : ""}
+                    {asset.returnedAt ? ` · ${ar ? "أُعيدت" : "Returned"} ${String(asset.returnedAt).slice(0, 10)}` : ""}
+                    {asset.evidenceName ? (
+                      <>
+                        {" · "}
+                        {asset.evidenceUrl
+                          ? <a href={asset.evidenceUrl} target="_blank" rel="noreferrer" style={{ color: NAVY }}>{asset.evidenceName}</a>
+                          : asset.evidenceName}
+                      </>
+                    ) : null}
+                  </div>
                 </div>
                 <span style={returned ? OK : BAD}>
                   {returned ? (ar ? "مُستلم" : "Returned") : (ar ? "لم يُسلَّم" : "Outstanding")}
@@ -331,13 +443,52 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
           })}
           {!caseRow?.assets?.length && (
             <div style={{ padding: "22px 0", textAlign: "center", fontSize: "13px", color: MUTED }}>
-              {ar ? "لا عهد مسجّلة بعد." : "No custody assets yet."}
+              {ar ? "لا عهد مسجّلة بعد." : "No custody recorded yet."}
             </div>
           )}
         </div>
+        {canManage && !completed && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center", marginTop: "10px", paddingTop: "12px", borderTop: "1px solid var(--nv-line)" }}>
+            <input
+              value={draft.name}
+              onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
+              placeholder={ar ? "العهدة (مثال: حاسب محمول)" : "Item (e.g. laptop)"}
+              style={{ ...fieldStyle, flex: "2 1 180px" }}
+            />
+            <input
+              value={draft.serial}
+              onChange={(event) => setDraft((prev) => ({ ...prev, serial: event.target.value }))}
+              placeholder={ar ? "الرقم التسلسلي أو الوصف" : "Serial or description"}
+              style={{ ...fieldStyle, flex: "1 1 140px" }}
+            />
+            <input
+              type="number"
+              min="0"
+              value={draft.value}
+              onChange={(event) => setDraft((prev) => ({ ...prev, value: event.target.value }))}
+              placeholder={ar ? "القيمة (ر.س)" : "Value (SAR)"}
+              style={{ ...fieldStyle, flex: "0 1 110px" }}
+            />
+            <input
+              type="date"
+              value={draft.handedAt}
+              onChange={(event) => setDraft((prev) => ({ ...prev, handedAt: event.target.value }))}
+              aria-label={ar ? "تاريخ التسليم" : "Handed on"}
+              style={{ ...fieldStyle, flex: "0 1 140px" }}
+            />
+            <label style={{ ...actStyle, display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              {uploading ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : null}
+              {draft.evidenceName || (ar ? "محضر التسليم" : "Handover paper")}
+              <input type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={(event) => attachEvidence(event.target.files?.[0])} />
+            </label>
+            <button type="button" disabled={busy || uploading} onClick={addCustody} style={{ ...actStyle, opacity: busy || uploading ? 0.5 : 1 }}>
+              {ar ? "تسجيل عهدة" : "Record custody"}
+            </button>
+          </div>
+        )}
       </div>
 
-      {eos && (
+      {eos && !custodyOnly && (
         <div style={card}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
             <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
@@ -347,14 +498,9 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
           </div>
           <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.65, textWrap: "pretty" }}>
             {ar
-              ? "تُحسب المادة 84 أولاً. الفصل وفق المادة 80 بغير مكافأة. ترك العمل وفق المادة 81 يحفظ الحقوق كاملة. الاستقالة تطبّق المادة 85. المادة 87 إذا أنهت العاملة العقد خلال ستة أشهر من الزواج أو ثلاثة أشهر من الوضع. القوة القاهرة في المادة 74 تستحق المادة 84 كاملة."
-              : "Article 84 is calculated first. Article 80 dismissal is without award. Leaving under Article 81 preserves full rights. Resignation applies Article 85. Article 87 applies if a female worker ends the contract within six months of marriage or three months of childbirth. Force majeure under Article 74 is a full Article 84 award."}
+              ? `محسوبة حتى ${eos.endDate || ""} على الأجر الشامل${eos.suspendedDays ? `، دون ${eos.suspendedDays} يوماً موقوفة بلا أجر` : ""}.`
+              : `Calculated to ${eos.endDate || ""} on the full wage${eos.suspendedDays ? `, less ${eos.suspendedDays} suspended unpaid days` : ""}.`}
           </div>
-          {eos?.citeRuleId ? (
-            <div style={{ marginTop: "10px" }}>
-              <LaborArticleCite ruleId={eos.citeRuleId} ar={ar} showText />
-            </div>
-          ) : null}
           {eos.preStart ? (
             <div style={{
               marginTop: "12px",
@@ -375,22 +521,33 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "14px" }}>
               {[
-                { label: ar ? "آخر أجر شامل (أساسي + بدلات)" : "Final wage (base + allowances)", value: fmt(eos.wage) },
+                { label: eos.averageBasis ? (ar ? "متوسط أجر السنة الأخيرة" : "Last year's average wage") : (ar ? `آخر أجر شامل (أساسي + بدلات${eos.commission ? " + عمولات" : ""})` : `Final wage (base + allowances${eos.commission ? " + commissions" : ""})`), value: fmt(eos.wage) },
                 { label: ar ? "نصف شهر × أول 5 سنوات" : "Half month × first 5 years", value: fmt(eos.firstFive) },
                 { label: ar ? "شهر كامل × ما بعد 5 سنوات" : "Full month × years beyond 5", value: fmt(eos.beyondFive) },
-                ...(eos.art80
-                  ? [{ label: ar ? "المادة 80 — بلا مكافأة" : "Article 80 — no award", value: fmt(eos.gratuity) }]
-                  : eos.art81
-                    ? [{ label: ar ? "المادة 81 — الحقوق كاملة" : "Article 81 — full rights", value: fmt(eos.gratuity) }]
-                    : eos.fraction != null && eos.fraction !== 1
-                      ? [{ label: ar ? `تطبيق المادة 85 (${Math.round(eos.fraction * 100)}٪)` : `Article 85 applied (${Math.round(eos.fraction * 100)}%)`, value: fmt(eos.gratuity) }]
-                      : eos.art87
-                        ? [{ label: ar ? "المادة 87 — المكافأة كاملة" : "Article 87 — full award", value: fmt(eos.gratuity) }]
-                        : [{ label: ar ? "مكافأة نهاية الخدمة" : "End-of-service award", value: fmt(eos.gratuity) }]),
+                {
+                  label: eos.art80
+                    ? (ar ? "فصل — بلا مكافأة" : "Dismissal — no award")
+                    : eos.art81
+                      ? (ar ? "ترك العمل بحق — الحقوق كاملة" : "Lawful leaving — full rights")
+                      : eos.fraction != null && eos.fraction !== 1
+                        ? (ar ? `استقالة — ${Math.round(eos.fraction * 100)}٪ من المكافأة` : `Resignation — ${Math.round(eos.fraction * 100)}% of the award`)
+                        : eos.art87
+                          ? (ar ? "المكافأة كاملة" : "Full award")
+                          : (ar ? "مكافأة نهاية الخدمة" : "End-of-service award"),
+                  value: fmt(eos.gratuity),
+                  hint: payHintFor("eos", { ...hintCtx, eos }),
+                },
                 {
                   label: ar ? `بدل ${eos.unusedAnnualDays} يوم إجازة غير مستنفدة` : `${eos.unusedAnnualDays} days unused annual leave`,
                   value: fmt(eos.leaveCash),
+                  hint: payHintFor("leaveCash", { ...hintCtx, days: eos.unusedAnnualDays, amount: eos.leaveCash }),
                 },
+                // Regs 22 bis — comp leave not taken before leaving is paid at the actual hourly wage.
+                ...(() => {
+                  return comp.hours > 0
+                    ? [{ label: ar ? `أجرة ${hoursWord(comp.hours)} إجازة تعويضية لم تُؤخذ` : `${comp.hours} h untaken compensatory leave`, value: fmt(comp.amount) }]
+                    : [];
+                })(),
               ].map((r) => (
                 <div
                   key={r.label}
@@ -403,15 +560,15 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                     borderBottom: "1px solid var(--nv-line)",
                   }}
                 >
-                  <span style={{ fontSize: "12px", color: MUTED }}>{r.label}</span>
+                  <span style={{ display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: "12px", color: MUTED }}>
+                    {r.label}
+                    {r.hint ? <RightHint ar={ar} hint={r.hint} /> : null}
+                  </span>
                   <span dir="ltr" style={{ fontSize: "13px", fontWeight: 500, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right", color: NAVY }}>
                     {r.value}
                   </span>
                 </div>
               ))}
-              <div style={{ marginTop: 8 }}>
-                <LaborArticleCite ruleId="eos.unusedLeave.cite" ar={ar} showText />
-              </div>
               {eos.unlawful?.applies ? (
                 <div style={{ marginTop: 10 }}>
                   <div style={{
@@ -423,26 +580,28 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                     borderBottom: "1px solid var(--nv-line)",
                   }}
                   >
-                    <span style={{ fontSize: "12px", color: MUTED }}>
+                    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: "12px", color: MUTED }}>
                       {ar
-                        ? `تعويض المادة 77 إن ثبت الإنهاء غير المشروع — لا يُضاف إلى الإجمالي`
-                        : `Article 77 indemnity if termination is unlawful — not added to the total`}
+                        ? "تعويض الإنهاء غير المشروع إن ثبت — لا يُضاف إلى الإجمالي"
+                        : "Unlawful-termination indemnity if proven — not added to the total"}
+                      <RightHint ar={ar} hint={payHintFor("unlawful", { ...hintCtx, amount: eos.unlawful.amount })} />
                     </span>
                     <span dir="ltr" style={{ fontSize: "13px", fontWeight: 500, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right", color: NAVY }}>
                       {fmt(eos.unlawful.amount)}
                     </span>
                   </div>
-                  <LaborArticleCite ruleId="eos.unlawful.cite" ar={ar} showText />
                 </div>
               ) : null}
               <div style={{ marginTop: 10 }}>
-                <LaborArticleCite ruleId={settlement.workerEnded ? "eos.settlement.workerDays" : "eos.settlement.employerDays"} ar={ar} showText />
-                <div style={{ fontSize: 12, color: settlement.late ? "var(--nv-warn-ink)" : MUTED, marginTop: 6, lineHeight: 1.65 }}>
-                  {settlement.pending
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12, color: settlement.late ? "var(--nv-warn-ink)" : MUTED, lineHeight: 1.65 }}>
+                  {settlement.closed
+                    ? (ar ? `صُرفت التصفية في ${settlement.paidAt}${settlement.paidLate ? ` — بعد المهلة (${settlement.due})` : ""}.` : `Settlement paid on ${settlement.paidAt}${settlement.paidLate ? ` — after the window (${settlement.due})` : ""}.`)
+                    : settlement.pending
                     ? (ar ? "مهلة التصفية تبدأ من آخر يوم عمل." : "The settlement window starts from the last working day.")
                     : settlement.late
                       ? (ar ? `تجاوزت مهلة التصفية (${settlement.due}).` : `The settlement window (${settlement.due}) has passed.`)
                       : (ar ? `تصفية الحقوق حتى ${settlement.due} (${settlement.days} أيام).` : `Settle entitlements by ${settlement.due} (${settlement.days} days).`)}
+                  <RightHint ar={ar} hint={payHintFor("settlement", { ...hintCtx, settlement, total: finalSettlement ? finalSettlement.net : eos.total + comp.amount })} />
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "12px" }}>
@@ -451,16 +610,53 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
                 </span>
                 <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
                   <span dir="ltr" style={{ fontSize: "22px", fontWeight: 600, fontFamily: "'IBM Plex Sans',sans-serif", textAlign: "right", color: NAVY }}>
-                    {fmt(eos.total)}
+                    {fmt(eos.total + comp.amount)}
                   </span>
                   <span style={{ fontSize: "12px", color: MUTED }}>SAR</span>
                 </div>
               </div>
+              {finalSettlement ? (
+                <div data-final-settlement="1" style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>{ar ? "التصفية النهائية" : "Final settlement"}</div>
+                  {[
+                    finalSettlement.partialDays
+                      ? { label: ar ? `أجر الشهر الأخير — ${finalSettlement.partialDays} يوماً` : `Final month's wage — ${finalSettlement.partialDays} days`, value: fmt(finalSettlement.partialWage) }
+                      : { label: ar ? (finalSettlement.monthPaid ? "أجر الشهر الأخير — مصروف في المسير" : "أجر الشهر الأخير — حدد تاريخ الخروج") : (finalSettlement.monthPaid ? "Final month's wage — paid in the run" : "Final month's wage — set the exit date"), value: "—" },
+                    { label: ar ? "المكافأة وبدل الإجازة والساعات التعويضية" : "Award, leave pay and comp hours", value: fmt(finalSettlement.eosTotal + finalSettlement.extras) },
+                    ...(finalSettlement.advances ? [{ label: ar ? "تُخصم سلف قائمة (دين بسبب العمل)" : "Less outstanding advances (work debt)", value: `− ${fmt(Math.min(finalSettlement.advances, finalSettlement.setOff))}` }] : []),
+                    ...(finalSettlement.custodyDebt ? [{
+                      label: ar
+                        ? `تُخصم عهدة لم تُسلَّم${finalSettlement.custodyToCourt ? `؛ الباقي ${fmt(finalSettlement.custodyToCourt)} يُطلب أمام المحكمة العمالية` : ""}`
+                        : `Less unreturned custody${finalSettlement.custodyToCourt ? `; the remaining ${fmt(finalSettlement.custodyToCourt)} is claimed before the labour court` : ""}`,
+                      value: `− ${fmt(finalSettlement.custodySetOff)}`,
+                      hint: payHintFor("custody", { ...hintCtx, debt: finalSettlement.custodyDebt, setOff: finalSettlement.custodySetOff, toCourt: finalSettlement.custodyToCourt, wage: eos.wage }),
+                    }] : []),
+                  ].map((r) => (
+                    <div key={r.label} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ display: "inline-flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12, color: MUTED }}>
+                        {r.label}
+                        {r.hint ? <RightHint ar={ar} hint={r.hint} /> : null}
+                      </span>
+                      <span dir="ltr" style={{ fontSize: 13, color: NAVY }}>{r.value}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{ar ? "صافي التصفية" : "Net settlement"}</span>
+                    <span dir="ltr" style={{ fontSize: 18, fontWeight: 600, color: NAVY }}>{fmt(finalSettlement.net)} SAR</span>
+                  </div>
+                  {canManage && !finalSettlement.paidAt ? (
+                    <button type="button" onClick={markSettlementPaid} style={{ ...actStyle, alignSelf: "flex-start" }}>
+                      {ar ? "تسجيل صرف التصفية" : "Record settlement paid"}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           )}
         </div>
       )}
 
+      {custodyOnly ? null : (
       <div style={card}>
         <div style={{ fontSize: "13px", fontWeight: 600, color: NAVY }}>
           {ar ? "إنهاء الخدمة" : "Offboarding"}
@@ -468,10 +664,10 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
         <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px", lineHeight: 1.65, textWrap: "pretty" }}>
           {ar
             ? "لا يُغلق إنهاء الخدمة قبل استلام كل العهد وإلغاء الصلاحيات — الخطوتان مترابطتان في النظام."
-            : "Offboarding cannot close before every asset is returned and access is revoked — the two steps are linked."}
+            : "Offboarding cannot close before every custody item is returned and access is revoked — the two steps are linked."}
           {" "}
-          <Link to="/app/assets" style={{ color: NAVY, fontWeight: 600 }}>
-            {ar ? "سجل الأصول والعهد" : "Assets & custody register"}
+          <Link to="/app/requests" style={{ color: NAVY, fontWeight: 600 }}>
+            {ar ? "طلبات العهدة في طلباتي" : "Custody requests in My Requests"}
           </Link>
         </div>
         <div style={{ display: "flex", flexDirection: "column", marginTop: "12px" }}>
@@ -506,7 +702,7 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
               completed
                 ? (ar ? "الخدمة منتهية بالفعل" : "Already completed")
                 : !gateOpen
-                  ? (ar ? "استلم كل العهد أولًا" : "Return every asset first")
+                  ? (ar ? "استلم كل العهد أولًا" : "Return all custody first")
                   : undefined
             }
           >
@@ -522,6 +718,9 @@ export default function OffboardingCustodyBoard({ employee, canManage = false, l
           </div>
         )}
       </div>
+      )}
+      {/* «أنظمة الوزارة — نهاية الخدمة» — the same award / comp figures as the settlement above. */}
+      {custodyOnly ? null : <OffboardingLawPanel employee={employee} caseRow={caseRow} eos={eos} comp={eos ? comp : null} ar={ar} />}
     </div>
   );
 }

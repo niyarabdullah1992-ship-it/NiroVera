@@ -5,14 +5,14 @@ import OpsTaskAuditTimeline from "@/components/tasks/OpsTaskAuditTimeline";
 import DailyPaceStrip from "@/components/tasks/DailyPaceStrip";
 import OpsTaskHeader from "@/components/tasks/detail/OpsTaskHeader";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
+import OpsTaskChain from "@/components/tasks/detail/OpsTaskChain";
 import OpsTaskApprovalBox from "@/components/tasks/detail/OpsTaskApprovalBox";
+import OpsTaskQualityBox from "@/components/tasks/detail/OpsTaskQualityBox";
 import OpsTaskEmployeeEscalate from "@/components/tasks/detail/OpsTaskEmployeeEscalate";
 import OpsTaskAttachments from "@/components/tasks/detail/OpsTaskAttachments";
 import OpsTaskDiscussion from "@/components/tasks/detail/OpsTaskDiscussion";
 import OpsTaskBlockerResolve from "@/components/tasks/detail/OpsTaskBlockerResolve";
 import OpsTaskComposer from "@/components/tasks/detail/OpsTaskComposer";
-import { DS_RADIUS } from "@/lib/designSystem";
-import { NAVY_FILL } from "@/lib/platformStyles";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 
 function addDays(iso, n) {
@@ -68,6 +68,11 @@ export default function OpsTaskDetail({
   currentUser = null,
   currentUserId,
   employees = [],
+  chain = [],
+  qualityAssignees = [],
+  canDecideQuality = false,
+  onObjectQuality,
+  onDecideQuality,
 }) {
   const [draftQty, setDraftQty] = useState(0);
   const [draftIssue, setDraftIssue] = useState(false);
@@ -195,6 +200,8 @@ export default function OpsTaskDetail({
       asForm={false}
       zIndex={110}
       dataNv="task"
+      tinted
+      wide
       footer={(
         <>
           <OpsTaskBlockerResolve
@@ -258,7 +265,7 @@ export default function OpsTaskDetail({
       />
 
       {deleted && (
-        <OpsTaskSection tone="bad" title={ar ? "محذوفة — تبقى في السجل" : "Deleted — stays in the record"}>
+        <OpsTaskSection tone="bad" ar={ar} flag={ar ? "محذوفة" : "Deleted"} title={ar ? "محذوفة — تبقى في السجل" : "Deleted — stays in the record"}>
           <div style={{ fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.65 }}>
             {doneN > 0
               ? (ar
@@ -281,8 +288,30 @@ export default function OpsTaskDetail({
         </OpsTaskSection>
       )}
 
+      {!deleted ? (
+        <OpsTaskChain
+          ar={ar}
+          chain={chain}
+          level={Number(task.escalationLevel) || 0}
+          settled={approved}
+          autoEscalated={!!task.autoEscalated}
+          rejectCount={opsRejectionCount(task)}
+          windowInfo={awaiting
+            ? { pct: 100, tone: "ok", label: ar ? "اكتمل العدد — بانتظار اعتماده" : "Count reached — waiting for approval" }
+            : expectedToday > 0
+              ? {
+                pct: Math.round((Math.min(loggedToday, expectedToday) / expectedToday) * 100),
+                tone: loggedToday >= expectedToday ? "ok" : "gold",
+                label: ar
+                  ? `حصة اليوم ${loggedToday} من ${expectedToday}${loggedToday >= expectedToday ? "" : " — إن لم تكتمل يصعد"}`
+                  : `Today ${loggedToday} of ${expectedToday}${loggedToday >= expectedToday ? "" : " — climbs if not met"}`,
+              }
+              : null}
+        />
+      ) : null}
+
       {awaiting && !approved && !deleted && (
-        <OpsTaskApprovalBox ar={ar} busy={busy} canManage={canManage} points={points} targetN={targetN} currentLevelLabel={currentLevelLabel} escalationSteps={escalationSteps} t={t} lang={lang} onApprove={onApprove} onReject={onReject} />
+        <OpsTaskApprovalBox ar={ar} busy={busy} canManage={canManage} points={points} targetN={targetN} currentLevelLabel={currentLevelLabel} task={task} assignees={qualityAssignees} onApprove={onApprove} onReject={onReject} />
       )}
       {!approved && !awaiting && !deleted && (
         <OpsTaskEmployeeEscalate
@@ -294,12 +323,18 @@ export default function OpsTaskDetail({
           onEscalate={onEmployeeEscalate}
         />
       )}
-          {approved && (
-        <OpsTaskSection tone="ok" title={ar ? "اعتُمد الإنجاز" : "Completion approved"}>
-          <div style={{ fontSize: 12, color: "var(--nv-ok-ink)", lineHeight: 1.65 }}>
-            {ar ? `مُنحت ${task.pointsAwarded ?? points} نقطة — دخلت في نسبة الأداء وسجل التدقيق.` : `${task.pointsAwarded ?? points} points granted — in the performance score and audit trail.`}
-            </div>
-        </OpsTaskSection>
+      {approved && (
+        <OpsTaskQualityBox
+          ar={ar}
+          task={task}
+          points={points}
+          viewerId={currentUserId || currentUser?.id}
+          canDecide={canDecideQuality}
+          busy={busy}
+          employees={employees}
+          onObject={onObjectQuality}
+          onDecide={onDecideQuality}
+        />
       )}
 
       <OpsTaskAttachments
@@ -316,19 +351,9 @@ export default function OpsTaskDetail({
         onSaveSteps={onSaveSteps}
       />
       <OpsTaskAuditTimeline task={task} ar={ar} />
-      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: DS_RADIUS, background: NAVY_FILL, color: "#fff", flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 10, color: "rgba(255,255,255,.72)", letterSpacing: "0.1em", fontWeight: 600 }}>{ar ? "قيمة المهمة بالنقاط" : "TASK WORTH"}</div>
-          <div dir="ltr" style={{ fontFamily: "var(--font-mono, 'IBM Plex Mono', monospace)", fontSize: 28, fontWeight: 600, lineHeight: 1, marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{points}</div>
-        </div>
-        <div style={{ flex: "1 1 220px", fontSize: 12, color: "rgba(255,255,255,.78)", lineHeight: 1.65, textWrap: "pretty" }}>
-          {ar ? "النقاط = الأولوية × وزن الجهد — تُمنح بعد اعتماد المشرف للإثبات." : "Points = priority × effort — granted after the supervisor approves the proof."}
-        </div>
-      </div>
-
       <OpsTaskSection
         title={ar ? "المحادثة" : "Discussion"}
-        hint={ar ? "اكتب في الشريط أسفل البطاقة. خلال ثلاث دقائق يُحذف الإنشاء من أول رسالة — بلا عدّاد." : "Write in the bar at the bottom. Within three minutes, delete creation from the first message — no countdown."}
+        hint={ar ? "الإنجاز والملاحظات والصور من الشريط أسفل البطاقة. الأحداث (الإنشاء، التوكيل، الاعتماد) في سجل التدقيق أعلاه." : "Progress, notes, and photos from the bar below. Events (creation, delegation, approval) are in the audit trail above."}
       >
         <OpsTaskDiscussion
           task={task}

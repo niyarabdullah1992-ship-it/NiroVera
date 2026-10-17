@@ -23,7 +23,10 @@ import {
   endLocalWorkProof,
   listLocalWorkProofs,
   raiseLocalWorkProof,
+  addLocalWorkProofPerson,
+  markLocalWorkProofPersonOut,
 } from "@/lib/localWorkProofFallback";
+import ProofPeoplePanel from "@/components/proof/ProofPeoplePanel";
 import { getCompanyData } from "@/lib/store";
 import { toast } from "@/components/ui/use-toast";
 import {
@@ -36,17 +39,24 @@ import {
   field,
 } from "@/lib/platformStyles";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
-import PlatformStampShell from "@/components/shared/PlatformStampShell";
+import OpsFrame from "@/components/tasks/OpsFrame";
+import OpsSideSlab from "@/components/tasks/OpsSideSlab";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import OpsMoreMenu from "@/components/tasks/OpsMoreMenu";
+import { PhotoFrame, StageRail, workElapsedLabel, workProofSteps } from "@/components/proof/WorkProofRecordCard";
+import { DutyTile, DutyNumber } from "@/components/schedules/DutyTiles";
+import { formatUiNumber as formatNum } from "@/lib/dateFormat";
+import { useRailSide } from "@/lib/railSide";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
-import { pageKicker } from "@/lib/moduleMeta";
 import ComposerModalShell from "@/components/shared/ComposerModalShell";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import OpsTaskSection from "@/components/tasks/detail/OpsTaskSection";
+import { DetailHero, Fact, HeroBar, HeroFigure, HeroPill, HeroPrintButton } from "@/components/tasks/detail/DetailKit";
+import { printSheet } from "@/lib/printSheet";
+import { workProofSheet } from "@/lib/printRecords";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import PlatformDateField from "@/components/shared/PlatformDateField";
-import ProofSurfaceNote from "@/components/proof/ProofSurfaceNote";
-import OpsLaneTiles from "@/components/tasks/OpsLaneTiles";
-import OpsToolbarStrip, { OpsControlBar, OpsStripSearch } from "@/components/tasks/OpsToolbarStrip";
+import { OpsStripSearch } from "@/components/tasks/OpsToolbarStrip";
 import ProofRecordsTable from "@/components/proof/ProofRecordsTable";
 import ProofAttachments from "@/components/proof/ProofAttachments";
 import ProofAuditTimeline from "@/components/proof/ProofAuditTimeline";
@@ -67,8 +77,7 @@ import WorkProofRaiseFields, {
   workProofEntityFields,
   workSpanLabel,
 } from "@/components/proof/WorkProofRaiseFields";
-import { peopleFromProof, vehiclesFromProof, workProofCrewFields, checkProofPunchStation } from "@/lib/workProofCrew";
-import { visitorIdTypeLabel } from "@/lib/visitorProof";
+import { cleanedPeople, isVehicleFilled, peopleFromProof, vehiclesFromProof, workProofCrewFields, checkProofPunchStation } from "@/lib/workProofCrew";
 import { checkFieldAttendanceGate } from "@/lib/attendanceGate";
 import { getLocalTodayAttendance } from "@/lib/localAttendanceFallback";
 
@@ -114,7 +123,7 @@ function toLocalInput(value) {
 function normalizeWorkProofFilter(value) {
   const raw = String(value || "").toLowerCase();
   if (raw === "sealed" || raw === "completed") return "archive";
-  if (raw === "await" || raw === "archive") return raw;
+  if (raw === "await" || raw === "ready" || raw === "archive") return raw;
   return "all";
 }
 
@@ -169,35 +178,13 @@ function stageDot(stage) {
 const FIELD = { ...field, height: 40 };
 const LABEL_SPAN = { fontSize: 12, fontWeight: 600, color: MUTED };
 
+const hm = (v) => (/(\d{1,2}:\d{2})/.exec(String(v || "")) || [])[1] || "";
+
+// Facts read as label-over-value cells, not read-only input boxes.
 function ReadField({ label, children, ltr, multiline }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 auto", minWidth: 160 }}>
-      <span style={LABEL_SPAN}>{label}</span>
-      <div
-        style={{
-          ...FIELD,
-          height: multiline ? "auto" : 40,
-          minHeight: 40,
-          display: "flex",
-          alignItems: multiline ? "flex-start" : "center",
-          overflow: "hidden",
-          paddingBlock: multiline ? 8 : undefined,
-        }}
-      >
-        <span
-          dir={ltr ? "ltr" : undefined}
-          style={{
-            overflow: "hidden",
-            textOverflow: multiline ? "clip" : "ellipsis",
-            whiteSpace: multiline ? "normal" : "nowrap",
-            minWidth: 0,
-            flex: 1,
-            lineHeight: multiline ? 1.45 : undefined,
-          }}
-        >
-          {children || "—"}
-        </span>
-      </div>
+    <div style={{ flex: "1 1 160px", minWidth: 0, display: "grid" }}>
+      <Fact label={label} ltr={ltr} multiline={multiline}>{children}</Fact>
     </div>
   );
 }
@@ -252,7 +239,10 @@ export default function WorkProof() {
   const [ending, setEnding] = useState(null);
   const [editingProof, setEditingProof] = useState(null);
   const [openProofId, setOpenProofId] = useState(null);
+  const [focusStation, setFocusStation] = useState("");
+  const [sideProof, setSideProof] = useState("");
 
+  const railSide = useRailSide();
   const isManager = !!(currentUser && (
     ["owner", "director", "ops_manager", "station_manager", "pgm", "admin"].includes(currentUser.role)
     || data?.ownerId === currentUser?.id
@@ -680,12 +670,16 @@ export default function WorkProof() {
       proofVehicleText(p),
     ].filter(Boolean).join(" · "),
     date: workProofArchiveDate(p),
+    person: p.raiserName || "",
+    branch: p.stationId ? stationName(p.stationId) : "",
     badge: ar ? (STAGE_LABEL[p.stage || deriveProofStage(p)]?.ar) : (STAGE_LABEL[p.stage || deriveProofStage(p)]?.en),
   }));
+  // «إثباتات العمل» filter as in طلباتي: all live, work in progress, then what needs its finish, الأرشيف last.
   const filterChips = [
-    { id: "all", label: ar ? `الكل · ${liveProofs.length}` : `All · ${liveProofs.length}` },
-    { id: "await", label: ar ? `بانتظار · ${scopedCounts.await}` : `Awaiting · ${scopedCounts.await}` },
-    { id: "archive", label: ar ? `الأرشيف · ${archiveProofs.length}` : `Archive · ${archiveProofs.length}` },
+    { id: "all", label: ar ? "الكل" : "All", n: liveProofs.length },
+    { id: "await", label: ar ? STAGE_LABEL.await.ar : STAGE_LABEL.await.en, n: scopedCounts.await },
+    { id: "ready", label: ar ? STAGE_LABEL.ready.ar : STAGE_LABEL.ready.en, n: scopedCounts.ready },
+    { id: "archive", label: ar ? "الأرشيف" : "Archive", n: archiveProofs.length },
   ];
 
   const proofAccess = (p) => {
@@ -708,7 +702,7 @@ export default function WorkProof() {
     };
   };
 
-  const tableRows = visible.map((p) => {
+  const tableRows = visible.filter((p) => !focusStation || String(p.stationId) === String(focusStation)).map((p) => {
     const access = proofAccess(p);
     const photos = (p.beforeUrl ? 1 : 0) + (p.afterUrl ? 1 : 0);
     const workers = access.workers;
@@ -753,24 +747,146 @@ export default function WorkProof() {
     };
   });
 
+  const crewChange = (fn, okText) => {
+    setBusy(true);
+    try {
+      const result = fn();
+      if (result?.error) {
+        toast({ description: ar ? (result.reason || result.error) : (result.reasonEn || result.reason || result.error), variant: "destructive" });
+        return { ok: false };
+      }
+      toast({ description: okText });
+      load();
+      return { ok: true };
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const openProof = proofs.find((p) => String(p.id || p.ref) === String(openProofId)) || null;
   const openAccess = openProof ? proofAccess(openProof) : null;
-  const openVehicles = openProof ? vehiclesFromProof(openProof) : [];
+  const openVehicles = openProof ? vehiclesFromProof(openProof).filter(isVehicleFilled) : [];
   const openHeatFlag = openProof ? heatBanFlagOf(openProof) : null;
   const openEnd = !!(openProof && ending && String(ending.id) === String(openProof.id || openProof.ref));
 
-  return (
-    <PlatformStampShell
+  const employeeFace = railSide === "employee" || !isManager;
+  const stageCount = (stage) => liveProofs.filter((p) => (p.stage || deriveProofStage(p)) === stage).length;
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const closedThisMonth = archiveProofs.filter((p) => String(p.endedAt || p.approvedAt || p.archivedAt || "").slice(0, 7) === monthKey).length;
+  const workingNow = stageCount("await");
+  const needsFinish = stageCount("ready");
+  const wpTiles = [
+    <DutyTile
+      key="now"
+      dataKey="wp-now"
       ar={ar}
-      maxWidth={1280}
-      kicker={pageKicker("/app/work-proof", lang)}
-      title={ar ? "إثبات العمل" : "Work proof"}
-      hint={ar
-        ? "جهة خارج الشركة وعمالها — ليس أمر عمل لموظف، وليس إثبات زائر على الفرع."
-        : "An outside company and its workers — not a task for an employee, and not a guest at the station."}
+      flag={ar ? "صورة «بعد» مستحقة" : "After photo due"}
+      tone={workingNow ? "warn" : "mute"}
+      label={ar ? "يعمل في الفرع الآن" : "Working at the branch now"}
+      note={ar ? "بدأ العمل وصورة «بعد» لم تُرفق بعد" : "Started, the after photo is still due"}
     >
-      <OpsLaneTiles ar={ar} current="work-proof" />
-      <ProofSurfaceNote ar={ar} current="work-proof" />
+      <DutyNumber value={formatNum(workingNow)} unit={ar ? "جهة" : "parties"} />
+    </DutyTile>,
+    <DutyTile
+      key="ready"
+      dataKey="wp-ready"
+      ar={ar}
+      flag={ar ? "بقي الختم" : "Seal pending"}
+      tone={needsFinish ? "warn" : "mute"}
+      label={ar ? "يحتاج إنهاء" : "Needs finishing"}
+      note={ar ? "الصورتان مرفوعتان — بقي الختم" : "Both photos in — only the seal is left"}
+    >
+      <DutyNumber value={formatNum(needsFinish)} unit={ar ? "إثبات" : "proofs"} />
+    </DutyTile>,
+    <DutyTile
+      key="month"
+      dataKey="wp-month"
+      tone={closedThisMonth ? "ok" : "mute"}
+      label={ar ? "خُتم هذا الشهر" : "Sealed this month"}
+      note={ar ? "في الأرشيف برابط تحقق للجهة" : "In the archive with a verify link"}
+    >
+      <DutyNumber value={formatNum(closedThisMonth)} unit={ar ? "إثبات" : "proofs"} />
+    </DutyTile>,
+  ];
+  // في الموقع الآن: per branch, each party still working with how many of its crew are inside.
+  const wpSide = (() => {
+    const byStation = new Map();
+    for (const p of liveProofs) {
+      const sid = String(p.stationId || "");
+      if (!byStation.has(sid)) byStation.set(sid, []);
+      byStation.get(sid).push(p);
+    }
+    const groups = [...byStation.entries()].map(([sid, list]) => ({
+      id: sid,
+      name: stationName(sid) || (ar ? "بلا فرع" : "No branch"),
+      alert: ar
+        ? `${list.length === 1 ? "جهة واحدة" : `${list.length} جهات`} · ${list.reduce((n, p) => n + cleanedPeople(p.people, p.stationId).filter((x) => !x.outAt).length, 0)} عامل في الموقع`
+        : `${list.length} parties`,
+      rows: list.map((p) => {
+        const access = proofAccess(p);
+        const crew = cleanedPeople(p.people, p.stationId);
+        const inside = crew.filter((x) => !x.outAt).length;
+        const heat = heatBanFlagOf(p);
+        const ready = access.stage === "ready";
+        const id = String(p.id || p.ref);
+        return {
+          id,
+          title: p.entityName || p.title,
+          count: crew.length ? `${inside}/${crew.length}` : "",
+          tone: heat ? "bad" : ready ? "gold" : "soft",
+          line: heat
+            ? (ar ? `مخالفة حظر الشمس · ${heat.minutes} دقيقة` : `Sun-ban breach · ${heat.minutes} min`)
+            : [p.title, ready ? (ar ? "الصورتان جاهزتان — بقي الختم" : "Both photos in — seal left") : workElapsedLabel(p.startedAt, ar)].filter(Boolean).join(" · "),
+          action: [
+            { key: "open", label: ar ? "افتح البطاقة" : "Open the card", onClick: () => setOpenProofId(id) },
+            access.canEnd ? { key: "end", label: ar ? "أنهِ العمل" : "End the work", onClick: () => { setOpenProofId(id); setEnding({ id: p.id || p.ref, endedAt: localDateTimeValue(), afterFile: null }); } } : null,
+          ],
+        };
+      }),
+    }));
+    return (
+      <OpsSideSlab
+        ar={ar}
+        dataKey="wp-side"
+        title={ar ? "في الموقع الآن" : "On site now"}
+        standing={focusStation ? (ar ? `معروض: ${stationName(focusStation)}` : `Showing: ${stationName(focusStation)}`) : (ar ? "كل الفروع" : "All branches")}
+        note={ar ? "كل جهة خارجية تعمل الآن ومن معها من عمالها. الفرع يقصر القائمة عليه." : "Each outside party working now and its crew inside. A branch narrows the list."}
+        summary={liveProofs.length ? (ar ? `${liveProofs.length} إثبات مفتوح` : `${liveProofs.length} open proofs`) : null}
+        groups={groups}
+        emptyText={ar ? "لا جهة خارجية تعمل في فروعك الآن." : "No outside party is working at your branches now."}
+        focusId={focusStation}
+        onFocus={setFocusStation}
+        selectedId={sideProof}
+        onSelect={setSideProof}
+      />
+    );
+  })();
+  const wpHowTo = ar
+    ? [
+      "«إثبات جديد» عند وصول الجهة: الاسم، سبب العمل، العمال والسيارات، وصورة «قبل».",
+      "عند انتهاء العمل «إنهاء» مع صورة «بعد» — المنصة تحسب المدة وتفحص حظر العمل تحت الشمس.",
+      "بعد الختم يُرسل للجهة رابط تحقق، وينتقل الإثبات إلى الأرشيف.",
+      "موظف الشركة لا يُسجَّل هنا — أمر عمله في «المهام»، والضيف في «إثبات زائر».",
+    ]
+    : [
+      "“New proof” when the party arrives: name, reason, workers and vehicles, and the before photo.",
+      "When the work ends, “End” with the after photo — the platform counts the time and checks the sun ban.",
+      "Once sealed, the party receives a verify link and the proof moves to the archive.",
+      "Company employees are not recorded here — their order is in Tasks; guests are on Visitor proof.",
+    ];
+
+  return (
+    <OpsFrame
+      ar={ar}
+      lane={employeeFace ? "mine" : "manage"}
+      title={ar ? "إثبات العمل — جهة خارجية" : "Work proof — outside party"}
+      hint={ar
+        ? "مقاول أو مؤسسة من خارج الشركة تعمل في الفرع: صورة قبل، صورة بعد، ثم يُختم الإثبات ويصل للجهة برابط تحقق."
+        : "A contractor from outside the company working at the branch: a before photo, an after photo, then the proof is sealed and sent with a verify link."}
+      tiles={wpTiles}
+      side={wpSide}
+      howTo={wpHowTo}
+    >
 
       {(raising || editingProof) && (
       <ComposerModalShell
@@ -781,9 +897,43 @@ export default function WorkProof() {
           : (ar ? "لجهة خارج الشركة — يصل للمشرف للاعتماد، ثم يُختم ويُرسل للجهة برابط تحقق." : "For an outside party — the supervisor approves, then it is sealed and sent with a verify link.")}
         onClose={cancelForm}
         onSubmit={editingProof ? saveEdit : raise}
-        submitLabel={editingProof ? (ar ? "حفظ التعديل" : "Save edit") : (ar ? "حفظ الإثبات" : "Save proof")}
+        submitLabel={editingProof ? (ar ? "حفظ التعديل" : "Save edit") : (ar ? "افتح الإثبات الآن" : "Open the proof now")}
         busy={busy}
+        tinted
+        wide
       >
+        {(() => {
+          const crew = (Array.isArray(form.people) ? form.people : []).filter((x) => String(x?.name || "").trim());
+          const cars = (Array.isArray(form.vehicles) ? form.vehicles : []).filter((v) => v && (v.plateNumbers || v.plate || v.maker || v.model));
+          const missing = !String(form.workReason || "").trim()
+            ? (ar ? "سبب العمل" : "the work reason")
+            : !String(form.entityName || "").trim()
+              ? (ar ? "اسم الجهة" : "the party name")
+              : !crew.length ? (ar ? "عامل واحد على الأقل" : "at least one worker") : "";
+          return (
+            <DetailHero
+              kind={editingProof ? (ar ? "تعديل إثبات العمل" : "Editing the work proof") : (ar ? "إثبات عمل جديد — معاينة" : "New work proof — preview")}
+              pills={form.place ? <HeroPill tone={form.place === "field" ? "warn" : "mute"}>{proofPlaceLabel(form.place, ar ? "ar" : "en")}</HeroPill> : null}
+              figure={(
+                <HeroFigure
+                  mono={false}
+                  placeholder={!String(form.entityName || "").trim()}
+                  value={String(form.entityName || "").trim() || (ar ? "اسم الجهة الخارجية" : "Outside party name")}
+                  line={missing ? (ar ? `بقي: ${missing}` : `Left: ${missing}`) : (String(form.workReason || "").trim())}
+                  lineTone={missing ? "warn" : "ok"}
+                />
+              )}
+              facts={[
+                { label: ar ? "الفرع" : "Branch", value: stationName(form.stationId) || "—" },
+                { label: ar ? "العمال" : "Workers", value: crew.length || "—", mono: true },
+                { label: ar ? "السيارات" : "Vehicles", value: cars.length || "—", mono: true },
+                { label: ar ? "رفعه" : "Raised by", value: editingProof?.raiserName || currentUser?.name || "—" },
+              ]}
+            >
+              {editingProof ? null : <StageRail ar={ar} steps={workProofSteps({ startedAt: form.beforeFile ? "x" : "", beforeStamp: form.beforeFile ? "x" : "" })} dark />}
+            </DetailHero>
+          );
+        })()}
         <WorkProofRaiseFields
           form={form}
           setForm={setForm}
@@ -796,24 +946,39 @@ export default function WorkProof() {
       </ComposerModalShell>
       )}
 
-      <OpsControlBar>
-        <OpsToolbarStrip
-          ar={ar}
-          dir={ar ? "rtl" : "ltr"}
-          filter={boardFilter}
-          onFilterChange={(value) => setFilter(normalizeWorkProofFilter(value))}
-          chips={filterChips}
-          showCreate={raising || !!editingProof}
-          onToggleCreate={() => {
-            if (raising || editingProof) {
-              cancelForm();
-              return;
-            }
-            setEditingProof(null);
-            resetForm();
-            setRaising(true);
-          }}
-          createLabel={ar ? "إثبات جديد" : "New proof"}
+      <div data-ops-list-head="1">
+        <StatusFilterPills
+          card
+          dataKey="work-proofs"
+          title={ar ? "إثباتات العمل" : "Work proofs"}
+          note={focusStation ? (ar ? `معروض: ${stationName(focusStation)}` : `Showing: ${stationName(focusStation)}`) : null}
+          value={boardFilter}
+          onChange={(value) => setFilter(normalizeWorkProofFilter(value))}
+          items={filterChips}
+          trailing={(
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              {focusStation ? (
+                <button type="button" data-clear-focus="1" onClick={() => setFocusStation("")} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: "none", background: "transparent", color: "var(--nv-ok-ink, #0F5535)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+                  {ar ? "اعرض الكل" : "Show all"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  if (raising || editingProof) {
+                    cancelForm();
+                    return;
+                  }
+                  setEditingProof(null);
+                  resetForm();
+                  setRaising(true);
+                }}
+                style={raising || editingProof ? ui.btnCreateQuiet : ui.btnCreate}
+              >
+                {raising || editingProof ? (ar ? "إخفاء النموذج" : "Hide form") : (ar ? "إثبات جديد" : "New proof")}
+              </button>
+            </span>
+          )}
         />
         {boardFilter !== "archive" ? (
           <OpsStripSearch
@@ -822,7 +987,7 @@ export default function WorkProof() {
             placeholder={ar ? "بحث في الإثباتات…" : "Search proofs…"}
           />
         ) : null}
-      </OpsControlBar>
+      </div>
 
       {boardFilter === "archive" ? (
         <RecordSmartArchive
@@ -844,30 +1009,24 @@ export default function WorkProof() {
             const p = row.proof;
             const access = proofAccess(p);
             return (
-              <div className="flex flex-wrap gap-1.5">
-                <button type="button" onClick={() => setOpenProofId(row.id)} style={ui.btnMiniSoft}>
-                  {ar ? "بطاقة" : "Card"}
-                </button>
-                {access.canEdit ? (
-                  <button type="button" onClick={() => startEdit(p)} style={ui.btnMini}>
-                    {ar ? "تعديل" : "Edit"}
-                  </button>
-                ) : null}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {access.canEnd ? (
                   <button
                     type="button"
+                    data-primary="end"
                     onClick={() => {
                       setOpenProofId(row.id);
                       setEnding({ id: p.id || p.ref, endedAt: localDateTimeValue(), afterFile: null });
                     }}
-                    style={ui.btnMiniBrand}
+                    style={{ ...ui.btnMiniBrand, height: 32, padding: "0 14px" }}
                   >
-                    {ar ? "إنهاء" : "End"}
+                    {ar ? "أنهِ بصورة «بعد»" : "End with the after photo"}
                   </button>
                 ) : null}
                 {access.canFinishReady ? (
                   <button
                     type="button"
+                    data-primary="seal"
                     disabled={busy}
                     onClick={() => runAction(
                       () => workproof({ action: "approve", companyId: company.id, id: p.id, geoClearReason: geoReason || "إنهاء العمل" }),
@@ -875,11 +1034,18 @@ export default function WorkProof() {
                       p,
                       geoReason || "إنهاء العمل",
                     )}
-                    style={ui.btnMiniBrand}
+                    style={{ ...ui.btnMiniBrand, height: 32, padding: "0 14px" }}
                   >
-                    {ar ? "إنهاء" : "End"}
+                    {ar ? "اختم وأرسل للجهة" : "Seal and send"}
                   </button>
                 ) : null}
+                <OpsMoreMenu
+                  ar={ar}
+                  items={[
+                    { key: "card", label: ar ? "افتح البطاقة" : "Open the card", onClick: () => setOpenProofId(row.id) },
+                    access.canEdit ? { key: "edit", label: ar ? "تعديل الإثبات" : "Edit", hint: remainingEditLabel(p, ar) || "", onClick: () => startEdit(p) } : null,
+                  ]}
+                />
               </div>
             );
           }}
@@ -894,6 +1060,8 @@ export default function WorkProof() {
           hint={[openProof.ref, stationName(openProof.stationId)].filter(Boolean).join(" · ")}
           onClose={() => { setOpenProofId(null); setEnding(null); }}
           back={<SectionBackLink ar={ar} label={ar ? "إثبات العمل" : "Work proof"} onClick={() => { setOpenProofId(null); setEnding(null); }} />}
+          tinted
+          wide
           footer={(
             <div className="flex flex-wrap gap-2">
               {openAccess.canEdit && !openEnd ? (
@@ -938,6 +1106,56 @@ export default function WorkProof() {
             </div>
           )}
         >
+          {(() => {
+            const stage = openAccess.stage;
+            const crew = cleanedPeople(openProof.people, openProof.stationId);
+            const inside = crew.filter((x) => !x.outAt).length;
+            const running = stage === "await";
+            const pill = stage === "sealed" || stage === "accepted"
+              ? "ok" : stage === "rejected" ? "bad" : "warn";
+            return (
+              <DetailHero
+                kind={openProof.entityKind === "individual" ? (ar ? "إثبات عمل · مؤسسة فردية" : "Work proof · individual") : (ar ? "إثبات عمل · جهة خارجية" : "Work proof · outside company")}
+                pills={(
+                  <>
+                    <HeroPill tone={pill} live={running} data="stage">{ar ? STAGE_LABEL[stage]?.ar : STAGE_LABEL[stage]?.en}</HeroPill>
+                    {openProof.geoVerdict === "out" ? <HeroPill tone="bad">{ar ? "خارج النطاق" : "Outside range"}</HeroPill> : null}
+                  </>
+                )}
+                menu={(
+                  <HeroPrintButton
+                    ar={ar}
+                    onClick={() => printSheet(workProofSheet({
+                      proof: openProof,
+                      ar,
+                      stageLabel: ar ? STAGE_LABEL[stage]?.ar : STAGE_LABEL[stage]?.en,
+                      tone: pill,
+                      branch: stationName(openProof.stationId),
+                      span: workSpanLabel(openProof.startedAt, openProof.endedAt, ar) || "",
+                      crew,
+                      vehicles: vehiclesFromProof(openProof),
+                    }))}
+                  />
+                )}
+                figure={(
+                  <HeroFigure
+                    mono={false}
+                    value={openProof.entityName || (ar ? "جهة خارجية" : "Outside company")}
+                    line={running && openProof.startedAt ? workElapsedLabel(openProof.startedAt, ar) : (workSpanLabel(openProof.startedAt, openProof.endedAt, ar) || "")}
+                    lineTone={running ? "warn" : "ok"}
+                  />
+                )}
+                facts={[
+                  { label: ar ? "الفرع" : "Branch", value: stationName(openProof.stationId) || "—" },
+                  { label: ar ? "البداية" : "Started", value: formatProofDateTime(openProof.startedAt || openProof.createdAt, ar) || "—" },
+                  crew.length ? { label: ar ? "في الموقع" : "On site", value: `${inside}/${crew.length}`, mono: true, tone: inside ? "gold" : undefined } : null,
+                  { label: ar ? "رفعه" : "Raised by", value: openProof.raiserName || "—" },
+                ]}
+              >
+                <StageRail ar={ar} steps={workProofSteps(openProof)} dark />
+              </DetailHero>
+            );
+          })()}
           {openHeatFlag ? (
             <OpsTaskSection
               title={ar ? "مخالفة حظر العمل تحت أشعة الشمس" : "Sun-ban breach"}
@@ -955,11 +1173,10 @@ export default function WorkProof() {
             </OpsTaskSection>
           ) : null}
 
-          <OpsTaskSection title={ar ? "الإسناد" : "Assignment"}>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <ReadField label={ar ? "الفرع" : "Station"}>{stationName(openProof.stationId)}</ReadField>
-              <ReadField label={ar ? "المسؤول" : "Owner"}>{openProof.entityName || (ar ? "جهة خارجية" : "Outside company")}</ReadField>
-              <ReadField label={ar ? "أنشأها" : "Created by"}>{openProof.raiserName || "—"}</ReadField>
+          <OpsTaskSection title={ar ? "الجهة الخارجية" : "The outside party"}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <ReadField label={ar ? "الاسم الرسمي" : "Registered name"}>{openProof.entityName || "—"}</ReadField>
+              {openProof.entitySite ? <ReadField label={ar ? "موقع التنفيذ" : "Work site"}>{openProof.entitySite}</ReadField> : null}
               {openProof.editedBy ? (
                 <ReadField label={ar ? "آخر تعديل" : "Last edited by"}>{openProof.editedBy}</ReadField>
               ) : null}
@@ -967,14 +1184,8 @@ export default function WorkProof() {
                 <ReadField label={ar ? "أغلقها" : "Closed by"}>{openProof.endedBy}</ReadField>
               ) : null}
             </div>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <ReadField label={ar ? "النطاق" : "Scope"}>
-                {openProof.entityKind === "individual" ? (ar ? "مؤسسة فردية" : "Individual") : (ar ? "جهة خارجية" : "Outside company")}
-              </ReadField>
-              <ReadField label={ar ? "موقع التنفيذ" : "Work site"}>{openProof.entitySite || "—"}</ReadField>
-            </div>
             {(openProof.entityUnified || openProof.entityCr || openProof.entityQiwa || openProof.entityProject || openProof.entityContact || openProof.entityPhone) ? (
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {openProof.entityUnified ? <ReadField label={ar ? "الرقم الموحد" : "Unified no."} ltr>{openProof.entityUnified}</ReadField> : null}
                 {openProof.entityCr ? <ReadField label={ar ? "السجل التجاري" : "CR"} ltr>{openProof.entityCr}</ReadField> : null}
                 {openProof.entityQiwa ? <ReadField label={ar ? "قوى" : "Qiwa"} ltr>{openProof.entityQiwa}</ReadField> : null}
@@ -986,10 +1197,10 @@ export default function WorkProof() {
           </OpsTaskSection>
 
           <OpsTaskSection title={ar ? "العمل" : "Work"}>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <ReadField label={ar ? "سبب العمل" : "Work reason"} multiline>{openProof.workReason}</ReadField>
             </div>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <ReadField label={ar ? "الفترة" : "Period"} multiline>
                 {workPeriodLabel(openProof.startedAt, openProof.endedAt, ar) || formatProofDateTime(openProof.startedAt || openProof.createdAt, ar) || "—"}
               </ReadField>
@@ -1009,54 +1220,36 @@ export default function WorkProof() {
                 <ReadField label={ar ? "الختم" : "Seal"} ltr>{openProof.sealId}</ReadField>
               ) : null}
             </div>
-            <div style={{ display: "flex", height: 140, flexShrink: 0, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden" }}>
-              {[
-                [openProof.beforeUrl, photoStamp(openProof.beforeStamp, openProof.startedAt, ar), ar ? "قبل" : "BEFORE"],
-                [openProof.afterUrl, photoStamp(openProof.afterStamp, openProof.endedAt, ar), ar ? "بعد" : "AFTER"],
-              ].map(([url, stamp, tag], idx) => (
-                <div
-                  key={tag}
-                  style={{
-                    flex: 1,
-                    background: url ? `center / cover no-repeat url(${url})` : SURFACE,
-                    borderInlineEnd: idx === 0 ? `1px solid ${BORDER}` : "none",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "flex-end",
-                    padding: 8,
-                    gap: 4,
-                  }}
-                >
-                  <span style={{ fontSize: 10, fontWeight: 600, color: NAVY, background: "rgba(255,255,255,.9)", padding: "2px 7px", borderRadius: 999 }}>{tag}</span>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: NAVY, background: "rgba(255,255,255,.9)", padding: "2px 7px", borderRadius: 999 }}>{stamp || "—"}</span>
-                </div>
-              ))}
+            <div data-detail-photos="1" style={{ display: "flex", gap: 10 }}>
+              <PhotoFrame ar={ar} label={ar ? "قبل" : "Before"} url={openProof.beforeUrl} time={hm(photoStamp(openProof.beforeStamp, openProof.startedAt, ar))} captured={!!(openProof.beforeUrl || openProof.beforeStamp)} pending={ar ? "بانتظار الصورة" : "Photo due"} />
+              <PhotoFrame ar={ar} label={ar ? "بعد" : "After"} url={openProof.afterUrl} time={openProof.afterStamp || openProof.afterUrl ? hm(photoStamp(openProof.afterStamp, openProof.endedAt, ar)) : ""} captured={!!(openProof.afterUrl || openProof.afterStamp)} pending={ar ? "تُلتقط عند الإنهاء" : "Taken at the end"} />
             </div>
           </OpsTaskSection>
 
-          {openAccess.workers.length ? (
-            <OpsTaskSection title={ar ? "عمال الجهة الخارجية" : "External workers"} count={openAccess.workers.length}>
-              {openAccess.workers.map((person, index) => (
-                <div
-                  key={`${person.id || person.name}-${index}`}
-                  style={{ padding: 12, borderRadius: 12, border: "1px solid var(--nv-line, #E2E8F0)", background: CARD }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 650, color: MUTED, marginBottom: 10 }}>
-                    {ar ? `عامل ${index + 1}` : `Worker ${index + 1}`}
-                  </div>
-                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                    <ReadField label={ar ? "الاسم" : "Name"}>{person.name}</ReadField>
-                    <ReadField label={ar ? "الجنسية" : "Nationality"}>{person.nationality}</ReadField>
-                    <ReadField label={ar ? "نوع الهوية" : "ID type"}>{visitorIdTypeLabel(person.idType, ar)}</ReadField>
-                    <ReadField label={ar ? "رقم الهوية / الإقامة" : "ID / Iqama"} ltr>{person.id}</ReadField>
-                    {person.phone ? <ReadField label={ar ? "الجوال" : "Phone"} ltr>{person.phone}</ReadField> : null}
-                    <ReadField label={ar ? "المسمى" : "Title"}>{person.title}</ReadField>
-                  </div>
-                </div>
-              ))}
-            </OpsTaskSection>
-          ) : null}
+          <OpsTaskSection title={ar ? "عمال الجهة" : "The party's workers"}>
+            {(() => {
+              const listed = cleanedPeople(openProof.people, openProof.stationId);
+              return (
+                <ProofPeoplePanel
+                  ar={ar}
+                  bare
+                  kind="work"
+                  people={listed.length ? listed : openAccess.workers}
+                  fallbackIn={openProof.startedAt || openProof.createdAt}
+                  canEdit={!!openAccess.canAttach}
+                  busy={busy}
+                  onAdd={(person) => crewChange(
+                    () => addLocalWorkProofPerson(company.id, openProof, person, currentUser),
+                    ar ? `سُجّل دخول ${person.name}.` : `${person.name} checked in.`,
+                  )}
+                  onOut={listed.length ? (index) => crewChange(
+                    () => markLocalWorkProofPersonOut(company.id, openProof, index, currentUser),
+                    ar ? "سُجّل خروجه." : "Checked out.",
+                  ) : undefined}
+                />
+              );
+            })()}
+          </OpsTaskSection>
 
           {openVehicles.length ? (
             <OpsTaskSection title={ar ? "السيارات" : "Vehicles"} count={openVehicles.length}>
@@ -1112,6 +1305,6 @@ export default function WorkProof() {
           ) : null}
         </ComposerModalShell>
       ) : null}
-    </PlatformStampShell>
+    </OpsFrame>
   );
 }

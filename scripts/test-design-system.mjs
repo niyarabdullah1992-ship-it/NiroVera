@@ -34,8 +34,9 @@ assert.equal(catalog.behave[1].id, "named");
 const frame = docFrame("blocked");
 assert.equal(frame.borderRadius, 12);
 assert.match(String(frame.boxShadow), /nv-shadow/);
-assert.match(frame.borderTop, /3px/);
-assert.match(frame.borderTop, /nv-bad-fill/);
+// Calm cards: no coloured top edge — status is a chip beside the title (src/lib/statusFlag.js).
+assert.equal(frame.borderTop, undefined);
+assert.equal(frame.border, "1px solid var(--nv-line)");
 
 const chip = stateChip("settled");
 assert.equal(chip.borderRadius, 999);
@@ -82,7 +83,10 @@ assert.match(css, /\.nv-doc/);
 assert.match(css, /--nv-page: #F4F7F5/);
 assert.match(css, /--nv-ink: #111418/);
 assert.match(css, /--nv-btn-fill: #3C7D50/);
-assert.match(css, /\.powercare-shell main\.nv-bg[\s\S]{0,280}radial-gradient/);
+// Updated: the shell now pins authenticated <main class="nv-bg"> to flat IdentityCard paper
+// (var(--nv-page) !important); the radial wash lives only on the standalone .nv-bg rule.
+assert.match(css, /\.powercare-shell main\.nv-bg[\s\S]{0,120}background: var\(--nv-page\) !important/);
+assert.match(css, /\n\.nv-bg \{\s*\n\s*background:\s*\n\s*radial-gradient/);
 assert.doesNotMatch(css, /\.powercare-shell \.platform-main-scroll \{ background: transparent; \}/);
 assert.match(css, /\.nv-att-card[\s\S]{0,180}var\(--nv-radius\)/);
 assert.match(css, /\.nv-att-card button[\s\S]{0,80}var\(--nv-radius-control\)/);

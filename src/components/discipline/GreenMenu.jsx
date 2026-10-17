@@ -92,7 +92,9 @@ export default function GreenMenu({
                 role="option"
                 aria-selected={on}
                 data-menu-value={row.value}
-                onClick={() => {
+                onClick={(event) => {
+                  // Inside a <label>, the click would re-activate the trigger and reopen the list.
+                  event.preventDefault();
                   onChange?.(row.value);
                   setOpen(false);
                 }}

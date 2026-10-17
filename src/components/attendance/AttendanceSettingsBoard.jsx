@@ -7,7 +7,6 @@ import { isLocalPreviewActive } from "@/lib/localPreview";
 import { localAttendanceSettings } from "@/lib/localAttendanceFallback";
 import { useI18n } from "@/lib/i18n";
 import { BORDER, CARD, DANGER, MUTED, NAVY } from "@/lib/platformStyles";
-import HoursLawSettings from "@/components/attendance/HoursLawSettings";
 
 function previewSettings(company) {
   return {
@@ -37,7 +36,7 @@ function policyBtn(on, invert) {
 const row = { padding: "15px 20px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 5 };
 
 /** Attendance policy — HTML row layout. GPS only; no NFC auto-punch. */
-export default function AttendanceSettingsBoard({ company, currentUser, canEditSettings }) {
+export default function AttendanceSettingsBoard({ company, currentUser, canEditSettings, onSettings }) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const { data } = useAuth();
@@ -46,6 +45,10 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const local = isLocalPreviewActive();
+  // The page tiles read the saved policy (never the draft).
+  useEffect(() => {
+    if (saved) onSettings?.(saved);
+  }, [saved, onSettings]);
 
   useEffect(() => {
     if (!company?.id) return;
@@ -138,6 +141,34 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
         </span>
       </div>
 
+      {(() => {
+        // When the check-in opens before a published shift. Saved straight to the company policy.
+        const current = Number(company?.attendanceSettings?.early_checkin_minutes ?? data?.attendanceSettings?.early_checkin_minutes ?? 60);
+        return (
+          <div data-early-checkin="1" style={row}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: NAVY }}>{ar ? "فتح الحضور قبل الوردية" : "Check-in opens before the shift"}</span>
+            <span style={{ fontSize: 11, color: "var(--nv-ink2)", lineHeight: 1.85 }}>
+              {ar
+                ? "قبل هذا الوقت لا تُقبل بصمة الحضور، ويُقال للموظف متى تُفتح. البصمة المبكرة لا تُحتسب ساعات عمل — الوقت يبدأ من الجدول المنشور."
+                : "Before this, a check-in is refused and the worker is told when it opens. An early punch adds no worked time — time starts at the published shift."}
+            </span>
+            <select
+              value={String(current)}
+              disabled={!canEditSettings}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                updateCompany(company.id, (d) => { d.attendanceSettings = { ...(d.attendanceSettings || {}), early_checkin_minutes: n }; });
+              }}
+              style={{ fontFamily: "inherit", fontSize: 12, padding: "8px 10px", border: `1px solid ${BORDER}`, borderRadius: 10, background: CARD, color: "var(--nv-ink)", alignSelf: "flex-start", minWidth: 200 }}
+            >
+              {[15, 30, 60, 90, 120].map((n) => (
+                <option key={n} value={n}>{ar ? `${n} دقيقة قبل البداية${n === 60 ? " — الافتراضي" : ""}` : `${n} min before start${n === 60 ? " — default" : ""}`}</option>
+              ))}
+            </select>
+          </div>
+        );
+      })()}
+
       <div style={{ ...row, gap: 9 }}>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "center" }}>
           <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
@@ -219,12 +250,6 @@ export default function AttendanceSettingsBoard({ company, currentUser, canEditS
         </div>
       </div>
     </section>
-    <HoursLawSettings
-      company={data}
-      employees={data?.employees || []}
-      canEdit={canEditSettings}
-      ar={ar}
-    />
     </div>
   );
 }

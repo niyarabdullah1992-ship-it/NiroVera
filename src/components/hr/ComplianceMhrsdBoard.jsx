@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { StatusFlag } from "@/components/shared/StatusFlag";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -15,12 +16,15 @@ import { deriveExpiringDocs, deriveNitaqat, nitaqatBandLabel, EXPIRY_WARN_DAYS }
 import { formatDate } from "@/lib/dateFormat";
 import { printReport } from "@/lib/printReport";
 import { deriveInspectionPack } from "@/lib/inspectionPackDerivations";
+import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
+import { hrMinistrySection } from "@/lib/hrSection";
+import MinistryComplianceIndex from "@/components/hr/MinistryComplianceIndex";
 import StatutoryItem from "@/components/labor/StatutoryItem";
 import { BOE_LABOUR_LAW_URL, HRSD_IMPLEMENTING_REGS_URL, HRSD_LABOUR_LAW_EDITION, HRSD_LABOUR_LAW_PDF } from "@/lib/laborRules";
 
 const SURFACE_LINKS = [
   { to: "/app/requests/leave", ar: "طلبات الإجازة", en: "Leave Requests" },
-  { to: "/app/hr", ar: "الموارد البشرية", en: "Human Resources" },
+  { to: "/app/hr?tab=people", ar: "الموظفون", en: "People" },
   { to: "/app/safety", ar: "السلامة HSE", en: "Safety HSE" },
   { to: "/app/complaints", ar: "صوت الموظف", en: "Employee Voice" },
   { to: "/app/payroll", ar: "الرواتب", en: "Payroll" },
@@ -42,7 +46,7 @@ const BLOCKER_SHORT = {
 
 /** Where a blocker is actually cleared — named so the row is a route, not a verdict. */
 const CLEARED_AT = {
-  "/app/hr": { ar: "الدليل", en: "Directory" },
+  "/app/hr": { ar: "الموارد البشرية", en: "Human resources" },
   "/app/safety": { ar: "السلامة", en: "Safety" },
   "/app/requests/leave": { ar: "الإجازات", en: "Leave" },
   "/app/tasks": { ar: "المهام", en: "Tasks" },
@@ -99,10 +103,11 @@ function bandMute(id) {
   return "var(--nv-ok-soft)";
 }
 
-function bandEdge(id) {
-  if (id === "red") return "var(--nv-bad-fill)";
-  if (id === "low_green") return "var(--nv-warn-fill)";
-  return "var(--nv-ok-fill)";
+/** Nitaqat band → status chip tone (red = action, low green = attention, else none). */
+function bandTone(id) {
+  if (id === "red") return "bad";
+  if (id === "low_green") return "warn";
+  return null;
 }
 
 function readinessSignal(level, clear) {
@@ -147,10 +152,11 @@ function LiveChip({ on, label, ar }) {
 }
 
 /** Platform settings L2234–2268 — Nitaqat + GOSI extras kept with literal chrome. */
-export default function ComplianceMhrsdBoard() {
+export default function ComplianceMhrsdBoard({ ministry = "records" } = {}) {
   const { lang } = useI18n();
   const ar = lang === "ar";
   const { company, data: register, currentUser } = useAuth();
+  const hrMinistry = useMemo(() => (ministry === "hr" ? hrMinistrySection(register || {}, { ar: lang === "ar" }) : null), [ministry, register, lang]);
   const scope = useStationScope();
   const [data, setData] = useState(null);
   const [gosiNo, setGosiNo] = useState("");
@@ -415,25 +421,28 @@ export default function ComplianceMhrsdBoard() {
     background: "var(--nv-btn-fill)",
     color: "var(--nv-btn-ink)",
   };
-  const readinessEdge = readinessRows.some((row) => row.readiness.level === "blocked")
-    ? "var(--nv-bad-fill)"
+  const readinessTone = readinessRows.some((row) => row.readiness.level === "blocked")
+    ? "bad"
     : readinessRows.some((row) => row.readiness.blockers.length > 0)
-      ? "var(--nv-warn-fill)"
-      : "var(--nv-ok-fill)";
-  const expiryEdge = expiringList.some((row) => Number(row.days) < 0)
-    ? "var(--nv-bad-fill)"
+      ? "warn"
+      : null;
+  const expiryTone = expiringList.some((row) => Number(row.days) < 0)
+    ? "bad"
     : expiringList.length
-      ? "var(--nv-warn-fill)"
-      : "var(--nv-ok-fill)";
+      ? "warn"
+      : null;
 
   return (
     <div id="compliance-center" style={{ display: "flex", flexDirection: "column", gap: "16px" }} dir={ar ? "rtl" : "ltr"}>
+      {/* «الامتثال الوزاري» — one line per section, counted from that section's own panel rows; each opens it. */}
+      <MinistryComplianceIndex ar={ar} />
       {/* L2234–2268 Nitaqat card — primary glance at top of compliance centre */}
-      <section style={{ ...PAPER, borderTop: `3px solid ${bandEdge(bandId)}` }}>
+      <section style={PAPER}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
           <div>
-            <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
               {ar ? "نطاقات — نسبة التوطين" : "Nitaqat — Saudization rate"}
+              <StatusFlag tone={bandTone(bandId)} ar={ar} flag={bandId === "red" ? (ar ? "النطاق الأحمر" : "Red band") : (ar ? "قريب من الحد" : "Near the line")} />
             </div>
             <div style={{ fontSize: "11px", color: "var(--nv-ink3)", marginTop: "4px", maxWidth: "620px", lineHeight: 1.65 }}>
               {ar
@@ -449,7 +458,7 @@ export default function ComplianceMhrsdBoard() {
                 fontSize: "30px",
                 fontWeight: 600,
                 lineHeight: 1,
-                color: "var(--nv-ok-fill)",
+                color: "var(--nv-ink)",
               }}
             >
               {rate}%
@@ -493,7 +502,7 @@ export default function ComplianceMhrsdBoard() {
           </div>
           {n?.mismatch > 0 ? (
             <div>
-              <div dir="ltr" style={{ ...FIGURE, fontSize: 20, color: "var(--nv-bad-ink)" }}>
+              <div dir="ltr" style={{ ...FIGURE, fontSize: 20, color: "var(--nv-ink)" }}>
                 {n.mismatch}
               </div>
               <div style={{ fontSize: "11px", color: "var(--nv-ink3)", marginTop: "3px" }}>{ar ? "تعارض جنسية/هوية" : "Nationality / ID mismatch"}</div>
@@ -592,11 +601,19 @@ export default function ComplianceMhrsdBoard() {
         </div>
       </section>
 
+      {/* «أنظمة الوزارة» — inside «الموارد البشرية» one panel carries the registers (records) and the organisation (org) rules. */}
+      {ministry === "hr" ? (
+        <MinistrySectionPanel section={hrMinistry} ar={ar} />
+      ) : (
+        <MinistrySectionPanel sectionKey="records" lane="manage" ar={ar} inputs={{ data: register || {} }} />
+      )}
+
       {/* Per-station readiness — the same derivation the quick-switch palette shows */}
       {readinessRows.length > 0 && (
-        <section style={{ ...PAPER, borderTop: `3px solid ${readinessEdge}` }}>
+        <section style={PAPER}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
             <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+              <StatusFlag tone={readinessTone} ar={ar} flag={readinessTone === "bad" ? (ar ? "مانع مفتوح" : "Open blocker") : (ar ? "نواقص قائمة" : "Gaps open")} style={{ marginBottom: 6 }} />
               <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
                 {readinessNews.blockedCount === 0
                   ? (ar ? "لا فرع بمانع مفتوح في هذا النطاق" : "No station has an open blocker in this scope")
@@ -698,7 +715,7 @@ export default function ComplianceMhrsdBoard() {
                       fontFamily: "'IBM Plex Sans',sans-serif",
                       fontSize: "18px",
                       fontWeight: 600,
-                      color: signal,
+                      color: "var(--nv-ink)",
                       flexShrink: 0,
                     }}
                   >
@@ -712,9 +729,10 @@ export default function ComplianceMhrsdBoard() {
       )}
 
       {/* App GOSI / expiry extras — same card chrome */}
-      <section style={{ ...PAPER, borderTop: `3px solid ${expiryEdge}` }}>
-        <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
+      <section style={PAPER}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "13px", fontWeight: 600, color: "var(--nv-ink)" }}>
           {ar ? "التأمينات الاجتماعية (GOSI) والوثائق المنتهية" : "GOSI & expiring documents"}
+          <StatusFlag tone={expiryTone} ar={ar} flag={expiryTone === "bad" ? (ar ? "وثيقة منتهية" : "Document expired") : (ar ? "وثيقة تقترب من الانتهاء" : "Expiring soon")} />
         </div>
         <div style={{ fontSize: "11px", color: MUTED, marginTop: "4px" }}>
           {ar

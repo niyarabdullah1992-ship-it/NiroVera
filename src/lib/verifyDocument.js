@@ -194,7 +194,7 @@ export function preferVerifyAnswer(remote, local) {
 export function verifyOutcomeCopy(kind, ar) {
   const rows = {
     ok: {
-      mark: "✓",
+      mark: "check",
       color: VERIFY_OK,
       bg: "#f2faf6",
       border: "#bfe6d2",
@@ -233,7 +233,7 @@ export function verifyOutcomeCopy(kind, ar) {
         : "Re-saving or printing a PDF changes the bytes and yields “no record” or “modified” even when the content looks the same.",
     },
     cooling: {
-      mark: "⏳",
+      mark: "pending",
       color: VERIFY_AMBER,
       bg: "#fdf6e8",
       border: "#ecd9a8",

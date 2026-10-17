@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 import { createMimeMessage } from 'npm:mimetext@3.0.24';
 import { fetchWithRetry } from '../../shared/fetchRetry.ts';
+import { filterVoiceRowsForServer, isServerVoiceHrReader, mergeVoiceWriteForServer, VOICE_CATEGORIES } from '../../shared/voicePrivacy.ts';
 import { filterBlobPayload, redactEmployee, attachEmployeeRequestFields, canSeeEmployeeRequests, APPEND_ONLY_CATEGORIES, inspectAppendOnly, normalizeBlobPayload, isObjectBlobCategory } from '../../shared/blobVisibility.ts';
 import {
   WORKSPACE_SEARCH_MAX,
@@ -10,6 +11,10 @@ import {
 } from '../../shared/workspaceDerivations.ts';
 import { POWERCARE_MARK_URL } from '../../shared/brand.ts';
 import { companyMetaCreatePayload, creatorEmployeeRecord } from '../../shared/companyBootstrap.ts';
+import { mergeAbuseCasesWrite, mergeEmployerDutyRoster, mergeWorkRegulationWrite } from '../../shared/syncLaw.ts';
+import { enforceEmployeeFileWrite } from '../../shared/employeeFileGate.ts';
+import { mergeOrgDesignWrite } from '../../shared/orgDesignDerivations.ts';
+import { checkStationLocationGate } from '../../shared/geoPlaces.ts';
 
 // System emails (OTP codes, welcome messages) go out through the app's connected
 // Gmail account, because the built-in email service refuses recipients who are
@@ -877,7 +882,8 @@ Deno.serve(async (req) => {
       if (privilege === 'self') {
         // Anti-privilege-escalation: a regular employee may not add/remove
         // employees, change anyone's role/permissions/HR position, or touch
-        // another employee's profile (salary etc.). Own record edits are allowed.
+        // another employee's profile (salary etc.). Own requests and acts pass; own file facts are
+        // HR's and are held by the file gate below.
         const PROTECTED = ['role', 'canManageTeam', 'managedStations', 'hrLevelId', 'hrStationId', 'hrClusterId', 'points'];
         const curByKey = new Map(current.map((r) => [r.employeeId, r]));
         const same = (rec, cur, k) => JSON.stringify(rec[k] ?? null) === JSON.stringify(cur[k] ?? null);
@@ -894,8 +900,26 @@ Deno.serve(async (req) => {
           }
         }
       }
-      await diffSync(base44.asServiceRole.entities.Employee, current, incoming, 'employeeId');
+      // The employee file is filled by HR only: a non-HR writer keeps the stored file facts, and the
+      // push names what was held (EMPLOYEE_FILE_HR_ONLY). Requests, consents and signatures pass.
+      const fileWriter = {
+        admin: Boolean(auth.admin || auth.role === 'owner'),
+        role: context.actor?.role,
+        employeeId: auth.userId,
+        permissions: context.permissions,
+        scope: context.scope,
+      };
+      const refused = [];
+      const gated = incoming.map((record) => {
+        const previous = currentByEmployeeId.get(record.employeeId);
+        if (!previous) return record;
+        const result = enforceEmployeeFileWrite(fileWriter, previous, record);
+        if (result.refused) refused.push(result.refused);
+        return result.record;
+      });
+      await diffSync(base44.asServiceRole.entities.Employee, current, gated, 'employeeId');
       await bumpSignal(base44, companyId);
+      if (refused.length) return Response.json({ ok: true, error: 'EMPLOYEE_FILE_HR_ONLY', refused });
       return Response.json({ ok: true });
     }
 
@@ -927,6 +951,12 @@ Deno.serve(async (req) => {
       const context = await getActorContext();
       if (!context.senior) return Response.json({ ok: true, ignored: true });
       const incoming = (Array.isArray(stations) ? stations : []).map(({ id, isHQ: _legacyFlag, ...rest }) => ({ ...rest, stationId: id, companyId }));
+      // a station that carries a location must carry a valid one (known country; a listed city in Saudi Arabia)
+      for (const station of incoming) {
+        if (!station.countryCode && !station.city) continue;
+        const geo = checkStationLocationGate({ countryCode: station.countryCode, city: station.city, cityRegion: station.cityRegion });
+        if (!geo.ok) return Response.json({ error: geo.error, reason: `${station.name || station.stationId}: ${geo.reason}`, reasonEn: geo.reasonEn }, { status: 400 });
+      }
       const current = await base44.asServiceRole.entities.Station.filter({ companyId });
       if (current.length > 0 && incoming.length === 0) {
         return Response.json({ error: 'Safety guard: an empty sync cannot erase all stations' }, { status: 409 });
@@ -969,8 +999,90 @@ Deno.serve(async (req) => {
       const context = await getActorContext();
       const actorRole = context.actor?.role;
       const privilege = await getActorPrivilege();
+      const storeMerged = async (rows, data) => {
+        if (rows.length) {
+          await base44.asServiceRole.entities.CompanyDataBlob.update(rows[0].id, { payload: data });
+          for (const extra of rows.slice(1)) await base44.asServiceRole.entities.CompanyDataBlob.delete(extra.id);
+        } else {
+          await base44.asServiceRole.entities.CompanyDataBlob.create({ companyId, category, payload: data });
+        }
+        await bumpSignal(base44, companyId);
+      };
+      // Sanction files pass the gates of Arts. 66–72 in compliance/disciplineSave — never a raw snapshot.
+      if (category === 'disciplinaryCases') {
+        return Response.json({
+          error: 'DISCIPLINE_VIA_ACTION',
+          reason: 'ملفات الجزاء تُحفظ عبر مسار الجزاءات بعد فحص شروط المواد 66–72، لا عبر المزامنة العامة.',
+          reasonEn: 'Sanction files are saved through the sanctions action after the Articles 66–72 checks, not through the generic sync.',
+        }, { status: 403 });
+      }
+      // Law Arts. 12–13: senior HR saves/announces a version; anyone adds only their own acknowledgement.
+      if (category === 'workRegulation') {
+        if (privilege === 'none') return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+        const current = rows[0]?.payload && !Array.isArray(rows[0].payload) ? rows[0].payload : {};
+        const merged = mergeWorkRegulationWrite(current, payload, {
+          senior: context.senior, actorId: auth.userId || '', actorName: context.actor?.name || '',
+        });
+        if (merged.changed) await storeMerged(rows, merged.payload);
+        return Response.json({ ok: true, changed: merged.changed });
+      }
+      // Training / medical-exam / held-document registers: HR in scope; records never dropped.
+      if (category === 'employerDuties') {
+        const hr = context.senior || context.permissions.has('manage_employees');
+        if (!hr) return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+        const stations = context.scope === null || context.senior ? null : new Set(context.scope || []);
+        // Scope is checked against each employee's station on the Employee entity, not the pushed row.
+        const people = await base44.asServiceRole.entities.Employee.filter({ companyId });
+        const stationById = new Map((people || []).map((e) => [String(e.employeeId), e.stationId || e.station_id || null]));
+        const merged = mergeEmployerDutyRoster(
+          rows[0]?.payload || [], Array.isArray(payload) ? payload : [],
+          (row) => stationById.has(String(row.employeeId)) && (stations === null || stations.has(row.stationId)),
+          (employeeId) => stationById.get(String(employeeId)) ?? null,
+        );
+        await storeMerged(rows, merged);
+        return Response.json({ ok: true });
+      }
+      // Model regulation Art. 56(1): below senior, the filer adds their case; named committee members investigate theirs.
+      // HR / the administration run the cases; rows they cannot read (a case naming them) stay as stored.
+      if (category === 'abuseCases' && isServerVoiceHrReader({ ...context, userId: auth.userId })) {
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+        const prior = Array.isArray(rows[0]?.payload) ? rows[0].payload : [];
+        const merged = mergeVoiceWriteForServer('abuseCases', prior, Array.isArray(payload) ? payload : [], { ...context, userId: auth.userId });
+        const ids = new Set(merged.map((row) => String(row?.id)));
+        await storeMerged(rows, [...merged, ...prior.filter((row) => !ids.has(String(row?.id)))]);
+        return Response.json({ ok: true });
+      }
+      if (category === 'abuseCases') {
+        if (privilege === 'none' || !auth.userId) return Response.json({ error: 'Forbidden: this data cannot be written by your role' }, { status: 403 });
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+        const merged = mergeAbuseCasesWrite(rows[0]?.payload || [], Array.isArray(payload) ? payload : [], auth.userId);
+        await storeMerged(rows, merged);
+        return Response.json({ ok: true });
+      }
+      // Org design: owner and HR design the structure; published org decisions are immutable,
+      // the author never approves his own change, voice never enters the authority matrix.
+      if (category === 'orgDesign') {
+        const role = String(context.actor?.role || auth.role || '');
+        const owner = !!(auth.admin || auth.role === 'owner');
+        const canEdit = owner || ['director', 'admin', 'hr_manager'].includes(role) || context.permissions.has('manage_employees');
+        if (!canEdit) {
+          return Response.json({
+            error: 'ORG_EDIT_HR_ONLY',
+            reason: 'تصميم الهيكل للمالك والموارد البشرية.',
+            reasonEn: 'Structure design is for the owner and HR.',
+          }, { status: 403 });
+        }
+        const rows = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+        const prior = rows[0]?.payload && !Array.isArray(rows[0].payload) ? rows[0].payload : {};
+        const merged = mergeOrgDesignWrite(prior, payload, { userId: auth.userId || '', owner, canEdit });
+        await storeMerged(rows, merged.payload);
+        return Response.json({ ok: true, refused: merged.refused });
+      }
       let allowed = false;
-      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'branchEscalationSla', 'workProofs', 'visitorProofs', 'disciplinaryCases', 'arbitrationOutcomes', 'assetTransfers', 'orgSeats', 'stationBudgets', 'hcmFoundation', 'hcmPerformance', 'hseCredits', 'attendancePolicy', 'attendanceEmergency'].includes(category)) allowed = context.senior;
+      if (['companyMeta', 'files', 'orgTree', 'smartPositions', 'complaintEscalationChain', 'branchEscalationChains', 'branchEscalationSla', 'workProofs', 'visitorProofs', 'arbitrationOutcomes', 'orgSeats', 'hcmFoundation', 'hcmPerformance', 'hseCredits', 'attendancePolicy', 'attendanceEmergency', 'abuseCases'].includes(category)) allowed = context.senior;
+      else if (category === 'trainingPlan') allowed = context.senior || context.permissions.has('manage_employees');
       else if (['hrLevels', 'hrClusters', 'jobGrades'].includes(category)) allowed = context.senior && (!context.actor || context.actor.role === 'director');
       else if (category === 'payrollRuns') allowed = context.senior || context.permissions.has('manage_payroll');
       else if (category === 'schedules') allowed = context.senior || ['pgm', 'station_manager'].includes(actorRole) || context.permissions.has('manage_schedules');
@@ -1002,6 +1114,21 @@ Deno.serve(async (req) => {
         const prior = Array.isArray(existing[0]?.payload) ? existing[0].payload : [];
         const others = prior.filter((item) => ownerOf(item) !== auth.userId);
         data = [...mine, ...others];
+      }
+      // A writer who cannot read the HR-only voice rows keeps them untouched (he never received them).
+      if ((category === 'publicReports' || category === 'anonymousReports') && !isServerVoiceHrReader({ ...context, userId: auth.userId })) {
+        const receipts = await base44.asServiceRole.entities.AnonymousReportReceipt.filter({ companyId, employeeId: auth.userId || '__none__' });
+        const merged = mergeVoiceWriteForServer(category, Array.isArray(existing[0]?.payload) ? existing[0].payload : [], Array.isArray(data) ? data : [], {
+          ...context, userId: auth.userId, ownReportIds: new Set(receipts.map((receipt) => receipt.reportId)),
+        });
+        const seen = new Set();
+        data = merged.filter((row) => {
+          const id = String(row?.id || '');
+          if (!id) return true;
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
       }
       if (isObjectBlobCategory(category) && selfWrite) {
         return Response.json({ error: 'Forbidden: object blob categories are not self-writable' }, { status: 403 });
@@ -1097,6 +1224,21 @@ Deno.serve(async (req) => {
       if (!category) return Response.json({ error: 'Missing category' }, { status: 400 });
       const context = await getActorContext();
       const existing = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId, category });
+      // صوت الموظف: the HR-only channels (confidential complaint, suggestion, harassment) reach HR and
+      // the administration only — a line manager never downloads them, senior role or not.
+      if (VOICE_CATEGORIES.includes(String(category))) {
+        const rows = Array.isArray(existing[0]?.payload) ? existing[0].payload : [];
+        const receipts = await base44.asServiceRole.entities.AnonymousReportReceipt.filter({ companyId, employeeId: auth.userId || '__none__' });
+        const voiceContext = {
+          ...context,
+          userId: auth.userId,
+          isComplaintHandler: ['pgm', 'station_manager'].includes(context.actor?.role),
+          ownReportIds: new Set(receipts.map((receipt) => receipt.reportId)),
+        };
+        const ladder = context.senior ? rows : filterBlobPayload(category, rows, voiceContext);
+        const ladderIds = new Set(ladder.map((row) => String(row?.id)));
+        return Response.json({ payload: filterVoiceRowsForServer(String(category), rows, voiceContext, (row) => ladderIds.has(String(row?.id))) });
+      }
       if (context.senior || String(category).startsWith('niroMemory:')) {
         return Response.json({ payload: existing[0]?.payload || [] });
       }

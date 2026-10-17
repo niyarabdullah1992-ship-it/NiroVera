@@ -7,9 +7,11 @@ import {
   hasHRPermission,
   canViewEmployeeProfile,
   isCompanyOwner,
-  canAdjustPayroll,
   canManageEmployeeHR,
-  canManageEmployeeContract,
+  canEditEmployeeFile,
+  canEditEmployeeFileWage,
+  EMPLOYEE_FILE_HR_ONLY_LINE,
+  EMPLOYEE_FILE_CORRECTION_HREF,
 } from "@/lib/permissions";
 import { getRoleLabel } from "@/lib/roles";
 import { Lock } from "lucide-react";
@@ -18,19 +20,27 @@ import { employeeJobGrade } from "@/lib/jobGrades";
 import ProfileHero from "@/components/employees/ProfileHero";
 import ProfileCompletionCard, { profileCompletionStats } from "@/components/employees/ProfileCompletionCard";
 import CertificatesTab from "@/components/employees/CertificatesTab";
-import LeaveTab from "@/components/employees/LeaveTab";
 import DisciplineOnFile from "@/components/employees/DisciplineOnFile";
 import LoginAccessCard from "@/components/employees/LoginAccessCard";
 import AccountSettingsCard from "@/components/employees/AccountSettingsCard";
 import DeleteEmployeeAccountCard from "@/components/employees/DeleteEmployeeAccountCard";
 import OffboardingTab from "@/components/employees/OffboardingTab";
+import HoursOnFile from "@/components/employees/HoursOnFile";
+import OffboardingCustodyBoard from "@/components/employees/OffboardingCustodyBoard";
+import OffboardingLawPanel from "@/components/employees/OffboardingLawPanel";
+import { hasRecordedExit } from "@/lib/offboardingMinistryRows";
 import EmpAlertsStrip from "@/components/employees/EmpAlertsStrip";
 import AssignmentTab from "@/components/employees/AssignmentTab";
-import HoursOnFile from "@/components/employees/HoursOnFile";
+import { AllowanceLedgerCard, SiteConditionsCard } from "@/components/payroll/PayslipLedger";
+import { stationWithSite } from "@/lib/siteRemoteness";
 import EmployeeFileSummary from "@/components/employees/EmployeeFileSummary";
 import EmployeeFileFieldCard, { EmployeeFileWageCard } from "@/components/employees/EmployeeFileFieldCard";
-import EmployeeFileLeaveBoard from "@/components/employees/EmployeeFileLeaveBoard";
-import EmployeeFileDocsBoard from "@/components/employees/EmployeeFileDocsBoard";
+import EmployerDutiesCard from "@/components/employees/EmployerDutiesCard";
+import { contractHint, fileAlertHint } from "@/lib/rightHints.disc";
+import ContractLawPanel from "@/components/employees/ContractLawPanel";
+import ContractTab from "@/components/employees/ContractTab";
+import FileArchiveTab from "@/components/employees/FileArchiveTab";
+import { checkHiringAgeGate } from "@/lib/employerDuties";
 import EmployeeFileGrowthBoard from "@/components/employees/EmployeeFileGrowthBoard";
 import EmployeeFileVoiceBoard from "@/components/employees/EmployeeFileVoiceBoard";
 import { buildEmployeeFileView, employeeFileDraftSeed, employeeFileVoice, isViewerOwnFile, serviceLabel, splitEmployeeFileDraft } from "@/lib/employeeFileView";
@@ -38,35 +48,47 @@ import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { BORDER, CARD, MUTED, NAVY } from "@/lib/platformStyles";
 import SectionBackLink from "@/components/shared/SectionBackLink";
 import IdentityCard from "@/components/shared/IdentityCard";
-import { applyDueLaborRules, openDueNightRotateCycles, patchEmployeeFile } from "@/lib/store";
+import { applyDueLaborRules, openDueNightRotateCycles, patchEmployeeFile, updateCompany } from "@/lib/store";
+import { checkFileChangeConsentGate, necessityDaysUsed, NECESSITY_CAP_DAYS, spendConsent } from "@/lib/consentEffects";
+import { toast } from "@/components/ui/use-toast";
+import PlatformDateField from "@/components/shared/PlatformDateField";
 import { syncEmployeeSalaryToPayroll } from "@/lib/payroll";
 import { gosiRegistrationIso } from "@/lib/facts";
+import { regulationOf } from "@/lib/workRegulation";
 
 const TABS = [
   { key: "summary", ar: "ملخّص الملف", en: "File summary" },
   { key: "identity", ar: "الهوية والتوظيف", en: "Identity and employment" },
   { key: "contract", ar: "العقد والأجر", en: "Contract and wage" },
-  { key: "leave", ar: "الإجازات", en: "Leave" },
+  { key: "duty", ar: "ما يُحفظ على الملف", en: "Kept on the file" },
   { key: "compliance", ar: "الالتزام والمنصات", en: "Compliance and platforms" },
   { key: "growth", ar: "التدرّج والجزاءات", en: "Progression and sanctions" },
-  { key: "docs", ar: "الوثائق والعهد", en: "Documents and custody" },
-  { key: "audit", ar: "سجل الملف", en: "File log" },
+  { key: "docs", ar: "العهد", en: "Custody" },
+  { key: "archive", ar: "أرشيف الملف", en: "File archive" },
 ];
 
 const LEGACY_TAB = {
   professionalInfo: "identity",
   salary: "contract",
-  hours: "identity",
-  certificates: "docs",
+  hours: "duty",
+  schedule: "duty",
+  certificates: "identity",
+  // Leave lives in طلباتي and the payslip in قسيمتي — the file does not repeat them.
+  leave: "summary",
+  payslip: "contract",
   assignment: "growth",
+  // The file log tab became the documents archive; the change trail stays on employee.fileLog.
+  audit: "archive",
 };
 
-function ApplyLaborOnFile({ companyId, employeeId }) {
+// Art. 55 and the leave floors rewrite file facts, so they run from an HR (file-editor) session only;
+// the night-consent cycle opens a request, not a file fact, and runs for every viewer.
+function ApplyLaborOnFile({ companyId, employeeId, canEditFile }) {
   useEffect(() => {
     if (!companyId || !employeeId) return;
-    applyDueLaborRules(companyId, employeeId);
+    if (canEditFile) applyDueLaborRules(companyId, employeeId);
     openDueNightRotateCycles(companyId, undefined, employeeId);
-  }, [companyId, employeeId]);
+  }, [companyId, employeeId, canEditFile]);
   return null;
 }
 
@@ -86,6 +108,8 @@ export default function EmployeeProfile() {
   const [tab, setTab] = useState(LEGACY_TAB[requested] || requested);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
+  const [positionChange, setPositionChange] = useState("");
+  const [necessityUntil, setNecessityUntil] = useState("");
 
   if (!data || !currentUser) return null;
   const employee = (data.employees || []).find((e) => e.id === employeeId);
@@ -117,7 +141,7 @@ export default function EmployeeProfile() {
             : "This profile is private — you can only view your own profile. Colleagues' data are available to their managers and HR."}
         </p>
         <div style={{ marginTop: 16 }}>
-          <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr" />
+          <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr?tab=people" />
         </div>
       </div>
     );
@@ -125,11 +149,12 @@ export default function EmployeeProfile() {
 
   const canManageHRProfile = canManageEmployeeHR(currentUser, employee, data);
   const canManage = canManageEmployees(currentUser) || currentUser.role === "director" || currentUser.role === "ops_manager" || canManageHRProfile;
-  const canEditSalary = canAdjustPayroll(currentUser, data);
+  // The whole file is filled by HR only (owner and director as account administrators): managers and
+  // the employee read it; the employee changes a fact through «طلب تعديل بيان».
+  const canEditFile = canEditEmployeeFile(currentUser, employee, data);
+  const canEditSalary = canEditEmployeeFileWage(currentUser, employee, data);
   const canApproveLeave = canManage || hasHRPermission(currentUser, data, "manage_leave");
-  const canApproveCerts = canManage || hasHRPermission(currentUser, data, "manage_leave");
-  const canEditContract = canManageEmployeeContract(currentUser, employee, data);
-  const canEditFile = Boolean(canManage);
+  const canEditContract = canEditFile;
   const stationName = (data.stations || []).find((s) => s.id === employee.stationId)?.name;
   const fallbackPosition = employee.customTitle || getRoleLabel(company, employee.role, t);
   const roleLabel = employee.profile?.position || fallbackPosition;
@@ -158,20 +183,48 @@ export default function EmployeeProfile() {
   const cancelEdit = () => {
     setEditing(false);
     setDraft({});
+    setPositionChange("");
+    setNecessityUntil("");
   };
+  const seed = editing ? employeeFileDraftSeed(employee) : {};
+  const positionChanged = editing && String(seed.position || "").trim() && String(draft.position ?? seed.position).trim() !== String(seed.position || "").trim();
   const saveEdit = () => {
     if (!canEditFile || !dirty) return;
     const { profile, name, phone } = splitEmployeeFileDraft(draft);
+    // Arts. 59–60 — a move off the monthly wage, or substantially different work, needs the worker's
+    // signed consent (spent by this save); incidental necessity is dated and capped at 30 days a year.
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+    const consentGate = checkFileChangeConsentGate({
+      employee,
+      before: { wageType: employee.profile?.wageType || "monthly", position: seed.position },
+      after: { wageType: profile.wageType ?? employee.profile?.wageType, position: profile.position ?? seed.position },
+      positionChange,
+      necessityUntil,
+      today,
+    });
+    if (!consentGate.ok) {
+      toast({ description: ar ? consentGate.reason : consentGate.reasonEn, variant: "destructive" });
+      return;
+    }
+    // Art. 162 — a birth date that puts the worker under fifteen at hiring is refused.
+    const ageGate = checkHiringAgeGate({ birthDate: profile.birthDate ?? employee.profile?.birthDate, hireDate: profile.hireDate ?? employee.profile?.hireDate });
+    if (!ageGate.ok) {
+      toast({ description: ar ? ageGate.reason : ageGate.reasonEn, variant: "destructive" });
+      return;
+    }
     if (!canEditSalary) {
       delete profile.baseSalary;
       delete profile.housingAllowance;
       delete profile.transportAllowance;
       delete profile.otherAllowances;
       delete profile.allowances;
+      // Named Art. 2 lines and site allowances are wage too — payroll rights only.
+      for (const key of ["hazardAllowance", "livingAllowance", "commissionAmount", "remoteAreaAllowance", "medicalDistanceAllowance", "mealAllowance"]) delete profile[key];
     }
     if (!canEditContract) {
       delete profile.contractType;
       delete profile.contractEndDate;
+      delete profile.wageType;
     }
     if (Object.prototype.hasOwnProperty.call(profile, "gosiRegisteredAt")) {
       profile.gosiRegisteredAt = gosiRegistrationIso(profile.gosiRegisteredAt);
@@ -187,9 +240,24 @@ export default function EmployeeProfile() {
         dot: "#3C7D50",
       },
     });
+    if (consentGate.spend.length || consentGate.necessity) {
+      updateCompany(company.id, (d) => {
+        const emp = (d.employees || []).find((row) => row.id === employee.id);
+        if (!emp) return;
+        for (const row of consentGate.spend) {
+          spendConsent((emp.otherRequests || []).find((req) => req.id === row.consentId), { what: row.what, by: currentUser.name || "" });
+        }
+        if (consentGate.necessity) {
+          emp.necessityLog = Array.isArray(emp.necessityLog) ? emp.necessityLog : [];
+          emp.necessityLog.push({ ...consentGate.necessity, by: currentUser.name || "" });
+        }
+      });
+    }
     syncEmployeeSalaryToPayroll(company.id, employee.id);
     setEditing(false);
     setDraft({});
+    setPositionChange("");
+    setNecessityUntil("");
   };
   const commitGosiRegisteredAt = (field, iso) => {
     if (field !== "gosiRegisteredAt" || !canEditFile) return;
@@ -206,11 +274,9 @@ export default function EmployeeProfile() {
     syncEmployeeSalaryToPayroll(company.id, employee.id);
   };
 
-  const roleNote = isSelf && !canManage
-    ? (ar ? "تقرأ ملفك. التعديل للموارد البشرية والإدارة." : "You read your file. HR and management edit it.")
-    : canEditFile
-      ? (ar ? "تُحرّر هذا الملف باسمك. كل حفظ يُسجَّل في سجل الملف." : "You edit this file in your name. Every save is written on the file log.")
-      : (ar ? "عرض فقط — لا تعديل على هذا الملف من دورك." : "View only — your role cannot edit this file.");
+  const roleNote = canEditFile
+    ? (ar ? "تُحرّر هذا الملف باسمك. كل حفظ يُكتب باسمك ووقته." : "You edit this file in your name. Every save is written with your name and time.")
+    : (ar ? EMPLOYEE_FILE_HR_ONLY_LINE.ar : EMPLOYEE_FILE_HR_ONLY_LINE.en);
 
   const legal = ar
     ? "شارة المادة تظهر فقط إن كان المصدر نظام العمل السعودي. التأمينات وحماية الأجور والضمان الصحي ومنصة قوى جهات وأنظمة تشغيل لا مواد، فتُشرح نصّاً بلا شارة. هذه الصفحة أداة تشغيل لا فتوى قانونية — عند الخلاف يُرجع إلى النص الرسمي وإلى الموارد البشرية."
@@ -235,16 +301,16 @@ export default function EmployeeProfile() {
 
   return (
       <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {company?.id && employee?.id ? <ApplyLaborOnFile companyId={company.id} employeeId={employee.id} /> : null}
+        {company?.id && employee?.id ? <ApplyLaborOnFile companyId={company.id} employeeId={employee.id} canEditFile={canEditFile} /> : null}
 
         {!isSelf ? (
-          <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr" />
+          <SectionBackLink ar={ar} label={ar ? "الموارد البشرية" : "HR"} to="/app/hr?tab=people" />
         ) : null}
 
         <ProfileHero
           employee={employee}
           companyId={company.id}
-          canEdit={isSelf || canManage}
+          canEdit={canEditFile}
           roleLabel={roleLabel}
           stationName={stationName}
           currentUser={currentUser}
@@ -273,6 +339,29 @@ export default function EmployeeProfile() {
               ) : null}
             </div>
           ) : null}
+          {positionChanged ? (
+            <fieldset data-position-change="1" style={{ flex: "1 1 100%", border: "1px solid var(--nv-warn-line)", background: "var(--nv-warn-soft)", borderRadius: 10, padding: "10px 12px", margin: 0, display: "grid", gap: 6 }}>
+              <legend style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ink)", padding: "0 4px" }}>
+                {ar ? `تغيّر المسمّى إلى «${String(draft.position || "").trim()}» — ما طبيعته؟ (المادة 60)` : "The title changed — what kind of change? (Art. 60)"}
+              </legend>
+              {[
+                ["minor", ar ? "تصحيح في التسمية — العمل نفسه" : "A wording fix — the same work"],
+                ["essential", ar ? "عمل يختلف جوهرياً — بموافقته الكتابية الموقّعة" : "Substantially different work — with signed consent"],
+                ["necessity", ar ? `ضرورة عارضة مؤقتة — حتى ${NECESSITY_CAP_DAYS} يوماً في السنة (استُخدم ${necessityDaysUsed(employee, "work", new Date().getFullYear())})` : `Temporary incidental necessity — up to ${NECESSITY_CAP_DAYS} days a year`],
+              ].map(([value, text]) => (
+                <label key={value} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: "var(--nv-ink)", cursor: "pointer" }}>
+                  <input type="radio" name="position-change" value={value} checked={positionChange === value} onChange={() => setPositionChange(value)} />
+                  {text}
+                </label>
+              ))}
+              {positionChange === "necessity" ? (
+                <label style={{ display: "grid", gap: 4, fontSize: 11.5, color: "var(--nv-ink2)", maxWidth: 280 }}>
+                  {ar ? "ينتهي التكليف المؤقت في" : "The temporary assignment ends on"}
+                  <PlatformDateField ar={ar} value={necessityUntil} onChange={setNecessityUntil} />
+                </label>
+              ) : null}
+            </fieldset>
+          ) : null}
           <span style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-ok-ink)", background: "var(--nv-ok-soft)", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap" }}>{voice.warnings}</span>
           <span style={{ fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.6, minWidth: 0 }}>{roleNote}</span>
         </div>
@@ -299,7 +388,11 @@ export default function EmployeeProfile() {
                   cursor: "pointer",
                 }}
               >
-                {ar ? item.ar : item.en}
+                {item.key === "summary" && isSelf ? (ar ? "ملفي" : "My file")
+                  : item.key === "archive" && isSelf ? (ar ? "أرشيف ملفي" : "My file archive")
+                    // Sanctions are not on his own file — the tab is «التدرّج» only.
+                    : item.key === "growth" && isSelf ? (ar ? "التدرّج" : "Progression")
+                      : (ar ? item.ar : item.en)}
               </button>
             );
           })}
@@ -307,7 +400,22 @@ export default function EmployeeProfile() {
 
         <EmpAlertsStrip employee={employee} currentUser={currentUser} lang={lang} />
 
-        {tab === "summary" && <EmployeeFileSummary view={view} ar={ar} onOpenTab={openTab} />}
+        {tab === "summary" && (
+          <EmployeeFileSummary
+            view={view}
+            ar={ar}
+            onOpenTab={openTab}
+            employee={employee}
+            isSelf={isSelf}
+            roleLabel={roleLabel}
+            stationName={stationName}
+            companyName={company?.name || ""}
+            cases={data.disciplinaryCases || []}
+            assets={data.assets || []}
+            regulation={regulationOf(data)}
+            canEditFile={canEditFile}
+          />
+        )}
 
         {tab === "identity" && (
           <>
@@ -320,14 +428,20 @@ export default function EmployeeProfile() {
               <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
                 <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{ar ? "طلب تعديل بيان" : "Ask to correct a field"}</strong>
                 <span style={{ fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.7 }}>
-                  {ar ? "يُرفع إلى الموارد البشرية ويُعتمد قبل أن يظهر في ملفك، ويُكتب في سجل الملف." : "It goes to HR and is approved before it appears on your file, and the save is written on the file log."}
+                  {ar ? "يُرفع إلى الموارد البشرية ويُعتمد قبل أن يظهر في ملفك، ويُكتب باسم من اعتمده." : "It goes to HR and is approved before it appears on your file, under the name of whoever approves it."}
                 </span>
-                <Link to="/app/requests" style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", height: 36, padding: "0 14px", borderRadius: 8, background: "#3C7D50", color: "#F4F7F5", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
+                <Link to={EMPLOYEE_FILE_CORRECTION_HREF} style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", height: 36, padding: "0 14px", borderRadius: 8, background: "#3C7D50", color: "#F4F7F5", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
                   {ar ? "اطلب تعديل بيان" : "Request a correction"}
                 </Link>
               </section>
             ) : null}
-            <HoursOnFile employee={employee} data={data} lang={lang} />
+            <CertificatesTab
+              employee={employee}
+              companyId={company.id}
+              canEdit={canEditFile}
+              canApprove={canEditFile}
+              currentUser={currentUser}
+            />
           </>
         )}
 
@@ -337,7 +451,7 @@ export default function EmployeeProfile() {
               card={{
                 title: ar ? "عقد العمل" : "Employment contract",
                 what: ar ? "نوع العقد ومدّته من نظام العمل؛ النسخة المكتوبة والتوثيق مسؤولية صاحب العمل." : "Type and term come from the Law; the written copy is the employer's duty.",
-                tag: ar ? "المادة 51 · 75 · 98" : "Art. 51 · 75 · 98",
+                hint: contractHint(employee, { view: isSelf ? "employee" : "manager", ar }),
                 rows: view.contract,
                 note: view.contractNote,
               }}
@@ -351,7 +465,7 @@ export default function EmployeeProfile() {
               card={{
                 title: ar ? "مكافأة نهاية الخدمة" : "End-of-service award",
                 what: ar ? "تقدير مشتق من مدة الخدمة والأجر الأخير." : "An estimate derived from service length and last wage.",
-                tag: ar ? "المادة 84 · 85" : "Art. 84 · 85",
+                hint: fileAlertHint({ ruleId: "eos.gratuity.cite", value: "" }, employee, { view: isSelf ? "employee" : "manager", ar }),
                 rows: view.eos,
                 note: view.eosNote,
               }}
@@ -371,27 +485,42 @@ export default function EmployeeProfile() {
             />
           </div>
         )}
-
-        {tab === "leave" && (
-          <>
-            <EmployeeFileLeaveBoard view={view} ar={ar} />
-            <LeaveTab
+        {tab === "contract" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {canEditContract || isSelf ? <ContractTab employee={employee} companyId={company.id} canEdit={canEditContract && !isSelf} viewerId={currentUser.id} /> : null}
+            {canEditContract || isSelf ? <ContractLawPanel employee={employee} ar={ar} lane={isSelf ? "employee" : "manage"} /> : null}
+            {/* The leaving worker's read-only twin of «أنظمة الوزارة — نهاية الخدمة» (the case view sits in OffboardingTab). */}
+            {isSelf && hasRecordedExit(employee) ? <OffboardingLawPanel employee={employee} ar={ar} self /> : null}
+            <AllowanceLedgerCard employee={employee} ar={ar} />
+            <SiteConditionsCard
               employee={employee}
-              companyId={company.id}
-              currentUser={currentUser}
-              isSelf={isSelf}
-              canApprove={canApproveLeave}
+              station={stationWithSite(data, employee.stationId)}
+              ar={ar}
+              editing={editing}
+              draft={draft}
+              onDraft={setDraftField}
+              canEdit={canEditFile}
             />
-          </>
+            {canEditFile && !isSelf ? <OffboardingTab employee={employee} companyId={company.id} currentUser={currentUser} canManage /> : null}
+          </div>
+        )}
+
+        {tab === "duty" && (
+          /* Only what is kept on the file: weekly rest, hours basis and the Art. 108 category — read by
+             the roster and attendance. The week, its rule checks and the absence record live in الحضور. */
+          <HoursOnFile employee={employee} data={data} lang={lang} />
         )}
 
         {tab === "compliance" && (
           <>
+            <EmployerDutiesCard employee={employee} companyId={company.id} ar={ar} canManage={canEditFile && !isSelf} by={currentUser.name || ""} />
+
             {!profileCompletionStats(employee).done && (
               <ProfileCompletionCard
                 employee={employee}
                 isSelf={isSelf}
                 ar={ar}
+                canComplete={canEditFile}
                 onContinue={() => {
                   setTab("identity");
                   if (canEditFile) startEdit();
@@ -429,7 +558,7 @@ export default function EmployeeProfile() {
 
         {tab === "growth" && (
           <>
-            <EmployeeFileGrowthBoard view={view} ar={ar} />
+            <EmployeeFileGrowthBoard view={view} ar={ar} self={isSelf} />
             <EmployeeFileVoiceBoard
               employee={employee}
               publicReports={data.publicReports || []}
@@ -438,12 +567,14 @@ export default function EmployeeProfile() {
               ar={ar}
               canManage={canManage}
               chainIds={data.complaintEscalationChain || []}
+              viewer={currentUser}
+              data={data}
             />
             <AssignmentTab
               employee={employee}
               companyId={company.id}
               lang={lang}
-              canManage={canManage && !isSelf}
+              canManage={canEditFile && !isSelf}
               stations={data.stations || []}
               currentUser={currentUser}
             />
@@ -461,48 +592,15 @@ export default function EmployeeProfile() {
         )}
 
         {tab === "docs" && (
-          <>
-            <EmployeeFileDocsBoard view={view} ar={ar} />
-            <CertificatesTab
-              employee={employee}
-              companyId={company.id}
-              canEdit={isSelf || canManage}
-              canApprove={canApproveCerts}
-              currentUser={currentUser}
-            />
-            <OffboardingTab
-              employee={employee}
-              companyId={company.id}
-              currentUser={currentUser}
-              canManage={canManage && !isSelf}
-            />
-          </>
+          /* «عهدتي» — only the custody list; documents and certificates sit in الهوية, duties in الالتزام. */
+          <OffboardingCustodyBoard employee={employee} canManage={canEditFile && !isSelf} lang={lang} custodyOnly />
         )}
 
-        {tab === "audit" && (
-          <section className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden" }}>
-            <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--nv-line)" }}>
-              <div style={{ fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? "سجل الملف" : "File log"}</div>
-              <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.75, marginTop: 3 }}>
-                {ar ? "كل تغيير ظاهر باسم من أجراه ووقته. لا تعديل صامت." : "Every visible change names who made it and when. No silent edit."}
-              </div>
-            </div>
-            {view.audit.length === 0 ? (
-              <div style={{ padding: "16px 20px", fontSize: 12, color: MUTED }}>{ar ? "لا حركة مثبتة بعد." : "No written movement yet."}</div>
-            ) : view.audit.map((row) => (
-              <div key={`${row.text}-${row.at}`} style={{ padding: "12px 20px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto", gap: 12, alignItems: "start" }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", background: row.dot || "var(--nv-btn-fill)", marginTop: 6 }} />
-                <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                  <span style={{ fontSize: 12, color: "var(--nv-ink)", lineHeight: 1.8 }}>{row.text}</span>
-                  <span style={{ fontSize: 10, color: MUTED }}>{row.by}</span>
-                </span>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, color: MUTED, whiteSpace: "nowrap" }}>{row.at}</span>
-              </div>
-            ))}
-          </section>
+        {tab === "archive" && (
+          <FileArchiveTab employee={employee} data={data} isSelf={isSelf} managerView={canManage && !isSelf} ar={ar} />
         )}
 
-        {(isSelf || (canManage && !isSelf) || showFileRetentionNote) && (tab === "identity" || tab === "compliance") && (
+        {(isSelf || (canManage && !isSelf) || showFileRetentionNote) && tab === "identity" && (
           <IdentityCard
             kicker={ar ? "دخول المنصة" : "Platform access"}
             title={ar ? "إعدادات الحساب والدخول" : "Account and sign-in settings"}

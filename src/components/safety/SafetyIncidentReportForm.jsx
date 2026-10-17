@@ -1,4 +1,7 @@
 import React, { useRef, useState } from "react";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import TwoPaneWorkspace, { ListStack } from "@/components/shared/TwoPaneWorkspace";
+import CollapsibleItemCard, { useCollapsibleItems } from "@/components/shared/CollapsibleItemCard";
 import { ArrowUpFromLine, Cog, Flame, FlaskConical, Package, Sun, Truck, Waves, Zap } from "lucide-react";
 import {
   SAFETY_LIKELIHOOD,
@@ -10,6 +13,7 @@ import {
   safetyReportCode,
   safetyReportLevel,
 } from "@/lib/safetyReportCard";
+import NvIcon from "@/components/shared/NvIcon";
 
 const MONO = "var(--font-mono, 'IBM Plex Mono', monospace)";
 const INPUT = {
@@ -74,6 +78,8 @@ const EMPTY = {
   action: "",
   controlIndex: -1,
   injured: false,
+  injuredSelf: true,
+  injuredName: "",
   photoName: "",
   anonymous: false,
   stopped: false,
@@ -83,6 +89,11 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
   const [form, setForm] = useState(EMPTY);
   const [code, setCode] = useState(() => safetyReportCode());
   const [submitting, setSubmitting] = useState(false);
+  // «بطاقاتي» filters as in طلباتي: الكل, what is still open, then what closed with its after photo.
+  const [cardsFace, setCardsFace] = useState("all");
+  const isClosed = (item) => item.status === "closed";
+  const shownReports = reports.filter((item) => cardsFace === "all" || (cardsFace === "closed" ? isClosed(item) : !isClosed(item)));
+  const fold = useCollapsibleItems(shownReports.map((item) => String(item.id || item.card?.code)), "");
   const photoRef = useRef(null);
   const L = (a, e) => (ar ? a : e);
   const patch = (next) => setForm((prev) => ({ ...prev, ...next }));
@@ -127,7 +138,9 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
     : (reporter || "—");
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 420px), 1fr))", gap: 16, alignItems: "start" }}>
+    <TwoPaneWorkspace
+      dataKey="safety-mine"
+      raise={(
       <article style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 2px rgba(12,20,16,.04), 0 10px 28px rgba(12,20,16,.06)", minWidth: 0 }}>
         <header style={{ background: "linear-gradient(135deg, #0B3D27, #0F5535)", color: "#fff", padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <span style={{ width: 44, height: 44, borderRadius: 10, background: "#C8A45A", color: "#0B3D27", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }} aria-hidden>
@@ -221,7 +234,7 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <button type="button" onClick={() => photoRef.current?.click()} style={toggleStyle(Boolean(form.photoName))}>
-              {form.photoName ? L("✓ صورة مرفقة", "✓ Photo attached") : L("＋ أرفق صورة", "＋ Attach a photo")}
+              {form.photoName ? <><NvIcon name="check" size={12} strokeWidth={2} /> {L("صورة مرفقة", "Photo attached")}</> : L("＋ أرفق صورة", "＋ Attach a photo")}
             </button>
             <input
               ref={photoRef}
@@ -231,20 +244,30 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
               onChange={(event) => patch({ photoName: event.target.files?.[0]?.name || "" })}
             />
             <button type="button" onClick={() => patch({ injured: !form.injured })} style={toggleStyle(form.injured)}>
-              {form.injured ? L("✓ نعم، هناك إصابة", "✓ Yes, someone was hurt") : L("هل أُصيب أحد؟", "Was anyone hurt?")}
+              {form.injured ? <><NvIcon name="check" size={12} strokeWidth={2} /> {L("نعم، هناك إصابة", "Yes, someone was hurt")}</> : L("هل أُصيب أحد؟", "Was anyone hurt?")}
             </button>
             <button type="button" onClick={() => patch({ anonymous: !form.anonymous })} style={toggleStyle(form.anonymous)}>
-              {form.anonymous ? L("✓ بلا اسم", "✓ Anonymous") : L("أرسله بلا اسم", "Send it without a name")}
+              {form.anonymous ? <><NvIcon name="check" size={12} strokeWidth={2} /> {L("بلا اسم", "Anonymous")}</> : L("أرسله بلا اسم", "Send it without a name")}
             </button>
           </div>
+
+          {form.injured ? (
+            <div data-injured-who="" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button type="button" onClick={() => patch({ injuredSelf: true, injuredName: "" })} style={toggleStyle(form.injuredSelf)}>{L("المصاب أنا", "I was hurt")}</button>
+              <button type="button" onClick={() => patch({ injuredSelf: false })} style={toggleStyle(!form.injuredSelf)}>{L("المصاب زميل", "A colleague was hurt")}</button>
+              {!form.injuredSelf ? (
+                <input value={form.injuredName} onChange={(event) => patch({ injuredName: event.target.value })} placeholder={L("اسم المصاب", "Name of the injured")} style={{ flex: 1, minWidth: 160, height: 36, padding: "0 10px", border: "1px solid var(--nv-line)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, background: "var(--nv-card)", color: "var(--nv-ink)" }} />
+              ) : null}
+            </div>
+          ) : null}
 
           {form.injured ? (
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)", borderRadius: 10, padding: "10px 12px" }}>
               <strong style={{ color: "#9B2335", fontSize: 16, lineHeight: 1 }}>!</strong>
               <span style={{ fontSize: 12, color: "var(--nv-bad-ink)", lineHeight: 1.7 }}>
                 {L(
-                  "قدّم الإسعاف الأولي أولاً (المادة 125). الإصابة تُبلَّغ للجهة المختصة والتأمينات الاجتماعية في المهلة النظامية (المادة 133)، وتُصنَّف وتُسجَّل في سجل الإصابات.",
-                  "Give first aid first (Art. 125). The injury is reported to the competent authority and social insurance within the statutory window (Art. 133), then classified in the injury log."
+                  "قدّم الإسعاف الأولي أولاً من خزانة الإسعافات (المادة 142). تُبلَّغ الإصابة للتأمينات الاجتماعية خلال عشرة أيام، أو لمكتب العمل خلال أسبوع إن لم تكن المنشأة خاضعة لفرع الأخطار المهنية (المادة 141 · اللائحة م28)، وتُصنَّف وتُسجَّل في سجل الإصابات.",
+                  "Give first aid first from the first-aid cabinet (Art. 142). The injury is reported to GOSI within ten days, or to the labour office within a week if outside the hazards branch (Art. 141 · Regs Art. 28), then classified in the injury log."
                 )}
               </span>
             </div>
@@ -308,7 +331,7 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
 
               {critical ? (
                 <button type="button" onClick={() => patch({ stopped: !form.stopped })} style={toggleStyle(form.stopped)}>
-                  {form.stopped ? L("✓ أوقفت العمل وأبعدت الأشخاص", "✓ I stopped the work and moved people away") : L("أؤكّد إيقاف العمل في الموقع", "I confirm the work is stopped on site")}
+                  {form.stopped ? <><NvIcon name="check" size={12} strokeWidth={2} /> {L("أوقفت العمل وأبعدت الأشخاص", "I stopped the work and moved people away")}</> : L("أؤكّد إيقاف العمل في الموقع", "I confirm the work is stopped on site")}
                 </button>
               ) : null}
 
@@ -357,7 +380,7 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 6, background: "var(--nv-soft)", border: "1px solid var(--nv-line)", borderRadius: 10, padding: "12px 14px" }}>
             {checks.map((row) => (
               <span key={row[1]} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: row[0] ? "var(--nv-ok-ink)" : "var(--nv-ink3)" }}>
-                <span style={{ width: 18, height: 18, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700, flex: "none", background: row[0] ? "var(--nv-ok-soft)" : "var(--nv-hover)" }}>{row[0] ? "✓" : "·"}</span>
+                <span style={{ width: 18, height: 18, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10.5, fontWeight: 700, flex: "none", background: row[0] ? "var(--nv-ok-soft)" : "var(--nv-hover)" }}>{row[0] ? <NvIcon name="check" size={11} strokeWidth={2.25} inline={false} /> : "·"}</span>
                 {row[1]}
               </span>
             ))}
@@ -393,13 +416,22 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
           </span>
         </div>
       </article>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-        <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 2px rgba(12,20,16,.04)" }}>
-          <header style={{ padding: "14px 16px", borderBottom: "1px solid var(--nv-line)" }}>
-            <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{L("بطاقاتي", "My cards")}</strong>
-          </header>
-          {reports.length ? reports.map((item) => {
+      )}
+      list={(<>
+        <ListStack data-safety-list="mine">
+          <StatusFilterPills
+            card
+            dataKey="safety-mine"
+            title={L("بطاقاتي", "My cards")}
+            value={cardsFace}
+            onChange={setCardsFace}
+            items={reports.length === 0 ? [] : [
+              { id: "all", label: L("الكل", "All"), n: reports.length },
+              { id: "open", label: L("مفتوحة", "Open"), n: reports.filter((item) => !isClosed(item)).length },
+              { id: "closed", label: L("مُغلقة", "Closed"), n: reports.filter(isClosed).length },
+            ]}
+          />
+          {shownReports.length ? shownReports.map((item) => {
             const card = item.card || {};
             const tone = toneStyle(card.levelTone || "");
             const step = Number(item.step ?? card.step ?? 0);
@@ -407,19 +439,19 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
             const cat = ar ? (card.categoryAr || "—") : (card.categoryEn || card.categoryAr || "—");
             const lvl = ar ? (card.levelAr || "—") : (card.levelEn || card.levelAr || "—");
             const sla = ar ? (card.slaAr || "—") : (card.slaEn || card.slaAr || "—");
+            const key = String(item.id || card.code);
             return (
-              <div key={item.id || card.code} style={{ padding: "12px 16px", borderBottom: "1px solid var(--nv-line2)", display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0, gap: 2 }}>
-                    <strong style={{ fontSize: 13, color: "var(--nv-ink)" }}>{title}</strong>
-                    <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>
-                      <span style={{ fontFamily: MONO, direction: "ltr", unicodeBidi: "isolate" }}>{card.code || "—"}</span>
-                      {" · "}
-                      {cat}
-                    </span>
-                  </div>
-                  <span style={{ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none", ...tone }}>{lvl}</span>
-                </div>
+              <CollapsibleItemCard
+                key={key}
+                open={fold.isOpen(key)}
+                onToggle={() => fold.toggle(key)}
+                dot={step >= 3 ? "#3C7D50" : "#C8A45A"}
+                title={title}
+                person={cat}
+                date={card.code || ""}
+                status={<span style={{ display: "inline-flex", alignItems: "center", height: 22, padding: "0 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, flex: "none", ...tone }}>{lvl}</span>}
+                ar={ar}
+              >
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
                   {SAFETY_REPORT_STEPS.map((label, index) => (
                     <div key={label.ar} style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
@@ -430,18 +462,19 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
                   ))}
                 </div>
                 <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>{sla}</span>
-              </div>
+              </CollapsibleItemCard>
             );
           }) : (
-            <p style={{ margin: 0, padding: "18px 16px", textAlign: "center", fontSize: 14, color: "var(--nv-ink3)" }}>—</p>
+            <p className="nv-cic" style={{ margin: 0, padding: "18px 16px", textAlign: "center", fontSize: 14, color: "var(--nv-ink3)" }}>—</p>
           )}
-        </section>
+        </ListStack>
 
         <section style={{ background: "linear-gradient(160deg, #0B3D27, #0F5535)", color: "#fff", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10, boxShadow: "0 6px 18px rgba(6,61,38,.16)" }}>
           <strong style={{ fontSize: 14 }}>{L("المرجعية", "References")}</strong>
           {[
             [L("نظام العمل", "Labor Law"), L("الباب الثامن · م 121–128", "Chapter 8 · Arts. 121–128")],
-            [L("المادة 133", "Article 133"), L("إبلاغ إصابة العمل", "Reporting a work injury")],
+            [L("المادة 141 · اللائحة م28", "Art. 141 · Regs Art. 28"), L("إبلاغ إصابة العمل", "Reporting a work injury")],
+            [L("المادة 142", "Article 142"), L("خزانة الإسعافات الأولية", "First-aid cabinet")],
             ["ISO 45001", L("بند 6.1.2 · تحديد المخاطر", "6.1.2 · Hazard identification")],
             ["ISO 45001", L("بند 8.1.2 · هرم الضوابط", "8.1.2 · Hierarchy of controls")],
             ["ISO 45001", L("بند 5.4 · مشاركة العاملين", "5.4 · Worker participation")],
@@ -456,7 +489,7 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
             {L("المراجع للاسترشاد؛ النص الرسمي للنظام والمواصفة هو المرجع.", "The references are a guide; the official text of the law and the standard is the source.")}
           </span>
         </section>
-      </div>
-    </div>
+      </>)}
+    />
   );
 }

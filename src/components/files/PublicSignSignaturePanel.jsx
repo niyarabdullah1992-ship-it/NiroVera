@@ -9,6 +9,7 @@ import { createGateMessage, RETRACT_DAY_OPTIONS, retractDaysLabel } from "@/lib/
 import { formatUiNumber } from "@/lib/dateFormat";
 import { isMarkField } from "@/lib/signPdf";
 import { stampConfigFromSigner } from "@/lib/stampStudio";
+import NvIcon from "@/components/shared/NvIcon";
 
 function fieldLabel(field, ar) {
   if (isMarkField(field)) return ar ? "خانة صح / خطأ" : "Tick or cross";
@@ -96,7 +97,7 @@ export default function PublicSignSignaturePanel({
                 fontFamily: "'IBM Plex Mono', monospace",
               }}
               >
-                {done ? "✓" : index + 1}
+                {done ? <NvIcon name="check" size={11} strokeWidth={2.25} inline={false} /> : index + 1}
               </span>
               <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{fieldLabel(field, ar)}</span>
@@ -110,7 +111,6 @@ export default function PublicSignSignaturePanel({
 
       {showReject ? (
         <div style={{ margin: 16, border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden", background: SURFACE }}>
-          <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
             <div>
               <p style={{ margin: 0, fontSize: 16, fontWeight: 650, color: NAVY }}>{ar ? "رفض" : "Refuse"}</p>

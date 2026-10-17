@@ -6,6 +6,8 @@
  * A destination is listed on one side only. «لوحة المالك» is not a company side.
  */
 import { isWorkplaceStation, scopedStationIdsForUser } from "./stationTree.js";
+import { SUITE_APPS, suiteAppOnSide } from "./suiteApps.js";
+import { isVoiceHrReceiver } from "./voicePrivacy.js";
 
 export const RAIL_SIDES = [
   { id: "employee", ar: "الموظف", en: "Employee" },
@@ -19,14 +21,16 @@ export const RAIL_SIDE_COLOR = {
 
 const EMPLOYEE_GROUPS = [
   { id: "day", ar: "يومي", en: "Today", sections: ["duty", "daily", "compliance"] },
-  { id: "asks", ar: "طلباتي", en: "My requests", sections: ["requests", "signing", "complaints"] },
+  { id: "asks", ar: "طلباتي", en: "My requests", sections: ["requests", "signing"] },
+  // Complaints and suggestions are not requests: they live in their own «صوت الموظف» group, never under طلباتي.
+  { id: "voice", ar: "صوت الموظف", en: "Employee voice", sections: ["complaints"] },
   { id: "mine", ar: "ملفي", en: "My file", sections: ["payslip", "performance", "discipline", "org"] },
 ];
 
 const MANAGE_GROUPS = [
   { id: "home", ar: "الرئيسية", en: "Home", sections: ["decide"] },
   { id: "daily", ar: "العمل اليومي", en: "Daily work", sections: ["duty", "daily", "hse"] },
-  { id: "staff", ar: "الموظفون", en: "People", sections: ["workforce", "people", "requests", "discipline", "complaints", "performance"] },
+  { id: "staff", ar: "الموظفون", en: "People", sections: ["hr", "requests", "discipline", "complaints", "performance"] },
   { id: "money", ar: "الامتثال والمال", en: "Compliance and pay", sections: ["ministry", "money", "signing"] },
 ];
 
@@ -102,9 +106,7 @@ function canManageMoney(surface, user, data) {
   const senior = ["owner", "director", "ops_manager", "admin"].includes(role) || !!user.isOwner || (!!data?.ownerId && user.id === data.ownerId);
   const stationManager = !senior && ["station_manager", "pgm"].includes(role);
   const financeOfficer = !senior && role === "financial_officer";
-  const stockKeeper = !senior && role === "inventory_keeper";
   if (surface === "payroll") return canAdjustPayroll(user, data);
-  if (surface === "inventory") return senior || stationManager || stockKeeper;
   return senior || stationManager || financeOfficer;
 }
 
@@ -125,6 +127,7 @@ function canManageVoice(user, data) {
     || ["director", "ops_manager", "pgm", "station_manager"].includes(user?.role)
     || hrPerm(user, data, "view_anonymous_reports")
     || hrPerm(user, data, "manage_anonymous_reports")
+    || isVoiceHrReceiver(user, data)
   );
 }
 
@@ -167,18 +170,34 @@ function dutyManageTo(user, data, group) {
     return withQuery(appPath(group, "attendance") || group.to || "/app/attendance", { lane: "manage" });
   }
   if (hrPerm(user, data, "manage_leave")) {
-    const shifts = appPath(group, "shifts") || appPath(group, "calendar");
+    const shifts = appPath(group, "shifts");
     return shifts ? withQuery(shifts, { lane: "manage" }) : "";
   }
   return "";
 }
 
 function moneyManageTo(user, data, group) {
-  for (const id of ["payroll", "expenses", "assets", "inventory"]) {
+  for (const id of ["payroll"]) {
     const path = appPath(group, id);
     if (path && canManageMoney(id, user, data)) return withQuery(path, { view: "manage" });
   }
   return "";
+}
+
+/**
+ * Section chips for the current rail side. The management side never lists
+ * التقويم التشغيلي — the manage lane plans on جدول الدوام and the calendar stays with the employee.
+ * @param {{ appId?: string, to?: string }[]} pages
+ * @param {"employee"|"manage"|string} side
+ */
+export function suiteSectionPagesForSide(pages, side) {
+  const list = Array.isArray(pages) ? pages : [];
+  if (side !== "manage") return list;
+  return list.filter((page) => {
+    const app = SUITE_APPS.find((row) => row.id === page?.appId) || null;
+    if (app) return suiteAppOnSide(app, "manage");
+    return !String(page?.to || "").split("?")[0].endsWith("/calendar");
+  });
 }
 
 export function railBadgeTone(kind) {
@@ -270,7 +289,7 @@ export function activeSuiteRailKey(sides, category, pathname, search) {
     if (has("performance:employee")) return "performance:employee";
   }
 
-  const moneyPath = category === "money" || ["/app/payroll", "/app/expenses", "/app/assets", "/app/inventory"].some((base) => path === base || path.startsWith(`${base}/`));
+  const moneyPath = category === "money" || ["/app/payroll"].some((base) => path === base || path.startsWith(`${base}/`));
   if (moneyPath) {
     const slip = params.get("tab") === "slip" || params.get("tab") === "payslip";
     const personal = params.get("view") === "self" || (slip && params.get("view") !== "manage");
@@ -282,10 +301,12 @@ export function activeSuiteRailKey(sides, category, pathname, search) {
   }
   if (path === "/app/org" || path.startsWith("/app/org/")) {
     if (params.get("view") === "employee" && has("org:employee")) return "org:employee";
-    if (has("people:manage")) return "people:manage";
+    if (has("hr:manage")) return "hr:manage";
+    if (has("org:employee")) return "org:employee";
   }
-  if ((path === "/app/hr" || path.startsWith("/app/hr/")) && params.get("tab") === "compliance" && has("ministry:manage")) {
-    return "ministry:manage";
+  if (path === "/app/hr" || path.startsWith("/app/hr/")) {
+    if (params.get("tab") === "compliance" && has("ministry:manage")) return "ministry:manage";
+    if (has("hr:manage")) return "hr:manage";
   }
   if ((path === "/app/files" || path.startsWith("/app/files/") || path === "/app/assistant") && has("files:manage")) {
     return "files:manage";
@@ -455,7 +476,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
   const discipline = byKey.get("discipline");
   if (discipline) {
     const base = appPath(discipline, "discipline") || String(discipline.to || "/app/discipline").split("?")[0];
-    const manageTo = canManageDiscipline(user, data) ? withQuery(base, { tab: "manage" }) : "";
+    const manageTo = canManageDiscipline(user, data) ? withQuery(base, { tab: "manage", lane: "manage" }) : "";
     const mineTo = withQuery(base, { tab: "mine" });
     if (manageTo) {
       manage.set("discipline", faceItem({
@@ -541,40 +562,34 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
     }));
   }
 
+  // «الموارد البشرية» — one item for what were «الهيكل والفروع» (/app/hr) and «المحطات التي أديرها»
+  // (/app/org admin). Same gates as the two it replaced; a station lead (ctx.hrAccess from
+  // navVisibility.hrSectionAccessFor) also reaches it for «الفروع والمحطات» and a read-only «الهيكل».
   const people = byKey.get("people");
-  if (people && canWriteOrg(user, data)) {
-    const base = appPath(people, "org") || String(people.to || "/app/org").split("?")[0];
-    manage.set("people", faceItem({
-      section: "people",
+  const workforce = byKey.get("workforce");
+  const workforceTo = workforce ? (appPath(workforce, "hr") || String(workforce.to || "/app/hr").split("?")[0]) : "";
+  const managesWorkforce = Boolean(workforce && workforceTo && canManageWorkforce(user, data));
+  const writesOrg = Boolean(people && canWriteOrg(user, data));
+  const leadOnly = Boolean(ctx.hrAccess?.stationLead && (ctx.hrAccess.panes || []).length);
+  if (managesWorkforce || writesOrg || leadOnly) {
+    manage.set("hr", faceItem({
+      section: "hr",
       lane: "manage",
-      iconKey: "people",
-      label: ar ? "المحطات التي أديرها" : "Stations I manage",
-      to: withQuery(base, { view: "admin" }),
-      signal: ownedSignal(people, "org", true),
+      iconKey: "workforce",
+      label: ar ? "الموارد البشرية" : "Human resources",
+      to: workforceTo || "/app/hr",
+      signal: managesWorkforce ? ownedSignal(workforce, "hr", true) : ownedSignal(people, "org", Boolean(people)),
     }));
   }
-
-  const workforce = byKey.get("workforce");
-  if (workforce && canManageWorkforce(user, data)) {
-    const to = appPath(workforce, "hr") || String(workforce.to || "/app/hr").split("?")[0];
-    if (to) {
-      manage.set("workforce", faceItem({
-        section: "workforce",
-        lane: "manage",
-        iconKey: "workforce",
-        label: ar ? "الهيكل والفروع" : "Org and branches",
-        to,
-        signal: ownedSignal(workforce, "hr", true),
-      }));
-      manage.set("ministry", faceItem({
-        section: "ministry",
-        lane: "manage",
-        iconKey: "ministry",
-        label: ar ? "الامتثال الوزاري" : "Ministry compliance",
-        to: withQuery(to, { tab: "compliance" }),
-        signal: ownedSignal(workforce, "hr", false),
-      }));
-    }
+  if (managesWorkforce) {
+    manage.set("ministry", faceItem({
+      section: "ministry",
+      lane: "manage",
+      iconKey: "ministry",
+      label: ar ? "الامتثال الوزاري" : "Ministry compliance",
+      to: withQuery(workforceTo, { tab: "compliance" }),
+      signal: ownedSignal(workforce, "hr", false),
+    }));
   }
 
   const money = byKey.get("money");

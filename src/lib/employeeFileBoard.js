@@ -1,4 +1,5 @@
 import { profileCompletionStats, profileFieldValue, profileGender, optionLabel, CONTRACT_TYPE_OPTIONS, isFixedContractType, isRamadanHoursSubject } from "@/lib/employeeProfileFields";
+import { religionOnFile } from "./laborRules.js";
 import { isOnLeaveToday, remainingLeaveDays, serviceYearsFromHire } from "@/lib/leaveTypes";
 import { collectEmployeeValidityDocs, EXPIRY_WARN_DAYS } from "@/lib/complianceDerivations";
 import { payableNightAllowance } from "@/lib/shiftWeek";
@@ -74,7 +75,7 @@ export function employeeFileAppliedLaw(employee, { ar = true } = {}) {
   const fixed = isFixedContractType(typeRaw);
   const probation = profile.probationEnd || profile.probationDays || profile.contract?.probationEnd || profile.contract?.probationDays;
   const female = profileGender(profile) === "female";
-  const muslim = isRamadanHoursSubject({ profile });
+  const muslim = religionOnFile({ profile }) === "muslim";
   return [
     {
       id: "contract",

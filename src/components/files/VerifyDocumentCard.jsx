@@ -18,6 +18,7 @@ import {
   verifyKindOf,
   verifyOutcomeCopy,
 } from "@/lib/verifyDocument";
+import { NvMark } from "@/components/shared/NvIcon";
 
 /** Latin token that does not flip the surrounding Arabic row. */
 function Ltr({ children, style, ar }) {
@@ -194,10 +195,10 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
         }}
         style={{
           position: "relative",
-          background: dragging || file ? "#f3fbf6" : CARD,
+          background: dragging || file ? "var(--nv-ok-soft, #f3fbf6)" : CARD,
           border: `1.5px dashed ${dragging || file ? "var(--nv-accent-border)" : "var(--nv-line)"}`,
-          borderRadius: 14,
-          padding: "40px 24px",
+          borderRadius: 8,
+          padding: "26px 20px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -207,10 +208,10 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
           cursor: checking ? "wait" : "pointer",
         }}
       >
-        <span style={{ width: 44, height: 44, borderRadius: 10, background: SURFACE, border: "1px solid var(--nv-line)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: INK }}>
+        <span style={{ width: 40, height: 40, borderRadius: 8, background: SURFACE, border: "1px solid var(--nv-line)", display: "inline-flex", alignItems: "center", justifyContent: "center", color: INK }}>
           {checking ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload style={{ width: 20, height: 20 }} />}
         </span>
-        <span style={{ fontSize: 17, fontWeight: 700, color: INK }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: INK }}>
           {file
             ? (ar ? "الملف جاهز للمطابقة" : "File ready to match")
             : (ar ? "اسحب النسخة المختومة هنا أو اخترها" : "Drop the sealed copy here, or pick it")}
@@ -225,7 +226,7 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
           <span>·</span>
           <span style={{ fontFamily: "inherit" }}>{ar ? "لا يُرفع الملف" : "The file is never uploaded"}</span>
         </span>
-        <span style={{ ...signPrimaryBtn, marginTop: 8, pointerEvents: "none" }}>
+        <span style={{ ...signGhostBtn, marginTop: 4, pointerEvents: "none", fontSize: 12, borderRadius: 8 }}>
           {file ? (ar ? "اختيار ملف آخر" : "Choose another file") : (ar ? "اختيار ملف" : "Choose a file")}
         </span>
         <input
@@ -262,7 +263,7 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
           type="button"
           onClick={run}
           disabled={!file || checking}
-          style={{ ...signPrimaryBtn, opacity: !file || checking ? 0.45 : 1, cursor: !file || checking ? "not-allowed" : "pointer" }}
+          style={{ ...signPrimaryBtn, height: 36, fontSize: 13, borderRadius: 8, background: "#3C7D50", color: "#fff", opacity: !file || checking ? 0.45 : 1, cursor: !file || checking ? "not-allowed" : "pointer" }}
         >
           {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {checking ? (ar ? "جارٍ حساب البصمة…" : "Computing the fingerprint…") : (ar ? "تحقق الآن" : "Verify now")}
@@ -283,16 +284,21 @@ export default function VerifyDocumentCard({ ar, companyId, initialId = "", embe
 
       {copy ? (
         <div style={{ borderTop: "1px solid var(--nv-line)", padding: embed ? "16px 0 0" : "20px 24px", display: "flex", flexDirection: "column", gap: 16, textAlign: "start" }}>
-          <div style={{ border: "1px solid var(--nv-line, #dfe3ea)", borderTop: `3px solid ${copy.color}`, background: copy.bg, borderRadius: 14, boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)", padding: "18px 20px", display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 16, alignItems: "start" }}>
-            <span style={{ width: 44, height: 44, borderRadius: 10, background: copy.color, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700 }}>{copy.mark}</span>
+          <div data-verify-result={kind} style={{ border: `1px solid ${copy.border || "var(--nv-line, #dfe3ea)"}`, background: copy.bg, borderRadius: 8, padding: "16px 18px", display: "grid", gridTemplateColumns: "auto minmax(0,1fr)", gap: 16, alignItems: "start" }}>
+            <span style={{ width: 44, height: 44, borderRadius: 10, background: copy.color, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700 }}><NvMark mark={copy.mark} size={22} /></span>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0, textAlign: "start" }}>
-              <span style={{ fontSize: 17, fontWeight: 700, color: copy.color }}>{copy.title}</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
+                <span style={{ fontSize: 17, fontWeight: 700, color: copy.color }}>{copy.title}</span>
+                <span data-verify-state={kind} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, lineHeight: 1.5, padding: "2px 8px", borderRadius: 999, color: copy.color, background: "var(--nv-card, #fff)", border: `1px solid ${copy.color}`, whiteSpace: "nowrap" }}>
+                  <span aria-hidden style={{ display: "inline-flex" }}><NvMark mark={copy.mark} size={11} /></span>{fileStateLabel(kind, ar)}
+                </span>
+              </span>
               <span style={{ fontSize: 13, lineHeight: 1.9, color: "var(--nv-ink2)" }}>{copy.desc}</span>
               <span style={{ fontSize: 12, lineHeight: 1.9, color: VERIFY_MUTED, borderTop: `1px solid ${copy.border}`, paddingTop: 8, marginTop: 2 }}>{copy.note}</span>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,200px),1fr))", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,200px),1fr))", border: "1px solid var(--nv-line)", borderRadius: 8, overflow: "hidden" }}>
             {facts.map((fact) => (
               <div key={fact.label} style={{ padding: "13px 16px", borderInlineStart: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 3, alignItems: "stretch", textAlign: "start" }}>
                 <span style={{ fontSize: 11, color: MUTED }}>{fact.label}</span>

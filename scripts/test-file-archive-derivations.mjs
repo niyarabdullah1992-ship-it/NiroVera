@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+// Updated: these derivations live in the backend shared module (base44/shared/*.ts, run via Node type stripping); there is no src/lib copy.
 import {
   ACCESS_SCOPES,
   normalizeAccess,
@@ -18,7 +19,7 @@ import {
   deriveArchiveStats,
   inferKind,
   formatSizeBytes,
-} from "../src/lib/fileArchiveDerivations.js";
+} from "../base44/shared/fileArchiveDerivations.ts";
 
 assert.deepEqual(ACCESS_SCOPES, ["restricted", "all_staff", "hr", "supervisors"]);
 assert.equal(normalizeAccess("Restricted"), "restricted");

@@ -1,13 +1,11 @@
 /**
  * Accounting hub — read-only period aggregations.
- * Posts only approved/paid expense claims and approved/sent payroll runs.
+ * Posts only approved/sent payroll runs (attendance → payroll → WPS).
  * Not a general ledger.
  */
 
-import { deriveCompanyBudget, toBudgetStatus } from "./expenseDerivations.js";
 import { deriveRunTotals, deriveWpsStatus } from "./payrollDerivations.js";
 
-const POSTED_EXPENSE = new Set(["approved", "paid"]);
 const POSTED_PAYROLL = new Set(["approved", "sent"]);
 
 function monthKeyNow(date = new Date()) {
@@ -17,22 +15,6 @@ function monthKeyNow(date = new Date()) {
 export function periodMonth(value) {
   if (typeof value === "string" && /^\d{4}-\d{2}$/.test(value)) return value;
   return monthKeyNow(value instanceof Date ? value : new Date());
-}
-
-function claimInPeriod(claim, month) {
-  const stamp = String(claim?.paidAt || claim?.approvedAt || claim?.submittedAt || claim?.createdAt || "").slice(0, 7);
-  return stamp === month;
-}
-
-export function postedExpenseClaims(claims = [], month) {
-  return (claims || []).filter((claim) => {
-    const status = toBudgetStatus(claim?.status);
-    return POSTED_EXPENSE.has(status) && claimInPeriod(claim, month);
-  });
-}
-
-export function postedExpenseTotal(claims = [], month) {
-  return postedExpenseClaims(claims, month).reduce((sum, claim) => sum + (Number(claim.amount) || 0), 0);
 }
 
 export function postedPayrollRun(runs = [], month) {
@@ -50,17 +32,12 @@ function wpsLabel(wps, ar) {
 
 export function deriveAccountingPeriod({
   month,
-  claims = [],
-  budgets = [],
   payrollRuns = [],
   now = new Date(),
   lang = "ar",
 } = {}) {
   const ar = lang === "ar";
   const period = periodMonth(month);
-  const postedClaims = postedExpenseClaims(claims, period);
-  const expenseTotal = postedExpenseTotal(claims, period);
-  const budget = deriveCompanyBudget(budgets, claims);
   const payrollRun = postedPayrollRun(payrollRuns, period);
   const draftRun = (payrollRuns || []).find((entry) => entry.month === period) || null;
   const postedTotals = deriveRunTotals(payrollRun?.items || []);
@@ -68,20 +45,6 @@ export function deriveAccountingPeriod({
 
   return {
     month: period,
-    expenses: {
-      count: postedClaims.length,
-      total: expenseTotal,
-      paidCount: postedClaims.filter((c) => c.status === "paid").length,
-      approvedCount: postedClaims.filter((c) => c.status === "approved").length,
-      claims: postedClaims,
-    },
-    budget: {
-      spent: budget.spent,
-      limit: budget.limit,
-      remaining: Math.max(0, (Number(budget.limit) || 0) - (Number(budget.spent) || 0)),
-      pct: budget.pct,
-      nearLimitCount: budget.nearLimitCount,
-    },
     payroll: {
       run: payrollRun,
       draft: !payrollRun ? draftRun : null,
@@ -105,22 +68,13 @@ export function toCsv(headers = [], rows = []) {
 
 export function accountingExportPack(snap, lang = "ar") {
   const ar = lang === "ar";
-  const expenseRows = (snap?.expenses?.claims || []).map((claim) => [
-    claim.id,
-    claim.title || "",
-    claim.amount,
-    toBudgetStatus(claim.status),
-    claim.stationId || "",
-  ]);
   const payrollRows = snap?.payroll?.run
     ? [[snap.month, snap.payroll.status, snap.payroll.heads, snap.payroll.netTotal]]
     : [];
   return {
-    expenseRows,
     payrollRows,
     summaryHeaders: ar ? ["البند", "القيمة"] : ["Item", "Value"],
     summaryRows: [
-      [ar ? "مصروف منشور" : "Posted expense", snap?.expenses?.total || 0],
       [ar ? "مسير منشور" : "Posted payroll", snap?.payroll?.netTotal || 0],
     ],
   };

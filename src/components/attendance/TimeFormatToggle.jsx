@@ -4,14 +4,14 @@ import { useTimeFormat } from "@/hooks/useTimeFormat";
 import { ACCENT, BORDER, MUTED, SURFACE } from "@/lib/platformStyles";
 
 const segment = (active, compact) => ({
-  height: compact ? "22px" : "26px",
-  minWidth: compact ? "28px" : "34px",
-  padding: compact ? "0 7px" : "0 9px",
+  height: compact ? "20px" : "26px",
+  minWidth: compact ? "24px" : "34px",
+  padding: compact ? "0 5px" : "0 9px",
   border: "none",
-  borderRadius: compact ? "6px" : "7px",
+  borderRadius: compact ? "5px" : "7px",
   background: active ? ACCENT : "transparent",
   color: active ? "#fff" : MUTED,
-  fontSize: "11px",
+  fontSize: compact ? "10.5px" : "11px",
   fontWeight: 600,
   cursor: "pointer",
   fontFamily: "'IBM Plex Mono', monospace",
@@ -24,6 +24,7 @@ export default function TimeFormatToggle({ lang, compact = false }) {
   return (
     <div
       dir={ar ? "rtl" : "ltr"}
+      role="group"
       aria-label={ar ? "نظام الساعة" : "Time format"}
       style={{
         display: "inline-flex",
@@ -46,6 +47,8 @@ export default function TimeFormatToggle({ lang, compact = false }) {
           dir="ltr"
           onClick={() => setFormat(value)}
           aria-pressed={format === value}
+          aria-label={ar ? `نظام ${value} ساعة` : `${value}-hour clock`}
+          className={compact ? "nv-hdr-mini" : undefined}
           style={segment(format === value, compact)}
         >
           {value}

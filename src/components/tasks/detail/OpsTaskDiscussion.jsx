@@ -62,23 +62,16 @@ export default function OpsTaskDiscussion({
           {ar ? "سبب التصعيد:" : "Escalation reason:"} {escalationNote.text}
         </div>
       ) : null}
-      {createdAt ? (
-        <ChatBubble
-          lang={ar ? "ar" : "en"}
-          isMine={createIsMine}
-          alignStart
-          onDelete={createIsMine && onUndoCreate ? () => onUndoCreate() : undefined}
-          msg={{
-            id: `create_${task.id}`,
-            text: ar ? "أُنشئت المهمة" : "Task created",
-            created_at: createdAt,
-            user_name: createPerson?.name || task.createdByName || "",
-            authorId: createPerson?.id || createPerson?.employeeId || task.createdBy,
-            avatarUrl: createPerson?.profile?.avatarUrl || createPerson?.avatarUrl || "",
-          }}
-        />
+      {/* «أُنشئت المهمة» is an event, not a message — it lives in سجل التدقيق only. Undo stays here for its three minutes. */}
+      {createdAt && createIsMine && onUndoCreate ? (
+        <div data-undo-create="1" style={{ display: "flex", alignItems: "center", gap: 10, borderRadius: 10, background: "var(--nv-soft)", border: "1px dashed var(--nv-line)", padding: "8px 12px", fontSize: 12, color: "var(--nv-ink2)" }}>
+          {ar ? "أنشأتها للتو — يمكنك التراجع خلال ثلاث دقائق." : "You just created it — you can undo within three minutes."}
+          <button type="button" onClick={() => onUndoCreate()} style={{ marginInlineStart: "auto", fontFamily: "inherit", fontSize: 12, fontWeight: 700, border: "none", background: "transparent", color: "var(--nv-bad-ink)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+            {ar ? "تراجع عن الإنشاء" : "Undo creation"}
+          </button>
+        </div>
       ) : null}
-      {!createdAt && rows.length === 0 ? (
+      {rows.length === 0 ? (
         <div style={{ fontSize: 12, color: MUTED, textAlign: "center", marginTop: 24 }}>
           {ar ? "لا رسائل بعد — اكتب في الشريط أسفل البطاقة." : "No messages yet — write in the bar at the bottom."}
         </div>

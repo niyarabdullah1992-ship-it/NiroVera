@@ -6,9 +6,7 @@ import { BORDER, MUTED, NAVY, ui, CARD } from "@/lib/platformStyles";
 const labels = {
   create_task: ["إنشاء مهمة", "Create task"], log_progress: ["تحديث تقدم مهمة", "Update task progress"],
   report_task_issue: ["تسجيل مشكلة مهمة", "Report task issue"], log_safety_incident: ["تسجيل حادث سلامة", "Log safety incident"],
-  create_inventory_item: ["تسجيل صنف مخزون", "Create inventory item"], request_inventory: ["طلب مواد", "Request inventory"],
-  issue_inventory: ["صرف مخزون", "Issue inventory"], review_inventory_request: ["مراجعة طلب مواد", "Review material request"],
-  review_expense: ["مراجعة مصروف", "Review expense"], submit_leave: ["إرسال طلب إجازة", "Submit leave request"],
+  submit_leave: ["إرسال طلب إجازة", "Submit leave request"],
   review_leave: ["مراجعة طلب إجازة", "Review leave request"], send_email: ["إرسال بريد", "Send email"],
 };
 

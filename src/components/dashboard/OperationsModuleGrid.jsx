@@ -1,4 +1,6 @@
 import React from "react";
+import { StatusFlag } from "@/components/shared/StatusFlag";
+import { KPI_INK } from "@/lib/statusFlag";
 import { Link } from "react-router-dom";
 import { canAccessPath } from "@/lib/navVisibility";
 import { formatUiNumber } from "@/lib/dateFormat";
@@ -33,15 +35,26 @@ function waitingOf(key, metrics) {
   if (key === "leave") return n(metrics.pendingLeave);
   if (key === "safety") return n(metrics.hazards);
   if (key === "complaints") return n(metrics.complaints);
-  if (key === "expenses") return n(metrics.expenses);
   return 0;
 }
 
 function toneOf(key, waiting) {
   if (waiting <= 0) return null;
-  if (key === "tasks" || key === "signing" || key === "signing-mine" || key === "review" || key === "escalation" || key === "expenses") return "urgent";
+  if (key === "tasks" || key === "signing" || key === "signing-mine" || key === "review" || key === "escalation") return "urgent";
   return "watch";
 }
+
+/** Proof-cycle steps that are a real problem when non-zero (chip); the rest are queues (green action line). */
+const CYCLE_PROBLEM_FLAG = {
+  attendance: { ar: "لم يسجّلوا بعد", en: "Not checked in" },
+  escalation: { ar: "حصة وقت محترقة", en: "Time quota burned" },
+};
+const CYCLE_ACTION = {
+  tasks: { ar: "افتح المهام", en: "Open tasks" },
+  review: { ar: "افتح القرار", en: "Open the decision" },
+  signing: { ar: "افتح التوقيع", en: "Open signing" },
+  "work-proof": { ar: "افتح الإثبات", en: "Open the proof" },
+};
 
 function tabBtn(on) {
   return {
@@ -90,6 +103,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
         ? `${metrics.checkedIn} حاضر · ${metrics.absentCount || 0} لم يسجّل — يغذّي المسير`
         : `${metrics.checkedIn} present · ${metrics.absentCount || 0} not in — feeds payroll`,
       value: n(metrics.absentCount) > 0 ? metrics.absentCount : `${metrics.attendanceRate}%`,
+      figure: n(metrics.absentCount) > 0 ? formatUiNumber(metrics.absentCount) : (n(metrics.scheduled) > 0 ? `${metrics.attendanceRate}%` : ""),
       to: "/app/attendance",
     },
     {
@@ -98,6 +112,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       title: ar ? "مهمة" : "Task",
       note: ar ? `${metrics.completedTasks} مكتملة من ${metrics.tasks}` : `${metrics.completedTasks} of ${metrics.tasks} completed`,
       value: n(metrics.openTasks) > 0 ? metrics.openTasks : metrics.tasks,
+      figure: n(metrics.tasks) > 0 ? `${n(metrics.completedTasks)}/${n(metrics.tasks)}` : "",
       to: "/app/tasks",
     },
     {
@@ -106,7 +121,8 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       title: ar ? "مراجعة" : "Review",
       note: ar ? "اعتماد أو رفض بسبب مكتوب" : "Approve or refuse with a written reason",
       value: dash(metrics.escalated),
-      to: "/app/escalation",
+      figure: n(metrics.escalated) > 0 ? formatUiNumber(metrics.escalated) : "",
+      to: "/app/tasks?lane=manage&filter=escalated",
     },
     {
       key: "escalation",
@@ -114,7 +130,8 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       title: ar ? "تصعيد" : "Escalate",
       note: ar ? "عند احتراق الحصة دون تقدّم" : "When the time quota burns without progress",
       value: n(metrics.escalated) > 0 ? metrics.escalated : "—",
-      to: "/app/escalation",
+      figure: n(metrics.escalated) > 0 ? formatUiNumber(metrics.escalated) : "",
+      to: "/app/tasks?lane=manage&filter=escalated",
     },
     {
       key: "signing",
@@ -122,6 +139,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       title: ar ? "توقيع" : "Sign",
       note: ar ? `متوازٍ حتى 100 طرف · ${dash(signing.mine)} ينتظر ختمك` : `Parallel, up to 100 parties · ${dash(signing.mine)} awaiting you`,
       value: dash(signing.mine),
+      figure: n(signing.mine) > 0 ? formatUiNumber(signing.mine) : "",
       to: "/app/signing?tab=mine",
     },
     {
@@ -130,6 +148,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       title: ar ? "إثبات العميل" : "Client proof",
       note: ar ? "جهة خارج الشركة · تحقق عام" : "Outside company · public verify",
       value: dash(proofsAwaiting),
+      figure: n(proofsAwaiting) > 0 ? formatUiNumber(proofsAwaiting) : "",
       to: "/app/work-proof",
     },
   ]
@@ -166,9 +185,6 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       title: ar ? "المال" : "Money",
       items: [
         { key: "payroll", title: ar ? "الرواتب" : "Payroll", note: ar ? "يغذيه الحضور المعتمد" : "Fed by approved attendance", value: metrics.payroll, to: "/app/payroll" },
-        { key: "expenses", title: ar ? "المصروفات" : "Expenses", note: ar ? "مطالبات بانتظار الاعتماد" : "Claims awaiting approval", value: n(metrics.expenses) > 0 ? metrics.expenses : "—", to: "/app/expenses" },
-        { key: "assets", title: ar ? "الأصول / العهد" : "Assets / Custody", note: ar ? "سجل وتسليم ونقل بين الفروع" : "Register, handover, inter-station transfer", value: metrics.assets ?? "—", to: "/app/assets" },
-        { key: "inventory", title: ar ? "المخزون" : "Inventory", note: ar ? "رصيد لا مركزي · طلب من فرع آخر" : "Decentralised balance · request from another station", value: metrics.inventory, to: "/app/inventory" },
       ],
     },
     {
@@ -202,8 +218,6 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
       items: view === "attention" ? group.items.filter((item) => item.tone) : group.items,
     }))
     .filter((group) => group.items.length > 0);
-
-  const cycleWaiting = cycle.reduce((sum, item) => sum + (item.waiting || 0), 0);
 
   const renderRow = (item) => {
     const urgent = item.tone === "urgent";
@@ -244,7 +258,7 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
             fontFamily: MONO,
             fontSize: 18,
             fontWeight: 500,
-            color: urgent ? BAD : "var(--nv-ink)",
+            color: KPI_INK,
             flexShrink: 0,
             lineHeight: 1.1,
           }}
@@ -257,57 +271,29 @@ export default function OperationsModuleGrid({ metrics, lang, user, data, compan
 
   return (
     <div dir={ar ? "rtl" : "ltr"} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-            <span style={HEAD}>{ar ? "سلسلة الإثبات" : "Proof cycle"}</span>
-            <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
-              {ar
-                ? "حضور → مهمة → مراجعة → تصعيد → توقيع → إثبات للعميل. كل رقم من السجل والنطاق المعروض."
-                : "Attend → task → review → escalate → sign → client proof. Each figure is from the registry and the current scope."}
-            </span>
-          </div>
-          {cycleWaiting > 0 ? (
-            <span dir="ltr" style={{ fontSize: 11, fontWeight: 700, color: "#fff", background: OK, padding: "2px 8px", fontFamily: MONO, borderRadius: 999, unicodeBidi: "isolate" }}>
-              {cycleWaiting}
-            </span>
-          ) : null}
-        </div>
-        <div className="nv-dash-cycle">
-          {cycle.map((item) => {
-            const urgent = item.tone === "urgent";
-            const watch = item.tone === "watch";
-            return (
-              <Link
-                key={item.step}
-                to={item.to}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  padding: "14px 14px",
-                  border: `1px solid ${LINE}`,
-                  borderTop: `3px solid ${urgent ? BAD : watch ? WARN : OK}`,
-                  borderRadius: 12,
-                  textDecoration: "none",
-                  minWidth: 0,
-                  background: CARD,
-                }}
-              >
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 10, letterSpacing: ".14em", color: MUTED }}>{item.step}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: NAVY }}>{item.title}</span>
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 26, fontWeight: 500, color: urgent ? BAD : "var(--nv-ink)", lineHeight: 1.05, unicodeBidi: "isolate" }}>
-                  {item.value}
-                </span>
-                <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{item.note}</span>
-                {urgent || watch ? (
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: urgent ? BAD : WARN }} />
+      {/* سلسلة الإثبات — one compact strip: step, its figure, a chip only for a real problem,
+          a small green «افتح» only where action is waiting, a faint dot where nothing is. */}
+      <nav className="nv-proofstrip" aria-label={ar ? "سلسلة الإثبات" : "Proof cycle"} data-proof-strip="1">
+        <span className="nv-proofstrip-title">{ar ? "سلسلة الإثبات" : "Proof cycle"}</span>
+        {cycle.map((item, i) => {
+          const problem = CYCLE_PROBLEM_FLAG[item.key] && item.waiting > 0;
+          const open = !problem && item.key !== "tasks" && item.waiting > 0 && CYCLE_ACTION[item.key];
+          const empty = item.figure === "" || item.figure == null;
+          return (
+            <React.Fragment key={item.key}>
+              {i > 0 ? <span className="nv-proof-arrow" aria-hidden>{ar ? "←" : "→"}</span> : null}
+              <Link to={item.to} className="nv-proofstep" data-step={item.key}>
+                <span className="nv-proof-name">{item.title}</span>
+                {empty ? <span className="nv-proof-dot" aria-label={ar ? "لا شيء" : "Nothing"} /> : <b>{item.figure}</b>}
+                {problem ? (
+                  <StatusFlag tone={item.key === "escalation" ? "bad" : "warn"} ar={ar} label={item.title} flag={ar ? CYCLE_PROBLEM_FLAG[item.key].ar : CYCLE_PROBLEM_FLAG[item.key].en} />
                 ) : null}
+                {open ? <span className="nv-proof-open">{ar ? "افتح" : "Open"}</span> : null}
               </Link>
-            );
-          })}
-        </div>
-      </section>
+            </React.Fragment>
+          );
+        })}
+      </nav>
 
       <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 20px", borderBottom: `1px solid ${HAIR}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>

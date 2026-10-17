@@ -6,6 +6,7 @@ import { citeRule, laborDaysBetween, laborDayKey, ruleValue } from "./laborRules
 import { isRamadanDay, isRamadanHoursSubject } from "./laborRules.js";
 import { remainingLeaveDays, usedLeaveDays } from "./leaveTypes.js";
 import { isOfficialHoliday } from "./ummAlQuraCalendar.js";
+import { weeklyOffDows } from "./leaveEidOverlap.js";
 
 export const PAY_CYCLES = ["monthly", "daily", "weekly", "piece", "hourly"];
 
@@ -29,14 +30,130 @@ export function hoursPolicyOf(company, employee) {
     art105WorkerConsent: flagOn(bag.art105WorkerConsent),
     art105MinistryConsent: flagOn(bag.art105MinistryConsent),
     art105BankedWeeks: Number(bag.art105BankedWeeks) || 0,
-    hoursExempt108: flagOn(profile.hoursExempt108),
+    // Art. 108 — a named category (Regs Art. 23), never a bare boolean. A legacy boolean with no
+    // category is not an exemption: the file must choose (art108CategoryOf → legacy).
+    hoursExempt108: !!art108CategoryOf(employee).category,
+    hoursCategory108: art108CategoryOf(employee).category,
+    legacy108: art108CategoryOf(employee).legacy,
+    art100ApprovalNo: String(bag.art100ApprovalNo || "").trim(),
+    art100ApprovalDate: String(bag.art100ApprovalDate || "").slice(0, 10),
+    hoursBasis: HOURS_BASIS.includes(bag.hoursBasis) ? bag.hoursBasis : "",
     workPosting: bag.workPosting || company?.workPosting || company?.attendanceSettings?.workPosting || {},
     nurseryChildrenCount: Number(bag.nurseryChildrenCount ?? company?.nurseryChildrenCount) || 0,
+    nurseryOnSite: flagOn(bag.nurseryOnSite),
   };
 }
 
 export function isHoursExempt108(employee, company) {
   return hoursPolicyOf(company, employee).hoursExempt108 === true;
+}
+
+/* ---------------- Art. 108 + Regs Art. 23 — categories with their own ceilings ---------------- */
+export const ART108_CATEGORIES = [
+  { id: "management", ar: "منصب إدارة عليا بسلطة صاحب العمل (المادة 108 فقرة 1)", en: "Senior management with the employer's authority (Art. 108(1))" },
+  { id: "preparatory", ar: "أعمال تجهيزية أو تكميلية — 15 + 15 دقيقة (اللائحة م23/6)", en: "Preparatory / complementary work — 15 + 15 min (Regs Art. 23(6))" },
+  { id: "intermittent", ar: "عمل متقطع بالضرورة — 10 ساعات، 8 في رمضان (اللائحة م23/7)", en: "Necessarily intermittent work — 10 h, 8 in Ramadan (Regs Art. 23(7))" },
+  { id: "guard", ar: "حراسة — عدا الحراسة الأمنية المدنية — 12 ساعة، 10 في رمضان (اللائحة م23/8)", en: "Guarding — not civil security — 12 h, 10 in Ramadan (Regs Art. 23(8))" },
+  { id: "cleaner", ar: "نظافة — 12 ساعة، 10 في رمضان، ولا أكثر من 6 متوالية (اللائحة م23/5 و8)", en: "Cleaning — 12 h, 10 in Ramadan, never 6+ in a row (Regs Art. 23(5),(8))" },
+];
+const ART108_IDS = ART108_CATEGORIES.map((row) => row.id);
+
+/** `{ category, legacy }` — legacy = the old boolean on file with no category chosen (not an exemption). */
+export function art108CategoryOf(employee) {
+  const profile = employee?.profile || {};
+  const raw = String(profile.hoursCategory108 || "").trim();
+  if (ART108_IDS.includes(raw)) return { category: raw, legacy: false };
+  return { category: "", legacy: flagOn(profile.hoursExempt108) };
+}
+
+export function art108CategoryLabel(category, ar = true) {
+  const row = ART108_CATEGORIES.find((item) => item.id === category);
+  return row ? (ar ? row.ar : row.en) : "";
+}
+
+/**
+ * The ceilings that replace Arts 98/101 for an Art. 108 category (Regs Art. 23).
+ * null = no category (ordinary rules apply). Infinity = no ceiling in the text (senior management).
+ * Art. 104 (weekly rest) is never lifted by Art. 108.
+ */
+export function art108Limits(employee, onDate, laborCalendar) {
+  const { category } = art108CategoryOf(employee);
+  if (!category) return null;
+  const ramadan = isRamadanDay(onDate, laborCalendar) && isRamadanHoursSubject(employee);
+  const week = ramadan ? ruleValue("hours.art108.ramadanWeekHours", onDate) : ruleValue("hours.art108.weekHours", onDate);
+  if (category === "management") {
+    return { category, dayHours: Infinity, weekHours: Infinity, workplaceHours: Infinity, consecutiveHours: null, dailyRestHours: null, extraDayMinutes: 0, ramadan };
+  }
+  if (category === "preparatory") {
+    const extra = (ruleValue("hours.art108.prepMinutes", onDate) || 15) + (ruleValue("hours.art108.complementaryMinutes", onDate) || 15);
+    const base = ramadan ? ruleValue("hours.ramadan.ordinaryHours", onDate) : ruleValue("hours.shift.ordinaryHours", onDate);
+    const baseWeek = ramadan ? ruleValue("hours.ramadan.weekMaxHours", onDate) : ruleValue("hours.week.ordinaryMaxHours", onDate);
+    return {
+      category,
+      dayHours: base + extra / 60,
+      weekHours: baseWeek,
+      workplaceHours: ruleValue("hours.workplace.maxHours", onDate),
+      consecutiveHours: ruleValue("hours.rest.maxConsecutiveHours", onDate),
+      dailyRestHours: null,
+      extraDayMinutes: extra,
+      ramadan,
+    };
+  }
+  if (category === "intermittent") {
+    const rest = ruleValue("hours.art108.intermittentDailyRestHours", onDate) || 10;
+    return {
+      category,
+      dayHours: ramadan ? ruleValue("hours.art108.intermittentRamadanHours", onDate) : ruleValue("hours.art108.intermittentDayHours", onDate),
+      weekHours: week,
+      workplaceHours: 24 - rest,
+      consecutiveHours: null,
+      dailyRestHours: rest,
+      extraDayMinutes: 0,
+      ramadan,
+    };
+  }
+  return {
+    category,
+    dayHours: ramadan ? ruleValue("hours.art108.guardRamadanHours", onDate) : ruleValue("hours.art108.guardDayHours", onDate),
+    weekHours: week,
+    workplaceHours: Infinity,
+    consecutiveHours: category === "cleaner" ? ruleValue("hours.art108.cleanerConsecutiveHours", onDate) : null,
+    dailyRestHours: null,
+    extraDayMinutes: 0,
+    ramadan,
+  };
+}
+
+/** Weekly cap for one person this week — Art. 108 category first, then the Art. 98 cap. */
+export function art108WeekCap(employee, onDate, laborCalendar, dutyDays = 0) {
+  const limits = art108Limits(employee, onDate, laborCalendar);
+  if (!limits) return null;
+  return limits.weekHours + (limits.extraDayMinutes / 60) * Math.max(0, Number(dutyDays) || 0);
+}
+
+/* ---------------- Art. 98 — the hours basis (daily 8 / weekly 48) on record ---------------- */
+export const HOURS_BASIS = ["daily", "weekly"];
+
+/** `{ basis, source }` — employee file, then the site, then the company. "" = not recorded. */
+export function hoursBasisOf(company, employee, station) {
+  const own = String(employee?.profile?.hoursBasis || "").trim();
+  if (HOURS_BASIS.includes(own)) return { basis: own, source: "employee" };
+  const stationId = employee?.profile?.workStationId || employee?.stationId;
+  const site = station || (stationId != null ? (company?.stations || []).find((row) => String(row?.id) === String(stationId)) : null);
+  const fromSite = String(site?.hoursBasis || "").trim();
+  if (HOURS_BASIS.includes(fromSite)) return { basis: fromSite, source: "station" };
+  const policy = hoursPolicyOf(company);
+  if (policy.hoursBasis) return { basis: policy.hoursBasis, source: "company" };
+  return { basis: "", source: "" };
+}
+
+/* ---------------- Art. 100 — rotation averaging needs the Ministry's approval on record ---------------- */
+export function art100ApprovalOf(company) {
+  const policy = hoursPolicyOf(company);
+  const no = policy.art100ApprovalNo;
+  const date = policy.art100ApprovalDate;
+  const recorded = !!no && /^\d{4}-\d{2}-\d{2}$/.test(date);
+  return { rotating: policy.rotatingShifts, recorded, approved: policy.rotatingShifts && recorded, no, date };
 }
 
 export function ageYearsOn(employee, onDate) {
@@ -62,6 +179,8 @@ export function ordinaryDayCap(employee, company, onDate, laborCalendar) {
     }
     return ruleValue("hours.juvenile.ordinaryHours", onDate);
   }
+  const limits108 = art108Limits(employee, onDate, laborCalendar);
+  if (limits108) return limits108.dayHours;
   if (isRamadanDay(onDate, laborCalendar) && isRamadanHoursSubject(employee)) {
     return ruleValue("hours.ramadan.ordinaryHours", onDate);
   }
@@ -75,6 +194,8 @@ export function ordinaryWeekCap(employee, company, onDate, laborCalendar) {
   if (isJuvenile(employee, onDate)) {
     return ordinaryDayCap(employee, company, onDate, laborCalendar) * 6;
   }
+  const limits108 = art108Limits(employee, onDate, laborCalendar);
+  if (limits108) return limits108.weekHours;
   if (isRamadanDay(onDate, laborCalendar) && isRamadanHoursSubject(employee)) {
     return ruleValue("hours.ramadan.weekMaxHours", onDate);
   }
@@ -122,25 +243,40 @@ export function checkWorkPostingGate({ company, station, settings } = {}) {
 }
 
 /** Named overtime from published-shift hours vs 98/99/Ramadan/164, plus 107 rest-day and Eid hours. */
+/** This person's off weekdays (file first, then the establishment) — Arts 104/107. */
+export function isEmployeeOffDay(dateKey, company, employee) {
+  const [y, m, d] = String(dateKey || "").split("-").map(Number);
+  if (!y) return false;
+  return weeklyOffDows(company, employee).includes(new Date(y, m - 1, d).getDay());
+}
+
+/**
+ * `criterion`: "daily" names hours past the day cap; "weekly" (Art. 107(2)) names only the hours past
+ * the week cap. Empty = the Art. 98 basis on record (hoursBasisOf), else daily.
+ * Holiday / weekly-rest hours are always overtime in full (Art. 107(3)).
+ */
 export function deriveNamedOvertime({
   days = [],
   employee,
   company,
   laborCalendar,
+  criterion = "",
   ar = true,
 } = {}) {
   const rows = [];
   let weekHours = 0;
   let weekOt = 0;
   const firstKey = days[0]?.key;
-  const weekCap = ordinaryWeekCap(employee, company, firstKey, laborCalendar);
+  const basis = criterion || hoursBasisOf(company, employee).basis || "daily";
+  const dutyDays = days.filter((day) => Number(day.hours) > 0).length;
+  const weekCap = art108WeekCap(employee, firstKey, laborCalendar, dutyDays) ?? ordinaryWeekCap(employee, company, firstKey, laborCalendar);
   for (const day of days) {
     const hours = Math.max(0, Number(day.hours) || 0);
     if (hours <= 0) continue;
     weekHours += hours;
     const holiday = day.holiday === true || isOfficialHoliday(day.key, laborCalendar);
-    const restDay = day.restDay === true || isWeeklyRestDay(day.key, company, day.key);
-    const dayCap = ordinaryDayCap(employee, company, day.key, laborCalendar);
+    const restDay = typeof day.restDay === "boolean" ? day.restDay : isEmployeeOffDay(day.key, company, employee);
+    const dayCap = basis === "weekly" ? Infinity : ordinaryDayCap(employee, company, day.key, laborCalendar);
     let ot = 0;
     let kind = "";
     let ruleId = "hours.ot.premium";
@@ -156,10 +292,14 @@ export function deriveNamedOvertime({
       ot = Math.round((hours - dayCap) * 100) / 100;
       kind = isJuvenile(employee, day.key)
         ? "juvenile"
-        : (isRamadanDay(day.key, laborCalendar) && isRamadanHoursSubject(employee) ? "ramadan" : (hoursPolicyOf(company, employee).hazardousHours || hoursPolicyOf(company, employee).extendedNine ? "art99" : "ordinary"));
+        : art108CategoryOf(employee).category
+          ? "art108"
+          : (isRamadanDay(day.key, laborCalendar) && isRamadanHoursSubject(employee) ? "ramadan" : (hoursPolicyOf(company, employee).hazardousHours || hoursPolicyOf(company, employee).extendedNine ? "art99" : "ordinary"));
       ruleId = kind === "juvenile"
         ? "hours.juvenile.ordinaryHours"
-        : (kind === "ramadan" ? "hours.ramadan.ordinaryHours" : (kind === "art99" ? (hoursPolicyOf(company, employee).hazardousHours ? "hours.art99.hazardousDayHours" : "hours.art99.extendedDayHours") : "hours.shift.ordinaryHours"));
+        : kind === "art108"
+          ? (art108CategoryOf(employee).category === "intermittent" ? "hours.art108.intermittentDayHours" : "hours.art108.guardDayHours")
+          : (kind === "ramadan" ? "hours.ramadan.ordinaryHours" : (kind === "art99" ? (hoursPolicyOf(company, employee).hazardousHours ? "hours.art99.hazardousDayHours" : "hours.art99.extendedDayHours") : "hours.shift.ordinaryHours"));
     }
     if (ot > 0) {
       weekOt += ot;
@@ -169,6 +309,7 @@ export function deriveNamedOvertime({
         overtimeHours: ot,
         overtimeMinutes: Math.round(ot * 60),
         kind,
+        holiday: kind === "holiday",
         dayCap,
         ruleId,
         label: nameOtKind(kind, dayCap, ar),
@@ -200,14 +341,16 @@ export function deriveNamedOvertime({
     totalMinutes: Math.round(totalHours * 60),
     weekHours: Math.round(weekHours * 100) / 100,
     weekCap,
+    basis,
     named: rows.map((row) => row.label),
   };
 }
 
 export function nameOtKind(kind, cap, ar = true) {
-  if (kind === "holiday") return ar ? "ساعات عيد / عطلة رسمية — كلها إضافي (المادة 107)" : "Eid / official-holiday hours — all overtime (Art. 107)";
+  if (kind === "holiday") return ar ? "عمل في العطلة — ساعاته إضافي (م107/3)" : "Holiday work — all hours are overtime (Art. 107(3))";
   if (kind === "weekly_rest") return ar ? "ساعات يوم الراحة الأسبوعية — كلها إضافي (المادة 107)" : "Weekly-rest hours — all overtime (Art. 107)";
   if (kind === "ramadan") return ar ? `فوق سقف رمضان ${cap} ساعة — إضافي` : `Above the Ramadan ${cap}h cap — overtime`;
+  if (kind === "art108") return ar ? `فوق سقف فئة المادة 108 (${Math.round(cap * 100) / 100} ساعة، اللائحة م23) — إضافي` : `Above the Art. 108 category ${Math.round(cap * 100) / 100}h cap (Regs Art. 23) — overtime`;
   if (kind === "juvenile") return ar ? `فوق سقف الحدث ${cap} ساعة — إضافي` : `Above the juvenile ${cap}h cap — overtime`;
   if (kind === "art99") return ar ? `فوق سقف المادة 99 (${cap} ساعة) — إضافي` : `Above the Article 99 ${cap}h cap — overtime`;
   if (kind === "week_excess") return ar ? `فوق السقف الأسبوعي ${cap} ساعة — إضافي` : `Above the weekly ${cap}h cap — overtime`;
@@ -217,6 +360,17 @@ export function nameOtKind(kind, cap, ar = true) {
 export function checkThreeWeekAverageGate({ weekHours = [], onDate, employee, company, laborCalendar } = {}) {
   const policy = hoursPolicyOf(company, employee);
   if (!policy.rotatingShifts) return { ok: true, skipped: true };
+  // Art. 100 needs the Ministry's approval — a flag without its number and date averages nothing.
+  if (!art100ApprovalOf(company).approved) {
+    return {
+      ok: true,
+      skipped: true,
+      approvalMissing: true,
+      reason: "المادة 100: التناوب مفعّل لكن موافقة الوزارة (رقمها وتاريخها) غير مسجّلة — يبقى سقف 48 ساعة لكل أسبوع.",
+      reasonEn: "Article 100: rotation is on but the Ministry approval (number and date) is not recorded — the 48-hour cap stays per week.",
+      cite: citeRule("hours.art100.averageWeeks", onDate),
+    };
+  }
   const weeks = ruleValue("hours.art100.averageWeeks", onDate);
   const list = (weekHours || []).slice(0, weeks).map((n) => Math.max(0, Number(n) || 0));
   if (!list.length) return { ok: true, pending: true };
@@ -245,12 +399,14 @@ export function checkArt105BankGate({ company, employee, bankedWeeks, workerCons
   if (!policy.remoteRestBank105) return { ok: true, skipped: true };
   const cap = ruleValue("hours.art105.bankMaxWeeks");
   const cite = citeRule("hours.art105.bankMaxWeeks");
-  if (workerConsent !== true || ministryConsent !== true) {
+  const worker = workerConsent === undefined ? policy.art105WorkerConsent : workerConsent;
+  const ministry = ministryConsent === undefined ? policy.art105MinistryConsent : ministryConsent;
+  if (worker !== true || ministry !== true) {
     return {
       ok: false,
       error: "ARTICLE_105_CONSENT",
-      reason: "موقوف — المادة 105: تجميع الراحة الأسبوعية يحتاج موافقة العامل كتابة وموافقة الوزارة.",
-      reasonEn: "Blocked — Article 105: banking weekly rest needs the worker's written consent and the Ministry's approval.",
+      reason: "موقوف — المادة 105: تجميع الراحة الأسبوعية يحتاج اتفاق صاحب العمل والعمال وموافقة الوزارة.",
+      reasonEn: "Blocked — Article 105: banking weekly rest needs the employer–worker agreement and the Ministry's approval.",
       cite,
     };
   }

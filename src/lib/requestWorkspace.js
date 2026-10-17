@@ -1,5 +1,6 @@
 /** Catalog and derived figures for the unified My Requests workspace. */
 
+import { isDutyRequestType } from "./dutyRequests.js";
 import { decision18632RightsNote } from "./decision18632.js";
 import { articleOfficialText } from "./laborArticleTexts.js";
 import { profileGender } from "./employeeProfileFields.js";
@@ -9,6 +10,7 @@ import {
   annualBalanceSplit,
   getLeaveTotal,
   grantDaysOf,
+  grantedDaysOfType,
   leftoverGrantDays,
   leaveTypeLabel,
   leaveTypesForProfile,
@@ -18,9 +20,9 @@ import {
   usedLeaveDays,
 } from "./leaveTypes.js";
 import { officialHolidayList } from "./ummAlQuraCalendar.js";
-import { approvedLeaveWithdrawWindow, computeLeaveDays, examSatState, hasExamSatProof, isRealSupportingFile, LEAVE_TYPES } from "./leaveDerivations.js";
+import { approvedLeaveWithdrawWindow, computeLeaveDays, examSatState, HOLIDAY_REQUEST_NOT_NEEDED, hasExamSatProof, holidayNotNeededLabel, isRealSupportingFile, LEAVE_TYPES, voidLegacyHolidayRequest } from "./leaveDerivations.js";
 import { nightRotateStage } from "./nightRotateCycle.js";
-import { LEAVE_TOPUP_TYPE, NIGHT_FITNESS_LABEL_AR, NIGHT_FITNESS_LABEL_EN, NIGHT_FITNESS_PERMANENT_AR, NIGHT_FITNESS_TYPE, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkRefuseRequestReasonGate, checkSubmitStudyConsentGate, collectRequestAuditLogs, collectRequestRefuseLogs, DISCRETIONARY_GRANT_CAP as OTHER_DISCRETIONARY_GRANT_CAP, hasRequestRefuseAudit, isManagerDecideOtherRequest, LEAVE_CREDIT_POOLS, nightFitnessState, otherRequestTypeLabel, reconstructRequestAudit, requestAuditEventType, requestAuditFileLog, resolveStudyConsentFields, STUDY_CONSENT_FILE_REQUIRED_AR, STUDY_CONSENT_FILE_REQUIRED_EN, STUDY_CONSENT_LABEL_AR, STUDY_CONSENT_LABEL_EN, STUDY_CONSENT_TYPE, studyConsentState } from "./otherRequestDerivations.js";
+import { LEAVE_TOPUP_TYPE, checkLeaveGrantGate, NIGHT_FITNESS_LABEL_AR, NIGHT_FITNESS_LABEL_EN, NIGHT_FITNESS_PERMANENT_AR, NIGHT_FITNESS_TYPE, buildRequestAudit, buildRequestRefuseAudit, checkAdminLeaveCreditGate, checkRefuseRequestReasonGate, checkSubmitStudyConsentGate, collectRequestAuditLogs, collectRequestRefuseLogs, hasRequestRefuseAudit, isManagerDecideOtherRequest, LEAVE_CREDIT_POOLS, nightFitnessState, otherRequestTypeLabel, reconstructRequestAudit, requestAuditEventType, requestAuditFileLog, resolveStudyConsentFields, STUDY_CONSENT_FILE_REQUIRED_AR, STUDY_CONSENT_FILE_REQUIRED_EN, STUDY_CONSENT_LABEL_AR, STUDY_CONSENT_LABEL_EN, STUDY_CONSENT_TYPE, studyConsentState } from "./otherRequestDerivations.js";
 import { nightMedicalReportOf } from "./decision18632.js";
 import {
   assignmentFileName,
@@ -31,13 +33,15 @@ import {
 } from "./overtimeAssignment.js";
 import { consentTopicMeta, flattenWrittenConsents, hashConsentFile, readConsentFile } from "./writtenConsent.js";
 import { peopleQueryMatches } from "./peopleTreeGraph.js";
-import { formatNotificationText, isInventoryDeskNotice, isRequestWorkspaceNotice } from "./notificationKind.js";
+import { formatNotificationText, isRequestWorkspaceNotice } from "./notificationKind.js";
 import { formatDate } from "./dateFormat.js";
 import { leaveApprovalBlessing } from "./leaveEntitlementCycle.js";
 import { isViewerOwnFile, viewerEmployeeId } from "./employeeFileView.js";
+import { hoursAr, otOffer, sar as sarText } from "./otOffer.js";
+import { compBalance } from "./compLeave.js";
 
 export const SUPPORTING_FILE_ACCEPT = "application/pdf,image/jpeg,image/png,image/webp";
-export const SUPPORTING_FILE_MAX_BYTES = 10 * 1024 * 1024;
+export const SUPPORTING_FILE_MAX_BYTES = 25 * 1024 * 1024;
 
 export function isAllowedSupportingFile(file) {
   if (!file) return false;
@@ -69,8 +73,6 @@ export async function readSupportingFile(file) {
   });
 }
 
-export const DISCRETIONARY_GRANT_CAP = OTHER_DISCRETIONARY_GRANT_CAP;
-
 export { checkAdminLeaveCreditGate, LEAVE_CREDIT_POOLS };
 
 export const REQUEST_KINDS = [
@@ -83,11 +85,27 @@ export const REQUEST_KINDS = [
   /** Admin credit from إدارة — no employee raise, no self-decide leave. */
   { id: "leave_credit", ar: "إضافة رصيد", en: "Add leave balance", manageOnly: true, manageFiled: true, credit: true },
   { id: "ot_assign", ar: "تكليف إضافي", en: "Overtime assignment", type: "overtime", assignment: true, manageOnly: true, manageFiled: true },
+  /** «طلبات الدوام» — each one changes how a duty day is read (dutyRequests.js). */
+  { id: "permission", ar: "استئذان", en: "Permission", type: "permission", duty: true, manageDuty: true },
+  { id: "shift_change", ar: "تغيير وردية", en: "Shift change", type: "shift_change", duty: true },
+  { id: "nursing_hour", ar: "ساعة الرضاعة", en: "Nursing hour", type: "nursing_hour", duty: true, gender: "female", manageDuty: true },
+  { id: "pregnancy_notice", ar: "إبلاغ حمل", en: "Pregnancy notice", type: "pregnancy_notice", duty: true, gender: "female", manageDuty: true },
+  { id: "heat_report", ar: "بلاغ عمل مكشوف", en: "Exposed-work report", type: "heat_report", duty: true },
+  /** Decision 18632 (e) — the worker tells HR; on approval the file carries it and the roster considers it at night. */
+  { id: "family_duties", ar: "إبلاغ بمسؤوليات عائلية", en: "Family responsibilities notice", type: "family_duties", duty: true },
   { id: "manual", ar: "تسجيل حضور يدوي", en: "Manual punch", type: "manual_punch" },
   { id: "outfix", ar: "تصحيح انصراف", en: "Checkout correction", type: "checkout_fix" },
   { id: "doc", ar: "وثيقة أو شهادة", en: "Document or letter" },
   { id: "money", ar: "سلفة أو بدل", en: "Advance or allowance", type: "advance" },
   { id: "custody", ar: "عهدة", en: "Custody", type: "custody" },
+  /** Model Arts. 9 / 12 — the worker claims the expenses of a transfer that changed his residence. */
+  { id: "relocation", ar: "نفقات النقل مع تغيير السكن", en: "Relocation expenses", type: "relocation_expenses", employeeOnly: true },
+  /** Model Art. 24 — a mission decision is the manager's (destination, dates, allowance), paid with the wage. */
+  { id: "mission", ar: "تكليف بانتداب", en: "Mission assignment", type: "mission", manageOnly: true, manageFiled: true },
+  /** Arts. 75 / 79 bis — the worker's own written resignation; management decides or lets 30 days pass. */
+  { id: "resignation", ar: "تقديم استقالة", en: "Resignation", type: "resignation" },
+  /** Arts. 51 · 81 · 91 · 110 — rights the law gives the worker (rightsRequests.js). Filed from ملفي only. */
+  { id: "rights", ar: "حقوق نظامية أخرى", en: "Other legal rights", employeeOnly: true },
   /** Manager may raise from إدارة as an establishment act; worker may also raise from ملفي. */
   { id: "other", ar: "طلب آخر", en: "Other request", type: "other_request", manageFiled: true },
 ];
@@ -99,24 +117,26 @@ export const REQUEST_KINDS = [
  */
 export function composeRequestKinds(lane = "mine") {
   if (lane === "manage") {
-    return REQUEST_KINDS.filter((row) => row.id === "ot_assign" || row.id === "leave_credit" || row.id === "other");
+    // إدارة may also record a granted permission, a nursing hour, or a pregnancy notice handed in on paper.
+    return REQUEST_KINDS.filter((row) => row.id === "ot_assign" || row.id === "leave_credit" || row.manageDuty || row.id === "leave" || row.id === "mission" || row.id === "other");
   }
   return REQUEST_KINDS.filter((row) => !row.manageOnly);
 }
 
 /** True when إدارة may compose this kind as a manager-side raise (not ملفي masquerade). */
 export function isManageRaiseKind(kindId) {
-  return kindId === "ot_assign" || kindId === "leave_credit" || kindId === "other";
+  return kindId === "ot_assign" || kindId === "leave_credit" || kindId === "other" || kindId === "leave" || kindId === "mission"
+    || REQUEST_KINDS.some((row) => row.id === kindId && row.manageDuty);
 }
 
-/** Checklist rows for the إدارة credit form. */
+/** Checklist rows for the إدارة credit form — the same gate as the store and the server. */
 export function composeAdminLeaveCreditGates(input = {}, lang = "ar") {
   const ar = lang === "ar";
-  const gate = checkAdminLeaveCreditGate(input);
   const pool = String(input.pool || "").trim();
+  const poolRow = LEAVE_CREDIT_POOLS.find((row) => row.key === pool);
   const days = Math.round(Number(input.days) || 0);
   const why = String(input.reason || "").trim();
-  const used = grantDaysOf(input.profile);
+  const grant = checkLeaveGrantGate({ pool, days: input.days, onDate: input.onDate });
   return uniqueNamedGates([
     {
       id: "ROLE_REQUIRED",
@@ -126,31 +146,18 @@ export function composeAdminLeaveCreditGates(input = {}, lang = "ar") {
         : (ar ? "إضافة الرصيد لمن يقرر على الطلبات فقط." : "Only managers who decide on requests may credit leave balance."),
     },
     {
-      id: "POOL_REQUIRED",
-      ok: pool === "annual" || pool === "grant",
-      text: pool === "annual"
-        ? (ar ? "يُزاد الرصيد السنوي (نفس حقل 21/30 يوماً)." : "The annual balance (the same 21/30-day field) increases.")
-        : pool === "grant"
-          ? (ar ? `أيام تقديرية فوق المستحق — سقف ${DISCRETIONARY_GRANT_CAP} في السنة.` : `Discretionary days above the statutory floor — cap ${DISCRETIONARY_GRANT_CAP} a year.`)
-          : (ar ? "اختر الرصيد السنوي أو الأيام التقديرية." : "Pick the annual balance or discretionary days."),
+      id: "POOL",
+      ok: grant.ok || grant.error === "DAYS_INVALID",
+      text: grant.error === "ANNUAL_FIXED" || grant.error === "POOL_REQUIRED"
+        ? (ar ? grant.reason : grant.reasonEn)
+        : (ar ? `تُضاف إلى «${poolRow?.ar || pool}» — بلا حد أعلى.` : `Added to «${poolRow?.en || pool}» — no upper cap.`),
     },
     {
       id: "DAYS_INVALID",
-      ok: gate.ok || (gate.error !== "DAYS_INVALID" && days >= 1),
-      text: gate.error === "DAYS_INVALID"
-        ? (ar ? gate.reason : gate.reasonEn)
-        : pool === "annual"
-          ? (ar ? `يُضاف ${days || "—"} يوماً إلى الرصيد السنوي.` : `${days || "—"} days will be added to the annual balance.`)
-          : (ar ? `تُمنح ${days || "—"} أيام تقديرية.` : `${days || "—"} discretionary days will be granted.`),
-    },
-    {
-      id: "GRANT_CAP",
-      ok: pool !== "grant" || gate.ok || gate.error !== "GRANT_CAP",
-      text: pool !== "grant"
-        ? (ar ? "سقف الأيام التقديرية لا يسري على الرصيد السنوي." : "The discretionary cap does not apply to the annual balance.")
-        : gate.error === "GRANT_CAP"
-          ? (ar ? gate.reason : gate.reasonEn)
-          : (ar ? `الممنوح سابقاً ${used} · المتاح ${Math.max(0, DISCRETIONARY_GRANT_CAP - used)}.` : `Already granted ${used} · ${Math.max(0, DISCRETIONARY_GRANT_CAP - used)} left.`),
+      ok: grant.error !== "DAYS_INVALID",
+      text: grant.error === "DAYS_INVALID"
+        ? (ar ? grant.reason : grant.reasonEn)
+        : (ar ? `تُمنح ${days} ${days >= 3 && days <= 10 ? "أيام" : "يوماً"}.` : `${days} days will be granted.`),
     },
     {
       id: "REASON_REQUIRED",
@@ -202,6 +209,7 @@ export const DOC_KINDS = [
   { id: "salary", type: "salary_letter", salary: true, ar: "شهادة تعريف بالراتب", en: "Salary introduction", approverAr: "الموارد البشرية", approverEn: "HR" },
   { id: "job", type: "employment_letter", salary: false, ar: "تعريف بالمهنة", en: "Job introduction", approverAr: "الموارد البشرية", approverEn: "HR" },
   { id: "exp", type: "document", salary: false, ar: "شهادة خبرة أو خدمة", en: "Service certificate", approverAr: "الموارد البشرية", approverEn: "HR" },
+  { id: "contract", type: "document", salary: true, ar: "نسخة من عقد العمل", en: "A copy of my contract", approverAr: "الموارد البشرية · م 51", approverEn: "HR · Art. 51" },
   { id: "embassy", type: "document", salary: true, ar: "تعريف للسفارة أو التأشيرة", en: "Embassy or visa letter", approverAr: "الموارد البشرية", approverEn: "HR" },
   { id: "bank", type: "document", salary: true, ar: "مشهد راتب للبنك أو التمويل", en: "Bank or finance letter", approverAr: "الموارد البشرية + المالية", approverEn: "HR + finance" },
   { id: "clear", type: "document", salary: false, ar: "إخلاء طرف / نهاية خدمة", en: "Clearance / end of service", approverAr: "الموارد البشرية + المدير", approverEn: "HR + manager" },
@@ -380,6 +388,13 @@ export function filterRequestPeople({ employees = [], stations = [], query = "",
   return { ok: true, rows };
 }
 
+/** Public request number shown on the card and in ملفات طلباتي. */
+export function requestPublicRef(row) {
+  const year = String(row?.createdAt || row?.startDate || row?.date || "").slice(0, 4) || String(new Date().getFullYear());
+  const tail = String(row?.id || "").replace(/[^A-Za-z0-9]/g, "").slice(-6).toUpperCase() || "000000";
+  return `NV-${year}-${tail}`;
+}
+
 export function isPendingDecideStatus(status) {
   return ["pending", "pending_employee", "pending_manager"].includes(status || "pending");
 }
@@ -428,7 +443,7 @@ const LAW_ROWS = [
   { art: "110", kind: "leave", ruleId: "leave.annual.carry.cite", implAr: "الرصيد غير المستخدم من سنة الاستحقاق السابقة يظهر بند ترحيل مستقل، ويُستهلك أولاً. تسجيل المدير بعد تسعين يوماً من نهاية تلك السنة يحتاج موافقة كتابية.", implEn: "Unused days from the previous entitlement year appear as a separate carry line and are used first. A manager recording leave more than ninety days after that year needs written consent." },
   { art: "118", kind: "leave", ruleId: "leave.noOtherEmployer.cite", implAr: "إرسال أي طلب إجازة يتطلب إقراراً بعدم العمل لدى صاحب عمل آخر.", implEn: "Sending any leave request requires an acknowledgement of no other employer." },
   { art: "111", kind: "leave", ruleId: "eos.unusedLeave.cite", implAr: "يُحسب في مخالصة نهاية الخدمة من الرصيد المتبقي.", implEn: "Unused days are paid in the end-of-service settlement." },
-  { art: "112", kind: "leave", ruleId: "leave.eid.cite", implAr: "أيام العطل تُقفل في جدول الدوام: الوطني والتأسيس من التاريخ المرمّز، والفطر بعد إعلان 29 أو 30، والأضحى من يوم عرفة.", implEn: "Official holidays lock the rota: National and Founding from the encoded dates, Fitr after the 29/30 announcement, Adha from Arafah." },
+  { art: "112", kind: "leave", ruleId: "leave.eid.cite", implAr: "العطل الرسمية لا تُطلب: تُقفل في جدول الدوام تلقائياً للجميع بأجر كامل — الوطني والتأسيس من التاريخ المرمّز، والفطر بعد إعلان 29 أو 30، والأضحى من يوم عرفة. في طلباتي تظهر للاطلاع فقط، والعمل فيها إضافي (م107/3).", implEn: "Official holidays are not requested: they lock the rota automatically for everyone at full pay — National and Founding from the encoded dates, Fitr after the 29/30 announcement, Adha from Arafah. طلباتي shows them as information only; working one is overtime (Art. 107(3))." },
   { art: "113", kind: "leave", ruleId: "leave.marriage.days", implAr: "الطلب لا يُرسل قبل تاريخ الواقعة والمستند إن لزم.", implEn: "The request is not sent before the event date and any required document." },
   { art: "114", kind: "leave", ruleId: "leave.hajj.days", implAr: "يُوسم الطلب مرة واحدة ويُغلق النوع بعد استخدامه.", implEn: "The type is marked once-in-service and closes after use." },
   { art: "115", kind: "leave", ruleId: "leave.exam.cite", implAr: "التفريق بين امتحان أول ومعاد يغيّر أثر الأجر. المهلة 15 يوماً قبل الموعد إشعار من العامل إلى صاحب العمل. إن وصل جدول المواعيد بعد المهلة: ارفع الورقة وسجّل تاريخ صدورها وقدّم في يومها أو اليوم التالي. إثبات المواعيد مع الطلب؛ إثبات الأداء ورقة ثانية على البطاقة بعد بدء أيام الامتحان. صاحب العمل لا يرفض طلباً استوفى المادة؛ رفض الانتساب يغيّر مسار الأجر فقط.", implEn: "A first sitting versus a repeat changes the wage effect. Notice is 15 days before the date — employee notice to the employer. If the timetable paper arrives late: attach it, record its issue date, and apply that day or the next. The timetable goes with the request; sitting proof is a second paper on the card after the exam days begin. The employer cannot refuse a request that meets the article; refusing enrolment only changes the pay track." },
@@ -436,6 +451,10 @@ const LAW_ROWS = [
   { art: "117", kind: "leave", ruleId: "leave.sick.days", implAr: "شريط مراتب يبيّن أين وصل الموظف — لا صف واحد.", implEn: "A band strip shows where the worker stands — not one row." },
   { art: "151", kind: "leave", ruleId: "leave.maternity.days", implAr: "اثنا عشر أسبوعاً، ستة بعد الوضع وجوبية. تمديد شهر بلا أجر بعد انتهائها. مولود مريض أو ذو إعاقة يحتاج مرافقاً: شهر بأجر ثم شهر بلا أجر. وفاة الزوج للعاملة من المادة 160 لا من 113.", implEn: "Twelve weeks, six after birth mandatory. One unpaid month after it ends. A sick or disabled newborn needing a companion: one paid month then one unpaid. A female worker's husband death is Article 160, not 113." },
   { art: "160", kind: "leave", ruleId: "leave.iddah.cite", implAr: "تبدأ من تاريخ الوفاة. المسلمة 130 يوماً بأجر، وغير المسلمة 15. التمديد بلا أجر للحامل حتى الوضع فقط، ولا تُكمَّل العدة بعد الولادة.", implEn: "It starts on the date of death. A Muslim widow has 130 paid days; a non-Muslim widow has 15. An unpaid extension is only if she is pregnant until birth; remaining iddah is not used after birth." },
+  { art: "75", kind: "contract", ruleId: "contract.notice.workerMonthlyDays", implAr: "طلب «تقديم استقالة» يحسب مهلة الإشعار من تاريخ التقديم إلى آخر يوم عمل، وينبّه إن قلّت عن 30 يوماً (والمادة 76: من لم يراعِ المهلة يدفع أجرها).", implEn: "The resignation request counts notice from submission to the last working day and warns under 30 days (Art. 76: the missing notice is paid)." },
+  { art: "79 مكرر", kind: "contract", ruleId: "contract.resignation.autoAcceptDays", implAr: "تظهر للإدارة تاريخ القبول الحكمي بعد 30 يوماً دون رد، وحدّ التأجيل 60 يوماً بإيضاح مكتوب، وحق السحب خلال 7 أيام. الاعتماد يكتب إنهاء العقد في ملف الموظف.", implEn: "Management sees the deemed-acceptance date after 30 days, the 60-day postponement cap with a written reason, and the 7-day withdrawal right. Approval writes the contract end on the file." },
+  { art: "59", kind: "contract", ruleId: "contract.wageType.consent.cite", implAr: "تغيير فئة الأجر من شهري لا يتم إلا بموافقة كتابية — تُرسل من «طلب موافقة خطية» ويُوقّعها الموظف.", implEn: "A move off the monthly wage needs written consent — sent as a written-consent request and signed by the worker." },
+  { art: "60", kind: "contract", ruleId: "contract.essentialChange.cite", implAr: "التكليف بعمل مختلف جوهرياً يحتاج موافقة كتابية، إلا لضرورة عارضة حتى 30 يوماً في السنة.", implEn: "Substantially different work needs written consent, except incidental necessity up to 30 days a year." },
   { art: "98", kind: "work", ruleId: "hours.week.ordinaryMaxHours", implAr: "سقف 48 ساعة فحص مانع. في رمضان 6 ساعات يومياً أو 36 على أيام رمضان للمسلم — مانع للنشر. اليوم 30 معلّق حتى إعلان 29 أو 30.", implEn: "A 48-hour cap is a blocking check. In Ramadan, 6 hours a day or 36 across Ramadan days for a Muslim blocks publish. Day 30 waits for the 29/30 announcement." },
   { art: "101", kind: "work", ruleId: "hours.rest.maxConsecutiveHours", implAr: "فحص مانع: لا أكثر من خمس ساعات متواصلة، ولا بقاء في مكان العمل فوق اثنتي عشرة ساعة.", implEn: "A blocking check: no more than five consecutive hours, and no more than twelve hours at the workplace." },
   { art: "102", kind: "work", ruleId: "hours.rest.notWorkingHours.cite", implAr: "فترات الراحة والصلاة والطعام لا تُحتسب ساعات عمل فعلية.", implEn: "Rest, prayer and meal periods are not counted as actual working hours." },
@@ -586,19 +605,23 @@ export function leaveKindMeta(key, onDate) {
   };
 }
 
-export function leaveKindsFor(profile, ar = true, requests) {
+export function leaveKindsFor(profile, ar = true, requests, employee) {
   const leftover = leftoverGrantDays(profile, requests);
-  return leaveTypesForProfile(profile || {}).map((row) => {
+  const comp = employee ? compBalance(employee) : null;
+  // Art. 112 official holidays are not a request kind — they apply from the calendar (officialHolidayInfoRows).
+  return leaveTypesForProfile(profile || {}).filter((row) => !row.automatic).map((row) => {
     const meta = leaveKindMeta(row.key);
-    const cite = meta.article ? statutoryArticleLabel(meta.article, ar) : (ar ? "قرار تشغيلي" : "Operational");
+    const cite = meta.article
+      ? statutoryArticleLabel(meta.article, ar)
+      : row.key === "work_injury"
+        ? (ar ? "نظام التأمينات" : "Social insurance")
+        : (ar ? "قرار تشغيلي" : "Operational");
     const cap = row.key === "annual"
       ? (ar ? "21 يوماً — 30 بعد 5 سنوات" : "21 days — 30 after 5 years")
         : row.key === "grant"
         ? (leftover
           ? (ar ? `${leftover} أيام تقديرية متبقية` : `${leftover} discretionary days left`)
           : (ar ? "لا رصيد تقديري بعد" : "No discretionary days left"))
-      : row.key === "eid"
-        ? (ar ? "الوطني 1 · التأسيس 1 مقفلان في الجدول بلا طلب · الفطر 4 · الأضحى 4 بطلب" : "National 1 · Founding 1 locked on the roster · Fitr 4 · Adha 4 by request")
       : row.key === "iddah"
         ? (isRamadanHoursSubject({ profile })
           ? (ar ? "130 يوماً بأجر — تمديد بلا أجر للحامل حتى الوضع" : "130 paid days — unpaid extension if pregnant until birth")
@@ -613,6 +636,14 @@ export function leaveKindsFor(profile, ar = true, requests) {
         ? (ar ? "شهر بأجر بعد الوضع — وتمديد شهر بلا أجر" : "One paid month after maternity — plus an unpaid month")
       : row.key === "sick"
         ? (ar ? "30 كامل · 60 بثلاثة أرباع · 30 بلا أجر" : "30 full · 60 at three-quarters · 30 unpaid")
+      : row.key === "work_injury"
+        ? (ar ? "بتقرير طبي · التأمينات — الأخطار المهنية" : "With a medical report · GOSI occupational hazards")
+      : row.key === "comp"
+        ? (comp && comp.left > 0
+          ? (ar ? `رصيدك ${hoursAr(comp.left)} — حتى ${formatArDate(comp.nextTakeBy, "ar")}` : `${comp.left} h left — by ${comp.nextTakeBy}`)
+          : (ar ? "لا رصيد بعد — يتكوّن حين تختار الإجازة بدل أجر الإضافي" : "No balance yet — it comes from overtime taken as leave"))
+      : row.key === "emergency" && grantedDaysOfType(profile, "emergency") > 0
+        ? (ar ? `${countAr(row.defaultTotal || 0, "يوم", "يومان", "أيام", "يوماً")} + ${grantedDaysOfType(profile, "emergency")} ممنوحة` : `${row.defaultTotal} days + ${grantedDaysOfType(profile, "emergency")} granted`)
       : row.key === "exam"
         ? (ar ? "أيام الامتحان الفعلية — لا تُرفض إن استوفت" : "Actual exam days — a qualifying file is not refused")
         : row.defaultTotal
@@ -654,6 +685,45 @@ export function officialHolidays(onDate = todayRiyadh(), calendar) {
   return officialHolidayList(onDate, calendar);
 }
 
+/** The fixed notice over the official-holidays information block in طلباتي. */
+export const OFFICIAL_HOLIDAYS_NOTICE_AR = "هذه العطل ثابتة في المنصة وتُطبَّق تلقائياً — لا تُطلب (المادة 112).";
+export const OFFICIAL_HOLIDAYS_NOTICE_EN = "These holidays are fixed in the platform and apply automatically — they are not requested (Art. 112).";
+
+/**
+ * Art. 112 — information rows for طلباتي (no request, no form): each holiday, its days, its next dates
+ * or «يُعلن موعده» while Eid al-Fitr waits for the 29/30 announcement, and «تُطبَّق تلقائياً في الجدول».
+ * The roster, attendance and payroll read the same calendar (officialHolidayOn), so nothing is raised here.
+ */
+export function officialHolidayInfoRows(onDate = todayRiyadh(), calendar, lang = "ar") {
+  const ar = lang === "ar";
+  return officialHolidayList(onDate, calendar).map((x) => {
+    const announced = !!x.from && (x.id !== "fitr" || !!x.locked || !!x.ownerRuled);
+    const days = Number(x.days) || 0;
+    return {
+      id: x.id,
+      name: ar ? x.ar : x.en,
+      note: ar ? x.noteAr : x.noteEn,
+      ruleId: x.ruleId,
+      days,
+      daysLabel: ar ? countAr(days, "يوم واحد", "يومان", "أيام", "يوماً") : `${days} ${days === 1 ? "day" : "days"}`,
+      from: announced ? x.from : "",
+      to: announced ? x.to : "",
+      announced,
+      dateText: announced
+        ? (x.from === x.to ? formatArDate(x.from, lang) : `${formatArDate(x.from, lang)} → ${formatArDate(x.to, lang)}`)
+        : (ar ? "يُعلن موعده" : "Date to be announced"),
+      status: ar ? "تُطبَّق تلقائياً في الجدول" : "Applied on the roster automatically",
+      automatic: true,
+    };
+  });
+}
+
+/**
+ * Articles the duty roster already judges week by week (جدول الدوام → أنظمة الوزارة). طلباتي does not repeat them.
+ * 106/107 = overtime on the roster, 112 = holidays locked on the roster, 18632 = night work.
+ */
+export const ROSTER_COVERED_ARTICLES = ["98", "101", "102", "104", "106", "107", "112", "18632"];
+
 export function lawArticleCards(filter = "leave", liveArticle = "", lang = "ar") {
   const ar = lang === "ar";
   const names = {
@@ -675,10 +745,16 @@ export function lawArticleCards(filter = "leave", liveArticle = "", lang = "ar")
     106: { ar: "العمل الإضافي الإجباري", en: "Mandatory overtime" },
     107: { ar: "أجر العمل الإضافي", en: "Overtime pay" },
     58: { ar: "تغيير مكان العمل", en: "Change of workplace" },
+    59: { ar: "تغيير فئة الأجر", en: "Change of wage type" },
+    60: { ar: "العمل المختلف جوهرياً", en: "Substantially different work" },
+    75: { ar: "مهلة الإشعار", en: "Notice period" },
+    "79 مكرر": { ar: "الاستقالة", en: "Resignation" },
     18632: { ar: "العمل الليلي", en: "Night work" },
   };
   return LAW_ROWS
-    .filter((row) => filter === "all" || row.kind === filter)
+    .filter((row) => (filter === "requests"
+      ? !ROSTER_COVERED_ARTICLES.includes(String(row.art))
+      : (filter === "all" || row.kind === filter)))
     .map((row) => {
       const citeKind = row.citeKind || (row.source === "ministerial" ? "decision" : "article");
       const official = citeKind === "article" ? articleOfficialText(row.art) : null;
@@ -781,10 +857,12 @@ export function pendingWorkspaceDecideCount(employees = []) {
 
 export function flattenWorkspaceRows(employees = [], lang = "ar") {
   const ar = lang === "ar";
-  const leave = (employees || []).flatMap((employee) => (employee.leaveRequests || []).map((request) => ({
+  // A pending legacy Art. 112 request needs no decision — the calendar applies the holiday («لا حاجة»).
+  const leave = (employees || []).flatMap((employee) => (employee.leaveRequests || []).map((raw) => voidLegacyHolidayRequest(raw)).map((request) => ({
     ...request,
     employee,
     family: "leave",
+    holidayNotNeeded: request.status === HOLIDAY_REQUEST_NOT_NEEDED ? holidayNotNeededLabel(request, ar) : "",
     title: ar
       ? `إجازة ${leaveKindMeta(request.type, request.startDate)?.ar || ""}`
       : `${leaveKindMeta(request.type, request.startDate)?.en || ""} leave`,
@@ -802,8 +880,8 @@ export function flattenWorkspaceRows(employees = [], lang = "ar") {
       ? (ar ? NIGHT_FITNESS_LABEL_AR : NIGHT_FITNESS_LABEL_EN)
       : request.type === LEAVE_TOPUP_TYPE
       ? (ar
-        ? `رفع رصيد إجازة${request.days ? ` · ${countAr(request.days, "يوم", "يومان", "أيام", "يوماً")}` : ""}`
-        : `Leave balance top-up${request.days ? ` · ${request.days} days` : ""}`)
+        ? `رفع رصيد إجازة${request.days ? ` · ${countAr(request.days, "يوم", "يومان", "أيام", "يوماً")}` : ""}${request.leaveType && request.leaveType !== "grant" ? ` · ${leaveTypeLabel(request.leaveType, true)}` : ""}`
+        : `Leave balance top-up${request.days ? ` · ${request.days} days` : ""}${request.leaveType && request.leaveType !== "grant" ? ` · ${leaveTypeLabel(request.leaveType, false)}` : ""}`)
       : isOvertimeAssignment(request)
         ? otAssignmentTitle(request, ar)
       : (request.title || request.otherTitle
@@ -816,9 +894,14 @@ export function flattenWorkspaceRows(employees = [], lang = "ar") {
       ? statutoryDecisionLabel("18632", ar)
       : isArticle106Assignment(request)
         ? statutoryArticleLabel("106", ar)
-        : (otCompensationOf(request) === "credit"
-          ? (ar ? "رصيد إجازة" : "Leave credit")
-          : (otCompensationOf(request) === "pay" ? (ar ? "أجر إضافي" : "OT pay") : "")),
+        : (() => {
+          // The chosen compensation with its value, so both sides see the same number.
+          const comp = otCompensationOf(request);
+          if (comp !== "credit" && comp !== "pay") return "";
+          const offer = otOffer({ employee, hours: request.hours, date: request.date, exceptId: request.id });
+          if (comp === "credit") return ar ? `إجازة تعويضية · ${hoursAr(offer.leave.hours)}` : `Leave · ${offer.leave.hours} h`;
+          return offer.known ? (ar ? `أجر إضافي · ${sarText(offer.pay.total)}` : `OT pay · ${sarText(offer.pay.total, false)}`) : (ar ? "أجر إضافي" : "OT pay");
+        })(),
     fileName: assignmentFileName(request) || request.senderFile?.name || request.file?.name || request.files?.[0]?.name || "",
   })));
   return [...leave, ...other].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
@@ -841,7 +924,7 @@ export function remainingAnnualLabel(profile, requests, lang = "ar") {
 
 export { remainingLeaveDays, computeLeaveDays };
 
-const SETTLED = new Set(["approved", "rejected", "withdrawn", "yes", "no", "refused_by_employee", "lapsed"]);
+const SETTLED = new Set(["approved", "rejected", "withdrawn", "yes", "no", "refused_by_employee", "lapsed", HOLIDAY_REQUEST_NOT_NEEDED]);
 const ENDED_NIGHT = new Set(["withdrawn", "refused", "lapsed", "reduced_hours"]);
 
 export function isSettledRequest(row) {
@@ -868,7 +951,7 @@ export function isEndedInboxRequest(row) {
     return ENDED_NIGHT.has(nightRotateStage(row));
   }
   const status = row.status || "pending";
-  if (status === "lapsed" || status === "withdrawn" || status === "rejected" || status === "refused_by_employee" || status === "yes" || status === "no") {
+  if (status === "lapsed" || status === "withdrawn" || status === "rejected" || status === "refused_by_employee" || status === "yes" || status === "no" || status === HOLIDAY_REQUEST_NOT_NEEDED) {
     return true;
   }
   if (status !== "approved") return false;
@@ -944,10 +1027,10 @@ const MANAGE_PENDING_KINDS = [
   { id: "leave", ar: "إجازة", en: "leave", match: (row) => row.family === "leave" },
   { id: STUDY_CONSENT_TYPE, ar: STUDY_CONSENT_LABEL_AR, en: STUDY_CONSENT_LABEL_EN, match: (row) => row.type === STUDY_CONSENT_TYPE },
   { id: NIGHT_FITNESS_TYPE, ar: NIGHT_FITNESS_LABEL_AR, en: NIGHT_FITNESS_LABEL_EN, match: (row) => row.type === NIGHT_FITNESS_TYPE },
-  { id: "permission", ar: "استئذان", en: "excuse", match: (row) => row.type === "permission" },
+  { id: "duty", ar: "طلبات الدوام", en: "duty requests", match: (row) => isDutyRequestType(row.type) },
   { id: "advance", ar: "سلفة", en: "advance", match: (row) => row.type === "advance" },
   { id: "custody", ar: "عهدة", en: "custody", match: (row) => row.type === "custody" },
-  { id: "other", ar: "طلب آخر", en: "other", match: (row) => row.family === "other" && ![STUDY_CONSENT_TYPE, NIGHT_FITNESS_TYPE, "permission", "advance", "custody", "night_consent", "written_consent"].includes(row.type) },
+  { id: "other", ar: "طلب آخر", en: "other", match: (row) => row.family === "other" && ![STUDY_CONSENT_TYPE, NIGHT_FITNESS_TYPE, "advance", "custody", "night_consent", "written_consent"].includes(row.type) && !isDutyRequestType(row.type) },
 ];
 
 /** إدارة decide queue — pending leave / study / night fitness / excuses / advances / custody / other. */
@@ -978,7 +1061,7 @@ export function managerPendingInbox(employees = [], lang = "ar", extras = {}) {
     count: derivedAlertCount(annotated.length),
     named,
     emptyReason: ar
-      ? "لا طلب معلّق بانتظار قرار الإدارة — إجازة، موافقة دراسية، لياقة ليلية، استئذان، سلفة، عهدة، أو طلب آخر."
+      ? "لا طلب معلّق بانتظار قرار الإدارة — إجازة، موافقة دراسية، لياقة ليلية، طلبات الدوام، سلفة، عهدة، أو طلب آخر."
       : "No pending request awaiting management — leave, study consent, night fitness, excuse, advance, custody, or other.",
   };
 }
@@ -1150,12 +1233,20 @@ function stampYear(iso) {
 export function collectRequestFiles(employees = [], lang = "ar") {
   const ar = lang === "ar";
   const out = [];
+  let current = null;
+  // Every file carries its request's state, so the board follows طلباتي's filter (pending / settled).
+  const push = (row) => out.push({
+    ...row,
+    requestStatus: current?.status || "pending",
+    live: nightRotateStage(current) === "agreed_month",
+  });
   for (const employee of employees || []) {
     for (const request of employee.leaveRequests || []) {
+      current = request;
       for (const file of request.files || []) {
         if (!isRealSupportingFile(file)) continue;
         const sat = String(file.kind || "") === "exam_sat";
-        out.push({
+        push({
           id: `${request.id}-${file.name}`,
           side: "in",
           name: file.name,
@@ -1172,7 +1263,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
       }
       if (isRealSupportingFile(request.examSatFile)) {
         const sat = request.examSatFile;
-        out.push({
+        push({
           id: `${request.id}-exam-sat`,
           side: "in",
           name: sat.name,
@@ -1189,9 +1280,10 @@ export function collectRequestFiles(employees = [], lang = "ar") {
       }
     }
     for (const request of employee.otherRequests || []) {
+      current = request;
       if (request.type === "written_consent") {
         if (request.senderFile?.name) {
-          out.push({
+          push({
             id: `${request.id}-sender`,
             side: "out",
             name: request.senderFile.name,
@@ -1205,7 +1297,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
           });
         }
         if (request.paper?.name) {
-          out.push({
+          push({
             id: `${request.id}-paper`,
             side: "in",
             name: request.paper.name,
@@ -1219,7 +1311,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
           });
         }
         if (request.seal?.signatureId || request.seal?.url) {
-          out.push({
+          push({
             id: `${request.id}-seal`,
             side: "out",
             name: request.seal.label || (ar ? "ختم الموافقة الخطية" : "Written-consent seal"),
@@ -1236,7 +1328,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
       if (request.type === STUDY_CONSENT_TYPE) {
         const raised = request.file || request.files?.[0] || request.senderFile;
         if (raised?.name) {
-          out.push({
+          push({
             id: `${request.id}-study-in`,
             side: "in",
             name: raised.name,
@@ -1251,7 +1343,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
         }
         const issued = request.issuedFile || request.approvalFile;
         if (request.status === "approved" && issued?.name) {
-          out.push({
+          push({
             id: `${request.id}-study-out`,
             side: "out",
             name: issued.name,
@@ -1269,7 +1361,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
       if (request.type === NIGHT_FITNESS_TYPE) {
         const raised = request.file || request.files?.[0] || request.senderFile;
         if (raised?.name) {
-          out.push({
+          push({
             id: `${request.id}-fitness-in`,
             side: "in",
             name: raised.name,
@@ -1286,7 +1378,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
           ? (employee.profile?.nightMedicalReport || raised)
           : null;
         if (recorded && (recorded.name || recorded.url)) {
-          out.push({
+          push({
             id: `${request.id}-fitness-file`,
             side: "out",
             name: recorded.name || raised?.name || (ar ? "تقرير اللياقة المسجّل" : "Recorded fitness report"),
@@ -1302,15 +1394,15 @@ export function collectRequestFiles(employees = [], lang = "ar") {
         continue;
       }
       if (request.senderFile?.name) {
-        out.push({
+        push({
           id: `${request.id}-sender`,
           side: "out",
           name: request.senderFile.name,
-          kindAr: "ملف للتوقيع",
-          kindEn: "File to sign",
+          kindAr: "نموذج من الإدارة",
+          kindEn: "Form from management",
           meta: ar ? (request.title || otherRequestTypeLabel(request.type, true)) : (request.title || otherRequestTypeLabel(request.type, false)),
-          refTag: ar ? "بصمة الملف" : "File fingerprint",
-          ref: request.senderFile.hash || "—",
+          refTag: request.senderFile.hash ? (ar ? "بصمة الملف" : "File fingerprint") : (ar ? "رقم الطلب" : "Request no."),
+          ref: request.senderFile.hash || requestPublicRef(request) || "—",
           href: "/verify",
           downloadUrl: request.senderFile.url || "",
         });
@@ -1318,7 +1410,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
       for (const file of request.files || []) {
         if (!file?.name) continue;
         if (request.senderFile?.name && file.name === request.senderFile.name) continue;
-        out.push({
+        push({
           id: `${request.id}-${file.name}`,
           side: "in",
           name: file.name,
@@ -1335,7 +1427,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
         const title = issuedFile?.name || request.title || (request.docKind
           ? (DOC_KINDS.find((row) => row.id === request.docKind)?.[ar ? "ar" : "en"] || otherRequestTypeLabel(request.type, ar))
           : otherRequestTypeLabel(request.type, ar));
-        out.push({
+        push({
           id: `${request.id}-issued`,
           side: "out",
           name: title,
@@ -1351,6 +1443,18 @@ export function collectRequestFiles(employees = [], lang = "ar") {
     }
   }
   return out;
+}
+
+/** Which طلباتي filter a file row belongs to — the same buckets as the request list. */
+export function requestFileInFilter(row, filter = "all") {
+  const st = String(row?.requestStatus || "pending");
+  const settled = !isPendingDecideStatus(st) && st !== "open";
+  if (filter === "archive") return settled;
+  if (filter === "approved") return st === "approved" || st === "yes";
+  if (filter === "rejected") return st === "rejected" || st === "no" || st === "refused_by_employee";
+  if (filter === "pending") return !settled || !!row?.live;
+  // «الكل» is the live view: once a request settles, its files move with it to «الأرشيف».
+  return !settled || !!row?.live;
 }
 
 export function requestArchiveStatusLabel(status, ar = true) {
@@ -1552,6 +1656,8 @@ export function requestArchiveSmartItems(rows = [], extras = {}) {
       formatArDate(archiveDay(row.at), lang),
     ].filter(Boolean).join(" · "),
     date: row.at || row.source?.createdAt || row.createdAt,
+    person: hideName ? "" : (row.employeeName || ""),
+    branch: employeeStationName(row.employee, stations) || "",
     badge: row.statusLabel,
     stateId: requestArchiveStateId(row.status),
     search: requestArchiveSearchHay(row, stations),
@@ -1644,7 +1750,6 @@ export function manageArchiveRows(employees = [], lang = "ar", extras = {}) {
 
 export function requestNoticeHref(text) {
   const value = String(text || "");
-  if (isInventoryDeskNotice(value)) return "/app/inventory";
   if (/طلبك|إجازتك|وثيقتك|اعتُمدت إجازتك|سُحبت إجازتك|رُفض طلبك|مستحق في طلباتي|سارية في طلباتي/i.test(value)) {
     return "/app/requests";
   }

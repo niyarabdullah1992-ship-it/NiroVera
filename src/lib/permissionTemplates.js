@@ -13,7 +13,6 @@ const dailyOpsView = {
   attendance: "view",
   chat: "view",
   performance: "view",
-  expenses: "view",
   files: "view",
 };
 
@@ -42,8 +41,6 @@ export const BUILT_IN_TEMPLATES = [
       performance: "manage",
       safety: "manage",
       employees: "view",
-      inventory: "view",
-      expenses: "view",
       work_proof: "view",
       signing: "view",
       reports: "view",
@@ -55,9 +52,7 @@ export const BUILT_IN_TEMPLATES = [
     ar: "مسؤول مالية",
     en: "Finance officer",
     permissions: {
-      expenses: "manage",
       payroll: "view",
-      inventory: "view",
       attendance: "view",
       reports: "view",
       files: "view",
@@ -72,7 +67,6 @@ export const BUILT_IN_TEMPLATES = [
       employees: "manage",
       attendance: "view",
       performance: "view",
-      expenses: "view",
       files: "view",
       reports: "view",
     },

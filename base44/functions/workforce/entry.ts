@@ -15,6 +15,12 @@ import {
   leaveCoverRange,
   LEAVE_TYPES,
   addCalendarDays,
+  isOfficialHolidayDay,
+  planAnnualPauseForSick,
+  checkIddahBirthGate,
+  checkMaternityBirthGate,
+  checkLeaveBreachGate,
+  unpaidSuspensionPlan,
 } from "../../shared/leaveDerivations.ts";
 import {
   STUDY_CONSENT_TYPE,
@@ -25,9 +31,45 @@ import {
   checkRefuseRequestReasonGate,
   checkRejectNightFitnessGate,
   checkRejectStudyConsentGate,
+  checkLeaveGrantGate,
+  checkRequestFilesGate,
+  LEAVE_TOPUP_TYPE,
+  leaveGrantRecord,
   requestAuditFileLog,
   requestRefuseFileLog,
 } from "../../shared/otherRequestDerivations.ts";
+import { checkGroundedRefusalGate } from "../../shared/statutoryRefusal.ts";
+import { MODEL_REQUEST_TYPES, checkModelRequestSubmit } from "../../shared/modelRequests.ts";
+import { checkTakeCompLeaveGate } from "../../shared/compLeaveBalance.ts";
+import { checkOtDayWeekGate } from "../../shared/otLimits.ts";
+import { isDoaApprover, toOrgData } from "../../shared/orgDesignDerivations.ts";
+import {
+  ART81_EXIT_TYPE,
+  DAMAGE_OBJECTION_TYPE,
+  DOCUMENTS_RETURN_TYPE,
+  GRIEVANCE_TYPE,
+  checkGrievanceGate,
+  grievanceReplyBy,
+  LEAVE_CARRY_TYPE,
+  NIGHT_AVOID_TYPE,
+  checkArt81Gate,
+  checkJobSearchHoursGate,
+  checkDamageObjectionGate,
+  checkDocumentsReturnGate,
+  checkLeaveCarryGate,
+  checkNightAvoidGate,
+  damageObjectionDeadline,
+} from "../../shared/rightsRequests.ts";
+import {
+  EXIT_ROUTE_NOTICE75,
+  RESIGNATION_TYPE,
+  resignationRouteFor,
+  checkPostponeResignationGate,
+  checkWithdrawResignationGate,
+  dueResignations,
+  resignationFacts,
+  resignationState,
+} from "../../shared/resignationLaw.ts";
 
 const SCHEDULES_CATEGORY = "schedules";
 const PUBLISHED_ROTAS_CATEGORY = "publishedRotas";
@@ -36,6 +78,23 @@ function requireCompanyId(companyId: unknown) {
   const id = typeof companyId === "string" ? companyId.trim() : "";
   if (!id) return null;
   return id;
+}
+
+function riyadhToday() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+}
+
+/** Server-side gates for the rights requests (the client runs the same ones — never trust it alone). */
+function checkRightsSubmit(request: any, emp: any) {
+  const type = String(request?.type || "");
+  const reason = String(request?.reason || "");
+  if (type === DAMAGE_OBJECTION_TYPE) return checkDamageObjectionGate({ notifiedOn: request.notifiedOn, amount: request.amount, reason, today: riyadhToday() });
+  if (type === LEAVE_CARRY_TYPE) return checkLeaveCarryGate({ days: request.days, remaining: null, reason });
+  if (type === ART81_EXIT_TYPE) return checkArt81Gate({ caseKey: request.art81Case, reason, ack: true });
+  if (type === NIGHT_AVOID_TYPE) return checkNightAvoidGate({ kind: request.nightAvoidKind, from: request.avoidFrom, until: request.avoidUntil, file: Array.isArray(request.files) ? request.files[0] : null, gender: emp?.profile?.gender });
+  if (type === DOCUMENTS_RETURN_TYPE) return checkDocumentsReturnGate({ reason });
+  if (type === GRIEVANCE_TYPE) return checkGrievanceGate({ notifiedOn: request.notifiedOn, grievanceKind: request.grievanceKind, reason, today: riyadhToday(), isHoliday: (iso: string) => isOfficialHolidayDay(iso) });
+  return { ok: true };
 }
 
 function uid(prefix: string) {
@@ -137,6 +196,10 @@ Deno.serve(async (req) => {
         namesById[e.employeeId || e.id] = e.name || e.employeeId || e.id;
       }
       const onLeaveIds = monthOnLeaveIds(emps, year, monthIndex);
+      const metaBlob = await loadBlob("companyMeta").catch(() => null);
+      const meta: any = Array.isArray(metaBlob?.payload) ? metaBlob.payload[0] || {} : metaBlob?.payload || {};
+      const stations = await base44.asServiceRole.entities.Station.filter({ companyId: auth.companyId }).catch(() => []);
+      const station = (stations || []).find((row: any) => String(row?.id) === String(stationId) || String(row?.stationId) === String(stationId)) || null;
       const gate = checkPublishGates({
         year,
         monthIndex,
@@ -145,6 +208,12 @@ Deno.serve(async (req) => {
         onLeaveIds,
         namesById,
         employees: emps,
+        // Per-person blocks the week board runs on the client (18632, juveniles, 3337) — never trust it alone.
+        schedule,
+        station,
+        settings: meta.settings || null,
+        company: meta.hoursPolicy ? { hoursPolicy: meta.hoursPolicy } : null,
+        today: riyadhToday(),
       });
       return { schedule, gate, crewSize: stationCrew.length, onLeaveCount: onLeaveIds.size };
     };
@@ -226,7 +295,15 @@ Deno.serve(async (req) => {
         noOtherEmployerAck: body.noOtherEmployerAck === true,
         recordedBy: body.recordedBy ? String(body.recordedBy) : undefined,
         deferConsentAt: body.deferConsentAt ? String(body.deferConsentAt) : undefined,
-      };
+        expectedBirthDate: type === "maternity" ? (String(body.expectedBirthDate || body.eventDate || "").slice(0, 10) || undefined) : undefined,
+        advanceLeave: type === "annual" && body.advanceLeave === true ? true : undefined,
+        joinAnnualToSick: type === "annual" && body.joinAnnualToSick === true ? true : undefined,
+      } as any;
+      // One attachment rule for every request in طلباتي: PDF or image, at most 25 MB each.
+      const leaveFiles = checkRequestFilesGate(request.files);
+      if (!leaveFiles.ok) return Response.json({ ...leaveFiles }, { status: 422 });
+      // Art. 78: the worker sets the job-search day; it is recorded, not asked for approval.
+      if (type === "job_search") request.status = "approved";
       const extras = {
         profile: emp.profile,
         requests: emp.leaveRequests,
@@ -236,6 +313,11 @@ Deno.serve(async (req) => {
         recordedBy: request.recordedBy,
         employerRecorded: !!request.recordedBy,
       };
+      if (type === "comp") {
+        // Regs 22 bis: comp days come from the comp balance (hours), never from annual leave.
+        const comp = checkTakeCompLeaveGate({ employee: emp, days, on: startDate, exceptId: request.id });
+        if (!comp.ok) return Response.json({ ...comp }, { status: 422 });
+      }
       const gate = checkSubmitLeaveGate(request, extras);
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, gate }, { status: 422 });
@@ -273,13 +355,63 @@ Deno.serve(async (req) => {
       if (!incoming) return Response.json({ error: "Missing request" }, { status: 400 });
       const emp = await findEmployee(employeeId);
       if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
-      const request = {
+      const request: any = {
         ...incoming,
         id: String(incoming.id || "").trim() || uid("oreq"),
         companyId: auth.companyId,
         status: String(incoming.status || "pending"),
         createdAt: incoming.createdAt || new Date().toISOString(),
       };
+      const attached = checkRequestFilesGate(request.files);
+      if (!attached.ok) return Response.json({ ...attached }, { status: 422 });
+      request.files = attached.files;
+      // An added balance goes to a grantable type, any number of whole days — never to annual (Art. 109).
+      if (request.type === LEAVE_TOPUP_TYPE) {
+        const grant = checkLeaveGrantGate({ pool: request.leaveType || "grant", days: request.days, onDate: riyadhToday() });
+        if (!grant.ok) return Response.json({ ...grant }, { status: 422 });
+        request.leaveType = grant.pool;
+        request.days = grant.days;
+      }
+      // Art. 79 bis(4): a resignation carries no deferred date — it is dated the day it reaches us.
+      if (request.type === RESIGNATION_TYPE) {
+        const today = riyadhToday();
+        // Art. 75 (open-ended: 30-day written notice, no acceptance) vs Art. 79 bis (fixed-term resignation).
+        const route = resignationRouteFor(emp.profile);
+        const facts = resignationFacts({ date: today, route });
+        request.date = today;
+        request.exitRoute = route;
+        request.lastDay = route === EXIT_ROUTE_NOTICE75 ? facts.noticeEndsOn : facts.deemedAcceptedOn;
+        if (request.status !== "pending") request.status = "pending";
+      }
+      if (request.type === "permission" && request.compLeave === true) {
+        const comp = checkTakeCompLeaveGate({ employee: emp, hours: (() => {
+          const m = (v: any) => { const x = String(v || "").match(/^(\d{1,2}):(\d{2})/); return x ? Number(x[1]) * 60 + Number(x[2]) : null; };
+          const a = m(request.time); const b = m(request.timeTo);
+          return a != null && b != null && b > a ? (b - a) / 60 : Number(request.hours) || 0;
+        })(), on: request.date, exceptId: request.id });
+        if (!comp.ok) return Response.json({ ...comp }, { status: 422 });
+      }
+      if (request.type === "overtime" && (request.assignment === true || request.source === "assignment")) {
+        const limits = checkOtDayWeekGate({ ...request, employee: emp, otherRequests: emp.otherRequests, exceptId: request.id });
+        if (!limits.ok) return Response.json({ ...limits }, { status: 422 });
+      }
+      if (request.type === "permission" && request.jobSearch === true) {
+        const js = checkJobSearchHoursGate({ employee: emp, date: request.date, time: request.time, timeTo: request.timeTo, today: riyadhToday(), exceptId: request.id });
+        if (!js.ok) return Response.json({ ...js }, { status: 422 });
+        request.status = "approved";
+      }
+      const rights = checkRightsSubmit(request, emp);
+      if (!rights.ok) return Response.json({ ...rights }, { status: 422 });
+      // Model Arts. 9/12, 24, 46 — the same gate as the page; a mission or a prevented day is a manager's act.
+      if (MODEL_REQUEST_TYPES.includes(request.type)) {
+        if (request.type !== "relocation_expenses" && !isManager) {
+          return Response.json({ error: "MODEL_REQUEST_MANAGER_ONLY", reason: "الانتداب وتسجيل منع المنشأة قرار إداري.", reasonEn: "A mission or a prevented day is a manager's decision." }, { status: 403 });
+        }
+        const model = checkModelRequestSubmit(request, emp, { actorId: auth.userId, today: riyadhToday() });
+        if (!model.ok) return Response.json({ ...model }, { status: 422 });
+      }
+      if (request.type === DAMAGE_OBJECTION_TYPE) request.objectionLastDay = damageObjectionDeadline(request.notifiedOn);
+      if (request.type === GRIEVANCE_TYPE) request.grievanceReplyBy = grievanceReplyBy(riyadhToday(), (iso: string) => isOfficialHolidayDay(iso));
       const prior = Array.isArray(emp.otherRequests) ? emp.otherRequests : [];
       const raiseRow = buildRequestAudit({
         actor: auth.name,
@@ -294,26 +426,66 @@ Deno.serve(async (req) => {
       request.auditTrail = appendRequestAudit(request, raiseRow);
       const otherRequests = [request, ...prior.filter((row: { id?: string }) => row?.id !== request.id)];
       const fileLog = [requestAuditFileLog(raiseRow, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
-      await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, fileLog });
+      const patch: Record<string, unknown> = { otherRequests, fileLog };
+      if (request.type === ART81_EXIT_TYPE) {
+        // Art. 81: the worker leaves today with all his rights; the file carries it at once (undone on withdrawal).
+        const today = riyadhToday();
+        request.previousContractExit = emp.profile?.contractExit ?? null;
+        patch.profile = { ...(emp.profile || {}), contractExit: { ...(emp.profile?.contractExit || {}), reason: "article_81", party: "worker", art81Case: request.art81Case, effectiveDate: today, status: "worker_left", noticeAt: today, art81RequestId: request.id } };
+      }
+      await base44.asServiceRole.entities.Employee.update(emp.id, patch);
       await audit(raiseRow.action, raiseRow.details, { reason: raiseRow.reason, oldValue: raiseRow.oldValue, newValue: raiseRow.newValue });
       return Response.json({ request, ok: true, audit: raiseRow });
     }
 
     if (action === "approveLeave" || action === "rejectLeave") {
-      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
       const employeeId = String(body.employeeId || "").trim();
       const requestId = String(body.requestId || "").trim();
+      if (!isManager && (!employeeId || !requestId)) return Response.json({ error: "Forbidden" }, { status: 403 });
       if (!employeeId || !requestId) return Response.json({ error: "Missing employeeId or requestId" }, { status: 400 });
       const emp = await findEmployee(employeeId);
+      if (!isManager && !emp) return Response.json({ error: "Forbidden" }, { status: 403 });
       if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
       const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
       const idx = leaveRequests.findIndex((r: any) => r.id === requestId);
+      if (!isManager) {
+        // Delegation of authority: the seat the matrix routes this leave to may decide it.
+        const [employees, stations, seatsBlob, designBlob] = await Promise.all([
+          loadEmployees(),
+          base44.asServiceRole.entities.Station.filter({ companyId: auth.companyId }),
+          loadBlob("orgSeats"),
+          loadBlob("orgDesign"),
+        ]);
+        const orgData = toOrgData({
+          employees,
+          stations: stations || [],
+          orgSeats: Array.isArray(seatsBlob?.payload) ? seatsBlob.payload : [],
+          orgDesign: designBlob?.payload && !Array.isArray(designBlob.payload) ? designBlob.payload : {},
+        });
+        const days = idx >= 0 ? Number(leaveRequests[idx]?.days) || null : null;
+        if (!isDoaApprover(orgData, String(auth.userId || ""), "leave", String(emp.employeeId || emp.id || employeeId), days)) {
+          return Response.json({
+            error: "Forbidden",
+            code: "DOA_NOT_APPROVER",
+            reason: "لست صاحب القرار في هذه الإجازة — لا يوجّهها الهيكل ولا مصفوفة الصلاحيات إليك.",
+            reasonEn: "You are not the decision maker for this leave — neither the structure nor the authority matrix routes it to you.",
+          }, { status: 403 });
+        }
+      }
       if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
       const req = { ...leaveRequests[idx] };
 
-      const extras = { profile: emp.profile, requests: emp.leaveRequests };
+      const extras: any = { profile: emp.profile, requests: emp.leaveRequests };
       if (action === "approveLeave") {
-        const gate = checkApproveLeaveGate(req, extras);
+        if (body.agreedOtherwise === true) req.agreedOtherwise = true;
+        if (body.extensionAgreedOtherwise === true) req.extensionAgreedOtherwise = true;
+        const gate = checkApproveLeaveGate(req, {
+          ...extras,
+          forApproval: true,
+          advanceConsent: body.advanceConsent === true,
+          // Art. 114 quota: counted across the company's files.
+          company: String(req.type || "").toLowerCase() === "hajj" ? { employees: await loadEmployees(), leavePolicy: { hajjAnnualQuota: body.hajjAnnualQuota } } : undefined,
+        });
         if (!gate.ok) {
           return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn, gate }, { status: 422 });
         }
@@ -329,6 +501,35 @@ Deno.serve(async (req) => {
             req.activeEndDate = span.end;
           }
         }
+        const leaveType = String(req.type || "").toLowerCase();
+        let profileNext: any = null;
+        if (leaveType === "annual" && req.advanceLeave === true) {
+          req.advanceConsent = true;
+          req.advanceConsentAt = req.approvedAt;
+        }
+        if (leaveType === "hajj") {
+          profileNext = { ...(emp.profile || {}), hajjPerformed: true, hajjRequestId: req.id, hajjSeason: String(req.startDate || "").slice(0, 4) };
+        }
+        if (leaveType === "unpaid") {
+          // Art. 116 + Regs Art. 25: suspension beyond twenty days; a fixed-term contract is extended by it.
+          const plan = unpaidSuspensionPlan(leaveRequests, emp.profile?.hireDate, req);
+          const mine = plan.byRequest[req.id];
+          if (mine && mine.days > 0) {
+            req.suspension = { days: mine.days, from: mine.from, to: mine.to };
+            const profile: any = { ...(emp.profile || {}) };
+            profile.unpaidSuspendedDays = (Number(profile.unpaidSuspendedDays) || 0) + mine.days;
+            const end = String(profile.contract?.endDate || profile.contractEndDate || "").slice(0, 10);
+            const fixed = ["fixed", "fixed term", "definite", "محدد المدة"].includes(String(profile.contractType || profile.contract?.type || "").trim().toLowerCase());
+            if (fixed && /^\d{4}-\d{2}-\d{2}$/.test(end) && req.extensionAgreedOtherwise !== true) {
+              const next = addCalendarDays(end, mine.days);
+              req.suspension.contractEndBefore = end;
+              req.suspension.contractEndAfter = next;
+              profile.contractEndDate = next;
+              if (profile.contract && typeof profile.contract === "object") profile.contract = { ...profile.contract, endDate: next };
+            }
+            profileNext = profile;
+          }
+        }
         const row = buildRequestAudit({
           actor: auth.name,
           employeeId,
@@ -340,8 +541,28 @@ Deno.serve(async (req) => {
         });
         req.auditTrail = appendRequestAudit(req, row);
         leaveRequests[idx] = req;
+        if (String(req.type || "").toLowerCase() === "sick") {
+          // Regs Art. 41: annual leave the sick leave falls in is paused and resumes after it.
+          for (let i = 0; i < leaveRequests.length; i += 1) {
+            const annual = { ...leaveRequests[i] };
+            if (annual.status !== "approved" || String(annual.type || "").toLowerCase() !== "annual") continue;
+            const plan = planAnnualPauseForSick(annual, req);
+            if (!plan) continue;
+            const origDays = Number(annual.days) || computeLeaveDays(annual.startDate, annual.endDate);
+            const keepDays = plan.keep ? Math.min(origDays, plan.keep.days) : 0;
+            const stamp = { sickId: req.id, pausedDays: plan.pausedDays, at: req.approvedAt };
+            if (plan.keep) {
+              leaveRequests[i] = { ...annual, endDate: plan.keep.endDate, activeEndDate: plan.keep.endDate, days: keepDays, pausedBySick: stamp };
+              if (origDays - keepDays > 0) {
+                leaveRequests.push({ ...annual, id: `leave_${Date.now().toString(36)}_${i}`, startDate: plan.resume.startDate, endDate: plan.resume.endDate, activeStartDate: plan.resume.startDate, activeEndDate: plan.resume.endDate, days: origDays - keepDays, resumedFrom: annual.id, pausedBySick: undefined, auditTrail: [], reason: "استئناف الإجازة السنوية بعد المرضية (اللائحة م41)" });
+              }
+            } else {
+              leaveRequests[i] = { ...annual, startDate: plan.resume.startDate, endDate: plan.resume.endDate, activeStartDate: plan.resume.startDate, activeEndDate: plan.resume.endDate, pausedBySick: stamp };
+            }
+          }
+        }
         const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
-        await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests, fileLog });
+        await base44.asServiceRole.entities.Employee.update(emp.id, profileNext ? { leaveRequests, fileLog, profile: profileNext } : { leaveRequests, fileLog });
         await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
         return Response.json({ request: req, ok: true, audit: row });
       }
@@ -350,7 +571,7 @@ Deno.serve(async (req) => {
       if (!lock.ok) {
         return Response.json({ error: lock.error, reason: lock.reason, reasonEn: lock.reasonEn, gate: lock }, { status: 422 });
       }
-      const refuse = checkRejectLeaveGate(req, { nextStatus: "rejected", actor: "manager", ...extras });
+      const refuse = checkRejectLeaveGate(req, { nextStatus: "rejected", actor: "manager", ...extras, rejectGround: body.rejectGround, rejectVerified: body.rejectVerified === true });
       if (!refuse.ok) {
         return Response.json({ error: refuse.error, reason: refuse.reason, reasonEn: refuse.reasonEn, gate: refuse }, { status: 422 });
       }
@@ -403,6 +624,34 @@ Deno.serve(async (req) => {
         pending.status = "approved";
         pending.reviewedBy = auth.name;
         pending.reviewedAt = new Date().toISOString();
+        const profilePatch: Record<string, unknown> = {};
+        if (pending.type === RESIGNATION_TYPE && pending.exitRoute === EXIT_ROUTE_NOTICE75) {
+          // Art. 75: the notice is acknowledged; the open-ended contract ends when it runs out.
+          profilePatch.contractExit = { ...(emp.profile?.contractExit || {}), reason: "resignation", route: EXIT_ROUTE_NOTICE75, party: "worker", noticeAt: pending.date || "", resignationSubmittedAt: pending.date || "", effectiveDate: pending.lastDay || "", status: "notice" };
+        } else if (pending.type === RESIGNATION_TYPE) {
+          // Art. 79 bis(2): the contract ends from the date the employer accepts.
+          const today = riyadhToday();
+          profilePatch.contractExit = { ...(emp.profile?.contractExit || {}), reason: "resignation", party: "worker", resignationSubmittedAt: pending.date || "", effectiveDate: today, status: "accepted", acceptedAt: today };
+        }
+        if (pending.type === NIGHT_AVOID_TYPE) {
+          profilePatch.nightAvoid = { kind: pending.nightAvoidKind, from: pending.avoidFrom, until: pending.avoidUntil || "", requestId: pending.id };
+        }
+        if (pending.type === LEAVE_CARRY_TYPE) {
+          profilePatch.leaveCarryAgreed = [...(emp.profile?.leaveCarryAgreed || []), { requestId: pending.id, days: Number(pending.days) || 0, at: pending.reviewedAt }];
+        }
+        if (pending.type === LEAVE_TOPUP_TYPE && !pending.balanceApplied) {
+          const grant = checkLeaveGrantGate({ pool: pending.leaveType || "grant", days: pending.days, onDate: riyadhToday() });
+          if (!grant.ok) return Response.json({ ...grant }, { status: 422 });
+          profilePatch.discretionaryGrants = [
+            leaveGrantRecord({ pool: grant.pool, days: grant.days, reason: pending.reason, by: auth.name, at: pending.reviewedAt, requestId: pending.id }),
+            ...(emp.profile?.discretionaryGrants || []),
+          ];
+          pending.balanceApplied = true;
+          pending.appliedDays = grant.days;
+          pending.leaveType = grant.pool;
+        }
+        if (pending.type === DAMAGE_OBJECTION_TYPE) pending.objectionAccepted = true;
+        if (pending.type === DOCUMENTS_RETURN_TYPE) pending.documentsReturnedAt = pending.reviewedAt;
         const row = buildRequestAudit({
           actor: auth.name,
           employeeId,
@@ -415,10 +664,21 @@ Deno.serve(async (req) => {
         pending.auditTrail = appendRequestAudit(pending, row);
         otherRequests[idx] = pending;
         const fileLog = [requestAuditFileLog(row, true), ...(Array.isArray(emp.fileLog) ? emp.fileLog : [])].slice(0, 40);
-        await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, fileLog });
+        const approvePatch: Record<string, unknown> = { otherRequests, fileLog };
+        if (Object.keys(profilePatch).length) approvePatch.profile = { ...(emp.profile || {}), ...profilePatch };
+        await base44.asServiceRole.entities.Employee.update(emp.id, approvePatch);
         await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
         return Response.json({ request: pending, ok: true, audit: row });
       }
+      if (pending.type === RESIGNATION_TYPE) {
+        return Response.json({
+          error: "RESIGNATION_NOT_REFUSABLE",
+          reason: "موقوف — المادة 79 مكرر: الاستقالة لا تُرفض. لك قبولها، أو تأجيل قبولها حتى 60 يوماً بإيضاح مسبب مكتوب قبل مضي 30 يوماً؛ وإلا تُعد مقبولة.",
+          reasonEn: "Blocked — Article 79 bis: a resignation is not refused; accept it or postpone acceptance in writing.",
+        }, { status: 422 });
+      }
+      const grounded = checkGroundedRefusalGate({ ...pending, family: "other" }, { ground: body.rejectGround, verified: body.rejectVerified === true, actor: "manager" });
+      if (!grounded.ok) return Response.json({ ...grounded, gate: grounded }, { status: 422 });
       const rejectGate = pending.type === STUDY_CONSENT_TYPE
         ? checkRejectStudyConsentGate(pending, body.reason || body.note)
         : pending.type === "night_fitness"
@@ -448,6 +708,200 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, fileLog });
       await audit(row.action, row.details, { reason: row.reason, oldValue: row.oldValue, newValue: row.newValue });
       return Response.json({ request: pending, ok: true, audit: row });
+    }
+
+    // The worker withdraws his own request. Resignation: 7 days and before acceptance (Art. 79 bis(3)).
+    // Art. 81 notice withdrawn by mistake: the file's previous exit comes back.
+    if (action === "withdrawOther") {
+      const employeeId = String(body.employeeId || auth.userId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      if (!employeeId || !requestId) return Response.json({ error: "Missing employeeId or requestId" }, { status: 400 });
+      if (auth.userId && auth.userId !== employeeId && !isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const otherRequests = Array.isArray(emp.otherRequests) ? [...emp.otherRequests] : [];
+      const idx = otherRequests.findIndex((r: { id?: string }) => r.id === requestId);
+      if (idx < 0) return Response.json({ error: "REQUEST_NOT_FOUND" }, { status: 404 });
+      const row: any = { ...otherRequests[idx] };
+      if (row.type === RESIGNATION_TYPE) {
+        const w = checkWithdrawResignationGate(row, riyadhToday());
+        if (!w.ok) return Response.json({ ...w }, { status: 422 });
+      }
+      row.status = "withdrawn";
+      row.withdrawnAt = new Date().toISOString();
+      otherRequests[idx] = row;
+      const patch: Record<string, unknown> = { otherRequests };
+      if (row.type === ART81_EXIT_TYPE && emp.profile?.contractExit?.art81RequestId === row.id) {
+        const profile: any = { ...(emp.profile || {}) };
+        if (row.previousContractExit) profile.contractExit = row.previousContractExit; else delete profile.contractExit;
+        patch.profile = profile;
+      }
+      await base44.asServiceRole.entities.Employee.update(emp.id, patch);
+      await audit("request_withdrawn", `${emp.name} withdrew ${row.type} ${row.id}`);
+      return Response.json({ ok: true, request: row });
+    }
+
+    // Art. 79 bis(1): postpone acceptance once, before the 30 days end, ≤ 60 days, with a written reason.
+    if (action === "postponeResignation") {
+      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const employeeId = String(body.employeeId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      if (auth.userId && auth.userId === employeeId) return Response.json({ error: "SELF" }, { status: 403 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const otherRequests = Array.isArray(emp.otherRequests) ? [...emp.otherRequests] : [];
+      const idx = otherRequests.findIndex((r: { id?: string; type?: string }) => r.id === requestId && r.type === RESIGNATION_TYPE);
+      if (idx < 0) return Response.json({ error: "REQUEST_NOT_FOUND" }, { status: 404 });
+      const today = riyadhToday();
+      const gate = checkPostponeResignationGate({ row: otherRequests[idx], days: body.days, reason: body.reason, today });
+      if (!gate.ok) return Response.json({ ...gate }, { status: 422 });
+      const row: any = { ...otherRequests[idx], postponedUntil: (gate as any).until, postponeReason: String(body.reason).trim(), postponedAt: today, postponedBy: auth.name };
+      otherRequests[idx] = row;
+      await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests });
+      await audit("resignation_postponed", `Resignation of ${emp.name} postponed to ${row.postponedUntil}`, { reason: row.postponeReason });
+      return Response.json({ ok: true, request: row });
+    }
+
+    // Art. 79 bis(1)(2): resignations with 30 days of silence, or at the end of a postponement, are accepted by law.
+    if (action === "settleResignations") {
+      const emps = await loadEmployees();
+      const today = riyadhToday();
+      const due = dueResignations({ employees: emps.map((e: any) => ({ ...e, id: e.employeeId || e.id })) }, today);
+      for (const item of due) {
+        const emp: any = emps.find((e: any) => (e.employeeId || e.id) === item.employeeId);
+        if (!emp) continue;
+        const notice75 = item.via === "notice75";
+        const otherRequests = (emp.otherRequests || []).map((r: any) => (r.id === item.requestId
+          ? (notice75
+            ? { ...r, status: "approved", settledAt: today, reviewedBy: r.reviewedBy || "بحكم النظام", reviewedAt: r.reviewedAt || new Date().toISOString(), approvedAt: r.approvedAt || new Date().toISOString() }
+            : { ...r, status: "approved", deemedAccepted: item.via, reviewedBy: "بحكم النظام", reviewedAt: new Date().toISOString(), approvedAt: new Date().toISOString() })
+          : r));
+        const req = (emp.otherRequests || []).find((r: any) => r.id === item.requestId) || {};
+        const contractExit = notice75
+          ? { ...(emp.profile?.contractExit || {}), reason: "resignation", route: EXIT_ROUTE_NOTICE75, party: "worker", noticeAt: req.date || "", effectiveDate: item.endsOn, status: "ended", endedAt: item.endsOn }
+          : { ...(emp.profile?.contractExit || {}), reason: "resignation", party: "worker", resignationSubmittedAt: req.date || "", effectiveDate: item.endsOn, status: "accepted", acceptedAt: item.endsOn, deemed: item.via };
+        await base44.asServiceRole.entities.Employee.update(emp.id, { otherRequests, profile: { ...(emp.profile || {}), contractExit } });
+        await audit("resignation_deemed_accepted", `Resignation of ${emp.name} accepted by law (${item.via}) on ${item.endsOn}`);
+      }
+      return Response.json({ ok: true, settled: due.length });
+    }
+
+    // At work on an approved leave day: the worker cuts the leave from that day (not in Art. 151's six weeks).
+    if (action === "cutLeave") {
+      const employeeId = String(body.employeeId || auth.userId || "").trim();
+      if (!employeeId || (auth.userId && auth.userId !== employeeId)) return Response.json({ error: "SELF_ONLY" }, { status: 403 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const day = String(body.day || riyadhToday()).slice(0, 10);
+      const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
+      const idx = leaveRequests.findIndex((r: any) => {
+        if (r.status !== "approved") return false;
+        const span = leaveCoverRange(r);
+        return !!span.start && !!span.end && span.start <= day && day <= span.end;
+      });
+      if (idx < 0) return Response.json({ error: "NO_LEAVE" }, { status: 404 });
+      const r: any = { ...leaveRequests[idx] };
+      if (String(r.type) === "maternity" && r.eventDate) {
+        const last = addCalendarDays(String(r.eventDate).slice(0, 10), 41);
+        if (day >= String(r.eventDate).slice(0, 10) && day <= last) {
+          return Response.json({ error: "MATERNITY_MANDATORY", reason: `لا يجوز تشغيلك في الأسابيع الستة التالية للوضع (حتى ${last}) — المادة 151.` }, { status: 422 });
+        }
+      }
+      const span = leaveCoverRange(r);
+      r.cutOn = day;
+      r.originalEndDate = r.originalEndDate || span.end;
+      if (day <= span.start) {
+        r.status = "withdrawn";
+        r.withdrawnReason = "attended";
+      } else {
+        const newEnd = addCalendarDays(day, -1);
+        r.endDate = newEnd;
+        if (r.activeEndDate) r.activeEndDate = newEnd;
+        if (Number.isFinite(Number(body.keptDays))) r.days = Number(body.keptDays);
+      }
+      leaveRequests[idx] = r;
+      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
+      await audit("leave_cut_attended", `${emp.name} cut leave ${r.id} from ${day} (attended)`);
+      return Response.json({ ok: true, request: r });
+    }
+
+    // Regs Art. 40(5): the birth ends a pregnant widow's iddah. The widow herself or a manager records it.
+    if (action === "recordIddahBirth") {
+      const employeeId = String(body.employeeId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      if (!employeeId || !requestId) return Response.json({ error: "Missing employeeId or requestId" }, { status: 400 });
+      if (!isManager && auth.userId !== employeeId) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
+      const idx = leaveRequests.findIndex((r: any) => r.id === requestId);
+      if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
+      const gate = checkIddahBirthGate(leaveRequests[idx], body.birthDate);
+      if (!gate.ok) return Response.json({ ...gate }, { status: 422 });
+      const r: any = { ...leaveRequests[idx] };
+      r.iddahBirthDate = gate.birthDate;
+      r.iddahEndedAtBirth = true;
+      r.originalEndDate = r.originalEndDate || r.endDate;
+      r.endDate = gate.endDate;
+      r.days = gate.days;
+      if (r.activeEndDate) r.activeEndDate = gate.endDate;
+      leaveRequests[idx] = r;
+      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
+      await audit("iddah_ended_at_birth", `${emp.name} iddah ${r.id} ended at birth ${gate.birthDate}`);
+      return Response.json({ ok: true, request: r });
+    }
+
+    // Art. 151(1): the actual birth re-anchors the six mandatory weeks; a late birth's complement is unpaid.
+    if (action === "recordBirth") {
+      const employeeId = String(body.employeeId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      if (!employeeId || !requestId) return Response.json({ error: "Missing employeeId or requestId" }, { status: 400 });
+      if (!isManager && auth.userId !== employeeId) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
+      const idx = leaveRequests.findIndex((r: any) => r.id === requestId);
+      if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
+      const gate: any = checkMaternityBirthGate(leaveRequests[idx], body.birthDate);
+      if (!gate.ok) return Response.json({ ...gate }, { status: 422 });
+      const r: any = { ...leaveRequests[idx] };
+      r.expectedBirthDate = r.expectedBirthDate || gate.expectedBirthDate || undefined;
+      r.actualBirthDate = gate.birthDate;
+      r.eventDate = gate.birthDate;
+      r.originalStartDate = r.originalStartDate || r.startDate;
+      r.originalEndDate = r.originalEndDate || r.endDate;
+      r.startDate = gate.startDate;
+      r.endDate = gate.endDate;
+      r.days = gate.days;
+      r.paidDays = gate.paidDays;
+      r.unpaidComplementDays = gate.unpaidComplementDays || undefined;
+      r.unpaidComplementFrom = gate.unpaidComplementFrom || undefined;
+      r.unpaidComplementTo = gate.unpaidComplementTo || undefined;
+      if (r.activeStartDate) r.activeStartDate = gate.startDate;
+      if (r.activeEndDate) r.activeEndDate = gate.endDate;
+      leaveRequests[idx] = r;
+      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
+      await audit("maternity_birth_recorded", `${emp.name} maternity ${r.id}: birth ${gate.birthDate}, unpaid complement ${gate.unpaidComplementDays}`);
+      return Response.json({ ok: true, request: r });
+    }
+
+    // Art. 118: proven work for another employer during leave — the leave pay is recoverable.
+    if (action === "recordLeaveBreach") {
+      if (!isManager) return Response.json({ error: "Forbidden" }, { status: 403 });
+      const employeeId = String(body.employeeId || "").trim();
+      const requestId = String(body.requestId || "").trim();
+      const emp = await findEmployee(employeeId);
+      if (!emp) return Response.json({ error: "Employee not found in company" }, { status: 404 });
+      const leaveRequests = Array.isArray(emp.leaveRequests) ? [...emp.leaveRequests] : [];
+      const idx = leaveRequests.findIndex((r: any) => r.id === requestId);
+      if (idx < 0) return Response.json({ error: "LEAVE_NOT_FOUND" }, { status: 404 });
+      const gate: any = checkLeaveBreachGate(leaveRequests[idx], { file: body.file, reason: body.reason, actorId: auth.userId, subjectId: employeeId });
+      if (!gate.ok) return Response.json({ ...gate }, { status: 422 });
+      const r: any = { ...leaveRequests[idx], recoverPay: true, recoverReason: String(body.reason).trim(), recoverEvidence: body.file, recoverAt: new Date().toISOString(), recoverBy: auth.name };
+      leaveRequests[idx] = r;
+      await base44.asServiceRole.entities.Employee.update(emp.id, { leaveRequests });
+      await audit("leave_breach_art118", `${emp.name} leave ${r.id}: ${r.recoverReason}`);
+      return Response.json({ ok: true, request: r });
     }
 
     if (action === "attachExamSat") {

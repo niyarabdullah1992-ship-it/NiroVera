@@ -4,6 +4,7 @@
  */
 
 import { taskPoints } from "./opsDerivations.js";
+import { taskPointsFor, taskQualitySummary } from "./taskQuality.js";
 import { blendHseTerm } from "./perfDerivations.js";
 
 /* ───────────────────────────── effective dating ───────────────────────────── */
@@ -642,7 +643,9 @@ export function taskIsProven(task) {
   return !!task.approvedAt || task.status === "completed";
 }
 
-export function provenTaskWeight(task) {
+/** One proven task's points — for a named person his own quality level's points (lib/taskQuality). */
+export function provenTaskWeight(task, employeeId) {
+  if (employeeId != null && employeeId !== "") return taskPointsFor(task, employeeId);
   const stored = Number(task.pointsAwarded);
   return Number.isFinite(stored) && stored > 0 ? stored : taskPoints(task.priority, task.effortWeight);
 }
@@ -667,11 +670,11 @@ export function deriveEmployeeTaskFacts({ tasks, employeeId, stationId, period }
     (t) => taskBelongsTo(t, employeeId, stationId) && withinPeriod(t, period),
   );
   const proven = mine.filter(taskIsProven);
-  const points = proven.reduce((n, t) => n + provenTaskWeight(t), 0);
+  const points = proven.reduce((n, t) => n + provenTaskWeight(t, employeeId), 0);
   const byKind = {};
   for (const t of proven) {
     const kind = String(t.workKind || "gn");
-    byKind[kind] = (byKind[kind] || 0) + provenTaskWeight(t);
+    byKind[kind] = (byKind[kind] || 0) + provenTaskWeight(t, employeeId);
   }
   const ontimePct = proven.length
     ? Math.round(
@@ -681,13 +684,13 @@ export function deriveEmployeeTaskFacts({ tasks, employeeId, stationId, period }
       }).length / proven.length) * 100,
     )
     : 0;
-  return { assigned: mine.length, proven: proven.length, points, byKind, ontimePct, provenTasks: proven };
+  return { employeeId, assigned: mine.length, proven: proven.length, points, byKind, ontimePct, provenTasks: proven, quality: taskQualitySummary(proven, employeeId) };
 }
 
 export function objectiveEarnedPoints(objective, facts) {
   return facts.provenTasks
     .filter((t) => taskMatchesObjective(t, objective))
-    .reduce((n, t) => n + provenTaskWeight(t), 0);
+    .reduce((n, t) => n + provenTaskWeight(t, facts.employeeId), 0);
 }
 
 export function deriveObjectiveAttainment({ objective, facts, peerBenchmark, ontimePct, hsePct, coverPct }) {
@@ -765,6 +768,7 @@ export function deriveObjectiveBoard({ employees, tasks, planFor, period }) {
       provenTasks: facts.proven,
       assignedTasks: facts.assigned,
       ontimePct: facts.ontimePct,
+      quality: facts.quality,
       objectives: attainment.rows,
       score: attainment.score,
       peerBenchmark,

@@ -76,6 +76,9 @@ export function formatOrgStructureEvent(event, ar = true) {
     const kind = event.to === "manager" ? (ar ? "مدير" : "manager") : (ar ? "فرع" : "branch");
     return ar ? `«${branch}» أصبح ${kind}` : `${branch} is now a ${kind}`;
   }
+  if (event.type === "located") {
+    return ar ? `«${branch}» في ${event.city || "—"}` : `${branch} is in ${event.city || "—"}`;
+  }
   if (event.type === "created") {
     const count = Number(event.to);
     if (count > 1 && who) {
@@ -122,6 +125,11 @@ export function formatOrgStructureEvent(event, ar = true) {
     return ar
       ? `منصب «${event.to || ""}» تحت ${who || branch}`
       : `Seat «${event.to || ""}» under ${who || branch}`;
+  }
+  if (event.type === "decision") {
+    return ar
+      ? `قرار تنظيمي ${event.to || ""}: «${event.toName || ""}» — يسري ${event.until || "—"}`
+      : `Org decision ${event.to || ""}: “${event.toName || ""}” — effective ${event.until || "—"}`;
   }
   if (event.type === "hr") {
     return ar

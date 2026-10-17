@@ -1,6 +1,8 @@
 import { deriveSaudiStatus, checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
+import { checkStationLocationGate } from "@/lib/geoPlaces";
 import { assignEmployeeNumber, employeeNumberTaken } from "@/lib/employeeNumber";
 import { checkProbationGate, workPatternForcesFixed } from "@/lib/contractLawDerivations";
+import { checkHiringAgeGate } from "@/lib/employerDuties";
 import { getCompanyData, logAudit, updateCompany } from "@/lib/store";
 import { createOrgRecord } from "@/lib/orgTree";
 import { canAddStation } from "@/lib/planLimits";
@@ -268,6 +270,9 @@ export function setActingAssignment(companyId, employeeId, input) {
   if (!companyId || !employeeId || !stationId || !/^\d{4}-\d{2}-\d{2}$/.test(until)) {
     return { ok: false, error: "FIELDS" };
   }
+  // Optional dated start (acting from a future day); the end is required and ends it automatically.
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(String(input?.from || "").slice(0, 10)) ? String(input.from).slice(0, 10) : "";
+  if (from && from > until) return { ok: false, error: "FIELDS" };
   let error = "";
   updateCompany(companyId, (data) => {
     const employee = (data.employees || []).find((item) => item.id === employeeId);
@@ -292,6 +297,7 @@ export function setActingAssignment(companyId, employeeId, input) {
       title: String(input.title || seat?.title || employee.position || "").trim(),
       stationId,
       listId: String(input.listId || seat?.listId || ""),
+      ...(from ? { from } : {}),
       until,
       createdAt: new Date().toISOString(),
     });
@@ -485,9 +491,21 @@ export function ensureCompanyRootStation(companyId, companyName, ar = true) {
   return { ok: true, stationId, changed: true };
 }
 
-export function createOrgBranch(companyId, name, company, data, parentStationId, unitKind) {
+/**
+ * Create a branch / unit under a parent. `place` ({ countryCode, city, cityRegion }) is where it
+ * is — checked by the location gate (known country; a listed city in Saudi Arabia). Callers that
+ * have no picker (template import) may leave it out; the tree then derives a city from the name
+ * for display only.
+ */
+export function createOrgBranch(companyId, name, company, data, parentStationId, unitKind, place = null) {
   const title = String(name || "").trim();
   if (!title) return { ok: false, error: "NAME" };
+  let where = null;
+  if (place && (place.countryCode || place.city)) {
+    const geo = checkStationLocationGate(place);
+    if (!geo.ok) return { ok: false, error: geo.error, reason: geo.reason, reasonEn: geo.reasonEn };
+    where = geo.place;
+  }
   const live = data || getCompanyData(companyId);
   if (company && live && !canAddStation(company, live)) return { ok: false, error: "LIMIT" };
   const root = companyRootStation(live?.stations);
@@ -504,6 +522,10 @@ export function createOrgBranch(companyId, name, company, data, parentStationId,
   });
   logAudit(companyId, "org_branch_added", parent ? `${title} → ${parent}` : title);
   updateCompany(companyId, (liveData) => {
+    if (where) {
+      const made = (liveData.stations || []).find((item) => String(item.id) === String(stationId));
+      if (made) Object.assign(made, where);
+    }
     appendOrgStructureEvent(liveData, {
       type: "created",
       stationId,
@@ -512,6 +534,26 @@ export function createOrgBranch(companyId, name, company, data, parentStationId,
     });
   });
   return { ok: true, stationId };
+}
+
+/** «الموقع»: set a branch's country / city (the location gate decides); the tree regroups at once. */
+export function setStationLocation(companyId, stationId, place = {}) {
+  const geo = checkStationLocationGate(place);
+  if (!geo.ok) return { ok: false, error: geo.error, reason: geo.reason, reasonEn: geo.reasonEn };
+  let found = false;
+  updateCompany(companyId, (data) => {
+    const station = (data.stations || []).find((item) => String(item.id) === String(stationId));
+    if (!station) return;
+    found = true;
+    station.countryCode = geo.place.countryCode;
+    station.city = geo.place.city;
+    if (geo.place.cityRegion) station.cityRegion = geo.place.cityRegion;
+    else delete station.cityRegion;
+    appendOrgStructureEvent(data, { type: "located", stationId: station.id, stationName: station.name || "", city: geo.place.city, countryCode: geo.place.countryCode });
+  });
+  if (!found) return { ok: false, error: "MISSING", reason: "الفرع غير موجود.", reasonEn: "Branch not found." };
+  logAudit(companyId, "org_branch_located", `${stationId} → ${geo.place.countryCode} · ${geo.place.city}`);
+  return { ok: true, place: geo.place };
 }
 
 export function setOrgUnitKind(companyId, stationId, unitKind) {
@@ -906,9 +948,19 @@ export function hireFromSeat(companyId, input) {
       probationPriorAtEmployer: input.probationPriorAtEmployer ?? input.profile?.probationPriorAtEmployer,
       probationOtherProfession: input.probationOtherProfession ?? input.profile?.probationOtherProfession,
       probationRehireGapMonths: input.probationRehireGapMonths ?? input.profile?.probationRehireGapMonths,
+      probationSecondWritten: input.probationSecondWritten ?? input.profile?.probationSecondWritten,
+      probationSecondFile: input.probationSecondFile ?? input.profile?.probationSecondFile,
+      probationSegments: input.probationSegments ?? input.profile?.probationSegments,
+      probationSegmentsAtSigning: input.probationSegmentsAtSigning ?? input.profile?.probationSegmentsAtSigning,
     });
     if (!probationGate.ok) {
       error = probationGate.error;
+      return;
+    }
+    // Art. 162 — no one under fifteen is employed.
+    const ageGate = checkHiringAgeGate({ birthDate: input.birthDate || input.profile?.birthDate, hireDate });
+    if (!ageGate.ok) {
+      error = ageGate.error;
       return;
     }
     const approver = unitOwner(data, seat.stationId, seat.approverId);

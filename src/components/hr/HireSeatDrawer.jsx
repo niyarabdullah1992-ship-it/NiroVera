@@ -30,6 +30,7 @@ import {
 } from "@/lib/employeeProfileFields";
 import { checkSaudiIdentityGate, checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
 import { checkProbationGate } from "@/lib/contractLawDerivations";
+import { checkHiringAgeGate } from "@/lib/employerDuties";
 import { BORDER, CARD, INK, MUTED, NAVY, SURFACE, field, labelMuted, ui } from "@/lib/platformStyles";
 import { isManagerUnit, workplaceStations } from "@/lib/stationTree";
 import LaborArticleCite from "@/components/shared/LaborArticleCite";
@@ -309,6 +310,12 @@ export default function HireSeatDrawer({
       setStep(2);
       return;
     }
+    const ageGate = checkHiringAgeGate({ birthDate: profile.birthDate, hireDate });
+    if (!ageGate.ok) {
+      toast({ description: ar ? ageGate.reason : ageGate.reasonEn, variant: "destructive" });
+      setStep(2);
+      return;
+    }
     if (password && password.length < 6) {
       toast({ description: ar ? "كلمة المرور 6 أحرف على الأقل." : "Password must be at least 6 characters.", variant: "destructive" });
       setStep(3);
@@ -396,6 +403,10 @@ export default function HireSeatDrawer({
         PROBATION_TERM_REQUIRED: ar ? "فترة التجربة تُذكر بعدد الأيام (المادة 53)." : "Probation must be stated in days (Article 53).",
         PROBATION_OVER_MAX: ar ? "فترة التجربة لا تتجاوز 180 يوماً (المادة 53)." : "Probation may not exceed 180 days (Article 53).",
         PROBATION_REPEAT: ar ? "لا تجوز التجربة مرة ثانية لدى هذه المنشأة إلا في مهنة أخرى أو بعد انقطاع ستة أشهر (المادة 54)." : "Probation may not be repeated here except in another occupation or after a six-month break (Article 54).",
+        PROBATION_SECOND_WRITTEN: ar ? "التجربة الثانية لدى المنشأة نفسها باتفاق مكتوب يُرفق بالملف (المادة 54)." : "A second probation needs a written agreement on file (Article 54).",
+        PROBATION_SPLIT_GAP: ar ? "مدد التجربة المقسّمة متصلة لا فاصل بينها (اللائحة م19/1)." : "Split probation periods must be contiguous (Regs Art. 19(1)).",
+        PROBATION_SPLIT_UNSTATED: ar ? "تقسيم التجربة يُنص عليه عند إبرام العقد (اللائحة م19/1)." : "A probation split is stated at signing (Regs Art. 19(1)).",
+        HIRE_UNDER_MIN_AGE: ar ? "لا يجوز تشغيل من لم يتم خمس عشرة سنة (المادة 162)." : "No one under fifteen may be employed (Article 162).",
       };
       toast({ description: map[result?.error] || (ar ? `تعذّر الحفظ (${result?.error || "unknown"}).` : `Could not save (${result?.error || "unknown"}).`), variant: "destructive" });
       return;
@@ -687,7 +698,7 @@ export default function HireSeatDrawer({
         zIndex: 480,
         display: "flex",
         justifyContent: "flex-start",
-        background: "rgba(11,61,39,.32)",
+        background: "color-mix(in oklab, var(--nv-navy) 26%, transparent)",
       }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose?.();
@@ -701,7 +712,7 @@ export default function HireSeatDrawer({
           height: "100%",
           background: "var(--nv-card, #fff)",
           borderInlineEnd: "1px solid var(--nv-line)",
-          boxShadow: "0 0 40px rgba(6,61,38,.16)",
+          boxShadow: "0 18px 44px var(--nv-shadow)",
           display: "flex",
           flexDirection: "column",
         }}
@@ -1045,7 +1056,7 @@ export default function HireSeatDrawer({
                         height: "100%",
                         width: `${completion.pct}%`,
                         borderRadius: 999,
-                        background: completion.done ? "#3C7D50" : completion.pct >= 50 ? "#C8A45A" : "#9B2335",
+                        background: completion.done ? "var(--nv-btn-fill)" : completion.pct >= 50 ? "var(--nv-warn-fill)" : "var(--nv-bad-ink)",
                       }}
                       />
                     </div>

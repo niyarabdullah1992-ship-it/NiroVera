@@ -293,7 +293,7 @@ assert.equal(blocked.checks.find((row) => row.id === "night_rotate")?.ruleId, "h
 assert.equal(blocked.checks.find((row) => row.id === "night_rest")?.ruleId, "hours.night.restHours");
 assert.equal(blocked.checks.find((row) => row.id === "hours_48")?.ruleId, "hours.week.ordinaryMaxHours");
 assert.equal(blocked.checks.find((row) => row.id === "heat_ban")?.ruleId, "hours.heat.startHour");
-assert.equal(blocked.checks.find((row) => row.id === "heat_ban")?.block, false);
+assert.equal(blocked.checks.find((row) => row.id === "heat_ban")?.block, true, "Decision 3337: exposed in the window is a publish block");
 for (const id of MINISTRY_NIGHT_PUBLISH_BLOCK_IDS) {
   assert.equal(blocked.checks.find((row) => row.id === id)?.block, true, `${id} stays a Decision 18632 publish block`);
 }
@@ -1653,7 +1653,7 @@ assert.equal(applyHours("twelve", outsideDay).ok, true, "4×12 outside Ramadan m
 assert.equal(applyHours("twelve", outsideDay, otherEmp).ok, true);
 assert.equal(applyHours("n12", outsideDay).ok, true);
 assert.equal(applyHours("thirteen", outsideDay).error, "WORKPLACE_STAY");
-assert.equal(applyHours("twelve", "2026-02-22", muslimEmp).error, "OFFICIAL_HOLIDAY", "Founding Day blocks even a 12h stay");
+assert.equal(applyHours("twelve", "2026-02-22", muslimEmp).error, "HOLIDAY_WORK_CONFIRM", "Founding Day needs «عمل في العطلة» confirmation (Art. 107(3)) even for a 12h stay");
 
 const outsideFour = weekHours(fourKeys(outsideDay, "twelve", "ahmed"), [twelveStay], muslimEmp, outsideSun);
 assert.equal(outsideFour.checks.find((row) => row.id === "ramadan")?.ok, true);
@@ -1713,7 +1713,7 @@ const fiveTwelve = fiveMorning(ramadanDay, "ahmed");
 for (const key of Object.keys(fiveTwelve)) fiveTwelve[key] = { twelve: ["ahmed"] };
 assert.equal(employeeOnCompressedTwelveWeek({ stationId: "st", shiftTypes: [twelveStay], assignments: fiveTwelve }, muslimEmp, ramadanSun), false);
 assert.equal(weekHours(fiveTwelve, [twelveStay], muslimEmp, ramadanSun).checks.find((row) => row.id === "hours_48")?.ok, false, "five 12h-stay days exceed 48 actual hours");
-assert.equal(applyHours("twelve", "2026-02-22").error, "OFFICIAL_HOLIDAY");
+assert.equal(applyHours("twelve", "2026-02-22").error, "HOLIDAY_WORK_CONFIRM", "Art. 107(3): holiday work needs the named confirmation");
 
 assert.equal(nightRestPairHits(fourNightTwelve, ahmed, fourDutyWeekStart).length, 0, "12 on / 12 off is the 18632 minimum");
 assert.equal(checkWeekPublishGates({
@@ -1775,13 +1775,21 @@ assert.equal(pregGate.checks.find((row) => row.id === "night_pregnancy")?.error,
 
 const platformSrc = readFileSync(new URL("../src/components/schedules/ShiftsPlatformBoard.jsx", import.meta.url), "utf8");
 assert.match(platformSrc, /rosterMineScopeCopy/, "ملفي states the work-branch lock in derived copy");
-assert.match(platformSrc, /\/app\/shifts\?lane=manage/, "other rosters open إدارة");
+{
+  const mineViewSrc = readFileSync(new URL("../src/components/schedules/MyScheduleView.jsx", import.meta.url), "utf8");
+  assert.match(platformSrc + mineViewSrc, /\/app\/shifts\?lane=manage/, "other rosters open إدارة");
+}
 assert.doesNotMatch(platformSrc, /تبديل النطاق في الهيدر/, "header-scope essay is not the ملفي lock");
 
 const boardSrc = readFileSync(new URL("../src/components/schedules/ShiftWeekBoard.jsx", import.meta.url), "utf8");
-assert.match(boardSrc, /LawGatesPanels/, "publish law gates render as the three-panel board");
-assert.match(boardSrc, /PublishedWeekMinistryStrip/, "published week shows hours, holidays, and article constraints");
-assert.match(boardSrc, /data-published-ministry|PublishedWeekMinistryStrip/, "ministry facts sit on the week grid");
+// 3c964a5: the three law panels, alerts rail and publish strip were folded into one ScheduleCompliancePanel,
+// which still renders the three-panel buildLawGatesBoard.
+const compliancePanelSrc = readFileSync(new URL("../src/components/schedules/ScheduleCompliancePanel.jsx", import.meta.url), "utf8");
+assert.match(boardSrc, /<ScheduleCompliancePanel/, "publish law gates render on the board via the compliance panel");
+assert.match(compliancePanelSrc, /buildLawGatesBoard\(\{ gates/, "compliance panel is fed by the three-panel law gates board");
+// The duplicate tile row is gone: week status sits on the week bar, hours on the roster head, rules in their panel.
+assert.match(boardSrc, /No tile row here/, "roster page has no duplicate tile row");
+assert.doesNotMatch(boardSrc, /<DutyTiles>/, "roster page renders no DutyTiles");
 assert.match(boardSrc, /decisionId="18632"/, "night header always prints قرار 18632");
 assert.match(boardSrc, /entitlement glow=\{nightGlow\}/, "header 18632 stays a green worker-right chip when not due");
 assert.match(boardSrc, /surface="leave"/, "leave-day article chip is light brown, not mint on the cell");
@@ -1798,7 +1806,8 @@ assert.match(railSrc, /groupDutyStripByPerson/, "إدارة strip groups alerts 
 assert.match(railSrc, /weekStationDutyNotes/, "station publish blocks sit once under the person circulars");
 assert.doesNotMatch(railSrc, /to=\{person\.href\}/, "person circular is not a whole-card link");
 assert.match(fileRailSrc, /DutyStripAlertCard/, "ملفي strip uses the shared إنذار card");
-assert.match(fileRailSrc, /banner\.(bad|warn)/, "ملفي strip uses تنبيهات statusBanner chrome");
+// 3c964a5: quiet chrome is now `slab`; the due wash reads statusBanner.* directly (no `banner` alias).
+assert.match(fileRailSrc, /(statusBanner|banner)\.(bad|warn)/, "ملفي strip uses تنبيهات statusBanner chrome");
 assert.match(fileRailSrc, /groupDutyStripByPerson/, "ملفي strip groups the same person once");
 assert.match(cardSrc, /data-duty-items/, "circular can list several duties under one person");
 assert.match(cardSrc, /nv-duty-circular/, "strip card is the shared person register");
@@ -1822,7 +1831,10 @@ assert.match(fileRailSrc, /hideJudgment/, "ملفي strip keeps judgment off the
 assert.match(fileRailSrc, /own \? "employee" : "manager"/, "ملفي uses the employee presenter");
 assert.match(boardSrc, /setEmployeeDayShift\(companyId, stationId, day\.key/, "click/brush paint goes through store assign");
 assert.match(boardSrc, /ordinaryOnly/, "rotate-due paint still limits the jump pool to ordinary hours");
-assert.doesNotMatch(boardSrc, /resolveNightRestAssignTarget/, "board must not re-implement jump — store enforces 18632");
+// 0627e58: the board may PROBE the resolver to skip cycle options it would move, but it never applies
+// the resolver's target itself — the write still goes through setEmployeeDayShift (store enforces 18632).
+assert.doesNotMatch(boardSrc, /probe\.(dateKey|shiftTypeId)/, "board must not re-implement jump — store enforces 18632");
+assert.match(boardSrc, /probe\.ok && !probe\.jumped/, "board resolver use is a read-only fit probe");
 const storeSrc = readFileSync(new URL("../src/lib/store.js", import.meta.url), "utf8");
 assert.match(storeSrc, /resolveNightRestAssignTarget/, "setEmployeeDayShift applies mandatory 18632 auto-jump");
 assert.match(storeSrc, /repairNightRestAssignments/, "copy month repairs illegal 18632 rest pairs");
@@ -1832,9 +1844,11 @@ assert.match(boardSrc, /mode === "mine" \? \(/, "ملفي does not share the man
 assert.doesNotMatch(boardSrc, /entitlement=\{nightGlow !== "off"\}/, "header must not strip 18632 color when glow is off");
 assert.doesNotMatch(boardSrc, /showStatutoryHeaderCite/, "essay cite helper is not on the week board anymore");
 assert.doesNotMatch(boardSrc, /القرار 18632: الليل 23:00/, "clock-source paragraph is not a 18632 essay");
-assert.match(boardSrc, /outdoor === true \? "outdoor"/, "open-air mark is settable on the week board");
-assert.match(boardSrc, /data-publish-gate-strip/, "publish chrome keeps a quiet blocker alert strip");
-assert.match(boardSrc, /PublishGateAlertStrip/, "named blockers render as a slim count + reasons strip");
+// c303cee: the open-air mark moved from the shift type to the roster cell (مكشوف/مظلّل per person per day).
+assert.match(boardSrc, /setSunExposure\(companyId, stationId, \{ employeeId: employee\.id/, "open-air mark is settable on the week board");
+// 3c964a5: the blocker strip became a count chip by the publish button that jumps to the compliance panel (reasons).
+assert.match(boardSrc, /data-publish-blockers=\{blockers\}/, "publish chrome keeps a quiet blocker alert chip");
+assert.match(boardSrc, /data-publish-blockers[\s\S]{0,200}onClick=\{scrollToCompliance\}/, "named blockers: count chip opens the reasons in the compliance panel");
 assert.match(boardSrc, /gates\.blockers/, "publish strip is fed from derived week blockers");
 assert.match(boardSrc, /قبل النشر/, "count chip keeps the blocker tally wording");
 assert.match(boardSrc, /انشر الجدول/, "primary publish label stays an action, not a status pill");
@@ -1865,9 +1879,10 @@ const heatFieldGate = checkWeekPublishGates({
 });
 const heatFieldBan = heatFieldGate.checks.find((row) => row.id === "heat_ban");
 assert.equal(heatFieldBan?.ok, false);
-assert.equal(heatFieldBan?.block, false, "outdoor in-season overlap is a warning, not a publish block");
-assert.ok(heatFieldGate.warnings.some((row) => row.id === "heat_ban"));
-assert.ok(!heatFieldGate.blockers.some((row) => row.id === "heat_ban"));
+// Decision 3337 (updated): exposed in the window in season is a publish BLOCK, not a warning.
+assert.equal(heatFieldBan?.block, true, "outdoor in-season overlap blocks publish (Decision 3337)");
+assert.ok(!heatFieldGate.warnings.some((row) => row.id === "heat_ban"));
+assert.ok(heatFieldGate.blockers.some((row) => row.id === "heat_ban"));
 assert.ok(heatFieldBan?.note.includes(omar.name), "sun-ban notice names the worker");
 assert.match(heatFieldBan?.note || "", /لا يحق لصاحب العمل أن يجبره/);
 assert.ok(heatFieldBan?.note.includes(heatWin.startLabel), "outdoor notice reads heatBanWindow");
@@ -1888,10 +1903,10 @@ const heatOpenBan = heatOpenGate.checks.find((row) => row.id === "heat_ban");
 const heatOpenPlace = heatOpenGate.checks.find((row) => row.id === "heat_place");
 assert.equal(heatOpenBan?.ok, true, "unmarked overlap is not treated as proven open-air");
 assert.equal(heatOpenPlace?.ok, false);
-assert.equal(heatOpenPlace?.block, false, "unmarked place is a named warning, not a silent pass");
-assert.ok(heatOpenPlace?.note.includes(heatWin.startLabel));
+assert.equal(heatOpenPlace?.block, true, "Decision 3337: an unmarked in-season cell must be marked before publish");
+// fc17591/c303cee: heat_place is now the «needs مكشوف/مظلّل» admin notice (the protection wording lives on heat_ban).
+assert.match(heatOpenPlace?.note || "", /يحتاج تحديد مكشوف\/مظلّل/);
 assert.ok(heatOpenPlace?.note.includes(omar.name));
-assert.match(heatOpenPlace?.note || "", /لا يحق لصاحب العمل أن يجبره/);
 
 const heatIndoorGate = checkWeekPublishGates({
   schedule: { stationId: "st", shiftTypes: [heatIndoor], assignments: { "2026-07-13": { desk: ["omar"] } } },
@@ -1908,7 +1923,9 @@ assert.ok(!heatIndoorGate.warnings.some((row) => row.id === "heat_ban" || row.id
 const heatFieldCell = weekCellAlert(heatFieldGate, "omar", "2026-07-13");
 const heatNotice = weekHeatBanWorkerNotice(omar.name, "2026-07-13", { ar: true });
 assert.equal(heatFieldCell?.id, "heat_ban");
-assert.equal(heatFieldCell?.level, "warn");
+// 96d1024: exposed-in-window is a «مخالفة» — the cell reads red ("block" tone) while the gate stays block:false
+// and publishing is still allowed (asserted on heatFieldBan / heatPublishGate).
+assert.equal(heatFieldCell?.level, "block");
 assert.equal(heatFieldCell?.hint, heatNotice);
 assert.ok(heatNotice.includes(heatWin.startLabel));
 assert.ok(heatNotice.includes(heatBanDecisionLabel(true)));
@@ -1927,14 +1944,15 @@ const heatPublishGate = checkWeekPublishGates({
   today: "2026-07-13",
 });
 assert.equal(heatPublishGate.checks.find((row) => row.id === "heat_ban")?.ok, false);
-assert.equal(heatPublishGate.checks.find((row) => row.id === "heat_ban")?.block, false);
-assert.equal(heatPublishGate.blocked, false, "outdoor in-season overlap still allows publish");
-assert.equal(weekPublishSubmitBlock(heatPublishGate, { ar: true }), "");
+assert.equal(heatPublishGate.checks.find((row) => row.id === "heat_ban")?.block, true);
+assert.equal(heatPublishGate.blocked, true, "outdoor in-season overlap blocks publish (Decision 3337)");
+assert.notEqual(weekPublishSubmitBlock(heatPublishGate, { ar: true }), "");
 
 const heatOpenCell = weekCellAlert(heatOpenGate, "omar", "2026-07-13");
 assert.equal(heatOpenCell?.id, "heat_place");
-assert.equal(heatOpenCell?.level, "warn");
-assert.equal(heatOpenCell?.hint, heatNotice);
+assert.equal(heatOpenCell?.level, "block", "an unmarked in-season cell must be marked before publish (Decision 3337)");
+// c303cee: the unmarked cell asks for the مكشوف/مظلّل mark instead of reprinting the ban notice.
+assert.equal(heatOpenCell?.hint, `${omar.name} — يحتاج تحديد مكشوف/مظلّل في هذا اليوم (القرار 3337).`);
 assert.equal(weekCellAlert(heatIndoorGate, "omar", "2026-07-13"), null);
 
 const offSeasonStart = weekStartDate("2026-09-20");
@@ -1966,16 +1984,18 @@ const heatStripCopy = weekHeatBanStripCopy("2026-07-13", { ar: true });
 assert.equal(heatPlaceStrip.empty, false, "unmarked in-season morning lights the strip");
 assert.equal(heatPlaceStrip.cards.length, 1);
 assert.equal(heatPlaceStrip.cards[0].gateId, "heat_place");
-assert.equal(heatPlaceStrip.cards[0].level, "warn");
-assert.equal(heatPlaceStrip.cards[0].glow, "due");
+assert.equal(heatPlaceStrip.cards[0].level, "block", "Decision 3337: the missing mark now blocks publish");
+assert.equal(heatPlaceStrip.cards[0].glow, "block");
 assert.equal(heatPlaceStrip.cards[0].name, omar.name);
-assert.equal(heatPlaceStrip.cards[0].classification, "إنذار حماية");
+// fc17591/c303cee: heat_place is the administrative «needs مكشوف/مظلّل» notice; the 3337 protection
+// copy (إنذار حماية + window/season sentence) now sits on the heat_ban card — asserted on heatBanStrip below.
+assert.equal(heatPlaceStrip.cards[0].classification, "تنبيه إداري");
 assert.equal(heatPlaceStrip.cards[0].instrument, "قرار 3337");
 assert.equal(heatPlaceStrip.cards[0].subject, `بشأن: ${omar.name}`, "manager circular names the worker once");
 assert.equal(heatPlaceStrip.cards[0].byline, `بشأن: ${omar.name}`);
 assert.equal(heatPlaceStrip.cards[0].voice, "", "no second headline under حكم المنصة");
-assert.equal(heatPlaceStrip.cards[0].headline, heatStripCopy.headline);
-assert.equal(heatPlaceStrip.cards[0].body, heatStripCopy.body);
+assert.equal(heatPlaceStrip.cards[0].headline, "يحتاج تحديد مكشوف/مظلّل");
+assert.equal(heatPlaceStrip.cards[0].body, "حدِّد «مكشوف» أو «مظلّل» من خلية الموظف في الجدول — الحظر لا يُطبَّق على العمل المظلّل أو الداخلي.");
 assert.equal(heatPlaceStrip.cards[0].footer, "على المادتين 122 و243");
 assert.equal(heatPlaceStrip.cards[0].forum, "platform");
 assert.equal(heatPlaceStrip.cards[0].ministryRole, "monitor");
@@ -1983,11 +2003,21 @@ assert.equal(heatPlaceStrip.cards[0].protects.employee, true);
 assert.equal(heatPlaceStrip.cards[0].protects.company, true);
 assert.equal(heatPlaceStrip.cards[0].judgment, "يحمي العامل والشركة — حكم المنصة");
 assert.equal(dutyStripBody(heatNotice, omar.name), heatBody);
-assert.ok(heatPlaceStrip.cards[0].body.includes(heatWin.startLabel));
-assert.ok(heatPlaceStrip.cards[0].body.includes(heatWin.endLabel));
-assert.ok(heatPlaceStrip.cards[0].body.includes(heatWin.seasonAr));
 assert.doesNotMatch(heatPlaceStrip.cards[0].body, /3337|قرار وزاري/, "instrument stays in the masthead, not the sentence");
-assert.ok(!heatPlaceStrip.anyBlock);
+assert.ok(heatPlaceStrip.anyBlock, "Decision 3337: the missing mark is a publish block");
+{
+  const heatBanStrip = weekDutyStripAlerts(heatFieldGate, { employees: [omar], ar: true });
+  const banCard = heatBanStrip.cards.find((row) => row.gateId === "heat_ban");
+  assert.ok(banCard, "exposed-in-window lights the heat_ban circular");
+  assert.equal(banCard.classification, "إنذار حماية");
+  assert.equal(banCard.instrument, "قرار 3337");
+  assert.equal(banCard.headline, heatStripCopy.headline);
+  assert.equal(banCard.body, heatStripCopy.body);
+  assert.ok(banCard.body.includes(heatWin.startLabel));
+  assert.ok(banCard.body.includes(heatWin.endLabel));
+  assert.ok(banCard.body.includes(heatWin.seasonAr));
+  assert.doesNotMatch(banCard.body, /3337|قرار وزاري/, "instrument stays in the masthead, not the sentence");
+}
 
 const heatPlaceMine = weekDutyStripAlerts(heatOpenGate, {
   employees: [omar],
@@ -1998,8 +2028,9 @@ const heatPlaceMine = weekDutyStripAlerts(heatOpenGate, {
 assert.equal(heatPlaceMine.cards[0].voice, "");
 assert.equal(heatPlaceMine.cards[0].subject, "", "employee circular has no name");
 assert.equal(heatPlaceMine.cards[0].byline, "", "employee card does not restack a name under تنبيهاتي");
-assert.equal(heatPlaceMine.cards[0].headline, heatStripCopy.headline);
-assert.equal(heatPlaceMine.cards[0].body, heatStripCopy.body);
+// fc17591: employee presenter of heat_place says management still has to mark the day.
+assert.equal(heatPlaceMine.cards[0].headline, "يحتاج تحديد مكشوف/مظلّل");
+assert.equal(heatPlaceMine.cards[0].body, "لم يُحدَّد بعد إن كان عملك في هذا اليوم مكشوفاً للشمس أو مظلّلاً — الإدارة تحدّده من الجدول.");
 assert.equal(heatPlaceMine.cards[0].footer, heatStripCopy.footer);
 assert.ok(!heatPlaceMine.cards[0].body.includes(omar.name));
 assert.ok(!heatPlaceMine.cards[0].headline.includes(omar.name));
@@ -2007,7 +2038,7 @@ assert.ok(!heatPlaceMine.cards[0].instrument.includes(omar.name));
 
 const heatBanStrip = weekDutyStripAlerts(heatFieldGate, { employees: [omar], ar: true });
 assert.equal(heatBanStrip.cards[0].gateId, "heat_ban");
-assert.equal(heatBanStrip.cards[0].level, "warn");
+assert.equal(heatBanStrip.cards[0].level, "block", "Decision 3337: exposed in the window blocks publish");
 assert.equal(heatBanStrip.cards[0].name, omar.name);
 assert.match(heatBanStrip.cards[0].body, /لا يحق لصاحب العمل أن يجبره/);
 assert.equal(heatBanStrip.cards[0].subject, `بشأن: ${omar.name}`);
@@ -2072,8 +2103,8 @@ const julyMidGate = checkWeekPublishGates({
   today: inSeasonClock,
 });
 assert.equal(julyMidGate.checks.find((row) => row.id === "heat_ban")?.ok, false, "in-season midday outdoor still warns");
-assert.equal(julyMidGate.checks.find((row) => row.id === "heat_ban")?.block, false);
-assert.ok(julyMidGate.warnings.some((row) => row.id === "heat_ban"));
+assert.equal(julyMidGate.checks.find((row) => row.id === "heat_ban")?.block, true);
+assert.ok(julyMidGate.blockers.some((row) => row.id === "heat_ban"));
 assert.equal(weekCellAlert(julyMidGate, "omar", inSeasonKey)?.id, "heat_ban");
 const julyMidStrip = weekDutyStripAlerts(julyMidGate, { employees: [omar], ar: true });
 assert.equal(julyMidStrip.cards[0]?.gateId, "heat_ban");
@@ -2259,7 +2290,8 @@ assert.doesNotMatch(fileSrc, /uploadFileOrLocal|type=["']file["']|PlatformDateFi
 assert.match(fileSrc, /افتح التقرير الطبي/, "employee can open the filed report");
 assert.match(fileSrc, /افتح لياقة ليلية في طلباتي/, "unmet medical points at لياقة ليلية in طلباتي");
 assert.match(readFileSync(new URL("../src/components/employees/ProfessionalInfoTab.jsx", import.meta.url), "utf8"), /NightMedicalFileField/);
-assert.match(hoursSrc, /NightMedicalFileField/, "file hours unmet medical is a طلباتي notice");
+assert.doesNotMatch(hoursSrc, /<NightMedicalFileField/, "night fitness is read once — in the week ministry panel, not repeated on the file card");
+assert.doesNotMatch(hoursSrc, /data-family-duties/, "family responsibilities are raised in طلباتي, not ticked on the file");
 assert.doesNotMatch(hoursSrc, /uploadFileOrLocal|type=["']file["']/, "file hours check does not embed upload");
 assert.doesNotMatch(boardSrc, /NightMedicalFileField/, "week board defers medical notice off the grid chrome");
 assert.doesNotMatch(boardSrc, /uploadFileOrLocal/, "week board medical check does not embed upload");
@@ -2499,11 +2531,19 @@ assert.match(boardSrc, /manageMonth/, "إدارة roster uses month as primary s
 assert.match(boardSrc, /أعد الشهر السابق/, "reuse previous month action is on the manage board");
 assert.match(boardSrc, /كرر هذا الشهر/, "repeat this month action is on the manage board");
 assert.match(boardSrc, /copyScheduleMonth/, "board calls store month reuse");
-assert.match(boardSrc, /نطاق التخطيط الشهري/, "month strip names monthly planning scope");
-assert.match(boardSrc, /أسبوع داخل الشهر/, "week chips stay inside the month");
+// e03bacb: the month strip became DateNav mode="month" + DateNavChips of the month's weeks.
+assert.match(boardSrc, /<DateNav\s+mode="month"/, "month strip names monthly planning scope");
+assert.match(boardSrc, /monthWeeks = useMemo\(\s*\(\) => weekStartsInMonth\(/, "week chips stay inside the month");
+assert.match(boardSrc, /<DateNavChips[\s\S]{0,80}items=\{monthWeeks\.map/, "week chips stay inside the month");
+// 3c964a5: the reuse / repeat actions are built in rosterValidity and rendered in the «سريان الجدول» fold (شهري).
 assert.match(
   boardSrc,
-  /سريان الجدول[\s\S]{0,900}شهري[\s\S]{0,1200}أعد الشهر السابق[\s\S]{0,800}كرر هذا الشهر/,
+  /const rosterValidity = [\s\S]{0,1200}أعد الشهر السابق[\s\S]{0,800}كرر هذا الشهر/,
+  "monthly validity hosts reuse / repeat month actions",
+);
+assert.match(
+  boardSrc,
+  /title=\{ar \? "سريان الجدول"[\s\S]{0,300}شهري[\s\S]{0,200}\{rosterValidity\}/,
   "سريان الجدول is monthly-only and hosts reuse / repeat month actions",
 );
 assert.doesNotMatch(boardSrc, /هذا الأسبوع فقط/, "weekly validity cards are gone from the board");

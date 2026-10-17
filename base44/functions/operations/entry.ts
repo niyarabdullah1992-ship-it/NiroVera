@@ -42,6 +42,17 @@ import {
   type AssignMode,
 } from "../../shared/opsDerivations.ts";
 import { checkFieldAttendanceGate, riyadhDateKey as gateDateKey } from "../../shared/attendanceGate.ts";
+import {
+  applyQualityObjection,
+  applyQualityObjectionDecision,
+  applyTaskQuality,
+  canDecideQualityObjection,
+  checkDecideQualityObjectionGate,
+  checkQualityObjectionGate,
+  checkTaskQualityGate,
+  taskPointsFor,
+  taskQualityFor,
+} from "../../shared/taskQuality.ts";
 import { validateOpsRequest, validationFailed } from "../../shared/proofCycleSchemas.ts";
 import { loadCanonicalPayload, saveCanonicalPayload } from "../../shared/canonicalBlob.ts";
 
@@ -282,8 +293,8 @@ Deno.serve(async (req) => {
       });
     };
 
-    const awardPoints = async (task: any, awardedBy: string) => {
-      const points = taskPoints(task.priority, task.effortWeight);
+    /** Who receives a task's points — unchanged by quality levels: owner, named members, or the station crew. */
+    const taskRecipients = async (task: any) => {
       const recipients: string[] = [];
       if (task.assignMode === "one" && task.ownerId) recipients.push(task.ownerId);
       else if (task.assignMode === "some") recipients.push(...(task.memberIds || []));
@@ -291,8 +302,28 @@ Deno.serve(async (req) => {
         const crew = await loadPeople(task.stationId);
         recipients.push(...crew.map((p) => p.employeeId));
       }
-      const unique = [...new Set(recipients.filter(Boolean))];
+      return [...new Set(recipients.filter(Boolean).map(String))];
+    };
+
+    const creditEmployee = async (employeeId: string, points: number) => {
+      const records = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId, employeeId });
+      if (records[0]) {
+        await base44.asServiceRole.entities.Employee.update(records[0].id, {
+          points: (Number(records[0].points) || 0) + points,
+        });
+      }
+    };
+
+    /** Each recipient gets the task's points at his own quality level; every ledger row carries the level. */
+    const awardPoints = async (task: any, awardedBy: string) => {
+      const unique = Array.isArray(task.quality?.recipientIds) && task.quality.recipientIds.length
+        ? task.quality.recipientIds.map(String)
+        : await taskRecipients(task);
+      const perPerson: Record<string, number> = {};
       for (const employeeId of unique) {
+        const points = taskPointsFor(task, employeeId);
+        const q = taskQualityFor(task, employeeId);
+        perPerson[employeeId] = points;
         await base44.asServiceRole.entities.PointsLedger.create({
           companyId: auth.companyId,
           employeeId,
@@ -301,20 +332,20 @@ Deno.serve(async (req) => {
           taskTitle: task.title,
           priority: task.priority,
           effortWeight: task.effortWeight,
+          basePoints: task.quality?.basePoints ?? null,
+          qualityLevel: q?.level ?? null,
+          qualityWeight: q?.weight ?? null,
+          qualityReason: q?.reason || null,
+          qualityOverride: !!q?.override,
           stationId: task.stationId || null,
           awardedBy,
           awardedAt: new Date().toISOString(),
-          reason: `اعتماد إنجاز — ${task.ref}`,
+          reason: `اعتماد إنجاز — ${task.ref}${q ? ` — مستوى ${q.label?.ar || q.level}` : ""}`,
           evidenceUrls: (task.proofFiles || []).map((f: any) => f.url).filter(Boolean),
         });
-        const records = await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId, employeeId });
-        if (records[0]) {
-          await base44.asServiceRole.entities.Employee.update(records[0].id, {
-            points: (Number(records[0].points) || 0) + points,
-          });
-        }
+        await creditEmployee(employeeId, points);
       }
-      return { points, recipientIds: unique };
+      return { points: Number(task.pointsAwarded) || 0, recipientIds: unique, perPerson };
     };
 
     // ── seed competency lapse for testing (manager only) ─────────────────────
@@ -741,15 +772,114 @@ Deno.serve(async (req) => {
         return Response.json({ error: "Not ready for approval" }, { status: 400 });
       }
       if (task.approvedAt) return Response.json({ error: "Already approved" }, { status: 400 });
-      const awarded = await awardPoints(task, auth.userId || "manager");
-      task.status = "completed";
-      task.approvedAt = new Date().toISOString();
-      task.approvedBy = auth.userId;
-      task.pointsAwarded = awarded.points;
+      // One five-level scale from the task to the annual report (النموذج الموحد م18–19): no approval without a level.
+      const recipientIds = await taskRecipients(task);
+      const qualityGate = checkTaskQualityGate({
+        level: body.qualityLevel,
+        reason: body.qualityReason,
+        overrides: body.qualityOverrides || {},
+        assigneeIds: recipientIds,
+      });
+      if (!qualityGate.ok) {
+        return Response.json({
+          error: qualityGate.error,
+          reason: body.lang === "en" ? qualityGate.reasonEn : qualityGate.reason,
+          reasonEn: qualityGate.reasonEn,
+          employeeId: qualityGate.employeeId || null,
+        }, { status: 422 });
+      }
+      const at = new Date().toISOString();
+      const rated = applyTaskQuality(task, qualityGate, {
+        basePoints: taskPoints(task.priority, task.effortWeight),
+        byId: auth.userId,
+        byName: auth.name,
+        at,
+        reviewLevel: task.escalationLevel,
+        recipientIds,
+      });
+      const awarded = await awardPoints(rated, auth.userId || "manager");
+      const approved = { ...rated, status: "completed", approvedAt: at, approvedBy: auth.userId, pointsAwarded: rated.pointsAwarded };
+      tasks[idx] = approved;
+      await saveTasks(tasks);
+      await audit(
+        "ops_task_approve",
+        `Approved ${approved.ref} at quality level ${qualityGate.level} — granted ${awarded.points} points`,
+        { reason: qualityGate.reason || null, newValue: String(qualityGate.level) },
+      );
+      return Response.json({ task: approved, awarded, counts: deriveOpsCounts(scopeFilter(tasks, body.scope || null)) });
+    }
+
+    // The employee objects to his task level — platform policy after النموذج الموحد م71 (five working days).
+    if (action === "qualityObjection") {
+      const tasks = await listTasksRaw();
+      const idx = tasks.findIndex((t) => t.id === body.taskId);
+      if (idx < 0) return Response.json({ error: "Task not found" }, { status: 404 });
+      const gate = checkQualityObjectionGate({ task: tasks[idx], employeeId: auth.userId, reason: body.reason, today: riyadhDateKey() });
+      if (!gate.ok) return Response.json({ error: gate.error, reason: body.lang === "en" ? gate.reasonEn : gate.reason, reasonEn: gate.reasonEn }, { status: 422 });
+      const task = applyQualityObjection(tasks[idx], { employeeId: auth.userId, employeeName: auth.name, reason: body.reason, replyBy: gate.replyBy });
       tasks[idx] = task;
       await saveTasks(tasks);
-      await audit("ops_task_approve", `Approved ${task.ref} — granted ${awarded.points} points`, { newValue: String(awarded.points) });
-      return Response.json({ task, awarded, counts: deriveOpsCounts(scopeFilter(tasks, body.scope || null)) });
+      await audit("ops_task_quality_objection", `Objection to the quality level of ${task.ref}`, { reason: String(body.reason || "").trim() });
+      return Response.json({ task, replyBy: gate.replyBy });
+    }
+
+    // The approver's superior in the chain, or HR, decides in writing — never the approver.
+    if (action === "decideQualityObjection") {
+      const tasks = await listTasksRaw();
+      const idx = tasks.findIndex((t) => t.id === body.taskId);
+      if (idx < 0) return Response.json({ error: "Task not found" }, { status: 404 });
+      const current = tasks[idx];
+      const escData = await loadEscalationData();
+      if (!canDecideQualityObjection(current, reviewerUser, escData)) {
+        return Response.json({
+          error: "QUALITY_DECIDER_ONLY",
+          reason: "يبتّ في الاعتراض رئيس المعتمِد في سلسلة التصعيد أو الموارد البشرية.",
+          reasonEn: "The approver's superior in the chain, or HR, decides the objection.",
+        }, { status: 403 });
+      }
+      const gate = checkDecideQualityObjectionGate({
+        task: current,
+        objectionId: body.objectionId,
+        decision: body.decision,
+        note: body.note,
+        newLevel: body.newLevel,
+        actorId: auth.userId,
+      });
+      if (!gate.ok) return Response.json({ error: gate.error, reason: body.lang === "en" ? gate.reasonEn : gate.reason, reasonEn: gate.reasonEn }, { status: 422 });
+      const out = applyQualityObjectionDecision(current, {
+        objectionId: body.objectionId,
+        decision: gate.decision,
+        note: body.note,
+        newLevel: gate.newLevel,
+        byId: auth.userId,
+        byName: auth.name,
+      });
+      if (out.delta && out.employeeId) {
+        const q = taskQualityFor(out.task, out.employeeId);
+        await base44.asServiceRole.entities.PointsLedger.create({
+          companyId: auth.companyId,
+          employeeId: out.employeeId,
+          points: out.delta,
+          targetId: current.id,
+          taskTitle: current.title,
+          qualityLevel: q?.level ?? null,
+          qualityWeight: q?.weight ?? null,
+          qualityReason: q?.reason || null,
+          qualityOverride: true,
+          stationId: current.stationId || null,
+          awardedBy: auth.userId || "decider",
+          awardedAt: new Date().toISOString(),
+          reason: `قبول اعتراض على مستوى الجودة — ${current.ref}`,
+        });
+        await creditEmployee(out.employeeId, out.delta);
+      }
+      tasks[idx] = out.task;
+      await saveTasks(tasks);
+      await audit("ops_task_quality_decision", `Objection on ${current.ref} ${gate.decision}`, {
+        reason: String(body.note || "").trim(),
+        newValue: gate.newLevel != null ? String(gate.newLevel) : gate.decision,
+      });
+      return Response.json({ task: out.task, delta: out.delta });
     }
 
     if (action === "reject") {

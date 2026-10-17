@@ -4,7 +4,9 @@
 
 import { checkResignationGate, checkTerminationGate } from "./contractLawDerivations.ts";
 import { citeRule, ruleValue } from "./laborRules.ts";
-import { accruedAnnualDaysAtExit } from "./leaveDerivations.ts";
+import { accruedAnnualDaysAtExit, unusedAnnualDaysAtExit } from "./leaveDerivations.ts";
+import { suspendedDaysFromUnpaidLeave } from "./contractSuspension.ts";
+import { checkReturnTicketGate } from "./returnTicket.ts";
 
 export const ANNUAL_ENTITLEMENT_DAYS = 21;
 /** Milliseconds in a mean Gregorian year (365.25d) — matches design svcYears. */
@@ -16,6 +18,13 @@ export type CustodyAssetLike = {
   id: string;
   name: string;
   serial?: string | null;
+  /** SAR — the Art. 91 settlement set-off reads it. */
+  value?: number;
+  cost?: number;
+  handedAt?: string | null;
+  evidenceName?: string | null;
+  evidenceUrl?: string | null;
+  returnEvidenceName?: string | null;
   status?: CustodyAssetStatus;
   returnedAt?: string | null;
   returnedBy?: string | null;
@@ -91,10 +100,42 @@ function parseLocalDate(isoDate: string | null | undefined) {
 }
 
 /** Service years from hire date (local midnight) — design: Date.now − hire / 31557600000. */
-export function serviceYears(hireDate: string | null | undefined, nowMs = Date.now()) {
+export function serviceYears(hireDate: string | null | undefined, nowMs = Date.now(), suspendedDays = 0) {
   const d = parseLocalDate(hireDate);
   if (!d) return 0;
-  return Math.max(0, (nowMs - d.getTime()) / MS_PER_YEAR);
+  return Math.max(0, (nowMs - d.getTime() - Math.max(0, Number(suspendedDays) || 0) * 86400000) / MS_PER_YEAR);
+}
+
+/** The day service ends (Arts. 84/87/111): exit effective date, else last day, else `nowMs`. */
+export function eosEndMs(caseRow: any = {}, nowMs = Date.now()) {
+  const exit = caseRow?.contractExit || caseRow?.profile?.contractExit || {};
+  const d = parseLocalDate(exit.effectiveDate || exit.lastDay || caseRow?.lastWorkDate || caseRow?.lastDay);
+  return d ? d.getTime() : nowMs;
+}
+
+export const WORKER_FORCE_MAJEURE = "worker_force_majeure";
+
+function truthy(value: unknown) {
+  const s = String(value ?? "").trim().toLowerCase();
+  return value === true || s === "1" || s === "true" || s === "yes" || s === "نعم";
+}
+
+/** Arts. 2/84/86 — mirror of src/lib/laborProtectionGates.js eosWageBase: commissions in unless excluded by agreement. */
+export function eosWageBase(caseRow: any = {}) {
+  const profile = caseRow.profile || {};
+  const contract = profile.contract || {};
+  const excluded = truthy(profile.eosExcludeCommissions ?? contract.eosExcludeCommissions ?? caseRow.eosExcludeCommissions);
+  const bonusAgreed = truthy(profile.eosAllWageElements || caseRow.eosAllWageElements);
+  const base = Math.max(0, Number(caseRow.base ?? profile.base) || 0);
+  const allowances = Math.max(0, Number(caseRow.allowances ?? profile.allowances) || 0);
+  const bonus = Math.max(0, Number(caseRow.bonus ?? profile.bonus) || 0);
+  const commission = Math.max(0, Number(caseRow.commissionAmount ?? profile.commissionAmount) || 0)
+    + Math.max(0, Number(caseRow.commission ?? profile.commission) || 0);
+  const last = base + allowances;
+  const withCommission = last + (excluded ? 0 : commission);
+  const all = withCommission + bonus;
+  const citeRuleId = commission > 0 || excluded ? "eos.allElements.cite" : "eos.gratuity.cite";
+  return { agreed: bonusAgreed, commissionsExcluded: excluded, commission: excluded ? 0 : commission, wage: bonusAgreed ? all : withCommission, last, all, citeRuleId };
 }
 
 export function isPreStart(hireDate: string | null | undefined, nowMs = Date.now()) {
@@ -149,11 +190,12 @@ export function deriveSettlementDeadline(input: {
   lastWorkDate?: string;
   effectiveDate?: string;
   contractExit?: OffboardingCaseLike["contractExit"];
+  settlementPaidAt?: string;
 } = {}, nowMs = Date.now()) {
   const onDate = input.today || localIso(nowMs);
   const reason = String(input.reason || input.contractExit?.reason || "").trim();
   const last = String(input.lastWorkDate || input.effectiveDate || input.contractExit?.effectiveDate || "").slice(0, 10);
-  const workerEnded = reason === "resignation" || reason === "article_81";
+  const workerEnded = reason === "resignation" || reason === "article_81" || reason === WORKER_FORCE_MAJEURE;
   const days = workerEnded
     ? ruleValue("eos.settlement.workerDays", onDate)
     : ruleValue("eos.settlement.employerDays", onDate);
@@ -162,6 +204,10 @@ export function deriveSettlementDeadline(input: {
     return { ok: true as const, pending: true, days, workerEnded, due: null as string | null, late: false, cite, warning: null as string | null };
   }
   const due = addCalendarDays(last, days);
+  const paidAt = String(input.settlementPaidAt || (input.contractExit as any)?.settlementPaidAt || "").slice(0, 10);
+  if (paidAt) {
+    return { ok: true as const, pending: false, days, workerEnded, lastWorkDate: last, due, late: false, paidAt, paidLate: paidAt > due, closed: true, cite, warning: null as string | null };
+  }
   const late = onDate > due;
   return {
     ok: true as const,
@@ -192,6 +238,7 @@ export function eosResignationFraction(years: number, onDate?: string) {
 export function art87FullAward(caseRow: OffboardingCaseLike, nowMs = Date.now()) {
   const exit = caseRow.contractExit || {};
   const reason = String(exit.reason || caseRow.exitReason || "").trim();
+  if (reason === WORKER_FORCE_MAJEURE || (reason === "resignation" && (exit as any).forceMajeure === true)) return true;
   if (reason && reason !== "resignation") return false;
   if (!isFemale(caseRow.gender || caseRow.profile?.gender)) return false;
   const endIso = localIso(nowMs);
@@ -274,6 +321,7 @@ export function enrichAsset(asset: CustodyAssetLike) {
   return {
     ...asset,
     serial: asset.serial || null,
+    value: Math.max(0, Number(asset.value ?? asset.cost) || 0),
     status,
     outstanding: status === "outstanding",
     returnedAt: status === "returned" ? asset.returnedAt || null : null,
@@ -289,6 +337,11 @@ export function outstandingCount(assets: CustodyAssetLike[] = []) {
 }
 
 /** Gate open only when every assigned asset is returned. */
+/** Art. 91 / 88: value of custody not yet returned — what the final settlement may set off. */
+export function custodyDebtOf(assets: CustodyAssetLike[] = []) {
+  return Math.round(outstandingAssets(assets).reduce((sum, a) => sum + a.value, 0) * 100) / 100;
+}
+
 export function isOffboardingGateOpen(assets: CustodyAssetLike[] = []) {
   return outstandingCount(assets) === 0;
 }
@@ -304,15 +357,37 @@ function annualEntitlementDays(caseRow: OffboardingCaseLike, onDate: string, now
   return Math.max(Number(custom) || 0, floor);
 }
 
-export function deriveEos(caseRow: OffboardingCaseLike, nowMs = Date.now()) {
+/** Art. 111 — the leave record covers the service: an annual-leave request on file, or an opening balance. */
+export function eosLeaveRecordCovers(leaveRows: any, openingBalance: any) {
+  const annual = Array.isArray(leaveRows) && leaveRows.some((row: any) => String(row?.type || "").toLowerCase() === "annual");
+  const opening = !!(openingBalance && String(openingBalance.asOf || "").slice(0, 10) && Number.isFinite(Number(openingBalance.days)));
+  return annual || opening;
+}
+
+export function deriveEos(caseRow: OffboardingCaseLike, nowMs = eosEndMs(caseRow)) {
   const hireDate = caseRow.hireDate || caseRow.profile?.hireDate || null;
   const preStart = isPreStart(hireDate, nowMs);
-  const years = preStart ? 0 : serviceYears(hireDate, nowMs);
-  const wage = finalWage(Number(caseRow.base) || 0, Number(caseRow.allowances) || 0);
   const onDate = localIso(nowMs);
+  const suspendedDays = preStart ? 0 : suspendedDaysFromUnpaidLeave((caseRow as any).leaveRequests || (caseRow.profile as any)?.leaveRequests || [], hireDate, onDate);
+  const years = preStart ? 0 : serviceYears(hireDate, nowMs, suspendedDays);
+  const eosBase = eosWageBase({
+    ...caseRow,
+    profile: caseRow.profile || {},
+    base: caseRow.base ?? (caseRow.profile as any)?.baseSalary ?? (caseRow.profile as any)?.base,
+    allowances: caseRow.allowances ?? (caseRow.profile as any)?.allowances,
+  });
+  const averageBasis = Number((caseRow as any).averageWage) > 0 && (caseRow as any).averageWageBasis === true;
+  const wage = averageBasis ? Number((caseRow as any).averageWage) : eosBase.wage;
   const entitlement = annualEntitlementDays(caseRow, onDate, nowMs);
   const accrued = preStart ? 0 : accruedAnnualDaysAtExit(hireDate || undefined, entitlement, onDate);
-  const unused = Math.round(unusedAnnualDays(Number(caseRow.annualLeaveUsed) || 0, accrued) * 10) / 10;
+  // Art. 111 — mirror of the client rule: FIFO only when the leave record covers the service (an annual
+  // request on file, or profile.leaveOpeningBalance); otherwise accrued less annualLeaveUsed.
+  const leaveRows = Array.isArray((caseRow as any).leaveRequests) ? (caseRow as any).leaveRequests : (Array.isArray((caseRow as any).profile?.leaveRequests) ? (caseRow as any).profile.leaveRequests : null);
+  const openingBalance = (caseRow as any).profile?.leaveOpeningBalance ?? (caseRow as any).leaveOpeningBalance;
+  const exitDay = String((caseRow as any).contractExit?.effectiveDate || "").slice(0, 10) || onDate;
+  const unused = preStart ? 0 : eosLeaveRecordCovers(leaveRows, openingBalance) && hireDate
+    ? Math.round(unusedAnnualDaysAtExit({ ...((caseRow as any).profile || {}), hireDate, leaveTotals: (caseRow as any).leaveTotals ?? (caseRow as any).profile?.leaveTotals, leaveOpeningBalance: openingBalance }, leaveRows || [], exitDay) * 10) / 10
+    : Math.round(unusedAnnualDays(Number(caseRow.annualLeaveUsed) || 0, accrued) * 10) / 10;
   const full = preStart ? 0 : eosGratuity(years, wage);
   const leave = preStart ? 0 : leaveCashout(wage, unused);
   const exit = caseRow.contractExit || {};
@@ -322,9 +397,9 @@ export function deriveEos(caseRow: OffboardingCaseLike, nowMs = Date.now()) {
   const art87 = !preStart && !art80 && art87FullAward(caseRow, nowMs);
   const resigning = reason === "resignation";
   let fraction = 1;
-  let citeId = "eos.gratuity.cite";
+  let citeId = eosBase.citeRuleId || "eos.gratuity.cite";
   if (preStart) {
-    citeId = "eos.gratuity.cite";
+    citeId = eosBase.citeRuleId || "eos.gratuity.cite";
   } else if (art80) {
     fraction = 0;
     citeId = "eos.art80.cite";
@@ -340,6 +415,11 @@ export function deriveEos(caseRow: OffboardingCaseLike, nowMs = Date.now()) {
   return {
     hireDate,
     preStart,
+    endDate: onDate,
+    suspendedDays,
+    averageBasis,
+    commissionsExcluded: eosBase.commissionsExcluded,
+    commission: eosBase.commission,
     years,
     wage,
     unusedAnnualDays: unused,
@@ -392,11 +472,60 @@ export function enrichOffboardingCase(caseRow: OffboardingCaseLike, nowMs = Date
     assets,
     outstandingCount: outstanding,
     gateOpen: status === "completed" ? false : gateOpen,
-    eos: deriveEos(caseRow, nowMs),
+    eos: deriveEos(caseRow, eosEndMs(caseRow, nowMs)),
     steps: deriveOffboardingSteps({ ...caseRow, assets, status }),
     accessRevoked: !!(caseRow.accessRevoked || status === "completed"),
     qiwaNotified: !!(caseRow.qiwaNotified || status === "completed"),
   };
+}
+
+/**
+ * Employee custody (العهدة) lives on the offboarding case as a light list — item, serial or
+ * description, value, handed-at, returned-at, evidence. It is not an asset register.
+ * Art. 65(2): the worker cares for the employer's tools in their custody and returns what is not
+ * consumed; the recorded value is what the Art. 91 final-settlement set-off may reach.
+ */
+export function normalizeCustodyItem(input: any = {}, id = ""): CustodyAssetLike {
+  const value = Number(input.value ?? input.cost ?? 0);
+  return {
+    id: String(input.id || id || ""),
+    name: String(input.name || "").trim(),
+    serial: String(input.serial || input.description || "").trim() || null,
+    value: Number.isFinite(value) ? Math.max(0, Math.round(value * 100) / 100) : 0,
+    handedAt: String(input.handedAt || "").slice(0, 10) || null,
+    evidenceName: String(input.evidenceName || "").trim() || null,
+    evidenceUrl: String(input.evidenceUrl || "").trim() || null,
+    status: "outstanding" as const,
+    returnedAt: null,
+  };
+}
+
+export function checkAddCustodyGate(caseRow: OffboardingCaseLike | null | undefined, input: any = {}, todayIso = "") {
+  const cite = "المادة 65(2)";
+  if (!caseRow) {
+    return { ok: false as const, error: "CASE_NOT_FOUND", reason: "ملف إنهاء الخدمة غير موجود.", reasonEn: "Offboarding case not found." };
+  }
+  if (caseRow.status === "completed") {
+    return { ok: false as const, error: "ALREADY_COMPLETED", reason: "الخدمة منتهية — لا تُضاف عهدة بعد المخالصة.", reasonEn: "Offboarding is complete — no custody is added after settlement." };
+  }
+  const name = String(input.name || "").trim();
+  if (!name) {
+    return { ok: false as const, error: "CUSTODY_NAME_REQUIRED", reason: `اسم العهدة مطلوب — ${cite}: العامل يعيد ما في عهدته، فلا بد أن يُسمّى.`, reasonEn: "Custody item name is required — Art. 65(2): the worker returns what is in their custody, so it must be named." };
+  }
+  const raw = input.value ?? input.cost;
+  const value = raw === "" || raw == null ? 0 : Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    return { ok: false as const, error: "CUSTODY_VALUE_INVALID", reason: "قيمة العهدة رقم غير سالب — منها يُحسب حسم التصفية (المادة 91).", reasonEn: "Custody value must be a non-negative number — the settlement set-off (Art. 91) reads it." };
+  }
+  const handedAt = String(input.handedAt || "").slice(0, 10);
+  if (handedAt && todayIso && handedAt > todayIso) {
+    return { ok: false as const, error: "CUSTODY_HANDED_FUTURE", reason: "تاريخ التسليم في المستقبل — تُسجّل العهدة يوم تسليمها.", reasonEn: "The handover date is in the future — record custody on the day it is handed over." };
+  }
+  const serial = String(input.serial || "").trim().toLowerCase();
+  if (serial && (caseRow.assets || []).some((row: CustodyAssetLike) => String(row.serial || "").trim().toLowerCase() === serial && enrichAsset(row).outstanding)) {
+    return { ok: false as const, error: "CUSTODY_DUPLICATE", reason: "هذا الرقم التسلسلي مسجّل عهدةً قائمة لهذا الموظف.", reasonEn: "This serial is already an outstanding custody item for this employee." };
+  }
+  return { ok: true as const };
 }
 
 export function checkMarkReturnedGate(
@@ -502,5 +631,8 @@ export function checkCompleteOffboardingGate(
     });
     if (!resg.ok) return resg;
   }
+  // Model Art. 11(3) · Art. 40(1): a non-Saudi's return ticket (or its Art. 11(4) exception) before the file closes.
+  const ticket = checkReturnTicketGate(extras.employee || caseRow, exit);
+  if (!ticket.ok) return ticket as any;
   return { ok: true as const };
 }

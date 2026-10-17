@@ -3,7 +3,6 @@ import { citeLeaveType, citeRule, explainLeaveType, explainRule, formatRuleFigur
 import { articleOfficialText, BOE_LABOUR_LAW_URL } from "@/lib/laborArticleTexts";
 import { decision18632Gist, decision18632RightsNote } from "@/lib/decision18632";
 import {
-  HEAT_BAN_DECISION_PDF,
   heatBanDecisionDutiesNote,
   heatBanDecisionGist,
   heatBanDecisionTitle,
@@ -287,9 +286,7 @@ export default function LaborArticleCite({
       body={officialBody}
       rest={officialRest}
       ar={ar}
-      link={heatRule
-        ? { href: HEAT_BAN_DECISION_PDF, label: ar ? "صورة القرار الموقّعة (PDF)" : "Signed decision scan (PDF)" }
-        : null}
+      link={null}
     />
   ) : (showOfficial && isProduct && !hasStatute ? <QuietProductNote ar={ar} /> : null);
   if (!mark && !essay && !officialBlock) return reader || null;

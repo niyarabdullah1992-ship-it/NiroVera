@@ -46,6 +46,7 @@ const Discipline = lazy(() => import('./pages/Discipline'));
 const EmployeeProfile = lazy(() => import('./pages/EmployeeProfile'));
 const HRStructureManagement = lazy(() => import('./pages/HRStructureManagement'));
 const OrgStructure = lazy(() => import('./pages/OrgStructure'));
+const OrgChart = lazy(() => import('./pages/OrgChart'));
 const CompanySettings = lazy(() => import('./pages/CompanySettings'));
 const Payroll = lazy(() => import('./pages/Payroll'));
 const Performance = lazy(() => import('./pages/Performance'));
@@ -70,10 +71,6 @@ const CopyrightDoc = lazy(() => import('./pages/CopyrightDoc'));
 const SourceCodeDoc = lazy(() => import('./pages/SourceCodeDoc'));
 const TiktokAd = lazy(() => import('./pages/TiktokAd'));
 const TruePerformanceDoc = lazy(() => import('./pages/TruePerformanceDoc'));
-const Inventory = lazy(() => import('./pages/Inventory'));
-const Assets = lazy(() => import('./pages/Assets'));
-const Expenses = lazy(() => import('./pages/Expenses'));
-const StationExpenses = lazy(() => import('./pages/StationExpenses'));
 const WorkProof = lazy(() => import('./pages/WorkProof'));
 const VisitorProof = lazy(() => import('./pages/VisitorProof'));
 const ProofVerify = lazy(() => import('./pages/ProofVerify'));
@@ -243,6 +240,7 @@ function AppRoutes() {
       <Route path="/app/employees/:employeeId" element={<RequireAuth><EmployeeProfile /></RequireAuth>} />
       <Route path="/app/hr" element={<RequireAuth><HRStructureManagement /></RequireAuth>} />
       <Route path="/app/org" element={<RequireAuth><OrgStructure /></RequireAuth>} />
+      <Route path="/app/org/chart" element={<OrgChart />} />
       <Route path="/app/owner" element={<Navigate to="/owner" replace />} />
       <Route path="/app/settings" element={<RequireAuth><CompanySettings /></RequireAuth>} />
       <Route path="/app/payroll" element={<RequireAuth><Payroll /></RequireAuth>} />
@@ -263,12 +261,13 @@ function AppRoutes() {
       <Route path="/app/requests/archive" element={<RequireAuth><Requests /></RequireAuth>} />
       <Route path="/app/calendar" element={<RequireAuth><Attendance /></RequireAuth>} />
       <Route path="/app/files" element={<RequireAuth><Files /></RequireAuth>} />
-      <Route path="/app/inventory" element={<RequireAuth><Inventory /></RequireAuth>} />
-      <Route path="/app/assets" element={<RequireAuth><Assets /></RequireAuth>} />
-      <Route path="/app/custody" element={<Navigate to="/app/assets" replace />} />
+      {/* Inventory, assets and expenses were removed from NiroVera (HR scope) — old links land on the dashboard. */}
+      <Route path="/app/inventory" element={<Navigate to="/app" replace />} />
+      <Route path="/app/assets" element={<Navigate to="/app" replace />} />
+      <Route path="/app/custody" element={<Navigate to="/app/requests" replace />} />
       <Route path="/app/accounting" element={<Navigate to="/app/payroll" replace />} />
-      <Route path="/app/expenses" element={<RequireAuth><Expenses /></RequireAuth>} />
-      <Route path="/app/stations/:stationId/expenses" element={<RequireAuth><StationExpenses /></RequireAuth>} />
+      <Route path="/app/expenses" element={<Navigate to="/app" replace />} />
+      <Route path="/app/stations/:stationId/expenses" element={<Navigate to="/app" replace />} />
       <Route path="/app/signing" element={<RequireAuth><FileSigning /></RequireAuth>} />
       <Route path="/app/client-proof" element={<Navigate to="/app/work-proof" replace />} />
       <Route path="/app/work-proof" element={<RequireAuth><WorkProof /></RequireAuth>} />

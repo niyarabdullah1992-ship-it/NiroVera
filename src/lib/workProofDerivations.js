@@ -466,6 +466,8 @@ export function buildWorkProofAuditTimeline(proof, lang = "ar") {
     seal: ar ? "أُغلق الإثبات" : "Proof closed",
     reject: ar ? "رُفض الإثبات" : "Proof rejected",
     attach: ar ? "أُرفق مستند" : "Document attached",
+    crew_in: ar ? "أُضيف عامل" : "Worker added",
+    crew_out: ar ? "خرج عامل" : "Worker left",
     heat_ban: ar ? "قُيّدت مخالفة حظر العمل تحت أشعة الشمس" : "Sun-ban breach recorded",
   };
   const tones = {
@@ -476,6 +478,8 @@ export function buildWorkProofAuditTimeline(proof, lang = "ar") {
     seal: "#1E9E63",
     reject: "#DC2626",
     attach: "#1D4ED8",
+    crew_in: "#0F5535",
+    crew_out: "#8A5A12",
     heat_ban: "#B91C1C",
   };
   return events.map((event, index) => {

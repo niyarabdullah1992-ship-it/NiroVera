@@ -64,7 +64,7 @@ assert.equal(PLATFORM_RAIL_EMPTY_AR.includes("لا حكم مستحق"), true);
 const railSrc = readFileSync(new URL("../src/components/employees/ManagerDutyAlertsRail.jsx", import.meta.url), "utf8");
 assert.match(railSrc, /PLATFORM_JUDGE_TITLE_AR/);
 const reqSrc = readFileSync(new URL("../src/components/requests/RequestsWorkspace.jsx", import.meta.url), "utf8");
-assert.match(reqSrc, /حكم المنصة على طلبك/);
+assert.match(reqSrc, /<RequestsMinistryPanel/); // ministry rules for requests, in the duty-section frame (roster articles live on the roster)
 assert.doesNotMatch(reqSrc, /أنظمة الوزارة — ما يُطبَّق على طلبك/);
 
 console.log("platform-judgment: PASS");

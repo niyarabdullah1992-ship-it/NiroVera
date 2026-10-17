@@ -5,6 +5,10 @@ import {
 } from "@/lib/platformStyles";
 import { LEAVE_STYLE } from "@/lib/shiftWeek";
 import { setStationScope } from "@/lib/stationScopeStore";
+import { StatusFlag } from "@/components/shared/StatusFlag";
+import { KPI_INK, READINESS_FLOOR, scoreFlag } from "@/lib/statusFlag";
+import FigureRow from "@/components/shared/FigureRow";
+import CompanyObligationsList from "@/components/dashboard/CompanyObligationsList";
 import useStationScope from "@/hooks/useStationScope";
 
 const MONO = "'IBM Plex Mono', monospace";
@@ -45,19 +49,18 @@ function leaveTag() {
   };
 }
 
-function kpiAccent(key, value) {
-  if (key === "attendance") {
-    if (value < 60) return BAD;
-    if (value < 80) return WARN;
-    return OK;
-  }
-  if (key === "decisions") return value > 0 ? BAD : "var(--nv-ink)";
-  if (key === "readiness") {
-    if (value < 40) return BAD;
-    if (value < 70) return WARN;
-    return OK;
-  }
-  return "var(--nv-ink)";
+/** Accent → status tone for the chip (bad/warn only; ok stays colourless). */
+function accentTone(accent) {
+  if (accent === BAD) return "bad";
+  if (accent === WARN) return "warn";
+  return null;
+}
+
+/** Attendance tile: chip only for a real problem, with words the label doesn't carry. */
+function attendanceFlag(rate, ar) {
+  if (rate < 60) return { tone: "bad", flag: ar ? "حضور منخفض" : "Low attendance" };
+  if (rate < 80) return { tone: "warn", flag: ar ? "دون المعتاد" : "Below usual" };
+  return { tone: null, flag: "" };
 }
 
 export default function HandoffCommandBoard({
@@ -81,6 +84,8 @@ export default function HandoffCommandBoard({
   leaveCount = 0,
   absentCount = 0,
   daysClear = null,
+  scopeEmployees = [],
+  data = null,
 }) {
   const ar = lang === "ar";
   const scope = useStationScope();
@@ -143,7 +148,6 @@ export default function HandoffCommandBoard({
       hint: employeesDelta
         ? (ar ? `${employeesDelta > 0 ? "+" : ""}${employeesDelta} تعيين هذا الشهر · نفس رقم الحضور` : `${employeesDelta > 0 ? "+" : ""}${employeesDelta} hired this month · same figure as Attendance`)
         : (ar ? "ضمن نطاق العرض الحالي · يغذّي المسير" : "in the current scope · feeds payroll"),
-      accent: kpiAccent("scheduled", employeesCount),
     },
     {
       key: "attendance",
@@ -151,7 +155,7 @@ export default function HandoffCommandBoard({
       label: ar ? "نسبة الحضور" : "Attendance rate",
       value: `${Math.round(Number(attendanceRate) || 0)}%`,
       hint: ar ? `${present} حاضرون الآن` : `${present} present now`,
-      accent: kpiAccent("attendance", Number(attendanceRate) || 0),
+      ...attendanceFlag(Number(attendanceRate) || 0, ar),
     },
     {
       key: "decisions",
@@ -159,7 +163,9 @@ export default function HandoffCommandBoard({
       label: ar ? "بانتظار قرارك" : "Awaiting your decision",
       value: pendingDecisions,
       hint: ar ? `${pendingLeave} إجازة بانتظار القرار` : `${pendingLeave} leave awaiting a decision`,
-      accent: kpiAccent("decisions", pendingDecisions),
+      action: pendingDecisions > 0,
+      actionText: "افتح القرار",
+      actionTextEn: "Open the decision",
     },
     {
       key: "readiness",
@@ -167,8 +173,9 @@ export default function HandoffCommandBoard({
       label: ar ? "مؤشر الجاهزية" : "Readiness index",
       value: score,
       hint: ar ? "حضور · مهام · سلامة · اعتمادات" : "attendance · tasks · safety · approvals",
-      accent: kpiAccent("readiness", score),
+      ...scoreFlag(score, { floor: READINESS_FLOOR, ar }),
       suffix: "/100",
+      meter: 100,
     },
   ];
 
@@ -186,41 +193,11 @@ export default function HandoffCommandBoard({
         <div style={{ display: "flex", justifyContent: "flex-end" }}>{toolbar}</div>
       ) : null}
 
-      <div className="nv-disc-stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-        {kpis.map((kpi) => {
-          const body = (
-            <>
-              <span style={{ fontSize: 12, color: MUTED }}>{kpi.label}</span>
-              <span style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 30, fontWeight: 500, color: kpi.accent, lineHeight: 1.05 }}>
-                  {kpi.value}
-                </span>
-                {kpi.suffix ? <span style={{ fontSize: 12, fontWeight: 600, color: MUTED }}>{kpi.suffix}</span> : null}
-              </span>
-              <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.7 }}>{kpi.hint}</span>
-            </>
-          );
-          const face = {
-            background: CARD,
-            border: `1px solid ${LINE}`,
-            borderTop: `3px solid ${kpi.accent}`,
-            borderRadius: 14,
-            boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)",
-            padding: "14px 16px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            minWidth: 0,
-            textDecoration: "none",
-            color: "inherit",
-          };
-          return kpi.to ? (
-            <Link key={kpi.key} to={kpi.to} style={face}>{body}</Link>
-          ) : (
-            <div key={kpi.key} style={face}>{body}</div>
-          );
-        })}
-      </div>
+      {/* «سطر لا بطاقة» — the four figures as one inline row, no boxes. */}
+      <FigureRow ar={ar} figures={kpis} />
+
+      {/* «التزاماتي وحقوقي» — legal dates across the people in scope, nearest first. */}
+      <CompanyObligationsList employees={scopeEmployees} data={data} ar={ar} />
 
       <div className="nv-handoff-top nv-emp-summary">
         <section className="nv-doc" style={{ background: CARD, border: `1px solid ${LINE}`, display: "flex", flexDirection: "column" }}>
@@ -415,7 +392,6 @@ export default function HandoffCommandBoard({
                 style={{
                   background: active ? "var(--nv-hover)" : CARD,
                   border: `1px solid ${active ? "#C5DBCD" : LINE}`,
-                  borderTop: `3px solid ${tone}`,
                   borderRadius: 12,
                   padding: "12px 14px",
                   cursor: "pointer",
@@ -428,10 +404,10 @@ export default function HandoffCommandBoard({
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={dot(tone)} />
                   <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: NAVY, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {s.name}
                   </span>
+                  <StatusFlag tone={accentTone(tone)} ar={ar} flag={tone === BAD ? (ar ? "بنود مفتوحة كثيرة" : "Heavy open load") : (ar ? "بنود مفتوحة تتزايد" : "Open items rising")} />
                   {s.code ? (
                     <span dir="ltr" style={{ fontSize: 10, color: MUTED, fontFamily: MONO }}>{s.code}</span>
                   ) : null}
@@ -442,7 +418,7 @@ export default function HandoffCommandBoard({
                     <span style={{ fontSize: 11, color: MUTED }}>{ar ? "في الوردية" : "on shift"}</span>
                   </span>
                   <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5 }}>
-                    <span dir="ltr" style={{ fontFamily: MONO, fontSize: 16, fontWeight: 500, lineHeight: 1, color: tone, unicodeBidi: "isolate" }}>{open}</span>
+                    <span dir="ltr" style={{ fontFamily: MONO, fontSize: 16, fontWeight: 500, lineHeight: 1, color: KPI_INK, unicodeBidi: "isolate" }}>{open}</span>
                     <span style={{ fontSize: 11, color: MUTED }}>{ar ? "بند مفتوح" : "open"}</span>
                   </span>
                 </div>
@@ -498,7 +474,7 @@ export default function HandoffCommandBoard({
               </span>
             </div>
             <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6, flexShrink: 0 }}>
-              <span dir="ltr" style={{ fontFamily: MONO, fontSize: 20, fontWeight: 500, lineHeight: 1, color: openHazards ? BAD : OK, unicodeBidi: "isolate" }}>
+              <span dir="ltr" style={{ fontFamily: MONO, fontSize: 20, fontWeight: 500, lineHeight: 1, color: KPI_INK, unicodeBidi: "isolate" }}>
                 {openHazards}
               </span>
               <span style={{ fontSize: 11, color: MUTED }}>
@@ -509,7 +485,7 @@ export default function HandoffCommandBoard({
           <div style={{ padding: "14px 20px", display: "flex", flexDirection: "column", gap: 12 }}>
             {hseRows.map((r) => (
               <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 18, fontWeight: 500, color: r.tone, lineHeight: 1 }}>{r.count}</span>
+                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 18, fontWeight: 500, color: KPI_INK, lineHeight: 1 }}>{r.count}</span>
                 <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: INK }}>{r.label}</span>
               </div>
             ))}

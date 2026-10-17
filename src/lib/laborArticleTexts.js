@@ -36,8 +36,33 @@ function v(article, ar, en, dates = {}) {
 export const LABOR_ARTICLE_TEXTS = [
   v(
     "17",
-    "يجب على صاحب العمل أن يعلن في مكان ظاهر بمقر العمل جدول مواعيد العمل، وفترات الراحة، ويوم الراحة الأسبوعية، ومواعيد العمل اليومي للنوبات.",
-    "The employer must post in a conspicuous place at the workplace the work-hours table, rest periods, the weekly rest day, and the daily shift times.",
+    "على صاحب العمل أن يحتفظ في مكان العمل بالسجلات والكشوف والملفات التي تحدد ماهيتها، والبيانات التي يجب أن تتضمنها اللائحة. وعليه أن يضع في مكان ظاهر بموقع العمل جدولاً بمواعيد العمل، وفترات الراحة، ويوم الراحة الأسبوعي، ومواعيد بدء كل نوبة وانتهائها في حالة العمل بأسلوب المناوبة.",
+    "The employer shall keep at the workplace the records, statements and files whose nature, and the data they must contain, the Regulations specify. He shall also place in a conspicuous spot at the work site a table of working hours, rest periods, the weekly rest day, and the start and end times of each shift where work is organised in shifts.",
+  ),
+
+  v(
+    "13",
+    "1 - يلتزم كل صاحب عمل بإعداد لائحة لتنظيم العمل في منشأته وفق النموذج المعد من الوزارة، ويجوز للوزير الاستثناء من ذلك.\n2 - يجوز لصاحب العمل تضمين اللائحة شروطاً وأحكاماً إضافية، بما لا يتعارض مع أحكام هذا النظام ولائحته والقرارات الصادرة تنفيذاً له.\n3 - يجب على صاحب العمل أن يعلن لائحة تنظيم العمل وأي تعديل يطرأ عليها في مكان ظاهر في المنشأة أو أي وسيلة أخرى تكفل علم الخاضعين لها بأحكامها.",
+    "1 - Every employer shall prepare a work-organisation regulation for his establishment on the model the Ministry prepares; the Minister may grant exceptions.\n2 - The employer may add terms and provisions that do not conflict with this Law, its Regulations and the decisions issued under it.\n3 - The employer shall announce the work-organisation regulation and any amendment in a conspicuous place in the establishment, or by any other means that ensures those subject to it know its provisions.",
+  ),
+
+  v(
+    "61",
+    "بالإضافة إلى الواجبات المنصوص عليها في هذا النظام واللوائح والقرارات الصادرة تطبيقاً له، يجب على صاحب العمل ما يأتي:\n1 - أن يمتنع عن تشغيل العامل سخرة، وألا يحتجز دون سند قضائي أجر العامل أو جزءاً منه، وأن يعامل عماله بالاحترام اللائق، وأن يمتنع عن كل قول أو فعل يمس كرامتهم ودينهم.\n2 - أن يعطي العمال الوقت اللازم لممارسة حقوقهم المنصوص عليها في هذا النظام دون تنزيل من الأجور لقاء هذا الوقت، وله أن ينظم ممارسة هذا الحق بصورة لا تخل بسير العمل.\n3 - أن يسهل لموظفي الجهات المختصة كل مهمة تتعلق بتطبيق أحكام هذا النظام.\n4 - أن يمتنع عن القيام بكل ما من شأنه إبطال أو إضعاف تطبيق تكافؤ الفرص أو المعاملة في الاستخدام والمهنة، سواء من خلال الاستبعاد أو التفريق أو التفضيل بين المتقدمين للعمل أو العاملين لديه على أساس العرق أو اللون أو الجنس أو السن أو الإعاقة أو الحالة الاجتماعية أو أي شكل من أشكال التمييز الأخرى.\n5 - أن يوفر السكن اللائق لعماله، وله أن يستعيض عن ذلك ببدل نقدي مناسب يدفعه لهم مع الأجر.\n6 - أن يوفر وسيلة مواصلات مناسبة لعماله من مقر سكنهم إلى مقر العمل، وله أن يستعيض عن ذلك ببدل نقدي مناسب يدفعه لهم مع الأجر.",
+    "In addition to the duties in this Law and the regulations and decisions issued under it, the employer shall:\n1 - Not use forced labour, not withhold all or part of a worker's wage without a judicial basis, treat his workers with due respect, and refrain from any word or act that offends their dignity or religion.\n2 - Give workers the time needed to exercise their rights under this Law without a wage cut for it; he may organise that so as not to disrupt the work.\n3 - Facilitate every task of the competent authorities' staff in applying this Law.\n4 - Refrain from anything that nullifies or weakens equal opportunity or treatment in employment and occupation, by exclusion, distinction or preference among applicants or workers on race, colour, sex, age, disability, marital status or any other form of discrimination.\n5 - Provide decent housing for his workers, or a suitable cash allowance paid with the wage instead.\n6 - Provide suitable transport for his workers from their housing to the workplace, or a suitable cash allowance paid with the wage instead.",
+    { from: AMEND_2025, amendedBy: "M/44" },
+  ),
+
+  v(
+    "141",
+    "تحدد بقرار من الوزير إجراءات الإبلاغ عن إصابات العمل.",
+    "The procedures for reporting work injuries are set by a decision of the Minister.",
+  ),
+
+  v(
+    "142",
+    "على كل صاحب عمل أن يعد خزانة أو أكثر للإسعافات الطبية، مزودة بالأدوية وغيرها، مما يلزم للإسعافات الطبية الأولية. وتحدد اللائحة ما يجب أن تحتويه هذه الخزانة من وسائل الإسعافات الأولية وعددها، وكميات الأدوية، وكذلك تنظيم وسائل حفظها وشروط من يقوم بمهمة الإسعافات ومستواه.",
+    "Every employer shall keep one or more first-aid cabinets stocked with medicines and whatever else first aid requires. The Regulations set the first-aid items and their number, the quantities of medicine, how they are kept, and the conditions and level of whoever gives first aid.",
   ),
 
   v(
@@ -315,8 +340,8 @@ export const LABOR_ARTICLE_TEXTS = [
 
   v(
     "93",
-    "لا يجوز- في جميع الأحوال- أن تزيد نسبة المبالغ المحسومة على نصف أجر العامل المستحق، ما لم يثبت لدى هيئة تسوية الخلافات العمالية إمكان الزيادة في الحسم على تلك النسبة، أو يثبت لديها حاجة العامل إلى أكثر من نصف أجره، وفي هذه الحالة الأخيرة لا يعطى العامل أكثر من ثلاثة أرباع أجره، مهما كان الأمر.",
-    "In all cases, deductions made may not exceed half the worker's due wage, unless the Commission for the Settlement of Labor Disputes determines that further deductions can be made or that the worker is in need of more than half his wage. In the latter case, the worker may not be given more than three quarters of his wage, whatever the case.",
+    "لا يجوز- في جميع الأحوال- أن تزيد نسبة المبالغ المحسومة على نصف أجر العامل المستحق، ما لم يثبت لدى المحكمة العمالية إمكان الزيادة في الحسم على تلك النسبة، أو يثبت لديها حاجة العامل إلى أكثر من نصف أجره، وفي هذه الحالة الأخيرة لا يعطى العامل أكثر من ثلاثة أرباع أجره، مهما كان الأمر.",
+    "In all cases, deductions made may not exceed half the worker's due wage, unless the Labour Court determines that further deductions can be made or that the worker is in need of more than half his wage. In the latter case, the worker may not be given more than three quarters of his wage, whatever the case.",
   ),
 
   v(
@@ -333,8 +358,8 @@ export const LABOR_ARTICLE_TEXTS = [
 
   v(
     "100",
-    "يجوز لصاحب العمل في المنشآت التي يقتضي العمل فيها أسلوباً لا يسمح بالوقف اليومي لساعات العمل المحددة في المادة (الثامنة والتسعين) من هذا النظام، أو في بعض الأنشطة المحددة بقرار من الوزير، زيادة ساعات العمل على ثماني ساعات في اليوم أو ثمان وأربعين ساعة في الأسبوع، بشرط ألا يزيد متوسط ساعات العمل عند احتسابه لمدة ثلاثة أسابيع أو أقل على ثماني ساعات في اليوم أو ثمان وأربعين ساعة في الأسبوع.",
-    "In establishments whose work requires a method that does not allow a daily stop of the hours specified in Article (98) of this Law, or in certain activities specified by a ministerial decision, the employer may increase working hours beyond eight a day or forty-eight a week, provided that the average working hours, calculated over a period of three weeks or less, do not exceed eight hours a day or forty-eight hours a week.",
+    "يجوز لصاحب العمل - بموافقة الوزارة - في المنشآت التي تقتضي طبيعة العمل فيها أداء العمل بالتناوب زيادة ساعات العمل على ثماني ساعات عمل في اليوم أو ثمان وأربعين ساعة في الأسبوع، بشرط ألا يزيد متوسط ساعات العمل عند احتسابه لمدة ثلاثة أسابيع أو أقل على ثماني ساعات يومياً أو ثمان وأربعين ساعة أسبوعياً.",
+    "The employer may — with the Ministry's approval — in establishments where the nature of the work requires it to be performed in shifts, increase working hours beyond eight hours a day or forty-eight hours a week, provided that the average working hours, calculated over a period of three weeks or less, do not exceed eight hours a day or forty-eight hours a week.",
   ),
 
   v(
@@ -364,8 +389,8 @@ export const LABOR_ARTICLE_TEXTS = [
 
   v(
     "103",
-    "يجوز للوزير تحديد الحالات والأعمال التي يتحتم فيها استمرار العمل دون توقف لأسباب فنية أو بسبب طبيعة الإنتاج أو الخدمة التي تقدمها المنشأة. وفي هذه الحالات يجب على صاحب العمل أن يمنح العمال فترات راحة بديلة تحسب من ساعات العمل الفعلية.",
-    "The Minister may specify the cases and work in which continuity of work without interruption is required for technical reasons or because of the nature of the production or service the establishment provides. In those cases the employer must grant the workers alternative rest periods that count as actual working hours.",
+    "للوزير أن يحدد بقرار منه الحالات والأعمال التي يتحتم فيها استمرار العمل دون فترة راحة لأسباب فنية أو لظروف التشغيل، ويلتزم صاحب العمل في هذه الحالات والأعمال بإعطاء فترة للصلاة والطعام والراحة بطريقة تنظمها إدارة المنشأة أثناء العمل.",
+    "The Minister may, by decision, specify the cases and work in which work must continue without a rest period for technical reasons or operating conditions. In those cases and work the employer shall give a period for prayer, food and rest during work, in a manner organised by the establishment's management.",
   ),
 
   v(
@@ -376,8 +401,8 @@ export const LABOR_ARTICLE_TEXTS = [
 
   v(
     "105",
-    "استثناءً من حكم المادة (الرابعة بعد المائة) من هذا النظام، يجوز في الأماكن النائية وعن أعمال محددة بقرار من الوزير تجميع الراحات الأسبوعية المستحقة للعامل عن مدة لا تزيد على ثمانية أسابيع إذا وافق العامل كتابة وبعد موافقة الوزارة، وتُمنح للعامل مجمعة.",
-    "By way of exception from Article (104) of this Law, in remote places and for work specified by a ministerial decision, the weekly rests due to the worker may be accumulated for a period not exceeding eight weeks if the worker consents in writing and after the Ministry's approval, and they shall be granted to the worker in a lump.",
+    "استثناء من حكم المادة الرابعة بعد المائة من هذا النظام يجوز في الأماكن البعيدة عن العمران وفي الأعمال التي تتطلب طبيعة العمل وظروف التشغيل فيها استمرار العمل تجميع الراحات الأسبوعية المستحقة للعامل عن مدة لا تتجاوز ثمانية أسابيع إذا اتفق صاحب العمل والعمال ووافقت على ذلك الوزارة، ويراعى في حساب مدة الراحة الأسبوعية المُجمّعة أن تبدأ من ساعة وصول العمال إلى أقرب مدينة يتوفر بها وسائل نقل، وتنتهي ساعة العودة إليها.",
+    "By way of exception from Article (104) of this Law, in places far from urban areas and in work whose nature and operating conditions require continuous work, the weekly rests due to the worker may be accumulated for a period not exceeding eight weeks if the employer and the workers so agree and the Ministry approves. In computing the accumulated weekly rest it shall begin from the hour the workers reach the nearest town with means of transport and end at the hour they return to it.",
   ),
 
   v(
@@ -444,7 +469,7 @@ export const LABOR_ARTICLE_TEXTS = [
 
   v(
     "115",
-    "1 - للعامل - إذا وافق صاحب العمل على انتسابه إلى مؤسسة تعليمية أو قَبِل استمراره فيها – الحق في إجازة بأجر كامل لتأدية الامتحان عن سنة غير معادة تحدد مدتها بعد أيام الامتحان الفعلية. أما إذا كان الامتحان عن سنة معادة فيكون للعامل الحق في إجازة دون أجر بعدد أيام الامتحان الفعلية. ويحرم العامل من أجر الإجازة إذا ثبت أنه لم يؤدِّ الامتحان، مع عدم الإخلال بحق صاحب العمل في مساءلته تأديبيًّا.\n\n2 - إذا لم يحصل العامل على موافقة صاحب العمل على انتسابه إلى مؤسسة تعليمية، فله أن يحصل على إجازة لتأدية الامتحان بعدد أيام الامتحان الفعلية تحتسب من إجازته السنوية في حال توافرها، وعند تعذر ذلك فللعامل أن يحصل على إجازة دون أجر بعدد أيام الامتحان الفعلية.\n\n3 - على العامل أن يتقدم بطلب الإجازة قبل موعدها بخمسة عشر يوماً على الأقل.\n\n4 - لصاحب العمل أن يطلب من العامل تقديم الوثائق المؤيدة لطلب الإجازة، وكذلك ما يدل على أدائه الامتحان.",
+    "1 - للعامل - إذا وافق صاحب العمل على انتسابه إلى مؤسسة تعليمية أو قَبِل استمراره فيها – الحق في إجازة بأجر كامل لتأدية الامتحان عن سنة غير معادة تحدد مدتها بعدد أيام الامتحان الفعلية. أما إذا كان الامتحان عن سنة معادة فيكون للعامل الحق في إجازة دون أجر بعدد أيام الامتحان الفعلية. ويحرم العامل من أجر الإجازة إذا ثبت أنه لم يؤدِّ الامتحان، مع عدم الإخلال بحق صاحب العمل في مساءلته تأديبيًّا.\n\n2 - إذا لم يحصل العامل على موافقة صاحب العمل على انتسابه إلى مؤسسة تعليمية، فله أن يحصل على إجازة لتأدية الامتحان بعدد أيام الامتحان الفعلية تحتسب من إجازته السنوية في حال توافرها، وعند تعذر ذلك فللعامل أن يحصل على إجازة دون أجر بعدد أيام الامتحان الفعلية.\n\n3 - على العامل أن يتقدم بطلب الإجازة قبل موعدها بخمسة عشر يوماً على الأقل.\n\n4 - لصاحب العمل أن يطلب من العامل تقديم الوثائق المؤيدة لطلب الإجازة، وكذلك ما يدل على أدائه الامتحان.",
     "1 - If the employer agrees to the worker's enrolment in an educational institution or to his continuing therein, the worker is entitled to leave with full pay to sit an examination for a non-repeated year, for a duration matching the actual examination days. If the examination is for a repeated year, the worker is entitled to unpaid leave for the actual examination days. The worker is denied the leave wage if it is proven that he did not sit the examination, without prejudice to the employer's right to disciplinary action.\n\n2 - If the worker does not obtain the employer's approval to enrol in an educational institution, he may take leave to sit the examination for the actual examination days, counted from his annual leave if available; otherwise he may take unpaid leave for the actual examination days.\n\n3 - The worker must apply for the leave at least fifteen days before it is due.\n\n4 - The employer may require supporting documents for the leave application and proof of having taken the examination.",
     { from: AMEND_2015, amendedBy: "M/46" },
   ),
@@ -489,7 +514,7 @@ export const LABOR_ARTICLE_TEXTS = [
     "149",
     "ملغاة.",
     "Repealed.",
-    { from: AMEND_2025, amendedBy: "M/44" },
+    { from: "2020-08-26", amendedBy: "M/5" },
   ),
 
   v(
@@ -513,8 +538,8 @@ export const LABOR_ARTICLE_TEXTS = [
 
   v(
     "155",
-    "يحظر على صاحب العمل فصل العاملة أو إنذارها بالفصل أثناء حملها أو أثناء تمتعها بإجازة الوضع، ويشمل ذلك مدة مرضها الناشئ عن الحمل أو الوضع، على أن يثبت المرض بشهادة طبية معتمدة، وألا تتجاوز مدة غيابها (مائة وثمانين) يوماً.",
-    "The employer is prohibited from dismissing a female worker or giving her notice of dismissal during her pregnancy or while she is on maternity leave, including the period of illness arising from pregnancy or childbirth, provided the illness is established by an authenticated medical certificate and her absence does not exceed one hundred and eighty days.",
+    "يحظر على صاحب العمل فصل العاملة أو إنذارها بالفصل أثناء حملها أو أثناء تمتعها بإجازة الوضع، ويشمل ذلك مدة مرضها الناشئ عن الحمل أو الوضع، على أن يُثبت المرض بشهادة طبية معتمدة، وأن لا تتجاوز مدة غيابها (مائة وثمانين) يوماً في السنة سواءً أكانت متصلة أم متفرقة.",
+    "The employer is prohibited from dismissing a female worker or giving her notice of dismissal during her pregnancy or while she is on maternity leave, including the period of illness arising from pregnancy or childbirth, provided the illness is established by an authenticated medical certificate and her absence does not exceed one hundred and eighty days in the year, whether continuous or intermittent.",
     { from: AMEND_2015, amendedBy: "M/134" },
   ),
 
@@ -532,9 +557,15 @@ export const LABOR_ARTICLE_TEXTS = [
   ),
 
   v(
+    "158",
+    "على صاحب العمل في جميع الأماكن التي يعمل فيها نساء وفي جميع المهن أن يوفر لهن مقاعد، تأميناً لاستراحتهن.",
+    "In every place where women work, and in every occupation, the employer shall provide seats for them, to secure their rest.",
+  ),
+
+  v(
     "159",
-    "على صاحب العمل في جميع الأماكن التي يعمل فيها نساء وفي جميع المهن أن يوفر لهن مقاعد لاستراحة النساء العاملات. وعلى كل صاحب عمل يشغّل خمسين عاملة فأكثر أن يهيئ مكاناً مناسباً يتوافر فيه العدد الكافي من المربيات لرعاية أطفال العاملات الذين تقل أعمارهم عن ست سنوات، وذلك إذا بلغ عدد الأطفال عشرة فأكثر.",
-    "In every place where women work, and in every occupation, the employer shall provide seats for women workers to rest. An employer who employs fifty or more female workers shall prepare a suitable place with a sufficient number of attendants to care for the workers' children under six years of age, if the number of such children is ten or more.",
+    "1 - على كل صاحب عمل يشغل خمسين عاملة فأكثر أن يهيئ مكاناً مناسباً يتوافر فيه العدد الكافي من المربيات، لرعاية أطفال العاملات الذين تقل أعمارهم عن ست سنوات، وذلك إذا بلغ عدد الأطفال عشرة فأكثر.\n2 - يجوز للوزير أن يلزم صاحب العمل الذي يستخدم مائة عاملة فأكثر في مدينة واحدة أن ينشئ داراً للحضانة بنفسه أو بالمشاركة مع أصحاب عمل آخرين في المدينة نفسها، أو يتعاقد مع دار للحضانة قائمة لرعاية أطفال العاملات الذين تقل أعمارهم عن ست سنوات وذلك أثناء فترات العمل، وفي هذه الحالة يحدد الوزير الشروط والأوضاع التي تنظم هذه الدار، كما يقرر نسبة التكاليف التي تفرض على العاملات المستفيدات من هذه الخدمة.",
+    "1 - An employer who employs fifty or more female workers shall prepare a suitable place with a sufficient number of attendants to care for the workers' children under six years of age, if the number of such children is ten or more.\n2 - The Minister may require an employer who employs one hundred or more female workers in one city to set up a nursery himself or jointly with other employers in the same city, or to contract with an existing nursery, to care for the workers' children under six during working periods. In that case the Minister sets the conditions governing the nursery and the share of its costs charged to the female workers who use the service.",
   ),
 
   v(

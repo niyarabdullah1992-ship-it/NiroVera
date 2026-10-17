@@ -25,6 +25,13 @@ export const LAW_GATE_STATUS = {
     ar: "تنبيه",
     en: "Alert",
   },
+  /** A breach of the rule that is shown to manager and worker but never blocks publishing. */
+  violation: {
+    id: "violation",
+    ds: "blocked",
+    ar: "مخالفة",
+    en: "Violation",
+  },
   settled: {
     id: "settled",
     ds: "settled",
@@ -89,6 +96,7 @@ export function statusFromWeekCheck(check) {
   if (!check) return "void";
   if (check.ok) return "settled";
   if (check.block) return "blocked";
+  if (check.violation) return "violation";
   return "waiting";
 }
 

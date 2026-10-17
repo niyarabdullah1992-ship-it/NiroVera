@@ -5,6 +5,7 @@
 import { addLaborDays, laborDayKey, ruleValue } from "./laborRules.js";
 import { extraCoverageStationIds } from "./stationTree.js";
 import { toRiyadhDateKey } from "./riyadhDate.js";
+import { nursingCreditOf, nursingHourOn } from "./dutyRequests.js";
 
 const SHIFT_HM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -66,7 +67,16 @@ export function getTodaysShift(data, employee) {
     const schedule = (data?.schedules || []).find((s) => s.stationId === stationId);
     for (const st of schedule?.shiftTypes || []) {
       const ids = schedule.assignments?.[dateKey]?.[st.id] || [];
-      if (ids.includes(employee.id)) return { start: st.start, end: st.end, label: st.label, stationId };
+      if (ids.includes(employee.id)) {
+        return {
+          start: st.start,
+          end: st.end,
+          label: st.label,
+          stationId,
+          // The break mode travels with the shift so every reader deducts the same rest.
+          ...(st.breakMode === "flex" ? { id: st.id, breakMode: "flex", flexBreak: st.flexBreak || {}, restMinutes: st.restMinutes } : {}),
+        };
+      }
     }
   }
   return null;
@@ -172,7 +182,8 @@ export function deriveDayStatus(punch, opts = {}) {
   const inM = parseHm(punch.checkIn);
   const outM = parseHm(punch.checkOut);
   if (inM == null) {
-    const excused = !!punch.excusedAbsence || !!punch.settlement;
+    // Model Art. 46: kept from work by the establishment — paid, never an unexcused absence.
+    const excused = !!punch.excusedAbsence || !!punch.settlement || !!punch.preventedByEmployer;
     return {
       status: ATT_STATUS.absent,
       checkIn: null,
@@ -186,14 +197,19 @@ export function deriveDayStatus(punch, opts = {}) {
     };
   }
 
-  const lateMinutes = Math.max(0, inM - shiftStart - grace);
+  // Art. 154: inside her nursing minutes at the start she is not late; the minutes she was away
+  // inside them (start / end) are work — ordinary, never overtime (overtime reads the punches alone).
+  const nursing = opts.nursing !== undefined ? opts.nursing : (opts.employee ? nursingHourOn(opts.employee, String(punch.date || "").slice(0, 10)) : null);
+  const lateMinutes = Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
   const late = lateMinutes > 0;
   const openCheckout = outM == null;
   let ordinaryMinutes = 0;
   let overtimeMinutes = 0;
+  let nursingCreditMinutes = 0;
   if (outM != null) {
     const worked = Math.max(0, outM - inM);
-    ordinaryMinutes = Math.min(shiftMin, worked);
+    nursingCreditMinutes = nursingCreditOf(nursing, { inMinutes: inM, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes: shiftMin }).minutes;
+    ordinaryMinutes = Math.min(shiftMin, worked + nursingCreditMinutes);
     overtimeMinutes = Math.max(0, worked - shiftMin);
   }
 
@@ -207,6 +223,7 @@ export function deriveDayStatus(punch, opts = {}) {
     late,
     openCheckout,
     excused: false,
+    nursingCreditMinutes,
     shiftEndMinutes: shiftEnd,
   };
 }
@@ -311,6 +328,12 @@ export function checkSettleAbsenceGate(input) {
   return { ok: true, days, windowDays: SETTLEMENT_WINDOW_DAYS };
 }
 
+/** An otDecisions entry still waiting on a decision — written by publish (holiday work) or by punches. */
+export function isOtDecisionOpen(entry) {
+  if (!entry) return true;
+  return entry.decision === "pending" || entry.decision === "pending_worker_cap_consent";
+}
+
 export function checkOtDecisionGate(input) {
   const ot = Math.max(0, Number(input.overtimeMinutes) || 0);
   if (ot <= 0) {
@@ -339,6 +362,16 @@ export function checkOtDecisionGate(input) {
       error: "DECISION_REQUIRED",
       reason: "يلزم اعتماد الإضافي للصرف، أو رفضه، أو إجازة تعويضية بموافقة العامل — الساعات تبقى مسجّلة.",
       reasonEn: "Approve overtime for pay, reject it, or grant compensatory leave with the worker's consent — hours stay recorded.",
+    };
+  }
+  // Art. 107: hours the punches (or a confirmed holiday duty) prove were worked are owed —
+  // the manager chooses pay or compensatory leave, never «unpaid».
+  if (decision === "reject" && input.workedProven === true) {
+    return {
+      ok: false,
+      error: "OT_WORKED_NO_REJECT",
+      reason: "موقوف — المادة 107: الحضور والانصراف يثبتان أن الساعات عُملت فعلاً، وأجرها واجب. اختر الصرف بأجر الساعة + 50% أو إجازة تعويضية بموافقة العامل.",
+      reasonEn: "Blocked — Article 107: the punches prove these hours were worked and their pay is owed. Choose pay at hourly + 50% or compensatory leave with the worker's consent.",
     };
   }
   const onDate = laborDayKey(input.onDate);
@@ -441,8 +474,32 @@ export function approvedOvertimeHoursForYear(otDecisions, employeeId, yearOrMont
   return approvedOvertimeHoursForMonth(otDecisions, employeeId, String(yearOrMonth || "").slice(0, 4));
 }
 
+/** Regs Art. 22: the 720-hour ceiling and the 30 comp-leave days are counted once
+ *  per hour worked. Decisions stamped from an overtime assignment are already
+ *  counted from the assignment itself, so they are skipped here and the two
+ *  sources are summed, not maxed. Comp-leave decisions count toward the hours too. */
+export function overtimeYearUsageOutsideAssignments(otDecisions, employeeId, yearOrMonth) {
+  const year = String(yearOrMonth || "").slice(0, 4);
+  const prefix = `${employeeId}:`;
+  const perHour = ruleValue("hours.ot.compLeave.minHoursPerOtHour");
+  const dayHours = ruleValue("hours.shift.ordinaryHours");
+  let minutes = 0;
+  let days = 0;
+  for (const [key, row] of Object.entries(otDecisions || {})) {
+    if (!key.startsWith(prefix)) continue;
+    if (!String(key.slice(prefix.length)).startsWith(year)) continue;
+    if (row?.source === "ot_assignment") continue;
+    const d = row?.decision;
+    if (!["approve", "pay", "comp_leave", "credit"].includes(d)) continue;
+    const m = Math.max(0, Number(row.overtimeMinutes) || 0);
+    minutes += m;
+    if (d === "comp_leave" || d === "credit") days += ((m / 60) * perHour) / dayHours;
+  }
+  return { hours: Math.round((minutes / 60) * 10) / 10, creditDays: Math.round(days * 1000) / 1000 };
+}
+
 export function buildRosterRow(punch, opts = {}) {
-  const day = deriveDayStatus(punch, { shiftStart: opts.shiftStart });
+  const day = deriveDayStatus(punch, { shiftStart: opts.shiftStart, employee: opts.employee, nursing: opts.nursing });
   let status = day.status;
   const geo = deriveGeoVerdict(punch, opts.geofenceOn !== false);
   if (geo === GEO_VERDICT.rejected_outside && status !== ATT_STATUS.leave && status !== ATT_STATUS.rest) {
@@ -482,7 +539,7 @@ export function deriveAttStats(rows, geofenceOn) {
       r.geo === GEO_VERDICT.accepted_outside,
   ).length;
   const workMinutes = list.reduce((s, r) => s + r.ordinaryMinutes + r.overtimeMinutes, 0);
-  const absent = list.filter((r) => r.status === ATT_STATUS.absent && !r.excusedAbsence && !r.settlement).length;
+  const absent = list.filter((r) => r.status === ATT_STATUS.absent && !r.excusedAbsence && !r.settlement && !r.preventedByEmployer).length;
 
   return {
     rate,
@@ -496,4 +553,41 @@ export function deriveAttStats(rows, geofenceOn) {
     absentUnexcused: absent,
     shiftHours: SHIFT_HOURS,
   };
+}
+
+
+/** Minutes the check-in opens before a published shift (company policy, default 60). */
+export const EARLY_CHECKIN_DEFAULT = 60;
+export function earlyCheckInMinutes(company) {
+  const n = Number(company?.attendanceSettings?.early_checkin_minutes);
+  return Number.isFinite(n) && n >= 0 ? n : EARLY_CHECKIN_DEFAULT;
+}
+
+/** A check-in before the window opens is refused; the reply says when it opens. */
+export function checkEarlyCheckInGate(shift, nowMin, windowMin = EARLY_CHECKIN_DEFAULT) {
+  const start = hmToMinutes(shift?.start);
+  if (start == null || nowMin == null) return { ok: true };
+  const until = start - nowMin;
+  if (until <= windowMin) return { ok: true };
+  const open = ((start - windowMin) % 1440 + 1440) % 1440;
+  const hm = `${String(Math.floor(open / 60)).padStart(2, "0")}:${String(open % 60).padStart(2, "0")}`;
+  return {
+    ok: false,
+    error: "TOO_EARLY",
+    opensAt: hm,
+    reason: `يُفتح الحضور قبل ورديتك بـ${windowMin} دقيقة — من الساعة ${hm}.`,
+    reasonEn: `Check-in opens ${windowMin} minutes before your shift — from ${hm}.`,
+  };
+}
+
+/**
+ * Has today's shift (start date = today) ended, plus a grace? An overnight shift (end ≤ start) ends
+ * tomorrow, so on its own start day it has never ended.
+ */
+export function todaysShiftEnded(shift, nowMin, graceMin = 60) {
+  const start = hmToMinutes(shift?.start);
+  const end = hmToMinutes(shift?.end);
+  if (end == null || nowMin == null) return false;
+  if (start != null && end <= start) return false;
+  return nowMin > end + graceMin;
 }

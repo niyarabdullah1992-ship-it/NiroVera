@@ -1,5 +1,5 @@
 /**
- * One rights model for the four money surfaces: assets · expenses · inventory · payroll.
+ * One rights model for the money surface: payroll.
  *
  * Each surface used to re-derive "who is this person" on its own, which is how the
  * same hole appeared twice (a local fallback more permissive than the cloud function
@@ -15,7 +15,6 @@ import { canAdjustPayroll } from "@/lib/permissions";
 export const SENIOR_ROLES = ["owner", "director", "ops_manager", "admin"];
 export const STATION_ROLES = ["station_manager", "pgm"];
 export const FINANCE_ROLES = ["financial_officer"];
-export const STOCK_ROLES = ["inventory_keeper"];
 
 /** Home station plus explicit extra coverage. */
 export function stationReachOf(user) {
@@ -40,7 +39,6 @@ export function financeActor(user, data) {
     senior,
     stationManager: !senior && STATION_ROLES.includes(role),
     financeOfficer: !senior && FINANCE_ROLES.includes(role),
-    stockKeeper: !senior && STOCK_ROLES.includes(role),
     reach: stationReachOf(user),
   };
 }
@@ -65,7 +63,6 @@ export const SELF = "self";
 export function canManageSurface(surface, user, data) {
   const who = financeActor(user, data);
   if (surface === "payroll") return canAdjustPayroll(user, data);
-  if (surface === "inventory") return who.senior || who.stationManager || who.stockKeeper;
   return who.senior || who.stationManager || who.financeOfficer;
 }
 
@@ -99,18 +96,6 @@ export const FINANCE_VIEW_COPY = {
 
 /** Why a surface is showing the personal view — stated, not implied. */
 export const SELF_VIEW_NOTE = {
-  assets: {
-    ar: "هذا العرض لعهدتك أنت: ما بحوزتك وما طلبت نقله. السجل والوعاء وقرارات النقل لمدير الفرع المالك أو الإدارة.",
-    en: "This view is your own custody: what you hold and what you asked to move. The register, the vessel and transfer decisions belong to the owning station manager or management.",
-  },
-  expenses: {
-    ar: "هذا العرض لمطالباتك أنت. الاعتماد والصرف من الوعاء التشغيلي للمدير والمالية.",
-    en: "This view is your own claims. Approval and payment from the operating vessel belong to the manager and finance.",
-  },
-  inventory: {
-    ar: "هذا العرض لطلباتك وما صُرف لك. الشراء والصرف ومراجعة الطلبات لمدير الفرع أو أمين المخزن.",
-    en: "This view is your requests and what was issued to you. Buying, issuing and reviewing requests belong to the station manager or the stock keeper.",
-  },
   payroll: {
     ar: "هذا العرض لقسيمتك أنت. تحرير البنود واعتماد الصرف وحماية الأجور للإدارة.",
     en: "This view is your own payslip. Editing lines, approving payment and wage protection belong to management.",

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { collectRequestFiles } from "@/lib/requestWorkspace";
+import { collectRequestFiles, requestFileInFilter } from "@/lib/requestWorkspace";
+import { chipButton, slab } from "@/components/schedules/scheduleChrome";
 import { BORDER, CARD, MUTED, NAVY, NAVY_FILL } from "@/lib/platformStyles";
 
 function chip(on) {
@@ -16,18 +17,31 @@ function chip(on) {
   };
 }
 
-export default function RequestFilesBoard({ employees, ar }) {
+const SCOPE_TITLE = {
+  pending: ["ملفات الطلبات الجارية", "Files of open requests"],
+  approved: ["ملفات الطلبات المعتمدة", "Files of approved requests"],
+  rejected: ["ملفات الطلبات المرفوضة", "Files of refused requests"],
+  archive: ["ملفات الأرشيف", "Archived files"],
+};
+
+/** Files follow طلباتي's filter: «بانتظار» shows open requests' files, «الأرشيف» the settled ones. */
+export default function RequestFilesBoard({ employees, ar, filter: scope = "all" }) {
   const [filter, setFilter] = useState("all");
-  const all = collectRequestFiles(employees, ar ? "ar" : "en");
+  const every = collectRequestFiles(employees, ar ? "ar" : "en");
+  const all = every.filter((row) => requestFileInFilter(row, scope));
+  const archivedN = every.filter((row) => requestFileInFilter(row, "archive") && !requestFileInFilter(row, "all")).length;
   const rows = all.filter((row) => filter === "all" || row.side === filter);
   const attached = all.filter((row) => row.side === "in").length;
   const issued = all.filter((row) => row.side === "out").length;
 
+  // A filtered view with no files stays quiet — no empty box under the list.
+  if (scope !== "all" && all.length === 0) return null;
+
   return (
-    <section style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, boxShadow: "var(--nv-paper)", overflow: "hidden" }}>
+    <section style={{ ...slab, overflow: "hidden" }}>
       <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
-          <span className="nv-req-title" style={{ fontSize: 14 }}>{ar ? "ملفات طلباتي" : "My request files"}</span>
+          <span className="nv-req-title" style={{ fontSize: 14 }}>{SCOPE_TITLE[scope] ? SCOPE_TITLE[scope][ar ? 0 : 1] : (ar ? "ملفات طلباتي" : "My request files")}</span>
           <span style={{ fontSize: 11, color: MUTED }}>
             {ar
               ? `${all.length} · ${attached} أرفقتها · ${issued} صدرت لك`
@@ -36,13 +50,15 @@ export default function RequestFilesBoard({ employees, ar }) {
         </div>
         <span style={{ marginInlineStart: "auto", display: "flex", gap: 5, flexWrap: "wrap" }}>
           {[["all", ar ? "الكل" : "All"], ["in", ar ? "ما أرفقته" : "Attached"], ["out", ar ? "ما صدر لي" : "Issued"]].map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setFilter(id)} style={chip(filter === id)}>{label}</button>
+            <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)} style={chipButton(filter === id)}>{label}</button>
           ))}
         </span>
       </div>
       {rows.length === 0 ? (
         <div style={{ padding: "18px 20px", fontSize: 11, color: MUTED, lineHeight: 1.9 }}>
-          {all.length === 0
+          {all.length === 0 && archivedN > 0
+            ? (ar ? `لا ملفات لطلبات جارية. ملفات الطلبات المنتهية (${archivedN}) انتقلت إلى «الأرشيف».` : `No files on open requests. Files of settled requests (${archivedN}) moved to Archive.`)
+            : all.length === 0
             ? (ar ? "لا ملفات بعد. ما ترفعه مع طلب وما يصدر لك من وثائق يظهر هنا ببصمته أو برقم تحققه — لا مجلّد مرفوعات عام." : "No files yet. What you attach and what the company issues appear here by fingerprint or verify id — not a general uploads folder.")
             : (ar ? "لا ملف في هذا الترشيح." : "Nothing in this filter.")}
         </div>
@@ -57,10 +73,10 @@ export default function RequestFilesBoard({ employees, ar }) {
           {rows.map((row) => (
             <div key={row.id} style={{ minWidth: 560, display: "grid", gridTemplateColumns: "minmax(0,1.7fr) 90px minmax(0,1.3fr) 80px", gap: 12, padding: "11px 18px", borderBottom: "1px solid var(--nv-line3, var(--nv-soft))", alignItems: "center", fontSize: 12 }}>
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                <strong dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, textAlign: "end", unicodeBidi: "isolate" }}>{row.name}</strong>
+                <strong dir="auto" style={{ fontSize: 12, textAlign: "start", unicodeBidi: "plaintext", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={row.name}>{row.name}</strong>
                 <span style={{ fontSize: 10.5, color: MUTED }}>{row.meta}</span>
               </span>
-              <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 9px", borderRadius: 899, fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap", width: "fit-content", color: row.side === "out" ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)", background: row.side === "out" ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)", border: `1px solid ${row.side === "out" ? "var(--nv-ok-line)" : "var(--nv-warn-line)"}` }}>
+              <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 9px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap", width: "fit-content", color: row.side === "out" ? "var(--nv-ok-ink)" : "var(--nv-warn-ink)", background: row.side === "out" ? "var(--nv-ok-soft)" : "var(--nv-warn-soft)", border: `1px solid ${row.side === "out" ? "var(--nv-ok-line)" : "var(--nv-warn-line)"}` }}>
                 {ar ? row.kindAr : row.kindEn}
               </span>
               <span style={{ display: "flex", flexDirection: "column" }}>

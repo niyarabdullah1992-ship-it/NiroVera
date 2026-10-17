@@ -2,6 +2,7 @@
 // used by the sidebar/mobile nav and the dashboards' quick-access shortcuts.
 
 import { SMART_SECTION_ROUTES } from "@/lib/smartPositions";
+import { hrSectionAccess } from "@/lib/hrSection";
 
 const BASE = [
   "/app",
@@ -12,9 +13,6 @@ const BASE = [
   "/app/leave",
   "/app/requests",
   "/app/files",
-  "/app/inventory",
-  "/app/assets",
-  "/app/expenses",
   // The wage surface is split: management resolves into the run, everyone else
   // lands on their own payslip and deductions. Closing the route to employees
   // would close their own wage to them, so the page derives the view and every
@@ -35,8 +33,6 @@ const PLAN_ROUTE_SECTIONS = {
   "/app/assistant": "assistant",
   "/app/tasks": "tasks",
   "/app/escalation": "tasks",
-  "/app/inventory": "inventory",
-  "/app/assets": "assets",
   "/app/attendance": "attendance",
   "/app/calendar": "attendance",
   "/app/shifts": "attendance",
@@ -47,7 +43,6 @@ const PLAN_ROUTE_SECTIONS = {
   "/app/settings": "hr",
   "/app/discipline": "hr",
   "/app/performance": "performance",
-  "/app/expenses": "expenses",
   "/app/payroll": "payroll",
   "/app/safety": "safety",
   "/app/complaints": "complaints",
@@ -111,9 +106,28 @@ export function allowedNavFor(user, data, company) {
   return allowed;
 }
 
+/**
+ * «الموارد البشرية» (/app/hr): which panes this person opens. HR (the pre-merge /app/hr route gate)
+ * opens the section; a station lead without it opens only «الفروع والمحطات» (their stations) and a
+ * read-only «الهيكل». Plan gate first.
+ */
+export function hrSectionAccessFor(user, data, company) {
+  return hrSectionAccess(user, data, {
+    routeAllowed: allowedNavFor(user, data, company).has("/app/hr"),
+    planAllowed: canAccessPlanPath("/app/hr", company),
+  });
+}
+
 export function canAccessPath(pathname, user, data, company) {
   if (!canAccessPlanPath(pathname, company)) return false;
+  // «مكاني في الهيكل»: every signed-in person opens /app/org; the page itself shows non-HR viewers
+  // only their own place (and managers their subtree), and the server enforces the same.
+  if (user && (pathname === "/app/org" || pathname.startsWith("/app/org/"))) return true;
   const allowed = allowedNavFor(user, data, company);
+  // «الموارد البشرية»: a station lead reaches their stations here without the HR route gate.
+  if ((pathname === "/app/hr" || pathname.startsWith("/app/hr/")) && !allowed.has("/app/hr")) {
+    return hrSectionAccessFor(user, data, company).panes.length > 0;
+  }
   const smartRoute = Object.values(SMART_SECTION_ROUTES)
     .flatMap((routes) => (Array.isArray(routes) ? routes : routes ? [routes] : []))
     .find((item) => pathname === item || pathname.startsWith(`${item}/`));

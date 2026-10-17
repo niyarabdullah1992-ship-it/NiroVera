@@ -39,7 +39,7 @@ function KickerLine({ kicker }) {
   const rest = parts.slice(1).join(" · ");
   return (
     <span style={{ fontSize: 11, letterSpacing: ".14em", color: SIGN_MUTED, display: "flex", gap: 7, alignItems: "center" }}>
-      {index ? <span dir="ltr" style={{ fontFamily: MONO }}>{index}</span> : null}
+      {index ? <span dir={/[\u0600-\u06FF]/.test(index) ? undefined : "ltr"} style={{ fontFamily: /[\u0600-\u06FF]/.test(index) ? "inherit" : MONO}}>{index}</span> : null}
       {rest ? <span>·</span> : null}
       <span>{rest || kicker}</span>
     </span>

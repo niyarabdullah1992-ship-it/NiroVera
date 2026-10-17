@@ -25,7 +25,7 @@ export default function PlatformMusicButton({ inPlatform = false }) {
   const frameRef = useRef(null);
   const [loaded, setLoaded] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const { position, handlers } = useDraggablePosition();
+  const { position, handlers } = useDraggablePosition({ avoidHeader: inPlatform });
   const [mobile, setMobile] = useState(false);
 
   useEffect(() => {

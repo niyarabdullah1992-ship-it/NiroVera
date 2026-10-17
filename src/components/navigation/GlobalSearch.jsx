@@ -3,11 +3,12 @@ import { Search, Users, Radio, CornerDownLeft, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import SearchResults from "@/components/navigation/SearchResults";
 import { visibleEmployees, visibleStations } from "@/lib/permissions";
-import { BORDER, MUTED, NAVY, NAVY_FILL, dialogOverlay, CARD } from "@/lib/platformStyles";
+import { BORDER, MUTED, NAVY, dialogOverlay, CARD } from "@/lib/platformStyles";
 import { identityFrame } from "@/components/shared/IdentityCard";
 import { openHireDrawer } from "@/lib/orgHire";
 import { searchGroupLabel } from "@/lib/suiteNav";
 import { employeeMoneyHref, useRailSide } from "@/lib/railSide";
+import { Kbd } from "@/components/shared/NvIcon";
 
 function groupLabel(category, ar) {
   return searchGroupLabel(category, ar ? "ar" : "en");
@@ -38,7 +39,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
           label: ar ? "أضف موظف" : "Add employee",
           subtitle: ar ? "من المنصب — خطوتان" : "From the seat — two steps",
           icon: UserPlus,
-          to: "/app/org?hire=1",
+          to: "/app/hr?tab=org&hire=1",
         }]
       : [];
     const hireHit = !text
@@ -76,7 +77,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
         to: `/app/employees/${employee.id}`,
       }));
 
-    const canStations = items.some((item) => item.to === "/app/org");
+    const canStations = items.some((item) => item.to === "/app/hr" || item.to === "/app/org");
     const stations = canStations
       ? visibleStations(currentUser, data)
           .filter((station) => station.name?.toLocaleLowerCase().includes(text))
@@ -86,7 +87,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
             label: station.name,
             subtitle: ar ? "فرع" : "Station",
             icon: Radio,
-            to: "/app/org",
+            to: `/app/hr?tab=branches&branch=${encodeURIComponent(station.id)}`,
           }))
       : [];
 
@@ -102,7 +103,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
   const select = (result) => {
     if (!result) return;
     if (result.action === "hire") {
-      navigate("/app/org?hire=1");
+      navigate("/app/hr?tab=org&hire=1");
       openHireDrawer({});
       onClose();
       return;
@@ -147,7 +148,6 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
         }}
         dir={ar ? "rtl" : "ltr"}
       >
-        <div aria-hidden style={{ height: 3, background: NAVY_FILL }} />
         <div
           style={{
             display: "flex",
@@ -202,7 +202,7 @@ export default function GlobalSearch({ open, onClose, items, data, currentUser, 
           <CornerDownLeft style={{ width: 11, height: 11 }} />
           {typed
             ? (ar ? "Enter للانتقال" : "Enter to open")
-            : (ar ? "⌘K · أضف موظف أو ابحث" : "⌘K · add an employee or search")}
+            : <><Kbd>⌘K</Kbd> · {ar ? "أضف موظف أو ابحث" : "add an employee or search"}</>}
         </div>
       </div>
     </div>

@@ -21,6 +21,18 @@
     "location": {
       "type": "string"
     },
+    "countryCode": {
+      "type": "string",
+      "description": "ISO 3166 alpha-2 country of the branch (SA, AE, …) — src/lib/geoPlaces.js COUNTRIES."
+    },
+    "city": {
+      "type": "string",
+      "description": "City / governorate. For SA: the Arabic name from the Saudi list; elsewhere free text."
+    },
+    "cityRegion": {
+      "type": "string",
+      "description": "Saudi administrative region id of the city (riyadh, makkah, qassim, …); empty outside SA."
+    },
     "type": {
       "type": "string"
     },
@@ -73,11 +85,6 @@
         "null"
       ],
       "description": "Allowed check-in radius around the workplace location, in meters."
-    },
-    "isCentralWarehouse": {
-      "type": "boolean",
-      "default": false,
-      "description": "Marks the single station used as the company's central warehouse."
     },
     "description": {
       "type": "string",

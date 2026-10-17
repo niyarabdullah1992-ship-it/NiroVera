@@ -19,6 +19,7 @@ import {
   checkManagerRatingGate,
   deriveCycleProgress,
   deriveEmployeeAssignment,
+  deriveEmployeeTaskFacts,
   deriveObjectiveBoard,
   deriveOrgUnitRollup,
   derivePositionBoard,
@@ -26,8 +27,11 @@ import {
 } from "@/lib/hcmDerivations";
 import { countPersonalHseDuty, deriveFairHseRates } from "@/lib/perfDerivations";
 import { HCM_DENY, hcmActor, hcmDenied } from "@/lib/hcmRights";
+import { checkDecidePerfGrievanceGate, checkPerfGrievanceGate, checkReportEvidenceGate, perfLevelOf, perfReportsFor, reportPrefill } from "@/lib/perfReport";
 
-const READ_ACTIONS = new Set(["list", "assignment", "objectiveBoard"]);
+const READ_ACTIONS = new Set(["list", "assignment", "objectiveBoard", "myPerfReports"]);
+/** The worker files his own grievance on his own report (model Arts. 20 · 71) — not a senior write. */
+const SELF_ACTIONS = new Set(["filePerfGrievance"]);
 
 function uid(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -55,7 +59,6 @@ const ROLE_JOBS = {
   station_manager: { code: "STM", title: "مدير الفرع", family: "operations" },
   safety_officer: { code: "HSE", title: "مسؤول السلامة", family: "hse" },
   employee: { code: "TEC", title: "فني", family: "operations" },
-  inventory_keeper: { code: "INV", title: "أمين المستودع", family: "operations" },
   financial_officer: { code: "FIN", title: "مسؤول مالي", family: "finance" },
   hr_manager: { code: "HR", title: "موارد بشرية", family: "hr" },
 };
@@ -317,6 +320,9 @@ function objectiveBoard(companyId, payload) {
     cycle,
     cycles: perf.cycles,
     progress: deriveCycleProgress({ cycle, board: enriched, ratings: perf.ratings }),
+    grievances: (perf.ratings || [])
+      .filter((r) => r.grievance && !r.grievance.decision)
+      .map((r) => ({ ratingId: r.id, employeeId: r.employeeId, cycleId: r.cycleId, period: (perf.cycles || []).find((c) => c.id === r.cycleId)?.period || "", rating: r.rating, ...r.grievance })),
     defaultObjectives: DEFAULT_OBJECTIVES,
     plans: perf.plans,
     jobs: f.jobs,
@@ -342,8 +348,50 @@ export function localHcmCall(payload = {}) {
     if (action === "assignment" && !auth.manager && String(payload.employeeId || "") !== String(auth.userId)) {
       return hcmDenied(HCM_DENY.ASSIGNMENT);
     }
-  } else if (!auth.senior) {
+  } else if (!auth.senior && !SELF_ACTIONS.has(action)) {
     return hcmDenied(HCM_DENY.STRUCTURE);
+  }
+
+  if (action === "myPerfReports") {
+    const data = getCompanyData(companyId);
+    const perf = readHcmPerformance(data) || { cycles: [], ratings: [] };
+    const employeeId = auth.manager && payload.employeeId ? String(payload.employeeId) : String(auth.userId || "");
+    return { ok: true, reports: perfReportsFor({ cycles: perf.cycles || [], ratings: perf.ratings || [], employeeId }) };
+  }
+
+  if (action === "filePerfGrievance") {
+    let reports = [];
+    persist(companyId, (data) => {
+      const employeeId = String(auth.userId || "");
+      const report = perfReportsFor({ cycles: data.hcmPerformance.cycles, ratings: data.hcmPerformance.ratings, employeeId }).find((r) => r.ratingId === String(payload.ratingId || "")) || null;
+      const gate = checkPerfGrievanceGate({ report, reason: payload.reason, today: todayKey() });
+      if (!gate.ok) fail(gate.reason, gate);
+      data.hcmPerformance.ratings = data.hcmPerformance.ratings.map((r) => (r.id === report.ratingId
+        ? { ...r, grievance: { filedAt: todayKey(), reason: String(payload.reason).trim(), by: auth.name, byId: employeeId, replyBy: gate.replyBy } }
+        : r));
+      reports = perfReportsFor({ cycles: data.hcmPerformance.cycles, ratings: data.hcmPerformance.ratings, employeeId });
+    });
+    return { ok: true, reports };
+  }
+
+  if (action === "decidePerfGrievance") {
+    let ratings = [];
+    persist(companyId, (data) => {
+      const rating = data.hcmPerformance.ratings.find((r) => r.id === String(payload.ratingId || ""));
+      if (!rating) fail("التقرير غير موجود.", { error: "REPORT_NOT_FOUND" });
+      const gate = checkDecidePerfGrievanceGate({ grievance: rating.grievance, decision: payload.decision, note: payload.note, actorId: auth.userId, employeeId: rating.employeeId, newRating: payload.newRating });
+      if (!gate.ok) fail(gate.reason, gate);
+      const revised = payload.decision === "upheld" && gate.newRating != null;
+      data.hcmPerformance.ratings = data.hcmPerformance.ratings.map((r) => (r.id === rating.id
+        ? {
+          ...r,
+          ...(revised ? { rating: gate.newRating, level: perfLevelOf(gate.newRating)?.level ?? null, ratingBeforeGrievance: r.rating } : {}),
+          grievance: { ...(r.grievance || {}), decision: payload.decision, note: String(payload.note).trim(), decidedAt: todayKey(), decidedBy: auth.name },
+        }
+        : r));
+      ratings = data.hcmPerformance.ratings;
+    });
+    return { ok: true, ratings };
   }
 
   if (action === "objectiveBoard") {
@@ -474,12 +522,31 @@ export function localHcmCall(payload = {}) {
         employeeId: payload.employeeId,
       });
       if (!gate.ok) fail(gate.reason, gate);
+      // Model Arts. 18–19: the elements pre-filled from evidence — the server's derivation, offline.
+      const person = (data.employees || []).find((e) => String(e.employeeId || e.id) === String(payload.employeeId)) || null;
+      const facts = deriveEmployeeTaskFacts({
+        tasks: data.tasks || [],
+        employeeId: String(payload.employeeId),
+        stationId: person?.stationId || null,
+        period: { from: cycle.from, to: cycle.to },
+      });
+      const prefill = reportPrefill({
+        quality: facts.quality,
+        attendance: payload.evidence?.attendance?.basis || null,
+        conduct: payload.evidence?.conduct?.basis || null,
+      });
+      const report = checkReportEvidenceGate({ elements: payload.elements, prefill, reasons: payload.elementReasons || {}, rating: gate.rating });
+      if (!report.ok) fail(report.reason, report);
       record = {
         id: uid("rate"),
         cycleId: cycle.id,
         employeeId: String(payload.employeeId),
         derivedScore: gate.derived,
         rating: gate.rating,
+        level: perfLevelOf(gate.rating)?.level ?? null,
+        elements: report.elements,
+        evidence: report.evidence,
+        elementReasons: report.elementReasons,
         justification: gate.justification,
         ratedBy: auth.userId,
         ratedByName: auth.name,

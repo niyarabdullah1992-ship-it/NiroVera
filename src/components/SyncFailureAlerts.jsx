@@ -20,11 +20,20 @@ export default function SyncFailureAlerts() {
         ? "مساحة التخزين على هذا الجهاز ممتلئة — أُفرغت بيانات قديمة. أعد المحاولة، وإن تكرر الأمر فسجّل الخروج والدخول لتحديث الكاش."
         : "This device's storage is full — old cached data was cleared. Retry; if it repeats, sign out and back in to refresh the cache.",
     });
+    // A queued sanction stage the server's gate refused later — say why, naming the article.
+    const onDiscipline = (e) => toast({
+      variant: "destructive",
+      description: ar
+        ? `لم يُحفظ إجراء ملف الجزاء: ${e?.detail?.reason || "رفضه الخادم."}`
+        : `The sanction-file step was not saved: ${e?.detail?.reasonEn || e?.detail?.reason || "refused by the server."}`,
+    });
     window.addEventListener("powercare:sync-rejected", onRejected);
     window.addEventListener("powercare:storage-full", onFull);
+    window.addEventListener("powercare:discipline-rejected", onDiscipline);
     return () => {
       window.removeEventListener("powercare:sync-rejected", onRejected);
       window.removeEventListener("powercare:storage-full", onFull);
+      window.removeEventListener("powercare:discipline-rejected", onDiscipline);
     };
   }, [lang]);
 

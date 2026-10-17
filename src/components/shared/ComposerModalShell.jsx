@@ -22,6 +22,8 @@ export default function ComposerModalShell({
   zIndex = 100,
   asForm = true,
   dataNv,
+  tinted = false,
+  wide = false,
 }) {
   const enabled = !submitDisabled && !busy;
   const customFooter = footer != null;
@@ -36,10 +38,10 @@ export default function ComposerModalShell({
 
   const cardStyle = {
     width: "100%",
-    maxWidth: 680,
+    maxWidth: wide ? 760 : 680,
     maxHeight: "calc(100vh - 32px)",
     background: "var(--nv-card)",
-    borderRadius: 8,
+    borderRadius: tinted ? 14 : 8,
     border: "1px solid var(--nv-line)",
     boxShadow: "0 1px 2px rgba(12,20,16,.04), 0 4px 14px rgba(12,20,16,.05)",
     overflow: "hidden",
@@ -101,7 +103,8 @@ export default function ComposerModalShell({
           flex: 1,
           minHeight: 0,
           overflowY: "auto",
-          padding: 24,
+          padding: tinted ? 18 : 24,
+          background: tinted ? "var(--nv-page, #F4F7F5)" : undefined,
           display: "flex",
           flexDirection: "column",
           gap: 16,
@@ -149,7 +152,7 @@ export default function ComposerModalShell({
                 flex: 1,
                 height: 34,
                 borderRadius: 8,
-                background: enabled ? "var(--nv-btn-fill)" : "var(--nv-line)",
+                background: enabled ? (tinted ? "#0B3D27" : "var(--nv-btn-fill)") : "var(--nv-line)",
                 color: enabled ? "#fff" : "var(--nv-muted)",
                 border: "none",
                 fontSize: 14,

@@ -6,7 +6,6 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import {
   ensurePayrollRun,
   getRun,
-  isPayrollEmployee,
   monthKey,
   netOf,
   payrollItemIssues,
@@ -18,20 +17,30 @@ import {
 } from "@/lib/payroll";
 import { facePayrollItem } from "@/lib/payrollWageSync";
 import { slipRows } from "@/components/payroll/PayrollSlipBoard";
+import { companyPayday } from "@/lib/payrollLaw";
 import { printReport } from "@/lib/printReport";
 import PayrollTableRows from "@/components/payroll/PayrollTableRows";
 import OwnerPayrollToggle from "@/components/payroll/OwnerPayrollToggle";
 import PayrollSyncDialog from "@/components/payroll/PayrollSyncDialog";
 import PayrollTemplateCard from "@/components/payroll/PayrollTemplateCard";
-import { canAdjustPayroll, hrScopeStations } from "@/lib/permissions";
+import { canAdjustPayroll } from "@/lib/permissions";
 import { toast } from "@/components/ui/use-toast";
-import { stationIdForTreeEmployee } from "@/lib/orgTree";
+import { payrollManageScope, UNASSIGNED_STATION_ID } from "@/lib/payrollManageScope";
 import DeductionLinesDialog from "@/components/payroll/DeductionLinesDialog";
 import PayrollRunBoard from "@/components/payroll/PayrollRunBoard";
 import PayrollWpsBoard from "@/components/payroll/PayrollWpsBoard";
 import PayrollAttendanceBoard from "@/components/payroll/PayrollAttendanceBoard";
 import PayrollGosiBoard from "@/components/payroll/PayrollGosiBoard";
+import GosiFollowUpBoard from "@/components/payroll/GosiFollowUpBoard";
 import PayrollEosBoard from "@/components/payroll/PayrollEosBoard";
+import { AllowanceLedgerCard, PayslipEstimateCard, SiteConditionsCard } from "@/components/payroll/PayslipLedger";
+import { requestSelfEmployee } from "@/lib/employeeFileView";
+import { derivePayrollMonthAttendance } from "@/lib/payrollMonthAttendance";
+import PayrollCycleReview from "@/components/payroll/PayrollCycleReview";
+import { stationWithSite } from "@/lib/siteRemoteness";
+import { previousMonth } from "@/lib/payrollReview";
+import MyPayslipArchive from "@/components/payroll/MyPayslipArchive";
+import MyRightsList, { PAY_RIGHT_IDS } from "@/components/dashboard/MyRightsList";
 import PayrollSlipBoard from "@/components/payroll/PayrollSlipBoard";
 import PayrollArchiveBoard, { shiftMonthKey } from "@/components/payroll/PayrollArchiveBoard";
 import {
@@ -41,14 +50,16 @@ import {
   backfillLegacyDeduction,
   disputeDeductionLine,
   deductionLines,
+  reconcileDamageObjections,
 } from "@/lib/payrollDeductions";
+import PayrollLawPanel from "@/components/payroll/PayrollLawPanel";
+import PayrollMinistryPanel from "@/components/payroll/PayrollMinistryPanel";
 import PayrollMineDeductions from "@/components/payroll/PayrollMineDeductions";
 import { notifyMoney } from "@/lib/moneyNotifications";
 import useStationScope from "@/hooks/useStationScope";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { pageKicker } from "@/lib/moduleMeta";
 import { article90MaxDeduction, lineComponents } from "@/lib/payrollDerivations";
-import LaborArticleCite from "@/components/shared/LaborArticleCite";
 import { BORDER, MUTED, WARN, ui, SURFACE, tableShell } from "@/lib/platformStyles";
 import { brandReportColor } from "@/lib/pdfTheme";
 import FinanceViewSwitch from "@/components/shared/FinanceViewSwitch";
@@ -56,11 +67,10 @@ import { MANAGE, SELF, canManageSurface, resolveFinanceView } from "@/lib/financ
 import { useRailSide } from "@/lib/railSide";
 import { PAYROLL_DENY, payrollDenyReason } from "@/lib/payrollRights";
 
-const UNASSIGNED_STATION_ID = "__unassigned__";
 const MANAGE_LAYERS = ["run", "att", "lines", "deduct", "gosi", "eos", "slip", "wps", "files", "archive"];
 // An employee is not "management minus buttons" here: the whole run is somebody
 // else's business. What is theirs is the one line charged to their own name.
-const SELF_LAYERS = ["slip", "deduct"];
+const SELF_LAYERS = ["slip", "deduct", "archive"];
 
 export default function Payroll() {
   const { lang, dir } = useI18n();
@@ -104,7 +114,11 @@ export default function Payroll() {
   useEffect(() => {
     // Materialising the month's run is a management write. The personal view reads
     // whatever run already exists and says so plainly when there is none.
-    if (canView && view === MANAGE && company) ensurePayrollRun(company.id, liveMonth);
+    if (canView && view === MANAGE && company) {
+      ensurePayrollRun(company.id, liveMonth);
+      // Art. 91: accepted damage objections are refunded on the open line.
+      if (canManage) reconcileDamageObjections(company.id, liveMonth);
+    }
     if (company && view === SELF) refreshOwnPayrollDerivation(company.id, liveMonth);
   }, [company?.id, liveMonth, canView, includeOwner, view]);
 
@@ -114,28 +128,13 @@ export default function Payroll() {
 
   const run = getRun(data, month);
   const items = run?.items || [];
-  const payrollScope = currentUser?.hrLevelId
-    ? hrScopeStations(currentUser, data)
-    : currentUser?.role === "pgm" ? (currentUser.managedStations || []) : null;
-  const stationIdOf = (stationId) => stationId || null;
-  const employeeStationId = (employee) => stationIdOf(stationIdForTreeEmployee(data, employee.id) || employee.stationId);
-  const payrollEmployees = (data.employees || []).filter((employee) => isPayrollEmployee(employee, includeOwner) && (payrollScope === null || payrollScope.includes(employeeStationId(employee))));
-  const ownerIds = new Set(includeOwner ? [] : (data.employees || []).filter((employee) => employee.role === "owner").map((employee) => employee.id));
-  const employeeForItem = (item) => (data.employees || []).find((employee) => employee.id === item.employeeId) || payrollEmployees.find((employee) => employee.id === item.employeeId) || {
-    id: item.employeeId,
-    name: item.employeeName || (ar ? "موظف سابق" : "Former employee"),
-    position: item.employeePosition || "",
-    stationId: stationIdOf(item.employeeStationId),
-  };
-  const itemStationId = (item) => {
-    const employee = (data.employees || []).find((entry) => entry.id === item.employeeId);
-    return employee ? employeeStationId(employee) : stationIdOf(item.employeeStationId);
-  };
+  // Whose lines this manager sees — shared with the «الامتثال الوزاري» index (lib/payrollManageScope).
+  const { payrollScope, payrollEmployees, ownerIds, employeeForItem, itemStationId, inScope: lineInScope } = payrollManageScope(data, currentUser, { ar });
   const allowedStations = (data.stations || []).filter((station) => payrollScope === null || payrollScope.includes(station.id));
   const filterStations = [...allowedStations, { id: UNASSIGNED_STATION_ID, name: ar ? "غير مخصص" : "Unassigned" }];
   const allowedStationIds = new Set(filterStations.map((station) => station.id));
   const selectedStationIds = stationFilter.filter((id) => allowedStationIds.has(id));
-  const scopedItems = items.filter((item) => !ownerIds.has(item.employeeId) && (payrollEmployees.some((employee) => employee.id === item.employeeId) || (item.employeeName && (payrollScope === null || payrollScope.includes(itemStationId(item))))));
+  const scopedItems = items.filter(lineInScope);
   const managedVisible = selectedStationIds.length === 0 ? scopedItems : scopedItems.filter((item) => selectedStationIds.includes(itemStationId(item) || UNASSIGNED_STATION_ID));
   // The personal view is a single line: the one charged to the signed-in person.
   // Station scope has nothing to do with it, and nobody else's wage passes through.
@@ -143,7 +142,7 @@ export default function Payroll() {
   const faceOf = (item) => facePayrollItem(
     item,
     (data.employees || []).find((employee) => employee.id === item.employeeId),
-    { otDecisions: data?.otDecisions, month },
+    { otDecisions: data?.otDecisions, month, company: data },
   );
   const myFaced = myItems.map(faceOf);
   const visible = view === MANAGE ? managedVisible : myFaced;
@@ -171,8 +170,8 @@ export default function Payroll() {
       ? "كل بند يحمل مصدراً وسبباً. الغياب مشتقّ من الحضور — تصحيحه من التقويم."
       : "Every line carries a source and a reason. Absence is derived from attendance — correct it on the calendar.",
     gosi: ar
-      ? "الأجر الخاضع = الأساسي + السكن + النقل + أخرى + الليلي، بسقف 45,000. الإضافي والمكافأة خارجه. المشترك القديم 9.75٪ و11.75٪. المشترك الجديد بحسب جدول المعاشات الساري في شهر المسير. تاريخ التسجيل الفارغ يُبقي حصة السعودي 9.75٪. الوافد: 2٪ أخطار مهنية على الشركة."
-      : "Contributory wage = base + housing + transport + other + night, capped at 45,000. Overtime and bonus stay outside. Old subscriber 9.75% / 11.75%. A new subscriber uses the annuity band in force for the payroll month. An empty registration date keeps a Saudi at 9.75%. Expat: 2% occupational hazard on the company.",
+      ? "الأجر الخاضع = الأساسي + بدل السكن + العمولات، بسقف 45,000 وحد أدنى 1,500 (400 للوافد في الأخطار). النقل والبدلات الأخرى والليلي والإضافي والمكافأة خارجه. المشترك القديم 9.75٪ و11.75٪. المشترك الجديد بحسب جدول المعاشات الساري في شهر المسير. تاريخ التسجيل الفارغ يُبقي حصة السعودي 9.75٪. الوافد: 2٪ أخطار مهنية على الشركة."
+      : "Contributory wage = basic + housing + commissions, capped at 45,000 with a 1,500 floor (400 for expats in hazards). Transport, other, night, overtime and bonus stay outside. Old subscriber 9.75% / 11.75%. A new subscriber uses the annuity band in force for the payroll month. An empty registration date keeps a Saudi at 9.75%. Expat: 2% occupational hazard on the company.",
     eos: ar
       ? "نصف أجر شهر لكل سنة من الخمس الأولى، وأجر شهر لكل سنة تالية — التزام يُراكم ولا يُصرف إلا بانتهاء الخدمة."
       : "Half a month per year for the first five, a full month thereafter — accrued, paid only at exit.",
@@ -235,7 +234,7 @@ export default function Payroll() {
         rows: [
           ...slipRows(faced, e, parts, ar).map((row) => [
             row.label,
-            `${row.minus ? "- " : ""}${Number(row.amount || 0).toLocaleString("en-US")} ${faced.currency}`,
+            row.info ? row.valueText : `${row.minus ? "- " : ""}${Number(row.amount || 0).toLocaleString("en-US")} ${faced.currency}`,
           ]),
           [ar ? "سقف الخصم (المادة 93)" : "Deduction cap (Art. 93)", `${article90MaxDeduction(faced).toLocaleString("en-US")} ${faced.currency}`],
           [ar ? "الصافي المحوَّل" : "Net transferred", `${netOf(faced).toLocaleString("en-US")} ${faced.currency}`],
@@ -295,11 +294,11 @@ export default function Payroll() {
       title={view === SELF ? (ar ? "قسيمتي" : "My payslip") : (ar ? "مسير الأجور" : "Wage run")}
       hint={view === SELF
         ? (ar
-          ? "البصمة تغذّي المسير. المصروف والمخزون والعهد في مسار واحد، ولكل مسار سطحه."
-          : "The punch feeds the run. Expenses, stock, and custody each have their own surface.")
+          ? "البصمة تغذّي المسير، والمسير يغذّي قسيمتك. العهدة تُطلب من طلباتي وتُسلَّم عند انتهاء الخدمة."
+          : "The punch feeds the run, and the run feeds your payslip. Custody is requested in My Requests and returned at exit.")
         : (ar
-          ? "الحضور يغذّي المسير. المسير لا يمسّ أوعية المصروفات والمخزون والأصول، ومطالبة مصروف لا تُصرف من المسير."
-          : "Attendance feeds the run. The run does not touch expense, stock, or asset vessels, and an expense claim is never paid from payroll.")}
+          ? "الحضور يغذّي المسير، والمسير يُقفل قبل ملف مدد. العهدة غير المسلّمة تُحسم في التصفية النهائية وحدها (المادة 91)."
+          : "Attendance feeds the run, and the run closes before the Mudad file. Unreturned custody is set off only in the final settlement (Art. 91).")}
       tabTone={view === SELF ? "gold" : "white"}
       viewNote={view === SELF ? "" : hints[tab]}
       legal={view === SELF && tab === "slip" ? "" : (ar
@@ -319,6 +318,7 @@ export default function Payroll() {
       ] : [
         { value: "slip", label: ar ? "قسيمتي" : "My payslip" },
         { value: "deduct", label: ar ? "خصوماتي" : "My deductions" },
+        { value: "archive", label: ar ? "أرشيف قسيمتي" : "My payslip archive" },
       ]}
       tool={tab}
       onTool={setTab}
@@ -360,6 +360,64 @@ export default function Payroll() {
       )}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {tab === "run" && view === MANAGE && (() => {
+        const faced = managedVisible.map(faceOf);
+        const scopeIds = new Set(faced.map((item) => itemStationId(item) || UNASSIGNED_STATION_ID));
+        const prevRun = getRun(data, previousMonth(month));
+        const prevItems = (prevRun?.items || []).filter((item) => !ownerIds.has(item.employeeId)
+          && (selectedStationIds.length === 0
+            ? (payrollScope === null || payrollScope.includes(itemStationId(item)))
+            : scopeIds.has(itemStationId(item) || UNASSIGNED_STATION_ID)));
+        const attGaps = faced.filter((item) => derivePayrollMonthAttendance(item.employeeId, month, data).attGap).length;
+        const deductionGaps = faced.filter((item) => {
+          const lines = (item.deductionLines || []).filter((line) => Number(line?.amount) > 0);
+          return (Number(item.deductions) > 0 && !lines.length) || lines.some((line) => line.source === "manual" && !String(line.reason || line.note || "").trim());
+        }).length;
+        const gosiOpen = faced.filter((item) => item.isSaudi == null || item.gosiBlocked).length;
+        return (
+          <PayrollCycleReview
+            ar={ar}
+            month={month}
+            monthLabel={monthLabel}
+            run={run}
+            items={faced}
+            prevItems={prevItems}
+            employeeForItem={employeeForItem}
+            employees={data.employees || []}
+            stationName={(id) => (id === UNASSIGNED_STATION_ID || id === "__unassigned__" ? (ar ? "غير مخصص" : "Unassigned") : (data.stations || []).find((s) => s.id === id)?.name || id)}
+            stationOf={(item) => itemStationId(item) || "__unassigned__"}
+            stations={(data.stations || []).map((st) => stationWithSite(data, st.id))}
+            attGaps={attGaps}
+            issueCount={issueCount}
+            deductionGaps={deductionGaps}
+            gosiOpen={gosiOpen}
+            onGo={setTab}
+          />
+        );
+      })()}
+
+      {tab === "run" && view === MANAGE && (
+        <PayrollLawPanel
+          companyId={company?.id}
+          data={data}
+          month={month}
+          items={managedVisible.map(faceOf)}
+          employeeForItem={employeeForItem}
+          canManage={canManage}
+          ar={ar}
+        />
+      )}
+
+      {tab === "run" && view === MANAGE && (
+        <PayrollMinistryPanel
+          ar={ar}
+          data={data}
+          month={month}
+          items={managedVisible.map(faceOf)}
+          employeeForItem={employeeForItem}
+        />
+      )}
+
       {tab === "run" && view === MANAGE && (
         <PayrollRunBoard
           month={month}
@@ -383,12 +441,29 @@ export default function Payroll() {
       )}
 
       {tab === "gosi" && view === MANAGE && (
-        <PayrollGosiBoard items={visible} employeeForItem={employeeForItem} ar={ar} month={month} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <GosiFollowUpBoard data={data} companyId={company?.id} ar={ar} by={currentUser?.name || ""} />
+          <PayrollGosiBoard items={visible} employeeForItem={employeeForItem} ar={ar} month={month} />
+        </div>
       )}
 
       {tab === "eos" && view === MANAGE && (
-        <PayrollEosBoard items={visible} employeeForItem={employeeForItem} ar={ar} />
+        <PayrollEosBoard items={visible} employeeForItem={employeeForItem} ar={ar} payrollRuns={data?.payrollRuns || []} />
       )}
+
+      {tab === "archive" && view === SELF && (() => {
+        const me = myItem ? employeeForItem(myItem) : requestSelfEmployee(currentUser, data.employees || []);
+        return (
+          <MyPayslipArchive
+            employee={me}
+            employeeIds={[currentUser?.id]}
+            runs={data.payrollRuns || []}
+            ar={ar}
+            lang={lang}
+            companyName={company?.name || ""}
+          />
+        );
+      })()}
 
       {tab === "deduct" && view === SELF && (
         <PayrollMineDeductions
@@ -417,7 +492,46 @@ export default function Payroll() {
         />
       )}
 
-      {tab === "slip" && (
+      {tab === "slip" && view === SELF && (() => {
+        // قسيمتي: the run's line when the month has one; otherwise the file's own reading of the month.
+        const me = myItem ? employeeForItem(myItem) : requestSelfEmployee(currentUser, data.employees || []);
+        const station = stationWithSite(data, me?.stationId);
+        return (
+          <div data-my-payslip="1" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <MyRightsList employee={me} data={data} ar={ar} only={PAY_RIGHT_IDS} title={ar ? "حقوق راتبي" : "My pay rights"} lede={ar ? "موعد راتبك وحد الخصم منه — من ملفك." : "Your payday and the deduction cap — from your file."} />
+            {myItem ? (
+              <PayrollSlipBoard
+                monthLabel={monthLabel}
+                month={month}
+                items={visible}
+                employeeForItem={employeeForItem}
+                data={data}
+                ar={ar}
+                personal
+                onExport={exportPayslip}
+              />
+            ) : me ? (
+              <PayslipEstimateCard
+                employee={me}
+                ar={ar}
+                monthLabel={monthLabel}
+                month={month}
+                stationName={station.name || ""}
+                note={ar
+                  ? "لا بند لك في مسير هذا الشهر بعد — تقدير من ملفك حتى يُجهَّز المسير ويُقفل الحضور."
+                  : "No line for you in this month's run yet — an estimate from your file until the run is prepared and attendance locks."}
+              />
+            ) : (
+              <p style={{ margin: 0, fontSize: 13, color: MUTED }}>{ar ? "لا ملف موظف مرتبط بحسابك بعد." : "No employee file is linked to your account yet."}</p>
+            )}
+            {me ? <AllowanceLedgerCard employee={me} ar={ar} /> : null}
+            {me ? <SiteConditionsCard employee={me} station={station} ar={ar} /> : null}
+            {me ? <PayrollMinistryPanel ar={ar} data={data} month={month} items={myItem ? [myItem] : []} self /> : null}
+          </div>
+        );
+      })()}
+
+      {tab === "slip" && view !== SELF && (
         <PayrollSlipBoard
           monthLabel={monthLabel}
           month={month}
@@ -425,18 +539,13 @@ export default function Payroll() {
           employeeForItem={employeeForItem}
           data={data}
           ar={ar}
-          personal={view === SELF}
+          personal={false}
           onExport={exportPayslip}
         />
       )}
 
       {(tab === "lines" || tab === "deduct") && view === MANAGE && (
         <div style={{ ...tableShell, overflowX: "auto" }}>
-            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", margin: "0 0 10px" }}>
-              <LaborArticleCite ruleId="payroll.deduction.capRatio" ar={ar} showText />
-              <LaborArticleCite ruleId="payroll.wage.payment.cite" ar={ar} showText />
-              <LaborArticleCite ruleId="hours.ot.premium" ar={ar} showText />
-            </div>
             {visible.length === 0 ? (
               <p style={{ margin: "24px 18px", textAlign: "center", fontSize: 13, color: MUTED }}>
                 {ar ? "لا موظفين في هذا النطاق — وسّع نطاق الهيدر أو حدّث من الملفات." : "No employees in this scope — widen header scope or refresh from profiles."}
@@ -457,12 +566,15 @@ export default function Payroll() {
                     getStationId={itemStationId}
                     employeeForItem={employeeForItem}
                     ar={ar}
+                    payday={companyPayday(data?.settings, month)}
                     onChange={(itemId, field, value) => refused(updatePayrollItem(company.id, month, itemId, { [field]: value }))}
                     onTogglePaid={(item, paid) => {
                       if (paid && payrollItemIssues(item).length) {
                         const issues = payrollItemIssues(item);
                         const msg = (issues.includes("ARTICLE_93_EXCEEDED") || issues.includes("ARTICLE_90_EXCEEDED"))
                           ? (ar ? "لا يمكن الدفع — مجموع الخصومات يتجاوز نصف الأجر (المادة 93)." : "Payment blocked — deductions exceed half the wage (Art. 93).")
+                          : issues.includes("CURRENCY_NOT_SAR")
+                            ? (ar ? "لا يمكن الدفع — الأجر يُدفع بالعملة الرسمية للمملكة (الريال) — المادة 90." : "Payment blocked — wages are paid in the Kingdom's official currency (SAR) — Art. 90.")
                           : issues.includes("OT_ANNUAL_CAP")
                             ? (ar ? "لا يمكن الدفع — ساعات الإضافي تتجاوز 720 ساعة في السنة (اللائحة مادة 22)." : "Payment blocked — overtime exceeds 720 hours in a year (implementing regulations Art. 22).")
                             : (ar ? "لا يمكن اعتماد الدفع قبل إدخال راتب أساسي ومبالغ صحيحة وصافي موجب وعملة صالحة." : "Payment cannot be approved until base salary, valid amounts, a positive net, and a valid currency are set.");

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { hcmCall } from "@/lib/hcmApi";
 import { ACTION_LABELS, ACTION_REASONS } from "@/lib/hcmDerivations";
 import StationTransferPanel from "@/components/employees/StationTransferPanel";
+import NecessityCard from "@/components/employees/NecessityCard";
 import { ACCENT, MUTED, NAVY, cardShell, tableShell } from "@/lib/platformStyles";
 
 const STATUS_LABELS = {
@@ -56,7 +57,20 @@ export default function AssignmentTab({
     return () => { alive = false; };
   }, [companyId, employee?.id, ar, reloadKey]);
 
-  const transferPanel = canManage ? (
+  const necessityCard = (
+    <NecessityCard
+      employee={employee}
+      companyId={companyId}
+      actor={currentUser}
+      canManage={canManage}
+      ar={ar}
+      onDone={() => {
+        setReloadKey((k) => k + 1);
+        onTransferred?.();
+      }}
+    />
+  );
+  const moveCard = canManage ? (
     <StationTransferPanel
       employee={employee}
       stations={stations}
@@ -74,6 +88,12 @@ export default function AssignmentTab({
         ? "نقل الفرع والمنصب من صلاحيات الإدارة أو الموارد البشرية — عبر «تنظيم» في الهيكل أو من هنا عند توفر الصلاحية."
         : "Branch and position moves are for management or HR — via Organize in the org tree, or here when permitted."}
     </div>
+  );
+  const transferPanel = (
+    <>
+      {necessityCard}
+      {moveCard}
+    </>
   );
 
   if (error && !state) {

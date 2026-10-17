@@ -25,10 +25,34 @@ export const opsLogCompletionSchema = opsBase.extend({
   scope: z.string().nullable().optional(),
 });
 
+const qualityLevelSchema = z.coerce.number().int().min(1).max(5);
+
 export const opsApproveSchema = opsBase.extend({
   action: z.literal("approve"),
   taskId: entityIdSchema,
+  // Required by name in the handler (QUALITY_LEVEL_REQUIRED), so the refusal is the platform's own.
+  qualityLevel: qualityLevelSchema.optional(),
+  qualityReason: z.string().max(500).optional(),
+  qualityOverrides: z.record(z.object({ level: qualityLevelSchema, reason: z.string().max(500).optional() }).passthrough()).optional(),
+  lang: z.enum(["ar", "en"]).optional(),
   scope: z.string().nullable().optional(),
+});
+
+export const opsQualityObjectionSchema = opsBase.extend({
+  action: z.literal("qualityObjection"),
+  taskId: entityIdSchema,
+  reason: z.string().max(2000).optional(),
+  lang: z.enum(["ar", "en"]).optional(),
+});
+
+export const opsDecideQualityObjectionSchema = opsBase.extend({
+  action: z.literal("decideQualityObjection"),
+  taskId: entityIdSchema,
+  objectionId: z.string().min(1).max(200),
+  decision: z.string().max(20).optional(),
+  note: z.string().max(2000).optional(),
+  newLevel: qualityLevelSchema.optional(),
+  lang: z.enum(["ar", "en"]).optional(),
 });
 
 export const opsRejectSchema = opsBase.extend({
@@ -169,6 +193,8 @@ export const opsDeleteSchema = opsBase.extend({
 export const opsActionSchemas = {
   logCompletion: opsLogCompletionSchema,
   approve: opsApproveSchema,
+  qualityObjection: opsQualityObjectionSchema,
+  decideQualityObjection: opsDecideQualityObjectionSchema,
   reject: opsRejectSchema,
   employeeEscalate: opsEmployeeEscalateSchema,
   attendanceStatus: opsAttendanceStatusSchema,
@@ -315,6 +341,8 @@ export const attendanceCheckInSchema = tenantRequestSchema.extend({
   accuracy: z.number().finite().optional(),
 });
 
+const clockHmSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
 export const attendanceCheckOutSchema = tenantRequestSchema.extend({
   action: z.literal("checkOut"),
   employeeId: employeeIdSchema,
@@ -322,11 +350,41 @@ export const attendanceCheckOutSchema = tenantRequestSchema.extend({
   lat: z.number().finite().optional(),
   lng: z.number().finite().optional(),
   accuracy: z.number().finite().optional(),
+  // «راحة مرنة ببصمة»: where the card placed an unpunched break (nearest prayer); the server re-checks it.
+  assumedBreak: z.object({ start: clockHmSchema, end: clockHmSchema }).optional(),
+});
+
+/** «بدأت راحتي» / «أنهيت راحتي» — a flex shift's break punch on the same day record. */
+export const attendanceBreakStartSchema = tenantRequestSchema.extend({
+  action: z.literal("breakStart"),
+  employeeId: employeeIdSchema,
+  lat: z.number().finite().optional(),
+  lng: z.number().finite().optional(),
+  accuracy: z.number().finite().optional(),
+});
+
+export const attendanceBreakEndSchema = tenantRequestSchema.extend({
+  action: z.literal("breakEnd"),
+  employeeId: employeeIdSchema,
+  lat: z.number().finite().optional(),
+  lng: z.number().finite().optional(),
+  accuracy: z.number().finite().optional(),
+});
+
+/** The manager's decision on a flex break that ran past its minutes (late return, not a breach). */
+export const attendanceReviewLateReturnSchema = tenantRequestSchema.extend({
+  action: z.literal("reviewLateReturn"),
+  employeeId: employeeIdSchema,
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  decision: z.enum(["excused", "late"]),
 });
 
 export const attendanceActionSchemas = {
   checkIn: attendanceCheckInSchema,
   checkOut: attendanceCheckOutSchema,
+  breakStart: attendanceBreakStartSchema,
+  breakEnd: attendanceBreakEndSchema,
+  reviewLateReturn: attendanceReviewLateReturnSchema,
 } as const;
 
 export function validateAttendanceRequest(body: unknown) {
@@ -337,6 +395,21 @@ export const offboardingMarkReturnedSchema = tenantRequestSchema.extend({
   action: z.literal("markReturned"),
   employeeId: employeeIdSchema,
   assetId: entityIdSchema,
+  returnEvidenceName: z.string().max(240).optional(),
+});
+
+/** Employee custody (العهدة) — a light list on the offboarding case, Art. 65(2). */
+export const offboardingAddCustodySchema = tenantRequestSchema.extend({
+  action: z.literal("addCustody"),
+  employeeId: employeeIdSchema,
+  item: z.object({
+    name: z.string().max(200),
+    serial: z.string().max(200).optional(),
+    value: z.union([z.number(), z.string()]).optional(),
+    handedAt: z.string().max(32).optional(),
+    evidenceName: z.string().max(240).optional(),
+    evidenceUrl: z.string().max(2000).optional(),
+  }),
 });
 
 export const offboardingCompleteSchema = tenantRequestSchema.extend({
@@ -345,6 +418,7 @@ export const offboardingCompleteSchema = tenantRequestSchema.extend({
 });
 
 export const offboardingActionSchemas = {
+  addCustody: offboardingAddCustodySchema,
   markReturned: offboardingMarkReturnedSchema,
   complete: offboardingCompleteSchema,
 } as const;

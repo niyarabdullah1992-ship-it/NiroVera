@@ -10,7 +10,7 @@ import { managerPendingInbox, requestEmployeeStationId } from "./requestWorkspac
 import { pendingManagerDecideCount } from "./otherRequestDerivations.js";
 import { nightDueAdminEmployees, nightDueEmployeeCount, pendingPunchQueueCount } from "./suiteBadges.js";
 import { faceOf, isDisciplineSettled } from "./disciplineBoard.js";
-import { collectVoiceItems, deriveVoiceBoard } from "./voiceBoard.js";
+import { deriveVoiceBoard, viewerVoiceQueueItems } from "./voiceBoard.js";
 import { deriveWpsStatus } from "./payrollDerivations.js";
 import { isEscalated } from "./opsDerivations.js";
 
@@ -150,10 +150,8 @@ function voiceAlerts(user, data, allowed) {
   ));
   if (!can) return acc;
   const employees = data?.employees || [];
-  const items = collectVoiceItems({
-    publicReports: data?.publicReports,
-    anonymousReports: data?.anonymousReports,
-  });
+  // HR-only channels never bump a manager's chip — the queue is the viewer's own (voiceBoard).
+  const items = viewerVoiceQueueItems(data, user);
   for (const stationId of allowed) {
     const queue = items.filter((item) => {
       const author = employees.find((row) => String(row.id) === String(item.authorId));
@@ -186,26 +184,8 @@ function attendanceAlerts(user, data, allowed, attendanceRows) {
   return acc;
 }
 
-function expenseOpen(claim, user, data) {
-  const status = claim?.status || "pending";
-  const senior = seesAllDutyStations(user, data) || user?.id === data?.ownerId;
-  if (status === "pending" || status === "submitted") {
-    return senior || ["pgm", "station_manager"].includes(user?.role);
-  }
-  if (status === "manager_approved") return user?.role === "financial_officer" || senior;
-  return false;
-}
-
 function moneyAlerts(section, user, data, allowed) {
   const acc = emptyAcc();
-  if (section === "expenses") {
-    const claims = data?.expenseClaims || data?.expenses || [];
-    for (const claim of claims) {
-      if (!expenseOpen(claim, user, data)) continue;
-      bucket(allowed, claim.stationId, 1, "plain", acc);
-    }
-    return acc;
-  }
   if (section === "payroll") {
     const can = !!(user && (
       user.id === data?.ownerId
@@ -221,20 +201,6 @@ function moneyAlerts(section, user, data, allowed) {
       for (const item of run.items) {
         bucket(allowed, item.employeeStationId || item.stationId, 1, "plain", acc);
       }
-    }
-    return acc;
-  }
-  if (section === "assets") {
-    for (const row of data?.assetTransfers || []) {
-      if (row.status !== "pending") continue;
-      bucket(allowed, row.fromStationId || row.stationId, 1, "plain", acc);
-    }
-    return acc;
-  }
-  if (section === "inventory") {
-    for (const row of data?.materialRequests || []) {
-      if (row.status !== "pending") continue;
-      bucket(allowed, row.sourceStationId || row.stationId, 1, "plain", acc);
     }
     return acc;
   }
@@ -264,7 +230,7 @@ function alertsFor(section, user, data, allowed, attendanceRows) {
   if (section === "discipline") return disciplineAlerts(user, data, allowed);
   if (section === "complaints") return voiceAlerts(user, data, allowed);
   if (section === "attendance") return attendanceAlerts(user, data, allowed, attendanceRows);
-  if (section === "payroll" || section === "expenses" || section === "assets" || section === "inventory") {
+  if (section === "payroll") {
     return moneyAlerts(section, user, data, allowed);
   }
   if (section === "safety") return safetyAlerts(data, allowed);
@@ -309,15 +275,12 @@ const NOTICE_SECTIONS = [
   { id: "attendance", ar: "حضور ينتظر المراجعة", en: "Attendance awaiting review", kindAr: "الحضور والدوام", kindEn: "Attendance", route: "/app/attendance?lane=manage" },
   { id: "safety", ar: "مخاطر سلامة مفتوحة", en: "Open safety hazards", kindAr: "السلامة", kindEn: "Safety", route: "/app/safety?lane=manage" },
   { id: "escalation", ar: "مهام تصاعدت", en: "Escalated tasks", kindAr: "التشغيل اليومي", kindEn: "Operations", route: "/app/tasks?lane=manage" },
-  { id: "expenses", ar: "مصروفات بانتظار قرار", en: "Expenses awaiting you", kindAr: "المال والأصول", kindEn: "Money", route: "/app/expenses?view=manage" },
-  { id: "payroll", ar: "مسير بانتظار الاعتماد", en: "Payroll awaiting approval", kindAr: "المال والأصول", kindEn: "Money", route: "/app/payroll?view=manage" },
-  { id: "assets", ar: "نقل أصل بانتظارك", en: "Asset transfer awaiting you", kindAr: "المال والأصول", kindEn: "Money", route: "/app/assets?view=manage" },
-  { id: "inventory", ar: "طلب مخزون بانتظارك", en: "Stock request awaiting you", kindAr: "المخزون", kindEn: "Inventory", route: "/app/inventory?view=manage" },
+  { id: "payroll", ar: "مسير بانتظار الاعتماد", en: "Payroll awaiting approval", kindAr: "المال", kindEn: "Money", route: "/app/payroll?view=manage" },
 ];
 
 function noticeBand(section, tone) {
   if (tone === "bad" || section === "safety" || section === "escalation") return "urgent";
-  if (tone === "warn" || section === "requests" || section === "attendance" || section === "discipline" || section === "complaints" || section === "expenses" || section === "payroll" || section === "assets" || section === "inventory") {
+  if (tone === "warn" || section === "requests" || section === "attendance" || section === "discipline" || section === "complaints" || section === "payroll") {
     return "decision";
   }
   return "info";
@@ -350,6 +313,34 @@ export function buildBranchNotices({ user, data, attendanceRows = [] } = {}) {
         band: noticeBand(section.id, row.tone),
       });
     }
+  }
+  // 3337 — today's sun-ban alerts addressed to this manager (written at 12:00 by openDueHeatBanNotices).
+  const pad = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const heatBy = new Map();
+  for (const row of data?.notifications || []) {
+    const key = String(row?.key || "");
+    if (row?.read || String(row?.userId) !== String(user?.id) || !key.startsWith(`3337-admin:${user?.id}:`) || !key.endsWith(today)) continue;
+    const employeeId = key.split(":")[2];
+    const employee = (data?.employees || []).find((emp) => String(emp.id) === String(employeeId));
+    const sid = String(employee?.profile?.workStationId || employee?.stationId || "");
+    if (!nameOf.has(sid)) continue;
+    heatBy.set(sid, (heatBy.get(sid) || 0) + 1);
+  }
+  for (const [sid, count] of heatBy) {
+    items.push({
+      id: `heatban:${sid}`,
+      stationId: sid,
+      branch: nameOf.get(sid),
+      titleAr: "حظر الشمس — بدأت ساعات الحظر (3337)",
+      titleEn: "Sun ban — ban hours started (3337)",
+      kindAr: "جدول الدوام",
+      kindEn: "Duty roster",
+      route: "/app/shifts?lane=manage",
+      count,
+      band: "urgent",
+    });
   }
   const rank = { urgent: 0, decision: 1, info: 2 };
   items.sort((a, b) => (rank[a.band] - rank[b.band]) || (b.count - a.count) || a.branch.localeCompare(b.branch, "ar"));

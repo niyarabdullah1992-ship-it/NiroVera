@@ -12,19 +12,19 @@ import { listLocalTodayAttendance, mergeAttendanceRows } from "@/lib/localAttend
 import { isOnLeaveToday, leaveTypeLabel } from "@/lib/leaveTypes";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import PullToRefresh from "@/components/mobile/PullToRefresh";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import EmployeeDashboard from "@/components/dashboard/EmployeeDashboard";
 import HandoffCommandBoard from "@/components/dashboard/HandoffCommandBoard";
 import OperationsModuleGrid from "@/components/dashboard/OperationsModuleGrid";
-import DashboardPersonaBar from "@/components/dashboard/DashboardPersonaBar";
+import { usePersonaLine } from "@/components/dashboard/DashboardPersonaBar";
 import useCommandSigningSnapshot from "@/hooks/useCommandSigningSnapshot";
 import StationManagerDashboard from "@/components/dashboard/StationManagerDashboard";
 import SuiteWelcomeModal from "@/components/suite/SuiteWelcomeModal";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
 import { hasSeenSuiteWelcome } from "@/lib/suiteApps";
-import { pageKicker } from "@/lib/moduleMeta";
 import { openWrittenConsentCount } from "@/lib/writtenConsent";
 import { useRailSide } from "@/lib/railSide";
+import { viewerVoiceQueueItems } from "@/lib/voiceBoard";
 
 function pendingSigningCount(data) {
   return (data?.signatureRequests || []).filter((row) => {
@@ -32,12 +32,6 @@ function pendingSigningCount(data) {
     const status = String(row.status || "").toLowerCase();
     return status === "pending" || status === "awaiting" || status === "in_progress";
   }).length;
-}
-
-function pendingExpenseCount(data) {
-  return (data?.expenses || data?.expenseClaims || []).filter((row) =>
-    ["submitted", "manager_approved", "pending"].includes(row.status),
-  ).length;
 }
 
 function openHazardCount(data) {
@@ -58,7 +52,8 @@ function buildModuleMetrics(data, extra = {}) {
     completedTasks: completed,
     openTasks: extra.openTasks ?? Math.max(0, taskTotal - completed),
     escalated: extra.escalated ?? tasks.filter(isEscalated).length,
-    complaints: extra.complaints ?? (data?.anonymousReports || []).filter((row) => row.status === "open").length,
+    // Voice counts are the viewer's own queue (voiceBoard.viewerVoiceQueueItems) — never a company total.
+    complaints: extra.complaints ?? 0,
     reports: extra.reports ?? reports.length,
     pendingReports: extra.pendingReports ?? reports.filter((row) => row.status === "pending").length,
     payroll: data?.payroll?.length || 0,
@@ -74,13 +69,12 @@ function buildModuleMetrics(data, extra = {}) {
     offboarding: extra.offboarding ?? 0,
     safety: (data?.safety || []).length,
     hazards: extra.hazards ?? openHazardCount(data),
-    expenses: extra.pendingExpenses ?? pendingExpenseCount(data),
-    inventory: data?.inventory?.length || data?.inventoryItems?.length || 0,
     files: data?.files?.length || 0,
     messages: data?.messages?.length || 0,
   };
 }
 
+/** Header figure on the green — a link to the section that owns it. */
 export default function Dashboard() {
   const { lang } = useI18n();
   const headerScope = useStationScope();
@@ -92,6 +86,7 @@ export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const railSide = useRailSide();
   const face = searchParams.get("face") === "map" ? "map" : "decide";
+  const personaLine = usePersonaLine(lang);
   const setFace = (next) => {
     const params = new URLSearchParams(searchParams);
     if (next === "map") params.set("face", "map");
@@ -186,7 +181,8 @@ export default function Dashboard() {
   const tree = data.stations || [];
   const stations = visibleStations(currentUser, data).filter((s) => matchesStationScope(s.id, headerScope, tree));
   const stationIds = new Set(stations.map((s) => s.id));
-  const anonOpenCount = (data.anonymousReports || []).filter((a) => stationIds.has(a.stationId) && a.status === "open").length;
+  // HR-only voices (anonymous, suggestion) never count on a manager's board.
+  const anonOpenCount = viewerVoiceQueueItems(data, currentUser).filter((a) => (!a.stationId || stationIds.has(a.stationId)) && a.status === "open").length;
   const isEmployee = currentUser.role === "employee";
   const personalFace = isEmployee || railSide === "employee";
   const teamEmployees = visibleEmployees(currentUser, data).filter((employee) =>
@@ -208,10 +204,6 @@ export default function Dashboard() {
     activeMembers: todayAtt.presentLike,
     employees: teamEmployees.length,
   };
-  const pendingLeaveEarly = teamEmployees.reduce(
-    (sum, employee) => sum + (employee.leaveRequests || []).filter((request) => request.status === "pending").length,
-    0,
-  );
   const isStationLead = currentUser.role === "station_manager" || currentUser.role === "pgm";
 
   const wrapBoard = (decideBody, mapMetrics, viewNote) => (
@@ -220,44 +212,23 @@ export default function Dashboard() {
       <PullToRefresh onRefresh={handleRefresh}>
         <SuiteWorkspaceFrame
           ar={ar}
-          kicker={pageKicker("/app", lang)}
+          kicker={personalFace ? (ar ? "ملفي" : "My file") : personaLine}
           title={ar ? "لوحة القيادة" : "Dashboard"}
-          hint={ar
-            ? <>نظرة قرار: <Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>حضور</Link> يغذّي المسير · <Link to="/app/tasks" style={{ color: "inherit", fontWeight: 600 }}>مهمة</Link> تحتاج إثباتاً · <Link to="/app/signing" style={{ color: "inherit", fontWeight: 600 }}>توقيع</Link> ثم تحقق. الأرقام من السجل والنطاق المعروض.</>
-            : <>A decision glance: <Link to="/app/attendance" style={{ color: "inherit", fontWeight: 600 }}>attendance</Link> feeds payroll · a <Link to="/app/tasks" style={{ color: "inherit", fontWeight: 600 }}>task</Link> needs proof · <Link to="/app/signing" style={{ color: "inherit", fontWeight: 600 }}>sign</Link> then verify. Figures from the registry and the current scope.</>}
+          hint={viewNote}
           tabs={[
             {
               value: "decide",
               label: personalFace ? (ar ? "يومي" : "My day") : (ar ? "قرار اليوم" : "Today's decision"),
-              count: isEmployee ? signingSnap.mine : pendingLeaveEarly,
+              count: isEmployee ? signingSnap.mine : 0,
             },
             { value: "map", label: ar ? "دورة الإثبات" : "Proof cycle" },
           ]}
           tool={face}
           onTool={setFace}
-          viewNote={viewNote}
           legal={ar
             ? "الأرقام مشتقّة من السجل والنطاق المعروض — ليست تقديراً ولا تُختلق. ملفي = محطة العمل · إدارة = فرع واحد."
             : "Figures are derived from the registry and the current scope — not estimated or invented. My file = work station · Manage = one branch."}
-          meta={(
-            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-              <DashboardPersonaBar lang={lang} onGreen />
-              <span style={{ width: 1, height: 28, background: "rgba(255,255,255,.28)" }} />
-              <div style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
-                <span style={{ fontSize: 11, color: "#C5DBCD" }}>{ar ? "حضور اليوم" : "Today's attendance"}</span>
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, fontWeight: 600, color: "#fff", unicodeBidi: "isolate" }}>{Math.round(attendanceRate)}%</span>
-              </div>
-              {!personalFace && pendingLeaveEarly > 0 ? (
-                <>
-                  <span style={{ width: 1, height: 28, background: "rgba(255,255,255,.28)" }} />
-                  <div style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
-                    <span style={{ fontSize: 11, color: "#C5DBCD" }}>{ar ? "بانتظار قرارك" : "Awaiting you"}</span>
-                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 16, fontWeight: 600, color: "#fff", unicodeBidi: "isolate" }}>{pendingLeaveEarly}</span>
-                  </div>
-                </>
-              ) : null}
-            </div>
-          )}
+          // No figures in the hero — attendance and pending decisions already lead the board below.
         >
           {face === "map" ? (
             <OperationsModuleGrid metrics={mapMetrics} lang={lang} user={currentUser} data={data} company={company} personal={personalFace} />
@@ -273,7 +244,7 @@ export default function Dashboard() {
     return wrapBoard(
       <EmployeeDashboard user={currentUser} company={company} data={data} />,
       buildModuleMetrics(data, attendanceExtras),
-      ar ? "حضورك ثم مهامك ثم الإثبات — الرفع والقرار ليسا من هنا." : "Your attendance, then your tasks, then proof — raising and ruling are not from here.",
+      ar ? "حضورك ومهامك وما ينتظر توقيعك اليوم." : "Your attendance, tasks and what awaits your signature today.",
     );
   }
 
@@ -281,7 +252,7 @@ export default function Dashboard() {
     return wrapBoard(
       <StationManagerDashboard user={currentUser} data={data} stoppageCount={stoppageCount} />,
       buildModuleMetrics(data, attendanceExtras),
-      ar ? "قرارات اليوم على نطاق فرعك — الحضور يغذّي المسير، والمهمة تحتاج إثباتاً." : "Today's decisions for your station — attendance feeds payroll, and a task needs proof.",
+      ar ? "ما يحتاج قرارك اليوم في فرعك — كل رقم يفتح قسمه." : "What needs you today in your branch — each figure opens its section.",
     );
   }
 
@@ -337,9 +308,9 @@ export default function Dashboard() {
   );
   const handoffQueue = leaveQueue.slice(0, 6);
   const handoffAlerts = [
-    ...(escalatedTasks ? [{ level: "info", text: lang === "ar" ? `${escalatedTasks} مهمة في صندوق التصعيد — تحتاج مراجعتك.` : `${escalatedTasks} task(s) in the escalation inbox — need your review.`, to: "/app/escalation" }] : []),
+    ...(escalatedTasks ? [{ level: "info", text: lang === "ar" ? `${escalatedTasks} مهمة في صندوق التصعيد — تحتاج مراجعتك.` : `${escalatedTasks} task(s) in the escalation inbox — need your review.`, to: "/app/tasks?lane=manage&filter=escalated" }] : []),
     ...(delayedTasks ? [{ level: "info", text: lang === "ar" ? `${delayedTasks} مهمة تقترب من موعدها أو متأخرة.` : `${delayedTasks} tasks due soon or overdue.`, to: "/app/tasks" }] : []),
-    ...(absentCount ? [{ level: "warn", text: lang === "ar" ? `${absentCount} من المجدولين لم يسجّلوا حضورًا بعد.` : `${absentCount} scheduled staff not checked in yet.`, to: "/app/attendance" }] : []),
+    ...(absentCount ? [{ level: "warn", text: lang === "ar" ? `${absentCount} من المجدولين لم يسجّلوا حضورًا بعد.` : `${absentCount} scheduled staff not checked in yet.`, to: "/app/attendance?lane=manage" }] : []),
     ...(openHazards ? [{ level: "critical", text: lang === "ar" ? `${openHazards} مخاطر سلامة بانتظار الإغلاق.` : `${openHazards} open safety hazards awaiting closure.`, to: "/app/safety" }] : []),
     ...(pendingLeaveCount ? [{ level: "ok", text: lang === "ar" ? `${pendingLeaveCount} طلب إجازة بانتظار القرار.` : `${pendingLeaveCount} leave requests awaiting a decision.`, to: "/app/requests/leave" }] : []),
     ...(mineConsentCount ? [{ level: "warn", text: lang === "ar" ? `${mineConsentCount} موافقة خطية تنتظر ختمك في طلباتي.` : `${mineConsentCount} written consent awaiting your seal in My Requests.`, to: "/app/requests" }] : []),
@@ -392,6 +363,8 @@ export default function Dashboard() {
       leaveCount={teamEmployees.filter((e) => isOnLeaveToday(e)).length}
       absentCount={absentCount}
       daysClear={todayIncidents > 0 ? 0 : null}
+      scopeEmployees={teamEmployees}
+      data={data}
     />,
     buildModuleMetrics(data, {
       tasks: tasks.length,
@@ -410,9 +383,8 @@ export default function Dashboard() {
       activeMembers: activeMembersCount,
       pendingLeave: pendingLeaveCount,
       hazards: openHazards,
-      pendingExpenses: pendingExpenseCount(data),
       escalated: escalatedTasks,
     }),
-    ar ? "ما يحتاج قرارك اليوم — كل رقم يفتح القسم الذي يصلحه." : "What needs your decision today — each figure opens the section that fixes it.",
+    ar ? "ما يحتاج قرارك اليوم — كل رقم يفتح قسمه." : "What needs your decision today — each figure opens its section.",
   );
 }

@@ -60,22 +60,7 @@ export default function ThemeToggle() {
       aria-label={name}
       title={dark ? t("lightMode") : name}
       aria-pressed={dark}
-      className="nv-frame-iconbtn"
-      style={{
-        height: 32,
-        width: 34,
-        padding: 0,
-        borderRadius: 9,
-        border: "1px solid var(--nv-line, #E4E9E6)",
-        background: "var(--nv-card)",
-        color: "var(--nv-ink, #111418)",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        flexShrink: 0,
-        fontFamily: "inherit",
-      }}
+      className="nv-hdr-seg nv-hdr-icon nv-frame-iconbtn"
     >
       {dark
         ? <Sun style={{ width: 16, height: 16 }} strokeWidth={1.75} />

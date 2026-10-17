@@ -1,14 +1,17 @@
 import React from "react";
-import { BORDER, CARD, INK, MUTED } from "@/lib/platformStyles";
+import { BORDER, INK, MUTED } from "@/lib/platformStyles";
+import { Collapsible, SectionHead, slab } from "@/components/schedules/scheduleChrome";
 import { signMono } from "@/components/files/signingUi";
 import { VERIFY_GRAY, VERIFY_MUTED, VERIFY_OK, VERIFY_RED } from "@/lib/verifyDocument";
 
-function Card({ title, children, gap = 12 }) {
+/** One fold of the guide: the guide is one slab of folded sections, not a stack of cards. */
+function Card({ title, children, gap = 12, open = false }) {
   return (
-    <section className="nv-verify-guide-card" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 14, boxShadow: "0 1px 2px var(--nv-shadow2), 0 10px 26px var(--nv-shadow)", padding: 18, display: "flex", flexDirection: "column", gap }}>
-      <span style={{ fontSize: 14, fontWeight: 700, color: INK }}>{title}</span>
-      {children}
-    </section>
+    <Collapsible title={title} defaultOpen={open}>
+      <div style={{ padding: "0 18px 12px", display: "flex", flexDirection: "column", gap }}>
+        {children}
+      </div>
+    </Collapsible>
   );
 }
 
@@ -46,11 +49,12 @@ export default function VerifyGuide({ ar }) {
     ];
 
   return (
-    <aside style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <Card title={ar ? "كيف يعمل التحقق" : "How verification works"}>
+    <aside data-verify-guide="1" style={{ ...slab, overflow: "hidden", display: "flex", flexDirection: "column", alignSelf: "start" }}>
+      <SectionHead title={ar ? "عن التحقق" : "About verification"} />
+      <Card open title={ar ? "كيف يعمل التحقق" : "How verification works"}>
         {how.map((step) => (
           <div key={step.n} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr)", gap: 12, alignItems: "start" }}>
-            <span style={{ width: 22, height: 22, borderRadius: 10, border: `1px solid ${BORDER}`, display: "inline-flex", alignItems: "center", justifyContent: "center", ...signMono, fontSize: 10, color: INK, marginTop: 1 }}>{step.n}</span>
+            <span style={{ width: 22, height: 22, borderRadius: "50%", border: `1px solid ${BORDER}`, display: "inline-flex", alignItems: "center", justifyContent: "center", ...signMono, fontSize: 10, color: INK, marginTop: 1 }}>{step.n}</span>
             <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: INK }}>{step.title}</span>
               <span style={{ fontSize: 12, lineHeight: 1.7, color: MUTED }}>{step.text}</span>

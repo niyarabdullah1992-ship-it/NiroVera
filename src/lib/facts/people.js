@@ -18,6 +18,10 @@ export const WAGE_FIELD_KEYS = Object.freeze([
   "transportAllowance",
   "otherAllowances",
   "allowances",
+  // Labour Law Art. 2 (actual wage): effort/hazard allowances, cost-of-living/family increments, commission.
+  "hazardAllowance",
+  "livingAllowance",
+  "commissionAmount",
 ]);
 
 export const PEOPLE_FACTS = Object.freeze([
@@ -226,6 +230,9 @@ export function readWageFields(employee) {
     transportAllowance: profile.transportAllowance ?? "",
     otherAllowances: profile.otherAllowances ?? "",
     allowances: profile.allowances ?? "",
+    hazardAllowance: profile.hazardAllowance ?? "",
+    livingAllowance: profile.livingAllowance ?? "",
+    commissionAmount: profile.commissionAmount ?? "",
     gosiNumber: readSubscriberNumber(employee),
     gosiRegisteredAt: readGosiRegisteredAt(employee),
   };

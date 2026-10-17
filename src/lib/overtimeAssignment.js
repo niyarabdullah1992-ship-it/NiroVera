@@ -2,7 +2,7 @@
 
 import { isRealSupportingFile } from "./leaveDerivations.js";
 import { addLaborDays, citeRule, laborDaysBetween, laborDayKey, ruleValue } from "./laborRules.js";
-import { incrementAnnualLeaveTotal } from "./otherRequestDerivations.js";
+import { isJuvenile } from "./laborHoursPolicy.js";
 
 export const OT_TYPE = "overtime";
 export const OT_COMP_PAY = "pay";
@@ -16,28 +16,43 @@ export const OT_STATUS = {
   refused_by_employee: "refused_by_employee",
 };
 
+/** The four cases of Article 106 as the law lists them. Only paragraph 1 carries the 30-day yearly cap. */
 export const ARTICLE_106_GROUNDS = [
   {
+    key: "pressure_inventory",
+    ar: "الجرد السنوي أو إعداد الميزانية أو التصفية أو قفل الحسابات أو الاستعداد للبيع المخفض أو للمواسم — لا يزيد على 30 يوماً في السنة",
+    en: "Annual inventory, budget, liquidation, closing accounts, or preparing for sales or seasons — no more than 30 days a year",
+    article: "106(1)",
+    capDays: 30,
+    capRuleId: "hours.ot.art106.inventoryMaxDays",
+  },
+  {
     key: "danger",
-    ar: "أخطار أو حوادث استثنائية تهدد سلامة المنشأة أو العاملين",
-    en: "Dangers or exceptional accidents that threaten the safety of the establishment or its workers",
-    article: "106",
+    ar: "منع وقوع حادث خطر أو إصلاح ما نشأ عنه",
+    en: "Preventing a dangerous accident or repairing what it caused",
+    article: "106(2)",
     capDays: null,
   },
   {
     key: "damage",
-    ar: "أعمال طارئة لمنع تلف المواد أو البضائع",
-    en: "Urgent work to prevent damage to materials or goods",
-    article: "106",
+    ar: "تلافي خسارة محققة لمواد قابلة للتلف",
+    en: "Avoiding a certain loss of perishable materials",
+    article: "106(2)",
     capDays: null,
   },
   {
-    key: "pressure_inventory",
-    ar: "ضغط عمل غير عادي أو جرد سنوي / ميزانيات — تكليف إجباري لا يزيد على 30 يوماً في السنة",
-    en: "Unusual work pressure, or annual inventory / budgets — mandatory assignment of no more than 30 days in the year",
-    article: "106",
-    capDays: 30,
-    capRuleId: "hours.ot.art106.inventoryMaxDays",
+    key: "pressure",
+    ar: "مواجهة ضغط عمل غير عادي",
+    en: "Meeting unusual work pressure",
+    article: "106(3)",
+    capDays: null,
+  },
+  {
+    key: "seasons",
+    ar: "الأعياد والمواسم والأعمال الموسمية المحددة بقرار من الوزير",
+    en: "Eids, seasons and seasonal work set by a ministerial decision",
+    article: "106(4)",
+    capDays: null,
   },
 ];
 
@@ -175,7 +190,9 @@ export function checkOtAnnualCapGate(input = {}) {
   if (!hours) return { ok: true, used: 0, add: 0, cap: ruleValue("hours.ot.annualMaxHours", onDate) };
   const year = otYearOf(input) || String(onDate || "").slice(0, 4);
   const fromRequests = otHoursInYear(input.otherRequests, year, input.exceptId);
-  const used = Math.max(0, Number(input.overtimeHoursYtd) || 0, fromRequests);
+  const used = input.overtimeHoursOutsideYtd != null
+    ? Math.round(((Math.max(0, Number(input.overtimeHoursOutsideYtd) || 0)) + fromRequests) * 10) / 10
+    : Math.max(0, Number(input.overtimeHoursYtd) || 0, fromRequests);
   const cap = ruleValue("hours.ot.annualMaxHours", onDate);
   const next = used + hours;
   if (next > cap && input.annualCapConsent !== true) {
@@ -229,7 +246,9 @@ export function checkCompLeaveYearCapGate(input = {}) {
   const cap = ruleValue("hours.ot.compLeave.maxDaysPerYear", onDate);
   const year = otYearOf(input) || String(onDate || "").slice(0, 4);
   const fromRequests = compLeaveDaysInYear(input.otherRequests, year, input.exceptId);
-  const used = Math.max(0, Number(input.creditDaysYtd) || 0, fromRequests);
+  const used = input.creditDaysOutsideYtd != null
+    ? Math.round(((Math.max(0, Number(input.creditDaysOutsideYtd) || 0)) + fromRequests) * 1000) / 1000
+    : Math.max(0, Number(input.creditDaysYtd) || 0, fromRequests);
   const add = otCreditDays(input.hours ?? ((Number(input.overtimeMinutes) || 0) / 60), onDate);
   const next = used + add;
   if (next > cap) {
@@ -261,8 +280,8 @@ export function checkArticle106YearCapGate(input) {
     return {
       ok: false,
       error: "ARTICLE_106_YEAR_CAP",
-      reason: `موقوف — المادة 106: التكليف الإجباري للجرد أو ضغط العمل لا يزيد على ${cap} يوماً في السنة. المستخدم ${used} والطلب ${add}.`,
-      reasonEn: `Blocked — Article 106: mandatory inventory or pressure assignments may not exceed ${cap} days in the year. Used ${used}; this request adds ${add}.`,
+      reason: `موقوف — المادة 106(1): تكليف الجرد والميزانية والمواسم لا يزيد على ${cap} يوماً في السنة. المستخدم ${used} والطلب ${add}.`,
+      reasonEn: `Blocked — Article 106(1): mandatory inventory/budget/season assignments may not exceed ${cap} days in the year. Used ${used}; this request adds ${add}.`,
       used,
       add,
       next,
@@ -318,8 +337,8 @@ export function checkArticle106RaiseGate(input) {
     return {
       ok: false,
       error: "GROUND_REQUIRED",
-      reason: "المادة 106: اختر أحد الأسباب الثلاثة للتكليف الإجباري.",
-      reasonEn: "Article 106: pick one of the three grounds for a mandatory assignment.",
+      reason: "المادة 106: اختر إحدى الحالات الواردة في المادة للتكليف الإجباري.",
+      reasonEn: "Article 106: pick one of the cases the article lists.",
     };
   }
   const file = firstRealFile(input.files) || (isRealSupportingFile(input.file) ? input.file : null);
@@ -344,6 +363,91 @@ export function checkArticle106RaiseGate(input) {
   return { ok: true, ground, file, cap };
 }
 
+const LIVE_OT = new Set(["pending_employee", "pending_manager", "approved", "pending"]);
+const weekStart = (iso) => {
+  const d = new Date(`${String(iso).slice(0, 10)}T00:00:00Z`);
+  // Saudi week: Sunday–Saturday.
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+  return d.toISOString().slice(0, 10);
+};
+
+/**
+ * Daily and weekly limits when assigning overtime.
+ * - Juveniles (Art. 164): actual work stays within 6 hours a day (4 in Ramadan) and Art. 106 never
+ *   applies — so no overtime on top of their day.
+ * - Art. 106 (last paragraph): even in its cases, actual work may not exceed 10 hours a day or 60 a week.
+ * `employee` is optional; `ordinaryHours` defaults to the 8-hour day (Art. 98).
+ */
+export function checkOtDayWeekGate(input = {}) {
+  const date = String(input.date || "").slice(0, 10);
+  const hours = parseOtHours(input.hours) || 0;
+  const days = otAssignmentDays(input);
+  const perDay = Math.round((hours / days) * 100) / 100;
+  if (input.employee && isJuvenile(input.employee, date)) {
+    return {
+      ok: false,
+      error: "JUVENILE_NO_OT",
+      reason: "موقوف — المادة 164: الحدث لا يُشغَّل فعلياً أكثر من 6 ساعات في اليوم (4 في رمضان)، ولا تسري عليه استثناءات المادة 106 — فلا تكليف إضافي له.",
+      reasonEn: "Blocked — Article 164: a juvenile works at most 6 actual hours a day (4 in Ramadan) and Article 106 does not apply — no overtime assignment.",
+      cite: citeRule("hours.juvenile.ordinaryHours", date),
+    };
+  }
+  // Art. 101 (12h at the workplace) applies to EVERY assignment — read from the rostered shift, not 8h.
+  const rosteredActual = input.ordinaryHours != null && input.ordinaryHours !== "" ? Math.max(0, Number(input.ordinaryHours) || 0) : null;
+  const presence = input.presenceHours != null && input.presenceHours !== "" ? Math.max(0, Number(input.presenceHours) || 0) : rosteredActual;
+  const stayCap = Number(ruleValue("hours.workplace.maxHours", date)) || 12;
+  if (presence != null && presence + perDay > stayCap + 0.001) {
+    const room = Math.max(0, Math.round((stayCap - presence) * 100) / 100);
+    return {
+      ok: false,
+      error: "OT_WORKPLACE_STAY",
+      reason: `موقوف — المادة 101: لا يبقى العامل في مكان العمل أكثر من ${stayCap} ساعة في اليوم. ورديته المجدولة ${presence} ساعة بقاء، فالمتاح ${room} ساعة — والتكليف ${perDay} في اليوم.`,
+      reasonEn: `Blocked — Article 101: a worker may not stay at the workplace more than ${stayCap} hours a day. The rostered shift is ${presence} h, so ${room} h is left — this assignment is ${perDay} h a day.`,
+      cite: citeRule("hours.workplace.maxHours", date),
+      perDay,
+      room,
+    };
+  }
+  if (!input.article106) return { ok: true, perDay };
+  const ordinary = rosteredActual != null ? rosteredActual : (Number(ruleValue("hours.shift.ordinaryHours", date)) || 8);
+  const dayCap = Number(ruleValue("hours.ot.exceptionDayHours", date)) || 10;
+  const weekCap = Number(ruleValue("hours.ot.exceptionWeekHours", date)) || 60;
+  if (ordinary + perDay > dayCap + 0.001) {
+    const room = Math.max(0, dayCap - ordinary);
+    return {
+      ok: false,
+      error: "ART106_DAY_CAP",
+      reason: `موقوف — المادة 106: حتى في حالاتها لا يزيد العمل الفعلي على ${dayCap} ساعات في اليوم. الدوام ${ordinary} ساعات، فالمتاح إضافياً ${room} ساعة في اليوم — والتكليف ${perDay} في اليوم.`,
+      reasonEn: `Blocked — Article 106: even in its cases actual work may not exceed ${dayCap} hours a day. The shift is ${ordinary} h, so ${room} h a day is left — this assignment is ${perDay} h a day.`,
+      cite: citeRule("hours.ot.exceptionDayHours", date),
+      perDay,
+      room,
+    };
+  }
+  const week = weekStart(date);
+  const others = (input.otherRequests || [])
+    .filter((row) => isOvertimeAssignment(row) && row.article106 === true && row.id !== input.exceptId && LIVE_OT.has(String(row.status || "")))
+    .filter((row) => weekStart(row.date) === week)
+    .reduce((sum, row) => sum + ((parseOtHours(row.hours) || 0) / otAssignmentDays(row)) * Math.min(otAssignmentDays(row), 7), 0);
+  const thisWeek = perDay * Math.min(days, 7);
+  // The week's rostered actual hours when known (store / RequestsWorkspace pass them), else six ordinary days.
+  const ordinaryWeek = input.rosterWeekHours != null && input.rosterWeekHours !== ""
+    ? Math.max(0, Number(input.rosterWeekHours) || 0)
+    : ordinary * 6;
+  const total = Math.round((ordinaryWeek + others + thisWeek) * 100) / 100;
+  if (total > weekCap + 0.001) {
+    return {
+      ok: false,
+      error: "ART106_WEEK_CAP",
+      reason: `موقوف — المادة 106: لا يزيد العمل الفعلي على ${weekCap} ساعة في الأسبوع. الدوام ${ordinaryWeek} وتكليفات المادة 106 هذا الأسبوع ${Math.round((others + thisWeek) * 100) / 100} — المجموع ${total}.`,
+      reasonEn: `Blocked — Article 106: actual work may not exceed ${weekCap} hours a week. Shifts ${ordinaryWeek} + Article 106 overtime this week ${Math.round((others + thisWeek) * 100) / 100} = ${total}.`,
+      cite: citeRule("hours.ot.exceptionWeekHours", date),
+      total,
+    };
+  }
+  return { ok: true, perDay };
+}
+
 export function checkRaiseOtAssignmentGate(input) {
   const reason = String(input?.reason || "").trim();
   if (reason.length < 3) {
@@ -355,10 +459,15 @@ export function checkRaiseOtAssignmentGate(input) {
   if (!dateGate.ok) return dateGate;
   const art106 = checkArticle106RaiseGate(input);
   if (!art106.ok) return art106;
-  const cap = checkOtAnnualCapGate({ ...input, hours: hoursGate.hours, date: dateGate.date });
-  if (!cap.ok) return cap;
+  const limits = checkOtDayWeekGate({ ...input, hours: hoursGate.hours, date: dateGate.date, dateTo: dateGate.dateTo });
+  if (!limits.ok) return limits;
+  // Regs Art. 22: passing the annual cap needs the WORKER's consent — asked of him on acceptance,
+  // never ticked by the manager. The raise goes ahead with «consent requested».
+  const capRaw = checkOtAnnualCapGate({ ...input, annualCapConsent: false, hours: hoursGate.hours, date: dateGate.date });
+  const cap = capRaw.ok ? capRaw : { ...capRaw, ok: true, capConsentRequested: true };
   return {
     ok: true,
+    capConsentRequested: !capRaw.ok,
     hours: hoursGate.hours,
     date: dateGate.date,
     dateTo: dateGate.dateTo,
@@ -419,8 +528,18 @@ export function checkEmployeeAcceptOtGate(input) {
   };
 }
 
-export function checkManagerRejectOtGate(request, status) {
+export function checkManagerRejectOtGate(request, status, today) {
   const next = String(status || "");
+  const day = String(today || new Date().toISOString()).slice(0, 10);
+  const last = String(request?.dateTo || request?.date || "").slice(0, 10);
+  if (next === "rejected" && isOvertimeAssignment(request) && request?.employeeAck === true && last && last < day) {
+    return {
+      ok: false,
+      error: "OT_ALREADY_WORKED",
+      reason: "موقوف — المادة 107: الساعات عُملت فعلاً وأجرها واجب. يجوز رد اختيار التعويض للتصحيح فقط، لا الرفض.",
+      reasonEn: "Blocked — Article 107: the hours were already worked and their pay is owed. You may return the compensation choice for correction, not reject.",
+    };
+  }
   if (next === "rejected" && isArticle106Assignment(request)) {
     return {
       ok: false,
@@ -477,16 +596,16 @@ export function checkApproveOtAssignmentGate(request) {
 export function stampOvertimeCreditOnEmployee(employee, request) {
   if (!employee || !isOvertimeAssignment(request)) return { ok: true, skipped: true };
   if (otCompensationOf(request) !== OT_COMP_CREDIT) return { ok: true, skipped: true };
-  if (request.balanceApplied) return { ok: true, skipped: true };
+  if (request.compGranted) return { ok: true, skipped: true };
+  // Regs 22 bis — compensatory leave is its own balance in hours (see compLeave.js), never added to
+  // the annual leave total. The grant is the approved request itself.
   const days = otCreditDaysOf(request);
-  const applied = incrementAnnualLeaveTotal(employee.profile, days, request.date);
-  if (!applied.ok) return applied;
-  employee.profile = applied.profile;
-  request.balanceApplied = true;
-  request.appliedDays = applied.days;
-  request.annualTotalAfter = applied.nextTotal;
+  const per = ruleValue("hours.ot.compLeave.minHoursPerOtHour", request.date) || 1.5;
+  request.compGranted = true;
+  request.compHours = Math.round((parseOtHours(request.hours) || 0) * per * 100) / 100;
   request.creditDays = days;
-  return { ok: true, days: applied.days, nextTotal: applied.nextTotal };
+  request.compMovedOut = true;
+  return { ok: true, days, hours: request.compHours };
 }
 
 export function stampOvertimePayOnDraft(draft, employeeId, request, by) {
@@ -502,13 +621,18 @@ export function stampOvertimePayOnDraft(draft, employeeId, request, by) {
   const key = `${employeeId}:${day}`;
   const existing = draft.otDecisions[key];
   if (!existing || existing.source === "ot_assignment") {
+    // Two assignments on the same day add up — the second must not overwrite the first.
+    const prior = existing && existing.source === "ot_assignment" ? existing : null;
+    const ids = prior ? (prior.requestIds || [prior.requestId]).filter(Boolean) : [];
+    const already = ids.includes(request.id);
     draft.otDecisions[key] = {
       decision: "approve",
-      overtimeMinutes: Math.round(hours * 60),
+      overtimeMinutes: (prior && !already ? Number(prior.overtimeMinutes) || 0 : 0) + Math.round(hours * 60),
       at: new Date().toISOString(),
       by: by || request.reviewedBy || "",
       source: "ot_assignment",
       requestId: request.id,
+      requestIds: already ? ids : [...ids, request.id],
     };
   }
   request.payrollMarked = true;
@@ -529,7 +653,8 @@ export function assignmentFileName(request) {
 
 export function otAssignmentTitle(request, ar = true) {
   const hours = parseOtHours(request?.hours);
-  const hoursBit = hours != null ? (ar ? ` · ${hours} ساعة` : ` · ${hours} h`) : "";
+  const hoursWord = (n) => (n === 1 ? "ساعة واحدة" : n === 2 ? "ساعتان" : Number.isInteger(n) && n >= 3 && n <= 10 ? `${n} ساعات` : `${n} ساعة`);
+  const hoursBit = hours != null ? (ar ? ` · ${hoursWord(Number(hours))}` : ` · ${hours} h`) : "";
   if (isArticle106Assignment(request)) {
     return ar ? `تكليف إضافي إجباري${hoursBit}` : `Mandatory overtime${hoursBit}`;
   }

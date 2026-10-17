@@ -7,11 +7,13 @@
 import { LEGACY_FALLBACK, mergeLegacyOnce, payloadHasRows, DO_NOT_WRITE } from "../canonicalStore.js";
 import { canonicalizeGosiFacts } from "./people.js";
 import { readCompanyEstablishment } from "./company.js";
+import { purgeRemovedModuleKeys } from "../purgedModules.js";
 
 export const PLATFORM_MIGRATION_IDS = Object.freeze([
   "platform.legacyBagsOnce",
   "platform.gosiHomes",
   "platform.stripDoNotWriteArrays",
+  "platform.purgeRemovedModules",
 ]);
 
 /**
@@ -47,7 +49,7 @@ export function migrateLegacyBagsOnce(data) {
 
 /**
  * Drop retired do-not-write array keys that still linger on old preview blobs
- * after a one-shot legacy merge (stockBoard / signingChain have no LEGACY_FALLBACK
+ * after a one-shot legacy merge (signingChain has no LEGACY_FALLBACK
  * merge target in the local bag — they are simply removed if empty of authority).
  */
 export function stripRetiredDoNotWriteKeys(data) {
@@ -69,6 +71,7 @@ export function stripRetiredDoNotWriteKeys(data) {
  * - Legacy bags → canonical
  * - GOSI establishment / subscriber homes
  * - Strip orphan do-not-write keys without a merge target
+ * - Drop the removed inventory / expenses / asset-register bags (one-time, idempotent)
  */
 export function canonicalizePlatformFacts(data) {
   if (!data || typeof data !== "object") return false;
@@ -76,6 +79,7 @@ export function canonicalizePlatformFacts(data) {
   if (migrateLegacyBagsOnce(data)) changed = true;
   if (canonicalizeGosiFacts(data)) changed = true;
   if (stripRetiredDoNotWriteKeys(data)) changed = true;
+  if (purgeRemovedModuleKeys(data)) changed = true;
   return changed;
 }
 
@@ -90,7 +94,6 @@ export function platformMigrationReport(data) {
     hasOrgStructure: Object.prototype.hasOwnProperty.call(data || {}, "orgStructure"),
     hasAttendanceLedger: Object.prototype.hasOwnProperty.call(data || {}, "attendanceLedger"),
     hasComplaintQueue: Object.prototype.hasOwnProperty.call(data || {}, "complaintQueue"),
-    hasExpenseBudget: Object.prototype.hasOwnProperty.call(data || {}, "expenseBudget"),
     tasks: Array.isArray(data?.tasks) ? data.tasks.length : 0,
     personalAttendance: Array.isArray(data?.personalAttendance) ? data.personalAttendance.length : 0,
     anonymousReports: Array.isArray(data?.anonymousReports) ? data.anonymousReports.length : 0,

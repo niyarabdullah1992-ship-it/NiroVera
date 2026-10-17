@@ -5,7 +5,7 @@
  */
 
 import { readGosiRegisteredAt, readNationality, readSubscriberNumber } from "./facts/index.js";
-import { isRamadanHoursSubject } from "./laborRules.js";
+import { isRamadanHoursSubject, religionOnFile } from "./laborRules.js";
 
 export function profileGender(profile) {
   const raw = String(profile?.gender || "").trim().toLowerCase();
@@ -250,8 +250,8 @@ export function profileFieldLabel(field, idType, ar) {
 export function displayProfileField(field, raw, ar) {
   const opts = profileFieldOptions(field);
   if (field?.key === "religion" && !String(raw || "").trim()) {
-    // Empty file is treated as Muslim for Ramadan / Hajj / iddah — show the value, not the rule essay.
-    return ar ? "مسلم" : "Muslim";
+    // Empty is shown as empty — Hajj and iddah wait for it; it is never displayed as an assumed value.
+    return ar ? "غير محددة" : "Not set";
   }
   if (opts) return optionLabel(opts, raw, ar) || "";
   return raw || "";
@@ -259,6 +259,11 @@ export function displayProfileField(field, raw, ar) {
 
 /** Short legal effect under the religion row — not part of the stored value. */
 export function religionEffectNote(employee, ar = true) {
+  if (!religionOnFile(employee)) {
+    return ar
+      ? "غير محددة — لا تظهر إجازة الحج ولا العدة حتى تُحدَّد. ساعات رمضان المخفّضة تبقى احتياطاً لصالح العامل."
+      : "Not set — Hajj and iddah stay hidden until it is set. Reduced Ramadan hours stay on, in the worker's favour.";
+  }
   if (isRamadanHoursSubject(employee)) {
     return ar
       ? "أثر النظام: ساعات رمضان · حج · عدّة 4 أشهر و10 أيام"

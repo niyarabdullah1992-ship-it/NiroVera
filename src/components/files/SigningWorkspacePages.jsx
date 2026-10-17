@@ -15,7 +15,7 @@ import {
 const NO_GUIDES = { page: 0, x: null, y: null };
 
 function GoldGlyph({ tool }) {
-  const common = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "#C4A24A", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" };
+  const common = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" };
   if (tool === "name" || tool === "email") {
     return <svg {...common} aria-hidden="true"><circle cx="12" cy="8" r="3" /><path d="M5 19c1.5-3 4-4.5 7-4.5S17.5 16 19 19" /></svg>;
   }
@@ -410,9 +410,25 @@ export default function SigningWorkspacePages({
               // Your own required field left empty is the one thing that will
               // block the finish button — flag it on the page, not only in the gate.
               const gap = field.signer === 0 && field.type === "text" && field.required !== false && !value;
+              // Each recipient's fields carry their own muted tint; the selected field alone takes
+              // the one green accent.
+              const tint = signer?.color || BRAND;
               return (
                 <div
                   key={field.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={active}
+                  aria-label={`${field.label || field.tool || ""} · ${signer?.name || ""} · ${ar ? `صفحة ${field.page}` : `page ${field.page}`}`}
+                  data-field-signer={field.signer}
+                  onFocus={() => { if (!active) onSelect?.(field.id); }}
+                  onKeyDown={(event) => {
+                    if (editing || event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" && field.signer === 0 && field.type === "text" && !isMarkField(field) && field.tool !== "yn") {
+                      event.preventDefault();
+                      setEditingId(field.id);
+                    }
+                  }}
                   onPointerDown={(event) => { if (!editing) startDrag(event, field); }}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -438,15 +454,18 @@ export default function SigningWorkspacePages({
                     width: box.width,
                     height: box.height,
                     transform: "translate(-50%, -50%)",
-                    border: yn
-                      ? "1px solid var(--nv-line, #DFE3EA)"
-                      : gold
-                        ? `1px solid ${gap ? "var(--nv-warn-line)" : "var(--nv-line)"}`
-                        : `1.5px ${field.type === "signature" ? "solid" : "dashed"} ${gap ? "#B45309" : signer?.color || BRAND}`,
+                    border: active
+                      ? "2px solid #3C7D50"
+                      : yn
+                        ? "1px solid var(--nv-line, #DFE3EA)"
+                        : gold
+                          ? `1px solid ${gap ? "var(--nv-warn-line)" : `color-mix(in oklab, ${tint} 45%, #fff)`}`
+                          : `1.5px ${field.type === "signature" ? "solid" : "dashed"} ${gap ? "#B45309" : tint}`,
+                    outline: "none",
                     background: yn
                       ? "var(--nv-card)"
                       : gold
-                        ? "#FBF3D0"
+                        ? `color-mix(in oklab, ${tint} 11%, #fff)`
                         : field.type === "signature"
                           ? "rgba(255,255,255,.92)"
                           : `color-mix(in oklab, ${gap ? "var(--nv-warn-ink)" : signer?.color || BRAND} 8%, #fff)`,
@@ -458,7 +477,7 @@ export default function SigningWorkspacePages({
                     justifyContent: "center",
                     overflow: "visible",
                     zIndex: active ? 3 : 1,
-                    boxShadow: active ? "0 6px 16px rgba(20,40,75,.22)" : (gold ? "0 1px 2px rgba(180,140,40,.18)" : "none"),
+                    boxShadow: active ? "0 0 0 3px rgba(60,125,80,.18)" : "none",
                   }}
                 >
                   <div style={{
@@ -516,7 +535,7 @@ export default function SigningWorkspacePages({
                       <YnChoiceBox value={value} />
                     </span>
                   ) : gold ? (
-                    <span style={{ pointerEvents: "none", display: "inline-flex", alignItems: "center", gap: 8, color: "#8A6A1A", fontWeight: 700, fontSize: 13, padding: "0 10px", maxWidth: "100%" }}>
+                    <span style={{ pointerEvents: "none", display: "inline-flex", alignItems: "center", gap: 8, color: `color-mix(in oklab, ${tint} 78%, #000)`, fontWeight: 700, fontSize: 13, padding: "0 10px", maxWidth: "100%" }}>
                       <GoldGlyph tool={field.tool} />
                       <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value || field.label}</span>
                     </span>
@@ -570,7 +589,7 @@ export default function SigningWorkspacePages({
                           height: 14,
                           borderRadius: 4,
                           border: `2px solid ${CARD}`,
-                          background: yn ? "var(--nv-navy)" : (signer?.color || BRAND),
+                          background: "#3C7D50",
                           cursor: "ew-resize",
                         }}
                       />

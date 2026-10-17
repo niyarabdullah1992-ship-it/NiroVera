@@ -1,14 +1,53 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { CALIBRATION_BAND, CYCLE_FLOW, CYCLE_STATUS_LABELS, RATING_JUSTIFICATION_MIN, todayKey } from "@/lib/hcmDerivations";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { ACCENT, MUTED, NAVY, cardShell, ui, field, SURFACE } from "@/lib/platformStyles";
+import { ATTENDANCE_LEVEL_MAP, PERF_ELEMENTS, PERF_LEVELS, checkReportEvidenceGate, perfLevelByNumber, perfLevelOf, reportElementSource } from "@/lib/perfReport";
+import { annualReportPrefill } from "@/lib/perfEvidence";
+import { modelLaw } from "@/lib/modelArticleTexts";
+import { useMyAttendanceRange } from "@/components/attendance/myDutyDays";
+import { hydrateEmployeesLeave } from "@/lib/leaveDerivations";
+import { laborCalendarOf } from "@/lib/ummAlQuraCalendar";
+import { toRiyadhDateKey } from "@/lib/riyadhDate";
+import { StatuteLink } from "@/components/shared/RightHint";
 
 const labelText = { display: "block", fontSize: "11px", fontWeight: 600, color: MUTED, marginBottom: "5px" };
 
+const ATT_MAP_AR = ATTENDANCE_LEVEL_MAP.slice(0, 4).map((row) => `${perfLevelByNumber(row.level)?.ar}: ${row.absentPctMax ? `غياب حتى ${row.absentPctMax}%` : "بلا غياب"} وتأخر حتى ${row.latePctMax}% من أيام الدوام`).join(" · ");
+const ATT_MAP_EN = ATTENDANCE_LEVEL_MAP.slice(0, 4).map((row) => `${perfLevelByNumber(row.level)?.en}: absent ≤ ${row.absentPctMax}% & late ≤ ${row.latePctMax}%`).join(" · ");
+
+/** The annual report's evidence for one person in the cycle period (النموذج الموحد م18). */
+function useReportPrefill({ employeeId, cycle, data, company }) {
+  const todayK = toRiyadhDateKey();
+  const person = useMemo(() => {
+    const raw = (data?.employees || []).find((e) => String(e.id) === String(employeeId) || String(e.employeeId) === String(employeeId)) || null;
+    return raw ? hydrateEmployeesLeave([raw], data)[0] || raw : null;
+  }, [data, employeeId]);
+  const from = cycle?.from || "";
+  const to = cycle?.to ? (cycle.to > todayK ? todayK : cycle.to) : "";
+  const { rows, loading } = useMyAttendanceRange({ employee: person, company, data, startDate: from, endDate: to });
+  const calendar = useMemo(() => laborCalendarOf(data), [data]);
+  const prefill = useMemo(
+    () => (person && from && to ? annualReportPrefill({ employee: person, data, rows, from, to, todayKey: todayK, calendar }) : null),
+    [person, data, rows, from, to, todayK, calendar],
+  );
+  return { prefill, loading: Boolean(person) && loading };
+}
+
 /** Review cycle — a cycle consumes proven evidence; a manager may only calibrate it. */
-export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], progress, board = [], band = CALIBRATION_BAND, busy, onRun }) {
+export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], progress, board = [], band = CALIBRATION_BAND, busy, onRun, grievances = [], data, company }) {
   const [newCycle, setNewCycle] = useState({ period: "", from: todayKey(), to: todayKey() });
-  const [rating, setRating] = useState({ employeeId: "", value: "", justification: "" });
+  const [rating, setRating] = useState({ employeeId: "", value: "", justification: "", elements: {}, reasons: {} });
+  const [decide, setDecide] = useState({ ratingId: "", decision: "", note: "", newRating: "" });
+  const { prefill, loading: evidenceLoading } = useReportPrefill({ employeeId: rating.employeeId, cycle, data, company });
+  // The elements start from evidence; the manager's choice (rating.elements) overrides one at a time.
+  const effective = Object.fromEntries(PERF_ELEMENTS.map((el) => [el.key, rating.elements[el.key] ?? prefill?.[el.key]?.level ?? ""]));
+  const elementsGate = checkReportEvidenceGate({ elements: effective, prefill, reasons: rating.reasons, rating: rating.value === "" ? null : Number(rating.value) });
+  const ratedLevel = rating.value === "" ? null : perfLevelOf(rating.value);
+  const elementValues = PERF_ELEMENTS.map((el) => Number(effective[el.key])).filter((n) => n >= 1);
+  const elementAvg = elementValues.length === PERF_ELEMENTS.length ? Math.round((elementValues.reduce((a, b) => a + b, 0) / elementValues.length) * 10) / 10 : null;
+  const gapNeedsReason = ratedLevel && elementAvg != null && Math.abs(ratedLevel.level - elementAvg) >= 2;
+  const nameOf = (id) => board.find((r) => String(r.employeeId) === String(id))?.name || id;
 
   const status = cycle ? String(cycle.status) : null;
   const nextStates = status ? CYCLE_FLOW[status] || [] : [];
@@ -114,7 +153,7 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
                 onChange={(e) => {
                   const employeeId = e.target.value;
                   const row = board.find((r) => r.employeeId === employeeId);
-                  setRating({ employeeId, value: row ? String(row.score) : "", justification: "" });
+                  setRating({ employeeId, value: row ? String(row.score) : "", justification: "", elements: {}, reasons: {} });
                 }}
               >
                 <option value="">{ar ? "اختر موظفًا" : "Select an employee"}</option>
@@ -137,11 +176,59 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
               <input style={field} value={rating.justification} onChange={(e) => setRating((f) => ({ ...f, justification: e.target.value }))} />
             </label>
           </div>
+          {rating.employeeId ? (
+            <div data-report-prefill="1" style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: "12px", fontWeight: 600, color: NAVY }}>{ar ? "عناصر التقرير — مملوءة من الأدلة، أكّدها أو غيّرها بسبب" : "Report elements — filled from evidence; confirm or change with a reason"}</span>
+                {evidenceLoading ? <span style={{ fontSize: 11, color: MUTED }}>{ar ? "يُحمَّل سجل الدوام…" : "Loading the duty record…"}</span> : null}
+              </div>
+              {PERF_ELEMENTS.map((el) => {
+                const from = prefill?.[el.key]?.level ?? null;
+                const value = effective[el.key];
+                const changed = from != null && value !== "" && Number(value) !== from;
+                return (
+                  <div key={el.key} data-report-element-form={el.key} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,200px),1fr))", gap: 8, alignItems: "start", paddingTop: 8, borderTop: "1px dashed var(--nv-line)" }}>
+                    <label>
+                      <span style={labelText}>{ar ? el.ar : el.en}</span>
+                      <select style={field} value={value} onChange={(e) => setRating((f) => ({ ...f, elements: { ...f.elements, [el.key]: e.target.value === "" ? undefined : Number(e.target.value) } }))}>
+                        <option value="">{ar ? "المستوى" : "Level"}</option>
+                        {PERF_LEVELS.map((lv) => <option key={lv.level} value={lv.level}>{ar ? `${lv.level} — ${lv.ar}` : `${lv.level} — ${lv.en}`}</option>)}
+                      </select>
+                    </label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, color: MUTED, lineHeight: 1.7 }}>
+                      <span>{prefill ? reportElementSource({ evidence: prefill, elements: effective }, el.key, ar) : "—"}{from != null ? (ar ? ` → ${perfLevelByNumber(from)?.ar}` : ` → ${perfLevelByNumber(from)?.en}`) : ""}</span>
+                      {el.key === "attendance" ? <span>{ar ? `المطابقة: ${ATT_MAP_AR} · وإلا ضعيف (الأسوأ من الاثنين يحكم).` : `Mapping: ${ATT_MAP_EN} · else weak (the worse decides).`}</span> : null}
+                      {changed ? (
+                        <input style={field} placeholder={ar ? "سبب التغيير عن المستوى المشتق" : "Why you change the derived level"} value={rating.reasons[el.key] || ""} onChange={(e) => setRating((f) => ({ ...f, reasons: { ...f.reasons, [el.key]: e.target.value } }))} />
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+              {gapNeedsReason ? (
+                <label>
+                  <span style={labelText}>{ar ? `التقدير العام «${ratedLevel.ar}» يبعد عن متوسط العناصر (${elementAvg}) مستويين أو أكثر — المبرر` : `Overall «${ratedLevel.en}» is 2+ levels from the elements' mean (${elementAvg}) — justification`}</span>
+                  <input style={field} value={rating.reasons.overall || ""} onChange={(e) => setRating((f) => ({ ...f, reasons: { ...f.reasons, overall: e.target.value } }))} />
+                </label>
+              ) : null}
+            </div>
+          ) : null}
+          <div style={{ marginTop: "8px", fontSize: "11px", color: MUTED, lineHeight: 1.7 }}>
+            {ar
+              ? `التقدير العام: ${ratedLevel ? ratedLevel.ar : "—"}${elementAvg != null ? ` · متوسط العناصر ${elementAvg}` : ""} (مقياس من خمسة مستويات — النموذج الموحد م19). يعدّه الرئيس المباشر، ويُعتمد بإقفال الدورة، فتصل صورته للموظف في «أدائي» مع مصدر كل عنصر، وله التظلم منه خلال 30 يوماً (م20 · م71).`
+              : `Overall: ${ratedLevel ? ratedLevel.en : "—"}${elementAvg != null ? ` · elements' mean ${elementAvg}` : ""} (five-level scale, model Art. 19). Approved when the cycle closes; the worker then sees his copy with each element's source and may grieve within 30 days (Arts. 20 · 71).`}
+            {!elementsGate.ok && rating.employeeId ? <span data-report-gate={elementsGate.error} style={{ display: "block", color: "var(--nv-warn-ink)" }}>{ar ? elementsGate.reason : elementsGate.reasonEn}</span> : null}
+            <span style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
+              <StatuteLink ar={ar} law={modelLaw(["18", "19"], ar)} />
+              <StatuteLink ar={ar} law={modelLaw(["20", "71"], ar)} />
+              <StatuteLink ar={ar} law={modelLaw(["21", "22", "23"], ar)} />
+            </span>
+          </div>
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "12px" }}>
             <button
               type="button"
-              disabled={busy || !rating.employeeId}
-              style={{ ...ui.btnPrimary, opacity: busy || !rating.employeeId ? 0.6 : 1 }}
+              disabled={busy || !rating.employeeId || !elementsGate.ok}
+              style={{ ...ui.btnPrimary, opacity: busy || !rating.employeeId || !elementsGate.ok ? 0.6 : 1 }}
               onClick={() => onRun(
                 {
                   action: "submitRating",
@@ -150,6 +237,10 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
                   derivedScore: derived,
                   rating: Number(rating.value),
                   justification: rating.justification,
+                  elements: elementsGate.elements,
+                  // The server re-derives competence from its task store; duty and conduct counts travel here.
+                  evidence: prefill,
+                  elementReasons: rating.reasons,
                 },
                 ar ? "سُجِّل التقييم" : "Rating recorded",
               )}
@@ -159,6 +250,47 @@ export default function ReviewCyclePanel({ ar, isSenior, cycle, cycles = [], pro
           </div>
         </div>
       )}
+
+      {isSenior && grievances.length ? (
+        <div data-perf-grievances="1" style={{ marginTop: "14px", padding: "15px 16px", borderRadius: "12px", background: SURFACE, border: "1px solid var(--nv-line)", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: "12px", fontWeight: 600, color: NAVY }}>
+            {ar ? `تظلمات من تقارير الأداء (${grievances.length}) — النموذج الموحد م20 · م71` : `Grievances on performance reports (${grievances.length}) — model Arts. 20 · 71`}
+          </div>
+          {grievances.map((g) => {
+            const open = decide.ratingId === g.ratingId;
+            return (
+              <div key={g.ratingId} style={{ borderTop: "1px dashed var(--nv-line)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: 12, color: NAVY }}>{`${nameOf(g.employeeId)} · ${g.period} · ${g.rating}`}</span>
+                <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>{g.reason}</span>
+                <span style={{ fontSize: 11, color: g.replyBy && g.replyBy < todayKey() ? "var(--nv-bad-ink)" : MUTED }}>{ar ? `يُبلَّغ بالنتيجة كتابةً حتى ${g.replyBy || "—"}` : `Answer in writing by ${g.replyBy || "—"}`}</span>
+                {open ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,160px),1fr))", gap: 8 }}>
+                    <select style={field} value={decide.decision} onChange={(e) => setDecide((d) => ({ ...d, decision: e.target.value }))}>
+                      <option value="">{ar ? "القرار" : "Decision"}</option>
+                      <option value="upheld">{ar ? "قبول التظلم" : "Uphold"}</option>
+                      <option value="refused">{ar ? "رفض التظلم" : "Refuse"}</option>
+                    </select>
+                    {decide.decision === "upheld" ? (
+                      <input type="number" min="0" max="100" dir="ltr" style={field} placeholder={ar ? "الدرجة المعدّلة (اختياري)" : "Revised rating (optional)"} value={decide.newRating} onChange={(e) => setDecide((d) => ({ ...d, newRating: e.target.value }))} />
+                    ) : null}
+                    <input style={{ ...field, gridColumn: "1 / -1" }} placeholder={ar ? "نتيجة البتّ وسببها — تُبلَّغ للموظف" : "Decision and reason — sent to the worker"} value={decide.note} onChange={(e) => setDecide((d) => ({ ...d, note: e.target.value }))} />
+                    <button type="button" disabled={busy} style={{ ...ui.btnPrimary, justifySelf: "start" }} onClick={() => onRun(
+                      { action: "decidePerfGrievance", ratingId: g.ratingId, decision: decide.decision, note: decide.note, newRating: decide.newRating },
+                      ar ? "سُجّل البتّ في التظلم" : "Decision recorded",
+                    ).then((done) => { if (done) setDecide({ ratingId: "", decision: "", note: "", newRating: "" }); })}>
+                      {ar ? "سجّل البتّ" : "Record decision"}
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" style={{ ...ui.btnRow, alignSelf: "flex-start" }} onClick={() => setDecide({ ratingId: g.ratingId, decision: "", note: "", newRating: "" })}>
+                    {ar ? "ابتّ في التظلم" : "Decide"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       {cycles.length > 1 ? (
         <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px dashed var(--nv-line)", fontSize: "11px", color: MUTED }}>

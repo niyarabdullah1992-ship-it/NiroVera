@@ -1537,7 +1537,7 @@ export default function ShiftWeekBoard({
                               bottom: 4,
                               height: 22,
                               display: "grid",
-                              gridTemplateColumns: "1fr 1fr",
+                              gridTemplateColumns: sun.mark ? "1fr" : "1fr 1fr",
                               gap: 2,
                               padding: 1,
                               borderRadius: 7,
@@ -1545,7 +1545,8 @@ export default function ShiftWeekBoard({
                               background: sunAsk && !sun.mark ? "var(--nv-warn-soft, #FBF3E2)" : "var(--nv-card, #fff)",
                             }}
                           >
-                            {[SUN_FIELD, SUN_OFFICE].map((opt) => {
+                            {/* Once chosen, only the choice stays in the cell; pressing it again clears it and both return. */}
+                            {(sun.mark ? [sun.mark] : [SUN_FIELD, SUN_OFFICE]).map((opt) => {
                               const on = sun.mark === opt;
                               return (
                                 <button
@@ -1553,6 +1554,7 @@ export default function ShiftWeekBoard({
                                   type="button"
                                   role="radio"
                                   aria-checked={on}
+                                  title={on ? (ar ? "اضغط للإلغاء وإعادة الخيارين" : "Click to clear and show both") : undefined}
                                   data-sun-answer={opt}
                                   disabled={!canEdit}
                                   onClick={(e) => { e.stopPropagation(); setSunPrompt(null); pickSunMark(employee, day, sun.mark, opt); }}

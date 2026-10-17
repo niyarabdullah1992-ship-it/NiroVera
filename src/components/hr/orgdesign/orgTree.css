@@ -292,6 +292,18 @@
 .nv-ot-sheet__cancel { font: inherit; font-size: 13px; height: 36px; padding: 0 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--nv-line); background: var(--nv-card); color: var(--nv-ink); }
 .nv-ot-sheet__go:focus-visible, .nv-ot-sheet__cancel:focus-visible { outline: 2px solid var(--nv-navy); outline-offset: 2px; }
 
+/* ── city / country groups in «الفروع»: light cards of the same family ── */
+.nv-ot-city { background: color-mix(in oklab, var(--nv-card) 62%, var(--nv-page)); box-shadow: none; }
+.nv-ot-avatar--city { background: var(--nv-accent-soft); color: var(--nv-accent-deep, var(--nv-accent)); border-color: var(--nv-accent-border, var(--nv-line)); }
+.nv-ot-city[data-level="country"] .nv-ot-avatar--city { border-radius: 12px; }
+.nv-ot-city[data-none="1"] { border-style: dashed; }
+.nv-ot-city[data-none="1"] .nv-ot-avatar--city { background: transparent; color: var(--nv-muted); border-style: dashed; }
+.nv-ot-city[data-none="1"] .nv-ot-card__name { color: var(--nv-ink2, var(--nv-ink)); }
+.nv-ot-city__fig { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.nv-ot-flag--btn { pointer-events: auto; cursor: pointer; border: none; font: inherit; font-size: 10.5px; font-weight: 600; }
+.nv-ot-flag--btn:hover { filter: brightness(.97); text-decoration: underline; }
+.nv-ot-flag--btn:focus-visible { outline: 2px solid var(--nv-navy); outline-offset: 1px; }
+
 /* ── «+ إضافة بطاقة هنا» and the flash after a change ── */
 .nv-ot-more[data-add="1"] {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;

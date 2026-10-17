@@ -76,6 +76,9 @@ export function formatOrgStructureEvent(event, ar = true) {
     const kind = event.to === "manager" ? (ar ? "مدير" : "manager") : (ar ? "فرع" : "branch");
     return ar ? `«${branch}» أصبح ${kind}` : `${branch} is now a ${kind}`;
   }
+  if (event.type === "located") {
+    return ar ? `«${branch}» في ${event.city || "—"}` : `${branch} is in ${event.city || "—"}`;
+  }
   if (event.type === "created") {
     const count = Number(event.to);
     if (count > 1 && who) {

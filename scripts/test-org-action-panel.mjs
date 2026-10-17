@@ -92,7 +92,8 @@ assert.match(item(asPgm, "seatEdit").blocked.ar, /والموارد البشري�
 const branches = buildBranchTree(data, { scope: "all" });
 const B = (id) => branches.nodes.get(branchKey(id));
 const jed = panelActions(B("jed"), { data, user: owner });
-assert.deepEqual(ids(jed), ["addUnit", "hireHere", "branchManagers", "moveParent", "rename", "unitKind", "closeUnit", "deleteBranch"]);
+assert.deepEqual(ids(jed), ["addUnit", "hireHere", "branchManagers", "moveParent", "rename", "location", "unitKind", "closeUnit", "deleteBranch"]);
+assert.equal(item(jed, "location").fn, "setStationLocation");
 const hq = panelActions(B("hq"), { data, user: owner });
 assert.match(item(hq, "moveParent").blocked.ar, /ثابت/, "HQ is fixed");
 assert.equal(item(hq, "rename").fn, "renameCompany");
@@ -100,9 +101,11 @@ assert.ok(item(panelActions(B("west"), { data, user: owner }), "hireHere").block
 assert.ok(item(panelActions(B("hr"), { data, user: owner }), "deleteBranch").blocked, "the HR unit is fixed");
 
 /* the hierarchical picker */
-const transfer = branchPickList(data, { purpose: "transfer", current: "jed" });
+const allRows = branchPickList(data, { purpose: "transfer", current: "jed" });
+const transfer = allRows.filter((r) => !r.group);
 assert.deepEqual(transfer.map((r) => r.id), ["hq", "west", "jed", "port", "rbg", "hr"], "HQ → region → branch → site, in tree order");
-assert.deepEqual(transfer.map((r) => r.depth), [0, 1, 2, 3, 1, 1]);
+assert.ok(allRows.some((r) => r.group && r.name === "رابغ"), "HQ's branches come under their city heading");
+assert.equal(allRows.find((r) => r.id === "rbg").depth, 2, "HQ → رابغ → فرع رابغ");
 assert.ok(transfer.find((r) => r.id === "west").blocked, "a region is not a workplace");
 assert.ok(transfer.find((r) => r.id === "jed").blocked, "the current branch");
 assert.equal(transfer.find((r) => r.id === "rbg").blocked, null);

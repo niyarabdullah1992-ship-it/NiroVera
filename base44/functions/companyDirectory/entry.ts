@@ -14,6 +14,7 @@ import { companyMetaCreatePayload, creatorEmployeeRecord } from '../../shared/co
 import { mergeAbuseCasesWrite, mergeEmployerDutyRoster, mergeWorkRegulationWrite } from '../../shared/syncLaw.ts';
 import { enforceEmployeeFileWrite } from '../../shared/employeeFileGate.ts';
 import { mergeOrgDesignWrite } from '../../shared/orgDesignDerivations.ts';
+import { checkStationLocationGate } from '../../shared/geoPlaces.ts';
 
 // System emails (OTP codes, welcome messages) go out through the app's connected
 // Gmail account, because the built-in email service refuses recipients who are
@@ -950,6 +951,12 @@ Deno.serve(async (req) => {
       const context = await getActorContext();
       if (!context.senior) return Response.json({ ok: true, ignored: true });
       const incoming = (Array.isArray(stations) ? stations : []).map(({ id, isHQ: _legacyFlag, ...rest }) => ({ ...rest, stationId: id, companyId }));
+      // a station that carries a location must carry a valid one (known country; a listed city in Saudi Arabia)
+      for (const station of incoming) {
+        if (!station.countryCode && !station.city) continue;
+        const geo = checkStationLocationGate({ countryCode: station.countryCode, city: station.city, cityRegion: station.cityRegion });
+        if (!geo.ok) return Response.json({ error: geo.error, reason: `${station.name || station.stationId}: ${geo.reason}`, reasonEn: geo.reasonEn }, { status: 400 });
+      }
       const current = await base44.asServiceRole.entities.Station.filter({ companyId });
       if (current.length > 0 && incoming.length === 0) {
         return Response.json({ error: 'Safety guard: an empty sync cannot erase all stations' }, { status: 409 });

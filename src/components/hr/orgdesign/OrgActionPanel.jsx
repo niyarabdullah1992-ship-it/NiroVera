@@ -22,7 +22,10 @@ import {
   setActingAssignment,
   setOrgBranchParent,
   setOrgUnitKind,
+  setStationLocation,
 } from "@/lib/orgHire";
+import { DEFAULT_COUNTRY, stationPlace } from "@/lib/geoPlaces";
+import LocationPicker, { placeLine } from "./LocationPicker";
 import { seatDrawerReason } from "@/lib/seatUnderManager";
 import { gradesForTitle } from "@/lib/jobGrades";
 import { deleteStationWithData } from "@/lib/stationData";
@@ -118,6 +121,8 @@ export default function OrgActionPanel({
   const [seatForm, setSeatForm] = useState({ code: seat?.code || "", qiwaTitle: seat?.qiwaTitle || "", saudiOnly: Boolean(seat?.saudiOnly), state: seat?.state || "", plannedFrom: seat?.plannedFrom || "" });
   const [pick, setPick] = useState("");
   const [name, setName] = useState(node.name || "");
+  const known = stationPlace(station);
+  const [place, setPlace] = useState({ countryCode: known.countryCode || DEFAULT_COUNTRY, city: known.city, cityRegion: known.cityRegion });
 
   const open = (id) => { setActive((cur) => (cur === id ? "" : id)); setGate(null); setPick(""); };
   // success: the panel closes so the tree's in-place update and the flash on the changed cards show
@@ -354,6 +359,29 @@ export default function OrgActionPanel({
               }}
             >
               {ar ? "حفظ الاسم" : "Save the name"}
+            </button>
+          </div>
+        );
+      case "location":
+        return (
+          <div className="nv-oap-form">
+            {known.city ? (
+              <Note>
+                {placeLine(known, ar)}
+                {known.derived ? (ar ? " — مقروءة من الاسم، لم تُحفظ بعد" : " — read from the name, not saved yet") : ""}
+              </Note>
+            ) : null}
+            <LocationPicker ar={ar} value={place} required={node.level !== "region"} onChange={setPlace} />
+            <button
+              type="button"
+              style={btnPrimary()}
+              onClick={() => {
+                const res = setStationLocation(companyId, node.stationId, place);
+                if (!res.ok) { setGate({ ok: false, reason: res.reason, reasonEn: res.reasonEn }); return; }
+                done([]);
+              }}
+            >
+              {ar ? "حفظ الموقع" : "Save location"}
             </button>
           </div>
         );

@@ -9,12 +9,15 @@ import {
   findEmployeeByName,
   listBranchHrManagers,
   renameOrgBranch,
+  setStationLocation,
   setOrgBranchParent,
   setOrgUnitKind,
 } from "@/lib/orgHire";
 import { explainWorkplaceManager } from "@/lib/peopleTree";
 import { setStationManager } from "@/lib/store";
 import { deleteStationWithData } from "@/lib/stationData";
+import { DEFAULT_COUNTRY, stationPlace } from "@/lib/geoPlaces";
+import LocationPicker, { placeLine } from "@/components/hr/orgdesign/LocationPicker";
 import {
   allowedStationParents,
   companyRootStation,
@@ -220,14 +223,26 @@ export function OrgBranchDrawer({
   const [hrSel, setHrSel] = useState("");
   const [err, setErr] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
+  const known = stationPlace(station);
+  const [place, setPlace] = useState({ countryCode: known.countryCode || DEFAULT_COUNTRY, city: known.city, cityRegion: known.cityRegion });
 
   useEffect(() => {
+    const p = stationPlace(station);
+    setPlace({ countryCode: p.countryCode || DEFAULT_COUNTRY, city: p.city, cityRegion: p.cityRegion });
     setName(station?.name || "");
     setMoveSel("");
     setHrSel("");
     setErr("");
     setConfirmDel(false);
-  }, [stationId, station?.name]);
+  }, [stationId, station?.name, station?.city, station?.countryCode]);
+
+  /* «الموقع»: country and city — the tree regroups by city at once */
+  const saveLocation = () => {
+    const result = setStationLocation(companyId, stationId, place);
+    if (!result.ok) { setErr(ar ? result.reason : (result.reasonEn || result.reason)); return; }
+    setErr("");
+    toast({ description: ar ? `«${station?.name || ""}» في ${result.place.city || "—"}.` : `“${station?.name || ""}” is in ${result.place.city || "—"}.` });
+  };
 
   const people = useMemo(
     () => (data?.employees || []).filter((employee) => employee?.name && employee.role !== "system" && employee.active !== false),
@@ -418,6 +433,19 @@ export function OrgBranchDrawer({
           style={FIELD}
         />
       </label>
+      {canWrite && !fixedHr ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <SectionLabel>{ar ? "الموقع" : "Location"}</SectionLabel>
+          {known.city ? (
+            <div style={NOTE}>
+              {placeLine(known, ar)}
+              {known.derived ? (ar ? " — مقروءة من الاسم، لم تُحفظ بعد" : " — read from the name, not saved yet") : ""}
+            </div>
+          ) : null}
+          <LocationPicker ar={ar} value={place} required={!isManagerUnit(station)} onChange={(next) => { setPlace(next); setErr(""); }} />
+          <button type="button" onClick={saveLocation} style={actionButton("var(--nv-navy)")}>{ar ? "حفظ الموقع" : "Save location"}</button>
+        </div>
+      ) : null}
 
       <label style={LABEL}>
         {isRoot ? (ar ? "مدير المنشأة" : "Company manager") : fixedHr ? (ar ? "مديرة الموارد البشرية" : "HR director") : (ar ? "مدير الفرع" : "Branch manager")}
@@ -598,6 +626,7 @@ export function OrgBranchDrawer({
 export function OrgAddBranchDrawer({
   open,
   initialParentId = "",
+  initialPlace = null,
   data = null,
   company = null,
   companyId = "",
@@ -611,6 +640,7 @@ export function OrgAddBranchDrawer({
   const [name, setName] = useState("");
   const [person, setPerson] = useState("");
   const [kind, setKind] = useState("branch");
+  const [place, setPlace] = useState({ countryCode: DEFAULT_COUNTRY, city: "", cityRegion: "" });
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -619,8 +649,9 @@ export function OrgAddBranchDrawer({
     setName("");
     setPerson("");
     setKind("branch");
+    setPlace({ countryCode: initialPlace?.countryCode || DEFAULT_COUNTRY, city: initialPlace?.city || "", cityRegion: initialPlace?.cityRegion || "" });
     setErr("");
-  }, [open, initialParentId, root?.id]);
+  }, [open, initialParentId, root?.id, initialPlace?.city, initialPlace?.countryCode]);
 
   const parents = useMemo(() => {
     const rows = [];
@@ -648,8 +679,11 @@ export function OrgAddBranchDrawer({
       setErr(ar ? "مدير الفرع يجب أن يكون موظفاً مسجّلاً بالاسم الكامل، أو اترك الحقل فارغاً." : "The manager must be a registered employee, full name — or leave the field empty.");
       return;
     }
-    const result = createOrgBranch(companyId, title, company, data, parentId, kind);
+    // a workplace says where it is; a region / admin unit may leave the city empty
+    const where = kind === "branch" || place.city ? place : null;
+    const result = createOrgBranch(companyId, title, company, data, parentId, kind, where);
     if (!result.ok) {
+      if (result.reason) { setErr(ar ? result.reason : (result.reasonEn || result.reason)); return; }
       setErr(result.error === "LIMIT"
         ? (ar ? "بلغت حد الفروع في الخطة." : "Branch limit reached.")
         : result.error === "PARENT"
@@ -708,7 +742,7 @@ export function OrgAddBranchDrawer({
     <DrawerShell
       ar={ar}
       title={ar ? "إضافة فرع" : "Add branch"}
-      sub={ar ? "اختر الجهة الأعلى ثم الاسم" : "Choose the parent, then the name"}
+      sub={ar ? "الجهة الأعلى، ثم الدولة والمدينة، ثم الاسم" : "Parent, then country and city, then the name"}
       onClose={onClose}
     >
       <SectionLabel>{ar ? "فرع جديد" : "New branch"}</SectionLabel>
@@ -720,6 +754,7 @@ export function OrgAddBranchDrawer({
           ))}
         </select>
       </label>
+      <LocationPicker ar={ar} value={place} required={kind === "branch"} onChange={(next) => { setPlace(next); setErr(""); }} />
       <label style={LABEL}>
         {ar ? "اسم الفرع" : "Branch name"}
         <input

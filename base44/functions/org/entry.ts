@@ -1,5 +1,6 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.38";
 import { authPowerCareSession } from "../../shared/powerCareSession.ts";
+import { checkStationLocationGate } from "../../shared/geoPlaces.ts";
 import {
   checkCreateBranchGate,
   checkCreateDelegationGate,
@@ -329,6 +330,13 @@ Deno.serve(async (req) => {
       if (!gate.ok) {
         return Response.json({ error: gate.error, reason: gate.reason, reasonEn: gate.reasonEn }, { status: 400 });
       }
+      // where the branch is: a known country, and a city from the list for Saudi branches
+      let place: { countryCode?: string; city?: string; cityRegion?: string } = {};
+      if (body.countryCode || body.city) {
+        const geo = checkStationLocationGate({ countryCode: body.countryCode, city: body.city, cityRegion: body.cityRegion });
+        if (!geo.ok) return Response.json({ error: geo.error, reason: geo.reason, reasonEn: geo.reasonEn }, { status: 400 });
+        place = geo.place;
+      }
       const data = await seedBranchesFromStations(await loadPayload());
       const id = uid("br");
       const stationId = id;
@@ -341,6 +349,7 @@ Deno.serve(async (req) => {
         type: "branch",
         status: "active",
         managerId: body.managerId || null,
+        ...place,
       });
       const branch: BranchLike & { companyId: string; group?: string | null } = {
         companyId: auth.companyId,

@@ -1,4 +1,5 @@
 import { deriveSaudiStatus, checkContractTermGate, nationalityIsSaudi } from "@/lib/complianceDerivations";
+import { checkStationLocationGate } from "@/lib/geoPlaces";
 import { assignEmployeeNumber, employeeNumberTaken } from "@/lib/employeeNumber";
 import { checkProbationGate, workPatternForcesFixed } from "@/lib/contractLawDerivations";
 import { checkHiringAgeGate } from "@/lib/employerDuties";
@@ -490,9 +491,21 @@ export function ensureCompanyRootStation(companyId, companyName, ar = true) {
   return { ok: true, stationId, changed: true };
 }
 
-export function createOrgBranch(companyId, name, company, data, parentStationId, unitKind) {
+/**
+ * Create a branch / unit under a parent. `place` ({ countryCode, city, cityRegion }) is where it
+ * is — checked by the location gate (known country; a listed city in Saudi Arabia). Callers that
+ * have no picker (template import) may leave it out; the tree then derives a city from the name
+ * for display only.
+ */
+export function createOrgBranch(companyId, name, company, data, parentStationId, unitKind, place = null) {
   const title = String(name || "").trim();
   if (!title) return { ok: false, error: "NAME" };
+  let where = null;
+  if (place && (place.countryCode || place.city)) {
+    const geo = checkStationLocationGate(place);
+    if (!geo.ok) return { ok: false, error: geo.error, reason: geo.reason, reasonEn: geo.reasonEn };
+    where = geo.place;
+  }
   const live = data || getCompanyData(companyId);
   if (company && live && !canAddStation(company, live)) return { ok: false, error: "LIMIT" };
   const root = companyRootStation(live?.stations);
@@ -509,6 +522,10 @@ export function createOrgBranch(companyId, name, company, data, parentStationId,
   });
   logAudit(companyId, "org_branch_added", parent ? `${title} → ${parent}` : title);
   updateCompany(companyId, (liveData) => {
+    if (where) {
+      const made = (liveData.stations || []).find((item) => String(item.id) === String(stationId));
+      if (made) Object.assign(made, where);
+    }
     appendOrgStructureEvent(liveData, {
       type: "created",
       stationId,
@@ -517,6 +534,26 @@ export function createOrgBranch(companyId, name, company, data, parentStationId,
     });
   });
   return { ok: true, stationId };
+}
+
+/** «الموقع»: set a branch's country / city (the location gate decides); the tree regroups at once. */
+export function setStationLocation(companyId, stationId, place = {}) {
+  const geo = checkStationLocationGate(place);
+  if (!geo.ok) return { ok: false, error: geo.error, reason: geo.reason, reasonEn: geo.reasonEn };
+  let found = false;
+  updateCompany(companyId, (data) => {
+    const station = (data.stations || []).find((item) => String(item.id) === String(stationId));
+    if (!station) return;
+    found = true;
+    station.countryCode = geo.place.countryCode;
+    station.city = geo.place.city;
+    if (geo.place.cityRegion) station.cityRegion = geo.place.cityRegion;
+    else delete station.cityRegion;
+    appendOrgStructureEvent(data, { type: "located", stationId: station.id, stationName: station.name || "", city: geo.place.city, countryCode: geo.place.countryCode });
+  });
+  if (!found) return { ok: false, error: "MISSING", reason: "الفرع غير موجود.", reasonEn: "Branch not found." };
+  logAudit(companyId, "org_branch_located", `${stationId} → ${geo.place.countryCode} · ${geo.place.city}`);
+  return { ok: true, place: geo.place };
 }
 
 export function setOrgUnitKind(companyId, stationId, unitKind) {

@@ -16,6 +16,7 @@
  */
 
 import { buildOrgFocusTree } from "./orgFocus.js";
+import { countryOf, stationPlace } from "./geoPlaces.js";
 import { activePeople, canEditOrgDesign, deriveOrgHealth, seatState, todayKey } from "./orgDesign.js";
 import {
   companyRootStation,
@@ -37,9 +38,15 @@ export const BRANCH_LEVEL_LABELS = {
   unit: { ar: "وحدة", en: "Unit" },
 };
 const LEVEL_ORDER = { hq: 0, region: 1, branch: 2, site: 3, unit: 4 };
+// group cards sit beside the branches: countries, then cities, the «no city» bucket last
+const COUNTRY_ORDER = 1.5;
+const CITY_ORDER = 2;
+const NO_CITY_ORDER = 2.9;
+export const NO_CITY = { ar: "بلا مدينة محددة", en: "No city set" };
 const PEOPLE_ORDER = 9;
 
 export const branchKey = (stationId) => `b:${stationId}`;
+export const isGroupKind = (kind) => kind === "city" || kind === "country";
 export const branchPeopleKey = (stationId) => `bp:${stationId}`;
 export const isBranchKey = (key) => String(key || "").startsWith("b:");
 
@@ -190,6 +197,15 @@ export function buildBranchTree(data, { viewerId = "", scope = "mine", ar = true
     return key;
   };
 
+  /* where each station is: stored country / city, else derived from its name (display only) */
+  const placeOf = new Map(stations.map((s) => [str(s.id), stationPlace(s)]));
+  const cityKeyOf = (sid) => {
+    const p = placeOf.get(sid);
+    return p?.city ? `${p.countryCode || "SA"}|${p.city}` : "";
+  };
+  const countries = new Set([...keep].map((sid) => placeOf.get(sid)?.city ? (placeOf.get(sid).countryCode || "SA") : "").filter(Boolean));
+  const multiCountry = countries.size > 1;
+
   const regionNameOf = (id) => {
     let cursor = parent.get(id) || "";
     while (cursor) {
@@ -200,12 +216,92 @@ export function buildBranchTree(data, { viewerId = "", scope = "mine", ar = true
     return "";
   };
 
+  /**
+   * A station's children: units and regions stand as they are; workplaces are grouped by city —
+   * always under HQ (with a country layer when the company spans countries), under any other
+   * unit only when its workplaces span 2+ cities, and always on an employee's own chain.
+   */
+  const addChildren = (id, key, level) => {
+    const node = nodes.get(key);
+    const childIds = (kids.get(id) || []).filter((k) => keep.has(k));
+    const isWorkplace = (k) => ["branch", "site"].includes(branchLevel(byId.get(k), stations));
+    const workplaces = childIds.filter(isWorkplace);
+    childIds.filter((k) => !isWorkplace(k)).forEach((k) => node.childKeys.push(addBranch(k, key)));
+    const cityKeys = new Set(workplaces.map(cityKeyOf).filter(Boolean));
+    const group = workplaces.length > 0 && (scope !== "all" || level === "hq" || cityKeys.size >= 2);
+    if (!group) { workplaces.forEach((k) => node.childKeys.push(addBranch(k, key))); return; }
+    const buckets = new Map();
+    workplaces.forEach((k) => {
+      const ck = cityKeyOf(k) || "none";
+      if (!buckets.has(ck)) buckets.set(ck, []);
+      buckets.get(ck).push(k);
+    });
+    const countryNodes = new Map();
+    buckets.forEach((members, ck) => {
+      const none = ck === "none";
+      const first = placeOf.get(members[0]);
+      let holder = node;
+      if (!none && level === "hq" && multiCountry) {
+        const code = first.countryCode || "SA";
+        if (!countryNodes.has(code)) {
+          const country = countryOf(code);
+          const ckey = `k:${id}:${code}`;
+          const made = {
+            key: ckey, id: ckey, kind: "country", level: "country", order: COUNTRY_ORDER, stationId: "", seatId: "", employeeId: "",
+            name: country ? (ar ? country.ar : country.en) : code, title: "", unit: "", seatCode: "", state: "filled", vacant: false, isMe: false,
+            avatarUrl: "", countryCode: code, counted, branchCount: 0, headcount: 0, parentKey: key, childKeys: [],
+          };
+          nodes.set(ckey, made);
+          node.childKeys.push(ckey);
+          countryNodes.set(code, made);
+        }
+        holder = countryNodes.get(code);
+      }
+      const gkey = `c:${id}:${none ? "none" : ck}`;
+      const city = {
+        key: gkey,
+        id: gkey,
+        kind: "city",
+        level: "city",
+        order: none ? NO_CITY_ORDER : CITY_ORDER,
+        noCity: none,
+        stationId: "",
+        seatId: "",
+        employeeId: "",
+        name: none ? (ar ? NO_CITY.ar : NO_CITY.en) : (ar ? first.city : (first.cityEn || first.city)),
+        title: none ? "" : (first.regionAr ? (ar ? first.regionAr : first.regionEn) : ((countryOf(first.countryCode) && (ar ? countryOf(first.countryCode).ar : countryOf(first.countryCode).en)) || "")),
+        unit: "",
+        seatCode: "",
+        state: "filled",
+        vacant: false,
+        isMe: false,
+        avatarUrl: "",
+        countryCode: none ? "" : first.countryCode,
+        city: none ? "" : first.city,
+        counted,
+        branchCount: members.length,
+        headcount: 0,
+        parentKey: holder.key,
+        childKeys: [],
+      };
+      nodes.set(gkey, city);
+      holder.childKeys.push(gkey);
+      members.forEach((k) => city.childKeys.push(addBranch(k, gkey)));
+      city.headcount = city.childKeys.reduce((n, k) => n + (nodes.get(k)?.headcount || 0), 0);
+      if (holder !== node) {
+        holder.branchCount += city.branchCount;
+        holder.headcount += city.headcount;
+      }
+    });
+  };
+
   const addBranch = (id, parentKey) => {
     const s = byId.get(id);
     const key = branchKey(id);
     const level = branchLevel(s, stations);
     const mgr = managerOf.get(id) || { key: "", vacant: true, name: "", seatId: "" };
-    const place = str(s.city) || (level === "branch" || level === "site" ? regionNameOf(id) : "");
+    const where = placeOf.get(id);
+    const place = where.city || (level === "branch" || level === "site" ? regionNameOf(id) : "");
     const label = BRANCH_LEVEL_LABELS[level];
     const ids = counted ? subtree(id) : [];
     const headcount = ids.reduce((n, sid) => n + (staffAt.get(sid) || 0), 0);
@@ -249,11 +345,16 @@ export function buildBranchTree(data, { viewerId = "", scope = "mine", ar = true
       vacantSeats: seatRow.vacant,
       findings,
       flag,
+      city: where.city,
+      cityDerived: where.derived,
+      countryCode: where.countryCode,
+      // «حدّد المدينة» (owner/HR): a workplace with no city known, stored or derived
+      needsCity: counted && health && !where.city && (level === "branch" || level === "site"),
       parentKey,
       childKeys: [],
     };
     nodes.set(key, node);
-    (kids.get(id) || []).filter((k) => keep.has(k)).forEach((k) => node.childKeys.push(addBranch(k, key)));
+    addChildren(id, key, level);
     // «أشخاص الفرع»: the manager's people (employees: only in their own branch, from their pruned tree)
     const showPeople = scope === "all" || id === viewerBranchId;
     if (showPeople) {
@@ -307,14 +408,17 @@ export function buildBranchTree(data, { viewerId = "", scope = "mine", ar = true
 }
 
 /**
- * Opened on first load: HQ and every region, so every branch is on screen at once; people folded.
+ * Opened on first load: HQ, every region and every city / country group, so every branch is on
+ * screen at once; people folded.
  * Plus the chain down to the viewer's branch.
  */
 export function defaultBranchExpanded(tree) {
   const out = new Set();
+  const opens = (k) => ["branch", "city", "country"].includes(tree.nodes.get(k)?.kind);
   tree?.nodes?.forEach((node) => {
+    if (isGroupKind(node.kind)) { if (node.childKeys.length) out.add(node.key); return; }
     if (node.kind !== "branch") return;
-    if ((node.level === "hq" || node.level === "region") && node.childKeys.some((k) => tree.nodes.get(k)?.kind === "branch")) out.add(node.key);
+    if ((node.level === "hq" || node.level === "region") && node.childKeys.some(opens)) out.add(node.key);
   });
   let cursor = tree?.nodes?.get(tree.viewerKey)?.parentKey || "";
   while (cursor && tree.nodes.has(cursor)) { out.add(cursor); cursor = tree.nodes.get(cursor).parentKey || ""; }
@@ -325,7 +429,8 @@ export function defaultBranchExpanded(tree) {
 export function expandAllBranches(tree) {
   const out = new Set();
   tree?.nodes?.forEach((node) => {
-    if (node.kind === "branch" && node.childKeys.some((k) => tree.nodes.get(k)?.kind === "branch")) out.add(node.key);
+    const opens = node.childKeys.some((k) => ["branch", "city", "country"].includes(tree.nodes.get(k)?.kind));
+    if ((node.kind === "branch" || isGroupKind(node.kind)) && opens) out.add(node.key);
   });
   return out;
 }

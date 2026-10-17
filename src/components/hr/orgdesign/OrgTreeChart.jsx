@@ -51,6 +51,7 @@ import { OrgAddBranchDrawer, OrgBranchDrawer } from "@/components/hr/OrgBranchDr
 import { useAuth } from "@/lib/PowerCareAuth";
 import { structureRights } from "@/lib/orgActionPanel";
 import OrgActionPanel from "./OrgActionPanel";
+import NvIcon from "@/components/shared/NvIcon";
 import OrgCardDrawer from "./OrgCardDrawer";
 import { initialsOf } from "./orgDesignUi";
 import "./orgTree.css";
@@ -213,7 +214,7 @@ function TreeCard({ card, place, ar, options, w, h, isFocus, highlighted, flag, 
 }
 
 /* ── one branch (or a branch's «أشخاص الفرع») in the «الفروع» view ── */
-function BranchCard({ node, place, ar, w, h, isFocus, highlighted, pending = false, controls = null, drop = "", flash = false, hasMenu, menuOpen, onSelect, onToggle, onOpen, onMenu }) {
+function BranchCard({ node, place, ar, w, h, isFocus, highlighted, pending = false, controls = null, drop = "", flash = false, onFixCity = null, hasMenu, menuOpen, onSelect, onToggle, onOpen, onMenu }) {
   const people = node.kind === "people";
   const kids = node.childKeys?.length || 0;
   const level = people ? "people" : node.level;
@@ -280,6 +281,9 @@ function BranchCard({ node, place, ar, w, h, isFocus, highlighted, pending = fal
           ) : null}
           {node.flag ? <span className="nv-ot-flag" data-tone={node.flag.kind === "MANAGER_VACANT" ? "bad" : "warn"} aria-hidden>{ar ? node.flag.ar : node.flag.en}</span> : null}
           {pending && !node.flag ? <span className="nv-ot-flag" data-tone="mute" aria-hidden>{ar ? "طلب تغيير قيد الاعتماد" : "Change awaiting approval"}</span> : null}
+          {node.needsCity && onFixCity ? (
+            <button type="button" className="nv-ot-flag nv-ot-flag--btn" data-tone="warn" onClick={() => onFixCity(node)}>{ar ? "حدّد المدينة" : "Set the city"}</button>
+          ) : null}
         </span>
       </span>
       {hasMenu && !people ? (
@@ -416,6 +420,55 @@ function MoveSheet({ ar, source, target, candidates, plan, onPick, onConfirm, on
       </div>
     </div>,
     document.body,
+  );
+}
+
+/* ── a city (or country) group in «الفروع»: a light card in the same family ── */
+function CityCard({ node, place, ar, w, h, isFocus, highlighted, onSelect, onToggle }) {
+  const kids = node.childKeys?.length || 0;
+  const country = node.kind === "country";
+  const figures = node.counted
+    ? <>{ar ? "فروع" : "Branches"} <span dir="ltr" className="nv-ot-count__n">{Number(node.branchCount)}</span>{" · "}{ar ? "موظفون" : "People"} <span dir="ltr" className="nv-ot-count__n">{Number(node.headcount)}</span></>
+    : <>{ar ? "فروع" : "Branches"} <span dir="ltr" className="nv-ot-count__n">{Number(node.branchCount || kids)}</span></>;
+  const label = [
+    node.name,
+    node.title,
+    node.counted ? (ar ? `${node.branchCount} فروع، ${node.headcount} موظفون` : `${node.branchCount} branches, ${node.headcount} people`) : "",
+  ].filter(Boolean).join("، ");
+  return (
+    <article
+      className="nv-ot-card nv-ot-city"
+      data-k={node.key}
+      data-level={country ? "country" : "city"}
+      data-none={node.noCity ? "1" : "0"}
+      data-focus={isFocus ? "1" : "0"}
+      data-hit={highlighted ? "1" : "0"}
+      data-open={place.expanded ? "1" : "0"}
+      style={{ left: place.left, top: place.y, width: w, height: h }}
+    >
+      <button type="button" className="nv-ot-card__hit" data-key={node.key} aria-current={isFocus ? "true" : undefined} aria-label={label} onClick={() => onSelect(node.key)} />
+      <span className="nv-ot-avatar nv-ot-avatar--city" aria-hidden>
+        <NvIcon name={country ? "home" : "location"} size={20} />
+      </span>
+      <span className="nv-ot-card__text">
+        <span className="nv-ot-card__name" aria-hidden><span className="nv-ot-card__nm">{node.name}</span></span>
+        {node.title ? <span className="nv-ot-card__title" aria-hidden>{node.title}</span> : null}
+        <span className="nv-ot-card__foot">
+          {kids ? (
+            <button
+              type="button"
+              className="nv-ot-count"
+              aria-expanded={place.expanded}
+              aria-label={ar ? `${place.expanded ? "طيّ" : "افتح"} فروع ${node.name}` : `${place.expanded ? "Fold" : "Open"} ${node.name} branches`}
+              onClick={() => onToggle(node.key)}
+            >
+              <span className="nv-ot-city__fig">{figures}</span>
+              <span className="nv-ot-count__chev" aria-hidden>{Icon.chev}</span>
+            </button>
+          ) : null}
+        </span>
+      </span>
+    </article>
   );
 }
 
@@ -741,7 +794,13 @@ export default function OrgTreeChart({
       focusKey: selected, stack: narrow, childLimit: CHILD_LIMIT, showAll,
       // «+ إضافة بطاقة هنا»: management tree, for whoever manages the structure
       addSlot: hrScope && mode === "manage" && rights.canManage
-        ? (key) => { const n = tree.nodes.get(key); return Boolean(n) && (n.kind === "branch" ? n.level !== "unit" : n.kind !== "people" && !n.vacant && Boolean(n.seatId)); }
+        ? (key) => {
+          const n = tree.nodes.get(key);
+          if (!n) return false;
+          if (n.kind === "city") return !n.noCity;
+          if (n.kind === "branch") return n.level !== "unit";
+          return n.kind !== "people" && n.kind !== "country" && !n.vacant && Boolean(n.seatId);
+        }
         : null,
     }),
     [tree, expanded, cardW, cardH, compact, indent, maxCols, selected, narrow, showAll, hrScope, mode, rights.canManage],
@@ -1186,7 +1245,7 @@ export default function OrgTreeChart({
   const [sheet, setSheet] = useState(null); // { source, targetKey }
   const cardOf = useCallback((key) => {
     const node = tree.nodes.get(key);
-    if (!node || node.kind === "people") return null;
+    if (!node || node.kind === "people" || node.kind === "city" || node.kind === "country") return null;
     return { ...node, kind: node.kind === "branch" ? "branch" : "person" };
   }, [tree]);
   const isUnder = useCallback((a, b) => {
@@ -1205,7 +1264,7 @@ export default function OrgTreeChart({
   }, [sheet, cardOf, data, user, isUnder, day]);
   const moveCandidates = useMemo(() => {
     const out = new Map();
-    tree.nodes.forEach((node, key) => { if (node.kind !== "people") out.set(key, node); });
+    tree.nodes.forEach((node, key) => { if (!["people", "city", "country"].includes(node.kind)) out.set(key, node); });
     return out;
   }, [tree]);
   const openMove = (card, targetKey = "") => setSheet({ source: cardOf(card.key) || card, targetKey });
@@ -1334,10 +1393,26 @@ export default function OrgTreeChart({
   /* the management action panel (card click in «شجرة الإدارة») and the drawers it hands off to */
   const [panel, setPanel] = useState(null); // { key, form }
   const [addUnit, setAddUnit] = useState(null); // parent station id
+  const [addPlace, setAddPlace] = useState(null); // a city group's «+» pre-picks the city
+  /* a card created a moment ago: once the tree re-derives, open every group above it (its city) */
+  const revealAfter = useRef("");
+  useEffect(() => {
+    const key = revealAfter.current;
+    if (!key || !tree.nodes.has(key)) return;
+    revealAfter.current = "";
+    const up = pathTo(tree, key).slice(0, -1);
+    setExpanded((cur) => (up.every((k) => cur.has(k)) ? cur : new Set([...cur, ...up])));
+    pendingScroll.current = { key, mode: "nearest", smooth: true };
+  }, [tree, setExpanded]);
   const [branchDrawer, setBranchDrawer] = useState("");
   const [flash, setFlash] = useState(() => new Set());
   const flashTimer = useRef(0);
-  const openPanel = (key, form = "") => { if (manage && tree.nodes.get(key) && tree.nodes.get(key).kind !== "people") setPanel({ key, form }); };
+  const openPanel = (key, form = "") => {
+    const n = tree.nodes.get(key);
+    if (manage && n && !["people", "city", "country"].includes(n.kind)) setPanel({ key, form });
+  };
+  /* «حدّد المدينة» (owner / HR): straight to the location edit, in the management tree */
+  const fixCity = hrScope && rights.canManage ? (node) => { if (!manage) setMode("manage"); setPanel({ key: node.key, form: "location" }); } : null;
   /* after a change: the tree re-derives from the data; keep the branch open and flash what changed */
   const afterChange = ({ keys = [], expand = "", removed = "" } = {}) => {
     if (expand) setExpanded((cur) => (cur.has(expand) ? cur : new Set([...cur, expand])));
@@ -1593,8 +1668,19 @@ export default function OrgTreeChart({
                     ar={ar}
                     w={cardW}
                     h={cardH}
-                    label={parent?.kind === "branch" ? (ar ? "إضافة وحدة أو فرع هنا" : "Add a unit here") : ""}
-                    onClick={() => (parent?.kind === "branch" ? setAddUnit(parent.stationId) : openPanel(place.parentKey, "addSeatUnder"))}
+                    label={parent?.kind === "city" ? (ar ? `إضافة فرع في ${parent.name}` : `Add a branch in ${parent.name}`) : parent?.kind === "branch" ? (ar ? "إضافة وحدة أو فرع هنا" : "Add a unit here") : ""}
+                    onClick={() => {
+                      if (parent?.kind === "city") {
+                        // the station the city group hangs under (through a country group when there is one)
+                        let holder = tree.nodes.get(parent.parentKey);
+                        if (holder?.kind === "country") holder = tree.nodes.get(holder.parentKey);
+                        setAddPlace({ countryCode: parent.countryCode || "SA", city: parent.city, cityRegion: "" });
+                        setAddUnit(String(holder?.stationId || ""));
+                        return;
+                      }
+                      if (parent?.kind === "branch") { setAddPlace(null); setAddUnit(parent.stationId); return; }
+                      openPanel(place.parentKey, "addSeatUnder");
+                    }}
                   />
                 );
               }
@@ -1611,6 +1697,22 @@ export default function OrgTreeChart({
                 );
               }
               const node = tree.nodes.get(place.key);
+              if (node.kind === "city" || node.kind === "country") {
+                return (
+                  <CityCard
+                    key={place.key}
+                    node={node}
+                    place={at}
+                    ar={ar}
+                    w={cardW}
+                    h={cardH}
+                    isFocus={place.key === selected}
+                    highlighted={highlight === place.key}
+                    onSelect={(key) => select(key, { scroll: "nearest" })}
+                    onToggle={toggle}
+                  />
+                );
+              }
               if (node.kind === "branch" || node.kind === "people") {
                 return (
                   <BranchCard
@@ -1626,6 +1728,7 @@ export default function OrgTreeChart({
                     controls={manage ? <CardControls ar={ar} items={controlsFor(node)} onRun={(it) => (it.id === "branch" ? openPanel(node.key, "rename") : runAction(it.id, node))} /> : null}
                     drop={dropOf(place.key)}
                     flash={flash.has(place.key)}
+                    onFixCity={fixCity}
                     hasMenu={hasMenu}
                     menuOpen={menu?.card.key === place.key}
                     onSelect={(key) => { select(key, { scroll: "nearest" }); if (manage) openPanel(key); }}
@@ -1709,7 +1812,7 @@ export default function OrgTreeChart({
           onMoveManager={(card) => openMove(card)}
           onOpenFile={(card) => setDetails(card)}
           onOpenBranchDrawer={(stationId) => setBranchDrawer(String(stationId || ""))}
-          onAddUnit={(stationId) => setAddUnit(String(stationId || ""))}
+          onAddUnit={(stationId) => { setAddPlace(null); setAddUnit(String(stationId || "")); }}
           onDone={afterChange}
           onNavigate={(href) => { setPanel(null); navigate(href, { state: { from: `${location.pathname}${location.search}` } }); }}
         />
@@ -1718,15 +1821,18 @@ export default function OrgTreeChart({
         <OrgAddBranchDrawer
           open
           initialParentId={addUnit}
+          initialPlace={addPlace}
           data={data}
           company={company}
           companyId={companyId}
           companyName={data?.settings?.companyName || company?.name || ""}
           ar={ar}
-          onClose={() => setAddUnit(null)}
+          onClose={() => { setAddUnit(null); setAddPlace(null); }}
           onCreated={(stationId) => {
             const parentKey = addUnit ? `b:${addUnit}` : "";
             setAddUnit(null);
+            setAddPlace(null);
+            if (stationId) revealAfter.current = `b:${stationId}`;
             afterChange({ keys: [stationId ? `b:${stationId}` : "", parentKey], expand: branches ? parentKey : "" });
           }}
         />

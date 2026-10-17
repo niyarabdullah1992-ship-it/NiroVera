@@ -76,7 +76,7 @@ export function reasonOf(map, code, fallback) {
  * @returns {Array<{ id, ar, en, items: Array<{ id, ar, en, fn, blocked: null | { ar, en }, form?: string, destructive?: boolean, stationId?: string }> }>}
  */
 export function panelActions(node, { data, user } = {}) {
-  if (!node || node.kind === "people") return [];
+  if (!node || node.kind === "people" || node.kind === "city" || node.kind === "country") return [];
   const rights = structureRights(user, data);
   const deny = rights.reason;
   const seatDeny = deny || (rights.canEditSeats ? null : EDIT_BLOCK);
@@ -97,6 +97,7 @@ export function panelActions(node, { data, user } = {}) {
     }
     add("move", { id: "moveParent", ar: "تحت فرع آخر", en: "Under another branch", fn: "setOrgBranchParent", form: "pickParent", blocked: deny || fixed });
     add("edit", { id: "rename", ar: "الاسم", en: "Name", fn: root ? "renameCompany" : "renameOrgBranch", form: "rename", blocked: deny || (hr ? HR_FIXED : null) });
+    add("edit", { id: "location", ar: "الموقع (الدولة والمدينة)", en: "Location (country and city)", fn: "setStationLocation", form: "location", blocked: deny });
     add("edit", { id: "unitKind", ar: "النوع: فرع أو إدارة منطقة", en: "Kind: branch or region", fn: "setOrgUnitKind", form: "unitKind", blocked: deny || fixed });
     add("remove", { id: "closeUnit", ar: "إغلاق الوحدة بقرار", en: "Close the unit by decision", fn: "«التغييرات» closeUnit", form: "confirmClose", destructive: true, blocked: deny || fixed });
     add("remove", { id: "deleteBranch", ar: "إزالة الفرع ونقل ما فيه للأعلى", en: "Remove the branch, its content moves up", fn: "deleteStationWithData (transfer)", form: "confirmDelete", destructive: true, blocked: deny || fixed });
@@ -141,8 +142,9 @@ export function panelActions(node, { data, user } = {}) {
 }
 
 /**
- * The branches hierarchy as an indented pick list (HQ → region → branch → site), each row with
- * whether it can be picked for `purpose`, and why not.
+ * The branches hierarchy as an indented pick list (HQ → region → city → branch → site), each row
+ * with whether it can be picked for `purpose`, and why not. City / country rows are headings
+ * (`group: true`).
  *   purpose "transfer" — an employee's new workplace (regions and the HR unit are not workplaces)
  *   purpose "seat"     — a seat's new unit (same rule, through «التغييرات»)
  *   purpose "parent"   — a branch's new parent (not itself or anything under it, not the HR unit)
@@ -154,6 +156,12 @@ export function branchPickList(data, { purpose = "transfer", current = "", movin
   const rows = [];
   const walk = (key, depth) => {
     const node = tree.nodes.get(key);
+    if (node && (node.kind === "city" || node.kind === "country")) {
+      // a city / country is a heading in the list, not a place to pick
+      rows.push({ id: node.key, name: node.name, level: node.kind, depth, group: true, blocked: null });
+      orderKeys(tree, node.childKeys.filter((k) => tree.nodes.has(k))).forEach((k) => walk(k, depth + 1));
+      return;
+    }
     if (!node || node.kind !== "branch") return;
     const s = stations.find((x) => str(x.id) === str(node.stationId));
     let blocked = null;
@@ -165,7 +173,7 @@ export function branchPickList(data, { purpose = "transfer", current = "", movin
       blocked = isManagerUnit(s) ? { ar: "منطقة — ليست مكان عمل", en: "Region — not a workplace" } : { ar: "وحدة ثابتة", en: "Fixed unit" };
     }
     rows.push({ id: str(node.stationId), name: node.name, level: node.level, depth, blocked });
-    orderKeys(tree, node.childKeys.filter((k) => tree.nodes.get(k)?.kind === "branch")).forEach((k) => walk(k, depth + 1));
+    orderKeys(tree, node.childKeys.filter((k) => ["branch", "city", "country"].includes(tree.nodes.get(k)?.kind))).forEach((k) => walk(k, depth + 1));
   };
   tree.roots.forEach((k) => walk(k, 0));
   return rows;

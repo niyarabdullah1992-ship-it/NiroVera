@@ -65,20 +65,23 @@ assert.equal(B("west").level, "region");
 assert.equal(B("jed").parentKey, branchKey("west"));
 assert.equal(B("port").parentKey, branchKey("dmm"));
 assert.equal(B("port").level, "site", "a workplace under a branch is a site");
-assert.equal(B("kfj").parentKey, branchKey("east"), "no parent, but a region name → under that region");
-assert.equal(B("lone").parentKey, branchKey("hq"), "no parent, no region → under HQ");
+const up = (node) => tree.nodes.get(node.parentKey);
+assert.equal(up(B("kfj")).kind, "city", "the region's branches span two cities → grouped by city");
+assert.equal(up(up(B("kfj"))).key, branchKey("east"), "no parent, but a region name → under that region");
+assert.equal(up(B("lone")).noCity, true, "no parent, no region, no city → HQ's «بلا مدينة محددة»");
+assert.equal(up(up(B("lone"))).key, branchKey("hq"));
 assert.equal(B("hr").level, "unit");
 assert.ok(!tree.nodes.has(branchKey("old")), "closed branches are not drawn");
 
-/* order under HQ: regions, then branches, then units */
+/* under HQ: regions and units stand; its own branches sit in city groups */
 const hqKids = B("hq").childKeys.map((k) => tree.nodes.get(k));
-const levels = hqKids.filter((n) => n.kind === "branch").map((n) => n.level);
-assert.deepEqual(levels, ["region", "region", "branch", "unit"]);
+assert.deepEqual(hqKids.filter((n) => n.kind === "branch").map((n) => n.level).sort(), ["region", "region", "unit"]);
+assert.ok(hqKids.some((n) => n.kind === "city" && n.noCity));
 
 /* the card: manager (holder or «شاغر»), city / region, counts, flags only for real problems */
 assert.equal(B("jed").managerName, "مدير جدة");
 assert.equal(B("jed").title, "فرع · جدة", "the city when stored");
-assert.equal(B("kfj").title, "فرع · المنطقة الشرقية", "else the region");
+assert.equal(B("kfj").title, "فرع · الخفجي", "else the city read from its name");
 assert.equal(B("jed").headcount, 3, "active people only (bj, j1, j2)");
 assert.equal(B("jed").seats, 4);
 assert.equal(B("jed").vacantSeats, 1);

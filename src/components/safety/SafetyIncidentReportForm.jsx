@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
 import { ArrowUpFromLine, Cog, Flame, FlaskConical, Package, Sun, Truck, Waves, Zap } from "lucide-react";
 import {
   SAFETY_LIKELIHOOD,
@@ -86,6 +87,10 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
   const [form, setForm] = useState(EMPTY);
   const [code, setCode] = useState(() => safetyReportCode());
   const [submitting, setSubmitting] = useState(false);
+  // «بطاقاتي» filters as in طلباتي: الكل, what is still open, then what closed with its after photo.
+  const [cardsFace, setCardsFace] = useState("all");
+  const isClosed = (item) => item.status === "closed";
+  const shownReports = reports.filter((item) => cardsFace === "all" || (cardsFace === "closed" ? isClosed(item) : !isClosed(item)));
   const photoRef = useRef(null);
   const L = (a, e) => (ar ? a : e);
   const patch = (next) => setForm((prev) => ({ ...prev, ...next }));
@@ -409,10 +414,18 @@ export default function SafetyIncidentReportForm({ station, ar, reporter, report
 
       <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
         <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 2px rgba(12,20,16,.04)" }}>
-          <header style={{ padding: "14px 16px", borderBottom: "1px solid var(--nv-line)" }}>
-            <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{L("بطاقاتي", "My cards")}</strong>
-          </header>
-          {reports.length ? reports.map((item) => {
+          <StatusFilterPills
+            dataKey="safety-mine"
+            title={L("بطاقاتي", "My cards")}
+            value={cardsFace}
+            onChange={setCardsFace}
+            items={reports.length === 0 ? [] : [
+              { id: "all", label: L("الكل", "All"), n: reports.length },
+              { id: "open", label: L("مفتوحة", "Open"), n: reports.filter((item) => !isClosed(item)).length },
+              { id: "closed", label: L("مُغلقة", "Closed"), n: reports.filter(isClosed).length },
+            ]}
+          />
+          {shownReports.length ? shownReports.map((item) => {
             const card = item.card || {};
             const tone = toneStyle(card.levelTone || "");
             const step = Number(item.step ?? card.step ?? 0);

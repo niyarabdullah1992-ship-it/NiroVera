@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
 import {
   canEditOrgDesign,
   CHANGE_OP_LABELS,
@@ -50,6 +51,14 @@ function opLine(op, ctx, ar) {
  * approval by another HR member or the owner, publication on the date as a signed org decision,
  * and the structure as of any day (past decisions undone, approved plans applied).
  */
+const CHANGE_FACE_LABELS = {
+  pending: { ar: "بانتظار الاعتماد", en: "Awaiting approval" },
+  approved: { ar: "معتمدة", en: "Approved" },
+  draft: { ar: "مسودات", en: "Drafts" },
+  rejected: { ar: "مرفوضة", en: "Rejected" },
+  published: { ar: "منشورة", en: "Published" },
+};
+
 export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, seed, onSeedConsumed }) {
   const today = todayKey();
   const design = orgDesignOf(data);
@@ -61,6 +70,7 @@ export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, s
   const [notes, setNotes] = useState({});
   const [rowGate, setRowGate] = useState({});
   const [asOf, setAsOf] = useState(today);
+  const [changesFace, setChangesFace] = useState("all");
 
   useEffect(() => {
     if (!seed) return;
@@ -181,7 +191,21 @@ export default function OrgChangesBoard({ ar, data, actor, companyId, canEdit, s
           <EmptyInvite text={ar ? "لا تغييرات بعد. حين تنقل منصباً أو تنشئ وحدة أو تغيّر تبعيتها، اكتبها هنا بتاريخ سريان — ليبقى كل تغيير قراراً له أثر وتاريخ." : "No changes yet. When you move a seat, create a unit or change its parent, write it here with an effective date."} />
         ) : null}
 
-        {groups.filter((g) => g.rows.length).map((g) => (
+        {/* «طلبات التغيير» filter as in طلباتي: الكل, what waits on approval, then the settled states. */}
+        {design.changes.length ? (
+          <StatusFilterPills
+            dataKey="org-changes"
+            title={ar ? "طلبات التغيير" : "Change requests"}
+            value={changesFace}
+            onChange={setChangesFace}
+            items={[
+              { id: "all", label: ar ? "الكل" : "All", n: groups.reduce((n, g) => n + g.rows.length, 0) },
+              ...groups.map((g) => ({ id: g.status, label: ar ? CHANGE_FACE_LABELS[g.status].ar : CHANGE_FACE_LABELS[g.status].en, n: g.rows.length })),
+            ]}
+          />
+        ) : null}
+
+        {groups.filter((g) => g.rows.length && (changesFace === "all" || g.status === changesFace)).map((g) => (
           <div key={g.status} style={{ display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "9px 18px", background: "var(--nv-soft)", borderBottom: "1px solid var(--nv-line2, var(--nv-line))", display: "flex", alignItems: "baseline", gap: 8 }}>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)" }}>{ar ? CHANGE_STATUS_LABELS[g.status].ar : CHANGE_STATUS_LABELS[g.status].en}</span>

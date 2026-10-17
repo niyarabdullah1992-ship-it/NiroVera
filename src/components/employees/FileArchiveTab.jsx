@@ -6,6 +6,7 @@ import { contractSheet } from "@/lib/contractDocument";
 import { printSheet } from "@/lib/printSheet";
 import { regulationOf } from "@/lib/workRegulation";
 import SanctionsElsewhereLink from "@/components/employees/SanctionsElsewhereLink";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
 
 const MUTED = "var(--nv-ink3)";
 const INK = "var(--nv-ink)";
@@ -77,55 +78,41 @@ export default function FileArchiveTab({ employee, data, isSelf, managerView, ar
   }), [employee, data, managerView, isSelf, ar]);
   const groups = filterFileArchive(archive, { group, query });
   const present = ARCHIVE_GROUPS.filter((g) => archive.groups.some((row) => row.id === g.id));
-  const pill = (on) => ({
-    fontFamily: "inherit",
-    height: 28,
-    padding: "0 11px",
-    borderRadius: 999,
-    border: on ? "none" : "1px solid var(--nv-line)",
-    background: on ? "var(--nv-btn-fill, #3C7D50)" : "var(--nv-card)",
-    color: on ? "var(--nv-btn-ink, #F4F7F5)" : INK,
-    fontSize: 11.5,
-    fontWeight: on ? 700 : 500,
-    cursor: "pointer",
-  });
 
   return (
     <section data-file-archive="1" className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 14, overflow: "hidden" }}>
-      <div style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-        <div>
-          <div style={{ fontFamily: "var(--font-heading)", fontSize: 16, fontWeight: 700, color: INK }}>
-            {isSelf ? (ar ? "أرشيف ملفي" : "My file archive") : (ar ? "أرشيف الملف" : "File archive")}
-            {archive.count ? <span style={{ fontSize: 12, fontWeight: 600, color: INK, marginInlineStart: 8 }}>{archive.count}</span> : null}
-          </div>
-          <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.75, marginTop: 3 }}>
-            {isSelf
-              ? (ar
-                ? "كل وثيقة على ملفك: العقد والشهادات والنسخ والإيصالات والإقرارات — بمصدرها وإثباتها."
-                : "Every document on your file — contract, letters, copies, receipts and acknowledgements — with its source and proof.")
-              : (ar
-                ? "كل وثيقة على الملف: العقد والقرارات والشهادات والنسخ والإيصالات والإقرارات — بمصدرها وإثباتها."
-                : "Every document on the file — contract, decisions, letters, copies, receipts and acknowledgements — with its source and proof.")}
-          </div>
+      {/* «أرشيف ملفي» filters as in طلباتي: a title, then الكل and each document type with its count. */}
+      <StatusFilterPills
+        dataKey="file-archive"
+        title={isSelf ? (ar ? "أرشيف ملفي" : "My file archive") : (ar ? "أرشيف الملف" : "File archive")}
+        value={group}
+        onChange={setGroup}
+        items={archive.groups.length ? [
+          { id: "all", label: ar ? "الكل" : "All", n: archive.count || 0 },
+          ...present.map((g) => ({ id: g.id, label: ar ? g.ar : g.en, n: archive.groups.find((row) => row.id === g.id)?.items.length || 0 })),
+        ] : []}
+        trailing={archive.groups.length ? (
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={ar ? "ابحث في الأرشيف" : "Search the archive"}
+            aria-label={ar ? "ابحث في الأرشيف" : "Search the archive"}
+            style={{ fontFamily: "inherit", height: 30, width: 220, maxWidth: "100%", padding: "0 10px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: INK, fontSize: 12 }}
+          />
+        ) : null}
+      >
+        <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.75 }}>
+          {isSelf
+            ? (ar
+              ? "كل وثيقة على ملفك: العقد والشهادات والنسخ والإيصالات والإقرارات — بمصدرها وإثباتها."
+              : "Every document on your file — contract, letters, copies, receipts and acknowledgements — with its source and proof.")
+            : (ar
+              ? "كل وثيقة على الملف: العقد والقرارات والشهادات والنسخ والإيصالات والإقرارات — بمصدرها وإثباتها."
+              : "Every document on the file — contract, decisions, letters, copies, receipts and acknowledgements — with its source and proof.")}
           {isSelf ? <div style={{ marginTop: 6 }}><SanctionsElsewhereLink ar={ar} /></div> : null}
         </div>
-        {archive.groups.length ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-            <button type="button" style={pill(group === "all")} onClick={() => setGroup("all")} aria-pressed={group === "all"}>{ar ? "الكل" : "All"}</button>
-            {present.map((g) => (
-              <button key={g.id} type="button" style={pill(group === g.id)} onClick={() => setGroup(g.id)} aria-pressed={group === g.id}>{ar ? g.ar : g.en}</button>
-            ))}
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={ar ? "ابحث في الأرشيف" : "Search the archive"}
-              aria-label={ar ? "ابحث في الأرشيف" : "Search the archive"}
-              style={{ fontFamily: "inherit", height: 30, flex: "1 1 160px", minWidth: 0, maxWidth: 260, padding: "0 10px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: INK, fontSize: 12 }}
-            />
-          </div>
-        ) : null}
-      </div>
+      </StatusFilterPills>
       {groups.length === 0 ? (
         <div style={{ padding: "14px 20px", borderTop: "1px solid var(--nv-line)", fontSize: 12, color: MUTED }}>
           {archive.empty ? archive.emptyLine : (ar ? "لا وثيقة تطابق البحث." : "No document matches.")}

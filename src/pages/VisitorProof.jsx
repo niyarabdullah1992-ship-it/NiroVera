@@ -15,7 +15,9 @@ import { toast } from "@/components/ui/use-toast";
 import { ui } from "@/lib/platformStyles";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import OpsFrame from "@/components/tasks/OpsFrame";
-import OpsSideSlab, { OpsListHead } from "@/components/tasks/OpsSideSlab";
+import OpsSideSlab from "@/components/tasks/OpsSideSlab";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import OpsMoreMenu from "@/components/tasks/OpsMoreMenu";
 import { DetailHero, HeroFigure, HeroPill } from "@/components/tasks/detail/DetailKit";
 import { cleanedPeople } from "@/lib/workProofCrew";
@@ -27,7 +29,7 @@ import ComposerModalShell from "@/components/shared/ComposerModalShell";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import VisitorProofFields from "@/components/proof/VisitorProofFields";
 import VisitorProofCard from "@/components/proof/VisitorProofCard";
-import OpsToolbarStrip, { OpsControlBar, OpsStripSearch } from "@/components/tasks/OpsToolbarStrip";
+import { OpsStripSearch } from "@/components/tasks/OpsToolbarStrip";
 import ProofRecordsTable from "@/components/proof/ProofRecordsTable";
 import { EMPTY_PERSON, EMPTY_VEHICLE } from "@/lib/workProofCrew";
 import { proofVehicleText } from "@/components/proof/WorkProofRaiseFields";
@@ -225,7 +227,8 @@ export default function VisitorProof() {
     ].join(" ").toLowerCase();
     return hay.includes(query.trim().toLowerCase());
   };
-  const visible = liveProofs.filter(matchesQuery);
+  const visitFace = filter === "left" ? "left" : filter === "today" || filter === "late" ? filter : "all";
+  const visible = liveProofs.filter((p) => visitFace === "all" || visitorDueTone(p, deriveVisitorProofStage(p)) === visitFace).filter(matchesQuery);
   const archiveItems = archiveProofs.filter(matchesQuery).map((p) => {
     const n = (Array.isArray(p.people) ? p.people : []).filter((person) => person?.name).length;
     return {
@@ -246,9 +249,12 @@ export default function VisitorProof() {
       badge: ar ? STAGE_LABEL.left.ar : STAGE_LABEL.left.en,
     };
   });
+  // «تصاريح الزوار» filter as in طلباتي: all on site, then what ends today, then what overran, الأرشيف last.
   const filterChips = [
-    { id: "all", label: ar ? `في الفرع · ${liveProofs.length}` : `On site · ${liveProofs.length}` },
-    { id: "left", label: ar ? `الأرشيف · ${archiveProofs.length}` : `Archive · ${archiveProofs.length}` },
+    { id: "all", label: ar ? "الكل" : "All", n: liveProofs.length },
+    { id: "today", label: ar ? "تنتهي اليوم" : "Ends today", n: liveProofs.filter((p) => visitorDueTone(p, deriveVisitorProofStage(p)) === "today").length },
+    { id: "late", label: ar ? "تجاوزت موعدها" : "Overran", n: liveProofs.filter((p) => visitorDueTone(p, deriveVisitorProofStage(p)) === "late").length },
+    { id: "left", label: ar ? "الأرشيف" : "Archive", n: archiveProofs.length },
   ];
 
   const tableRows = visible.filter((p) => !focusStation || String(p.stationId) === String(focusStation)).map((p) => {
@@ -489,34 +495,37 @@ export default function VisitorProof() {
         </ComposerModalShell>
       )}
 
-      <OpsListHead
-        title={ar ? "تصاريح الزوار" : "Visitor passes"}
-        note={focusStation
-          ? (ar ? `معروض: ${stationName(focusStation)}` : `Showing: ${stationName(focusStation)}`)
-          : (ar ? "تصريح لكل زيارة: من جاء، ومن يستضيفه، وحتى متى." : "One pass per visit: who came, who hosts them, until when.")}
-        trailing={focusStation ? (
-          <button type="button" data-clear-focus="1" onClick={() => setFocusStation("")} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: "none", background: "transparent", color: "#0F5535", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
-            {ar ? "اعرض الكل" : "Show all"}
-          </button>
-        ) : null}
-      />
-      <OpsControlBar>
-        <OpsToolbarStrip
-          ar={ar}
-          dir={ar ? "rtl" : "ltr"}
-          filter={filter === "left" ? "left" : "all"}
-          onFilterChange={setFilter}
-          chips={filterChips}
-          showCreate={raising}
-          onToggleCreate={() => {
-            if (raising) {
-              setRaising(false);
-              return;
-            }
-            resetForm();
-            setRaising(true);
-          }}
-          createLabel={ar ? "إثبات زائر جديد" : "New visitor proof"}
+      <section data-ops-list-head="1" style={{ ...chromeSlab, overflow: "hidden" }}>
+        <StatusFilterPills
+          dataKey="visitor-passes"
+          title={ar ? "تصاريح الزوار" : "Visitor passes"}
+          note={focusStation ? (ar ? `معروض: ${stationName(focusStation)}` : `Showing: ${stationName(focusStation)}`) : null}
+          value={visitFace}
+          onChange={setFilter}
+          items={filterChips}
+          trailing={(
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              {focusStation ? (
+                <button type="button" data-clear-focus="1" onClick={() => setFocusStation("")} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: "none", background: "transparent", color: "var(--nv-ok-ink, #0F5535)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+                  {ar ? "اعرض الكل" : "Show all"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  if (raising) {
+                    setRaising(false);
+                    return;
+                  }
+                  resetForm();
+                  setRaising(true);
+                }}
+                style={raising ? ui.btnCreateQuiet : ui.btnCreate}
+              >
+                {raising ? (ar ? "إخفاء النموذج" : "Hide form") : (ar ? "إثبات زائر جديد" : "New visitor proof")}
+              </button>
+            </span>
+          )}
         />
         {filter !== "left" ? (
           <OpsStripSearch
@@ -525,7 +534,7 @@ export default function VisitorProof() {
             placeholder={ar ? "بحث في إثباتات الزائر…" : "Search visitor proofs…"}
           />
         ) : null}
-      </OpsControlBar>
+      </section>
 
       {filter === "left" ? (
         <RecordSmartArchive

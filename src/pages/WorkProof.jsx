@@ -40,7 +40,9 @@ import {
 } from "@/lib/platformStyles";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import OpsFrame from "@/components/tasks/OpsFrame";
-import OpsSideSlab, { OpsListHead } from "@/components/tasks/OpsSideSlab";
+import OpsSideSlab from "@/components/tasks/OpsSideSlab";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import OpsMoreMenu from "@/components/tasks/OpsMoreMenu";
 import { PhotoFrame, StageRail, workElapsedLabel, workProofSteps } from "@/components/proof/WorkProofRecordCard";
 import { DutyTile, DutyNumber } from "@/components/schedules/DutyTiles";
@@ -55,7 +57,7 @@ import { printSheet } from "@/lib/printSheet";
 import { workProofSheet } from "@/lib/printRecords";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import PlatformDateField from "@/components/shared/PlatformDateField";
-import OpsToolbarStrip, { OpsControlBar, OpsStripSearch } from "@/components/tasks/OpsToolbarStrip";
+import { OpsStripSearch } from "@/components/tasks/OpsToolbarStrip";
 import ProofRecordsTable from "@/components/proof/ProofRecordsTable";
 import ProofAttachments from "@/components/proof/ProofAttachments";
 import ProofAuditTimeline from "@/components/proof/ProofAuditTimeline";
@@ -122,7 +124,7 @@ function toLocalInput(value) {
 function normalizeWorkProofFilter(value) {
   const raw = String(value || "").toLowerCase();
   if (raw === "sealed" || raw === "completed") return "archive";
-  if (raw === "await" || raw === "archive") return raw;
+  if (raw === "await" || raw === "ready" || raw === "archive") return raw;
   return "all";
 }
 
@@ -673,10 +675,12 @@ export default function WorkProof() {
     branch: p.stationId ? stationName(p.stationId) : "",
     badge: ar ? (STAGE_LABEL[p.stage || deriveProofStage(p)]?.ar) : (STAGE_LABEL[p.stage || deriveProofStage(p)]?.en),
   }));
+  // «إثباتات العمل» filter as in طلباتي: all live, work in progress, then what needs its finish, الأرشيف last.
   const filterChips = [
-    { id: "all", label: ar ? `الكل · ${liveProofs.length}` : `All · ${liveProofs.length}` },
-    { id: "await", label: ar ? `بانتظار · ${scopedCounts.await}` : `Awaiting · ${scopedCounts.await}` },
-    { id: "archive", label: ar ? `الأرشيف · ${archiveProofs.length}` : `Archive · ${archiveProofs.length}` },
+    { id: "all", label: ar ? "الكل" : "All", n: liveProofs.length },
+    { id: "await", label: ar ? STAGE_LABEL.await.ar : STAGE_LABEL.await.en, n: scopedCounts.await },
+    { id: "ready", label: ar ? STAGE_LABEL.ready.ar : STAGE_LABEL.ready.en, n: scopedCounts.ready },
+    { id: "archive", label: ar ? "الأرشيف" : "Archive", n: archiveProofs.length },
   ];
 
   const proofAccess = (p) => {
@@ -943,35 +947,38 @@ export default function WorkProof() {
       </ComposerModalShell>
       )}
 
-      <OpsListHead
-        title={ar ? "إثباتات العمل" : "Work proofs"}
-        note={focusStation
-          ? (ar ? `معروض: ${stationName(focusStation)}` : `Showing: ${stationName(focusStation)}`)
-          : (ar ? "قبل وبعد لكل جهة، ومن دخل وخرج من عمالها." : "Before and after for each party, and who of its crew came and went.")}
-        trailing={focusStation ? (
-          <button type="button" data-clear-focus="1" onClick={() => setFocusStation("")} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: "none", background: "transparent", color: "#0F5535", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
-            {ar ? "اعرض الكل" : "Show all"}
-          </button>
-        ) : null}
-      />
-      <OpsControlBar>
-        <OpsToolbarStrip
-          ar={ar}
-          dir={ar ? "rtl" : "ltr"}
-          filter={boardFilter}
-          onFilterChange={(value) => setFilter(normalizeWorkProofFilter(value))}
-          chips={filterChips}
-          showCreate={raising || !!editingProof}
-          onToggleCreate={() => {
-            if (raising || editingProof) {
-              cancelForm();
-              return;
-            }
-            setEditingProof(null);
-            resetForm();
-            setRaising(true);
-          }}
-          createLabel={ar ? "إثبات جديد" : "New proof"}
+      <section data-ops-list-head="1" style={{ ...chromeSlab, overflow: "hidden" }}>
+        <StatusFilterPills
+          dataKey="work-proofs"
+          title={ar ? "إثباتات العمل" : "Work proofs"}
+          note={focusStation ? (ar ? `معروض: ${stationName(focusStation)}` : `Showing: ${stationName(focusStation)}`) : null}
+          value={boardFilter}
+          onChange={(value) => setFilter(normalizeWorkProofFilter(value))}
+          items={filterChips}
+          trailing={(
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              {focusStation ? (
+                <button type="button" data-clear-focus="1" onClick={() => setFocusStation("")} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: "none", background: "transparent", color: "var(--nv-ok-ink, #0F5535)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+                  {ar ? "اعرض الكل" : "Show all"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  if (raising || editingProof) {
+                    cancelForm();
+                    return;
+                  }
+                  setEditingProof(null);
+                  resetForm();
+                  setRaising(true);
+                }}
+                style={raising || editingProof ? ui.btnCreateQuiet : ui.btnCreate}
+              >
+                {raising || editingProof ? (ar ? "إخفاء النموذج" : "Hide form") : (ar ? "إثبات جديد" : "New proof")}
+              </button>
+            </span>
+          )}
         />
         {boardFilter !== "archive" ? (
           <OpsStripSearch
@@ -980,7 +987,7 @@ export default function WorkProof() {
             placeholder={ar ? "بحث في الإثباتات…" : "Search proofs…"}
           />
         ) : null}
-      </OpsControlBar>
+      </section>
 
       {boardFilter === "archive" ? (
         <RecordSmartArchive

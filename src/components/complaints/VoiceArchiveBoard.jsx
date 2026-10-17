@@ -4,22 +4,7 @@ import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import VoiceAuditTrail from "@/components/complaints/VoiceAuditTrail";
 import { countAr } from "@/lib/disciplineBoard";
 import { voiceArchiveSmartItems } from "@/lib/voiceBoard";
-import { BORDER, CARD, MUTED, NAVY, PILL_RADIUS } from "@/lib/platformStyles";
-
-function chip(on) {
-  return {
-    fontFamily: "inherit",
-    fontSize: 11,
-    padding: "7px 12px",
-    border: `1px solid ${on ? "var(--nv-navy, #0B3D27)" : BORDER}`,
-    background: on ? "var(--nv-navy, #0B3D27)" : CARD,
-    color: on ? "#fff" : MUTED,
-    fontWeight: on ? 700 : 400,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    borderRadius: PILL_RADIUS,
-  };
-}
+import { BORDER, MUTED, NAVY } from "@/lib/platformStyles";
 
 /**
  * Settled voice archive — search + day groups via RecordSmartArchive.
@@ -78,13 +63,16 @@ export default function VoiceArchiveBoard({
       emptyLabel={emptyText}
       searchPlaceholder={ar ? "بحث في الأرشيف…" : "Search archive…"}
       subtitle={`${countHint} ${subtitle}`}
-      meta={(
-        <span style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-          {channelFilters.map(([id, label]) => (
-            <button key={id} type="button" onClick={() => setFilter(id)} style={chip(filter === id)}>{label}</button>
-          ))}
-        </span>
-      )}
+      filters={{
+        dataKey: `voice-archive-${scope}`,
+        value: filter,
+        onChange: setFilter,
+        items: channelFilters.map(([id, label]) => ({
+          id,
+          label,
+          n: id === "all" ? settled.length : settled.filter((card) => card.item.channel === id).length,
+        })),
+      }}
       renderOpen={(item) => {
         const row = item.card;
         if (!row) return null;

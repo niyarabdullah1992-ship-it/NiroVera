@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Archive, ChevronDown, ChevronLeft, ChevronRight, Download, Printer, Rows3, Rows4, Search, X } from "lucide-react";
 import { printSheet } from "@/lib/printSheet";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
 import { formatDateTime, formatMonthYear } from "@/lib/dateFormat";
 import { peopleQueryMatches } from "@/lib/peopleTreeGraph";
 import {
@@ -99,6 +100,7 @@ export default function RecordSmartArchive({
   skipFilter = false,
   searchPlaceholder,
   meta,
+  filters,
   kicker,
   title,
   subtitle,
@@ -370,6 +372,12 @@ export default function RecordSmartArchive({
           </div>
         ) : null}
       </header>
+      {/* Optional status pills (as in طلباتي) under the head: { items: [{ id, label, n }], value, onChange }. */}
+      {filters?.items?.length ? (
+        <div data-archive-filters="1" style={{ padding: "10px 18px", borderBottom: "1px solid var(--nv-line)", background: "var(--nv-card)" }}>
+          <StatusFilterPills bare size="sm" dataKey={filters.dataKey} items={filters.items} value={filters.value} onChange={filters.onChange} />
+        </div>
+      ) : null}
 
       {/* Toolbar — search and period, then how to read: grouping, person, branch, density, export. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--nv-line)" }}>

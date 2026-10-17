@@ -74,9 +74,10 @@ import OpsDeleteModal from "@/components/tasks/OpsDeleteModal";
 import OpsModeConfirmModal from "@/components/tasks/OpsModeConfirmModal";
 import OpsTaskDetail from "@/components/tasks/OpsTaskDetail";
 import OpsTasksTable, { OpsTaskCards } from "@/components/tasks/OpsTasksTable";
-import OpsToolbarStrip, { OpsControlBar } from "@/components/tasks/OpsToolbarStrip";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
-import OpsSideSlab, { OpsListHead } from "@/components/tasks/OpsSideSlab";
+import OpsSideSlab from "@/components/tasks/OpsSideSlab";
 import OpsMoreMenu from "@/components/tasks/OpsMoreMenu";
 import BranchEscalationChains from "@/components/tasks/BranchEscalationChains";
 import OpsTaskChain from "@/components/tasks/detail/OpsTaskChain";
@@ -1894,13 +1895,15 @@ export default function Operations() {
   // Chips must count what this viewer can actually open — company-wide totals
   // would promise an employee rows they are not allowed to see.
   const c = seeAsManager ? counts : deriveOpsCounts(liveTasks);
+  // «مهامي» / «أوامر العمل» filter the same way as طلباتي: الكل first, then what needs action,
+  // then what waits on approval, الأرشيف last. Counts are derived for what this viewer can open.
   const chips = c ? [
-    { id: "all", label: ar ? `الكل · ${c.total}` : `All · ${c.total}` },
-    { id: "overdue", label: ar ? `متأخرة · ${c.overdue}` : `Overdue · ${c.overdue}` },
-    { id: "today", label: ar ? `اليوم · ${c.today}` : `Today · ${c.today}` },
-    { id: "awaiting", label: ar ? `بانتظار الاعتماد · ${c.awaiting}` : `Awaiting · ${c.awaiting}` },
-    { id: "escalated", label: ar ? `صُعّدت · ${c.escalated || 0}` : `Escalated · ${c.escalated || 0}` },
-    { id: "archive", label: ar ? `الأرشيف · ${archivedTasks.length}` : `Archive · ${archivedTasks.length}` },
+    { id: "all", label: ar ? "الكل" : "All", n: c.total },
+    { id: "today", label: ar ? "اليوم" : "Today", n: c.today },
+    { id: "overdue", label: ar ? "متأخرة" : "Overdue", n: c.overdue },
+    { id: "escalated", label: ar ? "صُعّدت" : "Escalated", n: c.escalated || 0 },
+    { id: "awaiting", label: employeeRail ? (ar ? "عند المشرف" : "With supervisor") : (ar ? "بانتظار الاعتماد" : "Awaiting"), n: c.awaiting },
+    { id: "archive", label: ar ? "الأرشيف" : "Archive", n: archivedTasks.length },
   ] : [];
 
   const stationName = (id) => stations.find((s) => s.id === id)?.name || "—";
@@ -2266,48 +2269,47 @@ export default function Operations() {
       )}
     >
       <div className="space-y-3.5">
-      <OpsListHead
-        title={employeeFace ? (ar ? "أوامري" : "My orders") : (ar ? "أوامر العمل" : "Work orders")}
-        note={focusStation || focusOwner
-          ? (ar
-            ? `معروض: ${[focusStation ? sideStationName(focusStation) : "", focusOwner ? ownerName({ ownerId: focusOwner }) : ""].filter(Boolean).join(" · ")}`
-            : `Showing: ${[focusStation ? sideStationName(focusStation) : "", focusOwner ? ownerName({ ownerId: focusOwner }) : ""].filter(Boolean).join(" · ")}`)
-          : (employeeFace
-            ? (ar ? "ما أُسند إليك — سجّل إنجاز اليوم من البطاقة." : "What is assigned to you — log today's progress from the card.")
-            : (ar ? "كل أمر بمنفّذه وفرعه وإيقاعه — الاعتماد من البطاقة أو من «بانتظار قرارك»." : "Each order with its doer, branch, and pace — approve from the card or the side list."))}
-        trailing={(
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
-            {focusStation || focusOwner ? (
-              <button type="button" data-clear-focus="1" onClick={() => { setFocusStation(""); setFocusOwner(""); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: "none", background: "transparent", color: "#0F5535", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
-                {ar ? "اعرض الكل" : "Show all"}
-              </button>
-            ) : null}
-            <span role="tablist" aria-label={ar ? "كثافة العرض" : "Density"} data-density-switch="1" style={{ display: "inline-flex", gap: 2, padding: 2, borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)" }}>
-              {[
-                { v: "full", label: ar ? "بطاقات" : "Cards" },
-                { v: "compact", label: ar ? "مختصر" : "Compact" },
-              ].map((o) => (
-                <button key={o.v} type="button" role="tab" aria-selected={density === o.v} data-density={o.v} onClick={() => setDensity(o.v)} style={{ fontFamily: "inherit", fontSize: 11.5, fontWeight: density === o.v ? 700 : 500, height: 26, padding: "0 10px", borderRadius: 6, border: "none", cursor: "pointer", background: density === o.v ? "#0B3D27" : "transparent", color: density === o.v ? "#fff" : "var(--nv-ink2)" }}>
-                  {o.label}
+      <section data-ops-list-head="1" style={{ ...chromeSlab, overflow: "hidden" }}>
+        <StatusFilterPills
+          dataKey={employeeFace ? "ops-mine" : "ops-manage"}
+          title={employeeFace ? (ar ? "مهامي" : "My tasks") : (ar ? "أوامر العمل" : "Work orders")}
+          note={focusStation || focusOwner
+            ? (ar
+              ? `معروض: ${[focusStation ? sideStationName(focusStation) : "", focusOwner ? ownerName({ ownerId: focusOwner }) : ""].filter(Boolean).join(" · ")}`
+              : `Showing: ${[focusStation ? sideStationName(focusStation) : "", focusOwner ? ownerName({ ownerId: focusOwner }) : ""].filter(Boolean).join(" · ")}`)
+            : null}
+          value={boardFilter}
+          onChange={setFilter}
+          items={chips}
+          hideZero={employeeFace}
+          trailing={(
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              {focusStation || focusOwner ? (
+                <button type="button" data-clear-focus="1" onClick={() => { setFocusStation(""); setFocusOwner(""); }} style={{ fontFamily: "inherit", fontSize: 12, fontWeight: 600, border: "none", background: "transparent", color: "var(--nv-ok-ink, #0F5535)", cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+                  {ar ? "اعرض الكل" : "Show all"}
                 </button>
-              ))}
+              ) : null}
+              {boardFilter !== "archive" ? (
+                <span role="tablist" aria-label={ar ? "كثافة العرض" : "Density"} data-density-switch="1" style={{ display: "inline-flex", gap: 2, padding: 2, borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card)" }}>
+                  {[
+                    { v: "full", label: ar ? "بطاقات" : "Cards" },
+                    { v: "compact", label: ar ? "مختصر" : "Compact" },
+                  ].map((o) => (
+                    <button key={o.v} type="button" role="tab" aria-selected={density === o.v} data-density={o.v} onClick={() => setDensity(o.v)} style={{ fontFamily: "inherit", fontSize: 11.5, fontWeight: density === o.v ? 700 : 500, height: 26, padding: "0 10px", borderRadius: 6, border: "none", cursor: "pointer", background: density === o.v ? "#0B3D27" : "transparent", color: density === o.v ? "#fff" : "var(--nv-ink2)" }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </span>
+              ) : null}
+              {isOpsManager && !employeeRail ? (
+                <button type="button" onClick={() => setShowCreate((v) => !v)} style={showCreate ? ui.btnCreateQuiet : ui.btnCreate}>
+                  {showCreate ? (ar ? "إخفاء النموذج" : "Hide form") : (ar ? "مهمة جديدة" : "New task")}
+                </button>
+              ) : null}
             </span>
-          </span>
-        )}
-      />
-
-      <OpsControlBar>
-        <OpsToolbarStrip
-          ar={ar}
-          dir={dir}
-          filter={boardFilter}
-          onFilterChange={setFilter}
-          chips={chips}
-          showCreate={showCreate}
-          onToggleCreate={() => setShowCreate((v) => !v)}
-          canCreate={isOpsManager && !employeeRail}
+          )}
         />
-      </OpsControlBar>
+      </section>
 
       {!checkedIn && (
       <div style={warnBanner}>

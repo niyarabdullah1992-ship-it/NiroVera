@@ -27,6 +27,7 @@ import { ManageDutySideAuto } from "@/components/schedules/ManageDutySide";
 import { fileDutyHref, openLinkStyle, revealNode, rosterPersonHref } from "@/components/schedules/dutyLinks";
 import { ACCENT, BORDER, CARD, DANGER, MUTED, NAVY, emptyState, field, SURFACE } from "@/lib/platformStyles";
 import NvIcon from "@/components/shared/NvIcon";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
 
 const miniBtn = (variant = "ghost") => ({
   height: 24,
@@ -103,6 +104,8 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   const [preventError, setPreventError] = useState("");
   const [preventedNow, setPreventedNow] = useState({});
   const [checkoutReason, setCheckoutReason] = useState("");
+  const [teamFace, setTeamFace] = useState("all");
+  const [queueFace, setQueueFace] = useState("all");
   const [checkoutError, setCheckoutError] = useState("");
   const [searchParams] = useSearchParams();
   const queueRef = useRef(null);
@@ -295,9 +298,26 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
   const ar = lang === "ar";
   /** Team rows speak the employee lane's words and colours (dutyStatus). */
   const TEAM_STATUS = { present: "present", late: "late", absent: "absent", on_leave: "leave", not_scheduled: "unscheduled" };
+  // «الفريق اليوم» filters as in طلباتي: الكل, what waits on you, then each duty state; empty states hide.
+  const teamFaceOf = (employee) => {
+    if (needsDecision(employee)) return "decide";
+    const status = statusFor(employee);
+    if (status === "absent" && !shiftWindowElapsed(getTodaysShift(data, employee))) return "pending";
+    return TEAM_STATUS[status] || "unscheduled";
+  };
+  const teamShown = teamFace === "all" ? employees : employees.filter((employee) => teamFaceOf(employee) === teamFace);
+  const teamCount = (id) => employees.filter((employee) => teamFaceOf(employee) === id).length;
+  // «بصمات اليوم بلا حكم» by the link that broke: range, missing checkout, early out, manual ask.
+  const queueFaceOf = (employee) => {
+    const r = byEmployee[String(employee.id)];
+    if ((employee.otherRequests || []).some((item) => item.type === "manual_punch" && (item.status || "pending") === "pending")) return "manual";
+    if (r?.location_status === "outside") return "outside";
+    if (isPastCheckoutMissing(r, employee)) return "missing";
+    return "early";
+  };
+  const queueShown = queueFace === "all" ? queue : queue.filter((employee) => queueFaceOf(employee) === queueFace);
+  const queueCount = (id) => queue.filter((employee) => queueFaceOf(employee) === id).length;
   const panel = { background: CARD, border: `1px solid ${BORDER}`, display: "flex", flexDirection: "column", minWidth: 0 };
-  const panelHead = { padding: "14px 18px", borderBottom: "1px solid var(--nv-line2, #EEF1EF)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" };
-  const headTitle = { fontSize: 15, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0, lineHeight: 1.4 };
   const headNote = { fontSize: 12, color: MUTED, lineHeight: 1.65 };
   const pill = (tone) => ({
     display: "inline-flex",
@@ -361,18 +381,28 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
 
   const teamList = !loading && employees.length > 0 ? (
     <section className="nv-att-card" data-team-today style={panel}>
-      <div style={panelHead}>
-        <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <span style={headTitle}>{ar ? "الفريق اليوم — بالاسم" : "The team today — by name"}</span>
-          <span style={headNote}>
-            {ar
-              ? `${formatUiNumber(todayAtt.scheduled)} مجدولون · نسبة التسجيل ${todayAtt.rate}% · «افتح» يفتح ملف دوام الموظف`
-              : `${formatUiNumber(todayAtt.scheduled)} scheduled · ${todayAtt.rate}% logged · “Open” opens the person's duty file`}
-          </span>
-        </span>
-      </div>
+      <StatusFilterPills
+        dataKey="att-team"
+        title={ar ? "الفريق اليوم — بالاسم" : "The team today — by name"}
+        note={ar
+          ? `${formatUiNumber(todayAtt.scheduled)} مجدولون · نسبة التسجيل ${todayAtt.rate}%`
+          : `${formatUiNumber(todayAtt.scheduled)} scheduled · ${todayAtt.rate}% logged`}
+        value={teamFace}
+        onChange={setTeamFace}
+        hideZero
+        items={[
+          { id: "all", label: ar ? "الكل" : "All", n: formatUiNumber(employees.length) },
+          { id: "decide", label: ar ? "بانتظار قرارك" : "Needs you", n: formatUiNumber(teamCount("decide")) },
+          { id: "pending", label: dutyLabel("pending", ar), n: formatUiNumber(teamCount("pending")) },
+          { id: "late", label: dutyLabel("late", ar), n: formatUiNumber(teamCount("late")) },
+          { id: "absent", label: dutyLabel("absent", ar), n: formatUiNumber(teamCount("absent")) },
+          { id: "present", label: dutyLabel("present", ar), n: formatUiNumber(teamCount("present")) },
+          { id: "leave", label: dutyLabel("leave", ar), n: formatUiNumber(teamCount("leave")) },
+          { id: "unscheduled", label: dutyLabel("unscheduled", ar), n: formatUiNumber(teamCount("unscheduled")) },
+        ]}
+      />
       <div className="nv-att-team-list">
-        {employees.map((employee) => {
+        {teamShown.map((employee) => {
           const row = byEmployee[String(employee.id)];
           const status = statusFor(employee);
           const shift = getTodaysShift(data, employee);
@@ -417,16 +447,28 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
 
   const queuePanel = (
     <section ref={queueRef} id="nv-team-queue" className="nv-att-card" data-decision-queue style={{ ...panel, scrollMarginTop: 88 }}>
-      <div style={panelHead}>
-        <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, flex: "1 1 240px" }}>
-          <span style={headTitle}>{lang === "ar" ? "بصمات اليوم بلا حكم" : "Today's punches without a verdict"}</span>
-          <span style={headNote}>{queueSub}</span>
-        </span>
-        <span style={pill(attentionCount ? "warn" : "ok")}>
-          <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{formatUiNumber(attentionCount)}</span>
-          {lang === "ar" ? "في الطابور" : "in queue"}
-        </span>
-      </div>
+      <StatusFilterPills
+        dataKey="att-queue"
+        title={lang === "ar" ? "بصمات اليوم بلا حكم" : "Today's punches without a verdict"}
+        value={queueFace}
+        onChange={setQueueFace}
+        hideZero
+        trailing={(
+          <span style={pill(attentionCount ? "warn" : "ok")}>
+            <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{formatUiNumber(attentionCount)}</span>
+            {lang === "ar" ? "في الطابور" : "in queue"}
+          </span>
+        )}
+        items={queue.length === 0 ? [] : [
+          { id: "all", label: ar ? "الكل" : "All", n: formatUiNumber(queue.length) },
+          { id: "manual", label: ar ? "بصمة يدوية" : "Manual punch", n: formatUiNumber(queueCount("manual")) },
+          { id: "outside", label: ar ? "خارج النطاق" : "Outside range", n: formatUiNumber(queueCount("outside")) },
+          { id: "missing", label: ar ? "بلا انصراف" : "No checkout", n: formatUiNumber(queueCount("missing")) },
+          { id: "early", label: ar ? "خروج مبكر" : "Early out", n: formatUiNumber(queueCount("early")) },
+        ]}
+      >
+        <span style={headNote}>{queueSub}</span>
+      </StatusFilterPills>
 
       <div>
       {loading ? (
@@ -442,7 +484,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
           </span>
         </div>
       ) : (
-        queue.map((e) => {
+        queueShown.map((e) => {
           const r = byEmployee[String(e.id)];
           const status = statusFor(e);
           const scheduled = isScheduledToday(e, data) || status === "present" || status === "late" || status === "absent";

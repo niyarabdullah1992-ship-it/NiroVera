@@ -5,6 +5,7 @@ import SigningStatusBoard, { settledState, stateLabel } from "@/components/files
 import { canDownloadFinal, isArchivedSigningEnvelope, isOpenSigningState } from "@/lib/multiSignDerivations";
 import VerifyWorkspace from "@/components/files/VerifyWorkspace";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
 import { signMono as mono } from "./signingUi";
 import {
   SIGN_BODY,
@@ -370,12 +371,32 @@ export default function SigningHome({
     { id: "declined", label: ar ? "مرفوض" : "Refused", value: counts.refused },
   ];
 
+  // «توقيعاتي» filters as in طلباتي: الكل, what needs your signature, what waits on others,
+  // drafts, then الأرشيف (completed, refused, voided) last.
   const folders = [
+    ["all", ar ? "الكل" : "All", activeRows.length],
     ["action", ar ? "يحتاج توقيعك" : "Needs you", counts.action],
     ["waiting", ar ? "بانتظار الآخرين" : "Waiting on others", counts.waiting],
     ["draft", ar ? "المسودات" : "Drafts", 0],
-    ["all", ar ? "الكل" : "All", activeRows.length],
+    ["archive", ar ? "الأرشيف" : "Archive", archiveRows.length],
   ];
+  const listPills = (
+    <StatusFilterPills
+      dataKey="signing-mine"
+      title={ar ? "توقيعاتي" : "My signatures"}
+      value={view === "archive" ? "archive" : folder}
+      onChange={(id) => {
+        if (id === "archive") {
+          setArchiveFolder("all");
+          setView("archive");
+          return;
+        }
+        setFolder(id);
+        setView("home");
+      }}
+      items={folders.map(([id, label, n]) => ({ id, label, n: formatUiNumber(n, ar) }))}
+    />
+  );
 
   const nav = [
     ["home", ar ? "الاتفاقيات" : "Agreements", counts.action],
@@ -583,37 +604,7 @@ export default function SigningHome({
 
       {view === "home" ? (
         <section style={{ ...PAPER, overflow: "hidden" }}>
-          <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--nv-line3)", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-            {folders.map(([id, label, count]) => {
-              const on = folder === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  className="nv-sign-pill"
-                  onClick={() => setFolder(id)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    height: 30,
-                    padding: "0 12px",
-                    borderRadius: 999,
-                    fontSize: 11.5,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    background: on ? "var(--nv-navy)" : SIGN_WHITE,
-                    color: on ? "#fff" : SIGN_BODY,
-                    border: on ? "1px solid var(--nv-navy)" : `1px solid ${SIGN_LINE}`,
-                  }}
-                >
-                  {label}
-                  <span dir="ltr" style={mono}>{formatUiNumber(count, ar)}</span>
-                </button>
-              );
-            })}
-          </div>
+          {listPills}
           <div style={{ overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 580 }}>
               <thead>
@@ -710,6 +701,8 @@ export default function SigningHome({
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><Loader2 className="h-4 w-4 animate-spin" />{ar ? "جارٍ تحميل الأرشيف…" : "Loading the archive…"}</span>
           </section>
         ) : (
+          <>
+          <section style={{ ...PAPER, overflow: "hidden" }}>{listPills}</section>
           <RecordSmartArchive
             lang={ar ? "ar" : "en"}
             dir={ar ? "rtl" : "ltr"}
@@ -744,6 +737,7 @@ export default function SigningHome({
               );
             }}
           />
+          </>
         )
       ) : null}
 

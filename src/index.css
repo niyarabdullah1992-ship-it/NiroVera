@@ -181,6 +181,7 @@
     --nv-muted: #9AADA3;
     --nv-page: #101814;
     --nv-line: #31443A;
+    --nv-pill-line: #31443A;
     --nv-line2: #28382F;
     --nv-line3: #28382F;
     --nv-hover: #24352C;
@@ -700,6 +701,7 @@ svg.lucide:is(.text-destructive, .text-red-500, .text-red-600, .text-green-500, 
   --nv-muted: var(--nv-night-hint);
   --nv-page: var(--nv-night-page);
   --nv-line: var(--nv-night-line);
+  --nv-pill-line: var(--nv-night-line);
   --nv-line2: #28382F;
   --nv-hover: #24352C;
   --nv-soft: #141E19;

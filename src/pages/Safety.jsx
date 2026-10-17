@@ -324,7 +324,7 @@ export default function Safety() {
         <SafetyDashboard ar={ar} stations={stations} recFor={recFor} onOpenRegister={() => setTab("register")} data={data} companyId={company?.id} canEdit={!employeeRail} />
       )}
       {tab === "register" && !employeeRail && (
-        <SafetyRiskRegister ar={ar} rows={openReportRows} canAct={canEdit || canApprove} onPatch={handlePatchIncident} />
+        <SafetyRiskRegister ar={ar} rows={openReportRows} allRows={reportRows} canAct={canEdit || canApprove} onPatch={handlePatchIncident} />
       )}
       {tab === "permits" && !employeeRail && (
         <SafetyComplyBoard ar={ar} stations={stations} recFor={recFor} part="permits" />

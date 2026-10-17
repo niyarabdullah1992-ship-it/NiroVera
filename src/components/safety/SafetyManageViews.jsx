@@ -1,7 +1,8 @@
 import React, { useRef, useState } from "react";
 import RightHint from "@/components/shared/RightHint";
 import { injuryHint } from "@/lib/rightHints.disc";
-import { SAFETY_REPORT_CONTROLS, deriveOpenRiskMap, safetyReportSlaLine } from "@/lib/safetyReportCard";
+import { SAFETY_REPORT_CONTROLS, deriveOpenRiskMap, safetyReportSlaHours, safetyReportSlaLine } from "@/lib/safetyReportCard";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
 import { PERMIT_TYPES } from "@/lib/safetyStandards";
 import { deriveTrainingRegister } from "@/lib/employerDuties";
 import TrainingMedicalPanel from "@/components/safety/TrainingMedicalPanel";
@@ -282,11 +283,29 @@ export function SafetyDashboard({ ar, stations, recFor, onOpenRegister, data = n
   );
 }
 
-export function SafetyRiskRegister({ ar, rows, canAct, onPatch }) {
+export function SafetyRiskRegister({ ar, rows: openRows, allRows, canAct, onPatch }) {
   const L = (a, e) => (ar ? a : e);
   const fileRef = useRef(null);
   const [pendingClose, setPendingClose] = useState(null);
   const now = Date.now();
+  // The register is an action queue: it opens on «مفتوحة», with الكل first and «مُغلقة» last.
+  const [face, setFace] = useState("open");
+  const everyRow = allRows || openRows;
+  const isCritical = (row) => (Number(row.item.card?.score) || 0) >= 15 || row.item.card?.levelKey === "critical";
+  const isElapsed = (row) => {
+    const card = row.item.card;
+    if (!card || card.positive || row.item.status === "closed" || !row.item.at) return false;
+    const hours = safetyReportSlaHours(card.levelKey);
+    return hours > 0 && new Date(row.item.at).getTime() + hours * 3600000 <= now;
+  };
+  const faces = {
+    all: everyRow,
+    open: openRows,
+    critical: openRows.filter(isCritical),
+    elapsed: openRows.filter(isElapsed),
+    closed: everyRow.filter((row) => row.item.status === "closed"),
+  };
+  const rows = faces[face] || openRows;
 
   const askClose = (row) => {
     setPendingClose(row);
@@ -302,10 +321,21 @@ export function SafetyRiskRegister({ ar, rows, canAct, onPatch }) {
   return (
     <div data-hse="admin-register" style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" }}>
     <section style={{ ...shell, flex: "1 1 260px", minWidth: 0 }}>
-      <header style={{ padding: "12px 14px", borderBottom: "1px solid var(--nv-line)", display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <strong style={{ fontSize: 13.5, color: "var(--nv-ink)" }}>{L("سجل المخاطر", "Risk register")}</strong>
-        <span style={{ fontSize: 11, color: "var(--nv-ink3)" }}>{ar ? `${rows.length} مفتوحة` : `${rows.length} open`}</span>
-      </header>
+      <StatusFilterPills
+        dataKey="safety-register"
+        title={L("بلاغات السلامة", "Safety reports")}
+        value={face}
+        onChange={(next) => { setFace(next); setPicked(""); }}
+        size="sm"
+        hideZero
+        items={[
+          { id: "all", label: L("الكل", "All"), n: faces.all.length },
+          { id: "open", label: L("مفتوحة", "Open"), n: faces.open.length },
+          { id: "critical", label: L("حرجة", "Critical"), n: faces.critical.length },
+          { id: "elapsed", label: L("انتهت مهلتها", "SLA elapsed"), n: faces.elapsed.length },
+          { id: "closed", label: L("مُغلقة", "Closed"), n: faces.closed.length },
+        ]}
+      />
       <input
         ref={fileRef}
         type="file"
@@ -406,13 +436,13 @@ export function SafetyRiskRegister({ ar, rows, canAct, onPatch }) {
           </div>
           <footer style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center", background: "var(--nv-soft)" }}>
             <span style={{ fontSize: 11.5, color: "var(--nv-ink3)" }}>{L("لا يُغلق البند قبل صورة بعد واعتماد الإجراء.", "A report stays open until the action is approved and an after photo is filed.")}</span>
-            {canAct ? (
+            {canAct && selected.item.status !== "closed" ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 <button type="button" onClick={() => onPatch(selected.stationId, selected.item.id, { approveAction: true })} style={{ ...actionBtn(false), background: "#3C7D50", color: "#fff", borderColor: "#3C7D50" }}>{L("اعتماد الإجراء", "Approve action")}</button>
                 <button type="button" onClick={() => askClose(selected)} style={actionBtn(false)}>{L("إغلاق بصورة بعد", "Close with after photo")}</button>
                 <button type="button" onClick={() => onPatch(selected.stationId, selected.item.id, { escalate: true })} style={actionBtn(true)}>{L("صعّد", "Escalate")}</button>
               </div>
-            ) : <span style={{ color: "var(--nv-ink3)" }}>—</span>}
+            ) : <span style={{ color: "var(--nv-ink3)" }}>{selected.item.status === "closed" ? L("أُغلق البلاغ", "Report closed") : "—"}</span>}
           </footer>
         </>
       ) : <p style={{ margin: 0, padding: 24, textAlign: "center", color: "var(--nv-ink3)" }}>—</p>}

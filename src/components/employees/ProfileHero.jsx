@@ -1,5 +1,4 @@
 import React, { useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { base44 } from "@/api/base44Client";
 import { updateEmployeeProfile } from "@/lib/store";
@@ -48,7 +47,6 @@ export default function ProfileHero({
   employee,
   companyId,
   canEdit,
-  correctionHref = "",
   roleLabel,
   stationName,
   currentUser,
@@ -163,13 +161,6 @@ export default function ProfileHero({
           ))}
         </span>
         <span style={{ fontSize: 12, color: "#A9CDB8" }}>{metaLine}</span>
-        {voice.own ? (
-          <span style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-            <Link to="/app/requests" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 36, padding: "0 14px", borderRadius: 8, background: "#C8A45A", color: "#0B3D27", fontSize: 12.5, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}>{ar ? "طلب جديد" : "New request"}</Link>
-            {correctionHref && !canEdit ? (
-              // The one place a reader asks to change his own file — HR approves it.
-              <Link data-file-correction="1" to={correctionHref} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", height: 36, padding: "0 14px", borderRadius: 8, background: "transparent", color: "#F4F7F5", border: "1px solid rgba(255,255,255,.35)", fontSize: 12.5, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap" }}>{ar ? "طلب تعديل بيانات الملف الوظيفي" : "Request a change to the employment file"}</Link>
-            ) : null}
           </span>
         ) : null}
       </div>

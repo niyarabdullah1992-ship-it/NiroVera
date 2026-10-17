@@ -10,7 +10,6 @@ import {
   canManageEmployeeHR,
   canEditEmployeeFile,
   canEditEmployeeFileWage,
-  EMPLOYEE_FILE_CORRECTION_HREF,
 } from "@/lib/permissions";
 import { getRoleLabel } from "@/lib/roles";
 import { Lock } from "lucide-react";
@@ -310,7 +309,6 @@ export default function EmployeeProfile() {
           employee={employee}
           companyId={company.id}
           canEdit={canEditFile}
-          correctionHref={isSelf ? EMPLOYEE_FILE_CORRECTION_HREF : ""}
           roleLabel={roleLabel}
           stationName={stationName}
           currentUser={currentUser}

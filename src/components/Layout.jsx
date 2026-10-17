@@ -37,6 +37,7 @@ import PageErrorBoundary from "@/components/PageErrorBoundary";
 import { canSeeMinistryAlerts, deriveMinistryAlerts } from "@/lib/ministryAlertDerivations";
 import { THEME_CHANGE_EVENT, applyPlatformTheme, applyStoredPlatformTheme, persistPlatformTheme } from "@/lib/platformTheme";
 import PlatformBoot from "@/components/shared/PlatformBoot";
+import useDutyTicker from "@/hooks/useDutyTicker";
 
 export default function Layout({ children }) {
   const { t, lang, dir } = useI18n();
@@ -49,6 +50,8 @@ export default function Layout({ children }) {
   const [ministryDismissTick, setMinistryDismissTick] = useState(0);
   const [notifPrefTick, setNotifPrefTick] = useState(0);
   const stationScope = useStationScope();
+  // The one app-level duty ticker: break start / end, the 5h rule, 3337 — on every page (dutyTicker.js).
+  const { clock: dutyClock } = useDutyTicker({ company, currentUser, ar: lang === "ar", navigate });
 
   useEffect(() => {
     const refresh = () => setNotifPrefTick((n) => n + 1);
@@ -535,6 +538,7 @@ export default function Layout({ children }) {
               onDismissNotif={dismissNotification}
               onMarkAllNotifs={markAllRead}
               violationCount={violationCount}
+              dutyClock={dutyClock}
             />
 
             <PageErrorBoundary resetKey={location.pathname}>{children}</PageErrorBoundary>

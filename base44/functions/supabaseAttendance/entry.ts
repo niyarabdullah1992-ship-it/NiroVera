@@ -7,6 +7,7 @@ import {
 } from "../../shared/leaveDerivations.ts";
 import { validateAttendanceRequest, validationFailed } from "../../shared/proofCycleSchemas.ts";
 import { checkAssumedBreakGate, checkFlexBreakPunchGate, resolveFlexDayBreaks } from "../../shared/shiftDerivations.ts";
+import { readDayOvertimeCore, weekKeysOf, weekOrdinaryBeforeCore } from "../../shared/autoOvertime.ts";
 
 const BREAK_ACTIONS = ["breakStart", "breakEnd", "reviewLateReturn"];
 const BREAKS_COLUMN_HINT = "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS breaks jsonb DEFAULT '[]'::jsonb;";
@@ -595,7 +596,32 @@ Deno.serve(async (req) => {
         console.error("checkOut failed:", updated?.message || updated);
         return Response.json({ error: updated?.message || "Failed to save checkout location" }, { status: 400 });
       }
-      return Response.json({ attendance: updated[0], checkoutDistance });
+      // The day closed: its overtime read through the shared twin (Arts 98, 104, 107) with the server's
+      // own count of the week. The client records the otDecisions entry (pending the manager's pay /
+      // compensatory-leave decision) on this week figure. Best-effort: the checkout is already saved.
+      let overtime = null;
+      try {
+        const keys = weekKeysOf(date);
+        const weekRes = keys[0] && keys[0] < date
+          ? await fetch(`${SUPABASE_URL}/rest/v1/attendance?company_id=eq.${encodeURIComponent(auth.companyId)}&employee_id=eq.${encodeURIComponent(employeeId)}&date=gte.${keys[0]}&date=lt.${date}`, { headers })
+          : null;
+        const weekRows = weekRes ? await weekRes.json() : [];
+        const blobs = await base44.asServiceRole.entities.CompanyDataBlob.filter({ companyId: auth.companyId, category: "schedules" });
+        const shiftOn = (key) => {
+          for (const schedule of (blobs[0]?.payload || [])) {
+            for (const shift of (schedule.shiftTypes || [])) {
+              if ((schedule.assignments?.[key]?.[shift.id] || []).includes(employeeId)) return { ...shift, stationId: schedule.stationId };
+            }
+          }
+          return null;
+        };
+        const prior = weekOrdinaryBeforeCore({ rows: Array.isArray(weekRows) ? weekRows : [], dayKey: date, shiftOn });
+        const { auto } = readDayOvertimeCore({ row: updated[0], dayKey: date, shift: scheduledOut, weekPriorOrdinaryMinutes: prior });
+        overtime = auto ? { ...auto, weekPriorOrdinaryMinutes: prior } : null;
+      } catch (otErr) {
+        console.error("checkOut overtime reading failed:", otErr?.message || otErr);
+      }
+      return Response.json({ attendance: updated[0], checkoutDistance, overtime });
     }
 
     // ---- «راحة مرنة ببصمة»: break punches on the same day record ----

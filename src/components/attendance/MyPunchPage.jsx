@@ -15,6 +15,7 @@ import DutySide, { dutyHeatCopy } from "@/components/schedules/DutySide";
 import useMyDutyWeek, { findNextShift, inLabel } from "@/components/schedules/myDutyWeek";
 import { mono, quietAction, slab } from "@/components/schedules/scheduleChrome";
 import { dutyLabel, dutyTone } from "@/components/schedules/dutyStatus";
+import AttendanceMinistryPanel from "@/components/attendance/AttendanceMinistryPanel";
 
 /**
  * «بصمتي — اليوم»: what do I do now?
@@ -151,6 +152,9 @@ export default function MyPunchPage({ me, currentUser, company, data, t, lang = 
           </DutySide>
         )}
       />
+      <div style={{ marginTop: 14 }}>
+        <AttendanceMinistryPanel data={data} employee={person} lane="employee" ar={ar} />
+      </div>
       <div className="nv-punch-dock-spacer" aria-hidden />
     </>
   );

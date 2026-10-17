@@ -1,8 +1,8 @@
 
 import { checkEarlyCheckInGate, earlyCheckInMinutes } from "@/lib/attendanceDerivations";
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/PowerCareAuth";
 import { getTodaysShift, isAttendancePolicyError, isForgottenCheckout, isLocationRequired } from "@/lib/attendance";
@@ -25,7 +25,7 @@ import {
   localCheckOut,
 } from "@/lib/localAttendanceFallback";
 import { BORDER, CARD, MUTED, NAVY, SURFACE, ui } from "@/lib/platformStyles";
-import { openDueDutyAlertNotices, submitOtherRequest } from "@/lib/store";
+import { closeAttendanceDay, submitOtherRequest } from "@/lib/store";
 import { checkSubmitOtherRequestGate } from "@/lib/otherRequestDerivations";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import { parsePunchClock, riyadhNowClock } from "@/lib/attendancePunch";
@@ -36,7 +36,9 @@ import NvIcon from "@/components/shared/NvIcon";
 import { employeeShiftOnDay, isWeekDayPublished, prayerBreakHint, prayersInShift, rosterBreakWindows, sunExposureMark, SUN_FIELD } from "@/lib/shiftWeek";
 import { stationPrayerTimes } from "@/lib/prayerTimes";
 import { isRamadanDay } from "@/lib/laborRules";
-import { deriveDutyAlerts, dutyShiftKey, minutesAr } from "@/lib/dutyAlerts";
+import { deriveDutyAlerts, minutesAr } from "@/lib/dutyAlerts";
+import { breakClockOf, countdownLabel, dutyContextOf } from "@/lib/dutyTicker";
+import { autoOvertimeLine } from "@/lib/autoOvertime";
 import { resolveDayBreaks } from "@/lib/actualDuty";
 import { checkFlexBreakPunchGate } from "@/lib/shiftDerivations";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
@@ -236,6 +238,16 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         setAttendance(att);
         onStatusChange?.(att);
         window.dispatchEvent(new CustomEvent("attendance-updated", { detail: att }));
+        // The day closed: its overtime is recorded automatically (Art. 107), on the server's week count.
+        if (action === "out" && company?.id) {
+          try {
+            closeAttendanceDay(company.id, currentUser.id, String(att.date || toRiyadhDateKey()).slice(0, 10), {
+              row: att,
+              weekPriorOrdinaryMinutes: res?.data?.overtime?.weekPriorOrdinaryMinutes ?? null,
+            });
+            await refresh?.();
+          } catch { /* best-effort; the checkout is saved */ }
+        }
       }
     } catch (err) {
       const code = err?.code || err?.response?.data?.error;
@@ -351,13 +363,45 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     now: new Date(tick),
   });
   const currentAlert = dutyAlerts.current;
-  // Bell notices for this minute's alerts — once per shift per alert (keys dedupe), the manager on a real breach.
-  const shiftNoticeKey = dutyShift ? dutyShiftKey(currentUser?.id, dutyDay, dutyShift) : "";
-  const noticeIds = dutyAlerts.alerts.filter((row) => !row.recorded).map((row) => row.id).join(",");
+  // Bell / toast / device notices are sent by the one app-level ticker (Layout → useDutyTicker), on any page.
+
+  // The running break, to the second — the same clock as the header pill (dutyTicker.breakClockOf).
+  const breakClock = shift && attendance?.check_in_at && !attendance?.check_out_at
+    ? breakClockOf(dutyContextOf({ data, user: currentUser, attendance, now: tick, shift }), tick)
+    : null;
+  const [secNow, setSecNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!company?.id || !currentUser?.id || !shiftNoticeKey || !noticeIds) return;
-    try { openDueDutyAlertNotices(company.id, currentUser.id, { alerts: dutyAlerts.alerts, shiftKey: shiftNoticeKey, ar }); } catch { /* best-effort */ }
-  }, [company?.id, currentUser?.id, shiftNoticeKey, noticeIds]);
+    if (!breakClock) return undefined;
+    const id = window.setInterval(() => setSecNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [!!breakClock, breakClock?.endAt]);
+  const breakLeftMs = breakClock ? breakClock.endAt - Math.max(secNow, tick) : 0;
+  // The minute the break's end passes, re-read the alerts at once (not on the next 30-s tick).
+  useEffect(() => {
+    if (!breakClock || breakLeftMs > 0) return;
+    setTick(Date.now());
+  }, [breakClock?.endAt, breakLeftMs <= 0]);
+
+  // «فعّل تنبيهات الجهاز» — asked only from this explicit button, never automatically.
+  const notifySupported = typeof window !== "undefined" && "Notification" in window;
+  const [notifyPerm, setNotifyPerm] = useState(() => (notifySupported ? window.Notification.permission : "unsupported"));
+  const askDeviceNotify = async () => {
+    if (!notifySupported) return;
+    try {
+      const result = await window.Notification.requestPermission();
+      setNotifyPerm(result);
+    } catch { /* the browser refused to ask */ }
+  };
+
+  // A notice «بدأت راحتي» lands here with focus=break: the button is focused and in view.
+  const location = useLocation();
+  const breakBtnRef = useRef(null);
+  const wantsBreakFocus = new URLSearchParams(location?.search || "").get("focus") === "break";
+
+  // Overtime recorded automatically by the day's close (Art. 107) — one quiet line.
+  const otLine = attendance?.check_out_at
+    ? autoOvertimeLine(data?.otDecisions?.[`${currentUser?.id}:${String(attendance?.date || dutyDay).slice(0, 10)}`], { ar, onDate: dutyDay })
+    : null;
 
   // «راحة مرنة ببصمة»: the day read from the break punches — the buttons, the timeline and the bar use it.
   const continuous103 = hoursPolicyOf(data, dutyEmployee).continuousWork103 === true;
@@ -377,6 +421,11 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const breakGate = flexOn && attendance?.check_in_at && !attendance?.check_out_at
     ? checkFlexBreakPunchGate({ action: breakAction, shift: dutyShift, breaks: attendance?.breaks, checkIn: attendance?.check_in_at, now: new Date(tick), onDate: dutyDay, continuous103 })
     : null;
+  useEffect(() => {
+    if (!wantsBreakFocus || !breakBtnRef.current) return;
+    breakBtnRef.current.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    breakBtnRef.current.focus?.({ preventScroll: true });
+  }, [wantsBreakFocus, !!breakGate]);
   /** Where the card would place an unpunched break if the day closed now — sent with a cloud checkout. */
   function assumedAtCheckout() {
     if (!flexOn) return null;
@@ -721,7 +770,25 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               busy={breakBusy}
               error={breakError}
               onPunch={breakPunch}
+              leftMs={breakClock?.kind === "flex" ? breakLeftMs : null}
+              buttonRef={breakBtnRef}
             />
+          ) : null}
+          {breakClock?.kind === "fixed" ? (
+            <span data-break-countdown="fixed" style={{ fontSize: 12, color: "var(--nv-ink2)", textAlign: "center" }}>
+              {ar ? "راحتك" : "Your break"} <span dir="ltr" style={MONO}>{breakClock.start}–{breakClock.end}</span>
+              {" · "}{ar ? "باقٍ" : "left"} <span dir="ltr" style={{ ...MONO, fontWeight: 700 }}>{countdownLabel(Math.max(0, breakLeftMs))}</span>
+            </span>
+          ) : null}
+          {inn && !done && shift && notifySupported && notifyPerm === "default" ? (
+            <button
+              type="button"
+              data-device-notify="ask"
+              onClick={askDeviceNotify}
+              style={{ fontFamily: "inherit", fontSize: 11.5, fontWeight: 600, color: "var(--nv-ok-ink)", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+            >
+              {ar ? "فعّل تنبيهات الجهاز ›" : "Turn on device alerts ›"}
+            </button>
           ) : null}
           {forgotten ? (
             <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-warn-ink)", textAlign: "center", lineHeight: 1.7 }}>
@@ -839,6 +906,17 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               <Link to="/app/shifts" style={{ color: "var(--nv-ok-ink)", fontWeight: 700, textDecoration: "none" }}>{ar ? "جدولي ←" : "My roster →"}</Link>
             </div>
           )}
+
+          {otLine ? (
+            <div data-ot-auto={otLine.open ? "open" : "decided"} style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", fontSize: 12, lineHeight: 1.7, color: "var(--nv-ink2)" }}>
+              <span>
+                {ar ? "إضافي اليوم " : "Overtime today "}
+                <span dir="ltr" style={{ ...MONO, fontWeight: 700 }}>{otLine.clock}</span>
+                {ar ? ` — سُجّل تلقائياً (المادة ${otLine.article}) · ${otLine.status}` : ` — recorded automatically (Art. ${otLine.article}) · ${otLine.status}`}
+              </span>
+              <Link to="/app/requests" style={{ color: "var(--nv-ok-ink)", fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>{ar ? "طلباتي ›" : "My requests ›"}</Link>
+            </div>
+          ) : null}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 12, borderTop: "1px solid var(--nv-line2, #EEF1EF)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
@@ -1078,7 +1156,7 @@ export function flexSteps(day, { ar = true, hint = null } = {}) {
 }
 
 /** «بدأت راحتي» / «أنهيت راحتي» — a plain button inside the card; a disabled one names its reason. */
-function BreakPunch({ ar, day, gate, busy, error, onPunch }) {
+function BreakPunch({ ar, day, gate, busy, error, onPunch, leftMs = null, buttonRef = null }) {
   if (!gate) return null;
   const open = !!day.open;
   const label = open ? (ar ? "أنهيت راحتي" : "I ended my break") : (ar ? "بدأت راحتي" : "I started my break");
@@ -1095,13 +1173,21 @@ function BreakPunch({ ar, day, gate, busy, error, onPunch }) {
   const remaining = !open && day.punched.length && day.flex.splitEffective && day.remaining > 0 && day.windowState !== "closed"
     ? (ar ? `باقٍ ${minutesAr(day.remaining)} من راحتك` : `${day.remaining} min of your break left`)
     : "";
+  // The live countdown («باقٍ 12:34») — reaching 0:00 the minute «انتهت راحتك» is sent.
   const running = open
-    ? (ar ? <>في راحتك منذ <span dir="ltr" style={MONO}>{day.open.start}</span> · {minutesAr(day.runningMinutes)}</> : <>On break since <span dir="ltr" style={MONO}>{day.open.start}</span> · {day.runningMinutes} min</>)
+    ? (leftMs != null && leftMs > 0
+      ? (ar
+        ? <>في راحتك منذ <span dir="ltr" style={MONO}>{day.open.start}</span> · باقٍ <span dir="ltr" data-break-countdown="flex" style={{ ...MONO, fontWeight: 700 }}>{countdownLabel(leftMs)}</span></>
+        : <>On break since <span dir="ltr" style={MONO}>{day.open.start}</span> · <span dir="ltr" data-break-countdown="flex" style={{ ...MONO, fontWeight: 700 }}>{countdownLabel(leftMs)}</span> left</>)
+      : leftMs != null
+        ? <span style={{ color: "var(--nv-warn-ink)", fontWeight: 600 }}>{ar ? "انتهت راحتك — عُد للعمل واضغط «أنهيت راحتي»." : "Your break is over — back to work, then tap “I ended my break”."}</span>
+        : (ar ? <>في راحتك منذ <span dir="ltr" style={MONO}>{day.open.start}</span> · {minutesAr(day.runningMinutes)}</> : <>On break since <span dir="ltr" style={MONO}>{day.open.start}</span> · {day.runningMinutes} min</>))
     : null;
   return (
     <div data-break-punch={open ? "open" : "closed"} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, maxWidth: 280, textAlign: "center" }}>
       <button
         type="button"
+        ref={buttonRef}
         data-break-action={open ? "end" : "start"}
         onClick={onPunch}
         disabled={disabled}

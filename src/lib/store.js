@@ -81,7 +81,7 @@ import {
 import { overtimeYearUsageOutsideAssignments } from "./attendanceDerivations";
 import { employeeRosterOtContext } from "./shiftWeek";
 import { damageCaseIdFor } from "./payrollLaw.js";
-import { absorbAssignmentIntoActualOt, planOtDecision, stampActualDutyBreaches, stampActualOvertime, stampHolidayWorkOvertime, withdrawHolidayWorkOvertime } from "./otDecisionPlan.js";
+import { absorbAssignmentIntoActualOt, planOtDecision, restampWeekAfter, stampActualDutyBreaches, stampActualOvertime, stampHolidayWorkOvertime, withdrawHolidayWorkOvertime } from "./otDecisionPlan.js";
 import { planDutyAlertNotices } from "./dutyAlerts.js";
 import { compLeaveDaysInYear as compLeaveDaysInYearForCap, otHoursInYear as otHoursInYearForCap } from "./overtimeAssignment.js";
 import { isOfficialHoliday, laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePlatformOwnerBoard } from "./ummAlQuraCalendar";
@@ -1766,6 +1766,34 @@ export function recordDutyBreaches(companyId, employeeId, dayKey) {
     if (emp && live) added = stampActualDutyBreaches(draft, emp, dayKey, live);
   });
   return added;
+}
+
+/**
+ * A day closed by its checkout (local, or the cloud row the server returned): its overtime is derived
+ * from the actual worked minutes and written to otDecisions automatically — open, pending the
+ * manager's pay / compensatory-leave decision (Art. 107), the managers told once («ot_pending:…») —
+ * and its Art. 101 breaches land on the row. Later closed days of the week are re-read (week cap).
+ * Idempotent: a second call writes nothing new. `row` is the cloud row when the store holds none;
+ * `weekPriorOrdinaryMinutes` is the server's own count of the week, when it sent one.
+ * Returns { ok, entry, overtimeMinutes }.
+ */
+export function closeAttendanceDay(companyId, employeeId, dayKey, { row: given = null, weekRows = [], weekPriorOrdinaryMinutes = null } = {}) {
+  const day = String(dayKey || "").slice(0, 10);
+  let stamped = null;
+  updateCompany(companyId, (draft) => {
+    const emp = (draft.employees || []).find((item) => String(item.id) === String(employeeId));
+    if (!emp) return;
+    const live = (draft.personalAttendance || []).find((item) => String(item.employeeId ?? item.employee_id) === String(employeeId) && String(item.date || item.dateKey || "").slice(0, 10) === day);
+    const row = live && (live.checkOutAt || live.check_out_at) ? live : (given ? { ...given } : live);
+    if (!row || !(row.checkOutAt || row.check_out_at)) return;
+    stamped = stampActualOvertime(draft, emp, day, row, { weekRows, weekPriorOrdinaryMinutes });
+    if (row === live) stampActualDutyBreaches(draft, emp, day, row);
+    if (stamped?.ok && isOtDecisionOpenEntry(draft.otDecisions?.[`${emp.id}:${day}`])) queueOtPendingNotice(emp.id, day, stamped.holiday);
+    restampWeekAfter(draft, emp, day);
+  });
+  flushOtPendingNotices(companyId);
+  const entry = getCompanyData(companyId)?.otDecisions?.[`${employeeId}:${day}`] || null;
+  return { ok: !!stamped?.ok, entry, overtimeMinutes: stamped?.ok ? stamped.overtimeMinutes : 0 };
 }
 
 /**
@@ -3698,6 +3726,7 @@ function stampPunchRequestOnDraft(draft, employee, request, reviewerName) {
   draft.personalAttendance = list;
   const stamped = stampActualOvertime(draft, employee, day, idx >= 0 ? list[idx] : row);
   stampActualDutyBreaches(draft, employee, day, idx >= 0 ? list[idx] : row);
+  restampWeekAfter(draft, employee, day);
   if (stamped?.ok && isOtDecisionOpenEntry(draft.otDecisions?.[`${employee.id}:${day}`])) queueOtPendingNotice(employee.id, day, stamped.holiday);
   request.time = clock;
   request.attendanceId = row.id;
@@ -3746,6 +3775,7 @@ export function recordManualAttendance(companyId, { employeeId, kind, date, time
     saved = idx >= 0 ? list[idx] : row;
     const stamped = stampActualOvertime(draft, emp || employee, day, saved);
     stampActualDutyBreaches(draft, emp || employee, day, saved);
+    restampWeekAfter(draft, emp || employee, day);
     if (stamped?.ok && isOtDecisionOpenEntry(draft.otDecisions?.[`${employeeId}:${day}`])) queueOtPendingNotice(employeeId, day, stamped.holiday);
   });
   flushOtPendingNotices(companyId);

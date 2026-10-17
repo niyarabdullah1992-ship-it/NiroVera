@@ -7,7 +7,8 @@
  */
 
 import { checkOtDecisionGate, isOtDecisionOpen, overtimeYearUsageOutsideAssignments } from "./attendanceDerivations.js";
-import { actualDutyBreaches, deriveActualDuty } from "./actualDuty.js";
+import { actualDutyBreaches } from "./actualDuty.js";
+import { dayOvertimeFor } from "./autoOvertime.js";
 import { addDays, employeeShiftOnDay, holidayWorkOn, parseDateKey, weekDateKeys, weekKeyFromDate, weekNamedOvertime, weekPublishState } from "./shiftWeek.js";
 import { laborCalendarOf } from "./ummAlQuraCalendar.js";
 import { toRiyadhDateKey } from "./riyadhDate.js";
@@ -132,23 +133,33 @@ export function stampActualDutyBreaches(d, employee, dayKey, row) {
 }
 
 /**
- * Arts 101/106/107 — a checked-out day is read against the rostered shift and its ACTUAL overtime
- * is written to otDecisions for the manager (pending). Worked hours are proven: paid or turned into
- * compensatory leave, never rejected (checkOtDecisionGate «OT_WORKED_NO_REJECT»).
+ * Arts 98/101/104/106/107 — a checked-out day is read against the rostered shift and its ACTUAL
+ * overtime is written to otDecisions for the manager (pending), with no manual step: beyond the day
+ * cap (8 h / Ramadan 6 h / Art. 99 / Art. 108), beyond the week cap (48 h / Ramadan 36 h), and all of
+ * a holiday or weekly-rest day (autoOvertime.dayOvertimeFor). Worked hours are proven: paid or turned
+ * into compensatory leave, never rejected (checkOtDecisionGate «OT_WORKED_NO_REJECT»). Idempotent:
+ * the same punches write the same entry (its `at` kept), never a second one.
  */
-export function stampActualOvertime(d, employee, dayKey, row) {
+export function stampActualOvertime(d, employee, dayKey, row, { weekRows = [], weekPriorOrdinaryMinutes = null } = {}) {
   if (!employee?.id || !row) return null;
   const checkIn = row.checkInAt || row.check_in_at;
   const checkOut = row.checkOutAt || row.check_out_at;
   if (!checkIn || !checkOut) return null;
-  const calendar = laborCalendarOf(d);
-  const shift = rosterShiftFor(d, employee, dayKey);
-  const actual = deriveActualDuty({ checkIn, checkOut, shift, onDate: dayKey, employee, company: d, laborCalendar: calendar, breaks: row.breaks });
-  if (!actual.ok) return actual;
+  const day = dayOvertimeFor(d, employee, dayKey, row, { weekRows, weekPriorOrdinaryMinutes });
+  if (!day?.ok) return day;
+  // The day's figures, with the week rule and the rostered rest day folded in.
+  const actual = { ...day.actual, overtimeMinutes: day.overtimeMinutes, ordinaryMinutes: day.ordinaryMinutes, kind: day.kind || day.actual.kind, holiday: day.holiday, dayMinutes: day.dayMinutes, weekMinutes: day.weekMinutes, article: day.article };
   row.workedMinutes = actual.workedMinutes;
   row.overtimeMinutes = actual.overtimeMinutes;
+  row.overtimeKind = actual.kind || undefined;
   row.actualFlags = actual.flags.map((flag) => flag.error);
-  if (actual.overtimeMinutes <= 0) return actual;
+  if (actual.overtimeMinutes <= 0) {
+    const key = `${employee.id}:${dayKey}`;
+    const prev = d.otDecisions?.[key];
+    // A re-read that no longer finds overtime takes back only its own open, punch-proven entry.
+    if (prev && isOtDecisionOpen(prev) && prev.source === "actual_punch" && prev.auto === true) delete d.otDecisions[key];
+    return actual;
+  }
   d.otDecisions = d.otDecisions || {};
   const key = `${employee.id}:${dayKey}`;
   const prev = d.otDecisions[key];
@@ -186,7 +197,7 @@ export function stampActualOvertime(d, employee, dayKey, row) {
     return actual;
   }
   const reopened = closedUnworked ? { decision: "pending", by: undefined, reopenedAt: new Date().toISOString() } : {};
-  d.otDecisions[key] = {
+  const next = {
     ...(prev || {}),
     ...reopened,
     decision: !closedUnworked && prev?.decision === "pending_worker_cap_consent" ? prev.decision : "pending",
@@ -197,10 +208,38 @@ export function stampActualOvertime(d, employee, dayKey, row) {
     kind: actual.kind || prev?.kind,
     source: "actual_punch",
     workedProven: true,
+    // «سُجّل تلقائياً»: written by the day's close, its parts named (day cap / week cap / rest / holiday).
+    auto: true,
+    dayMinutes: actual.dayMinutes || undefined,
+    weekMinutes: actual.weekMinutes || undefined,
+    article: actual.article || undefined,
+    plannedMinutes: prev?.plannedMinutes,
     flags: actual.flags.map((flag) => flag.error),
     at: new Date().toISOString(),
   };
+  // Idempotent: the same reading keeps the entry as it was (and its time).
+  const same = prev && !closedUnworked && ["decision", "overtimeMinutes", "actualMinutes", "kind", "source", "dayMinutes", "weekMinutes"].every((field) => prev[field] === next[field]);
+  d.otDecisions[key] = same ? { ...next, at: prev.at } : next;
   return actual;
+}
+
+/**
+ * A day closed (checkout, a manager's checkout fix, a manual punch): the later closed days of the
+ * same week are read again, since the week cap (Art. 98) moves with an earlier day. Idempotent.
+ * Returns the day keys re-read.
+ */
+export function restampWeekAfter(d, employee, dayKey) {
+  const day = OT_KEY_DAY(dayKey);
+  const out = [];
+  for (const key of weekDateKeys(day)) {
+    if (key <= day) continue;
+    const row = (d?.personalAttendance || []).find((item) => String(item.employeeId ?? item.employee_id) === String(employee.id)
+      && String(item.date || item.dateKey || "").slice(0, 10) === key && (item.checkOutAt || item.check_out_at));
+    if (!row) continue;
+    stampActualOvertime(d, employee, key, row);
+    out.push(key);
+  }
+  return out;
 }
 
 /**

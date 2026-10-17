@@ -128,6 +128,15 @@ export function ordinaryDayCap(employee: any, company: any, onDate: string, labo
   return ruleValue("hours.shift.ordinaryHours", onDate);
 }
 
+/** The week's ordinary cap — twin of src/lib/laborHoursPolicy.js ordinaryWeekCap (98 / Ramadan / 108 / juvenile). */
+export function ordinaryWeekCap(employee: any, company: any, onDate: string, laborCalendar?: any) {
+  if (isJuvenile(employee, onDate)) return ordinaryDayCap(employee, company, onDate, laborCalendar) * 6;
+  const limits108 = art108Limits(employee, onDate, laborCalendar);
+  if (limits108) return limits108.weekHours;
+  if (isRamadanDay(onDate, laborCalendar) && isRamadanHoursSubject(employee)) return ruleValue("hours.ramadan.weekMaxHours", onDate);
+  return ruleValue("hours.week.ordinaryMaxHours", onDate);
+}
+
 /* ---------------- weekly off days (Art. 104) — twin of leaveEidOverlap.js ---------------- */
 function postingOf(company: any) {
   return company?.hoursPolicy?.workPosting || company?.attendanceSettings?.hoursPolicy?.workPosting || company?.workPosting || {};

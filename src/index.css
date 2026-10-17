@@ -998,6 +998,13 @@ button.nv-hdr-seg[aria-expanded="true"] { background: var(--nv-soft); color: var
 }
 .nv-hdr-crumb a:focus-visible { outline-offset: 1px; }
 .nv-hdr-lang { font-family: var(--font-mono, 'IBM Plex Mono', monospace); font-size: 12px; font-weight: 700; }
+/* «راحتك · باقٍ 12:34» — the running break, one quiet segment in the utility group. */
+.nv-hdr-break { gap: 6px; font-weight: 600; }
+.nv-hdr-break:hover { background: var(--nv-soft); }
+@media (max-width: 767px) {
+  .nv-hdr-break { padding: 0 8px; gap: 5px; font-size: 12px; }
+  .nv-hdr-break .nv-hdr-break-sep { display: none; }
+}
 
 /* Date · time · 12/24 */
 .nv-clock-pill { gap: 9px; padding-inline: 11px 4px; cursor: default; }

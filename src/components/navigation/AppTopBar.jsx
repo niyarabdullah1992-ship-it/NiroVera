@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { canCreateTasks } from "@/lib/permissions";
 import BackButton from "@/components/mobile/BackButton";
 import HeaderDateTime from "@/components/navigation/HeaderDateTime";
+import DutyBreakPill from "@/components/navigation/DutyBreakPill";
 import ScopeBar, { NotificationBell } from "@/components/navigation/ScopeBar";
 import SyncStatusIndicator from "@/components/SyncStatusIndicator";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -91,6 +92,7 @@ export default function AppTopBar({
   onDismissNotif,
   onMarkAllNotifs,
   violationCount = 0,
+  dutyClock = null,
 }) {
   const { t, lang, setLang } = useI18n();
   const railSide = useRailSide();
@@ -171,6 +173,7 @@ export default function AppTopBar({
 
           <div className="nv-hdr-tools-wrap">
           <div className="nv-hdr-tools" role="group" aria-label={ar ? "أدوات الشريط" : "Header tools"}>
+            <DutyBreakPill clock={dutyClock} ar={ar} />
             <HeaderDateTime lang={lang} className="nv-hdr-wide" />
             <SyncStatusIndicator isSyncing={isSyncing} className="nv-hdr-wide" />
             <NotificationBell

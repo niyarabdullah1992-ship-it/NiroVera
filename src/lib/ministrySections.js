@@ -31,6 +31,7 @@ import { perfMinistryRows, perfReportsFor } from "./perfReport.js";
 import { isHeatBanDate } from "./contractLawDerivations.js";
 import { regulationOf } from "./workRegulation.js";
 import { disciplineRuleHint } from "./rightHints.disc.js";
+import { attendanceMinistryRows } from "./attendanceMinistryRows.js";
 
 /* ── statuses ─────────────────────────────────────────────────────────── */
 
@@ -622,6 +623,25 @@ const SECTIONS = {
         frameRow({ key: "regs-4", source: "regs", badge: ar ? "اللائحة م3 · 4" : "Regs Arts. 3 · 4", title: T(ar, "لائحة خاصة مصدّقة، أو النموذج الموحد لمن يقل عماله عن خمسين", "An own certified regulation, or the model under fifty workers"), note: T(ar, "اللائحة الخاصة تُراجَع وتُصدَّق من مكتب محاماة معتمد ثم تُرفع للوزارة؛ ويجوز لمن يقل عماله عن خمسين اختيار النموذج الموحد إلكترونياً دون تعديل.", "An own regulation is reviewed and certified by an accredited law firm, then filed; under fifty workers may adopt the model online unchanged."), status: needsOwn ? "alert" : "settled", pill: own ? T(ar, `لائحة خاصة${reg.approvalNo ? ` · ${reg.approvalNo}` : ""}`, "Own regulation") : needsOwn ? T(ar, `${headcount} عاملاً — يلزم لائحة خاصة`, `${headcount} workers — an own regulation is due`) : T(ar, "النموذج الموحد", "The model regulation") }, { lane, ar, manageOnly: true }),
         frameRow({ key: "model-22", source: "model", badge: ar ? "النموذج الموحد م22" : "Model Art. 22", title: T(ar, "سلم وظيفي بمسميات التصنيف السعودي ودرجاتها وشروط شغلها", "A job ladder on the Saudi classification, with grades and requirements"), note: T(ar, "تضع المنشأة سلماً وظيفياً تحدد فيه عدد الوظائف ومسمياتها ودرجة كل وظيفة وشروط شغلها وبداية أجرها.", "The establishment sets a job ladder: the jobs, their titles, grades, requirements and starting wage."), status: grades ? "settled" : "alert", pill: grades ? T(ar, `${grades} درجات في السلم`, `${grades} grades on the ladder`) : T(ar, "لا سلم وظيفي مسجّل", "No job ladder recorded") }, { lane, ar, manageOnly: true }),
       ];
+    },
+  },
+
+  attendance: {
+    title: (ar, lane) => (lane === "manage" ? T(ar, "أنظمة الوزارة — ما يخص الحضور", "Ministry rules — attendance") : T(ar, "أنظمة الوزارة — ما يخص البصمة", "Ministry rules — my punch")),
+    anchor: "nv-ministry-attendance",
+    cards: {
+      labour: (ar) => [T(ar, "نظام العمل — ساعات العمل والراحة", "Labour Law — hours and rest"), T(ar, "الساعات، الراحة، الراحة الأسبوعية، الإضافي", "Hours, rest, the weekly rest, overtime")],
+      regs: (ar) => [T(ar, "اللائحة التنفيذية — حد الإضافي", "Implementing Regulations — the overtime cap"), T(ar, "720 ساعة في السنة وموافقة العامل", "720 hours a year and the worker's consent")],
+      18632: (ar) => [T(ar, "القرار 18632 — العمل الليلي", "Decision 18632 — night work"), T(ar, "الراحة بين يومين والتعويض والتدوير", "Rest between days, compensation, rotation")],
+      3337: (ar) => [T(ar, "القرار 3337 — حظر العمل المكشوف", "Decision 3337 — sun ban"), T(ar, "التنبيه عند بدء نافذة الحظر", "The alert when the ban window opens")],
+    },
+    rows({ lane, ar, today, data = {}, employee = null, people = [], prayers = null }) {
+      const one = (person) => attendanceMinistryRows({ d: data || {}, employee: person, today, ar, lane, prayers }).map((raw) => frameRow(raw, { lane, ar }));
+      if (lane === "manage") {
+        const list = (people || []).filter(Boolean);
+        return acrossPeople((list.length ? list : [employee || {}]).map(one), ar);
+      }
+      return one(employee || {});
     },
   },
 

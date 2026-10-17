@@ -605,6 +605,138 @@ export function dutyConsecutiveGate(shift, onDate, employee, company) {
   });
 }
 
+const hmOf = (mins) => {
+  const m = ((Math.round(mins) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
+const hmClock = (hm) => {
+  const match = String(hm || "").match(/^(\d{1,2}):(\d{2})$/);
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+};
+
+/**
+ * Where the roster places the Art. 101 break(s) inside a shift. Placed breaks (`shift.breaks` with
+ * clocks) first; else the shift's rest (or the statutory minimum when the stay passes the
+ * consecutive-hours limit) sits in the middle of the shift — the same band the punch card draws.
+ * Returns [{ from, to, minutes, startMin, endMin, start, end, placed }] — `from`/`to` are offsets
+ * from the shift start; `startMin`/`endMin` are minutes after the shift day's midnight (may pass 1440).
+ */
+export function rosterBreakWindows(shift, onDate) {
+  const start = hmClock(shift?.start);
+  const end = hmClock(shift?.end);
+  if (start == null || end == null) return [];
+  const span = minutesBetween(shift.start, shift.end) || 1440;
+  const row = (from, minutes, placed) => ({
+    from,
+    to: from + minutes,
+    minutes,
+    startMin: start + from,
+    endMin: start + from + minutes,
+    start: hmOf(start + from),
+    end: hmOf(start + from + minutes),
+    placed,
+  });
+  const placedBreaks = shiftBreaks(shift).filter((b) => b.from != null && b.from < span);
+  if (placedBreaks.length) return placedBreaks.map((b) => row(b.from, Math.min(b.minutes, span - b.from), "roster"));
+  const consecMax = ruleValue("hours.rest.maxConsecutiveHours", onDate) * 60;
+  if (span <= consecMax) return [];
+  const recorded = shiftRestMinutes(shift);
+  const rest = recorded == null ? ruleValue("hours.rest.duringShiftMinutes", onDate) : recorded;
+  if (!rest || rest >= span) return [];
+  return [row(Math.round((span - rest) / 2), rest, "centered")];
+}
+
+/**
+ * The prayers (not sunrise) that fall inside a shift window, as timeline points:
+ * [{ key, ar, en, clock, minutes, offset }] — `minutes` on the shift day's clock (may pass 1440).
+ * `day` is a computePrayerTimes / stationPrayerTimes result; null → [].
+ */
+export function prayersInShift(shift, day) {
+  const start = hmClock(shift?.start);
+  if (start == null || !day?.minutes) return [];
+  const span = minutesBetween(shift.start, shift.end) || 1440;
+  const names = { fajr: ["الفجر", "Fajr"], dhuhr: ["الظهر", "Dhuhr"], asr: ["العصر", "Asr"], maghrib: ["المغرب", "Maghrib"], isha: ["العشاء", "Isha"] };
+  const out = [];
+  for (const key of Object.keys(names)) {
+    const at = day.minutes[key];
+    if (!Number.isFinite(at)) continue;
+    let m = at;
+    if (m < start) m += 1440;
+    const offset = m - start;
+    if (offset <= 0 || offset >= span) continue;
+    out.push({ key, ar: names[key][0], en: names[key][1], clock: day.times?.[key] || hmOf(at), minutes: m, offset });
+  }
+  return out.sort((a, b) => a.offset - b.offset);
+}
+
+/**
+ * Non-binding roster hint: «أقرب صلاة: الظهر 11:52 — يمكن أن تكون الراحة حولها».
+ * The prayer inside the shift nearest the roster's break. Offered only when a break starting at
+ * that prayer keeps Art. 101: a rest of at least the statutory minutes, and no block over the
+ * consecutive-hours limit (the category ceiling for Art. 108 categories). No hint under Art. 103
+ * (continuous work) or for an Art. 108 category outside Art. 101. A hint never moves a break:
+ * `binding: false` always, and a published day says so («لا تُنقل الراحة المنشورة تلقائياً»).
+ * Returns { prayerKey, prayerAr, prayerEn, clock, minutes, inside, suggested: { start, end },
+ *   textAr, textEn, binding: false, published, cite } or null.
+ */
+export function prayerBreakHint({ shift, onDate, prayers, employee, company, published = false } = {}) {
+  if (!shift?.start || !shift?.end || !prayers) return null;
+  if (hoursPolicyOf(company, employee).continuousWork103 === true) return null;
+  const limits = art108Limits(employee, onDate);
+  if (limits && limits.consecutiveHours == null) return null;
+  const windows = rosterBreakWindows(shift, onDate);
+  if (!windows.length) return null;
+  const points = prayersInShift(shift, prayers);
+  if (!points.length) return null;
+  const minRest = ruleValue("hours.rest.duringShiftMinutes", onDate);
+  const maxBlock = (limits?.consecutiveHours || ruleValue("hours.rest.maxConsecutiveHours", onDate)) * 60;
+  const span = minutesBetween(shift.start, shift.end) || 1440;
+  let best = null;
+  windows.forEach((w, index) => {
+    const mid = (w.from + w.to) / 2;
+    points.forEach((p) => {
+      const d = Math.abs(p.offset - mid);
+      if (!best || d < best.d) best = { d, p, w, index };
+    });
+  });
+  if (!best) return null;
+  const { p, w, index } = best;
+  const rest = Math.max(w.minutes, minRest);
+  const inside = p.offset >= w.from && p.offset < w.to;
+  const from = inside ? w.from : p.offset;
+  const moved = windows.map((row, i) => (i === index ? { from, to: from + rest } : { from: row.from, to: row.to })).sort((a, b) => a.from - b.from);
+  if (moved[moved.length - 1].to > span) return null;
+  let cursor = 0;
+  for (const row of moved) {
+    if (row.from < cursor) return null;
+    if (row.from - cursor > maxBlock) return null;
+    cursor = row.to;
+  }
+  if (span - cursor > maxBlock) return null;
+  const startMin = hmClock(shift.start);
+  const suggested = { start: hmOf(startMin + from), end: hmOf(startMin + from + rest) };
+  const tailAr = published ? " لا تُنقل الراحة المنشورة تلقائياً." : "";
+  const tailEn = published ? " A published break never moves by itself." : "";
+  return {
+    prayerKey: p.key,
+    prayerAr: p.ar,
+    prayerEn: p.en,
+    clock: p.clock,
+    minutes: p.minutes,
+    inside,
+    suggested,
+    textAr: inside
+      ? `أقرب صلاة: ${p.ar} ${p.clock} — الراحة \u2066${w.start}–${w.end}\u2069 تشملها.${tailAr}`
+      : `أقرب صلاة: ${p.ar} ${p.clock} — يمكن أن تكون الراحة حولها.${tailAr}`,
+    textEn: inside
+      ? `Nearest prayer: ${p.en} ${p.clock} — the ${w.start}–${w.end} break covers it.${tailEn}`
+      : `Nearest prayer: ${p.en} ${p.clock} — the break could sit around it.${tailEn}`,
+    binding: false,
+    published: !!published,
+    cite: citeRule("hours.rest.duringShiftMinutes", onDate),
+  };
+}
+
 /** This week's duties are only 12h-stay days, and at most four — the compressed system. */
 export function employeeOnCompressedTwelveWeek(schedule, employee, weekStart) {
   if (!employee?.id) return false;

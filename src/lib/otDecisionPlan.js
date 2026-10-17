@@ -7,7 +7,7 @@
  */
 
 import { checkOtDecisionGate, isOtDecisionOpen, overtimeYearUsageOutsideAssignments } from "./attendanceDerivations.js";
-import { deriveActualDuty } from "./actualDuty.js";
+import { actualDutyBreaches, deriveActualDuty } from "./actualDuty.js";
 import { addDays, employeeShiftOnDay, holidayWorkOn, parseDateKey, weekDateKeys, weekKeyFromDate, weekNamedOvertime, weekPublishState } from "./shiftWeek.js";
 import { laborCalendarOf } from "./ummAlQuraCalendar.js";
 import { toRiyadhDateKey } from "./riyadhDate.js";
@@ -110,6 +110,25 @@ export function rosterShiftFor(d, employee, dayKey) {
     if (shift) return shift;
   }
   return null;
+}
+
+/**
+ * Art. 101 breaches a closed day proves (`actualDutyBreaches`: the rests it actually had — recorded
+ * breaks, else the roster's break inside the presence) — written where the day's breaches already
+ * live: the attendance row's `actualFlags` (the same codes stampActualOvertime writes). Adds, never
+ * removes, and returns the codes added. An open day writes nothing.
+ */
+export function stampActualDutyBreaches(d, employee, dayKey, row) {
+  if (!employee?.id || !row) return [];
+  const checkIn = row.checkInAt || row.check_in_at;
+  const checkOut = row.checkOutAt || row.check_out_at;
+  if (!checkIn || !checkOut) return [];
+  const shift = rosterShiftFor(d, employee, dayKey);
+  const flags = actualDutyBreaches({ checkIn, checkOut, shift, onDate: dayKey, employee, company: d, laborCalendar: laborCalendarOf(d), breaks: row.breaks });
+  const have = new Set(Array.isArray(row.actualFlags) ? row.actualFlags : []);
+  const added = flags.map((flag) => flag.error).filter((code) => !have.has(code));
+  if (added.length || !Array.isArray(row.actualFlags)) row.actualFlags = [...have, ...added];
+  return added;
 }
 
 /**

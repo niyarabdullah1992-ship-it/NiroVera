@@ -77,7 +77,9 @@ export function planHeatBanNotices({ data, now = new Date(), existingKeys = [], 
     const { mark } = sunExposureMark(schedule, employee.id, key, shift);
     const exposed = mark === SUN_FIELD;
     const label = shift.label || shift.id;
-    if (exposed) push(employee.id, `3337-worker:${employee.id}:${key}`, heatBanWorkerText(win, label, ar));
+    // The live duty alert («نافذة حظر العمل المكشوف بدأت», dutyAlerts.js) may have told him first — once is enough.
+    const dutyTold = [...seen].some((k) => k.startsWith(`duty-alert:${employee.id}:${key}:`) && k.endsWith(":heat_now"));
+    if (exposed && !dutyTold) push(employee.id, `3337-worker:${employee.id}:${key}`, heatBanWorkerText(win, label, ar));
     if (exposed || !mark) {
       for (const manager of nightDueAdminAudience(data, employee)) {
         push(manager.id, `3337-admin:${manager.id}:${employee.id}:${key}`, heatBanManagerText(win, employee.name, label, exposed, ar));

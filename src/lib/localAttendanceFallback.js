@@ -4,7 +4,7 @@
  */
 import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
 import { attendanceOnDate, checkPunchRecordGate, toCloudAttendanceRow as punchCloudRow } from "@/lib/attendancePunch";
-import { updateCompany, getCompanyData } from "@/lib/store";
+import { updateCompany, getCompanyData, recordDutyBreaches } from "@/lib/store";
 import { getTodaysShift, lateMinutesFromScheduledStart } from "@/lib/attendanceDerivations";
 
 function todayKey() {
@@ -233,5 +233,7 @@ export function localCheckOut(companyId, { employeeId }) {
     };
     d.personalAttendance = list;
   });
+  // Art. 101 — the breaches the closed day proves go onto the row, where the duty boards read them.
+  try { recordDutyBreaches(companyId, employeeId, date); } catch { /* best-effort; the day is saved */ }
   return getLocalTodayAttendance(companyId, employeeId);
 }

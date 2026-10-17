@@ -5,7 +5,7 @@
 import { citeRule, ruleValue } from "./laborRules.js";
 import { art108Limits, hoursBasisOf, hoursPolicyOf, isEmployeeOffDay, ordinaryDayCap } from "./laborHoursPolicy.js";
 import { isOfficialHoliday } from "./ummAlQuraCalendar.js";
-import { actualShiftHours, isTwelveStayDuty } from "./shiftWeek.js";
+import { actualShiftHours, isTwelveStayDuty, rosterBreakWindows } from "./shiftWeek.js";
 import { checkConsecutiveWorkGate, minutesBetween, shiftRestMinutes } from "./shiftDerivations.js";
 
 /** "HH:MM", or an ISO instant read on the Riyadh clock → minutes after midnight. null when unreadable. */
@@ -19,6 +19,34 @@ export function punchClockMinutes(value) {
   const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(at);
   const part = (type) => Number(parts.find((row) => row.type === type)?.value || 0);
   return part("hour") * 60 + part("minute");
+}
+
+/**
+ * The rests a day of punches actually had, as clocks inside the presence: the recorded breaks
+ * when the row carries a `breaks` list (even empty — then none was taken), else the roster's
+ * placed break (`rosterBreakWindows`) clipped to [check-in, check-out or now]. A planned break
+ * outside the presence is not a rest. Returns { breaks: [{ start, end, minutes }], recorded }.
+ * `windows` are the roster windows (minutes on the shift day's clock).
+ */
+export function effectiveDutyBreaks({ recordedBreaks, windows = [], inMinutes, untilMinutes } = {}) {
+  if (Array.isArray(recordedBreaks)) {
+    return {
+      recorded: true,
+      breaks: recordedBreaks
+        .filter((row) => row?.start && row?.end)
+        .map((row) => ({ start: String(row.start), end: String(row.end), minutes: minutesBetween(row.start, row.end) })),
+    };
+  }
+  if (inMinutes == null || untilMinutes == null) return { recorded: false, breaks: [] };
+  const out = [];
+  for (const w of windows) {
+    // Windows and punches share the shift day's clock (the caller lifts after-midnight minutes by 1440).
+    const from = Math.max(w.startMin, inMinutes);
+    const to = Math.min(w.endMin, untilMinutes);
+    if (to - from <= 0) continue;
+    out.push({ start: clock(from), end: clock(to), minutes: to - from, startMin: from, endMin: to });
+  }
+  return { recorded: false, breaks: out };
 }
 
 function clock(mins) {
@@ -143,4 +171,40 @@ export function deriveActualDuty({
     kind,
     flags,
   };
+}
+
+/**
+ * The Art. 101 breaches a closed day of punches proves, read with the rests it actually had
+ * (`effectiveDutyBreaks`: recorded breaks, else the roster's placed break inside the presence) —
+ * the same reading the live duty alerts use, so a breach the worker was warned about is the
+ * breach that is recorded. Returns the `deriveActualDuty` flags that are Art. 101 breaches:
+ * ACTUAL_NO_BREAK (more than the consecutive-hours limit without a rest) and
+ * ACTUAL_PRESENCE_OVER_CAP (presence above the workplace ceiling). [] while the day is open.
+ */
+export function actualDutyBreaches({ checkIn, checkOut, shift, onDate, employee, company, laborCalendar, breaks } = {}) {
+  const inM = punchClockMinutes(checkIn);
+  const outRaw = punchClockMinutes(checkOut);
+  if (inM == null || outRaw == null) return [];
+  const outM = outRaw <= inM ? outRaw + 1440 : outRaw;
+  const shiftStart = shift?.start ? punchClockMinutes(shift.start) : null;
+  // A check-in just after midnight on a shift that started the evening before sits on the next day's clock.
+  const lift = shiftStart != null && inM + 720 < shiftStart ? 1440 : 0;
+  const eff = effectiveDutyBreaks({
+    recordedBreaks: breaks,
+    windows: shift ? rosterBreakWindows(shift, onDate) : [],
+    inMinutes: inM + lift,
+    untilMinutes: outM + lift,
+  });
+  const duty = deriveActualDuty({
+    checkIn: clock(inM),
+    checkOut: clock(outM),
+    shift,
+    onDate,
+    employee,
+    company,
+    laborCalendar,
+    breaks: eff.breaks.map((row) => ({ start: row.start, end: row.end })),
+  });
+  if (!duty.ok) return [];
+  return duty.flags.filter((flag) => flag.error === "ACTUAL_NO_BREAK" || flag.error === "ACTUAL_PRESENCE_OVER_CAP");
 }

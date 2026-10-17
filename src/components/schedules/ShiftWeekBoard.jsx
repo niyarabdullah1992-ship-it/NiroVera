@@ -16,7 +16,9 @@ import {
   updateShiftType,
   confirmHolidayWork,
 } from "@/lib/store";
-import { HOLIDAY_WORK_LABEL_AR, HOLIDAY_WORK_LABEL_EN, holidayWorkOn } from "@/lib/shiftWeek";
+import { HOLIDAY_WORK_LABEL_AR, HOLIDAY_WORK_LABEL_EN, holidayWorkOn, prayerBreakHint } from "@/lib/shiftWeek";
+import { stationPrayerTimes } from "@/lib/prayerTimes";
+import NvIcon from "@/components/shared/NvIcon";
 import { isJuvenile as isJuvenileOn } from "@/lib/laborHoursPolicy.js";
 import { nextDistinctShift, repairedShiftWindow, STANDARD_SHIFT_WINDOWS, formatShiftHm, shiftHoursLine, shiftWindowKey } from "@/lib/shiftDerivations";
 import { useTimeFormat } from "@/hooks/useTimeFormat";
@@ -798,10 +800,18 @@ export default function ShiftWeekBoard({
     />
   );
 
+  // Prayer times for the branch's city on the day the editor reads (today when in the shown week).
+  const hintDay = (() => {
+    const today = calendarDateKey(new Date());
+    const keys = weekDays(weekStart).map((day) => day.key);
+    return keys.includes(today) ? today : keys[0];
+  })();
+  const hintPrayers = station ? stationPrayerTimes(station, hintDay, { ramadan: isRamadanDay(hintDay, laborCalendar) }) : null;
   const shiftTypesEditor = (
     <>
       {types.map((shift, index) => {
         const style = shiftTypeStyle(shift, index);
+        const breakHint = prayerBreakHint({ shift, onDate: hintDay, prayers: hintPrayers, company: data, published });
         return (
           <div key={shift.id} style={{ padding: "10px 18px", borderBottom: `1px solid ${SW.hair}`, display: "flex", flexDirection: "column", gap: 7 }}>
             <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0,1fr) auto auto", gap: 8, alignItems: "center" }}>
@@ -872,6 +882,12 @@ export default function ShiftWeekBoard({
                 </label>
               </div>
             )}
+            {breakHint ? (
+              <span data-roster-break-hint={shift.id} style={{ fontSize: 10.5, color: SW.mid, lineHeight: 1.7, display: "flex", gap: 5, alignItems: "baseline" }}>
+                <NvIcon name="prayer" size={11} />
+                <span>{ar ? breakHint.textAr : breakHint.textEn}{" "}<span style={{ color: SW.muted }}>{ar ? "(اقتراح غير ملزم)" : "(a suggestion, not binding)"}</span></span>
+              </span>
+            ) : null}
           </div>
         );
       })}

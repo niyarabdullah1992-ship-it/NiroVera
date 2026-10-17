@@ -50,7 +50,7 @@ import {
   leaveDecisionNoticeText,
 } from "./leaveEntitlementCycle";
 import { calendarDateKey, dayAssignmentMap } from "./attendanceCalendar";
-import { applyWorkplaceManagerRule } from "./peopleTreeGraph";
+import { applyWorkplaceManagerRule, reportsToId, workplaceReportsToId } from "./peopleTreeGraph";
 import { doaApproverIds } from "./orgDesign";
 import { isWorkplaceStation } from "./stationTree";
 import { appendOrgStructureEvent } from "./orgStructureLog";
@@ -81,7 +81,8 @@ import {
 import { overtimeYearUsageOutsideAssignments } from "./attendanceDerivations";
 import { employeeRosterOtContext } from "./shiftWeek";
 import { damageCaseIdFor } from "./payrollLaw.js";
-import { absorbAssignmentIntoActualOt, planOtDecision, stampActualOvertime, stampHolidayWorkOvertime, withdrawHolidayWorkOvertime } from "./otDecisionPlan.js";
+import { absorbAssignmentIntoActualOt, planOtDecision, stampActualDutyBreaches, stampActualOvertime, stampHolidayWorkOvertime, withdrawHolidayWorkOvertime } from "./otDecisionPlan.js";
+import { planDutyAlertNotices } from "./dutyAlerts.js";
 import { compLeaveDaysInYear as compLeaveDaysInYearForCap, otHoursInYear as otHoursInYearForCap } from "./overtimeAssignment.js";
 import { isOfficialHoliday, laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePlatformOwnerBoard } from "./ummAlQuraCalendar";
 
@@ -1730,6 +1731,41 @@ export function openDueHeatBanNotices(companyId, now = new Date()) {
   const plans = planHeatBanNotices({ data, now, existingKeys, laborCalendar: laborCalendarOf(data) });
   for (const plan of plans) addNotification(companyId, plan.userId, plan.text, { key: plan.key, to: "/app/shifts" });
   return { ok: true, notified: plans.length };
+}
+
+/** The person a worker reports to — the explicit reporting line, else the branch's manager chain. */
+export function directManagerIdOf(data, employee) {
+  if (!employee?.id) return null;
+  const id = reportsToId(employee, data) || workplaceReportsToId(employee, data);
+  return id && String(id) !== String(employee.id) ? String(id) : null;
+}
+
+/**
+ * Live duty alerts (dutyAlerts.js) → the bell: the worker once per shift per alert, the direct manager
+ * once for a real Art. 101 breach. Idempotent per key (shift + alert id). Returns { notified }.
+ */
+export function openDueDutyAlertNotices(companyId, employeeId, { alerts = [], shiftKey, ar = true } = {}) {
+  const data = getCompanyData(companyId);
+  const employee = (data?.employees || []).find((row) => String(row.id) === String(employeeId));
+  if (!data || !employee || !shiftKey || !alerts.length) return { ok: true, notified: 0 };
+  const existingKeys = (data.notifications || []).map((row) => row.key).filter(Boolean);
+  const plans = planDutyAlertNotices({ alerts, employee, managerId: directManagerIdOf(data, employee), shiftKey, existingKeys, ar });
+  for (const plan of plans) addNotification(companyId, plan.userId, plan.text, { key: plan.key, to: plan.to });
+  return { ok: true, notified: plans.length };
+}
+
+/** A closed day's proven Art. 101 breaches onto its attendance row (`actualFlags`). Returns the codes added. */
+export function recordDutyBreaches(companyId, employeeId, dayKey) {
+  const data = getCompanyData(companyId);
+  const row = attendanceOnDate(data?.personalAttendance, employeeId, dayKey);
+  if (!row || !(row.checkOutAt || row.check_out_at)) return [];
+  let added = [];
+  updateCompany(companyId, (draft) => {
+    const emp = (draft.employees || []).find((item) => String(item.id) === String(employeeId));
+    const live = (draft.personalAttendance || []).find((item) => String(item.employeeId ?? item.employee_id) === String(employeeId) && String(item.date || item.dateKey || "").slice(0, 10) === dayKey);
+    if (emp && live) added = stampActualDutyBreaches(draft, emp, dayKey, live);
+  });
+  return added;
 }
 
 /** Arts. 69 & 72 — remind managers before the signing/ruling windows close, and the worker of his own. Idempotent per key. */
@@ -3635,6 +3671,7 @@ function stampPunchRequestOnDraft(draft, employee, request, reviewerName) {
   else list.push(row);
   draft.personalAttendance = list;
   const stamped = stampActualOvertime(draft, employee, day, idx >= 0 ? list[idx] : row);
+  stampActualDutyBreaches(draft, employee, day, idx >= 0 ? list[idx] : row);
   if (stamped?.ok && isOtDecisionOpenEntry(draft.otDecisions?.[`${employee.id}:${day}`])) queueOtPendingNotice(employee.id, day, stamped.holiday);
   request.time = clock;
   request.attendanceId = row.id;
@@ -3682,6 +3719,7 @@ export function recordManualAttendance(companyId, { employeeId, kind, date, time
     draft.personalAttendance = list;
     saved = idx >= 0 ? list[idx] : row;
     const stamped = stampActualOvertime(draft, emp || employee, day, saved);
+    stampActualDutyBreaches(draft, emp || employee, day, saved);
     if (stamped?.ok && isOtDecisionOpenEntry(draft.otDecisions?.[`${employeeId}:${day}`])) queueOtPendingNotice(employeeId, day, stamped.holiday);
   });
   flushOtPendingNotices(companyId);

@@ -84,6 +84,8 @@ const GLYPHS = {
     ["path", { d: "m8 12.2 2.8 2.8L16 9.5" }],
   ],
   "checkbox-off": [["rect", { x: 3.5, y: 3.5, width: 17, height: 17, rx: 3.5 }]],
+  // Prayer time — a crescent on the same 3px margin (timeline points, prayer-time hints).
+  prayer: [["path", { d: "M19.5 14.6A8 8 0 1 1 9.4 4.5a6.4 6.4 0 0 0 10.1 10.1Z" }]],
 };
 
 /** Arabic names, in sheet order (the rights scale first — it is the reference). */
@@ -105,6 +107,7 @@ export const NV_ICON_LABELS = {
   home: "الرئيسية",
   "checkbox-on": "محدد",
   "checkbox-off": "غير محدد",
+  prayer: "وقت الصلاة",
 };
 
 export const NV_ICON_NAMES = Object.keys(NV_ICON_LABELS);

@@ -24,7 +24,7 @@ import {
   localCheckOut,
 } from "@/lib/localAttendanceFallback";
 import { BORDER, CARD, MUTED, NAVY, SURFACE, ui } from "@/lib/platformStyles";
-import { submitOtherRequest } from "@/lib/store";
+import { openDueDutyAlertNotices, submitOtherRequest } from "@/lib/store";
 import { checkSubmitOtherRequestGate } from "@/lib/otherRequestDerivations";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import { parsePunchClock, riyadhNowClock } from "@/lib/attendancePunch";
@@ -32,6 +32,10 @@ import { dutyTone } from "@/components/schedules/dutyStatus";
 import RightHint from "@/components/shared/RightHint";
 import { attRightHint } from "@/lib/rightHints.att.js";
 import NvIcon from "@/components/shared/NvIcon";
+import { employeeShiftOnDay, isWeekDayPublished, prayerBreakHint, prayersInShift, rosterBreakWindows, sunExposureMark, SUN_FIELD } from "@/lib/shiftWeek";
+import { stationPrayerTimes } from "@/lib/prayerTimes";
+import { isRamadanDay } from "@/lib/laborRules";
+import { deriveDutyAlerts, dutyShiftKey } from "@/lib/dutyAlerts";
 
 const STATUS_PILL = {
   present: { bg: "var(--nv-accent-soft)", fg: "#15803D", bd: "#BBF7D0", ar: "حاضر", en: "Present" },
@@ -317,6 +321,39 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     </button>
   );
 
+  const dutyDay = toRiyadhDateKey(new Date(tick));
+  const laborCal = laborCalendarOf(data);
+  const dutySchedule = shift ? (data?.schedules || []).find((row) => String(row.stationId) === String(shift.stationId)) : null;
+  // The published shift type behind today's assignment: its rest, placed breaks and exposure mark.
+  const dutyShift = shift ? { ...(employeeShiftOnDay(dutySchedule, currentUser?.id, dutyDay) || {}), ...shift } : null;
+  const dutyEmployee = (data?.employees || []).find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
+  const dutyStation = (data?.stations || []).find((row) => String(row.id) === String(shift?.stationId || scheduledStationId));
+  const ramadanToday = isRamadanDay(dutyDay, laborCal);
+  const prayerDay = dutyStation ? stationPrayerTimes(dutyStation, dutyDay, { ramadan: ramadanToday }) : null;
+  const prayerPoints = dutyShift ? prayersInShift(dutyShift, prayerDay) : [];
+  const exposedToday = dutyShift ? sunExposureMark(dutySchedule, currentUser?.id, dutyDay, dutyShift).mark === SUN_FIELD : false;
+  const breakHint = dutyShift ? prayerBreakHint({ shift: dutyShift, onDate: dutyDay, prayers: prayerDay, employee: dutyEmployee, company: data, published: isWeekDayPublished(dutySchedule, dutyDay) }) : null;
+  const dutyAlerts = deriveDutyAlerts({
+    shift: dutyShift,
+    punches: { checkIn: attendance?.check_in_at, checkOut: attendance?.check_out_at, breaks: attendance?.breaks },
+    prayers: prayerDay,
+    exposed: exposedToday,
+    onDate: dutyDay,
+    laborCalendar: laborCal,
+    ramadan: ramadanToday,
+    employee: dutyEmployee,
+    company: data,
+    now: new Date(tick),
+  });
+  const currentAlert = dutyAlerts.current;
+  // Bell notices for this minute's alerts — once per shift per alert (keys dedupe), the manager on a real breach.
+  const shiftNoticeKey = dutyShift ? dutyShiftKey(currentUser?.id, dutyDay, dutyShift) : "";
+  const noticeIds = dutyAlerts.alerts.filter((row) => !row.recorded).map((row) => row.id).join(",");
+  useEffect(() => {
+    if (!company?.id || !currentUser?.id || !shiftNoticeKey || !noticeIds) return;
+    try { openDueDutyAlertNotices(company.id, currentUser.id, { alerts: dutyAlerts.alerts, shiftKey: shiftNoticeKey, ar }); } catch { /* best-effort */ }
+  }, [company?.id, currentUser?.id, shiftNoticeKey, noticeIds]);
+
   if (compact) {
     return (
       <section
@@ -387,7 +424,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const shiftLine = shift
     ? `${shift.label || (ar ? "وردية" : "Shift")} · \u2066${startClock}–${endClock}\u2069`
     : (ar ? "لا وردية منشورة" : "No published shift");
-  const band = breakBand(shift);
+  const band = breakBand(dutyShift, dutyDay);
   const worked = workedClock(attendance?.check_in_at, attendance?.check_out_at, tick, band);
   const targetLabel = band?.targetLabel || "8:00";
   const dayPct = Math.min(100, Math.round((worked.minutes / (band?.targetMin || 480)) * 100));
@@ -477,9 +514,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           hint: inn && isLate && lateMinutes ? attRightHint("lateness", { date: toRiyadhDateKey(), minutes: lateMinutes }, { view: "employee", ar }) : null,
         },
         ...(band?.label
-          ? [{ key: "rest", kind: "plan", label: ar ? "الراحة" : "Break", note: ar ? "تُخصم من المنجز" : "Excluded from worked time", value: band.label, hint: attRightHint("rest", {}, { view: "employee", ar }) }]
+          ? [{ key: "rest", kind: "plan", at: band.start + band.offset, label: ar ? "الراحة" : "Break", note: ar ? "تُخصم من المنجز" : "Excluded from worked time", sub: breakHint ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: band.label, hint: attRightHint("rest", {}, { view: "employee", ar }) }]
           : []),
-        { key: "end", kind: "plan", label: ar ? "نهاية الوردية" : "Shift ends", note: ar ? "من الجدول المنشور" : "From the published rota", value: endClock },
+        { key: "end", kind: "plan", at: (band?.start ?? 0) + (band?.targetMin ?? 0), label: ar ? "نهاية الوردية" : "Shift ends", note: ar ? "من الجدول المنشور" : "From the published rota", value: endClock },
         {
           key: "out",
           kind: "punch",
@@ -492,6 +529,13 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         },
       ]
     : [];
+  // Prayers inside the shift window — quiet points placed by time between the plan steps.
+  for (const p of prayerPoints) {
+    const at = steps.findIndex((step, i) => i > 1 && step.at != null && step.at > p.minutes);
+    const point = { key: `prayer-${p.key}`, kind: "prayer", label: ar ? p.ar : p.en, value: p.clock };
+    if (at < 0) steps.splice(Math.max(2, steps.length - 1), 0, point);
+    else steps.splice(at, 0, point);
+  }
 
   return (
     <section
@@ -611,10 +655,44 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             <strong style={{ fontSize: 14, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0 }}>{ar ? "مسار اليوم" : "Today's timeline"}</strong>
             <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "الجدول يحدّد الوقت، وبصمتك تثبته." : "The rota sets the time; your punch proves it."}</span>
           </div>
+          {currentAlert ? (
+            <div
+              role="status"
+              aria-live="polite"
+              data-duty-alert={currentAlert.id}
+              data-breach={currentAlert.breach ? "1" : "0"}
+              style={{ display: "grid", gridTemplateColumns: "16px minmax(0,1fr) auto", gap: 8, alignItems: "start", padding: "8px 0", borderBottom: "1px solid var(--nv-line2, #EEF1EF)" }}
+            >
+              <span aria-hidden style={{ display: "inline-flex", paddingTop: 2, color: currentAlert.breach ? "var(--nv-warn-ink)" : "var(--nv-muted)" }}>
+                <NvIcon name={currentAlert.breach ? "warning" : currentAlert.id === "prayer_next" ? "prayer" : "clock"} size={14} inline={false} />
+              </span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                <span style={{ fontSize: 12, lineHeight: 1.7, fontWeight: currentAlert.breach ? 700 : 500, color: currentAlert.breach ? "var(--nv-warn-ink)" : "var(--nv-ink2)" }}>
+                  {ar ? currentAlert.textAr : currentAlert.textEn}
+                </span>
+                {currentAlert.hint ? <RightHint ar={ar} hint={attRightHint(currentAlert.hint.kind, currentAlert.hint.item, { view: "employee", ar, employee: dutyEmployee })} style={{ alignSelf: "flex-start" }} /> : null}
+              </span>
+              {currentAlert.at ? (
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12.5, fontWeight: 600, color: "var(--nv-ink)", paddingTop: 1 }}>{currentAlert.at}</span>
+              ) : null}
+            </div>
+          ) : null}
           {steps.length ? (
             <ol className="nv-punch-steps" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
               {steps.map((step, index) => {
                 const last = index === steps.length - 1;
+                if (step.kind === "prayer") {
+                  return (
+                    <li key={step.key} data-step={step.key} data-state="prayer" style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) auto", gap: 12, alignItems: "center", position: "relative", paddingBottom: last ? 0 : 12 }}>
+                      {!last ? <span aria-hidden style={{ position: "absolute", insetInlineStart: 10, top: 18, bottom: 0, width: 2, background: "var(--nv-line2, #EEF1EF)", borderRadius: 2 }} /> : null}
+                      <span aria-hidden style={{ width: 22, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, color: "var(--nv-muted)", background: "var(--nv-card)" }}>
+                        <NvIcon name="prayer" size={12} inline={false} />
+                      </span>
+                      <span style={{ fontSize: 11.5, color: "var(--nv-muted)", minWidth: 0 }}>{step.label}</span>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12, fontWeight: 500, color: "var(--nv-ink2)", whiteSpace: "nowrap" }}>{step.value}</span>
+                    </li>
+                  );
+                }
                 const tone = step.kind === "plan"
                   ? { bg: "var(--nv-card)", bd: "var(--nv-mute-fill, #C5CEC9)", fg: "var(--nv-muted)" }
                   : step.state === "done"
@@ -655,6 +733,12 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                     <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                       <span style={{ fontSize: 12.5, fontWeight: step.kind === "punch" ? 700 : 600, color: step.kind === "punch" ? "var(--nv-ink)" : "var(--nv-ink2)" }}>{step.label}</span>
                       <span style={{ fontSize: 11, color: step.state === "late" ? "var(--nv-warn-ink)" : "var(--nv-muted)", lineHeight: 1.5 }}>{step.note}</span>
+                      {step.sub ? (
+                        <span data-break-hint style={{ fontSize: 11, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.6, display: "inline-flex", gap: 5, alignItems: "baseline" }}>
+                          <NvIcon name="prayer" size={11} />
+                          <span>{step.sub}</span>
+                        </span>
+                      ) : null}
                       {step.hint ? <RightHint ar={ar} hint={step.hint} style={{ alignSelf: "flex-start" }} /> : null}
                     </span>
                     <span style={{ whiteSpace: "nowrap", paddingTop: 1 }}>
@@ -795,30 +879,25 @@ function parseHm(value) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
-export function breakBand(shift) {
+/** The roster's (first) break as a band on the day bar — the same window `rosterBreakWindows` places. */
+export function breakBand(shift, onDate) {
   const start = parseHm(shift?.start);
   const end = parseHm(shift?.end);
   if (start == null || end == null) return null;
   let span = end - start;
   if (span <= 0) span += 1440;
-  const rest = shift?.restMinutes == null ? (span > 5 * 60 ? 30 : 0) : Math.max(0, Number(shift.restMinutes) || 0);
-  if (!rest || span <= 5 * 60) {
-    return { leftPct: 0, widthPct: 0, label: "", targetMin: span, targetLabel: `${Math.floor(span / 60)}:${String(span % 60).padStart(2, "0")}` };
-  }
-  const offset = Math.round((span - rest) / 2);
-  const fmt = (mins) => {
-    const clock = (start + mins) % 1440;
-    return `${String(Math.floor(clock / 60)).padStart(2, "0")}:${String(clock % 60).padStart(2, "0")}`;
-  };
+  const targetLabel = `${Math.floor(span / 60)}:${String(span % 60).padStart(2, "0")}`;
+  const w = rosterBreakWindows(shift, onDate)[0];
+  if (!w) return { leftPct: 0, widthPct: 0, label: "", targetMin: span, targetLabel, start };
   return {
-    leftPct: (offset / span) * 100,
-    widthPct: (rest / span) * 100,
-    label: `${fmt(offset)}–${fmt(offset + rest)}`,
-    rest,
+    leftPct: (w.from / span) * 100,
+    widthPct: (w.minutes / span) * 100,
+    label: `${w.start}–${w.end}`,
+    rest: w.minutes,
     start,
-    offset,
+    offset: w.from,
     targetMin: span,
-    targetLabel: `${Math.floor(span / 60)}:${String(span % 60).padStart(2, "0")}`,
+    targetLabel,
   };
 }
 

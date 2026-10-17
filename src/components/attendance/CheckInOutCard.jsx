@@ -375,7 +375,8 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     : shift?.outdoor === false
       ? (ar ? "موقع مظلّل" : "Shaded site")
       : "";
-  const siteLine = [station?.name || "—", shade].filter(Boolean).join(" · ");
+  // The station is named once, in the header context line («محطتي») — only the shade note stays here.
+  const siteLine = shade || "";
   const startClock = toWesternDigits(shift?.start || "—");
   const endClock = toWesternDigits(shift?.end || "—");
   const pvDate = new Date(tick).toLocaleDateString(ar ? "ar-SA-u-ca-gregory-nu-latn" : "en-GB", {
@@ -512,7 +513,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, flex: "1 1 220px" }}>
           <span style={{ fontSize: 11.5, color: "var(--nv-muted)", fontWeight: 600 }}>{ar ? `ورديتك اليوم · ${pvDate}` : `Today's shift · ${pvDate}`}</span>
           <strong style={{ fontSize: 18, fontFamily: "var(--font-heading)", letterSpacing: 0, color: "var(--nv-ink)" }}>{shiftLine}</strong>
-          <span style={{ fontSize: 12, color: "var(--nv-ink3, var(--nv-muted))" }}>{siteLine}</span>
+          {siteLine ? <span style={{ fontSize: 12, color: "var(--nv-ink3, var(--nv-muted))" }}>{siteLine}</span> : null}
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
           {/* No clock here: the time is already in the page header. */}

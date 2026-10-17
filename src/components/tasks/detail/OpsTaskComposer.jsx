@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Paperclip, Send } from "lucide-react";
 import VoiceRecorder from "@/components/tasks/VoiceRecorder";
-import { BORDER, BRAND, CARD, CONTROL_RADIUS, MUTED, field } from "@/lib/platformStyles";
+import { BORDER, CARD, CONTROL_RADIUS, MUTED, field } from "@/lib/platformStyles";
 import { mono } from "@/components/schedules/scheduleChrome";
 
 // Platform bar: one framed row (hairline, radius 8) holding the fields; square ghost tools at radius 8,
@@ -22,6 +22,7 @@ const iconBtn = {
   padding: 0,
 };
 const num = { ...mono, color: "var(--nv-ink)", fontWeight: 700 };
+const REQ_SEND = "#0B3D27"; // the same dark green as «أرسل الطلب» in طلباتي
 
 /** Task footer in the platform frame. Short daily quota auto-opens a blocker (reason required). */
 export default function OpsTaskComposer({
@@ -122,7 +123,7 @@ export default function OpsTaskComposer({
 
       {/* One frame (hairline, radius 10): the message is the hero row; under a hairline, the day's count as an
           inline field, then quiet square tools, a quiet «بلا إنجاز» text toggle and the solid green send. */}
-      <div data-nv-task-bar onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} style={{ display: "flex", flexDirection: "column", border: `1px solid ${focused ? "var(--nv-accent, #3C7D50)" : BORDER}`, boxShadow: focused ? "0 0 0 3px color-mix(in srgb, var(--nv-accent, #3C7D50) 14%, transparent)" : "none", borderRadius: 10, background: "var(--nv-card, #fff)", overflow: "hidden" }}>
+      <div data-nv-task-bar onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} style={{ display: "flex", flexDirection: "column", border: `1px solid ${focused ? REQ_SEND : BORDER}`, boxShadow: "none", borderRadius: CONTROL_RADIUS, background: CARD, overflow: "hidden" }}>
         <textarea
           data-nv-task-message
           value={draft}
@@ -130,7 +131,7 @@ export default function OpsTaskComposer({
           rows={2}
           placeholder={ar ? "اكتب ما أُنجز أو ما يعيقه…" : "What was done, or what is in the way…"}
           aria-label={ar ? "رسالة" : "Message"}
-          style={{ fontFamily: "inherit", width: "100%", boxSizing: "border-box", minHeight: 52, maxHeight: 120, resize: "none", border: "none", outline: "none", background: "transparent", boxShadow: "none", padding: "10px 12px", fontSize: 13.5, lineHeight: 1.6, color: "var(--nv-ink)" }}
+          style={{ fontFamily: "inherit", width: "100%", boxSizing: "border-box", minHeight: 52, maxHeight: 120, resize: "none", border: "none", outline: "none", background: "transparent", boxShadow: "none", padding: "10px 12px", fontSize: 12.5, lineHeight: 1.7, color: "var(--nv-ink)" }}
         />
         <div data-nv-task-tools style={{ display: "flex", alignItems: "center", gap: 2, padding: "5px 6px", borderTop: "1px solid var(--nv-line2, #EEF1EF)", background: "var(--nv-soft, #F8FAF9)", flexWrap: "wrap" }}>
           {canLog ? (
@@ -155,17 +156,19 @@ export default function OpsTaskComposer({
                 }}
                 style={{
                   ...mono,
-                  width: 46,
-                  height: 28,
+                  // The request frame's input: hairline, control radius, card ground, 12.5 type.
+                  width: 52,
+                  height: 30,
                   boxSizing: "border-box",
                   textAlign: "center",
-                  padding: "0 4px",
-                  borderRadius: 6,
+                  padding: "0 6px",
+                  borderRadius: CONTROL_RADIUS,
                   border: `1px solid ${BORDER}`,
-                  background: "var(--nv-card, #fff)",
+                  background: CARD,
                   color: "var(--nv-ink)",
-                  fontSize: 13,
+                  fontSize: 12.5,
                   fontWeight: 700,
+                  outline: "none",
                   MozAppearance: "textfield",
                 }}
               />
@@ -228,7 +231,7 @@ export default function OpsTaskComposer({
               width: 36,
               height: 32,
               marginInlineStart: 4,
-              background: canSubmit ? BRAND : "var(--nv-line, #E4E9E6)",
+              background: canSubmit ? REQ_SEND : "var(--nv-line, #E4E9E6)",
               color: canSubmit ? "#fff" : MUTED,
               cursor: canSubmit ? "pointer" : "not-allowed",
             }}

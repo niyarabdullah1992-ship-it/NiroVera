@@ -1,9 +1,8 @@
 import React, { useState } from "react";
 import { TASK_MODES, deriveTaskHeatBanNotice, normalizeTaskMode, taskModeConsequence, taskModeLabel } from "@/lib/opsDerivations";
 import HeatBanNotice from "@/components/shared/HeatBanNotice";
-import ComposerModalShell from "@/components/shared/ComposerModalShell";
 import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
-import { AckLine, FieldBlock, ReasonBox, TaskDialogFooter } from "@/components/tasks/TaskDialogParts";
+import { AckLine, FieldBlock, FrameBlock, ReasonBox, RequestFrameDialog, TaskDialogFooter } from "@/components/tasks/TaskDialogParts";
 
 /** The attestation follows the chosen place; its consequence is already on the option itself. */
 const ATTEST = {
@@ -33,29 +32,17 @@ export default function OpsModeConfirmModal({ task, ar, busy, initialMode, onClo
   ].filter(Boolean);
 
   return (
-    <ComposerModalShell
+    <RequestFrameDialog
       ar={ar}
-      asForm={false}
-      zIndex={120}
       dataNv="mode"
       title={ar ? "مكان التنفيذ" : "Where the work happens"}
       hint={ar
         ? `الحالي: ${taskModeLabel(task.mode, "ar")}. المكان يحدّد بوابة الحضور وحظر العمل تحت أشعة الشمس.`
         : `Current: ${taskModeLabel(task.mode, "en")}. The place decides the attendance gate and the midday sun ban.`}
       onClose={onClose}
-      footer={(
-        <TaskDialogFooter
-          ar={ar}
-          onClose={onClose}
-          busy={busy}
-          missing={missing}
-          label={ar ? "تأكيد المكان" : "Confirm place"}
-          onConfirm={() => onConfirm?.({ mode, reason: reason.trim() })}
-        />
-      )}
     >
-      <FieldBlock label={ar ? "المكان" : "Place"} dataKey="mode-place">
-        <SubTypeGrid label={ar ? "مكان التنفيذ" : "Place"} wide>
+      <FrameBlock heading={ar ? "المكان" : "Place"} dataKey="mode-place">
+        <SubTypeGrid label={ar ? "مكان التنفيذ" : "Place"}>
           {TASK_MODES.map((m) => (
             <SubTypeOption
               key={m.id}
@@ -72,22 +59,31 @@ export default function OpsModeConfirmModal({ task, ar, busy, initialMode, onClo
             />
           ))}
         </SubTypeGrid>
-      </FieldBlock>
+        {/* Switching the place is not a completion, so the level follows the task's
+            span rather than the clock — red once the span touches the season, and
+            the heavier red of a live refusal stays with the log gate. */}
+        {heatNotice ? <HeatBanNotice notice={heatNotice} ar={ar} /> : null}
+      </FrameBlock>
 
-      {/* Switching the place is not a completion, so the level follows the task's
-          span rather than the clock — red once the span touches the season, and
-          the heavier red of a live refusal stays with the log gate. */}
-      {heatNotice ? <HeatBanNotice notice={heatNotice} ar={ar} /> : null}
+      <FrameBlock dataKey="mode-details">
+        <FieldBlock label={ar ? "سبب التحويل" : "Reason"} dataKey="mode-reason">
+          <ReasonBox value={reason} onChange={setReason} placeholder={ar ? "مثال: نُقل العمل إلى المستودع المغطّى" : "e.g. the work moved to the covered warehouse"} />
+        </FieldBlock>
+        {mode && mode !== current ? (
+          <AckLine checked={ack} onChange={setAck}>
+            {ar ? ATTEST[mode]?.ar : ATTEST[mode]?.en}
+          </AckLine>
+        ) : null}
+      </FrameBlock>
 
-      <FieldBlock label={ar ? "سبب التحويل" : "Reason"} dataKey="mode-reason">
-        <ReasonBox value={reason} onChange={setReason} placeholder={ar ? "مثال: نُقل العمل إلى المستودع المغطّى" : "e.g. the work moved to the covered warehouse"} />
-      </FieldBlock>
-
-      {mode && mode !== current ? (
-        <AckLine checked={ack} onChange={setAck}>
-          {ar ? ATTEST[mode]?.ar : ATTEST[mode]?.en}
-        </AckLine>
-      ) : null}
-    </ComposerModalShell>
+      <TaskDialogFooter
+        ar={ar}
+        busy={busy}
+        missing={missing}
+        label={ar ? "تأكيد المكان" : "Confirm place"}
+        readyText={ar ? "جاهز لتغيير المكان" : "Ready to change the place"}
+        onConfirm={() => onConfirm?.({ mode, reason: reason.trim() })}
+      />
+    </RequestFrameDialog>
   );
 }

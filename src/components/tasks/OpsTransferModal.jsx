@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { taskAssigneeId } from "@/lib/opsDerivations";
 import PlatformDateField from "@/components/shared/PlatformDateField";
-import ComposerModalShell from "@/components/shared/ComposerModalShell";
-import { AckLine, ConsequenceSlab, FieldBlock, ReasonBox, TaskDialogFooter, TaskPersonPicker } from "@/components/tasks/TaskDialogParts";
+import { AckLine, ConsequenceSlab, FieldBlock, FrameBlock, ReasonBox, RequestFrameDialog, TaskDialogFooter, TaskPersonPicker } from "@/components/tasks/TaskDialogParts";
 
 function todayKey() {
   const d = new Date();
@@ -46,60 +45,55 @@ export default function OpsTransferModal({
   ].filter(Boolean);
 
   return (
-    <ComposerModalShell
+    <RequestFrameDialog
       ar={ar}
-      asForm={false}
-      zIndex={120}
       dataNv="transfer"
       title={ar ? "نقل المهمة" : "Transfer task"}
       hint={ar
         ? "نقل نهائي لمسؤولية الإثبات إلى موظف آخر. يظهر تاريخ النقل واسم الناقل على بطاقة المهمة."
         : "Permanent transfer of proof ownership. The date and who moved it show on the task card."}
       onClose={onClose}
-      footer={(
-        <TaskDialogFooter
-          ar={ar}
-          onClose={onClose}
-          busy={busy}
-          missing={missing}
-          tone="danger"
-          label={ar ? "تأكيد النقل النهائي" : "Confirm final transfer"}
-          onConfirm={() => onConfirm?.({
-            toId,
-            reason: reason.trim(),
-            delegatedAt: when,
-            kind: "transfer",
-          })}
-        />
-      )}
     >
-      {/* Irreversible — said once, calmly, at the top. */}
-      <ConsequenceSlab dataKey="irreversible" title={ar ? "نقل نهائي — لا تراجع بعده" : "Final — cannot be undone"}>
-        {ar
-          ? "لا يُلغى النقل ولا تعود المسؤولية تلقائياً. لإسناد مؤقت ببداية ونهاية استخدم «توكيل»."
-          : "The transfer is not cancelled and ownership does not return. For a temporary assignment use Delegate."}
-      </ConsequenceSlab>
-
-      <FieldBlock label={ar ? "المسؤول الجديد" : "New owner"} dataKey="transfer-to">
+      <FrameBlock heading={ar ? "المسؤول الجديد" : "New owner"} dataKey="transfer-to">
         <TaskPersonPicker ar={ar} options={options} value={toId} onChange={setToId} stations={stations} label={ar ? "المسؤول الجديد" : "New owner"} />
-      </FieldBlock>
+        <ConsequenceSlab dataKey="irreversible" title={ar ? "لا تراجع بعده" : "Cannot be undone"}>
+          {ar
+            ? "لا يُلغى النقل ولا تعود المسؤولية تلقائياً. لإسناد مؤقت ببداية ونهاية استخدم «توكيل»."
+            : "The transfer is not cancelled and ownership does not return. For a temporary assignment use Delegate."}
+        </ConsequenceSlab>
+      </FrameBlock>
 
-      <FieldBlock label={ar ? "تاريخ النقل" : "Transfer date"} dataKey="transfer-date">
-        <PlatformDateField
-          value={transferredAt}
-          onChange={(next) => setTransferredAt(String(next || "").slice(0, 10))}
-          ar={ar}
-          placeholder={ar ? "اختر التاريخ" : "Pick a date"}
-        />
-      </FieldBlock>
+      <FrameBlock dataKey="transfer-details">
+        <FieldBlock label={ar ? "تاريخ النقل" : "Transfer date"} dataKey="transfer-date">
+          <PlatformDateField
+            value={transferredAt}
+            onChange={(next) => setTransferredAt(String(next || "").slice(0, 10))}
+            ar={ar}
+            placeholder={ar ? "اختر التاريخ" : "Pick a date"}
+          />
+        </FieldBlock>
+        <FieldBlock label={ar ? "سبب النقل" : "Reason"} dataKey="transfer-reason">
+          <ReasonBox value={reason} onChange={setReason} placeholder={ar ? "مثال: انتقل المسؤول الأصلي إلى فرع آخر" : "e.g. the owner moved to another branch"} />
+        </FieldBlock>
+        <AckLine checked={ack} onChange={setAck}>
+          {ar ? "أقرّ أن النقل نهائي ولا يمكن التراجع عنه بعد التأكيد." : "I understand this transfer is final and cannot be undone."}
+        </AckLine>
+      </FrameBlock>
 
-      <FieldBlock label={ar ? "سبب النقل" : "Reason"} dataKey="transfer-reason">
-        <ReasonBox value={reason} onChange={setReason} placeholder={ar ? "مثال: انتقل المسؤول الأصلي إلى فرع آخر" : "e.g. the owner moved to another branch"} />
-      </FieldBlock>
-
-      <AckLine checked={ack} onChange={setAck} tone="danger">
-        {ar ? "أقرّ أن النقل نهائي ولا يمكن التراجع عنه بعد التأكيد." : "I understand this transfer is final and cannot be undone."}
-      </AckLine>
-    </ComposerModalShell>
+      <TaskDialogFooter
+        ar={ar}
+        busy={busy}
+        missing={missing}
+        tone="danger"
+        label={ar ? "تأكيد النقل النهائي" : "Confirm final transfer"}
+        readyText={ar ? "جاهز للنقل" : "Ready to transfer"}
+        onConfirm={() => onConfirm?.({
+          toId,
+          reason: reason.trim(),
+          delegatedAt: when,
+          kind: "transfer",
+        })}
+      />
+    </RequestFrameDialog>
   );
 }

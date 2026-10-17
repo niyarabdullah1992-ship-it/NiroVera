@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { taskAssigneeId } from "@/lib/opsDerivations";
 import PlatformDateField from "@/components/shared/PlatformDateField";
-import ComposerModalShell from "@/components/shared/ComposerModalShell";
-import { AckLine, FieldBlock, ReasonBox, TaskDialogFooter, TaskPersonPicker, dateKeyText } from "@/components/tasks/TaskDialogParts";
+import { AckLine, FieldBlock, FrameBlock, ReasonBox, RequestFrameDialog, TaskDialogFooter, TaskPersonPicker, dateKeyText } from "@/components/tasks/TaskDialogParts";
 
 function todayKey() {
   const d = new Date();
@@ -72,49 +71,22 @@ export default function OpsReassignModal({
   ].filter(Boolean);
 
   return (
-    <ComposerModalShell
+    <RequestFrameDialog
       ar={ar}
-      asForm={false}
-      zIndex={120}
       dataNv="delegate"
       title={ar ? "توكيل المهمة" : "Delegate task"}
       hint={ar
         ? "إسناد مؤقت ببداية ونهاية. يبقى المرجع على بطاقة المهمة، ويحق للموكِّل إنهاء الوكالة قبل نهايتها."
         : "A temporary assignment with a start and an end. The reference stays on the task card; the delegator may end it early."}
       onClose={onClose}
-      footer={(
-        <TaskDialogFooter
-          ar={ar}
-          onClose={onClose}
-          busy={busy}
-          missing={missing}
-          label={ar ? "توكيل" : "Delegate"}
-          onConfirm={() => onConfirm?.({
-            toId,
-            reason: reason.trim(),
-            delegatedAt: start,
-            actingUntil: end,
-            kind: "delegate",
-          })}
-        />
-      )}
     >
-      <FieldBlock label={ar ? "الموكَّل إليه" : "Delegate to"} dataKey="delegate-to">
+      <FrameBlock heading={ar ? "الموكَّل إليه" : "Delegate to"} dataKey="delegate-to">
         <TaskPersonPicker ar={ar} options={options} value={toId} onChange={setToId} stations={stations} label={ar ? "الموكَّل إليه" : "Delegate to"} />
-      </FieldBlock>
+      </FrameBlock>
 
-      <FieldBlock
-        label={ar ? "مدة التوكيل" : "Delegation period"}
-        dataKey="delegate-period"
-        hint={rangeOk
-          ? (ar
-            ? `${daysAr(days)} · تنتهي بنهاية ${endText}`
-            : `${days} day${days === 1 ? "" : "s"} · ends at the close of ${endText}`)
-          : null}
-      >
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 250px), 1fr))", gap: 10 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-            <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "من" : "From"}</span>
+      <FrameBlock dataKey="delegate-details">
+        <div data-task-field="delegate-period" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 10 }}>
+          <FieldBlock label={ar ? "بداية التوكيل" : "Starts"}>
             <PlatformDateField
               value={delegatedAt}
               onChange={(next) => {
@@ -125,9 +97,8 @@ export default function OpsReassignModal({
               ar={ar}
               placeholder={ar ? "تاريخ البداية" : "Start date"}
             />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-            <span style={{ fontSize: 11, color: "var(--nv-muted)" }}>{ar ? "حتى" : "Until"}</span>
+          </FieldBlock>
+          <FieldBlock label={ar ? "نهاية التوكيل" : "Ends"}>
             <PlatformDateField
               value={actingUntil}
               min={start || undefined}
@@ -135,24 +106,43 @@ export default function OpsReassignModal({
               ar={ar}
               placeholder={ar ? "تاريخ النهاية" : "End date"}
             />
-          </div>
+          </FieldBlock>
         </div>
         {start && end && end < start ? (
-          <span style={{ fontSize: 11.5, lineHeight: 1.6, color: "var(--nv-warn-ink)" }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.7, color: "var(--nv-warn-ink, #8A5A12)" }}>
             {ar ? "النهاية يجب أن تكون في يوم البداية أو بعده." : "End must be on or after the start date."}
           </span>
+        ) : rangeOk ? (
+          <span data-task-span="1" style={{ fontSize: 11, lineHeight: 1.7, color: "var(--nv-muted)" }}>
+            {ar ? `${daysAr(days)} · تنتهي بنهاية ${endText}` : `${days} day${days === 1 ? "" : "s"} · ends at the close of ${endText}`}
+          </span>
         ) : null}
-      </FieldBlock>
 
-      <FieldBlock label={ar ? "سبب التوكيل" : "Reason"} dataKey="delegate-reason">
-        <ReasonBox value={reason} onChange={setReason} placeholder={ar ? "مثال: إجازة المسؤول الأصلي أو ضغط العمل في موقعه" : "e.g. the owner is on leave"} />
-      </FieldBlock>
+        <FieldBlock label={ar ? "سبب التوكيل" : "Reason"} dataKey="delegate-reason">
+          <ReasonBox value={reason} onChange={setReason} placeholder={ar ? "مثال: إجازة المسؤول الأصلي" : "e.g. the owner is on leave"} />
+        </FieldBlock>
 
-      <AckLine checked={ack} onChange={setAck}>
-        {ar
-          ? `أقرّ أن التوكيل ينتهي بنهاية ${endText}، ويحق للموكِّل إنهاؤه قبل ذلك.`
-          : `I acknowledge the delegation ends at the close of ${endText}, and the delegator may end it earlier.`}
-      </AckLine>
-    </ComposerModalShell>
+        <AckLine checked={ack} onChange={setAck}>
+          {ar
+            ? `أقرّ أن التوكيل ينتهي بنهاية ${endText}، ويحق للموكِّل إنهاؤه قبل ذلك.`
+            : `I acknowledge the delegation ends at the close of ${endText}, and the delegator may end it earlier.`}
+        </AckLine>
+      </FrameBlock>
+
+      <TaskDialogFooter
+        ar={ar}
+        busy={busy}
+        missing={missing}
+        label={ar ? "توكيل" : "Delegate"}
+        readyText={ar ? "جاهز للتوكيل" : "Ready to delegate"}
+        onConfirm={() => onConfirm?.({
+          toId,
+          reason: reason.trim(),
+          delegatedAt: start,
+          actingUntil: end,
+          kind: "delegate",
+        })}
+      />
+    </RequestFrameDialog>
   );
 }

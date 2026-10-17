@@ -6,6 +6,8 @@
  */
 import { PDFDocument } from "pdf-lib";
 
+/** countPdfPages: the file opens only with a password — the signer could never read it. */
+export const PDF_NEEDS_PASSWORD = -1;
 export const ENVELOPE_DOC_MAX_BYTES = 25 * 1024 * 1024;
 export const ENVELOPE_DOC_MAX_COUNT = 10;
 export const ENVELOPE_DOC_ACCEPT = "application/pdf,.pdf,image/png,.png,image/jpeg,.jpg,.jpeg";
@@ -51,6 +53,41 @@ export function envelopeFileName(docs = [], subject = "") {
   return `${base.replace(/[\\/:*?"<>|]+/g, " ").slice(0, 120).trim()}.pdf`;
 }
 
+/**
+ * Browser fallback for PDFs pdf-lib cannot parse (non-standard cross-reference tables, owner-password
+ * permissions, broken object streams — common in exported exam keys and bank statements): pdf.js opens
+ * almost anything a viewer opens, so the page count comes from it and, for the merge, each page is drawn
+ * to an image at print resolution. The signed file then carries those pages as images — the content and
+ * fingerprint stay faithful; only text selection is lost. Never used in node (no canvas).
+ */
+async function openWithPdfjs(raw) {
+  if (typeof document === "undefined") throw new Error("NO_PDFJS");
+  const mod = await import("./pdfjsSetup.js");
+  const pdfjsLib = mod.default || mod.pdfjsLib;
+  return pdfjsLib.getDocument({ data: raw.slice ? raw.slice(0) : raw, password: "", isEvalSupported: false, useSystemFonts: true, stopAtErrors: false }).promise;
+}
+
+async function rasterizePdfInto(out, raw, scale = 2) {
+  const pdf = await openWithPdfjs(raw);
+  for (let n = 1; n <= pdf.numPages; n += 1) {
+    const page = await pdf.getPage(n);
+    const base = page.getViewport({ scale: 1 });
+    const view = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(view.width);
+    canvas.height = Math.ceil(view.height);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport: view }).promise;
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    const img = await out.embedJpg(new Uint8Array(await blob.arrayBuffer()));
+    const target = out.addPage([base.width, base.height]);
+    target.drawImage(img, { x: 0, y: 0, width: base.width, height: base.height });
+  }
+  return pdf.numPages;
+}
+
 async function bytesOf(file) {
   if (file?.bytes) return file.bytes;
   if (typeof file?.arrayBuffer === "function") return new Uint8Array(await file.arrayBuffer());
@@ -67,10 +104,23 @@ export async function mergeEnvelopeDocuments(docs = []) {
   for (const doc of docs || []) {
     const raw = await bytesOf(doc);
     if (isPdfName(doc)) {
-      const src = await PDFDocument.load(raw, { ignoreEncryption: true });
-      const pages = await out.copyPages(src, src.getPageIndices());
-      pages.forEach((page) => out.addPage(page));
-      pageCounts.push(pages.length);
+      let src = null;
+      try { src = await PDFDocument.load(raw, { ignoreEncryption: true, throwOnInvalidObject: false }); } catch { src = null; }
+      // Copy the real pages only when pdf-lib reads the same number the viewer shows (and nothing is encrypted).
+      let viewerPages = null;
+      if (typeof document !== "undefined") {
+        try { viewerPages = (await openWithPdfjs(raw)).numPages; } catch { viewerPages = null; }
+      }
+      if (src && !src.isEncrypted && (viewerPages == null || src.getPageCount() >= viewerPages)) {
+        try {
+          const pages = await out.copyPages(src, src.getPageIndices());
+          pages.forEach((page) => out.addPage(page));
+          pageCounts.push(pages.length);
+          continue;
+        } catch { /* falls through to pdf.js */ }
+      }
+      // pdf-lib could not read it, or it is encrypted (copying would carry unreadable streams): pdf.js draws it.
+      pageCounts.push(await rasterizePdfInto(out, raw));
     } else {
       let img;
       try { img = await out.embedPng(raw); } catch { img = await out.embedJpg(raw); }
@@ -86,10 +136,25 @@ export async function mergeEnvelopeDocuments(docs = []) {
 /** Pages of one PDF document (0 for images and unreadable files — an image is one page once merged). */
 export async function countPdfPages(doc) {
   if (!isPdfName(doc)) return 1;
+  const raw = await bytesOf(doc).catch(() => null);
+  if (!raw) return 0;
+  // Two readers, the larger answer wins: pdf-lib can drop a malformed page or refuse a file a viewer
+  // opens, pdf.js (the viewer's own engine) can miss a page pdf-lib still reads. In node only pdf-lib runs.
+  let libPages = 0;
+  let encrypted = false;
   try {
-    const src = await PDFDocument.load(await bytesOf(doc), { ignoreEncryption: true });
-    return src.getPageCount();
-  } catch {
-    return 0;
+    const src = await PDFDocument.load(raw, { ignoreEncryption: true, throwOnInvalidObject: false });
+    libPages = src.getPageCount();
+    encrypted = src.isEncrypted;
+  } catch { libPages = 0; }
+  let viewerPages = 0;
+  if (typeof document !== "undefined") {
+    try {
+      viewerPages = (await openWithPdfjs(raw)).numPages || 0;
+    } catch (err) {
+      if (err?.name === "PasswordException" || /password/i.test(String(err?.message || ""))) return PDF_NEEDS_PASSWORD;
+      if (encrypted) return 0; // encrypted and the viewer cannot open it — the signers could not either
+    }
   }
+  return Math.max(libPages, viewerPages); // 0 = genuinely unreadable — the setup names it
 }

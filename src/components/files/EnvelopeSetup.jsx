@@ -8,7 +8,7 @@ import { SectionHead, mono, slab } from "@/components/schedules/scheduleChrome";
 import { BORDER, CARD, CONTROL_RADIUS, MUTED } from "@/lib/platformStyles";
 import { peopleQueryMatches } from "@/lib/peopleTreeGraph";
 import { formatUiNumber } from "@/lib/dateFormat";
-import {
+import { PDF_NEEDS_PASSWORD,
   ENVELOPE_DOC_ACCEPT,
   countPdfPages,
   docTitleOf,
@@ -129,6 +129,7 @@ export default function EnvelopeSetup({
         const refusal = envelopeDocRefusal(file, next, ar);
         if (refusal) { setDocError(`${file.name}: ${refusal}`); continue; }
         const pages = await countPdfPages(file);
+        if (pages === PDF_NEEDS_PASSWORD) { setDocError(ar ? `${file.name}: الملف محمي بكلمة مرور فتح — احفظه نسخة بلا كلمة مرور ثم ارفعه، فالموقّعون لا يستطيعون فتحه.` : `${file.name}: this PDF needs a password to open — save a copy without it, then upload.`); continue; }
         if (pages === 0) { setDocError(ar ? `${file.name}: تعذّر قراءة هذا الـ PDF — إن كان محمياً أو تالفاً فصدّره من جديد.` : `${file.name}: this PDF could not be read — export it again.`); continue; }
         next = [...next, { key: key("doc"), name: file.name, size: file.size, type: file.type, file, pages }];
       }

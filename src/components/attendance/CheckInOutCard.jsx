@@ -32,10 +32,10 @@ import { parsePunchClock, riyadhNowClock } from "@/lib/attendancePunch";
 import { dutyTone } from "@/components/schedules/dutyStatus";
 import RightHint from "@/components/shared/RightHint";
 import { attRightHint } from "@/lib/rightHints.att.js";
+import { citeRule, isRamadanDay, ruleValue } from "@/lib/laborRules";
 import NvIcon from "@/components/shared/NvIcon";
 import { employeeShiftOnDay, isWeekDayPublished, prayerBreakHint, prayersInShift, rosterBreakWindows, sunExposureMark, SUN_FIELD } from "@/lib/shiftWeek";
 import { stationPrayerTimes } from "@/lib/prayerTimes";
-import { isRamadanDay } from "@/lib/laborRules";
 import { deriveDutyAlerts, minutesAr } from "@/lib/dutyAlerts";
 import { breakClockOf, countdownLabel, dutyContextOf } from "@/lib/dutyTicker";
 import { autoOvertimeLine } from "@/lib/autoOvertime";
@@ -650,12 +650,51 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         },
       ]
     : [];
-  // Prayers inside the shift window — quiet points placed by time between the plan steps.
-  for (const p of prayerPoints) {
-    const at = steps.findIndex((step, i) => i > 1 && step.at != null && step.at > p.minutes);
-    const point = { key: `prayer-${p.key}`, kind: "prayer", label: ar ? p.ar : p.en, value: p.clock };
+  // Prayers inside the shift window — quiet points placed by time between the plan steps. Each names its
+  // law: the prayer sits inside the Art. 101 rest, and that rest is not working time (Art. 102).
+  const restCite = citeRule("hours.rest.duringShiftMinutes", dutyDay);
+  const notWorkCite = citeRule("hours.rest.notWorkingHours.cite", dutyDay);
+  const consecCite = citeRule("hours.rest.maxConsecutiveHours", dutyDay);
+  const lawBadge = (...cites) => {
+    const arts = [...new Set(cites.map((c) => c?.article).filter(Boolean))];
+    return arts.length ? (ar ? `م ${arts.join(" · ")}` : `Art. ${arts.join(" · ")}`) : "";
+  };
+  const placeByTime = (point, minutes) => {
+    const at = steps.findIndex((step, i) => i > 1 && step.at != null && step.at > minutes);
     if (at < 0) steps.splice(Math.max(2, steps.length - 1), 0, point);
     else steps.splice(at, 0, point);
+  };
+  for (const p of prayerPoints) {
+    placeByTime({
+      key: `prayer-${p.key}`,
+      kind: "prayer",
+      at: p.minutes,
+      label: ar ? p.ar : p.en,
+      value: p.clock,
+      badge: lawBadge(restCite, notWorkCite),
+      note: ar ? "وقت الصلاة من فترة الراحة والصلاة والطعام — لا يُحسب من ساعات العمل" : "Prayer sits in the rest, prayer and meal period — not counted as work",
+      hint: attRightHint("rest", {}, { view: "employee", ar }),
+    }, p.minutes);
+  }
+  // Art. 101: the five-hour mark from the shift start — the rest must begin before it (Art. 103 is exempt).
+  const consecMax = Number(ruleValue("hours.rest.maxConsecutiveHours", dutyDay)) || 0;
+  const restMin = Number(ruleValue("hours.rest.duringShiftMinutes", dutyDay)) || 0;
+  if (band && !continuous103 && consecMax > 0 && (band.targetMin || 0) > consecMax * 60) {
+    const markAt = band.start + consecMax * 60;
+    const hh = String(Math.floor((markAt % 1440) / 60)).padStart(2, "0");
+    const mm = String(markAt % 60).padStart(2, "0");
+    placeByTime({
+      key: "limit-5h",
+      kind: "limit",
+      at: markAt,
+      label: ar ? `حد ${consecMax} ساعات متواصلة` : `${consecMax}-hour limit`,
+      value: `${hh}:${mm}`,
+      badge: lawBadge(consecCite),
+      note: ar
+        ? `لا عمل أكثر من ${consecMax} ساعات متواصلة — تبدأ راحتك (${restMin} دقيقة على الأقل) قبل هذا الوقت`
+        : `No more than ${consecMax} hours in a row — your rest (at least ${restMin} min) starts before this time`,
+      hint: attRightHint("rest", {}, { view: "employee", ar }),
+    }, markAt);
   }
 
   return (
@@ -830,15 +869,22 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             <ol className="nv-punch-steps" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
               {steps.map((step, index) => {
                 const last = index === steps.length - 1;
-                if (step.kind === "prayer") {
+                if (step.kind === "prayer" || step.kind === "limit") {
                   return (
-                    <li key={step.key} data-step={step.key} data-state="prayer" style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) auto", gap: 12, alignItems: "center", position: "relative", paddingBottom: last ? 0 : 12 }}>
+                    <li key={step.key} data-step={step.key} data-state={step.kind} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) auto", gap: 12, alignItems: "start", position: "relative", paddingBottom: last ? 0 : 12 }}>
                       {!last ? <span aria-hidden style={{ position: "absolute", insetInlineStart: 10, top: 18, bottom: 0, width: 2, background: "var(--nv-line2, #EEF1EF)", borderRadius: 2 }} /> : null}
-                      <span aria-hidden style={{ width: 22, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, color: "var(--nv-muted)", background: "var(--nv-card)" }}>
-                        <NvIcon name="prayer" size={12} inline={false} />
+                      <span aria-hidden style={{ width: 22, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, color: step.kind === "limit" ? "var(--nv-ink2)" : "var(--nv-muted)", background: "var(--nv-card)" }}>
+                        <NvIcon name={step.kind === "limit" ? "clock" : "prayer"} size={12} inline={false} />
                       </span>
-                      <span style={{ fontSize: 11.5, color: "var(--nv-muted)", minWidth: 0 }}>{step.label}</span>
-                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12, fontWeight: 500, color: "var(--nv-ink2)", whiteSpace: "nowrap" }}>{step.value}</span>
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-ink2)" }}>{step.label}</span>
+                          {step.badge ? <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--nv-ink2)", background: "var(--nv-soft)", border: "1px solid var(--nv-line)", borderRadius: 999, padding: "0 7px", lineHeight: "17px", whiteSpace: "nowrap" }}>{step.badge}</span> : null}
+                        </span>
+                        {step.note ? <span style={{ fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.6 }}>{step.note}</span> : null}
+                        {step.hint ? <RightHint ar={ar} hint={step.hint} style={{ alignSelf: "flex-start" }} /> : null}
+                      </span>
+                      <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", fontSize: 12, fontWeight: 500, color: "var(--nv-ink2)", whiteSpace: "nowrap", paddingTop: 1 }}>{step.value}</span>
                     </li>
                   );
                 }

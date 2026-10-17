@@ -445,7 +445,12 @@ export function checkFlexBreakPunchGate(input: any = {}): any {
     if (day.windowState === "before") return fail("BREAK_WINDOW_NOT_OPEN", `تبدأ نافذة الراحة ${flex.from}`, `The break window opens at ${flex.from}`);
     if (day.windowState === "closed") return fail("BREAK_WINDOW_CLOSED", `انتهت نافذة الراحة ${flex.to}`, `The break window closed at ${flex.to}`);
     if (day.punched.length && !flex.splitEffective) return fail("BREAK_ALREADY_TAKEN", "أخذت راحتك اليوم — هذه الوردية لا تقسّم الراحة.", "You have taken today's break — this shift does not split it.");
-    if (day.remaining <= 0) return fail("BREAK_DONE", `أخذت راحتك كاملة اليوم (${flex.minutes} دقيقة).`, `You have taken your full break today (${flex.minutes} minutes).`);
+    if (day.remaining <= 0) {
+      const taken = Math.round(Number(day.taken) || 0);
+      return taken > flex.minutes
+        ? fail("BREAK_DONE", `أخذت ${taken} دقيقة راحة اليوم من ${flex.minutes} — الزيادة ${taken - flex.minutes} دقيقة عودة متأخرة.`, `You took ${taken} minutes of break today out of ${flex.minutes} — the extra ${taken - flex.minutes} is a late return.`)
+        : fail("BREAK_DONE", `أخذت راحتك كاملة اليوم (${flex.minutes} دقيقة).`, `You have taken your full break today (${flex.minutes} minutes).`);
+    }
     if (day.punched.length && day.remaining < flex.minPart) {
       return fail("BREAK_REMAINDER_SHORT", `الباقي ${day.remaining} دقيقة أقل من ${flex.minPart} — لا يكفي جزءاً نظامياً (${art}).`, `The ${day.remaining} minutes left are under ${flex.minPart} — not a lawful part (${artEn}).`);
     }

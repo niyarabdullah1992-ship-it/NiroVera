@@ -178,6 +178,12 @@ assert.equal(pg("start", "13:00", onePart).ok, true, "split: a second part");
 assert.equal(pg("start", "13:00", onePart, NOSPLIT).error, "BREAK_ALREADY_TAKEN");
 assert.equal(pg("start", "13:00", [{ start: iso("11:20"), end: iso("11:55") }]).error, "BREAK_REMAINDER_SHORT", "25 minutes left — under 30");
 assert.equal(pg("start", "13:00", [{ start: iso("11:20"), end: iso("12:20") }]).error, "BREAK_DONE");
+{
+  // An overrun break says how long it really was — not «كاملة (60)».
+  const over = pg("start", "13:30", [{ start: iso("11:30"), end: iso("12:45") }]);
+  assert.equal(over.error, "BREAK_DONE");
+  assert.match(over.reason, /أخذت 75 دقيقة راحة اليوم من 60 — الزيادة 15 دقيقة عودة متأخرة/);
+}
 const shortDay = duty([{ start: iso("11:20"), end: iso("11:40"), short: true }], allowEarly);
 assert.equal(shortDay.shortBreaks, 1);
 console.log("PASS punch gate: window reasons, 30-minute minimum (Art. 101), early end recorded short, split remainder");

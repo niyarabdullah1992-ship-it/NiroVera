@@ -324,7 +324,12 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     ? Math.max(0, afterStart - nursingToday.startMinutes)
     : storedLate;
   const isLate = !inNursing && (lateMinutes > 0 || (attendance?.status === "late" && !nursingToday?.startMinutes));
-  const punchBlocked = loading || (phase === "awaiting_in" && (scheduleBlocks || onLeaveToday)) || phase === "done";
+  // Before the check-in window the orb is closed and says when it opens — not a live button that refuses.
+  const tickDate = new Date(tick);
+  const earlyGate = phase === "awaiting_in" && shift
+    ? checkEarlyCheckInGate(shift, tickDate.getHours() * 60 + tickDate.getMinutes(), earlyCheckInMinutes(data))
+    : { ok: true };
+  const punchBlocked = loading || (phase === "awaiting_in" && (scheduleBlocks || onLeaveToday || !earlyGate.ok)) || phase === "done";
 
   const punchButton = (action, label) => (
     <button
@@ -574,8 +579,16 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     : { minutes: 0 };
   const workedMin = workedRaw.minutes + (nursingCredit.minutes || 0);
   const worked = { minutes: workedMin, label: `${Math.floor(workedMin / 60)}:${String(workedMin % 60).padStart(2, "0")}` };
-  const targetLabel = band?.targetLabel || "8:00";
-  const dayPct = Math.min(100, Math.round((worked.minutes / (band?.targetMin || 480)) * 100));
+  // «المنجز اليوم» counts work (rest excluded, Art. 102), so its target is the shift less its rest —
+  // 07:00–16:00 with a 60-minute break is 8:00 of work, not 9:00. The bar stays a timeline of the
+  // shift span (presence so far), with the break bands laid on it.
+  const restPlanned = flexOn ? Math.max(0, Number(flexDay.flex?.minutes) || 0) : Math.max(0, Number(band?.rest) || 0);
+  const workTargetMin = Math.max(0, (band?.targetMin || 480) - restPlanned);
+  const targetLabel = band ? `${Math.floor(workTargetMin / 60)}:${String(workTargetMin % 60).padStart(2, "0")}` : "8:00";
+  const presenceMin = attendance?.check_in_at
+    ? Math.max(0, Math.round(((attendance?.check_out_at ? new Date(attendance.check_out_at).getTime() : tick) - new Date(attendance.check_in_at).getTime()) / 60000))
+    : 0;
+  const dayPct = Math.min(100, Math.round((presenceMin / (band?.targetMin || 480)) * 100));
   const inn = phase !== "awaiting_in";
   const done = phase === "done";
   const statusText = onLeaveToday && !inn
@@ -604,7 +617,13 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         ? (ar ? "انصرف" : "Out")
         : <><NvIcon name="check" size={14} /> {ar ? "اكتمل اليوم" : "Day complete"}</>;
   const orbSub = !inn
-    ? (ar ? `تبدأ ورديتك ${startClock}` : `Shift starts ${startClock}`)
+    ? (onLeaveToday
+      ? (ar ? "إجازة اليوم — لا بصمة" : "On leave today — no punch")
+      : !shift
+        ? (ar ? "لا وردية لك اليوم" : "No shift for you today")
+        : !earlyGate.ok
+          ? (ar ? `يُفتح الحضور ${earlyGate.opensAt} · ورديتك ${startClock}` : `Opens ${earlyGate.opensAt} · shift ${startClock}`)
+          : (ar ? `تبدأ ورديتك ${startClock}` : `Shift starts ${startClock}`))
     : !done
       ? (ar ? `تنتهي ورديتك ${endClock}` : `Shift ends ${endClock}`)
       : (ar ? "سُجّل اليوم كاملاً" : "Today is on file");
@@ -1049,7 +1068,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                     width: `${Math.max(0, Math.min(100, ((Math.max(row.startMin, row.endMin ?? row.startMin) - row.startMin) / band.targetMin) * 100))}%`,
                     background: row.source === "assumed"
                       ? "repeating-linear-gradient(45deg,var(--nv-mute-fill, #C5CEC9) 0 3px,transparent 3px 6px)"
-                      : "repeating-linear-gradient(45deg,#C8A45A 0 3px,transparent 3px 6px)",
+                      : "repeating-linear-gradient(45deg,var(--nv-card, #fff) 0 3px,transparent 3px 6px)", // a break cut into the presence bar
                     opacity: 0.85,
                   }}
                 />
@@ -1063,7 +1082,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                     bottom: 0,
                     insetInlineStart: `${band.leftPct}%`,
                     width: `${band.widthPct}%`,
-                    background: "repeating-linear-gradient(45deg,#C8A45A 0 3px,transparent 3px 6px)",
+                    background: "repeating-linear-gradient(45deg,var(--nv-card, #fff) 0 3px,transparent 3px 6px)", // a break cut into the presence bar
                     opacity: 0.85,
                   }}
                 />
@@ -1266,15 +1285,20 @@ export function flexSteps(day, { ar = true, hint = null } = {}) {
     }
     const n = parts.indexOf(row) + 1;
     const short = !row.open && row.minutes < flex.minPart;
+    // A closed part that carried the day past its break is a late return — said on the row, in minutes.
+    const before = parts.slice(0, n - 1).reduce((sum, part) => sum + (Number(part.minutes) || 0), 0);
+    const over = !row.open ? Math.max(0, before + (Number(row.minutes) || 0) - Math.max(before, Number(flex.minutes) || 0)) : 0;
     steps.push({
       key: `brk-${i}`,
       kind: "punch",
       at: row.startMin,
-      state: row.open ? (day.overMinutes > 0 ? "late" : "now") : short ? "late" : "done",
+      state: row.open ? (day.overMinutes > 0 ? "late" : "now") : (short || over > 0) ? "late" : "done",
       label: parts.length > 1 ? (ar ? `راحتك · الجزء ${n}` : `Your break · part ${n}`) : (ar ? "راحتك" : "Your break"),
       note: row.open
         ? (ar ? `مفتوحة منذ ${row.start} · ${minutesAr(row.minutes)}` : `Open since ${row.start} · ${row.minutes} min`)
-        : (ar ? `ببصمة · ${minutesAr(row.minutes)}${short ? " · قصيرة" : ""}` : `Punched · ${row.minutes} min${short ? " · short" : ""}`),
+        : over > 0
+          ? (ar ? `ببصمة · ${minutesAr(row.minutes)} — عودة متأخرة ${minutesAr(over)} فوق راحتك (${minutesAr(flex.minutes)})` : `Punched · ${row.minutes} min — back ${over} min late over your ${flex.minutes}-min break`)
+          : (ar ? `ببصمة · ${minutesAr(row.minutes)}${short ? " · قصيرة" : ""}` : `Punched · ${row.minutes} min${short ? " · short" : ""}`),
       value: row.open ? `${row.start}–…` : `${row.start}–${row.end}`,
     });
   });

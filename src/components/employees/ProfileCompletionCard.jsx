@@ -102,15 +102,6 @@ export default function ProfileCompletionCard({ employee, isSelf, ar, onContinue
               <Chevron style={{ width: 16, height: 16 }} />
             </button>
           )}
-          <p style={{ margin: "10px 0 0", fontSize: 11, color: MUTED, lineHeight: 1.65 }}>
-            {isSelf
-              ? (ar
-                ? "الملف للعرض فقط — تُكمله الموارد البشرية. لتصحيح بيان اطلب تعديل بيان."
-                : "View only — HR completes this file. To correct a fact, ask for a correction.")
-              : (ar
-                ? "التعديل للموارد البشرية."
-                : "Edits are made by HR.")}
-          </p>
         </>
       )}
     </div>

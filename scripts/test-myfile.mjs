@@ -149,7 +149,7 @@ assert.equal(classifyFileLogLine("تعديل بيانات الملف"), "", "gen
   // owners and words on the worker's own file
   assert.equal(get(self, "iban").owner, "self");
   assert.equal(get(self, "iban").ownerLabel, "عليّ");
-  assert.equal(get(self, "iban").action.to, CORRECTION_HREF);
+  assert.equal(get(self, "iban").action ?? null, null, "no repeated correction link per row — the file header holds the one link");
   assert.equal(get(self, "qiwa").ownerLabel, "على الموارد البشرية");
   assert.equal(get(self, "qiwa").hint, null, "Qiwa is a platform — no article chip");
   assert.equal(get(self, "gosi").hint, null);

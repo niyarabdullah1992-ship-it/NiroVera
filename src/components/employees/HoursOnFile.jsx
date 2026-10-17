@@ -11,7 +11,7 @@ import {
 import { useAuth } from "@/lib/PowerCareAuth";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import { nightMedicalReportOf } from "@/lib/decision18632";
-import { canEditEmployeeFile, EMPLOYEE_FILE_HR_ONLY_LINE } from "@/lib/permissions";
+import { canEditEmployeeFile } from "@/lib/permissions";
 import { patchEmployeeFile, updateEmployeeProfile } from "@/lib/store";
 import { ART108_CATEGORIES, art108CategoryOf, hoursBasisOf, isJuvenile } from "@/lib/laborHoursPolicy.js";
 import { fileOffDows, weeklyRestDayCountOf } from "@/lib/leaveEidOverlap.js";
@@ -196,9 +196,7 @@ export default function HoursOnFile({ employee, data, lang = "ar", embedded = fa
             ) : null}
           </div>
         );
-      })() : (
-        <span data-file-hr-only="1" style={{ fontSize: 11.5, color: SW.muted }}>{ar ? EMPLOYEE_FILE_HR_ONLY_LINE.ar : EMPLOYEE_FILE_HR_ONLY_LINE.en}</span>
-      )}
+      })() : null}
 
       {isJuvenile(employee, new Date().toISOString().slice(0, 10)) ? (
         <div data-juvenile-docs="1" style={{ borderTop: "1px solid var(--nv-line2)", paddingTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>

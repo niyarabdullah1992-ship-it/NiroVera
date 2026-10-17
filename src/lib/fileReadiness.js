@@ -214,7 +214,7 @@ export function buildFileReadiness({ employee, regulation = null, roleLabel = ""
       rightManager: ar ? `سجّل مهنة ${name} في ملفه — شهادة الخدمة لا تصدر بدونها.` : `Record ${name}'s profession — the service certificate cannot be issued without it.`,
       ifNot: ar ? "إن بقي فارغاً: اطلب تصحيحه من طلباتي." : "If it stays empty: ask for a correction in My requests.",
       ifNotManager: ar ? "وإلا تعذّر إصدار شهادة الخدمة عند طلبها." : "Otherwise the certificate cannot be issued when asked.",
-      action: { kind: "open", to: CORRECTION_HREF, label: ar ? "اطلب تعديل بيان" : "Ask for a correction" },
+      // No per-row link: the file carries one «طلب تعديل بيانات الملف الوظيفي» in its header.
     }),
   });
 
@@ -236,9 +236,7 @@ export function buildFileReadiness({ employee, regulation = null, roleLabel = ""
   // Owner words and the employee-side correction path.
   for (const item of items) {
     item.ownerLabel = manager && !canEditFile && item.owner === "hr" ? ownerWord("hr", false, ar) : ownerWord(item.owner, manager, ar);
-    if (!item.ok && item.owner === "self" && !manager && !item.action) {
-      item.action = { to: CORRECTION_HREF, label: ar ? "اطلب تعديل بيان" : "Ask for a correction" };
-    }
+    // The employee's own missing facts carry no repeated link — the single header link is the way to ask.
     if (!item.ok && item.owner === "hr" && manager && canEditFile && item.tab) {
       item.action = { tab: item.tab, label: ar ? "افتح في الملف" : "Open on the file" };
     }

@@ -10,7 +10,6 @@ import {
   canManageEmployeeHR,
   canEditEmployeeFile,
   canEditEmployeeFileWage,
-  EMPLOYEE_FILE_HR_ONLY_LINE,
   EMPLOYEE_FILE_CORRECTION_HREF,
 } from "@/lib/permissions";
 import { getRoleLabel } from "@/lib/roles";
@@ -276,9 +275,7 @@ export default function EmployeeProfile() {
     syncEmployeeSalaryToPayroll(company.id, employee.id);
   };
 
-  const roleNote = canEditFile
-    ? (ar ? "تُحرّر هذا الملف باسمك. كل حفظ يُكتب باسمك ووقته." : "You edit this file in your name. Every save is written with your name and time.")
-    : (ar ? EMPLOYEE_FILE_HR_ONLY_LINE.ar : EMPLOYEE_FILE_HR_ONLY_LINE.en);
+  const roleNote = ar ? "تُحرّر هذا الملف باسمك. كل حفظ يُكتب باسمك ووقته." : "You edit this file in your name. Every save is written with your name and time.";
 
   const legal = ar
     ? "شارة المادة تظهر فقط إن كان المصدر نظام العمل السعودي. التأمينات وحماية الأجور والضمان الصحي ومنصة قوى جهات وأنظمة تشغيل لا مواد، فتُشرح نصّاً بلا شارة. هذه الصفحة أداة تشغيل لا فتوى قانونية — عند الخلاف يُرجع إلى النص الرسمي وإلى الموارد البشرية."
@@ -313,6 +310,7 @@ export default function EmployeeProfile() {
           employee={employee}
           companyId={company.id}
           canEdit={canEditFile}
+          correctionHref={isSelf ? EMPLOYEE_FILE_CORRECTION_HREF : ""}
           roleLabel={roleLabel}
           stationName={stationName}
           currentUser={currentUser}
@@ -365,7 +363,9 @@ export default function EmployeeProfile() {
             </fieldset>
           ) : null}
           <span style={{ fontSize: 11, fontWeight: 700, color: "var(--nv-ok-ink)", background: "var(--nv-ok-soft)", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap" }}>{voice.warnings}</span>
-          <span style={{ fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.6, minWidth: 0 }}>{roleNote}</span>
+          {canEditFile ? (
+            <span style={{ fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.6, minWidth: 0 }}>{roleNote}</span>
+          ) : null}
         </div>
 
         <nav aria-label={voice.title} style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -426,17 +426,6 @@ export default function EmployeeProfile() {
                 <EmployeeFileFieldCard key={card.title} card={card} editing={editing} draft={draft} onDraft={setDraftField} ar={ar} showFull={showFullIdentity} />
               ))}
             </div>
-            {isSelf && !canEditFile ? (
-              <section style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
-                <strong style={{ fontSize: 15, color: "var(--nv-ink)" }}>{ar ? "طلب تعديل بيان" : "Ask to correct a field"}</strong>
-                <span style={{ fontSize: 12, color: "var(--nv-ink3)", lineHeight: 1.7 }}>
-                  {ar ? "يُرفع إلى الموارد البشرية ويُعتمد قبل أن يظهر في ملفك، ويُكتب باسم من اعتمده." : "It goes to HR and is approved before it appears on your file, under the name of whoever approves it."}
-                </span>
-                <Link to={EMPLOYEE_FILE_CORRECTION_HREF} style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", height: 36, padding: "0 14px", borderRadius: 8, background: "#3C7D50", color: "#F4F7F5", fontSize: 12.5, fontWeight: 700, textDecoration: "none" }}>
-                  {ar ? "اطلب تعديل بيان" : "Request a correction"}
-                </Link>
-              </section>
-            ) : null}
             <CertificatesTab
               employee={employee}
               companyId={company.id}

@@ -189,7 +189,7 @@ for (const item of mine.open.filter((row) => row.owner === "self" && row.id !== 
   assert.ok(!item.action?.tab || item.id === "contract", `«عليّ» item ${item.id} never opens an edit form`);
   if (item.action?.to) assert.ok(item.action.to === CORRECTION_HREF || item.action.to.startsWith("/app/"), item.id);
 }
-assert.equal(mine.open.find((row) => row.id === "iban").action.to, CORRECTION_HREF);
+assert.equal(mine.open.find((row) => row.id === "iban").action ?? null, null, "one correction link on the file header, none per row");
 const reading = buildFileReadiness({ employee: bare, view: "manager", canEditFile: false, today: TODAY });
 assert.ok(reading.open.filter((row) => row.owner === "hr").every((row) => !row.action && row.ownerLabel === "على الموارد البشرية"), "a reading manager gets no edit action");
 const editing = buildFileReadiness({ employee: bare, view: "manager", canEditFile: true, today: TODAY });

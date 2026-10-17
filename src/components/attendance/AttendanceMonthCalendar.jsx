@@ -41,6 +41,7 @@ import {
   weekdaysOf,
 } from "@/lib/operationalCalendar";
 import NvIcon from "@/components/shared/NvIcon";
+import { minutesPhrase } from "@/lib/calendarDayFlags";
 
 function SearchIcon() {
   return (
@@ -248,6 +249,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
     data,
     safety: scopedSafety,
     view,
+    flagsFor: mineLane ? "self" : "all",
   });
 
   const days = monthGridDays(year, month);
@@ -291,6 +293,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
   const taskDays = real.filter((cell) => cell.rec.tasksMine + cell.rec.tasksTeam > 0).length;
   const tasksTotal = real.reduce((acc, cell) => acc + cell.rec.tasksMine + cell.rec.tasksTeam, 0);
   const hseDays = real.filter((cell) => cell.rec.hse).length;
+  const monthSum = sumRecs(real.map((cell) => ({ rec: cell.rec })));
   const sel = cells.find((cell) => cell.d === selected);
   const selRec = sel?.rec || null;
   const rangeOn = !!(rangeFrom && rangeTo);
@@ -311,6 +314,12 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
   }, [rangeOn, startDate, endDate, rowsByDate, view, year, month, headerScope, scopedSchedules, tasks, scopedProofs, scopedVisitors, scopedSafety, roster]);
 
   const agg = rangeOn ? sumRecs(rangeDays) : null;
+  // The picked day's week — a quiet line above the grid, read from the same day records.
+  const selIdx = cells.findIndex((cell) => !cell.blank && cell.d === selected);
+  const weekCells = selIdx >= 0 ? cells.slice(selIdx - (selIdx % 7), selIdx - (selIdx % 7) + 7).filter((cell) => !cell.blank) : [];
+  const weekSum = sumRecs(weekCells.map((cell) => ({ rec: cell.rec })));
+  const weekFrom = weekCells[0]?.key || "";
+  const weekTo = weekCells[weekCells.length - 1]?.key || "";
   const src = rangeOn ? agg : selRec;
   const pickDay = (day, openSheet = false) => {
     setSelected(day);
@@ -332,8 +341,8 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
   };
 
   const rosterPack = rosterFor(rangeOn ? null : selRec, { view, filter, nameQuery, ar });
-  const events = rangeOn ? [] : eventGroups(selRec, ar, currentUser);
-  const noEvents = !rangeOn && !!(selRec && !selRec.tasksMine && !selRec.tasksTeam && !selRec.proofWork && !selRec.proofVisit && !selRec.hse && !selRec.leave && !selRec.leaveClash && !selRec.filed);
+  const events = rangeOn ? [] : eventGroups(selRec, ar, currentUser, { manage: !mineLane });
+  const noEvents = !rangeOn && !!(selRec && !selRec.tasksMine && !selRec.tasksTeam && !selRec.proofWork && !selRec.proofVisit && !selRec.hse && !selRec.leave && !selRec.leaveClash && !selRec.filed && !selRec.flagged?.length);
   const filedPack = useMemo(
     () => filedLeaveInMonth(roster, year, month, ar, data),
     [roster, year, month, ar, data],
@@ -358,7 +367,8 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
       ].filter(Boolean).join(" · ")
       : (!sel ? (ar ? "اضغط أي يوم في الشبكة" : "Tap a day on the grid") : (sel.weekend ? (ar ? "عطلة نهاية الأسبوع" : "Weekend") : (ar ? "لا سجل بعد" : "No record yet")));
 
-  const cmpDays = rangeOn ? rangeDays : real.map((cell) => ({ rec: cell.rec }));
+  // «يوم واحد» compares the people of the scope on the picked day; a range compares that range.
+  const cmpDays = rangeOn ? rangeDays : (selRec ? [{ rec: selRec }] : []);
   const stats = view === "team" ? empStats(cmpDays, roster) : [];
   const cmpQ = String(cmpQuery || "").trim();
   const cmpSorted = stats
@@ -374,17 +384,20 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
     late: [ar ? "متأخر" : "Late", OC.goldText, ar ? "متأخر" : "Late"],
     abs: [ar ? "غاب" : "Absent", OC.abs, ar ? "غاب" : "Abs"],
     leave: [ar ? "إجازة" : "Leave", OC.leave, ar ? "إجازة" : "Leave"],
+    viol: [ar ? "مخالفات الدوام" : "Duty breaches", OC.goldText, ar ? "مخالفة" : "Breach"],
+    ot: [ar ? "إضافي (دقيقة)" : "Overtime (min)", OC.mid, ar ? "إضافي" : "OT"],
+    wait: [ar ? "معلّق" : "Pending", OC.abs, ar ? "معلّق" : "Pend."],
     done: [ar ? "مهام منجزة" : "Done tasks", OC.greenText, ar ? "منجزة" : "Done"],
     prog: [ar ? "قيد التنفيذ" : "In progress", OC.goldText, ar ? "جارية" : "Open"],
     over: [ar ? "مهام متأخرة" : "Overdue tasks", OC.abs, ar ? "متأخرة" : "Over"],
     hse: [ar ? "بلاغات سلامة" : "HSE", OC.abs, ar ? "سلامة" : "HSE"],
   };
-  const cmpGrid = "minmax(92px,1.2fr) minmax(70px,1fr) 40px 40px 40px 40px 44px 44px 44px 44px";
+  const cmpGrid = "minmax(92px,1.2fr) minmax(70px,1fr) 40px 40px 40px 40px 44px 44px 44px 44px 44px 44px 44px";
   const cmpColor = (key, value) => {
     if (!value) return OC.muted;
     if (key === "on" || key === "done") return OC.greenText;
-    if (key === "late" || key === "prog") return OC.goldText;
-    if (key === "abs" || key === "over" || key === "hse") return OC.abs;
+    if (key === "late" || key === "prog" || key === "viol") return OC.goldText;
+    if (key === "abs" || key === "over" || key === "hse" || key === "wait") return OC.abs;
     if (key === "leave") return OC.leave;
     return OC.mid;
   };
@@ -394,7 +407,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
       ? (ar ? `جدول ${workBranch} كاملاً · ${roster.length} موظفاً` : `Full ${workStationName} roster · ${roster.length} people`)
       : (ar ? `${roster.length} موظفاً على فرعك` : `${roster.length} people on your branch`))
     : (!headerScope || headerScope === "all"
-      ? (ar ? `كل الفروع · ${roster.length} موظفاً` : `All stations · ${roster.length} people`)
+      ? (ar ? `كل نطاقك · ${roster.length} موظفاً` : `Your whole scope · ${roster.length} people`)
       : `${scopedStation?.name || headerScope} · ${roster.length}`);
   const cmpTitle = cmpLabels[cmp][0];
 
@@ -432,9 +445,9 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
       weight: act && !rangeOn ? 700 : 500,
       select: () => {
         if (rangeOn) return;
-        if (id === "tasks" || id === "hse") setSheet(true);
+        if (id === "tasks" || id === "hse" || id === "flags") setSheet(true);
         else setFilter(act && id !== "all" ? "all" : id);
-        if (id !== "tasks" && id !== "hse") setSheet(true);
+        if (id !== "tasks" && id !== "hse" && id !== "flags") setSheet(true);
       },
     };
   };
@@ -448,6 +461,16 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
         mkStat("late", ar ? "متأخر" : "Late", src.late, OC.goldText),
         mkStat("abs", ar ? "غاب" : "Absent", src.abs, OC.abs),
         { ...mkStat("leave", ar ? "إجازة معتمدة" : "Approved leave", src.leave, OC.leave), sub: ar ? "خارج حساب الحضور — لا تُحاسب" : "Outside attendance — not charged" },
+      ],
+    },
+    {
+      title: ar ? "الدوام" : "Duty",
+      items: [
+        mkStat("flags", ar ? "عودة متأخرة من الراحة" : "Late return from break", src.lateReturn || 0, OC.goldText),
+        mkStat("flags", ar ? "انصراف مبكر" : "Early leave", src.early || 0, OC.goldText),
+        { ...mkStat("flags", ar ? "إضافي مسجّل" : "Overtime recorded", src.ot || 0, OC.mid), sub: src.otMinutes ? minutesPhrase(src.otMinutes, ar) : null },
+        mkStat("flags", ar ? "بصمات بانتظار القرار" : "Punches awaiting a decision", src.awaiting || 0, OC.abs),
+        mkStat("flags", ar ? "طلبات معلّقة" : "Pending requests", src.pending || 0, OC.goldText),
       ],
     },
     {
@@ -471,6 +494,8 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
     rec.proofVisit && { label: ar ? "زائر" : "Visit", count: rec.proofVisit, color: OC.goldText, bg: OC.goldBg, border: OC.goldBd },
     rec.hse && { label: ar ? "سلامة" : "HSE", count: rec.hse, color: OC.abs, bg: OC.absBg, border: OC.absBd },
     rec.leave && { label: ar ? "إجازة" : "Leave", count: rec.leave, color: OC.leave, bg: OC.leaveBg, border: OC.leaveBd },
+    (rec.lateReturn + rec.early) && { label: ar ? "مخالفة" : "Breach", count: rec.lateReturn + rec.early, color: OC.goldText, bg: OC.goldBg, border: OC.goldBd },
+    (rec.awaiting + rec.pending) && { label: ar ? "معلّق" : "Pending", count: rec.awaiting + rec.pending, color: OC.abs, bg: OC.absBg, border: OC.absBd },
   ].filter(Boolean) : []);
 
   const shell = { background: "var(--nv-card)", border: `1px solid ${OC.line}`, borderRadius: 14, boxShadow: "var(--nv-paper)" };
@@ -612,6 +637,34 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
 
       <div className="nv-ops-cal-board">
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+          {!loading && weekCells.length ? (
+            <button
+              type="button"
+              data-week-line
+              onClick={() => setRange({ from: weekFrom, to: weekTo })}
+              title={ar ? "اعرض الأسبوع في المقارنة" : "Show the week in the comparison"}
+              style={{ fontFamily: "inherit", textAlign: "start", border: `1px solid ${OC.line}`, background: rangeFrom === weekFrom && rangeTo === weekTo ? OC.greenBg : "var(--nv-card)", borderRadius: 12, padding: "10px 16px", cursor: "pointer", display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap", color: OC.mid, fontSize: 12, lineHeight: 1.8 }}
+            >
+              <span style={{ fontWeight: 700, color: OC.ink }}>
+                {ar ? `أسبوع ${Number(weekFrom.slice(8))}–${Number(weekTo.slice(8))} ${months[month]}` : `Week ${Number(weekFrom.slice(8))}–${Number(weekTo.slice(8))} ${months[month]}`}
+              </span>
+              {[
+                [ar ? "حضر" : "On time", weekSum.on, OC.greenText],
+                [ar ? "تأخّر" : "Late", weekSum.late, OC.goldText],
+                [ar ? "غاب" : "Absent", weekSum.abs, OC.abs],
+                [ar ? "إجازة" : "Leave", weekSum.leave, OC.leave],
+                [ar ? "مخالفات" : "Breaches", weekSum.lateReturn + weekSum.early, OC.goldText],
+                [ar ? "إضافي" : "Overtime", weekSum.otMinutes ? minutesPhrase(weekSum.otMinutes, ar) : 0, OC.mid],
+                [ar ? "بانتظار قرار" : "Awaiting", weekSum.awaiting, OC.abs],
+                [ar ? "طلبات معلّقة" : "Pending", weekSum.pending, OC.goldText],
+              ].map(([label, value, color]) => (
+                <span key={label} style={{ display: "inline-flex", gap: 5, alignItems: "baseline", whiteSpace: "nowrap" }}>
+                  {label}
+                  <span dir={typeof value === "number" ? "ltr" : undefined} style={{ fontFamily: typeof value === "number" ? "'IBM Plex Mono', monospace" : "inherit", fontSize: 13, color: value ? color : OC.muted, fontWeight: value ? 600 : 400 }}>{value}</span>
+                </span>
+              ))}
+            </button>
+          ) : null}
           {loading ? (
             <section style={{ ...shell, minHeight: 220, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Loader2 style={{ width: 18, height: 18, color: OC.green, animation: "spin 1s linear infinite" }} />
@@ -758,7 +811,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
           <section style={{ ...shell, display: "flex", flexDirection: "column" }}>
             <div style={{ padding: "16px 20px", borderBottom: `1px solid ${OC.soft}`, display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                <span style={{ fontSize: 16, fontWeight: 700 }}>{ar ? "مقارنة الموظفين" : "People comparison"}</span>
+                <span style={{ fontSize: 16, fontWeight: 700 }}>{mineLane ? (ar ? "مقارنة الموظفين" : "People comparison") : (ar ? "مقارنة موظفي النطاق" : "People in scope")}</span>
                 <span style={{ fontSize: 12, color: OC.muted, lineHeight: 1.7 }}>
                   {view !== "team"
                     ? (ar ? "المقارنة متاحة في عرض «الفريق» فقط" : "Comparison is available in Team view")
@@ -766,7 +819,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                       scopeLine,
                       rangeOn
                         ? (rangeDays.length ? (ar ? `${rangeDays.length} يوم مسجّل` : `${rangeDays.length} days`) : (ar ? "لا يوم مسجّل بين التاريخين" : "No recorded day in range"))
-                        : (ar ? `${real.length} يوم مسجّل في ${months[month]}` : `${real.length} recorded days in ${months[month]}`),
+                        : (sel && !sel.blank ? (ar ? `يوم ${weekdays[sel.wd]} ${sel.d} ${months[month]}` : `${weekdays[sel.wd]} ${sel.d} ${months[month]}`) : (ar ? "اختر يوماً" : "Pick a day")),
                       roster.length
                         ? (ar
                           ? `${recordedPeople} ظهرت لهم حالة — الباقي بلا وردية منشورة في هذا المدى`
@@ -818,7 +871,8 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
               </div>
             </div>
             {cmpSorted.length ? (
-              <div>
+              <div data-cmp-scroll style={{ overflowX: "auto", maxWidth: "100%" }}>
+                <div style={{ minWidth: 760 }}>
                 <div style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 8, padding: "10px 20px", fontSize: 11, color: OC.muted, background: OC.wash, borderBottom: `1px solid ${OC.soft}` }}>
                   <span>{ar ? "الموظف" : "Name"}</span>
                   <span>{ar ? "توزيع الأيام" : "Split"}</span>
@@ -843,6 +897,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                     </div>
                   );
                 })}
+                </div>
               </div>
             ) : null}
             <div style={{ padding: "13px 20px" }}>
@@ -949,6 +1004,8 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
               { label: ar ? "أيام فيها مهام" : "Days with tasks", value: String(taskDays), note: ar ? `${tasksTotal} مهمة في الشهر` : `${tasksTotal} tasks this month`, color: OC.ink },
               { label: ar ? "أيام إجازة معتمدة" : "Approved leave days", value: String(leaveDays), note: leaveNote, color: OC.leave },
               { label: ar ? "إجازة على وردية منشورة" : "Leave on a published shift", value: String(clashDays), note: clashDays ? (ar ? "تحتاج بديلاً في جدول الدوام — الجدول والملف يتناقضان في هذه الأيام" : "Needs a substitute on the duty roster — the roster and the file disagree") : (ar ? "لا تناقض بين الجدول والملف" : "No clash between the roster and the file"), color: clashDays ? OC.goldText : OC.greenText },
+              { label: ar ? "مخالفات الدوام" : "Duty breaches", value: String(monthSum.lateReturn + monthSum.early), note: ar ? `${monthSum.lateReturn} عودة متأخرة من الراحة · ${monthSum.early} انصراف مبكر${monthSum.otMinutes ? ` · إضافي ${minutesPhrase(monthSum.otMinutes, true)}` : ""}` : `${monthSum.lateReturn} late returns · ${monthSum.early} early leaves`, color: (monthSum.lateReturn + monthSum.early) ? OC.goldText : OC.greenText },
+              { label: ar ? "بانتظار قرار أو طلب" : "Awaiting a decision or request", value: String(monthSum.awaiting + monthSum.pending), note: ar ? `${monthSum.awaiting} بصمة بانتظار القرار · ${monthSum.pending} طلب معلّق` : `${monthSum.awaiting} punches awaiting · ${monthSum.pending} pending requests`, color: (monthSum.awaiting + monthSum.pending) ? OC.abs : OC.greenText },
               { label: ar ? "أيام فيها بلاغ سلامة" : "Days with HSE", value: String(hseDays), note: hseDays ? (ar ? "كل بلاغ يراه موظفو الفرع" : "Each report is visible to the branch") : (ar ? "لا بلاغات هذا الشهر" : "No reports this month"), color: hseDays ? OC.abs : OC.greenText },
             ]).map((item) => (
               <div key={item.label} style={{ padding: "12px 18px", borderBottom: "1px solid var(--nv-line2)", display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 12, alignItems: "baseline" }}>
@@ -1201,7 +1258,9 @@ function DayPanel({
                 </div>
                 {group.rows.map((row) => (
                   <div key={`${row.text}-${row.time}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto auto", gap: 9, alignItems: "baseline", paddingInlineStart: 17 }}>
-                    <span style={{ fontSize: 11, color: OC.ink, lineHeight: 1.6, minWidth: 0 }}>{row.text}</span>
+                    {row.to
+                      ? <Link to={row.to} style={{ fontSize: 11, color: OC.ink, lineHeight: 1.6, minWidth: 0, textDecoration: "none" }}>{row.text}</Link>
+                      : <span style={{ fontSize: 11, color: OC.ink, lineHeight: 1.6, minWidth: 0 }}>{row.text}</span>}
                     <span style={{ fontSize: 10, fontWeight: 600, color: row.stColor, whiteSpace: "nowrap", ...(row.stBg ? { background: row.stBg, border: `1px solid ${row.stBorder || row.stColor}`, padding: "0 5px" } : null) }}>{row.state}</span>
                     <span style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, color: OC.muted, whiteSpace: "nowrap" }}>{row.time}</span>
                   </div>

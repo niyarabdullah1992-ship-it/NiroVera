@@ -135,11 +135,7 @@ export default function Attendance() {
 
   // الموظف: «سجلي» (and كشفي / تقويمي before it) folded into التقويم التشغيلي. The old addresses land there.
   if (location.pathname === "/app/attendance" && searchParams.get("tab") === "calendar") {
-    return <Navigate to={searchParams.get("lane") === "manage" ? "/app/shifts?lane=manage" : "/app/calendar"} replace />;
-  }
-  // The management lane has no operational calendar — it plans on جدول الدوام.
-  if ((location.pathname.endsWith("/calendar")) && searchParams.get("lane") === "manage") {
-    return <Navigate to="/app/shifts?lane=manage" replace />;
+    return <Navigate to={searchParams.get("lane") === "manage" ? "/app/calendar?lane=manage" : "/app/calendar"} replace />;
   }
   if (location.pathname === "/app/attendance" && ["record", "mine", "report"].includes(searchParams.get("tab") || "")) {
     if (searchParams.get("lane") === "manage") return <Navigate to="/app/attendance?lane=manage" replace />;
@@ -159,12 +155,12 @@ export default function Attendance() {
   }
 
   const focusShifts = location.pathname.endsWith("/shifts");
-  // التقويم التشغيلي — employee lane only.
+  // التقويم التشغيلي — the employee lane reads the work branch; the management lane follows «نطاقك».
   const focusCalendar = location.pathname.endsWith("/calendar");
   const ar = lang === "ar";
   const canManageDuty = !!(isManager || canManageLeave);
   const canManageHere = focusShifts ? canManageDuty : !!isManager;
-  const lane = focusCalendar ? "mine" : dutyLaneFromSearch(searchParams, canManageHere, railSide);
+  const lane = dutyLaneFromSearch(searchParams, focusCalendar ? canManageDuty : canManageHere, railSide);
   const defaultHubTab = "punch";
   const mineTabs = [
     { key: "punch", label: ar ? "بصمتي" : "My punch" },
@@ -220,9 +216,10 @@ export default function Attendance() {
   }
 
   if (focusCalendar) {
+    const calLane = lane === "manage" ? "manage" : "mine";
     const calendarEmployees = hydrateEmployeesLeave(
       calendarOverlayEmployees({
-        lane: "mine",
+        lane: calLane,
         employee: self,
         employees: data?.employees || [],
         managed: employees.length ? employees : [],
@@ -234,12 +231,18 @@ export default function Attendance() {
       <PullToRefresh onRefresh={handleRefresh}>
         <AttendanceSectionFrame
           ar={ar}
-          lane="mine"
-          title={ar ? "التقويم التشغيلي — الشهر" : "Operations calendar — the month"}
-          hint={ar
-            ? "جدول فرعك كاملاً يوماً بيوم: من حضر ومن تأخّر ومن غاب — وسطر «شهري» يعدّ غيابك وتأخيرك بالأرقام التي يقرؤها المسير."
-            : "Your whole branch day by day: on time, late, absent — and the My month line counts your absence and lateness with the figures payroll reads."}
-          laneBar={<DutyLaneBar ar={ar} canManage={canManageDuty} lane="mine" onLane={setLane} manageCount={teamEmployees.length} />}
+          lane={calLane}
+          title={calLane === "manage"
+            ? (ar ? "التقويم التشغيلي — الإدارة" : "Operations calendar — management")
+            : (ar ? "التقويم التشغيلي — الشهر" : "Operations calendar — the month")}
+          hint={calLane === "manage"
+            ? (ar
+              ? "نطاقك يوماً بيوم: من حضر ومن تأخّر ومن غاب، ومخالفات الدوام، والبصمات التي تنتظر قرارك، والطلبات المعلّقة — بدّل الفرع من «نطاقك» أعلى الصفحة."
+              : "Your scope day by day: attendance, duty breaches, punches awaiting you and pending requests — switch the branch from «Your scope» at the top.")
+            : (ar
+              ? "جدول فرعك كاملاً يوماً بيوم: من حضر ومن تأخّر ومن غاب — وسطر «شهري» يعدّ غيابك وتأخيرك بالأرقام التي يقرؤها المسير."
+              : "Your whole branch day by day: on time, late, absent — and the My month line counts your absence and lateness with the figures payroll reads.")}
+          laneBar={<DutyLaneBar ar={ar} canManage={canManageDuty} lane={calLane} onLane={setLane} manageCount={teamEmployees.length} />}
         >
           <Suspense fallback={<TabLoader />}>
             <AttendanceMonthCalendar
@@ -248,7 +251,7 @@ export default function Attendance() {
               me={self}
               company={company}
               data={data}
-              lane="mine"
+              lane={calLane}
               canManage={canManageDuty}
               framed
             />

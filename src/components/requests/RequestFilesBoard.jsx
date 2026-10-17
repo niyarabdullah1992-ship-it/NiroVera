@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { collectRequestFiles } from "@/lib/requestWorkspace";
+import { collectRequestFiles, requestFileInFilter } from "@/lib/requestWorkspace";
 import { chipButton, slab } from "@/components/schedules/scheduleChrome";
 import { BORDER, CARD, MUTED, NAVY, NAVY_FILL } from "@/lib/platformStyles";
 
@@ -17,18 +17,29 @@ function chip(on) {
   };
 }
 
-export default function RequestFilesBoard({ employees, ar }) {
+const SCOPE_TITLE = {
+  pending: ["ملفات الطلبات الجارية", "Files of open requests"],
+  approved: ["ملفات الطلبات المعتمدة", "Files of approved requests"],
+  rejected: ["ملفات الطلبات المرفوضة", "Files of refused requests"],
+  archive: ["ملفات الأرشيف", "Archived files"],
+};
+
+/** Files follow طلباتي's filter: «بانتظار» shows open requests' files, «الأرشيف» the settled ones. */
+export default function RequestFilesBoard({ employees, ar, filter: scope = "all" }) {
   const [filter, setFilter] = useState("all");
-  const all = collectRequestFiles(employees, ar ? "ar" : "en");
+  const all = collectRequestFiles(employees, ar ? "ar" : "en").filter((row) => requestFileInFilter(row, scope));
   const rows = all.filter((row) => filter === "all" || row.side === filter);
   const attached = all.filter((row) => row.side === "in").length;
   const issued = all.filter((row) => row.side === "out").length;
+
+  // A filtered view with no files stays quiet — no empty box under the list.
+  if (scope !== "all" && all.length === 0) return null;
 
   return (
     <section style={{ ...slab, overflow: "hidden" }}>
       <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--nv-line3)", display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
-          <span className="nv-req-title" style={{ fontSize: 14 }}>{ar ? "ملفات طلباتي" : "My request files"}</span>
+          <span className="nv-req-title" style={{ fontSize: 14 }}>{SCOPE_TITLE[scope] ? SCOPE_TITLE[scope][ar ? 0 : 1] : (ar ? "ملفات طلباتي" : "My request files")}</span>
           <span style={{ fontSize: 11, color: MUTED }}>
             {ar
               ? `${all.length} · ${attached} أرفقتها · ${issued} صدرت لك`

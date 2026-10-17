@@ -388,6 +388,13 @@ export function filterRequestPeople({ employees = [], stations = [], query = "",
   return { ok: true, rows };
 }
 
+/** Public request number shown on the card and in ملفات طلباتي. */
+export function requestPublicRef(row) {
+  const year = String(row?.createdAt || row?.startDate || row?.date || "").slice(0, 4) || String(new Date().getFullYear());
+  const tail = String(row?.id || "").replace(/[^A-Za-z0-9]/g, "").slice(-6).toUpperCase() || "000000";
+  return `NV-${year}-${tail}`;
+}
+
 export function isPendingDecideStatus(status) {
   return ["pending", "pending_employee", "pending_manager"].includes(status || "pending");
 }
@@ -1226,12 +1233,20 @@ function stampYear(iso) {
 export function collectRequestFiles(employees = [], lang = "ar") {
   const ar = lang === "ar";
   const out = [];
+  let current = null;
+  // Every file carries its request's state, so the board follows طلباتي's filter (pending / settled).
+  const push = (row) => out.push({
+    ...row,
+    requestStatus: current?.status || "pending",
+    live: nightRotateStage(current) === "agreed_month",
+  });
   for (const employee of employees || []) {
     for (const request of employee.leaveRequests || []) {
+      current = request;
       for (const file of request.files || []) {
         if (!isRealSupportingFile(file)) continue;
         const sat = String(file.kind || "") === "exam_sat";
-        out.push({
+        push({
           id: `${request.id}-${file.name}`,
           side: "in",
           name: file.name,
@@ -1248,7 +1263,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
       }
       if (isRealSupportingFile(request.examSatFile)) {
         const sat = request.examSatFile;
-        out.push({
+        push({
           id: `${request.id}-exam-sat`,
           side: "in",
           name: sat.name,
@@ -1265,9 +1280,10 @@ export function collectRequestFiles(employees = [], lang = "ar") {
       }
     }
     for (const request of employee.otherRequests || []) {
+      current = request;
       if (request.type === "written_consent") {
         if (request.senderFile?.name) {
-          out.push({
+          push({
             id: `${request.id}-sender`,
             side: "out",
             name: request.senderFile.name,
@@ -1281,7 +1297,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
           });
         }
         if (request.paper?.name) {
-          out.push({
+          push({
             id: `${request.id}-paper`,
             side: "in",
             name: request.paper.name,
@@ -1295,7 +1311,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
           });
         }
         if (request.seal?.signatureId || request.seal?.url) {
-          out.push({
+          push({
             id: `${request.id}-seal`,
             side: "out",
             name: request.seal.label || (ar ? "ختم الموافقة الخطية" : "Written-consent seal"),
@@ -1312,7 +1328,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
       if (request.type === STUDY_CONSENT_TYPE) {
         const raised = request.file || request.files?.[0] || request.senderFile;
         if (raised?.name) {
-          out.push({
+          push({
             id: `${request.id}-study-in`,
             side: "in",
             name: raised.name,
@@ -1327,7 +1343,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
         }
         const issued = request.issuedFile || request.approvalFile;
         if (request.status === "approved" && issued?.name) {
-          out.push({
+          push({
             id: `${request.id}-study-out`,
             side: "out",
             name: issued.name,
@@ -1345,7 +1361,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
       if (request.type === NIGHT_FITNESS_TYPE) {
         const raised = request.file || request.files?.[0] || request.senderFile;
         if (raised?.name) {
-          out.push({
+          push({
             id: `${request.id}-fitness-in`,
             side: "in",
             name: raised.name,
@@ -1362,7 +1378,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
           ? (employee.profile?.nightMedicalReport || raised)
           : null;
         if (recorded && (recorded.name || recorded.url)) {
-          out.push({
+          push({
             id: `${request.id}-fitness-file`,
             side: "out",
             name: recorded.name || raised?.name || (ar ? "تقرير اللياقة المسجّل" : "Recorded fitness report"),
@@ -1378,15 +1394,15 @@ export function collectRequestFiles(employees = [], lang = "ar") {
         continue;
       }
       if (request.senderFile?.name) {
-        out.push({
+        push({
           id: `${request.id}-sender`,
           side: "out",
           name: request.senderFile.name,
-          kindAr: "ملف للتوقيع",
-          kindEn: "File to sign",
+          kindAr: "نموذج من الإدارة",
+          kindEn: "Form from management",
           meta: ar ? (request.title || otherRequestTypeLabel(request.type, true)) : (request.title || otherRequestTypeLabel(request.type, false)),
-          refTag: ar ? "بصمة الملف" : "File fingerprint",
-          ref: request.senderFile.hash || "—",
+          refTag: request.senderFile.hash ? (ar ? "بصمة الملف" : "File fingerprint") : (ar ? "رقم الطلب" : "Request no."),
+          ref: request.senderFile.hash || requestPublicRef(request) || "—",
           href: "/verify",
           downloadUrl: request.senderFile.url || "",
         });
@@ -1394,7 +1410,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
       for (const file of request.files || []) {
         if (!file?.name) continue;
         if (request.senderFile?.name && file.name === request.senderFile.name) continue;
-        out.push({
+        push({
           id: `${request.id}-${file.name}`,
           side: "in",
           name: file.name,
@@ -1411,7 +1427,7 @@ export function collectRequestFiles(employees = [], lang = "ar") {
         const title = issuedFile?.name || request.title || (request.docKind
           ? (DOC_KINDS.find((row) => row.id === request.docKind)?.[ar ? "ar" : "en"] || otherRequestTypeLabel(request.type, ar))
           : otherRequestTypeLabel(request.type, ar));
-        out.push({
+        push({
           id: `${request.id}-issued`,
           side: "out",
           name: title,
@@ -1427,6 +1443,17 @@ export function collectRequestFiles(employees = [], lang = "ar") {
     }
   }
   return out;
+}
+
+/** Which طلباتي filter a file row belongs to — the same buckets as the request list. */
+export function requestFileInFilter(row, filter = "all") {
+  const st = String(row?.requestStatus || "pending");
+  const settled = !isPendingDecideStatus(st) && st !== "open";
+  if (filter === "archive") return settled;
+  if (filter === "approved") return st === "approved" || st === "yes";
+  if (filter === "rejected") return st === "rejected" || st === "no" || st === "refused_by_employee";
+  if (filter === "pending") return !settled || !!row?.live;
+  return true;
 }
 
 export function requestArchiveStatusLabel(status, ar = true) {

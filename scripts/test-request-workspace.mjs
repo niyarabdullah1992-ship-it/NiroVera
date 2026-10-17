@@ -15,6 +15,7 @@ import {
   annualRemainingWithGrants,
   collectRequestArchive,
   collectRequestFiles,
+  requestFileInFilter,
   buildRequestAudit,
   buildRequestRefuseAudit,
   checkRefuseRequestReasonGate,
@@ -309,6 +310,23 @@ assert.ok(collectRequestFiles(archivePeople).some((row) => row.side === "in" && 
 assert.ok(collectRequestFiles(archivePeople).some((row) => row.side === "out" && row.name === "form.pdf" && row.downloadUrl));
 assert.ok(!collectRequestInbox(archivePeople, [], "e1", "ar").some((row) => row.href === "/verify"), "settled letter is archive-only");
 assert.ok(collectRequestFiles(archivePeople).every((row) => !row.signHref));
+{
+  // ملفات طلباتي follows the list filter: open files under «بانتظار», settled ones under «الأرشيف».
+  const filePeople = [{ id: "f1", otherRequests: [
+    { id: "op1", type: "document", status: "pending", files: [{ name: "open.pdf" }] },
+    { id: "ok1", type: "night_consent", status: "approved", decision: "agree", createdAt: "2026-10-01", senderFile: { name: "night.pdf" } },
+    { id: "no1", type: "document", status: "rejected", files: [{ name: "refused.pdf" }] },
+  ] }];
+  const files = collectRequestFiles(filePeople, "ar");
+  const names = (f) => files.filter((row) => requestFileInFilter(row, f)).map((row) => row.name).sort().join(",");
+  assert.equal(names("archive"), "night.pdf,refused.pdf");
+  assert.equal(names("pending"), "night.pdf,open.pdf", "a live night consent stays in بانتظار with its form");
+  assert.equal(names("rejected"), "refused.pdf");
+  const night = files.find((row) => row.name === "night.pdf");
+  assert.equal(night.kindAr, "نموذج من الإدارة");
+  assert.equal(night.refTag, "رقم الطلب");
+  assert.match(night.ref, /^NV-2026-/);
+}
 assert.ok(collectRequestInbox(archivePeople, [{ userId: "e1", text: "صدرت شهادة تعريف", createdAt: "2026-04-03" }], "e1", "ar").some((row) => row.href === "/app/requests"));
 assert.ok(!collectRequestInbox(archivePeople, [{ userId: "e1", text: "اكتمل التوقيع: محضر معاينة.pdf — يمكن تنزيل النسخة النهائية.", createdAt: "2026-09-10" }], "e1", "ar").some((row) => /اكتمل التوقيع/.test(row.head)));
 assert.ok(!collectRequestInbox(archivePeople, [{ userId: "e1", text: "طلب مخزون بانتظار فرع المصدر — قفازات.", createdAt: "2026-09-10" }], "e1", "ar").some((row) => /مخزون/.test(row.head)), "leftover stock notices never enter طلباتي");

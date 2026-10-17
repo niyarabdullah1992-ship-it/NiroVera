@@ -149,6 +149,7 @@ import WorkInjuryPanel from "@/components/requests/WorkInjuryPanel";
 import AnnualLeaveBreakdown from "@/components/requests/AnnualLeaveBreakdown";
 import RequestsMinistryPanel from "@/components/requests/RequestsMinistryPanel";
 import RequestFilesBoard from "@/components/requests/RequestFilesBoard";
+import { requestPublicRef } from "@/lib/requestWorkspace";
 import RequestInboxSlab from "@/components/requests/RequestInboxSlab";
 import { checkRaiseSignableGate, isLetterSignableType } from "@/lib/requestSigning";
 import RequestDecisionComposer from "@/components/requests/RequestDecisionComposer";
@@ -281,12 +282,6 @@ function RaiseFold({ manage, children }) {
 }
 
 /** The number both sides see for a request — never the internal key. */
-function requestPublicRef(row) {
-  const year = String(row?.createdAt || row?.startDate || row?.date || "").slice(0, 4) || String(new Date().getFullYear());
-  const tail = String(row?.id || "").replace(/[^A-Za-z0-9]/g, "").slice(-6).toUpperCase() || "000000";
-  return `NV-${year}-${tail}`;
-}
-
 function requestDecisionEffect(row, ar) {
   if (row?.type === RESIGNATION_TYPE) return ar ? "مقبولة بعد 30 يوماً دون رد · م 79 مكرر" : "Accepted after 30 days without a reply · Art. 79 bis";
   if (isDutyRequestType(row?.type)) {
@@ -4311,7 +4306,7 @@ export default function RequestsWorkspace({
         </div>
       </div>
 
-      {selfOnly ? <RequestFilesBoard employees={employees} ar={ar} /> : null}
+      {selfOnly ? <RequestFilesBoard employees={employees} ar={ar} filter={stFilter} /> : null}
 
       {mode !== "manage" ? (
         <RequestsMinistryPanel

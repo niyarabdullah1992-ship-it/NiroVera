@@ -285,7 +285,7 @@ export default function PerfScoreBoard({
   };
 
   const clearFilters = () => {
-    const preset = presets.find((row) => row.id === "q") || presets[0];
+    const preset = presets.find((row) => row.id === "3") || presets[0];
     setBranchId("");
     setTeamId("");
     setQuery("");
@@ -421,7 +421,7 @@ export default function PerfScoreBoard({
               {presets.map((preset) => {
                 const on = from === preset.from && to === preset.to;
                 return (
-                  <button key={preset.id} type="button" className="nv-perf-chip" onClick={() => onPreset?.(preset)} style={{ ...ghostBtn(), height: 28, background: on ? ACTION : PERF_WHITE, color: on ? "#fff" : PERF_INK, borderColor: on ? ACTION : PERF_LINE }}>
+                  <button key={preset.id} type="button" className="nv-perf-chip" aria-pressed={on} onClick={() => onPreset?.(preset)} style={{ display: "inline-flex", alignItems: "center", height: 32, padding: "0 12px", borderRadius: 999, border: on ? "none" : `1px solid ${PERF_LINE}`, background: on ? "#0B3D27" : PERF_WHITE, color: on ? "#fff" : PERF_INK, fontSize: 12, fontWeight: on ? 700 : 600, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}>
                     {ar ? preset.labelAr : preset.labelEn}
                   </button>
                 );

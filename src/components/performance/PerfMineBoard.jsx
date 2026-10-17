@@ -16,6 +16,7 @@ import {
   monthsInRange,
   personFacts,
   personProofEntries,
+  rangePresets,
   scoreOf,
 } from "@/lib/perfRange";
 
@@ -81,29 +82,8 @@ function quietFacts(facts) {
   return !facts || (!facts.assigned && !facts.proof && facts.safe === 100 && facts.cover === 100);
 }
 
-function monthStart(iso, delta) {
-  const date = new Date(`${iso}T12:00:00`);
-  date.setDate(1);
-  date.setMonth(date.getMonth() + delta);
-  return isoDay(date);
-}
-
 function minePresets(today, floor = "") {
-  const year = Number(today.slice(0, 4));
-  const q2End = `${year}-06-30`;
-  const raw = [
-    { id: "m", from: monthStart(today, 0), to: today, labelAr: "هذا الشهر", labelEn: "This month" },
-    { id: "3", from: monthStart(today, -2), to: today, labelAr: "آخر 3 أشهر", labelEn: "Last 3 months" },
-    { id: "6", from: monthStart(today, -5), to: today, labelAr: "آخر 6 أشهر", labelEn: "Last 6 months" },
-    { id: "q2", from: `${year}-04-01`, to: q2End > today ? today : q2End, labelAr: "الربع الثاني", labelEn: "Second quarter" },
-  ];
-  return raw.map((row) => {
-    let to = row.to > today ? today : row.to;
-    let from = row.from;
-    if (floor && to >= floor && from < floor) from = floor;
-    if (from > to) from = to;
-    return { ...row, from, to };
-  });
+  return rangePresets(today, floor);
 }
 
 function recordFloor(employee, data) {

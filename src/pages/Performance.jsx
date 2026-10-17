@@ -11,7 +11,7 @@ import { pageKicker } from "@/lib/moduleMeta";
 import { hcmCall } from "@/lib/hcmApi";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import { formatDayMonthYear } from "@/lib/dateFormat";
-import { countAr, isoDay, monthsInRange, rangePresets } from "@/lib/perfRange";
+import { countAr, DEFAULT_RANGE_PRESET, isoDay, monthsInRange, rangePresets } from "@/lib/perfRange";
 import { canManagePerformance } from "@/lib/suiteRailFrame";
 import { useRailSide } from "@/lib/railSide";
 import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
@@ -34,7 +34,7 @@ export default function Performance() {
   const ar = lang === "ar";
   const today = isoDay();
   const presets = useMemo(() => rangePresets(today), [today]);
-  const current = presets.find((row) => row.id === "q") || presets[0];
+  const current = presets.find((row) => row.id === DEFAULT_RANGE_PRESET) || presets[0];
   const [tab, setTab] = useState("people");
   const [from, setFrom] = useState(current.from);
   const [to, setTo] = useState(current.to);

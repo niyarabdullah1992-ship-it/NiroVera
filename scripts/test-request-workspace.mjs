@@ -1227,7 +1227,7 @@ assert.match(String(statutoryChipStyle("entitlement", { glow: "due" }).backgroun
 assert.doesNotMatch(String(statutoryChipStyle("entitlement", { glow: "due" }).background), /nv-danger|#DC2626/);
 assert.match(workspaceSrc, /PendingRequestFinder/, "إدارة typeahead finds a pending request");
 assert.doesNotMatch(workspaceSrc, /<ManagerEmployeeRegister/, "إدارة has no separate due-inbox card — the request list is the inbox");
-assert.match(workspaceSrc, /data-req-list-search/, "إدارة narrows the list by name instead");
+assert.match(workspaceSrc, /PendingRequestFinder/, "إدارة finds a person's request from the one search above the page");
 assert.match(workspaceSrc, /القرار/, "decision pane heading");
 assert.match(workspaceSrc, /managerPersonEmptyReason/, "selected-file empty copy");
 assert.match(workspaceSrc, /openRegister\(row\.employee\.id\)/, "finder still opens that سجل");

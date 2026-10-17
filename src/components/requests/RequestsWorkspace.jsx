@@ -508,7 +508,6 @@ export default function RequestsWorkspace({
   const [employeeId, setEmployeeId] = useState(() => employees[0]?.id || self?.id || "");
   const [stFilter, setStFilter] = useState(() => initialFilter || (selfOnly ? "all" : "pending"));
   const [fileRecordOpen, setFileRecordOpen] = useState(false);
-  const [listQuery, setListQuery] = useState("");
   const [registerId, setRegisterId] = useState(() => employees[0]?.id || "");
   const [focusKey, setFocusKey] = useState("");
   const [lawFilter, setLawFilter] = useState("leave");
@@ -1318,12 +1317,8 @@ export default function RequestsWorkspace({
   const rows = mode === "mine"
     ? mineInboxRows(employees, currentUser || self, lang)
     : liveInboxRows(employees, lang, { lane: mode === "manage" ? "manage" : "mine" });
-  // إدارة: every request in the header scope (نطاقك); a name search narrows it — no separate per-person register.
-  const listNeedle = String(listQuery || "").trim().toLowerCase();
-  const scopedRows = mode === "manage" && listNeedle
-    ? rows.filter((row) => [row.employee?.name, row.employee?.employeeNo, row.employee?.jobTitle]
-      .some((v) => String(v || "").toLowerCase().includes(listNeedle)))
-    : rows;
+  // إدارة: every request in the header scope (نطاقك). The search above the page finds one request.
+  const scopedRows = rows;
   const mineStatus = mineStatusBucket;
   const mineList = mode === "mine" && (stFilter === "all" || stFilter === "approved" || stFilter === "rejected")
     ? mineOwned
@@ -3495,19 +3490,8 @@ export default function RequestsWorkspace({
                   {mode === "manage" ? (ar ? "قائمة الطلبات" : "Request list") : (ar ? "طلباتي" : "My requests")}
                 </h2>
                 {mode === "manage" ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <span className="nv-req-inbox-meta">
-                      {focusStationId && focusStationId !== "all" ? stationName(focusStationId) : (ar ? "كل الفروع التي تديرها" : "Every branch you manage")}
-                    </span>
-                    <input
-                      type="search"
-                      data-req-list-search="1"
-                      value={listQuery}
-                      onChange={(event) => setListQuery(event.target.value)}
-                      placeholder={ar ? "ابحث باسم الموظف" : "Search by name"}
-                      aria-label={ar ? "ابحث في الطلبات باسم الموظف" : "Search requests by name"}
-                      style={{ fontFamily: "inherit", height: 32, width: 190, maxWidth: "100%", padding: "0 10px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card, #fff)", color: "var(--nv-ink)", fontSize: 12 }}
-                    />
+                  <span className="nv-req-inbox-meta">
+                    {focusStationId && focusStationId !== "all" ? stationName(focusStationId) : (ar ? "كل الفروع التي تديرها" : "Every branch you manage")}
                   </span>
                 ) : null}
               </div>

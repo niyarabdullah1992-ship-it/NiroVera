@@ -27,6 +27,7 @@ import { registerLocalSignedDoc } from "@/lib/localSignedDocs";
 import { invokeLocalMultiSign, shouldUseLocalMultiSign } from "@/lib/localMultiSignFallback";
 import { createGateMessage, MAX_PARALLEL_SIGNERS } from "@/lib/multiSignDerivations";
 import { orderedFields } from "@/lib/signingEnvelopes";
+import { checkEnvelopeFieldsGate, clampExpiryDays, clampReminderDays } from "@/lib/envelopeSetup";
 import { isServiceOutage, refusalError } from "@/lib/serviceErrors";
 import { generateVerificationId, loadBadgeQr, verificationUrlFor } from "@/lib/verificationBadge";
 import { OFFICIAL_STAMP_THEME } from "@/lib/signatureStampThemes";
@@ -39,7 +40,7 @@ import { envelopeCode, signGhostBtn, signMono as mono, signPrimaryBtn, signingDo
 import { BORDER, CARD, INK, MUTED, SURFACE } from "@/lib/platformStyles";
 import SignMarkGlyph from "@/components/files/SignMarkGlyph";
 // Muted per-recipient tints — never the green accent, which marks the selected field only.
-const SIGNER_COLORS = ["#3B5A86", "#8A6A2E", "#6E5A8C", "#2F7480", "#7A5148", "#5F6B7A"];
+export const SIGNER_COLORS = ["#3B5A86", "#8A6A2E", "#2F7480", "#9A5B2E", "#7A5148", "#5F6B7A"];
 
 const TOOLS = [
   { id: "sig", type: "signature", glyph: "SIG", ar: "التوقيع", chipAr: "توقيع", en: "Signature", scale: 100 },
@@ -124,9 +125,14 @@ export default function SigningWorkspace({
   signatureVariant,
   stampConfig,
   initialTemplateId = "",
+  initialSigners = null,
+  initialOrderMode = "parallel",
+  envelopeMeta = null,
+  startStep = 2,
   ar,
   onOpenStudio,
   onClose,
+  onBackToSetup,
   onSigned,
 }) {
   const { pdf, failed, failReason } = useSigningPdf(file || sourceUrl);
@@ -153,9 +159,10 @@ export default function SigningWorkspace({
   const [leaveAsk, setLeaveAsk] = useState(false);
   const [finishAsk, setFinishAsk] = useState(false);
   // 2 المستلمون · 3 الحقول · 4 المراجعة والإرسال — step 1 (the upload) happened on the home.
-  const [studioStep, setStudioStep] = useState(2);
+  const [studioStep, setStudioStep] = useState(startStep);
+  const [leaveTarget, setLeaveTarget] = useState("close");
   const [rail, setRail] = useState("");
-  const [orderMode, setOrderMode] = useState("parallel");
+  const [orderMode, setOrderMode] = useState(initialOrderMode === "sequential" ? "sequential" : "parallel");
   const [peopleQuery, setPeopleQuery] = useState("");
   const [openIdentity, setOpenIdentity] = useState(null);
   const [focusAdd, setFocusAdd] = useState(false);
@@ -169,18 +176,42 @@ export default function SigningWorkspace({
   const [naming, setNaming] = useState(false);
   const [editingSigner, setEditingSigner] = useState(null);
   const [receipt, setReceipt] = useState(null);
-  const [signers, setSigners] = useState(() => [{
+  // «مظروف جديد» hands over its recipients in envelope order; you are the row keyed "me" — when
+  // you sign too — wherever the order put you.
+  const [signers, setSigners] = useState(() => (initialSigners?.length ? initialSigners.map((row, index) => (row.isMe ? {
+    key: "me",
+    name: row.name || currentUser?.profile?.signatureName || currentUser?.name || "",
+    email: row.email || currentUser?.email || "",
+    contact: ar ? "أنت · صاحب الختم" : "You · seal owner",
+    color: row.color || SIGNER_COLORS[index % SIGNER_COLORS.length],
+    external: false,
+    stamp: Boolean(row.stamp),
+  } : {
+    key: row.key || `signer-${index}`,
+    name: row.name || "",
+    email: row.email || "",
+    contact: row.outside ? (ar ? "من خارج المنشأة" : "Outside the company") : (row.title || (ar ? "من المنشأة" : "From the company")),
+    color: row.color || SIGNER_COLORS[index % SIGNER_COLORS.length],
+    external: true,
+    outside: Boolean(row.outside),
+    employeeId: row.employeeId || null,
+    role: row.role || "",
+    stationId: row.stationId || null,
+    stamp: Boolean(row.stamp),
+  })) : [{
     key: "me",
     name: currentUser?.profile?.signatureName || currentUser?.name || "",
     email: currentUser?.email || "",
     contact: ar ? "أنت · صاحب الختم" : "You · seal owner",
     color: SIGNER_COLORS[0],
     external: false,
-  }]);
+  }]));
 
   const pageCount = pdf?.numPages || 0;
   const pageWidth = Math.round(560 * zoom);
-  const group = signers.length > 1;
+  // Your row ("me") may sit anywhere in the order, or be absent when only others sign.
+  const meIndex = signers.findIndex((signer) => signer.key === "me");
+  const group = signers.some((signer) => signer.key !== "me");
   const activeTool = TOOLS.find((item) => item.id === tool) || TOOLS[0];
 
   const roster = useMemo(() => (employees || [])
@@ -217,7 +248,7 @@ export default function SigningWorkspace({
     setTool("check");
     setMark(glyph);
     const selected = fields.find((field) => field.id === activeFieldId);
-    if (isMarkField(selected) && selected.signer === 0) {
+    if (isMarkField(selected) && selected.signer === meIndex) {
       setTextValues((current) => ({ ...current, [selected.id]: glyph }));
     }
   };
@@ -240,7 +271,7 @@ export default function SigningWorkspace({
     if (toolId) setTool(item.id);
     const field = makeField(item, page, point.x, point.y, signerIndex);
     setFields((current) => [...current, field]);
-    if (item.type === "text" && signerIndex === 0) {
+    if (item.type === "text" && signerIndex === meIndex) {
       setTextValues((current) => ({ ...current, [field.id]: defaultValueFor(item.id) }));
     }
     setActiveFieldId(field.id);
@@ -333,7 +364,7 @@ export default function SigningWorkspace({
         return;
       }
       setFields((current) => [...current, ...fresh]);
-      if (signerIndex === 0) {
+      if (signerIndex === meIndex) {
         setTextValues((current) => {
           const next = { ...current };
           fresh.filter((field) => field.type === "text").forEach((field) => { next[field.id] = defaultValueFor(field.tool); });
@@ -367,7 +398,7 @@ export default function SigningWorkspace({
     }));
     setFields(placed);
     const values = {};
-    placed.filter((field) => field.type === "text" && field.signer === 0)
+    placed.filter((field) => field.type === "text" && field.signer === meIndex)
       .forEach((field) => { values[field.id] = defaultValueFor(field.tool); });
     setTextValues(values);
     setActiveFieldId(null);
@@ -444,7 +475,8 @@ export default function SigningWorkspace({
   // fields follow their recipient.
   const moveSigner = (index, dir) => {
     const target = index + dir;
-    if (index < 1 || target < 1 || target >= signers.length) return;
+    const floor = meIndex === 0 ? 1 : 0;
+    if (index < floor || target < floor || target >= signers.length) return;
     setSigners((current) => {
       const next = [...current];
       [next[index], next[target]] = [next[target], next[index]];
@@ -475,9 +507,11 @@ export default function SigningWorkspace({
     setEditingSigner(null);
   };
 
-  const myFields = useMemo(() => fields.filter((field) => field.signer === 0), [fields]);
+  const myFields = useMemo(() => fields.filter((field) => field.signer === meIndex), [fields, meIndex]);
   const mySignature = myFields.some((field) => field.type === "signature");
-  const everySignerPlaced = signers.every((_, index) => fields.some((field) => field.signer === index && field.type === "signature"));
+  // Every party has a signature field, and a party whose stamp was required has a «الختم» field.
+  const fieldsGate = checkEnvelopeFieldsGate({ signers, fields, ar });
+  const everySignerPlaced = fieldsGate.ok;
   const signersValid = signers.every((signer) => signer.name.trim() && emailValid(signer.email));
 
   // A field marked required must carry a value before the document leaves your
@@ -501,7 +535,7 @@ export default function SigningWorkspace({
       ? (!signersValid
         ? (ar ? "أكمل اسم وبريد كل موقّع." : "Complete each signer's name and email.")
         : !everySignerPlaced
-          ? (ar ? "ضع حقل توقيع لكل موقّع." : "Place a signature field for every signer.")
+          ? fieldsGate.reason
           : missingReason)
       : !signatureUrl
         ? (ar ? "افتح ستوديو الختم وأنشئ ختمك أولاً." : "Open the stamp studio and create your seal first.")
@@ -599,7 +633,7 @@ export default function SigningWorkspace({
       stationId: currentUser.stationId || null,
       companyId,
     };
-    const selfEmail = String(currentUser.email || signers[0]?.email || "").trim().toLowerCase();
+    const selfEmail = String(currentUser.email || signers[meIndex]?.email || "").trim().toLowerCase();
     if (emailValid(selfEmail)) {
       invokeLocalMultiSign({
         action: "selfSign",
@@ -614,7 +648,7 @@ export default function SigningWorkspace({
           employeeId: currentUser.id,
           role: currentUser.role || "",
           stationId: currentUser.stationId || null,
-          spots: spotsFor(0),
+          spots: spotsFor(meIndex),
         }],
       }, { actor, employees });
     }
@@ -646,16 +680,25 @@ export default function SigningWorkspace({
       verificationId,
       signatureTheme: OFFICIAL_STAMP_THEME,
       signingMode: orderMode === "sequential" ? "sequential" : "parallel",
-      signers: signers.map((signer, index) => ({
-        name: signer.name.trim(),
-        email: signer.email.trim(),
-        employeeId: signer.employeeId || (index === 0 ? currentUser.id : null),
-        role: signer.role || (index === 0 ? currentUser.role || "" : ""),
-        stationId: signer.stationId || (index === 0 ? currentUser.stationId || null : null),
-        signatureUrl: index === 0 ? signatureUrl || "" : "",
-        external: Boolean(signer.external),
-        spots: spotsFor(index),
-      })),
+      subject: String(envelopeMeta?.subject || "").trim(),
+      message: String(envelopeMeta?.message || "").trim(),
+      reminderEveryDays: clampReminderDays(envelopeMeta?.reminderEveryDays),
+      expiryDays: clampExpiryDays(envelopeMeta?.expiryDays),
+      signers: signers.map((signer, index) => {
+        const isMe = signer.key === "me";
+        return {
+          name: signer.name.trim(),
+          email: signer.email.trim(),
+          employeeId: signer.employeeId || (isMe ? currentUser.id : null),
+          role: signer.role || (isMe ? currentUser.role || "" : ""),
+          stationId: signer.stationId || (isMe ? currentUser.stationId || null : null),
+          signatureUrl: isMe ? signatureUrl || "" : "",
+          // «من خارج المنشأة»: a recipient added by email with no employee record.
+          external: !isMe && (signer.outside === true || !signer.employeeId),
+          stampRequired: Boolean(signer.stamp),
+          spots: spotsFor(index),
+        };
+      }),
       appUrl: signingBaseUrl(),
       lang: ar ? "ar" : "en",
     };
@@ -668,9 +711,23 @@ export default function SigningWorkspace({
       stationId: currentUser.stationId || null,
       companyId,
     };
+    // The local ledger outlives this page: a blob: URL dies with it, so a small file travels as a
+    // data URL and the parties can still open it from their desk or link after a reload.
+    const localDocUrl = async () => {
+      if (file && file.size <= 3 * 1024 * 1024) {
+        const dataUrl = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => resolve("");
+          reader.readAsDataURL(file);
+        });
+        if (dataUrl) return dataUrl;
+      }
+      return sourceUrl || "";
+    };
     let body;
     if (shouldUseLocalMultiSign()) {
-      body = invokeLocalMultiSign({ ...payload, docUrl: sourceUrl || "" }, { actor, employees });
+      body = invokeLocalMultiSign({ ...payload, docUrl: await localDocUrl() }, { actor, employees });
     } else {
       try {
         const { file_url: docUrl } = await base44.integrations.Core.UploadFile({ file });
@@ -681,7 +738,7 @@ export default function SigningWorkspace({
         // outage: creating it on the local ledger would hand out signing links the
         // server just declined to issue.
         if (!isServiceOutage(err)) throw refusalError(err);
-        body = invokeLocalMultiSign({ ...payload, docUrl: sourceUrl || "" }, { actor, employees });
+        body = invokeLocalMultiSign({ ...payload, docUrl: await localDocUrl() }, { actor, employees });
         if (body?.error) throw err;
       }
     }
@@ -733,12 +790,14 @@ export default function SigningWorkspace({
     setError("");
     setFinishAsk(true);
   };
-  const requestLeave = () => {
+  const requestLeave = (target = "close") => {
     if (busy) return;
+    const go = target === "setup" && onBackToSetup ? onBackToSetup : onClose;
     if (receipt || (!fields.length && !intent)) {
-      onClose?.();
+      go?.();
       return;
     }
+    setLeaveTarget(target);
     setLeaveAsk(true);
   };
   const addFromEmployee = (person) => {
@@ -819,6 +878,11 @@ export default function SigningWorkspace({
     requestFinish();
   };
   const goStep = (id) => {
+    // Opened from «مظروف جديد»: المستندات and المستلمون live on the setup page.
+    if (onBackToSetup && id <= 2) {
+      requestLeave("setup");
+      return;
+    }
     if (id <= 1) {
       requestLeave();
       return;
@@ -833,6 +897,7 @@ export default function SigningWorkspace({
         key={item.id}
         type="button"
         draggable
+        data-tool={item.id}
         aria-pressed={on}
         onDragStart={(event) => {
           setTool(item.id);
@@ -992,10 +1057,10 @@ export default function SigningWorkspace({
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{signer.name || (ar ? "موقّع جديد" : "New signer")}</span>
                   </span>
                   <span style={{ fontSize: 11, color: MUTED, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {index === 0 && !signer.external ? (ar ? "أنت · صاحب الختم" : "You · seal owner") : signer.email}
+                    {signer.key === "me" ? (ar ? "أنت · صاحب الختم" : "You · seal owner") : signer.email}
                   </span>
                 </span>
-                {orderMode === "sequential" && index > 0 ? (
+                {orderMode === "sequential" && signer.key !== "me" ? (
                   <span style={{ display: "inline-flex", gap: 2, flex: "none" }}>
                     <button type="button" aria-label={ar ? "قدّمه في الترتيب" : "Move up"} disabled={index < 2} onClick={(event) => { event.stopPropagation(); moveSigner(index, -1); }} style={{ ...chipBtn, padding: "2px 7px", opacity: index < 2 ? 0.4 : 1 }}>↑</button>
                     <button type="button" aria-label={ar ? "أخّره في الترتيب" : "Move down"} disabled={index >= signers.length - 1} onClick={(event) => { event.stopPropagation(); moveSigner(index, 1); }} style={{ ...chipBtn, padding: "2px 7px", opacity: index >= signers.length - 1 ? 0.4 : 1 }}>↓</button>
@@ -1079,7 +1144,9 @@ export default function SigningWorkspace({
     </>
   );
 
-  const expiresOn = new Date(Date.now() + 30 * 86400000).toLocaleDateString("en-GB");
+  const expiryDays = clampExpiryDays(envelopeMeta?.expiryDays);
+  const reminderDays = clampReminderDays(envelopeMeta?.reminderEveryDays);
+  const expiresOn = new Date(Date.now() + expiryDays * 86400000).toLocaleDateString("en-GB");
   const reviewRow = { display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderTop: `1px solid ${BORDER}`, fontSize: 12.5, minWidth: 0 };
   const signStep = (
     <section data-studio-review="1" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1115,6 +1182,18 @@ export default function SigningWorkspace({
           <span dir="ltr" style={{ ...mono, fontSize: 12 }}>{expiresOn}</span>
         </div>
       ) : null}
+      {group ? (
+        <div style={{ ...reviewRow, borderTop: "none", paddingTop: 0 }}>
+          <span style={{ flex: 1, color: MUTED }}>{ar ? "التذكير التلقائي" : "Automatic reminder"}</span>
+          <span style={{ fontSize: 12 }}>{reminderDays ? (ar ? (reminderDays === 1 ? "كل يوم" : reminderDays === 2 ? "كل يومين" : reminderDays === 7 ? "كل أسبوع" : `كل ${reminderDays} أيام`) : `Every ${reminderDays} day${reminderDays > 1 ? "s" : ""}`) : (ar ? "يدوياً فقط" : "By hand only")}</span>
+        </div>
+      ) : null}
+      {group && envelopeMeta?.subject ? (
+        <div style={{ ...reviewRow, borderTop: "none", paddingTop: 0 }}>
+          <span style={{ color: MUTED, flex: "none" }}>{ar ? "الموضوع" : "Subject"}</span>
+          <span dir="auto" style={{ flex: 1, minWidth: 0, textAlign: "end", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{envelopeMeta.subject}</span>
+        </div>
+      ) : null}
       {!signatureUrl && onOpenStudio ? (
         <button type="button" onClick={onOpenStudio} style={{ ...chipBtn, alignSelf: "flex-start", fontSize: 12, padding: "6px 12px" }}>{ar ? "صمّم ختمك" : "Design your seal"}</button>
       ) : null}
@@ -1132,8 +1211,12 @@ export default function SigningWorkspace({
             : (ar ? "يوقّع كل طرف من رابطه دون انتظار الباقين، وتذكّرهم من «توقيعاتي»." : "Each party signs from their link without waiting; remind them from the desk.")}
         </p>
       )}
-      {placeBlock ? <p style={{ margin: 0, fontSize: 12, color: "var(--nv-bad-ink)" }}>{placeBlock}</p> : null}
-      <button type="button" onClick={requestFinish} disabled={busy} style={{ height: 38, border: "none", borderRadius: 8, background: "#3C7D50", color: "#fff", fontWeight: 700, fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>
+      <span data-send-gate={placeBlock ? "gap" : "ok"} style={{ fontSize: 11.5, fontWeight: 600, lineHeight: 1.7, color: placeBlock ? "var(--nv-warn-ink, #8A5A12)" : "#2F6B43" }}>
+        {placeBlock || (group
+          ? (ar ? `✓ جاهز للإرسال — ${countAr(signers.length, ["طرف واحد", "طرفان", "أطراف", "طرفاً"])}${orderMode === "sequential" ? " بالتسلسل" : " بالتوازي"}` : `✓ Ready to send — ${signers.length} parties`)
+          : (ar ? "✓ جاهز — يُختم ويُغلق ببصمته" : "✓ Ready — stamped and closed with its fingerprint"))}
+      </span>
+      <button type="button" data-studio-send="1" onClick={requestFinish} disabled={busy} style={{ height: 42, border: "none", borderRadius: 8, background: placeBlock ? "var(--nv-line)" : "var(--nv-navy, #0B3D27)", color: placeBlock ? MUTED : "#fff", fontWeight: 700, fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>
         {group ? (ar ? "أرسل" : "Send") : (ar ? "إنهاء التوقيع" : "Finish signing")}
       </button>
     </section>
@@ -1149,7 +1232,7 @@ export default function SigningWorkspace({
         step={studioStep}
         fieldCount={fields.length}
         nextLabel={nextLabel}
-        onBack={requestLeave}
+        onBack={() => requestLeave()}
         onStep={goStep}
         onNext={goHeaderNext}
         onAutoPlace={suggestSpots}
@@ -1157,7 +1240,7 @@ export default function SigningWorkspace({
         signers={signers}
         signerIndex={signerIndex}
         onPickSigner={setSignerIndex}
-        onAddSigners={() => { setStudioStep(2); setFocusAdd(true); }}
+        onAddSigners={() => { if (onBackToSetup) { requestLeave("setup"); return; } setStudioStep(2); setFocusAdd(true); }}
         people={shownPeople}
         peopleQuery={peopleQuery}
         onPeopleQuery={setPeopleQuery}
@@ -1229,6 +1312,7 @@ export default function SigningWorkspace({
             onRemove={removeField}
             onTextChange={(id, value) => setTextValues((current) => ({ ...current, [id]: value }))}
             onVisiblePage={noteVisiblePage}
+            meIndex={meIndex}
           />
         ) : (
           <div style={{ width: "min(100%, 640px)", aspectRatio: "1 / 1.3", background: "var(--nv-card)", border: "1px solid var(--nv-line)", boxShadow: "0 1px 3px rgba(0,0,0,.08)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: MUTED, padding: "10%", textAlign: "center", boxSizing: "border-box" }}>
@@ -1249,11 +1333,13 @@ export default function SigningWorkspace({
           <div dir={ar ? "rtl" : "ltr"} style={{ width: "min(420px, 100%)", background: CARD, border: "1px solid var(--nv-line)", padding: 24, display: "flex", flexDirection: "column", gap: 14 }}>
             <span style={{ fontWeight: 700, fontSize: 16, color: INK }}>{ar ? "هل أنت متأكد؟" : "Are you sure?"}</span>
             <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.7 }}>
-              {ar ? "مغادرة التحضير تُلغي الحقول التي وضعتها على الصفحات." : "Leaving prepare discards the fields you placed on the pages."}
+              {leaveTarget === "setup"
+                ? (ar ? "العودة إلى إعداد المظروف تُلغي الحقول التي وضعتها؛ المستندات والمستلمون يبقون." : "Going back to the setup discards the fields you placed; documents and recipients stay.")
+                : (ar ? "مغادرة التحضير تُلغي الحقول التي وضعتها على الصفحات." : "Leaving prepare discards the fields you placed on the pages.")}
             </p>
             <div style={{ display: "flex", gap: 8 }}>
               <button type="button" onClick={() => setLeaveAsk(false)} style={signPrimaryBtn}>{ar ? "البقاء" : "Stay"}</button>
-              <button type="button" onClick={() => { setLeaveAsk(false); onClose?.(); }} style={signGhostBtn}>{ar ? "مغادرة دون توقيع" : "Leave unsigned"}</button>
+              <button type="button" onClick={() => { setLeaveAsk(false); if (leaveTarget === "setup" && onBackToSetup) onBackToSetup(); else onClose?.(); }} style={signGhostBtn}>{leaveTarget === "setup" ? (ar ? "عُد إلى الإعداد" : "Back to setup") : (ar ? "مغادرة دون توقيع" : "Leave unsigned")}</button>
             </div>
           </div>
         </div>
@@ -1277,6 +1363,7 @@ export default function SigningWorkspace({
           busy={busy}
           error={error}
           receipt={receipt}
+          orderMode={orderMode}
           onConfirm={confirm}
           onClose={() => {
             if (busy) return;

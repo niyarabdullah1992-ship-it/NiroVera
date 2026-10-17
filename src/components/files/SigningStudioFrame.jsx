@@ -182,7 +182,7 @@ export default function SigningStudioFrame({
           <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600, color: INK }}>{fieldCount}</span>
           {ar ? " حقول" : " fields"}
         </span>
-        <button type="button" data-studio-next="1" onClick={onNext} style={{ fontFamily: "inherit", height: 36, padding: "0 16px", borderRadius: 8, border: "none", background: ACCENT, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}>
+        <button type="button" data-studio-next="1" onClick={onNext} style={{ fontFamily: "inherit", height: 36, padding: "0 16px", borderRadius: 8, border: "none", background: "var(--nv-navy, #0B3D27)", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}>
           {nextLabel}
         </button>
       </header>
@@ -194,7 +194,7 @@ export default function SigningStudioFrame({
           {signers.map((signer, index) => {
             const on = signerIndex === index;
             return (
-              <button key={signer.key || index} type="button" onClick={() => onPickSigner?.(index)} style={{ fontFamily: "inherit", height: 30, padding: "0 10px", borderRadius: 8, border: `1px solid ${on ? (signer.color || NAVY) : LINE}`, background: on ? `color-mix(in oklab, ${signer.color || NAVY} 10%, var(--nv-card))` : "var(--nv-card)", color: INK, fontSize: 12, fontWeight: on ? 700 : 500, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", flex: "none" }}>
+              <button key={signer.key || index} type="button" data-studio-signer={index} onClick={() => onPickSigner?.(index)} style={{ fontFamily: "inherit", height: 30, padding: "0 10px", borderRadius: 8, border: `1px solid ${on ? (signer.color || NAVY) : LINE}`, background: on ? `color-mix(in oklab, ${signer.color || NAVY} 10%, var(--nv-card))` : "var(--nv-card)", color: INK, fontSize: 12, fontWeight: on ? 700 : 500, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", flex: "none" }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: signer.color || "var(--nv-ok-ink)", flex: "none" }} />
                 <span style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }}>{signer.name || (ar ? "موقّع" : "Signer")}</span>
               </button>
@@ -208,7 +208,7 @@ export default function SigningStudioFrame({
           {addOpen ? (
             <div style={{ position: "absolute", top: 36, insetInlineStart: 0, zIndex: 30, width: "min(340px, 90vw)", boxSizing: "border-box", background: "var(--nv-card)", border: `1px solid ${LINE}`, borderRadius: 6, boxShadow: "0 14px 36px rgba(20,33,61,.18)", padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
               <span style={{ fontSize: 10.5, letterSpacing: ".08em", color: NAVY, fontWeight: 700 }}>{ar ? "من المنشأة — اختر واحداً أو أكثر" : "From the company"}</span>
-              <SearchWrap><input value={peopleQuery} onChange={(event) => onPeopleQuery?.(event.target.value)} placeholder={ar ? "ابحث بالاسم أو الصفة أو الرقم الوظيفي" : "Search name, title, or number"} style={{ height: 32, padding: "0 10px", paddingInlineStart: 30, borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 12, color: INK, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit" }} /></SearchWrap>
+              <SearchWrap><input value={peopleQuery} onChange={(event) => onPeopleQuery?.(event.target.value)} placeholder={ar ? "ابحث بالاسم أو الصفة أو الرقم الوظيفي" : "Search name, title, or number"} style={{ height: 32, paddingBlock: 0, paddingInlineEnd: 10, paddingInlineStart: 30, "--nv-input-start": "30px", borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 12, color: INK, outline: "none", width: "100%", boxSizing: "border-box", fontFamily: "inherit" }} /></SearchWrap>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 196, overflowY: "auto" }}>
                 {shownPeople.length ? shownPeople.map((person) => (
                   <button key={person.id || person.email} type="button" onClick={() => onAddPerson?.(person)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px", border: 0, background: "transparent", cursor: "pointer", textAlign: "start", fontFamily: "inherit", color: INK }}>

@@ -9,7 +9,8 @@ import NvIcon from "@/components/shared/NvIcon";
 import SignaturePad from "@/components/files/SignaturePad";
 import { fieldProgress, nextRequiredField } from "@/lib/signingEnvelopes";
 
-const NAVY = "var(--nv-navy)";
+const NAVY = "#0B3D27";
+const LINK = "var(--nv-navy)";
 const GREEN = "#3C7D50";
 const LINE = "var(--nv-line)";
 const PAPER = "var(--nv-page, #F4F5F7)";
@@ -35,6 +36,7 @@ function kindOf(field) {
 }
 
 function labelOf(kind, field, ar) {
+  if (kind === "sig" && field?.tool === "seal") return ar ? "الختم" : "Stamp";
   const map = {
     sig: ar ? "توقيع" : "Signature",
     init: ar ? "الأحرف الأولى" : "Initials",
@@ -273,9 +275,9 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
         <span style={{ color: "var(--nv-muted)", fontFamily: "inherit" }}>{ar ? "البصمة" : "Fingerprint"}</span>
         <span dir="ltr" style={{ textAlign: "end" }}>{hash || (ar ? "تُثبَّت عند إغلاق المظروف" : "Fixed when the envelope closes")}</span>
         <span style={{ color: "var(--nv-muted)", fontFamily: "inherit" }}>{ar ? "التحقق" : "Verify"}</span>
-        {verifyHref ? <a dir="ltr" href={verifyHref} style={{ textAlign: "end", color: NAVY }}>{info.verificationId}</a> : <span>—</span>}
+        {verifyHref ? <a dir="ltr" href={verifyHref} style={{ textAlign: "end", color: LINK }}>{info.verificationId}</a> : <span>—</span>}
       </div>
-      {done?.docUrl ? <a href={done.docUrl} style={{ fontSize: 12, fontWeight: 600, color: NAVY }}>{ar ? "تنزيل النسخة" : "Download the copy"}</a> : null}
+      {done?.docUrl ? <a href={done.docUrl} style={{ fontSize: 12, fontWeight: 600, color: LINK }}>{ar ? "تنزيل النسخة" : "Download the copy"}</a> : null}
       {done?.canRetract || info?.canRetract ? (
         <button type="button" onClick={() => setRetractOpen(true)} style={ghostBtn}>{ar ? "سحب التوقيع خلال المهلة" : "Withdraw within the window"}</button>
       ) : null}
@@ -320,7 +322,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
             {/* «التالي ›» — the guide that walks the required fields in order. */}
             {left ? (
               <div style={{ position: "sticky", top: 0, zIndex: 6, alignSelf: "stretch", display: "flex", justifyContent: "flex-start", pointerEvents: "none" }}>
-                <button type="button" data-recipient-next="1" onClick={onNext} disabled={busy} style={{ pointerEvents: "auto", height: 34, padding: "0 14px", borderRadius: 8, border: "none", background: GREEN, color: "#fff", fontFamily: "inherit", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: "0 4px 12px rgba(20,40,30,.18)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <button type="button" data-recipient-next="1" onClick={onNext} disabled={busy} style={{ pointerEvents: "auto", height: 34, padding: "0 14px", borderRadius: 8, border: "none", background: "#0B3D27", color: "#fff", fontFamily: "inherit", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: "0 4px 12px rgba(20,40,30,.18)", display: "inline-flex", alignItems: "center", gap: 6 }}>
                   {started ? (ar ? "التالي" : "Next") : (ar ? "ابدأ" : "Start")}
                   <span aria-hidden="true">{ar ? "‹" : "›"}</span>
                 </button>
@@ -436,7 +438,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
                 {ar ? "متبقٍ " : ""}<span dir="ltr" style={{ fontFamily: MONO, color: "var(--nv-ink)" }}>{left}</span>{ar ? " مطلوب" : " required left"}
               </span>
             ) : null}
-            <button type="button" data-recipient-finish="1" onClick={onNext} disabled={busy} style={{ height: 38, padding: "0 18px", borderRadius: 8, border: "none", fontFamily: "inherit", fontWeight: 700, fontSize: 13, cursor: "pointer", background: left ? "var(--nv-line2, #EEF1EF)" : GREEN, color: left ? "var(--nv-ink2)" : "#fff" }}>
+            <button type="button" data-recipient-finish="1" onClick={onNext} disabled={busy} style={{ height: 38, padding: "0 18px", borderRadius: 8, border: "none", fontFamily: "inherit", fontWeight: 700, fontSize: 13, cursor: "pointer", background: left ? "var(--nv-line2, #EEF1EF)" : "#0B3D27", color: left ? "var(--nv-ink2)" : "#fff" }}>
               {busy ? (ar ? "جارٍ الحفظ…" : "Saving…") : (ar ? "إنهاء التوقيع" : "Finish signing")}
             </button>
           </footer>
@@ -562,7 +564,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
                   }
                   setPendingId(null);
                 }}
-                style={{ ...navyBtn, flex: 1, background: GREEN, opacity: !displayName || (!sealLocked && adoptTab !== "type" && !markDraft) ? 0.45 : 1 }}
+                style={{ ...navyBtn, flex: 1, background: "#0B3D27", opacity: !displayName || (!sealLocked && adoptTab !== "type" && !markDraft) ? 0.45 : 1 }}
               >
                 {ar ? "اعتمد ووقّع" : "Adopt and sign"}
               </button>
@@ -596,7 +598,7 @@ export default function RecipientSignStudio({ signing, onBack, onOpenStudio }) {
               </span>
             </label>
             <div style={{ display: "flex", gap: 8 }}>
-              <button type="button" data-finish-confirm="1" disabled={!ack || busy} onClick={confirmSign} style={{ ...navyBtn, flex: 1, background: GREEN, opacity: !ack ? 0.45 : 1 }}>{ar ? "إنهاء التوقيع" : "Finish signing"}</button>
+              <button type="button" data-finish-confirm="1" disabled={!ack || busy} onClick={confirmSign} style={{ ...navyBtn, flex: 1, background: "#0B3D27", opacity: !ack ? 0.45 : 1 }}>{ar ? "إنهاء التوقيع" : "Finish signing"}</button>
               <button type="button" onClick={() => setFinishing(false)} style={ghostBtn}>{ar ? "رجوع" : "Back"}</button>
             </div>
           </div>
@@ -656,5 +658,5 @@ const zoomBtn = {
   border: `1px solid ${LINE}`,
   background: "var(--nv-card)",
   cursor: "pointer",
-  color: NAVY,
+  color: LINK,
 };

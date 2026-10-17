@@ -876,7 +876,7 @@ function ManagerSeatActions({ employee, data, companyId, ar, ownerMode, onVacate
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder={ar ? "ابحث في الدليل أو اكتب مسمّى جديداً" : "Search the catalog or type a new title"}
-              style={{ ...FIELD_INPUT, width: "100%", paddingInlineStart: 30 }}
+              style={{ ...FIELD_INPUT, width: "100%", paddingInlineStart: 30, "--nv-input-start": "30px" }}
             />
           </SearchWrap>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))", gap: 4, maxHeight: 112, overflow: "auto", padding: 2 }}>

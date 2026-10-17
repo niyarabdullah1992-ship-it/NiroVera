@@ -22,6 +22,7 @@ export default function SigningFinishDialog({
   receipt,
   onConfirm,
   onClose,
+  orderMode = "parallel",
 }) {
   const group = mode === "group";
   return (
@@ -107,9 +108,13 @@ export default function SigningFinishDialog({
 
             <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
               {group
-                ? (ar
-                  ? "يُرسَل رابط خاص لكل موقّع. لا ترتيب: أي طرف يوقّع أولًا أو ثانيًا أو ثالثًا. البصمة تُثبَّت في سجل الشركة بعد إغلاق مهلة التراجع — ليست شهادة حكومية مؤهلة."
-                  : "Each signer gets a private link. No queue: any party may sign first, second, or third. The fingerprint registers after retract windows close — not a qualified government certificate.")
+                ? (orderMode === "sequential"
+                  ? (ar
+                    ? "يُرسَل رابط خاص لكل موقّع. الترتيب محفوظ على المظروف ويظهر لكل طرف، والتذكير يذهب لصاحب الدور؛ ويبقى لأي طرف معلّق أن يوقّع من رابطه. البصمة تُثبَّت في سجل الشركة بعد إغلاق مهلة التراجع — ليست شهادة حكومية مؤهلة."
+                    : "Each signer gets a private link. The order is stored and shown, and reminders go to whoever's turn it is; any pending party can still sign from their link. The fingerprint registers after retract windows close — not a qualified government certificate.")
+                  : (ar
+                    ? "يُرسَل رابط خاص لكل موقّع. بالتوازي: أي طرف يوقّع أولًا أو ثانيًا أو ثالثًا. البصمة تُثبَّت في سجل الشركة بعد إغلاق مهلة التراجع — ليست شهادة حكومية مؤهلة."
+                    : "Each signer gets a private link. In parallel: any party may sign first, second, or third. The fingerprint registers after retract windows close — not a qualified government certificate."))
                 : (ar
                   ? "يُدمج الختم في PDF، تُحسب بصمة SHA-256، ويُسجَّل رقم التحقق في سجل الشركة. ليست شهادة حكومية مؤهلة؛ التحقق بمطابقة الملف مع السجل."
                   : "The seal is merged into the PDF, a SHA-256 fingerprint is computed, and the verification id is written to the company registry. Not a qualified government certificate — verification matches the file to the registry.")}
@@ -149,8 +154,8 @@ export default function SigningFinishDialog({
               <span style={{ fontSize: 12, color: MUTED, lineHeight: 1.7 }}>
                 {receipt.kind === "group"
                   ? (ar
-                    ? "التوقيع متوازٍ بلا ترتيب. يبقى الطلب في الحالة حتى يجيب الأطراف ويمرّر المنشئ التوقيع، ثم يُتاح التنزيل ويصل إشعار الاكتمال."
-                    : "Signing is parallel — no queue. The request stays on Status until retract windows close, then the fingerprint registers.")
+                    ? (orderMode === "sequential" ? "الترتيب محفوظ ويُذكَّر صاحب الدور. يبقى" : "التوقيع بالتوازي. يبقى")+" الطلب في الحالة حتى يجيب الأطراف ويمرّر المنشئ التوقيع، ثم يُتاح التنزيل ويصل إشعار الاكتمال."
+                    : (orderMode === "sequential" ? "The order is stored; reminders go to whoever's turn it is. " : "Signing is parallel. ") + "The request stays on Status until retract windows close, then the fingerprint registers.")
                   : receipt.registryNote
                     || (ar ? "تم دمج الختم وحساب البصمة." : "The seal was merged and the fingerprint computed.")}
               </span>

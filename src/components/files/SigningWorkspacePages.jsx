@@ -209,6 +209,7 @@ export default function SigningWorkspacePages({
   onTextChange,
   onVisiblePage,
   stampRatio = STAMP_RATIO,
+  meIndex = 0,
 }) {
   const sizesRef = useRef({});
   const pageRefs = useRef({});
@@ -409,7 +410,7 @@ export default function SigningWorkspacePages({
               const value = textValues[field.id] || "";
               // Your own required field left empty is the one thing that will
               // block the finish button — flag it on the page, not only in the gate.
-              const gap = field.signer === 0 && field.type === "text" && field.required !== false && !value;
+              const gap = field.signer === meIndex && field.type === "text" && field.required !== false && !value;
               // Each recipient's fields carry their own muted tint; the selected field alone takes
               // the one green accent.
               const tint = signer?.color || BRAND;
@@ -424,7 +425,7 @@ export default function SigningWorkspacePages({
                   onFocus={() => { if (!active) onSelect?.(field.id); }}
                   onKeyDown={(event) => {
                     if (editing || event.target !== event.currentTarget) return;
-                    if (event.key === "Enter" && field.signer === 0 && field.type === "text" && !isMarkField(field) && field.tool !== "yn") {
+                    if (event.key === "Enter" && field.signer === meIndex && field.type === "text" && !isMarkField(field) && field.tool !== "yn") {
                       event.preventDefault();
                       setEditingId(field.id);
                     }
@@ -434,7 +435,7 @@ export default function SigningWorkspacePages({
                     event.stopPropagation();
                     if (movedRef.current) { movedRef.current = false; return; }
                     onSelect?.(field.id);
-                    if (field.signer !== 0) return;
+                    if (field.signer !== meIndex) return;
                     // A mark flips between tick and cross in place; only real
                     // text fields open an input.
                     if (isMarkField(field)) {
@@ -492,7 +493,7 @@ export default function SigningWorkspacePages({
                     pointerEvents: editing ? "auto" : "none",
                   }}>
                   {field.type === "signature" && !gold ? (
-                    field.signer === 0 && sealPreview ? (
+                    field.signer === meIndex && sealPreview ? (
                       <img src={sealPreview} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
                     ) : (
                       <span style={{ pointerEvents: "none", textAlign: "center", lineHeight: 1.4 }}>
@@ -504,7 +505,7 @@ export default function SigningWorkspacePages({
                     )
                   ) : isMarkField(field) ? (
                     <span
-                      title={field.signer === 0 ? (ar ? "اضغط للتبديل بين صح وخطأ" : "Click to flip between tick and cross") : undefined}
+                      title={field.signer === meIndex ? (ar ? "اضغط للتبديل بين صح وخطأ" : "Click to flip between tick and cross") : undefined}
                       style={{ pointerEvents: "none", lineHeight: 1, color: value ? "var(--nv-ink)" : MUTED }}
                     >
                       <SignMarkGlyph glyph={value || MARK_GLYPHS[0]} size={Math.max(14, box.height * 0.62)} color="currentColor" />

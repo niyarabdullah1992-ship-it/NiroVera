@@ -153,7 +153,7 @@ export default function SubscriptionInvoicesDashboard({ ar }) {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder={ar ? "بحث برقم الفاتورة أو الشركة…" : "Search invoice or company…"}
-            style={{ ...ownerField(), paddingInlineStart: 36 }}
+            style={{ ...ownerField(), paddingInlineStart: 36, "--nv-input-start": "36px" }}
           />
         </div>
         <select value={status} onChange={(event) => setStatus(event.target.value)} style={ownerField()}>

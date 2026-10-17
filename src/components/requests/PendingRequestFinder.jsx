@@ -109,7 +109,7 @@ export default function PendingRequestFinder({
             }}
             onKeyDown={onKey}
             placeholder={ar ? "ابحث باسم موظف أو نوع طلب" : "Search by name or request type"}
-            style={compact ? { ...fieldStyle(), height: 30, borderRadius: 12, fontSize: 11.5, padding: "0 12px", paddingInlineStart: 30 } : { ...fieldStyle(), paddingInlineStart: 30 }}
+            style={compact ? { ...fieldStyle(), height: 30, borderRadius: 12, fontSize: 11.5, padding: "0 12px", paddingInlineStart: 30, "--nv-input-start": "30px" } : { ...fieldStyle(), paddingInlineStart: 30, "--nv-input-start": "30px" }}
           />
         </SearchWrap>
         {open ? (

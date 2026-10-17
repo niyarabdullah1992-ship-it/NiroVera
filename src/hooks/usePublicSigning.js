@@ -19,6 +19,15 @@ const captureLocation = () => new Promise((resolve) => {
   );
 });
 
+async function bytesToPdfDataUrl(bytes) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(new Blob([bytes], { type: "application/pdf" }));
+  });
+}
+
 export default function usePublicSigning(explicitToken, options = {}) {
   const token = explicitToken || new URLSearchParams(window.location.search).get("token") || "";
   const [ar, setAr] = useState(true);
@@ -132,7 +141,10 @@ export default function usePublicSigning(explicitToken, options = {}) {
       const stamp = await makeSignatureStamp(liveConfig.markUrl, liveConfig.name, fresh.verificationId, signatureStyle, liveConfig);
       const fields = fresh.signer.spots || (fresh.signer.spot ? [{ ...fresh.signer.spot, id: "signature", type: "signature" }] : []);
       const signatureField = fields.find((field) => field.type === "signature") || fresh.signer.spot;
-      const stamped = await stampOnPdf(fresh.docUrl, stamp, fresh.signedCount, null, signatureField, (signatureField?.scale || 100) / 100, true, fields, textValues);
+      // The preview ledger has no file store: the stamped copy travels inline instead of uploading.
+      const localLedger = shouldUseLocalMultiSign();
+      const stamped = await stampOnPdf(fresh.docUrl, stamp, fresh.signedCount, null, signatureField, (signatureField?.scale || 100) / 100, !localLedger, fields, textValues);
+      if (!stamped.url && localLedger) stamped.url = await bytesToPdfDataUrl(stamped.bytes);
       setStage(ar ? "جارٍ حفظ الحقول والتوقيع…" : "Saving fields and signature…");
       const fileHash = await sha256HexOfBuffer(stamped.bytes);
       const location = await locationPromise;

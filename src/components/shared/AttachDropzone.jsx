@@ -34,7 +34,9 @@ const AttachDropzone = forwardRef(function AttachDropzone({
   hint,
   typesLabel,
   showNeed = true,
+  multiple = false,
   onPick,
+  onPickMany,
   onClear,
 }, ref) {
   const localRef = useRef(null);
@@ -56,8 +58,11 @@ const AttachDropzone = forwardRef(function AttachDropzone({
         tabIndex={-1}
         aria-hidden="true"
         disabled={disabled || busy}
+        multiple={multiple}
         onChange={(event) => {
-          onPick?.(event.target.files?.[0] || null);
+          const list = Array.from(event.target.files || []);
+          if (multiple && onPickMany) onPickMany(list);
+          else onPick?.(list[0] || null);
           event.target.value = "";
         }}
       />
@@ -91,8 +96,10 @@ const AttachDropzone = forwardRef(function AttachDropzone({
           onDrop={(event) => {
             event.preventDefault();
             setOver(false);
-            const dropped = event.dataTransfer?.files?.[0];
-            if (dropped && !disabled && !busy) onPick?.(dropped);
+            const list = Array.from(event.dataTransfer?.files || []);
+            if (!list.length || disabled || busy) return;
+            if (multiple && onPickMany) onPickMany(list);
+            else onPick?.(list[0]);
           }}
         >
           <span className="nv-dropzone-clip"><Clip /></span>

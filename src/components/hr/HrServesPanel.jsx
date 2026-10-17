@@ -223,6 +223,7 @@ function BranchPicker({ employee, data, companyId, ar, canWrite }) {
                 border: "1px solid var(--nv-line)",
                 padding: "0 10px",
                 paddingInlineStart: 30,
+                "--nv-input-start": "30px",
                 width: "100%",
                 fontSize: 12,
                 outline: "none",

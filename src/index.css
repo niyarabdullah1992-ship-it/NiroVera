@@ -1540,7 +1540,10 @@ button.nv-statutory-item {
 .powercare-shell main :is(input, select):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not([type="range"]):not([type="color"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not(.nv-shift-field):not(.nv-search-field):not(.nv-signing-field):not(.nv-signing-inline) {
   height: 36px !important;
   min-height: 36px !important;
-  padding: 0 12px !important;
+  /* --nv-input-start: a field with a leading icon (search) sets it inline, so the text never runs under the icon. */
+  padding-block: 0 !important;
+  padding-inline-end: 12px !important;
+  padding-inline-start: var(--nv-input-start, 12px) !important;
   box-sizing: border-box !important;
 }
 
@@ -2255,7 +2258,9 @@ button.nv-statutory-item {
 .powercare-shell main input.nv-sign-query {
   height: 34px !important;
   min-height: 34px !important;
-  padding: 0 12px !important;
+  padding-block: 0 !important;
+  padding-inline-end: 12px !important;
+  padding-inline-start: 32px !important; /* room for the search icon — never under the text */
   border-radius: 10px !important;
   border: 1px solid var(--nv-line) !important;
   background: var(--nv-card) !important;
@@ -2263,7 +2268,6 @@ button.nv-statutory-item {
   box-shadow: none !important;
   color: var(--nv-ink) !important;
 }
-.powercare-shell main input.nv-sign-query { padding-inline-start: 30px !important; }
 .nv-sign-frame button.nv-sign-nav,
 .nv-sign-frame button.nv-sign-kpi {
   border-radius: 0 !important;

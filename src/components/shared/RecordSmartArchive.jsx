@@ -390,7 +390,7 @@ export default function RecordSmartArchive({
               placeholder={searchPlaceholder || (ar ? "ابحث باسم أو رقم أو كلمة…" : "Search by name, number, or word…")}
               aria-label={ar ? "بحث الأرشيف" : "Archive search"}
               className="nv-search-field"
-              style={{ width: "100%", boxSizing: "border-box", height: 38, borderRadius: 10, border: "1px solid var(--nv-line)", background: "var(--nv-soft)", fontFamily: "inherit", fontSize: 13, color: "var(--nv-ink)", paddingInlineStart: 34, paddingInlineEnd: 12, outline: "none" }}
+              style={{ width: "100%", boxSizing: "border-box", height: 38, borderRadius: 10, border: "1px solid var(--nv-line)", background: "var(--nv-soft)", fontFamily: "inherit", fontSize: 13, color: "var(--nv-ink)", paddingInlineStart: 34, "--nv-input-start": "34px", paddingInlineEnd: 12, outline: "none" }}
             />
           </label>
           <span role="tablist" aria-label={ar ? "الفترة" : "Period"} className="nv-archive-seg" style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 10, border: "1px solid var(--nv-line)", background: "var(--nv-soft)" }}>

@@ -128,7 +128,7 @@ export function TaskPersonPicker({ ar, options = [], value, onChange, stations =
             onChange={(e) => setQ(e.target.value)}
             placeholder={ar ? "ابحث بالاسم أو المسمى أو الفرع" : "Search by name, title or branch"}
             aria-label={ar ? "ابحث عن موظف" : "Search an employee"}
-            style={{ ...reqField, paddingInlineStart: 32 }}
+            style={{ ...reqField, padding: undefined, paddingBlock: 10, paddingInlineEnd: 12, paddingInlineStart: 32, "--nv-input-start": "32px" }}
           />
         </label>
       ) : null}

@@ -106,7 +106,7 @@ export default function SubscribersDashboard({ ar }) {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={ar ? "بحث باسم الشركة أو الإيميل…" : "Search by company or email…"}
-                style={{ ...ownerField(), paddingInlineStart: 36 }}
+                style={{ ...ownerField(), paddingInlineStart: 36, "--nv-input-start": "36px" }}
               />
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>

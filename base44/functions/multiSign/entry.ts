@@ -215,7 +215,7 @@ const refusalLines = (signers, ar) => (signers || [])
 
 const cleanLocation = (value) => value?.available === true && Number.isFinite(Number(value.lat)) && Number.isFinite(Number(value.lng)) ? { lat: Number(value.lat), lng: Number(value.lng), accuracy: Math.max(0, Number(value.accuracy) || 0) } : { available: false };
 
-function signatureRequestEmail({ ar, signerName, creatorName, fileName, link, signerIndex = 0, totalSigners = 1, expiresAt }) {
+function signatureRequestEmail({ ar, signerName, creatorName, fileName, link, signerIndex = 0, totalSigners = 1, expiresAt, message = '' }) {
   const direction = ar ? 'rtl' : 'ltr';
   const align = ar ? 'right' : 'left';
   const title = ar ? 'طلب توقيع مستند' : 'Document signature request';
@@ -255,6 +255,7 @@ function signatureRequestEmail({ ar, signerName, creatorName, fileName, link, si
               <td style="padding:32px;text-align:${align};">
                 <h2 style="margin:0 0 10px;color:#14284B;font-size:21px;line-height:1.5;font-weight:700;">${escapeHtml(greeting)}</h2>
                 <p style="margin:0 0 26px;color:#5A6B85;font-size:15px;line-height:1.8;">${intro}</p>
+                ${message ? `<div style="margin:0 0 18px;padding:14px 16px;background:#F7F8FA;border:1px solid #E2E8F0;border-radius:12px;color:#14284B;font-size:14px;line-height:1.8;white-space:pre-wrap;text-align:${align};">${escapeHtml(message)}</div>` : ''}
 
                 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-bottom:14px;background:#F7F8FA;border:1px solid #E2E8F0;border-radius:12px;">
                   <tr>
@@ -457,12 +458,16 @@ Deno.serve(async (req) => {
           role: String(s.role || '').slice(0, 80),
           stationId: String(s.stationId || '').slice(0, 64) || null,
           signatureUrl: isAllowedDocUrl(s.signatureUrl) ? String(s.signatureUrl).slice(0, 2000) : '',
+          external: s.external === true,
+          stampRequired: s.stampRequired === true,
           stampTheme: allowedStampThemes.has(String(body.signatureTheme || '')) ? String(body.signatureTheme) : 'heritage',
           // Creator-assigned fields: one or more signatures plus optional text fields.
           spots: (Array.isArray(s.spots) && s.spots.length ? s.spots : s.spot ? [{ ...s.spot, type: 'signature' }] : [{ id: 'auto-signature', type: 'signature', page: 1, x: 75, y: 88, scale: 100 }]).slice(0, 30).map((field, fieldIndex) => ({
             id: String(field.id || `field-${fieldIndex}`).slice(0, 80),
             type: field.type === 'text' ? 'text' : 'signature',
             label: String(field.label || '').slice(0, 60),
+            required: field.required !== false,
+            tool: String(field.tool || '').slice(0, 20),
             page: Math.max(1, Number(field.page) || 1),
             x: Math.min(100, Math.max(0, Number(field.x) || 0)),
             y: Math.min(100, Math.max(0, Number(field.y) || 0)),
@@ -475,6 +480,16 @@ Deno.serve(async (req) => {
       if (signers.length === 0 || signers.length !== signersIn.length || !isAllowedDocUrl(body.docUrl) || !String(body.fileName || '').toLowerCase().endsWith('.pdf') || !String(body.verificationId || '').trim()) {
         return Response.json({ error: 'A PDF document and a valid, unique email for every signer are required' }, { status: 400 });
       }
+      // «مظروف جديد»: subject, message, reminder cadence and link lifetime — twin of envelopeMetaOf
+      // (src/lib/multiSignDerivations.js).
+      const everyIn = Math.round(Number(body.reminderEveryDays) || 0);
+      const expiryIn = Math.round(Number(body.expiryDays) || 0);
+      const meta = {
+        subject: String(body.subject || '').trim().slice(0, 160),
+        message: String(body.message || '').trim().slice(0, 2000),
+        reminderEveryDays: everyIn > 0 ? Math.min(30, everyIn) : 0,
+        expiryDays: expiryIn >= 1 ? Math.min(90, expiryIn) : 30,
+      };
       const duplicateRequests = await Docs.filter({ verificationId: String(body.verificationId).slice(0, 40) });
       if (duplicateRequests.length) return Response.json({ error: 'SIGNATURE_REUSE' }, { status: 409 });
       const rec = await Docs.create({
@@ -491,9 +506,10 @@ Deno.serve(async (req) => {
         currentSignerIndex: 0,
         stationId: actor.stationId || null,
         appUrl: resolveAppOrigin(body.appUrl),
-        expiresAt: new Date(Date.now() + 30 * 86400000).toISOString(),
+        expiresAt: new Date(Date.now() + meta.expiryDays * 86400000).toISOString(),
         lastActivityAt: new Date().toISOString(),
         rejectionReason: null,
+        ...meta,
         signers,
         auditTrail: [{ type: 'created', at: new Date().toISOString(), actorId: actor.userId || null, actorName: actor.name, actorRole: actor.role || 'admin', location: { available: false } }],
       });
@@ -508,7 +524,9 @@ Deno.serve(async (req) => {
         const turnText = ar
           ? `يمكنك مراجعة المستند "${rec.fileName}" وتوقيعه الآن بشكل مستقل عن بقية الموقّعين.`
           : `You can review and sign "${rec.fileName}" now, independently of the other signers.`;
-        const ok = await sendMail(base44, signer.email, ar ? `طلب توقيع: ${rec.fileName}` : `Signature request: ${rec.fileName}`, ar ? `مرحبًا ${signer.name}،\n\n${turnText}\n${link}` : `Hello ${signer.name},\n\n${turnText}\n${link}`, signatureRequestEmail({ ar, signerName: signer.name, creatorName: rec.creatorName, fileName: rec.fileName, link, signerIndex, totalSigners: signers.length, expiresAt: rec.expiresAt }));
+        const subjectLine = meta.subject || (ar ? `طلب توقيع: ${rec.fileName}` : `Signature request: ${rec.fileName}`);
+        const note = meta.message ? `\n\n${meta.message}` : '';
+        const ok = await sendMail(base44, signer.email, subjectLine, ar ? `مرحبًا ${signer.name}،\n\n${turnText}${note}\n${link}` : `Hello ${signer.name},\n\n${turnText}${note}\n${link}`, signatureRequestEmail({ ar, signerName: signer.name, creatorName: rec.creatorName, fileName: rec.fileName, link, signerIndex, totalSigners: signers.length, expiresAt: rec.expiresAt, message: meta.message }));
         return { email: signer.email, ok };
       }));
       const emailFailed = deliveryResults.filter((result) => !result.ok).map((result) => result.email);
@@ -546,6 +564,11 @@ Deno.serve(async (req) => {
             lastActivityAt: r.lastActivityAt || r.updated_date,
             docUrl: r.docUrl,
             stationId: r.stationId || null,
+            signingMode: r.signingMode === 'sequential' ? 'sequential' : 'parallel',
+            subject: r.subject || '',
+            message: r.message || '',
+            reminderEveryDays: Number(r.reminderEveryDays) || 0,
+            expiresAt: r.expiresAt || null,
             currentSignerIndex: r.currentSignerIndex || 0,
             rejectionReason: r.rejectionReason || null,
             verificationId: r.verificationId || null,
@@ -576,6 +599,8 @@ Deno.serve(async (req) => {
               rejectionReason: s.rejectionReason || null,
               rejectionCause: refusalCauseOf(s),
               signToken: (r.creatorId === userId || (!!email && r.creatorEmail === email)) && s.token ? `${r.id}.${s.token}` : null,
+              external: s.external === true,
+              stampRequired: s.stampRequired === true,
               skippedAt: s.skippedAt || null,
               skipReason: s.skipReason || null,
               skipCause: s.skipCause || null,
@@ -607,7 +632,7 @@ Deno.serve(async (req) => {
       const sent = await sendMail(base44, signer.email, ar ? `تذكير بالتوقيع: ${rec.fileName}` : `Signing reminder: ${rec.fileName}`, ar ? `مرحبًا ${signer.name}،\n\nتذكير بوجود المستند "${rec.fileName}" بانتظار توقيعك.\n${link}` : `Hello ${signer.name},\n\nThis is a reminder that "${rec.fileName}" is waiting for your signature.\n${link}`, signatureRequestEmail({ ar, signerName: signer.name, creatorName: rec.creatorName, fileName: rec.fileName, link, signerIndex, totalSigners: (rec.signers || []).length, expiresAt: rec.expiresAt }));
       if (!sent) return Response.json({ error: 'Reminder email could not be delivered' }, { status: 502 });
       const remindedAt = new Date().toISOString();
-      await Docs.update(rec.id, { lastActivityAt: remindedAt, auditTrail: [...(rec.auditTrail || []), { type: 'reminder_sent', at: remindedAt, actorId: actor.userId || null, actorName: actor.name, actorRole: actor.role || 'admin', targetName: signer.name, targetEmail: signer.email, location: { available: false } }] });
+      await Docs.update(rec.id, { lastActivityAt: remindedAt, auditTrail: [...(rec.auditTrail || []), { type: 'reminder_sent', at: remindedAt, actorId: actor.userId || null, actorName: actor.name, actorRole: actor.role || 'admin', targetName: signer.name, targetEmail: signer.email, auto: body.auto === true, location: { available: false } }] });
       return Response.json({ ok: true, signerEmail: signer.email });
     }
 

@@ -271,6 +271,7 @@ export default function StationQuickSwitch({ open, onClose, anchorRef }) {
                 minHeight: 40,
                 padding: "0 10px",
                 paddingInlineStart: 30,
+                "--nv-input-start": "30px",
                 borderRadius: 8,
                 border: "1px solid var(--nv-line)",
                 fontSize: 12.5,

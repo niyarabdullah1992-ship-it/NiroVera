@@ -35,50 +35,106 @@ export function ScaleGlyph({ size = 13 }) {
 export function StatuteDialog({ law, open, onOpenChange, ar = true, onDate }) {
   if (!law) return null;
   // Annex 1 (the unified model regulation) — its own registry, never the Labour Law's.
-  const model = law.model ? modelArticlesBody(law.model, ar) : "";
-  const official = !model && law.article ? articleOfficialText(law.article, onDate) : null;
+  // A label like «النموذج الموحد م42» that arrived without `model` still reads Annex 1, never the Labour Law.
+  const modelIds = law.model
+    || (/^(النموذج الموحد|Model Art)/.test(String(law.label || "")) ? String(law.label).match(/\d+/g) : null);
+  const isModel = Boolean(modelIds && modelIds.length);
+  const model = isModel ? modelArticlesBody(modelIds, ar) : "";
+  const official = !isModel && law.article ? articleOfficialText(law.article, onDate) : null;
   const statute = official ? (ar ? official.ar : official.en) : "";
   const decision = law.decisionId === "18632"
     ? decision18632Gist(ar)
     : law.decisionId === "3337" ? heatBanDecisionGist(ar, onDate) : "";
   const body = model || statute || decision;
-  const sourceHref = model
+  const sourceHref = isModel
     ? MODEL_SOURCE_URL
     : law.decisionId === "3337"
       ? HEAT_BAN_DECISION_PDF
       : law.regs ? HRSD_IMPLEMENTING_REGS_URL : (official?.sourceUrl || BOE_LABOUR_LAW_URL);
+  const kind = isModel
+    ? (ar ? "النموذج الموحد" : "Unified model")
+    : law.regs
+      ? (ar ? "اللائحة التنفيذية" : "Implementing Regs")
+      : law.decisionId
+        ? (ar ? "قرار وزاري" : "Ministerial decision")
+        : (ar ? "نظام العمل" : "Labour Law");
+  const lede = isModel
+    ? (ar ? `النص من ${MODEL_SOURCE_AR}.` : `Text from ${MODEL_SOURCE_EN}.`)
+    : law.regs
+      ? (ar ? "النص الكامل في ملف الوزارة الرسمي." : "The full text is in the ministry's official file.")
+      : law.decisionId
+        ? (ar ? "النص الرسمي، وتحته ما تطبّقه المنصة منه." : "The official text, and below it what the platform applies.")
+        : (ar ? "كما هو منشور في هيئة الخبراء." : "As published by the Bureau of Experts.");
+  const sourceLabel = isModel || law.regs
+    ? (ar ? "اللائحة التنفيذية وملحقاتها (PDF)" : "Implementing regulations and annexes (PDF)")
+    : law.decisionId === "3337"
+      ? (ar ? "صورة القرار الموقّعة (PDF)" : "Signed decision (PDF)")
+      : (ar ? "النص في هيئة الخبراء" : "BOE official text");
+  const blocks = statuteBlocks(body);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent dir={ar ? "rtl" : "ltr"} className="font-body max-h-[85vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader className={ar ? "pr-8 text-right sm:text-right" : "pr-8 text-left"}>
-          <DialogTitle className="font-heading" style={{ color: INK }}>{law.label}</DialogTitle>
-          <DialogDescription>
-            {model
-              ? (ar ? `النص من ${MODEL_SOURCE_AR}.` : `Text from ${MODEL_SOURCE_EN}.`)
-              : law.regs
-              ? (ar ? "مادة من اللائحة التنفيذية لنظام العمل — النص في ملف الوزارة الرسمي." : "An article of the Implementing Regulations — the text is in the ministry's official file.")
-              : law.decisionId
-                ? (ar ? "نص القرار الوزاري كما تقرؤه المنصة." : "The ministerial decision as the platform reads it.")
-                : (ar ? "نص المادة من نظام العمل كما هو منشور في هيئة الخبراء." : "The article as published by the Bureau of Experts.")}
-          </DialogDescription>
+      <DialogContent dir={ar ? "rtl" : "ltr"} className="font-body max-h-[85vh] overflow-y-auto sm:max-w-xl" style={{ padding: 0, gap: 0, borderRadius: 12 }}>
+        <DialogHeader className={ar ? "text-right sm:text-right" : "text-left"} style={{ padding: "20px 22px 14px", borderBottom: "1px solid var(--nv-line2, #EEF2F7)", gap: 6 }}>
+          <span style={{ alignSelf: "flex-start", marginRight: ar ? 34 : 0, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 600, color: GREEN, background: "var(--nv-ok-soft)", border: "1px solid var(--nv-ok-line)", borderRadius: 999, padding: "2px 10px" }}>
+            <NvIcon name="scale" size={12} inline={false} />
+            {kind}
+          </span>
+          <DialogTitle className="font-heading" style={{ color: INK, fontSize: 19, lineHeight: 1.4 }}>{law.label}</DialogTitle>
+          <DialogDescription style={{ fontSize: 12.5, color: MUTED, margin: 0 }}>{lede}</DialogDescription>
         </DialogHeader>
-        {body ? (
-          <p style={{ margin: 0, fontSize: 14, color: INK, lineHeight: 1.9, whiteSpace: "pre-wrap" }}>{body}</p>
-        ) : (
-          <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.8 }}>
-            {ar ? "النص الكامل في المصدر الرسمي أدناه." : "The full text is at the official source below."}
-          </p>
-        )}
-        <a href={sourceHref} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 600, color: GREEN, textDecoration: "underline", textUnderlineOffset: 3, alignSelf: "flex-start" }}>
-          {model || law.regs
-            ? (ar ? "اللائحة التنفيذية وملحقاتها (PDF)" : "Implementing regulations and annexes (PDF)")
-            : law.decisionId === "3337"
-              ? (ar ? "صورة القرار الموقّعة (PDF)" : "Signed decision (PDF)")
-              : (ar ? "النص في هيئة الخبراء" : "BOE official text")}
-        </a>
+        <div data-statute-body="1" style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
+          {blocks.length ? blocks.map((block, i) => (
+            block.kind === "reading" ? (
+              <section key={i} style={{ borderRadius: 8, background: "var(--nv-soft, #F6F8FA)", border: "1px solid var(--nv-line2, #EEF2F7)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, color: GREEN }}>
+                  <NvIcon name="check" size={13} inline={false} />
+                  {ar ? "ما تطبّقه المنصة" : "What the platform applies"}
+                </span>
+                <p style={{ margin: 0, fontSize: 13.5, color: INK, lineHeight: 1.95 }}>{block.text}</p>
+              </section>
+            ) : (
+              <section key={i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {block.head ? <span style={{ fontSize: 12, fontWeight: 700, color: "var(--nv-ink2)" }}>{block.head}</span> : null}
+                <p style={{ margin: 0, fontSize: 14.5, color: INK, lineHeight: 2.05, paddingInlineStart: 14, borderInlineStart: "3px solid var(--nv-ok-line)", whiteSpace: "pre-wrap" }}>{block.text}</p>
+              </section>
+            )
+          )) : (
+            <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.8 }}>
+              {ar ? "النص الكامل في المصدر الرسمي أدناه." : "The full text is at the official source below."}
+            </p>
+          )}
+        </div>
+        <div style={{ padding: "12px 22px 16px", borderTop: "1px solid var(--nv-line2, #EEF2F7)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11.5, color: MUTED }}>{ar ? "المصدر الرسمي" : "Official source"}</span>
+          <a href={sourceHref} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid var(--nv-line)", background: "var(--nv-card, #fff)", fontSize: 12, fontWeight: 600, color: GREEN, textDecoration: "none" }}>
+            {sourceLabel}
+            <span aria-hidden>{ar ? "↖" : "↗"}</span>
+          </a>
+        </div>
       </DialogContent>
     </Dialog>
   );
+}
+
+/**
+ * Splits a statute body into readable blocks: «quoted official text», a model article (heading line +
+ * text), and the platform's reading («ما تقرأه المنصة من هذا النص: …») as its own block.
+ */
+function statuteBlocks(body) {
+  const READ = /^(ما تقرأه المنصة من هذا النص|ما تقرؤه المنصة من هذا النص|What the platform reads from it)\s*:\s*/;
+  return String(body || "")
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      if (READ.test(part)) return { kind: "reading", text: part.replace(READ, "") };
+      const lines = part.split("\n");
+      if (lines.length > 1 && /^(النموذج الموحد م|Model Art)/.test(lines[0])) {
+        return { kind: "text", head: lines[0], text: lines.slice(1).join("\n") };
+      }
+      const text = part.replace(/^[«“]\s*/, "").replace(/\s*[»”]\.?$/, "");
+      return { kind: "text", head: "", text };
+    });
 }
 
 /** «المادة 109» as a quiet link that opens the official text; a product rule reads as plain text. */

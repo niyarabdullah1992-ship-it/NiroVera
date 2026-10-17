@@ -6,6 +6,7 @@ import { checkCheckInLeaveGate } from "@/lib/attendanceGate";
 import { attendanceOnDate, checkPunchRecordGate, toCloudAttendanceRow as punchCloudRow } from "@/lib/attendancePunch";
 import { updateCompany, getCompanyData, closeAttendanceDay } from "@/lib/store";
 import { getTodaysShift, lateMinutesFromScheduledStart } from "@/lib/attendanceDerivations";
+import { nursingHourOn } from "@/lib/dutyRequests";
 import { checkFlexBreakPunchGate } from "@/lib/shiftDerivations";
 import { closeDayBreaks } from "@/lib/actualDuty";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
@@ -183,9 +184,13 @@ export function localCheckIn(companyId, { employeeId, employeeName, stationId })
   if (!already.ok && already.error === "ALREADY_CHECKED_IN") throwGate(already);
   const shift = employee ? getTodaysShift(data, employee) : null;
   const now = new Date();
-  const late = shift?.start
+  const rawLate = shift?.start
     ? lateMinutesFromScheduledStart(now.getHours() * 60 + now.getMinutes(), shift.start, 0)
     : { lateMinutes: 0, status: "present" };
+  // Art. 154: arriving inside her nursing minutes at the start is not lateness.
+  const nursingStart = nursingHourOn(employee, date)?.startMinutes || 0;
+  const lateLeft = Math.max(0, (rawLate.lateMinutes || 0) - nursingStart);
+  const late = rawLate.status === "late" && !lateLeft ? { lateMinutes: 0, status: "present" } : { ...rawLate, lateMinutes: lateLeft };
   let saved = null;
   updateCompany(companyId, (d) => {
     const list = Array.isArray(d.personalAttendance) ? d.personalAttendance : [];

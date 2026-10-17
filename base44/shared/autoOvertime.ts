@@ -54,8 +54,9 @@ export function readDayOvertimeCore(input: {
   });
   if (!duty.ok) return { duty, auto: null };
   const capHours = ordinaryWeekCap(employee, company, dayKey, laborCalendar);
+  // Twin of the client: the Art. 154 nursing credit is work, never overtime — the core reads the punches.
   const auto = deriveAutoOvertimeCore({
-    workedMinutes: duty.workedMinutes,
+    workedMinutes: duty.workedMinutes - (duty.nursingCreditMinutes || 0),
     dayOvertimeMinutes: duty.overtimeMinutes,
     dayKind: duty.kind,
     holiday: duty.holiday,

@@ -86,6 +86,13 @@ const GLYPHS = {
   "checkbox-off": [["rect", { x: 3.5, y: 3.5, width: 17, height: 17, rx: 3.5 }]],
   // Prayer time — a crescent on the same 3px margin (timeline points, prayer-time hints).
   prayer: [["path", { d: "M19.5 14.6A8 8 0 1 1 9.4 4.5a6.4 6.4 0 0 0 10.1 10.1Z" }]],
+  // Nursing hour (Art. 154) — a feeding bottle on the same margin: teat, collar, body with two marks.
+  nursing: [
+    ["path", { d: "M10.5 6 11 3.5h2l.5 2.5" }],
+    ["path", { d: "M9 6h6" }],
+    ["path", { d: "M9.5 6 8 9v9.5A2.5 2.5 0 0 0 10.5 21h3a2.5 2.5 0 0 0 2.5-2.5V9l-1.5-3" }],
+    ["path", { d: "M8 13h3M8 16.5h3" }],
+  ],
 };
 
 /** Arabic names, in sheet order (the rights scale first — it is the reference). */
@@ -108,6 +115,7 @@ export const NV_ICON_LABELS = {
   "checkbox-on": "محدد",
   "checkbox-off": "غير محدد",
   prayer: "وقت الصلاة",
+  nursing: "ساعة الرضاعة",
 };
 
 export const NV_ICON_NAMES = Object.keys(NV_ICON_LABELS);

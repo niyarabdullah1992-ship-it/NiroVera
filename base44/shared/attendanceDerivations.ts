@@ -4,6 +4,7 @@
  */
 
 import { addLaborDays, laborDayKey, ruleValue } from "./laborRules.ts";
+import { nursingCreditOf, nursingHourOn } from "./nursingHour.ts";
 
 export const GRACE_MINUTES = ruleValue("hours.grace.minutes");
 export const SHIFT_HOURS = ruleValue("hours.shift.ordinaryHours");
@@ -113,7 +114,7 @@ export function formatMinutes(total: number) {
  */
 export function deriveDayStatus(
   punch: PunchLike,
-  opts: { shiftStart?: string; graceMinutes?: number; shiftMinutes?: number } = {},
+  opts: { shiftStart?: string; graceMinutes?: number; shiftMinutes?: number; nursing?: any; employee?: any } = {},
 ) {
   const grace = opts.graceMinutes ?? GRACE_MINUTES;
   const shiftMin = opts.shiftMinutes ?? SHIFT_MINUTES;
@@ -165,14 +166,19 @@ export function deriveDayStatus(
     };
   }
 
-  const lateMinutes = Math.max(0, inM - shiftStart - grace);
+  // Art. 154: inside her nursing minutes at the start she is not late; the minutes she was away
+  // inside them (start / end) are work — ordinary, never overtime (overtime reads the punches alone).
+  const nursing = opts.nursing !== undefined ? opts.nursing : (opts.employee ? nursingHourOn(opts.employee, String(punch.date || "").slice(0, 10)) : null);
+  const lateMinutes = Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
   const late = lateMinutes > 0;
   const openCheckout = outM == null;
   let ordinaryMinutes = 0;
   let overtimeMinutes = 0;
+  let nursingCreditMinutes = 0;
   if (outM != null) {
     const worked = Math.max(0, outM - inM);
-    ordinaryMinutes = Math.min(shiftMin, worked);
+    nursingCreditMinutes = nursingCreditOf(nursing, { inMinutes: inM, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes: shiftMin }).minutes;
+    ordinaryMinutes = Math.min(shiftMin, worked + nursingCreditMinutes);
     overtimeMinutes = Math.max(0, worked - shiftMin);
   }
 
@@ -186,6 +192,7 @@ export function deriveDayStatus(
     late,
     openCheckout,
     excused: false,
+    nursingCreditMinutes,
     shiftEndMinutes: shiftEnd,
   };
 }
@@ -418,9 +425,9 @@ export type RosterRow = PunchLike & {
 
 export function buildRosterRow(
   punch: PunchLike,
-  opts: { geofenceOn?: boolean; shiftStart?: string } = {},
+  opts: { geofenceOn?: boolean; shiftStart?: string; employee?: any; nursing?: any } = {},
 ): RosterRow {
-  const day = deriveDayStatus(punch, { shiftStart: opts.shiftStart });
+  const day = deriveDayStatus(punch, { shiftStart: opts.shiftStart, employee: opts.employee, nursing: opts.nursing });
   let status = day.status;
   const geo = deriveGeoVerdict(punch, opts.geofenceOn !== false);
   if (geo === GEO_VERDICT.rejected_outside && status !== ATT_STATUS.leave && status !== ATT_STATUS.rest) {

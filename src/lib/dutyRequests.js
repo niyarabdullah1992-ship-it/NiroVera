@@ -6,7 +6,9 @@
  *   إبلاغ حمل (pregnancy_notice) — Decision 18632: no night assignment in the 24 weeks before birth.
  *   بلاغ عمل مكشوف (heat_report) — Decision 3337: exposed work in the ban hours is a violation.
  * Pure helpers only — store.js applies approvals, myDutyDay reads the excusals.
+ * Server twin of the nursing reading: base44/shared/nursingHour.ts.
  */
+import { ruleValue } from "./laborRules.js";
 
 export const DUTY_REQUEST_TYPES = ["permission", "shift_change", "nursing_hour", "pregnancy_notice", "heat_report", "family_duties"];
 export const NURSING_HOUR_MAX_MINUTES = 60;
@@ -126,29 +128,70 @@ export function nursingSplitLabel(split, ar = true) {
   return parts.join(ar ? " + " : " + ");
 }
 
-/** Art. 154 — the nursing hour on file for that day: { placement, minutes, split } or null. */
+/**
+ * Art. 154 — the nursing hour on file for that day: { placement, minutes, startMinutes, midMinutes,
+ * endMinutes, split, from, until } or null. Active when from ≤ day ≤ until; an open «until» stops at
+ * 24 months from the child's birth (Regs Art. 31(1)). Minutes never pass the catalog's daily figure
+ * (leave.nursing.dailyMinutes) — the start part first, then the end, then the middle.
+ */
 export function nursingHourOn(employee, dateKey) {
   const fromFile = employee?.profile?.nursingHour;
   const rows = [
     ...(fromFile ? [fromFile] : []),
     ...(employee?.otherRequests || [])
       .filter((row) => row?.type === "nursing_hour" && approved(row))
-      .map((row) => ({ placement: row.placement, nursingSplit: row.nursingSplit, from: row.date, until: row.until })),
+      .map((row) => ({ placement: row.placement, nursingSplit: row.nursingSplit, childBirthDate: row.childBirthDate, from: row.date, until: row.until })),
   ];
+  const day = String(dateKey || "").slice(0, 10);
+  const untilOf = (row) => String(row?.until || "").slice(0, 10) || nursingRightUntil(row?.childBirthDate);
   const hit = rows.find((row) => {
     const from = String(row?.from || "").slice(0, 10);
-    const until = String(row?.until || "").slice(0, 10);
-    return (!from || dateKey >= from) && (!until || dateKey <= until);
+    const until = untilOf(row);
+    return (!from || day >= from) && (!until || day <= until);
   });
   if (!hit) return null;
   const split = nursingSplitOf(hit);
+  const cap = Number(ruleValue("leave.nursing.dailyMinutes", day)) || NURSING_HOUR_MAX_MINUTES;
+  const startMinutes = Math.min(cap, split.start);
+  const endMinutes = Math.min(cap - startMinutes, split.end);
+  const midMinutes = Math.min(cap - startMinutes - endMinutes, split.mid);
+  const minutes = startMinutes + endMinutes + midMinutes;
+  if (!minutes) return null;
   return {
     placement: split.start ? "start" : split.end ? "end" : "mid",
-    minutes: Math.min(NURSING_HOUR_MAX_MINUTES, nursingSplitTotal(split)),
-    startMinutes: split.start,
-    endMinutes: split.end,
+    minutes,
+    startMinutes,
+    midMinutes,
+    endMinutes,
     split,
+    from: String(hit.from || "").slice(0, 10),
+    until: untilOf(hit),
   };
+}
+
+/**
+ * Art. 154 — the nursing minutes she was away for, credited as actual work (never more than her
+ * minutes that day). Clocks are minutes on the shift day's clock: the start part covers a late
+ * arrival up to its minutes, the end part an early checkout, the middle part what is still short
+ * of the roster after both. Returns { minutes, start, mid, end }.
+ */
+export function nursingCreditOf(nursing, { inMinutes, outMinutes, shiftStart, shiftEnd, workedMinutes = 0, rosteredMinutes = 0 } = {}) {
+  const none = { minutes: 0, start: 0, mid: 0, end: 0 };
+  if (!nursing || inMinutes == null || outMinutes == null || shiftStart == null || shiftEnd == null) return none;
+  const start = Math.min(nursing.startMinutes || 0, Math.max(0, inMinutes - shiftStart));
+  const end = Math.min(nursing.endMinutes || 0, Math.max(0, shiftEnd - outMinutes));
+  const mid = Math.min(nursing.midMinutes || 0, Math.max(0, rosteredMinutes - workedMinutes - start - end));
+  const minutes = Math.min(nursing.minutes || 0, start + mid + end);
+  return { minutes, start, mid, end };
+}
+
+/** The nursing periods of the day as clocks on the shift: [{ part, from, to }] in minutes (start / end only). */
+export function nursingWindowsOf(nursing, shiftStart, shiftEnd) {
+  if (!nursing || shiftStart == null || shiftEnd == null) return [];
+  const out = [];
+  if (nursing.startMinutes) out.push({ part: "start", from: shiftStart, to: shiftStart + nursing.startMinutes });
+  if (nursing.endMinutes) out.push({ part: "end", from: shiftEnd - nursing.endMinutes, to: shiftEnd });
+  return out;
 }
 
 /**

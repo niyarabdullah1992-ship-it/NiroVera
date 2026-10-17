@@ -8,6 +8,7 @@ import {
 import { validateAttendanceRequest, validationFailed } from "../../shared/proofCycleSchemas.ts";
 import { checkAssumedBreakGate, checkFlexBreakPunchGate, resolveFlexDayBreaks } from "../../shared/shiftDerivations.ts";
 import { readDayOvertimeCore, weekKeysOf, weekOrdinaryBeforeCore } from "../../shared/autoOvertime.ts";
+import { nursingEndExcuse, nursingStartExcuse } from "../../shared/nursingHour.ts";
 
 const BREAK_ACTIONS = ["breakStart", "breakEnd", "reviewLateReturn"];
 const BREAKS_COLUMN_HINT = "ALTER TABLE attendance ADD COLUMN IF NOT EXISTS breaks jsonb DEFAULT '[]'::jsonb;";
@@ -472,7 +473,8 @@ Deno.serve(async (req) => {
       const startMinutes = toMinutes(scheduledShift.start);
       if (startMinutes == null) return Response.json({ error: "NOT_SCHEDULED" }, { status: 400 });
       const nowMinutes = riyadhMinutes();
-      const lateMinutes = Math.max(0, nowMinutes - startMinutes);
+      // Art. 154: arriving inside her nursing minutes at the start is not lateness (shared twin).
+      const lateMinutes = Math.max(0, nowMinutes - startMinutes - nursingStartExcuse(empsForLeave[0] || null, date));
       const timelyStatus = lateMinutes > 0 ? "late" : "present";
       // «لا يُحسب غياب بلا سجل»: تعذّر تحديد الموقع (خارج النطاق أو قياس غير حاسم)
       // لا يُنتج غياباً موثّقاً، بل حالة معلّقة تنتظر مراجعة المشرف.
@@ -572,7 +574,9 @@ Deno.serve(async (req) => {
       const nowMinutes = riyadhMinutes();
       const scheduledOut = await getScheduledShift(auth.companyId, employeeId);
       const shiftEndMinutes = toMinutes(scheduledOut?.end || shiftEnd);
-      const earlyCheckout = shiftEndMinutes != null && nowMinutes < shiftEndMinutes;
+      // Art. 154: leaving inside her nursing minutes at the end is not an early checkout (shared twin).
+      const outEmployee = (await base44.asServiceRole.entities.Employee.filter({ companyId: auth.companyId, employeeId }))[0] || null;
+      const earlyCheckout = shiftEndMinutes != null && nowMinutes < shiftEndMinutes - nursingEndExcuse(outEmployee, date);
       // «راحة مرنة ببصمة»: an open break ends at the checkout; an unpunched one is stored as assumed —
       // where the card placed it (nearest prayer) when that placement passes the gate, else the window's middle.
       const closedBreaks = scheduledOut?.breakMode === "flex"

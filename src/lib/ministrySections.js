@@ -31,7 +31,7 @@ import { perfMinistryRows, perfReportsFor } from "./perfReport.js";
 import { isHeatBanDate } from "./contractLawDerivations.js";
 import { regulationOf } from "./workRegulation.js";
 import { disciplineRuleHint } from "./rightHints.disc.js";
-import { attendanceMinistryRows } from "./attendanceMinistryRows.js";
+import { attendanceMinistryRows, nursingActiveOn } from "./attendanceMinistryRows.js";
 
 /* ── statuses ─────────────────────────────────────────────────────────── */
 
@@ -639,7 +639,18 @@ const SECTIONS = {
       const one = (person) => attendanceMinistryRows({ d: data || {}, employee: person, today, ar, lane, prayers }).map((raw) => frameRow(raw, { lane, ar }));
       if (lane === "manage") {
         const list = (people || []).filter(Boolean);
-        return acrossPeople((list.length ? list : [employee || {}]).map(one), ar);
+        const rows = acrossPeople((list.length ? list : [employee || {}]).map(one), ar);
+        // Art. 154: «n عاملة مرضع في النطاق» — the nursing workers whose hour is active today.
+        const nursingCount = list.filter((person) => nursingActiveOn(person, today)).length;
+        return rows.map((row) => (row.key === "labour-154"
+          ? {
+            ...row,
+            title: T(ar, "ساعة الرضاعة — من ساعات العمل الفعلية، لا تأخر ولا انصراف مبكر ولا حسم", "The nursing hour — actual working time, no lateness, no early leave, no deduction"),
+            level: nursingCount ? "met" : "info",
+            status: levelStatus(nursingCount ? "met" : "info"),
+            pill: T(ar, `${nursingCount} عاملة مرضع في النطاق`, `${nursingCount} nursing worker(s) in scope`),
+          }
+          : row));
       }
       return one(employee || {});
     },

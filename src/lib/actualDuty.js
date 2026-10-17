@@ -7,6 +7,7 @@ import { art108Limits, hoursBasisOf, hoursPolicyOf, isEmployeeOffDay, ordinaryDa
 import { isOfficialHoliday } from "./ummAlQuraCalendar.js";
 import { actualShiftHours, isTwelveStayDuty, rosterBreakWindows } from "./shiftWeek.js";
 import { checkConsecutiveWorkGate, minutesBetween, resolveFlexDayBreaks, riyadhClockOf, shiftRestMinutes } from "./shiftDerivations.js";
+import { nursingCreditOf, nursingHourOn } from "./dutyRequests.js";
 
 /** "HH:MM", or an ISO instant read on the Riyadh clock → minutes after midnight. null when unreadable. */
 export function punchClockMinutes(value) {
@@ -126,6 +127,9 @@ function clock(mins) {
  *   otherwise what passes the day's ordinary cap (98 / 99 / Ramadan / Art. 108 category).
  * - Flags: presence > 12 h (Art. 101, or the Art. 108 ceiling), work > 10 h (Art. 106 / category),
  *   more than five hours without a rest (Art. 101, unless Art. 103 continuous work).
+ * - Art. 154: the nursing minutes she was away for (nursingCreditOf) are added to worked and ordinary
+ *   minutes (`nursingCreditMinutes`; `presenceWorkedMinutes` is the punches alone); overtime and the
+ *   Art. 106 flag read the punches alone, so nursing never makes overtime. Its start part is not lateness.
  */
 export function deriveActualDuty({
   checkIn,
@@ -182,10 +186,17 @@ export function deriveActualDuty({
     overtime = Math.max(0, worked - dayCapMinutes);
     kind = overtime ? "beyond_day_cap" : "";
   }
-  const ordinary = Math.max(0, worked - overtime);
   const grace = ruleValue("hours.grace.minutes", onDate) || 0;
   const shiftStart = shift?.start ? punchClockMinutes(shift.start) : null;
-  const lateMinutes = shiftStart == null ? 0 : Math.max(0, inM - shiftStart - grace);
+  const shiftEndRaw = shift?.end ? punchClockMinutes(shift.end) : null;
+  const shiftEnd = shiftStart == null || shiftEndRaw == null ? null : (shiftEndRaw <= shiftStart ? shiftEndRaw + 1440 : shiftEndRaw);
+  // Art. 154: the nursing hour on a rostered work day — its start part is not lateness, and the
+  // minutes she was away inside it count as actual work. Computed on the punches alone, so they
+  // never make overtime (overtime above is read on the minutes worked).
+  const nursing = shift && !holiday && !offDay ? nursingHourOn(employee, onDate) : null;
+  const credit = nursingCreditOf(nursing, { inMinutes: inM, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes });
+  const ordinary = Math.max(0, worked - overtime) + credit.minutes;
+  const lateMinutes = shiftStart == null ? 0 : Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
 
   const limits = art108Limits(employee, onDate, laborCalendar);
   const policy = hoursPolicyOf(company, employee);
@@ -232,7 +243,10 @@ export function deriveActualDuty({
     open: false,
     presenceMinutes: presence,
     restMinutes: Math.min(rest, presence),
-    workedMinutes: worked,
+    workedMinutes: worked + credit.minutes,
+    presenceWorkedMinutes: worked,
+    nursingCreditMinutes: credit.minutes,
+    ...(nursing ? { nursing: { start: credit.start, mid: credit.mid, end: credit.end, excusedStart: nursing.startMinutes, excusedEnd: nursing.endMinutes } } : {}),
     rosteredMinutes,
     ordinaryMinutes: ordinary,
     overtimeMinutes: overtime,

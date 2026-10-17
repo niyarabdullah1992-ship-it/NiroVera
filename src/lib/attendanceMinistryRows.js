@@ -6,7 +6,7 @@
  * Night (18632) is for reference on the employee lane and an obligation on management; official
  * holidays are folded into the overtime row (all of it overtime), never a row of their own.
  */
-import { citeRule, isRamadanDay, isRamadanHoursSubject, ruleValue } from "./laborRules.js";
+import { citeRule, explainRule, isRamadanDay, isRamadanHoursSubject, ruleValue } from "./laborRules.js";
 import { hoursPolicyOf, ordinaryWeekCap } from "./laborHoursPolicy.js";
 import { dayOvertimeFor } from "./autoOvertime.js";
 import { isHeatBanDate, heatBanWindow } from "./contractLawDerivations.js";
@@ -14,6 +14,8 @@ import { HEAT_BAN_DECISION } from "./heatBanDecision.js";
 import { isNightWorker } from "./decision18632.js";
 import { employeeShiftOnDay, weekDateKeys, weekRestDayCount } from "./shiftWeek.js";
 import { laborCalendarOf } from "./ummAlQuraCalendar.js";
+import { nursingHourOn } from "./dutyRequests.js";
+import { profileGender } from "./employeeProfileFields.js";
 
 const T = (ar, a, e) => (ar ? a : e);
 const hours1 = (minutes) => Math.round((Math.max(0, Number(minutes) || 0) / 60) * 10) / 10;
@@ -261,6 +263,11 @@ export function attendanceMinistryRows({ d, employee, today, ar = true, lane = "
     pill: inSeason ? T(ar, "يُنبَّه عند بدء الحظر", "Alerted when the ban starts") : T(ar, "خارج الموسم", "Off season"),
   });
 
+  // Art. 154 · Regs Art. 31 — the nursing hour: met while it is active on her file; for reference to
+  // other female workers; not shown on a man's panel. The management lane counts them (ministrySections).
+  const nursingRow = attendanceNursingRow({ employee, day, ar });
+  if (nursingRow) rows.push(nursingRow);
+
   // Prayer times — the branch's city, Umm al-Qura (reference; the employee lane only).
   if (!manage && prayers?.times) {
     rows.push({
@@ -274,4 +281,37 @@ export function attendanceMinistryRows({ d, employee, today, ar = true, lane = "
     });
   }
   return rows;
+}
+
+/** Is the Art. 154 nursing hour active on this file today? */
+export function nursingActiveOn(employee, today) {
+  return !!nursingHourOn(employee, String(today || "").slice(0, 10));
+}
+
+/**
+ * The Art. 154 row (with Regs Art. 31): «ساعة رضاعة حتى …» met when active; for reference to a female
+ * worker without one; null for anyone else, so a man's panel stays clear.
+ */
+export function attendanceNursingRow({ employee, day, ar = true } = {}) {
+  const nursing = nursingHourOn(employee, day);
+  const female = profileGender(employee?.profile) === "female";
+  if (!nursing && !female) return null;
+  const mins = ruleValue("leave.nursing.dailyMinutes", day);
+  const months = ruleValue("leave.nursing.regs31.cite", day);
+  const art = citeRule("leave.nursing.dailyMinutes", day)?.article || "";
+  const lawNote = citeRule("leave.nursing.dailyMinutes", day)?.[ar ? "hintAr" : "hintEn"] || "";
+  const regsNote = explainRule("leave.nursing.regs31.cite", day)?.[ar ? "hintAr" : "hintEn"] || "";
+  return {
+    key: "labour-154",
+    source: "labour",
+    badge: ar ? `م ${art} · اللائحة م31` : `Art. ${art} · Regs Art. 31`,
+    title: nursing
+      ? (nursing.until
+        ? T(ar, `ساعة رضاعة حتى \u2066${nursing.until}\u2069`, `Nursing hour until ${nursing.until}`)
+        : T(ar, "ساعة رضاعة على ملفك", "Nursing hour on your file"))
+      : T(ar, `ساعة رضاعة ${mins} دقيقة يومياً بعد إجازة الوضع، ${months} شهراً من الوضع`, `A ${mins}-minute nursing hour a day after maternity leave, for ${months} months from birth`),
+    note: [lawNote, regsNote].filter(Boolean).join(" "),
+    status: nursing ? "settled" : "void",
+    nursingActive: !!nursing,
+  };
 }

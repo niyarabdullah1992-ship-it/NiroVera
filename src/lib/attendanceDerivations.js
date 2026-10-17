@@ -5,6 +5,7 @@
 import { addLaborDays, laborDayKey, ruleValue } from "./laborRules.js";
 import { extraCoverageStationIds } from "./stationTree.js";
 import { toRiyadhDateKey } from "./riyadhDate.js";
+import { nursingCreditOf, nursingHourOn } from "./dutyRequests.js";
 
 const SHIFT_HM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -196,14 +197,19 @@ export function deriveDayStatus(punch, opts = {}) {
     };
   }
 
-  const lateMinutes = Math.max(0, inM - shiftStart - grace);
+  // Art. 154: inside her nursing minutes at the start she is not late; the minutes she was away
+  // inside them (start / end) are work — ordinary, never overtime (overtime reads the punches alone).
+  const nursing = opts.nursing !== undefined ? opts.nursing : (opts.employee ? nursingHourOn(opts.employee, String(punch.date || "").slice(0, 10)) : null);
+  const lateMinutes = Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
   const late = lateMinutes > 0;
   const openCheckout = outM == null;
   let ordinaryMinutes = 0;
   let overtimeMinutes = 0;
+  let nursingCreditMinutes = 0;
   if (outM != null) {
     const worked = Math.max(0, outM - inM);
-    ordinaryMinutes = Math.min(shiftMin, worked);
+    nursingCreditMinutes = nursingCreditOf(nursing, { inMinutes: inM, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes: shiftMin }).minutes;
+    ordinaryMinutes = Math.min(shiftMin, worked + nursingCreditMinutes);
     overtimeMinutes = Math.max(0, worked - shiftMin);
   }
 
@@ -217,6 +223,7 @@ export function deriveDayStatus(punch, opts = {}) {
     late,
     openCheckout,
     excused: false,
+    nursingCreditMinutes,
     shiftEndMinutes: shiftEnd,
   };
 }
@@ -492,7 +499,7 @@ export function overtimeYearUsageOutsideAssignments(otDecisions, employeeId, yea
 }
 
 export function buildRosterRow(punch, opts = {}) {
-  const day = deriveDayStatus(punch, { shiftStart: opts.shiftStart });
+  const day = deriveDayStatus(punch, { shiftStart: opts.shiftStart, employee: opts.employee, nursing: opts.nursing });
   let status = day.status;
   const geo = deriveGeoVerdict(punch, opts.geofenceOn !== false);
   if (geo === GEO_VERDICT.rejected_outside && status !== ATT_STATUS.leave && status !== ATT_STATUS.rest) {

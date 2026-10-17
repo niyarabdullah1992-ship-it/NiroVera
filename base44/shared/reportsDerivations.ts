@@ -6,6 +6,7 @@
 import { citeRule, ruleValue } from "./laborRules.ts";
 import { checkConsecutiveWorkGate, minutesBetween, resolveFlexDayBreaks, riyadhClockOf, shiftRestMinutes } from "./shiftDerivations.ts";
 import { isOfficialHolidayDay } from "./leaveDerivations.ts";
+import { nursingCreditOf, nursingHourOn } from "./nursingHour.ts";
 import { actualShiftHours, art108Limits, hoursBasisOf, hoursPolicyOf, isEmployeeOffDay, isTwelveStayDuty, ordinaryDayCap } from "./laborHoursPolicy.ts";
 
 export const GRACE_MINUTES = ruleValue("hours.grace.minutes");
@@ -285,7 +286,12 @@ export function deriveActualDutyCore(input: {
   else if (Number.isFinite(dayCapMinutes)) { overtime = Math.max(0, worked - dayCapMinutes); kind = overtime ? "beyond_day_cap" : ""; }
   const grace = ruleValue("hours.grace.minutes", onDate) || 0;
   const shiftStart = shift?.start ? punchClockMinutes(shift.start) : null;
-  const lateMinutes = shiftStart == null ? 0 : Math.max(0, inM - shiftStart - grace);
+  const shiftEndRaw = shift?.end ? punchClockMinutes(shift.end) : null;
+  const shiftEnd = shiftStart == null || shiftEndRaw == null ? null : (shiftEndRaw <= shiftStart ? shiftEndRaw + 1440 : shiftEndRaw);
+  // Twin of the client: Art. 154 nursing minutes — not lateness at the start, credited as work, never overtime.
+  const nursing = shift && !holiday && !offDay ? nursingHourOn(employee, onDate) : null;
+  const credit = nursingCreditOf(nursing, { inMinutes: inM, outMinutes: outM, shiftStart, shiftEnd, workedMinutes: worked, rosteredMinutes });
+  const lateMinutes = shiftStart == null ? 0 : Math.max(0, inM - shiftStart - grace - (nursing?.startMinutes || 0));
 
   const limits = art108Limits(employee, onDate, laborCalendar);
   const policy = hoursPolicyOf(company, employee);
@@ -330,9 +336,12 @@ export function deriveActualDutyCore(input: {
     open: false,
     presenceMinutes: presence,
     restMinutes: Math.min(rest, presence),
-    workedMinutes: worked,
+    workedMinutes: worked + credit.minutes,
+    presenceWorkedMinutes: worked,
+    nursingCreditMinutes: credit.minutes,
+    ...(nursing ? { nursing: { start: credit.start, mid: credit.mid, end: credit.end, excusedStart: nursing.startMinutes, excusedEnd: nursing.endMinutes } } : {}),
     rosteredMinutes,
-    ordinaryMinutes: Math.max(0, worked - overtime),
+    ordinaryMinutes: Math.max(0, worked - overtime) + credit.minutes,
     overtimeMinutes: overtime,
     lateMinutes,
     holiday,
@@ -407,7 +416,9 @@ export function deriveTimesheetDay(
   if (inM == null) return emptyDay(punch, "absent", { excused: !!punch.excusedAbsence, ...roster });
 
   const win = rosterWindow(shift);
-  const lateMinutes = win ? Math.max(0, inM - win.start - grace) : 0;
+  // Art. 154: her nursing minutes at the start are not lateness, at the end not an early checkout.
+  const nursingDay = win ? nursingHourOn(opts.employee, punch.date) : null;
+  const lateMinutes = win ? Math.max(0, inM - win.start - grace - (nursingDay?.startMinutes || 0)) : 0;
   const late = lateMinutes > 0;
   const openCheckout = outM == null;
   const base = {
@@ -436,7 +447,8 @@ export function deriveTimesheetDay(
     ...base,
     ordinaryMinutes: duty.ordinaryMinutes || 0,
     overtimeMinutes: duty.overtimeMinutes || 0,
-    earlyMinutes: win ? Math.max(0, win.end - outAbs) : 0,
+    earlyMinutes: win ? Math.max(0, win.end - outAbs - (nursingDay?.endMinutes || 0)) : 0,
+    nursingCreditMinutes: duty.nursingCreditMinutes || 0,
     presenceMinutes: duty.presenceMinutes || 0,
     restMinutes: duty.restMinutes || 0,
     workedMinutes: duty.workedMinutes || 0,

@@ -101,8 +101,10 @@ function readDay(d, employee, dayKey, row, priorOrdinary, calendar, rosterGiven)
   });
   if (!actual.ok) return { actual, auto: null };
   const capHours = ordinaryWeekCap(employee, d, dayKey, calendar);
+  // Art. 154: the nursing credit is actual work but never overtime — the core reads the punches alone
+  // and the week's running count excludes it; dayOvertimeFor adds it back to the ordinary minutes.
   const auto = deriveAutoOvertimeCore({
-    workedMinutes: actual.workedMinutes,
+    workedMinutes: actual.workedMinutes - (actual.nursingCreditMinutes || 0),
     dayOvertimeMinutes: actual.overtimeMinutes,
     dayKind: actual.kind,
     holiday: actual.holiday,
@@ -145,7 +147,8 @@ export function dayOvertimeFor(d, employee, dayKey, row, { weekRows = [], weekPr
     ok: true,
     actual,
     overtimeMinutes: auto.overtimeMinutes,
-    ordinaryMinutes: auto.ordinaryMinutes,
+    ordinaryMinutes: auto.ordinaryMinutes + (actual.nursingCreditMinutes || 0),
+    nursingCreditMinutes: actual.nursingCreditMinutes || 0,
     dayMinutes: auto.dayMinutes,
     weekMinutes: auto.weekMinutes,
     kind: auto.kind,

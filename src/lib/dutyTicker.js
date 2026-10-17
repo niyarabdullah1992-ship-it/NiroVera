@@ -12,7 +12,7 @@
  * tabs — send nothing twice. Figures come from laborRules through deriveDutyAlerts.
  */
 import { getTodaysShift } from "./attendanceDerivations.js";
-import { deriveDutyAlerts, dutyShiftKey, planDutyAlertNotices } from "./dutyAlerts.js";
+import { deriveDutyAlerts, dutyShiftKey, planDutyAlertNotices, planNursingExpiryNotices } from "./dutyAlerts.js";
 import { resolveDayBreaks, punchClockMinutes } from "./actualDuty.js";
 import { employeeShiftOnDay, rosterBreakWindows, sunExposureMark, SUN_FIELD } from "./shiftWeek.js";
 import { stationPrayerTimes } from "./prayerTimes.js";
@@ -150,15 +150,18 @@ export function countdownLabel(ms) {
  * `existingKeys` are the keys already on the bell (data.notifications); a plan is only ever new.
  */
 export function planDutyTick({ data, user, attendance, now = Date.now(), existingKeys, managerId = null, ar = true, shift } = {}) {
+  const keys = existingKeys || (data?.notifications || []).map((row) => row.key).filter(Boolean);
+  // Art. 154: the nursing right's end is told on any day, shift or not — the employee only.
+  const me = user?.id ? ((data?.employees || []).find((row) => String(row.id) === String(user.id)) || user) : null;
+  const expiry = me ? planNursingExpiryNotices({ employee: me, onDate: toRiyadhDateKey(new Date(toMs(now))), existingKeys: keys, ar }) : [];
   const ctx = dutyContextOf({ data, user, attendance, now, shift });
-  if (!ctx) return { ctx: null, duty: null, clock: null, plans: [] };
+  if (!ctx) return { ctx: null, duty: null, clock: null, plans: expiry };
   const duty = dutyAlertsOf(ctx, now);
   const clock = breakClockOf(ctx, now);
-  const keys = existingKeys || (data?.notifications || []).map((row) => row.key).filter(Boolean);
   const plans = duty.open
     ? planDutyAlertNotices({ alerts: duty.alerts, employee: ctx.employee, managerId, shiftKey: ctx.shiftKey, existingKeys: keys, ar, app: true })
     : [];
-  return { ctx, duty, clock, plans };
+  return { ctx, duty, clock, plans: [...expiry, ...plans] };
 }
 
 /** When the ticker should run next: the next minute boundary, or the break's end if sooner. */

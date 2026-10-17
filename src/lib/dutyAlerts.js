@@ -17,6 +17,9 @@
  * - heat_soon / heat_now — the 12:00–15:00 open-sun window, in season and only on exposed work (3337).
  * - ramadan_hours / ramadan_over — 6 h a day, 36 a week, for a worker recorded as Muslim (Art. 98).
  * - prayer_next — the next prayer inside the shift (info).
+ * - nursing_start — her Art. 154 nursing hour at the end of the shift has begun (end / split placement);
+ *   nursing_expiry — the right ends in 30 days or less, and on its last day (nursingExpiryAlert).
+ *   Both are the employee's own — never the manager's.
  * Every figure comes from laborRules (`ruleValue`); the lead times below are product choices.
  * A closed day returns the breaches its punches prove (`actualDutyBreaches`) with `recorded: true`.
  */
@@ -26,6 +29,7 @@ import { heatBanWindow, isHeatBanDate } from "./contractLawDerivations.js";
 import { HEAT_BAN_DECISION } from "./heatBanDecision.js";
 import { actualDutyBreaches, effectiveDutyBreaks, punchClockMinutes, resolveDayBreaks } from "./actualDuty.js";
 import { prayersInShift, rosterBreakWindows } from "./shiftWeek.js";
+import { nursingHourOn } from "./dutyRequests.js";
 
 /** Product lead times (minutes) — when a warning starts before its limit. Not statutory figures. */
 export const DUTY_ALERT_LEAD = Object.freeze({
@@ -49,14 +53,18 @@ export const DUTY_NOTIFY_APP = Object.freeze([
   "break_soon", "break_now", "break_over",
   "rest_5h_soon", "rest_5h_breach",
   "heat_now", "flex_window_closing", "flex_break_assumed_start", "flex_break_ended", "flex_break_over",
+  "nursing_start",
 ]);
+
+/** Days before the nursing right's last day when she is told it ends (product lead, not statutory). */
+export const NURSING_EXPIRY_LEAD_DAYS = 30;
 
 /** Which alert shows when several apply — breaches first, then what needs doing soonest. */
 const PRIORITY = [
   "presence_breach", "rest_5h_breach", "heat_now",
   "presence_soon", "rest_5h_soon", "flex_break_over", "flex_break_ended", "flex_window_closing", "break_soon",
-  "flex_break_running", "flex_break_assumed_start", "break_now", "heat_soon",
-  "ramadan_over", "flex_break_assumed", "flex_remaining", "break_over", "prayer_next", "ramadan_hours",
+  "flex_break_running", "flex_break_assumed_start", "break_now", "nursing_start", "heat_soon",
+  "ramadan_over", "flex_break_assumed", "flex_remaining", "break_over", "nursing_expiry", "prayer_next", "ramadan_hours",
 ];
 
 const hm = (mins) => {
@@ -421,6 +429,23 @@ export function deriveDutyAlerts({
     }
   }
 
+  /* ── Art. 154: her nursing hour at the end of the shift (end / split placement) ── */
+  const nursing = nursingHourOn(employee, onDate);
+  if (nursing?.endMinutes) {
+    const from = shiftEnd - nursing.endMinutes;
+    if (nowM >= from && nowM < shiftEnd) {
+      alerts.push(alert("nursing_start", "info", "leave.nursing.dailyMinutes", onDate, {
+        atMinutes: from,
+        meta: { start: hm(from), end: hm(shiftEnd), minutes: nursing.endMinutes },
+        textAr: `بدأت ساعة رضاعتك (م 154) — \u2066${hm(from)}–${hm(shiftEnd)}\u2069، تُحسب من ساعات العمل ولا يُخصم بها الأجر.`,
+        textEn: `Your nursing hour has started (Art. 154) — ${hm(from)}–${hm(shiftEnd)}, counted as work with no wage cut.`,
+        hint: { kind: "nursing", item: { birthDate: employee?.profile?.nursingHour?.childBirthDate || "" } },
+      }));
+    }
+  }
+  const expiry = nursingExpiryAlert(employee, onDate);
+  if (expiry) alerts.push(expiry);
+
   /* ── the next prayer inside the shift (info) ── */
   const next = prayersInShift(shift, prayers).find((p) => p.minutes > nowM);
   if (next) {
@@ -434,6 +459,44 @@ export function deriveDutyAlerts({
 
   alerts.sort((a, b) => PRIORITY.indexOf(a.id) - PRIORITY.indexOf(b.id));
   return { alerts, current: alerts[0] || null, exempt, open: true };
+}
+
+function daysBetween(a, b) {
+  const x = Date.parse(`${String(a).slice(0, 10)}T00:00:00Z`);
+  const y = Date.parse(`${String(b).slice(0, 10)}T00:00:00Z`);
+  return Number.isFinite(x) && Number.isFinite(y) ? Math.round((y - x) / 86400000) : NaN;
+}
+
+/**
+ * «ينتهي حق ساعة الرضاعة في …» — while the right is active and its last day is 30 days away or less
+ * (`meta.stage` "soon"), and on the last day itself ("day"). null otherwise.
+ */
+export function nursingExpiryAlert(employee, onDate) {
+  const nursing = nursingHourOn(employee, onDate);
+  if (!nursing?.until) return null;
+  const left = daysBetween(onDate, nursing.until);
+  if (!Number.isFinite(left) || left < 0 || left > NURSING_EXPIRY_LEAD_DAYS) return null;
+  const stage = left === 0 ? "day" : "soon";
+  return alert("nursing_expiry", "info", "leave.nursing.dailyMinutes", onDate, {
+    atMinutes: null,
+    meta: { until: nursing.until, stage, daysLeft: left },
+    textAr: `ينتهي حق ساعة الرضاعة في \u2066${nursing.until}\u2069`,
+    textEn: `Your nursing-hour right ends on ${nursing.until}`,
+    hint: { kind: "nursing", item: { birthDate: employee?.profile?.nursingHour?.childBirthDate || "" } },
+  });
+}
+
+/**
+ * The expiry notice for the bell — once 30 days ahead and once on the day, the employee only.
+ * Keyed to the right's last day, so a tick on any page, any day of the window, sends it once.
+ */
+export function planNursingExpiryNotices({ employee, onDate, existingKeys = [], ar = true } = {}) {
+  if (!employee?.id) return [];
+  const row = nursingExpiryAlert(employee, onDate);
+  if (!row) return [];
+  const key = `nursing-expiry:${employee.id}:${row.meta.until}:${row.meta.stage}`;
+  if ((existingKeys || []).includes(key)) return [];
+  return [{ userId: employee.id, key, text: ar ? row.textAr : row.textEn, to: "/app/requests", alertId: row.id, level: row.level, breach: false, live: true }];
 }
 
 /** One shift's identity for notice keys: employee × day × shift. */
@@ -503,6 +566,11 @@ function appNoticeText(row, ar) {
       : `${hours} hours in a row — your statutory rest is due now (${artEn}): at least ${meta.minRest} minutes, not counted as work.`;
   }
   if (row.id === "rest_5h_soon") return ar ? row.textAr : row.textEn;
+  if (row.id === "nursing_start") {
+    return ar
+      ? `بدأت ساعة رضاعتك (م 154) — \u2066${meta.start}–${meta.end}\u2069`
+      : `Your nursing hour has started (Art. 154) — ${meta.start}–${meta.end}`;
+  }
   return "";
 }
 
@@ -514,6 +582,7 @@ function appNoticeKey(shiftKey, row) {
   if (row.id === "flex_break_ended" || row.id === "flex_break_over") return `duty-alert:${shiftKey}:break_end:${meta.breakStart || ""}`;
   if (row.id === "flex_break_assumed_start") return `duty-alert:${shiftKey}:assumed_start:${meta.start || ""}`;
   if (row.id === "break_now" || row.id === "break_over") return `duty-alert:${shiftKey}:${row.id}:${meta.start || ""}`;
+  if (row.id === "nursing_start") return `duty-alert:${shiftKey}:nursing_start:${meta.start || ""}`;
   return `duty-alert:${shiftKey}:${row.id}`;
 }
 

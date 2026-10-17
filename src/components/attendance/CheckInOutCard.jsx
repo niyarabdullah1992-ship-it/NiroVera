@@ -39,7 +39,8 @@ import { stationPrayerTimes } from "@/lib/prayerTimes";
 import { deriveDutyAlerts, minutesAr } from "@/lib/dutyAlerts";
 import { breakClockOf, countdownLabel, dutyContextOf } from "@/lib/dutyTicker";
 import { autoOvertimeLine } from "@/lib/autoOvertime";
-import { resolveDayBreaks } from "@/lib/actualDuty";
+import { punchClockMinutes, resolveDayBreaks } from "@/lib/actualDuty";
+import { nursingCreditOf, nursingHourOn, nursingWindowsOf } from "@/lib/dutyRequests";
 import { checkFlexBreakPunchGate } from "@/lib/shiftDerivations";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 
@@ -158,7 +159,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const offDay = isStatutoryOffDay(currentUser, toRiyadhDateKey(), laborCalendarOf(data));
   const onLeaveToday = !!offDay;
   const onApprovedLeave = offDay?.kind === "approved";
-  const statusPill = attendance?.status ? STATUS_PILL[attendance.status] : null;
+  const statusPill = attendance?.status ? STATUS_PILL[attendance.status === "late" && nursingExcusedLate(currentUser, data, attendance, shift) ? "present" : attendance.status] : null;
   const elapsed = useMemo(
     () => elapsedLabel(attendance?.check_in_at, lang),
     [attendance?.check_in_at, lang, tick],
@@ -309,8 +310,20 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   const forgotten = isForgottenCheckout(shift, attendance, tick);
   const inTime = attendance?.check_in_at ? toWesternDigits(formatTime(attendance.check_in_at, format, "en-GB")) : "—";
   const outTime = attendance?.check_out_at ? toWesternDigits(formatTime(attendance.check_out_at, format, "en-GB")) : "—";
-  const lateMinutes = Number(attendance?.late_minutes || attendance?.lateMinutes || 0);
-  const isLate = attendance?.status === "late" || lateMinutes > 0;
+  // Art. 154: arriving inside her nursing minutes at the start is on time — read from the punch clock,
+  // so a row stored before the excuse (late) and one stored after it (present) read the same.
+  const nursingEmployee = (data?.employees || []).find((row) => String(row.id) === String(currentUser?.id)) || currentUser;
+  const nursingToday = shift ? nursingHourOn(nursingEmployee, String(attendance?.date || toRiyadhDateKey()).slice(0, 10)) : null;
+  const shiftStartMin = shift?.start ? punchClockMinutes(shift.start) : null;
+  const shiftEndMin = shift?.end && shiftStartMin != null ? (() => { const e = punchClockMinutes(shift.end); return e <= shiftStartMin ? e + 1440 : e; })() : null;
+  const inClockMin = attendance?.check_in_at ? punchClockMinutes(attendance.check_in_at) : null;
+  const storedLate = Number(attendance?.late_minutes || attendance?.lateMinutes || 0);
+  const afterStart = nursingToday?.startMinutes && inClockMin != null && shiftStartMin != null ? Math.max(0, inClockMin - shiftStartMin) : 0;
+  const inNursing = !!nursingToday?.startMinutes && afterStart > 0 && afterStart <= nursingToday.startMinutes;
+  const lateMinutes = nursingToday?.startMinutes && inClockMin != null && shiftStartMin != null
+    ? Math.max(0, afterStart - nursingToday.startMinutes)
+    : storedLate;
+  const isLate = !inNursing && (lateMinutes > 0 || (attendance?.status === "late" && !nursingToday?.startMinutes));
   const punchBlocked = loading || (phase === "awaiting_in" && (scheduleBlocks || onLeaveToday)) || phase === "done";
 
   const punchButton = (action, label) => (
@@ -545,7 +558,22 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
     ? `${shift.label || (ar ? "وردية" : "Shift")} · \u2066${startClock}–${endClock}\u2069`
     : (ar ? "لا وردية منشورة" : "No published shift");
   const band = breakBand(dutyShift, dutyDay);
-  const worked = workedClock(attendance?.check_in_at, attendance?.check_out_at, tick, band, flexOn ? flexDay : null);
+  const workedRaw = workedClock(attendance?.check_in_at, attendance?.check_out_at, tick, band, flexOn ? flexDay : null);
+  // Art. 154: the nursing minutes she was away for count as work — the start part from the check-in,
+  // the end and middle parts once the day closes. Never overtime (the day's close reads the punches).
+  const outClockMin = attendance?.check_out_at ? punchClockMinutes(attendance.check_out_at) : null;
+  const nursingCredit = nursingToday && inClockMin != null && shiftStartMin != null && shiftEndMin != null
+    ? nursingCreditOf(nursingToday, {
+      inMinutes: inClockMin,
+      outMinutes: outClockMin == null ? shiftEndMin : (outClockMin < inClockMin ? outClockMin + 1440 : outClockMin),
+      shiftStart: shiftStartMin,
+      shiftEnd: shiftEndMin,
+      workedMinutes: outClockMin == null ? Infinity : workedRaw.minutes,
+      rosteredMinutes: Math.max(0, (band?.targetMin || 0) - (band?.rest || 0)),
+    })
+    : { minutes: 0 };
+  const workedMin = workedRaw.minutes + (nursingCredit.minutes || 0);
+  const worked = { minutes: workedMin, label: `${Math.floor(workedMin / 60)}:${String(workedMin % 60).padStart(2, "0")}` };
   const targetLabel = band?.targetLabel || "8:00";
   const dayPct = Math.min(100, Math.round((worked.minutes / (band?.targetMin || 480)) * 100));
   const inn = phase !== "awaiting_in";
@@ -560,7 +588,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           ? (ar ? `حضرت متأخراً ${lateMinutes || "—"} دقيقة — يُحسب من الجدول المنشور` : `Late by ${lateMinutes || "—"} min — measured from the published rota`)
           : done
             ? (ar ? `اكتمل اليوم · ${worked.label}` : `Day complete · ${worked.label}`)
-            : (ar ? "حضرت في الوقت" : "Checked in on time");
+            : inNursing
+              ? (ar ? "حضرت في الوقت — ضمن ساعة الرضاعة" : "On time — inside your nursing hour")
+              : (ar ? "حضرت في الوقت" : "Checked in on time");
   const statusColor = (!inn || (onLeaveToday && !inn))
     ? "var(--nv-muted)"
     : isLate
@@ -628,7 +658,11 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
           state: inn ? (isLate ? "late" : "done") : (phase === "awaiting_in" && !punchBlocked ? "now" : "wait"),
           label: ar ? "بصمة الحضور" : "Check-in",
           note: inn
-            ? (isLate ? (ar ? `متأخر ${lateMinutes || "—"} دقيقة` : `Late ${lateMinutes || "—"} min`) : (ar ? "في الوقت" : "On time"))
+            ? (isLate
+              ? (ar ? `متأخر ${lateMinutes || "—"} دقيقة` : `Late ${lateMinutes || "—"} min`)
+              : inNursing
+                ? (ar ? "في الوقت — ضمن ساعة الرضاعة" : "On time — inside your nursing hour")
+                : (ar ? "في الوقت" : "On time"))
             : (ar ? "بانتظار ضغطتك" : "Waiting for your tap"),
           value: inn ? inTime : "—",
           hint: inn && isLate && lateMinutes ? attRightHint("lateness", { date: toRiyadhDateKey(), minutes: lateMinutes }, { view: "employee", ar }) : null,
@@ -695,6 +729,35 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
         : `No more than ${consecMax} hours in a row — your rest (at least ${restMin} min) starts before this time`,
       hint: attRightHint("rest", {}, { view: "employee", ar }),
     }, markAt);
+  }
+  // Art. 154: her nursing hour in time order — counted as actual work, no wage cut, until its last day.
+  if (nursingToday && band) {
+    const nursingCite = citeRule("leave.nursing.dailyMinutes", dutyDay);
+    const clockAt = (m) => `${String(Math.floor((((m % 1440) + 1440) % 1440) / 60)).padStart(2, "0")}:${String((((m % 1440) + 1440) % 1440) % 60).padStart(2, "0")}`;
+    const untilTxt = nursingToday.until ? `\u2066${toWesternDigits(nursingToday.until)}\u2069` : "";
+    const nursingNote = ar
+      ? `تُحسب من ساعات العمل الفعلية ولا يُخصم بها الأجر${untilTxt ? ` — حتى\u00A0${untilTxt}` : ""}`
+      : `Counted as actual working time, no wage cut${untilTxt ? ` — until\u00A0${untilTxt}` : ""}`;
+    const nursingHint = attRightHint("nursing", { birthDate: nursingEmployee?.profile?.nursingHour?.childBirthDate || "", nurseryOnSite: hoursPolicyOf(data).nurseryOnSite === true }, { view: "employee", ar });
+    const parts = nursingWindowsOf(nursingToday, band.start, band.start + band.targetMin);
+    if (nursingToday.midMinutes) parts.push({ part: "mid", from: band.start + Math.round(band.targetMin / 2), to: null });
+    for (const part of parts) {
+      const point = {
+        key: `nursing-${part.part}`,
+        kind: "nursing",
+        at: part.from,
+        label: ar
+          ? `ساعة الرضاعة${parts.length > 1 ? (part.part === "start" ? " · أول الدوام" : part.part === "end" ? " · آخر الدوام" : " · وسط الدوام") : ""}`
+          : `Nursing hour${parts.length > 1 ? ` · ${part.part}` : ""}`,
+        value: part.to == null ? (ar ? `${nursingToday.midMinutes} د` : `${nursingToday.midMinutes} min`) : `${clockAt(part.from)}–${clockAt(part.to)}`,
+        badge: lawBadge(nursingCite),
+        note: nursingNote,
+        hint: nursingHint,
+      };
+      // The start part opens with the shift — it sits before the check-in it covers.
+      if (part.part === "start") steps.splice(1, 0, point);
+      else placeByTime(point, part.from);
+    }
   }
 
   return (
@@ -852,7 +915,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               style={{ display: "grid", gridTemplateColumns: "16px minmax(0,1fr) auto", gap: 8, alignItems: "start", padding: "8px 0", borderBottom: "1px solid var(--nv-line2, #EEF1EF)" }}
             >
               <span aria-hidden style={{ display: "inline-flex", paddingTop: 2, color: currentAlert.breach ? "var(--nv-warn-ink)" : "var(--nv-muted)" }}>
-                <NvIcon name={currentAlert.breach ? "warning" : currentAlert.id === "prayer_next" ? "prayer" : "clock"} size={14} inline={false} />
+                <NvIcon name={currentAlert.breach ? "warning" : currentAlert.id === "prayer_next" ? "prayer" : String(currentAlert.id).startsWith("nursing_") ? "nursing" : "clock"} size={14} inline={false} />
               </span>
               <span style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
                 <span style={{ fontSize: 12, lineHeight: 1.7, fontWeight: currentAlert.breach ? 700 : 500, color: currentAlert.breach ? "var(--nv-warn-ink)" : "var(--nv-ink2)" }}>
@@ -869,12 +932,12 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             <ol className="nv-punch-steps" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column" }}>
               {steps.map((step, index) => {
                 const last = index === steps.length - 1;
-                if (step.kind === "prayer" || step.kind === "limit") {
+                if (step.kind === "prayer" || step.kind === "limit" || step.kind === "nursing") {
                   return (
                     <li key={step.key} data-step={step.key} data-state={step.kind} style={{ display: "grid", gridTemplateColumns: "22px minmax(0,1fr) auto", gap: 12, alignItems: "start", position: "relative", paddingBottom: last ? 0 : 12 }}>
                       {!last ? <span aria-hidden style={{ position: "absolute", insetInlineStart: 10, top: 18, bottom: 0, width: 2, background: "var(--nv-line2, #EEF1EF)", borderRadius: 2 }} /> : null}
-                      <span aria-hidden style={{ width: 22, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, color: step.kind === "limit" ? "var(--nv-ink2)" : "var(--nv-muted)", background: "var(--nv-card)" }}>
-                        <NvIcon name={step.kind === "limit" ? "clock" : "prayer"} size={12} inline={false} />
+                      <span aria-hidden style={{ width: 22, height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1, color: step.kind === "limit" ? "var(--nv-ink2)" : step.kind === "nursing" ? "var(--nv-ok-ink)" : "var(--nv-muted)", background: "var(--nv-card)" }}>
+                        <NvIcon name={step.kind === "limit" ? "clock" : step.kind === "nursing" ? "nursing" : "prayer"} size={12} inline={false} />
                       </span>
                       <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
@@ -1016,6 +1079,13 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
                 : band?.label
                   ? (ar ? "الجزء المخطّط هو الراحة — لا تُحتسب ساعات عمل." : "The hatched part is the break — not counted as work.")
                   : (ar ? "راحة الوردية تُخصم من المنجز" : "Shift rest is excluded from worked time")}
+              {nursingCredit.minutes ? (
+                <span data-nursing-credit={nursingCredit.minutes}>
+                  {ar ? " · يشمل ساعة الرضاعة " : " · includes the nursing hour "}
+                  <span dir="ltr" style={{ ...MONO, color: "var(--nv-ink)" }}>{nursingCredit.minutes}</span>
+                  {ar ? " د (م 154)" : " min (Art. 154)"}
+                </span>
+              ) : null}
             </span>
           </div>
         </div>
@@ -1101,6 +1171,16 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
       ) : null}
     </section>
   );
+}
+
+/** A stored «late» row that sits inside her Art. 154 nursing minutes at the start (the compact card). */
+function nursingExcusedLate(user, data, attendance, shift) {
+  if (!attendance?.check_in_at || !shift?.start) return false;
+  const employee = (data?.employees || []).find((row) => String(row.id) === String(user?.id)) || user;
+  const allow = nursingHourOn(employee, String(attendance.date || toRiyadhDateKey()).slice(0, 10))?.startMinutes || 0;
+  const start = punchClockMinutes(shift.start);
+  const inM = punchClockMinutes(attendance.check_in_at);
+  return !!allow && start != null && inM != null && inM - start <= allow;
 }
 
 function parseHm(value) {

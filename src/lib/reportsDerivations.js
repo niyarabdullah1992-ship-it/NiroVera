@@ -4,6 +4,7 @@
 
 import { ruleValue } from "./laborRules.js";
 import { deriveActualDuty, punchClockMinutes } from "./actualDuty.js";
+import { nursingHourOn } from "./dutyRequests.js";
 import { rosterShiftFor } from "./otDecisionPlan.js";
 import { laborCalendarOf } from "./ummAlQuraCalendar.js";
 
@@ -197,7 +198,9 @@ export function deriveTimesheetDay(punch, opts = {}) {
   if (inM == null) return emptyDay(punch, "absent", { excused: !!punch.excusedAbsence, ...roster });
 
   const win = rosterWindow(shift);
-  const lateMinutes = win ? Math.max(0, inM - win.start - grace) : 0;
+  // Art. 154: her nursing minutes at the start are not lateness, at the end not an early checkout.
+  const nursingDay = win ? nursingHourOn(opts.employee, punch.date) : null;
+  const lateMinutes = win ? Math.max(0, inM - win.start - grace - (nursingDay?.startMinutes || 0)) : 0;
   const late = lateMinutes > 0;
   const openCheckout = outM == null;
   const base = {
@@ -224,7 +227,7 @@ export function deriveTimesheetDay(punch, opts = {}) {
     breaks: punch.breaks ?? opts.breaks,
   });
   const outAbs = outM <= inM ? outM + 1440 : outM;
-  const earlyMinutes = win ? Math.max(0, win.end - outAbs) : 0;
+  const earlyMinutes = win ? Math.max(0, win.end - outAbs - (nursingDay?.endMinutes || 0)) : 0;
   return {
     ...base,
     ordinaryMinutes: duty.ordinaryMinutes || 0,
@@ -233,6 +236,7 @@ export function deriveTimesheetDay(punch, opts = {}) {
     presenceMinutes: duty.presenceMinutes || 0,
     restMinutes: duty.restMinutes || 0,
     workedMinutes: duty.workedMinutes || 0,
+    nursingCreditMinutes: duty.nursingCreditMinutes || 0,
     rosteredMinutes: duty.rosteredMinutes || 0,
     overtimeKind: duty.kind || "",
     holiday: !!duty.holiday,

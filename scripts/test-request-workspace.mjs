@@ -1334,7 +1334,7 @@ assert.match(workspaceSrc, /RequestDecisionComposer/, "إدارة decision cell 
 assert.match(decisionSrc, /يُحفظ في سجل التدقيق/, "refuse writes a named reason on the audit trail");
 assert.match(decisionSrc, /<textarea/, "refusal reason is a textarea, required only to refuse or return");
 assert.match(decisionSrc, /أرفق النسخة المختومة/, "issued copy uses an Arabic attachment control");
-assert.match(decisionSrc, /nv-req-file-native/, "the native file input stays off-screen");
+assert.match(decisionSrc, /AttachDropzone/, "the stamped copy uses the one طلباتي dropzone (native input off-screen inside it)");
 assert.doesNotMatch(decisionSrc, /Choose File/, "the decision cell does not show the English file chrome");
 assert.match(decisionSrc, /اعتمد وأصدر الملف/, "primary outcome issues the file");
 assert.match(decisionSrc, /أعده للتعديل/, "secondary outcome returns the request");

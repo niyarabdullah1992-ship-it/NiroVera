@@ -1,5 +1,6 @@
-import React, { useRef } from "react";
+import React from "react";
 import PlatformDateField from "@/components/shared/PlatformDateField";
+import AttachDropzone from "@/components/shared/AttachDropzone";
 
 /**
  * Calm RTL decision cell for إدارة.
@@ -41,14 +42,17 @@ export default function RequestDecisionComposer({
   verified = false,
   onVerified,
 }) {
-  const fileRef = useRef(null);
   const approveOk = !!approveGate.ok && !busy && !fileBusy;
-  const attachLabel = file?.name
-    ? (ar ? "تغيير النسخة المختومة" : "Change the stamped copy")
-    : (fileLabel || (ar ? "أرفق النسخة المختومة" : "Attach the stamped copy"));
   const hint = fileHint || (fileOptional
     ? (ar ? "اختياري · PDF أو صورة" : "Optional · PDF or image")
     : (ar ? "مطلوب قبل الاعتماد · PDF أو صورة" : "Required before approval · PDF or image"));
+  // The dropzone already says «اختياري/مطلوب» and «PDF أو صورة · حتى 25 ميجابايت» — keep only the rest.
+  const dropHint = String(hint)
+    .replace(/(PDF أو صورة|PDF or image)\.?/g, "·")
+    .replace(/^(اختياري|مطلوب|Optional|Required)(?=[\s·—]|$)/, "")
+    .replace(/\s*·\s*(·\s*)*/g, " · ")
+    .replace(/^[\s·—]+|[\s·—]+$/g, "")
+    .trim();
 
   const gateNotes = [
     !approveGate.ok ? { tone: "stop", text: ar ? approveGate.reason : approveGate.reasonEn } : null,
@@ -94,34 +98,20 @@ export default function RequestDecisionComposer({
           <div className="nv-dec-side">
             {showFile ? (
               <div className="nv-dec-file">
-                <span>{fileTitle || (fileOptional ? (ar ? "النسخة المختومة" : "Stamped copy") : (ar ? "ملف الموافقة" : "Consent letter"))} <em>{hint}</em></span>
-                <input
-                  ref={fileRef}
-                  className="nv-req-file-native"
-                  type="file"
+                <span>{fileTitle || (fileOptional ? (ar ? "النسخة المختومة" : "Stamped copy") : (ar ? "ملف الموافقة" : "Consent letter"))}</span>
+                <AttachDropzone
+                  ar={ar}
                   accept={accept}
-                  tabIndex={-1}
-                  aria-hidden="true"
-                  onChange={(event) => {
-                    onPickFile?.(event.target.files?.[0] || null);
-                    event.target.value = "";
-                  }}
+                  required={!fileOptional}
+                  busy={fileBusy}
+                  disabled={busy}
+                  file={file?.name ? file : null}
+                  label={fileLabel || (ar ? "أرفق النسخة المختومة" : "Attach the stamped copy")}
+                  hint={dropHint}
+                  onPick={(picked) => (picked ? onPickFile?.(picked) : onClearFile?.())}
+                  onClear={onClearFile}
                 />
-                <button
-                  type="button"
-                  className="nv-dec-attach"
-                  disabled={busy || fileBusy}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  {fileBusy ? (ar ? "جارٍ قراءة الملف…" : "Reading the file…") : attachLabel}
-                </button>
-                {file?.name ? (
-                  <span className="nv-dec-chosen">
-                    <strong dir="ltr">{file.name}</strong>
-                    <button type="button" onClick={onClearFile}>{ar ? "أزل" : "Remove"}</button>
-                  </span>
-                ) : null}
-                {fileError ? <span className="nv-dec-note is-stop">{fileError}</span> : null}
+                {fileError ? <span className="nv-dec-note is-stop" role="alert">{fileError}</span> : null}
               </div>
             ) : null}
             {showExamNotice ? (

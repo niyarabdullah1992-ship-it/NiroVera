@@ -3584,7 +3584,8 @@ html.dark .nv7-section-head {
 .nv-dec-head strong { font-size: 13px; color: var(--nv-ink); }
 .nv-dec-head span { font-size: 11.5px; color: var(--nv-muted); }
 .nv-dec-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 10px 14px; }
-.nv-dec-body.has-side { grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); }
+/* Reason on its own full line, the stamped copy (one dropzone) under it — never a squeezed column. */
+.nv-dec-body.has-side { grid-template-columns: minmax(0, 1fr); }
 .nv-dec-reason, .nv-dec-file { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .nv-dec-reason > span, .nv-dec-file > span { font-size: 11.5px; font-weight: 600; color: var(--nv-ink2); }
 .nv-dec-file em { font-style: normal; font-weight: 400; color: var(--nv-muted); }

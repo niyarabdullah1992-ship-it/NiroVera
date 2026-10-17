@@ -37,24 +37,7 @@ export default function AttendanceSectionFrame({
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: "1 1 260px" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span
-              data-lane-chip
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                height: 22,
-                padding: "0 9px",
-                borderRadius: 7,
-                fontSize: 11,
-                fontWeight: 700,
-                whiteSpace: "nowrap",
-                background: manage ? "rgba(255,255,255,.14)" : "#FBF3E1",
-                color: manage ? "#fff" : "#8A5A12",
-                border: manage ? "1px solid rgba(255,255,255,.32)" : "1px solid #EBD3A2",
-              }}
-            >
-              {manage ? (ar ? "الإدارة" : "Manage") : (ar ? "مساحة الموظف" : "Employee space")}
-            </span>
+            {/* The lane (الموظف / الإدارة) is named once, in the header chip — not repeated here. */}
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "#A9CDB8", fontWeight: 600, fontSize: 11 }}>
               <span aria-hidden style={{ width: 12, height: 2, background: "#C8A45A", borderRadius: 8, display: "inline-block" }} />
               {section || (ar ? "الحضور والدوام" : "Time & attendance")}

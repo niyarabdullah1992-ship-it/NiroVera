@@ -161,8 +161,6 @@ export default function ProfileHero({
           ))}
         </span>
         <span style={{ fontSize: 12, color: "#A9CDB8" }}>{metaLine}</span>
-          </span>
-        ) : null}
       </div>
     </article>
   );

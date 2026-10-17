@@ -15,7 +15,7 @@ import { regulationVersion } from "./workRegulation.js";
 import { contractHint } from "./rightHints.disc.js";
 import { religionOnFile } from "./laborRules.js";
 
-export const CORRECTION_HREF = "/app/requests?kind=other";
+export const CORRECTION_HREF = "/app/requests?kind=file_correction";
 export const REGULATION_HREF = "/app/discipline?tab=schedule";
 const MEDICAL_WARN_DAYS = 60;
 

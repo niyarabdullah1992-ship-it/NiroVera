@@ -6,6 +6,7 @@ import { checkPunchRecordGate, parsePunchClock } from "./attendancePunch.js";
 import { checkIssuedLetterFileGate, checkRaiseSignableGate, isLetterSignableType } from "./requestSigning.js";
 import { checkDutyRequestFields, isDutyRequestType } from "./dutyRequests.js";
 import { checkResignationFields, RESIGNATION_TYPE } from "./exitRequests.js";
+import { checkSubmitFileCorrectionGate, FILE_CORRECTION_LABEL_AR, FILE_CORRECTION_LABEL_EN, FILE_CORRECTION_TYPE } from "./fileCorrection.js";
 import { ART81_EXIT_TYPE, DAMAGE_OBJECTION_TYPE, DOCUMENTS_RETURN_TYPE, GRIEVANCE_TYPE, LEAVE_CARRY_TYPE, NIGHT_AVOID_TYPE, checkArt81Gate, checkGrievanceGate, checkDamageObjectionGate, checkDocumentsReturnGate, checkLeaveCarryGate, checkNightAvoidGate } from "./rightsRequests.js";
 
 export const LEAVE_TOPUP_TYPE = "leave_topup";
@@ -132,6 +133,7 @@ export const OTHER_REQUEST_TYPES = [
   { key: DOCUMENTS_RETURN_TYPE, ar: "استرداد الوثائق المودعة", en: "Return of deposited documents" },
   { key: GRIEVANCE_TYPE, ar: "تظلم (النموذج الموحد م71)", en: "Grievance (Model regulation Art. 71)" },
   { key: LEAVE_TOPUP_TYPE, ar: "رفع رصيد إجازة", en: "Leave balance top-up" },
+  { key: FILE_CORRECTION_TYPE, ar: FILE_CORRECTION_LABEL_AR, en: FILE_CORRECTION_LABEL_EN },
   { key: "document", ar: "مستند / أخرى", en: "Document / other" },
   { key: "other_request", ar: "طلب آخر", en: "Other request" },
 ];
@@ -479,7 +481,8 @@ export function requestAuditFileLog(audit, ar = true) {
       : "";
   const kind = requestAuditKindLabel(audit?.requestType || audit?.type, ar);
   const generic = kind === (ar ? "الطلب" : "the request");
-  const subject = generic ? kind : (ar ? `طلب ${kind}` : kind);
+  // A kind already named «طلب …» (طلب تعديل الملف الوظيفي) is not prefixed again — no «طلب طلب».
+  const subject = generic || (ar && /^طلب\s/.test(kind)) ? kind : (ar ? `طلب ${kind}` : kind);
   const reasonBit = audit?.reason ? `: ${audit.reason}` : "";
   const text = presentRequestAuditText(ar
     ? (key === "raise" ? `رُفع ${subject}${cite}`
@@ -1164,6 +1167,11 @@ export function checkSubmitOtherRequestGate(input) {
     return checkSubmitNightFitnessGate(input);
   }
   const reason = String(input?.reason || "").trim();
+  if (type === FILE_CORRECTION_TYPE) {
+    const files = checkRequestFilesGate(input?.files);
+    if (!files.ok) return files;
+    return checkSubmitFileCorrectionGate({ field: input?.field, value: input?.newValue, reason, files: input?.files, employee: input?.employee });
+  }
   if (type === LEAVE_TOPUP_TYPE) {
     const grant = checkLeaveGrantGate({ pool: input?.leaveType || input?.pool || "grant", days: input?.days });
     if (!grant.ok) return grant;

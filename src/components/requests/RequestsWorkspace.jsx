@@ -140,6 +140,8 @@ import StatutoryItem from "@/components/labor/StatutoryItem";
 import WrittenConsentInbox from "@/components/requests/WrittenConsentInbox";
 import WrittenConsentRaise from "@/components/requests/WrittenConsentRaise";
 import RightsRequestRaise from "@/components/requests/RightsRequestRaise";
+import FileCorrectionRaise from "@/components/requests/FileCorrectionRaise";
+import { checkDecideFileCorrectionGate, fileCorrectionSummary, FILE_CORRECTION_TYPE } from "@/lib/fileCorrection";
 import ModelRequestRaise from "@/components/requests/ModelRequestRaise";
 import { ABUSE_COMPLAINT_KIND, DAMAGE_OBJECTION_TYPE, employerNoticeOf, GRIEVANCE_TYPE, jobSearchHoursInWeek, NIGHT_AVOID_TYPE, rightsRouteFor } from "@/lib/rightsRequests";
 import { otAssignmentLine, otOffer, otOfferLines, sar as sarText, hoursAr } from "@/lib/otOffer";
@@ -200,6 +202,7 @@ const MINE_TILES = [
   { id: "custody", ar: "عهدة", en: "Custody", hintAr: "تسليم أو إرجاع", hintEn: "Hand over or return", letter: "ع" },
   { id: "relocation", ar: "نفقات النقل مع تغيير السكن", en: "Relocation expenses", hintAr: "النموذج الموحد م9 · 12 — عن نقل غيّر محل إقامتك", hintEn: "Model Arts. 9 · 12 — for a move that changed your residence", letter: "ن" },
   { id: "resignation", ar: "تقديم استقالة", en: "Resignation", hintAr: "م 79 مكرر · لا تُرفض", hintEn: "Art. 79 bis · not refused", letter: "س" },
+  { id: "file_correction", ar: "طلب تعديل الملف الوظيفي", en: "Employment-file change", hintAr: "الجوال · الهوية · الجواز · الآيبان · الطوارئ — تعتمده الموارد البشرية", hintEn: "Mobile · ID · passport · IBAN · emergency — HR approves", letter: "ت" },
   { id: "rights", ar: "حقوق نظامية أخرى", en: "Other legal rights", hintAr: "م 64 · 81 · 110 — الوثائق، ترك العمل، تأجيل الإجازة. التظلّم والاعتراض على خصم الإتلاف في «الجزاءات»، وشكوى التحرش في «صوت الموظف»", hintEn: "Arts. 64 · 81 · 110. Grievances and damage-deduction objections sit in Sanctions; harassment in Employee voice", letter: "ح" },
   { id: "other", ar: "طلب آخر", en: "Other request", hintAr: "يُوصف في السبب", hintEn: "Described in the reason", letter: "آ" },
 ];
@@ -2418,6 +2421,8 @@ export default function RequestsWorkspace({
             <WrittenConsentRaise employees={employees} employeeId={employeeId} ar={ar} refresh={refresh} />
           ) : kind === "rights" && mode !== "manage" ? (
             <RightsRequestRaise employee={subject} companyId={company?.id} ar={ar} refresh={refresh} initialKind={rightsKind} />
+          ) : kind === "file_correction" && mode !== "manage" ? (
+            <FileCorrectionRaise employee={subject} companyId={company?.id} ar={ar} refresh={refresh} />
           ) : (kind === "relocation" && mode !== "manage") || (kind === "mission" && mode === "manage") ? (
             subject ? <ModelRequestRaise key={`${kind}-${subject.id}`} kind={kind} employee={subject} companyId={company?.id} actor={currentUser} ar={ar} refresh={refresh} defaultDailyRate={data?.settings?.missionDailyRate || ""} /> : null
           ) : (<>
@@ -3572,7 +3577,9 @@ export default function RequestsWorkspace({
                 subject: row.employee || self,
                 lane: "manage",
                 data,
-              })) && (decideLane !== "manage" || canDecide);
+              })) && (decideLane !== "manage" || canDecide)
+                // The employee file is HR's to write: a file-change request is decided by HR (or the administrator) only.
+                && (row.type !== FILE_CORRECTION_TYPE || checkDecideFileCorrectionGate(currentUser, row.employee, data).ok);
               const ackOn = !!nightAck[key];
               const stateLabel = nightStage === "active"
                 ? (ar ? "سارية — حتى يختار الموظف" : "In force — until the worker chooses")
@@ -3656,6 +3663,21 @@ export default function RequestsWorkspace({
                         : [row.permanent ? NIGHT_FITNESS_PERMANENT_EN : ((row.from || row.examDate) && row.to) && `${NIGHT_FITNESS_FROM_EN} ${formatArDate(row.from || row.examDate, lang)} → ${NIGHT_FITNESS_TO_EN} ${formatArDate(row.to, lang)}`, row.approvedAt && `Approved: ${formatArDate(row.approvedAt, lang)}`].filter(Boolean).join(" · ")), row.type === LEAVE_TOPUP_TYPE && row.days && (ar ? `${row.days} أيام إضافية على الرصيد السنوي` : `${row.days} extra days on the annual balance`), isOvertimeAssignment(row) && otAssignmentLine(row, row.employee, ar), isArticle106Assignment(row) && (ar ? (ARTICLE_106_GROUNDS.find((g) => g.key === row.article106Ground)?.ar || "المادة 106") : (ARTICLE_106_GROUNDS.find((g) => g.key === row.article106Ground)?.en || "Art. 106")), row.type === RESIGNATION_TYPE && resignationDetail(row, ar), isDutyRequestType(row.type) && dutyRequestDetail(row, { ar, shiftLabel: ((data?.schedules || []).find((item) => String(item.stationId) === String(row.employee?.stationId))?.shiftTypes || []).find((shift) => shift.id === row.shiftTypeId)?.label || "" }), row.fileName && (ar ? `الملف: ${row.fileName}` : `File: ${row.fileName}`), row.purpose && (ar ? `الغرض: ${row.purpose}` : `Purpose: ${row.purpose}`), row.party && (ar ? `إلى: ${row.party}` : `To: ${row.party}`), row.type !== STUDY_CONSENT_TYPE && row.type !== NIGHT_FITNESS_TYPE && row.reason, row.type !== STUDY_CONSENT_TYPE && row.type !== NIGHT_FITNESS_TYPE && row.date && formatArDate(row.date, lang), mode !== "manage" && stationName(row.employee?.stationId)].filter(Boolean).join(" · ")}
                   </p>
                   {mode === "manage" && isDutyRequestType(row.type) && isPendingDecideStatus(st) ? <DutyRequestDecisionPanel row={row} data={data} ar={ar} /> : null}
+                  {row.type === FILE_CORRECTION_TYPE ? (
+                    <div data-fc-compare="1" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: 8, fontSize: 12, lineHeight: 1.6 }}>
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                        <span style={{ fontSize: 10.5, color: MUTED }}>{ar ? "في الملف" : "On file"}</span>
+                        <span dir="auto" style={{ color: "var(--nv-ink2)", overflowWrap: "anywhere" }}>{row.currentValue || (ar ? "غير مسجّل" : "Not on file")}</span>
+                      </span>
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                        <span style={{ fontSize: 10.5, color: MUTED }}>{ar ? "المطلوب" : "Requested"}</span>
+                        <strong dir="auto" style={{ color: "var(--nv-ink)", overflowWrap: "anywhere" }}>{fileCorrectionSummary(row, ar).split(": ").slice(1).join(": ")}</strong>
+                      </span>
+                      {mode === "manage" && isPendingDecideStatus(st) && !rowCanDecide ? (
+                        <span data-fc-hr-only="1" style={{ gridColumn: "1 / -1", fontSize: 11, color: MUTED }}>{ar ? "يقرره من يدير الموارد البشرية — الملف يُكتب باسمه." : "Decided by whoever manages HR — the file is written in their name."}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {row.family === "leave" && String(row.type || "").toLowerCase() === "work_injury" ? (
                     <WorkInjuryPanel row={row} employee={row.employee || subject} data={data} companyId={company?.id} ar={ar} canDecide={mode === "manage" && canDecide} by={currentUser?.name || ""} onChanged={() => refresh?.()} />
                   ) : null}

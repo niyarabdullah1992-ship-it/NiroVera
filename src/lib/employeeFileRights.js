@@ -13,7 +13,8 @@
 
 export const EMPLOYEE_FILE_HR_ONLY = "EMPLOYEE_FILE_HR_ONLY";
 export const EMPLOYEE_FILE_HR_ONLY_LINE = { ar: "التعديل للموارد البشرية", en: "Edits are made by HR" };
-export const EMPLOYEE_FILE_CORRECTION_HREF = "/app/requests?kind=other";
+// «طلب تعديل الملف الوظيفي» in طلباتي (fileCorrection.js FILE_CORRECTION_HREF).
+export const EMPLOYEE_FILE_CORRECTION_HREF = "/app/requests?kind=file_correction";
 
 const str = (v) => String(v ?? "").trim();
 

@@ -106,6 +106,8 @@ export const REQUEST_KINDS = [
   { id: "resignation", ar: "تقديم استقالة", en: "Resignation", type: "resignation" },
   /** Arts. 51 · 81 · 91 · 110 — rights the law gives the worker (rightsRequests.js). Filed from ملفي only. */
   { id: "rights", ar: "حقوق نظامية أخرى", en: "Other legal rights", employeeOnly: true },
+  /** The employee asks HR to change a personal fact on his file — HR approves, then the file is written. */
+  { id: "file_correction", ar: "طلب تعديل الملف الوظيفي", en: "Employment-file change request", type: "file_correction", employeeOnly: true },
   /** Manager may raise from إدارة as an establishment act; worker may also raise from ملفي. */
   { id: "other", ar: "طلب آخر", en: "Other request", type: "other_request", manageFiled: true },
 ];

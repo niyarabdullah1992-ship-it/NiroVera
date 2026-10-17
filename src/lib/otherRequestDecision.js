@@ -64,6 +64,7 @@ export function decideOtherRequest({ companyId, row, status, note = "", ground =
   const result = setOtherRequestStatus(companyId, row.employee.id, row.id, status === "revise" ? "revise" : status, actor?.name, status === "rejected" ? groundedNote : note, {
     issuedFile,
     actorId: actor?.id,
+    actor,
     rejectGround: ground,
     rejectVerified: verified,
   });

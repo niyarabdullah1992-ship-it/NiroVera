@@ -89,6 +89,7 @@ import { planDutyAlertNotices } from "./dutyAlerts.js";
 import { compLeaveDaysInYear as compLeaveDaysInYearForCap, otHoursInYear as otHoursInYearForCap } from "./overtimeAssignment.js";
 import { annualDayBreakdown } from "./leaveEidOverlap.js";
 import { employeeFileEditGate } from "./employeeFileRights.js";
+import { checkDecideFileCorrectionGate, fileCorrectionCurrent, fileCorrectionField, fileCorrectionPatch, fileCorrectionSummary, FILE_CORRECTION_TYPE } from "./fileCorrection.js";
 import { isOfficialHoliday, laborCalendarOf, ramadanWindowForYear, readPlatformOwnerBoard, writePlatformOwnerBoard } from "./ummAlQuraCalendar";
 
 /** Model regulation Art. 71 clocks skip the company's official holidays. */
@@ -3407,7 +3408,19 @@ export function submitOtherRequest(companyId, employeeId, {
   examDate, until, permanent, from, to, timeTo, placement, dueDate, lastDay, amount, moneyKind, nursingSplit, childBirthDate, compLeave,
   notifiedOn, art81Case, ack, remaining, nightAvoidKind, gender, jobSearch, grievanceKind,
   damageCaseId, deductionLineId, details, leaveType,
+  field, newValue,
 }) {
+  // «طلب تعديل الملف الوظيفي»: the employee asks; the value is stored on the request, never on the file
+  // until HR approves it (setOtherRequestStatus → patchEmployeeFile with HR as the actor).
+  let correction = null;
+  if (type === FILE_CORRECTION_TYPE) {
+    const subjectEmp = (getCompanyData(companyId)?.employees || []).find((row) => String(row.id) === String(employeeId));
+    const g = checkSubmitOtherRequestGate({ type, field, newValue, reason, files, employee: subjectEmp });
+    if (!g.ok) return g;
+    correction = { field: g.field, newValue: g.value, currentValue: fileCorrectionCurrent(subjectEmp, g.field, true) };
+    // The card's title names the fact; the old and new values show once, in the card's comparison.
+    title = `تعديل ${fileCorrectionField(g.field)?.ar || ""}`.trim();
+  }
   if (type === "permission" && jobSearch === true) {
     // Art. 78: up to eight job-search hours a week during the employer's notice — told, not asked.
     const subjectEmp = (getCompanyData(companyId)?.employees || []).find((row) => row.id === employeeId);
@@ -3595,6 +3608,9 @@ export function submitOtherRequest(companyId, employeeId, {
       exitRoute: type === "resignation" ? resignRoute : undefined,
       days: type === LEAVE_TOPUP_TYPE ? parseLeaveTopupDaysSafe(days) : type === LEAVE_CARRY_TYPE ? Math.floor(Number(days)) : (days || undefined),
       leaveType: type === LEAVE_TOPUP_TYPE ? (String(leaveType || "grant").trim() || "grant") : undefined,
+      field: correction ? correction.field : undefined,
+      newValue: correction ? correction.newValue : undefined,
+      currentValue: correction ? correction.currentValue : undefined,
       shiftTypeId: shiftTypeId || undefined,
       stationId: stationId || emp.stationId || undefined,
       files: files || [],
@@ -4413,6 +4429,15 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
   const emp = data?.employees.find((e) => e.id === employeeId);
   const empName = emp?.name || "";
   const pending = (emp?.otherRequests || []).find((row) => row.id === requestId);
+  if (pending?.type === FILE_CORRECTION_TYPE && status !== "withdrawn") {
+    // Only HR (manage_employees, in scope) or the account administrator decides — the file is theirs to write.
+    const actorUser = extras.actor || (data?.employees || []).find((row) => String(row.id) === String(extras.actorId)) || null;
+    const fileGate = checkDecideFileCorrectionGate(actorUser, emp, data);
+    if (!fileGate.ok) return fileGate;
+    if (status === "approved" && !fileCorrectionPatch(pending)) {
+      return { ok: false, error: "VALUE_INVALID", reason: "القيمة المطلوبة لا تصلح للبيان — اطلب من الموظف تعديل طلبه.", reasonEn: "The requested value does not fit the field — ask the worker to revise." };
+    }
+  }
   const revokeGate = checkRevokeStudyConsentGate(pending, status);
   if (!revokeGate.ok) return revokeGate;
   if (status === "rejected" && pending?.type === STUDY_CONSENT_TYPE) {
@@ -4559,7 +4584,8 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
       req.auditTrail = status === "rejected"
         ? appendRequestRefuseAudit(req, decideLog.row)
         : appendRequestAudit(req, decideLog.row);
-      pushEmployeeFileLog(employee, decideLog.log);
+      // An approved file change writes its own line («اعتُمد طلب تعديل: …») with the value — not a second one.
+      if (!(req.type === FILE_CORRECTION_TYPE && status === "approved")) pushEmployeeFileLog(employee, decideLog.log);
     }
     if (status === "rejected") {
       req.rejectReason = refuseReason || req.reviewNote || null;
@@ -4681,6 +4707,22 @@ export function setOtherRequestStatus(companyId, employeeId, requestId, status, 
       };
     }
   });
+  if (status === "approved" && pending?.type === FILE_CORRECTION_TYPE) {
+    const actorUser = extras.actor || (data?.employees || []).find((row) => String(row.id) === String(extras.actorId)) || null;
+    const summary = fileCorrectionSummary(pending, true);
+    const written = patchEmployeeFile(companyId, employeeId, {
+      actor: actorUser,
+      ...fileCorrectionPatch(pending),
+      log: {
+        text: `اعتُمد طلب تعديل: ${summary}`,
+        by: reviewerName || actorUser?.name || "",
+        at: new Date().toISOString().slice(0, 16).replace("T", " "),
+        dot: "#3C7D50",
+      },
+    });
+    if (written && written.ok === false) return written;
+    addNotification(companyId, employeeId, `اعتُمد طلب تعديل ملفك الوظيفي — ${summary}.`, { to: "/app/requests" });
+  }
   if (status === "approved" && ["salary_letter", "employment_letter", "document"].includes(pending?.type)) {
     const title = pending.title || otherRequestTypeLabel(pending.type, true);
     addNotification(companyId, employeeId, `صدرت وثيقتك: ${title}. النسخة في ملفات طلباتي.`);

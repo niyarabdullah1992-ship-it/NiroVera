@@ -8,7 +8,7 @@ import useStationSwitcher, { OPEN_STATION_SWITCH_EVENT } from "@/hooks/useStatio
 import StationQuickSwitch from "@/components/navigation/StationQuickSwitch";
 import NotificationPanel from "@/components/notifications/NotificationPanel";
 import BranchNoticePanel from "@/components/notifications/BranchNoticePanel";
-import { Bell, MapPin } from "lucide-react";
+import { Bell, ChevronDown, MapPin } from "lucide-react";
 import { isUrgentNotification } from "@/lib/notificationKind";
 import { isManagerUnit } from "@/lib/stationTree";
 import { buildBranchNotices } from "@/lib/managerScopeChips";
@@ -30,30 +30,15 @@ function branchWord(count, ar) {
 function CountPhrase({ count, ar }) {
   const word = branchWord(count, ar);
   if (ar && (count === 1 || count === 2)) {
-    return <span style={{ color: "var(--nv-ink3)", fontSize: 12 }}>{count === 1 ? "فرع واحد" : "فرعان"}</span>;
+    return <span className="nv-hdr-select-count">{count === 1 ? "فرع واحد" : "فرعان"}</span>;
   }
   return (
-    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4, color: "var(--nv-ink3)", fontSize: 12 }}>
-      <span dir="ltr" style={{ fontFamily: MONO, unicodeBidi: "isolate" }}>{count}</span>
+    <span className="nv-hdr-select-count">
+      <span dir="ltr" style={{ fontFamily: MONO, unicodeBidi: "isolate", color: "var(--nv-ink)", fontWeight: 600 }}>{count}</span>
       <span>{word}</span>
     </span>
   );
 }
-
-const face = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  height: 32,
-  minHeight: 32,
-  padding: "0 12px",
-  borderRadius: 9,
-  border: "1px solid var(--nv-line, #E4E9E6)",
-  background: "var(--nv-card)",
-  cursor: "pointer",
-  fontFamily: "inherit",
-  color: "var(--nv-ink)",
-};
 
 function myStationLine(data, user, ar) {
   const vacant = ar ? "شاغر" : "Vacant";
@@ -62,18 +47,21 @@ function myStationLine(data, user, ar) {
   const acting = station ? actingAtStation(data, station.id) : null;
   const manager = workplaceManagerDisplay(station, people);
   const hr = station ? hrManagerForStation(data, station.id) : null;
+  const managerName = acting?.employee?.name || manager.managerName || "";
   return {
     station: station?.name || vacant,
-    manager: acting?.employee?.name || manager.managerName || vacant,
+    manager: managerName || vacant,
     hr: hr?.name || vacant,
+    vacant: { station: !station?.name, manager: !managerName, hr: !hr?.name },
   };
 }
 
+
 /**
- * One scope bar for every section.
- * Manage: the branch switcher. Employee: the administration they belong to, fixed.
+ * The header bell — one ghost segment in the utility group.
+ * Manage: urgent branch notices (red). Employee: own unread, green; red only while an unread one is urgent.
  */
-export default function ScopeBar({
+export function NotificationBell({
   notifOpen = false,
   onToggleNotif,
   onCloseNotif,
@@ -81,7 +69,6 @@ export default function ScopeBar({
   onOpenNotif,
   onDismissNotif,
   onMarkAllNotifs,
-  violationCount = 0,
 }) {
   const { t, lang } = useI18n();
   const ar = lang === "ar";
@@ -89,24 +76,9 @@ export default function ScopeBar({
   const { data, currentUser, company } = useAuth();
   const railSide = useRailSide();
   const manage = railSide !== "employee";
-  const { stations, scope, scopedStation, canSwitch } = useStationSwitcher();
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
   const notifBtnRef = useRef(null);
   const notifPanelRef = useRef(null);
   const [notifBox, setNotifBox] = useState(null);
-
-  useEffect(() => {
-    if (!manage) setOpen(false);
-  }, [manage]);
-
-  useEffect(() => {
-    const show = () => {
-      if (manage) setOpen(true);
-    };
-    window.addEventListener(OPEN_STATION_SWITCH_EVENT, show);
-    return () => window.removeEventListener(OPEN_STATION_SWITCH_EVENT, show);
-  }, [manage]);
 
   useEffect(() => {
     if (!notifOpen) return undefined;
@@ -115,8 +87,15 @@ export default function ScopeBar({
       if (notifPanelRef.current?.contains(event.target)) return;
       onCloseNotif?.();
     };
+    const onKey = (event) => {
+      if (event.key === "Escape") onCloseNotif?.();
+    };
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [notifOpen, onCloseNotif]);
 
   useLayoutEffect(() => {
@@ -140,13 +119,6 @@ export default function ScopeBar({
     };
   }, [notifOpen, manage]);
 
-  const workplaces = stations.filter((station) => !isManagerUnit(station));
-  const branchCount = workplaces.length || stations.length;
-  const label = scopedStation?.name
-    || (scope !== "all" ? String(scope) : (ar ? "كل نطاقي" : "All my scope"));
-  const stationCode = scope === "all" ? "" : [scopedStation?.code, scopedStation?.shortCode]
-    .map((part) => String(part || "").trim())
-    .find((part) => part && part !== label) || "";
   const attendanceRows = useMemo(
     () => listLocalTodayAttendance(company?.id, data),
     [company?.id, data],
@@ -160,109 +132,34 @@ export default function ScopeBar({
     : notifItems.filter((item) => !item.read && isUrgentNotification(item.text)).length;
   const personalUnread = notifItems.filter((item) => !item.read).length;
   const badgeCount = manage ? urgent : personalUnread;
-  const mine = useMemo(
-    () => (manage ? null : myStationLine(data, currentUser, ar)),
-    [manage, data, currentUser, ar],
-  );
+  const badgeTone = manage || urgent > 0 ? "bad" : "ok";
+  const name = manage ? (ar ? "الإشعارات" : "Notifications") : (ar ? "إشعاراتي" : "My notifications");
 
   const openBranchNotice = (item) => {
     if (item?.stationId) setStationScope(item.stationId);
     onCloseNotif?.();
     if (item?.route) navigate(item.route);
   };
-  const violated = violationCount > 0;
-  return (
-    <div className="nv-scope-bar" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", flex: "1 1 auto", minWidth: 0, width: "100%" }}>
-      {manage ? (
-        <>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--nv-muted)", flexShrink: 0 }}>
-            {ar ? "نطاقك" : "Your scope"}
-          </span>
-          <div ref={rootRef} style={{ position: "relative", flexShrink: 0 }}>
-            <button
-              type="button"
-              onClick={() => canSwitch && setOpen((value) => !value)}
-              disabled={!canSwitch}
-              aria-expanded={open}
-              aria-haspopup="dialog"
-              title={ar ? "نطاق الفروع · Ctrl+Shift+K" : "Station scope · Ctrl+Shift+K"}
-              style={{ ...face, maxWidth: 320, minWidth: 200, fontWeight: 700 }}
-            >
-              <span aria-hidden style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--nv-btn-fill)", flexShrink: 0 }} />
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--nv-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {label}
-              </span>
-              {scope === "all" ? <CountPhrase count={branchCount} ar={ar} /> : stationCode ? (
-                <span dir="ltr" style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: "var(--nv-muted)", unicodeBidi: "isolate", flexShrink: 0 }}>{stationCode}</span>
-              ) : null}
-              <span style={{ color: "var(--nv-muted)", fontSize: 10, flexShrink: 0 }}>▾</span>
-            </button>
-            <StationQuickSwitch anchorRef={rootRef} open={open && canSwitch} onClose={() => setOpen(false)} />
-          </div>
-        </>
-      ) : null}
 
+  return (
+    <>
       <button
         ref={notifBtnRef}
         type="button"
+        className="nv-hdr-seg nv-hdr-bell"
         onClick={onToggleNotif}
         aria-expanded={notifOpen}
-        aria-label={manage ? (ar ? "الإشعارات" : "Notifications") : (ar ? "إشعاراتي" : "My notifications")}
-        style={{ ...face, flexShrink: 0, fontWeight: 600, fontSize: 12.5 }}
+        aria-label={badgeCount > 0 ? `${name} (${badgeCount})` : name}
+        title={name}
+        data-open={notifOpen ? "true" : undefined}
       >
-        <Bell style={{ width: 15, height: 15 }} strokeWidth={1.75} />
-        <span>{manage ? (ar ? "الإشعارات" : "Notifications") : (ar ? "إشعاراتي" : "My notifications")}</span>
+        <Bell style={{ width: 16, height: 16 }} strokeWidth={1.75} />
         {badgeCount > 0 ? (
-          <span dir="ltr" style={{
-            minWidth: 18,
-            height: 18,
-            padding: "0 5px",
-            borderRadius: 999,
-            background: manage ? "#9B2335" : "#C8A45A",
-            color: manage ? "#fff" : "#111418",
-            fontFamily: MONO,
-            fontSize: 10.5,
-            fontWeight: 600,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            unicodeBidi: "isolate",
-          }}
-          >
+          <span dir="ltr" className="nv-hdr-badge" data-tone={badgeTone}>
             {badgeCount > 9 ? "9+" : badgeCount}
           </span>
         ) : null}
       </button>
-      {!manage && mine ? (
-        <span
-          title={ar ? "المحطة التي تتبع لها" : "The station you belong to"}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            height: 32,
-            padding: "0 12px",
-            borderRadius: 9,
-            border: "1px solid var(--nv-line, #E4E9E6)",
-            background: "var(--nv-card)",
-            fontSize: 12.5,
-            color: "var(--nv-ink, #111418)",
-            whiteSpace: "nowrap",
-            maxWidth: "100%",
-            overflow: "hidden",
-          }}
-        >
-          <MapPin style={{ width: 14, height: 14, flexShrink: 0 }} strokeWidth={2.2} />
-          <span style={{ fontSize: 11, color: "var(--nv-ok-ink, #2F6B43)" }}>{ar ? "محطتي" : "My station"}</span>
-          <strong style={{ fontWeight: 700 }}>{mine.station}</strong>
-          <span aria-hidden style={{ width: 1, height: 14, background: "var(--nv-ok-line, #BCDFCB)", flexShrink: 0 }} />
-          <span style={{ fontSize: 11, color: "var(--nv-ink3, #555C66)" }}>{ar ? "مدير الفرع" : "Branch manager"}</span>
-          <strong style={{ fontWeight: 600, fontSize: 12 }}>{mine.manager}</strong>
-          <span aria-hidden style={{ width: 1, height: 14, background: "var(--nv-ok-line, #BCDFCB)", flexShrink: 0 }} />
-          <span style={{ fontSize: 11, color: "var(--nv-ink3, #555C66)" }}>{ar ? "الموارد البشرية" : "Human resources"}</span>
-          <strong style={{ fontWeight: 600, fontSize: 12 }}>{mine.hr}</strong>
-        </span>
-      ) : null}
       {notifOpen && notifBox && typeof document !== "undefined"
         ? createPortal(
           <div
@@ -293,7 +190,7 @@ export default function ScopeBar({
             ) : (
               <NotificationPanel
                 items={notifItems}
-                unread={notifItems.filter((item) => !item.read).length}
+                unread={personalUnread}
                 lang={lang}
                 t={t}
                 title={ar ? "إشعاراتي" : "My notifications"}
@@ -306,27 +203,117 @@ export default function ScopeBar({
           document.body,
         )
         : null}
-      <span
-        className="nv-compliance"
-        data-violated={violated ? "true" : "false"}
-        style={{
-          marginInlineStart: "auto",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 7,
-          height: 28,
-          padding: "0 12px",
-          borderRadius: 999,
-          fontSize: 11.5,
-          fontWeight: 600,
-          whiteSpace: "nowrap",
-        }}
-      >
-        <span aria-hidden style={{ width: 7, height: 7, borderRadius: "50%", background: violated ? "#9B2335" : "#3C7D50", flexShrink: 0 }} />
+    </>
+  );
+}
+
+/** Quiet labour-law status: a dot and a short line; the full wording sits in the tooltip. */
+export function ComplianceStatus({ violationCount = 0 }) {
+  const { lang } = useI18n();
+  const ar = lang === "ar";
+  const violated = violationCount > 0;
+  const full = violated
+    ? (ar ? `${violationCount} مخالفة لنظام العمل ولائحته التنفيذية في هذه الصفحة` : `${violationCount} Labor Law ${violationCount === 1 ? "violation" : "violations"} on this page`)
+    : (ar ? "متوافق مع نظام العمل ولائحته التنفيذية" : "Compliant with the Saudi Labor Law");
+  return (
+    <span className="nv-compliance" data-violated={violated ? "true" : "false"} title={full} aria-label={full} role="status">
+      <span aria-hidden className="nv-compliance-dot" />
+      <span>
         {violated
           ? (ar ? `${violationCount} مخالفة` : `${violationCount} ${violationCount === 1 ? "violation" : "violations"}`)
-          : (ar ? "متوافق مع نظام العمل ولائحته التنفيذية" : "Compliant with the Saudi Labor Law")}
+          : (ar ? "متوافق مع النظام" : "Labor-law compliant")}
       </span>
+    </span>
+  );
+}
+
+function Fact({ label, value, vacant, icon }) {
+  return (
+    <span className="nv-hdr-fact" data-vacant={vacant ? "true" : undefined}>
+      {icon}
+      <span className="nv-hdr-fact-label">{label}</span>
+      <strong className="nv-hdr-fact-value">{value}</strong>
+    </span>
+  );
+}
+
+/**
+ * One scope line for every section.
+ * Manage: the branch switcher (نطاقك). Employee: the administration they belong to, fixed.
+ */
+export default function ScopeBar({ violationCount = 0 }) {
+  const { lang } = useI18n();
+  const ar = lang === "ar";
+  const { data, currentUser } = useAuth();
+  const railSide = useRailSide();
+  const manage = railSide !== "employee";
+  const { stations, scope, scopedStation, canSwitch } = useStationSwitcher();
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!manage) setOpen(false);
+  }, [manage]);
+
+  useEffect(() => {
+    const show = () => {
+      if (manage) setOpen(true);
+    };
+    window.addEventListener(OPEN_STATION_SWITCH_EVENT, show);
+    return () => window.removeEventListener(OPEN_STATION_SWITCH_EVENT, show);
+  }, [manage]);
+
+  const workplaces = stations.filter((station) => !isManagerUnit(station));
+  const branchCount = workplaces.length || stations.length;
+  const label = scopedStation?.name
+    || (scope !== "all" ? String(scope) : (ar ? "كل نطاقي" : "All my scope"));
+  const stationCode = scope === "all" ? "" : [scopedStation?.code, scopedStation?.shortCode]
+    .map((part) => String(part || "").trim())
+    .find((part) => part && part !== label) || "";
+  const mine = useMemo(
+    () => (manage ? null : myStationLine(data, currentUser, ar)),
+    [manage, data, currentUser, ar],
+  );
+
+  return (
+    <div className="nv-scope-bar" data-lane={manage ? "manage" : "employee"}>
+      {manage ? (
+        <div className="nv-hdr-scope">
+          <span className="nv-hdr-fact-label" id="nv-hdr-scope-label">{ar ? "نطاقك" : "Your scope"}</span>
+          <div ref={rootRef} className="nv-hdr-scope-anchor">
+            <button
+              type="button"
+              className="nv-hdr-select"
+              onClick={() => canSwitch && setOpen((value) => !value)}
+              disabled={!canSwitch}
+              aria-expanded={open}
+              aria-haspopup="dialog"
+              aria-describedby="nv-hdr-scope-label"
+              title={ar ? "نطاق الفروع · Ctrl+Shift+K" : "Station scope · Ctrl+Shift+K"}
+            >
+              <span aria-hidden className="nv-hdr-select-dot" />
+              <span className="nv-hdr-select-text">{label}</span>
+              {scope === "all" ? <CountPhrase count={branchCount} ar={ar} /> : stationCode ? (
+                <span dir="ltr" className="nv-hdr-select-code">{stationCode}</span>
+              ) : null}
+              {canSwitch ? <ChevronDown aria-hidden className="nv-hdr-select-chev" strokeWidth={1.8} /> : null}
+            </button>
+            <StationQuickSwitch anchorRef={rootRef} open={open && canSwitch} onClose={() => setOpen(false)} />
+          </div>
+        </div>
+      ) : mine ? (
+        <div className="nv-hdr-facts no-scrollbar" title={ar ? "المحطة التي تتبع لها" : "The station you belong to"}>
+          <Fact
+            icon={<MapPin aria-hidden className="nv-hdr-fact-icon" strokeWidth={1.8} />}
+            label={ar ? "محطتي" : "My station"}
+            value={mine.station}
+            vacant={mine.vacant.station}
+          />
+          <Fact label={ar ? "مدير الفرع" : "Branch manager"} value={mine.manager} vacant={mine.vacant.manager} />
+          <Fact label={ar ? "الموارد البشرية" : "Human resources"} value={mine.hr} vacant={mine.vacant.hr} />
+        </div>
+      ) : <span />}
+      <ComplianceStatus violationCount={violationCount} />
     </div>
   );
 }

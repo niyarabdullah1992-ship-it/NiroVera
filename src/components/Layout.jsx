@@ -373,7 +373,7 @@ export default function Layout({ children }) {
       sub: lang === "ar" ? "ترفع طلبك هنا — القرار مسمّى والأثر يصل للدوام والتقويم" : "You raise the request here — the decision is named, and the effect reaches the rota and calendar",
     },
     "/app/requests/manage": {
-      title: lang === "ar" ? "إدارة" : "Manage",
+      title: lang === "ar" ? "إدارة الطلبات" : "Manage requests",
       sub: lang === "ar" ? "تستقبل وتقرر — القرار يُسجَّل باسمك" : "You receive and decide — the ruling is recorded in your name",
     },
     "/app/requests/archive": {

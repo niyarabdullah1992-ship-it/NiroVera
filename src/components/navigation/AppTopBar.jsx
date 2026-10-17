@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { MoreHorizontal } from "lucide-react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { faceSectionTarget, useRailSide } from "@/lib/railSide";
@@ -9,29 +10,65 @@ import { useAuth } from "@/lib/PowerCareAuth";
 import { canCreateTasks } from "@/lib/permissions";
 import BackButton from "@/components/mobile/BackButton";
 import HeaderDateTime from "@/components/navigation/HeaderDateTime";
-import ScopeBar from "@/components/navigation/ScopeBar";
+import ScopeBar, { NotificationBell } from "@/components/navigation/ScopeBar";
 import SyncStatusIndicator from "@/components/SyncStatusIndicator";
 import ThemeToggle from "@/components/ThemeToggle";
 import DutySmartSearch, { dutySearchPages } from "@/components/attendance/DutySmartSearch";
 import { BTN_FILL, BTN_INK, MUTED } from "@/lib/platformStyles";
 
-const MONO = "'IBM Plex Mono', monospace";
-
-function frameButton(extra) {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    height: 32,
-    borderRadius: 9,
-    border: "1px solid var(--nv-line, #E4E9E6)",
-    background: "var(--nv-card)",
-    color: "var(--nv-ink, #111418)",
-    cursor: "pointer",
-    fontFamily: "inherit",
-    flexShrink: 0,
-    ...extra,
-  };
+/** Small screens: date, sync and language fold into one «⋯» segment. */
+function HeaderOverflow({ ar, lang, isSyncing, langButton }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const name = ar ? "المزيد: التاريخ والمزامنة واللغة" : "More: date, sync and language";
+  return (
+    <span ref={rootRef} className="nv-hdr-narrow nv-hdr-more">
+      <button
+        type="button"
+        className="nv-hdr-seg nv-hdr-icon"
+        aria-expanded={open}
+        aria-haspopup="true"
+        aria-label={name}
+        title={name}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <MoreHorizontal aria-hidden style={{ width: 16, height: 16 }} strokeWidth={1.75} />
+      </button>
+      {open ? (
+        <div className="nv-hdr-pop" role="group" aria-label={name}>
+          <div className="nv-hdr-pop-row">
+            <span className="nv-hdr-fact-label">{ar ? "اليوم" : "Today"}</span>
+            <HeaderDateTime lang={lang} />
+          </div>
+          <div className="nv-hdr-pop-row">
+            <span className="nv-hdr-fact-label">{ar ? "المزامنة" : "Sync"}</span>
+            <SyncStatusIndicator isSyncing={isSyncing} />
+          </div>
+          {langButton ? (
+            <div className="nv-hdr-pop-row">
+              <span className="nv-hdr-fact-label">{ar ? "اللغة" : "Language"}</span>
+              {langButton}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </span>
+  );
 }
 
 /**
@@ -92,107 +129,70 @@ export default function AppTopBar({
     : [];
   const crumbTitle = duty ? (ar ? "الحضور والدوام" : "Time & attendance") : pageTitle;
 
+  const title = dutyLeaf ? dutyLeaf.label : crumbTitle;
+  const trail = dutyLeaf ? [crumbTitle, dutyLeaf.label] : [crumbTitle];
+  const laneName = employee ? (ar ? "الموظف" : "Employee") : (ar ? "الإدارة" : "Manage");
+  const langButton = hideLang ? null : (
+    <button
+      type="button"
+      className="nv-hdr-seg nv-hdr-icon nv-hdr-lang nv-frame-iconbtn"
+      onClick={() => setLang(lang === "ar" ? "en" : "ar")}
+      aria-label={t("language")}
+      title={t("language")}
+    >
+      {lang === "ar" ? "EN" : "ع"}
+    </button>
+  );
+
   return (
     <div className="nv-frame" style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
-      <div className="nv-app-topbar" data-topbar="1">
-        <div
-          className="nv-topbar-tier"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-            padding: "10px 14px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
-            <span className="md:hidden" style={{ display: "inline-flex" }}>
+      <header className="nv-app-topbar" data-topbar="1" data-lane={employee ? "employee" : "manage"}>
+        <div className="nv-topbar-tier nv-hdr-main">
+          <div className="nv-hdr-id">
+            <span className="md:hidden nv-hdr-back">
               <BackButton />
             </span>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                height: 22,
-                padding: "0 9px",
-                borderRadius: 8,
-                fontSize: 11,
-                fontWeight: 700,
-                background: employee ? "#FBF3E1" : "var(--nv-mute-soft, #EEF1EF)",
-                color: employee ? "#8A5A12" : "var(--nv-ink, #111418)",
-                border: employee ? "1px solid #EBD3A2" : "1px solid var(--nv-box, #D5DCD8)",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {employee ? (ar ? "مساحة الموظف" : "Employee space") : (ar ? "الإدارة" : "Manage")}
+            <span className="nv-hdr-lane" data-lane={employee ? "employee" : "manage"} title={employee ? (ar ? "مساحة الموظف" : "Employee space") : (ar ? "مساحة الإدارة" : "Management space")}>
+              {laneName}
             </span>
-            <span style={{ fontSize: 12.5, color: "var(--nv-ink3, #555C66)", whiteSpace: "nowrap", minWidth: 0 }}>
-              <Link to="/app" style={{ color: "inherit", fontWeight: 500, textDecoration: "none" }}>{home}</Link>
-              <span style={{ color: "#C4CCC7", margin: "0 4px" }}>›</span>
-              {dutyLeaf ? (
-                <>
-                  <span style={{ fontWeight: 500 }}>{crumbTitle}</span>
-                  <span style={{ color: "#C4CCC7", margin: "0 4px" }}>›</span>
-                  <strong style={{ color: "var(--nv-ink, #111418)", fontWeight: 700, fontSize: 14 }}>{dutyLeaf.label}</strong>
-                </>
-              ) : (
-                <strong style={{ color: "var(--nv-ink, #111418)", fontWeight: 700, fontSize: 14 }}>{crumbTitle}</strong>
-              )}
-            </span>
+            <div className="nv-hdr-titles">
+              <div className="nv-hdr-title">{title}</div>
+              <nav aria-label={ar ? "مسار الصفحة" : "Breadcrumb"} className="nv-hdr-crumb">
+                <Link to="/app">{home}</Link>
+                {trail.map((part, index) => (
+                  <React.Fragment key={`${part}-${index}`}>
+                    <span aria-hidden className="nv-hdr-crumb-sep">›</span>
+                    <span aria-current={index === trail.length - 1 ? "page" : undefined}>{part}</span>
+                  </React.Fragment>
+                ))}
+              </nav>
+            </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <HeaderDateTime lang={lang} />
-            <SyncStatusIndicator isSyncing={isSyncing} />
-            <span aria-hidden style={{ width: 1, height: 20, background: "var(--nv-line, #E4E9E6)", margin: "0 2px", flexShrink: 0 }} />
+          <div className="nv-hdr-tools-wrap">
+          <div className="nv-hdr-tools" role="group" aria-label={ar ? "أدوات الشريط" : "Header tools"}>
+            <HeaderDateTime lang={lang} className="nv-hdr-wide" />
+            <SyncStatusIndicator isSyncing={isSyncing} className="nv-hdr-wide" />
+            <NotificationBell
+              notifOpen={notifOpen}
+              onToggleNotif={onToggleNotif}
+              onCloseNotif={onCloseNotif}
+              notifItems={notifItems}
+              onOpenNotif={onOpenNotif}
+              onDismissNotif={onDismissNotif}
+              onMarkAllNotifs={onMarkAllNotifs}
+            />
             <ThemeToggle />
-            {hideLang ? null : (
-              <button
-                type="button"
-                className="nv-frame-iconbtn"
-                onClick={() => setLang(lang === "ar" ? "en" : "ar")}
-                aria-label={t("language")}
-                style={frameButton({
-                  minWidth: 34,
-                  padding: "0 8px",
-                  fontFamily: MONO,
-                  fontWeight: 700,
-                  fontSize: 12,
-                })}
-              >
-                {lang === "ar" ? "EN" : "ع"}
-              </button>
-            )}
+            {langButton ? <span className="nv-hdr-wide nv-hdr-contents">{langButton}</span> : null}
+            <HeaderOverflow ar={ar} lang={lang} isSyncing={isSyncing} langButton={langButton} />
+          </div>
           </div>
         </div>
 
-        <div
-          className="nv-topbar-scope"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-            flexWrap: "wrap",
-            padding: "8px 14px",
-            borderTop: "1px solid var(--nv-line3, #EEF1EF)",
-            background: "var(--nv-soft, #FAFBFA)",
-            borderRadius: "0 0 12px 12px",
-          }}
-        >
-          <ScopeBar
-            notifOpen={notifOpen}
-            onToggleNotif={onToggleNotif}
-            onCloseNotif={onCloseNotif}
-            notifItems={notifItems}
-            onOpenNotif={onOpenNotif}
-            onDismissNotif={onDismissNotif}
-            onMarkAllNotifs={onMarkAllNotifs}
-            violationCount={violationCount}
-          />
+        <div className="nv-topbar-scope nv-hdr-ctx">
+          <ScopeBar violationCount={violationCount} />
         </div>
-      </div>
+      </header>
 
       {duty ? (
         <div className="nv-duty-strip" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>

@@ -539,12 +539,6 @@ export default function Complaints() {
       tabs={tabs.length > 1 ? tabs.map((item) => ({ value: item.key, label: ar ? item.ar : item.en, count: item.count })) : []}
       tool={activeFace}
       onTool={setTab}
-      meta={activeFace !== "manage" ? null : (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 9, fontSize: 12, fontWeight: 600, color: board.pulseColor, background: board.pulseBg, border: `1px solid ${board.pulseBorder}`, borderRadius: 999, padding: "6px 12px", whiteSpace: "nowrap" }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: board.pulseDot }} />
-          {board.pulse}
-        </span>
-      )}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 16, color: "var(--nv-ink)", fontSize: 13 }}>
 

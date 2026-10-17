@@ -12,7 +12,7 @@ import { listLocalTodayAttendance, mergeAttendanceRows } from "@/lib/localAttend
 import { isOnLeaveToday, leaveTypeLabel } from "@/lib/leaveTypes";
 import useStationScope, { matchesStationScope } from "@/hooks/useStationScope";
 import PullToRefresh from "@/components/mobile/PullToRefresh";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import EmployeeDashboard from "@/components/dashboard/EmployeeDashboard";
 import HandoffCommandBoard from "@/components/dashboard/HandoffCommandBoard";
 import OperationsModuleGrid from "@/components/dashboard/OperationsModuleGrid";
@@ -75,18 +75,6 @@ function buildModuleMetrics(data, extra = {}) {
 }
 
 /** Header figure on the green — a link to the section that owns it. */
-/** Header figure on the green frame — the same open column as طلباتي: small label, number, a note line.
- *  No box: the figures sit on the green, divided by a thin rule. A pending queue reads as an action. */
-function HeadStat({ to, label, value, note = "", action = "" }) {
-  return (
-    <Link to={to} style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-start", textDecoration: "none", color: "#fff" }}>
-      <span style={{ fontSize: 10.5, color: "#A9CDB8" }}>{label}</span>
-      <span dir="ltr" style={{ fontSize: 20, fontWeight: 700, color: "#fff", unicodeBidi: "isolate", fontVariantNumeric: "tabular-nums", lineHeight: 1.2 }}>{value}</span>
-      <span style={{ fontSize: 10, color: action ? "#fff" : "#C5DBCD", fontWeight: action ? 600 : 400, minHeight: 14 }}>{action || note || "\u00a0"}</span>
-    </Link>
-  );
-}
-
 export default function Dashboard() {
   const { lang } = useI18n();
   const headerScope = useStationScope();
@@ -216,10 +204,6 @@ export default function Dashboard() {
     activeMembers: todayAtt.presentLike,
     employees: teamEmployees.length,
   };
-  const pendingLeaveEarly = teamEmployees.reduce(
-    (sum, employee) => sum + (employee.leaveRequests || []).filter((request) => request.status === "pending").length,
-    0,
-  );
   const isStationLead = currentUser.role === "station_manager" || currentUser.role === "pgm";
 
   const wrapBoard = (decideBody, mapMetrics, viewNote) => (
@@ -244,28 +228,7 @@ export default function Dashboard() {
           legal={ar
             ? "الأرقام مشتقّة من السجل والنطاق المعروض — ليست تقديراً ولا تُختلق. ملفي = محطة العمل · إدارة = فرع واحد."
             : "Figures are derived from the registry and the current scope — not estimated or invented. My file = work station · Manage = one branch."}
-          meta={(
-            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-              <HeadStat
-                to={personalFace ? "/app/attendance" : "/app/attendance?lane=manage"}
-                label={ar ? "حضور اليوم" : "Today's attendance"}
-                value={`${Math.round(attendanceRate)}%`}
-                note={ar ? "من المجدولين" : "Of those scheduled"}
-              />
-              {!personalFace ? (
-                <>
-                  <span aria-hidden style={{ width: 1, height: 28, background: "rgba(255,255,255,.28)" }} />
-                  <HeadStat
-                    to="/app/requests/manage"
-                    label={ar ? "بانتظار قرارك" : "Awaiting you"}
-                    value={pendingLeaveEarly}
-                    note={ar ? "لا شيء معلّق" : "Nothing pending"}
-                    action={pendingLeaveEarly > 0 ? (ar ? "افتح القرار ›" : "Open the decision ›") : ""}
-                  />
-                </>
-              ) : null}
-            </div>
-          )}
+          // No figures in the hero — attendance and pending decisions already lead the board below.
         >
           {face === "map" ? (
             <OperationsModuleGrid metrics={mapMetrics} lang={lang} user={currentUser} data={data} company={company} personal={personalFace} />

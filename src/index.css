@@ -3471,16 +3471,34 @@ html.dark .nv-stamp-head,
 html.dark .nv7-section-head {
   background: linear-gradient(135deg, #0B3D27 0%, #0F5535 100%) !important;
 }
-.nv-att-decision-row {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--nv-line, #E2E8F0);
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) minmax(0, 1.6fr) auto;
-  gap: 14px;
-  align-items: center;
+/* «بصمات اليوم بلا حكم» — one white card per row (hairline, radius 8), as طلباتي / صوت الموظف. */
+.nv-att-queue-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
-.nv-att-decision-row.is-attention {
-  background: color-mix(in oklab, #B45309 5%, var(--nv-card, #fff));
+.nv-att-decision-row {
+  background: var(--nv-card, #fff);
+  border: 1px solid var(--nv-line, #E4E9E6);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.nv-att-decision-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 16px;
+  align-items: end;
+  min-width: 0;
+}
+.nv-att-decision-row button {
+  border-radius: var(--nv-radius-control, 8px) !important;
+  min-height: 0 !important;
+  transform: none;
 }
 .nv-ops-cal {
   color: var(--nv-ink);
@@ -3537,8 +3555,8 @@ html.dark .nv7-section-head {
 .dark .nv-att-decision-row {
   border-color: var(--nv-night-line, #31443A);
 }
-.dark .nv-att-decision-row.is-attention {
-  background: color-mix(in oklab, #fbbf24 8%, var(--nv-night-card, #1C2922));
+.dark .nv-att-decision-row {
+  background: var(--nv-night-card, #1C2922);
 }
 .dark .nv-att-clock-source {
   background: linear-gradient(135deg, #0B3D27, #0F5535);
@@ -3553,7 +3571,7 @@ html.dark .nv7-section-head {
   .nv-req-lower {
     grid-template-columns: 1fr !important;
   }
-  .nv-att-decision-row {
+  .nv-att-decision-body {
     grid-template-columns: minmax(0, 1fr);
   }
   .nv-att-mine-grid {

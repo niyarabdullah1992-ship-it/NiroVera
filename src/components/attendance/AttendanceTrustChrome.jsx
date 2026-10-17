@@ -75,6 +75,31 @@ export function AttendanceRingChips({ rings, brokeAt }) {
   );
 }
 
+/**
+ * The same four links as a calm inline progress — small dots and labels, muted; a green check only on
+ * a link that is done. A broken link reads in ink with a hollow dot; the row's chip carries the colour.
+ */
+export function AttendanceChainProgress({ rings }) {
+  return (
+    <span data-chain-progress="1" style={{ display: "inline-flex", gap: 12, flexWrap: "wrap", alignItems: "center", fontSize: 11, color: MUTED, lineHeight: 1.6 }}>
+      {rings.map((item) => {
+        const done = item.state === "ok";
+        const broken = item.state === "bad";
+        return (
+          <span key={item.tag} data-chain-step={item.tag} data-state={item.state} title={`${item.tag} ${item.title}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, color: broken ? "var(--nv-ink)" : MUTED, fontWeight: broken ? 600 : 400 }}>
+            {done ? (
+              <span aria-hidden style={{ display: "inline-flex", color: "var(--nv-ok-ink)" }}><NvMark mark="check" size={11} /></span>
+            ) : (
+              <span aria-hidden style={{ width: 6, height: 6, borderRadius: "50%", boxSizing: "border-box", border: `1.5px solid ${broken ? "var(--nv-ink2)" : "var(--nv-mute-fill, #C5CEC9)"}`, background: "transparent", flex: "none" }} />
+            )}
+            {item.title}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
 export function punchChainFromAttendance(attendance, { scheduled = false, onLeave = false } = {}) {
   const punched = !!(attendance?.check_in_at || attendance?.checkInAt);
   const closed = !!(attendance?.check_out_at || attendance?.checkOutAt);

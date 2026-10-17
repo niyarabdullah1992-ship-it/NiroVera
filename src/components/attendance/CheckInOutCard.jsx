@@ -1182,7 +1182,12 @@ function BreakPunch({ ar, day, gate, busy, error, onPunch, leftMs = null, button
       : leftMs != null
         ? <span style={{ color: "var(--nv-warn-ink)", fontWeight: 600 }}>{ar ? "انتهت راحتك — عُد للعمل واضغط «أنهيت راحتي»." : "Your break is over — back to work, then tap “I ended my break”."}</span>
         : (ar ? <>في راحتك منذ <span dir="ltr" style={MONO}>{day.open.start}</span> · {minutesAr(day.runningMinutes)}</> : <>On break since <span dir="ltr" style={MONO}>{day.open.start}</span> · {day.runningMinutes} min</>))
-    : null;
+    : day.assumedRunning && day.assumed
+      // None punched: the assumed break counts down like a punched one; «بدأت راحتي» replaces it.
+      ? (ar
+        ? <span data-break-assumed-running="1">راحتك <span dir="ltr" style={MONO}>{day.assumed.start}–{day.assumed.end}</span> تُحتسب تلقائياً{leftMs != null && leftMs > 0 ? <> · باقٍ <span dir="ltr" data-break-countdown="flex" style={{ ...MONO, fontWeight: 700 }}>{countdownLabel(leftMs)}</span></> : null}</span>
+        : <span data-break-assumed-running="1">Your break <span dir="ltr" style={MONO}>{day.assumed.start}–{day.assumed.end}</span> counts automatically{leftMs != null && leftMs > 0 ? <> · <span dir="ltr" data-break-countdown="flex" style={{ ...MONO, fontWeight: 700 }}>{countdownLabel(leftMs)}</span> left</> : null}</span>)
+      : null;
   return (
     <div data-break-punch={open ? "open" : "closed"} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, maxWidth: 280, textAlign: "center" }}>
       <button

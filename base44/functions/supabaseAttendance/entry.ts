@@ -977,14 +977,15 @@ function closeFlexBreaks(shift: any, row: any, checkOutIso: string, assumedBreak
   const onDate = String(row?.date || "").slice(0, 10);
   const day = resolveFlexDayBreaks({ shift, breaks: list, checkIn: row?.check_in_at, checkOut: checkOutIso, onDate });
   if (!day.flex || !day.assumed || list.some((item: any) => item?.source === "assumed")) return list;
-  const card = assumedBreak ? checkAssumedBreakGate({ shift, breaks: list, start: assumedBreak.start, end: assumedBreak.end, onDate }) : null;
+  const card = assumedBreak ? checkAssumedBreakGate({ shift, breaks: list, start: assumedBreak.start, end: assumedBreak.end, onDate, checkOut: checkOutIso }) : null;
   const inMs = new Date(row.check_in_at).getTime();
   const lift = (m: number) => (m + 720 < day.flex.shiftStart ? m + 1440 : m);
   const inParts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Riyadh", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(row.check_in_at));
   const inM = lift(Number(inParts.find((p) => p.type === "hour")?.value || 0) * 60 + Number(inParts.find((p) => p.type === "minute")?.value || 0));
   const toMin = (hm: string) => lift(Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5)));
   const startMin = card?.ok ? toMin(card.start) : day.assumed.startMin;
-  const minutes = day.flex.minutes;
+  // The full minutes, or cut where the checkout fell inside it (as a punched break closes at the checkout).
+  const minutes = card?.ok ? card.minutes : day.assumed.endMin - day.assumed.startMin;
   const base = inMs - (inMs % 60000);
   const iso = (m: number) => new Date(base + (m - inM) * 60000).toISOString();
   list.push({ start: iso(startMin), end: iso(startMin + minutes), source: "assumed" });

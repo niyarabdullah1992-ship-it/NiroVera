@@ -89,7 +89,8 @@ export function dutyAlertsOf(ctx, now) {
 
 /**
  * The break running now, if any — for the header pill and the card's countdown.
- * - flex («راحة مرنة ببصمة»): the open punched break; its end = its start minute + the minutes left.
+ * - flex («راحة مرنة ببصمة»): the open punched break; its end = its start minute + the minutes left —
+ *   or, with none punched, the assumed break while it runs (`assumed: true`).
  * - fixed: the roster's break window the clock is inside (no punch), inside the presence.
  * Minute-aligned to the same clock the alerts read, so the countdown reaches 0:00 the minute the
  * «انتهت راحتك» notice fires. Art. 103 / no check-in / a closed day → null.
@@ -121,8 +122,10 @@ export function breakClockOf(ctx, now) {
   if (ctx.shift.breakMode === "flex") {
     const day = resolveDayBreaks({ shift: ctx.shift, breaks: ctx.punches.breaks, checkIn: ctx.punches.checkIn, now: new Date(nowMs), onDate: ctx.onDate, prayers: ctx.prayers, company: ctx.company, employee: ctx.employee });
     if (!day.flex) return null;
-    if (!day.open) return null;
-    return out("flex", day.open.startMin, day.open.startMin + day.remaining);
+    if (day.open) return out("flex", day.open.startMin, day.open.startMin + day.remaining);
+    // None punched: the assumed break runs on the same clock until its end (a punch replaces it).
+    if (day.assumedRunning) return { ...out("flex", day.assumed.startMin, day.assumed.endMin), assumed: true };
+    return null;
   }
   if (Array.isArray(ctx.punches.breaks)) return null;
   const inM = lift(punchClockMinutes(ctx.punches.checkIn));

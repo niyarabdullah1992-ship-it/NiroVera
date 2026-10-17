@@ -95,17 +95,50 @@ assert.deepEqual(tick(NOREST, rested, at("13:00"), seen).plans, [], "rested — 
 assert.ok(tick(NOREST, rested, at("17:30"), seen).plans.some((p) => p.key.endsWith(":rest_5h_breach:12:30:1")), "five hours after the rest — a new series");
 console.log("PASS 4h30 warn and the 5h rule per block (Art. 101)");
 
-/* ── flex with minutes left: the 5h message carries the one-tap «بدأت راحتي» ── */
+/* ── flex, none punched: the assumed break begins — one notice + toast, then the countdown and its end ── */
 const flexNone = { check_in_at: iso("07:00"), breaks: [] };
+assert.deepEqual(tick(FLEX, flexNone, at("11:59")).plans.filter((p) => /assumed_start|rest_5h_breach/.test(p.key)), [], "not before its start");
 const fx = tick(FLEX, flexNone, at("12:00"));
-const fxPlan = fx.plans.find((p) => p.userId === "e1" && p.key.includes("rest_5h_breach"));
+const startNotice = fx.plans.filter((p) => p.key.includes(":assumed_start:"));
+assert.equal(startNotice.length, 1, "one notice");
+assert.equal(startNotice[0].key, "duty-alert:e1:2026-10-17:day:assumed_start:12:00");
+assert.equal(startNotice[0].text, "بدأت راحتك الآن (⁦12:00–13:00⁩) — لم تبصم لها، فتُحتسب تلقائياً");
+assert.equal(startNotice[0].userId, "e1");
+assert.equal(startNotice[0].breach, false, "a notice, not a breach");
+assert.ok(!fx.plans.some((p) => p.key.includes("rest_5h_breach")), "no Art. 101 breach at the 5h mark");
+assert.ok(!fx.plans.some((p) => p.userId === MGR), "no manager notice");
+assert.ok(at("12:00") - at("07:00") <= consec * 3600000, "it fires at or before the 5h mark");
+assert.deepEqual([fx.clock.kind, fx.clock.start, fx.clock.end, fx.clock.assumed], ["flex", "12:00", "13:00", true], "the header clock runs as for a punched break");
+assert.equal(countdownLabel(breakClockOf(fx.ctx, at("12:18", "40")).remainingMs), "41:20");
+assert.deepEqual(tick(FLEX, flexNone, at("12:01"), keysOf(fx.plans)).plans, [], "once — the next minute sends nothing");
+assert.equal(nextDutyTickAt(at("12:59", "30"), fx.clock), at("13:00"), "the ticker wakes at its end");
+const fxEnd = tick(FLEX, flexNone, at("13:00"), keysOf(fx.plans));
+assert.deepEqual(fxEnd.plans.map((p) => [p.key, p.text]), [["duty-alert:e1:2026-10-17:day:break_end:12:00", "انتهت راحتك — عُد للعمل."]], "«انتهت راحتك» at its end");
+assert.equal(fxEnd.clock, null, "the clock stops");
+// Placement: the latest start that keeps ≤ 5 h before it — a 06:30 check-in moves the 12:30 middle to 11:30.
+const prayerCtx = (shift, attendance, now) => planDutyTick({ data: data(), user: USER, attendance, now, existingKeys: [], managerId: MGR, shift });
+const early = { check_in_at: iso("06:30"), breaks: [] };
+const atMark = prayerCtx(FLEX, early, at("11:30"));
+assert.ok(atMark.plans.some((p) => p.key.endsWith(":assumed_start:11:30")), "at the 5h mark, not after it");
+assert.ok(!atMark.plans.some((p) => p.key.includes("rest_5h_breach")));
+// «بدأت راحتي» during it replaces it: the clock follows the punch.
+const punchedIn = tick(FLEX, { check_in_at: iso("07:00"), breaks: [{ start: iso("12:20"), source: "punch" }] }, at("12:30"), keysOf(fx.plans));
+assert.deepEqual([punchedIn.clock.start, punchedIn.clock.end, !!punchedIn.clock.assumed], ["12:20", "13:20", false]);
+assert.deepEqual(tick(FLEX, { check_in_at: iso("07:00"), breaks: [{ start: iso("12:20"), source: "punch" }] }, at("13:00"), keysOf(fx.plans)).plans.filter((p) => p.key.includes("break_end")), [], "the assumed end no longer fires");
+console.log("PASS flex assumed break: «بدأت راحتك الآن» once by the 5h mark, countdown, «انتهت راحتك»; a punch replaces it; no breach");
+
+/* ── flex with minutes left after a punched part: the 5h message carries the one-tap «بدأت راحتي» ── */
+const LONGFLEX = { id: "long12", label: "طويل", start: "06:00", end: "18:00", stationId: "st", breakMode: "flex", flexBreak: { minutes: 60, from: "10:30", to: "17:00", split: true } };
+const part1 = { check_in_at: iso("06:00"), breaks: [{ start: iso("10:30"), end: iso("11:00"), source: "punch" }] };
+const fx5 = tick(LONGFLEX, part1, at("16:00"));
+const fxPlan = fx5.plans.find((p) => p.userId === "e1" && p.key.includes("rest_5h_breach"));
 assert.equal(fxPlan.to, "/app/attendance?focus=break");
 assert.equal(fxPlan.action, "break_start");
-const fxClosed = tick(FLEX, flexNone, at("15:30"));
+const fxClosed = tick(LONGFLEX, part1, at("17:30"));
 const late = fxClosed.plans.find((p) => p.userId === "e1" && p.key.includes("rest_5h_breach"));
 assert.equal(late?.to, "/app/attendance", "the window closed — no tap offered");
 const cont = tick(FLEX, flexNone, at("12:00"), [], { data: { hoursPolicy: { continuousWork103: true } } });
-assert.ok(!cont.plans.some((p) => /rest_5h|break_/.test(p.key)), "Art. 103 disables all of it");
+assert.ok(!cont.plans.some((p) => /rest_5h|break_|assumed/.test(p.key)), "Art. 103 disables all of it");
 console.log("PASS flex: the 5h message links to «بدأت راحتي» (focus=break); Art. 103 silent");
 
 /* ── the ticker: idempotent per shift + alert id, a new shift sends again ── */

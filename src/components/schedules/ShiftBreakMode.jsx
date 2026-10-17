@@ -142,8 +142,8 @@ export default function ShiftBreakMode({ ar = true, shift, canEdit = false, cont
         gate.ok ? (
           <span data-flex-gate="ok" style={{ fontSize: 10.5, color: "var(--nv-ink3, var(--nv-muted))", lineHeight: 1.7 }}>
             {ar
-              ? "يبدأ الموظف راحته وينهيها ببصمة داخل النافذة؛ إن لم يبصم افتُرضت عند أقرب صلاة فيها وخُصمت."
-              : "The worker punches the break's start and end inside the window; if not, it is assumed at the nearest prayer and deducted."}
+              ? "يبدأ الموظف راحته وينهيها ببصمة داخل النافذة؛ إن لم يبصم بدأت تلقائياً عند أقرب صلاة فيها (لا بعد خمس ساعات عمل) وأُبلغ بذلك، وتُخصم — دون مخالفة."
+              : "The worker punches the break's start and end inside the window; if not, it starts automatically at the nearest prayer (never past five hours of work), the worker is told, and it is deducted — no breach."}
             {gate.noteAr ? ` ${ar ? gate.noteAr : gate.noteEn}` : ""}
           </span>
         ) : (

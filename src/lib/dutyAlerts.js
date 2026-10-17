@@ -8,8 +8,9 @@
  * - break_soon / break_now / break_over — the roster's break (Art. 101), «راحة ثابتة».
  * - «راحة مرنة ببصمة» (flex): flex_window_closing (warn: the window ends in 15 min, no break yet),
  *   flex_break_running / flex_break_over (warn: past its minutes — late return, not a breach),
- *   flex_remaining (a split part left), flex_break_assumed (none punched by the window's end, Art. 102).
- *   The 4h30 / 5h alerts read the break punches themselves.
+ *   flex_remaining (a split part left), flex_break_assumed_start (none punched: the assumed break
+ *   begins now — notice only, no breach), flex_break_ended (its end), flex_break_assumed (taken, Art. 102).
+ *   The 4h30 / 5h alerts read the punched breaks and the assumed one (a rest, like a fixed break).
  * - rest_5h_soon (warn, not a breach) → rest_5h_breach — the consecutive-hours limit (Art. 101);
  *   none under Art. 103 (continuous work) or for an Art. 108 category outside Art. 101.
  * - presence_soon (warn) → presence_breach — the workplace ceiling (Art. 101 / Art. 108 category).
@@ -47,14 +48,14 @@ export const DUTY_NOTIFY_MANAGER = Object.freeze(["rest_5h_breach", "presence_br
 export const DUTY_NOTIFY_APP = Object.freeze([
   "break_soon", "break_now", "break_over",
   "rest_5h_soon", "rest_5h_breach",
-  "heat_now", "flex_window_closing", "flex_break_ended", "flex_break_over",
+  "heat_now", "flex_window_closing", "flex_break_assumed_start", "flex_break_ended", "flex_break_over",
 ]);
 
 /** Which alert shows when several apply — breaches first, then what needs doing soonest. */
 const PRIORITY = [
   "presence_breach", "rest_5h_breach", "heat_now",
   "presence_soon", "rest_5h_soon", "flex_break_over", "flex_break_ended", "flex_window_closing", "break_soon",
-  "flex_break_running", "break_now", "heat_soon",
+  "flex_break_running", "flex_break_assumed_start", "break_now", "heat_soon",
   "ramadan_over", "flex_break_assumed", "flex_remaining", "break_over", "prayer_next", "ramadan_hours",
 ];
 
@@ -219,7 +220,28 @@ export function deriveDutyAlerts({
         textEn: `On your break since ${flexDay.open.start} — ${Math.max(0, allowed - flexDay.runningMinutes)} min left, not counted as work.`,
         hint: { kind: "rest", item: { date: onDate } },
       }));
-    } else if (!flexDay.punched.length && flexDay.windowState === "open" && flex.toMin - nowM <= DUTY_ALERT_LEAD.flexWindowClosing) {
+    } else if (flexDay.assumedRunning) {
+      // None punched: the assumed break begins now — told once, counted down like a punched one.
+      const a = flexDay.assumed;
+      alerts.push(alert("flex_break_assumed_start", "info", "hours.rest.notWorkingHours.cite", onDate, {
+        atMinutes: a.startMin,
+        meta: { start: a.start, end: a.end, breakStart: a.start, endMin: a.endMin, assumed: true },
+        textAr: `بدأت راحتك الآن (\u2066${a.start}–${a.end}\u2069) — لم تبصم لها، فتُحتسب تلقائياً.`,
+        textEn: `Your break has started (${a.start}–${a.end}) — you did not punch it, so it counts automatically.`,
+        hint: { kind: "rest", item: { date: onDate } },
+      }));
+    } else if (flexDay.assumed && !flexDay.punched.length && flexDay.planned && flexDay.assumed.startMin === flexDay.planned.startMin
+      && nowM >= flexDay.assumed.endMin && nowM - flexDay.assumed.endMin < DUTY_ALERT_LEAD.breakOverShown) {
+      // The assumed break's minutes ran out — «انتهت راحتك», keyed to its start like a punched one.
+      const a = flexDay.assumed;
+      alerts.push(alert("flex_break_ended", "warn", "hours.rest.duringShiftMinutes", onDate, {
+        atMinutes: a.endMin,
+        meta: { breakStart: a.start, assumed: true },
+        textAr: `انتهت راحتك عند ${a.end} — عُد للعمل.`,
+        textEn: `Your break ended at ${a.end} — back to work.`,
+        hint: { kind: "rest", item: { date: onDate } },
+      }));
+    } else if (!flexDay.punched.length && !flexDay.assumed && flexDay.windowState === "open" && flex.toMin - nowM <= DUTY_ALERT_LEAD.flexWindowClosing) {
       const left = flex.toMin - nowM;
       alerts.push(alert("flex_window_closing", "warn", "hours.rest.duringShiftMinutes", onDate, {
         atMinutes: flex.toMin,
@@ -277,16 +299,17 @@ export function deriveDutyAlerts({
         hint: { kind: "rest", item: { date: onDate } },
       }));
     }
-    // Flex: only the punches prove a rest — an open break holds the count, an assumed one does not.
+    // Flex: the punched breaks and the assumed one are the rests — an assumed break is a rest like a
+    // fixed one (no Art. 101 breach); an open or running break holds the count.
     const eff = flex
-      ? { recorded: true, breaks: flexDay.punched.map((row) => ({ start: row.start, end: row.end, startMin: row.startMin, endMin: row.endMin })) }
+      ? { recorded: true, breaks: flexDay.rows.filter((row) => row.startMin <= nowM && row.endMin != null).map((row) => ({ start: row.start, end: row.end, startMin: row.startMin, endMin: row.endMin })) }
       : effectiveDutyBreaks({ recordedBreaks: punches?.breaks, windows, inMinutes: inM, untilMinutes: nowM });
     const rests = eff.breaks
       .map((row) => ({ from: row.startMin ?? lift(clockOf(row.start)), to: row.endMin ?? lift(clockOf(row.end)) }))
       .filter((row) => row.from != null && row.to != null && row.to - row.from >= minRest && row.from >= inM);
     // A roster break that starts this very minute is a rest already (its clipped length is still 0).
     const windowNow = !flex && !eff.recorded && windows.some((w) => w.startMin <= nowM && nowM < w.endMin && w.startMin >= inM && w.minutes >= minRest);
-    const inRest = (flex && !!flexDay.open) || windowNow || rests.some((row) => row.from <= nowM && nowM < row.to);
+    const inRest = (flex && (!!flexDay.open || !!flexDay.assumedRunning)) || windowNow || rests.some((row) => row.from <= nowM && nowM < row.to);
     const lastRestEnd = rests.filter((row) => row.to <= nowM).reduce((max, row) => Math.max(max, row.to), inM);
     const stretch = inRest ? 0 : nowM - lastRestEnd;
     // A rest still ahead before the limit is the plan working — no warning.
@@ -461,6 +484,11 @@ function appNoticeText(row, ar) {
   if (row.id === "flex_break_ended" || row.id === "flex_break_over" || row.id === "break_over") {
     return ar ? "انتهت راحتك — عُد للعمل." : "Your break is over — back to work.";
   }
+  if (row.id === "flex_break_assumed_start") {
+    return ar
+      ? `بدأت راحتك الآن (\u2066${meta.start}–${meta.end}\u2069) — لم تبصم لها، فتُحتسب تلقائياً`
+      : `Your break starts now (${meta.start}–${meta.end}) — you did not punch it, so it counts automatically`;
+  }
   if (row.id === "break_now") {
     return ar
       ? `بدأت راحتك الآن (\u2066${meta.start}–${meta.end}\u2069) — لا تُحسب من ساعات العمل.`
@@ -484,6 +512,7 @@ function appNoticeKey(shiftKey, row) {
   if (row.id === "rest_5h_breach") return `duty-alert:${shiftKey}:rest_5h_breach:${meta.since || ""}:${meta.block || 1}`;
   if (row.id === "rest_5h_soon") return `duty-alert:${shiftKey}:rest_5h_soon:${meta.since || ""}`;
   if (row.id === "flex_break_ended" || row.id === "flex_break_over") return `duty-alert:${shiftKey}:break_end:${meta.breakStart || ""}`;
+  if (row.id === "flex_break_assumed_start") return `duty-alert:${shiftKey}:assumed_start:${meta.start || ""}`;
   if (row.id === "break_now" || row.id === "break_over") return `duty-alert:${shiftKey}:${row.id}:${meta.start || ""}`;
   return `duty-alert:${shiftKey}:${row.id}`;
 }

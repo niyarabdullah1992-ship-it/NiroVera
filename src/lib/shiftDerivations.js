@@ -277,10 +277,11 @@ export function readDayBreaks(list, { shiftStart = null, until = null } = {}) {
 /**
  * Where an unpunched flex break is assumed (Art. 102 still deducts it): at the prayer inside the
  * window nearest its middle, else the window's middle — for the full minutes, kept inside the
- * window and, when it fits, inside the presence. `prayers` is a computePrayerTimes / stationPrayerTimes
- * day ({ minutes: { fajr, dhuhr, asr, maghrib, isha } }) or null.
+ * window and, when it fits, inside the presence. `latestStart` / `earliestStart` keep the work before
+ * (and after) it within the Art. 101 limit: the latest point that still keeps ≤ 5 h before it.
+ * `prayers` is a computePrayerTimes / stationPrayerTimes day ({ minutes: { fajr, dhuhr, asr, maghrib, isha } }) or null.
  */
-export function placeAssumedFlexBreak({ flex, prayers = null, inMin = null, outMin = null } = {}) {
+export function placeAssumedFlexBreak({ flex, prayers = null, inMin = null, outMin = null, latestStart = null, earliestStart = null } = {}) {
   if (!flex || flex.fromMin == null || flex.toMin == null || !flex.minutes) return null;
   const minutes = flex.minutes;
   const mid = (flex.fromMin + flex.toMin) / 2;
@@ -289,6 +290,11 @@ export function placeAssumedFlexBreak({ flex, prayers = null, inMin = null, outM
   const pLo = inMin == null ? lo : Math.max(lo, inMin);
   const pHi = outMin == null ? hi : Math.min(hi, outMin - minutes);
   if (pLo <= pHi) { lo = pLo; hi = pHi; }
+  // Art. 101: no more than the consecutive-hours limit before it (latestStart) and, when the window
+  // allows, after it (earliestStart). The limit before wins — the break must begin by the 5h mark.
+  if (latestStart != null) hi = Math.max(flex.fromMin, Math.min(hi, latestStart));
+  if (earliestStart != null) lo = Math.min(hi, Math.max(lo, earliestStart));
+  if (lo > hi) lo = hi;
   let best = null;
   for (const key of ["fajr", "dhuhr", "asr", "maghrib", "isha"]) {
     let at = prayers?.minutes?.[key];
@@ -315,15 +321,18 @@ export function placeAssumedFlexBreak({ flex, prayers = null, inMin = null, outM
 /**
  * One flex day read from its punches: { mode, flex, rows, punched, open, assumed, taken, remaining,
  * runningMinutes, overMinutes (late return beyond the allowed minutes), shortCount, windowState,
- * forDuty (rests deducted — punched and assumed), forConsec (rests the punches prove, for Art. 101) }.
+ * forDuty (rests deducted — punched and assumed), forConsec (the rests for Art. 101 — punched and
+ * assumed: an assumed break is a rest like a fixed one, not a breach), planned, assumedRunning }.
  * Not flex → { mode, flex: null, …, forDuty: null } and the caller keeps its own reading.
- * The break is assumed when none was punched, the presence reached the window, and the window has
- * closed (by now or the checkout) — or the closed day's presence passed the consecutive-hours limit.
+ * With none punched, the assumed break is decided at check-in (`planned`): the nearest prayer in the
+ * window, else its middle, no later than the consecutive-hours limit after the check-in. It begins
+ * when the clock reaches its start — `assumedRunning` until its end, as a punched break would — and a
+ * «بدأت راحتي» punch replaces it. A checkout inside it ends it there.
  */
 export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, onDate, prayers = null, continuous103 = false } = {}) {
   const mode = shiftBreakMode(shift, { continuous103 });
   const flex = mode === "flex" ? flexBreakOf(shift, onDate) : null;
-  const out = { mode, flex, rows: [], punched: [], open: null, assumed: null, taken: 0, remaining: flex?.minutes || 0, runningMinutes: 0, overMinutes: 0, shortCount: 0, windowState: "", forDuty: null, forConsec: null };
+  const out = { mode, flex, rows: [], punched: [], open: null, assumed: null, taken: 0, remaining: flex?.minutes || 0, runningMinutes: 0, overMinutes: 0, shortCount: 0, windowState: "", forDuty: null, forConsec: null, planned: null, assumedRunning: false };
   if (!flex) return out;
   const lift = (m) => (m != null && m + 720 < flex.shiftStart ? m + 1440 : m);
   const inM = lift(riyadhClockOf(checkIn));
@@ -349,19 +358,35 @@ export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, on
   out.overMinutes = Math.max(0, taken + running - flex.minutes);
   out.shortCount = punched.filter((row) => !row.open && row.minutes < flex.minPart).length;
   let assumed = null;
+  out.planned = null;
+  out.assumedRunning = false;
   if (!punched.length) {
     const stored = rows.find((row) => row.source === "assumed");
     const endM = nowM;
     const consecMax = (ruleValue("hours.rest.maxConsecutiveHours", onDate) || 5) * 60;
     const touches = endM != null && inM < flex.toMin && endM > flex.fromMin;
-    const due = touches && (endM >= flex.toMin || (outM != null && outM - inM > consecMax));
-    if (stored) assumed = { ...stored, source: "assumed" };
-    else if (due) assumed = placeAssumedFlexBreak({ flex, prayers, inMin: inM, outMin: outM });
+    // Decided at check-in, so the notice can fire the minute it begins: never later than the 5h mark.
+    const placed = inM < flex.toMin
+      ? placeAssumedFlexBreak({ flex, prayers, inMin: inM, latestStart: inM + consecMax, earliestStart: flex.shiftStart + flex.span - consecMax - flex.minutes })
+      : null;
+    const plan = placed && placed.startMin >= inM ? placed : null;
+    out.planned = plan;
+    if (stored) {
+      assumed = { ...stored, source: "assumed" };
+    } else if (plan && endM != null && endM >= plan.startMin && (outM == null || plan.startMin < outM)) {
+      assumed = outM != null && plan.endMin > outM
+        ? { ...plan, end: hmOfClock(outM), endMin: outM, minutes: outM - plan.startMin, closedAtCheckout: true }
+        : plan;
+      out.assumedRunning = outM == null && endM < plan.endMin;
+    } else if (touches && outM != null && outM - inM > consecMax) {
+      assumed = placeAssumedFlexBreak({ flex, prayers, inMin: inM, outMin: outM });
+    }
   }
   out.assumed = assumed;
   out.rows = [...punched, ...(assumed ? [assumed] : [])].sort((a, b) => a.startMin - b.startMin);
   out.forDuty = out.rows.filter((row) => row.endMin != null && row.endMin > row.startMin).map((row) => ({ start: row.start, end: row.end }));
-  out.forConsec = punched.filter((row) => row.endMin != null && row.endMin > row.startMin).map((row) => ({ start: row.start, end: row.end }));
+  // Art. 101: an assumed break is a rest like a fixed one — the 5h check reads it too (no breach).
+  out.forConsec = out.forDuty.slice();
   return out;
 }
 
@@ -412,8 +437,8 @@ export function checkFlexBreakPunchGate(input = {}) {
   return fail("BREAK_ACTION_UNKNOWN", "إجراء راحة غير معروف.", "Unknown break action.");
 }
 
-/** A client-placed assumed break the server may store: inside the window, the full minutes, no punches. */
-export function checkAssumedBreakGate({ shift, breaks, start, end, onDate } = {}) {
+/** A client-placed assumed break the server may store: inside the window, the full minutes (or cut by the checkout inside it), no punches. */
+export function checkAssumedBreakGate({ shift, breaks, start, end, onDate, checkOut = null } = {}) {
   const flex = flexBreakOf(shift, onDate);
   const fail = (error, reason, reasonEn) => ({ ok: false, error, reason, reasonEn });
   if (!flex) return fail("NOT_FLEX_BREAK", "راحة هذه الوردية ثابتة.", "This shift's break is fixed.");
@@ -423,9 +448,13 @@ export function checkAssumedBreakGate({ shift, breaks, start, end, onDate } = {}
   let e = lift(clockOfHm(end));
   if (s == null || e == null) return fail("ASSUMED_BREAK_TIME", "وقت الراحة المفترضة غير مقروء.", "The assumed break time is unreadable.");
   if (e < s) e += 1440;
-  if (e - s !== flex.minutes) return fail("ASSUMED_BREAK_MINUTES", `الراحة المفترضة ${flex.minutes} دقيقة كاملة.`, `An assumed break is the full ${flex.minutes} minutes.`);
+  const outClock = checkOut == null ? null : riyadhClockOf(checkOut);
+  let outM = outClock == null ? null : lift(outClock);
+  if (outM != null && outM < s) outM += 1440;
+  const cutAtCheckout = outM != null && e === outM && e - s > 0 && e - s < flex.minutes;
+  if (e - s !== flex.minutes && !cutAtCheckout) return fail("ASSUMED_BREAK_MINUTES", `الراحة المفترضة ${flex.minutes} دقيقة كاملة.`, `An assumed break is the full ${flex.minutes} minutes.`);
   if (s < flex.fromMin || e > flex.toMin) return fail("ASSUMED_BREAK_OUTSIDE", `الراحة المفترضة داخل النافذة ⁦${flex.from}–${flex.to}⁩.`, `An assumed break sits inside the ${flex.from}–${flex.to} window.`);
-  return { ok: true, start: hmOfClock(s), end: hmOfClock(e), minutes: flex.minutes };
+  return { ok: true, start: hmOfClock(s), end: hmOfClock(e), minutes: e - s };
 }
 
 /**

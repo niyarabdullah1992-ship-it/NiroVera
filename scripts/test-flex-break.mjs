@@ -24,6 +24,7 @@ import { deriveDutyAlerts, planDutyAlertNotices } from "../src/lib/dutyAlerts.js
 import { actualShiftHours, rosterBreakWindows } from "../src/lib/shiftWeek.js";
 import { getTodaysShift } from "../src/lib/attendanceDerivations.js";
 import { stationPrayerTimes } from "../src/lib/prayerTimes.js";
+import { ruleValue } from "../src/lib/laborRules.js";
 
 const D = "2026-10-17";
 const at = (hm) => {
@@ -85,7 +86,7 @@ const assumedDay = duty([]);
 assert.equal(assumedDay.restMinutes, 60, "no punch: the full minutes are still deducted");
 assert.equal(assumedDay.workedMinutes, 480);
 assert.equal(assumedDay.breakAssumed, true);
-assert.deepEqual(assumedDay.flags.map((f) => f.error), ["ACTUAL_NO_BREAK"], "Art. 101 reads the punches — none proves a rest");
+assert.deepEqual(assumedDay.flags, [], "an assumed break is a rest for Art. 101, like a fixed one — no breach");
 const fixed = duty(undefined, FIXED);
 assert.equal(fixed.workedMinutes, 480, "fixed: the roster's 60 minutes, as before");
 assert.deepEqual(fixed.flags, []);
@@ -112,10 +113,45 @@ assert.equal(new Date(closed[0].start).toISOString(), new Date(iso("11:52")).toI
 const closedOpen = closeDayBreaks({ shift: FLEX, breaks: [{ start: iso("12:00"), end: null, source: "punch" }], checkIn: iso("07:00"), checkOut: iso("12:20"), onDate: D });
 assert.equal(closedOpen[0].end, iso("12:20"), "an open break ends at the checkout");
 assert.equal(closeDayBreaks({ shift: FIXED, breaks: undefined, checkIn: iso("07:00"), checkOut: iso("16:00"), onDate: D }), undefined, "fixed: nothing written");
-// Not assumed before the window closes, nor on a closed day of five hours or less.
-assert.equal(resolveDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("07:00"), now: iso("14:00"), onDate: D }).assumed, null);
-assert.equal(resolveDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("11:00"), checkOut: iso("14:30"), onDate: D }).assumed, null);
-console.log("PASS assumed break: nearest prayer (Dhuhr), else the middle, inside the window; stored on close");
+// Decided at check-in; it begins when the clock reaches its start (the middle 12:30 is past the 5h
+// mark of a 07:00 check-in, so it moves to 12:00 — the latest start that keeps ≤ 5 h before it).
+const before = resolveDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("07:00"), now: iso("11:59"), onDate: D });
+assert.equal(before.assumed, null, "not yet");
+assert.deepEqual([before.planned.start, before.planned.end], ["12:00", "13:00"], "planned at check-in, at the 5h mark");
+const begun = resolveDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("07:00"), now: iso("12:00"), onDate: D });
+assert.deepEqual([begun.assumed.start, begun.assumed.end, begun.assumedRunning], ["12:00", "13:00", true], "begins at its start");
+const doneDay = resolveDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("07:00"), now: iso("14:00"), onDate: D });
+assert.deepEqual([doneDay.assumed.start, doneDay.assumedRunning], ["12:00", false], "taken — no longer running");
+assert.equal(resolveDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("11:00"), checkOut: iso("14:30"), onDate: D }).assumed.start, "12:30", "a late check-in: the middle, well inside 5 h");
+assert.equal(resolveDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("14:20"), checkOut: iso("15:30"), onDate: D }).assumed, null, "arrived after the last start — none");
+// Placement: the latest point that still keeps ≤ 5 h of consecutive work — Dhuhr 11:52 after a 06:30 check-in → 11:30.
+const earlyIn = resolveDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("06:30"), now: iso("11:30"), onDate: D, prayers: { minutes: { dhuhr: at("11:52") } } });
+assert.equal(earlyIn.assumed.start, "11:30", "the notice point is at the 5h mark, not after it");
+assert.ok(earlyIn.assumed.startMin - at("06:30") <= ruleValue("hours.rest.maxConsecutiveHours", D) * 60);
+assert.equal(resolveDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("07:00"), now: iso("12:00"), onDate: D, prayers: { minutes: { dhuhr: at("11:52") } } }).assumed.start, "11:52", "the prayer when it is inside 5 h");
+// «بدأت راحتي» during it replaces it.
+const replaced = resolveDayBreaks({ shift: FLEX, breaks: [{ start: iso("12:20"), source: "punch" }], checkIn: iso("07:00"), now: iso("12:30"), onDate: D });
+assert.equal(replaced.assumed, null, "the punch replaces the assumed break");
+assert.equal(replaced.open.start, "12:20");
+// A checkout inside it ends it there (as a punched break closes at the checkout), and the server accepts that cut.
+const cut = closeDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("07:00"), checkOut: iso("12:30"), onDate: D });
+assert.equal(new Date(cut[0].end).toISOString(), new Date(iso("12:30")).toISOString());
+assert.equal(twin.checkAssumedBreakGate({ shift: FLEX, breaks: [], start: "12:00", end: "12:30", onDate: D, checkOut: iso("12:30") }).ok, true);
+assert.equal(twin.checkAssumedBreakGate({ shift: FLEX, breaks: [], start: "12:00", end: "12:30", onDate: D, checkOut: iso("16:00") }).error, "ASSUMED_BREAK_MINUTES");
+console.log("PASS assumed break: nearest prayer (Dhuhr), else the middle, ≤ 5 h after check-in; begins at its start; a punch replaces it; stored on close");
+
+/* ── no breach: an assumed break is a rest (Art. 101), the employee is only told ── */
+assert.deepEqual(actualDutyBreaches({ checkIn: iso("07:00"), checkOut: iso("16:00"), shift: FLEX, onDate: D, breaks: [] }), [], "closed day: no ACTUAL_NO_BREAK");
+assert.deepEqual(actualDutyBreaches({ checkIn: iso("07:00"), checkOut: iso("16:00"), shift: FLEX, onDate: D, breaks: [{ start: iso("12:00"), end: iso("13:00"), source: "assumed" }] }), [], "stored assumed: no breach");
+assert.deepEqual(deriveDutyAlerts({ shift: FLEX, punches: { checkIn: iso("07:00"), checkOut: iso("16:00"), breaks: [{ start: iso("12:00"), end: iso("13:00"), source: "assumed" }] }, onDate: D, now: at("16:05") }).alerts, [], "nothing recorded on the day");
+for (let m = at("07:00"); m <= at("16:00"); m += 5) {
+  const day = deriveDutyAlerts({ shift: FLEX, punches: { checkIn: "07:00", breaks: [] }, onDate: D, now: m });
+  assert.ok(!day.alerts.some((a) => a.breach), `no breach at ${m}`);
+  assert.deepEqual(planDutyAlertNotices({ alerts: day.alerts, employee: { id: "e1", name: "عمر" }, managerId: "m1", shiftKey: "e1:2026-10-17:day", app: true }).filter((p) => p.userId === "m1"), [], "no manager notice");
+}
+const twinNoBreach = deriveActualDutyCore({ checkIn: iso("07:00"), checkOut: iso("16:00"), shift: FLEX, onDate: D, breaks: [] });
+assert.deepEqual(twinNoBreach.flags, [], "server twin: no breach");
+console.log("PASS no breach for an assumed break — client, live alerts, server twin; no manager notice");
 
 /* ── the punch gate: window, the 30-minute minimum, split, remaining ── */
 const pg = (action, now, breaks = [], shift = FLEX) => checkFlexBreakPunchGate({ action, shift, breaks, checkIn: iso("07:00"), now: iso(now), onDate: D });
@@ -160,7 +196,11 @@ const ids = (r) => r.alerts.map((a) => a.id);
 const live = (now, breaks = [], extra = {}) => deriveDutyAlerts({ shift: FLEX, punches: { checkIn: "07:00", breaks }, onDate: D, now: at(now), ...extra });
 assert.ok(!ids(live("11:29")).includes("rest_5h_soon"));
 assert.ok(ids(live("11:30")).includes("rest_5h_soon"), "4h30 with no punched break — the window ahead does not hide it");
-assert.equal(live("12:00").current.id, "rest_5h_breach", "5 h on the punches");
+assert.equal(live("12:00").current.id, "flex_break_assumed_start", "none punched: the assumed break begins at the 5h mark");
+assert.ok(!ids(live("12:00")).includes("rest_5h_breach"), "an assumed break is a rest — no breach");
+assert.equal(live("12:00").current.textAr, "بدأت راحتك الآن (\u206612:00–13:00\u2069) — لم تبصم لها، فتُحتسب تلقائياً.");
+assert.ok(ids(live("13:00")).includes("flex_break_ended"), "«انتهت راحتك» at its end");
+assert.ok(!ids(live("17:00", [{ start: "11:00", end: "11:30" }], { shift: { ...FLEX, end: "18:00" } })).includes("flex_break_assumed_start"), "a punched part — nothing assumed");
 assert.ok(!ids(live("12:00", [{ start: "11:50" }])).includes("rest_5h_breach"), "an open break holds the count");
 assert.ok(!ids(live("13:00", [{ start: "11:30", end: "12:00" }])).some((id) => id.startsWith("rest_5h")), "a punched 30-minute rest resets the count");
 assert.ok(ids(live("12:20", [{ start: "11:50" }])).includes("flex_break_running"));
@@ -168,10 +208,13 @@ const over = live("13:00", [{ start: "11:50" }]);
 assert.ok(ids(over).includes("flex_break_over"));
 assert.match(over.alerts.find((a) => a.id === "flex_break_over").textAr, /^راحتك تجاوزت مدتها/);
 assert.equal(over.alerts.find((a) => a.id === "flex_break_over").breach, false, "late return is not a breach");
-const closing = live("14:45");
+assert.ok(!ids(live("14:45")).includes("flex_window_closing"), "the break was assumed at 12:00 — no closing warning");
+// A check-in too late for any assumed start: the window-closing warning still speaks.
+const lateIn = (now) => deriveDutyAlerts({ shift: FLEX, punches: { checkIn: "14:10", breaks: [] }, onDate: D, now: at(now) });
+const closing = lateIn("14:45");
 assert.ok(ids(closing).includes("flex_window_closing"));
 assert.match(closing.alerts.find((a) => a.id === "flex_window_closing").textAr, /^نافذة الراحة تنتهي بعد 15 دقيقة/);
-assert.ok(!ids(live("14:44")).includes("flex_window_closing"), "16 min before — not yet");
+assert.ok(!ids(lateIn("14:44")).includes("flex_window_closing"), "16 min before — not yet");
 assert.ok(!ids(live("14:45", [{ start: "11:30", end: "12:30" }])).includes("flex_window_closing"), "a break was taken");
 assert.ok(ids(live("15:05")).includes("flex_break_assumed"));
 assert.ok(ids(live("12:30", [{ start: "11:30", end: "12:00" }])).includes("flex_remaining"));
@@ -223,6 +266,13 @@ for (const [action, now, breaks] of [["start", "10:30", []], ["start", "11:20", 
 const twinDay = twin.resolveFlexDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("07:00"), checkOut: iso("16:00"), onDate: D });
 const clientDay = resolveFlexDayBreaks({ shift: FLEX, breaks: [], checkIn: iso("07:00"), checkOut: iso("16:00"), onDate: D });
 assert.deepEqual(twinDay.forDuty, clientDay.forDuty);
+assert.deepEqual(twinDay.forConsec, clientDay.forConsec, "the assumed break is a rest on both sides");
+for (const [inAt, now, out] of [["07:00", "12:00", null], ["06:30", "11:40", null], ["07:00", "12:30", "12:30"], ["11:00", "14:30", "14:30"]]) {
+  const input = { shift: FLEX, breaks: [], checkIn: iso(inAt), checkOut: out ? iso(out) : null, now: iso(now), onDate: D };
+  const a = resolveFlexDayBreaks(input);
+  const b = twin.resolveFlexDayBreaks(input);
+  assert.deepEqual([b.planned?.start, b.assumed?.start, b.assumed?.end, b.assumedRunning], [a.planned?.start, a.assumed?.start, a.assumed?.end, a.assumedRunning]);
+}
 for (const breaks of [[{ start: iso("11:55"), end: iso("12:52") }], [{ start: iso("11:30"), end: iso("12:00") }, { start: iso("13:30"), end: iso("14:00") }], [], [{ start: iso("11:30"), end: iso("12:47") }]]) {
   const input = { checkIn: iso("07:00"), checkOut: iso("16:00"), shift: FLEX, onDate: D, breaks };
   const server = deriveActualDutyCore(input);

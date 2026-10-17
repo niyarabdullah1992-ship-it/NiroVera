@@ -7,17 +7,18 @@ import { useI18n } from "@/lib/i18n";
 import { formatTime, useTimeFormat } from "@/hooks/useTimeFormat";
 import { deriveTeamAttendanceToday, getAttendanceStatus, getTodaysShift, isAttendancePolicyError, isScheduledToday } from "@/lib/attendance";
 import { isServiceOutage } from "@/lib/serviceErrors";
-import { hmToMinutes, todaysShiftEnded } from "@/lib/attendanceDerivations";
+import { todaysShiftEnded } from "@/lib/attendanceDerivations";
 import { isExcusedEarlyCheckout } from "@/lib/dutyRequests";
 import { listLocalTodayAttendance, mergeAttendanceRows } from "@/lib/localAttendanceFallback";
 import { recordManualAttendance, reviewLateReturn, submitOtherRequest } from "@/lib/store";
 import { resolveDayBreaks } from "@/lib/actualDuty";
 import { minutesAr } from "@/lib/dutyAlerts";
+import { citeRule } from "@/lib/laborRules";
 import { PREVENTED_TYPE, checkEmployerPreventedGate } from "@/lib/modelRequests";
 import { isLocalPreviewActive } from "@/lib/localPreview";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import EmployeeIdentityRow from "@/components/employees/EmployeeIdentityRow";
-import { AttendanceRingChips, brokeAtLabel, buildAttendanceRings } from "@/components/attendance/AttendanceTrustChrome";
+import { AttendanceChainProgress, brokeAtLabel, buildAttendanceRings } from "@/components/attendance/AttendanceTrustChrome";
 import { formatUiNumber } from "@/lib/dateFormat";
 import { DutyBoard } from "@/components/schedules/DutyTiles";
 import FigureRow from "@/components/shared/FigureRow";
@@ -34,7 +35,7 @@ import StatusFilterPills from "@/components/shared/StatusFilterPills";
 const miniBtn = (variant = "ghost") => ({
   height: 24,
   padding: "0 8px",
-  borderRadius: 10,
+  borderRadius: 8,
   fontSize: 10,
   fontWeight: 600,
   cursor: "pointer",
@@ -83,14 +84,27 @@ function shiftWindowElapsed(shift) {
   return todaysShiftEnded(shift, nowMinutes(), 60);
 }
 
+/**
+ * Queue actions — one height, one radius (8). «approve» is the primary green; «ghost» is neutral
+ * (a note, not a penalty); «reject» keeps the bad outline for a real penalty only.
+ */
 const actBtn = (kind) => {
-  if (kind === "approve") {
-    return { fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 13px", border: "none", borderRadius: 10, background: "var(--nv-ok-fill)", color: "var(--nv-btn-ink)", cursor: "pointer", whiteSpace: "nowrap" };
-  }
-  if (kind === "reject") {
-    return { fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 13px", border: "1px solid var(--nv-bad-line)", borderRadius: 10, background: "var(--nv-card)", color: "var(--nv-bad-ink)", cursor: "pointer", whiteSpace: "nowrap" };
-  }
-  return { fontFamily: "inherit", fontSize: 12, fontWeight: 600, padding: "8px 13px", border: "none", borderRadius: 10, background: "var(--nv-btn-fill)", color: "var(--nv-btn-ink)", cursor: "pointer", whiteSpace: "nowrap" };
+  const base = { fontFamily: "inherit", fontSize: 12, fontWeight: 600, height: 32, padding: "0 14px", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, lineHeight: 1, boxSizing: "border-box" };
+  if (kind === "approve") return { ...base, border: "1px solid var(--nv-ok-fill)", background: "var(--nv-ok-fill)", color: "var(--nv-btn-ink)" };
+  if (kind === "ghost") return { ...base, border: "1px solid var(--nv-line)", background: "var(--nv-card)", color: "var(--nv-ink)" };
+  if (kind === "reject") return { ...base, border: "1px solid var(--nv-bad-line)", background: "var(--nv-card)", color: "var(--nv-bad-ink)" };
+  return { ...base, border: "1px solid var(--nv-btn-fill)", background: "var(--nv-btn-fill)", color: "var(--nv-btn-ink)" };
+};
+/** A settled decision on the row — quiet text in the same 32 px box as the buttons. */
+const doneTag = (tone = "ok") => ({ display: "inline-flex", alignItems: "center", height: 32, padding: "0 12px", borderRadius: 8, boxSizing: "border-box", fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", color: tone === "ok" ? "var(--nv-ok-ink)" : "var(--nv-ink)", background: tone === "ok" ? "var(--nv-ok-soft)" : "var(--nv-soft)", border: `1px solid ${tone === "ok" ? "var(--nv-ok-line)" : BORDER}` });
+const MONO_INK = { fontFamily: "'IBM Plex Mono', monospace", fontVariantNumeric: "tabular-nums", color: "var(--nv-ink)" };
+/** Each queue row names its exception once — the title line; the chip carries the one colour. */
+const QUEUE_TITLE = {
+  manual: { ar: "طلب بصمة يدوية", en: "Manual punch request" },
+  outside: { ar: "بصمة خارج نطاق الفرع", en: "Punch outside the station range" },
+  missing: { ar: "حضور بلا انصراف", en: "Checked in, no checkout" },
+  early: { ar: "خروج قبل نهاية الوردية", en: "Left before the shift ended" },
+  late_return: { ar: "عودة متأخرة من الراحة", en: "Late return from break" },
 };
 
 export default function AttendanceDailyDashboard({ employees, currentUser, company, data, t, onQueueCount }) {
@@ -519,6 +533,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
         <span style={headNote}>{queueSub}</span>
       </StatusFilterPills>
 
+      {loading || employees.length === 0 || queue.length === 0 ? (
       <section className="nv-att-card" style={{ ...panel, borderRadius: 12, overflow: "hidden" }}>
       {loading ? (
         <div style={{ padding: "24px 20px", textAlign: "center", fontSize: 12, color: MUTED }}>…</div>
@@ -532,8 +547,12 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
             <span style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>{lang === "ar" ? "كل يوم أُغلق تلقائياً أو بقرار موقّع." : "Every day closed automatically or by a signed decision."}</span>
           </span>
         </div>
+      ) : null}
+      </section>
       ) : (
-        queueShown.map((e) => {
+      // One white card per row (hairline, radius 8) — the طلباتي / صوت الموظف row, not a tinted band.
+      <div className="nv-att-queue-rows" data-queue-rows="1">
+        {queueShown.map((e) => {
           const r = byEmployee[String(e.id)];
           const status = statusFor(e);
           const scheduled = isScheduledToday(e, data) || status === "present" || status === "late" || status === "absent";
@@ -577,21 +596,70 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                           : `The break ran ${breakDay.overMinutes} min past the allowed ${breakDay.flex.minutes} — a late return, not a legal breach.`)
                         : (lang === "ar" ? "السلسلة مكتملة." : "The chain is complete.");
           const attention = needsDecision(e);
-          // A late return names itself in the warn tone — it is not a broken link nor a legal breach.
+          // A late return names itself — it is not a broken link nor a legal breach.
           const broke = attention && flagKey !== "late_return" ? brokeAtLabel(lang === "ar", rings) : "";
+          const kind = lateReturn && flagKey === "late_return" ? "late_return" : queueFaceOf(e);
+          const titleText = kind === "late_return"
+            ? (ar ? QUEUE_TITLE.late_return.ar : QUEUE_TITLE.late_return.en)
+            : (QUEUE_TITLE[kind] ? (ar ? QUEUE_TITLE[kind].ar : QUEUE_TITLE[kind].en) : (broke || (ar ? flag.ar : flag.en)));
+          // One chip — the row's only colour: warn for a decision, bad for a broken range.
+          const chipTone = kind === "outside" ? "bad" : "warn";
+          const chipText = kind === "late_return"
+            ? (ar ? `عودة متأخرة ${formatUiNumber(breakDay.overMinutes)} د` : `Late return ${breakDay.overMinutes} min`)
+            : kind === "manual"
+              ? (ar ? "بانتظار قرارك" : "Needs you")
+              : kind === "outside" && r?.distance_meters != null
+                ? `${ar ? flag.ar : flag.en} · ${formatUiNumber(r.distance_meters)} ${ar ? "م" : "m"}`
+                : (ar ? flag.ar : flag.en);
+          const shiftNow = getTodaysShift(data, e);
+          const lateRule = kind === "late_return" ? citeRule("hours.rest.duringShiftMinutes", toRiyadhDateKey()) : null;
+          const lateBreak = kind === "late_return" ? (breakDay.punched.filter((row) => !row.open).pop() || breakDay.rows[breakDay.rows.length - 1] || null) : null;
+          // The muted note: where the chain broke and why — never a repeat of the title or the chip.
+          const bare = (text) => String(text || "").trim().replace(/[.。]$/, "");
+          const noteText = [broke, kind === "early" ? "" : reason]
+            .map(bare)
+            .filter((text, i, list) => text && text !== bare(titleText) && text !== bare(chipText) && list.indexOf(text) === i)
+            .join(" — ");
+          const dot = <span aria-hidden style={{ color: "var(--nv-muted)" }}>{" · "}</span>;
           return (
-            <div key={e.id} className={`nv-att-decision-row${attention ? " is-attention" : ""}`}>
-              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+            <div key={e.id} className="nv-att-decision-row" data-queue-row={kind}>
+              <span data-queue-main="1" style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flexWrap: "wrap" }}>
                 <EmployeeIdentityRow employee={e} employeeId={e.id} name={e.name} showId={false} compact />
-                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, color: MUTED }}>{punchTime}</span>
+                <span dir="ltr" style={{ ...MONO_INK, fontSize: 11.5, color: MUTED }}>{punchTime}</span>
+                <span style={{ flex: "1 1 auto" }} />
+                <span data-queue-chip={kind} style={{ ...pill(chipTone), height: 22, borderRadius: 999 }}>{chipText}</span>
               </span>
+              <div className="nv-att-decision-body">
               <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: attention && flagKey !== "late_return" ? "var(--nv-bad-ink)" : flag.color }}>
-                  {broke || (lang === "ar" ? flag.ar : flag.en)}
-                </span>
-                <AttendanceRingChips rings={rings} />
-                <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.75 }}>{reason}</span>
-                <BreakLine ar={ar} day={breakDay} />
+                <span data-queue-title="1" style={{ fontSize: 13, fontWeight: 600, color: "var(--nv-ink)", lineHeight: 1.5 }}>{titleText}</span>
+                {kind === "late_return" && lateBreak ? (
+                  <span data-queue-facts="1" style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
+                    {ar ? "راحة " : "Break "}<span dir="ltr" style={MONO_INK}>{lateBreak.start}–{lateBreak.end || "…"}</span>
+                    {dot}{ar ? "ببصمة" : "punched"}
+                    {dot}{ar ? "المسموح " : "allowed "}<span dir="ltr" style={MONO_INK}>{formatUiNumber(breakDay.flex.minutes)}</span>{ar ? " د" : " min"}
+                  </span>
+                ) : (
+                  <span data-queue-facts="1" style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
+                    {shiftNow ? (
+                      <>{ar ? "وردية " : "Shift "}<span dir="ltr" style={MONO_INK}>{shiftNow.start}–{shiftNow.end}</span></>
+                    ) : (ar ? "بلا وردية اليوم" : "No shift today")}
+                    {r?.check_in_at ? <>{dot}{ar ? "حضور " : "in "}<span dir="ltr" style={MONO_INK}>{punchTime}</span></> : null}
+                    {r?.check_out_at ? <>{dot}{ar ? "انصراف " : "out "}<span dir="ltr" style={MONO_INK}>{formatTime(r.check_out_at, format, "en-GB")}</span></> : null}
+                  </span>
+                )}
+                {kind === "late_return" ? (
+                  <span data-queue-rule="1" style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>
+                    {ar
+                      ? `عودة متأخرة — لا مخالفة نظامية (${lateRule?.labelAr || "المادة 101"})`
+                      : `Late return — not a legal breach (${lateRule?.labelEn || "Art. 101"})`}
+                  </span>
+                ) : (
+                  <>
+                    {noteText ? <span data-queue-note="1" style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.7 }}>{noteText}</span> : null}
+                    <AttendanceChainProgress rings={rings} />
+                    <BreakLine ar={ar} day={breakDay} />
+                  </>
+                )}
                 {status === "late" && Number(r?.late_minutes) > 0 && !asked ? (
                   <RightHint ar={ar} style={{ alignSelf: "flex-start" }} hint={attRightHint("lateness", { date: String(r.check_in_at || "").slice(0, 10), minutes: Number(r.late_minutes) }, { view: "manager", ar, employee: e })} />
                 ) : null}
@@ -612,11 +680,11 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                 {isManager && lateReturn && String(e.id) !== String(currentUser?.id) ? (
                   <span data-late-return-actions="1" style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     <button type="button" onClick={() => decideLateReturn(e, "excused")} style={actBtn("approve")}>{lang === "ar" ? "يُعذر" : "Excuse"}</button>
-                    <button type="button" onClick={() => decideLateReturn(e, "late")} style={actBtn("reject")}>{lang === "ar" ? "تُسجَّل عودة متأخرة" : "Record late return"}</button>
+                    <button type="button" onClick={() => decideLateReturn(e, "late")} style={actBtn("ghost")}>{lang === "ar" ? "تُسجَّل عودة متأخرة" : "Record late return"}</button>
                   </span>
                 ) : null}
                 {status === "absent" && preventedToday(e) ? (
-                  <span data-prevented="1" style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ink)", background: "var(--nv-soft)", border: `1px solid ${BORDER}`, padding: "6px 11px", whiteSpace: "nowrap" }}>
+                  <span data-prevented="1" style={doneTag("mute")}>
                     {lang === "ar" ? "منعته المنشأة — أجره مستحق (النموذج الموحد م46)" : "Kept from work by the company — paid (Model Art. 46)"}
                   </span>
                 ) : isManager && status === "absent" && String(e.id) !== String(currentUser?.id) ? (
@@ -636,7 +704,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                       </div>
                     </div>
                   ) : (
-                    <button type="button" data-prevent-btn="1" onClick={() => { setPreventId(e.id); setPreventReason(""); setPreventError(""); }} style={miniBtn()} title={lang === "ar" ? "حاضر مستعد ومنعه سبب راجع إلى المنشأة — يُستحق أجره ولا يُحتسب غياباً" : "Ready but kept from work by the company — paid, not absence"}>
+                    <button type="button" data-prevent-btn="1" onClick={() => { setPreventId(e.id); setPreventReason(""); setPreventError(""); }} style={actBtn("ghost")} title={lang === "ar" ? "حاضر مستعد ومنعه سبب راجع إلى المنشأة — يُستحق أجره ولا يُحتسب غياباً" : "Ready but kept from work by the company — paid, not absence"}>
                       {lang === "ar" ? "منعته المنشأة" : "Prevented by us"}
                     </button>
                   )
@@ -669,7 +737,7 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                   )
                 )}
                 {(r?.manual_override || r?.location_status === "manual") ? (
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)", background: "var(--nv-ok-soft)", border: "1px solid var(--nv-ok-line)", padding: "6px 11px", whiteSpace: "nowrap" }}>
+                  <span style={doneTag("ok")}>
                     {lang === "ar" ? "اعتُمد حضوراً" : "Approved present"} · {r.override_by || r.excused_by_name || "—"}
                   </span>
                 ) : isManager && !r?.check_in_at && status !== "on_leave" && status !== "not_scheduled" ? (
@@ -682,22 +750,19 @@ export default function AttendanceDailyDashboard({ employees, currentUser, compa
                     {lang === "ar" ? "اعتمد حضوراً" : "Approve present"}
                   </button>
                 ) : r?.excused ? (
-                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--nv-ok-ink)", background: "var(--nv-ok-soft)", border: "1px solid var(--nv-ok-line)", padding: "6px 11px", whiteSpace: "nowrap" }}>
+                  <span style={doneTag("ok")}>
                     {lang === "ar" ? "اعتُمد حضوراً" : "Approved present"}
                   </span>
                 ) : null}
               </div>
+              </div>
             </div>
           );
-        })
+        })}
+        <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.85, padding: "2px 4px" }}>{queueInsight}</span>
+      </div>
       )}
       {mapRow && <LocationMapModal row={mapRow} t={t} onClose={() => setMapRow(null)} />}
-      {queue.length > 0 ? (
-        <div style={{ padding: "12px 18px" }}>
-          <span style={{ fontSize: 11, color: MUTED, lineHeight: 1.85 }}>{queueInsight}</span>
-        </div>
-      ) : null}
-      </section>
     </div>
   );
 

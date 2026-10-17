@@ -1,4 +1,5 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import OtDecisionBoard from "@/components/schedules/OtDecisionBoard";
 import { isOtDecisionOpen } from "@/lib/attendanceDerivations";
 import { weekKeyFromDate } from "@/lib/shiftWeek";
@@ -23,6 +24,8 @@ export default function OtDecisionsPanel({ data, companyId: companyIdProp, curre
   const groups = useMemo(() => {
     const ids = new Set((employees || []).map((employee) => String(employee?.id || "")).filter(Boolean));
     const weeks = new Map();
+    const openWeeks = new Set();
+    const plannedRows = new Map();
     const add = (weekKey, employee, rosterStationId) => {
       if (!weeks.has(weekKey)) weeks.set(weekKey, new Map());
       const stationId = String(rosterStationId || employee?.profile?.workStationId || employee?.stationId || data?.stations?.[0]?.id || "");
@@ -39,12 +42,14 @@ export default function OtDecisionsPanel({ data, companyId: companyIdProp, curre
       if (!ids.has(employeeId) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
       const employee = employees.find((row) => String(row.id) === employeeId);
       add(weekKeyFromDate(day), employee);
+      openWeeks.add(weekKeyFromDate(day));
     }
     // Planned roster overtime for the current and next week — shown before it is punched, never payable yet.
     for (const planned of plannedOtWeeks(data, employees, { today })) {
       if (!ids.has(planned.employeeId)) continue;
       const employee = employees.find((row) => String(row.id) === planned.employeeId);
       add(planned.weekKey, employee, planned.stationId);
+      plannedRows.set(planned.weekKey, [...(plannedRows.get(planned.weekKey) || []), ...planned.rows]);
     }
     return [...weeks.entries()]
       .sort((a, b) => String(b[0]).localeCompare(String(a[0])))
@@ -53,13 +58,46 @@ export default function OtDecisionsPanel({ data, companyId: companyIdProp, curre
         weekKey,
         schedule: (data?.schedules || []).find((row) => String(row.stationId) === stationId) || null,
         employees: list,
+        // Nothing to answer yet — only roster overtime that is planned, not worked.
+        plannedOnly: !openWeeks.has(weekKey),
+        planned: plannedRows.get(weekKey) || [],
       })));
   }, [employees, otDecisions, data, mode, today]);
 
+  const [openPlanned, setOpenPlanned] = useState({});
   if (!groups.length) return null;
+  const fmtH = (minutes) => {
+    const h = Math.round((Number(minutes) || 0) / 30) / 2;
+    return String(h);
+  };
   return (
     <div data-ot-decisions={mode} style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
-      {groups.map((group) => (
+      {groups.map((group) => (mode === "mine" && group.plannedOnly && !openPlanned[group.key]) ? (
+        // طلباتي: planned-only overtime is information, not a request — one quiet line that opens the detail.
+        <button
+          key={group.key}
+          type="button"
+          data-ot-planned-line={group.weekKey}
+          aria-expanded="false"
+          onClick={() => setOpenPlanned((prev) => ({ ...prev, [group.key]: true }))}
+          style={{ fontFamily: "inherit", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", width: "100%", textAlign: "start", padding: "10px 14px", borderRadius: 8, border: "1px solid var(--nv-line2, #EEF1EF)", background: "var(--nv-card, #fff)", color: "var(--nv-ink2)", fontSize: 12.5, cursor: "pointer" }}
+        >
+          <strong style={{ color: "var(--nv-ink)", fontSize: 12.5 }}>{ar ? "إضافي مخطط" : "Planned overtime"}</strong>
+          <span>
+            {group.planned.map((row, i) => (
+              <span key={row.dateKey}>
+                {i ? " · " : ""}
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--nv-ink)" }}>{row.dateKey.slice(5).replace("-", "/")}</span>
+                {" "}
+                <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", color: "var(--nv-ink)" }}>{fmtH(row.overtimeMinutes)}</span>
+                {ar ? " س" : " h"}
+              </span>
+            ))}
+          </span>
+          <span style={{ color: "var(--nv-muted)", fontSize: 11.5 }}>{ar ? "لا يُصرف قبل أن يُعمل — المادة 107" : "Not payable until worked — Art. 107"}</span>
+          <ChevronDown aria-hidden size={15} strokeWidth={1.75} style={{ marginInlineStart: "auto", color: "var(--nv-muted)" }} />
+        </button>
+      ) : (
         <div key={group.key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: 11, color: "var(--nv-muted, #6B7280)" }}>
             {ar ? `أسبوع ${group.weekKey}` : `Week of ${group.weekKey}`}

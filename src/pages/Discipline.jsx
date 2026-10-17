@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import DisciplineRightsPanel from "@/components/discipline/DisciplineRightsPanel";
 import { Link, useSearchParams } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { useAuth } from "@/lib/PowerCareAuth";
@@ -29,7 +28,6 @@ import { sha256HexOfFile } from "@/lib/fileHash";
 import { readConsentFile } from "@/lib/writtenConsent";
 import DisciplineArchiveBoard from "@/components/discipline/DisciplineArchiveBoard";
 import DisciplineCaseCard from "@/components/discipline/DisciplineCaseCard";
-import DisciplineLawBoard from "@/components/discipline/DisciplineLawBoard";
 import DisciplineMineCard from "@/components/discipline/DisciplineMineCard";
 import GrievanceRaise from "@/components/discipline/GrievanceRaise";
 import DamageObjectionRaise from "@/components/discipline/DamageObjectionRaise";
@@ -53,9 +51,8 @@ import { ruleValue } from "@/lib/laborRules";
 import { saveDisciplineOnServer } from "@/lib/disciplineServer";
 import { regulationVersionEntry } from "@/lib/syncLaw";
 import { checkUniformSanctionGate, planUniformAck, uniformOf } from "@/lib/uniformPolicy";
-import { DISCIPLINE_MODEL_CARDS, disciplineModelRows } from "@/lib/disciplineModelRows";
 import { sanctionRecordState } from "@/lib/penaltiesRecord";
-import MinistryLawPanel from "@/components/schedules/MinistryLawPanel";
+import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 
 const MANAGE_TAB_ORDER = ["manage", "raise", "calc", "schedule", "law", "archive"];
 const EMPLOYEE_TAB_ORDER = ["mine", "schedule", "law", "archive"];
@@ -124,18 +121,6 @@ function statusPill(kind) {
     whiteSpace: "nowrap",
   };
 }
-
-const RIGHTS = [
-  { ruleId: "discipline.penalties.cite", ar: "لا يُوقَّع عليّ إلا جزاء من قائمة المادة 66.", en: "Only a penalty on the Article 66 list may be signed on me." },
-  { ruleId: "discipline.hearing.cite", ar: "لا يُوقَّع عليّ جزاء قبل أن أُبلَّغ كتابةً وتُسمع أقوالي. المخالفة البسيطة تُستجوَب شفاهة ويُثبت ذلك في المحضر.", en: "No sanction is signed on me before written notice and a hearing. A minor offence may be questioned orally if that is recorded in the minutes." },
-  { ruleId: "discipline.charge.maxDays", ar: "لا أُتَّهم بمخالفة مضى على كشفها أكثر من 30 يوماً، ولا يُوقَّع الجزاء بعد انتهاء التحقيق بأكثر من 30 يوماً.", en: "I may not be accused more than 30 days after the offence was discovered, nor sanctioned more than 30 days after the investigation ended." },
-  { ruleId: "discipline.fine.maxDays", ar: "لا غرامتان على فعل، ولا حسم غرامات أو إيقاف بلا أجر فوق خمسة أيام في الشهر.", en: "No two penalties for one act, and neither fines nor unpaid suspension may exceed five days in a month." },
-  { ruleId: "discipline.workplace.cite", ar: "لا أُعاقَب على أمر خارج مكان العمل ما لم يكن متصلاً بالعمل أو بصاحبه أو بمديري.", en: "I am not sanctioned for an act outside the workplace unless it is connected with the work, the employer, or my manager." },
-  { ruleId: "discipline.listedOnly.cite", ar: "لا يُوقَّع عليّ جزاء غير وارد في النظام أو في لائحة تنظيم العمل.", en: "No penalty may be imposed that is not in the Law or the work-organization regulations." },
-  { ruleId: "discipline.repeat.cooloffDays", ar: "لا يُشدَّد الجزاء عند التكرار إذا مضى 180 يوماً على إبلاغ الجزاء السابق.", en: "A repeat penalty may not be increased if 180 days have passed since notice of the previous one." },
-  { ruleId: "discipline.appeal.internalDays", ar: "أعترض بنفسي بعد التوقيع خلال 30 يوماً عدا أيام العطل الرسمية.", en: "I object myself within 30 days of signing, excluding official holidays." },
-  { ruleId: "discipline.decision.days", ar: "إن رُفض تظلّمي أو لم يُبتّ فيه كتابةً خلال 15 يوماً فلي الاعتراض أمام المحاكم العمالية خلال 30 يوماً عدا العطل الرسمية.", en: "If my grievance is refused or not decided in writing within 15 days, I may object before the labour courts within 30 days, official holidays excluded." },
-];
 
 export default function Discipline() {
   const { lang } = useI18n();
@@ -938,13 +923,12 @@ export default function Discipline() {
 
         {activeFace === "law" ? (
           <>
-            <DisciplineLawBoard cases={adminVoice ? visibleCases : mine} employees={employees} ar={ar} today={board.today} own={!adminVoice} />
-            <MinistryLawPanel
+            <MinistrySectionPanel
+              sectionKey="discipline"
+              lane={adminVoice ? "manage" : "employee"}
               ar={ar}
-              dataKey="discipline-model"
-              title={ar ? "أنظمة الوزارة — النموذج الموحد في الجزاءات" : "Ministry rules — the model regulation on sanctions"}
-              cards={DISCIPLINE_MODEL_CARDS(ar)}
-              rows={disciplineModelRows({ uniform: uniformOf(data), employees, manage: adminVoice, ar })}
+              today={board.today}
+              inputs={{ cases: adminVoice ? visibleCases : mine, employees, uniform: uniformOf(data) }}
             />
           </>
         ) : null}
@@ -1103,8 +1087,6 @@ export default function Discipline() {
             {damageOpen ? (
               <DamageObjectionRaise key={damagePrefill?.at || "general"} employee={meRow} companyId={company?.id} ar={ar} refresh={refresh} prefill={damagePrefill} onSent={() => { setDamageOpen(false); setDamagePrefill(null); }} />
             ) : null}
-
-            <DisciplineRightsPanel rights={RIGHTS} ar={ar} today={board.today} />
 
             <div style={{ display: "flex", gap: 10, alignItems: "flex-start", background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 8, padding: "11px 16px", fontSize: 12.5, color: "var(--nv-ink2)", lineHeight: 1.8 }}>
               <span>

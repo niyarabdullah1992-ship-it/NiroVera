@@ -60,7 +60,7 @@ export function Counter({ value, label, tone, size = 15 }) {
  */
 export default function MinistrySourceCards({ cards = [], active = "all", onPick, ar = true, settledLabel, style }) {
   return (
-    <div className="nv-ministry-cards-wrap" style={{ "--nv-mc-cols": Math.min(3, Math.max(1, cards.length)), ...style }}>
+    <div className="nv-ministry-cards-wrap" style={{ "--nv-mc-cols": cards.length === 4 ? 2 : Math.min(3, Math.max(1, cards.length)), ...style }}>
       <style>{CARDS_CSS}</style>
       <div className="nv-ministry-cards" data-source-cards="1">
         {cards.map((card) => {
@@ -111,11 +111,11 @@ export default function MinistrySourceCards({ cards = [], active = "all", onPick
                   borderTop: "1px solid var(--nv-line2, #EEF2F7)",
                 }}
               >
+                {/* Three counts on every card: a publish block or violation is an open alert too. */}
                 {card.counters ? card.counters : (<>
-                <Counter value={card.block} label={ar ? "مانع" : "block"} tone="bad" />
-                {card.violation ? <Counter value={card.violation} label={ar ? "مخالفة" : "violation"} tone="bad" /> : null}
-                <Counter value={card.warn} label={ar ? "تنبيه" : "alert"} tone="warn" />
-                <Counter value={card.settled} label={settledLabel || (ar ? "مستوفى" : "settled")} tone="ok" />
+                <Counter value={(Number(card.block) || 0) + (Number(card.violation) || 0) + (Number(card.warn) || 0)} label={ar ? "تنبيه" : "alert"} tone="warn" />
+                <Counter value={card.settled} label={settledLabel || (ar ? "مستوفٍ" : "met")} tone="ok" />
+                <Counter value={Number(card.info) || 0} label={ar ? "للعلم" : "reference"} tone="mute" />
                 </>)}
               </span>
             </button>

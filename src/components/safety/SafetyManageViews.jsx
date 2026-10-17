@@ -1,10 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
-import useHashScroll from "@/hooks/useHashScroll";
-import { safetyMinistryRows } from "@/lib/safetyMinistryRows";
+import React, { useRef, useState } from "react";
 import RightHint from "@/components/shared/RightHint";
 import { injuryHint } from "@/lib/rightHints.disc";
-import { StatusFlag } from "@/components/shared/StatusFlag";
 import { SAFETY_REPORT_CONTROLS, deriveOpenRiskMap, safetyReportSlaLine } from "@/lib/safetyReportCard";
 import { PERMIT_TYPES } from "@/lib/safetyStandards";
 import { deriveTrainingRegister } from "@/lib/employerDuties";
@@ -579,36 +575,5 @@ export function SafetyInjuryTable({ ar, rows }) {
         </div>
       </div>
     </section>
-  );
-}
-
-/** «مرجعية الوزارة» — rows from lib/safetyMinistryRows; the «الامتثال الوزاري» index counts the same ones. */
-export function SafetyMinistryPanel({ ar, facts, onDate }) {
-  const L = (a, e) => (ar ? a : e);
-  const { hash } = useLocation();
-  const foldRef = useRef(null);
-  // Opened from the «الامتثال الوزاري» index (…#nv-ministry-safety): unfold, then scroll.
-  useEffect(() => {
-    if (hash === "#nv-ministry-safety" && foldRef.current) foldRef.current.open = true;
-  }, [hash]);
-  useHashScroll("nv-ministry-safety");
-  const criticalOpen = !!facts?.criticalOpen;
-  const rows = safetyMinistryRows(facts || {}, { ar, onDate }).map((row) => [row.badge, row.title, row.pill, row.tone]);
-  return (
-    <details ref={foldRef} id="nv-ministry-safety" style={{ ...shell, padding: 0, scrollMarginTop: 88 }}>
-      <summary style={{ padding: "12px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "var(--nv-ink)" }}>
-        {L("مرجعية الوزارة", "Ministry reference")}
-        {criticalOpen ? <StatusFlag tone="bad" ar={ar} flag={L("خطر حرج مفتوح", "Critical hazard open")} style={{ marginInlineStart: 8, verticalAlign: "middle" }} /> : null}
-      </summary>
-      <div style={{ borderTop: "1px solid var(--nv-line)" }}>
-        {rows.map((row) => (
-          <div key={row[0]} style={{ display: "grid", gridTemplateColumns: "140px minmax(0,1fr) auto", gap: 10, alignItems: "center", padding: "10px 14px", borderBottom: "1px solid var(--nv-line2)" }}>
-            <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: "#C8A45A" }}>{row[0]}</span>
-            <span style={{ fontSize: 12.5, color: "var(--nv-ink2)" }}>{row[1]}</span>
-            <span style={{ ...levelTone(row[3]), height: 22, display: "inline-flex", alignItems: "center", padding: "0 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{row[2]}</span>
-          </div>
-        ))}
-      </div>
-    </details>
   );
 }

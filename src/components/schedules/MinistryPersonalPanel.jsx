@@ -379,7 +379,8 @@ export default function MinistryPersonalPanel({
     const warn = list.filter((row) => row.status === "waiting" || row.status === "alert").length;
     const settled = list.filter((row) => row.status === "settled").length;
     const violation = list.filter((row) => row.status === "violation").length;
-    return { block, warn, settled, violation, tone: block || violation ? "bad" : warn ? "warn" : settled ? "ok" : "mute" };
+    const info = Math.max(0, list.length - block - warn - settled - violation);
+    return { block, warn, settled, violation, info, tone: block || violation ? "bad" : warn ? "warn" : settled ? "ok" : "mute" };
   };
 
   const sunWin = ar ? <><Num>{model.win.startLabel}</Num> إلى <Num>{model.win.endLabel}</Num></> : <><Num>{model.win.startLabel}</Num>–<Num>{model.win.endLabel}</Num></>;
@@ -403,8 +404,8 @@ export default function MinistryPersonalPanel({
     {
       key: "labour",
       title: ar
-        ? <>نظام العمل — المواد <span dir="ltr" style={{ whiteSpace: "nowrap" }}>98–164</span></>
-        : <>Labour Law — Arts. <span style={{ whiteSpace: "nowrap" }}>98–164</span></>,
+        ? "نظام العمل — الساعات والراحة"
+        : "Labour Law — hours and rest",
       scope: ar
         ? <><Num>{fmtHours(model.hours)}</Num> من <Num>{model.cap}</Num> ساعة · {model.restCount ? <><Num>{model.restCount}</Num> {model.restCount === 1 ? "يوم راحة" : "أيام راحة"}</> : "بلا يوم راحة"} · الراحة أثناء الوردية والعطل الرسمية.</>
         : <><Num>{fmtHours(model.hours)}</Num> of <Num>{model.cap}</Num> hours · <Num>{model.restCount}</Num> rest days · in-shift rest and official holidays.</>,
@@ -423,8 +424,8 @@ export default function MinistryPersonalPanel({
     });
 
   const title = own
-    ? (ar ? "أنظمة الوزارة — كل ما ينطبق عليك" : "Ministry rules — everything that applies to you")
-    : (ar ? `أنظمة الوزارة — كل ما ينطبق على ${firstName}` : `Ministry rules — everything that applies to ${firstName}`);
+    ? (ar ? "أنظمة الوزارة — ما يخص دوامي" : "Ministry rules — my duty")
+    : (ar ? `أنظمة الوزارة — ما يخص دوام ${firstName}` : `Ministry rules — ${firstName}'s duty`);
   const note = ar
     ? <>قراءة فقط · {checksAr(model.rows.length)} لهذا الأسبوع، المستوفى منها والمفتوح{alertsLabel ? ` — ما يحتاج إجراءً في «${alertsLabel}»` : ""}.</>
     : <>Read only · <Num>{model.rows.length}</Num> checks this week, settled and open{alertsLabel ? ` — action items sit in “${alertsLabel}”` : ""}.</>;
@@ -436,10 +437,8 @@ export default function MinistryPersonalPanel({
     const warn = n("warn");
     const settled = n("settled");
     const other = list.length - block - violation - warn - settled;
-    if (block) parts.push([block, ar ? "مانع" : "block"]);
-    if (violation) parts.push([violation, ar ? "مخالفة" : "violation"]);
-    if (warn) parts.push([warn, ar ? "تنبيه" : "alert"]);
-    if (settled) parts.push([settled, ar ? "مستوفى" : "settled"]);
+    if (block + violation + warn) parts.push([block + violation + warn, ar ? "تنبيه" : "alert"]);
+    if (settled) parts.push([settled, ar ? "مستوفٍ" : "met"]);
     if (other) parts.push([other, ar ? "للعلم" : "info"]);
     return parts;
   };
@@ -456,10 +455,9 @@ export default function MinistryPersonalPanel({
         note={note}
         trailing={(
           <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-            <Counter value={total.block} label={ar ? "مانع" : "block"} tone="bad" />
-            {total.violation ? <Counter value={total.violation} label={ar ? "مخالفة" : "violation"} tone="bad" /> : null}
-            <Counter value={total.warn} label={ar ? "تنبيه" : "alert"} tone="warn" />
-            <Counter value={total.settled} label={ar ? "مستوفى" : "settled"} tone="ok" />
+            <Counter value={total.block + total.violation + total.warn} label={ar ? "تنبيه" : "alert"} tone="warn" />
+            <Counter value={total.settled} label={ar ? "مستوفٍ" : "met"} tone="ok" />
+            <Counter value={total.info} label={ar ? "للعلم" : "reference"} tone="mute" />
           </div>
         )}
       />

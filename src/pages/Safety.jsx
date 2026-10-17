@@ -13,7 +13,8 @@ import SafetyIncidentReportForm from "@/components/safety/SafetyIncidentReportFo
 import StationSiteDutiesCard from "@/components/safety/StationSiteDutiesCard";
 import { safetyMinistryFacts } from "@/lib/safetyMinistryRows";
 import SafetyOverviewTab from "@/components/safety/SafetyOverviewTab";
-import { SafetyComplyBoard, SafetyDashboard, SafetyInjuryTable, SafetyMinistryPanel, SafetyRiskRegister } from "@/components/safety/SafetyManageViews";
+import { SafetyComplyBoard, SafetyDashboard, SafetyInjuryTable, SafetyRiskRegister } from "@/components/safety/SafetyManageViews";
+import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 import { toast } from "@/components/ui/use-toast";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import { MUTED, NEUTRAL } from "@/lib/platformStyles";
@@ -346,9 +347,13 @@ export default function Safety() {
           />
         </>
       )}
-      {!employeeRail ? (
-        <SafetyMinistryPanel ar={ar} facts={ministryFacts} onDate={todayKey} />
-      ) : null}
+      <MinistrySectionPanel
+        sectionKey="safety"
+        lane={employeeRail ? "employee" : "manage"}
+        ar={ar}
+        today={todayKey}
+        inputs={{ facts: employeeRail ? {} : ministryFacts }}
+      />
       </div>
     </PlatformStampShell>
   );

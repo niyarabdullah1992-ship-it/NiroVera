@@ -79,7 +79,7 @@ export function payrollMinistryRows({ lines = [], self = false, pay = null, over
       source: "labour",
       badge: ar ? "م 92–93" : "Arts. 92–93",
       title: ar ? "لا حسم إلا في الحالات المحددة، وبما لا يتجاوز نصف الأجر" : "Deductions only in the listed cases, within half the wage",
-      note: ar ? `${list.length} بنداً في النطاق · ${over} يتجاوز الحد.` : `${list.length} line(s) in scope · ${over} over the cap.`,
+      note: ar ? "لا يُحسم من الأجر إلا في حالات المادة 92، ولا يتجاوز مجموع الحسم نصف الأجر المستحق (93)." : "Deductions only in the Art. 92 cases, never over half the wage due (93).",
       ...(over
         ? { status: "blocked", pill: ar ? `${over} فوق الحد` : `${over} over the cap` }
         : list.length ? { status: "settled", pill: ar ? "مستوفى" : "Met" } : { status: "void", pill: ar ? "لا مسير" : "No run" }),

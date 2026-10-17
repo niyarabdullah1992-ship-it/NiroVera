@@ -1287,9 +1287,10 @@ assert.match(storeSrc, /requestedById/, "store persists who raised leave on whos
 assert.match(storeSrc, /raiserName/, "leave raise audit uses the raiser, not only recordedBy");
 assert.match(storeSrc, /actorId:\s*requestedById/, "store leave gate receives the actor id");
 const ministryReqSrc = readFileSync(new URL("../src/components/requests/RequestsMinistryPanel.jsx", import.meta.url), "utf8");
-assert.match(ministryReqSrc, /MinistrySourceCards/, "request rules reuse the duty-section ministry cards");
+assert.match(ministryReqSrc, /MinistrySectionPanel/, "request rules render in the one shared ministry frame");
+const sectionsSrc = readFileSync(new URL("../src/lib/ministrySections.js", import.meta.url), "utf8");
 const ministryReqRowsSrc = readFileSync(new URL("../src/lib/requestsMinistryRows.js", import.meta.url), "utf8");
-assert.match(ministryReqSrc, /requestsMinistryRows\(/, "the panel lists the rows the compliance index counts");
+assert.match(sectionsSrc, /requestsMinistryRows\(/, "the panel lists the rows the compliance index counts");
 assert.match(ministryReqRowsSrc, /lawArticleCards\("requests"/, "request rules skip roster-covered articles");
 assert.match(workspaceSrc, /color: "var\(--nv-ink2\)"/, "law article body uses --nv-ink2 so it flips with theme");
 assert.doesNotMatch(workspaceSrc, /background: a\.live \? "#f7faf8"/, "live law row must not hard-code a light wash");

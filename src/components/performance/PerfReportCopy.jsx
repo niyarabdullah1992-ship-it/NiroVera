@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { hcmCall } from "@/lib/hcmApi";
-import { PERF_ELEMENTS, PERF_MINISTRY_CARDS, checkPerfGrievanceGate, perfGrievanceState, perfLevelByNumber, perfMinistryRows, reportElementSource } from "@/lib/perfReport";
+import { PERF_ELEMENTS, checkPerfGrievanceGate, perfGrievanceState, perfLevelByNumber, reportElementSource } from "@/lib/perfReport";
 import { modelLaw } from "@/lib/modelArticleTexts";
 import { StatuteLink } from "@/components/shared/RightHint";
 import { incrementsModelNote, performanceReportModelNote } from "@/lib/implementingRegsNotes";
-import MinistryLawPanel from "@/components/schedules/MinistryLawPanel";
+import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 import { field, MUTED, ui } from "@/lib/platformStyles";
 import { toast } from "@/components/ui/use-toast";
 
@@ -33,16 +33,13 @@ export default function PerfReportCopy({ ar, employee, companyId, quality = null
   useEffect(() => { load(); }, [load]);
 
   const list = reports || [];
-  const rows = useMemo(() => perfMinistryRows({
+  const lawInputs = useMemo(() => ({
+    employee,
     reports: reports || [],
-    hireDate: employee?.hireDate || employee?.profile?.hireDate,
-    lastIncrementAt: employee?.profile?.lastIncrementAt,
-    today,
-    ar,
     notes: { report: performanceReportModelNote(ar), advancement: incrementsModelNote(ar) },
     quality,
     objections,
-  }), [reports, employee, today, ar, quality, objections]);
+  }), [reports, employee, ar, quality, objections]);
 
   const send = async (report) => {
     const gate = checkPerfGrievanceGate({ report, reason, today });
@@ -131,13 +128,7 @@ export default function PerfReportCopy({ ar, employee, companyId, quality = null
           );
         })}
       </section>
-      <MinistryLawPanel
-        ar={ar}
-        dataKey="performance"
-        title={ar ? "أنظمة الوزارة — ما يخص أدائي" : "Ministry rules — my performance"}
-        cards={PERF_MINISTRY_CARDS(ar)}
-        rows={rows}
-      />
+      <MinistrySectionPanel sectionKey="performance" lane="employee" ar={ar} today={today} inputs={lawInputs} />
     </>
   );
 }

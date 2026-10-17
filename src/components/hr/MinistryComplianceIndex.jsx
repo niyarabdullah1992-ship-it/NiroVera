@@ -42,7 +42,7 @@ function statusChip(section, ar) {
   if (section.restricted) return { tone: "mute", text: ar ? "مقيّد" : "Restricted" };
   if (section.tone === "bad") return { tone: "bad", text: ar ? "مانع قائم" : "Blocker open" };
   if (section.tone === "warn") return { tone: "warn", text: ar ? "تنبيه قائم" : "Alert open" };
-  if (section.tone === "ok") return { tone: "ok", text: ar ? "مستوفى" : "Met" };
+  if (section.tone === "ok") return { tone: "ok", text: ar ? "مستوفٍ" : "Met" };
   return { tone: "mute", text: ar ? "للعلم" : "Reference" };
 }
 
@@ -104,9 +104,8 @@ export default function MinistryComplianceIndex({ ar = true }) {
           : "Each line counts its section's «ministry rules» from the very rows its panel lists — and opens it. Scope: your permissions and the branch picked above."}
         trailing={(
           <div className="nv-mi-counts">
-            <Count value={total.block} label={ar ? "مانع" : "block"} />
             <Count value={total.alert} label={ar ? "تنبيه" : "alert"} />
-            <Count value={total.met} label={ar ? "مستوفى" : "met"} />
+            <Count value={total.met} label={ar ? "مستوفٍ" : "met"} />
             <Count value={total.info} label={ar ? "للعلم" : "reference"} />
           </div>
         )}
@@ -123,9 +122,8 @@ export default function MinistryComplianceIndex({ ar = true }) {
               <span className="nv-mi-side">
                 {section.counts ? (
                   <span className="nv-mi-counts">
-                    <Count value={section.counts.block} label={ar ? "مانع" : "block"} />
                     <Count value={section.counts.alert} label={ar ? "تنبيه" : "alert"} />
-                    <Count value={section.counts.met} label={ar ? "مستوفى" : "met"} />
+                    <Count value={section.counts.met} label={ar ? "مستوفٍ" : "met"} />
                     <Count value={section.counts.info} label={ar ? "للعلم" : "reference"} />
                   </span>
                 ) : null}

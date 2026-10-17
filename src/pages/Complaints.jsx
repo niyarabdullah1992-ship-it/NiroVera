@@ -732,6 +732,7 @@ export default function Complaints() {
 
         <VoiceLawPanel
           ar={ar}
+          lane={activeFace === "manage" ? "manage" : "employee"}
           breached={activeFace === "manage" ? board.overdue.length : mineBreaches}
           abuseCases={activeFace === "manage" ? runAbuse : myAbuse}
           calendar={laborCalendarOf(data)}

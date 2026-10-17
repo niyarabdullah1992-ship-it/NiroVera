@@ -11,7 +11,6 @@ import {
 import { managerDutyAlertGroups } from "@/lib/suiteBadges";
 import { buildLawGatesBoard } from "@/lib/lawGatesBoard";
 import { lawGatePillLabel } from "@/lib/lawGateStatus";
-import { PLATFORM_JUDGE_LEDE_AR, PLATFORM_JUDGE_LEDE_EN } from "@/lib/platformJudgment";
 import DutyStripAlertCard from "@/components/employees/DutyStripAlertCard";
 import { NightWorkDefinition } from "@/components/shared/NightWorkRightsTable";
 import NightObligationProof from "@/components/schedules/NightObligationProof";
@@ -253,8 +252,8 @@ export function useComplianceSummary({ gates, company, onDate, weekStart, employ
     {
       key: "labour",
       title: ar
-        ? <>نظام العمل — المواد <span dir="ltr" style={{ whiteSpace: "nowrap" }}>98–164</span></>
-        : <>Labour Law — Arts. <span style={{ whiteSpace: "nowrap" }}>98–164</span></>,
+        ? "نظام العمل — الساعات والراحة"
+        : "Labour Law — hours and rest",
       short: ar ? "الساعات والراحة والعطل" : "Hours, rest and holidays",
       scope: ar
         ? "48 ساعة أسبوعياً · راحة نصف ساعة كل 5 ساعات · الجمعة · العطل الرسمية · رمضان · الأحداث"
@@ -315,7 +314,10 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
   const obligationsOpen = obligationRows.filter((item) => item.status === "blocked" || item.status === "alert").length;
   const hasNightConsent = (grouped.cards || []).some((row) => row.gateId === "night_rotate");
 
-  const lede = ar ? PLATFORM_JUDGE_LEDE_AR : PLATFORM_JUDGE_LEDE_EN;
+  const checks = blockCount + violationCount + warnCount + settledCount;
+  const lede = ar
+    ? <><span dir="ltr" style={mono}>{checks}</span> فحصاً على أسبوع هذا الفرع، وكل سطر يقول هل يستوفيه الجدول الآن.</>
+    : <><span dir="ltr" style={mono}>{checks}</span> checks on this branch's week; each row says whether the roster meets it now.</>;
 
   return (
     <section
@@ -327,14 +329,13 @@ const ScheduleCompliancePanel = forwardRef(function ScheduleCompliancePanel({
       style={{ ...slab, display: "flex", flexDirection: "column", scrollMarginTop: 88 }}
     >
       <SectionHead
-        title={ar ? "أنظمة الوزارة والتنبيهات" : "Ministry systems and alerts"}
+        title={ar ? "أنظمة الوزارة — ما يخص الدوام" : "Ministry rules — duty"}
         note={lede}
         trailing={(
           <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-            <Counter value={blockCount} label={ar ? "مانع للنشر" : "publish blocks"} tone="bad" />
-            {violationCount ? <Counter value={violationCount} label={ar ? "مخالفة" : "violations"} tone="bad" /> : null}
-            <Counter value={warnCount} label={ar ? "تنبيه" : "alerts"} tone="warn" />
-            <Counter value={settledCount} label={ar ? "مستوفى" : "satisfied"} tone="ok" />
+            <Counter value={blockCount + violationCount + warnCount} label={ar ? "تنبيه" : "alert"} tone="warn" />
+            <Counter value={settledCount} label={ar ? "مستوفٍ" : "met"} tone="ok" />
+            <Counter value={0} label={ar ? "للعلم" : "reference"} tone="mute" />
           </div>
         )}
       />

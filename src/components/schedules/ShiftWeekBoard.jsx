@@ -1226,7 +1226,7 @@ export default function ShiftWeekBoard({
                       type="button"
                       data-publish-blockers={blockers}
                       onClick={scrollToCompliance}
-                      title={ar ? "اذهب إلى أنظمة الوزارة والتنبيهات" : "Go to ministry systems and alerts"}
+                      title={ar ? "اذهب إلى أنظمة الوزارة — ما يخص الدوام" : "Go to ministry systems and alerts"}
                       style={chip("bad", { fontFamily: "inherit", cursor: "pointer" })}
                     >
                       {publishBlockerLabel}

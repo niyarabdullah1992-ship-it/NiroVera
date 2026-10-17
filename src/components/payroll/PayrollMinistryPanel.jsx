@@ -1,28 +1,22 @@
-import React, { useMemo } from "react";
-import MinistryLawPanel from "@/components/schedules/MinistryLawPanel";
-import { PAYROLL_MINISTRY_CARDS, payrollPanelRows } from "@/lib/payrollMinistryRows";
+import React from "react";
+import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 
 const todayIso = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
 
 /**
- * «أنظمة الوزارة — ما يخص الأجر» — the ministry frame on قسيمتي (self) and on the wage run (manage).
- * Payday and overdue come from payrollLaw exactly as «مواعيد الأجر وحمايته» reads them; the self view
- * omits them (and the deduction cap) because «حقوق راتبي» above already shows them.
+ * «أنظمة الوزارة — ما يخص الأجور / راتبي» — the shared frame on the wage run (manage) and on قسيمتي
+ * (self). Payday and overdue come from payrollLaw exactly as «مواعيد الأجر وحمايته» reads them; the
+ * self view leaves them to «حقوق راتبي».
  */
 export default function PayrollMinistryPanel({ ar = true, data, month, items = [], employeeForItem, self = false }) {
-  const today = todayIso();
-  const rows = useMemo(
-    () => payrollPanelRows({ data, month, items, employeeForItem, self, today, ar }),
-    [data, month, items, employeeForItem, self, ar, today],
-  );
   return (
-    <MinistryLawPanel
+    <MinistrySectionPanel
+      sectionKey="payroll"
+      lane={self ? "employee" : "manage"}
       ar={ar}
-      dataKey={self ? "payslip" : "payroll"}
-      title={self ? (ar ? "أنظمة الوزارة — ما يخص راتبي" : "Ministry rules — my pay") : (ar ? "أنظمة الوزارة — ما يخص الأجور" : "Ministry rules — wages")}
-      cards={PAYROLL_MINISTRY_CARDS(ar)}
-      rows={rows}
-      footer={self ? (ar ? "موعد راتبك وحد الخصم منه في «حقوق راتبي» أعلاه." : "Your payday and the deduction cap are in «My pay rights» above.") : null}
+      today={todayIso()}
+      inputs={{ data, month, items, employeeForItem }}
+      id={self ? "nv-ministry-payslip" : "nv-ministry-payroll"}
     />
   );
 }

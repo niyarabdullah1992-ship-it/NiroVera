@@ -17,6 +17,7 @@ import OpsFrame, { HeroSwitch } from "@/components/tasks/OpsFrame";
 import { chipButton } from "@/components/schedules/scheduleChrome";
 import { MUTED } from "@/lib/platformStyles";
 import { useRailSide } from "@/lib/railSide";
+import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 import { formerEmployeeCount } from "@/lib/formerEmployees";
 import { canEditOrgDesign, deriveOrgHealth, orgDesignOf, deriveSeatRegister } from "@/lib/orgDesign";
 import { notifyActingReminders, publishDueOrgChanges } from "@/lib/orgDesignStore";
@@ -469,6 +470,11 @@ export default function OrgStructure() {
             )}
           </div>
         )}
+        {isAdminView && data ? (
+          <div style={{ marginTop: 16 }}>
+            <MinistrySectionPanel sectionKey="org" lane="manage" ar={ar} inputs={{ data }} />
+          </div>
+        ) : null}
       </OpsFrame>
       {data && company ? (
         <HireSeatDrawer

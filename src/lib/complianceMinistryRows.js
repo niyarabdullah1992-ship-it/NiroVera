@@ -65,7 +65,7 @@ export function complianceMinistryRows(data = {}, { today, ar = true } = {}) {
       source: "regs",
       badge: ar ? "اللائحة م5/6" : "Regs Art. 5(6)",
       title: ar ? "سجل الفحص الطبي الدوري للمعرّضين لأمراض مهنية" : "Periodic medical-exam register for the exposed",
-      note: ar ? `${medical.exposed || 0} عاملاً معرّضاً · ${medicalOverdue} فات فحصه.` : `${medical.exposed || 0} exposed · ${medicalOverdue} overdue.`,
+      note: ar ? "يُسجَّل الفحص الطبي الدوري لكل عامل معرّض لاحتمال الإصابة بأمراض مهنية." : "Every periodic medical exam of a worker exposed to occupational disease is recorded.",
       ...(medicalOverdue
         ? { status: "alert", pill: ar ? `${medicalOverdue} فات فحصه` : `${medicalOverdue} overdue` }
         : medical.exposed ? { status: "settled", pill: ar ? "مستوفى" : "Met" } : { status: "void", pill: ar ? "لا معرّض" : "None exposed" }),
@@ -85,7 +85,7 @@ export function complianceMinistryRows(data = {}, { today, ar = true } = {}) {
       source: "regs",
       badge: ar ? "اللائحة م15" : "Regs Art. 15",
       title: ar ? "خطة التدريب لكل مهنة، وشرط الاستمرار لا يتجاوز مدة البرنامج" : "A training plan per job; any stay-on bond within the programme's length",
-      note: ar ? `${gaps.length} بنداً في خطة هذه السنة · ${planOpen} لم يحضره كل من في الدور. شرط الاستمرار يُفحص عند تسجيل التدريب (م15/6)، ولا يتحمل المتدرب النفقات (م15/7).` : `${gaps.length} plan row(s) this year · ${planOpen} not attended by everyone in the role. The bond is checked when the training is recorded (15(6)); the trainee bears no cost (15(7)).`,
+      note: ar ? "شرط الاستمرار يُفحص عند تسجيل التدريب (م15/6)، ولا يتحمل المتدرب النفقات (م15/7)." : "The bond is checked when the training is recorded (15(6)); the trainee bears no cost (15(7)).",
       ...(planOpen
         ? { status: "waiting", pill: ar ? `${planOpen} بنداً مفتوحاً` : `${planOpen} open` }
         : gaps.length ? { status: "settled", pill: ar ? "مستوفى" : "Met" } : { status: "void", pill: ar ? "لا خطة مسجّلة" : "No plan recorded" }),
@@ -95,7 +95,7 @@ export function complianceMinistryRows(data = {}, { today, ar = true } = {}) {
       source: "regs",
       badge: ar ? "اللائحة م16 · م5/5" : "Regs Art. 16 · 5(5)",
       title: ar ? `توثيق كل تدريب خلال ${TRAINING_DOCUMENT_DAYS} يوماً في منصة الوزارة` : `Document every training within ${TRAINING_DOCUMENT_DAYS} days on the ministry platform`,
-      note: ar ? `${training.trained || 0} متدرباً في السجل · ${undocumented} لم يوثَّق. نفقات التدريب على العامل في حالات م16 ثانياً فقط — تُفحص عند انتهاء الخدمة.` : `${training.trained || 0} trained on the register · ${undocumented} undocumented. Training costs fall on the worker only in the Art. 16 second cases — checked at exit.`,
+      note: ar ? "نفقات التدريب على العامل في حالات م16 ثانياً فقط — تُفحص عند انتهاء الخدمة." : "Training costs fall on the worker only in the Art. 16 second cases — checked at exit.",
       ...(undocumented
         ? { status: "alert", pill: ar ? `${undocumented} لم يوثَّق` : `${undocumented} undocumented` }
         : training.trained ? { status: "settled", pill: ar ? "مستوفى" : "Met" } : { status: "void", pill: ar ? "لا تدريب مسجّل" : "No training recorded" }),

@@ -3,15 +3,9 @@
 import assert from "node:assert/strict";
 import { ministryIndexSections, ministryIndexTotals, MINISTRY_INDEX_KEYS } from "../src/lib/ministryIndex.js";
 import { ministryCounts, ministryCountsAcross, scheduleMinistryCounts } from "../src/lib/ministryCounts.js";
-import { requestsMinistryRows } from "../src/lib/requestsMinistryRows.js";
-import { contractMinistryRows } from "../src/lib/contractMinistryRows.js";
-import { offboardingMinistryRows } from "../src/lib/offboardingMinistryRows.js";
-import { safetyMinistryFacts, safetyMinistryRows } from "../src/lib/safetyMinistryRows.js";
-import { voiceMinistryInputs, voiceMinistryRows } from "../src/lib/voiceMinistryRows.js";
-import { disciplineLawRows } from "../src/lib/disciplineBoard.js";
-import { disciplineModelRows } from "../src/lib/disciplineModelRows.js";
-import { complianceMinistryRows } from "../src/lib/complianceMinistryRows.js";
-import { payrollPanelRows } from "../src/lib/payrollMinistryRows.js";
+import { buildMinistrySection } from "../src/lib/ministrySections.js";
+import { safetyMinistryFacts } from "../src/lib/safetyMinistryRows.js";
+import { voiceMinistryInputs } from "../src/lib/voiceMinistryRows.js";
 
 let n = 0;
 const ok = (name, fn) => { fn(); n += 1; console.log(`✓ ${name}`); };
@@ -37,33 +31,37 @@ ok("one line per section, in the agreed order", () => {
   sections.forEach((row) => assert.ok(row.href.startsWith("/app/"), row.key));
 });
 
-ok("per-person sections equal the sum of each person's panel rows", () => {
-  const req = [omar, sara].map((p) => requestsMinistryRows({ subject: p, ar: true, today: D }));
-  assert.deepEqual(by("requests").counts, ministryCountsAcross(req));
+const panel = (key, inputs) => buildMinistrySection(key, { lane: "manage", today: D, ar: true, ...inputs }).totals;
+const three = (t) => ({ alert: t.alert, met: t.met, info: t.info });
+
+ok("every index line is its panel's own totals (management lane)", () => {
+  assert.deepEqual(by("requests").counts, three(panel("requests", { people: [omar, sara] })));
   assert.equal(by("requests").counts.alert, 2, "the pending annual leave sits under 109 and 110");
-  assert.equal(by("requests").counts.met, 1, "the approved sick leave");
-  const con = [omar, sara].map((p) => contractMinistryRows(p, { today: D }));
-  assert.deepEqual(by("contract").counts, ministryCountsAcross(con));
+  const con = [omar, sara].map((p) => buildMinistrySection("contract", { lane: "manage", employee: p, today: D }).rows);
+  assert.deepEqual(by("contract").counts, three(ministryCountsAcross(con)));
   assert.match(by("contract").href, /employees\/e1\?tab=contract#nv-ministry-contract/);
 });
 
 ok("نهاية الخدمة counts only files with an exit and opens the flagged one", () => {
-  assert.deepEqual(by("offboarding").counts, ministryCounts(offboardingMinistryRows({ employee: omar, today: D })));
-  assert.ok(by("offboarding").counts.block >= 2, "certificate, ticket and the overdue Art. 88 window");
+  const rows = buildMinistrySection("offboarding", { lane: "manage", employee: omar, today: D }).rows;
+  assert.deepEqual(by("offboarding").counts, three(ministryCountsAcross([rows])));
+  assert.ok(by("offboarding").counts.alert >= 3, "certificate, ticket and the overdue Art. 88 window");
   assert.match(by("offboarding").href, /e1\?tab=contract#nv-ministry-offboarding/);
   const none = ministryIndexSections({ data, employees: [sara], stations, today: D }).find((row) => row.key === "offboarding");
-  assert.equal(none.counts.block + none.counts.alert + none.counts.met, 0);
+  assert.equal(none.counts.alert + none.counts.met, 0);
   assert.equal(none.href, "/app/hr");
 });
 
 ok("establishment sections equal their panel's counts", () => {
-  assert.deepEqual(by("safety").counts, ministryCounts(safetyMinistryRows(safetyMinistryFacts({ stations, recFor: (sid) => data.safety.find((r) => r.stationId === sid), today: D }), { onDate: D })));
-  assert.deepEqual(by("voice").counts, ministryCounts(voiceMinistryRows({ ...voice, today: D })));
+  const facts = safetyMinistryFacts({ stations, recFor: (sid) => data.safety.find((r) => r.stationId === sid), today: D });
+  assert.deepEqual(by("safety").counts, three(panel("safety", { facts })));
+  assert.deepEqual(by("voice").counts, three(panel("voice", { ...voice })));
   assert.equal(by("voice").counts.alert, 1);
-  assert.deepEqual(by("discipline").counts, ministryCounts([...disciplineLawRows({ cases: [], employees: data.employees, today: D }), ...disciplineModelRows({ employees: data.employees, manage: true })]));
-  assert.deepEqual(by("records").counts, ministryCounts(complianceMinistryRows(data, { today: D })));
-  assert.deepEqual(by("payroll").counts, ministryCounts(payrollPanelRows({ data, month: "2026-10", items: [], today: D })));
-  assert.deepEqual(by("schedule").counts, { block: 2, alert: 3, met: 9, info: 0 });
+  assert.deepEqual(by("discipline").counts, three(panel("discipline", { cases: [], employees: data.employees })));
+  assert.deepEqual(by("records").counts, three(panel("records", { data })));
+  assert.deepEqual(by("payroll").counts, three(panel("payroll", { data, month: "2026-10", items: [] })));
+  assert.deepEqual(by("org").counts, three(panel("org", { data })));
+  assert.deepEqual(by("schedule").counts, { alert: 5, met: 9, info: 0 }, "a publish block or violation is an alert");
 });
 
 ok("privacy: no voice counts without an HR receiver's inputs; no payroll counts without payroll rights", () => {

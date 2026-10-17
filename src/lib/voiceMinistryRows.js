@@ -22,8 +22,8 @@ export const VOICE_MINISTRY_CARDS = (ar = true) => [
   },
   {
     key: "labour",
-    title: ar ? "نظام العمل — الكرامة والتقاضي" : "Labour Law — dignity and recourse",
-    scope: ar ? "حسن المعاملة وبطلان الانتقام (61)، والتسوية الودية ثم المحكمة (220)." : "Decent treatment and no reprisal (61); settlement then the court (220).",
+    title: ar ? "نظام العمل — الكرامة" : "Labour Law — dignity",
+    scope: ar ? "حسن المعاملة وبطلان الانتقام." : "Decent treatment and no reprisal.",
   },
 ];
 
@@ -68,8 +68,8 @@ export function voiceMinistryRows({ breached = 0, abuseCases = [], calendar, tod
       badge: ar ? "النموذج الموحد م55/2" : "Model Art. 55(2)",
       title: ar ? `لجنة بقرار تحقق وتوصي خلال ${ABUSE_WORKING_DAYS} أيام عمل من تلقي الشكوى` : `A committee by decision investigates and recommends within ${ABUSE_WORKING_DAYS} working days`,
       note: ar
-        ? `${abuse.total} قضية · ${abuse.inquiry} في مهلتها · ${abuse.overdue} تجاوزتها · ${abuse.decided} بتوصية مكتوبة — أيام العمل لا تشمل الراحة الأسبوعية والعطل الرسمية.`
-        : `${abuse.total} case(s) · ${abuse.inquiry} in window · ${abuse.overdue} past it · ${abuse.decided} with a written recommendation — working days skip rest days and official holidays.`,
+        ? "تحقق اللجنة وتوصي كتابةً في المهلة — أيام العمل لا تشمل الراحة الأسبوعية والعطل الرسمية."
+        : "The committee investigates and recommends in writing within the window — working days skip rest days and official holidays.",
       status: abuse.overdue ? "alert" : abuse.inquiry ? "waiting" : abuse.total ? "settled" : "void",
       pill: abuse.overdue
         ? (ar ? `${abuse.overdue} تجاوزت المهلة` : `${abuse.overdue} past the window`)
@@ -98,11 +98,13 @@ export function voiceMinistryRows({ breached = 0, abuseCases = [], calendar, tod
       pill: ar ? "مستوفى" : "Met",
     },
     {
-      key: "labour-220",
-      source: "labour",
-      badge: ar ? "م 220" : "Art. 220",
-      title: ar ? "التسوية الودية ثم المحكمة العمالية" : "Amicable settlement, then the labour court",
-      note: ar ? "المسار الداخلي لا يُسقط حق صاحب الصوت؛ تبقى التسوية الودية ثم المحكمة العمالية." : "The internal path does not remove the right; amicable settlement and then the labour court remain.",
+      // Labour Law Art. 220 was repealed (Royal Decree M/1 of 1435/1/22); the route to the labour
+      // courts after an internal grievance is model regulation Art. 71(2).
+      key: "model-71",
+      source: "model",
+      badge: ar ? "النموذج الموحد م71" : "Model Art. 71",
+      title: ar ? "المسار الداخلي لا يُسقط حق اللجوء للمحاكم العمالية" : "The internal path keeps the right to the labour courts",
+      note: ar ? "إن رُفض التظلم أو لم يُبتّ فيه كتابةً خلال خمسة عشر يوماً فلصاحبه الاعتراض أمام المحاكم العمالية خلال ثلاثين يوماً عدا العطل الرسمية." : "If a grievance is refused or not decided in writing within fifteen days, its author may go to the labour courts within thirty days, holidays aside.",
       status: "void",
       pill: ar ? "للعلم" : "For reference",
     },

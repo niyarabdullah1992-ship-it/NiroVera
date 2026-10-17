@@ -41,6 +41,31 @@ export const LABOR_ARTICLE_TEXTS = [
   ),
 
   v(
+    "13",
+    "1 - يلتزم كل صاحب عمل بإعداد لائحة لتنظيم العمل في منشأته وفق النموذج المعد من الوزارة، ويجوز للوزير الاستثناء من ذلك.\n2 - يجوز لصاحب العمل تضمين اللائحة شروطاً وأحكاماً إضافية، بما لا يتعارض مع أحكام هذا النظام ولائحته والقرارات الصادرة تنفيذاً له.\n3 - يجب على صاحب العمل أن يعلن لائحة تنظيم العمل وأي تعديل يطرأ عليها في مكان ظاهر في المنشأة أو أي وسيلة أخرى تكفل علم الخاضعين لها بأحكامها.",
+    "1 - Every employer shall prepare a work-organisation regulation for his establishment on the model the Ministry prepares; the Minister may grant exceptions.\n2 - The employer may add terms and provisions that do not conflict with this Law, its Regulations and the decisions issued under it.\n3 - The employer shall announce the work-organisation regulation and any amendment in a conspicuous place in the establishment, or by any other means that ensures those subject to it know its provisions.",
+  ),
+
+  v(
+    "61",
+    "بالإضافة إلى الواجبات المنصوص عليها في هذا النظام واللوائح والقرارات الصادرة تطبيقاً له، يجب على صاحب العمل ما يأتي:\n1 - أن يمتنع عن تشغيل العامل سخرة، وألا يحتجز دون سند قضائي أجر العامل أو جزءاً منه، وأن يعامل عماله بالاحترام اللائق، وأن يمتنع عن كل قول أو فعل يمس كرامتهم ودينهم.\n2 - أن يعطي العمال الوقت اللازم لممارسة حقوقهم المنصوص عليها في هذا النظام دون تنزيل من الأجور لقاء هذا الوقت، وله أن ينظم ممارسة هذا الحق بصورة لا تخل بسير العمل.\n3 - أن يسهل لموظفي الجهات المختصة كل مهمة تتعلق بتطبيق أحكام هذا النظام.\n4 - أن يمتنع عن القيام بكل ما من شأنه إبطال أو إضعاف تطبيق تكافؤ الفرص أو المعاملة في الاستخدام والمهنة، سواء من خلال الاستبعاد أو التفريق أو التفضيل بين المتقدمين للعمل أو العاملين لديه على أساس العرق أو اللون أو الجنس أو السن أو الإعاقة أو الحالة الاجتماعية أو أي شكل من أشكال التمييز الأخرى.\n5 - أن يوفر السكن اللائق لعماله، وله أن يستعيض عن ذلك ببدل نقدي مناسب يدفعه لهم مع الأجر.\n6 - أن يوفر وسيلة مواصلات مناسبة لعماله من مقر سكنهم إلى مقر العمل، وله أن يستعيض عن ذلك ببدل نقدي مناسب يدفعه لهم مع الأجر.",
+    "In addition to the duties in this Law and the regulations and decisions issued under it, the employer shall:\n1 - Not use forced labour, not withhold all or part of a worker's wage without a judicial basis, treat his workers with due respect, and refrain from any word or act that offends their dignity or religion.\n2 - Give workers the time needed to exercise their rights under this Law without a wage cut for it; he may organise that so as not to disrupt the work.\n3 - Facilitate every task of the competent authorities' staff in applying this Law.\n4 - Refrain from anything that nullifies or weakens equal opportunity or treatment in employment and occupation, by exclusion, distinction or preference among applicants or workers on race, colour, sex, age, disability, marital status or any other form of discrimination.\n5 - Provide decent housing for his workers, or a suitable cash allowance paid with the wage instead.\n6 - Provide suitable transport for his workers from their housing to the workplace, or a suitable cash allowance paid with the wage instead.",
+    { from: AMEND_2025, amendedBy: "M/44" },
+  ),
+
+  v(
+    "141",
+    "تحدد بقرار من الوزير إجراءات الإبلاغ عن إصابات العمل.",
+    "The procedures for reporting work injuries are set by a decision of the Minister.",
+  ),
+
+  v(
+    "142",
+    "على كل صاحب عمل أن يعد خزانة أو أكثر للإسعافات الطبية، مزودة بالأدوية وغيرها، مما يلزم للإسعافات الطبية الأولية. وتحدد اللائحة ما يجب أن تحتويه هذه الخزانة من وسائل الإسعافات الأولية وعددها، وكميات الأدوية، وكذلك تنظيم وسائل حفظها وشروط من يقوم بمهمة الإسعافات ومستواه.",
+    "Every employer shall keep one or more first-aid cabinets stocked with medicines and whatever else first aid requires. The Regulations set the first-aid items and their number, the quantities of medicine, how they are kept, and the conditions and level of whoever gives first aid.",
+  ),
+
+  v(
     "37",
     "يجب أن يكون عقد عمل غير السعودي مكتوبًا ومحدد المدة. وإذا خلا العقد من بيان مدته تعد مدة رخصة العمل هي مدة العقد.",
     "A non-Saudi worker's contract must be in writing and for a fixed term. If the contract does not state its duration, the duration of the work permit shall be deemed the duration of the contract.",

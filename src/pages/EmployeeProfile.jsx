@@ -488,7 +488,7 @@ export default function EmployeeProfile() {
         {tab === "contract" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {canEditContract || isSelf ? <ContractTab employee={employee} companyId={company.id} canEdit={canEditContract && !isSelf} viewerId={currentUser.id} /> : null}
-            {canEditContract || isSelf ? <ContractLawPanel employee={employee} ar={ar} /> : null}
+            {canEditContract || isSelf ? <ContractLawPanel employee={employee} ar={ar} lane={isSelf ? "employee" : "manage"} /> : null}
             {/* The leaving worker's read-only twin of «أنظمة الوزارة — نهاية الخدمة» (the case view sits in OffboardingTab). */}
             {isSelf && hasRecordedExit(employee) ? <OffboardingLawPanel employee={employee} ar={ar} self /> : null}
             <AllowanceLedgerCard employee={employee} ar={ar} />

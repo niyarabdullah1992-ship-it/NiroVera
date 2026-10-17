@@ -216,13 +216,15 @@ export default function RightHint({ hint, ar = true, onAction, onDate, style }) 
           <span style={{ ...key, color: GREEN }}>{word}:</span>
           <span style={{ fontSize: 12.5, lineHeight: 1.75, color: INK }}>{hint.right}</span>
         </div>
-        <div style={row}>
-          <span style={key}>{ifNotLabel}</span>
-          <span style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", minWidth: 0 }}>
-            {hint.ifNot ? <span style={{ fontSize: 12, lineHeight: 1.7, color: "var(--nv-ink2, var(--nv-ink))" }}>{hint.ifNot}</span> : null}
-            <HintAction action={hint.action} ar={ar} onAction={onAction} onDone={() => setOpen(false)} />
-          </span>
-        </div>
+        {hint.ifNot || hint.action ? (
+          <div style={row}>
+            <span style={key}>{ifNotLabel}</span>
+            <span style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-start", minWidth: 0 }}>
+              {hint.ifNot ? <span style={{ fontSize: 12, lineHeight: 1.7, color: "var(--nv-ink2, var(--nv-ink))" }}>{hint.ifNot}</span> : null}
+              <HintAction action={hint.action} ar={ar} onAction={onAction} onDone={() => setOpen(false)} />
+            </span>
+          </div>
+        ) : null}
         <div style={row}>
           <span style={key}>{lawLabel}</span>
           {hint.law?.product ? (

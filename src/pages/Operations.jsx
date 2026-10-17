@@ -87,6 +87,7 @@ import { DutyTile, DutyNumber } from "@/components/schedules/DutyTiles";
 import { KpiAction } from "@/components/shared/StatusFlag";
 import { formatUiNumber as formatNum } from "@/lib/dateFormat";
 import { useRailSide } from "@/lib/railSide";
+import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
 import {
   INK,
@@ -2583,6 +2584,10 @@ export default function Operations() {
           </div>
         </div>
       )}
+
+      <div style={{ marginTop: 16 }}>
+        <MinistrySectionPanel sectionKey="tasks" lane={employeeRail ? "employee" : "manage"} ar={ar} />
+      </div>
 
       {rejectFor && (
         <div style={dialogOverlay} onClick={() => setRejectFor(null)}>

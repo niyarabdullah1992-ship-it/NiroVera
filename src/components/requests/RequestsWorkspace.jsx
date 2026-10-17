@@ -4344,7 +4344,9 @@ export default function RequestsWorkspace({
           liveArticle={isResignation ? "79 مكرر" : (isStudyConsent || (isLeave && leave === "exam") ? "115" : (isLeave ? (leaveMeta?.article || "") : ""))}
           liveKind={isLeave ? `leave:${leave}` : kind}
         />
-      ) : null}
+      ) : (
+        <RequestsMinistryPanel ar={ar} lang={lang} lane="manage" people={employees} />
+      )}
 
       {isLeave ? (
       <div className="nv-req-lower" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>

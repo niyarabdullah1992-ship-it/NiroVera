@@ -178,10 +178,55 @@ export function weeklyOffDows(company: any, employee: any): number[] {
   if (weeklyRestDayCountOf(company, employee) <= 1) return [statutory];
   return [statutory, (statutory + 1) % 7];
 }
-export function isEmployeeOffDay(dateKey: string, company: any, employee: any) {
+function weekKeysAround(dateKey: string): string[] {
   const [y, m, d] = String(dateKey || "").split("-").map(Number);
-  if (!y) return false;
-  return weeklyOffDows(company, employee).includes(new Date(y, m - 1, d).getDay());
+  if (!y) return [];
+  const start = new Date(y, m - 1, d - new Date(y, m - 1, d).getDay());
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+  });
+}
+function assignedOn(schedule: any, employeeId: any, dateKey: string) {
+  const assignments = schedule?.assignments || {};
+  let day = assignments[dateKey];
+  if (!day || typeof day !== "object" || Array.isArray(day)) {
+    const [y, m, d] = dateKey.split("-").map(Number);
+    const dow = new Date(y, m - 1, d).getDay();
+    day = assignments[dow] || assignments[String(dow)];
+  }
+  if (!day || typeof day !== "object" || Array.isArray(day)) return false;
+  return (schedule?.shiftTypes || []).some((shift: any) => (day[shift.id] || []).includes(employeeId));
+}
+/** Twin of leaveEidOverlap.weekWorkedKeys: rostered or punched days of this person's week. */
+export function weekWorkedKeys(company: any, employee: any, dateKey: string): string[] {
+  const id = employee?.id;
+  if (id == null) return [];
+  return weekKeysAround(dateKey).filter((key) => (
+    (company?.schedules || []).some((schedule: any) => assignedOn(schedule, id, key))
+    || (company?.personalAttendance || []).some((row: any) => (
+      String(row?.employeeId ?? row?.employee_id) === String(id)
+      && String(row?.date || row?.dateKey || "").slice(0, 10) === key
+      && (row?.checkInAt || row?.check_in_at)
+    ))
+  ));
+}
+/**
+ * Twin of leaveEidOverlap.isRestDayWork — the file's rest-day count decides (Arts 104, 107): the week's
+ * worked days past 7 − count are rest days worked. Pinned file weekdays, when set, decide by weekday.
+ */
+export function isEmployeeOffDay(dateKey: string, company: any, employee: any, workedKeys: string[] | null = null) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return false;
+  const fixed = fileOffDows(employee);
+  if (fixed.length) {
+    const [y, m, d] = dateKey.split("-").map(Number);
+    return fixed.includes(new Date(y, m - 1, d).getDay());
+  }
+  const week = new Set(weekKeysAround(dateKey));
+  const worked = [...new Set([...(Array.isArray(workedKeys) ? workedKeys : weekWorkedKeys(company, employee, dateKey)), dateKey])]
+    .filter((key) => week.has(key))
+    .sort();
+  return worked.indexOf(dateKey) >= 7 - weeklyRestDayCountOf(company, employee);
 }
 
 /* ---------------- Art. 154 nursing subject — twin of leaveTypes.js ---------------- */

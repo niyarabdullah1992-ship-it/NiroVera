@@ -675,8 +675,11 @@ Deno.serve(async (req) => {
           }
           return null;
         };
-        const prior = weekOrdinaryBeforeCore({ rows: Array.isArray(weekRows) ? weekRows : [], dayKey: date, shiftOn });
-        const { auto } = readDayOvertimeCore({ row: updated[0], dayKey: date, shift: scheduledOut, weekPriorOrdinaryMinutes: prior });
+        // The week's worked days (rostered or punched): rest days worked are those past the file's count.
+        const rowsList = Array.isArray(weekRows) ? weekRows : [];
+        const weekWorked = keys.filter((key) => key === date || !!shiftOn(key) || rowsList.some((r) => String(r?.date || "").slice(0, 10) === key && (r?.check_in_at || r?.checkInAt)));
+        const prior = weekOrdinaryBeforeCore({ rows: rowsList, dayKey: date, shiftOn, weekWorkedKeys: weekWorked });
+        const { auto } = readDayOvertimeCore({ row: updated[0], dayKey: date, shift: scheduledOut, weekPriorOrdinaryMinutes: prior, weekWorkedKeys: weekWorked });
         overtime = auto ? { ...auto, weekPriorOrdinaryMinutes: prior } : null;
       } catch (otErr) {
         console.error("checkOut overtime reading failed:", otErr?.message || otErr);

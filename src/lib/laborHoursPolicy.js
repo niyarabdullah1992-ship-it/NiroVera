@@ -6,7 +6,7 @@ import { citeRule, laborDaysBetween, laborDayKey, ruleValue } from "./laborRules
 import { isRamadanDay, isRamadanHoursSubject } from "./laborRules.js";
 import { remainingLeaveDays, usedLeaveDays } from "./leaveTypes.js";
 import { isOfficialHoliday } from "./ummAlQuraCalendar.js";
-import { weeklyOffDows } from "./leaveEidOverlap.js";
+import { isRestDayWork } from "./leaveEidOverlap.js";
 
 export const PAY_CYCLES = ["monthly", "daily", "weekly", "piece", "hourly"];
 
@@ -270,10 +270,9 @@ export function checkWorkPostingGate({ company, station, settings } = {}) {
 
 /** Named overtime from published-shift hours vs 98/99/Ramadan/164, plus 107 rest-day and Eid hours. */
 /** This person's off weekdays (file first, then the establishment) — Arts 104/107. */
-export function isEmployeeOffDay(dateKey, company, employee) {
-  const [y, m, d] = String(dateKey || "").split("-").map(Number);
-  if (!y) return false;
-  return weeklyOffDows(company, employee).includes(new Date(y, m - 1, d).getDay());
+export function isEmployeeOffDay(dateKey, company, employee, workedKeys = null) {
+  // Work on a rest day by the file's count (statutory day ± company day) — see isRestDayWork.
+  return isRestDayWork(dateKey, company, employee, workedKeys);
 }
 
 /**
@@ -296,12 +295,14 @@ export function deriveNamedOvertime({
   const basis = criterion || hoursBasisOf(company, employee).basis || "daily";
   const dutyDays = days.filter((day) => Number(day.hours) > 0).length;
   const weekCap = art108WeekCap(employee, firstKey, laborCalendar, dutyDays) ?? ordinaryWeekCap(employee, company, firstKey, laborCalendar);
+  // The week's worked days decide which of them were rest days (the file's count, Arts 104/107).
+  const workedKeys = days.filter((day) => Number(day.hours) > 0).map((day) => day.key);
   for (const day of days) {
     const hours = Math.max(0, Number(day.hours) || 0);
     if (hours <= 0) continue;
     weekHours += hours;
     const holiday = day.holiday === true || isOfficialHoliday(day.key, laborCalendar);
-    const restDay = typeof day.restDay === "boolean" ? day.restDay : isEmployeeOffDay(day.key, company, employee);
+    const restDay = typeof day.restDay === "boolean" ? day.restDay : isEmployeeOffDay(day.key, company, employee, workedKeys);
     const dayCap = basis === "weekly" ? Infinity : ordinaryDayCap(employee, company, day.key, laborCalendar);
     let ot = 0;
     let kind = "";

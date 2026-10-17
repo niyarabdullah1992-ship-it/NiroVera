@@ -40,6 +40,8 @@ export function weekKeysOf(dayKey: string): string[] {
 /** One closed day read through the twin, the week before it given. */
 export function readDayOvertimeCore(input: {
   row: any; dayKey: string; shift?: any; employee?: any; company?: any; laborCalendar?: any; weekPriorOrdinaryMinutes?: number;
+  /** The week's worked days (rostered or punched) — the rest-day count reads them (Arts 104, 107). */
+  weekWorkedKeys?: string[] | null;
 }) {
   const { row, dayKey, shift = null, employee, company, laborCalendar } = input;
   const duty = deriveActualDutyCore({
@@ -60,7 +62,7 @@ export function readDayOvertimeCore(input: {
     dayOvertimeMinutes: duty.overtimeMinutes,
     dayKind: duty.kind,
     holiday: duty.holiday,
-    restDay: duty.offDay || (!!shift && isEmployeeOffDay(dayKey, company, employee)),
+    restDay: duty.offDay || (!!shift && isEmployeeOffDay(dayKey, company, employee, input.weekWorkedKeys ?? null)),
     weekPriorOrdinaryMinutes: input.weekPriorOrdinaryMinutes || 0,
     weekCapMinutes: Number.isFinite(capHours) ? Math.round(capHours * 60) : Infinity,
   });
@@ -70,13 +72,14 @@ export function readDayOvertimeCore(input: {
 /** Ordinary minutes this week before `dayKey` from the closed rows given, each read in order. */
 export function weekOrdinaryBeforeCore(input: {
   rows: any[]; dayKey: string; shiftOn?: (dayKey: string) => any; employee?: any; company?: any; laborCalendar?: any;
+  weekWorkedKeys?: string[] | null;
 }) {
   let running = 0;
   for (const key of weekKeysOf(input.dayKey)) {
     if (key >= input.dayKey) break;
     const row = (input.rows || []).find((r: any) => String(r?.date || r?.dateKey || "").slice(0, 10) === key && (r.checkInAt || r.check_in_at) && (r.checkOutAt || r.check_out_at));
     if (!row) continue;
-    const { auto } = readDayOvertimeCore({ row, dayKey: key, shift: input.shiftOn ? input.shiftOn(key) : null, employee: input.employee, company: input.company, laborCalendar: input.laborCalendar, weekPriorOrdinaryMinutes: running });
+    const { auto } = readDayOvertimeCore({ row, dayKey: key, shift: input.shiftOn ? input.shiftOn(key) : null, employee: input.employee, company: input.company, laborCalendar: input.laborCalendar, weekPriorOrdinaryMinutes: running, weekWorkedKeys: input.weekWorkedKeys ?? null });
     if (auto) running += auto.ordinaryMinutes;
   }
   return running;

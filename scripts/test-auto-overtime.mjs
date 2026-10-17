@@ -98,14 +98,26 @@ console.log("PASS Ramadan 6 / 36 (empty religion = Muslim)");
 
 /* ── the weekly rest day and an official holiday: all of it (Arts 104, 107) ── */
 {
+  // The file is the criterion (Arts 104, 107): a five-day file (statutory + company day) works five days;
+  // the 6th worked day of the week is a rest day worked — whatever weekday it falls on.
+  const WEEK5 = ["2026-10-11", "2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"];
   const FRI = "2026-10-16";
-  const d = company(on([FRI]));
+  const d = company(on([...WEEK5, FRI]));
   stamp(d, punch(d, FRI, "07:00", "11:00"));
-  assert.deepEqual([entry(d, FRI).overtimeMinutes, entry(d, FRI).kind], [240, "weekly_rest"], "rostered on the rest day — every minute");
+  assert.deepEqual([entry(d, FRI).overtimeMinutes, entry(d, FRI).kind], [240, "weekly_rest"], "rostered on a rest day — every minute");
+  const lone = company(on([FRI]));
+  stamp(lone, punch(lone, FRI, "07:00", "11:00"));
+  assert.equal(entry(lone, FRI), undefined, "a lone Friday shift is not rest-day work — the week still holds its rest days");
+  const six = company(on([...WEEK5, FRI]), [{ id: "e1", name: "عمر", stationId: "st", profile: { weeklyRestDayCount: 1 } }]);
+  stamp(six, punch(six, FRI, "07:00", "11:00"));
+  assert.equal(entry(six, FRI), undefined, "a six-day file (statutory day only): the 6th day is an ordinary work day");
   const SAT = "2026-10-17";
-  const d2 = company({});
+  const d2 = company(on(WEEK5));
   stamp(d2, punch(d2, SAT, "08:00", "10:00"));
-  assert.deepEqual([entry(d2, SAT).overtimeMinutes, entry(d2, SAT).kind], [120, "weekly_rest"], "unrostered rest day — every minute");
+  assert.deepEqual([entry(d2, SAT).overtimeMinutes, entry(d2, SAT).kind], [120, "weekly_rest"], "unrostered 6th day — every minute");
+  const pinned = company({}, [{ id: "e1", name: "عمر", stationId: "st", profile: { weeklyOffDows: [5] } }]);
+  stamp(pinned, punch(pinned, FRI, "08:00", "10:00"));
+  assert.equal(entry(pinned, FRI)?.kind, "weekly_rest", "HR pinned Friday on the file — the weekday decides");
   const HOL = "2026-09-23";
   const d3 = company(on([HOL]));
   stamp(d3, punch(d3, HOL, "07:00", "12:00"));
@@ -187,6 +199,10 @@ console.log("PASS attendance ministry section — مستوفٍ / تنبيه / ل
   const fr = punch(fri, "2026-10-16", "07:00", "11:00");
   assert.equal(twin.readDayOvertimeCore({ row: fr, dayKey: "2026-10-16", shift: SHIFT, company: fri }).auto.kind, dayOvertimeFor(fri, fri.employees[0], "2026-10-16", fr).kind, "rest day on both");
   assert.equal(twin.weekKeysOf("2026-10-15")[0], "2026-10-11", "Sunday-first week on both");
+  // The rest-day count reads the week's worked days on the server too (weekWorkedKeys from its rows + roster).
+  const wk = ["2026-10-11", "2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16"];
+  assert.equal(twin.readDayOvertimeCore({ row: fr, dayKey: "2026-10-16", shift: SHIFT, weekWorkedKeys: wk }).auto.kind, "weekly_rest", "server: 6th worked day of a five-day week");
+  assert.notEqual(twin.readDayOvertimeCore({ row: fr, dayKey: "2026-10-16", shift: SHIFT, weekWorkedKeys: ["2026-10-16"] }).auto.kind, "weekly_rest", "server: a lone Friday is not rest-day work");
 }
 console.log("PASS server twin parity");
 console.log("ALL PASS test-auto-overtime");

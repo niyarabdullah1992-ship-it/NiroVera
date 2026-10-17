@@ -116,7 +116,8 @@ const person = (id, name, profile = {}, extra = {}) => ({ id, name, stationId: "
   ok(long.flags.every((f) => f.reason && f.reasonEn && f.article), "flags name their article in both languages");
   ok(long.overtimeMinutes > 0, "overtime beyond the day cap");
   // Unrostered weekly rest day (Friday): all of it is overtime (Art. 107(3)).
-  const fri = deriveTimesheetDay({ date: "2026-10-16", checkIn: "08:00", checkOut: "12:00" }, { shift: null, employee: emp, company: {} });
+  // (HR pinned Friday on this file — the weekday decides only when the file names it.)
+  const fri = deriveTimesheetDay({ date: "2026-10-16", checkIn: "08:00", checkOut: "12:00" }, { shift: null, employee: { ...emp, profile: { ...(emp.profile || {}), weeklyOffDows: [5] } }, company: {} });
   eq(fri.overtimeMinutes, 240, "weekly rest day → every hour overtime");
   eq(fri.overtimeKind, "weekly_rest", "named as weekly-rest overtime");
   eq(fri.rostered, false, "unrostered");

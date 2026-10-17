@@ -414,10 +414,13 @@ check("Art. 155: «في السنة سواءً أكانت متصلة أم متف�
     days: [
       { key: "2026-09-13", hours: 8 },
       { key: "2026-09-14", hours: 10 },
-      { key: "2026-09-18", hours: 4 }, // Friday = weekly rest → all OT
+      { key: "2026-09-15", hours: 8 },
+      { key: "2026-09-16", hours: 8 },
+      { key: "2026-09-17", hours: 8 },
+      { key: "2026-09-18", hours: 4 }, // the 6th worked day of a 5-day file (two rest days) → a rest day worked, all OT
     ],
   });
-  check("Art. 107: 10h day → 2h OT; Friday 4h → 4h OT; total 6", ot.totalHours, 6, "Art. 107(3), Art. 98");
+  check("Art. 107: 10h day → 2h OT; 6th day of a 5-day week 4h → 4h OT; total 6", ot.totalHours, 6, "Art. 107(3), Art. 98");
   check("Art. 107: rest-day kind named weekly_rest", ot.rows.find((r) => r.dateKey === "2026-09-18")?.kind, "weekly_rest");
 }
 // Art. 101/102 actual hours: 12h stay with 60 min rest = 11 actual

@@ -73,6 +73,53 @@ export function weeklyOffDows(company, employee) {
   return [statutory, (statutory + 1) % 7];
 }
 
+/** Sunday-start week of a date key — the roster's week. */
+function weekKeysAround(dateKey) {
+  const [y, m, d] = String(dateKey || "").split("-").map(Number);
+  if (!y) return [];
+  const start = new Date(y, m - 1, d - new Date(y, m - 1, d).getDay());
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+    return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+  });
+}
+
+/** Days of this person's week that hold work: a rostered shift (any branch) or a punched check-in. */
+export function weekWorkedKeys(company, employee, dateKey) {
+  const id = employee?.id;
+  if (id == null) return [];
+  const keys = weekKeysAround(dateKey);
+  return keys.filter((key) => (
+    (company?.schedules || []).some((schedule) => employeeAssignedOn(schedule, id, key))
+    || (company?.personalAttendance || []).some((row) => (
+      String(row?.employeeId ?? row?.employee_id) === String(id)
+      && String(row?.date || row?.dateKey || "").slice(0, 10) === key
+      && (row?.checkInAt || row?.check_in_at)
+    ))
+  ));
+}
+
+/**
+ * Is work on `dateKey` work on a weekly rest day (Arts 104, 107)? The file is the criterion: HR sets how
+ * many rest days this person has (the statutory day alone, or with the company day), not which weekday.
+ * So the week's worked days past 7 − that count are the rest days worked — never "Friday" or "Saturday"
+ * by name. Only when HR pinned weekdays on the file (`weeklyOffDows`) does the weekday decide.
+ */
+export function isRestDayWork(dateKey, company, employee, workedKeys = null) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ""))) return false;
+  const fixed = fileOffDows(employee);
+  if (fixed.length) {
+    const [y, m, d] = dateKey.split("-").map(Number);
+    return fixed.includes(new Date(y, m - 1, d).getDay());
+  }
+  const week = new Set(weekKeysAround(dateKey));
+  const worked = [...new Set([...(Array.isArray(workedKeys) ? workedKeys : weekWorkedKeys(company, employee, dateKey)), dateKey])]
+    .filter((key) => week.has(key))
+    .sort();
+  const allowed = 7 - weeklyRestDayCountOf(company, employee);
+  return worked.indexOf(dateKey) >= allowed;
+}
+
 export function isWeeklyOffDay(dateKey, company, employee) {
   const [y, m, d] = String(dateKey || "").split("-").map(Number);
   if (!y) return false;

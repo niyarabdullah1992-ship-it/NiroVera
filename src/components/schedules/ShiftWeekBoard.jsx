@@ -85,7 +85,8 @@ import StatutoryItem from "@/components/labor/StatutoryItem";
 import { canEditOwnerBoard } from "@/lib/ownerBoard";
 import LaborCalendarCard from "@/components/hr/LaborCalendarCard";
 import { rosterNightRowMark, statutoryGlowState } from "@/lib/statutoryItem";
-import { isRamadanDay, ruleValue } from "@/lib/laborRules";
+import { citeRule, isRamadanDay, ruleValue } from "@/lib/laborRules";
+import { restCountMismatch } from "@/lib/leaveEidOverlap.js";
 import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import FileHoursAlertsRail from "@/components/employees/FileHoursAlertsRail";
@@ -1414,6 +1415,27 @@ export default function ShiftWeekBoard({
                         const cap = weekHoursCap(employee, data, days.map((day) => day.key), laborCalendar).hours;
                         const over = Number.isFinite(cap) && Number(hours) > cap;
                         return <span style={{ fontSize: 10.5, color: over ? "var(--nv-bad-ink)" : SW.muted, textAlign: "start" }}><span dir="ltr" style={mono}>{hours}</span> {ar ? "س" : "h"}{over ? (ar ? <> · تجاوز <span dir="ltr" style={mono}>{cap}</span></> : <> · over <span dir="ltr" style={mono}>{cap}</span></>) : ""}</span>;
+                      })()}
+                      {(() => {
+                        // The file sets how many rest days he has; a roster that leaves fewer is flagged here.
+                        const workedDays = days.filter((day) => !leaveOnDayView(employee, day.key, ar, laborCalendar) && shiftOn(employee, day)).length;
+                        const rc = restCountMismatch(data, employee, workedDays);
+                        if (!rc.mismatch) return null;
+                        const art = citeRule("hours.ot.premium", days[0]?.key)?.article || "";
+                        const restWord = (n) => (n === 0 ? "بلا راحة" : n === 1 ? "يوم راحة" : "يوما راحة");
+                        return (
+                          <span
+                            data-rest-mismatch={rc.extra}
+                            title={ar
+                              ? `ملف ${employee.name} يقرر ${rc.fileRest === 1 ? "يوم راحة واحداً" : "يومي راحة"} في الأسبوع، والجدول يعطيه ${rc.rosterRest === 0 ? "صفراً" : rc.rosterRest === 1 ? "يوماً واحداً" : `${rc.rosterRest}`}. ${rc.extra === 1 ? "يوم واحد" : `${rc.extra} أيام`} من أيام عمله عمل في يوم راحة — كل ساعاته إضافي${art ? ` (المادة ${art})` : ""}. غيّر الجدول أو ملف الموظف إن لم يكن مقصوداً.`
+                              : `${employee.name}'s file sets ${rc.fileRest} rest day(s) a week; the roster leaves ${rc.rosterRest}. ${rc.extra} worked day(s) are rest days worked — all overtime${art ? ` (Art. ${art})` : ""}.`}
+                            style={{ fontSize: 10, lineHeight: 1.45, color: "var(--nv-warn-ink, #7A4E0B)", textAlign: "start" }}
+                          >
+                            {ar
+                              ? <>الملف: {restWord(rc.fileRest)} · الجدول: {restWord(rc.rosterRest)} — <span dir="ltr" style={mono}>{rc.extra}</span> {rc.extra === 1 ? "يوم" : "أيام"} إضافي{art ? <span style={{ whiteSpace: "nowrap" }}> (م <span dir="ltr" style={mono}>{art}</span>)</span> : null}</>
+                              : <>File: {rc.fileRest} rest · roster: {rc.rosterRest} — <span dir="ltr" style={mono}>{rc.extra}</span> day(s) OT{art ? ` (Art. ${art})` : ""}</>}
+                          </span>
+                        );
                       })()}
                       {sunWeekAction ? (
                         <button

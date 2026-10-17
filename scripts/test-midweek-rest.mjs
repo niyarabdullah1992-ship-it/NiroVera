@@ -52,3 +52,16 @@ console.log("PASS official holidays and rest days stay out of annual leave");
   assert.notEqual(usedLive, usedLocked, "without the lock the roster change would have moved the balance");
 }
 console.log("PASS rest days are locked on the leave at approval");
+
+// The roster against the file: fewer rest days than the file sets → flagged with the extra days.
+{
+  const { restCountMismatch } = await import("../src/lib/leaveEidOverlap.js");
+  const five = { id: "a", profile: { weeklyRestDayCount: 2 } };
+  const six = { id: "b", profile: { weeklyRestDayCount: 1 } };
+  assert.deepEqual(restCountMismatch({}, five, 6), { fileRest: 2, rosterRest: 1, worked: 6, extra: 1, mismatch: true });
+  assert.equal(restCountMismatch({}, five, 5).mismatch, false, "five days on a five-day file — fine");
+  assert.equal(restCountMismatch({}, six, 6).mismatch, false, "six days on a six-day file — fine");
+  assert.equal(restCountMismatch({}, six, 7).extra, 1, "seven days on a six-day file — one rest day worked");
+  assert.equal(restCountMismatch({}, five, 3).mismatch, false, "fewer work days is never flagged");
+}
+console.log("PASS roster vs file rest count");

@@ -157,6 +157,19 @@ export function rosterRestDows(company, employee, dateKey) {
   return dows.length ? dows : null;
 }
 
+/**
+ * The roster against the file's rest count for one week: `worked` duty days leave `rosterRest` rest days;
+ * when that is fewer than the file's count, `extra` days of the week are rest days worked (all overtime,
+ * Art. 107). Not a ban — the roster may ask it — but it must not pass unseen.
+ */
+export function restCountMismatch(company, employee, workedCount) {
+  const fileRest = weeklyRestDayCountOf(company, employee);
+  const worked = Math.max(0, Math.min(7, Number(workedCount) || 0));
+  const rosterRest = 7 - worked;
+  const extra = Math.max(0, fileRest - rosterRest);
+  return { fileRest, rosterRest, worked, extra, mismatch: extra > 0 };
+}
+
 export function isWeeklyOffDay(dateKey, company, employee) {
   const [y, m, d] = String(dateKey || "").split("-").map(Number);
   if (!y) return false;

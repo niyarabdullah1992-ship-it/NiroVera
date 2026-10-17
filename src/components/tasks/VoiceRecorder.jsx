@@ -130,7 +130,7 @@ export default function VoiceRecorder({ files, setFiles, disabled, onRecorded, c
       type="button"
       onClick={rec.recording ? stop : start}
       disabled={disabled || uploading}
-      className={`inline-flex items-center justify-center gap-1.5 ${compact ? "h-9 w-9 rounded-lg px-0 text-[var(--nv-ink2)] bg-transparent" : "px-2.5 py-1.5 rounded-md"} text-xs font-body border transition-colors disabled:opacity-50 ${rec.recording ? "border-red-400 bg-red-50 text-red-700" : "border-border hover:bg-muted"}`}
+      className={`inline-flex items-center justify-center gap-1.5 ${compact ? "h-8 w-8 rounded-lg px-0 text-[var(--nv-ink2)] bg-transparent" : "px-2.5 py-1.5 rounded-md"} text-xs font-body border transition-colors disabled:opacity-50 ${rec.recording ? "border-red-400 bg-red-50 text-red-700" : compact ? "border-transparent hover:bg-muted" : "border-border hover:bg-muted"}`}
       aria-label={ariaLabel}
     >
       {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : rec.recording ? <Square className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}

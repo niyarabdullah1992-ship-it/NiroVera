@@ -164,3 +164,16 @@ export function TaskDialogFooter({ ar, onClose, onConfirm, label, missing = [], 
     </div>
   );
 }
+
+/** The consequence said once, calmly: a hairline slab with a red leading edge — not an alarm box. */
+export function ConsequenceSlab({ title, children, dataKey }) {
+  return (
+    <div
+      data-task-consequence={dataKey || "1"}
+      style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderInlineStartWidth: 3, borderInlineStartColor: "var(--nv-bad-fill)", borderRadius: 8, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3 }}
+    >
+      <strong style={{ fontSize: 12.5, color: "var(--nv-bad-ink)" }}>{title}</strong>
+      {children ? <span style={{ fontSize: 12, lineHeight: 1.7, color: "var(--nv-ink2, var(--nv-ink))" }}>{children}</span> : null}
+    </div>
+  );
+}

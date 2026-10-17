@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { taskAssigneeId } from "@/lib/opsDerivations";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import ComposerModalShell from "@/components/shared/ComposerModalShell";
-import { AckLine, FieldBlock, ReasonBox, TaskDialogFooter, TaskPersonPicker } from "@/components/tasks/TaskDialogParts";
+import { AckLine, ConsequenceSlab, FieldBlock, ReasonBox, TaskDialogFooter, TaskPersonPicker } from "@/components/tasks/TaskDialogParts";
 
 function todayKey() {
   const d = new Date();
@@ -73,18 +73,12 @@ export default function OpsTransferModal({
         />
       )}
     >
-      {/* Irreversible — said once, calmly, at the top: a rule line, not an alarm box. */}
-      <div
-        data-task-irreversible="1"
-        style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderInlineStartWidth: 3, borderInlineStartColor: "var(--nv-bad-fill)", borderRadius: 8, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 3 }}
-      >
-        <strong style={{ fontSize: 12.5, color: "var(--nv-bad-ink)" }}>{ar ? "نقل نهائي — لا تراجع بعده" : "Final — cannot be undone"}</strong>
-        <span style={{ fontSize: 12, lineHeight: 1.7, color: "var(--nv-ink2, var(--nv-ink))" }}>
-          {ar
-            ? "لا يُلغى النقل ولا تعود المسؤولية تلقائياً. لإسناد مؤقت ببداية ونهاية استخدم «توكيل»."
-            : "The transfer is not cancelled and ownership does not return. For a temporary assignment use Delegate."}
-        </span>
-      </div>
+      {/* Irreversible — said once, calmly, at the top. */}
+      <ConsequenceSlab dataKey="irreversible" title={ar ? "نقل نهائي — لا تراجع بعده" : "Final — cannot be undone"}>
+        {ar
+          ? "لا يُلغى النقل ولا تعود المسؤولية تلقائياً. لإسناد مؤقت ببداية ونهاية استخدم «توكيل»."
+          : "The transfer is not cancelled and ownership does not return. For a temporary assignment use Delegate."}
+      </ConsequenceSlab>
 
       <FieldBlock label={ar ? "المسؤول الجديد" : "New owner"} dataKey="transfer-to">
         <TaskPersonPicker ar={ar} options={options} value={toId} onChange={setToId} stations={stations} label={ar ? "المسؤول الجديد" : "New owner"} />

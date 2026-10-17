@@ -46,6 +46,7 @@ export default function OpsTaskComposer({
   const [stopReason, setStopReason] = useState("");
   const [proofFile, setProofFile] = useState(null);
   const [proofVoice, setProofVoice] = useState(null);
+  const [focused, setFocused] = useState(false);
   const canLog = !approved && !awaiting && !issue;
   const parsedAmount = amount === "" ? NaN : Number(amount);
   const qty = Number.isFinite(parsedAmount) ? Math.max(0, Math.min(remaining, Math.floor(parsedAmount))) : 0;
@@ -119,107 +120,122 @@ export default function OpsTaskComposer({
         />
       ) : null}
 
-      <div data-nv-task-bar style={{ display: "flex", alignItems: "flex-end", gap: 4, padding: 4, border: `1px solid ${BORDER}`, borderRadius: CONTROL_RADIUS, background: "var(--nv-card, #fff)" }}>
-        {canLog ? (
-          <label
-            data-nv-task-qty-field
-            title={ar ? "المنجز اليوم — اكتب العدد" : "Done today — type the number"}
-            style={{ display: "flex", alignItems: "center", gap: 6, height: 36, padding: "0 4px 0 10px", paddingInlineStart: 10, paddingInlineEnd: 4, borderRadius: CONTROL_RADIUS, background: "var(--nv-soft, #F6F8FA)", border: `1px solid ${BORDER}`, flexShrink: 0, cursor: "text" }}
-          >
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{ar ? "المنجز اليوم" : "Done today"}</span>
-          <input
-            data-nv-task-qty
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            autoComplete="off"
-            value={amount}
-            placeholder="0"
-            aria-label={ar ? "المنجز اليوم" : "Done today"}
-            onChange={(e) => {
-              const raw = e.target.value.replace(/[^\d]/g, "");
-              setAmount(raw);
-            }}
-            style={{
-              ...round,
-              ...mono,
-              width: 52,
-              height: 28,
-              textAlign: "center",
-              padding: "0 4px",
-              flexShrink: 0,
-              background: "var(--nv-card, #fff)",
-              color: "var(--nv-ink)",
-              fontWeight: 700,
-              MozAppearance: "textfield",
-            }}
-          />
-          </label>
-        ) : null}
+      {/* One frame (hairline, radius 10): the message is the hero row; under a hairline, the day's count as an
+          inline field, then quiet square tools, a quiet «بلا إنجاز» text toggle and the solid green send. */}
+      <div data-nv-task-bar onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} style={{ display: "flex", flexDirection: "column", border: `1px solid ${focused ? "var(--nv-accent, #3C7D50)" : BORDER}`, boxShadow: focused ? "0 0 0 3px color-mix(in srgb, var(--nv-accent, #3C7D50) 14%, transparent)" : "none", borderRadius: 10, background: "var(--nv-card, #fff)", overflow: "hidden" }}>
         <textarea
+          data-nv-task-message
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          rows={1}
-          placeholder={ar ? "رسالة…" : "Message…"}
-          style={{ ...round, flex: 1, height: "auto", minHeight: 36, maxHeight: 88, resize: "none", lineHeight: 1.45, border: "none", background: "transparent", boxShadow: "none" }}
+          rows={2}
+          placeholder={ar ? "اكتب ما أُنجز أو ما يعيقه…" : "What was done, or what is in the way…"}
+          aria-label={ar ? "رسالة" : "Message"}
+          style={{ fontFamily: "inherit", width: "100%", boxSizing: "border-box", minHeight: 52, maxHeight: 120, resize: "none", border: "none", outline: "none", background: "transparent", boxShadow: "none", padding: "10px 12px", fontSize: 13.5, lineHeight: 1.6, color: "var(--nv-ink)" }}
         />
-        <label style={{ ...iconBtn, cursor: "pointer" }} title={ar ? "أرفق" : "Attach"}>
-          <Paperclip size={16} strokeWidth={1.75} />
-          <input type="file" style={{ display: "none" }} onChange={(e) => setProofFile(e.target.files?.[0] || null)} />
-        </label>
-        <VoiceRecorder disabled={busy} compact onRecorded={attachVoice} />
-        {!approved && qty < 1 ? (
+        <div data-nv-task-tools style={{ display: "flex", alignItems: "center", gap: 2, padding: "5px 6px", borderTop: "1px solid var(--nv-line2, #EEF1EF)", background: "var(--nv-soft, #F8FAF9)", flexWrap: "wrap" }}>
+          {canLog ? (
+            <label
+              data-nv-task-qty-field
+              title={ar ? "المنجز اليوم — اكتب العدد" : "Done today — type the number"}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 32, paddingInlineStart: 6, paddingInlineEnd: 2, cursor: "text" }}
+            >
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{ar ? "المنجز اليوم" : "Done today"}</span>
+              <input
+                data-nv-task-qty
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+                value={amount}
+                placeholder="0"
+                aria-label={ar ? "المنجز اليوم" : "Done today"}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^\d]/g, "");
+                  setAmount(raw);
+                }}
+                style={{
+                  ...mono,
+                  width: 46,
+                  height: 28,
+                  boxSizing: "border-box",
+                  textAlign: "center",
+                  padding: "0 4px",
+                  borderRadius: 6,
+                  border: `1px solid ${BORDER}`,
+                  background: "var(--nv-card, #fff)",
+                  color: "var(--nv-ink)",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  MozAppearance: "textfield",
+                }}
+              />
+            </label>
+          ) : null}
+          {!approved && qty < 1 ? (
+            <button
+              type="button"
+              data-nv-task-missed={issue ? "on" : "off"}
+              aria-pressed={issue}
+              onClick={() => setIssue((v) => !v)}
+              title={ar ? "لم يُنجز شيء اليوم — يُطلب السبب" : "Nothing done today — a reason is asked"}
+              style={{
+                height: 28,
+                padding: "0 9px",
+                marginInlineStart: 2,
+                borderRadius: 6,
+                border: "none",
+                fontFamily: "inherit",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                background: issue ? "var(--nv-bad-soft)" : "transparent",
+                color: issue ? "var(--nv-bad-ink)" : MUTED,
+                textDecoration: issue ? "none" : "underline dotted",
+                textUnderlineOffset: 4,
+              }}
+            >
+              {ar ? "بلا إنجاز" : "Nothing done"}
+            </button>
+          ) : null}
+          <span style={{ flex: 1 }} />
+          <label style={{ ...iconBtn, width: 32, height: 32, cursor: "pointer" }} title={ar ? "أرفق إثباتاً" : "Attach proof"} aria-label={ar ? "أرفق إثباتاً" : "Attach proof"}>
+            <Paperclip size={16} strokeWidth={1.75} />
+            <input type="file" style={{ display: "none" }} onChange={(e) => setProofFile(e.target.files?.[0] || null)} />
+          </label>
+          <VoiceRecorder disabled={busy} compact onRecorded={attachVoice} />
           <button
             type="button"
-            data-nv-task-missed={issue ? "on" : "off"}
-            aria-pressed={issue}
-            onClick={() => setIssue((v) => !v)}
-            title={ar ? "لم يُنجز شيء اليوم — يُطلب السبب" : "Nothing done today — a reason is asked"}
+            data-nv-task-send={canSubmit ? "ready" : "blocked"}
+            disabled={!canSubmit}
+            aria-label={ar ? "أرسل" : "Send"}
+            onClick={async () => {
+              const ok = await onSend?.({
+                text: draft.trim(),
+                isIssue: issue || stopRequired,
+                amount: canLog ? qty : 0,
+                proofFile,
+                proofVoice,
+                stopReason: stopReason.trim(),
+                logCompletion: loggingQty && !onsiteBlocked,
+              });
+              if (ok !== false) reset();
+            }}
+            title={canSubmit
+              ? (ar ? "أرسل" : "Send")
+              : (blockReason || ((stopRequired && !hasStop) ? (ar ? "اكتب سبب عدم إكمال حصة اليوم" : "Write why today's quota was not finished") : proofMissing ? (ar ? "أضف إقراراً أو مرفقاً أو تسجيلاً صوتياً" : "Add an attestation, a file or a voice note") : (ar ? "اكتب رسالة أو أرفق إثباتاً" : "Write a message or attach proof")))}
             style={{
               ...iconBtn,
-              width: "auto",
-              padding: "0 11px",
-              gap: 6,
-              fontSize: 12,
-              fontWeight: 600,
-              fontFamily: "inherit",
-              border: `1px solid ${issue ? "var(--nv-bad-line)" : BORDER}`,
-              background: issue ? "var(--nv-bad-soft)" : "transparent",
-              color: issue ? "var(--nv-bad-ink)" : "var(--nv-ink2)",
+              width: 36,
+              height: 32,
+              marginInlineStart: 4,
+              background: canSubmit ? BRAND : "var(--nv-line, #E4E9E6)",
+              color: canSubmit ? "#fff" : MUTED,
+              cursor: canSubmit ? "pointer" : "not-allowed",
             }}
           >
-            <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, border: `1.5px solid currentColor`, background: issue ? "currentColor" : "transparent", flexShrink: 0 }} />
-            {ar ? "بلا إنجاز" : "Nothing done"}
+            <Send size={16} strokeWidth={1.75} />
           </button>
-        ) : null}
-        <button
-          type="button"
-          disabled={!canSubmit}
-          aria-label={ar ? "أرسل" : "Send"}
-          onClick={async () => {
-            const ok = await onSend?.({
-              text: draft.trim(),
-              isIssue: issue || stopRequired,
-              amount: canLog ? qty : 0,
-              proofFile,
-              proofVoice,
-              stopReason: stopReason.trim(),
-              logCompletion: loggingQty && !onsiteBlocked,
-            });
-            if (ok !== false) reset();
-          }}
-          title={canSubmit ? (ar ? "أرسل" : "Send") : (ar ? "اكتب رسالة أو أرفق إثباتاً" : "Write a message or attach proof")}
-          style={{
-            ...iconBtn,
-            // The platform primary, always green; resting at low strength until there is something to send.
-            background: BRAND,
-            color: "#fff",
-            opacity: canSubmit ? 1 : 0.38,
-            cursor: canSubmit ? "pointer" : "not-allowed",
-          }}
-        >
-          <Send size={16} strokeWidth={1.75} />
-        </button>
+        </div>
       </div>
       {proofFile ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--nv-ink2)" }}>

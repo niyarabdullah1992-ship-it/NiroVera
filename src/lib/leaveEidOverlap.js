@@ -117,13 +117,55 @@ export function isRestDayWork(dateKey, company, employee, workedKeys = null) {
     .filter((key) => week.has(key))
     .sort();
   const allowed = 7 - weeklyRestDayCountOf(company, employee);
-  return worked.indexOf(dateKey) >= allowed;
+  const excess = worked.length - allowed;
+  if (excess <= 0) return false;
+  // Which worked days were the rest days: his usual rest weekdays first (a mid-week rest is a Tuesday),
+  // then the latest days of the week.
+  const usual = rosterRestDows(company, employee, dateKey) || [];
+  const dowOf = (key) => { const [yy, mm, dd] = key.split("-").map(Number); return new Date(yy, mm - 1, dd).getDay(); };
+  const ranked = [...worked].sort((a, b) => (usual.includes(dowOf(b)) - usual.includes(dowOf(a))) || (b < a ? -1 : b > a ? 1 : 0));
+  return ranked.slice(0, excess).includes(dateKey);
+}
+
+/**
+ * The weekdays this person's own roster keeps as rest — read from the weeks around `dateKey` (±3): a weekday
+ * left empty in most of the weeks he is rostered. So a rest day in mid-week (a Tuesday) is his rest day,
+ * not Friday by name. Capped at the file's count; null when the roster says nothing.
+ */
+export function rosterRestDows(company, employee, dateKey) {
+  const id = employee?.id;
+  const [y, m, d] = String(dateKey || "").split("-").map(Number);
+  if (id == null || !y || !(company?.schedules || []).length) return null;
+  const tally = new Array(7).fill(0);
+  let weeks = 0;
+  for (let w = -3; w <= 3; w += 1) {
+    const at = new Date(y, m - 1, d + w * 7);
+    const keys = weekKeysAround(`${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`);
+    const on = keys.map((key) => (company.schedules || []).some((schedule) => employeeAssignedOn(schedule, id, key)));
+    if (!on.some(Boolean)) continue;
+    weeks += 1;
+    on.forEach((assigned, dow) => { if (!assigned) tally[dow] += 1; });
+  }
+  if (!weeks) return null;
+  const count = weeklyRestDayCountOf(company, employee);
+  const dows = tally
+    .map((n, dow) => ({ dow, n }))
+    .filter((row) => row.n * 2 >= weeks)
+    .sort((a, b) => b.n - a.n || a.dow - b.dow)
+    .slice(0, count)
+    .map((row) => row.dow);
+  return dows.length ? dows : null;
 }
 
 export function isWeeklyOffDay(dateKey, company, employee) {
   const [y, m, d] = String(dateKey || "").split("-").map(Number);
   if (!y) return false;
-  return weeklyOffDows(company, employee).includes(new Date(y, m - 1, d).getDay());
+  const dow = new Date(y, m - 1, d).getDay();
+  if (!fileOffDows(employee).length) {
+    const own = rosterRestDows(company, employee, dateKey);
+    if (own) return own.includes(dow);
+  }
+  return weeklyOffDows(company, employee).includes(dow);
 }
 
 function scheduleForEmployee(company, employee) {
@@ -309,8 +351,14 @@ export function annualDayBreakdown(startDate, endDate, calendar, company, employ
     else {
       const roster = employeeRosterDayKind(company, employee, key);
       const weekly = isWeeklyOffDay(key, company, employee);
-      if (roster === "duty") kind = weekly ? "dutyOnRest" : "charge";
-      else if (roster === "rest") kind = weekly ? (dow === statutory ? "law" : "company") : "cycle";
+      if (roster === "duty") kind = weekly && !rosterRestDows(company, employee, key) ? "dutyOnRest" : "charge";
+      else if (roster === "rest") {
+        // His own rest weekdays from the roster: the statutory one is the establishment's day when it is
+        // among them, else the first of them (a mid-week rest pair is still «نظامي + شركة»).
+        const own = rosterRestDows(company, employee, key);
+        const law = own ? (own.includes(statutory) ? statutory : own[0]) : statutory;
+        kind = weekly ? (dow === law ? "law" : "company") : "cycle";
+      }
       else if (weekly) kind = dow === statutory ? "law" : "company";
       else kind = "charge";
     }

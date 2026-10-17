@@ -42,6 +42,8 @@ import VoiceDecisionCard from "@/components/complaints/VoiceDecisionCard";
 import VoiceRaiseCard from "@/components/complaints/VoiceRaiseCard";
 import VoiceRelatedLinks from "@/components/complaints/VoiceRelatedLinks";
 import SuiteWorkspaceFrame from "@/components/shared/SuiteWorkspaceFrame";
+import StatusFilterPills from "@/components/shared/StatusFilterPills";
+import { slab as chromeSlab } from "@/components/schedules/scheduleChrome";
 import AbuseCaseRaise from "@/components/complaints/AbuseCaseRaise";
 import AbuseCasesBoard from "@/components/complaints/AbuseCasesBoard";
 import { ABUSE_STEPS, ABUSE_KINDS, abuseStepIndex } from "@/lib/abuseComplaint";
@@ -195,8 +197,8 @@ export default function Complaints() {
   const [ack, setAck] = useState(false);
   const [file, setFile] = useState(null);
   const [notes, setNotes] = useState({});
-  const [queueFilter, setQueueFilter] = useState("due");
-  const [mineFace, setMineFace] = useState("live");
+  const [queueFilter, setQueueFilter] = useState("all");
+  const [mineFace, setMineFace] = useState("all");
   const [anonReceipt, setAnonReceipt] = useState("");
 
   useEffect(() => {
@@ -490,10 +492,10 @@ export default function Complaints() {
   }).slice().sort((a, b) => Number(a.left ?? 999) - Number(b.left ?? 999));
 
   const queueFilters = [
+    ["all", ar ? "الكل" : "All", board.open.length],
     ["due", ar ? "ضاق وقتها" : "Due soon", dueSoon.length],
     ["over", ar ? "تجاوزت" : "Overdue", board.overdue.length],
     ...(hrReceiver ? [["anon", ar ? "سرية" : "Confidential", board.open.filter((card) => card.item.channel === "anonymous").length]] : []),
-    ["all", ar ? "الكل" : "All", board.open.length],
     ["archive", ar ? "الأرشيف" : "Archive", manageSettledCount],
   ];
 
@@ -515,6 +517,14 @@ export default function Complaints() {
       ? `المهلة ${picked.hours} ساعة عند كل مستوى. ما لا يُراجع فيها يُرفع للمستوى التالي تلقائياً حتى الموارد البشرية، ولا يُغلق بلا قرار مكتوب.`
       : `The window is ${picked.hours} hours at each level. What is not reviewed in time climbs automatically up to HR, and nothing closes without a written ruling.`);
   const mineBreaches = board.mine.filter((card) => card.overdue).length;
+  // «أصواتي» filters the same way as طلباتي: all, pending, adopted, returned — settled ones also sit in «الأرشيف».
+  const mineOwn = board.mine;
+  const mineShown = mineOwn.filter((card) => {
+    if (mineFace === "pending") return !card.settled;
+    if (mineFace === "adopted") return card.settled && card.outcome === "adopt";
+    if (mineFace === "returned") return card.settled && card.outcome !== "adopt";
+    return true;
+  });
 
   return (
     <SuiteWorkspaceFrame
@@ -540,44 +550,21 @@ export default function Complaints() {
 
         {activeFace === "mine" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-              {[
-                ["live", ar ? "ما أرسلتُه" : "What I sent", canManage ? board.mine.filter((c) => !c.settled).length : board.mineOpen],
-                ["archive", ar ? "الأرشيف" : "Archive", mineSettled.length],
-              ].map(([id, label, n]) => {
-                const on = mineFace === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setMineFace(id)}
-                    style={{
-                      fontFamily: "inherit",
-                      fontSize: 11,
-                      padding: "7px 12px",
-                      border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`,
-                      borderRadius: 999,
-                      background: on ? "var(--nv-btn-fill)" : "var(--nv-card)",
-                      color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)",
-                      fontWeight: on ? 700 : 400,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                      display: "inline-flex",
-                      gap: 6,
-                      alignItems: "center",
-                    }}
-                  >
-                    {label}
-                    <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 10, opacity: 0.8 }}>{n}</span>
-                  </button>
-                );
-              })}
-              {canManage ? (
-                <span style={{ marginInlineStart: "auto", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-                  {ar ? "أرشيف الإدارة بعد «الكل» في تبويب إدارة." : "Manage archive sits after All on the Manage tab."}
-                </span>
-              ) : null}
-            </div>
+            <section style={{ ...chromeSlab, overflow: "hidden" }}>
+              <StatusFilterPills
+                dataKey="voice-mine"
+                title={ar ? "أصواتي" : "My voices"}
+                value={mineFace}
+                onChange={setMineFace}
+                items={[
+                  { id: "all", label: ar ? "الكل" : "All", n: mineOwn.length },
+                  { id: "pending", label: ar ? "بانتظار" : "Pending", n: mineOwn.filter((c) => !c.settled).length },
+                  { id: "adopted", label: ar ? "معتمدة" : "Adopted", n: mineOwn.filter((c) => c.settled && c.outcome === "adopt").length },
+                  { id: "returned", label: ar ? "مُعادة" : "Returned", n: mineOwn.filter((c) => c.settled && c.outcome !== "adopt").length },
+                  { id: "archive", label: ar ? "الأرشيف" : "Archive", n: mineSettled.length },
+                ]}
+              />
+            </section>
 
             {mineFace === "archive" ? (
               <VoiceArchiveBoard
@@ -617,7 +604,7 @@ export default function Complaints() {
                     reporter={reporter}
                     channelRow={picked}
                     abuseSlot={channel === "abuse" ? (
-                      <AbuseCaseRaise employee={me} companyId={company?.id} ar={ar} onSent={() => setMineFace("live")} />
+                      <AbuseCaseRaise employee={me} companyId={company?.id} ar={ar} onSent={() => setMineFace("pending")} />
                     ) : null}
                     receipt={anonReceipt ? (ar
                       ? `أُرسل بلا هويّة إلى الموارد البشرية. رقم المتابعة ${anonReceipt} — تتابع قراره في ملفك بهذا الرقم.`
@@ -625,7 +612,7 @@ export default function Complaints() {
                   />
                   <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
                     {/* Settled voices live in «الأرشيف» only; each open card already carries its chain. */}
-                    <VoiceMineBoard cards={board.mine.filter((card) => !card.settled)} chain={chain} ar={ar} onEscalate={(card) => escalate(card, true)} />
+                    <VoiceMineBoard cards={mineShown} chain={chain} ar={ar} onEscalate={(card) => escalate(card, true)} />
                     {myAbuse.length ? (
                       <section data-abuse-mine="" className="nv-paper" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", borderRadius: 10 }}>
                         <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--nv-line)", fontSize: 13, fontWeight: 700 }}>
@@ -681,20 +668,16 @@ export default function Complaints() {
                 flag: stat.flag,
               }))}
             />
-            <div className="nv-paper" data-voice-queue="1" style={{ background: "var(--nv-card)", border: "1px solid var(--nv-line)", padding: "9px 14px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
-              {queueFilters.map(([id, label, n]) => {
-                const on = queueFilter === id;
-                return (
-                  <button key={id} type="button" onClick={() => setQueueFilter(id)} style={{ fontFamily: "inherit", fontSize: 11, padding: "7px 12px", border: `1px solid ${on ? "var(--nv-btn-fill)" : "var(--nv-line)"}`, borderRadius: 999, background: on ? "var(--nv-btn-fill)" : "var(--nv-card)", color: on ? "var(--nv-btn-ink)" : "var(--nv-ink2)", fontWeight: on ? 700 : 400, cursor: "pointer", whiteSpace: "nowrap", display: "inline-flex", gap: 6, alignItems: "center" }}>
-                    {label}
-                    <span dir="ltr" style={{ fontSize: 10, opacity: 0.8 }}>{n}</span>
-                  </button>
-                );
-              })}
-              <span style={{ marginInlineStart: "auto", fontSize: 11, color: "var(--nv-muted)", lineHeight: 1.7 }}>
-                {ar ? "ما يتجاوز مهلته يُرفع تلقائياً للمستوى التالي." : "What misses its window goes up the chain automatically."}
-              </span>
-            </div>
+            <section data-voice-queue="1" style={{ ...chromeSlab, overflow: "hidden" }}>
+              <StatusFilterPills
+                dataKey="voice-manage"
+                title={ar ? "قائمة الأصوات" : "Voice list"}
+                note={ar ? "ما يتجاوز مهلته يُرفع تلقائياً للمستوى التالي." : "What misses its window goes up the chain automatically."}
+                value={queueFilter}
+                onChange={setQueueFilter}
+                items={queueFilters.map(([id, label, n]) => ({ id, label, n }))}
+              />
+            </section>
             {queueFilter === "archive" ? (
               <VoiceArchiveBoard cards={board.cards} ar={ar} canManage scope="manage" />
             ) : (() => {

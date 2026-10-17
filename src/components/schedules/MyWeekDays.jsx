@@ -113,7 +113,8 @@ export function useMyDayRows({ employee, schedule, gates, weekStart, laborCalend
     const sun = shift ? sunExposureCellState(schedule, empId, day.key, { shift }) : null;
     const sunField = !!(sun?.live && sun.mark === SUN_FIELD);
     // What the day card shows: the mark picked for a shift inside the ban hours.
-    const sunMark = sun?.asks && (sun.mark || sun.inSeason) ? (sun.mark || "unset") : null;
+    // All year once picked (the same «مكشوف / مظلّل» the manager sets in the roster cell); «لم يُحدَّد» only in season.
+    const sunMark = sun?.touches && (sun.mark || sun.inSeason) ? (sun.mark || "unset") : null;
     // 3337 already shows as the sun chip; every other alert gets a short word on the card itself.
     const sunAlert = alert?.id === "heat_ban" || alert?.id === "heat_place";
     const short = alert && !sunAlert ? (ALERT_SHORT[alert.id] || null) : null;
@@ -206,8 +207,11 @@ export default function MyWeekDays({
                   </span>
                 </span>
                 {shift ? (
-                  <span className="nv-my-day-time" style={{ fontSize: 12, color: SW.mid, whiteSpace: "nowrap" }}>
-                    <span dir="ltr" style={{ ...mono, fontWeight: 600 }}>{clock(shift.start)} – {clock(shift.end)}</span>
+                  <span className="nv-my-day-time" style={{ fontSize: 12, color: SW.mid, display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 4, rowGap: 0, minWidth: 0 }}>
+                    {/* Each clock isolated and unbroken; the pair wraps rather than being cut (12-hour «ص/م» is long). */}
+                    <span style={{ ...mono, fontWeight: 600, whiteSpace: "nowrap", unicodeBidi: "isolate" }}>{clock(shift.start)}</span>
+                    <span aria-hidden>–</span>
+                    <span style={{ ...mono, fontWeight: 600, whiteSpace: "nowrap", unicodeBidi: "isolate" }}>{clock(shift.end)}</span>
                   </span>
                 ) : leave?.article ? (
                   <span style={{ fontSize: 10.5, color: SW.muted, lineHeight: 1.5 }}>{leave.article}</span>

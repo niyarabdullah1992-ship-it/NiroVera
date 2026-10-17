@@ -89,7 +89,10 @@ async function rasterizePdfInto(out, raw, scale = 2) {
 }
 
 async function bytesOf(file) {
-  if (file?.bytes) return file.bytes;
+  // Stored drafts carry raw bytes. A browser File has its own Blob.prototype.bytes() METHOD (Chrome 132+,
+  // Safari, Firefox) — taking that function as the data made every PDF «unreadable» on current browsers.
+  if (file?.bytes instanceof Uint8Array) return file.bytes;
+  if (file?.bytes instanceof ArrayBuffer) return new Uint8Array(file.bytes);
   if (typeof file?.arrayBuffer === "function") return new Uint8Array(await file.arrayBuffer());
   throw new Error("UNREADABLE");
 }

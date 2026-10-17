@@ -170,3 +170,17 @@ const doc = { name: "عقد.pdf", size: 1000 };
 }
 
 console.log("envelope setup: PASS");
+
+// A browser File carries a bytes() METHOD (Blob.prototype.bytes, Chrome 132+ / Safari / Firefox / Node 22):
+// the reader must take the file's contents, never that function — this made every PDF «unreadable».
+{
+  const { countPdfPages: count } = await import("../src/lib/envelopeDocuments.js");
+  const { PDFDocument } = await import("pdf-lib");
+  const d = await PDFDocument.create(); d.addPage(); d.addPage();
+  const pdfBytes = await d.save();
+  const file = new File([pdfBytes], "quiz-key.pdf", { type: "application/pdf" });
+  const withMethod = typeof file.bytes === "function" ? file : Object.assign(file, { bytes: () => Promise.resolve(pdfBytes) });
+  const n = await count(withMethod);
+  if (n !== 2) throw new Error(`a File with a bytes() method reads its 2 pages, got ${n}`);
+  console.log("PASS a browser File (with Blob.bytes) is read by its contents");
+}

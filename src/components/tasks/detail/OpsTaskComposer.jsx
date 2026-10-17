@@ -95,12 +95,15 @@ export default function OpsTaskComposer({
   return (
     <div data-nv-task-composer style={{ flexShrink: 0, padding: embedded ? 0 : "8px 12px 10px", borderTop: embedded ? "none" : `1px solid ${BORDER}`, background: CARD, display: "flex", flexDirection: "column", gap: 8 }}>
       {canLog && expected > 0 ? (
-        <div data-nv-task-quota style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>
-          <span>{ar ? "حصة اليوم" : "Today"} <span dir="ltr" style={num}>{expected}</span></span>
+        // One calm line: today's share, what is on record, what remains — figures in mono ink.
+        <div data-nv-task-quota style={{ display: "flex", alignItems: "baseline", columnGap: 6, rowGap: 2, flexWrap: "wrap", fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
+          <span>{ar ? "حصة اليوم" : "Today's share"} <span dir="ltr" style={num}>{expected}</span></span>
+          <span aria-hidden>·</span>
           <span>{ar ? "سُجّل" : "Logged"} <span dir="ltr" style={num}>{loggedToday}</span></span>
+          <span aria-hidden>·</span>
           <span>{ar ? "المتبقي" : "Left"} <span dir="ltr" style={num}>{remaining}</span></span>
           {stopRequired ? (
-            <span style={{ color: "var(--nv-warn-ink)" }}>{ar ? "أقل من الحصة — يُفتح العائق: تمديد أو توزيع تلقائي." : "Below quota — the blocker opens: extend or auto-spread."}</span>
+            <span style={{ color: "var(--nv-warn-ink)", marginInlineStart: 6 }}>{ar ? "أقل من الحصة — يُفتح العائق: تمديد أو توزيع تلقائي." : "Below quota — the blocker opens: extend or auto-spread."}</span>
           ) : null}
         </div>
       ) : null}
@@ -118,6 +121,12 @@ export default function OpsTaskComposer({
 
       <div data-nv-task-bar style={{ display: "flex", alignItems: "flex-end", gap: 4, padding: 4, border: `1px solid ${BORDER}`, borderRadius: CONTROL_RADIUS, background: "var(--nv-card, #fff)" }}>
         {canLog ? (
+          <label
+            data-nv-task-qty-field
+            title={ar ? "المنجز اليوم — اكتب العدد" : "Done today — type the number"}
+            style={{ display: "flex", alignItems: "center", gap: 6, height: 36, padding: "0 4px 0 10px", paddingInlineStart: 10, paddingInlineEnd: 4, borderRadius: CONTROL_RADIUS, background: "var(--nv-soft, #F6F8FA)", border: `1px solid ${BORDER}`, flexShrink: 0, cursor: "text" }}
+          >
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: MUTED, whiteSpace: "nowrap" }}>{ar ? "المنجز اليوم" : "Done today"}</span>
           <input
             data-nv-task-qty
             type="text"
@@ -125,8 +134,7 @@ export default function OpsTaskComposer({
             pattern="[0-9]*"
             autoComplete="off"
             value={amount}
-            placeholder={ar ? "أي رقم" : "Any"}
-            title={ar ? "المنجز اليوم — اكتب أي رقم" : "Done today — type any number"}
+            placeholder="0"
             aria-label={ar ? "المنجز اليوم" : "Done today"}
             onChange={(e) => {
               const raw = e.target.value.replace(/[^\d]/g, "");
@@ -135,14 +143,18 @@ export default function OpsTaskComposer({
             style={{
               ...round,
               ...mono,
-              width: 64,
+              width: 52,
+              height: 28,
               textAlign: "center",
-              padding: "0 6px",
+              padding: "0 4px",
               flexShrink: 0,
-              background: "var(--nv-soft, #F6F8FA)",
+              background: "var(--nv-card, #fff)",
+              color: "var(--nv-ink)",
+              fontWeight: 700,
               MozAppearance: "textfield",
             }}
           />
+          </label>
         ) : null}
         <textarea
           value={draft}
@@ -159,20 +171,25 @@ export default function OpsTaskComposer({
         {!approved && qty < 1 ? (
           <button
             type="button"
+            data-nv-task-missed={issue ? "on" : "off"}
+            aria-pressed={issue}
             onClick={() => setIssue((v) => !v)}
-            title={ar ? "بلا إنجاز اليوم" : "Nothing done today"}
+            title={ar ? "لم يُنجز شيء اليوم — يُطلب السبب" : "Nothing done today — a reason is asked"}
             style={{
               ...iconBtn,
               width: "auto",
-              padding: "0 10px",
-              fontSize: 11.5,
+              padding: "0 11px",
+              gap: 6,
+              fontSize: 12,
               fontWeight: 600,
               fontFamily: "inherit",
-              color: MUTED,
-              ...(issue ? { border: "1px solid var(--nv-bad-line)", background: "var(--nv-bad-soft)", color: "var(--nv-bad-ink)" } : {}),
+              border: `1px solid ${issue ? "var(--nv-bad-line)" : BORDER}`,
+              background: issue ? "var(--nv-bad-soft)" : "transparent",
+              color: issue ? "var(--nv-bad-ink)" : "var(--nv-ink2)",
             }}
           >
-            {ar ? "بلا إنجاز" : "Missed"}
+            <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, border: `1.5px solid currentColor`, background: issue ? "currentColor" : "transparent", flexShrink: 0 }} />
+            {ar ? "بلا إنجاز" : "Nothing done"}
           </button>
         ) : null}
         <button
@@ -191,10 +208,13 @@ export default function OpsTaskComposer({
             });
             if (ok !== false) reset();
           }}
+          title={canSubmit ? (ar ? "أرسل" : "Send") : (ar ? "اكتب رسالة أو أرفق إثباتاً" : "Write a message or attach proof")}
           style={{
             ...iconBtn,
-            background: canSubmit ? BRAND : "var(--nv-soft, #F1F4F2)",
-            color: canSubmit ? "#fff" : MUTED,
+            // The platform primary, always green; resting at low strength until there is something to send.
+            background: BRAND,
+            color: "#fff",
+            opacity: canSubmit ? 1 : 0.38,
             cursor: canSubmit ? "pointer" : "not-allowed",
           }}
         >

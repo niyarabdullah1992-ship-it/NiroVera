@@ -2502,6 +2502,7 @@ export default function Operations() {
           task={reassignFor}
           ar={ar}
           employees={reassignCandidates}
+          stations={data?.stations || []}
           busy={busy}
           onClose={() => setReassignFor(null)}
           onConfirm={(payload) => reassign(reassignFor, payload)}
@@ -2513,6 +2514,7 @@ export default function Operations() {
           task={transferFor}
           ar={ar}
           employees={reassignCandidates}
+          stations={data?.stations || []}
           busy={busy}
           onClose={() => setTransferFor(null)}
           onConfirm={(payload) => reassign(transferFor, payload)}

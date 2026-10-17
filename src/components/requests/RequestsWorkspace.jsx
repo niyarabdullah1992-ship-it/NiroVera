@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/PowerCareAuth";
+import { setStationScope } from "@/lib/stationScopeStore";
 import { postponeResignation, recordIddahBirth, recordMaternityBirth, recordLeaveBreach, setHajjAnnualQuota, answerNightRotate, answerOtAssignment, attachExamSatProof, attachWrittenConsentPaper, creditEmployeeLeaveBalance, grantDiscretionaryDays, markLeaveDecisionSeen, openDueNightRotateCycles, remindNightDue, setLeaveRequestStatus, setOtherRequestStatus, submitLeaveRequest, submitOtherRequest, submitOtAssignment, withdrawNightRotate } from "@/lib/store";
 import { approvedLeaveWithdrawWindow, chargeableLeaveDays, checkApproveLeaveGate, checkExamSittingSettleGate, checkLeaveGenderGate, checkRejectLeaveGate, checkSubmitLeaveGate, examNoticeFilesOf, examSatFileOf, examSatState, hasLeaveAttachment, isRealSupportingFile, leaveNeedsAttachment, leaveNeedsArticle118Ack, leaveSpanIncludesOfficialHolidays, hajjAnnualQuotaOf, sickLeaveEndingBefore } from "@/lib/leaveDerivations";
 import { grantedLeaveBalances, usedLeaveDays } from "@/lib/leaveTypes";
@@ -100,6 +101,7 @@ import {
   flattenWorkspaceRows,
   liveInboxRows,
   managerPendingInbox,
+  managerEmployeeRegister,
   managerPersonEmptyReason,
   firstPendingRegisterPerson,
   mineInboxRows,
@@ -157,6 +159,7 @@ import { checkGroundedRefusalGate, refusalGroundsFor, refusalText, SERVICE_CERT_
 import { checkServiceCertificateGate } from "@/lib/employerDuties";
 import { attendanceOnDate, checkPunchRecordGate, parsePunchClock } from "@/lib/attendancePunch";
 import PendingRequestFinder from "@/components/requests/PendingRequestFinder";
+import ManagerEmployeeRegister from "@/components/requests/ManagerEmployeeRegister";
 import RequestEmployeePicker from "@/components/requests/RequestEmployeePicker";
 import RequestSelfSignBlock from "@/components/requests/RequestSelfSignBlock";
 import PlatformDateField from "@/components/shared/PlatformDateField";
@@ -164,8 +167,6 @@ import AttachFileButton from "@/components/shared/AttachFileButton";
 import AttachDropzone from "@/components/shared/AttachDropzone";
 import SubTypeOption, { SubTypeGrid } from "@/components/requests/SubTypeOption";
 import { SectionHead, slab as chromeSlab } from "@/components/schedules/scheduleChrome";
-import TwoPaneWorkspace, { ListStack } from "@/components/shared/TwoPaneWorkspace";
-import CollapsibleItemCard, { useCollapsibleItems } from "@/components/shared/CollapsibleItemCard";
 import { employeeWageSplit } from "@/lib/employeeFileView";
 import { gosiHazardCoverage, gosiInjuryWageMode, injuryStatus } from "@/lib/workInjury";
 
@@ -1311,14 +1312,21 @@ export default function RequestsWorkspace({
     });
   };
 
+  const registerBoard = useMemo(
+    () => managerEmployeeRegister(employees, lang, { stations, companyId: company?.id }),
+    [employees, lang, stations, company?.id],
+  );
+  const selectedRegister = registerBoard.rows.find((row) => String(row.id) === String(registerId || employeeId));
   const mineOwned = mode === "mine"
     ? flattenWorkspaceRows(employees, lang).filter((row) => isOwnMineLaneRow(row, currentUser || self))
     : [];
   const rows = mode === "mine"
     ? mineInboxRows(employees, currentUser || self, lang)
     : liveInboxRows(employees, lang, { lane: mode === "manage" ? "manage" : "mine" });
-  // إدارة: every request in the header scope (نطاقك). The search above the page finds one request.
-  const scopedRows = rows;
+  const selectedPersonId = registerId || employeeId;
+  const scopedRows = mode === "manage" && selectedPersonId
+    ? rows.filter((row) => String(row.employee?.id) === String(selectedPersonId))
+    : rows;
   const mineStatus = mineStatusBucket;
   const mineList = mode === "mine" && (stFilter === "all" || stFilter === "approved" || stFilter === "rejected")
     ? mineOwned
@@ -1334,8 +1342,6 @@ export default function RequestsWorkspace({
     }
     return st === stFilter;
   });
-  // Folded item cards: one row each; the only item, or the one a link points at, opens by itself.
-  const { isOpen: isItemOpen, toggle: toggleItem } = useCollapsibleItems(filtered.map((row) => `${row.family}-${row.id}`), focusKey);
   const pendingCount = scopedRows.filter((row) => isPendingDecideStatus(row.status)).length;
   const showRaiseForm = selfOnly || mode === "manage" || fileRecordOpen;
   const lawRows = lawArticleCards("requests", isResignation ? "79 مكرر" : isOtAssign ? (ot106 ? "106" : "107") : (isNightFitness ? "18632" : (isStudyConsent || (isLeave && leave === "exam") ? "115" : (isLeave ? leaveMeta.article : ""))), lang);
@@ -2163,10 +2169,28 @@ export default function RequestsWorkspace({
           label={ar ? "بحث" : "Search"}
         />
       ) : null}
-      <TwoPaneWorkspace
-        dataKey={mode === "manage" ? "requests-manage" : "requests-mine"}
-        className={`nv-req-twopane${mode === "manage" ? " is-manage" : " is-employee-face"}`}
-        raise={(mode === "manage" || showRaiseForm) ? (<>
+      <div className={`nv-req-grid${mode === "manage" ? " is-manage-register" : " is-employee-face"}`}>
+        {mode === "manage" ? (
+          <ManagerEmployeeRegister
+            employees={employees}
+            stations={stations}
+            lang={lang}
+            selectedId={registerId || employeeId}
+            companyId={company?.id}
+            recording={fileRecordOpen}
+            focusStationId={focusStationId}
+            onSelect={(id) => {
+              openRegister(id);
+              setFileRecordOpen(false);
+            }}
+            onRecord={(id) => {
+              openRegister(id);
+              setFileRecordOpen(true);
+            }}
+            onHideRecord={() => setFileRecordOpen(false)}
+            onFocusStation={(id) => setStationScope(id || "all")}
+          />
+        ) : null}
         {(showRaiseForm || (mode === "manage" && canDecide)) ? (
         <RaiseFold manage={mode === "manage"} open={fileRecordOpen} onOpen={setFileRecordOpen} ar={ar}>
         {showRaiseForm && selfOnly ? (
@@ -3328,8 +3352,7 @@ export default function RequestsWorkspace({
         ) : null}
         </RaiseFold>
         ) : null}
-        </>) : null}
-        list={(
+
         <div className="nv-req-inbox" style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
           {mode !== "manage" ? (
             <section className="nv-req-balance" style={{ borderRadius: 12, overflow: "hidden", background: "linear-gradient(160deg, #0B3D27 0%, #0F5535 100%)", color: "#fff" }}>
@@ -3482,8 +3505,8 @@ export default function RequestsWorkspace({
               </div>
             </section>
           ) : null}
-          <ListStack data-req-list={mode === "manage" ? "manage" : "mine"}>
-            <header className={mode !== "manage" ? "nv-req-inbox-head is-mine is-card" : "nv-req-inbox-head is-mine is-manage is-card"}>
+          <section style={slab}>
+            <header className={mode !== "manage" ? "nv-req-inbox-head is-mine" : "nv-req-inbox-head is-mine is-manage"}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <h2>
                   <span aria-hidden />
@@ -3491,7 +3514,7 @@ export default function RequestsWorkspace({
                 </h2>
                 {mode === "manage" ? (
                   <span className="nv-req-inbox-meta">
-                    {focusStationId && focusStationId !== "all" ? stationName(focusStationId) : (ar ? "كل الفروع التي تديرها" : "Every branch you manage")}
+                    {selectedRegister?.name || (focusStationId && focusStationId !== "all" ? stationName(focusStationId) : (ar ? "كل الفروع التي تديرها" : "Every branch you manage"))}
                   </span>
                 ) : null}
               </div>
@@ -3508,7 +3531,7 @@ export default function RequestsWorkspace({
               </div>
             </header>
             {stFilter === "archive" ? (
-              <div style={{ ...slab, padding: mode === "manage" ? "12px 14px 16px" : "12px 16px 18px" }}>
+              <div style={{ padding: mode === "manage" ? "12px 14px 16px" : "12px 16px 18px" }}>
                 <RequestArchiveBoard
                   employees={employees}
                   ar={ar}
@@ -3521,7 +3544,7 @@ export default function RequestsWorkspace({
                 />
               </div>
             ) : filtered.length === 0 ? (
-              <div className="nv-req-empty" style={slab}>
+              <div className="nv-req-empty">
                 {mode === "manage"
                   ? (managerPendingInbox(employees, lang).count
                     ? (managerPersonEmptyReason(lang) || (ar ? "لا طلبات في هذا النطاق." : "No requests in this scope."))
@@ -3529,7 +3552,7 @@ export default function RequestsWorkspace({
                   : (ar ? "لا طلبات في هذا الفلتر." : "No requests in this filter.")}
               </div>
             ) : (
-            <div className="nv-list-stack" data-req-cards="1">
+            <div className="nv-req-cards">
             {filtered.map((row) => {
               const st = row.status || "pending";
               const key = `${row.family}-${row.id}`;
@@ -3600,22 +3623,13 @@ export default function RequestsWorkspace({
                 ? row.title
                 : `${row.title}${!selfOnly && row.employee?.name ? ` · ${row.employee.name}` : ""}`;
               return (
-                <CollapsibleItemCard
-                  key={key}
-                  id={`nv-req-${key}`}
-                  className="nv-req-item"
-                  open={isItemOpen(key)}
-                  onToggle={() => toggleItem(key)}
-                  focus={focusKey === key}
-                  style={unseenLeave ? { background: "var(--nv-ok-soft, #F7FBF9)" } : undefined}
-                  dot={dotColor}
-                  title={cardTitle}
-                  person={mode === "manage" ? row.employee?.name : null}
-                  date={rangeText && rangeText !== "—" ? rangeText : ""}
-                  hint={citeNode}
-                  status={statusPill}
-                  ar={ar}
-                >
+                <article key={key} id={`nv-req-${key}`} className={`nv-req-card${focusKey === key ? " is-focus" : ""}`} style={unseenLeave ? { background: "var(--nv-ok-soft, #F7FBF9)" } : undefined}>
+                  <div className="nv-req-card-top">
+                    <span className="nv-req-dot" style={{ background: dotColor }} />
+                    <strong>{cardTitle}</strong>
+                    <div className="nv-req-card-cite">{citeNode}</div>
+                    {mode === "manage" ? <span style={{ marginInlineStart: "auto" }}>{statusPill}</span> : null}
+                  </div>
                   {mode === "manage" ? (
                     <dl className="nv-req-meta" data-req-meta="1">
                       {[
@@ -3709,6 +3723,7 @@ export default function RequestsWorkspace({
                     );
                   })() : null}
                   <div className="nv-req-card-status">
+                    {mode === "manage" ? null : statusPill}
                     {nightCycle && nightStage === "active" ? (
                       <span style={{ display: "inline-flex", alignItems: "center", minHeight: 22, padding: "2px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, color: BAD, background: "var(--nv-bad-soft)", border: "1px solid var(--nv-bad-line)" }}>
                         {ar ? "موافقة خطية مطلوبة" : "Written consent is required"}
@@ -4287,15 +4302,14 @@ export default function RequestsWorkspace({
                     })()}
                   </div>
                   </div>
-                </CollapsibleItemCard>
+                </article>
               );
             })}
             </div>
             )}
-          </ListStack>
+          </section>
         </div>
-        )}
-      />
+      </div>
 
       {selfOnly ? <RequestFilesBoard employees={employees} ar={ar} /> : null}
 

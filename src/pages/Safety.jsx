@@ -21,7 +21,7 @@ import { useCollapsibleItems } from "@/components/shared/CollapsibleItemCard";
 import MinistrySectionPanel from "@/components/schedules/MinistrySectionPanel";
 import { toast } from "@/components/ui/use-toast";
 import RecordSmartArchive from "@/components/shared/RecordSmartArchive";
-import { MUTED, NEUTRAL } from "@/lib/platformStyles";
+import { MUTED } from "@/lib/platformStyles";
 import { pageKicker } from "@/lib/moduleMeta";
 import { useRailSide } from "@/lib/railSide";
 
@@ -356,18 +356,7 @@ export default function Safety() {
         }))}
       tool={employeeRail ? mineScope : tab}
       onTool={employeeRail ? (value) => { setMineScope(value); setMineFace("all"); } : setTab}
-      meta={employeeRail ? null : (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <span style={NEUTRAL}>{ar ? `${stations.length} فرع` : `${stations.length} stations`}</span>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            style={{ height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid rgba(255,255,255,.35)", background: "transparent", color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
-          >
-            {ar ? "طباعة / حفظ PDF" : "Print / save PDF"}
-          </button>
-        </span>
-      )}
+      meta={null}
     >
       <div data-safety-face={employeeRail ? "employee" : "manage"} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {employeeRail && (

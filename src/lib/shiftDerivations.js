@@ -329,7 +329,7 @@ export function placeAssumedFlexBreak({ flex, prayers = null, inMin = null, outM
  * when the clock reaches its start — `assumedRunning` until its end, as a punched break would — and a
  * «بدأت راحتي» punch replaces it. A checkout inside it ends it there.
  */
-export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, onDate, prayers = null, continuous103 = false } = {}) {
+export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, onDate, prayers = null, continuous103 = false, plan: ownParts = null } = {}) {
   const mode = shiftBreakMode(shift, { continuous103 });
   const flex = mode === "flex" ? flexBreakOf(shift, onDate) : null;
   const out = { mode, flex, rows: [], punched: [], open: null, assumed: null, taken: 0, remaining: flex?.minutes || 0, runningMinutes: 0, overMinutes: 0, shortCount: 0, windowState: "", forDuty: null, forConsec: null, planned: null, assumedRunning: false };
@@ -366,9 +366,12 @@ export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, on
     const consecMax = (ruleValue("hours.rest.maxConsecutiveHours", onDate) || 5) * 60;
     const touches = endM != null && inM < flex.toMin && endM > flex.fromMin;
     // Decided at check-in, so the notice can fire the minute it begins: never later than the 5h mark.
-    const placed = inM < flex.toMin
+    // The worker's own plan (one lawful block) is where an unpunched break is assumed — his choice first.
+    const ownPlan = ownParts ? checkRestPlanGate({ shift, onDate, parts: ownParts, continuous103 }) : null;
+    const ownBlock = ownPlan?.ok && ownPlan.rows.length === 1 ? { ...ownPlan.rows[0], source: "assumed", fromPlan: true } : null;
+    const placed = ownBlock || (inM < flex.toMin
       ? placeAssumedFlexBreak({ flex, prayers, inMin: inM, latestStart: inM + consecMax, earliestStart: flex.shiftStart + flex.span - consecMax - flex.minutes })
-      : null;
+      : null);
     const plan = placed && placed.startMin >= inM ? placed : null;
     out.planned = plan;
     if (stored) {
@@ -388,6 +391,90 @@ export function resolveFlexDayBreaks({ shift, breaks, checkIn, checkOut, now, on
   // Art. 101: an assumed break is a rest like a fixed one — the 5h check reads it too (no breach).
   out.forConsec = out.forDuty.slice();
   return out;
+}
+
+/**
+ * The worker's own rest plan on a flex shift — he chooses where his break sits, ahead of time.
+ * parts: [{ start: "HH:MM", minutes }] — one block, or two parts when the shift splits the break.
+ * Named reasons: NOT_FLEX_BREAK, REST_PLAN_EMPTY, REST_PLAN_SPLIT_OFF, REST_PLAN_PART_SHORT,
+ * REST_PLAN_TOTAL, REST_PLAN_OUTSIDE_WINDOW, REST_PLAN_OVERLAP, REST_PLAN_CONSECUTIVE (Art. 101: no more
+ * than the consecutive-hours limit of work before, between or after the parts).
+ * ok → { rows: [{ start, end, startMin, endMin, minutes }] } on the shift day's clock.
+ */
+export function checkRestPlanGate({ shift, onDate, parts = [], continuous103 = false } = {}) {
+  const cite = citeRule("hours.rest.maxConsecutiveHours", onDate);
+  const art = cite?.labelAr || "المادة 101";
+  const artEn = cite?.labelEn || "Art. 101";
+  const fail = (error, reason, reasonEn) => ({ ok: false, error, reason, reasonEn, cite });
+  const flex = shiftBreakMode(shift, { continuous103 }) === "flex" ? flexBreakOf(shift, onDate) : null;
+  if (!flex) return fail("NOT_FLEX_BREAK", "راحة هذه الوردية ثابتة في الجدول.", "This shift's break is fixed on the roster.");
+  const list = (Array.isArray(parts) ? parts : []).filter((row) => row && clockOfHm(row.start) != null);
+  if (!list.length) return fail("REST_PLAN_EMPTY", "اختر وقت بداية راحتك.", "Choose when your break starts.");
+  if (list.length > 1 && !flex.splitEffective) return fail("REST_PLAN_SPLIT_OFF", "هذه الوردية لا تقسّم الراحة — اختر وقتاً واحداً.", "This shift does not split the break — choose one time.");
+  const lift = (m) => (m + 720 < flex.shiftStart ? m + 1440 : m);
+  const rows = list.map((row) => {
+    const startMin = lift(clockOfHm(row.start));
+    const minutes = Math.round(Number(row.minutes) || 0);
+    return { start: hmOfClock(startMin), end: hmOfClock(startMin + minutes), startMin, endMin: startMin + minutes, minutes };
+  }).sort((a, b) => a.startMin - b.startMin);
+  if (rows.some((row) => row.minutes < flex.minPart)) {
+    return fail("REST_PLAN_PART_SHORT", `كل جزء من الراحة ${flex.minPart} دقيقة على الأقل (${citeRule("hours.rest.duringShiftMinutes", onDate)?.labelAr || "المادة 101"}).`, `Each part is at least ${flex.minPart} minutes.`);
+  }
+  const total = rows.reduce((sum, row) => sum + row.minutes, 0);
+  if (total !== flex.minutes) return fail("REST_PLAN_TOTAL", `مجموع الراحة ${total} دقيقة — المطلوب ${flex.minutes}.`, `The parts add up to ${total} min — the break is ${flex.minutes}.`);
+  if (flex.fromMin != null && flex.toMin != null && rows.some((row) => row.startMin < flex.fromMin || row.endMin > flex.toMin)) {
+    return fail("REST_PLAN_OUTSIDE_WINDOW", `الراحة داخل نافذتها ⁦${flex.from}–${flex.to}⁩.`, `The break sits inside its ${flex.from}–${flex.to} window.`);
+  }
+  for (let i = 1; i < rows.length; i += 1) {
+    if (rows[i].startMin < rows[i - 1].endMin) return fail("REST_PLAN_OVERLAP", "الجزءان متداخلان — اجعل الثاني بعد نهاية الأول.", "The parts overlap — start the second after the first ends.");
+  }
+  const maxMin = (ruleValue("hours.rest.maxConsecutiveHours", onDate) || 5) * 60;
+  const shiftEnd = flex.shiftStart + flex.span;
+  let from = flex.shiftStart;
+  for (const row of [...rows, { startMin: shiftEnd, endMin: shiftEnd }]) {
+    if (row.startMin - from > maxMin) {
+      const hours = Math.round(((row.startMin - from) / 60) * 10) / 10;
+      return fail(
+        "REST_PLAN_CONSECUTIVE",
+        `بهذا الوقت تعمل ${hours} ساعات متواصلة من ${hmOfClock(from)} إلى ${hmOfClock(row.startMin)} — الحد ${maxMin / 60} ساعات (${art}).`,
+        `That puts ${hours} hours of work in a row from ${hmOfClock(from)} to ${hmOfClock(row.startMin)} — the limit is ${maxMin / 60} hours (${artEn}).`,
+      );
+    }
+    from = row.endMin;
+  }
+  return { ok: true, rows, cite };
+}
+
+/** Every lawful start for a one-block plan (or the first part), every `step` minutes inside the window. */
+export function restPlanStarts({ shift, onDate, minutes, step = 15, continuous103 = false } = {}) {
+  const flex = shiftBreakMode(shift, { continuous103 }) === "flex" ? flexBreakOf(shift, onDate) : null;
+  if (!flex || flex.fromMin == null || flex.toMin == null) return [];
+  const out = [];
+  for (let m = flex.fromMin; m + minutes <= flex.toMin; m += step) out.push(hmOfClock(m));
+  return out;
+}
+
+/**
+ * The plan's choices, already lawful: `single` — every start for the whole break in one block;
+ * `pairs` — for a split break, each first-part start with the second-part starts that keep Art. 101.
+ */
+export function restPlanChoices({ shift, onDate, continuous103 = false, step = 15 } = {}) {
+  const flex = shiftBreakMode(shift, { continuous103 }) === "flex" ? flexBreakOf(shift, onDate) : null;
+  if (!flex) return { flex: null, single: [], pairs: [] };
+  const ok = (parts) => checkRestPlanGate({ shift, onDate, parts, continuous103 }).ok;
+  const single = restPlanStarts({ shift, onDate, minutes: flex.minutes, step, continuous103 })
+    .filter((start) => ok([{ start, minutes: flex.minutes }]));
+  const pairs = [];
+  if (flex.splitEffective) {
+    const half = Math.floor(flex.minutes / 2);
+    const rest = flex.minutes - half;
+    const starts = restPlanStarts({ shift, onDate, minutes: Math.min(half, rest), step, continuous103 });
+    for (const first of starts) {
+      const seconds = starts.filter((second) => ok([{ start: first, minutes: half }, { start: second, minutes: rest }]));
+      if (seconds.length) pairs.push({ first, seconds, firstMinutes: half, secondMinutes: rest });
+    }
+  }
+  return { flex, single, pairs };
 }
 
 /**

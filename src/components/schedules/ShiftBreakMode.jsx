@@ -24,6 +24,13 @@ export function defaultFlexBreak(shift, onDate) {
   const start = clockOf(shift?.start) ?? 0;
   const span = minutesBetween(shift?.start || "00:00", shift?.end || "00:00") || 1440;
   const minutes = Math.max(minRest, Number(shift?.flexBreak?.minutes) || Number(shift?.restMinutes) || 60);
+  // An hour or more is split by default: two parts of at least the statutory minimum, so the worker can
+  // rest early and again later without five hours in a row on either side (Art. 101). A split break gets a
+  // wide window — from the first minimum part after the start to the last one before the end.
+  const split = minutes >= minRest * 2;
+  if (split && span > minRest * 2) {
+    return { minutes, from: hmOf(start + minRest), to: hmOf(start + span - minRest), split: true, earlyEnd: false };
+  }
   const fromOff = span > maxMin ? Math.max(0, span - minutes - maxMin) : 0;
   const toOff = span > maxMin ? Math.min(span, maxMin + minutes) : span;
   return { minutes, from: hmOf(start + fromOff), to: hmOf(start + toOff), split: false, earlyEnd: false };

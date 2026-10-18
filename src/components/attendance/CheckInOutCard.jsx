@@ -25,7 +25,8 @@ import {
   localCheckOut,
 } from "@/lib/localAttendanceFallback";
 import { BORDER, CARD, MUTED, NAVY, SURFACE, ui } from "@/lib/platformStyles";
-import { closeAttendanceDay, submitOtherRequest } from "@/lib/store";
+import { closeAttendanceDay, setRestPlan, submitOtherRequest } from "@/lib/store";
+import RestPlanPicker from "@/components/attendance/RestPlanPicker";
 import { checkSubmitOtherRequestGate } from "@/lib/otherRequestDerivations";
 import { toRiyadhDateKey } from "@/lib/riyadhDate";
 import { parsePunchClock, riyadhNowClock } from "@/lib/attendancePunch";
@@ -42,7 +43,7 @@ import { breakClockOf, countdownLabel, dutyContextOf } from "@/lib/dutyTicker";
 import { autoOvertimeLine } from "@/lib/autoOvertime";
 import { punchClockMinutes, resolveDayBreaks } from "@/lib/actualDuty";
 import { nursingCreditOf, nursingHourOn, nursingWindowsOf } from "@/lib/dutyRequests";
-import { checkFlexBreakPunchGate } from "@/lib/shiftDerivations";
+import { checkFlexBreakPunchGate, checkRestPlanGate } from "@/lib/shiftDerivations";
 import { hoursPolicyOf } from "@/lib/laborHoursPolicy";
 
 const STATUS_PILL = {
@@ -545,7 +546,10 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
 
   // «راحة مرنة ببصمة»: the day read from the break punches — the buttons, the timeline and the bar use it.
   const continuous103 = hoursPolicyOf(data, dutyEmployee).continuousWork103 === true;
+  // The worker's own rest plan for the day (he places his break where it suits him) — lib/shiftDerivations.
+  const restPlan = data?.restPlans?.[`${currentUser?.id}:${dutyDay}`] || null;
   const flexDay = resolveDayBreaks({
+    plan: restPlan?.parts || null,
     shift: dutyShift,
     breaks: attendance?.breaks,
     checkIn: attendance?.check_in_at,
@@ -569,7 +573,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   /** Where the card would place an unpunched break if the day closed now — sent with a cloud checkout. */
   function assumedAtCheckout() {
     if (!flexOn) return null;
-    const closing = resolveDayBreaks({ shift: dutyShift, breaks: attendance?.breaks, checkIn: attendance?.check_in_at, checkOut: new Date().toISOString(), onDate: dutyDay, prayers: prayerDay, company: data, employee: dutyEmployee });
+    const closing = resolveDayBreaks({ plan: restPlan?.parts || null, shift: dutyShift, breaks: attendance?.breaks, checkIn: attendance?.check_in_at, checkOut: new Date().toISOString(), onDate: dutyDay, prayers: prayerDay, company: data, employee: dutyEmployee });
     return closing.assumed && !closing.punched.length ? { start: closing.assumed.start, end: closing.assumed.end } : null;
   }
   const [breakBusy, setBreakBusy] = useState(false);
@@ -863,7 +867,7 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
               : `${restMin} min not counted as work — your work today is ${hm(band.targetMin - restMin)} of ${hm(band.targetMin)}`;
           })(), sub: breakHint ? (ar ? breakHint.textAr : breakHint.textEn) : "", value: band.label, hint: attRightHint("rest", {}, { view: "employee", ar }) }]
           : []),
-        ...(flexOn ? flexSteps(flexDay, { ar, hint: attRightHint("rest", {}, { view: "employee", ar }) }) : []),
+        ...(flexOn ? flexSteps(flexDay, { ar, hint: attRightHint("rest", {}, { view: "employee", ar }), plan: restPlan?.parts ? checkRestPlanGate({ shift: dutyShift, onDate: dutyDay, parts: restPlan.parts, continuous103 }) : null }) : []),
         { key: "end", kind: "plan", at: (band?.start ?? 0) + (band?.targetMin ?? 0), label: ar ? "نهاية الوردية" : "Shift ends", note: ar ? "من الجدول المنشور" : "From the published rota", value: endClock },
         {
           key: "out",
@@ -907,7 +911,9 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
   // Art. 101: the five-hour mark from the shift start — the rest must begin before it (Art. 103 is exempt).
   const consecMax = Number(ruleValue("hours.rest.maxConsecutiveHours", dutyDay)) || 0;
   const restMin = Number(ruleValue("hours.rest.duringShiftMinutes", dutyDay)) || 0;
-  if (band && !continuous103 && consecMax > 0 && (band.targetMin || 0) > consecMax * 60) {
+  // A saved rest plan is already checked against this limit — the five-hour mark would only repeat it.
+  const planHoldsLimit = flexOn && !!restPlan?.parts && checkRestPlanGate({ shift: dutyShift, onDate: dutyDay, parts: restPlan.parts, continuous103 }).ok;
+  if (band && !continuous103 && !planHoldsLimit && consecMax > 0 && (band.targetMin || 0) > consecMax * 60) {
     const markAt = band.start + consecMax * 60;
     const hh = String(Math.floor((markAt % 1440) / 60)).padStart(2, "0");
     const mm = String(markAt % 60).padStart(2, "0");
@@ -1177,6 +1183,21 @@ export default function CheckInOutCard({ currentUser, company, t, onStatusChange
             <strong style={{ fontSize: 14, fontWeight: 700, color: "var(--nv-ink)", letterSpacing: 0 }}>{ar ? "مسار اليوم" : "Today's timeline"}</strong>
             <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{ar ? "الجدول يحدّد الوقت، وبصمتك تثبته." : "The rota sets the time; your punch proves it."}</span>
           </div>
+          {flexOn && !done && !flexDay.punched.length ? (
+            <RestPlanPicker
+              key={`${dutyDay}:${restPlan?.at || ""}`}
+              ar={ar}
+              shift={dutyShift}
+              onDate={dutyDay}
+              continuous103={continuous103}
+              saved={restPlan}
+              locked={!!flexDay.assumed && !flexDay.assumedRunning}
+              onSave={async (parts) => {
+                setRestPlan(company.id, currentUser.id, dutyDay, parts);
+                await refresh?.();
+              }}
+            />
+          ) : null}
           {currentAlert ? (
             <div
               role="status"
@@ -1518,7 +1539,7 @@ export function workedClock(checkIn, checkOut, now, band, flexDay = null) {
 }
 
 /** «مسار اليوم» rows of a flex day: the window as a range, then each punched part or the assumed one. */
-export function flexSteps(day, { ar = true, hint = null } = {}) {
+export function flexSteps(day, { ar = true, hint = null, plan = null } = {}) {
   const flex = day?.flex;
   if (!flex) return [];
   const steps = [{
@@ -1527,12 +1548,23 @@ export function flexSteps(day, { ar = true, hint = null } = {}) {
     at: flex.fromMin,
     label: ar ? "نافذة الراحة" : "Break window",
     note: ar
-      ? `راحة مرنة ${minutesAr(flex.minutes)}${flex.splitEffective ? " · تُقسَّم" : ""} — تبدؤها وتنهيها ببصمة`
+      ? `راحتك بيدك: ${minutesAr(flex.minutes)} تختار وقتها داخل هذه النافذة${flex.splitEffective ? `، ويمكن تقسيمها جزأين (${minutesAr(flex.minPart)} على الأقل لكل جزء)` : ""} — تبدؤها وتنهيها ببصمة`
       : `Flex break ${flex.minutes} min${flex.splitEffective ? " · may split" : ""} — you punch its start and end`,
     value: `${flex.from}–${flex.to}`,
     hint,
   }];
   const parts = day.rows.filter((row) => row.source === "punch");
+  // His own plan, before he punches it: «راحتك المخطّطة» in time order (one row per part).
+  if (!parts.length && plan?.ok && !day.rows.some((row) => row.source === "assumed")) {
+    plan.rows.forEach((row, i) => steps.push({
+      key: `brk-plan-${i}`,
+      kind: "plan",
+      at: row.startMin,
+      label: plan.rows.length > 1 ? (ar ? `راحتك المخطّطة · الجزء ${i + 1}` : `Planned break · part ${i + 1}`) : (ar ? "راحتك المخطّطة" : "Your planned break"),
+      note: ar ? `${minutesAr(row.minutes)} اخترتها أنت — اضغط «بدأت راحتي» عند بدايتها` : `${row.minutes} min you chose — tap “I started my break” when it starts`,
+      value: `${row.start}–${row.end}`,
+    }));
+  }
   day.rows.forEach((row, i) => {
     if (row.source === "assumed") {
       steps.push({

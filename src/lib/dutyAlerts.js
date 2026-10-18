@@ -260,6 +260,14 @@ export function deriveDutyAlerts({
         textEn: `The break window ends in ${left} min — you have not taken your break; otherwise it is assumed without a punch.`,
         hint: { kind: "rest", item: { date: onDate } },
       }));
+    } else if (!flexDay.punched.length && !flexDay.assumed && (flexDay.windowState === "before" || flexDay.windowState === "open")) {
+      // The worker's own break: he chooses when, inside the window, and proves it by punch.
+      alerts.push(alert("flex_break_yours", "info", "hours.rest.duringShiftMinutes", onDate, {
+        atMinutes: flex.fromMin,
+        textAr: `راحتك بيدك — ${minutesAr(flex.minutes)} تختار وقتها بين ${flex.from} و${flex.to}${flex.splitEffective ? `، ويمكن تقسيمها جزأين (${minutesAr(flex.minPart)} على الأقل لكل جزء)` : ""}. اضغط «بدأت راحتي» ثم «أنهيت راحتي».`,
+        textEn: `Your break is yours — ${flex.minutes} min, you choose when between ${flex.from} and ${flex.to}${flex.splitEffective ? `, in up to two parts (${flex.minPart} min each at least)` : ""}. Tap “I started my break”, then “I ended my break”.`,
+        hint: { kind: "rest", item: { date: onDate } },
+      }));
     } else if (flexDay.assumed) {
       alerts.push(alert("flex_break_assumed", "info", "hours.rest.notWorkingHours.cite", onDate, {
         atMinutes: flexDay.assumed.startMin,

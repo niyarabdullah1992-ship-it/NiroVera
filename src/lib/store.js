@@ -5308,6 +5308,19 @@ export function proveNightObligation(companyId, { stationId, key, proof = {}, by
   });
 }
 
+/**
+ * The worker's own rest plan for one day on a flex shift (he chooses where his break sits).
+ * parts: [{ start: "HH:MM", minutes }] already checked by checkRestPlanGate; null clears it.
+ */
+export function setRestPlan(companyId, employeeId, dayKey, parts) {
+  const key = `${employeeId}:${String(dayKey || "").slice(0, 10)}`;
+  updateCompany(companyId, (d) => {
+    d.restPlans = { ...(d.restPlans || {}) };
+    if (!parts || !parts.length) delete d.restPlans[key];
+    else d.restPlans[key] = { parts: parts.map((row) => ({ start: row.start, minutes: Number(row.minutes) || 0 })), at: new Date().toISOString() };
+  });
+}
+
 /** 18632 night-fitness report on the employee file — url/name/at + from/to/permanent. */
 export function setNightMedicalFitnessReport(companyId, employeeId, report) {
   const from = String(report?.from || report?.issuedAt || report?.issued || "").trim().slice(0, 10);

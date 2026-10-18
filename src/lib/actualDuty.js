@@ -71,8 +71,9 @@ export function clockBreaks(list) {
  * One flex day read from its punches (shiftDerivations.resolveFlexDayBreaks) with the hours policy's
  * Art. 103 flag. Not flex → `forDuty: null` and callers keep the fixed reading.
  */
-export function resolveDayBreaks({ shift, breaks, checkIn, checkOut, now, onDate, prayers = null, company, employee } = {}) {
+export function resolveDayBreaks({ shift, breaks, checkIn, checkOut, now, onDate, prayers = null, company, employee, plan = null } = {}) {
   return resolveFlexDayBreaks({
+    plan,
     shift,
     breaks,
     checkIn,

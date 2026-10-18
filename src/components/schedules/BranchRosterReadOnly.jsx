@@ -1,10 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { Sun } from "lucide-react";
 import {
   employeeShiftOnDay,
   employeeWeekHours,
   SUN_FIELD,
-  SUN_OFFICE,
   sunExposureCellState,
   LEAVE_STYLE,
   leaveOnDayView,
@@ -19,11 +17,12 @@ import { isOfficialHoliday } from "@/lib/ummAlQuraCalendar";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import { FileSelfBadge } from "@/components/employees/ProfileHero";
 import { chip, Collapsible, mono, slab } from "@/components/schedules/scheduleChrome";
+import { NameLetter, RosterLegend, rosterTileStyle, SunPill, TileLabel, TILE_GAP } from "@/components/schedules/rosterTile";
 
 // Same grid as the editor («تعيينات الفرع»): 128px names, seven day columns.
-const NAME_COL = 128;
+const NAME_COL = 150;
 const GRID = `${NAME_COL}px repeat(7,minmax(70px,1fr))`;
-const MIN_W = 620;
+const MIN_W = 700;
 
 const CSS = `
 .nv-branch-ro-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -51,7 +50,8 @@ function HoursSpan({ shift, lang, format }) {
 /**
  * «جدول الفرع — للاطلاع» — the branch week, read only, for the employee lane.
  * Same cell colours and legend as the admin grid, but no buttons: no cycle, no brush,
- * no مكشوف/مظلّل toggles, no hours and no alerts of anyone. Another person's leave
+ * no مكشوف/مظلّل toggles (the marks the management set show on every row), no hours and no alerts of
+ * anyone but you. Another person's leave
  * shows as «إجازة» only — the leave type stays on that person's own row and file.
  */
 export default function BranchRosterReadOnly({
@@ -129,22 +129,24 @@ export default function BranchRosterReadOnly({
                       borderInlineStart: mine ? "3px solid var(--nv-ok-fill)" : "3px solid transparent",
                       padding: "8px 10px",
                       display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "center",
-                      gap: 1,
+                      alignItems: "center",
+                      gap: 8,
                       minWidth: 0,
                     }}
                   >
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                      <span style={{ fontSize: 12, fontWeight: mine ? 700 : 600, color: SW.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: "1 1 auto" }} title={employee.name}>
-                        {employee.name}
+                    <NameLetter name={employee.name} mine={mine} />
+                    <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, flex: "1 1 auto" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                        <span style={{ fontSize: 12, fontWeight: mine ? 700 : 600, color: SW.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: "1 1 auto" }} title={employee.name}>
+                          {employee.name}
+                        </span>
+                        {mine ? <FileSelfBadge ar={ar} /> : null}
                       </span>
-                      {mine ? <FileSelfBadge ar={ar} /> : null}
+                      {/* Hours are shown on your own row only — never a colleague's. */}
+                      {mine ? (
+                        <span style={{ fontSize: 10.5, color: SW.muted }}><span style={mono}>{employeeWeekHours(schedule, employee.id, weekStart, employee, laborCalendar)}</span> {ar ? "س" : "h"}</span>
+                      ) : null}
                     </span>
-                    {/* Hours are shown on your own row only — never a colleague's. */}
-                    {mine ? (
-                      <span style={{ fontSize: 10.5, color: SW.muted }}><span style={mono}>{employeeWeekHours(schedule, employee.id, weekStart, employee, laborCalendar)}</span> {ar ? "س" : "h"}</span>
-                    ) : null}
                   </span>
                   {days.map((day) => {
                     const leave = leaveOnDayView(employee, day.key, ar, laborCalendar);
@@ -152,72 +154,29 @@ export default function BranchRosterReadOnly({
                     const holiday = leave?.source === "official_holiday";
                     const style = leave ? (leave.style || LEAVE_STYLE) : (shift ? shiftTypeStyle(shift, types.findIndex((row) => row.id === shift.id)) : REST_STYLE);
                     const empty = !published && !shift && !leave;
-                    // Your own heat placement (مكشوف/مظلّل) shows on your row, read only; colleagues' stays hidden.
-                    const sun = mine && shift ? sunExposureCellState(schedule, employee.id, day.key, { shift }) : null;
-                    const sunMark = sun?.asks && sun.mark ? sun.mark : "";
+                    // مكشوف / مظلّل as the management set it — on every row, read only (Decision 3337 is the
+                    // branch's safety, not a private detail). Shown once a mark exists, same as the admin grid.
+                    const sun = shift ? sunExposureCellState(schedule, employee.id, day.key, { shift }) : null;
+                    const sunMark = sun?.touches && sun.mark ? sun.mark : "";
                     const label = leave
                       ? (holiday || mine ? leave.type : (ar ? "إجازة" : "Leave"))
                       : shift ? shift.label : empty ? (ar ? "بلا جدول" : "No roster") : (ar ? "راحة" : "Rest");
+                    const kind = holiday ? "holiday" : leave ? "leave" : shift ? "shift" : empty ? "empty" : "rest";
                     return (
-                      <span
-                        key={day.key}
-                        role="cell"
-                        title={`${employee.name} — ${weekdayLabel(day.wd, ar)} — ${label}`}
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 3,
-                          minHeight: 60,
-                          minWidth: 0,
-                          padding: sunMark ? "6px 4px 30px" : "6px 4px",
-                          position: "relative",
-                          boxSizing: "border-box",
-                          margin: leave ? 3 : 0,
-                          borderRadius: leave ? 8 : 0,
-                          border: holiday
-                            ? "1.5px solid var(--nv-shift-holiday-ink, #6B5320)"
-                            : leave
-                              ? "1.5px dashed var(--nv-shift-leave-line, #B99656)"
-                              : "none",
-                          borderInlineStart: leave ? undefined : "1px solid var(--nv-line2)",
-                          background: holiday ? "var(--nv-shift-holiday)" : leave ? "var(--nv-shift-leave)" : style.bg,
-                          color: holiday ? "var(--nv-shift-holiday-ink)" : style.fg,
-                          boxShadow: mine && !leave ? "inset 0 2px 0 var(--nv-ok-fill)" : "none",
-                        }}
-                      >
-                        <span style={cellText}>{label}</span>
-                        {shift ? (
-                          <span style={{ fontSize: 9, opacity: 0.85, lineHeight: 1.45, fontWeight: 500, maxWidth: "100%", textAlign: "center" }} dir={ar ? "rtl" : "ltr"}>
-                            <HoursSpan shift={shift} lang={lang} format={timeFormat} />
-                          </span>
-                        ) : null}
-                        {sunMark ? (
-                          <span
-                            data-ro-sun={sunMark}
-                            style={{
-                              position: "absolute",
-                              insetInline: 4,
-                              bottom: 4,
-                              height: 22,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              gap: 4,
-                              fontSize: 10.5,
-                              fontWeight: 700,
-                              borderRadius: 6,
-                              background: sunMark === SUN_FIELD ? "var(--nv-bad, #B42318)" : "var(--nv-ok, #1F7A4D)",
-                              color: "#fff",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <Sun aria-hidden style={{ width: 11, height: 11, flex: "none" }} strokeWidth={2.4} />
-                            {sunMark === SUN_FIELD ? (ar ? "مكشوف" : "Exposed") : sunMark === SUN_OFFICE ? (ar ? "مظلّل" : "Shaded") : ""}
-                          </span>
-                        ) : null}
+                      <span key={day.key} role="cell" style={{ display: "flex", padding: TILE_GAP, minWidth: 0, borderInlineStart: "1px solid var(--nv-line2)" }}>
+                        <span
+                          data-ro-cell={kind}
+                          title={`${employee.name} — ${weekdayLabel(day.wd, ar)} — ${label}${sunMark ? ` — ${sunMark === SUN_FIELD ? (ar ? "مكشوف" : "Exposed") : (ar ? "مظلّل" : "Shaded")}` : ""}`}
+                          style={rosterTileStyle({ kind, style, mine, extra: sunMark ? { paddingBottom: 30 } : {} })}
+                        >
+                          <TileLabel label={label} style={style} badge={kind === "shift"} />
+                          {shift ? (
+                            <span style={{ fontSize: 9.5, opacity: 0.85, lineHeight: 1.45, fontWeight: 500, maxWidth: "100%", textAlign: "center" }} dir={ar ? "rtl" : "ltr"}>
+                              <HoursSpan shift={shift} lang={lang} format={timeFormat} />
+                            </span>
+                          ) : null}
+                          <SunPill mark={sunMark} ar={ar} faded={sun?.source !== "cell"} />
+                        </span>
                       </span>
                     );
                   })}
@@ -227,32 +186,10 @@ export default function BranchRosterReadOnly({
           </div>
         </div>
 
-        <div style={{ padding: "10px 18px 6px", display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
-          {types.map((shift, index) => {
-            const style = shiftTypeStyle(shift, index);
-            return (
-              <span key={shift.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10.5, color: "var(--nv-ink3)" }}>
-                <span style={{ width: 11, height: 11, borderRadius: 3, background: style.bg, border: `1px solid ${style.color}`, boxSizing: "border-box" }} />
-                {shift.label}
-              </span>
-            );
-          })}
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10.5, color: "var(--nv-ink3)" }}>
-            <span style={{ width: 11, height: 11, borderRadius: 3, background: REST_STYLE.bg, border: `1px solid ${REST_STYLE.color}`, boxSizing: "border-box" }} />
-            {ar ? "راحة" : "Rest"}
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10.5, color: "var(--nv-ink3)" }}>
-            <span style={{ width: 11, height: 11, borderRadius: 3, background: LEAVE_STYLE.bg, border: `1px dashed ${LEAVE_STYLE.color}`, boxSizing: "border-box" }} />
-            {ar ? "إجازة" : "Leave"}
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 10.5, color: "var(--nv-ink3)" }}>
-            <span style={{ width: 11, height: 11, borderRadius: 3, background: "var(--nv-shift-holiday)", border: "1px solid var(--nv-shift-holiday-ink)", boxSizing: "border-box" }} />
-            {ar ? "اليوم الوطني · يوم التأسيس · العيد" : "National Day · Founding Day · Eid"}
-          </span>
-        </div>
+        <RosterLegend types={types} ar={ar} sun />
         <p style={{ margin: 0, padding: "2px 18px 12px", fontSize: 11, color: SW.muted, lineHeight: 1.7 }}>
           {ar
-            ? "للاطلاع فقط — لا ساعات ولا تنبيهات لغيرك، ونوع إجازة الزميل لا يظهر. لتغيير ورديتك اطلبها من «طلباتي»."
+            ? "للاطلاع فقط — «مكشوف / مظلّل» كما حددته الإدارة، ولا ساعات ولا تنبيهات لغيرك، ونوع إجازة الزميل لا يظهر. لتغيير ورديتك اطلبها من «طلباتي»."
             : "View only — no one else's hours or alerts, and a colleague's leave type is not shown. To change your shift, ask from My Requests."}
         </p>
       </Collapsible>

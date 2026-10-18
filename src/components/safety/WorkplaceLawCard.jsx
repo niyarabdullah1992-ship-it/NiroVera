@@ -58,7 +58,7 @@ export default function WorkplaceLawCard({ ar, stations = [], recFor, data, canE
           <strong style={{ fontSize: 14, color: "var(--nv-ink)" }}>{readOnly ? L("للعلم — حقك في بيئة العمل", "For your information — your workplace rights") : L("نظام العمل — بيئة العمل", "Labour Law — the workplace")}</strong>
           <span style={{ fontSize: 11.5, color: "var(--nv-muted)" }}>{readOnly
             ? L(`ما يلزم صاحب العمل في فرعك ${station.name}، وحالته كما سجّلتها الإدارة. إن رأيت خلاف ذلك فارفع بلاغ سلامة.`, `What the employer owes at your branch ${station.name}, as management recorded it. If you see otherwise, raise a safety report.`)
-            : L("الحريق والمواد المحرمة والعناية الصحية ومقاعد العاملات — كل بند بمادته.", "Fire, forbidden substances, health care and seats for women — each under its article.")}</span>
+            : L("الحريق والمواد المحرمة ومقاعد العاملات — كل بند بمادته.", "Fire, forbidden substances and seats for women — each under its article.")}</span>
         </span>
         <span style={pill(open ? "none" : "ok")}>{open ? L(open === 1 ? "بند واحد مفتوح" : open === 2 ? "بندان مفتوحان" : `${open} بنود مفتوحة`, `${open} open`) : L("مستوفى", "Met")}</span>
         {stations.length > 1 && !readOnly ? (

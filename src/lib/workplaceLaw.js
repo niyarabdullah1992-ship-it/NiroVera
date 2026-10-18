@@ -3,7 +3,7 @@ import { citeRule } from "./laborRules.js";
 import { profileGender } from "./employeeProfileFields.js";
 
 /**
- * Labour Law duties on the workplace — Arts. 63, 125, 144, 158 — per branch, on its safety record
+ * Labour Law duties on the workplace — Arts. 63, 125, 158 — per branch, on its safety record
  * (`rec.workplaceLaw[itemId] = { met, note, by, at }`). Two are read from the files, never ticked by hand:
  *  - Art. 158 applies only where women work (gender on file);
  *  - Art. 144's medical cover is counted from each worker's insurance end date.

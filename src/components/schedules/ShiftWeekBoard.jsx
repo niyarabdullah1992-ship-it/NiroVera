@@ -90,7 +90,7 @@ import { restCountMismatch } from "@/lib/leaveEidOverlap.js";
 import { isOfficialHoliday, laborCalendarOf } from "@/lib/ummAlQuraCalendar";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import FileHoursAlertsRail from "@/components/employees/FileHoursAlertsRail";
-import { NameLetter, RosterLegend, rosterTileStyle, TileLabel, TILE_GAP } from "@/components/schedules/rosterTile";
+import { NameLetter, RosterLegend, rosterTileStyle, shiftKindOf, TileBody, TILE_GAP } from "@/components/schedules/rosterTile";
 import { FileSelfBadge } from "@/components/employees/ProfileHero";
 import PlatformDateField from "@/components/shared/PlatformDateField";
 import { statusBannerQuiet } from "@/lib/platformStyles";
@@ -153,20 +153,6 @@ function publishActionBtn({ published, locked }) {
 }
 
 /** Quiet toggle row — LawGateAlertRow slab: card fill, control radius 10, status only on 999 chip. */
-
-/** Literary duty window with LTR mono clocks — follows header 12/24. */
-function ShiftHoursLabel({ shift, lang, format }) {
-  const start = formatShiftHm(shift?.start, format, lang);
-  const end = formatShiftHm(shift?.end, format, lang);
-  if (!start && !end) return null;
-  const clock = (label) => <span dir="ltr" style={clockMono}>{label}</span>;
-  if (lang === "ar") {
-    if (start && end) return <>من {clock(start)} إلى {clock(end)}</>;
-    return clock(start || end);
-  }
-  if (start && end) return <>{clock(start)}–{clock(end)}</>;
-  return clock(start || end);
-}
 
 function countAr(n, one, two, few, many) {
   if (n === 1) return one;
@@ -1500,14 +1486,18 @@ export default function ShiftWeekBoard({
                             },
                           })}
                         >
-                          <TileLabel label={leave ? leave.type : (shift ? shift.label : restLabel)} style={style} badge={!leave && !!shift} />
-                          {leave?.articleId ? (
-                            <StatutoryItem article={leave.articleId} ar={ar} entitlement compact surface="leave" />
-                          ) : (
-                            <span style={{ fontSize: 9, opacity: 0.85, lineHeight: 1.45, fontWeight: 500 }} dir={ar ? "rtl" : "ltr"}>
-                              {shift ? <ShiftHoursLabel shift={shift} lang={lang} format={timeFormat} /> : ""}
-                            </span>
-                          )}
+                          <TileBody
+                            kind={leave?.source === "official_holiday" ? "holiday" : leave ? "leave" : shift ? "shift" : (unpublishedCell ? "empty" : "rest")}
+                            shiftKind={shiftKindOf(shift)}
+                            label={leave ? leave.type : (shift ? shift.label : restLabel)}
+                            shift={shift}
+                            style={style}
+                            lang={lang}
+                            timeFormat={timeFormat}
+                            compact
+                          >
+                            {leave?.articleId ? <StatutoryItem article={leave.articleId} ar={ar} entitlement compact surface="leave" /> : null}
+                          </TileBody>
                         </button>
                         {leave?.source === "official_holiday" && canEdit && !isJuvenileOn(employee, day.key) ? (
                           <button
@@ -1538,15 +1528,16 @@ export default function ShiftWeekBoard({
                               : (ar ? "خارج موسم القرار 3337 — التحديد اختياري ويُحفظ لموسمه" : "Outside the Decision 3337 season — optional, kept for the season")}
                             style={{
                               position: "absolute",
-                              insetInline: 9,
-                              bottom: 9,
+                              insetInlineStart: 12,
+                              bottom: 11,
                               height: 22,
                               display: "grid",
-                              gridTemplateColumns: sun.mark ? "1fr" : "1fr 1fr",
+                              gridTemplateColumns: sun.mark ? "auto" : "1fr 1fr",
+                              insetInlineEnd: sun.mark ? "auto" : 12,
                               gap: 2,
                               padding: 1,
                               borderRadius: 999,
-                              border: sunAsk && !sun.mark ? "1px dashed var(--nv-warn, #B7791F)" : "1px solid var(--nv-line2, #E3E8E5)",
+                              border: sunAsk && !sun.mark ? "1px dashed var(--nv-warn, #B7791F)" : (sun.mark === SUN_FIELD ? "1px solid var(--nv-bad-line)" : sun.mark === SUN_OFFICE ? "1px solid var(--nv-ok-line)" : "1px solid var(--nv-line2, #E3E8E5)"),
                               background: sunAsk && !sun.mark ? "var(--nv-warn-soft, #FBF3E2)" : "var(--nv-card, #fff)",
                             }}
                           >
@@ -1569,9 +1560,9 @@ export default function ShiftWeekBoard({
                                     fontWeight: 700,
                                     lineHeight: 1,
                                     border: "none",
-                                    borderRadius: 5,
+                                    borderRadius: 999,
                                     minWidth: 0,
-                                    padding: "0 2px",
+                                    padding: on ? "0 7px" : "0 2px",
                                     display: "inline-flex",
                                     alignItems: "center",
                                     justifyContent: "center",
@@ -1579,8 +1570,9 @@ export default function ShiftWeekBoard({
                                     whiteSpace: "nowrap",
                                     overflow: "hidden",
                                     cursor: canEdit ? "pointer" : "default",
-                                    background: on ? (opt === SUN_FIELD ? "var(--nv-bad, #B42318)" : "var(--nv-ok, #1F7A4D)") : "transparent",
-                                    color: on ? "#fff" : (sunAsk && !sun.mark ? "var(--nv-warn-ink, #7A4E0B)" : "var(--nv-ink3, #6B7280)"),
+                                    // The chosen mark reads as the «أيامي» chip: soft fill, toned ink.
+                                    background: on ? (opt === SUN_FIELD ? "var(--nv-bad-soft)" : "var(--nv-ok-soft)") : "transparent",
+                                    color: on ? (opt === SUN_FIELD ? "var(--nv-bad-ink)" : "var(--nv-ok-ink)") : (sunAsk && !sun.mark ? "var(--nv-warn-ink, #7A4E0B)" : "var(--nv-ink3, #6B7280)"),
                                     opacity: on && sun.source !== "cell" ? 0.88 : 1,
                                   }}
                                 >

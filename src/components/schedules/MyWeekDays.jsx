@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { CalendarOff, Coffee, Flag, Moon, Sun, Sunset } from "lucide-react";
+import { CalendarOff, Flag, Sun } from "lucide-react";
 import {
   employeeShiftOnDay,
   leaveOnDayView,
@@ -20,6 +20,7 @@ import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
 import { chip, mono } from "@/components/schedules/scheduleChrome";
 import { DUTY_LEAVE_STYLE as LEAVE_STYLE, DUTY_REST_STYLE as REST_STYLE, dutyChip, dutyLabel } from "@/components/schedules/dutyStatus";
 import { revealNode } from "@/components/schedules/dutyLinks";
+import { KIND_ICON, shiftKindOf } from "@/components/schedules/rosterTile";
 import RightHint from "@/components/shared/RightHint";
 import { attRightHint } from "@/lib/rightHints.att.js";
 
@@ -48,19 +49,9 @@ const DAYS_CSS = `
 }
 `;
 
-export function shiftKind(shift) {
-  if (!shift) return "rest";
-  const label = String(shift.label || "");
-  if (/ليل|night/i.test(label)) return "night";
-  if (/مساء|evening/i.test(label)) return "evening";
-  if (/صباح|morning/i.test(label)) return "morning";
-  const hour = Number(String(shift.start || "").split(":")[0]);
-  if (hour >= 20 || hour < 4) return "night";
-  if (hour >= 12) return "evening";
-  return "morning";
-}
+// One symbol per kind, shared with the roster grids and the operational calendar.
+export { shiftKindOf as shiftKind } from "@/components/schedules/rosterTile";
 
-const KIND_ICON = { night: Moon, evening: Sunset, morning: Sun, rest: Coffee };
 
 function dayMonth(day, ar) {
   return (
@@ -163,7 +154,7 @@ export default function MyWeekDays({
           const holiday = leave?.source === "official_holiday";
           const index = shift ? types.findIndex((row) => row.id === shift.id) : -1;
           const style = leave ? (holiday ? { bg: "var(--nv-shift-holiday)", color: "var(--nv-shift-holiday-ink)", fg: "var(--nv-shift-holiday-ink)" } : LEAVE_STYLE) : shiftTypeStyle(shift, index);
-          const kind = shiftKind(shift);
+          const kind = shiftKindOf(shift);
           const Icon = leave ? (holiday ? Flag : CalendarOff) : KIND_ICON[kind];
           const restLabel = !published && !shift && !leave ? dutyLabel("unscheduled", ar) : dutyLabel("rest", ar);
           return (

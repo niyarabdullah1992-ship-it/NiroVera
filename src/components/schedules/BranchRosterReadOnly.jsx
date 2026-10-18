@@ -12,12 +12,11 @@ import {
   weekDays,
   weekdayLabel,
 } from "@/lib/shiftWeek";
-import { formatShiftHm } from "@/lib/shiftDerivations";
 import { isOfficialHoliday } from "@/lib/ummAlQuraCalendar";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
 import { FileSelfBadge } from "@/components/employees/ProfileHero";
 import { chip, Collapsible, mono, slab } from "@/components/schedules/scheduleChrome";
-import { NameLetter, RosterLegend, rosterTileStyle, SunPill, TileLabel, TILE_GAP } from "@/components/schedules/rosterTile";
+import { NameLetter, RosterLegend, rosterTileStyle, shiftKindOf, SunChip, TileBody, TILE_GAP } from "@/components/schedules/rosterTile";
 
 // Same grid as the editor («تعيينات الفرع»): 128px names, seven day columns.
 const NAME_COL = 150;
@@ -35,16 +34,6 @@ function wideScreen() {
   } catch {
     return true;
   }
-}
-
-function HoursSpan({ shift, lang, format }) {
-  const start = formatShiftHm(shift?.start, format, lang);
-  const end = formatShiftHm(shift?.end, format, lang);
-  if (!start && !end) return null;
-  const clock = (label) => <span dir="ltr" style={{ ...mono, fontVariantNumeric: "tabular-nums" }}>{label}</span>;
-  // The editor's wording: «من 07:00 إلى 15:00».
-  if (lang === "ar") return start && end ? <>من {clock(start)} إلى {clock(end)}</> : clock(start || end);
-  return start && end ? <>{clock(start)}–{clock(end)}</> : clock(start || end);
 }
 
 /**
@@ -167,15 +156,11 @@ export default function BranchRosterReadOnly({
                         <span
                           data-ro-cell={kind}
                           title={`${employee.name} — ${weekdayLabel(day.wd, ar)} — ${label}${sunMark ? ` — ${sunMark === SUN_FIELD ? (ar ? "مكشوف" : "Exposed") : (ar ? "مظلّل" : "Shaded")}` : ""}`}
-                          style={rosterTileStyle({ kind, style, mine, extra: sunMark ? { paddingBottom: 30 } : {} })}
+                          style={rosterTileStyle({ kind, style, mine })}
                         >
-                          <TileLabel label={label} style={style} badge={kind === "shift"} />
-                          {shift ? (
-                            <span style={{ fontSize: 9.5, opacity: 0.85, lineHeight: 1.45, fontWeight: 500, maxWidth: "100%", textAlign: "center" }} dir={ar ? "rtl" : "ltr"}>
-                              <HoursSpan shift={shift} lang={lang} format={timeFormat} />
-                            </span>
-                          ) : null}
-                          <SunPill mark={sunMark} ar={ar} faded={sun?.source !== "cell"} />
+                          <TileBody kind={kind} shiftKind={shiftKindOf(shift)} label={label} shift={shift} style={style} lang={lang} timeFormat={timeFormat} compact>
+                            <SunChip mark={sunMark} ar={ar} />
+                          </TileBody>
                         </span>
                       </span>
                     );

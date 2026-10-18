@@ -11,6 +11,7 @@ import {
   employeeWorkStationId,
   findStationById,
   rosterBranchPhrase,
+  shiftTypeStyle,
   stationDisplayName,
 } from "@/lib/shiftWeek";
 import { isViewerOwnFile } from "@/lib/employeeFileView";
@@ -42,8 +43,10 @@ import {
 } from "@/lib/operationalCalendar";
 import NvIcon from "@/components/shared/NvIcon";
 import { minutesPhrase } from "@/lib/calendarDayFlags";
-import StatusFilterPills from "@/components/shared/StatusFilterPills";
-import { NameLetter } from "@/components/schedules/rosterTile";
+import StatusFilterPills, { statusPillStyle } from "@/components/shared/StatusFilterPills";
+import { KindIcon, NameLetter, shiftKindOf } from "@/components/schedules/rosterTile";
+import { getShiftOnDate } from "@/lib/attendanceDerivations";
+import { approvedLeaveOnDay } from "@/lib/leaveTypes";
 
 /** «1:15» for overtime minutes in a narrow column. */
 function minutesShort(total) {
@@ -146,6 +149,10 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
   const [cmpQuery, setCmpQuery] = useState("");
   const [range, setRange] = useState(null);
   const [cmp, setCmp] = useState("late");
+  // «الكل» · «بين موظفين» (pick two or more) · «موظف مقابل الآخرين» (one against the scope's average).
+  const [cmpMode, setCmpMode] = useState("all");
+  const [cmpPicked, setCmpPicked] = useState([]);
+  const [cmpFocus, setCmpFocus] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const headerScope = useStationScope();
@@ -260,6 +267,24 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
     flagsFor: mineLane ? "self" : "all",
   });
 
+  // Who works which kind of shift that day — the «أيامي» symbols: ☀ صباحي · ◐ مسائي · ☾ ليلي.
+  // Employee lane: my own shift. Management lane: how many of the scope on each kind.
+  const dutyOfDay = (key) => {
+    if (mineLane) {
+      if (!myself || approvedLeaveOnDay(myself, key)) return null;
+      const shift = getShiftOnDate(data, myself, key);
+      return shift ? { mine: shift, kind: shiftKindOf(shift) } : null;
+    }
+    const counts = { morning: 0, evening: 0, night: 0 };
+    for (const employee of roster) {
+      if (approvedLeaveOnDay(employee, key)) continue;
+      const shift = getShiftOnDate(data, employee, key);
+      if (!shift) continue;
+      const kind = shiftKindOf(shift);
+      if (counts[kind] != null) counts[kind] += 1;
+    }
+    return counts.morning + counts.evening + counts.night ? { counts } : null;
+  };
   const days = monthGridDays(year, month);
   const cells = days.map((date) => {
     if (!date) return { blank: true };
@@ -274,6 +299,7 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
       rec: recordOf(date),
       date,
       key,
+      duty: dutyOfDay(key),
     };
   });
 
@@ -383,6 +409,29 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
     .filter((row) => roster.some((employee) => String(employee.id) === String(row.id)))
     .filter((row) => !cmpQ || String(row.name || "").includes(cmpQ))
     .sort((a, b) => ((Number(b[cmp]) || 0) - (Number(a[cmp]) || 0)) || String(a.name).localeCompare(String(b.name), ar ? "ar" : "en"));
+  const focusId = cmpFocus || (mineLane && currentUser?.id ? String(currentUser.id) : String(cmpSorted[0]?.id || ""));
+  const focusRow = cmpSorted.find((row) => String(row.id) === focusId) || null;
+  const othersRows = cmpSorted.filter((row) => String(row.id) !== focusId);
+  // The scope's average without the focused person — one decimal, from the same rows.
+  const othersAvg = othersRows.length ? {
+    id: "__others",
+    synthetic: true,
+    name: ar ? `متوسط الآخرين · ${othersRows.length}` : `Others' average · ${othersRows.length}`,
+    ...Object.fromEntries(["on", "late", "abs", "leave", "viol", "ot", "wait", "done", "prog", "over", "hse"].map((key) => [
+      key,
+      Math.round((othersRows.reduce((sum, row) => sum + (Number(row[key]) || 0), 0) / othersRows.length) * 10) / 10,
+    ])),
+  } : null;
+  const pickedSet = new Set(cmpPicked.map(String));
+  const cmpRows = cmpMode === "pick"
+    ? cmpSorted.filter((row) => pickedSet.has(String(row.id)))
+    : cmpMode === "versus"
+      ? [focusRow, othersAvg].filter(Boolean)
+      : cmpSorted;
+  const pickChoices = (Array.isArray(stats) ? stats : [])
+    .filter((row) => roster.some((employee) => String(employee.id) === String(row.id)))
+    .filter((row) => !cmpQ || String(row.name || "").includes(cmpQ))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), ar ? "ar" : "en"));
   const top = cmpSorted[0];
   const topScore = top ? (Number(top[cmp]) || 0) : 0;
   const zero = cmpSorted.filter((row) => (Number(row[cmp]) || 0) === 0).length;
@@ -429,6 +478,14 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
       ? (ar ? `كل نطاقك · ${roster.length} موظفاً` : `Your whole scope · ${roster.length} people`)
       : `${scopedStation?.name || headerScope} · ${roster.length}`);
   const cmpTitle = cmpLabels[cmp][0];
+  const versusLine = cmpMode === "versus" && focusRow && othersAvg
+    ? ["abs", "late", "viol", "wait", "over"]
+      .filter((key) => (Number(focusRow[key]) || 0) !== (Number(othersAvg[key]) || 0))
+      .map((key) => (ar
+        ? `${cmpLabels[key][0]}: ${key === "ot" ? minutesShort(focusRow[key]) : focusRow[key]} مقابل ${othersAvg[key]}`
+        : `${cmpLabels[key][0]}: ${focusRow[key]} vs ${othersAvg[key]}`))
+      .join(" · ")
+    : "";
 
   const todayIso = isoFromParts(now.getFullYear(), now.getMonth(), now.getDate());
   const back7 = (() => {
@@ -754,6 +811,21 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                         {cell.today ? <span className="nv-cal-today-chip" style={{ fontSize: 10, fontWeight: 700, color: "#fff", background: "var(--nv-btn-fill, #0B3D27)", borderRadius: 999, padding: "1px 8px" }}>{ar ? "اليوم" : "Today"}</span> : null}
                         {rec?.broke ? <span title={ar ? BROKE[rec.broke]?.ar : BROKE[rec.broke]?.en} dir="ltr" style={{ marginInlineStart: "auto", fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, fontWeight: 700, color: OC.goldText, background: OC.goldBg, border: `1px solid ${OC.goldBd}`, borderRadius: 999, padding: "0 6px" }}>{rec.broke}</span> : null}
                       </div>
+                      {cell.duty?.mine ? (
+                        <span data-cal-shift={cell.duty.kind} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: shiftTypeStyle(cell.duty.mine).fg, minWidth: 0 }}>
+                          <KindIcon kind={cell.duty.kind} size={13} />
+                          <span className="nv-cal-pill-label" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cell.duty.mine.label}</span>
+                        </span>
+                      ) : cell.duty?.counts ? (
+                        <span data-cal-shifts style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11, color: OC.mid }}>
+                          {["morning", "evening", "night"].filter((kind) => cell.duty.counts[kind]).map((kind) => (
+                            <span key={kind} title={ar ? `${{ morning: "صباحي", evening: "مسائي", night: "ليلي" }[kind]}: ${cell.duty.counts[kind]}` : kind} style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              <KindIcon kind={kind} size={12} style={{ color: kind === "night" ? "var(--nv-ink)" : kind === "evening" ? "var(--nv-warn-ink)" : "var(--nv-ok-ink)" }} />
+                              <span dir="ltr" style={{ fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>{cell.duty.counts[kind]}</span>
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
                       {rec && rec.head ? (
                         <div style={{ display: "flex", height: 5, borderRadius: 999, background: OC.soft, overflow: "hidden", width: "100%" }}>
                           <div style={{ width: pct(rec.on, rec.head), background: OC.green }} />
@@ -878,6 +950,53 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                 ) : null}
               </div>
 
+              {view === "team" ? (
+                <div data-cmp-mode style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "المقارنة" : "Compare"}</span>
+                  <StatusFilterPills
+                    bare
+                    dataKey="cmp-mode"
+                    value={cmpMode}
+                    onChange={setCmpMode}
+                    items={[
+                      { id: "all", label: ar ? "كل النطاق" : "Whole scope" },
+                      { id: "pick", label: ar ? "بين موظفين" : "Between people", n: cmpMode === "pick" ? cmpPicked.length : undefined },
+                      { id: "versus", label: ar ? "موظف مقابل الآخرين" : "One vs the rest" },
+                    ]}
+                  />
+                  {cmpMode !== "all" ? (
+                    <div data-cmp-pick style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      <span style={{ fontSize: 10.5, color: OC.muted }}>
+                        {cmpMode === "pick"
+                          ? (ar ? "اختر موظفين أو أكثر — الضغط مرة ثانية يزيل الاسم" : "Pick two or more — press again to remove")
+                          : (ar ? "اختر الموظف — يُقارن بمتوسط بقية النطاق" : "Pick the person — compared with the rest of the scope")}
+                      </span>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxHeight: 132, overflowY: "auto" }}>
+                        {pickChoices.map((row) => {
+                          const on = cmpMode === "pick" ? pickedSet.has(String(row.id)) : String(row.id) === focusId;
+                          return (
+                            <button
+                              key={row.id}
+                              type="button"
+                              data-cmp-person={row.id}
+                              aria-pressed={on}
+                              onClick={() => {
+                                if (cmpMode === "versus") { setCmpFocus(String(row.id)); return; }
+                                setCmpPicked((list) => (list.map(String).includes(String(row.id)) ? list.filter((id) => String(id) !== String(row.id)) : [...list, String(row.id)]));
+                              }}
+                              style={{ ...statusPillStyle(on, "sm"), gap: 6, paddingInlineStart: 4 }}
+                            >
+                              <NameLetter name={row.name} mine={on} />
+                              {row.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div data-cmp-range style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span style={{ fontSize: 11.5, fontWeight: 600, color: OC.mid }}>{ar ? "المدى" : "Range"}</span>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -943,13 +1062,18 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
                     ))}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px 12px" }}>
-                    {cmpSorted.map((row) => {
+                    {cmpMode === "pick" && cmpRows.length < 2 ? (
+                      <span style={{ fontSize: 12, color: OC.muted, padding: "6px 8px" }}>{ar ? "اختر موظفين اثنين على الأقل من الأسماء أعلاه." : "Pick at least two people above."}</span>
+                    ) : null}
+                    {cmpRows.map((row) => {
                       const tot = Math.max(1, row.on + row.late + row.abs + row.leave);
-                      const self = isViewerOwnFile(row, currentUser);
+                      const self = !row.synthetic && isViewerOwnFile(row, currentUser);
                       return (
-                        <div key={row.id} role="row" data-cmp-row={row.id} style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 6, padding: "9px 8px", alignItems: "center", borderRadius: 10, border: `1px solid ${self ? OC.greenBd : "var(--nv-line2)"}`, background: self ? OC.greenBg : "var(--nv-card)" }}>
+                        <div key={row.id} role="row" data-cmp-row={row.id} style={{ display: "grid", gridTemplateColumns: cmpGrid, gap: 6, padding: "9px 8px", alignItems: "center", borderRadius: 10, border: row.synthetic ? `1px dashed ${OC.line}` : `1px solid ${self ? OC.greenBd : "var(--nv-line2)"}`, background: row.synthetic ? "var(--nv-soft)" : (self ? OC.greenBg : "var(--nv-card)") }}>
                           <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                            <NameLetter name={row.name} mine={self} />
+                            {row.synthetic
+                              ? <span aria-hidden style={{ width: 26, height: 26, flex: "none", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, background: "var(--nv-card)", color: OC.mid, border: `1px solid ${OC.line}` }}>≈</span>
+                              : <NameLetter name={row.name} mine={self} />}
                             <span style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{row.name}</span>
                             {self ? <FileSelfBadge ar={ar} /> : null}
                           </span>
@@ -984,6 +1108,10 @@ export default function AttendanceMonthCalendar({ employees = [], currentUser, m
               <span style={{ fontSize: 12, color: OC.mid, lineHeight: 1.85 }}>
                 {view !== "team"
                   ? (ar ? "بدّل إلى «الفريق» أعلى الصفحة لمقارنة الموظفين." : "Switch to Team to compare people.")
+                  : cmpMode === "versus" && focusRow
+                    ? (versusLine
+                      ? (ar ? `${focusRow.name} مقابل متوسط الآخرين — ${versusLine}.` : `${focusRow.name} vs the others — ${versusLine}.`)
+                      : (ar ? `${focusRow.name} مثل متوسط الآخرين في الغياب والتأخير والمخالفات والمعلّق.` : `${focusRow.name} matches the others' average.`))
                   : (top && topScore > 0
                     ? (ar ? `الأعلى في «${cmpTitle}»: ${top.name} بـ${cmp === "ot" ? minutesPhrase(topScore, true) : topScore}، و${zero} بلا شيء منه.` : `Highest ${cmpTitle}: ${top.name} at ${topScore}; ${zero} with none.`)
                     : (ar ? `لا أحد سجّل «${cmpTitle}» في هذا المدى.` : `Nobody recorded ${cmpTitle} in this range.`))}

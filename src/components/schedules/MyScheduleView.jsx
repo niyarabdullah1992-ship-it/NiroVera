@@ -194,7 +194,6 @@ export default function MyScheduleView({
       title={ar ? "جدولي — الأسبوع" : "My roster — the week"}
       hint={(
         <>
-          {me?.name ? <>{me.name}{" · "}</> : null}
           {ar ? "ورديّاتي وحقوقي من الجدول المنشور" : "My shifts and my rights from the published roster"}
           {fileHref ? (
             <>

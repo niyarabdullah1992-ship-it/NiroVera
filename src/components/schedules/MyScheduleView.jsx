@@ -194,8 +194,7 @@ export default function MyScheduleView({
       title={ar ? "جدولي — الأسبوع" : "My roster — the week"}
       hint={(
         <>
-          {[me?.name, stationName ? (ar ? `فرع ${stationName.replace(/^فرع\s+/u, "")}` : stationName) : ""].filter(Boolean).join(" · ")}
-          {" · "}
+          {me?.name ? <>{me.name}{" · "}</> : null}
           {ar ? "ورديّاتي وحقوقي من الجدول المنشور" : "My shifts and my rights from the published roster"}
           {fileHref ? (
             <>

@@ -145,7 +145,8 @@ assert.deepEqual(
     { label: "العمل اليومي", items: ["الحضور والدوام", "المهام والإثبات", "السلامة"] },
     // «الهيكل والفروع» and «المحطات التي أديرها» are one section now: «الموارد البشرية».
     { label: "الموظفون", items: ["الموارد البشرية", "الطلبات", "الجزاءات", "صوت الموظف", "الأداء"] },
-    { label: "الامتثال والمال", items: ["الامتثال الوزاري", "المال والرواتب", "التوقيع الرقمي"] },
+    // «الامتثال الوزاري» is a pane of الموارد البشرية now — not its own rail entry.
+    { label: "المال والتوقيع", items: ["المال والرواتب", "التوقيع الرقمي"] },
   ],
 );
 assert.equal(sideItems(employeeSide).some((item) => item.label === "ملفي" || item.section === "file"), false, "the personal file opens from the identity bar");
@@ -171,7 +172,7 @@ assert.equal(sideItems(employeeSide).find((item) => item.section === "daily").to
 assert.equal(sideItems(employeeSide).find((item) => item.section === "daily").label, "مهامي");
 assert.equal(sideItems(manageSide).find((item) => item.section === "daily").to, "/app/tasks?lane=manage");
 assert.equal(sideItems(employeeSide).find((item) => item.section === "org").to, "/app/org?view=employee");
-assert.equal(sideItems(manageSide).find((item) => item.section === "ministry").to, "/app/hr?tab=compliance");
+assert.equal(sideItems(manageSide).some((item) => item.section === "ministry"), false, "ministry compliance lives inside HR, not on the rail");
 assert.equal(sideItems(manageSide).find((item) => item.section === "signing").to, "/app/signing?lane=manage");
 assert.equal(sideItems(manageSide).find((item) => item.section === "hse").to, "/app/safety?lane=manage");
 assert.equal(sideItems(manageSide).some((item) => item.section === "files"), false, "files and the assistant stay off the company rail");
@@ -294,7 +295,7 @@ assert.equal(sideItems(viewedPerf[0]).find((item) => item.section === "performan
 
 assert.equal(activeSuiteRailKey(managed, "people", "/app/org", ""), "hr:manage");
 assert.equal(activeSuiteRailKey(managed, "workforce", "/app/hr", "?tab=org&pane=seats"), "hr:manage");
-assert.equal(activeSuiteRailKey(managed, "workforce", "/app/hr", "?tab=compliance"), "ministry:manage");
+assert.equal(activeSuiteRailKey(managed, "workforce", "/app/hr", "?tab=compliance"), "hr:manage", "the compliance pane lights الموارد البشرية");
 assert.equal(activeSuiteRailKey(employeeRail, "people", "/app/org", "?view=employee"), "org:employee");
 assert.equal(activeSuiteRailKey(managed, "people", "/app/org", "?view=employee"), "org:employee");
 assert.equal(activeSuiteRailKey(managed, "performance", "/app/performance", "?view=self"), "performance:employee");

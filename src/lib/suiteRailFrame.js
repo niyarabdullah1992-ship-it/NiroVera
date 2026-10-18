@@ -31,7 +31,7 @@ const MANAGE_GROUPS = [
   { id: "home", ar: "الرئيسية", en: "Home", sections: ["decide"] },
   { id: "daily", ar: "العمل اليومي", en: "Daily work", sections: ["duty", "daily", "hse"] },
   { id: "staff", ar: "الموظفون", en: "People", sections: ["hr", "requests", "discipline", "complaints", "performance"] },
-  { id: "money", ar: "الامتثال والمال", en: "Compliance and pay", sections: ["ministry", "money", "signing"] },
+  { id: "money", ar: "المال والتوقيع", en: "Pay and signing", sections: ["money", "signing"] },
 ];
 
 const ROLE_RANK = {
@@ -305,7 +305,6 @@ export function activeSuiteRailKey(sides, category, pathname, search) {
     if (has("org:employee")) return "org:employee";
   }
   if (path === "/app/hr" || path.startsWith("/app/hr/")) {
-    if (params.get("tab") === "compliance" && has("ministry:manage")) return "ministry:manage";
     if (has("hr:manage")) return "hr:manage";
   }
   if ((path === "/app/files" || path.startsWith("/app/files/") || path === "/app/assistant") && has("files:manage")) {
@@ -571,16 +570,7 @@ export function buildSuiteRailClusters(railGroups, lang = "ar", context = {}) {
       signal: managesWorkforce ? ownedSignal(workforce, "hr", true) : ownedSignal(people, "org", Boolean(people)),
     }));
   }
-  if (managesWorkforce) {
-    manage.set("ministry", faceItem({
-      section: "ministry",
-      lane: "manage",
-      iconKey: "ministry",
-      label: ar ? "الامتثال الوزاري" : "Ministry compliance",
-      to: withQuery(workforceTo, { tab: "compliance" }),
-      signal: ownedSignal(workforce, "hr", false),
-    }));
-  }
+  // «الامتثال الوزاري» lives inside الموارد البشرية (its «الامتثال الوزاري» pane) — no separate rail entry.
 
   const money = byKey.get("money");
   if (money) {

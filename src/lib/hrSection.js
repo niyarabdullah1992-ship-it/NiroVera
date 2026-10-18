@@ -27,7 +27,7 @@ export const HR_PANE_LABELS = {
   people: { ar: "الموظفون", en: "People" },
   org: { ar: "الهيكل", en: "Structure" },
   branches: { ar: "الفروع والمحطات", en: "Branches & stations" },
-  compliance: { ar: "الامتثال", en: "Compliance" },
+  compliance: { ar: "الامتثال الوزاري", en: "Ministry compliance" },
 };
 
 /** «الهيكل» sub-panes — the five panes /app/org carried, same `pane` parameter. */

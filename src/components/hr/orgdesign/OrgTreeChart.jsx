@@ -18,6 +18,7 @@ import {
   countLine,
   defaultExpanded,
   expandAllKeys,
+  fitZoom,
   layoutOrgTree,
   pathTo,
   readExpanded,
@@ -487,7 +488,7 @@ function FoldCard({ place, ar, w, h, onClick, label = "" }) {
     >
       {place.add
         ? <><span className="nv-ot-more__plus" aria-hidden>+</span>{label || (ar ? "إضافة بطاقة هنا" : "Add a card here")}</>
-        : place.more ? (ar ? `+ ${Number(place.more)} آخرون` : `+ ${place.more} more`) : (ar ? "طيّ الفريق الطويل" : "Fold the long team")}
+        : place.more ? (place.loose ? (ar ? `${Number(place.more)} ${Number(place.more) === 1 ? "منصب" : "مناصب"} بلا مدير` : `${place.more} seats with no manager`) : (ar ? `+ ${Number(place.more)} آخرون` : `+ ${place.more} more`)) : (place.loose ? (ar ? "طيّ المناصب بلا مدير" : "Fold the loose seats") : (ar ? "طيّ الفريق الطويل" : "Fold the long team"))}
     </button>
   );
 }
@@ -780,6 +781,10 @@ export default function OrgTreeChart({
   const downloadBtn = useRef(null);
   const pendingScroll = useRef({ key: branches ? selectedB : resolveFocusKey(peopleTree, urlFocus), mode: "center", smooth: false });
   const moveDomFocus = useRef(false);
+  // SAP: after every move (select / open / close) the chart re-fits itself to the viewport, then
+  // glides to the focus. A manual zoom (buttons, wheel, pinch) pauses that until the next move.
+  const pendingAutoFit = useRef(true);
+  const manualZoom = useRef(false);
 
   const compact = options.density === "compact";
   const cardW = compact ? TREE_GEOMETRY.compactCardW : TREE_GEOMETRY.cardW;
@@ -854,7 +859,8 @@ export default function OrgTreeChart({
     setHighlight(fromSearch ? key : "");
     // SAP: the chain to the focus stands as a vertical stack; the focus shows its own team
     if (tree.nodes.get(key).childKeys.length) setExpanded((cur) => (cur.has(key) ? cur : new Set([...cur, key])));
-    pendingScroll.current = { key, mode: scroll, smooth: true };
+    pendingScroll.current = { key, mode: scroll === "nearest" ? "center" : scroll, smooth: true };
+    pendingAutoFit.current = true;
     moveDomFocus.current = domFocus;
     if (!embedded && !branches) {
       const params = new URLSearchParams(searchParams);
@@ -865,6 +871,7 @@ export default function OrgTreeChart({
   }, [tree, branches, setSelected, setExpanded, embedded, searchParams, setSearchParams, location.state]);
 
   const toggle = useCallback((key) => {
+    pendingAutoFit.current = true;
     setExpanded((cur) => {
       const opening = !cur.has(key);
       if (opening) pendingScroll.current = { key, mode: "team", smooth: true };
@@ -934,11 +941,14 @@ export default function OrgTreeChart({
     setExpanded(res.expanded);
     setShowAll(new Set());
     setCapNote(res.capped);
+    pendingAutoFit.current = true;
+    if (selected) pendingScroll.current = { key: selected, mode: "center", smooth: true };
   };
   const collapseAll = () => {
     setExpanded(new Set());
     setShowAll(new Set());
     setCapNote(false);
+    pendingAutoFit.current = true;
     const top = tree.roots[0];
     if (top) { setSelected(top); pendingScroll.current = { key: top, mode: "center", smooth: true }; }
   };
@@ -979,10 +989,31 @@ export default function OrgTreeChart({
     const s = scrollerRef.current?.getBoundingClientRect();
     return s ? anchorAt(s.left + s.width / 2, s.top + s.height / 2) : null;
   };
-  const zoomBy = (dir) => setZoom((z) => stepZoom(z, dir), centerAnchor());
+  const zoomBy = (dir) => { manualZoom.current = true; setZoom((z) => stepZoom(z, dir), centerAnchor()); };
+  /** The zoom that keeps the whole chart on screen, from the scroller's own size. */
+  const fittedZoom = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || !W || !H) return 1;
+    const cs = getComputedStyle(scroller);
+    const availW = scroller.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const availH = scroller.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    return fitZoom({ width: W, height: H, availW, availH, floor: narrow ? 1 : 0.55 });
+  }, [W, H, narrow]);
 
-  /* after a layout change: scroll to the pending card, move DOM focus there */
+  /* after a layout change: re-fit the zoom (SAP), scroll to the pending card, move DOM focus there */
   useLayoutEffect(() => {
+    if (pendingAutoFit.current) {
+      pendingAutoFit.current = false;
+      manualZoom.current = false;
+      if (options.autoFit && !narrow) {
+        const z = fittedZoom();
+        if (Math.abs(z - zoom) > 0.01) {
+          // the zoom lands first; the scroll to the focus runs on the next pass with the new geometry
+          setZoom(z);
+          return;
+        }
+      }
+    }
     const p = pendingScroll.current;
     if (p?.key) {
       if (scrollToKey(p.key, p.mode, p.smooth)) pendingScroll.current = null;
@@ -992,7 +1023,7 @@ export default function OrgTreeChart({
       const el = stageRef.current?.querySelector(`[data-k="${CSS.escape(selected)}"] .nv-ot-card__hit`);
       el?.focus({ preventScroll: true });
     }
-  }, [layout, selected, scrollToKey]);
+  }, [layout, selected, scrollToKey, zoom, options.autoFit, narrow, fittedZoom, setZoom]);
 
   /* announce the selection for screen readers */
   useEffect(() => {
@@ -1041,6 +1072,7 @@ export default function OrgTreeChart({
       const stage = stageRef.current;
       if (!stage) return;
       const st = stage.getBoundingClientRect();
+      manualZoom.current = true;
       setZoomState((z) => {
         const next = clampZoom(z * factor);
         zoomAnchor.current = { sx: (event.clientX - st.left) / z, sy: (event.clientY - st.top) / z, cx: event.clientX, cy: event.clientY };
@@ -1540,6 +1572,7 @@ export default function OrgTreeChart({
               ["counts", ar ? "الأعداد (مباشر / الكل)" : "Counts (direct / total)"],
               ["unit", ar ? "الوحدة" : "Unit"],
               ["seatCode", ar ? "رمز المنصب" : "Seat code"],
+              ["autoFit", ar ? "ملاءمة تلقائية بعد كل حركة" : "Auto-fit after every move"],
             ].map(([key, label]) => (
               <label key={key} className="nv-ot-pop__check">
                 <input type="checkbox" checked={options[key]} onChange={(event) => setOption(key, event.target.checked)} />

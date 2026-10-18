@@ -100,8 +100,8 @@ export function pathTo(tree, key) {
  */
 
 /**
- * Opened by default (SAP): `key`'s manager — so `key` stands among its peers — and `key` itself
- * when it leads people. The chain above reads as a vertical stack through the focus path.
+ * Opened by default (SAP): the chain above the focus stands as a vertical stack — one card per
+ * level, peers folded — and the focus shows its own team. A manager's count opens the peers.
  */
 export function defaultExpanded(tree, key) {
   const out = new Set();
@@ -109,10 +109,21 @@ export function defaultExpanded(tree, key) {
     (tree?.roots || []).forEach((root) => { if (tree.nodes.get(root)?.childKeys.length) out.add(root); });
     return out;
   }
-  const parent = tree.nodes.get(key).parentKey;
-  if (parent && tree.nodes.has(parent)) out.add(parent);
   if (tree.nodes.get(key).childKeys.length) out.add(key);
   return out;
+}
+
+/**
+ * Auto-fit (SAP): the zoom that keeps the whole chart inside the viewport after a move — never
+ * above 1, never below `floor` (cards stay readable; beyond that the viewer scrolls).
+ */
+export function fitZoom({ width, height, availW, availH, floor = 0.55, ceiling = 1 } = {}) {
+  const w = Number(width) || 0;
+  const h = Number(height) || 0;
+  if (!w || !h || !availW) return ceiling;
+  const byW = availW / w;
+  const byH = availH ? Math.max(availH, 200) / h : ceiling;
+  return Math.max(floor, Math.min(ceiling, byW, byH));
 }
 
 /** The same set plus every manager above `key`, so the card is on screen. Nothing is closed. */
@@ -203,6 +214,9 @@ export function gridCols(n, cap = TREE_GEOMETRY.maxCols) {
  *   lines: Array<{ id, x, y, w, h }>, width: number, height: number, index: Map<string, object> }}
  *   x/y are the card's top inline-start corner; lines are 0-width (vertical) or 0-height (horizontal).
  */
+/** The pseudo-parent of the seats with no manager (their «+n» fold toggles through showAll). */
+export const ORPHAN_KEY = "__loose";
+
 export function layoutOrgTree(tree, expanded = new Set(), {
   cardW = TREE_GEOMETRY.cardW,
   cardH = EXPAND_GEOMETRY.cardH,
@@ -327,7 +341,16 @@ export function layoutOrgTree(tree, expanded = new Set(), {
     return { w: width, h: bottom, cards, lines, px: self.x };
   };
 
-  const roots = orderKeys(tree, (tree?.roots || []).filter((k) => tree.nodes.has(k)));
+  const allRoots = orderKeys(tree, (tree?.roots || []).filter((k) => tree.nodes.has(k)));
+  // SAP keeps one tree. Seats that answer to nobody (no manager, no team, not on the focus path) would
+  // each open a column of their own and push the real tree aside, so they fold into one «+n بلا مدير»
+  // card beside it; the card opens them as a small block (showAll has ORPHAN_KEY).
+  const isLoose = (k) => {
+    const n = tree.nodes.get(k);
+    return allRoots.length > 1 && !onPath.has(k) && k !== focusKey && !(n.childKeys || []).some((c) => tree.nodes.has(c)) && n.kind !== "branch" && n.kind !== "city" && n.kind !== "country" && n.kind !== "people";
+  };
+  const loose = stack ? [] : allRoots.filter(isLoose);
+  const roots = allRoots.filter((k) => !loose.includes(k));
   const cards = [];
   const lines = [];
   let x = 0;
@@ -339,7 +362,22 @@ export function layoutOrgTree(tree, expanded = new Set(), {
     x += b.w + groupGap;
     height = Math.max(height, b.h);
   });
-  return { cards, lines, width: Math.max(0, x - groupGap), height, index: new Map(cards.map((c) => [c.key, c])) };
+  if (loose.length) {
+    if (showAll.has(ORPHAN_KEY)) {
+      const g = gridBlock(loose, 0, "", Math.min(2, loose.length));
+      g.cards.forEach((c) => { c.loose = true; cards.push({ ...c, x: c.x + x }); });
+      const i = g.cards.length;
+      const c = Math.max(1, Math.min(2, loose.length));
+      cards.push(card(`${ORPHAN_KEY}::less`, 0, ORPHAN_KEY, { inGrid: true, less: true, loose: true, x: x + (i % c) * (cardW + gap), y: Math.floor(i / c) * (cardH + gap) }));
+      x += g.w + groupGap;
+      height = Math.max(height, g.h + (i % c === 0 ? cardH + gap : 0));
+    } else {
+      cards.push(card(`${ORPHAN_KEY}::more`, 0, ORPHAN_KEY, { inGrid: true, more: loose.length, loose: true, x, y: 0 }));
+      x += cardW + groupGap;
+      height = Math.max(height, cardH);
+    }
+  }
+  return { cards, lines, width: Math.max(0, x - groupGap), height, loose: loose.length, index: new Map(cards.map((c) => [c.key, c])) };
 }
 
 /** A card with its counts, ready for the screen. */
@@ -372,7 +410,7 @@ export function clampZoom(value) {
  * Card display options (the settings gear). Unknown or missing keys fall back to defaults so a
  * stored blob from an older version never breaks the page.
  */
-export const TREE_OPTION_DEFAULTS = Object.freeze({ seatCode: false, counts: true, unit: false, density: "comfortable" });
+export const TREE_OPTION_DEFAULTS = Object.freeze({ seatCode: false, counts: true, unit: false, density: "comfortable", autoFit: true });
 
 export function readTreeOptions(raw) {
   let value = raw;
@@ -381,7 +419,7 @@ export function readTreeOptions(raw) {
   }
   const out = { ...TREE_OPTION_DEFAULTS };
   if (value && typeof value === "object") {
-    ["seatCode", "counts", "unit"].forEach((k) => { if (typeof value[k] === "boolean") out[k] = value[k]; });
+    ["seatCode", "counts", "unit", "autoFit"].forEach((k) => { if (typeof value[k] === "boolean") out[k] = value[k]; });
     if (value.density === "compact" || value.density === "comfortable") out.density = value.density;
   }
   return out;

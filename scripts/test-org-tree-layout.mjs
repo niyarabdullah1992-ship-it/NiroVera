@@ -105,8 +105,8 @@ assert.equal(stepZoom(1.5, 1), 1.5);
 assert.equal(stepZoom(0.4, -1), 0.4);
 assert.equal(clampZoom(9), 1.5);
 assert.equal(clampZoom("x"), 1);
-assert.deepEqual(readTreeOptions("{bad"), { seatCode: false, counts: true, unit: false, density: "comfortable" });
-assert.deepEqual(readTreeOptions({ seatCode: true, density: "compact", counts: "yes" }), { seatCode: true, counts: true, unit: false, density: "compact" });
+assert.deepEqual(readTreeOptions("{bad"), { seatCode: false, counts: true, unit: false, density: "comfortable", autoFit: true });
+assert.deepEqual(readTreeOptions({ seatCode: true, density: "compact", counts: "yes", autoFit: false }), { seatCode: true, counts: true, unit: false, density: "compact", autoFit: false });
 
 /* ~600 seats: one pass, and the view stays small */
 const big = { stations: [{ id: "hq", name: "HQ", isCompanyRoot: true, managerId: "e0" }], employees: [], orgSeats: [] };
@@ -125,3 +125,46 @@ assert.equal(bc.get(bt.roots[0]).total, 599);
 assert.ok(bv.cards.length < 60, `rendered ${bv.cards.length} cards, not 600`);
 
 console.log("PASS test-org-tree-layout");
+
+/* SAP movement: the start is a chain, not a crowd; the auto-fit zoom keeps the chart on screen */
+{
+  const { fitZoom } = await import("../src/lib/orgTreeLayout.js");
+  const viewer = bt.viewerKey;
+  const start = defaultExpanded(bt, viewer);
+  assert.ok(!start.has(bt.nodes.get(viewer).parentKey), "the manager is not opened by default — peers stay folded");
+  const chain = layoutOrgTree(bt, start, { childLimit: 24, focusKey: viewer });
+  const depthOfViewer = chain.index.get(viewer).depth;
+  for (let d = 0; d < depthOfViewer; d += 1) {
+    assert.equal(chain.cards.filter((c) => c.depth === d).length, 1, `one card per level above the focus (level ${d})`);
+  }
+  assert.equal(fitZoom({ width: 2000, height: 600, availW: 1000, availH: 800 }), 0.55, "never below the floor");
+  assert.equal(fitZoom({ width: 1200, height: 600, availW: 1000, availH: 800 }), 1000 / 1200);
+  assert.equal(fitZoom({ width: 500, height: 300, availW: 1000, availH: 800 }), 1, "never above 1");
+}
+
+/* loose roots (seats with no manager) fold into one card beside the tree, and open on demand */
+{
+  const { ORPHAN_KEY } = await import("../src/lib/orgTreeLayout.js");
+  const data = {
+    stations: [{ id: "hq", name: "HQ", isCompanyRoot: true, managerId: "e0" }],
+    employees: [{ id: "e0", name: "Owner", stationId: "hq", status: "active" }, { id: "e1", name: "A", stationId: "hq", status: "active", managerId: "e0" }],
+    orgSeats: [
+      { id: "s0", title: "CEO", stationId: "hq", holderId: "e0" },
+      { id: "s1", title: "Mgr", stationId: "hq", holderId: "e1", reportsToSeatId: "s0" },
+      { id: "v1", title: "Vacant 1", stationId: "hq" },
+      { id: "v2", title: "Vacant 2", stationId: "hq" },
+      { id: "v3", title: "Vacant 3", stationId: "hq" },
+    ],
+    ownerId: "e0",
+  };
+  const t = buildOrgFocusTree(data, { viewerId: "e0", scope: "all", day: DAY });
+  if (t.roots.length > 1) {
+    const l1 = layoutOrgTree(t, defaultExpanded(t, t.viewerKey), { focusKey: t.viewerKey });
+    const fold = l1.cards.find((c) => c.key === `${ORPHAN_KEY}::more`);
+    assert.ok(fold && fold.more === t.roots.length - 1, "the loose seats are one fold card");
+    assert.ok(!l1.cards.some((c) => c.key.startsWith("v") && c.loose), "folded seats are not laid out");
+    const l2 = layoutOrgTree(t, defaultExpanded(t, t.viewerKey), { focusKey: t.viewerKey, showAll: new Set([ORPHAN_KEY]) });
+    assert.ok(l2.cards.some((c) => c.loose && c.key !== `${ORPHAN_KEY}::less`), "opened: the loose seats appear");
+    assert.ok(l2.width > l1.width, "and the chart grows only then");
+  }
+}

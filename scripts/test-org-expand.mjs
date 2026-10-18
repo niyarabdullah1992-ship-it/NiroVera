@@ -81,7 +81,7 @@ function assertClean(layout, label) {
   assert.ok(layout.height >= Math.max(...cards.map((c) => c.y + geo.cardH)) - 0.5, `${label}: height holds every card`);
 }
 
-/* default: the chain to the viewer is open (owner = the top → its reports show) */
+/* default (SAP): the focus shows its team; the chain above is a stack with peers folded */
 const start = defaultExpanded(tree, O);
 assert.deepEqual([...start], [O]);
 let layout = layoutOrgTree(tree, start, geo);

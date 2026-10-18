@@ -358,13 +358,6 @@ export default function ShiftWeekBoard({
   // The week totals sit in «أسبوع الفرع»; the grid head keeps only its lead line.
   void countsNote;
   const gridNote = [gridLead].filter(Boolean).join(" · ");
-  const nightGlow = statutoryGlowState({
-    kind: "18632",
-    employees: roster,
-    schedule,
-    weekStart,
-    laborCalendar,
-  });
   const assignmentsTitle = gridTitle || (stationName
     ? (ar ? `جدول ${rosterBranchPhrase(stationName, ar)}` : `${stationName} roster`)
     : (ar ? "التعيينات" : "Assignments"));
@@ -1210,7 +1203,6 @@ export default function ShiftWeekBoard({
       ar={ar}
       lane="manage"
       title={ar ? "جدول الدوام — الأسبوع" : "Duty roster — the week"}
-      meta={<StatutoryItem decisionId="18632" ar={ar} entitlement glow={nightGlow} compact />}
     >
     <div className="nv-sched" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {scopeNote}

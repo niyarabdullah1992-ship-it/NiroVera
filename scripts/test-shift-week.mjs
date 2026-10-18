@@ -1790,8 +1790,8 @@ assert.match(compliancePanelSrc, /buildLawGatesBoard\(\{ gates/, "compliance pan
 // The duplicate tile row is gone: week status sits on the week bar, hours on the roster head, rules in their panel.
 assert.match(boardSrc, /No tile row here/, "roster page has no duplicate tile row");
 assert.doesNotMatch(boardSrc, /<DutyTiles>/, "roster page renders no DutyTiles");
-assert.match(boardSrc, /decisionId="18632"/, "night header always prints قرار 18632");
-assert.match(boardSrc, /entitlement glow=\{nightGlow\}/, "header 18632 stays a green worker-right chip when not due");
+// The 18632 chip left the roster head — the night alert already lives in «أنظمة الوزارة» and the week card.
+assert.doesNotMatch(boardSrc, /meta=\{<StatutoryItem decisionId="18632"/, "no duplicate 18632 chip on the roster head");
 assert.match(boardSrc, /surface="leave"/, "leave-day article chip is light brown, not mint on the cell");
 assert.match(boardSrc, /mode === "mine"/, "ملفي roster uses the file-owner rail");
 assert.match(boardSrc, /FileHoursAlertsRail/, "ملفي left column is alerts for the signed-in person");

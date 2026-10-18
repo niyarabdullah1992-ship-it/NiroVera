@@ -22,7 +22,6 @@ import { statusBannerQuiet } from "@/lib/platformStyles";
 import { calendarDateKey } from "@/lib/attendanceCalendar";
 import { WEEK_HINT_EMP_AR } from "@/lib/packageMinistryCatalog";
 import { DS_CONTROL_RADIUS } from "@/lib/designSystem";
-import StatutoryItem from "@/components/labor/StatutoryItem";
 import AttendanceSectionFrame from "@/components/attendance/AttendanceSectionFrame";
 import ScheduleHowItWorks from "@/components/schedules/ScheduleHowItWorks";
 import { chip, Collapsible, mono, quietAction, SectionHead, slab } from "@/components/schedules/scheduleChrome";
@@ -207,7 +206,6 @@ export default function MyScheduleView({
       )}
       meta={(
         <>
-          <StatutoryItem decisionId="18632" ar={ar} entitlement glow={nightGlow} compact />
           <span style={chip(pubChip.tone)}>{pubChip.label}</span>
         </>
       )}
